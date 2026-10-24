@@ -93,7 +93,21 @@ try {
   assert.equal(events.status, 200);
   assert.match(events.headers.get("content-type") ?? "", /text\/event-stream/i);
   assert.match(events.headers.get("cache-control") ?? "", /no-store/i);
-  assert.match(await events.text(), /refreshRequired/);
+  // SSE responses are intentionally long-lived; response.text() waits for EOF and
+  // hangs forever. Read only until the expected event arrives, then cancel the stream.
+  const eventsReader = events.body.getReader();
+  const eventsDecoder = new TextDecoder();
+  let eventsText = "";
+  try {
+    for (let attempt = 0; attempt < 10 && !/refreshRequired/.test(eventsText); attempt += 1) {
+      const { value, done } = await eventsReader.read();
+      if (done) break;
+      eventsText += eventsDecoder.decode(value, { stream: true });
+    }
+    assert.match(eventsText, /refreshRequired/, "SSE stream should emit refreshRequired");
+  } finally {
+    await eventsReader.cancel();
+  }
 
   const robots = await fetch(`${baseUrl}/robots.txt`);
   assert.equal(robots.status, 200);
