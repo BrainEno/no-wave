@@ -1,0 +1,19 @@
+{
+  "name": "@bot-thk/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Standalone GraphQL API for BOT THK",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "migrate": "node src/persistence/migrate.mjs",
+    "worker:notifications": "node src/persistence/notification-worker.mjs",
+    "test:integration": "node --test src/persistence/postgres.integration.test.mjs",
+    "test:unit": "node --test src/application/*.test.mjs src/domain/*.test.mjs src/server.test.mjs"
+  },
+  "dependencies": {
+    "graphql": "17.0.2",
+    "graphql-yoga": "5.24.6",
+    "postgres": "3.4.7"
+  }
+}

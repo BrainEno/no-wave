@@ -1,0 +1,90 @@
+# Persistence Adapter Behavioral Contract
+
+This is the acceptance contract for every persistence provider in the rebuilt BOT THK API. An adapter is not considered supported merely because it connects and implements methods with matching names. It must pass the same observable domain tests.
+
+## Dependency direction
+
+`GraphQL/HTTP → application services → domain-grouped persistence ports → provider adapter`
+
+The current operation lists live in `apps/api/src/application/persistence-ports.mjs`. Domain types, validation and policy live under `apps/api/src/domain/`. Driver-specific row mapping, query syntax, index definitions, transactions and connection handling stay inside the provider adapter.
+
+## Required adapter contract
+
+### Article content and publication
+
+- Creating an article derives `authorId` from the authenticated application use case, never from a client-supplied author.
+- A slug is globally unique within the agreed product scope; duplicate create fails with a stable conflict error.
+- Article body block validation is identical across providers. Invalid block IDs/types, duplicate block IDs, invalid heading levels, invalid media URL protocols and oversized content are rejected before persistence.
+- Drafts are visible only to the owner-authorized operation; public list, detail and taxonomy queries return published content only.
+- Localized translations are keyed by `zh-TW` or `en`; a missing requested translation is not silently represented as another language's content. Display fallback is allowed only where the domain contract explicitly specifies it.
+- Update changes, publication state and taxonomy associations are atomic. If any association fails, no partial article update is retained.
+
+### User-generated hashtags and categories
+
+- Hashtags are data, not a compiled enum or fixed seed list.
+- Hashtag normalization is shared domain code: apply Unicode NFKC normalization, accept an optional leading `#`, reject whitespace/embedded markers and unsupported punctuation, keep Unicode display text, and derive one stable normalized identity.
+- Repeated create of an equivalent hashtag returns the same tag and never overwrites another user's existing label.
+- A tag created by one user can be reused and attached by another authenticated author; association operations remain owner-scoped to the article being edited.
+- Tag listing and tag detail count/list published articles only, and honor requested locale rules.
+- Category authorization/deletion semantics remain distinct from hashtag reuse until a product decision explicitly changes them.
+
+### Profiles, follows and engagement
+
+- A user cannot edit another user's profile or delete another user's comment.
+- A user cannot follow themselves; repeated follow/unfollow requests are idempotent.
+- Like/unlike has deterministic state-setting semantics. Retrying the same desired state must not flip state.
+- One user has at most one logical like per article; counts and viewer state match stored relationships.
+- Comment replies must belong to the same article as their parent. Deleting a parent applies the defined cascading deletion rule.
+- Durable notification records created as part of a mutation must commit in the same transaction as that mutation, where the current product behavior promises atomicity.
+
+### Conversations and messages
+
+- Only verified participants can read history, send messages, manage participants or change read state where those operations are allowed.
+- Sender identity is derived from authenticated context, not request payload.
+- Message write, idempotency record and outbox intent commit atomically.
+- Retrying the same idempotency key and payload returns the original logical message. Reusing it with another payload returns `IDEMPOTENCY_CONFLICT`.
+- Bounded cursor pagination returns older messages for a cursor belonging to the same conversation; malformed or foreign cursors fail predictably.
+- A participant removal must not accidentally delete other users' message history unless a product-level deletion rule is explicitly approved.
+
+### Notifications, sessions and outbox
+
+- Notifications are recipient-scoped; another user cannot list, mark or infer private inbox state.
+- Event keys deduplicate logical notifications across delivery retries; a key reused with different payload content is rejected.
+- Unread counts and batch read updates are scoped to the current actor.
+- Session revocation is durable until the signed token expires; adapter health or transient errors must never cause a revoked token to be accepted.
+- Outbox claiming supports concurrent workers without claiming one active lease as if it belonged to multiple workers; failed deliveries can be rescheduled and recovered.
+- The adapter must preserve the required atomicity of the outbox event and its source mutation.
+
+### Errors and operational behavior
+
+- Domain failures map to stable application error codes independent of the provider's native error text/code.
+- Raw SQL/driver messages, connection strings and credentials are never exposed in GraphQL errors or unauthenticated health probes.
+- `health()` must test the actual persistence dependency; it must not report ready when the selected database is unavailable.
+- Runtime provider selection is explicit. An absent/unavailable adapter is a startup error, not a reason to silently choose another database.
+
+## Provider-specific test suites
+
+Each adapter needs:
+
+1. Adapter-shape tests using `assertPersistenceAdapter`.
+2. The applicable behavioral contract tests above against disposable resources.
+3. Concurrency tests for uniqueness/idempotency, membership/ownership and outbox leases.
+4. Failure tests for transaction rollback and connection loss.
+5. Migration/index and clean-start tests.
+6. A documented capability table for transaction semantics, concurrency limits, native replication, backup/restore and deployment topology.
+
+PostgreSQL is the current reference adapter. MongoDB and SQLite must not be called supported until their adapter implementations, provider runtime factory and these behavioral tests all pass. SQLite is initially targeted at local/test/single-host use; its single-writer and WAL topology constraints must be reflected in the deployment policy.
+
+## Cross-engine replication is a separate contract
+
+A provider adapter controls persistence semantics for one authoritative database. Replication across PostgreSQL and MongoDB is a separate service with its own acceptance criteria:
+
+- One write authority at a time; the mirror is read-only until a fenced promotion.
+- Each replicated change has a stable event ID, aggregate ID/type, monotonic version or ordered source position, schema version, payload and deletion/tombstone semantics.
+- The event is durably recorded with the source transaction (transactional outbox or database CDC with a proven checkpoint boundary).
+- Consumers are idempotent, maintain a durable checkpoint, tolerate at-least-once delivery and can replay safely.
+- Lag is measured and visible. Reconciliation compares version/count/checksum samples, including deleted records and localized rows.
+- Failover has a written RPO/RTO, promotion rule, fencing/lease/quorum policy, and a rejoin/reconciliation runbook before automation is enabled.
+- A failed database is not automatically promoted by app-level connection fallback alone; this does not prevent split brain.
+
+Bidirectional replication and independent writes on both engines are out of scope until a separate conflict-resolution and distributed-consistency protocol is approved.
