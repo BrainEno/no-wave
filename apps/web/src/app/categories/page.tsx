@@ -8,6 +8,6 @@ export const metadata: Metadata = {
 };
 
 export default async function CategoriesPage() {
-  const categories = await listPublicCategories({ locale: "zh-TW" });
-  return <CategoryIndexContent locale="zh-TW" categories={categories} />;
+  const categories = await listPublicCategories({ locale: "zh-CN" });
+  return <CategoryIndexContent locale="zh-CN" categories={categories} />;
 }
