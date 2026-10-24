@@ -8,6 +8,9 @@ let serverOutput = "";
 const server = spawn("pnpm", ["--filter", "@bot-thk/web", "start"], {
   env: { ...process.env, HOSTNAME: "127.0.0.1", PORT: String(port) },
   stdio: ["ignore", "pipe", "pipe"],
+  // Keep the package manager and its Next.js child in one process group so cleanup
+  // below does not leave the server running after the smoke checks finish.
+  detached: process.platform !== "win32",
 });
 
 server.stdout.on("data", (chunk) => { serverOutput += chunk.toString(); });
@@ -104,5 +107,15 @@ try {
 
   console.log("Route smoke checks passed: localized home/archive/article routes, search, SEO alternates, 404s, account cache policy, SSE headers, robots and sitemap.");
 } finally {
-  server.kill("SIGTERM");
+  if (server.exitCode === null && server.signalCode === null) {
+    if (process.platform !== "win32" && server.pid !== undefined) {
+      try {
+        process.kill(-server.pid, "SIGTERM");
+      } catch (error) {
+        if (error.code !== "ESRCH") throw error;
+      }
+    } else {
+      server.kill("SIGTERM");
+    }
+  }
 }
