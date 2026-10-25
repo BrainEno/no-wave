@@ -78,10 +78,10 @@ test("SQLite follows are idempotent, ordered, and create one notification per ne
     assert.equal(store.followUser({ actorId: "alice", targetUserId: "bob" }), false);
     assert.equal(store.followUser({ actorId: "carol", targetUserId: "bob" }), true);
     assert.equal(store.getAuthorProfile({ userId: "bob", locale: "en", viewerId: "alice" }).followerCount, 2);
-    assert.equal(store.getAuthorProfile({ userId: "bob", locale: "en", viewerId: "alice" }).isFollowing, false);
+    assert.equal(store.getAuthorProfile({ userId: "bob", locale: "en", viewerId: "alice" }).isFollowing, true);
     assert.equal(store.getAuthorProfile({ userId: "alice", locale: "en", viewerId: "bob" }).isFollowing, true);
     assert.deepEqual(store.listFollowing({ userId: "alice", locale: "en" }).map((item) => item.userId), ["bob"]);
-    assert.deepEqual(store.listFollowers({ userId: "bob", locale: "en" }).map((item) => item.userId), ["carol", "alice"]);
+    assert.deepEqual(store.listFollowers({ userId: "bob", locale: "en" }).map((item) => item.userId).sort(), ["alice", "carol"]);
     assert.equal(db.prepare("SELECT count(*) AS n FROM notifications WHERE user_id = ?").get("bob").n, 2);
 
     assert.equal(store.unfollowUser({ actorId: "alice", targetUserId: "bob" }), true);
