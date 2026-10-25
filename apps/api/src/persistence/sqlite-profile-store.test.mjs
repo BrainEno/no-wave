@@ -67,7 +67,7 @@ test("SQLite profile search validates inputs and returns follower metadata", asy
   }
 });
 
-test("SQLite follows are idempotent, ordered, and create one notification per new follow", () => {
+test("SQLite follows are idempotent, ordered, and create one notification per new follow", async () => {
   const { db, store } = await fixture();
   try {
     profile(store, "alice", "Alice", { locale: "en" });
@@ -92,7 +92,7 @@ test("SQLite follows are idempotent, ordered, and create one notification per ne
   }
 });
 
-test("SQLite follow rejects self-follow and unknown targets without partial writes", () => {
+test("SQLite follow rejects self-follow and unknown targets without partial writes", async () => {
   const { db, store } = await fixture();
   try {
     profile(store, "alice", "Alice", { locale: "en" });
