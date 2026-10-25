@@ -343,8 +343,8 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       assert.ok(taxonomyArticles.some((item) => item.id === secondArticle.id));
       const nextPage = await runtime.store.listTaxonomyArticles({ kind: "category", slug: taxonomy.slug, locale: "zh-CN", limit: 1, offset: 1 });
       assert.deepEqual(nextPage.map((item) => item.id), taxonomyArticles.slice(1, 2).map((item) => item.id));
-      assert.throws(
-        () => runtime.store.listTaxonomyArticles({ kind: "category", slug: taxonomy.slug, locale: "zh-CN", limit: 1, offset: -1 }),
+      await assert.rejects(
+        Promise.resolve().then(() => runtime.store.listTaxonomyArticles({ kind: "category", slug: taxonomy.slug, locale: "zh-CN", limit: 1, offset: -1 })),
         { code: "BAD_USER_INPUT" },
       );
       const assigned = await runtime.store.listArticleTaxonomies({ articleId: article.id, kind: "category", locale: "zh-CN" });
