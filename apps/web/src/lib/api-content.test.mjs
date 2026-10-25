@@ -46,6 +46,21 @@ test("API content client maps published article wire fields into web article vie
   assert.deepEqual(articles[0].tags, ["Web"]);
 });
 
+test("API content client forwards offset pagination to the GraphQL article query", async () => {
+  let request;
+  const client = createApiContentClient({
+    endpoint: "https://api.example.test/graphql",
+    fetchImpl: async (_url, init) => {
+      request = JSON.parse(init.body);
+      return response({ articles: [article] });
+    },
+  });
+  const articles = await client.listArticles({ locale: "en", query: "poetry", limit: 20, offset: 40 });
+  assert.equal(articles.length, 1);
+  assert.match(request.query, /offset: \$offset/);
+  assert.deepEqual(request.variables, { locale: "en", query: "poetry", limit: 20, offset: 40 });
+});
+
 test("API content client maps missing articles and authors to null", async () => {
   const client = createApiContentClient({
     endpoint: "https://api.example.test/graphql",
