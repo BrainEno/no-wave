@@ -56,7 +56,7 @@ export function CategoryIndexContent({ locale, categories, query = "" }: { local
   );
 }
 
-export function CategoryDetailContent({ locale, category, articles }: { locale: Locale; category: CategoryView; articles: ArticleView[] }) {
+export function CategoryDetailContent({ locale, category, articles, page = 1, hasNextPage = false }: { locale: Locale; category: CategoryView; articles: ArticleView[]; page?: number; hasNextPage?: boolean }) {
   const english = locale === "en";
   return (
     <main lang={locale} style={{ maxWidth: 820, margin: "4rem auto", padding: "0 1.25rem" }}>
@@ -67,13 +67,15 @@ export function CategoryDetailContent({ locale, category, articles }: { locale: 
       {category.description ? <p>{category.description}</p> : null}
       <p>{category.articleCount} {english ? "published works" : "篇已發表作品"}</p>
       {articles.length === 0 ? (
-        <p role="status">{english ? "There are no published works in this category yet." : "此分類目前尚無已發表作品。"}</p>
+        <p role="status">{page > 1
+          ? (english ? "No more works are available on this page." : "此頁沒有更多作品。")
+          : (english ? "There are no published works in this category yet." : "此分類目前尚無已發表作品。")}</p>
       ) : (
         <ol>
-          {articles.map((article, index) => (
+          {articles.slice(0, 20).map((article, index) => (
             <li key={article.slug} style={{ borderTop: "1px solid currentColor", padding: "1.25rem 0" }}>
               <article>
-                <p>{String(index + 1).padStart(2, "0")}</p>
+                <p>{String((page - 1) * 20 + index + 1).padStart(2, "0")}</p>
                 <h2><Link href={articlePath(article.slug, locale)}>{article.title}</Link></h2>
                 {article.description ? <p>{article.description}</p> : null}
                 <p>{english ? "By" : "作者"} <Link href={authorPath(article.author.username, locale)}>{article.author.displayName}</Link></p>
@@ -83,6 +85,11 @@ export function CategoryDetailContent({ locale, category, articles }: { locale: 
           ))}
         </ol>
       )}
+      <nav aria-label={english ? "Category pages" : "分類頁面"} style={{ display: "flex", gap: "1rem", marginTop: "2rem" }}>
+        {page > 1 ? <Link rel="prev" href={"?page=" + (page - 1)}>{english ? "Previous works" : "上一頁作品"}</Link> : null}
+        {hasNextPage ? <Link rel="next" href={"?page=" + (page + 1)}>{english ? "More works" : "下一頁作品"}</Link> : null}
+        <span aria-current="page">{english ? "Page " + page : "第 " + page + " 頁"}</span>
+      </nav>
     </main>
   );
 }

@@ -141,7 +141,7 @@ export function createApiSchema() {
         articleComments(slug: String!, locale: String = "zh-CN", limit: Int = 50): [ArticleComment!]!
         taxonomies(kind: String!, locale: String = "zh-CN", query: String = "", limit: Int = 100): [Taxonomy!]!
         taxonomy(kind: String!, slug: String!, locale: String = "zh-CN"): Taxonomy
-        taxonomyArticles(kind: String!, slug: String!, locale: String = "zh-CN", limit: Int = 20): [Article!]!
+        taxonomyArticles(kind: String!, slug: String!, locale: String = "zh-CN", limit: Int = 20, offset: Int = 0): [Article!]!
         myArticles(locale: String = "zh-CN", limit: Int = 50): [Article!]!
         conversationMessages(conversationId: String!, limit: Int = 100, before: ID): [Message!]
         conversations(limit: Int = 50): [Conversation!]!
@@ -227,9 +227,9 @@ export function createApiSchema() {
             rethrowApiError(error);
           }
         },
-        taxonomyArticles: async (_source, { kind, slug, locale = "zh-CN", limit = 20 }, context) => {
+        taxonomyArticles: async (_source, { kind, slug, locale = "zh-CN", limit = 20, offset = 0 }, context) => {
           try {
-            return await requireServices(context).listTaxonomyArticles({ kind, slug, locale, limit });
+            return await requireServices(context).listTaxonomyArticles({ kind, slug, locale, limit, offset });
           } catch (error) {
             rethrowApiError(error);
           }

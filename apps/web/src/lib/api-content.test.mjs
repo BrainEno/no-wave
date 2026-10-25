@@ -120,10 +120,12 @@ test("API content client lists categories and retrieves category works through G
   assert.equal(calls[0].variables.locale, "en");
   assert.equal(calls[0].variables.query, "poe");
   assert.deepEqual(await client.getCategoryBySlug("poetry", "en"), categories[0]);
-  const works = await client.listCategoryArticles("poetry", "en");
+  const works = await client.listCategoryArticles("poetry", "en", 21, 20);
   assert.equal(works.length, 1);
   assert.equal(works[0].slug, "hello-world");
   assert.equal(calls[2].variables.slug, "poetry");
+  assert.ok(calls[2].query.includes("offset: $offset"));
+  assert.deepEqual(calls[2].variables, { slug: "poetry", locale: "en", limit: 21, offset: 20 });
 });
 
 test("API content client maps a missing category to null", async () => {

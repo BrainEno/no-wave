@@ -334,8 +334,19 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
         authorId: `article-author-${suffix}`, slug, title: "Taxonomy contract article", summary: "",
         locale: "zh-CN", contentBlocks: [{ id: "p1", type: "paragraph", text: "Shared contract content." }], publish: true, categoryIds: [taxonomy.id],
       });
-      const taxonomyArticles = await runtime.store.listTaxonomyArticles({ kind: "category", slug: taxonomy.slug, locale: "zh-CN" });
+      const secondArticle = await runtime.store.createArticle({
+        authorId: `article-author-${suffix}`, slug: `${slug}-second`, title: "Second taxonomy contract article", summary: "",
+        locale: "zh-CN", contentBlocks: [{ id: "p1", type: "paragraph", text: "Second shared contract content." }], publish: true, categoryIds: [taxonomy.id],
+      });
+      const taxonomyArticles = await runtime.store.listTaxonomyArticles({ kind: "category", slug: taxonomy.slug, locale: "zh-CN", limit: 10 });
       assert.ok(taxonomyArticles.some((item) => item.id === article.id));
+      assert.ok(taxonomyArticles.some((item) => item.id === secondArticle.id));
+      const nextPage = await runtime.store.listTaxonomyArticles({ kind: "category", slug: taxonomy.slug, locale: "zh-CN", limit: 1, offset: 1 });
+      assert.deepEqual(nextPage.map((item) => item.id), taxonomyArticles.slice(1, 2).map((item) => item.id));
+      await assert.rejects(
+        Promise.resolve().then(() => runtime.store.listTaxonomyArticles({ kind: "category", slug: taxonomy.slug, locale: "zh-CN", limit: 1, offset: -1 })),
+        { code: "BAD_USER_INPUT" },
+      );
       const assigned = await runtime.store.listArticleTaxonomies({ articleId: article.id, kind: "category", locale: "zh-CN" });
       assert.ok(assigned.some((item) => item.id === taxonomy.id));
     } finally { await runtime.cleanup(undefined, suffix); }
