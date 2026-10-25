@@ -235,7 +235,7 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
     try {
       const draft = await runtime.store.createArticle({
         authorId: `author-${suffix}`, slug, title: "Contract draft", summary: "Not public yet",
-        locale: "zh-CN", contentBlocks: [], publish: false,
+        locale: "zh-CN", contentBlocks: [{ id: "p1", type: "paragraph", text: "Shared contract content." }], publish: false,
       });
       articleId = draft.id;
       assert.equal(draft.status, "draft");
@@ -243,11 +243,11 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       assert.ok((await runtime.store.listMyArticles({ actorId: `author-${suffix}`, locale: "zh-CN" })).some((article) => article.id === articleId));
       await assert.rejects(runtime.store.updateArticle({
         articleId, actorId: `not-author-${suffix}`, slug, title: "Unauthorized update",
-        locale: "zh-CN", contentBlocks: [], publish: true,
+        locale: "zh-CN", contentBlocks: [{ id: "p1", type: "paragraph", text: "Shared contract content." }], publish: true,
       }), ArticleAuthorizationError);
       const published = await runtime.store.updateArticle({
         articleId, actorId: `author-${suffix}`, slug, title: "Now published", summary: "Visible in public feed",
-        locale: "zh-CN", contentBlocks: [], publish: true,
+        locale: "zh-CN", contentBlocks: [{ id: "p1", type: "paragraph", text: "Shared contract content." }], publish: true,
       });
       assert.equal(published.status, "published");
       assert.ok((await runtime.store.listPublishedArticles({ locale: "zh-CN", query: "Now published" })).some((article) => article.id === articleId));
@@ -265,7 +265,7 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       });
       const article = await runtime.store.createArticle({
         authorId: `article-author-${suffix}`, slug, title: "Taxonomy contract article", summary: "",
-        locale: "zh-CN", contentBlocks: [], publish: true, categoryIds: [taxonomy.id],
+        locale: "zh-CN", contentBlocks: [{ id: "p1", type: "paragraph", text: "Shared contract content." }], publish: true, categoryIds: [taxonomy.id],
       });
       const taxonomyArticles = await runtime.store.listTaxonomyArticles({ kind: "category", slug: taxonomy.slug, locale: "zh-CN" });
       assert.ok(taxonomyArticles.some((item) => item.id === article.id));
