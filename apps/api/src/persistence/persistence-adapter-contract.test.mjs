@@ -29,11 +29,13 @@ async function sqliteFixture() {
   return {
     store: createSqliteStore(db),
     async cleanup(conversationId) {
-      const messages = db.prepare("SELECT id FROM messages WHERE conversation_id = ?").all(conversationId);
-      for (const message of messages) {
-        db.prepare("DELETE FROM outbox_events WHERE event_key = ?").run(`message:${message.id}`);
+      if (conversationId) {
+        const messages = db.prepare("SELECT id FROM messages WHERE conversation_id = ?").all(conversationId);
+        for (const message of messages) {
+          db.prepare("DELETE FROM outbox_events WHERE event_key = ?").run(`message:${message.id}`);
+        }
+        db.prepare("DELETE FROM conversations WHERE id = ?").run(conversationId);
       }
-      db.prepare("DELETE FROM conversations WHERE id = ?").run(conversationId);
       db.close();
     },
   };
@@ -43,6 +45,7 @@ async function postgresFixture() {
   return {
     store: postgresStore,
     async cleanup(conversationId) {
+      if (!conversationId) return;
       const messages = await postgresSql.unsafe(
         "SELECT id FROM messages WHERE conversation_id = $1",
         [conversationId],
@@ -55,21 +58,18 @@ async function postgresFixture() {
   };
 }
 
-/**
- * Run the same behavioral assertions against each adapter. PostgreSQL cases
- * are enabled in CI's integration job; SQLite cases run in the normal test job.
- */
+/** Run identical behavior assertions against each persistence adapter. */
 function registerAdapterContracts(adapterName, fixture, options = {}) {
   test(`${adapterName}: message persistence is idempotent and rejects payload conflicts`, options, async () => {
     const runtime = await fixture();
     const suffix = randomUUID();
-    const conversationId = `contract-${suffix}`;
+    let conversationId;
     try {
       const conversation = await runtime.store.createConversation({
         actorId: `sender-${suffix}`,
         participantIds: [`recipient-${suffix}`],
       });
-      assert.equal(conversation.id, conversationId, "fixture should preserve the requested conversation ID");
+      conversationId = conversation.id;
       const input = {
         conversationId,
         senderId: `sender-${suffix}`,
@@ -93,12 +93,13 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
   test(`${adapterName}: message persistence denies non-participants without creating messages`, options, async () => {
     const runtime = await fixture();
     const suffix = randomUUID();
-    const conversationId = `contract-${suffix}`;
+    let conversationId;
     try {
-      await runtime.store.createConversation({
+      const conversation = await runtime.store.createConversation({
         actorId: `member-${suffix}`,
         participantIds: [`other-${suffix}`],
       });
+      conversationId = conversation.id;
       await assert.rejects(
         runtime.store.persistMessage({
           conversationId,
@@ -122,12 +123,13 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
   test(`${adapterName}: outbox dispatch delivers a persisted message exactly once`, options, async () => {
     const runtime = await fixture();
     const suffix = randomUUID();
-    const conversationId = `contract-${suffix}`;
+    let conversationId;
     try {
-      await runtime.store.createConversation({
+      const conversation = await runtime.store.createConversation({
         actorId: `sender-${suffix}`,
         participantIds: [`recipient-${suffix}`],
       });
+      conversationId = conversation.id;
       const message = await runtime.store.persistMessage({
         conversationId,
         senderId: `sender-${suffix}`,
