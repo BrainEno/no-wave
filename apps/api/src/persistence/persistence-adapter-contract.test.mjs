@@ -147,7 +147,7 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       assert.equal(delivered.length, 1);
       assert.equal(delivered[0].event_key, `message:${message.id}`);
       assert.equal(await runtime.store.markOutboxDelivered({ eventId: delivered[0].id }), false);
-      assert.deepEqual(await runtime.store.claimOutboxEvents({ limit: 10 }), []);
+      assert.equal((await runtime.store.claimOutboxEvents({ limit: 10 })).length, 0);
     } finally {
       await runtime.cleanup(conversationId);
     }
