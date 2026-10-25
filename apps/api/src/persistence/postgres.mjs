@@ -496,11 +496,12 @@ export function createPostgresStore(sql) {
       );
       return rows[0] ? mapTaxonomy(rows[0]) : null;
     },
-    async listTaxonomyArticles({ kind, slug, locale = "zh-CN", limit = 20 }) {
+    async listTaxonomyArticles({ kind, slug, locale = "zh-CN", limit = 20, offset = 0 }) {
       validateTaxonomyKind(kind);
       validateArticleSlug(slug);
       validateArticleLocale(locale);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
+      if (!Number.isInteger(offset) || offset < 0 || offset > 1000000) throw new ArticleInputError("offset must be an integer between 0 and 1000000.");
       const rows = await sql.unsafe(
         `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at,
                 at.locale, at.title, at.summary, at.content_blocks
@@ -511,8 +512,8 @@ export function createPostgresStore(sql) {
          JOIN article_translations AS at ON at.article_id = a.id AND at.locale = $3
          WHERE tax.kind = $1 AND tax.slug = $2
          ORDER BY a.published_at DESC, a.id DESC
-         LIMIT $4`,
-        [kind, slug, locale, limit],
+         LIMIT $4 OFFSET $5`,
+        [kind, slug, locale, limit, offset],
       );
       return rows.map(mapArticle);
     },
