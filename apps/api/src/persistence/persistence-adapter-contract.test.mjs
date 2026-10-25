@@ -396,9 +396,11 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       assert.equal(ownerAfterSelfComment.filter((item) => item.eventKey === `article.commented:${selfComment.id}`).length, 0);
 
       const tree = await runtime.store.listArticleComments({ slug, locale: "zh-CN" });
-      assert.equal(tree.length, 3);
-      assert.equal(tree[0].replies.length, 1);
-      assert.equal(tree[0].replies[0].id, reply.id);
+      assert.equal(tree.length, 2);
+      const rootNode = tree.find((node) => node.id === root.id);
+      assert.ok(rootNode);
+      assert.equal(rootNode.replies.length, 1);
+      assert.equal(rootNode.replies[0].id, reply.id);
     } finally {
       await runtime.cleanup(undefined, suffix);
     }
