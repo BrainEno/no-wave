@@ -20,9 +20,9 @@ export function createApiServer({ env = process.env, store = null, applicationSe
     context: async ({ request }) => {
       const auth = createAuthContext(request, env);
       if (auth.user?.sessionId && services && await services.isSessionRevoked(auth.user.sessionId)) {
-        return { user: null, store: services };
+        return { user: null, services };
       }
-      return { ...auth, store: services };
+      return { ...auth, services };
     },
   });
 
