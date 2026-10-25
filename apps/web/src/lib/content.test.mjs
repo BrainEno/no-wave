@@ -47,6 +47,15 @@ test("article listing supports localized text search and author filtering", () =
 });
 
 
+test("fixture article listing applies offset and limit after filtering and ordering", () => {
+  const firstPage = listArticles({ locale: "en", limit: 1, offset: 0 });
+  const secondPage = listArticles({ locale: "en", limit: 1, offset: 1 });
+  assert.equal(firstPage.length, 1);
+  assert.equal(firstPage[0].slug, "portable-web-foundation");
+  assert.deepEqual(secondPage, []);
+  assert.equal(listArticles({ locale: "en", offset: 1 }).length, 0);
+});
+
 test("Simplified Chinese is the default locale and fixture copy is localized", () => {
   assert.equal(defaultLocale, "zh-CN");
   assert.equal(articleFixture.locale, "zh-CN");
