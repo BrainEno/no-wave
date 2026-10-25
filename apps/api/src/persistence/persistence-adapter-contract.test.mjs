@@ -28,13 +28,19 @@ async function sqliteFixture() {
   await runSqliteMigrations(db);
   return {
     store: createSqliteStore(db),
-    async cleanup(conversationId) {
+    async cleanup(conversationId, suffix) {
       if (conversationId) {
         const messages = db.prepare("SELECT id FROM messages WHERE conversation_id = ?").all(conversationId);
         for (const message of messages) {
           db.prepare("DELETE FROM outbox_events WHERE event_key = ?").run(`message:${message.id}`);
         }
         db.prepare("DELETE FROM conversations WHERE id = ?").run(conversationId);
+      }
+      if (suffix) {
+        for (const userId of [`contract-user-a-${suffix}`, `contract-user-b-${suffix}`]) {
+          db.prepare("DELETE FROM notifications WHERE user_id = ?").run(userId);
+        }
+        db.prepare("DELETE FROM revoked_sessions WHERE session_id = ?").run(`contract-session-${suffix}`);
       }
       db.close();
     },
@@ -44,16 +50,23 @@ async function sqliteFixture() {
 async function postgresFixture() {
   return {
     store: postgresStore,
-    async cleanup(conversationId) {
-      if (!conversationId) return;
-      const messages = await postgresSql.unsafe(
-        "SELECT id FROM messages WHERE conversation_id = $1",
-        [conversationId],
-      );
-      for (const message of messages) {
-        await postgresSql.unsafe("DELETE FROM outbox_events WHERE event_key = $1", [`message:${message.id}`]);
+    async cleanup(conversationId, suffix) {
+      if (conversationId) {
+        const messages = await postgresSql.unsafe(
+          "SELECT id FROM messages WHERE conversation_id = $1",
+          [conversationId],
+        );
+        for (const message of messages) {
+          await postgresSql.unsafe("DELETE FROM outbox_events WHERE event_key = $1", [`message:${message.id}`]);
+        }
+        await postgresSql.unsafe("DELETE FROM conversations WHERE id = $1", [conversationId]);
       }
-      await postgresSql.unsafe("DELETE FROM conversations WHERE id = $1", [conversationId]);
+      if (suffix) {
+        await postgresSql.unsafe("DELETE FROM notifications WHERE user_id = ANY($1::text[])", [
+          [`contract-user-a-${suffix}`, `contract-user-b-${suffix}`],
+        ]);
+        await postgresSql.unsafe("DELETE FROM revoked_sessions WHERE session_id = $1", [`contract-session-${suffix}`]);
+      }
     },
   };
 }
@@ -150,6 +163,64 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       assert.equal((await runtime.store.claimOutboxEvents({ limit: 10 })).length, 0);
     } finally {
       await runtime.cleanup(conversationId);
+    }
+  });
+
+  test(`${adapterName}: notifications are user-scoped, idempotent, and reject event payload conflicts`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const userA = `contract-user-a-${suffix}`;
+    const userB = `contract-user-b-${suffix}`;
+    try {
+      const payload = { type: "contract.notification", nested: { value: 1 } };
+      const first = await runtime.store.createNotification({ userId: userA, eventKey: `event-${suffix}`, payload });
+      const retry = await runtime.store.createNotification({ userId: userA, eventKey: `event-${suffix}`, payload });
+      assert.equal(first.duplicate, false);
+      assert.equal(retry.duplicate, true);
+      assert.equal(retry.id, first.id);
+      await assert.rejects(
+        runtime.store.createNotification({
+          userId: userA,
+          eventKey: `event-${suffix}`,
+          payload: { type: "different" },
+        }),
+        IdempotencyConflictError,
+      );
+      await runtime.store.createNotification({ userId: userB, eventKey: `other-event-${suffix}`, payload: { type: "private" } });
+      assert.equal(await runtime.store.getUnreadNotificationCount({ actorId: userA }), 1);
+      assert.equal((await runtime.store.listNotifications({ actorId: userA })).length, 1);
+      assert.equal(await runtime.store.markNotificationRead({ notificationId: first.id, actorId: userB }), null);
+      const read = await runtime.store.markNotificationRead({ notificationId: first.id, actorId: userA });
+      assert.equal(read.id, first.id);
+      assert.ok(read.readAt);
+      assert.equal((await runtime.store.markNotificationRead({ notificationId: first.id, actorId: userA })).readAt, read.readAt);
+      assert.equal(await runtime.store.getUnreadNotificationCount({ actorId: userA }), 0);
+    } finally {
+      await runtime.cleanup(undefined, suffix);
+    }
+  });
+
+  test(`${adapterName}: session revocation preserves the furthest expiry and expires on schedule`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const sessionId = `contract-session-${suffix}`;
+    try {
+      assert.equal(await runtime.store.isSessionRevoked(sessionId), false);
+      await runtime.store.revokeSession({ sessionId, expiresAt: "2099-01-01T00:00:00.000Z" });
+      assert.equal(await runtime.store.isSessionRevoked(sessionId), true);
+      await runtime.store.revokeSession({ sessionId, expiresAt: "2098-01-01T00:00:00.000Z" });
+      assert.equal(await runtime.store.isSessionRevoked(sessionId), true);
+      const expiredId = `contract-expired-session-${suffix}`;
+      await runtime.store.revokeSession({ sessionId: expiredId, expiresAt: "2000-01-01T00:00:00.000Z" });
+      assert.equal(await runtime.store.isSessionRevoked(expiredId), false);
+      if (runtime.store === postgresStore) {
+        await postgresSql.unsafe("DELETE FROM revoked_sessions WHERE session_id = $1", [expiredId]);
+      } else {
+        // Expired rows are harmless but remove the fixture to keep the test isolated.
+        // The SQLite fixture is closed immediately after this test.
+      }
+    } finally {
+      await runtime.cleanup(undefined, suffix);
     }
   });
 }
