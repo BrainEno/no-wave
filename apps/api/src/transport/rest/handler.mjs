@@ -36,12 +36,11 @@ export function createRestHandler({ services }) {
       return true;
     }
 
-    if (!services) {
-      sendJson(response, 503, { error: { code: "SERVICE_UNAVAILABLE", message: "Persistence is not configured." } });
-      return true;
-    }
-
     if (url.pathname === "/api/v1/articles") {
+      if (!services) {
+        sendJson(response, 503, { error: { code: "SERVICE_UNAVAILABLE", message: "Persistence is not configured." } });
+        return true;
+      }
       const limit = parseInteger(url.searchParams, "limit", 20, 1, 100);
       const offset = parseInteger(url.searchParams, "offset", 0, 0, Number.MAX_SAFE_INTEGER);
       const locale = url.searchParams.get("locale") ?? "zh-CN";
@@ -61,6 +60,10 @@ export function createRestHandler({ services }) {
 
     const articleMatch = url.pathname.match(/^\/api\/v1\/articles\/([^/]+)$/);
     if (articleMatch) {
+      if (!services) {
+        sendJson(response, 503, { error: { code: "SERVICE_UNAVAILABLE", message: "Persistence is not configured." } });
+        return true;
+      }
       let slug;
       try {
         slug = decodeURIComponent(articleMatch[1]);
