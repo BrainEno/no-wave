@@ -52,8 +52,8 @@ const CATEGORY_QUERY = `
 `;
 
 const CATEGORY_ARTICLES_QUERY = `
-  query PublicCategoryArticles($slug: String!, $locale: String!, $limit: Int!) {
-    taxonomyArticles(kind: "category", slug: $slug, locale: $locale, limit: $limit) {
+  query PublicCategoryArticles($slug: String!, $locale: String!, $limit: Int!, $offset: Int!) {
+    taxonomyArticles(kind: "category", slug: $slug, locale: $locale, limit: $limit, offset: $offset) {
       id authorId slug status locale title summary workType contentBlocks createdAt updatedAt publishedAt
       author { userId displayName bio locale }
       categories { name }
@@ -161,8 +161,8 @@ export function createApiContentClient({ endpoint, fetchImpl = fetch } = {}) {
       const data = await request(CATEGORY_QUERY, { slug, locale });
       return mapCategory(data.taxonomy);
     },
-    async listCategoryArticles(slug, locale = defaultLocale, limit = 100) {
-      const data = await request(CATEGORY_ARTICLES_QUERY, { slug, locale, limit });
+    async listCategoryArticles(slug, locale = defaultLocale, limit = 100, offset = 0) {
+      const data = await request(CATEGORY_ARTICLES_QUERY, { slug, locale, limit, offset });
       return Array.isArray(data.taxonomyArticles)
         ? data.taxonomyArticles.map((article) => mapArticle(article, locale)).filter(Boolean)
         : [];
@@ -207,7 +207,7 @@ export async function getPublicCategory(slug, locale = defaultLocale) {
   return client ? client.getCategoryBySlug(slug, locale) : null;
 }
 
-export async function listPublicCategoryArticles(slug, locale = defaultLocale, limit = 100) {
+export async function listPublicCategoryArticles(slug, locale = defaultLocale, limit = 100, offset = 0) {
   const client = configuredClient();
-  return client ? client.listCategoryArticles(slug, locale, limit) : [];
+  return client ? client.listCategoryArticles(slug, locale, limit, offset) : [];
 }
