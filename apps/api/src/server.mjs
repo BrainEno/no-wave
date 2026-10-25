@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { createYoga } from "graphql-yoga";
 import { createApiSchema } from "./transport/graphql/schema.mjs";
+import { createRestHandler } from "./transport/rest/handler.mjs";
 import { createAuthContext } from "./security/authentication.mjs";
 import { createApplicationServices } from "./application/services.mjs";
 import { assertPersistenceAdapter } from "./application/persistence-ports.mjs";
@@ -13,6 +14,7 @@ import { createPersistenceRuntime } from "./infrastructure/persistence-runtime.m
  */
 export function createApiServer({ env = process.env, store = null, applicationServices = null } = {}) {
   const services = applicationServices ?? (store ? createApplicationServices({ persistence: store }) : null);
+  const handleRest = createRestHandler({ services });
   const yoga = createYoga({
     schema: createApiSchema(),
     graphqlEndpoint: "/graphql",
@@ -53,6 +55,7 @@ export function createApiServer({ env = process.env, store = null, applicationSe
       }
       return;
     }
+    if (await handleRest(request, response)) return;
     yoga(request, response);
   });
 }
