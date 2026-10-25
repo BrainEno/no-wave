@@ -1,26 +1,29 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createSqlitePersistence } from "./sqlite-store.mjs";
+import { createSqliteClient, runSqliteMigrations } from "./sqlite.mjs";
+import { createSqliteStore } from "./sqlite-store.mjs";
 import { dispatchOutboxBatch } from "./outbox-worker.mjs";
 
 async function fixture() {
-  const runtime = await createSqlitePersistence({ filename: ":memory:", enableWal: false });
-  const conversation = await runtime.adapter.createConversation({
+  const db = createSqliteClient({ filename: ":memory:", enableWal: false });
+  await runSqliteMigrations(db);
+  const adapter = createSqliteStore(db);
+  const conversation = await adapter.createConversation({
     actorId: "alice",
     participantIds: ["bob"],
   });
-  const message = await runtime.adapter.persistMessage({
+  const message = await adapter.persistMessage({
     conversationId: conversation.id,
     senderId: "alice",
     body: "A message whose delivery is deferred to the outbox worker.",
     idempotencyKey: "worker-contract-message",
   });
-  return { ...runtime, message };
+  return { db, adapter, message };
 }
 
 test("composed SQLite adapter dispatches a message outbox event and marks it delivered", async () => {
-  const { adapter, close, message } = await fixture();
+  const { db, adapter, message } = await fixture();
   try {
     const delivered = [];
     const result = await dispatchOutboxBatch({
@@ -41,13 +44,14 @@ test("composed SQLite adapter dispatches a message outbox event and marks it del
     });
     assert.equal(await adapter.markOutboxDelivered({ eventId: delivered[0].id }), false);
     assert.deepEqual(await adapter.claimOutboxEvents({ limit: 10 }), []);
+    assert.equal(db.prepare("SELECT count(*) AS count FROM outbox_events WHERE delivered_at IS NOT NULL").get().count, 1);
   } finally {
-    close();
+    db.close();
   }
 });
 
-test("composed SQLite adapter reschedules failed delivery without losing the outbox event", async () => {
-  const { adapter, close, message } = await fixture();
+test("composed SQLite adapter preserves failed deliveries and schedules a retry", async () => {
+  const { db, adapter, message } = await fixture();
   try {
     const result = await dispatchOutboxBatch({
       store: adapter,
@@ -58,14 +62,13 @@ test("composed SQLite adapter reschedules failed delivery without losing the out
     });
 
     assert.deepEqual(result, { claimed: 1, delivered: 0, failed: 1 });
-    const row = adapter === null ? null : await adapter.health();
-    assert.equal(row, true);
-    const events = await adapter.claimOutboxEvents({ limit: 10 });
-    assert.deepEqual(events, []);
-    const event = adapter;
-    assert.equal(typeof event.rescheduleOutboxEvent, "function");
-    assert.ok(message.id);
+    const row = db.prepare("SELECT event_key, attempts, available_at, delivered_at FROM outbox_events WHERE event_key = ?").get(`message:${message.id}`);
+    assert.ok(row);
+    assert.equal(row.attempts, 1);
+    assert.equal(row.delivered_at, null);
+    assert.ok(Date.parse(row.available_at) > Date.now());
+    assert.deepEqual(await adapter.claimOutboxEvents({ limit: 10 }), []);
   } finally {
-    close();
+    db.close();
   }
 });
