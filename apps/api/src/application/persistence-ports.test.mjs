@@ -40,7 +40,7 @@ test("adapter shape validation reports every missing operation in one error", ()
     () => assertPersistenceAdapter({ health() {} }),
     (error) => {
       assert.match(error.message, /content\.listPublishedArticles/);
-      assert.match(error.message, /operations\.claimOutboxEvents/);
+      assert.match(error.message, /outbox\.claimOutboxEvents/);
       return true;
     },
   );
@@ -114,11 +114,11 @@ test("every required operation can be invoked through its matching domain port",
   assert.equal(calls.length, Object.values(persistencePortMethods).flat().length);
 });
 
-test("port wrappers fail explicitly when a required adapter operation is absent", async () => {
+test("port wrappers fail explicitly when a required adapter operation is absent", () => {
   const adapter = { health: async () => true };
   const ports = createPersistencePorts(adapter);
-  await assert.rejects(
-    ports.content.listPublishedArticles({ locale: "en" }),
+  assert.throws(
+    () => ports.content.listPublishedArticles({ locale: "en" }),
     /does not implement content\.listPublishedArticles/,
   );
 });
