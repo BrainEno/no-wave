@@ -29,6 +29,8 @@ Security fixes and implementation details that fulfill already-approved behavior
 - [x] Introduce application service composition and domain-grouped persistence ports.
 - [x] Add disposable PostgreSQL integration tests and versioned migrations.
 - [ ] Add MongoDB and SQLite adapters against the shared port contract, with transaction and capability differences explicit.
+- [ ] Add REST as a second transport over shared application use cases; verify REST/GraphQL behavioral parity for each migrated resource.
+- [ ] Define SQLite/PostgreSQL adapter contract tests for transactions, concurrency, idempotency, pagination, sessions, outbox and migrations before claiming portability.
 - [ ] Add provider contract tests so each adapter demonstrates equivalent business behavior.
 - [ ] Eliminate remaining config/runtime gaps and add API/Web contract checks.
 - [ ] Finish API/Web contract verification and remove fixture fallback from environments that are configured for API-backed content. Public article listing, article detail, and author routes now support `API_GRAPHQL_URL`; fixture content remains for isolated builds and local design work.
