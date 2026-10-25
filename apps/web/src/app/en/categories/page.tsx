@@ -7,7 +7,11 @@ export const metadata: Metadata = {
   description: "Discover published writing through Nowave's maintained categories.",
 };
 
-export default async function EnglishCategoriesPage() {
-  const categories = await listPublicCategories({ locale: "en" });
-  return <CategoryIndexContent locale="en" categories={categories} />;
+type PageProps = { searchParams: Promise<{ q?: string | string[] }> };
+
+export default async function EnglishCategoriesPage({ searchParams }: PageProps) {
+  const params = await searchParams;
+  const query = typeof params.q === "string" ? params.q : "";
+  const categories = await listPublicCategories({ locale: "en", query });
+  return <CategoryIndexContent locale="en" categories={categories} query={query} />;
 }
