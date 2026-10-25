@@ -776,9 +776,12 @@ export function createPostgresStore(sql) {
       );
       return rows.map(mapArticle);
     },
-    async listPublishedArticles({ locale = "zh-CN", query = "", limit = 20 } = {}) {
+    async listPublishedArticles({ locale = "zh-CN", query = "", limit = 20, offset = 0 } = {}) {
       validateArticleLocale(locale);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
+      if (!Number.isInteger(offset) || offset < 0 || offset > 100000) {
+        throw new ArticleInputError("offset must be an integer between 0 and 100000.");
+      }
       if (typeof query !== "string" || query.length > 200) throw new ArticleInputError("query must be a string no longer than 200 characters.");
       const search = query.trim() ? query.trim() : null;
       const rows = await sql.unsafe(
@@ -789,8 +792,8 @@ export function createPostgresStore(sql) {
          WHERE a.status = 'published' AND t.locale = $1
            AND ($2::text IS NULL OR position(lower($2) in lower(t.title)) > 0 OR position(lower($2) in lower(t.summary)) > 0)
          ORDER BY a.published_at DESC, a.id DESC
-         LIMIT $3`,
-        [locale, search, limit],
+         LIMIT $3 OFFSET $4`,
+        [locale, search, limit, offset],
       );
       return rows.map(mapArticle);
     },
