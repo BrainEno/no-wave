@@ -10,6 +10,16 @@ import {
 import { listPublicArticles, listPublicCategories } from "@/lib/api-content.mjs";
 import { LiteraryHomePage } from "./home-page";
 
+const ARCHIVE_PAGE_SIZE = 20;
+
+function archivePageHref(locale: Locale, query: string, page: number) {
+  const params = new URLSearchParams();
+  if (query) params.set("q", query);
+  if (page > 1) params.set("page", String(page));
+  const suffix = params.toString();
+  return suffix ? `${archivePath(locale)}?${suffix}` : archivePath(locale);
+}
+
 function SiteNavigation({ locale }: { locale: Locale }) {
   const copy = getMessages(locale);
   const alternateLocale: Locale = locale === "en" ? "zh-CN" : "en";
@@ -33,9 +43,16 @@ export async function HomeContent({ locale }: { locale: Locale }) {
   return <LiteraryHomePage locale={locale} articles={articles} categories={categories} />;
 }
 
-export async function ArticleArchiveContent({ locale, query }: { locale: Locale; query: string }) {
+export async function ArticleArchiveContent({ locale, query, page = 1 }: { locale: Locale; query: string; page?: number }) {
   const copy = getMessages(locale);
-  const articles = await listPublicArticles({ locale, query });
+  const articles = await listPublicArticles({
+    locale,
+    query,
+    limit: ARCHIVE_PAGE_SIZE + 1,
+    offset: (page - 1) * ARCHIVE_PAGE_SIZE,
+  });
+  const visibleArticles = articles.slice(0, ARCHIVE_PAGE_SIZE);
+  const hasNextPage = page < 5001 && articles.length > ARCHIVE_PAGE_SIZE;
   return (
     <main lang={locale} style={{ maxWidth: 760, margin: "4rem auto", padding: "0 1.25rem" }}>
       <SiteNavigation locale={locale} />
@@ -46,10 +63,10 @@ export async function ArticleArchiveContent({ locale, query }: { locale: Locale;
         <input id="article-search" name="q" type="search" defaultValue={query} placeholder={copy.searchPlaceholder} />
         <button type="submit">{copy.searchButton}</button>
       </form>
-      <p>{articles.length} {locale === "en" ? (articles.length === 1 ? "works" : "works") : "篇作品"}</p>
-      {articles.length === 0 ? <p role="status">{copy.emptyResults}</p> : (
+      <p>{visibleArticles.length} {locale === "en" ? "works" : "篇作品"}</p>
+      {visibleArticles.length === 0 ? <p role="status">{copy.emptyResults}</p> : (
         <ol>
-          {articles.map((article) => (
+          {visibleArticles.map((article) => (
             <li key={article.slug}>
               <article>
                 <p>{copy.workTypeLabels[article.workType]}</p>
@@ -61,6 +78,17 @@ export async function ArticleArchiveContent({ locale, query }: { locale: Locale;
             </li>
           ))}
         </ol>
+      )}
+      {(page > 1 || hasNextPage) && (
+        <nav aria-label={copy.blogTitle} style={{ display: "flex", gap: "1rem", justifyContent: "space-between", marginTop: "2rem" }}>
+          {page > 1
+            ? <Link rel="prev" href={archivePageHref(locale, query, page - 1)}>{copy.previousPage}</Link>
+            : <span />}
+          <span aria-current="page">{copy.pageLabel.replace("{page}", String(page))}</span>
+          {hasNextPage
+            ? <Link rel="next" href={archivePageHref(locale, query, page + 1)}>{copy.nextPage}</Link>
+            : <span />}
+        </nav>
       )}
     </main>
   );
