@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
 import { randomUUID } from "node:crypto";
-import { IdempotencyConflictError, ConversationAccessError, ArticleAuthorizationError } from "../domain/errors.mjs";
+import { IdempotencyConflictError, ConversationAccessError, ArticleAuthorizationError, ProfileInputError, ProfileNotFoundError } from "../domain/errors.mjs";
 import { createPostgresClient, createPostgresStore } from "./postgres.mjs";
 import { runMigrations } from "./migrate.mjs";
 import { createSqliteClient, runSqliteMigrations } from "./sqlite.mjs";
@@ -37,9 +37,15 @@ async function sqliteFixture() {
         db.prepare("DELETE FROM conversations WHERE id = ?").run(conversationId);
       }
       if (suffix) {
-        for (const userId of [`contract-user-a-${suffix}`, `contract-user-b-${suffix}`]) {
-          db.prepare("DELETE FROM notifications WHERE user_id = ?").run(userId);
-        }
+        const userIds = [
+          `contract-user-a-${suffix}`, `contract-user-b-${suffix}`,
+          `profile-follower-${suffix}`, `profile-target-${suffix}`, `profile-other-${suffix}`,
+        ];
+        for (const userId of userIds) db.prepare("DELETE FROM notifications WHERE user_id = ?").run(userId);
+        db.prepare(`DELETE FROM user_follows WHERE follower_id IN (${userIds.map(() => "?").join(",")}) OR followed_id IN (${userIds.map(() => "?").join(",")})`)
+          .run(...userIds, ...userIds);
+        db.prepare(`DELETE FROM user_profile_translations WHERE user_id IN (${userIds.map(() => "?").join(",")})`).run(...userIds);
+        db.prepare(`DELETE FROM user_profiles WHERE user_id IN (${userIds.map(() => "?").join(",")})`).run(...userIds);
         db.prepare("DELETE FROM revoked_sessions WHERE session_id = ?").run(`contract-session-${suffix}`);
         for (const slug of [`contract-draft-${suffix}`, `contract-published-${suffix}`]) db.prepare("DELETE FROM articles WHERE slug = ?").run(slug);
         db.prepare("DELETE FROM taxonomies WHERE slug = ?").run(`contract-category-${suffix}`);
@@ -64,9 +70,14 @@ async function postgresFixture() {
         await postgresSql.unsafe("DELETE FROM conversations WHERE id = $1", [conversationId]);
       }
       if (suffix) {
-        await postgresSql.unsafe("DELETE FROM notifications WHERE user_id = ANY($1::text[])", [
-          [`contract-user-a-${suffix}`, `contract-user-b-${suffix}`],
-        ]);
+        const userIds = [
+          `contract-user-a-${suffix}`, `contract-user-b-${suffix}`,
+          `profile-follower-${suffix}`, `profile-target-${suffix}`, `profile-other-${suffix}`,
+        ];
+        await postgresSql.unsafe("DELETE FROM notifications WHERE user_id = ANY($1::text[])", [userIds]);
+        await postgresSql.unsafe("DELETE FROM user_follows WHERE follower_id = ANY($1::text[]) OR followed_id = ANY($1::text[])", [userIds]);
+        await postgresSql.unsafe("DELETE FROM user_profile_translations WHERE user_id = ANY($1::text[])", [userIds]);
+        await postgresSql.unsafe("DELETE FROM user_profiles WHERE user_id = ANY($1::text[])", [userIds]);
         await postgresSql.unsafe("DELETE FROM revoked_sessions WHERE session_id = ANY($1::text[])", [[`contract-session-${suffix}`, `contract-expired-session-${suffix}`]]);
         await postgresSql.unsafe("DELETE FROM articles WHERE slug = ANY($1::text[])", [[`contract-draft-${suffix}`, `contract-published-${suffix}`]]);
         await postgresSql.unsafe("DELETE FROM taxonomies WHERE slug = $1", [`contract-category-${suffix}`]);
@@ -223,6 +234,60 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
         // Expired rows are harmless but remove the fixture to keep the test isolated.
         // The SQLite fixture is closed immediately after this test.
       }
+    } finally {
+      await runtime.cleanup(undefined, suffix);
+    }
+  });
+  test(`${adapterName}: localized profiles, follow permissions, counts, and notifications stay consistent`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const followerId = `profile-follower-${suffix}`;
+    const targetId = `profile-target-${suffix}`;
+    const otherId = `profile-other-${suffix}`;
+    try {
+      const initial = await runtime.store.upsertAuthorProfile({
+        userId: targetId, displayName: "Profile Target", bio: "English bio",
+        avatarUrl: "/avatars/profile-target.png", websiteUrl: "https://example.com", locale: "en",
+      });
+      assert.equal(initial.followerCount, 0);
+      await runtime.store.upsertAuthorProfile({ userId: targetId, displayName: "目标用户", bio: "中文简介", locale: "zh-CN" });
+      const preserved = await runtime.store.upsertAuthorProfile({
+        userId: targetId, displayName: "Updated Target", bio: "Updated English bio", locale: "en",
+      });
+      assert.equal(preserved.avatarUrl, "/avatars/profile-target.png");
+      assert.equal(preserved.websiteUrl, "https://example.com/");
+      assert.equal((await runtime.store.getAuthorProfile({ userId: targetId, locale: "zh-CN" })).displayName, "目标用户");
+      assert.equal((await runtime.store.getAuthorProfile({ userId: targetId, locale: "en" })).displayName, "Updated Target");
+
+      await runtime.store.upsertAuthorProfile({ userId: followerId, displayName: "Follower", locale: "en" });
+      await runtime.store.upsertAuthorProfile({ userId: otherId, displayName: "Other Follower", locale: "en" });
+      assert.equal(await runtime.store.followUser({ actorId: followerId, targetUserId: targetId }), true);
+      assert.equal(await runtime.store.followUser({ actorId: followerId, targetUserId: targetId }), false);
+      assert.equal(await runtime.store.followUser({ actorId: otherId, targetUserId: targetId }), true);
+
+      const viewed = await runtime.store.getAuthorProfile({ userId: targetId, locale: "en", viewerId: followerId });
+      assert.equal(viewed.followerCount, 2);
+      assert.equal(viewed.isFollowing, true);
+      assert.deepEqual((await runtime.store.listFollowing({ userId: followerId, locale: "en" })).map((item) => item.userId), [targetId]);
+      assert.deepEqual((await runtime.store.listFollowers({ userId: targetId, locale: "en" })).map((item) => item.userId).sort(), [followerId, otherId].sort());
+      assert.ok((await runtime.store.searchUsers({ query: targetId, locale: "en" })).some((item) => item.userId === targetId));
+
+      const followNotifications = (await runtime.store.listNotifications({ actorId: targetId, limit: 100 }))
+        .filter((item) => item.payload?.type === "user.followed");
+      assert.equal(followNotifications.length, 2);
+      assert.deepEqual(followNotifications.map((item) => item.payload.followerId).sort(), [followerId, otherId].sort());
+
+      await assert.rejects(
+        Promise.resolve().then(() => runtime.store.followUser({ actorId: targetId, targetUserId: targetId })),
+        ProfileInputError,
+      );
+      await assert.rejects(
+        Promise.resolve().then(() => runtime.store.followUser({ actorId: followerId, targetUserId: `profile-missing-${suffix}` })),
+        ProfileNotFoundError,
+      );
+      assert.equal(await runtime.store.unfollowUser({ actorId: followerId, targetUserId: targetId }), true);
+      assert.equal(await runtime.store.unfollowUser({ actorId: followerId, targetUserId: targetId }), false);
+      assert.equal((await runtime.store.getAuthorProfile({ userId: targetId, locale: "en", viewerId: followerId })).followerCount, 1);
     } finally {
       await runtime.cleanup(undefined, suffix);
     }
