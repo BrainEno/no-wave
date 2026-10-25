@@ -10,13 +10,13 @@ function rethrowApiError(error) {
   throw error;
 }
 
-function requireStore(context) {
-  if (!context.store) {
+function requireServices(context) {
+  if (!context.services) {
     throw new GraphQLError("Persistence is not configured.", {
       extensions: { code: "SERVICE_UNAVAILABLE" },
     });
   }
-  return context.store;
+  return context.services;
 }
 
 function resolveViewer(context) {
@@ -180,56 +180,56 @@ export function createApiSchema() {
         viewerProfile: async (_source, { locale = "zh-CN" }, context) => {
           try {
             const userId = requireAuthenticatedActor(context);
-            return await requireStore(context).getAuthorProfile({ userId, locale, viewerId: userId });
+            return await requireServices(context).getAuthorProfile({ userId, locale, viewerId: userId });
           } catch (error) {
             rethrowApiError(error);
           }
         },
         authorProfile: async (_source, { userId, locale = "zh-CN" }, context) => {
           try {
-            return await requireStore(context).getAuthorProfile({ userId, locale, viewerId: context.user?.id ?? null });
+            return await requireServices(context).getAuthorProfile({ userId, locale, viewerId: context.user?.id ?? null });
           } catch (error) {
             rethrowApiError(error);
           }
         },
         searchUsers: async (_source, { query, locale = "zh-CN", limit = 20 }, context) => {
           try {
-            return await requireStore(context).searchUsers({ query, locale, limit, viewerId: context.user?.id ?? null });
+            return await requireServices(context).searchUsers({ query, locale, limit, viewerId: context.user?.id ?? null });
           } catch (error) {
             rethrowApiError(error);
           }
         },
         followers: async (_source, { userId, locale = "zh-CN", limit = 50 }, context) => {
           try {
-            return await requireStore(context).listFollowers({ userId, locale, limit, viewerId: context.user?.id ?? null });
+            return await requireServices(context).listFollowers({ userId, locale, limit, viewerId: context.user?.id ?? null });
           } catch (error) {
             rethrowApiError(error);
           }
         },
         following: async (_source, { userId, locale = "zh-CN", limit = 50 }, context) => {
           try {
-            return await requireStore(context).listFollowing({ userId, locale, limit, viewerId: context.user?.id ?? null });
+            return await requireServices(context).listFollowing({ userId, locale, limit, viewerId: context.user?.id ?? null });
           } catch (error) {
             rethrowApiError(error);
           }
         },
         taxonomies: async (_source, { kind, locale = "zh-CN", query = "", limit = 100 }, context) => {
           try {
-            return await requireStore(context).listTaxonomies({ kind, locale, query, limit });
+            return await requireServices(context).listTaxonomies({ kind, locale, query, limit });
           } catch (error) {
             rethrowApiError(error);
           }
         },
         taxonomy: async (_source, { kind, slug, locale = "zh-CN" }, context) => {
           try {
-            return await requireStore(context).getTaxonomyBySlug({ kind, slug, locale });
+            return await requireServices(context).getTaxonomyBySlug({ kind, slug, locale });
           } catch (error) {
             rethrowApiError(error);
           }
         },
         taxonomyArticles: async (_source, { kind, slug, locale = "zh-CN", limit = 20 }, context) => {
           try {
-            return await requireStore(context).listTaxonomyArticles({ kind, slug, locale, limit });
+            return await requireServices(context).listTaxonomyArticles({ kind, slug, locale, limit });
           } catch (error) {
             rethrowApiError(error);
           }
@@ -237,21 +237,21 @@ export function createApiSchema() {
         likedArticles: async (_source, { locale = "zh-CN", limit = 50 }, context) => {
           try {
             const actorId = requireAuthenticatedActor(context);
-            return await requireStore(context).listLikedArticles({ actorId, locale, limit });
+            return await requireServices(context).listLikedArticles({ actorId, locale, limit });
           } catch (error) {
             rethrowApiError(error);
           }
         },
         relatedArticles: async (_source, { slug, locale = "zh-CN", limit = 6 }, context) => {
           try {
-            return await requireStore(context).listRelatedArticles({ slug, locale, limit });
+            return await requireServices(context).listRelatedArticles({ slug, locale, limit });
           } catch (error) {
             rethrowApiError(error);
           }
         },
         articles: async (_source, { locale = "zh-CN", query = "", limit = 20, offset = 0 }, context) => {
           try {
-            const store = requireStore(context);
+            const store = requireServices(context);
             return await store.listPublishedArticles({ locale, query, limit, offset });
           } catch (error) {
             rethrowApiError(error);
@@ -259,7 +259,7 @@ export function createApiSchema() {
         },
         article: async (_source, { slug, locale = "zh-CN" }, context) => {
           try {
-            const store = requireStore(context);
+            const store = requireServices(context);
             return await store.getPublishedArticle({ slug, locale });
           } catch (error) {
             rethrowApiError(error);
@@ -267,7 +267,7 @@ export function createApiSchema() {
         },
         articleLikeInfo: async (_source, { slug, locale = "zh-CN" }, context) => {
           try {
-            return await requireStore(context).getArticleLikeInfo({
+            return await requireServices(context).getArticleLikeInfo({
               slug, locale, actorId: context.user?.id ?? null,
             });
           } catch (error) {
@@ -276,7 +276,7 @@ export function createApiSchema() {
         },
         articleComments: async (_source, { slug, locale = "zh-CN", limit = 50 }, context) => {
           try {
-            return await requireStore(context).listArticleComments({ slug, locale, limit });
+            return await requireServices(context).listArticleComments({ slug, locale, limit });
           } catch (error) {
             rethrowApiError(error);
           }
@@ -284,7 +284,7 @@ export function createApiSchema() {
         myArticles: async (_source, { locale = "zh-CN", limit = 50 }, context) => {
           try {
             const actorId = requireAuthenticatedActor(context);
-            const store = requireStore(context);
+            const store = requireServices(context);
             return await store.listMyArticles({ actorId, locale, limit });
           } catch (error) {
             rethrowApiError(error);
@@ -293,7 +293,7 @@ export function createApiSchema() {
         conversationMessages: async (_source, { conversationId, limit = 100, before = null }, context) => {
           try {
             const actorId = requireAuthenticatedActor(context);
-            const store = requireStore(context);
+            const store = requireServices(context);
             return await store.listConversationMessages({ conversationId, actorId, limit, before });
           } catch (error) {
             rethrowApiError(error);
@@ -302,7 +302,7 @@ export function createApiSchema() {
         conversations: async (_source, { limit = 50 }, context) => {
           try {
             const actorId = requireAuthenticatedActor(context);
-            const store = requireStore(context);
+            const store = requireServices(context);
             return await store.listConversations({ actorId, limit });
           } catch (error) {
             rethrowApiError(error);
@@ -311,7 +311,7 @@ export function createApiSchema() {
         notifications: async (_source, { limit = 50 }, context) => {
           try {
             const actorId = requireAuthenticatedActor(context);
-            const store = requireStore(context);
+            const store = requireServices(context);
             const notifications = await store.listNotifications({ actorId, limit });
             return notifications.map(({ payload, ...notification }) => ({
               ...notification,
@@ -324,7 +324,7 @@ export function createApiSchema() {
         unreadNotificationCount: async (_source, _args, context) => {
           try {
             const actorId = requireAuthenticatedActor(context);
-            const store = requireStore(context);
+            const store = requireServices(context);
             return await store.getUnreadNotificationCount({ actorId });
           } catch (error) {
             rethrowApiError(error);
@@ -336,29 +336,29 @@ export function createApiSchema() {
           ? source.contentBlocks
           : JSON.stringify(source.contentBlocks),
         author: async (source, _args, context) => {
-          if (!context.store || !source.authorId) return null;
-          return context.store.getAuthorProfile({ userId: source.authorId, locale: source.locale, viewerId: context.user?.id ?? null });
+          if (!context.services || !source.authorId) return null;
+          return context.services.getAuthorProfile({ userId: source.authorId, locale: source.locale, viewerId: context.user?.id ?? null });
         },
         categories: async (source, _args, context) => {
-          if (!context.store || !source.id) return [];
-          return context.store.listArticleTaxonomies({ articleId: source.id, kind: "category", locale: source.locale });
+          if (!context.services || !source.id) return [];
+          return context.services.listArticleTaxonomies({ articleId: source.id, kind: "category", locale: source.locale });
         },
         tags: async (source, _args, context) => {
-          if (!context.store || !source.id) return [];
-          return context.store.listArticleTaxonomies({ articleId: source.id, kind: "tag", locale: source.locale });
+          if (!context.services || !source.id) return [];
+          return context.services.listArticleTaxonomies({ articleId: source.id, kind: "tag", locale: source.locale });
         },
       },
       ArticleComment: {
         author: async (source, _args, context) => {
-          if (!context.store || !source.authorId) return null;
-          return context.store.getAuthorProfile({ userId: source.authorId, locale: source.locale ?? "zh-CN", viewerId: context.user?.id ?? null });
+          if (!context.services || !source.authorId) return null;
+          return context.services.getAuthorProfile({ userId: source.authorId, locale: source.locale ?? "zh-CN", viewerId: context.user?.id ?? null });
         },
       },
       Mutation: {
         markNotificationRead: async (_source, { notificationId }, context) => {
           try {
             const actorId = requireAuthenticatedActor(context);
-            const store = requireStore(context);
+            const store = requireServices(context);
             const notification = await store.markNotificationRead({ notificationId, actorId });
             return notification && {
               ...notification,
@@ -371,7 +371,7 @@ export function createApiSchema() {
         markAllNotificationsRead: async (_source, _args, context) => {
           try {
             const actorId = requireAuthenticatedActor(context);
-            const store = requireStore(context);
+            const store = requireServices(context);
             return await store.markAllNotificationsRead({ actorId });
           } catch (error) {
             rethrowApiError(error);
@@ -380,7 +380,7 @@ export function createApiSchema() {
         revokeCurrentSession: async (_source, _args, context) => {
           try {
             const actorId = requireAuthenticatedActor(context);
-            const store = requireStore(context);
+            const store = requireServices(context);
             const { sessionId, sessionExpiresAt } = context.user;
             if (typeof sessionId !== "string" || !Number.isFinite(sessionExpiresAt)) {
               throw new GraphQLError("The authenticated session cannot be revoked.", {
@@ -399,7 +399,7 @@ export function createApiSchema() {
         toggleArticleLike: async (_source, { slug, locale = "zh-CN" }, context) => {
           try {
             const actorId = requireAuthenticatedActor(context);
-            return await requireStore(context).toggleArticleLike({ slug, locale, actorId });
+            return await requireServices(context).toggleArticleLike({ slug, locale, actorId });
           } catch (error) {
             rethrowApiError(error);
           }
@@ -407,7 +407,7 @@ export function createApiSchema() {
         setArticleLike: async (_source, { slug, locale = "zh-CN", liked }, context) => {
           try {
             const actorId = requireAuthenticatedActor(context);
-            return await requireStore(context).setArticleLike({ slug, locale, actorId, liked });
+            return await requireServices(context).setArticleLike({ slug, locale, actorId, liked });
           } catch (error) {
             rethrowApiError(error);
           }
@@ -415,7 +415,7 @@ export function createApiSchema() {
         createArticleComment: async (_source, { slug, locale = "zh-CN", content, parentCommentId = null }, context) => {
           try {
             const actorId = requireAuthenticatedActor(context);
-            return await requireStore(context).createArticleComment({ slug, locale, actorId, content, parentCommentId });
+            return await requireServices(context).createArticleComment({ slug, locale, actorId, content, parentCommentId });
           } catch (error) {
             rethrowApiError(error);
           }
@@ -423,7 +423,7 @@ export function createApiSchema() {
         deleteArticleComment: async (_source, { commentId }, context) => {
           try {
             const actorId = requireAuthenticatedActor(context);
-            return await requireStore(context).deleteArticleComment({ commentId, actorId });
+            return await requireServices(context).deleteArticleComment({ commentId, actorId });
           } catch (error) {
             rethrowApiError(error);
           }
@@ -431,7 +431,7 @@ export function createApiSchema() {
         updateMyProfile: async (_source, args, context) => {
           try {
             const userId = requireAuthenticatedActor(context);
-            const store = requireStore(context);
+            const store = requireServices(context);
             await store.upsertAuthorProfile({ ...args, userId });
             return await store.getAuthorProfile({ userId, locale: args.locale ?? "zh-CN", viewerId: userId });
           } catch (error) {
@@ -441,7 +441,7 @@ export function createApiSchema() {
         followUser: async (_source, { userId: targetUserId, locale = "zh-CN" }, context) => {
           try {
             const actorId = requireAuthenticatedActor(context);
-            const store = requireStore(context);
+            const store = requireServices(context);
             await store.followUser({ actorId, targetUserId });
             return await store.getAuthorProfile({ userId: targetUserId, locale, viewerId: actorId });
           } catch (error) {
@@ -451,7 +451,7 @@ export function createApiSchema() {
         unfollowUser: async (_source, { userId: targetUserId, locale = "zh-CN" }, context) => {
           try {
             const actorId = requireAuthenticatedActor(context);
-            const store = requireStore(context);
+            const store = requireServices(context);
             await store.unfollowUser({ actorId, targetUserId });
             return await store.getAuthorProfile({ userId: targetUserId, locale, viewerId: actorId });
           } catch (error) {
@@ -461,7 +461,7 @@ export function createApiSchema() {
         createTag: async (_source, { name, locale = "zh-CN" }, context) => {
           try {
             const actorId = requireAuthenticatedActor(context);
-            return await requireStore(context).createTag({ actorId, name, locale });
+            return await requireServices(context).createTag({ actorId, name, locale });
           } catch (error) {
             rethrowApiError(error);
           }
@@ -469,7 +469,7 @@ export function createApiSchema() {
         createTaxonomy: async (_source, args, context) => {
           try {
             const actorId = requireAuthenticatedActor(context);
-            return await requireStore(context).createTaxonomy({ ...args, actorId });
+            return await requireServices(context).createTaxonomy({ ...args, actorId });
           } catch (error) {
             rethrowApiError(error);
           }
@@ -477,7 +477,7 @@ export function createApiSchema() {
         deleteTaxonomy: async (_source, { taxonomyId }, context) => {
           try {
             const actorId = requireAuthenticatedActor(context);
-            return await requireStore(context).deleteTaxonomy({ taxonomyId, actorId });
+            return await requireServices(context).deleteTaxonomy({ taxonomyId, actorId });
           } catch (error) {
             rethrowApiError(error);
           }
@@ -485,7 +485,7 @@ export function createApiSchema() {
         createArticle: async (_source, args, context) => {
           try {
             const authorId = requireAuthenticatedActor(context);
-            const store = requireStore(context);
+            const store = requireServices(context);
             const article = await store.createArticle({ ...args, authorId });
             return article;
           } catch (error) {
@@ -495,7 +495,7 @@ export function createApiSchema() {
         updateArticle: async (_source, args, context) => {
           try {
             const actorId = requireAuthenticatedActor(context);
-            const store = requireStore(context);
+            const store = requireServices(context);
             const article = await store.updateArticle({ ...args, actorId });
             return article;
           } catch (error) {
@@ -505,7 +505,7 @@ export function createApiSchema() {
         createConversation: async (_source, { participantIds }, context) => {
           try {
             const actorId = requireAuthenticatedActor(context);
-            return await requireStore(context).createConversation({ actorId, participantIds });
+            return await requireServices(context).createConversation({ actorId, participantIds });
           } catch (error) {
             rethrowApiError(error);
           }
@@ -513,7 +513,7 @@ export function createApiSchema() {
         updateConversationParticipants: async (_source, { conversationId, addUserIds = [], removeUserIds = [] }, context) => {
           try {
             const actorId = requireAuthenticatedActor(context);
-            const store = requireStore(context);
+            const store = requireServices(context);
             await store.updateConversationParticipants({ conversationId, actorId, addUserIds, removeUserIds });
             const conversations = await store.listConversations({ actorId, limit: 100 });
             const updated = conversations.find((conversation) => conversation.id === conversationId);
@@ -526,7 +526,7 @@ export function createApiSchema() {
         deleteConversation: async (_source, { conversationId }, context) => {
           try {
             const actorId = requireAuthenticatedActor(context);
-            return await requireStore(context).deleteConversation({ conversationId, actorId });
+            return await requireServices(context).deleteConversation({ conversationId, actorId });
           } catch (error) {
             rethrowApiError(error);
           }
@@ -534,7 +534,7 @@ export function createApiSchema() {
         markConversationAsRead: async (_source, { conversationId }, context) => {
           try {
             const actorId = requireAuthenticatedActor(context);
-            return await requireStore(context).markConversationAsRead({ conversationId, actorId });
+            return await requireServices(context).markConversationAsRead({ conversationId, actorId });
           } catch (error) {
             rethrowApiError(error);
           }
@@ -542,7 +542,7 @@ export function createApiSchema() {
         sendMessage: async (_source, { conversationId, body, idempotencyKey }, context) => {
           try {
             const senderId = requireAuthenticatedActor(context);
-            const store = requireStore(context);
+            const store = requireServices(context);
             return await store.persistMessage({ conversationId, senderId, body, idempotencyKey });
           } catch (error) {
             rethrowApiError(error);
