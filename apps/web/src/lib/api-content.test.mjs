@@ -124,7 +124,7 @@ test("API content client lists categories and retrieves category works through G
   assert.equal(works.length, 1);
   assert.equal(works[0].slug, "hello-world");
   assert.equal(calls[2].variables.slug, "poetry");
-  assert.match(calls[2].query, /offset: \\$offset/);
+  assert.ok(calls[2].query.includes("offset: $offset"));
   assert.deepEqual(calls[2].variables, { slug: "poetry", locale: "en", limit: 21, offset: 20 });
 });
 
