@@ -273,6 +273,26 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       assert.ok(assigned.some((item) => item.id === taxonomy.id));
     } finally { await runtime.cleanup(undefined, suffix); }
   });
+
+  test(`${adapterName}: setting article likes is idempotent and liked lists are user-scoped`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const slug = `contract-liked-${suffix}`;
+    try {
+      const article = await runtime.store.createArticle({
+        authorId: `article-author-${suffix}`, slug, title: "Like contract article", summary: "",
+        locale: "zh-CN", contentBlocks: [{ id: "p1", type: "paragraph", text: "Shared contract content." }], publish: true,
+      });
+      const first = await runtime.store.setArticleLike({ slug, locale: "zh-CN", actorId: `liker-a-${suffix}`, liked: true });
+      const second = await runtime.store.setArticleLike({ slug, locale: "zh-CN", actorId: `liker-a-${suffix}`, liked: true });
+      assert.equal(first.likedByMe, true);
+      assert.equal(second.likedByMe, true);
+      assert.equal(second.likeCount, 1);
+      assert.ok((await runtime.store.listLikedArticles({ actorId: `liker-a-${suffix}`, locale: "zh-CN" })).some((item) => item.id === article.id));
+      assert.ok(!(await runtime.store.listLikedArticles({ actorId: `liker-b-${suffix}`, locale: "zh-CN" })).some((item) => item.id === article.id));
+    } finally { await runtime.cleanup(undefined, suffix); }
+  });
+
 }
 
 registerAdapterContracts("SQLite", sqliteFixture);
