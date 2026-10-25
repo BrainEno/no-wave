@@ -293,6 +293,28 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
     } finally { await runtime.cleanup(undefined, suffix); }
   });
 
+
+  test(`${adapterName}: article comment deletion is owner-only and idempotent after deletion`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const slug = `contract-comment-${suffix}`;
+    try {
+      await runtime.store.createArticle({
+        authorId: `article-author-${suffix}`, slug, title: "Comment contract article", summary: "",
+        locale: "zh-CN", contentBlocks: [{ id: "p1", type: "paragraph", text: "Shared contract content." }], publish: true,
+      });
+      const comment = await runtime.store.createArticleComment({
+        slug, locale: "zh-CN", actorId: `commenter-a-${suffix}`, content: "A comment for the contract.",
+      });
+      await assert.rejects(Promise.resolve().then(() => runtime.store.deleteArticleComment({
+        commentId: comment.id, actorId: `commenter-b-${suffix}`,
+      })), ArticleAuthorizationError);
+      assert.equal(await runtime.store.deleteArticleComment({ commentId: comment.id, actorId: `commenter-a-${suffix}` }), true);
+      assert.equal(await runtime.store.deleteArticleComment({ commentId: comment.id, actorId: `commenter-a-${suffix}` }), false);
+      assert.equal((await runtime.store.listArticleComments({ slug, locale: "zh-CN" })).length, 0);
+    } finally { await runtime.cleanup(undefined, suffix); }
+  });
+
 }
 
 registerAdapterContracts("SQLite", sqliteFixture);
