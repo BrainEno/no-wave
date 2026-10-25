@@ -52,11 +52,6 @@ export function CategoryIndexContent({ locale, categories, query = "" }: { local
           ))}
         </ol>
       )}
-      <nav aria-label={english ? "Category pages" : "分類頁面"} style={{ display: "flex", gap: "1rem", marginTop: "2rem" }}>
-        {page > 1 ? <Link rel="prev" href={`?page=${page - 1}`}>{english ? "Previous works" : "上一頁作品"}</Link> : null}
-        {hasNextPage ? <Link rel="next" href={`?page=${page + 1}`}>{english ? "More works" : "下一頁作品"}</Link> : null}
-        <span aria-current="page">{english ? `Page ${page}` : `第 ${page} 頁`}</span>
-      </nav>
     </main>
   );
 }
@@ -90,6 +85,11 @@ export function CategoryDetailContent({ locale, category, articles, page = 1, ha
           ))}
         </ol>
       )}
+      <nav aria-label={english ? "Category pages" : "分類頁面"} style={{ display: "flex", gap: "1rem", marginTop: "2rem" }}>
+        {page > 1 ? <Link rel="prev" href={"?page=" + (page - 1)}>{english ? "Previous works" : "上一頁作品"}</Link> : null}
+        {hasNextPage ? <Link rel="next" href={"?page=" + (page + 1)}>{english ? "More works" : "下一頁作品"}</Link> : null}
+        <span aria-current="page">{english ? "Page " + page : "第 " + page + " 頁"}</span>
+      </nav>
     </main>
   );
 }
