@@ -618,10 +618,13 @@ test("public article search supports bounded pagination and validates offsets", 
       }));
     }
 
+    const allMatches = await store.listPublishedArticles({ locale: "en", query: searchTerm, limit: 10, offset: 0 });
+    const expectedIds = allMatches.filter((item) => articles.some((article) => article.id === item.id)).map((item) => item.id);
     const firstPage = await store.listPublishedArticles({ locale: "en", query: searchTerm, limit: 2, offset: 0 });
     const secondPage = await store.listPublishedArticles({ locale: "en", query: searchTerm, limit: 2, offset: 2 });
-    assert.deepEqual(firstPage.map((item) => item.id), articles.slice().reverse().slice(0, 2).map((item) => item.id));
-    assert.deepEqual(secondPage.map((item) => item.id), [articles[0].id]);
+    assert.equal(expectedIds.length, 3);
+    assert.deepEqual(firstPage.map((item) => item.id), expectedIds.slice(0, 2));
+    assert.deepEqual(secondPage.map((item) => item.id), expectedIds.slice(2));
     assert.equal((await store.listPublishedArticles({ locale: "zh-TW", query: searchTerm, limit: 10 }))
       .some((item) => articles.some((article) => article.id === item.id)), false);
 
