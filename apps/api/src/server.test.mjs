@@ -291,3 +291,25 @@ test("updateArticle reports malformed contentBlocks as a client input error", as
     assert.equal(result.errors?.[0]?.message, "contentBlocks must be a valid JSON array.");
   }, { env: authEnv, store: { async isSessionRevoked() { return false; } } });
 });
+
+test("public article query forwards pagination arguments to persistence", async () => {
+  let received;
+  const store = {
+    async listPublishedArticles(args) {
+      received = args;
+      return [];
+    },
+  };
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/graphql`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        query: '{ articles(locale: "en", query: "poetry", limit: 10, offset: 20) { id slug } }',
+      }),
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { data: { articles: [] } });
+    assert.deepEqual(received, { locale: "en", query: "poetry", limit: 10, offset: 20 });
+  }, { store });
+});
