@@ -100,10 +100,12 @@ export function createSqliteEngagementStore(db) {
         const id = randomUUID();
         run("INSERT INTO article_comments (id, article_id, author_id, parent_comment_id, content) VALUES (?, ?, ?, ?, ?)", id, article.id, actorId, parentCommentId, content.trim());
         const row = get("SELECT id, article_id, author_id, parent_comment_id, content, created_at, updated_at FROM article_comments WHERE id = ?", id);
-        if (article.author_id !== actorId) notify(article.author_id, "article.commented:" + id, { type: "article.commented", articleId: article.id, slug, commentId: id, commenterId: actorId, parentCommentId });
-        if (parentAuthorId && parentAuthorId !== actorId && parentAuthorId !== article.author_id) notify(parentAuthorId, "article.comment_replied:" + id, { type: "article.comment_replied", articleId: article.id, slug, commentId: id, commenterId: actorId, parentCommentId });
-        else if (parentAuthorId && parentAuthorId !== actorId && parentAuthorId === article.author_id) {
-          // The article-author notification above already covers this recipient.
+        const recipients = new Map();
+        if (article.author_id !== actorId) recipients.set(article.author_id, "article.commented");
+        if (parentAuthorId && parentAuthorId !== actorId) recipients.set(parentAuthorId, "article.comment_replied");
+        for (const [userId, type] of recipients) {
+          const payload = { type, articleId: article.id, slug, commentId: id, commenterId: actorId, parentCommentId };
+          notify(userId, type + ":" + id, payload);
         }
         return mapComment({ ...row, locale });
       });
