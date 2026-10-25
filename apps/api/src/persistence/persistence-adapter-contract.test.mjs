@@ -241,10 +241,10 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       assert.equal(draft.status, "draft");
       assert.equal((await runtime.store.listPublishedArticles({ locale: "zh-CN", query: slug })).length, 0);
       assert.ok((await runtime.store.listMyArticles({ actorId: `author-${suffix}`, locale: "zh-CN" })).some((article) => article.id === articleId));
-      await assert.rejects(runtime.store.updateArticle({
+      await assert.rejects(Promise.resolve().then(() => runtime.store.updateArticle({
         articleId, actorId: `not-author-${suffix}`, slug, title: "Unauthorized update",
         locale: "zh-CN", contentBlocks: [{ id: "p1", type: "paragraph", text: "Shared contract content." }], publish: true,
-      }), ArticleAuthorizationError);
+      })), ArticleAuthorizationError);
       const published = await runtime.store.updateArticle({
         articleId, actorId: `author-${suffix}`, slug, title: "Now published", summary: "Visible in public feed",
         locale: "zh-CN", contentBlocks: [{ id: "p1", type: "paragraph", text: "Shared contract content." }], publish: true,
