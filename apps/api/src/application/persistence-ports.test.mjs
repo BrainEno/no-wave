@@ -68,6 +68,7 @@ test("application services expose a transport-neutral facade over adapter operat
   const expected = [{ id: "article-1", slug: "hello" }];
   const { adapter, calls } = makeAdapter({
     async listPublishedArticles(input) {
+      calls.push({ method: "listPublishedArticles", args: [input] });
       return expected;
     },
   });
@@ -75,7 +76,10 @@ test("application services expose a transport-neutral facade over adapter operat
   assert.equal(await services.listPublishedArticles({
     locale: "en", query: "poetry", limit: 10, offset: 20,
   }), expected);
-  assert.deepEqual(calls, []);
+  assert.deepEqual(calls, [{
+    method: "listPublishedArticles",
+    args: [{ locale: "en", query: "poetry", limit: 10, offset: 20 }],
+  }]);
   assert.equal(typeof services.health, "function");
   assert.equal(typeof services.createArticle, "function");
   assert.equal(Object.isFrozen(services), true);
