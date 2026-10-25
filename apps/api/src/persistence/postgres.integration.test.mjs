@@ -598,6 +598,46 @@ test("article CRUD preserves author ownership, publish visibility and locale sep
   }
 });
 
+test("public article search supports bounded pagination and validates offsets", integrationOptions, async () => {
+  const ownerId = `it-pagination-owner-${randomUUID()}`;
+  const suffix = randomUUID().replaceAll("-", "");
+  const searchTerm = `pagequery${suffix}`;
+  const contentBlocks = [{ id: "body", type: "paragraph", text: "Pagination fixture." }];
+  const articles = [];
+  try {
+    for (let index = 0; index < 3; index += 1) {
+      articles.push(await store.createArticle({
+        authorId: ownerId,
+        slug: `it-page-${suffix}-${index}`,
+        title: `${searchTerm} poetry ${index}`,
+        summary: "pagination integration fixture",
+        locale: "en",
+        contentBlocks,
+        publish: true,
+        workType: "poetry",
+      }));
+    }
+
+    const allMatches = await store.listPublishedArticles({ locale: "en", query: searchTerm, limit: 10, offset: 0 });
+    const expectedIds = allMatches.filter((item) => articles.some((article) => article.id === item.id)).map((item) => item.id);
+    const firstPage = await store.listPublishedArticles({ locale: "en", query: searchTerm, limit: 2, offset: 0 });
+    const secondPage = await store.listPublishedArticles({ locale: "en", query: searchTerm, limit: 2, offset: 2 });
+    assert.equal(expectedIds.length, 3);
+    assert.deepEqual(firstPage.map((item) => item.id), expectedIds.slice(0, 2));
+    assert.deepEqual(secondPage.map((item) => item.id), expectedIds.slice(2));
+    assert.equal((await store.listPublishedArticles({ locale: "zh-TW", query: searchTerm, limit: 10 }))
+      .some((item) => articles.some((article) => article.id === item.id)), false);
+
+    await assert.rejects(store.listPublishedArticles({ locale: "en", offset: -1 }), { code: "BAD_USER_INPUT" });
+    await assert.rejects(store.listPublishedArticles({ locale: "en", offset: 1.5 }), { code: "BAD_USER_INPUT" });
+    await assert.rejects(store.listPublishedArticles({ locale: "en", offset: 100001 }), { code: "BAD_USER_INPUT" });
+  } finally {
+    for (const article of articles) {
+      await sql.unsafe("DELETE FROM articles WHERE id = $1", [article.id]);
+    }
+  }
+});
+
 test("GraphQL article mutations derive authors from JWT and protect updates", integrationOptions, async () => {
   const { createApiServer } = await import("../server.mjs");
   const secret = "article-integration-secret-is-at-least-32-bytes";

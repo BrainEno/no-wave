@@ -138,7 +138,7 @@ function createApiSchema() {
         searchUsers(query: String!, locale: String = "zh-CN", limit: Int = 20): [AuthorProfile!]!
         followers(userId: String!, locale: String = "zh-CN", limit: Int = 50): [AuthorProfile!]!
         following(userId: String!, locale: String = "zh-CN", limit: Int = 50): [AuthorProfile!]!
-        articles(locale: String = "zh-CN", query: String = "", limit: Int = 20): [Article!]!
+        articles(locale: String = "zh-CN", query: String = "", limit: Int = 20, offset: Int = 0): [Article!]!
         likedArticles(locale: String = "zh-CN", limit: Int = 50): [Article!]!
         relatedArticles(slug: String!, locale: String = "zh-CN", limit: Int = 6): [Article!]!
         article(slug: String!, locale: String = "zh-CN"): Article
@@ -254,10 +254,10 @@ function createApiSchema() {
             rethrowApiError(error);
           }
         },
-        articles: async (_source, { locale = "zh-CN", query = "", limit = 20 }, context) => {
+        articles: async (_source, { locale = "zh-CN", query = "", limit = 20, offset = 0 }, context) => {
           try {
             const store = requireStore(context);
-            return await store.listPublishedArticles({ locale, query, limit });
+            return await store.listPublishedArticles({ locale, query, limit, offset });
           } catch (error) {
             rethrowApiError(error);
           }
