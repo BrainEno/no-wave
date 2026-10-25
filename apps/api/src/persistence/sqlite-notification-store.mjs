@@ -84,13 +84,13 @@ export function createSqliteNotificationStore(db) {
       const hash = requestHash(payload);
       db.exec("BEGIN IMMEDIATE");
       try {
-        insert.run(randomUUID(), userId, eventKey, JSON.stringify(payload), hash);
+        const insertResult = insert.run(randomUUID(), userId, eventKey, JSON.stringify(payload), hash);
         const row = getByKey.get(userId, eventKey);
         if (!row) throw new Error("Notification idempotency row disappeared during transaction.");
         if (row.payload_hash !== hash) {
           throw new IdempotencyConflictError("The notification event key was already used with a different payload.");
         }
-        const duplicate = Number(insert.changes ?? 0) === 0;
+        const duplicate = Number(insertResult.changes) === 0;
         db.exec("COMMIT");
         return {
           id: row.id,
