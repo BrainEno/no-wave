@@ -6,8 +6,8 @@ import {
 } from "./content.mjs";
 
 const ARTICLES_QUERY = `
-  query PublicArticles($locale: String!, $query: String!, $limit: Int!) {
-    articles(locale: $locale, query: $query, limit: $limit) {
+  query PublicArticles($locale: String!, $query: String!, $limit: Int!, $offset: Int!) {
+    articles(locale: $locale, query: $query, limit: $limit, offset: $offset) {
       id authorId slug status locale title summary workType contentBlocks createdAt updatedAt publishedAt
       author { userId displayName bio locale }
       categories { name }
@@ -138,8 +138,8 @@ export function createApiContentClient({ endpoint, fetchImpl = fetch } = {}) {
   }
 
   return Object.freeze({
-    async listArticles({ locale = defaultLocale, query = "", authorUsername = null, limit = 100 } = {}) {
-      const data = await request(ARTICLES_QUERY, { locale, query, limit });
+    async listArticles({ locale = defaultLocale, query = "", authorUsername = null, limit = 100, offset = 0 } = {}) {
+      const data = await request(ARTICLES_QUERY, { locale, query, limit, offset });
       const articles = Array.isArray(data.articles)
         ? data.articles.map((article) => mapArticle(article, locale)).filter(Boolean)
         : [];
