@@ -40,6 +40,8 @@ async function sqliteFixture() {
         const userIds = [
           `contract-user-a-${suffix}`, `contract-user-b-${suffix}`,
           `profile-follower-${suffix}`, `profile-target-${suffix}`, `profile-other-${suffix}`,
+          `article-author-${suffix}`, `liker-a-${suffix}`, `liker-b-${suffix}`,
+          `commenter-a-${suffix}`, `commenter-b-${suffix}`,
         ];
         for (const userId of userIds) db.prepare("DELETE FROM notifications WHERE user_id = ?").run(userId);
         db.prepare(`DELETE FROM user_follows WHERE follower_id IN (${userIds.map(() => "?").join(",")}) OR followed_id IN (${userIds.map(() => "?").join(",")})`)
@@ -47,7 +49,7 @@ async function sqliteFixture() {
         db.prepare(`DELETE FROM user_profile_translations WHERE user_id IN (${userIds.map(() => "?").join(",")})`).run(...userIds);
         db.prepare(`DELETE FROM user_profiles WHERE user_id IN (${userIds.map(() => "?").join(",")})`).run(...userIds);
         db.prepare("DELETE FROM revoked_sessions WHERE session_id = ?").run(`contract-session-${suffix}`);
-        for (const slug of [`contract-draft-${suffix}`, `contract-published-${suffix}`]) db.prepare("DELETE FROM articles WHERE slug = ?").run(slug);
+        for (const slug of [`contract-draft-${suffix}`, `contract-published-${suffix}`, `contract-liked-${suffix}`, `contract-comment-${suffix}`, `contract-comment-notifications-${suffix}`]) db.prepare("DELETE FROM articles WHERE slug = ?").run(slug);
         db.prepare("DELETE FROM taxonomies WHERE slug = ?").run(`contract-category-${suffix}`);
       }
       db.close();
@@ -79,7 +81,7 @@ async function postgresFixture() {
         await postgresSql.unsafe("DELETE FROM user_profile_translations WHERE user_id = ANY($1::text[])", [userIds]);
         await postgresSql.unsafe("DELETE FROM user_profiles WHERE user_id = ANY($1::text[])", [userIds]);
         await postgresSql.unsafe("DELETE FROM revoked_sessions WHERE session_id = ANY($1::text[])", [[`contract-session-${suffix}`, `contract-expired-session-${suffix}`]]);
-        await postgresSql.unsafe("DELETE FROM articles WHERE slug = ANY($1::text[])", [[`contract-draft-${suffix}`, `contract-published-${suffix}`]]);
+        await postgresSql.unsafe("DELETE FROM articles WHERE slug = ANY($1::text[])", [[`contract-draft-${suffix}`, `contract-published-${suffix}`, `contract-liked-${suffix}`, `contract-comment-${suffix}`, `contract-comment-notifications-${suffix}`]]);
         await postgresSql.unsafe("DELETE FROM taxonomies WHERE slug = $1", [`contract-category-${suffix}`]);
       }
     },
@@ -359,7 +361,7 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
   });
 
 
-  test(`${adapterName}: article comment deletion is owner-only and idempotent after deletion`, options, async () => {
+  test(`${adapterName}: article comments notify the right recipients atomically and suppress self-notifications`, options, async () => {\n    const runtime = await fixture();\n    const suffix = randomUUID();\n    const slug = `contract-comment-notifications-${suffix}`;\n    const articleAuthor = `article-author-${suffix}`;\n    const commenterA = `commenter-a-${suffix}`;\n    const commenterB = `commenter-b-${suffix}`;\n    try {\n      await runtime.store.createArticle({\n        authorId: articleAuthor, slug, title: "Comment notification contract", summary: "",\n        locale: "zh-CN", contentBlocks: [{ id: "p1", type: "paragraph", text: "Shared persistence contract content." }], publish: true,\n      });\n      const root = await runtime.store.createArticleComment({\n        slug, locale: "zh-CN", actorId: commenterA, content: "Root comment",\n      });\n      const rootNotifications = await runtime.store.listNotifications({ actorId: articleAuthor, limit: 100 });\n      assert.equal(rootNotifications.filter((item) => item.eventKey === `article.commented:${root.id}`).length, 1);\n      assert.equal((await runtime.store.listNotifications({ actorId: commenterA, limit: 100 })).length, 0);\n\n      const reply = await runtime.store.createArticleComment({\n        slug, locale: "zh-CN", actorId: commenterB, content: "Reply comment", parentCommentId: root.id,\n      });\n      const ownerNotifications = await runtime.store.listNotifications({ actorId: articleAuthor, limit: 100 });\n      const parentNotifications = await runtime.store.listNotifications({ actorId: commenterA, limit: 100 });\n      assert.equal(ownerNotifications.filter((item) => item.eventKey === `article.commented:${reply.id}`).length, 1);\n      assert.equal(parentNotifications.filter((item) => item.eventKey === `article.comment_replied:${reply.id}`).length, 1);\n      assert.equal((await runtime.store.listNotifications({ actorId: commenterB, limit: 100 })).length, 0);\n\n      const selfComment = await runtime.store.createArticleComment({\n        slug, locale: "zh-CN", actorId: articleAuthor, content: "Author comments on own article",\n      });\n      const ownerAfterSelfComment = await runtime.store.listNotifications({ actorId: articleAuthor, limit: 100 });\n      assert.equal(ownerAfterSelfComment.filter((item) => item.eventKey === `article.commented:${selfComment.id}`).length, 0);\n\n      const tree = await runtime.store.listArticleComments({ slug, locale: "zh-CN" });\n      assert.equal(tree.length, 3);\n      assert.equal(tree[0].replies.length, 1);\n      assert.equal(tree[0].replies[0].id, reply.id);\n    } finally {\n      await runtime.cleanup(undefined, suffix);\n    }\n  });\n  test(`${adapterName}: article comment deletion is owner-only and idempotent after deletion`, options, async () => {
     const runtime = await fixture();
     const suffix = randomUUID();
     const slug = `contract-comment-${suffix}`;
