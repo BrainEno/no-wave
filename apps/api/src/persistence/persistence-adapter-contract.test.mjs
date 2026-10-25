@@ -285,8 +285,8 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       });
       const first = await runtime.store.setArticleLike({ slug, locale: "zh-CN", actorId: `liker-a-${suffix}`, liked: true });
       const second = await runtime.store.setArticleLike({ slug, locale: "zh-CN", actorId: `liker-a-${suffix}`, liked: true });
-      assert.equal(first.likedByMe, true);
-      assert.equal(second.likedByMe, true);
+      assert.equal(first.likedByViewer, true);
+      assert.equal(second.likedByViewer, true);
       assert.equal(second.likeCount, 1);
       assert.ok((await runtime.store.listLikedArticles({ actorId: `liker-a-${suffix}`, locale: "zh-CN" })).some((item) => item.id === article.id));
       assert.ok(!(await runtime.store.listLikedArticles({ actorId: `liker-b-${suffix}`, locale: "zh-CN" })).some((item) => item.id === article.id));
