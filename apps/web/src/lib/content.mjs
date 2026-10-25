@@ -22,6 +22,9 @@ const messageCatalog = {
     publishedOn: "发表于",
     authorProfile: "作者主页",
     noAuthorArticles: "这位作者还没有公开发表的作品。",
+    previousPage: "上一页",
+    nextPage: "下一页",
+    pageLabel: "第 {page} 页",
     workTypeLabels: {
       novel: "长篇小说", short_story: "短篇小说", poetry: "诗歌", essay: "散文",
       criticism: "评论", literary_criticism: "文学批评", nonfiction: "非虚构", serial: "连载", other: "作品"
@@ -36,6 +39,7 @@ const messageCatalog = {
     searchButton: "搜尋", emptyResults: "沒有符合條件的文章。", readArticle: "閱讀文章",
     authorPrefix: "作者", switchLanguage: "简体中文", backToArticles: "返回文章列表",
     publishedOn: "發布於", authorProfile: "作者資料", noAuthorArticles: "此作者目前沒有可顯示的文章。",
+    previousPage: "上一頁", nextPage: "下一頁", pageLabel: "第 {page} 頁",
     workTypeLabels: {
       novel: "长篇小说", short_story: "短篇小说", poetry: "诗歌", essay: "散文",
       criticism: "评论", literary_criticism: "文学批评", nonfiction: "非虚构", serial: "连载", other: "作品"
@@ -60,6 +64,9 @@ const messageCatalog = {
     publishedOn: "Published",
     authorProfile: "Author profile",
     noAuthorArticles: "This author has no articles to display yet.",
+    previousPage: "Previous",
+    nextPage: "Next",
+    pageLabel: "Page {page}",
     workTypeLabels: {
       novel: "Novel", short_story: "Short story", poetry: "Poetry", essay: "Essay",
       criticism: "Criticism", literary_criticism: "Literary criticism", nonfiction: "Nonfiction", serial: "Serial", other: "Work"
@@ -189,7 +196,7 @@ export function getArticleBySlug(slug, locale = defaultLocale) {
   return record ? localizeArticle(record, locale) : null;
 }
 
-export function listArticles({ locale = defaultLocale, query = "", authorUsername = null } = {}) {
+export function listArticles({ locale = defaultLocale, query = "", authorUsername = null, limit, offset = 0 } = {}) {
   const normalized = normalizeLocale(locale);
   const needle = typeof query === "string" ? query.trim().toLocaleLowerCase(normalized) : "";
   return articleRecords
@@ -201,7 +208,8 @@ export function listArticles({ locale = defaultLocale, query = "", authorUsernam
       return [article.title, article.description, article.author.displayName]
         .some((value) => value.toLocaleLowerCase(normalized).includes(needle));
     })
-    .sort((left, right) => right.publishedAt.localeCompare(left.publishedAt));
+    .sort((left, right) => right.publishedAt.localeCompare(left.publishedAt))
+    .slice(offset, limit === undefined ? undefined : offset + limit);
 }
 
 function languageAlternates(paths, baseUrl) {
