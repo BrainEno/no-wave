@@ -4,10 +4,14 @@ import { archiveMetadata } from "@/lib/content.mjs";
 
 export const metadata: Metadata = archiveMetadata("en") as Metadata;
 
-type PageProps = { searchParams: Promise<{ q?: string | string[] }> };
+type PageProps = { searchParams: Promise<{ q?: string | string[]; page?: string | string[] }> };
 
 export default async function EnglishArticlesPage({ searchParams }: PageProps) {
   const params = await searchParams;
   const query = typeof params.q === "string" ? params.q : "";
-  return <ArticleArchiveContent locale="en" query={query} />;
+  const requestedPage = typeof params.page === "string" ? Number(params.page) : 1;
+  const page = Number.isSafeInteger(requestedPage) && requestedPage >= 1 && requestedPage <= 5001
+    ? requestedPage
+    : 1;
+  return <ArticleArchiveContent locale="en" query={query} page={page} />;
 }
