@@ -35,7 +35,8 @@ test("SQLite migrations are versioned, repeatable, and recorded atomically", asy
     assert.deepEqual(await runSqliteMigrations(db, { directory: migrations }), ["0001_create_notes"]);
     assert.deepEqual(await runSqliteMigrations(db, { directory: migrations }), []);
     assert.deepEqual(
-      db.prepare("SELECT version FROM api_schema_migrations ORDER BY version").all(),
+      db.prepare("SELECT version FROM api_schema_migrations ORDER BY version").all()
+        .map((row) => ({ version: row.version })),
       [{ version: "0001_create_notes" }],
     );
     db.prepare("INSERT INTO notes (id, body) VALUES (?, ?)").run("n1", "hello");
