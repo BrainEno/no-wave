@@ -52,7 +52,8 @@ test("SQLite conversation participant changes require creator and preserve creat
   await assert.rejects(conversations.updateConversationParticipants({conversationId:c.id,actorId:"bob",addUserIds:["carol"]}),ConversationAccessError);
   await assert.rejects(conversations.updateConversationParticipants({conversationId:c.id,actorId:"alice",removeUserIds:["alice"]}),ConversationInputError);
   assert.deepEqual(await conversations.updateConversationParticipants({conversationId:c.id,actorId:"alice",addUserIds:["carol"],removeUserIds:["bob"]}),["alice","carol"]);
-  assert.equal(await conversations.deleteConversation({conversationId:c.id,actorId:"bob"}).catch(e=>e),true); // removed users no longer have access
+  await assert.rejects(conversations.deleteConversation({conversationId:c.id,actorId:"bob"}),ConversationAccessError);
+  assert.equal(await conversations.deleteConversation({conversationId:c.id,actorId:"alice"}),true);
  } finally {db.close();}
 });
 
