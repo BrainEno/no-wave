@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createSqliteClient, runSqliteMigrations } from "./sqlite.mjs";
 import { createSqliteProfileStore } from "./sqlite-profile-store.mjs";
-import { ProfileInputError, ProfileNotFoundError } from "../domain/errors.mjs";
+import { ArticleInputError, ProfileInputError, ProfileNotFoundError } from "../domain/errors.mjs";
 
 async function fixture() {
   const db = createSqliteClient({ filename: ":memory:", enableWal: false });
@@ -13,7 +13,7 @@ function profile(store, userId, displayName, options = {}) {
   return store.upsertAuthorProfile({ userId, displayName, ...options });
 }
 
-test("SQLite profile store upserts localized profiles and preserves omitted URLs", () => {
+test("SQLite profile store upserts localized profiles and preserves omitted URLs", async () => {
   const { db, store } = await fixture();
   try {
     const first = profile(store, "author-1", "Ferdy", {
@@ -33,13 +33,13 @@ test("SQLite profile store upserts localized profiles and preserves omitted URLs
     assert.equal(updated.websiteUrl, "https://example.com/");
     assert.equal(store.getAuthorProfile({ userId: "author-1", locale: "zh-CN" }).displayName, "费迪");
     assert.equal(store.getAuthorProfile({ userId: "missing", locale: "en" }), null);
-    assert.equal(store.getAuthorProfile({ userId: "author-1", locale: "ja" }), undefined);
+    assert.throws(() => store.getAuthorProfile({ userId: "author-1", locale: "ja" }), ArticleInputError);
   } finally {
     db.close();
   }
 });
 
-test("SQLite profile lookup falls back to traditional Chinese then other available locale", () => {
+test("SQLite profile lookup falls back to traditional Chinese then other available locale", async () => {
   const { db, store } = await fixture();
   try {
     profile(store, "author-tw", "作者", { locale: "zh-TW" });
@@ -51,7 +51,7 @@ test("SQLite profile lookup falls back to traditional Chinese then other availab
   }
 });
 
-test("SQLite profile search validates inputs and returns follower metadata", () => {
+test("SQLite profile search validates inputs and returns follower metadata", async () => {
   const { db, store } = await fixture();
   try {
     profile(store, "author-1", "Alpha Author", { locale: "en" });
@@ -59,7 +59,7 @@ test("SQLite profile search validates inputs and returns follower metadata", () 
     assert.equal(store.searchUsers({ query: "alpha", locale: "en" })[0].userId, "author-1");
     assert.throws(() => store.searchUsers({ query: "  " }), ProfileInputError);
     assert.throws(() => store.searchUsers({ query: "a", limit: 101 }), ProfileInputError);
-    assert.throws(() => store.getAuthorProfile({ userId: "author-1", locale: "fr" }), ProfileInputError);
+    assert.throws(() => store.getAuthorProfile({ userId: "author-1", locale: "fr" }), ArticleInputError);
     assert.throws(() => profile(store, "author-3", "Bad URL", { avatarUrl: "//example.com/a" }), ProfileInputError);
     assert.throws(() => profile(store, "author-3", "Bad URL", { websiteUrl: "javascript:alert(1)" }), ProfileInputError);
   } finally {
