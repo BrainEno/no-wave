@@ -65,7 +65,7 @@ async function postgresFixture() {
         await postgresSql.unsafe("DELETE FROM notifications WHERE user_id = ANY($1::text[])", [
           [`contract-user-a-${suffix}`, `contract-user-b-${suffix}`],
         ]);
-        await postgresSql.unsafe("DELETE FROM revoked_sessions WHERE session_id = $1", [`contract-session-${suffix}`]);
+        await postgresSql.unsafe("DELETE FROM revoked_sessions WHERE session_id = ANY($1::text[])", [[`contract-session-${suffix}`, `contract-expired-session-${suffix}`]]);
       }
     },
   };
