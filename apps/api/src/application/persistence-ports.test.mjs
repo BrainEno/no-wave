@@ -40,7 +40,7 @@ test("adapter shape validation reports every missing operation in one error", ()
     () => assertPersistenceAdapter({ health() {} }),
     (error) => {
       assert.match(error.message, /content\.listPublishedArticles/);
-      assert.match(error.message, /operations\.health/);
+      assert.match(error.message, /operations\.claimOutboxEvents/);
       return true;
     },
   );
