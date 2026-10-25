@@ -7,7 +7,11 @@ export const metadata: Metadata = {
   description: "从无浪潮实际维护的作品分类中发现值得阅读的文学作品。",
 };
 
-export default async function CategoriesPage() {
-  const categories = await listPublicCategories({ locale: "zh-TW" });
-  return <CategoryIndexContent locale="zh-TW" categories={categories} />;
+type PageProps = { searchParams: Promise<{ q?: string | string[] }> };
+
+export default async function CategoriesPage({ searchParams }: PageProps) {
+  const params = await searchParams;
+  const query = typeof params.q === "string" ? params.q : "";
+  const categories = await listPublicCategories({ locale: "zh-TW", query });
+  return <CategoryIndexContent locale="zh-TW" categories={categories} query={query} />;
 }
