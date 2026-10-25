@@ -8,6 +8,9 @@ let serverOutput = "";
 const server = spawn("pnpm", ["--filter", "@bot-thk/web", "start"], {
   env: { ...process.env, HOSTNAME: "127.0.0.1", PORT: String(port) },
   stdio: ["ignore", "pipe", "pipe"],
+  // Keep the package manager and its Next.js child in one process group so cleanup
+  // below does not leave the server running after the smoke checks finish.
+  detached: process.platform !== "win32",
 });
 
 server.stdout.on("data", (chunk) => { serverOutput += chunk.toString(); });
@@ -90,7 +93,21 @@ try {
   assert.equal(events.status, 200);
   assert.match(events.headers.get("content-type") ?? "", /text\/event-stream/i);
   assert.match(events.headers.get("cache-control") ?? "", /no-store/i);
-  assert.match(await events.text(), /refreshRequired/);
+  // SSE responses are intentionally long-lived; response.text() waits for EOF and
+  // hangs forever. Read only until the expected event arrives, then cancel the stream.
+  const eventsReader = events.body.getReader();
+  const eventsDecoder = new TextDecoder();
+  let eventsText = "";
+  try {
+    for (let attempt = 0; attempt < 10 && !/refreshRequired/.test(eventsText); attempt += 1) {
+      const { value, done } = await eventsReader.read();
+      if (done) break;
+      eventsText += eventsDecoder.decode(value, { stream: true });
+    }
+    assert.match(eventsText, /refreshRequired/, "SSE stream should emit refreshRequired");
+  } finally {
+    await eventsReader.cancel();
+  }
 
   const robots = await fetch(`${baseUrl}/robots.txt`);
   assert.equal(robots.status, 200);
@@ -104,5 +121,15 @@ try {
 
   console.log("Route smoke checks passed: localized home/archive/article routes, search, SEO alternates, 404s, account cache policy, SSE headers, robots and sitemap.");
 } finally {
-  server.kill("SIGTERM");
+  if (server.exitCode === null && server.signalCode === null) {
+    if (process.platform !== "win32" && server.pid !== undefined) {
+      try {
+        process.kill(-server.pid, "SIGTERM");
+      } catch (error) {
+        if (error.code !== "ESRCH") throw error;
+      }
+    } else {
+      server.kill("SIGTERM");
+    }
+  }
 }
