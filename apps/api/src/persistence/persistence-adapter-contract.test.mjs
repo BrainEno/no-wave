@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
 import { randomUUID } from "node:crypto";
-import { IdempotencyConflictError, ConversationAccessError } from "../domain/errors.mjs";
+import { IdempotencyConflictError, ConversationAccessError, ArticleAuthorizationError } from "../domain/errors.mjs";
 import { createPostgresClient, createPostgresStore } from "./postgres.mjs";
 import { runMigrations } from "./migrate.mjs";
 import { createSqliteClient, runSqliteMigrations } from "./sqlite.mjs";
@@ -41,6 +41,8 @@ async function sqliteFixture() {
           db.prepare("DELETE FROM notifications WHERE user_id = ?").run(userId);
         }
         db.prepare("DELETE FROM revoked_sessions WHERE session_id = ?").run(`contract-session-${suffix}`);
+        for (const slug of [`contract-draft-${suffix}`, `contract-published-${suffix}`]) db.prepare("DELETE FROM articles WHERE slug = ?").run(slug);
+        db.prepare("DELETE FROM taxonomies WHERE slug = ?").run(`contract-category-${suffix}`);
       }
       db.close();
     },
@@ -66,6 +68,8 @@ async function postgresFixture() {
           [`contract-user-a-${suffix}`, `contract-user-b-${suffix}`],
         ]);
         await postgresSql.unsafe("DELETE FROM revoked_sessions WHERE session_id = ANY($1::text[])", [[`contract-session-${suffix}`, `contract-expired-session-${suffix}`]]);
+        await postgresSql.unsafe("DELETE FROM articles WHERE slug = ANY($1::text[])", [[`contract-draft-${suffix}`, `contract-published-${suffix}`]]);
+        await postgresSql.unsafe("DELETE FROM taxonomies WHERE slug = $1", [`contract-category-${suffix}`]);
       }
     },
   };
@@ -223,6 +227,94 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       await runtime.cleanup(undefined, suffix);
     }
   });
+  test(`${adapterName}: drafts stay private to the published feed and article updates require ownership`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const slug = `contract-draft-${suffix}`;
+    let articleId;
+    try {
+      const draft = await runtime.store.createArticle({
+        authorId: `author-${suffix}`, slug, title: "Contract draft", summary: "Not public yet",
+        locale: "zh-CN", contentBlocks: [{ id: "p1", type: "paragraph", text: "Shared contract content." }], publish: false,
+      });
+      articleId = draft.id;
+      assert.equal(draft.status, "draft");
+      assert.equal((await runtime.store.listPublishedArticles({ locale: "zh-CN", query: slug })).length, 0);
+      assert.ok((await runtime.store.listMyArticles({ actorId: `author-${suffix}`, locale: "zh-CN" })).some((article) => article.id === articleId));
+      await assert.rejects(Promise.resolve().then(() => runtime.store.updateArticle({
+        articleId, actorId: `not-author-${suffix}`, slug, title: "Unauthorized update",
+        locale: "zh-CN", contentBlocks: [{ id: "p1", type: "paragraph", text: "Shared contract content." }], publish: true,
+      })), ArticleAuthorizationError);
+      const published = await runtime.store.updateArticle({
+        articleId, actorId: `author-${suffix}`, slug, title: "Now published", summary: "Visible in public feed",
+        locale: "zh-CN", contentBlocks: [{ id: "p1", type: "paragraph", text: "Shared contract content." }], publish: true,
+      });
+      assert.equal(published.status, "published");
+      assert.ok((await runtime.store.listPublishedArticles({ locale: "zh-CN", query: "Now published" })).some((article) => article.id === articleId));
+    } finally { await runtime.cleanup(undefined, suffix); }
+  });
+
+  test(`${adapterName}: published articles are discoverable through their assigned taxonomy`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const slug = `contract-published-${suffix}`;
+    try {
+      const taxonomy = await runtime.store.createTaxonomy({
+        actorId: `taxonomy-owner-${suffix}`, kind: "category", slug: `contract-category-${suffix}`,
+        name: "Contract category", description: "Shared persistence contract", locale: "zh-CN",
+      });
+      const article = await runtime.store.createArticle({
+        authorId: `article-author-${suffix}`, slug, title: "Taxonomy contract article", summary: "",
+        locale: "zh-CN", contentBlocks: [{ id: "p1", type: "paragraph", text: "Shared contract content." }], publish: true, categoryIds: [taxonomy.id],
+      });
+      const taxonomyArticles = await runtime.store.listTaxonomyArticles({ kind: "category", slug: taxonomy.slug, locale: "zh-CN" });
+      assert.ok(taxonomyArticles.some((item) => item.id === article.id));
+      const assigned = await runtime.store.listArticleTaxonomies({ articleId: article.id, kind: "category", locale: "zh-CN" });
+      assert.ok(assigned.some((item) => item.id === taxonomy.id));
+    } finally { await runtime.cleanup(undefined, suffix); }
+  });
+
+  test(`${adapterName}: setting article likes is idempotent and liked lists are user-scoped`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const slug = `contract-liked-${suffix}`;
+    try {
+      const article = await runtime.store.createArticle({
+        authorId: `article-author-${suffix}`, slug, title: "Like contract article", summary: "",
+        locale: "zh-CN", contentBlocks: [{ id: "p1", type: "paragraph", text: "Shared contract content." }], publish: true,
+      });
+      const first = await runtime.store.setArticleLike({ slug, locale: "zh-CN", actorId: `liker-a-${suffix}`, liked: true });
+      const second = await runtime.store.setArticleLike({ slug, locale: "zh-CN", actorId: `liker-a-${suffix}`, liked: true });
+      assert.equal(first.likedByViewer, true);
+      assert.equal(second.likedByViewer, true);
+      assert.equal(second.likeCount, 1);
+      assert.ok((await runtime.store.listLikedArticles({ actorId: `liker-a-${suffix}`, locale: "zh-CN" })).some((item) => item.id === article.id));
+      assert.ok(!(await runtime.store.listLikedArticles({ actorId: `liker-b-${suffix}`, locale: "zh-CN" })).some((item) => item.id === article.id));
+    } finally { await runtime.cleanup(undefined, suffix); }
+  });
+
+
+  test(`${adapterName}: article comment deletion is owner-only and idempotent after deletion`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const slug = `contract-comment-${suffix}`;
+    try {
+      await runtime.store.createArticle({
+        authorId: `article-author-${suffix}`, slug, title: "Comment contract article", summary: "",
+        locale: "zh-CN", contentBlocks: [{ id: "p1", type: "paragraph", text: "Shared contract content." }], publish: true,
+      });
+      const comment = await runtime.store.createArticleComment({
+        slug, locale: "zh-CN", actorId: `commenter-a-${suffix}`, content: "A comment for the contract.",
+      });
+      await assert.rejects(Promise.resolve().then(() => runtime.store.deleteArticleComment({
+        commentId: comment.id, actorId: `commenter-b-${suffix}`,
+      })), ArticleAuthorizationError);
+      assert.equal(await runtime.store.deleteArticleComment({ commentId: comment.id, actorId: `commenter-a-${suffix}` }), true);
+      assert.equal(await runtime.store.deleteArticleComment({ commentId: comment.id, actorId: `commenter-a-${suffix}` }), false);
+      assert.equal((await runtime.store.listArticleComments({ slug, locale: "zh-CN" })).length, 0);
+    } finally { await runtime.cleanup(undefined, suffix); }
+  });
+
 }
 
 registerAdapterContracts("SQLite", sqliteFixture);
