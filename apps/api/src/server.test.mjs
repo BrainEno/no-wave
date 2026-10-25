@@ -313,3 +313,91 @@ test("public article query forwards pagination arguments to persistence", async 
     assert.deepEqual(received, { locale: "en", query: "poetry", limit: 10, offset: 20 });
   }, { store });
 });
+
+
+test("REST health endpoint is available independently of GraphQL", async () => {
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/v1/health`);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type") ?? "", /application\/json/);
+    assert.deepEqual(await response.json(), {
+      status: "ok", service: "api", version: "0.1.0",
+    });
+  });
+});
+
+test("REST public article list calls the shared application service with validated query options", async () => {
+  let received;
+  const articles = [{
+    id: "article-1", slug: "hello-world", locale: "en", title: "Hello",
+    summary: "Summary", contentBlocks: [{ type: "paragraph", text: "Hello" }],
+  }];
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/v1/articles?locale=en&query=poetry&limit=10&offset=20`);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { data: articles });
+    assert.deepEqual(received, { locale: "en", query: "poetry", limit: 10, offset: 20 });
+  }, {
+    store: {
+      async listPublishedArticles(args) { received = args; return articles; },
+    },
+  });
+});
+
+test("REST public article detail calls the same service and returns 404 for missing articles", async () => {
+  let received;
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/v1/articles/hello-world?locale=zh-TW`);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      data: { id: "article-1", slug: "hello-world", locale: "zh-TW", title: "Hello" },
+    });
+    assert.deepEqual(received, { slug: "hello-world", locale: "zh-TW" });
+
+    const missing = await fetch(`${baseUrl}/api/v1/articles/missing`);
+    assert.equal(missing.status, 404);
+    assert.deepEqual(await missing.json(), {
+      error: { code: "NOT_FOUND", message: "The article was not found." },
+    });
+  }, {
+    store: {
+      async getPublishedArticle(args) {
+        received = args;
+        return args.slug === "hello-world"
+          ? { id: "article-1", slug: args.slug, locale: args.locale, title: "Hello" }
+          : null;
+      },
+    },
+  });
+});
+
+test("REST rejects invalid pagination instead of silently coercing values", async () => {
+  await withServer(async (baseUrl) => {
+    for (const query of ["?limit=0", "?limit=1.5", "?offset=-1", "?limit=101"]) {
+      const response = await fetch(`${baseUrl}/api/v1/articles${query}`);
+      assert.equal(response.status, 400, query);
+      assert.equal((await response.json()).error.code, "BAD_USER_INPUT");
+    }
+  }, { store: { async listPublishedArticles() { throw new Error("must not be called"); } } });
+});
+
+test("REST reports unavailable services and unknown API routes as JSON errors", async () => {
+  await withServer(async (baseUrl) => {
+    const unavailable = await fetch(`${baseUrl}/api/v1/articles`);
+    assert.equal(unavailable.status, 503);
+    assert.equal((await unavailable.json()).error.code, "SERVICE_UNAVAILABLE");
+
+    const missing = await fetch(`${baseUrl}/api/v1/unknown`);
+    assert.equal(missing.status, 404);
+    assert.equal((await missing.json()).error.code, "NOT_FOUND");
+  });
+});
+
+test("REST rejects unsupported methods with an Allow header", async () => {
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/v1/articles`, { method: "POST" });
+    assert.equal(response.status, 405);
+    assert.equal(response.headers.get("allow"), "GET");
+    assert.equal((await response.json()).error.code, "METHOD_NOT_ALLOWED");
+  });
+});
