@@ -48,6 +48,9 @@ export type SiteMessages = {
   publishedOn: string;
   authorProfile: string;
   noAuthorArticles: string;
+  previousPage: string;
+  nextPage: string;
+  pageLabel: string;
   workTypeLabels: Record<ArticleView["workType"], string>;
 };
 export const articleFixture: ArticleView;
@@ -58,7 +61,7 @@ export function articlePath(slug: string, locale?: Locale): string;
 export function authorPath(username: string, locale?: Locale): string;
 export function getAuthorByUsername(username: string, locale?: Locale): AuthorView | null;
 export function getArticleBySlug(slug: string, locale?: Locale): ArticleView | null;
-export function listArticles(options?: { locale?: Locale; query?: string; authorUsername?: string | null }): ArticleView[];
+export function listArticles(options?: { locale?: Locale; query?: string; authorUsername?: string | null; limit?: number; offset?: number }): ArticleView[];
 export function articleMetadata(article: ArticleView, baseUrl?: string): {
   title: string;
   description: string;
