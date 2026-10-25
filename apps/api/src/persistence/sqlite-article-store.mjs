@@ -77,9 +77,6 @@ export function createSqliteArticleStore(db) {
     for (const id of ids) insert.run(articleId, id);
   }
 
-  function normalizeIds() {
-    // Kept local to make the optional category/tag semantics explicit.
-  }
 
   return Object.freeze({
     listPublishedArticles({ locale = "zh-CN", query = "", limit = 20, offset = 0 } = {}) {
