@@ -11,7 +11,7 @@ import {
   normalizeArticleInput,
   normalizeTaxonomyIds,
 } from "../domain/article.mjs";
-import { requiredText } from "../domain/validation.mjs";
+import { isUuid, requiredText } from "../domain/validation.mjs";
 
 /**
  * SQLite implementation of the article/content persistence slice.
@@ -122,20 +122,23 @@ export function createSqliteArticleStore(db) {
     listRelatedArticles({ slug, locale = "zh-CN", limit = 6 }) {
       validateArticleSlug(slug);
       validateArticleLocale(locale);
-      if (!Number.isInteger(limit) || limit < 1 || limit > 20) throw new ArticleInputError("limit must be an integer between 1 and 20.");
-      const current = statement("SELECT id FROM articles WHERE slug = ? AND status = 'published'").get(slug);
+      if (!Number.isInteger(limit) || limit < 1 || limit > 50) throw new ArticleInputError("limit must be an integer between 1 and 50.");
+      const current = statement("SELECT a.id, a.author_id FROM articles a JOIN article_translations t ON t.article_id = a.id AND t.locale = ? WHERE a.slug = ? AND a.status = 'published' LIMIT 1").get(locale, slug);
       if (!current) return [];
       return statement(articleSelect + `
+        LEFT JOIN article_taxonomies target_link ON target_link.article_id = ?
+        LEFT JOIN article_taxonomies candidate_link ON candidate_link.article_id = a.id AND candidate_link.taxonomy_id = target_link.taxonomy_id
         WHERE a.status = 'published' AND a.id <> ? AND t.locale = ?
-        ORDER BY a.published_at DESC, a.id DESC LIMIT ?
-      `).all(current.id, locale, limit).map(mapArticle);
+        GROUP BY a.id, a.author_id, a.slug, a.work_type, a.status, t.locale, t.title, t.summary, t.content_blocks, a.created_at, a.updated_at, a.published_at
+        ORDER BY count(DISTINCT candidate_link.taxonomy_id) DESC, (a.author_id = ?) DESC, a.published_at DESC, a.id DESC LIMIT ?
+      `).all(current.id, current.id, locale, current.author_id, limit).map(mapArticle);
     },
 
     createArticle({ authorId, slug, title, summary = "", locale = "zh-CN", contentBlocks, publish = false, workType = "other", categoryIds = [], tagIds = [] }) {
       requiredText("authorId", authorId, 300);
       const input = normalizeArticleInput({ slug, title, summary, locale, contentBlocks, publish, workType });
-      const categories = normalizeTaxonomyIds("categoryIds", categoryIds, 100) ?? [];
-      const tags = normalizeTaxonomyIds("tagIds", tagIds, 100) ?? [];
+      const categories = normalizeTaxonomyIds("categoryIds", categoryIds, 20) ?? [];
+      const tags = normalizeTaxonomyIds("tagIds", tagIds, 50) ?? [];
       const id = randomUUID();
       try {
         return transaction(() => {
@@ -155,7 +158,7 @@ export function createSqliteArticleStore(db) {
     },
 
     updateArticle({ articleId, actorId, slug, title, summary = "", locale = "zh-CN", contentBlocks, publish = false, workType, categoryIds, tagIds }) {
-      requiredText("articleId", articleId, 300);
+      if (!isUuid(articleId)) throw new ArticleInputError("articleId must be a valid article ID.");
       requiredText("actorId", actorId, 300);
       const input = normalizeArticleInput({ slug, title, summary, locale, contentBlocks, publish, workType });
       const categories = normalizeTaxonomyIds("categoryIds", categoryIds, 100);
