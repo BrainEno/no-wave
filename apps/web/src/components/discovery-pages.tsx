@@ -80,7 +80,7 @@ export function CategoryDetailContent({ locale, category, articles, page = 1, ha
           {articles.slice(0, 20).map((article, index) => (
             <li key={article.slug} style={{ borderTop: "1px solid currentColor", padding: "1.25rem 0" }}>
               <article>
-                <p>{String(index + 1).padStart(2, "0")}</p>
+                <p>{String((page - 1) * 20 + index + 1).padStart(2, "0")}</p>
                 <h2><Link href={articlePath(article.slug, locale)}>{article.title}</Link></h2>
                 {article.description ? <p>{article.description}</p> : null}
                 <p>{english ? "By" : "作者"} <Link href={authorPath(article.author.username, locale)}>{article.author.displayName}</Link></p>
