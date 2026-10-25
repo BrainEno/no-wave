@@ -18,14 +18,14 @@ export function createApiContentClient(options: {
     json(): Promise<{ data?: Record<string, unknown>; errors?: unknown[] }>;
   }>;
 }): {
-  listArticles(options?: { locale?: Locale; query?: string; authorUsername?: string | null; limit?: number }): Promise<ArticleView[]>;
+  listArticles(options?: { locale?: Locale; query?: string; authorUsername?: string | null; limit?: number; offset?: number }): Promise<ArticleView[]>;
   getArticleBySlug(slug: string, locale?: Locale): Promise<ArticleView | null>;
   getAuthorByUsername(username: string, locale?: Locale): Promise<AuthorView | null>;
   listCategories(options?: { locale?: Locale; query?: string; limit?: number }): Promise<CategoryView[]>;
   getCategoryBySlug(slug: string, locale?: Locale): Promise<CategoryView | null>;
   listCategoryArticles(slug: string, locale?: Locale, limit?: number): Promise<ArticleView[]>;
 };
-export function listPublicArticles(options?: { locale?: Locale; query?: string; authorUsername?: string | null }): Promise<ArticleView[]>;
+export function listPublicArticles(options?: { locale?: Locale; query?: string; authorUsername?: string | null; limit?: number; offset?: number }): Promise<ArticleView[]>;
 export function getPublicArticle(slug: string, locale?: Locale): Promise<ArticleView | null>;
 export function getPublicAuthor(username: string, locale?: Locale): Promise<AuthorView | null>;
 export function listPublicCategories(options?: { locale?: Locale; query?: string }): Promise<CategoryView[]>;
