@@ -17,8 +17,9 @@ function DiscoveryNavigation({ locale }: { locale: Locale }) {
   );
 }
 
-export function CategoryIndexContent({ locale, categories }: { locale: Locale; categories: CategoryView[] }) {
+export function CategoryIndexContent({ locale, categories, query = "" }: { locale: Locale; categories: CategoryView[]; query?: string }) {
   const english = locale === "en";
+  const indexPath = english ? "/en/categories" : "/categories";
   return (
     <main lang={locale} style={{ maxWidth: 960, margin: "4rem auto", padding: "0 1.25rem" }}>
       <DiscoveryNavigation locale={locale} />
@@ -27,8 +28,16 @@ export function CategoryIndexContent({ locale, categories }: { locale: Locale; c
       <p>{english
         ? "Browse the publication's living taxonomy. Categories are maintained as real publication data, not a fixed list in the interface."
         : "從平台實際維護的作品分類進入閱讀。分類來自出版資料，而不是寫死在介面中的標籤清單。"}</p>
+      <form action={indexPath} method="get" role="search" style={{ display: "flex", gap: ".5rem", margin: "1.5rem 0" }}>
+        <label htmlFor="category-search">{english ? "Search categories" : "搜尋分類"}</label>
+        <input id="category-search" name="q" type="search" defaultValue={query} placeholder={english ? "Enter a category name" : "輸入分類名稱"} />
+        <button type="submit">{english ? "Search" : "搜尋"}</button>
+        {query ? <Link href={indexPath}>{english ? "Clear" : "清除"}</Link> : null}
+      </form>
       {categories.length === 0 ? (
-        <p role="status">{english ? "No categories have been published yet." : "目前尚無可瀏覽的作品分類。"}</p>
+        <p role="status">{query
+          ? (english ? "No categories match your search." : "沒有符合搜尋條件的分類。")
+          : (english ? "No categories have been published yet." : "目前尚無可瀏覽的作品分類。")}</p>
       ) : (
         <ol>
           {categories.map((category, index) => (
