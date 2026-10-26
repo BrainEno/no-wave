@@ -13,7 +13,6 @@ export function HomeNav({ locale, copy }: { locale: Locale; copy: HomeCopy }) {
   const edition = editionLabel();
   const railLabel = copy.railLabel(edition);
   const archiveHref = archivePath(locale);
-  const categoriesHref = english ? "/en/categories" : "/categories";
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [allRead, setAllRead] = useState(false);
@@ -31,7 +30,7 @@ export function HomeNav({ locale, copy }: { locale: Locale; copy: HomeCopy }) {
 
   return (
     <>
-      <a className={styles.rail} href="#top" aria-label={railLabel}>
+      <a className={styles.rail} href="#top" aria-label={copy.railHomeLabel}>
         {railLabel}
       </a>
 
@@ -39,12 +38,12 @@ export function HomeNav({ locale, copy }: { locale: Locale; copy: HomeCopy }) {
         <a className={styles.navLink} href="#selected">
           {copy.navSelected}
         </a>
-        <Link className={styles.navLink} href={archiveHref}>
+        <a className={styles.navLink} href="#latest">
           {copy.navBlog}
-        </Link>
-        <Link className={styles.navLink} href={categoriesHref}>
+        </a>
+        <a className={styles.navLink} href="#topics">
           {copy.navTopics}
-        </Link>
+        </a>
         <span className={styles.sep} aria-hidden="true" />
         <Link
           className={styles.langLink}

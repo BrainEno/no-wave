@@ -179,14 +179,13 @@
   margin: 0 8px;
 }
 .langLink {
-  font-weight: 400;
   min-width: 0;
   padding: 0 6px;
 }
 a.langLink[aria-current="page"] {
   font-weight: 700;
 }
-.langSlash {
+a.langLink:not([aria-current="page"]) {
   color: var(--t2);
 }
 .badge {
@@ -511,6 +510,9 @@ a.langLink[aria-current="page"] {
   flex: 1;
   min-width: min(420px, 100%);
 }
+.list h2 {
+  margin: 0 0 48px;
+}
 .row {
   display: grid;
   grid-template-columns: 56px 1fr;
@@ -701,11 +703,6 @@ a.langLink[aria-current="page"] {
   }
   .item3 {
     width: 58% !important;
-  }
-  .item1 .ph,
-  .item2 .ph,
-  .item3 .ph {
-    aspect-ratio: 4 / 5;
   }
   .band {
     height: 56px;

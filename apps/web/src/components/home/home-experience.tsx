@@ -5,7 +5,7 @@ import Link from "next/link";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { ScrollSmoother } from "gsap/ScrollSmoother";
-import type { ArticleView, Locale } from "@/lib/content.ts";
+import type { ArticleView, Locale, WorkType } from "@/lib/content.ts";
 import type { CategoryView } from "@/lib/api-content.ts";
 import { archivePath, articlePath, getMessages } from "@/lib/content.ts";
 import styles from "../home-page.module.css";
@@ -47,6 +47,19 @@ function SplitLetters({ text }: { text: string }) {
   );
 }
 
+/** The demo's hero chip shows the lead title trimmed at its subtitle colon. */
+function shortTitle(title: string): string {
+  return title.split(/[:：]/)[0].trim() || title;
+}
+
+/** Demo captions label each work with its category name (falls back to work type). */
+function articleLabel(
+  article: ArticleView,
+  labels: Record<WorkType, string>,
+): string {
+  return article.categories[0] ?? labels[article.workType] ?? "";
+}
+
 export function HomeExperience({
   locale,
   articles,
@@ -71,10 +84,12 @@ export function HomeExperience({
   const handleOpened = useCallback(() => setOpened(true), []);
 
   const featured = articles.slice(0, 3);
-  const latest = articles.length > 1 ? articles.slice(1, 6) : articles.slice(0, 5);
+  // The demo numbers one continuous post list 01–06: card 01 is the featured
+  // lead (also the hero chip), and the "Latest" rows continue at 02–06.
+  const latest = articles.slice(1, 6);
   const archiveHref = archivePath(locale);
   const categoriesHref = english ? "/en/categories" : "/categories";
-  const rowStartNumber = featured.length > 0 ? 2 : 1;
+  const rowStartNumber = 2;
   const year = new Date().getFullYear();
 
   useEffect(() => {
@@ -115,7 +130,11 @@ export function HomeExperience({
         rotate: () => gsap.utils.random(-30, 30),
       });
 
-      const entrance = gsap.timeline();
+      // Mirrors the demo's open() choreography: the reveal tween is placed at
+      // "-=.8" relative to the end of the column lift (columns end at 1.55s
+      // after the curtain opens), so it starts at +0.75s and the letters land
+      // at +1.15s ("-=2.4" into the 2.8s reveal) just as the curtain clears.
+      const entrance = gsap.timeline({ delay: 0.75 });
       entrance
         .to(motionRef.current, { rev: 1, duration: 2.8, ease: "power2.out" })
         .to(
@@ -237,6 +256,14 @@ export function HomeExperience({
 
   return (
     <main ref={rootRef} className={`${styles.site} ${reduced ? styles.reduced : ""}`} lang={locale}>
+      {/* Demo-parity document chrome: paper background on html/body (including
+          dark mode) so overscroll areas match the design. Scoped to the
+          homepage because it is only rendered here. */}
+      <style>{`:root{--paper:#F2EEE6;--ink:#0F0D0C;--or:#D8541F;--t2:#5E5850;--ti:#B5AEA3}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--paper:#0F0D0C;--ink:#F2EEE6;--t2:#B5AEA3}}
+:root[data-theme="dark"]{--paper:#0F0D0C;--ink:#F2EEE6;--t2:#B5AEA3}
+html{background:var(--paper)}
+body{margin:0;background:var(--paper)}`}</style>
       <GrainCanvas reduced={reduced} />
       <LoadingScreen label={copy.loadingLabel} staticMode={reduced} onOpened={handleOpened} />
       <HomeNav locale={locale} copy={copy} />
@@ -248,11 +275,11 @@ export function HomeExperience({
             <img className={styles.heroBg} src={HOME_IMAGES.hero} alt="" />
             <HeroGlCanvas src={HOME_IMAGES.hero} motionRef={motionRef} />
             {featured[0] ? (
-              <Link className={styles.chip} href={articlePath(featured[0].slug, locale)}>
+              <a className={styles.chip} href="#selected">
                 <span className={styles.m}>01</span>
-                <span className={styles.zh}>{featured[0].title}</span>
+                <span className={styles.zh}>{shortTitle(featured[0].title)}</span>
                 <span aria-hidden="true">→</span>
-              </Link>
+              </a>
             ) : null}
             <div className={styles.brand}>
               <p className={`${styles.cn} ${styles.zh}`} aria-hidden="true">
@@ -295,10 +322,10 @@ export function HomeExperience({
                       </div>
                       <span className={styles.cap}>
                         <span className={styles.m}>
-                          {String(index + 1).padStart(2, "0")} · {messages.workTypeLabels[article.workType]}
+                          {String(index + 1).padStart(2, "0")} · {articleLabel(article, messages.workTypeLabels)}
                         </span>
                         <span className={`${styles.t} ${styles.zh}`}>{article.title}</span>
-                        <span className={styles.m}>{homeDateLabel(article.publishedAt, locale)}</span>
+                        <span className={styles.m}>{homeDateLabel(article.publishedAt)}</span>
                       </span>
                     </Link>
                   ))}
@@ -360,11 +387,13 @@ export function HomeExperience({
                       onMouseEnter={() => setPanelActive(Math.min(index, latest.length - 1))}
                       onFocus={() => setPanelActive(Math.min(index, latest.length - 1))}
                     >
-                      <span className={styles.m}>{String(rowStartNumber + index).padStart(2, "0")}</span>
+                      <span className={styles.m} style={{ paddingTop: 10 }}>
+                        {String(rowStartNumber + index).padStart(2, "0")}
+                      </span>
                       <span>
                         <span className={`${styles.t} ${styles.zh}`}>{article.title}</span>
                         <span className={styles.m}>
-                          {messages.workTypeLabels[article.workType]} · {homeDateLabel(article.publishedAt, locale)}
+                          {articleLabel(article, messages.workTypeLabels)} · {homeDateLabel(article.publishedAt)}
                         </span>
                       </span>
                     </Link>
@@ -386,7 +415,7 @@ export function HomeExperience({
               </div>
               {categories.length ? (
                 <div>
-                  {categories.slice(0, 8).map((category, index) => (
+                  {categories.slice(0, 6).map((category, index) => (
                     <Link
                       key={category.slug}
                       className={styles.topic}
@@ -428,8 +457,8 @@ export function HomeExperience({
             <div className={styles.footerBar}>
               <nav aria-label={english ? "Footer navigation" : "页尾导航"}>
                 <a href="#top">{copy.footerHome}</a>
-                <Link href={archiveHref}>{copy.footerBlog}</Link>
-                <Link href={categoriesHref}>{copy.footerTopics}</Link>
+                <a href="#latest">{copy.footerBlog}</a>
+                <a href="#topics">{copy.footerTopics}</a>
                 <Link href={archiveHref}>{copy.footerSearch}</Link>
               </nav>
               <span>{copy.rights(year)}</span>

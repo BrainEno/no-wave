@@ -24,6 +24,7 @@ export const PANEL_IMAGE_SEQUENCE = [
 export type HomeCopy = {
   loadingLabel: string;
   railLabel: (edition: string) => string;
+  railHomeLabel: string;
   navSelected: string;
   navBlog: string;
   navTopics: string;
@@ -58,8 +59,9 @@ export type HomeCopy = {
 const zhCopy: HomeCopy = {
   loadingLabel: "载入中 · LOADING",
   railLabel: (edition) => `无浪潮 · No Wave — ${edition}`,
+  railHomeLabel: "无浪潮 No Wave 首页",
   navSelected: "精选",
-  navBlog: "作品",
+  navBlog: "最新",
   navTopics: "主题",
   searchLabel: "搜索",
   bellUnreadLabel: "通知，3 条未读",
@@ -67,9 +69,9 @@ const zhCopy: HomeCopy = {
   notificationsTitle: "通知",
   markAllRead: "全部标为已读",
   notifications: [
-    "你关注的分类有新作品发表",
-    "你的评论收到一条新回复",
-    "有作者开始关注你",
+    "你关注的主题「工程」有 2 篇新文章",
+    "你的文章收到 1 条新评论",
+    "[作者名] 开始关注你",
   ],
   menuButton: "选单",
   menuClose: "关闭",
@@ -81,13 +83,13 @@ const zhCopy: HomeCopy = {
   selectedAccent: "Selected",
   latestPrimary: "最新",
   latestAccent: "Latest",
-  browseAll: "全部作品",
+  browseAll: "全部文章",
   topicsEyebrow: "主题 / Topics",
   exploreTopics: "探索全部主题",
   fallbackCover: "默认封面",
   emptyResults: "没有符合条件的作品。",
   footerHome: "首页",
-  footerBlog: "作品",
+  footerBlog: "最新",
   footerTopics: "主题",
   footerSearch: "搜索",
   rights: (year) => `© ${year} 无浪潮 No Wave · 简 / EN`,
@@ -96,8 +98,9 @@ const zhCopy: HomeCopy = {
 const enCopy: HomeCopy = {
   loadingLabel: "LOADING",
   railLabel: (edition) => `NOWAVE · No Wave — ${edition}`,
+  railHomeLabel: "No Wave home",
   navSelected: "Selected",
-  navBlog: "Works",
+  navBlog: "Latest",
   navTopics: "Topics",
   searchLabel: "Search",
   bellUnreadLabel: "Notifications, 3 unread",
@@ -105,9 +108,9 @@ const enCopy: HomeCopy = {
   notificationsTitle: "Notifications",
   markAllRead: "Mark all as read",
   notifications: [
-    "A new work was published in a category you follow",
-    "Your comment received a new reply",
-    "An author started following you",
+    "2 new articles in a topic you follow",
+    "Your article received a new comment",
+    "[Author name] started following you",
   ],
   menuButton: "Menu",
   menuClose: "Close",
@@ -119,13 +122,13 @@ const enCopy: HomeCopy = {
   selectedAccent: "精选",
   latestPrimary: "Latest",
   latestAccent: "最新",
-  browseAll: "Browse all works",
+  browseAll: "All articles",
   topicsEyebrow: "Topics / 主题",
   exploreTopics: "Explore all topics",
   fallbackCover: "Default cover",
   emptyResults: "No works match your search.",
   footerHome: "Home",
-  footerBlog: "Works",
+  footerBlog: "Latest",
   footerTopics: "Topics",
   footerSearch: "Search",
   rights: (year) => `© ${year} 无浪潮 No Wave · EN / 简`,
@@ -135,10 +138,16 @@ export function getHomeCopy(locale: Locale): HomeCopy {
   return locale === "en" ? enCopy : zhCopy;
 }
 
-export function homeDateLabel(value: string, locale: Locale): string {
-  return new Date(value)
-    .toLocaleDateString(locale, { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "UTC" })
-    .replaceAll("/", ".");
+/**
+ * Demo-parity editorial date label: YYYY.MM.DD (UTC). The design shows one
+ * fixed date style for every locale.
+ */
+export function homeDateLabel(value: string): string {
+  const date = new Date(value);
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  return `${year}.${month}.${day}`;
 }
 
 export function editionLabel(date = new Date()): string {
