@@ -69,6 +69,7 @@ test("API content client forwards offset pagination to the GraphQL article query
   });
   const articles = await client.listArticles({ locale: "en", query: "poetry", limit: 20, offset: 40 });
   assert.equal(articles.length, 1);
+  assert.ok(request);
   assert.match(request.query, /offset: \$offset/);
   assert.deepEqual(request.variables, { locale: "en", query: "poetry", limit: 20, offset: 40 });
 });
@@ -113,7 +114,7 @@ test("API content client lists categories and retrieves category works through G
   const client = createApiContentClient({
     endpoint: "https://api.example.test/graphql",
     fetchImpl: async (_url, init) => {
-      const body = JSON.parse(init.body);
+      const body = readRequestBody(init);
       calls.push(body);
       if (body.query.includes("PublicCategories")) {
         return response({ taxonomies: [{ id: "c1", slug: "poetry", name: "Poetry", description: "Poems", locale: "en", articleCount: 3 }] });
