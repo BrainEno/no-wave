@@ -1,10 +1,10 @@
 import { ConversationInputError } from "./errors.ts";
 
-export function normalizeParticipantIds(name, ids, max = 20) {
+export function normalizeParticipantIds(name: string, ids: unknown, max = 20): string[] {
   if (!Array.isArray(ids) || ids.length > max) {
     throw new ConversationInputError(`${name} must be an array containing at most ${max} user IDs.`);
   }
-  const normalized = ids.map((id, index) => {
+  const normalized = ids.map((id: unknown, index: number) => {
     if (typeof id !== "string" || id.trim().length === 0 || id !== id.trim() || id.length > 300) {
       throw new ConversationInputError(`${name}[${index}] must be a non-empty, trimmed user ID.`);
     }

@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
 import { ArticleInputError } from "./errors.ts";
 
-const TAXONOMY_KINDS = new Set(["category", "tag"]);
+export type TaxonomyKind = "category" | "tag";
 
-export function validateTaxonomyKind(value) {
-  if (!TAXONOMY_KINDS.has(value)) throw new ArticleInputError("kind must be category or tag.");
+export function validateTaxonomyKind(value: unknown): TaxonomyKind {
+  if (value !== "category" && value !== "tag") throw new ArticleInputError("kind must be category or tag.");
   return value;
 }
 
@@ -14,7 +14,7 @@ export function validateTaxonomyKind(value) {
  * stable ASCII slug is generated for URLs/storage. NFKC and case folding
  * ensure routine spelling variants reuse the same global tag.
  */
-export function normalizeHashtag(input) {
+export function normalizeHashtag(input: unknown): { displayName: string; canonical: string; slug: string } {
   if (typeof input !== "string") throw new ArticleInputError("tag name must be text.");
   let displayName = input.normalize("NFKC").trim();
   if (displayName.startsWith("#")) displayName = displayName.slice(1);

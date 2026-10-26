@@ -3,7 +3,11 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 const BEARER_PREFIX = /^Bearer\s+(.+)$/i;
 const MAX_BEARER_TOKEN_LENGTH = 8192;
 
-function decodeSegment(segment) {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function decodeSegment(segment: string): unknown {
   try {
     return JSON.parse(Buffer.from(segment, "base64url").toString("utf8"));
   } catch {
@@ -16,7 +20,7 @@ function decodeSegment(segment) {
  * Tokens are accepted only when issuer, audience, expiry, and subject are valid.
  * Oversized credentials and invalid configuration never create an authenticated user.
  */
-export function verifyBearerToken(request, env = process.env, nowSeconds = Math.floor(Date.now() / 1000)) {
+export function verifyBearerToken(request: Request, env: NodeJS.ProcessEnv = process.env, nowSeconds = Math.floor(Date.now() / 1000)): { id: string; sessionId: string; sessionExpiresAt: number } | null {
   const secret = env.AUTH_JWT_SECRET;
   if (typeof secret !== "string" || secret.length === 0) return null;
   if (Buffer.byteLength(secret, "utf8") < 32) {
@@ -39,7 +43,7 @@ export function verifyBearerToken(request, env = process.env, nowSeconds = Math.
   const [encodedHeader, encodedPayload, encodedSignature] = parts;
   const header = decodeSegment(encodedHeader);
   const claims = decodeSegment(encodedPayload);
-  if (!header || header.alg !== "HS256" || !claims || typeof claims !== "object" || Array.isArray(claims)) {
+  if (!isRecord(header) || header.alg !== "HS256" || !isRecord(claims)) {
     return null;
   }
 
@@ -69,6 +73,6 @@ export function verifyBearerToken(request, env = process.env, nowSeconds = Math.
   return { id: claims.sub, sessionId: claims.jti, sessionExpiresAt: claims.exp };
 }
 
-export function createAuthContext(request, env = process.env) {
+export function createAuthContext(request: Request, env: NodeJS.ProcessEnv = process.env): { user: { id: string; sessionId: string; sessionExpiresAt: number } | null } {
   return { user: verifyBearerToken(request, env) };
 }
