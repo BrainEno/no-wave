@@ -25,7 +25,7 @@ test("migrations are repeatable and record applied versions once", integrationOp
   assert.equal(first.discovered, 9);
   assert.equal(second.applied.length, 0);
   const rows = await sql.unsafe("SELECT version FROM api_schema_migrations WHERE version IN ($1, $2, $3, $4, $5, $6, $7, $8, $9)", ["0001_initial_domain_schema", "0002_article_content", "0003_author_profiles", "0004_article_engagement", "0005_article_taxonomies", "0006_conversation_lifecycle", "0007_user_follows", "0008_literary_work_types_and_zh_cn", "0009_public_article_search_trigram_indexes"]);
-  assert.deepEqual(rows.map((row) => row.version).sort(), ["0001_initial_domain_schema", "0002_article_content", "0003_author_profiles", "0004_article_engagement", "0005_article_taxonomies", "0006_conversation_lifecycle", "0007_user_follows", "0008_literary_work_types_and_zh_cn"]);
+  assert.deepEqual(rows.map((row) => row.version).sort(), ["0001_initial_domain_schema", "0002_article_content", "0003_author_profiles", "0004_article_engagement", "0005_article_taxonomies", "0006_conversation_lifecycle", "0007_user_follows", "0008_literary_work_types_and_zh_cn", "0009_public_article_search_trigram_indexes"]);
 });
 
 test("message write, outbox intent and idempotency are atomic", integrationOptions, async () => {
