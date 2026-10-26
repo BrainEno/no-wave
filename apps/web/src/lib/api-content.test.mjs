@@ -113,12 +113,14 @@ test("API content client lists categories and retrieves category works through G
     },
   });
 
-  const categories = await client.listCategories({ locale: "en", query: "poe" });
+  const categories = await client.listCategories({ locale: "en", query: "poe", limit: 21, offset: 40 });
   assert.deepEqual(categories, [{
     slug: "poetry", name: "Poetry", description: "Poems", locale: "en", articleCount: 3,
   }]);
   assert.equal(calls[0].variables.locale, "en");
   assert.equal(calls[0].variables.query, "poe");
+  assert.ok(calls[0].query.includes("offset: $offset"));
+  assert.deepEqual(calls[0].variables, { locale: "en", query: "poe", limit: 21, offset: 40 });
   assert.deepEqual(await client.getCategoryBySlug("poetry", "en"), categories[0]);
   const works = await client.listCategoryArticles("poetry", "en", 21, 20);
   assert.equal(works.length, 1);

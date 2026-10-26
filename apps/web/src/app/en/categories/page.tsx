@@ -7,11 +7,14 @@ export const metadata: Metadata = {
   description: "Discover published writing through Nowave's maintained categories.",
 };
 
-type PageProps = { searchParams: Promise<{ q?: string | string[] }> };
+type PageProps = { searchParams: Promise<{ q?: string | string[]; page?: string | string[] }> };
 
 export default async function EnglishCategoriesPage({ searchParams }: PageProps) {
   const params = await searchParams;
   const query = typeof params.q === "string" ? params.q : "";
-  const categories = await listPublicCategories({ locale: "en", query });
-  return <CategoryIndexContent locale="en" categories={categories} query={query} />;
+  const requestedPage = typeof params.page === "string" ? Number(params.page) : 1;
+  const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? Math.min(requestedPage, 50001) : 1;
+  const pageSize = 20;
+  const results = await listPublicCategories({ locale: "en", query, limit: pageSize + 1, offset: (page - 1) * pageSize });
+  return <CategoryIndexContent locale="en" categories={results.slice(0, pageSize)} query={query} page={page} hasNextPage={results.length > pageSize} />;
 }

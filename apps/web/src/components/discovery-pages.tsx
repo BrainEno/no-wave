@@ -3,6 +3,13 @@ import type { ArticleView, Locale } from "@/lib/content.mjs";
 import type { CategoryView } from "@/lib/api-content.mjs";
 import { archivePath, articlePath, authorPath, homePath } from "@/lib/content.mjs";
 
+function categoryIndexPageHref(indexPath: string, query: string, page: number) {
+  const params = new URLSearchParams();
+  if (query) params.set("q", query);
+  params.set("page", String(page));
+  return `${indexPath}?${params.toString()}`;
+}
+
 function DiscoveryNavigation({ locale }: { locale: Locale }) {
   const alternateLocale: Locale = locale === "en" ? "zh-CN" : "en";
   return (
@@ -17,7 +24,7 @@ function DiscoveryNavigation({ locale }: { locale: Locale }) {
   );
 }
 
-export function CategoryIndexContent({ locale, categories, query = "" }: { locale: Locale; categories: CategoryView[]; query?: string }) {
+export function CategoryIndexContent({ locale, categories, query = "", page = 1, hasNextPage = false }: { locale: Locale; categories: CategoryView[]; query?: string; page?: number; hasNextPage?: boolean }) {
   const english = locale === "en";
   const indexPath = english ? "/en/categories" : "/categories";
   return (
@@ -35,14 +42,16 @@ export function CategoryIndexContent({ locale, categories, query = "" }: { local
         {query ? <Link href={indexPath}>{english ? "Clear" : "清除"}</Link> : null}
       </form>
       {categories.length === 0 ? (
-        <p role="status">{query
-          ? (english ? "No categories match your search." : "沒有符合搜尋條件的分類。")
-          : (english ? "No categories have been published yet." : "目前尚無可瀏覽的作品分類。")}</p>
+        <p role="status">{page > 1
+          ? (english ? "No more categories are available on this page." : "此頁沒有更多分類。")
+          : query
+            ? (english ? "No categories match your search." : "沒有符合搜尋條件的分類。")
+            : (english ? "No categories have been published yet." : "目前尚無可瀏覽的作品分類。")}</p>
       ) : (
         <ol>
           {categories.map((category, index) => (
             <li key={category.slug} style={{ borderTop: "1px solid currentColor", padding: "1rem 0", display: "grid", gridTemplateColumns: "3rem minmax(0, 1fr) auto", gap: "1rem" }}>
-              <span aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+              <span aria-hidden="true">{String((page - 1) * 20 + index + 1).padStart(2, "0")}</span>
               <div>
                 <h2 style={{ margin: "0 0 .4rem" }}><Link href={`${locale === "en" ? "/en" : ""}/categories/${encodeURIComponent(category.slug)}`}>{category.name}</Link></h2>
                 {category.description ? <p>{category.description}</p> : null}
@@ -52,6 +61,13 @@ export function CategoryIndexContent({ locale, categories, query = "" }: { local
           ))}
         </ol>
       )}
+      {categories.length > 0 || page > 1 ? (
+        <nav aria-label={english ? "Category pages" : "分類頁面"} style={{ display: "flex", gap: "1rem", marginTop: "2rem" }}>
+          {page > 1 ? <Link rel="prev" href={categoryIndexPageHref(indexPath, query, page - 1)}>{english ? "Previous categories" : "上一頁分類"}</Link> : null}
+          {hasNextPage ? <Link rel="next" href={categoryIndexPageHref(indexPath, query, page + 1)}>{english ? "More categories" : "下一頁分類"}</Link> : null}
+          <span aria-current="page">{english ? "Page " + page : "第 " + page + " 頁"}</span>
+        </nav>
+      ) : null}
     </main>
   );
 }

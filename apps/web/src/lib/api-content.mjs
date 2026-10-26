@@ -36,8 +36,8 @@ const AUTHOR_QUERY = `
 `;
 
 const CATEGORIES_QUERY = `
-  query PublicCategories($locale: String!, $query: String!, $limit: Int!) {
-    taxonomies(kind: "category", locale: $locale, query: $query, limit: $limit) {
+  query PublicCategories($locale: String!, $query: String!, $limit: Int!, $offset: Int!) {
+    taxonomies(kind: "category", locale: $locale, query: $query, limit: $limit, offset: $offset) {
       id slug name description locale articleCount
     }
   }
@@ -153,8 +153,8 @@ export function createApiContentClient({ endpoint, fetchImpl = fetch } = {}) {
       const data = await request(AUTHOR_QUERY, { userId: username, locale });
       return mapAuthor(data.authorProfile, locale);
     },
-    async listCategories({ locale = defaultLocale, query = "", limit = 100 } = {}) {
-      const data = await request(CATEGORIES_QUERY, { locale, query, limit });
+    async listCategories({ locale = defaultLocale, query = "", limit = 100, offset = 0 } = {}) {
+      const data = await request(CATEGORIES_QUERY, { locale, query, limit, offset });
       return Array.isArray(data.taxonomies) ? data.taxonomies.map(mapCategory).filter(Boolean) : [];
     },
     async getCategoryBySlug(slug, locale = defaultLocale) {

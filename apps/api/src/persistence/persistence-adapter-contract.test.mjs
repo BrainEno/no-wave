@@ -352,6 +352,36 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
     } finally { await runtime.cleanup(undefined, suffix); }
   });
 
+  test(`${adapterName}: taxonomy lists provide stable bounded offset pagination`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const query = `Pagination contract ${suffix}`;
+    try {
+      for (const label of ["A", "B", "C"]) {
+        await runtime.store.createTaxonomy({
+          actorId: `taxonomy-owner-${suffix}`, kind: "category",
+          slug: `pagination-${label.toLowerCase()}-${suffix}`,
+          name: `${query} ${label}`, description: "",
+          locale: "zh-CN",
+        });
+      }
+      const all = await runtime.store.listTaxonomies({
+        kind: "category", locale: "zh-CN", query, limit: 10, offset: 0,
+      });
+      assert.equal(all.length, 3);
+      const page = await runtime.store.listTaxonomies({
+        kind: "category", locale: "zh-CN", query, limit: 1, offset: 1,
+      });
+      assert.deepEqual(page.map((item) => item.slug), all.slice(1, 2).map((item) => item.slug));
+      await assert.rejects(
+        Promise.resolve().then(() => runtime.store.listTaxonomies({
+          kind: "category", locale: "zh-CN", query, limit: 1, offset: -1,
+        })),
+        { code: "BAD_USER_INPUT" },
+      );
+    } finally { await runtime.cleanup(undefined, suffix); }
+  });
+
   test(`${adapterName}: setting article likes is idempotent and liked lists are user-scoped`, options, async () => {
     const runtime = await fixture();
     const suffix = randomUUID();
