@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import { InvalidMessageCursorError, IdempotencyConflictError } from "../domain/errors.mjs";
-import { isUuid } from "../domain/validation.mjs";
+import { InvalidMessageCursorError, IdempotencyConflictError } from "../domain/errors.ts";
+import { isUuid } from "../domain/validation.ts";
 
 /**
  * SQLite persistence slice for notifications. This remains an opt-in adapter

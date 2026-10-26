@@ -2,10 +2,10 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   ProfileInputError,
   ProfileNotFoundError,
-} from "../domain/errors.mjs";
-import { validateArticleLocale } from "../domain/article.mjs";
-import { requiredText } from "../domain/validation.mjs";
-import { validateProfileUrl } from "../domain/profile.mjs";
+} from "../domain/errors.ts";
+import { validateArticleLocale } from "../domain/article.ts";
+import { requiredText } from "../domain/validation.ts";
+import { validateProfileUrl } from "../domain/profile.ts";
 
 /**
  * SQLite implementation of the author-profile and follow persistence slice.

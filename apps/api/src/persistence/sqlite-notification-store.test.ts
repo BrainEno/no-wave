@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { randomUUID } from "node:crypto";
-import { createSqliteClient, runSqliteMigrations } from "./sqlite.mjs";
-import { createSqliteNotificationStore } from "./sqlite-notification-store.mjs";
-import { IdempotencyConflictError, InvalidMessageCursorError } from "../domain/errors.mjs";
+import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
+import { createSqliteNotificationStore } from "./sqlite-notification-store.ts";
+import { IdempotencyConflictError, InvalidMessageCursorError } from "../domain/errors.ts";
 
 async function fixture() {
   const db = createSqliteClient({ filename: ":memory:", enableWal: false });

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createSqliteClient, runSqliteMigrations } from "./sqlite.mjs";
+import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
 
 test("SQLite domain migration creates the complete set of domain tables", async () => {
   const db = createSqliteClient({ filename: ":memory:", enableWal: false });

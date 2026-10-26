@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createSqliteClient, runSqliteMigrations } from "./sqlite.mjs";
-import { createSqliteStore } from "./sqlite-store.mjs";
-import { dispatchOutboxBatch } from "./outbox-worker.mjs";
+import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
+import { createSqliteStore } from "./sqlite-store.ts";
+import { dispatchOutboxBatch } from "./outbox-worker.ts";
 
 async function fixture() {
   const db = createSqliteClient({ filename: ":memory:", enableWal: false });
