@@ -1,8 +1,40 @@
-export const siteUrl = "https://example.invalid";
-export const defaultLocale = "zh-CN";
-export const supportedLocales = ["zh-CN", "en"];
+export type Locale = "zh-CN" | "zh-TW" | "en";
+export type WorkType = "novel" | "short_story" | "poetry" | "essay" | "criticism" | "literary_criticism" | "nonfiction" | "serial" | "other";
+export type AuthorView = { username: string; displayName: string; bio: string; locale: Locale; availableLocales: Locale[] };
+export type ArticleContentBlock =
+  | { id: string; type: "paragraph"; text: string }
+  | { id: string; type: "heading"; level: 2 | 3 | 4; text: string; anchor?: string }
+  | { id: string; type: "quote"; text: string; attribution?: string }
+  | { id: string; type: "list"; ordered: boolean; items: string[] }
+  | { id: string; type: "image"; src: string; alt: string; caption?: string }
+  | { id: string; type: "code"; language: string; code: string };
+export type ArticleView = {
+  slug: string; title: string; description: string; workType: WorkType;
+  contentBlocks: ArticleContentBlock[]; publishedAt: string; author: AuthorView;
+  categories: string[]; tags: string[]; locale: Locale; availableLocales: Locale[];
+};
+export type SiteMessages = {
+  primaryNavigation: string; homeTitle: string; homeDescription: string;
+  blog: string; blogTitle: string; blogDescription: string; latestArticles: string;
+  searchLabel: string; searchPlaceholder: string; searchButton: string; emptyResults: string;
+  readArticle: string; authorPrefix: string; switchLanguage: string; backToArticles: string;
+  publishedOn: string; authorProfile: string; noAuthorArticles: string;
+  previousPage: string; nextPage: string; pageLabel: string;
+  workTypeLabels: Record<WorkType, string>;
+};
+type AuthorRecord = { username: string; displayNames: Record<Locale, string>; bios: Record<Locale, string> };
+type ArticleTranslation = { title: string; description: string; contentBlocks: ArticleContentBlock[] };
+type ArticleRecord = {
+  slug: string; publishedAt: string; authorUsername: string; workType: WorkType;
+  categories: string[]; tags: string[]; translations: Record<Locale, ArticleTranslation>;
+};
+type ArticleListOptions = { locale?: Locale; query?: string; authorUsername?: string | null; limit?: number; offset?: number };
 
-const messageCatalog = {
+export const siteUrl = "https://example.invalid";
+export const defaultLocale: Locale = "zh-CN";
+export const supportedLocales = ["zh-CN", "en"] as const;
+
+const messageCatalog: Record<Locale, SiteMessages> = {
   "zh-CN": {
     primaryNavigation: "主导航",
     homeTitle: "以文学作品为中心，构建独立的数字出版空间",
@@ -74,7 +106,7 @@ const messageCatalog = {
   }
 };
 
-const authorRecords = [{
+const authorRecords: AuthorRecord[] = [{
   username: "bot-thk-team",
   displayNames: {
     "zh-CN": "无浪潮编辑部",
@@ -88,7 +120,7 @@ const authorRecords = [{
   }
 }];
 
-const articleRecords = [{
+const articleRecords: ArticleRecord[] = [{
   slug: "portable-web-foundation",
   publishedAt: "2026-10-01T10:00:00Z",
   authorUsername: "bot-thk-team",
@@ -126,51 +158,51 @@ const articleRecords = [{
   }
 }];
 
-function normalizeLocale(locale) {
-  return ["zh-CN", "zh-TW", "en"].includes(locale) ? locale : defaultLocale;
+function normalizeLocale(locale: string): Locale {
+  return (["zh-CN", "zh-TW", "en"] as const).includes(locale as Locale) ? locale as Locale : defaultLocale;
 }
 
 export function getMessages(locale = defaultLocale) {
   return messageCatalog[normalizeLocale(locale)];
 }
 
-export function homePath(locale = defaultLocale) {
+export function homePath(locale: Locale = defaultLocale): string {
   const normalized = normalizeLocale(locale);
   return normalized === defaultLocale ? "/" : "/" + normalized;
 }
 
-export function archivePath(locale = defaultLocale) {
+export function archivePath(locale: Locale = defaultLocale): string {
   const normalized = normalizeLocale(locale);
   return homePath(normalized) === "/" ? "/articles" : homePath(normalized) + "/articles";
 }
 
-export function articlePath(slug, locale = defaultLocale) {
+export function articlePath(slug: string, locale: Locale = defaultLocale): string {
   return archivePath(locale) + "/" + encodeURIComponent(slug);
 }
 
-export function authorPath(username, locale = defaultLocale) {
+export function authorPath(username: string, locale: Locale = defaultLocale): string {
   const normalized = normalizeLocale(locale);
   const prefix = normalized === defaultLocale ? "" : "/" + normalized;
   return prefix + "/authors/" + encodeURIComponent(username);
 }
 
-function localizeAuthor(record, locale) {
+function localizeAuthor(record: AuthorRecord, locale: Locale): AuthorView {
   const normalized = normalizeLocale(locale);
   return {
     username: record.username,
     displayName: record.displayNames[normalized],
     bio: record.bios[normalized],
     locale: normalized,
-    availableLocales: Object.keys(record.displayNames).filter((locale) => supportedLocales.includes(locale))
+    availableLocales: Object.keys(record.displayNames).filter((locale): locale is Locale => (supportedLocales as readonly string[]).includes(locale))
   };
 }
 
-export function getAuthorByUsername(username, locale = defaultLocale) {
+export function getAuthorByUsername(username: string, locale: Locale = defaultLocale): AuthorView | null {
   const record = authorRecords.find((author) => author.username === username);
   return record ? localizeAuthor(record, locale) : null;
 }
 
-function localizeArticle(record, locale) {
+function localizeArticle(record: ArticleRecord, locale: Locale): ArticleView | null {
   const normalized = normalizeLocale(locale);
   const translation = record.translations[normalized];
   if (!translation) return null;
@@ -187,22 +219,22 @@ function localizeArticle(record, locale) {
     tags: record.tags,
     workType: record.workType ?? "other",
     locale: normalized,
-    availableLocales: Object.keys(record.translations).filter((locale) => supportedLocales.includes(locale))
+    availableLocales: Object.keys(record.translations).filter((locale): locale is Locale => (supportedLocales as readonly string[]).includes(locale))
   };
 }
 
-export function getArticleBySlug(slug, locale = defaultLocale) {
+export function getArticleBySlug(slug: string, locale: Locale = defaultLocale): ArticleView | null {
   const record = articleRecords.find((article) => article.slug === slug);
   return record ? localizeArticle(record, locale) : null;
 }
 
-export function listArticles({ locale = defaultLocale, query = "", authorUsername = null, limit, offset = 0 } = {}) {
+export function listArticles({ locale = defaultLocale, query = "", authorUsername = null, limit, offset = 0 }: ArticleListOptions = {}): ArticleView[] {
   const normalized = normalizeLocale(locale);
   const needle = typeof query === "string" ? query.trim().toLocaleLowerCase(normalized) : "";
   return articleRecords
     .filter((article) => !authorUsername || article.authorUsername === authorUsername)
     .map((article) => localizeArticle(article, normalized))
-    .filter((article) => article !== null)
+    .filter((article): article is ArticleView => article !== null)
     .filter((article) => {
       if (!needle) return true;
       return [article.title, article.description, article.author.displayName]
@@ -212,16 +244,16 @@ export function listArticles({ locale = defaultLocale, query = "", authorUsernam
     .slice(offset, limit === undefined ? undefined : offset + limit);
 }
 
-function languageAlternates(paths, baseUrl) {
+function languageAlternates(paths: ReadonlyArray<readonly [Locale, string]>, baseUrl: string): Record<string, string> {
   return Object.fromEntries(
     paths.map(([locale, path]) => [locale, new URL(path, baseUrl).toString()])
   );
 }
 
-export function articleMetadata(article, baseUrl = siteUrl) {
+export function articleMetadata(article: ArticleView, baseUrl = siteUrl) {
   const canonical = new URL(articlePath(article.slug, article.locale), baseUrl).toString();
   const languages = languageAlternates(
-    article.availableLocales.map((locale) => [locale, articlePath(article.slug, locale)]),
+    article.availableLocales.map((locale) => [locale, articlePath(article.slug, locale)] as const),
     baseUrl
   );
   return {
@@ -238,11 +270,11 @@ export function articleMetadata(article, baseUrl = siteUrl) {
   };
 }
 
-export function archiveMetadata(locale = defaultLocale, baseUrl = siteUrl) {
+export function archiveMetadata(locale: Locale = defaultLocale, baseUrl = siteUrl) {
   const normalized = normalizeLocale(locale);
   const copy = getMessages(normalized);
   const languages = languageAlternates(
-    supportedLocales.map((item) => [item, archivePath(item)]),
+    supportedLocales.map((item) => [item, archivePath(item)] as const),
     baseUrl
   );
   return {
@@ -255,11 +287,11 @@ export function archiveMetadata(locale = defaultLocale, baseUrl = siteUrl) {
   };
 }
 
-export function homeMetadata(locale = defaultLocale, baseUrl = siteUrl) {
+export function homeMetadata(locale: Locale = defaultLocale, baseUrl = siteUrl) {
   const normalized = normalizeLocale(locale);
   const copy = getMessages(normalized);
   const languages = languageAlternates(
-    supportedLocales.map((item) => [item, homePath(item)]),
+    supportedLocales.map((item) => [item, homePath(item)] as const),
     baseUrl
   );
   return {
@@ -272,10 +304,10 @@ export function homeMetadata(locale = defaultLocale, baseUrl = siteUrl) {
   };
 }
 
-export function authorMetadata(author, baseUrl = siteUrl) {
+export function authorMetadata(author: AuthorView, baseUrl = siteUrl) {
   const canonical = new URL(authorPath(author.username, author.locale), baseUrl).toString();
   const languages = languageAlternates(
-    author.availableLocales.map((locale) => [locale, authorPath(author.username, locale)]),
+    author.availableLocales.map((locale) => [locale, authorPath(author.username, locale)] as const),
     baseUrl
   );
   return {
@@ -285,4 +317,4 @@ export function authorMetadata(author, baseUrl = siteUrl) {
   };
 }
 
-export const articleFixture = getArticleBySlug("portable-web-foundation", defaultLocale);
+export const articleFixture: ArticleView = getArticleBySlug("portable-web-foundation", defaultLocale)!;
