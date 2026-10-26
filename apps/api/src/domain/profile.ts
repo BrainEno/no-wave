@@ -1,7 +1,8 @@
 import { ProfileInputError } from "./errors.ts";
 
 export function validateProfileUrl(name: string, value: unknown, allowRelative: boolean): string | null | undefined {
-  if (value === undefined || value === null) return value;
+  if (value === undefined) return undefined;
+  if (value === null) return null;
   if (typeof value !== "string" || value.trim().length === 0 || value !== value.trim() || value.length > 2048) {
     throw new ProfileInputError(name + " must be null or a non-empty URL no longer than 2048 characters.");
   }

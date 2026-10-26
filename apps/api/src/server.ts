@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { createYoga } from "graphql-yoga";
 import { createApiSchema } from "./transport/graphql/schema.ts";
+import type { ApiContext } from "./transport/graphql/schema.ts";
 import { createRestHandler } from "./transport/rest/handler.ts";
 import { createAuthContext } from "./security/authentication.ts";
 import { createApplicationServices } from "./application/services.ts";
@@ -15,11 +16,11 @@ import { createPersistenceRuntime } from "./infrastructure/persistence-runtime.t
 export function createApiServer({ env = process.env, store = null, applicationServices = null } = {}) {
   const services = applicationServices ?? (store ? createApplicationServices({ persistence: store }) : null);
   const handleRest = createRestHandler({ services });
-  const yoga = createYoga({
+  const yoga = createYoga<ApiContext>({
     schema: createApiSchema(),
     graphqlEndpoint: "/graphql",
     graphiql: false,
-    context: async ({ request }) => {
+    context: async ({ request }): Promise<ApiContext> => {
       const auth = createAuthContext(request, env);
       if (auth.user?.sessionId && services && await services.isSessionRevoked(auth.user.sessionId)) {
         return { user: null, services };

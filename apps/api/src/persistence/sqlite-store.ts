@@ -51,7 +51,7 @@ export async function createSqlitePersistence({
   filename,
   timeoutMs = 5000,
   enableWal = true,
-} = {}) {
+}: { filename?: string; timeoutMs?: number; enableWal?: boolean } = {}) {
   const db = createSqliteClient({ filename, timeoutMs, enableWal });
   try {
     await runSqliteMigrations(db);

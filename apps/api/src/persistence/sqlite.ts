@@ -16,7 +16,7 @@ export function createSqliteClient({
   filename,
   timeoutMs = 5000,
   enableWal = true,
-} = {}) {
+}: { filename?: string; timeoutMs?: number; enableWal?: boolean } = {}) {
   if (typeof filename !== "string" || filename.trim().length === 0) {
     throw new TypeError("A non-empty SQLite filename is required.");
   }

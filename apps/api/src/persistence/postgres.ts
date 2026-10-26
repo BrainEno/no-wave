@@ -723,7 +723,7 @@ export function createPostgresStore(sql) {
         return mapAuthorProfile(rows[0]);
       });
     },
-    async listLikedArticles({ actorId, locale = "zh-CN", limit = 50 } = {}) {
+    async listLikedArticles({ actorId, locale = "zh-CN", limit = 50 }: { actorId: string; locale?: string; limit?: number } = { actorId: "" }) {
       requiredText("actorId", actorId, 300);
       validateArticleLocale(locale);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
@@ -742,7 +742,7 @@ export function createPostgresStore(sql) {
       );
       return rows.map(mapArticle);
     },
-    async listRelatedArticles({ slug, locale = "zh-CN", limit = 6 } = {}) {
+    async listRelatedArticles({ slug, locale = "zh-CN", limit = 6 }: { slug: string; locale?: string; limit?: number } = { slug: "" }) {
       validateArticleSlug(slug);
       validateArticleLocale(locale);
       if (!Number.isInteger(limit) || limit < 1 || limit > 50) {
@@ -818,7 +818,7 @@ export function createPostgresStore(sql) {
       );
       return rows[0] ? mapArticle(rows[0]) : null;
     },
-    async listMyArticles({ actorId, locale = "zh-CN", limit = 50 } = {}) {
+    async listMyArticles({ actorId, locale = "zh-CN", limit = 50 }: { actorId: string; locale?: string; limit?: number } = { actorId: "" }) {
       requiredText("actorId", actorId, 300);
       validateArticleLocale(locale);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");

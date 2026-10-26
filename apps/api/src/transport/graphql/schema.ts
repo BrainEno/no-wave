@@ -1,5 +1,12 @@
 import { GraphQLError } from "graphql";
 import { createSchema } from "graphql-yoga";
+import type { createApplicationServices } from "../../application/services.ts";
+import type { createAuthContext } from "../../security/authentication.ts";
+
+export type ApiContext = {
+  user: ReturnType<typeof createAuthContext>["user"];
+  services: ReturnType<typeof createApplicationServices> | null;
+};
 import { AuthorizationError, requireAuthenticatedActor } from "../../security/authorization.ts";
 import { ConversationNotFoundError, DomainError } from "../../domain/errors.ts";
 
@@ -10,7 +17,7 @@ function rethrowApiError(error) {
   throw error;
 }
 
-function requireServices(context) {
+function requireServices(context: ApiContext) {
   if (!context.services) {
     throw new GraphQLError("Persistence is not configured.", {
       extensions: { code: "SERVICE_UNAVAILABLE" },
@@ -19,7 +26,7 @@ function requireServices(context) {
   return context.services;
 }
 
-function resolveViewer(context) {
+function resolveViewer(context: ApiContext) {
   try {
     return { id: requireAuthenticatedActor(context) };
   } catch (error) {
@@ -28,7 +35,7 @@ function resolveViewer(context) {
 }
 
 export function createApiSchema() {
-  return createSchema({
+  return createSchema<ApiContext>({
     typeDefs: /* GraphQL */ `
       type Health {
         status: String!
