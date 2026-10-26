@@ -1,6 +1,6 @@
 "use server";
 
-import { submitDraftToMockApi } from "@/lib/spike-api.mjs";
+import { submitDraftToMockApi } from "@/lib/spike-api.ts";
 
 export type FormState = { message: string; fieldError?: string };
 

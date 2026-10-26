@@ -1,7 +1,7 @@
 import Link from "next/link";
-import type { ArticleView, Locale } from "@/lib/content.mjs";
-import type { CategoryView } from "@/lib/api-content.mjs";
-import { archivePath, articlePath, authorPath, homePath } from "@/lib/content.mjs";
+import type { ArticleView, Locale } from "@/lib/content.ts";
+import type { CategoryView } from "@/lib/api-content.ts";
+import { archivePath, articlePath, authorPath, homePath } from "@/lib/content.ts";
 
 function categoryIndexPageHref(indexPath: string, query: string, page: number) {
   const params = new URLSearchParams();

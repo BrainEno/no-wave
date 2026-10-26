@@ -1,13 +1,13 @@
 import Link from "next/link";
-import type { ArticleView, AuthorView, Locale } from "@/lib/content.mjs";
+import type { ArticleView, AuthorView, Locale } from "@/lib/content.ts";
 import {
   archivePath,
   articlePath,
   authorPath,
   getMessages,
   homePath,
- } from "@/lib/content.mjs";
-import { listPublicArticles, listPublicCategories } from "@/lib/api-content.mjs";
+ } from "@/lib/content.ts";
+import { listPublicArticles, listPublicCategories } from "@/lib/api-content.ts";
 import { LiteraryHomePage } from "./home-page";
 
 const ARCHIVE_PAGE_SIZE = 20;
