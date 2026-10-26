@@ -3,6 +3,7 @@ import { createHmac } from "node:crypto";
 import test from "node:test";
 import { createApiServer } from "./server.ts";
 import { persistencePortMethods } from "./application/persistence-ports.ts";
+import { ArticleAuthorizationError, ArticleInputError, ArticleNotFoundError, ArticleSlugConflictError, DomainError, IdempotencyConflictError } from "./domain/errors.ts";
 
 const authEnv = {
   AUTH_JWT_SECRET: "test-only-secret-that-is-at-least-32-bytes",
@@ -511,4 +512,67 @@ test("REST rejects unsupported methods with an Allow header", async () => {
     assert.equal(response.headers.get("allow"), "GET");
     assert.equal((await response.json()).error.code, "METHOD_NOT_ALLOWED");
   });
+});
+
+test("REST maps domain errors to stable HTTP statuses and sanitized messages", async () => {
+  const scenarios = [
+    {
+      error: new ArticleInputError("password=must-not-leak"),
+      status: 400,
+      code: "BAD_USER_INPUT",
+      message: "The request input is invalid.",
+    },
+    {
+      error: new ArticleAuthorizationError("private owner id must not leak"),
+      status: 403,
+      code: "FORBIDDEN",
+      message: "You are not allowed to access this resource.",
+    },
+    {
+      error: new ArticleNotFoundError("internal row details must not leak"),
+      status: 404,
+      code: "NOT_FOUND",
+      message: "The requested resource was not found.",
+    },
+    {
+      error: new ArticleSlugConflictError("database constraint name must not leak"),
+      status: 409,
+      code: "CONFLICT",
+      message: "The request conflicts with the current resource state.",
+    },
+    {
+      error: new IdempotencyConflictError("raw payload must not leak"),
+      status: 409,
+      code: "IDEMPOTENCY_CONFLICT",
+      message: "The idempotency key was already used for a different request.",
+    },
+    {
+      error: new DomainError("UnexpectedServiceError", "PRIVATE_INTERNAL_CODE", "private implementation detail"),
+      status: 500,
+      code: "INTERNAL_SERVER_ERROR",
+      message: "The request could not be completed.",
+    },
+    {
+      error: new Error("database password and stack details must not leak"),
+      status: 500,
+      code: "INTERNAL_SERVER_ERROR",
+      message: "The request could not be completed.",
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    await withServer(async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/v1/articles`);
+      assert.equal(response.status, scenario.status);
+      assert.deepEqual(await response.json(), {
+        error: { code: scenario.code, message: scenario.message },
+      });
+    }, {
+      applicationServices: {
+        async listPublishedArticles() {
+          throw scenario.error;
+        },
+      },
+    });
+  }
 });

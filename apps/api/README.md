@@ -18,7 +18,7 @@ The standalone REST transport currently exposes public read-only endpoints along
 - `GET /api/v1/categories/:slug?locale=zh-CN` — localized category detail.
 - `GET /api/v1/categories/:slug/articles?locale=zh-CN&limit=20&offset=0` — published localized articles in a category.
 
-Supported locales are `zh-CN`, `zh-TW`, and `en`; search terms are limited to 200 characters; limits are 1–100. Invalid query values return `400 BAD_USER_INPUT`, unknown article/category resources return `404 NOT_FOUND`, and missing persistence returns `503 SERVICE_UNAVAILABLE`. Category article requests resolve the category before listing content, so unknown categories do not produce a misleading successful empty list.
+Supported locales are `zh-CN`, `zh-TW`, and `en`; search terms are limited to 200 characters; limits are 1–100. Invalid query values return `400 BAD_USER_INPUT`, unknown article/category resources return `404 NOT_FOUND`, and missing persistence returns `503 SERVICE_UNAVAILABLE`. Domain errors thrown by application services map to stable REST statuses: `BAD_USER_INPUT` → 400, `FORBIDDEN` → 403, `NOT_FOUND` → 404, and `CONFLICT` / `IDEMPOTENCY_CONFLICT` → 409. The adapter does not forward domain exception text; unknown domain codes and unexpected exceptions return a generic `500 INTERNAL_SERVER_ERROR` response without internal details. Category article requests resolve the category before listing content, so unknown categories do not produce a misleading successful empty list.
 
 ## PostgreSQL setup
 

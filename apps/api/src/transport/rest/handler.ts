@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { DomainError } from "../../domain/errors.ts";
 
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
@@ -54,6 +55,33 @@ function decodeSlug(encodedSlug: string): string | null {
   return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) ? slug : null;
 }
 
+type RestErrorResponse = { status: number; code: string; message: string };
+
+const DOMAIN_ERROR_RESPONSES: Record<string, RestErrorResponse> = {
+  BAD_USER_INPUT: { status: 400, code: "BAD_USER_INPUT", message: "The request input is invalid." },
+  FORBIDDEN: { status: 403, code: "FORBIDDEN", message: "You are not allowed to access this resource." },
+  NOT_FOUND: { status: 404, code: "NOT_FOUND", message: "The requested resource was not found." },
+  CONFLICT: { status: 409, code: "CONFLICT", message: "The request conflicts with the current resource state." },
+  IDEMPOTENCY_CONFLICT: {
+    status: 409,
+    code: "IDEMPOTENCY_CONFLICT",
+    message: "The idempotency key was already used for a different request.",
+  },
+};
+
+function sendServiceError(response: ServerResponse, error: unknown): void {
+  const mapped = error instanceof DomainError ? DOMAIN_ERROR_RESPONSES[error.code] : undefined;
+  if (mapped) {
+    sendJson(response, mapped.status, { error: { code: mapped.code, message: mapped.message } });
+    return;
+  }
+
+  // Do not expose raw exception messages, stack traces, or database details.
+  sendJson(response, 500, {
+    error: { code: "INTERNAL_SERVER_ERROR", message: "The request could not be completed." },
+  });
+}
+
 function sendUnavailable(response: ServerResponse): void {
   sendJson(response, 503, { error: { code: "SERVICE_UNAVAILABLE", message: "Persistence is not configured." } });
 }
@@ -93,8 +121,8 @@ export function createRestHandler({ services }: { services: RestServices | null 
       try {
         const articles = await services.listPublishedArticles({ locale, query, ...pagination });
         sendJson(response, 200, { data: articles });
-      } catch {
-        sendJson(response, 500, { error: { code: "INTERNAL_SERVER_ERROR", message: "The request could not be completed." } });
+      } catch (error: unknown) {
+        sendServiceError(response, error);
       }
       return true;
     }
@@ -118,8 +146,8 @@ export function createRestHandler({ services }: { services: RestServices | null 
         } else {
           sendJson(response, 200, { data: article });
         }
-      } catch {
-        sendJson(response, 500, { error: { code: "INTERNAL_SERVER_ERROR", message: "The request could not be completed." } });
+      } catch (error: unknown) {
+        sendServiceError(response, error);
       }
       return true;
     }
@@ -139,8 +167,8 @@ export function createRestHandler({ services }: { services: RestServices | null 
       try {
         const categories = await services.listTaxonomies({ kind: "category", locale, query, ...pagination });
         sendJson(response, 200, { data: categories });
-      } catch {
-        sendJson(response, 500, { error: { code: "INTERNAL_SERVER_ERROR", message: "The request could not be completed." } });
+      } catch (error: unknown) {
+        sendServiceError(response, error);
       }
       return true;
     }
@@ -166,8 +194,8 @@ export function createRestHandler({ services }: { services: RestServices | null 
         }
         const articles = await services.listTaxonomyArticles({ kind: "category", slug, locale, ...pagination });
         sendJson(response, 200, { data: articles });
-      } catch {
-        sendJson(response, 500, { error: { code: "INTERNAL_SERVER_ERROR", message: "The request could not be completed." } });
+      } catch (error: unknown) {
+        sendServiceError(response, error);
       }
       return true;
     }
@@ -191,8 +219,8 @@ export function createRestHandler({ services }: { services: RestServices | null 
         } else {
           sendJson(response, 200, { data: category });
         }
-      } catch {
-        sendJson(response, 500, { error: { code: "INTERNAL_SERVER_ERROR", message: "The request could not be completed." } });
+      } catch (error: unknown) {
+        sendServiceError(response, error);
       }
       return true;
     }
