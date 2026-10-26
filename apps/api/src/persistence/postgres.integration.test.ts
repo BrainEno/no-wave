@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { createHmac, randomUUID } from "node:crypto";
 import test, { after, before } from "node:test";
-import { createPostgresClient, createPostgresStore } from "./postgres.mjs";
-import { ConversationAccessError, IdempotencyConflictError } from "../domain/errors.mjs";
-import { runMigrations } from "./migrate.mjs";
-import { dispatchOutboxBatch } from "./outbox-worker.mjs";
+import { createPostgresClient, createPostgresStore } from "./postgres.ts";
+import { ConversationAccessError, IdempotencyConflictError } from "../domain/errors.ts";
+import { runMigrations } from "./migrate.ts";
+import { dispatchOutboxBatch } from "./outbox-worker.ts";
 
 const connectionString = process.env.TEST_DATABASE_URL;
 const integrationOptions = { skip: !connectionString && "Set TEST_DATABASE_URL to run PostgreSQL integration tests." };
@@ -115,7 +115,7 @@ test("explicit transactions roll back all writes when work fails", integrationOp
 });
 
 test("GraphQL message operations authorize database membership and derive sender from JWT", integrationOptions, async () => {
-  const { createApiServer } = await import("../server.mjs");
+  const { createApiServer } = await import("../server.ts");
   const secret = "integration-test-secret-that-is-at-least-32-bytes";
   const env = {
     AUTH_JWT_SECRET: secret,
@@ -236,7 +236,7 @@ test("GraphQL message operations authorize database membership and derive sender
 });
 
 test("GraphQL denies a JWT after its durable session ID is revoked", integrationOptions, async () => {
-  const { createApiServer } = await import("../server.mjs");
+  const { createApiServer } = await import("../server.ts");
   const secret = "revocation-integration-secret-at-least-32-bytes";
   const env = {
     AUTH_JWT_SECRET: secret,
@@ -343,7 +343,7 @@ test("message idempotency lookup does not bypass conversation membership authori
 
 
 test("GraphQL notification inbox is scoped to the verified actor and read state cannot be changed by another user", integrationOptions, async () => {
-  const { createApiServer } = await import("../server.mjs");
+  const { createApiServer } = await import("../server.ts");
   const secret = "notification-integration-secret-at-least-32-bytes";
   const env = {
     AUTH_JWT_SECRET: secret,
@@ -639,7 +639,7 @@ test("public article search supports bounded pagination and validates offsets", 
 });
 
 test("GraphQL article mutations derive authors from JWT and protect updates", integrationOptions, async () => {
-  const { createApiServer } = await import("../server.mjs");
+  const { createApiServer } = await import("../server.ts");
   const secret = "article-integration-secret-is-at-least-32-bytes";
   const env = {
     AUTH_JWT_SECRET: secret,
@@ -829,7 +829,7 @@ test("taxonomy registry supports localized labels, article associations and crea
 
 
 test("GraphQL taxonomy APIs derive creators from JWT and expose localized article associations", integrationOptions, async () => {
-  const { createApiServer } = await import("../server.mjs");
+  const { createApiServer } = await import("../server.ts");
   const secret = "taxonomy-graphql-secret-at-least-32-bytes-long";
   const env = {
     AUTH_JWT_SECRET: secret,
@@ -1118,7 +1118,7 @@ test("article comments are threaded, locale-scoped and deletions enforce ownersh
 });
 
 test("GraphQL article likes and comments derive actor identity from JWT and enforce comment ownership", integrationOptions, async () => {
-  const { createApiServer } = await import("../server.mjs");
+  const { createApiServer } = await import("../server.ts");
   const secret = "article-engagement-secret-at-least-32-bytes";
   const env = {
     AUTH_JWT_SECRET: secret,
@@ -1272,7 +1272,7 @@ test("conversation lifecycle controls participants and unread state without dele
 });
 
 test("GraphQL follow mutations derive the follower from JWT and expose follow state", integrationOptions, async () => {
-  const { createApiServer } = await import("../server.mjs");
+  const { createApiServer } = await import("../server.ts");
   const secret = "follow-graphql-secret-at-least-32-bytes-long";
   const env = {
     AUTH_JWT_SECRET: secret,
@@ -1323,7 +1323,7 @@ test("GraphQL follow mutations derive the follower from JWT and expose follow st
 });
 
 test("GraphQL conversation lifecycle derives creator identity from JWT", integrationOptions, async () => {
-  const { createApiServer } = await import("../server.mjs");
+  const { createApiServer } = await import("../server.ts");
   const secret = "conversation-lifecycle-secret-at-least-32-bytes";
   const env = {
     AUTH_JWT_SECRET: secret,
@@ -1384,7 +1384,7 @@ test("GraphQL conversation lifecycle derives creator identity from JWT", integra
 });
 
 test("message outbox consumer creates deduplicated inbox notifications for other conversation participants", integrationOptions, async () => {
-  const { createMessageNotificationDelivery } = await import("./message-notification-delivery.mjs");
+  const { createMessageNotificationDelivery } = await import("./message-notification-delivery.ts");
   const suffix = randomUUID();
   const conversationId = `it-notification-delivery-${suffix}`;
   const senderId = `it-notification-sender-${suffix}`;

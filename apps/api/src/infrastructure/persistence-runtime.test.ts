@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createPersistenceRuntime } from "./persistence-runtime.mjs";
-import { persistencePortMethods } from "../application/persistence-ports.mjs";
+import { createPersistenceRuntime } from "./persistence-runtime.ts";
+import { persistencePortMethods } from "../application/persistence-ports.ts";
 
 function completeFakeAdapter() {
   const adapter = {};

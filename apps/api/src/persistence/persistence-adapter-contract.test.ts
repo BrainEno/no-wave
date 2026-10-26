@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
 import { randomUUID } from "node:crypto";
-import { IdempotencyConflictError, ConversationAccessError, ArticleAuthorizationError, ProfileInputError, ProfileNotFoundError } from "../domain/errors.mjs";
-import { createPostgresClient, createPostgresStore } from "./postgres.mjs";
-import { runMigrations } from "./migrate.mjs";
-import { createSqliteClient, runSqliteMigrations } from "./sqlite.mjs";
-import { createSqliteStore } from "./sqlite-store.mjs";
-import { dispatchOutboxBatch } from "./outbox-worker.mjs";
+import { IdempotencyConflictError, ConversationAccessError, ArticleAuthorizationError, ProfileInputError, ProfileNotFoundError } from "../domain/errors.ts";
+import { createPostgresClient, createPostgresStore } from "./postgres.ts";
+import { runMigrations } from "./migrate.ts";
+import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
+import { createSqliteStore } from "./sqlite-store.ts";
+import { dispatchOutboxBatch } from "./outbox-worker.ts";
 
 const connectionString = process.env.TEST_DATABASE_URL;
 let postgresSql;

@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createPostgresClient } from "./postgres.mjs";
+import { createPostgresClient } from "./postgres.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const defaultDirectory = join(here, "migrations");

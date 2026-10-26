@@ -1,6 +1,6 @@
-import { createPostgresClient, createPostgresStore } from "./postgres.mjs";
-import { dispatchOutboxBatch } from "./outbox-worker.mjs";
-import { createMessageNotificationDelivery } from "./message-notification-delivery.mjs";
+import { createPostgresClient, createPostgresStore } from "./postgres.ts";
+import { dispatchOutboxBatch } from "./outbox-worker.ts";
+import { createMessageNotificationDelivery } from "./message-notification-delivery.ts";
 
 function integerSetting(name, fallback, min, max) {
   const raw = process.env[name];
