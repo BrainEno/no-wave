@@ -1,4 +1,4 @@
-import { ArticleInputError } from "./errors.mjs";
+import { ArticleInputError } from "./errors.ts";
 
 export function isUuid(value) {
   return typeof value === "string" &&

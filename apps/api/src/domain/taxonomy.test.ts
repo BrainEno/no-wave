@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { normalizeHashtag } from "./taxonomy.mjs";
+import { normalizeHashtag } from "./taxonomy.ts";
 
 test("hashtag normalization preserves Unicode display text and canonicalizes equivalent forms", () => {
   const traditional = normalizeHashtag("#人工智慧");

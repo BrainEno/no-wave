@@ -1,4 +1,4 @@
-import { ProfileInputError } from "./errors.mjs";
+import { ProfileInputError } from "./errors.ts";
 
 export function validateProfileUrl(name, value, allowRelative) {
   if (value === undefined || value === null) return value;

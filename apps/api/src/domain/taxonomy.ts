@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { ArticleInputError } from "./errors.mjs";
+import { ArticleInputError } from "./errors.ts";
 
 const TAXONOMY_KINDS = new Set(["category", "tag"]);
 

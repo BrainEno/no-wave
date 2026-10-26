@@ -1,11 +1,11 @@
-import { assertPersistenceAdapter } from "../application/persistence-ports.mjs";
+import { assertPersistenceAdapter } from "../application/persistence-ports.ts";
 
 const builtInProviders = Object.freeze({
   postgres: async ({ env }) => {
     if (typeof env.DATABASE_URL !== "string" || env.DATABASE_URL.length === 0) {
       throw new Error("DATABASE_URL is required when DATABASE_PROVIDER=postgres.");
     }
-    const { createPostgresClient, createPostgresStore } = await import("../persistence/postgres.mjs");
+    const { createPostgresClient, createPostgresStore } = await import("../persistence/postgres.ts");
     const client = await createPostgresClient({ connectionString: env.DATABASE_URL });
     return {
       adapter: createPostgresStore(client),
