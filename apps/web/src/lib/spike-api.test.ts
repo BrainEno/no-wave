@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { submitDraftToMockApi } from "./spike-api.mjs";
+import { submitDraftToMockApi } from "./spike-api.ts";
 
 test("mock API accepts a valid title", async () => {
   const response = await submitDraftToMockApi("A valid title");
