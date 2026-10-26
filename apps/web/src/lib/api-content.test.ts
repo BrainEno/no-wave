@@ -2,6 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createApiContentClient } from "./api-content.ts";
 
+type GraphQLRequest = { query: string; variables: Record<string, unknown> };
+type CapturedRequest = { url: string; init: RequestInit | undefined; body: GraphQLRequest };
+
+function readRequestBody(init?: RequestInit): GraphQLRequest {
+  if (typeof init?.body !== "string") throw new Error("Expected a serialized GraphQL request body.");
+  return JSON.parse(init.body) as GraphQLRequest;
+}
+
 const article = {
   id: "article-1",
   authorId: "user-1",
@@ -20,20 +28,24 @@ const article = {
   tags: [{ name: "Web" }],
 };
 
-function response(data, { ok = true, status = 200, errors } = {}) {
+function response(
+  data: Record<string, unknown>,
+  { ok = true, status = 200, errors }: { ok?: boolean; status?: number; errors?: unknown[] } = {},
+): { ok: boolean; status: number; json(): Promise<{ data: Record<string, unknown>; errors?: unknown[] }> } {
   return { ok, status, async json() { return { data, errors }; } };
 }
 
 test("API content client maps published article wire fields into web article views", async () => {
-  let request;
+  let request: CapturedRequest | undefined;
   const client = createApiContentClient({
     endpoint: "https://api.example.test/graphql",
     fetchImpl: async (url, init) => {
-      request = { url, init, body: JSON.parse(init.body) };
+      request = { url, init, body: readRequestBody(init) };
       return response({ articles: [article] });
     },
   });
   const articles = await client.listArticles({ locale: "zh-TW", query: "Hello" });
+  assert.ok(request);
   assert.equal(request.url, "https://api.example.test/graphql");
   assert.equal(request.body.variables.query, "Hello");
   assert.equal(articles.length, 1);
@@ -47,11 +59,11 @@ test("API content client maps published article wire fields into web article vie
 });
 
 test("API content client forwards offset pagination to the GraphQL article query", async () => {
-  let request;
+  let request: GraphQLRequest | undefined;
   const client = createApiContentClient({
     endpoint: "https://api.example.test/graphql",
     fetchImpl: async (_url, init) => {
-      request = JSON.parse(init.body);
+      request = readRequestBody(init);
       return response({ articles: [article] });
     },
   });
@@ -65,7 +77,7 @@ test("API content client maps missing articles and authors to null", async () =>
   const client = createApiContentClient({
     endpoint: "https://api.example.test/graphql",
     fetchImpl: async (_url, init) => {
-      const body = JSON.parse(init.body);
+      const body = readRequestBody(init);
       return response(body.query.includes("PublicAuthor") ? { authorProfile: null } : { article: null });
     },
   });
@@ -97,7 +109,7 @@ test("API content client rejects malformed serialized content blocks", async () 
 
 
 test("API content client lists categories and retrieves category works through GraphQL", async () => {
-  const calls = [];
+  const calls: GraphQLRequest[] = [];
   const client = createApiContentClient({
     endpoint: "https://api.example.test/graphql",
     fetchImpl: async (_url, init) => {

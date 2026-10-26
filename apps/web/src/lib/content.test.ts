@@ -28,6 +28,8 @@ test("localized article metadata contains canonical and language-alternate URLs"
 test("content registry returns localized article and author views", () => {
   const zhArticle = getArticleBySlug("portable-web-foundation", "zh-TW");
   const enArticle = getArticleBySlug("portable-web-foundation", "en");
+  assert.ok(zhArticle);
+  assert.ok(enArticle);
   assert.equal(zhArticle.title, "可移植的 Web 基礎架構");
   assert.equal(enArticle.title, "A Portable Web Foundation");
   assert.equal(zhArticle.author.displayName, "BOT THK 團隊");
