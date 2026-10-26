@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
-import { ArticleAuthorizationError, ArticleInputError, ArticleNotFoundError } from "../domain/errors.mjs";
-import { validateArticleLocale, validateArticleSlug } from "../domain/article.mjs";
-import { isUuid, requiredText } from "../domain/validation.mjs";
+import { ArticleAuthorizationError, ArticleInputError, ArticleNotFoundError } from "../domain/errors.ts";
+import { validateArticleLocale, validateArticleSlug } from "../domain/article.ts";
+import { isUuid, requiredText } from "../domain/validation.ts";
 
 export function createSqliteEngagementStore(db) {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") {

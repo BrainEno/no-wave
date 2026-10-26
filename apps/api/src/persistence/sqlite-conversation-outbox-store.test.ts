@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { randomUUID } from "node:crypto";
-import { createSqliteClient, runSqliteMigrations } from "./sqlite.mjs";
-import { createSqliteConversationStore } from "./sqlite-conversation-store.mjs";
-import { createSqliteOutboxStore } from "./sqlite-outbox-store.mjs";
-import { ConversationAccessError, ConversationInputError, IdempotencyConflictError, InvalidMessageCursorError } from "../domain/errors.mjs";
+import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
+import { createSqliteConversationStore } from "./sqlite-conversation-store.ts";
+import { createSqliteOutboxStore } from "./sqlite-outbox-store.ts";
+import { ConversationAccessError, ConversationInputError, IdempotencyConflictError, InvalidMessageCursorError } from "../domain/errors.ts";
 
 async function fixture() {
   const db=createSqliteClient({filename:":memory:",enableWal:false});

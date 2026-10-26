@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createSqliteClient, runSqliteMigrations } from "./sqlite.mjs";
-import { createSqliteArticleStore } from "./sqlite-article-store.mjs";
-import { ArticleAuthorizationError, ArticleSlugConflictError, ArticleInputError } from "../domain/errors.mjs";
+import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
+import { createSqliteArticleStore } from "./sqlite-article-store.ts";
+import { ArticleAuthorizationError, ArticleSlugConflictError, ArticleInputError } from "../domain/errors.ts";
 
 const blocks = [{ id: "p1", type: "paragraph", text: "A small test article." }];
 

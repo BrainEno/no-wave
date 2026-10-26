@@ -2,9 +2,9 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   IdempotencyConflictError, ConversationAccessError, ConversationInputError,
   ConversationNotFoundError, InvalidMessageCursorError,
-} from "../domain/errors.mjs";
-import { isUuid, requiredText } from "../domain/validation.mjs";
-import { normalizeParticipantIds } from "../domain/conversation.mjs";
+} from "../domain/errors.ts";
+import { isUuid, requiredText } from "../domain/validation.ts";
+import { normalizeParticipantIds } from "../domain/conversation.ts";
 
 const iso = (value) => value == null ? null : new Date(value).toISOString();
 const hash = (value) => createHash("sha256").update(JSON.stringify(value)).digest("hex");

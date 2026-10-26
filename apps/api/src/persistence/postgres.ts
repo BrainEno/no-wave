@@ -14,12 +14,12 @@ import {
   ProfileNotFoundError,
   TaxonomyConflictError,
   TaxonomyNotFoundError
-} from "../domain/errors.mjs";
-import { normalizeHashtag, validateTaxonomyKind } from "../domain/taxonomy.mjs";
-import { validateArticleLocale, validateArticleSlug, normalizeArticleInput, normalizeTaxonomyIds } from "../domain/article.mjs";
-import { isUuid, requiredText } from "../domain/validation.mjs";
-import { normalizeParticipantIds } from "../domain/conversation.mjs";
-import { validateProfileUrl } from "../domain/profile.mjs";
+} from "../domain/errors.ts";
+import { normalizeHashtag, validateTaxonomyKind } from "../domain/taxonomy.ts";
+import { validateArticleLocale, validateArticleSlug, normalizeArticleInput, normalizeTaxonomyIds } from "../domain/article.ts";
+import { isUuid, requiredText } from "../domain/validation.ts";
+import { normalizeParticipantIds } from "../domain/conversation.ts";
+import { validateProfileUrl } from "../domain/profile.ts";
 
 export function createPostgresClient({
   connectionString = process.env.DATABASE_URL,

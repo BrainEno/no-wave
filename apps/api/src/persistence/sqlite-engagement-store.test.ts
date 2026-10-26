@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createSqliteClient, runSqliteMigrations } from "./sqlite.mjs";
-import { createSqliteArticleStore } from "./sqlite-article-store.mjs";
-import { createSqliteEngagementStore } from "./sqlite-engagement-store.mjs";
-import { ArticleAuthorizationError, ArticleInputError, ArticleNotFoundError } from "../domain/errors.mjs";
+import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
+import { createSqliteArticleStore } from "./sqlite-article-store.ts";
+import { createSqliteEngagementStore } from "./sqlite-engagement-store.ts";
+import { ArticleAuthorizationError, ArticleInputError, ArticleNotFoundError } from "../domain/errors.ts";
 
 const blocks = [{ id: "p1", type: "paragraph", text: "An engagement test article." }];
 async function fixture() {

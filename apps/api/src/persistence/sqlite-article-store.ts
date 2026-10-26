@@ -4,14 +4,14 @@ import {
   ArticleSlugConflictError,
   ArticleAuthorizationError,
   ArticleNotFoundError,
-} from "../domain/errors.mjs";
+} from "../domain/errors.ts";
 import {
   validateArticleLocale,
   validateArticleSlug,
   normalizeArticleInput,
   normalizeTaxonomyIds,
-} from "../domain/article.mjs";
-import { isUuid, requiredText } from "../domain/validation.mjs";
+} from "../domain/article.ts";
+import { isUuid, requiredText } from "../domain/validation.ts";
 
 /**
  * SQLite implementation of the article/content persistence slice.
