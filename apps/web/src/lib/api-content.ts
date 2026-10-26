@@ -3,7 +3,7 @@ import {
   getArticleBySlug,
   getAuthorByUsername,
   listArticles as listFixtureArticles,
-} from "./content.mjs";
+} from "./content.ts";
 
 const ARTICLES_QUERY = `
   query PublicArticles($locale: String!, $query: String!, $limit: Int!, $offset: Int!) {

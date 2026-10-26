@@ -9,7 +9,7 @@ import {
   getAuthorByUsername,
   listArticles,
   defaultLocale
-} from "./content.mjs";
+} from "./content.ts";
 
 test("article paths encode slugs and use a locale prefix only for non-default locales", () => {
   assert.equal(articlePath("hello world"), "/articles/hello%20world");

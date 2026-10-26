@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createApiContentClient } from "./api-content.mjs";
+import { createApiContentClient } from "./api-content.ts";
 
 const article = {
   id: "article-1",

@@ -1,7 +1,7 @@
 import { GraphQLError } from "graphql";
 import { createSchema } from "graphql-yoga";
-import { AuthorizationError, requireAuthenticatedActor } from "../../security/authorization.mjs";
-import { ConversationNotFoundError, DomainError } from "../../domain/errors.mjs";
+import { AuthorizationError, requireAuthenticatedActor } from "../../security/authorization.ts";
+import { ConversationNotFoundError, DomainError } from "../../domain/errors.ts";
 
 function rethrowApiError(error) {
   if (error instanceof AuthorizationError || error instanceof DomainError) {
