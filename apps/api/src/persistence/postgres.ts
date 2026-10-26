@@ -786,32 +786,20 @@ export function createPostgresStore(sql) {
       }
       if (typeof query !== "string" || query.length > 200) throw new ArticleInputError("query must be a string no longer than 200 characters.");
       const search = query.trim() ? query.trim() : null;
-      // Keep substring semantics while escaping LIKE metacharacters so user
-      // input cannot broaden results. PostgreSQL can use the pg_trgm indexes
-      // for non-empty terms instead of scanning every published translation.
+      // Escape LIKE metacharacters to preserve literal substring semantics.
+      // The pg_trgm GIN indexes make non-empty title/summary searches indexable.
       const searchPattern = search === null
         ? null
-        : `%${search.replace(/[\\\\%_]/g, "\\\\      const search = query.trim() ? query.trim() : null;
+        : "%" + search.replace(/[\\%_]/g, "\\$&") + "%";
       const rows = await sql.unsafe(
-        `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at,
+        \`SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at,
                 t.locale, t.title, t.summary, t.content_blocks
          FROM articles AS a
          JOIN article_translations AS t ON t.article_id = a.id
          WHERE a.status = 'published' AND t.locale = $1
-           AND ($2::text IS NULL OR position(lower($2) in lower(t.title)) > 0 OR position(lower($2) in lower(t.summary)) > 0)
+           AND ($2::text IS NULL OR t.title ILIKE $2 ESCAPE E'\\\\' OR t.summary ILIKE $2 ESCAPE E'\\\\')
          ORDER BY a.published_at DESC, a.id DESC
-         LIMIT $3 OFFSET $4`,
-        [locale, search, limit, offset],
-      );")}%`;
-      const rows = await sql.unsafe(
-        `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at,
-                t.locale, t.title, t.summary, t.content_blocks
-         FROM articles AS a
-         JOIN article_translations AS t ON t.article_id = a.id
-         WHERE a.status = 'published' AND t.locale = $1
-           AND ($2::text IS NULL OR t.title ILIKE $2 ESCAPE E'\\\\\\\\' OR t.summary ILIKE $2 ESCAPE E'\\\\\\\\')
-         ORDER BY a.published_at DESC, a.id DESC
-         LIMIT $3 OFFSET $4`,
+         LIMIT $3 OFFSET $4\`,
         [locale, searchPattern, limit, offset],
       );
       return rows.map(mapArticle);
