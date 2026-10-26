@@ -8,6 +8,20 @@ export const metadata: Metadata = {
   applicationName: "无浪潮 Nowave",
 };
 
+const fontStylesheet =
+  "https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@400;500;700&family=Noto+Serif+SC:wght@500;600;700&family=Noto+Sans+SC:wght@400;500&display=swap";
+
 export default function RootLayout({ children }: { children: ReactNode }) {
-  return <html lang="zh-CN"><body style={{ margin: 0, fontFamily: "system-ui, sans-serif", color: "#171717" }}>{children}</body></html>;
+  return (
+    <html lang="zh-CN">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link rel="stylesheet" href={fontStylesheet} />
+      </head>
+      <body style={{ margin: 0, fontFamily: "system-ui, sans-serif", color: "#171717" }}>
+        {children}
+      </body>
+    </html>
+  );
 }
