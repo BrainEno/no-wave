@@ -6,7 +6,7 @@ import {
   homePath,
   listArticles,
   supportedLocales
-} from "@/lib/content.mjs";
+} from "@/lib/content.ts";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://example.invalid";

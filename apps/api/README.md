@@ -23,7 +23,7 @@ Migrations are explicit release steps; API startup does not silently change the 
 - `createPostgresClient()` creates a postgres.js connection pool and validates the connection URL.
 - `runMigrations(sql)` applies ordered SQL migrations under an advisory lock and records versions.
 - `createPostgresStore(sql)` is the current infrastructure adapter.
-- `src/application/persistence-ports.mjs` defines the required domain-grouped adapter contract, and `src/application/services.mjs` is the application-facing composition seam. Domain validation and errors live under `src/domain/`; PostgreSQL-specific queries, transactions, constraints and row mapping remain in `src/persistence/`.
+- `src/application/persistence-ports.ts` defines the required domain-grouped adapter contract, and `src/application/services.ts` is the application-facing composition seam. Domain validation and errors live under `src/domain/`; PostgreSQL-specific queries, transactions, constraints and row mapping remain in `src/persistence/`.
 - `DATABASE_PROVIDER` selects a registered adapter at startup. Currently only `postgres` is registered. `mongodb` and `sqlite` fail explicitly until their adapters exist and pass the shared behavior contract; the application never silently falls back to PostgreSQL.
 - Message writes require an existing conversation membership. Sender identity must come from the server-verified actor, never a client-supplied `senderId`.
 - Reusing an idempotency key with a different payload fails with `IDEMPOTENCY_CONFLICT`.

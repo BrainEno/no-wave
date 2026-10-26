@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { ArticleArchiveContent } from "@/components/content-pages";
-import { archiveMetadata, defaultLocale } from "@/lib/content.mjs";
+import { archiveMetadata, defaultLocale } from "@/lib/content.ts";
 
 export const metadata: Metadata = archiveMetadata(defaultLocale) as Metadata;
 

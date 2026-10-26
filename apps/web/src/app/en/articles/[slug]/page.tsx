@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ArticleDetailContent } from "@/components/content-pages";
-import { articleMetadata } from "@/lib/content.mjs";
-import { getPublicArticle } from "@/lib/api-content.mjs";
+import { articleMetadata } from "@/lib/content.ts";
+import { getPublicArticle } from "@/lib/api-content.ts";
 
 type PageProps = { params: Promise<{ slug: string }> };
 

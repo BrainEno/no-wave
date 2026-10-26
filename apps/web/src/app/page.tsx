@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { HomeContent } from "@/components/content-pages";
-import { defaultLocale, homeMetadata } from "@/lib/content.mjs";
+import { defaultLocale, homeMetadata } from "@/lib/content.ts";
 
 export const metadata: Metadata = homeMetadata(defaultLocale) as Metadata;
 

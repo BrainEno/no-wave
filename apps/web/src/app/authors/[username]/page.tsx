@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { AuthorProfileContent } from "@/components/content-pages";
-import { authorMetadata, defaultLocale } from "@/lib/content.mjs";
-import { getPublicAuthor } from "@/lib/api-content.mjs";
+import { authorMetadata, defaultLocale } from "@/lib/content.ts";
+import { getPublicAuthor } from "@/lib/api-content.ts";
 
 type PageProps = { params: Promise<{ username: string }> };
 

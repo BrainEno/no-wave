@@ -19,6 +19,13 @@ importers:
       postgres:
         specifier: 3.4.7
         version: 3.4.7
+    devDependencies:
+      '@types/node':
+        specifier: 24.10.0
+        version: 24.10.0
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
 
   apps/web:
     dependencies:

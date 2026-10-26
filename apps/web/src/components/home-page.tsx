@@ -1,7 +1,7 @@
 import Link from "next/link";
-import type { ArticleView, Locale } from "@/lib/content.mjs";
-import type { CategoryView } from "@/lib/api-content.mjs";
-import { archivePath, articlePath, getMessages, homePath } from "@/lib/content.mjs";
+import type { ArticleView, Locale } from "@/lib/content.ts";
+import type { CategoryView } from "@/lib/api-content.ts";
+import { archivePath, articlePath, getMessages, homePath } from "@/lib/content.ts";
 import styles from "./home-page.module.css";
 
 function dateLabel(value: string, locale: Locale) {

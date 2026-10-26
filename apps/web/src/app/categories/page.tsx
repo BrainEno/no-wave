@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { CategoryIndexContent } from "@/components/discovery-pages";
-import { listPublicCategories } from "@/lib/api-content.mjs";
+import { listPublicCategories } from "@/lib/api-content.ts";
 
 export const metadata: Metadata = {
   title: "作品分类",
