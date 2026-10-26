@@ -598,6 +598,40 @@ test("article CRUD preserves author ownership, publish visibility and locale sep
   }
 });
 
+
+test("public article search treats LIKE metacharacters as literal text", integrationOptions, async () => {
+  const ownerId = `it-search-owner-${randomUUID()}`;
+  const token = `literal-${randomUUID().replaceAll("-", "")}`;
+  const contentBlocks = [{ id: "body", type: "paragraph", text: "Search escaping fixture." }];
+  const articles = [];
+  try {
+    for (const [suffix, marker] of [["literal", "%"], ["wildcard", "x"]]) {
+      articles.push(await store.createArticle({
+        authorId: ownerId,
+        slug: `it-search-literal-${token}-${suffix}`,
+        title: `${token}${marker}literal match`,
+        summary: "search escaping fixture",
+        locale: "en",
+        contentBlocks,
+        publish: true,
+        workType: "essay",
+      }));
+    }
+
+    const matches = await store.listPublishedArticles({
+      locale: "en",
+      query: `${token}%literal`,
+      limit: 10,
+      offset: 0,
+    });
+    assert.deepEqual(matches.map((article) => article.id), [articles[0].id]);
+  } finally {
+    for (const article of articles) {
+      await sql.unsafe("DELETE FROM articles WHERE id = $1", [article.id]);
+    }
+  }
+});
+
 test("public article search supports bounded pagination and validates offsets", integrationOptions, async () => {
   const ownerId = `it-pagination-owner-${randomUUID()}`;
   const suffix = randomUUID().replaceAll("-", "");
