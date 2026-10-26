@@ -315,6 +315,28 @@ test("public article query forwards pagination arguments to persistence", async 
 });
 
 
+test("public taxonomy query forwards pagination arguments to persistence", async () => {
+  let received;
+  const store = {
+    async listTaxonomies(args) {
+      received = args;
+      return [];
+    },
+  };
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/graphql`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        query: '{ taxonomies(kind: "category", locale: "en", query: "poetry", limit: 10, offset: 20) { id slug } }',
+      }),
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { data: { taxonomies: [] } });
+    assert.deepEqual(received, { kind: "category", locale: "en", query: "poetry", limit: 10, offset: 20 });
+  }, { store });
+});
+
 test("REST health endpoint is available independently of GraphQL", async () => {
   await withServer(async (baseUrl) => {
     const response = await fetch(`${baseUrl}/api/v1/health`);

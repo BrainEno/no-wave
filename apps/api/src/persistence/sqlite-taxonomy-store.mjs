@@ -40,21 +40,22 @@ export function createSqliteTaxonomyStore(db) {
     const row = get(taxonomySelect + " WHERE " + where, locale, locale, locale, ...params);
     return mapTaxonomy(row);
   };
-  function validateList({ locale = "zh-CN", query = "", limit = 100 }) {
+  function validateList({ locale = "zh-CN", query = "", limit = 100, offset = 0 }) {
     validateArticleLocale(locale);
     if (typeof query !== "string" || query.length > 200) throw new ArticleInputError("query must be a string no longer than 200 characters.");
     if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
-    return { locale, query: query.trim().toLocaleLowerCase(locale) };
+    if (!Number.isInteger(offset) || offset < 0 || offset > 1000000) throw new ArticleInputError("offset must be an integer between 0 and 1000000.");
+    return { locale, query: query.trim().toLocaleLowerCase(locale), offset };
   }
   return Object.freeze({
-    listTaxonomies({ kind, locale = "zh-CN", query = "", limit = 100 }) {
+    listTaxonomies({ kind, locale = "zh-CN", query = "", limit = 100, offset = 0 }) {
       validateTaxonomyKind(kind);
-      const input = validateList({ locale, query, limit });
+      const input = validateList({ locale, query, limit, offset });
       const rows = all(taxonomySelect + `
         WHERE tax.kind = ? AND COALESCE(requested.name, fallback.name) IS NOT NULL
           AND (? = '' OR instr(lower(COALESCE(requested.name, fallback.name)), ?) > 0)
-        ORDER BY lower(COALESCE(requested.name, fallback.name)), tax.id LIMIT ?
-      `, input.locale, input.locale, input.locale, kind, input.query, input.query, limit);
+        ORDER BY lower(COALESCE(requested.name, fallback.name)), tax.id LIMIT ? OFFSET ?
+      `, input.locale, input.locale, input.locale, kind, input.query, input.query, limit, input.offset);
       return rows.map(mapTaxonomy);
     },
     getTaxonomyBySlug({ kind, slug, locale = "zh-CN" }) {

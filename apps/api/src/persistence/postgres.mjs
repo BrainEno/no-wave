@@ -117,11 +117,12 @@ function mapArticle(row) {
     publishedAt: iso(row.published_at),
   };
 }
-async function listTaxonomiesFrom(executor, { kind, locale = "zh-CN", query = "", limit = 100 }) {
+async function listTaxonomiesFrom(executor, { kind, locale = "zh-CN", query = "", limit = 100, offset = 0 }) {
   validateTaxonomyKind(kind);
   validateArticleLocale(locale);
   if (typeof query !== "string" || query.length > 200) throw new ArticleInputError("query must be a string no longer than 200 characters.");
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
+  if (!Number.isInteger(offset) || offset < 0 || offset > 1000000) throw new ArticleInputError("offset must be an integer between 0 and 1000000.");
   const normalizedQuery = query.trim() ? query.trim().toLocaleLowerCase(locale) : null;
   const rows = await executor.unsafe(
     `SELECT tax.id, tax.kind, tax.slug, tax.created_by,
@@ -139,8 +140,8 @@ async function listTaxonomiesFrom(executor, { kind, locale = "zh-CN", query = ""
      WHERE tax.kind = $1 AND COALESCE(requested.name, fallback.name) IS NOT NULL
        AND ($3::text IS NULL OR position($3 in lower(COALESCE(requested.name, fallback.name))) > 0)
      ORDER BY lower(COALESCE(requested.name, fallback.name)), tax.id
-     LIMIT $4`,
-    [kind, locale, normalizedQuery, limit],
+     LIMIT $4 OFFSET $5`,
+    [kind, locale, normalizedQuery, limit, offset],
   );
   return rows.map(mapTaxonomy);
 }
@@ -469,8 +470,8 @@ export function createPostgresStore(sql) {
         return true;
       });
     },
-    async listTaxonomies({ kind, locale = "zh-CN", query = "", limit = 100 }) {
-      return listTaxonomiesFrom(sql, { kind, locale, query, limit });
+    async listTaxonomies({ kind, locale = "zh-CN", query = "", limit = 100, offset = 0 }) {
+      return listTaxonomiesFrom(sql, { kind, locale, query, limit, offset });
     },
     async getTaxonomyBySlug({ kind, slug, locale = "zh-CN" }) {
       validateTaxonomyKind(kind);
