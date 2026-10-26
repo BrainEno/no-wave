@@ -1,5 +1,5 @@
-import { createPersistencePorts } from "./persistence-ports.mjs";
-import { ArticleInputError } from "../domain/errors.mjs";
+import { createPersistencePorts } from "./persistence-ports.ts";
+import { ArticleInputError } from "../domain/errors.ts";
 
 /**
  * Application-facing service facade.

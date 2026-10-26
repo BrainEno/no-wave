@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { normalizeArticleInput, normalizeTaxonomyIds, validateArticleLocale, validateArticleSlug, validateArticleWorkType } from "./article.mjs";
+import { normalizeArticleInput, normalizeTaxonomyIds, validateArticleLocale, validateArticleSlug, validateArticleWorkType } from "./article.ts";
 
 const blocks = [{ id: "paragraph-1", type: "paragraph", text: "A complete paragraph." }];
 

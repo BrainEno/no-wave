@@ -1,5 +1,5 @@
-import { ArticleInputError } from "./errors.mjs";
-import { isUuid, requiredText } from "./validation.mjs";
+import { ArticleInputError } from "./errors.ts";
+import { isUuid, requiredText } from "./validation.ts";
 
 const SUPPORTED_ARTICLE_LOCALES = new Set(["zh-CN", "zh-TW", "en"]);
 const ARTICLE_WORK_TYPES = new Set(["novel", "short_story", "poetry", "essay", "criticism", "literary_criticism", "nonfiction", "serial", "other"]);

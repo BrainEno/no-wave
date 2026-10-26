@@ -1,4 +1,4 @@
-import { ConversationInputError } from "./errors.mjs";
+import { ConversationInputError } from "./errors.ts";
 
 export function normalizeParticipantIds(name, ids, max = 20) {
   if (!Array.isArray(ids) || ids.length > max) {

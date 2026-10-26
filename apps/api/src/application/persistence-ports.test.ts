@@ -5,8 +5,8 @@ import {
   assertPersistenceAdapter,
   createPersistencePorts,
   persistencePortMethods,
-} from "./persistence-ports.mjs";
-import { createApplicationServices } from "./services.mjs";
+} from "./persistence-ports.ts";
+import { createApplicationServices } from "./services.ts";
 
 function makeAdapter(overrides = {}) {
   const calls = [];
