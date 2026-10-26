@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { CategoryDetailContent } from "@/components/discovery-pages";
-import { getPublicCategory, listPublicCategoryArticles } from "@/lib/api-content.mjs";
+import { getPublicCategory, listPublicCategoryArticles } from "@/lib/api-content.ts";
 
 type PageProps = { params: Promise<{ slug: string }>; searchParams: Promise<{ page?: string }> };
 
