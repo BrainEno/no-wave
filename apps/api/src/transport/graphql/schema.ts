@@ -5,7 +5,9 @@ import type { createAuthContext } from "../../security/authentication.ts";
 
 export type ApiContext = {
   user: ReturnType<typeof createAuthContext>["user"];
-  services: ReturnType<typeof createApplicationServices> | null;
+  // The service facade is assembled dynamically from ports. Adapter shape is
+  // validated at runtime; individual resolvers serialize/validate their outputs.
+  services: Record<string, (...args: any[]) => any> | null;
 };
 import { AuthorizationError, requireAuthenticatedActor } from "../../security/authorization.ts";
 import { ConversationNotFoundError, DomainError } from "../../domain/errors.ts";

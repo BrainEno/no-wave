@@ -15,6 +15,8 @@ import { createPersistenceRuntime } from "./infrastructure/persistence-runtime.t
  */
 export function createApiServer({ env = process.env, store = null, applicationServices = null } = {}) {
   const services = applicationServices ?? (store ? createApplicationServices({ persistence: store }) : null);
+  // The service facade is dynamically assembled from the validated persistence ports.
+  const contextServices = services as unknown as ApiContext["services"];
   const handleRest = createRestHandler({ services });
   const yoga = createYoga<ApiContext>({
     schema: createApiSchema(),
@@ -23,9 +25,9 @@ export function createApiServer({ env = process.env, store = null, applicationSe
     context: async ({ request }): Promise<ApiContext> => {
       const auth = createAuthContext(request, env);
       if (auth.user?.sessionId && services && await services.isSessionRevoked(auth.user.sessionId)) {
-        return { user: null, services };
+        return { user: null, services: contextServices };
       }
-      return { ...auth, services };
+      return { ...auth, services: contextServices };
     },
   });
 
