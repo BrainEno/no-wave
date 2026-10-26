@@ -57,6 +57,9 @@ These rules apply to humans and coding agents working on BOT THK.
 
 ## TypeScript and dependency rules
 
+- New application, API, test, and automation code must use TypeScript (`.ts`/`.tsx`) whenever the runtime supports it; do not introduce new `.js`, `.mjs`, `.cjs`, or `.jsx` source files. Keep SQL, CSS, shell/config files and third-party generated output in their native formats.
+- Use explicit `.ts` extensions for relative TypeScript imports in this Node 24 workspace. Keep `pnpm typecheck` and the full test command green for every pull request.
+
 - Prefer strict TypeScript and explicit boundary validation.
 - Avoid `any` unless justified narrowly in a comment.
 - Use structured logs and typed error handling. Never log passwords, access/refresh tokens, cookies, authorization headers or sensitive payloads.
