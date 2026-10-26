@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createSqliteClient, runSqliteMigrations } from "./sqlite.mjs";
-import { createSqliteSessionStore } from "./sqlite-session-store.mjs";
+import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
+import { createSqliteSessionStore } from "./sqlite-session-store.ts";
 
 async function fixture() {
   const db = createSqliteClient({ filename: ":memory:", enableWal: false });

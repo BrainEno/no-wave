@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createSqliteClient, runSqliteMigrations } from "./sqlite.mjs";
-import { createSqliteTaxonomyStore } from "./sqlite-taxonomy-store.mjs";
-import { ArticleAuthorizationError, ArticleInputError } from "../domain/errors.mjs";
+import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
+import { createSqliteTaxonomyStore } from "./sqlite-taxonomy-store.ts";
+import { ArticleAuthorizationError, ArticleInputError } from "../domain/errors.ts";
 
 async function fixture() {
   const db = createSqliteClient({ filename: ":memory:", enableWal: false });

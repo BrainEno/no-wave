@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 import {
   ArticleInputError, ArticleAuthorizationError, TaxonomyConflictError,
-} from "../domain/errors.mjs";
-import { normalizeHashtag, validateTaxonomyKind } from "../domain/taxonomy.mjs";
-import { validateArticleLocale, validateArticleSlug } from "../domain/article.mjs";
-import { isUuid, requiredText } from "../domain/validation.mjs";
+} from "../domain/errors.ts";
+import { normalizeHashtag, validateTaxonomyKind } from "../domain/taxonomy.ts";
+import { validateArticleLocale, validateArticleSlug } from "../domain/article.ts";
+import { isUuid, requiredText } from "../domain/validation.ts";
 
 export function createSqliteTaxonomyStore(db) {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") {

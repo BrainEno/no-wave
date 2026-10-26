@@ -1,13 +1,13 @@
-import { assertPersistenceAdapter } from "../application/persistence-ports.mjs";
-import { createSqliteArticleStore } from "./sqlite-article-store.mjs";
-import { createSqliteTaxonomyStore } from "./sqlite-taxonomy-store.mjs";
-import { createSqliteProfileStore } from "./sqlite-profile-store.mjs";
-import { createSqliteEngagementStore } from "./sqlite-engagement-store.mjs";
-import { createSqliteConversationStore } from "./sqlite-conversation-store.mjs";
-import { createSqliteNotificationStore } from "./sqlite-notification-store.mjs";
-import { createSqliteSessionStore } from "./sqlite-session-store.mjs";
-import { createSqliteOutboxStore } from "./sqlite-outbox-store.mjs";
-import { createSqliteClient, runSqliteMigrations } from "./sqlite.mjs";
+import { assertPersistenceAdapter } from "../application/persistence-ports.ts";
+import { createSqliteArticleStore } from "./sqlite-article-store.ts";
+import { createSqliteTaxonomyStore } from "./sqlite-taxonomy-store.ts";
+import { createSqliteProfileStore } from "./sqlite-profile-store.ts";
+import { createSqliteEngagementStore } from "./sqlite-engagement-store.ts";
+import { createSqliteConversationStore } from "./sqlite-conversation-store.ts";
+import { createSqliteNotificationStore } from "./sqlite-notification-store.ts";
+import { createSqliteSessionStore } from "./sqlite-session-store.ts";
+import { createSqliteOutboxStore } from "./sqlite-outbox-store.ts";
+import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
 
 /**
  * Compose the SQLite domain slices into one adapter-shaped object.

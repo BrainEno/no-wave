@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { persistencePortMethods } from "../application/persistence-ports.mjs";
-import { createSqlitePersistence, createSqliteStore } from "./sqlite-store.mjs";
-import { createSqliteClient, runSqliteMigrations } from "./sqlite.mjs";
+import { persistencePortMethods } from "../application/persistence-ports.ts";
+import { createSqlitePersistence, createSqliteStore } from "./sqlite-store.ts";
+import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
 
 test("SQLite slices compose into a complete adapter-shaped object without runtime registration", async () => {
   const db = createSqliteClient({ filename: ":memory:", enableWal: false });
