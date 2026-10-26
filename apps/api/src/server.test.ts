@@ -393,6 +393,95 @@ test("REST public article detail calls the same service and returns 404 for miss
   });
 });
 
+
+test("REST category index uses the shared taxonomy service and forwards bounded pagination", async () => {
+  let received;
+  const categories = [{ id: "category-1", kind: "category", slug: "poetry", name: "Poetry", locale: "en", articleCount: 3 }];
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/v1/categories?locale=en&query=poe&limit=10&offset=20`);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { data: categories });
+    assert.deepEqual(received, { kind: "category", locale: "en", query: "poe", limit: 10, offset: 20 });
+  }, {
+    store: {
+      async listTaxonomies(args) { received = args; return categories; },
+    },
+  });
+});
+
+test("REST category detail is localized and returns a stable 404 when absent", async () => {
+  let received;
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/v1/categories/poetry?locale=zh-TW`);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { data: { id: "category-1", slug: "poetry", locale: "zh-TW", name: "詩歌" } });
+    assert.deepEqual(received, { kind: "category", slug: "poetry", locale: "zh-TW" });
+
+    const missing = await fetch(`${baseUrl}/api/v1/categories/missing?locale=en`);
+    assert.equal(missing.status, 404);
+    assert.deepEqual(await missing.json(), {
+      error: { code: "NOT_FOUND", message: "The category was not found." },
+    });
+  }, {
+    store: {
+      async getTaxonomyBySlug(args) {
+        received = args;
+        return args.slug === "poetry" ? { id: "category-1", slug: args.slug, locale: args.locale, name: args.locale === "zh-TW" ? "詩歌" : "Poetry" } : null;
+      },
+    },
+  });
+});
+
+test("REST category articles verify category visibility and forward pagination", async () => {
+  let received;
+  let categoryLookups = 0;
+  const articles = [{ id: "article-1", slug: "poem-one", locale: "en", title: "Poem One" }];
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/v1/categories/poetry/articles?locale=en&limit=5&offset=10`);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { data: articles });
+    assert.deepEqual(received, { kind: "category", slug: "poetry", locale: "en", limit: 5, offset: 10 });
+
+    const missing = await fetch(`${baseUrl}/api/v1/categories/missing/articles?locale=en`);
+    assert.equal(missing.status, 404);
+    assert.equal(categoryLookups, 2);
+  }, {
+    store: {
+      async getTaxonomyBySlug(args) { categoryLookups += 1; return args.slug === "poetry" ? { id: "category-1", slug: args.slug } : null; },
+      async listTaxonomyArticles(args) { received = args; return articles; },
+    },
+  });
+});
+
+test("REST rejects unsupported locales, oversized search terms and offsets before persistence", async () => {
+  let calls = 0;
+  const oversizedQuery = "x".repeat(201);
+  await withServer(async (baseUrl) => {
+    for (const path of [
+      "/api/v1/articles?locale=fr",
+      `/api/v1/articles?query=${oversizedQuery}`,
+      "/api/v1/articles?offset=100001",
+      "/api/v1/categories?locale=fr",
+      `/api/v1/categories?query=${oversizedQuery}`,
+      "/api/v1/categories?offset=1000001",
+    ]) {
+      const response = await fetch(`${baseUrl}${path}`);
+      assert.equal(response.status, 400, path);
+      assert.equal((await response.json()).error.code, "BAD_USER_INPUT");
+    }
+    const malformedSlug = await fetch(`${baseUrl}/api/v1/categories/%E0%A4%A`);
+    assert.equal(malformedSlug.status, 400);
+    assert.equal((await malformedSlug.json()).error.code, "BAD_USER_INPUT");
+    assert.equal(calls, 0);
+  }, {
+    store: {
+      async listPublishedArticles() { calls += 1; return []; },
+      async listTaxonomies() { calls += 1; return []; },
+      async getTaxonomyBySlug() { calls += 1; return null; },
+    },
+  });
+});
+
 test("REST rejects invalid pagination instead of silently coercing values", async () => {
   await withServer(async (baseUrl) => {
     for (const query of ["?limit=0", "?limit=1.5", "?offset=-1", "?limit=101"]) {

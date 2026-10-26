@@ -7,6 +7,19 @@ This package is the API layer of the independent BOT THK rebuild. The previous p
 - `GET /health` is a liveness probe and does not require persistence.
 - `GET /ready` is a readiness probe: it returns `200` only when a configured persistence store passes its health check, otherwise `503` with a sanitized response. Both responses are non-cacheable.
 
+## Versioned REST API
+
+The standalone REST transport currently exposes public read-only endpoints alongside GraphQL. All responses use JSON and `Cache-Control: no-store`.
+
+- `GET /api/v1/health` — liveness probe.
+- `GET /api/v1/articles?locale=zh-CN&query=&limit=20&offset=0` — published article search and pagination.
+- `GET /api/v1/articles/:slug?locale=zh-CN` — one published article.
+- `GET /api/v1/categories?locale=zh-CN&query=&limit=20&offset=0` — localized category discovery and pagination.
+- `GET /api/v1/categories/:slug?locale=zh-CN` — localized category detail.
+- `GET /api/v1/categories/:slug/articles?locale=zh-CN&limit=20&offset=0` — published localized articles in a category.
+
+Supported locales are `zh-CN`, `zh-TW`, and `en`; search terms are limited to 200 characters; limits are 1–100. Invalid query values return `400 BAD_USER_INPUT`, unknown article/category resources return `404 NOT_FOUND`, and missing persistence returns `503 SERVICE_UNAVAILABLE`. Category article requests resolve the category before listing content, so unknown categories do not produce a misleading successful empty list.
+
 ## PostgreSQL setup
 
 Set `DATABASE_PROVIDER=postgres` and `DATABASE_URL` to a developer-owned PostgreSQL database, then run:

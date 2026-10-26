@@ -1,14 +1,26 @@
+import type { IncomingMessage, ServerResponse } from "node:http";
+
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
   "cache-control": "no-store",
 };
+const SUPPORTED_LOCALES = new Set(["zh-CN", "zh-TW", "en"]);
+const MAX_QUERY_LENGTH = 200;
+const MAX_ARTICLE_OFFSET = 100_000;
+const MAX_TAXONOMY_OFFSET = 1_000_000;
 
-function sendJson(response, status, body) {
+type RestServices = Record<string, (...args: any[]) => any>;
+
+function sendJson(response: ServerResponse, status: number, body: unknown): void {
   response.writeHead(status, JSON_HEADERS);
   response.end(JSON.stringify(body));
 }
 
-function parseInteger(params, name, fallback, min, max) {
+function sendBadInput(response: ServerResponse, message = "Invalid query parameters."): void {
+  sendJson(response, 400, { error: { code: "BAD_USER_INPUT", message } });
+}
+
+function parseInteger(params: URLSearchParams, name: string, fallback: number, min: number, max: number): number | null {
   const raw = params.get(name);
   if (raw === null) return fallback;
   if (!/^(0|[1-9]\d*)$/.test(raw)) return null;
@@ -16,12 +28,42 @@ function parseInteger(params, name, fallback, min, max) {
   return Number.isSafeInteger(value) && value >= min && value <= max ? value : null;
 }
 
+function parseLocale(url: URL): string | null {
+  const locale = url.searchParams.get("locale") ?? "zh-CN";
+  return SUPPORTED_LOCALES.has(locale) ? locale : null;
+}
+
+function parseQuery(url: URL): string | null {
+  const query = url.searchParams.get("query") ?? "";
+  return query.length <= MAX_QUERY_LENGTH ? query : null;
+}
+
+function parsePagination(url: URL, defaultLimit: number, maxOffset: number): { limit: number; offset: number } | null {
+  const limit = parseInteger(url.searchParams, "limit", defaultLimit, 1, 100);
+  const offset = parseInteger(url.searchParams, "offset", 0, 0, maxOffset);
+  return limit === null || offset === null ? null : { limit, offset };
+}
+
+function decodeSlug(encodedSlug: string): string | null {
+  let slug: string;
+  try {
+    slug = decodeURIComponent(encodedSlug);
+  } catch {
+    return null;
+  }
+  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) ? slug : null;
+}
+
+function sendUnavailable(response: ServerResponse): void {
+  sendJson(response, 503, { error: { code: "SERVICE_UNAVAILABLE", message: "Persistence is not configured." } });
+}
+
 /**
  * REST transport adapter. It calls application services directly; it never
  * makes an HTTP round-trip to GraphQL or reaches into persistence adapters.
  */
-export function createRestHandler({ services }) {
-  return async function handleRest(request, response) {
+export function createRestHandler({ services }: { services: RestServices | null }) {
+  return async function handleRest(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
     const url = new URL(request.url ?? "/", "http://localhost");
     if (url.pathname !== "/api/v1" && !url.pathname.startsWith("/api/v1/")) return false;
 
@@ -38,19 +80,18 @@ export function createRestHandler({ services }) {
 
     if (url.pathname === "/api/v1/articles") {
       if (!services) {
-        sendJson(response, 503, { error: { code: "SERVICE_UNAVAILABLE", message: "Persistence is not configured." } });
+        sendUnavailable(response);
         return true;
       }
-      const limit = parseInteger(url.searchParams, "limit", 20, 1, 100);
-      const offset = parseInteger(url.searchParams, "offset", 0, 0, Number.MAX_SAFE_INTEGER);
-      const locale = url.searchParams.get("locale") ?? "zh-CN";
-      const query = url.searchParams.get("query") ?? "";
-      if (limit === null || offset === null || !locale.trim() || locale !== locale.trim()) {
-        sendJson(response, 400, { error: { code: "BAD_USER_INPUT", message: "Invalid locale, limit, or offset query parameter." } });
+      const locale = parseLocale(url);
+      const query = parseQuery(url);
+      const pagination = parsePagination(url, 20, MAX_ARTICLE_OFFSET);
+      if (!locale || query === null || !pagination) {
+        sendBadInput(response, "Invalid locale, query, limit, or offset query parameter.");
         return true;
       }
       try {
-        const articles = await services.listPublishedArticles({ locale, query, limit, offset });
+        const articles = await services.listPublishedArticles({ locale, query, ...pagination });
         sendJson(response, 200, { data: articles });
       } catch {
         sendJson(response, 500, { error: { code: "INTERNAL_SERVER_ERROR", message: "The request could not be completed." } });
@@ -61,19 +102,13 @@ export function createRestHandler({ services }) {
     const articleMatch = url.pathname.match(/^\/api\/v1\/articles\/([^/]+)$/);
     if (articleMatch) {
       if (!services) {
-        sendJson(response, 503, { error: { code: "SERVICE_UNAVAILABLE", message: "Persistence is not configured." } });
+        sendUnavailable(response);
         return true;
       }
-      let slug;
-      try {
-        slug = decodeURIComponent(articleMatch[1]);
-      } catch {
-        sendJson(response, 400, { error: { code: "BAD_USER_INPUT", message: "The article slug is invalid." } });
-        return true;
-      }
-      const locale = url.searchParams.get("locale") ?? "zh-CN";
-      if (!slug || slug.trim() !== slug || !locale.trim() || locale !== locale.trim()) {
-        sendJson(response, 400, { error: { code: "BAD_USER_INPUT", message: "Invalid article slug or locale." } });
+      const slug = decodeSlug(articleMatch[1]);
+      const locale = parseLocale(url);
+      if (!slug || !locale) {
+        sendBadInput(response, "Invalid article slug or locale.");
         return true;
       }
       try {
@@ -82,6 +117,79 @@ export function createRestHandler({ services }) {
           sendJson(response, 404, { error: { code: "NOT_FOUND", message: "The article was not found." } });
         } else {
           sendJson(response, 200, { data: article });
+        }
+      } catch {
+        sendJson(response, 500, { error: { code: "INTERNAL_SERVER_ERROR", message: "The request could not be completed." } });
+      }
+      return true;
+    }
+
+    if (url.pathname === "/api/v1/categories") {
+      if (!services) {
+        sendUnavailable(response);
+        return true;
+      }
+      const locale = parseLocale(url);
+      const query = parseQuery(url);
+      const pagination = parsePagination(url, 20, MAX_TAXONOMY_OFFSET);
+      if (!locale || query === null || !pagination) {
+        sendBadInput(response, "Invalid locale, query, limit, or offset query parameter.");
+        return true;
+      }
+      try {
+        const categories = await services.listTaxonomies({ kind: "category", locale, query, ...pagination });
+        sendJson(response, 200, { data: categories });
+      } catch {
+        sendJson(response, 500, { error: { code: "INTERNAL_SERVER_ERROR", message: "The request could not be completed." } });
+      }
+      return true;
+    }
+
+    const categoryArticlesMatch = url.pathname.match(/^\/api\/v1\/categories\/([^/]+)\/articles$/);
+    if (categoryArticlesMatch) {
+      if (!services) {
+        sendUnavailable(response);
+        return true;
+      }
+      const slug = decodeSlug(categoryArticlesMatch[1]);
+      const locale = parseLocale(url);
+      const pagination = parsePagination(url, 20, MAX_TAXONOMY_OFFSET);
+      if (!slug || !locale || !pagination) {
+        sendBadInput(response, "Invalid category slug, locale, limit, or offset query parameter.");
+        return true;
+      }
+      try {
+        const category = await services.getTaxonomyBySlug({ kind: "category", slug, locale });
+        if (!category) {
+          sendJson(response, 404, { error: { code: "NOT_FOUND", message: "The category was not found." } });
+          return true;
+        }
+        const articles = await services.listTaxonomyArticles({ kind: "category", slug, locale, ...pagination });
+        sendJson(response, 200, { data: articles });
+      } catch {
+        sendJson(response, 500, { error: { code: "INTERNAL_SERVER_ERROR", message: "The request could not be completed." } });
+      }
+      return true;
+    }
+
+    const categoryMatch = url.pathname.match(/^\/api\/v1\/categories\/([^/]+)$/);
+    if (categoryMatch) {
+      if (!services) {
+        sendUnavailable(response);
+        return true;
+      }
+      const slug = decodeSlug(categoryMatch[1]);
+      const locale = parseLocale(url);
+      if (!slug || !locale) {
+        sendBadInput(response, "Invalid category slug or locale.");
+        return true;
+      }
+      try {
+        const category = await services.getTaxonomyBySlug({ kind: "category", slug, locale });
+        if (!category) {
+          sendJson(response, 404, { error: { code: "NOT_FOUND", message: "The category was not found." } });
+        } else {
+          sendJson(response, 200, { data: category });
         }
       } catch {
         sendJson(response, 500, { error: { code: "INTERNAL_SERVER_ERROR", message: "The request could not be completed." } });
