@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import test from "node:test";
-import { createAuthContext, verifyBearerToken } from "./authentication.mjs";
+import { createAuthContext, verifyBearerToken } from "./authentication.ts";
 
 const env = {
   AUTH_JWT_SECRET: "test-only-secret-that-is-at-least-32-bytes",

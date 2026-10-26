@@ -1,11 +1,11 @@
 import { createServer } from "node:http";
 import { createYoga } from "graphql-yoga";
-import { createApiSchema } from "./transport/graphql/schema.mjs";
-import { createRestHandler } from "./transport/rest/handler.mjs";
-import { createAuthContext } from "./security/authentication.mjs";
-import { createApplicationServices } from "./application/services.mjs";
-import { assertPersistenceAdapter } from "./application/persistence-ports.mjs";
-import { createPersistenceRuntime } from "./infrastructure/persistence-runtime.mjs";
+import { createApiSchema } from "./transport/graphql/schema.ts";
+import { createRestHandler } from "./transport/rest/handler.ts";
+import { createAuthContext } from "./security/authentication.ts";
+import { createApplicationServices } from "./application/services.ts";
+import { assertPersistenceAdapter } from "./application/persistence-ports.ts";
+import { createPersistenceRuntime } from "./infrastructure/persistence-runtime.ts";
 
 /**
  * Identity is accepted only after server-side bearer verification.

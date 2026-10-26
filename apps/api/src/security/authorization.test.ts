@@ -6,7 +6,7 @@ import {
   AuthorizationError,
   requireAuthenticatedActor,
   resolveMessageSender,
-} from "./authorization.mjs";
+} from "./authorization.ts";
 
 test("rejects missing or malformed authenticated identity", () => {
   for (const context of [undefined, null, {}, { user: {} }, { user: { id: "" } }, { user: { id: 42 } }, { user: { id: " user-a" } }]) {

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import test from "node:test";
-import { createApiServer } from "./server.mjs";
-import { persistencePortMethods } from "./application/persistence-ports.mjs";
+import { createApiServer } from "./server.ts";
+import { persistencePortMethods } from "./application/persistence-ports.ts";
 
 const authEnv = {
   AUTH_JWT_SECRET: "test-only-secret-that-is-at-least-32-bytes",

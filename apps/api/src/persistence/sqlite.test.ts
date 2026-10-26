@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createSqliteClient, runSqliteMigrations } from "./sqlite.mjs";
+import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
 
 test("SQLite client enables foreign keys and a bounded busy timeout", () => {
   const db = createSqliteClient({ filename: ":memory:", timeoutMs: 1250 });
