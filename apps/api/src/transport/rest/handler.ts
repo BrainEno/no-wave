@@ -31,6 +31,15 @@ function parseInteger(params: URLSearchParams, name: string, fallback: number, m
   return Number.isSafeInteger(value) && value >= min && value <= max ? value : null;
 }
 
+function hasDuplicateQueryParameters(params: URLSearchParams): boolean {
+  const seen = new Set<string>();
+  for (const key of params.keys()) {
+    if (seen.has(key)) return true;
+    seen.add(key);
+  }
+  return false;
+}
+
 function parseLocale(url: URL): string | null {
   const locale = url.searchParams.get("locale") ?? "zh-CN";
   return SUPPORTED_LOCALES.has(locale) ? locale : null;
@@ -571,6 +580,17 @@ export function createRestHandler({ services, env = process.env }: { services: R
   return async function handleRest(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
     const url = new URL(request.url ?? "/", "http://localhost");
     if (url.pathname !== "/api/v1" && !url.pathname.startsWith("/api/v1/")) return false;
+
+    // Every current REST query parameter is scalar. Reject duplicates rather
+    // than silently accepting URLSearchParams' first-value interpretation.
+    // Close the connection because a rejected write request may still have an unread body.
+    if (hasDuplicateQueryParameters(url.searchParams)) {
+      request.pause();
+      response.shouldKeepAlive = false;
+      response.setHeader("connection", "close");
+      sendBadInput(response, "Query parameters must not be repeated.");
+      return true;
+    }
 
     const mePath = url.pathname === "/api/v1/me";
     const meProfilePath = url.pathname === "/api/v1/me/profile";

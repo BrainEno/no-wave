@@ -1585,3 +1585,36 @@ test("REST notification routes are recipient-scoped and preserve the GraphQL JSO
     { method: "markAllNotificationsRead", args: { actorId: "reader-user" } },
   ]);
 });
+
+test("REST rejects duplicated query parameters before reading or writing route data", async () => {
+  await withServer(async (baseUrl) => {
+    const readResponse = await fetch(
+      `${baseUrl}/api/v1/articles?locale=zh-CN&locale=zh-TW&limit=1&limit=100`,
+    );
+    assert.equal(readResponse.status, 400);
+    assert.deepEqual(await readResponse.json(), {
+      error: { code: "BAD_USER_INPUT", message: "Query parameters must not be repeated." },
+    });
+    assert.equal(readResponse.headers.get("connection"), "close");
+
+    const writeResponse = await fetch(
+      `${baseUrl}/api/v1/articles?locale=zh-CN&locale=zh-TW`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          slug: "duplicate-query-test",
+          title: "Must not be written",
+          contentBlocks: [],
+          publish: false,
+        }),
+      },
+    );
+    assert.equal(writeResponse.status, 400);
+    assert.deepEqual(await writeResponse.json(), {
+      error: { code: "BAD_USER_INPUT", message: "Query parameters must not be repeated." },
+    });
+    assert.equal(writeResponse.headers.get("connection"), "close");
+  });
+});
+
