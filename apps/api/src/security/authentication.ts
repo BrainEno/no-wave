@@ -100,11 +100,11 @@ export function verifyBearerToken(
 
   // NumericDate claims are safe integer seconds. Enforce a bounded access-token
   // lifetime in addition to checking whether it has expired.
-  if (!Number.isSafeInteger(claims.iat) || claims.iat > nowSeconds) return null;
-  if (!Number.isSafeInteger(claims.exp) || claims.exp <= nowSeconds || claims.exp <= claims.iat) return null;
+  if (typeof claims.iat !== "number" || !Number.isSafeInteger(claims.iat) || claims.iat > nowSeconds) return null;
+  if (typeof claims.exp !== "number" || !Number.isSafeInteger(claims.exp) || claims.exp <= nowSeconds || claims.exp <= claims.iat) return null;
   if (claims.exp - claims.iat > maxTokenTtl) return null;
   if (claims.nbf !== undefined &&
-      (!Number.isSafeInteger(claims.nbf) || claims.nbf > nowSeconds || claims.nbf >= claims.exp)) return null;
+      (typeof claims.nbf !== "number" || !Number.isSafeInteger(claims.nbf) || claims.nbf > nowSeconds || claims.nbf >= claims.exp)) return null;
 
   // Identity and revocable session IDs are opaque: never silently normalize them.
   if (typeof claims.sub !== "string" || claims.sub.length === 0 || claims.sub.trim() !== claims.sub) return null;
