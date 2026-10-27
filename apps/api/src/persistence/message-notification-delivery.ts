@@ -1,10 +1,13 @@
+import { isUuid } from "../domain/validation.ts";
+
 /**
- * Converts durable message.created outbox events into per-recipient inbox rows.
- * The event key is reused per recipient, making delivery safe to retry after partial failure.
+ * Convert a durable message.created event into inbox rows. The adapter must
+ * select the current membership and write all recipients in one transaction,
+ * serialized with membership changes and conversation deletion.
  */
 export function createMessageNotificationDelivery({ store }) {
-  if (!store || typeof store.listConversationParticipantIds !== "function" || typeof store.createNotification !== "function") {
-    throw new TypeError("A store with conversation participant and notification operations is required.");
+  if (!store || typeof store.deliverMessageNotifications !== "function") {
+    throw new TypeError("A store with atomic message notification delivery is required.");
   }
   return async function deliverMessageNotification(event) {
     if (!event || event.event_type !== "message.created" || typeof event.event_key !== "string") {
@@ -17,26 +20,18 @@ export function createMessageNotificationDelivery({ store }) {
       }
     }
     if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
-        typeof payload.messageId !== "string" || typeof payload.conversationId !== "string" ||
-        typeof payload.senderId !== "string") {
+        !isUuid(payload.messageId) || typeof payload.conversationId !== "string" ||
+        payload.conversationId.length === 0 || payload.conversationId.trim() !== payload.conversationId ||
+        typeof payload.senderId !== "string" || payload.senderId.length === 0 || payload.senderId.trim() !== payload.senderId ||
+        event.event_key.length === 0 || event.event_key.trim() !== event.event_key ||
+        (event.aggregate_id !== undefined && event.aggregate_id !== payload.messageId)) {
       throw new TypeError("message.created event payload is malformed.");
     }
-    const participantIds = await store.listConversationParticipantIds({ conversationId: payload.conversationId });
-    if (!participantIds.includes(payload.senderId)) {
-      throw new Error("The message sender is not a current conversation participant.");
-    }
-    for (const userId of participantIds) {
-      if (userId === payload.senderId) continue;
-      await store.createNotification({
-        userId,
-        eventKey: event.event_key,
-        payload: {
-          type: "message.created",
-          messageId: payload.messageId,
-          conversationId: payload.conversationId,
-          senderId: payload.senderId,
-        },
-      });
-    }
+    await store.deliverMessageNotifications({
+      eventKey: event.event_key,
+      messageId: payload.messageId,
+      conversationId: payload.conversationId,
+      senderId: payload.senderId,
+    });
   };
 }

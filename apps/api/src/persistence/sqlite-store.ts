@@ -6,6 +6,7 @@ import { createSqliteEngagementStore } from "./sqlite-engagement-store.ts";
 import { createSqliteConversationStore } from "./sqlite-conversation-store.ts";
 import { createSqliteNotificationStore } from "./sqlite-notification-store.ts";
 import { createSqliteSessionStore } from "./sqlite-session-store.ts";
+import { createSqliteIdentityStore } from "./sqlite-identity-store.ts";
 import { createSqliteOutboxStore } from "./sqlite-outbox-store.ts";
 import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
 
@@ -30,6 +31,9 @@ export function createSqliteStore(db) {
     createSqliteConversationStore(db),
     createSqliteNotificationStore(db),
     createSqliteSessionStore(db),
+    // Identity replaces revokeSession with session-family revocation while
+    // preserving the legacy revoked-session lookup from the session slice.
+    createSqliteIdentityStore(db),
     createSqliteOutboxStore(db),
     {
       async health() {

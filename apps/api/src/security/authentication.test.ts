@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import test from "node:test";
-import { createAuthContext, verifyBearerToken } from "./authentication.ts";
+import { accessIssuerConfiguration, createAuthContext, signAccessToken, verifyBearerToken } from "./authentication.ts";
 
 const env = {
   AUTH_JWT_SECRET: "test-only-secret-that-is-at-least-32-bytes",
@@ -105,4 +105,16 @@ test("fails clearly when configured secret is too short or issuer/audience are m
     () => verifyBearerToken(requestWithToken(token(validClaims)), { AUTH_JWT_SECRET: env.AUTH_JWT_SECRET }, now),
     /ISSUER and AUTH_JWT_AUDIENCE are required/,
   );
+});
+
+test("issued access tokens satisfy the existing verifier and respect the configured TTL", () => {
+  const shortEnv = { ...env, AUTH_JWT_MAX_TTL_SECONDS: "60" };
+  const issued = signAccessToken({ subject: "new-user", tokenId: "unique-token-id", issuedAt: now, expiresAt: now + 60, env: shortEnv });
+  assert.deepEqual(verifyBearerToken(requestWithToken(issued), shortEnv, now), {
+    id: "new-user", sessionId: "unique-token-id", sessionExpiresAt: now + 60,
+  });
+  assert.equal(accessIssuerConfiguration(shortEnv).ttlSeconds, 60);
+  assert.throws(() => signAccessToken({ subject: "new-user", tokenId: "unique-token-id", issuedAt: now, expiresAt: now + 61, env: shortEnv }), /claims/);
+  assert.throws(() => signAccessToken({ subject: " new-user ", tokenId: "unique-token-id", issuedAt: now, expiresAt: now + 60, env: shortEnv }), /claims/);
+  assert.throws(() => accessIssuerConfiguration({ ...env, AUTH_JWT_SECRET: "short" }), /at least 32 bytes/);
 });

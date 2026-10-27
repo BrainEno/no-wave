@@ -92,3 +92,17 @@ And a later request from another device observes the same state.
 ## Transport recovery
 
 SSE reconnect is not equivalent to replay or durable delivery. After reconnect, the client should refresh inbox/conversation state from the API or resume from a supported cursor. Web Push requires explicit permission and a persisted subscription lifecycle; browser PWA installation alone does not guarantee push.
+
+## NOTIF-06 — Pending messages use delivery-time membership safely
+
+**Risk:** High
+
+Given a persisted message event is pending and the original sender has since been removed<br>
+When the worker delivers the event<br>
+Then it notifies the other current active members, including a member added after the send, without retrying merely because the sender left<br>
+And recipients removed before delivery are not newly selected.
+
+Given delivery races with a membership edit or conversation deletion<br>
+Then recipient selection and all inbox inserts serialize with that change<br>
+And a stale event for a deleted conversation creates no orphan inbox rows.<br>
+Retries retain and deduplicate inbox rows committed by older partial deliveries.

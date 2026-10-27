@@ -1,41 +1,54 @@
 # API authentication contract
 
-## Current verification behavior
+## Status and trust boundary
 
-The API treats bearer credentials as authenticated only after server-side JWT validation and durable session-revocation checks. The actor ID comes exclusively from the verified `sub` claim; client-supplied `userId`, `authorId`, `actorId`, `senderId`, and identity headers are not trusted as authentication inputs.
+The product owner selected **self-hosted account authentication in the standalone API**. The API now provides email/password registration and login, short-lived access tokens, one-time refresh-token rotation with reuse detection, and session logout. No Web framework, cookie, browser storage or external identity service is coupled to these operations. This is an initial backend lifecycle, **not a production-ready account system**: email verification, recovery, account administration and several operational controls below remain open.
 
-The verifier accepts a compact JWS with the fixed `HS256` algorithm and the application-specific header type `application/vnd.bot-thk.access+jwt`. It rejects `none`, unsupported algorithms, malformed/non-canonical base64url segments, detached-payload or critical header extensions, oversized bearer values, and malformed claims.
+The API derives the actor exclusively from the verified `sub` claim; client-supplied `userId`, `authorId`, `actorId`, `senderId`, and identity headers do not establish identity. Protected REST and transitional GraphQL requests additionally check durable revocation state and fail closed if that check fails. Domain services still enforce resource ownership, membership and recipient scoping.
 
-Required configuration and claims:
+## HTTP contract
 
-- `AUTH_JWT_SECRET`: server-only secret of at least 32 bytes; production values must be generated with a cryptographically secure random source and never committed or logged.
-- `AUTH_JWT_ISSUER`: required exact match for `iss`.
-- `AUTH_JWT_AUDIENCE`: required audience contained in `aud`.
-- `iat`: required integer NumericDate; it cannot be in the future.
-- `exp`: required integer NumericDate; it must be in the future and later than `iat`.
-- Access-token lifetime: `exp - iat` must not exceed `AUTH_JWT_MAX_TTL_SECONDS`, default `900` seconds (15 minutes). The server setting accepts integers from 60 through 86400 seconds.
-- `nbf`: optional integer NumericDate; if present it must have passed and precede `exp`.
-- `sub`: required non-empty, whitespace-stable stable user ID.
-- `jti`: required non-empty, whitespace-stable per-session identifier used for revocation.
+All routes require `Content-Type: application/json`, accept only the named fields, limit the body to 4 KiB, return `Cache-Control: no-store`, and never set a cookie:
 
-The standard `exp` check was present before this hardening; the additional `iat` and maximum-lifetime checks prevent an issuer mistake from creating an arbitrarily long-lived access token. An accepted `exp` is not a refresh-token strategy: access-token renewal and refresh-token rotation must be designed separately.
+| Method and path | Request | Success |
+| --- | --- | --- |
+| `POST /api/v1/auth/register` | `{ "email": "…", "password": "…" }` | `201` and token set |
+| `POST /api/v1/auth/login` | `{ "email": "…", "password": "…" }` | `200` and token set |
+| `POST /api/v1/auth/refresh` | `{ "refreshToken": "…" }` | `200` and rotated token set |
+| `POST /api/v1/auth/logout` | `{ "refreshToken": "…" }` | `200` and `{ "data": { "ok": true } }`, including for an unknown or already-revoked well-formed token |
+| `DELETE /api/v1/me/session` | Bearer access token | Revokes the current self-hosted session family, or the presented `jti` for an independently issued token |
 
-## Session revocation and route authorization
+A token set is `{ "data": { "accessToken", "tokenType": "Bearer", "accessExpiresAt", "refreshToken", "refreshExpiresAt" } }`; times are UTC ISO 8601 strings. Use `Authorization: Bearer …` for protected REST/GraphQL requests. Registration creates a stable random user ID; a public profile is configured separately. Email is trimmed and lowercased; currently only the documented practical ASCII email subset is accepted (one `@`, no whitespace, conventional local characters and DNS labels). A new password must contain 12–128 Unicode characters and at most 512 UTF-8 bytes; passwords are not trimmed or normalized.
 
-Protected REST and GraphQL requests check the token's `jti` against durable persistence. If a session is revoked, the request is unauthenticated. If the revocation query is absent or fails, the request fails closed instead of treating a valid signature as sufficient authorization. `DELETE /api/v1/me/session` and the transitional GraphQL `revokeCurrentSession` mutation revoke the current `jti` through the token's expiry.
+Malformed input returns `400`, incorrect login credentials and invalid/expired/reused refresh credentials return generic `401`, duplicate normalized registration returns `409`, and throttling returns `429` with `Retry-After` seconds. Unsupported media, oversized bodies and methods return `415`, `413` and `405`. Misconfigured issuer or missing persistence returns `503`; unexpected persistence failures are sanitized `500` responses. Login does not distinguish an unknown account from a wrong password and performs a dummy password derivation for unknown accounts. **Registration's `409` does reveal that an identifier is unavailable**; do not claim account-enumeration resistance.
 
-REST endpoints derive actor identity from verified JWT claims, then call the application-service facade. Domain/persistence layers continue to enforce ownership, conversation membership, same-article reply relationships, recipient scoping and transactional notification behavior. The current REST route and field coverage is inventoried in [REST–GraphQL parity audit](../audit/rest-graphql-parity.md).
+## Credentials and session lifecycle
 
-Public reads stay public. If a public endpoint accepts an optional bearer token, it uses viewer-specific state only after successful validation and revocation checking; invalid or revoked optional credentials do not confer viewer privileges.
+- Passwords are salted independently and hashed using Node's scrypt (`N=32768`, `r=8`, `p=3`, 64-byte output). The database never stores plaintext passwords.
+- An access token has a new random `jti` on every issuance. It lasts at most 15 minutes, or less when `AUTH_JWT_MAX_TTL_SECONDS` is lower or the session is nearer its absolute expiry. Only token IDs and expiry timestamps are retained, not the access token.
+- A session has an absolute 30-day expiry, not a sliding lifetime. Each refresh credential is 32 random bytes, encoded as canonical unpadded base64url; only its SHA-256 hash is stored. Rotating atomically consumes the old credential, issues a new one and records a new access-token ID.
+- Reusing any consumed refresh credential before session expiry atomically revokes **the whole session family**, including every unexpired access token issued to that session. Concurrent refreshes with the same token therefore yield at most one success, and the subsequent reuse invalidates even the winning token. Serialize refreshes in clients: there is no grace window or retry idempotency. A lost refresh response or a duplicate request can require a fresh login.
+- Logout by refresh token, `DELETE /api/v1/me/session`, and transitional GraphQL `revokeCurrentSession` serialize with rotation and revoke the whole mapped self-hosted family. Other separately logged-in sessions remain active. An older independently issued JWT has no mapped refresh family: only its own `jti` can be revoked locally; the external issuer's refresh credentials are not controlled by this API.
+- The worker/API retain consumed refresh hashes until their session expires so replay can be detected. Every 128 authentication rate-limit operations, bounded opportunistic maintenance removes at most 100 sessions expired for more than 24 hours **only if none of their recorded access tokens is still valid** (cascading their token rows), and 512 expired rate-limit rows. Quiet installations can retain expired rows until subsequent traffic. Existing `revoked_sessions` retention is unchanged; review its cleanup separately.
 
-## Standards boundary and issuer compatibility
+## Token verification and issuer compatibility
 
-The header type `application/vnd.bot-thk.access+jwt` is intentionally application-specific. This custom verifier is **not a claim of full RFC 9068 OAuth JWT access-token-profile conformance**: it currently validates HS256 using a shared secret, does not require the RFC 9068 `client_id` claim, and the repository does not implement an OAuth authorization server or token endpoint. The separate OAuth profile uses the distinct `at+jwt` type and has additional interoperability requirements. Do not replace the private type with `at+jwt` unless the project deliberately adopts and implements that profile end to end.
+The verifier accepts compact JWS using fixed `HS256` and application-specific header type `application/vnd.bot-thk.access+jwt`. It rejects `none`, unsupported algorithms, malformed/non-canonical base64url, detached-payload or critical extensions, oversized bearer values and malformed claims. Required configuration and claims:
 
-If the trusted issuer is deployed separately from the resource server, prefer an asymmetric signing and key-discovery design (for example, a reviewed JWKS integration) so the API does not need a key that can also mint tokens. Keep issuer, audience, type, key rotation and token lifetime aligned across issuer and validator.
+- `AUTH_JWT_SECRET`: server-only, at least 32 UTF-8 bytes, generated with a cryptographically secure random source and never committed or logged.
+- `AUTH_JWT_ISSUER` and `AUTH_JWT_AUDIENCE`: exact issuer and expected audience; both are required.
+- `iat` and `exp`: integer NumericDate, `iat` not in the future, `exp` in the future and later than `iat`. The verifier limits `exp - iat` to `AUTH_JWT_MAX_TTL_SECONDS` (default 900, configurable 60–86400 seconds); the new issuer never emits more than 900 seconds.
+- `nbf`: optional integer NumericDate, already active and before `exp`.
+- `sub` and `jti`: required nonempty, whitespace-stable identity and token identifiers. The legacy internal field named `sessionId` holds the JWT `jti`.
 
-## Incomplete login/session work
+The existing verifier contract is unchanged; a pre-existing independently issued JWT with the same configured key, issuer, audience, type and required claims continues to work. Legacy tokens with `_id` instead of `sub`, missing issuer/audience/type/issuance claims or `tokenVersion` semantics are **not** silently accepted, linked or migrated; see [legacy compatibility](legacy-token-compatibility.md). Anyone holding the shared HS256 secret can mint trusted tokens, including tokens impersonating self-hosted IDs. A separate issuer is therefore a fully trusted minting authority, not an isolated identity provider.
 
-The repository currently provides **JWT verification and current-session revocation**, not a complete login lifecycle. The following still need explicit design and tests before production account authentication is claimed complete: token issuance, sign-in/out integration, refresh-token rotation and reuse detection, password reset/recovery invalidation, account disablement semantics, brute-force/abuse throttling, signing-secret/key rotation, client token storage and (if cookies are used) CSRF policy. Do not weaken token validation or trust a client-supplied identity to accommodate a mismatched legacy issuer.
+This private type and custom endpoint are **not** a claim of RFC 9068 or OAuth/OIDC authorization-server conformance. Do not change the type to `at+jwt` without implementing that profile. Key rotation/JWKS and independent issuer integration require a separate design.
 
-Use HTTPS for all non-local traffic. Never reuse test fixtures in deployments, and never log bearer tokens or signing secrets.
+## Abuse controls and deployment limitations
+
+Fixed-window counters are shared through the database and keyed by a domain-separated HMAC, not raw email/IP. Validated registration is limited to 20 attempts per socket peer and five per email per hour; login to 60 per peer and five per email per 15 minutes; refresh and logout each to 120 per peer per 15 minutes. Both successful and failed attempts consume quota. The peer comes only from the socket; **client-supplied `X-Forwarded-For` is ignored**. Behind a reverse proxy, many users may share one bucket. Provide a reviewed trusted-proxy/edge rate-limit design and account for distributed abuse before public deployment; the present controls do not cover all registration abuse, per-session rotation volume or volumetric DoS. Synchronize API and database clocks.
+
+Email is **unverified** and is only a login identifier, as in the historical registration flow. Do not use it as proof of ownership or for recovery. There is no email verification, password reset/change, breach-password screening, MFA, account disable/delete, global session management, audit/alerting, signing-key rotation, or legacy account/data import. The API does not implement a browser token-storage strategy, trusted cross-origin CORS policy or CSRF protection for a future cookie design. Because refresh credentials are returned to the caller and sent in JSON, a browser client that exposes them to JavaScript is vulnerable to token theft via XSS; use a separately reviewed browser/BFF design. Require TLS for all non-local traffic and never log passwords, bearer/refresh tokens, cookies, authorization headers or secrets.
+
+Before any release, stop/drain old API instances and old notification workers, apply the additive migrations under an approved backup/release plan, then start only upgraded API instances and workers. **Do not mix old and new API instances while issuing self-hosted sessions**: an older logout implementation revokes only the presented `jti`, not its refresh family. Old notification workers also lack the new delivery serialization. Rollback must first stop all components and account for the loss of these guarantees. No deployment is implied by this implementation.

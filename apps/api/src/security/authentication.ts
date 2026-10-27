@@ -36,6 +36,31 @@ function configuredMaxTokenTtl(env: NodeJS.ProcessEnv): number {
   return value;
 }
 
+/** Resolve the same issuer policy used by verification before issuing tokens. */
+export function accessIssuerConfiguration(env: NodeJS.ProcessEnv): { secret: string; issuer: string; audience: string; ttlSeconds: number } {
+  const { AUTH_JWT_SECRET: secret, AUTH_JWT_ISSUER: issuer, AUTH_JWT_AUDIENCE: audience } = env;
+  if (!secret || Buffer.byteLength(secret, "utf8") < 32) throw new Error("AUTH_JWT_SECRET must contain at least 32 bytes.");
+  if (!issuer || !audience) throw new Error("AUTH_JWT_ISSUER and AUTH_JWT_AUDIENCE are required when JWT authentication is enabled.");
+  return { secret, issuer, audience, ttlSeconds: Math.min(DEFAULT_MAX_ACCESS_TOKEN_TTL_SECONDS, configuredMaxTokenTtl(env)) };
+}
+
+/** Sign a bounded access token in the existing verifier's exact JWT format. */
+export function signAccessToken({
+  subject, tokenId, issuedAt, expiresAt, env,
+}: { subject: string; tokenId: string; issuedAt: number; expiresAt: number; env: NodeJS.ProcessEnv }): string {
+  const config = accessIssuerConfiguration(env);
+  if (!subject || subject.trim() !== subject || !tokenId || tokenId.trim() !== tokenId ||
+      !Number.isSafeInteger(issuedAt) || !Number.isSafeInteger(expiresAt) || expiresAt <= issuedAt ||
+      expiresAt - issuedAt > config.ttlSeconds) {
+    throw new TypeError("Invalid access token claims.");
+  }
+  const encode = (value: unknown) => Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
+  const header = encode({ alg: "HS256", typ: DEFAULT_ACCESS_TOKEN_TYPE });
+  const claims = encode({ iss: config.issuer, aud: config.audience, sub: subject, jti: tokenId, iat: issuedAt, exp: expiresAt });
+  const signature = createHmac("sha256", config.secret).update(`${header}.${claims}`).digest("base64url");
+  return `${header}.${claims}.${signature}`;
+}
+
 /**
  * Verify a compact access JWT signed with HS256 using a server-only secret.
  * Tokens require the access-token type, issuer, audience, iat, exp, sub and jti.

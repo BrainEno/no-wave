@@ -372,23 +372,20 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       const message = await runtime.store.persistMessage({
         conversationId, senderId: sender, body: "offline delivery", idempotencyKey: `key-${suffix}`,
       });
-      let failedOnce = false;
       let firstEvent;
-      const flakyDelivery = createMessageNotificationDelivery({
-        store: {
-          listConversationParticipantIds: (input) => runtime.store.listConversationParticipantIds(input),
-          async createNotification(input) {
-            if (input.userId === secondRecipient && !failedOnce) {
-              failedOnce = true;
-              throw new Error("simulated transient inbox failure");
-            }
-            return runtime.store.createNotification(input);
-          },
-        },
-      });
       const firstAttempt = await dispatchOutboxBatch({
         store: runtime.store, limit: 1, retryDelaySeconds: 60,
-        deliver: async (event) => { firstEvent = event; await flakyDelivery(event); },
+        deliver: async (event) => {
+          firstEvent = event;
+          // Simulate an older worker that committed one recipient before it
+          // crashed. The new atomic consumer must recover this legacy backlog.
+          await runtime.store.createNotification({
+            userId: firstRecipient,
+            eventKey: event.event_key,
+            payload: { type: "message.created", messageId: message.id, conversationId, senderId: sender },
+          });
+          throw new Error("simulated transient inbox failure");
+        },
       });
       assert.deepEqual(firstAttempt, { claimed: 1, delivered: 0, failed: 1 });
       assert.equal((await runtime.store.listNotifications({ actorId: firstRecipient })).length, 1);
@@ -418,6 +415,98 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       }
       assert.equal((await runtime.store.listNotifications({ actorId: sender })).length, 0);
       assert.equal((await runtime.store.claimOutboxEvents({ limit: 1 })).length, 0);
+    } finally {
+      await runtime.cleanup(conversationId);
+    }
+  });
+
+  test(`${adapterName}: a pending message notifies current members even after its sender leaves`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const owner = `owner-${suffix}`;
+    const sender = `sender-${suffix}`;
+    const remaining = `remaining-${suffix}`;
+    const removed = `removed-${suffix}`;
+    const joinedLater = `joined-later-${suffix}`;
+    let conversationId;
+    try {
+      const conversation = await runtime.store.createConversation({
+        actorId: owner, participantIds: [sender, remaining, removed],
+      });
+      conversationId = conversation.id;
+      const message = await runtime.store.persistMessage({
+        conversationId, senderId: sender, body: "pending notification", idempotencyKey: `key-${suffix}`,
+      });
+      await runtime.store.updateConversationParticipants({
+        conversationId, actorId: owner, removeUserIds: [sender, removed], addUserIds: [joinedLater],
+      });
+      let deliveredEvent;
+      const result = await dispatchOutboxBatch({
+        store: runtime.store, limit: 1,
+        deliver: async (event) => {
+          deliveredEvent = event;
+          await createMessageNotificationDelivery({ store: runtime.store })(event);
+        },
+      });
+      assert.deepEqual(result, { claimed: 1, delivered: 1, failed: 0 });
+      // Retrying an already committed delivery must remain safe.
+      await createMessageNotificationDelivery({ store: runtime.store })(deliveredEvent);
+      for (const user of [owner, remaining, joinedLater]) {
+        const inbox = await runtime.store.listNotifications({ actorId: user });
+        assert.equal(inbox.length, 1);
+        assert.equal(inbox[0].eventKey, `message:${message.id}`);
+        assert.equal(inbox[0].payload.senderId, sender);
+      }
+      assert.equal((await runtime.store.listNotifications({ actorId: sender })).length, 0);
+      assert.equal((await runtime.store.listNotifications({ actorId: removed })).length, 0);
+      assert.equal((await runtime.store.claimOutboxEvents({ limit: 1 })).length, 0);
+    } finally {
+      await runtime.cleanup(conversationId);
+    }
+  });
+
+  test(`${adapterName}: a stale delivery after conversation deletion never creates orphaned inbox rows`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const owner = `delete-owner-${suffix}`;
+    const recipient = `delete-recipient-${suffix}`;
+    let conversationId;
+    try {
+      const conversation = await runtime.store.createConversation({ actorId: owner, participantIds: [recipient] });
+      conversationId = conversation.id;
+      await runtime.store.persistMessage({
+        conversationId, senderId: owner, body: "delete while in flight", idempotencyKey: `key-${suffix}`,
+      });
+      const [event] = await runtime.store.claimOutboxEvents({ limit: 1 });
+      assert.ok(event);
+      assert.equal(await runtime.store.deleteConversation({ conversationId, actorId: owner }), true);
+      await createMessageNotificationDelivery({ store: runtime.store })(event);
+      assert.equal((await runtime.store.listNotifications({ actorId: recipient })).length, 0);
+      assert.equal(await runtime.store.markOutboxDelivered({ eventId: event.id, leaseToken: event.lease_token }), false);
+    } finally {
+      await runtime.cleanup(conversationId);
+    }
+  });
+
+  test(`${adapterName}: an inbox idempotency conflict rolls back the whole message delivery`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const sender = `rollback-sender-${suffix}`;
+    const first = `rollback-a-${suffix}`;
+    const conflicted = `rollback-z-${suffix}`;
+    let conversationId;
+    try {
+      const conversation = await runtime.store.createConversation({ actorId: sender, participantIds: [first, conflicted] });
+      conversationId = conversation.id;
+      const message = await runtime.store.persistMessage({ conversationId, senderId: sender, body: "atomic inbox", idempotencyKey: `key-${suffix}` });
+      await runtime.store.createNotification({ userId: conflicted, eventKey: `message:${message.id}`, payload: { type: "different" } });
+      const [event] = await runtime.store.claimOutboxEvents({ limit: 1 });
+      await assert.rejects(createMessageNotificationDelivery({ store: runtime.store })(event), IdempotencyConflictError);
+      assert.equal((await runtime.store.listNotifications({ actorId: first })).length, 0);
+      const conflictInbox = await runtime.store.listNotifications({ actorId: conflicted });
+      assert.equal(conflictInbox.length, 1);
+      assert.deepEqual(conflictInbox[0].payload, { type: "different" });
+      assert.equal(await runtime.store.rescheduleOutboxEvent({ eventId: event.id, leaseToken: event.lease_token, delaySeconds: 1 }), true);
     } finally {
       await runtime.cleanup(conversationId);
     }

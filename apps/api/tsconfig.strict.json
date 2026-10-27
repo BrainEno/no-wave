@@ -18,6 +18,7 @@
     "strict": true
   },
   "include": [
+    "src/application/identity.ts",
     "src/domain/errors.ts",
     "src/domain/validation.ts",
     "src/domain/conversation.ts",

@@ -53,6 +53,35 @@ export function createSqliteNotificationStore(db) {
   );
 
   return Object.freeze({
+    async deliverMessageNotifications({ eventKey, messageId, conversationId, senderId }) {
+      for (const [name, value] of Object.entries({ eventKey, conversationId, senderId })) requiredText(name, value);
+      if (!isUuid(messageId)) throw new TypeError("messageId must be a valid UUID.");
+      const payload = { type: "message.created", messageId, conversationId, senderId };
+      const hash = requestHash(payload);
+      // BEGIN IMMEDIATE serializes this transaction with membership changes
+      // and conversation deletion, including across SQLite connections.
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        const conversation = db.prepare("SELECT id FROM conversations WHERE id = ?").get(conversationId);
+        if (!conversation) { db.exec("COMMIT"); return false; }
+        const message = db.prepare("SELECT 1 FROM messages WHERE id = ? AND conversation_id = ? AND sender_id = ?")
+          .get(messageId, conversationId, senderId);
+        if (!message) throw new Error("Message notification event does not match a persisted message.");
+        const participants = db.prepare("SELECT user_id FROM conversation_participants WHERE conversation_id = ? AND left_at IS NULL AND user_id <> ? ORDER BY user_id")
+          .all(conversationId, senderId);
+        for (const { user_id: userId } of participants) {
+          insert.run(randomUUID(), userId, eventKey, JSON.stringify(payload), hash);
+          const row = getByKey.get(userId, eventKey);
+          if (!row) throw new Error("Notification idempotency row disappeared during transaction.");
+          if (row.payload_hash !== hash) throw new IdempotencyConflictError("The notification event key was already used with a different payload.");
+        }
+        db.exec("COMMIT");
+        return true;
+      } catch (error) {
+        try { db.exec("ROLLBACK"); } catch { /* Preserve the original error. */ }
+        throw error;
+      }
+    },
     async listNotifications({ actorId, limit = 50 }) {
       requiredText("actorId", actorId);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) {

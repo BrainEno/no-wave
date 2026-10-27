@@ -1,6 +1,8 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { DomainError } from "../../domain/errors.ts";
+import { DomainError, IdentityRateLimitError } from "../../domain/errors.ts";
 import { createAuthContext } from "../../security/authentication.ts";
+import { createIdentityService } from "../../application/identity.ts";
+import type { IdentityStore } from "../../application/identity.ts";
 
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
@@ -82,6 +84,9 @@ type RestErrorResponse = { status: number; code: string; message: string };
 const DOMAIN_ERROR_RESPONSES: Record<string, RestErrorResponse> = {
   BAD_USER_INPUT: { status: 400, code: "BAD_USER_INPUT", message: "The request input is invalid." },
   FORBIDDEN: { status: 403, code: "FORBIDDEN", message: "You are not allowed to access this resource." },
+  UNAUTHENTICATED: { status: 401, code: "UNAUTHENTICATED", message: "The credentials are invalid." },
+  RATE_LIMITED: { status: 429, code: "RATE_LIMITED", message: "Too many authentication attempts. Try again later." },
+  SERVICE_UNAVAILABLE: { status: 503, code: "SERVICE_UNAVAILABLE", message: "Identity is not configured." },
   NOT_FOUND: { status: 404, code: "NOT_FOUND", message: "The requested resource was not found." },
   CONFLICT: { status: 409, code: "CONFLICT", message: "The request conflicts with the current resource state." },
   IDEMPOTENCY_CONFLICT: {
@@ -94,6 +99,7 @@ const DOMAIN_ERROR_RESPONSES: Record<string, RestErrorResponse> = {
 function sendServiceError(response: ServerResponse, error: unknown): void {
   const mapped = error instanceof DomainError ? DOMAIN_ERROR_RESPONSES[error.code] : undefined;
   if (mapped) {
+    if (error instanceof IdentityRateLimitError) response.setHeader("retry-after", String(error.retryAfterSeconds));
     sendJson(response, mapped.status, { error: { code: mapped.code, message: mapped.message } });
     return;
   }
@@ -116,7 +122,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-async function readJsonObject(request: IncomingMessage): Promise<JsonObjectResult> {
+async function readJsonObject(request: IncomingMessage, maxBytes = MAX_JSON_BODY_BYTES): Promise<JsonObjectResult> {
   const contentType = request.headers["content-type"];
   const declaredLength = request.headers["content-length"];
   const hasUnconsumedBody =
@@ -134,7 +140,7 @@ async function readJsonObject(request: IncomingMessage): Promise<JsonObjectResul
 
   // Reject a known oversized body before reading any of its bytes.
   if (typeof declaredLength === "string" && /^\d+$/.test(declaredLength) &&
-      BigInt(declaredLength) > BigInt(MAX_JSON_BODY_BYTES)) {
+      BigInt(declaredLength) > BigInt(maxBytes)) {
     return {
       ok: false,
       status: 413,
@@ -181,7 +187,7 @@ async function readJsonObject(request: IncomingMessage): Promise<JsonObjectResul
     const onData = (chunk: Buffer | string) => {
       const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       size += buffer.byteLength;
-      if (size > MAX_JSON_BODY_BYTES) {
+      if (size > maxBytes) {
         finish({
           ok: false,
           status: 413,
@@ -577,6 +583,8 @@ async function serializeRestComments(
  * makes an HTTP round-trip to GraphQL or reaches into persistence adapters.
  */
 export function createRestHandler({ services, env = process.env }: { services: RestServices | null; env?: NodeJS.ProcessEnv }) {
+  // The facade is assembled dynamically from the validated persistence ports.
+  const identity = services ? createIdentityService({ store: services as unknown as IdentityStore, env }) : null;
   return async function handleRest(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
     const url = new URL(request.url ?? "/", "http://localhost");
     if (url.pathname !== "/api/v1" && !url.pathname.startsWith("/api/v1/")) return false;
@@ -589,6 +597,29 @@ export function createRestHandler({ services, env = process.env }: { services: R
       response.shouldKeepAlive = false;
       response.setHeader("connection", "close");
       sendBadInput(response, "Query parameters must not be repeated.");
+      return true;
+    }
+
+    const identityRoute = url.pathname.match(/^\/api\/v1\/auth\/(register|login|refresh|logout)$/);
+    if (identityRoute) {
+      if (request.method !== "POST") {
+        response.setHeader("allow", "POST");
+        sendJson(response, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "The HTTP method is not supported for this endpoint." } });
+        return true;
+      }
+      if (!identity) { sendUnavailable(response); return true; }
+      const bodyResult = await readJsonObject(request, 4096);
+      if (bodyResult.ok === false) { sendJsonBodyError(response, request, bodyResult); return true; }
+      try {
+        // Never trust X-Forwarded-For supplied by the client. An operator must
+        // enforce additional trusted-proxy/edge throttling when behind a proxy.
+        const ip = request.socket.remoteAddress ?? "unknown";
+        const action = identityRoute[1] as "register" | "login" | "refresh" | "logout";
+        const data = await identity[action](bodyResult.value, ip);
+        sendJson(response, action === "register" ? 201 : 200, { data });
+      } catch (error: unknown) {
+        sendServiceError(response, error);
+      }
       return true;
     }
 

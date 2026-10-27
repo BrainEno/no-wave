@@ -21,6 +21,7 @@ import { isUuid, requiredText } from "../domain/validation.ts";
 import { normalizeParticipantIds } from "../domain/conversation.ts";
 import { validateProfileUrl } from "../domain/profile.ts";
 import { assertOutboxLease } from "./outbox-lease.ts";
+import { createPostgresIdentityStore } from "./postgres-identity-store.ts";
 
 export function createPostgresClient({
   connectionString = process.env.DATABASE_URL,
@@ -284,6 +285,7 @@ export function createPostgresStore(sql) {
   }
 
   return Object.freeze({
+    ...createPostgresIdentityStore(sql),
     async health() {
       await sql.unsafe("SELECT 1 AS ok");
       return true;
@@ -1115,6 +1117,12 @@ export function createPostgresStore(sql) {
       }
       const hash = requestHash({ conversationId, senderId, body });
       return sql.begin(async (tx) => {
+        // Serialize the membership check and outbox insert with participant
+        // changes, deletion and notification delivery, all of which lock this
+        // conversation first. Otherwise a removed sender can still write or
+        // deletion can sweep the outbox before an in-flight message commits.
+        const conversation = await tx.unsafe("SELECT id FROM conversations WHERE id = $1 FOR UPDATE", [conversationId]);
+        if (!conversation[0]) throw new ConversationAccessError();
         const participants = await tx.unsafe(
           "SELECT 1 FROM conversation_participants WHERE conversation_id = $1 AND user_id = $2 AND left_at IS NULL",
           [conversationId, senderId],
@@ -1216,6 +1224,42 @@ export function createPostgresStore(sql) {
       );
       return rows.map((row) => row.user_id);
     },
+    async deliverMessageNotifications({ eventKey, messageId, conversationId, senderId }) {
+      for (const [name, value] of Object.entries({ eventKey, conversationId, senderId })) requiredText(name, value, 300);
+      if (!isUuid(messageId)) throw new TypeError("messageId must be a valid UUID.");
+      const payload = { type: "message.created", messageId, conversationId, senderId };
+      const hash = requestHash(payload);
+      return sql.begin(async (tx) => {
+        // All membership edits and deletes lock this same row first. A stale
+        // event whose conversation has been deleted is a harmless no-op.
+        const conversation = await tx.unsafe("SELECT id FROM conversations WHERE id = $1 FOR UPDATE", [conversationId]);
+        if (!conversation[0]) return false;
+        const messages = await tx.unsafe(
+          "SELECT 1 FROM messages WHERE id = $1 AND conversation_id = $2 AND sender_id = $3",
+          [messageId, conversationId, senderId],
+        );
+        if (!messages[0]) throw new Error("Message notification event does not match a persisted message.");
+        const participants = await tx.unsafe(
+          "SELECT user_id FROM conversation_participants WHERE conversation_id = $1 AND left_at IS NULL AND user_id <> $2 ORDER BY user_id",
+          [conversationId, senderId],
+        );
+        for (const { user_id: userId } of participants) {
+          const inserted = await tx.unsafe(
+            "INSERT INTO notifications (id, user_id, event_key, payload, payload_hash) VALUES ($1, $2, $3, $4::jsonb, $5) ON CONFLICT (user_id, event_key) DO NOTHING RETURNING id",
+            [randomUUID(), userId, eventKey, payload, hash],
+          );
+          if (inserted.length === 0) {
+            const existing = await tx.unsafe(
+              "SELECT payload_hash FROM notifications WHERE user_id = $1 AND event_key = $2",
+              [userId, eventKey],
+            );
+            if (!existing[0]) throw new Error("Notification idempotency row disappeared during transaction.");
+            if (existing[0].payload_hash !== hash) throw new IdempotencyConflictError("The notification event key was already used with a different payload.");
+          }
+        }
+        return true;
+      });
+    },
     async listNotifications({ actorId, limit = 50 }) {
       if (typeof actorId !== "string" || actorId.trim().length === 0 || actorId !== actorId.trim()) {
         throw new TypeError("actorId must be a non-empty, trimmed string.");
@@ -1305,18 +1349,6 @@ export function createPostgresStore(sql) {
         }
         return { id: row.id, userId: row.user_id, eventKey: row.event_key, payload: parseJsonValue(row.payload), createdAt: row.created_at, duplicate };
       });
-    },
-    async revokeSession({ sessionId, expiresAt }) {
-      if (typeof sessionId !== "string" || sessionId.trim().length === 0 || sessionId !== sessionId.trim()) {
-        throw new TypeError("sessionId must be a non-empty, trimmed string.");
-      }
-      const expiration = new Date(expiresAt);
-      if (!Number.isFinite(expiration.getTime())) throw new TypeError("expiresAt must be a valid date.");
-      await sql.unsafe(
-        "INSERT INTO revoked_sessions (session_id, expires_at) VALUES ($1, $2) ON CONFLICT (session_id) DO UPDATE SET expires_at = GREATEST(revoked_sessions.expires_at, EXCLUDED.expires_at), revoked_at = now()",
-        [sessionId, expiration],
-      );
-      return true;
     },
     async isSessionRevoked(sessionId) {
       const rows = await sql.unsafe("SELECT 1 FROM revoked_sessions WHERE session_id = $1 AND expires_at > now()", [sessionId]);

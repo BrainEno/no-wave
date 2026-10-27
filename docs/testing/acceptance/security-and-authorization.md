@@ -92,3 +92,33 @@ And route-level cache policy is explicitly tested.
 ## Required negative assertions
 
 For every rejected mutation, verify both the error/response and the absence of side effects. A test that only checks an error message is insufficient for authorization and data-integrity behavior.
+
+## AUTH-09 — Refresh reuse revokes the session family
+
+**Risk:** Critical
+
+Given a self-hosted session has a valid refresh credential<br>
+When that credential is rotated and the consumed credential is presented again, including concurrently<br>
+Then the API revokes the entire session family<br>
+And previously issued access tokens and the newly rotated refresh credential no longer authenticate.<br>
+Clients must serialize refresh; a lost response can require sign-in again.
+
+## AUTH-10 — Logout and rotation are atomic
+
+**Risk:** Critical
+
+Given a session has issued multiple access tokens through refresh<br>
+When logout races with a refresh request<br>
+Then neither a newly issued refresh token nor any access token in that family remains valid after logout commits<br>
+And another independently logged-in session remains valid.<br>
+Externally issued JWTs have only their presented `jti` revoked locally.
+
+## AUTH-11 — Credential attempts are bounded and do not expose sensitive data
+
+**Risk:** High
+
+Given repeated valid-format login requests for an account or socket peer<br>
+When the configured fixed-window threshold is exceeded<br>
+Then the API returns a non-cacheable `429` and `Retry-After`, including after an API restart<br>
+And it does not trust client-supplied forwarding headers or store plaintext passwords or refresh credentials.<br>
+Registration still returns `409` for an existing identifier; email verification, recovery, edge protections and browser storage remain separate gates.
