@@ -593,7 +593,7 @@ export function createRestHandler({ services, env = process.env }: { services: R
           return true;
         }
         const articles = await services.listLikedArticles({ actorId, locale, limit });
-        sendJson(response, 200, { data: articles });
+        sendJson(response, 200, { data: await serializeRestArticles(services, articles, actorId) });
       } catch (error: unknown) {
         sendServiceError(response, error);
       }
