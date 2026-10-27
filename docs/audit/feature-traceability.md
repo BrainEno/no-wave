@@ -14,7 +14,7 @@ This is an evolving capability map based on selected legacy code review and impl
 | Follow/unfollow | Legacy follow hooks/resolvers | No duplicates/self-follows; correct counts/state across clients | API implemented/tested |
 | Likes/comments | Legacy like/comment UI/resolvers | Authenticated mutations, consistent counts, reply threading, ownership, notifications | API implemented/tested |
 | Article create/edit/publish/delete | Legacy dashboard/edit routes | Owner/admin authorization, draft isolation, slug uniqueness, content validation | API create/update/publish; delete/edit UI pending |
-| Rich-text/media editor | Legacy editor and upload helpers | Structured content blocks, sanitization and upload validation | Content-block contract; production editor/upload pending |
+| Rich-text/media editor | Legacy editor and upload helpers | Structured content contract, safe rendering, server-side node/URL validation, upload validation and lossless serialization | Lexical selected for both article and comment editors (ADR 0007); editor UI, schema adapter, comment contract and upload integration pending |
 | Conversation list/lifecycle | Legacy chat components/resolvers | Membership and management rules server-enforced | API implemented/tested |
 | Message history/send/unread state | Legacy chat UI and resolvers | Server-derived sender, persistence, cursor history and offline recovery | API core implemented/tested |
 | Real-time updates | Legacy SSE/subscriptions | Reconnect reads persisted state; events are hints, not source of truth | Outbox core; browser realtime integration pending |
