@@ -9,11 +9,14 @@ This package is the API layer of the independent BOT THK rebuild. The previous p
 
 ## Versioned REST API
 
-The standalone REST transport currently exposes public read-only endpoints alongside GraphQL. All responses use JSON and `Cache-Control: no-store`.
+The standalone REST transport exposes public read endpoints and initial authenticated article-management endpoints alongside the transitional GraphQL runtime. All REST responses use JSON and `Cache-Control: no-store`.
 
 - `GET /api/v1/health` — liveness probe.
 - `GET /api/v1/articles?locale=zh-CN&query=&limit=20&offset=0` — published article search and pagination.
 - `GET /api/v1/articles/:slug?locale=zh-CN` — one published article.
+- `GET /api/v1/me/articles?locale=zh-CN&limit=50` — the authenticated actor's own drafts and published articles.
+- `POST /api/v1/articles` — create an article as the authenticated actor.
+- `PUT /api/v1/articles/:articleId` — update an article; ownership is checked against the authenticated actor.
 - `GET /api/v1/authors/:userId?locale=zh-CN` — public author profile addressed by stable `userId`.
 - `GET /api/v1/authors/:userId/articles?query=&limit=20&offset=0` — published articles for that author; the author filter runs in persistence before pagination.
 - `GET /api/v1/categories?locale=zh-CN&query=&limit=20&offset=0` — localized category discovery and pagination.
@@ -23,7 +26,8 @@ The standalone REST transport currently exposes public read-only endpoints along
 - `GET /api/v1/tags/:slug?locale=zh-CN` — one localized hashtag, or `404 NOT_FOUND`.
 - `GET /api/v1/tags/:slug/articles?locale=zh-CN&limit=20&offset=0` — published localized articles associated with a hashtag.
 
-The versioned REST API accepts only `zh-CN`. Requests specifying `zh-TW`, `en`, or another locale return `400 BAD_USER_INPUT`; search terms are limited to 200 characters and limits are 1–100. Invalid query values return `400 BAD_USER_INPUT`, unknown article/category resources return `404 NOT_FOUND`, and missing persistence returns `503 SERVICE_UNAVAILABLE`. Domain errors thrown by application services map to stable REST statuses: `BAD_USER_INPUT` → 400, `FORBIDDEN` → 403, `NOT_FOUND` → 404, and `CONFLICT` / `IDEMPOTENCY_CONFLICT` → 409. The adapter does not forward domain exception text; unknown domain codes and unexpected exceptions return a generic `500 INTERNAL_SERVER_ERROR` response without internal details. Category article requests resolve the category before listing content, so unknown categories do not produce a misleading successful empty list.
+The versioned REST API accepts only `zh-CN`. Requests specifying `zh-TW`, `en`, or another locale return `400 BAD_USER_INPUT`; search terms are limited to 200 characters and limits are 1–100.
+Article write requests require `Authorization: Bearer <JWT>` with a valid issuer, audience, expiry and `jti`; revoked sessions fail with `401 UNAUTHENTICATED`. The server derives `authorId`/`actorId` from the verified JWT and rejects client-supplied identity fields. Write bodies must use `Content-Type: application/json`, contain a JSON object, and fit within 2 MiB. `contentBlocks` is a JSON array at the REST boundary; only `zh-CN` is accepted. Create returns `201`, update returns `200`, and domain failures map to the documented sanitized status codes. Invalid query values return `400 BAD_USER_INPUT`, unknown article/category resources return `404 NOT_FOUND`, and missing persistence returns `503 SERVICE_UNAVAILABLE`. Domain errors thrown by application services map to stable REST statuses: `BAD_USER_INPUT` → 400, `FORBIDDEN` → 403, `NOT_FOUND` → 404, and `CONFLICT` / `IDEMPOTENCY_CONFLICT` → 409. The adapter does not forward domain exception text; unknown domain codes and unexpected exceptions return a generic `500 INTERNAL_SERVER_ERROR` response without internal details. Category article requests resolve the category before listing content, so unknown categories do not produce a misleading successful empty list.
 
 ## PostgreSQL setup
 

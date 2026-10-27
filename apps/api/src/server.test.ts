@@ -349,6 +349,146 @@ test("REST health endpoint is available independently of GraphQL", async () => {
   });
 });
 
+test("REST private article list derives the actor from the verified JWT", async () => {
+  let received;
+  const articles = [{ id: "article-1", authorId: "writer-123", slug: "my-work", locale: "zh-CN", title: "My work" }];
+  await withServer(async (baseUrl) => {
+    const response = await fetch(baseUrl + "/api/v1/me/articles?limit=10", {
+      headers: { authorization: "Bearer " + signedToken("writer-123") },
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { data: articles });
+    assert.deepEqual(received, { actorId: "writer-123", locale: "zh-CN", limit: 10 });
+  }, {
+    env: authEnv,
+    store: {
+      async isSessionRevoked() { return false; },
+      async listMyArticles(args) { received = args; return articles; },
+    },
+  });
+});
+
+test("REST article creation accepts JSON content blocks and never trusts a body authorId", async () => {
+  let received;
+  const contentBlocks = [{ id: "p1", type: "paragraph", text: "新作品" }];
+  await withServer(async (baseUrl) => {
+    const response = await fetch(baseUrl + "/api/v1/articles", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer " + signedToken("verified-writer"),
+      },
+      body: JSON.stringify({
+        slug: "new-work", title: "新作品", summary: "简介", locale: "zh-CN",
+        contentBlocks, publish: true, workType: "poetry", categoryIds: [], tagIds: [],
+      }),
+    });
+    assert.equal(response.status, 201);
+    assert.deepEqual(await response.json(), {
+      data: { id: "created-article", authorId: "verified-writer", slug: "new-work", title: "新作品", locale: "zh-CN", contentBlocks },
+    });
+    assert.deepEqual(received, {
+      authorId: "verified-writer", slug: "new-work", title: "新作品", summary: "简介", locale: "zh-CN",
+      contentBlocks, publish: true, workType: "poetry", categoryIds: [], tagIds: [],
+    });
+
+    const spoofed = await fetch(baseUrl + "/api/v1/articles", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer " + signedToken("verified-writer"),
+      },
+      body: JSON.stringify({ slug: "spoofed", title: "Spoofed", contentBlocks, authorId: "attacker" }),
+    });
+    assert.equal(spoofed.status, 400);
+    assert.equal((await spoofed.json()).error.code, "BAD_USER_INPUT");
+    assert.equal(received.slug, "new-work", "unsupported identity fields must not reach persistence");
+  }, {
+    env: authEnv,
+    store: {
+      async isSessionRevoked() { return false; },
+      async createArticle(args) {
+        received = args;
+        return { id: "created-article", authorId: args.authorId, slug: args.slug, title: args.title, locale: args.locale, contentBlocks: args.contentBlocks };
+      },
+    },
+  });
+});
+
+test("REST article updates derive actorId from JWT and use the path article ID", async () => {
+  let received;
+  const contentBlocks = [{ id: "p1", type: "paragraph", text: "更新后的作品" }];
+  const articleId = "11111111-1111-4111-8111-111111111111";
+  await withServer(async (baseUrl) => {
+    const response = await fetch(baseUrl + "/api/v1/articles/" + articleId, {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer " + signedToken("verified-writer"),
+      },
+      body: JSON.stringify({
+        slug: "updated-work", title: "更新后的作品", contentBlocks, publish: false, locale: "zh-CN",
+      }),
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      data: { id: articleId, actorId: "verified-writer", slug: "updated-work", title: "更新后的作品", contentBlocks },
+    });
+    assert.deepEqual(received, {
+      articleId, actorId: "verified-writer", slug: "updated-work", title: "更新后的作品",
+      contentBlocks, publish: false, locale: "zh-CN",
+    });
+  }, {
+    env: authEnv,
+    store: {
+      async isSessionRevoked() { return false; },
+      async updateArticle(args) {
+        received = args;
+        return { id: args.articleId, actorId: args.actorId, slug: args.slug, title: args.title, contentBlocks: args.contentBlocks };
+      },
+    },
+  });
+});
+
+test("REST article writes require verified non-revoked authentication and zh-CN", async () => {
+  let writes = 0;
+  const contentBlocks = [{ id: "p1", type: "paragraph", text: "Text" }];
+  await withServer(async (baseUrl) => {
+    const unauthorized = await fetch(baseUrl + "/api/v1/articles", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ slug: "private", title: "Private", contentBlocks }),
+    });
+    assert.equal(unauthorized.status, 401);
+    assert.equal((await unauthorized.json()).error.code, "UNAUTHENTICATED");
+
+    const unsupportedLocale = await fetch(baseUrl + "/api/v1/articles", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer " + signedToken("writer"),
+      },
+      body: JSON.stringify({ slug: "english", title: "English", contentBlocks, locale: "en" }),
+    });
+    assert.equal(unsupportedLocale.status, 400);
+    assert.equal((await unsupportedLocale.json()).error.code, "BAD_USER_INPUT");
+
+    const revoked = await fetch(baseUrl + "/api/v1/me/articles", {
+      headers: { authorization: "Bearer " + signedToken("revoked-writer") },
+    });
+    assert.equal(revoked.status, 401);
+    assert.equal((await revoked.json()).error.code, "UNAUTHENTICATED");
+    assert.equal(writes, 0);
+  }, {
+    env: authEnv,
+    store: {
+      async isSessionRevoked(sessionId) { return sessionId === "session-revoked-writer"; },
+      async createArticle() { writes += 1; return {}; },
+      async listMyArticles() { writes += 1; return []; },
+    },
+  });
+});
+
 test("REST public author profile uses stable userId and returns 404 for missing authors", async () => {
   let received;
   await withServer(async (baseUrl) => {
@@ -642,13 +782,12 @@ test("REST reports unavailable services and unknown API routes as JSON errors", 
 
 test("REST rejects unsupported methods with an Allow header", async () => {
   await withServer(async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/api/v1/articles`, { method: "POST" });
+    const response = await fetch(baseUrl + "/api/v1/categories", { method: "POST" });
     assert.equal(response.status, 405);
     assert.equal(response.headers.get("allow"), "GET");
     assert.equal((await response.json()).error.code, "METHOD_NOT_ALLOWED");
   });
 });
-
 test("REST maps domain errors to stable HTTP statuses and sanitized messages", async () => {
   const scenarios = [
     {

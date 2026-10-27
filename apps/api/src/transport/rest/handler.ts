@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { DomainError } from "../../domain/errors.ts";
+import { createAuthContext } from "../../security/authentication.ts";
 
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
@@ -9,6 +10,7 @@ const SUPPORTED_LOCALES = new Set(["zh-CN"]);
 const MAX_QUERY_LENGTH = 200;
 const MAX_ARTICLE_OFFSET = 100_000;
 const MAX_TAXONOMY_OFFSET = 1_000_000;
+const MAX_JSON_BODY_BYTES = 2 * 1024 * 1024;
 
 type RestServices = Record<string, (...args: any[]) => any>;
 
@@ -97,23 +99,161 @@ function sendUnavailable(response: ServerResponse): void {
   sendJson(response, 503, { error: { code: "SERVICE_UNAVAILABLE", message: "Persistence is not configured." } });
 }
 
+type JsonObjectResult =
+  | { ok: true; value: Record<string, unknown> }
+  | { ok: false; status: number; code: string; message: string };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+async function readJsonObject(request: IncomingMessage): Promise<JsonObjectResult> {
+  const contentType = request.headers["content-type"];
+  if (typeof contentType !== "string" || !/^application\/json(?:\s*;|$)/i.test(contentType)) {
+    return { ok: false, status: 415, code: "UNSUPPORTED_MEDIA_TYPE", message: "Content-Type must be application/json." };
+  }
+
+  const chunks: Buffer[] = [];
+  let size = 0;
+  let tooLarge = false;
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buffer.byteLength;
+    if (size > MAX_JSON_BODY_BYTES) {
+      tooLarge = true;
+      continue;
+    }
+    chunks.push(buffer);
+  }
+  if (tooLarge) {
+    return { ok: false, status: 413, code: "PAYLOAD_TOO_LARGE", message: "The JSON request body is too large." };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    return { ok: false, status: 400, code: "BAD_USER_INPUT", message: "The request body must be valid JSON." };
+  }
+  if (!isRecord(parsed)) {
+    return { ok: false, status: 400, code: "BAD_USER_INPUT", message: "The request body must be a JSON object." };
+  }
+  return { ok: true, value: parsed };
+}
+
+const ARTICLE_WRITE_FIELDS = new Set([
+  "slug", "title", "summary", "locale", "contentBlocks", "publish", "workType", "categoryIds", "tagIds",
+]);
+
+function normalizeArticleWriteBody(
+  body: Record<string, unknown>,
+  requirePublish: boolean,
+): { input: Record<string, unknown> | null; error: string | null } {
+  if (Object.keys(body).some((key) => !ARTICLE_WRITE_FIELDS.has(key))) {
+    return { input: null, error: "The request contains unsupported fields." };
+  }
+  if (body.locale !== undefined && body.locale !== "zh-CN") {
+    return { input: null, error: "The REST API currently supports only locale zh-CN." };
+  }
+  if (typeof body.slug !== "string" || typeof body.title !== "string") {
+    return { input: null, error: "slug and title must be strings." };
+  }
+  if (!Array.isArray(body.contentBlocks)) {
+    return { input: null, error: "contentBlocks must be a JSON array." };
+  }
+  if (body.summary !== undefined && typeof body.summary !== "string") {
+    return { input: null, error: "summary must be a string." };
+  }
+  if (body.workType !== undefined && typeof body.workType !== "string") {
+    return { input: null, error: "workType must be a string." };
+  }
+  if (body.publish !== undefined && typeof body.publish !== "boolean") {
+    return { input: null, error: "publish must be a boolean." };
+  }
+  if (requirePublish && typeof body.publish !== "boolean") {
+    return { input: null, error: "publish must be supplied as a boolean for article updates." };
+  }
+  for (const field of ["categoryIds", "tagIds"] as const) {
+    if (body[field] !== undefined && !Array.isArray(body[field])) {
+      return { input: null, error: field + " must be an array when supplied." };
+    }
+  }
+
+  return {
+    input: { ...body, locale: "zh-CN", contentBlocks: JSON.stringify(body.contentBlocks) },
+    error: null,
+  };
+}
+
+async function authenticatedActorId(
+  request: IncomingMessage,
+  services: RestServices,
+  env: NodeJS.ProcessEnv,
+): Promise<string | null> {
+  const authorization = request.headers.authorization;
+  const authRequest = new Request("http://localhost/", {
+    headers: typeof authorization === "string" ? { authorization } : {},
+  });
+  const { user } = createAuthContext(authRequest, env);
+  if (!user) return null;
+  if (typeof services.isSessionRevoked === "function" && await services.isSessionRevoked(user.sessionId)) return null;
+  return user.id;
+}
+
+function sendUnauthenticated(response: ServerResponse): void {
+  sendJson(response, 401, { error: { code: "UNAUTHENTICATED", message: "Authentication is required." } });
+}
+
+function sendJsonBodyError(response: ServerResponse, result: Extract<JsonObjectResult, { ok: false }>): void {
+  sendJson(response, result.status, { error: { code: result.code, message: result.message } });
+}
+
+
 /**
  * REST transport adapter. It calls application services directly; it never
  * makes an HTTP round-trip to GraphQL or reaches into persistence adapters.
  */
-export function createRestHandler({ services }: { services: RestServices | null }) {
+export function createRestHandler({ services, env = process.env }: { services: RestServices | null; env?: NodeJS.ProcessEnv }) {
   return async function handleRest(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
     const url = new URL(request.url ?? "/", "http://localhost");
     if (url.pathname !== "/api/v1" && !url.pathname.startsWith("/api/v1/")) return false;
 
-    if (request.method !== "GET") {
-      response.setHeader("allow", "GET");
-      sendJson(response, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "Only GET is supported for this endpoint." } });
+    const articleItemPath = /^\/api\/v1\/articles\/[^/]+$/.test(url.pathname);
+    const isCreateArticle = request.method === "POST" && url.pathname === "/api/v1/articles";
+    const isUpdateArticle = request.method === "PUT" && articleItemPath;
+    if (request.method !== "GET" && !isCreateArticle && !isUpdateArticle) {
+      response.setHeader("allow", url.pathname === "/api/v1/articles" ? "GET, POST" : articleItemPath ? "GET, PUT" : "GET");
+      sendJson(response, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "The HTTP method is not supported for this endpoint." } });
       return true;
     }
 
     if (url.pathname === "/api/v1/health") {
       sendJson(response, 200, { status: "ok", service: "api", version: "0.1.0" });
+      return true;
+    }
+
+    if (url.pathname === "/api/v1/me/articles") {
+      if (!services) {
+        sendUnavailable(response);
+        return true;
+      }
+      const locale = parseLocale(url);
+      const limit = parseInteger(url.searchParams, "limit", 50, 1, 100);
+      if (!locale || limit === null) {
+        sendBadInput(response, "Invalid locale or limit query parameter.");
+        return true;
+      }
+      try {
+        const actorId = await authenticatedActorId(request, services, env);
+        if (!actorId) {
+          sendUnauthenticated(response);
+          return true;
+        }
+        const articles = await services.listMyArticles({ actorId, locale, limit });
+        sendJson(response, 200, { data: articles });
+      } catch (error: unknown) {
+        sendServiceError(response, error);
+      }
       return true;
     }
 
@@ -175,6 +315,30 @@ export function createRestHandler({ services }: { services: RestServices | null 
         sendUnavailable(response);
         return true;
       }
+      if (request.method === "POST") {
+        const bodyResult = await readJsonObject(request);
+        if (bodyResult.ok === false) {
+          sendJsonBodyError(response, bodyResult);
+          return true;
+        }
+        const normalized = normalizeArticleWriteBody(bodyResult.value, false);
+        if (!normalized.input) {
+          sendBadInput(response, normalized.error ?? "Invalid article input.");
+          return true;
+        }
+        try {
+          const authorId = await authenticatedActorId(request, services, env);
+          if (!authorId) {
+            sendUnauthenticated(response);
+            return true;
+          }
+          const article = await services.createArticle({ ...normalized.input, authorId });
+          sendJson(response, 201, { data: article });
+        } catch (error: unknown) {
+          sendServiceError(response, error);
+        }
+        return true;
+      }
       const locale = parseLocale(url);
       const query = parseQuery(url);
       const pagination = parsePagination(url, 20, MAX_ARTICLE_OFFSET);
@@ -192,6 +356,39 @@ export function createRestHandler({ services }: { services: RestServices | null 
     }
 
     const articleMatch = url.pathname.match(/^\/api\/v1\/articles\/([^/]+)$/);
+    if (articleMatch && request.method === "PUT") {
+      if (!services) {
+        sendUnavailable(response);
+        return true;
+      }
+      const bodyResult = await readJsonObject(request);
+      if (bodyResult.ok === false) {
+        sendJsonBodyError(response, bodyResult);
+        return true;
+      }
+      const normalized = normalizeArticleWriteBody(bodyResult.value, true);
+      if (!normalized.input) {
+        sendBadInput(response, normalized.error ?? "Invalid article input.");
+        return true;
+      }
+      const articleId = decodeUserId(articleMatch[1]);
+      if (!articleId) {
+        sendBadInput(response, "Invalid article ID.");
+        return true;
+      }
+      try {
+        const actorId = await authenticatedActorId(request, services, env);
+        if (!actorId) {
+          sendUnauthenticated(response);
+          return true;
+        }
+        const article = await services.updateArticle({ ...normalized.input, articleId, actorId });
+        sendJson(response, 200, { data: article });
+      } catch (error: unknown) {
+        sendServiceError(response, error);
+      }
+      return true;
+    }
     if (articleMatch) {
       if (!services) {
         sendUnavailable(response);

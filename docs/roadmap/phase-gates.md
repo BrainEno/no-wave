@@ -29,6 +29,7 @@ On 2026-10-27, the product owner approved replacing GraphQL as the sole business
 - [x] Record the REST-only decision and require stable `userId` for author identity.
 - [x] Constrain the versioned REST public-content contract to `zh-CN`.
 - [x] Add public author-profile and author-article REST endpoints; filter author articles in persistence before pagination.
+- [x] Add authenticated REST endpoints for listing the current user's articles, creating articles and owner-checked updates; derive actor identity from a verified, non-revoked JWT.
 - [ ] Migrate the Web public-content client and sitemap from GraphQL/fixtures to REST.
 - [ ] Migrate article/profile/engagement mutations and messaging/notification queries to REST with regression tests.
 - [ ] Select and validate SSE/WebSocket only for concrete real-time needs; keep database/outbox state authoritative.

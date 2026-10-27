@@ -17,7 +17,7 @@ export function createApiServer({ env = process.env, store = null, applicationSe
   const services = applicationServices ?? (store ? createApplicationServices({ persistence: store }) : null);
   // The service facade is dynamically assembled from the validated persistence ports.
   const contextServices = services as unknown as ApiContext["services"];
-  const handleRest = createRestHandler({ services });
+  const handleRest = createRestHandler({ services, env });
   const yoga = createYoga<ApiContext>({
     schema: createApiSchema(),
     graphqlEndpoint: "/graphql",
