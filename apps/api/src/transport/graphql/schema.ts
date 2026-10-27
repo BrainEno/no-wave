@@ -524,8 +524,7 @@ export function createApiSchema() {
             const actorId = requireAuthenticatedActor(context);
             const store = requireServices(context);
             await store.updateConversationParticipants({ conversationId, actorId, addUserIds, removeUserIds });
-            const conversations = await store.listConversations({ actorId, limit: 100 });
-            const updated = conversations.find((conversation) => conversation.id === conversationId);
+            const updated = await store.getConversation({ conversationId, actorId });
             if (!updated) throw new ConversationNotFoundError();
             return updated;
           } catch (error) {

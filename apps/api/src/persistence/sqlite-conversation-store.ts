@@ -120,6 +120,21 @@ export function createSqliteConversationStore(db) {
       if (!cursor) throw new InvalidMessageCursorError();
       return all("SELECT * FROM (SELECT id,conversation_id,sender_id,body,created_at FROM messages WHERE conversation_id = ? AND (created_at < ? OR (created_at = ? AND id < ?)) ORDER BY created_at DESC,id DESC LIMIT ?) older ORDER BY created_at,id", conversationId, cursor.created_at, cursor.created_at, cursor.id, limit).map((row) => mapMessage(row));
     },
+    async getConversation({ conversationId, actorId }) {
+      requiredText("conversationId", conversationId, 300);
+      requiredText("actorId", actorId, 300);
+      const row = get(`SELECT c.id,c.created_by,c.created_at,
+        COALESCE(latest.created_at,c.created_at) AS last_activity_at,
+        (SELECT json_group_array(user_id) FROM (SELECT user_id FROM conversation_participants cp WHERE cp.conversation_id=c.id AND cp.left_at IS NULL ORDER BY user_id)) AS participant_ids,
+        latest.id AS latest_message_id,latest.conversation_id AS latest_message_conversation_id,
+        latest.sender_id AS latest_message_sender_id,latest.body AS latest_message_body,latest.created_at AS latest_message_created_at,
+        (SELECT count(*) FROM messages m WHERE m.conversation_id=c.id AND m.sender_id <> ? AND (membership.last_read_at IS NULL OR m.created_at > membership.last_read_at)) AS unread_count
+        FROM conversation_participants membership JOIN conversations c ON c.id=membership.conversation_id
+        LEFT JOIN messages latest ON latest.id=(SELECT id FROM messages m2 WHERE m2.conversation_id=c.id ORDER BY created_at DESC,id DESC LIMIT 1)
+        WHERE membership.user_id=? AND membership.conversation_id=? AND membership.left_at IS NULL
+        LIMIT 1`, actorId, actorId, conversationId);
+      return row ? mapConversation(row) : null;
+    },
     async listConversations({ actorId, limit = 50 }) {
       requiredText("actorId", actorId, 300);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new TypeError("limit must be an integer between 1 and 100.");

@@ -1434,6 +1434,7 @@ test("REST conversation and message routes preserve full fields, cursor order co
       async listConversations(args) { calls.push({ method: "listConversations", args }); return [conversation]; },
       async listConversationMessages(args) { calls.push({ method: "listConversationMessages", args }); return [message]; },
       async persistMessage(args) { calls.push({ method: "persistMessage", args }); return message; },
+      async getConversation(args) { calls.push({ method: "getConversation", args }); return conversation; },
       async updateConversationParticipants(args) { calls.push({ method: "updateConversationParticipants", args }); return ["reader-user", "third-user", "writer-user"]; },
       async markConversationAsRead(args) { calls.push({ method: "markConversationAsRead", args }); return true; },
       async deleteConversation(args) { calls.push({ method: "deleteConversation", args }); return true; },
@@ -1453,6 +1454,12 @@ test("REST conversation and message routes preserve full fields, cursor order co
     method: "updateConversationParticipants",
     args: { conversationId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", actorId: "writer-user", addUserIds: ["third-user"], removeUserIds: [] },
   });
+  assert.deepEqual(calls.find((call) => call.method === "getConversation"), {
+    method: "getConversation",
+    args: { conversationId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", actorId: "writer-user" },
+  });
+  assert.equal(calls.filter((call) => call.method === "listConversations").length, 1,
+    "the participant update response must not depend on the first 100 conversation list entries");
   assert.deepEqual(calls.find((call) => call.method === "markConversationAsRead"), {
     method: "markConversationAsRead", args: { conversationId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", actorId: "writer-user" },
   });

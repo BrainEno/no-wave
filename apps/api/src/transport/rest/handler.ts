@@ -824,10 +824,7 @@ export function createRestHandler({ services, env = process.env }: { services: R
         const actorId = await authenticatedActorId(request, services, env);
         if (!actorId) { sendUnauthenticated(response); return true; }
         await services.updateConversationParticipants({ conversationId, actorId, ...normalized.input });
-        const conversations = await services.listConversations({ actorId, limit: 100 });
-        const updated = Array.isArray(conversations)
-          ? conversations.find((conversation: any) => conversation?.id === conversationId)
-          : null;
+        const updated = await services.getConversation({ conversationId, actorId });
         if (!updated) sendJson(response, 404, { error: { code: "NOT_FOUND", message: "The conversation was not found." } });
         else sendJson(response, 200, { data: updated });
       } catch (error: unknown) { sendServiceError(response, error); }

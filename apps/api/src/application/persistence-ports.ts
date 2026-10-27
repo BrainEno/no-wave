@@ -23,7 +23,7 @@ export const persistencePortMethods = Object.freeze({
     "listArticleComments", "createArticleComment", "deleteArticleComment",
   ]),
   conversations: Object.freeze([
-    "createConversation", "updateConversationParticipants", "deleteConversation",
+    "createConversation", "getConversation", "updateConversationParticipants", "deleteConversation",
     "markConversationAsRead", "listConversationMessages", "listConversations",
     "persistMessage", "listConversationParticipantIds",
   ]),
