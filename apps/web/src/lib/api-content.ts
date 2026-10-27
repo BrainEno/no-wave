@@ -6,6 +6,40 @@ type JsonResponse = { ok: boolean; status: number; json(): Promise<GraphQLPayloa
 type FetchImpl = (input: string, init?: RequestInit) => Promise<JsonResponse>;
 export type ArticleListOptions = { locale?: Locale; query?: string; authorUsername?: string | null; limit?: number; offset?: number };
 type CategoryListOptions = { locale?: Locale; query?: string; limit?: number; offset?: number };
+
+/**
+ * Resolve either an explicit GraphQL endpoint (local/legacy configuration) or
+ * the base URL injected by a Vercel service binding. Bindings are runtime-only,
+ * so pages that depend on this value must render dynamically.
+ */
+export function resolveApiGraphqlEndpoint(
+  config: { explicitUrl?: string; serviceUrl?: string } = {
+    explicitUrl: process.env.API_GRAPHQL_URL,
+    serviceUrl: process.env.API_SERVICE_URL,
+  },
+): string | undefined {
+  const explicitUrl = config.explicitUrl?.trim();
+  if (explicitUrl) return explicitUrl;
+
+  const serviceUrl = config.serviceUrl?.trim();
+  if (!serviceUrl) return undefined;
+
+  let baseUrl: URL;
+  try {
+    baseUrl = new URL(serviceUrl);
+  } catch {
+    throw new Error("API_SERVICE_URL must be an absolute HTTP(S) URL.");
+  }
+  if (baseUrl.protocol !== "http:" && baseUrl.protocol !== "https:") {
+    throw new Error("API_SERVICE_URL must be an absolute HTTP(S) URL.");
+  }
+
+  const basePath = baseUrl.pathname.replace(new RegExp("/+$"), "");
+  baseUrl.pathname = basePath.length > 0 ? `${basePath}/` : "/";
+  baseUrl.search = "";
+  baseUrl.hash = "";
+  return new URL("graphql", baseUrl).toString();
+}
 type ApiContentClient = {
   listArticles(options?: ArticleListOptions): Promise<ArticleView[]>;
   getArticleBySlug(slug: string, locale?: Locale): Promise<ArticleView | null>;
@@ -215,14 +249,15 @@ export function createApiContentClient({ endpoint, fetchImpl = fetch }: { endpoi
 }
 
 function configuredClient(): ApiContentClient | null {
-  const endpoint = process.env.API_GRAPHQL_URL;
+  const endpoint = resolveApiGraphqlEndpoint();
   return endpoint ? createApiContentClient({ endpoint }) : null;
 }
 
 /**
- * API-backed content is used when API_GRAPHQL_URL is configured. The local
- * fixture registry remains an explicit development/build fallback when it is
- * absent; configured API failures are surfaced rather than hidden by fixtures.
+ * API-backed content is used when API_GRAPHQL_URL (an explicit GraphQL endpoint)
+ * or API_SERVICE_URL (a Vercel service-binding base URL) is configured. The local
+ * fixture registry remains an explicit development fallback when both are absent;
+ * configured API failures are surfaced rather than hidden by fixtures.
  * Category data has no fixture equivalent yet, so discovery routes are empty
  * in fixture-only builds and become data-backed when the API is configured.
  */

@@ -1,8 +1,40 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createApiContentClient } from "./api-content.ts";
+import { createApiContentClient, resolveApiGraphqlEndpoint } from "./api-content.ts";
 
 type GraphQLRequest = { query: string; variables: Record<string, unknown> };
+
+test("Vercel service binding base URL resolves to the API GraphQL endpoint", () => {
+  assert.equal(
+    resolveApiGraphqlEndpoint({ serviceUrl: "https://api-internal.example.test/" }),
+    "https://api-internal.example.test/graphql",
+  );
+  assert.equal(
+    resolveApiGraphqlEndpoint({ serviceUrl: "https://api-internal.example.test" }),
+    "https://api-internal.example.test/graphql",
+  );
+});
+
+test("explicit GraphQL endpoint takes precedence over the service binding", () => {
+  assert.equal(
+    resolveApiGraphqlEndpoint({
+      explicitUrl: "https://api.example.test/custom-graphql",
+      serviceUrl: "https://api-internal.example.test/",
+    }),
+    "https://api.example.test/custom-graphql",
+  );
+});
+
+test("API endpoint resolution preserves fixture mode when no endpoint is configured", () => {
+  assert.equal(resolveApiGraphqlEndpoint({}), undefined);
+});
+
+test("invalid service binding URL fails visibly instead of silently using fixtures", () => {
+  assert.throws(
+    () => resolveApiGraphqlEndpoint({ serviceUrl: "not-a-url" }),
+    /API_SERVICE_URL must be an absolute HTTP\(S\) URL/,
+  );
+});
 type CapturedRequest = { url: string; init: RequestInit | undefined; body: GraphQLRequest };
 
 function readRequestBody(init?: RequestInit): GraphQLRequest {
