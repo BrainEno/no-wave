@@ -79,18 +79,20 @@ export function createSqliteArticleStore(db) {
 
 
   return Object.freeze({
-    listPublishedArticles({ locale = "zh-CN", query = "", limit = 20, offset = 0 } = {}) {
+    listPublishedArticles({ locale = "zh-CN", query = "", authorId = null, limit = 20, offset = 0 } = {}) {
       validateArticleLocale(locale);
       if (typeof query !== "string" || query.length > 200) throw new ArticleInputError("query must be a string no longer than 200 characters.");
+      if (authorId !== null) requiredText("authorId", authorId, 300);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
       if (!Number.isInteger(offset) || offset < 0 || offset > 100000) throw new ArticleInputError("offset must be an integer between 0 and 100000.");
       const needle = query.trim().toLocaleLowerCase(locale);
       const rows = statement(articleSelect + `
         WHERE a.status = 'published' AND t.locale = ?
           AND (? = '' OR instr(lower(t.title), lower(?)) > 0 OR instr(lower(t.summary), lower(?)) > 0)
+          AND (? IS NULL OR a.author_id = ?)
         ORDER BY a.published_at DESC, a.id DESC
         LIMIT ? OFFSET ?
-      `).all(locale, needle, needle, needle, limit, offset);
+      `).all(locale, needle, needle, needle, authorId, authorId, limit, offset);
       return rows.map(mapArticle);
     },
 
