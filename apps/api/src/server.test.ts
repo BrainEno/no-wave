@@ -853,6 +853,203 @@ test("REST maps domain errors to stable HTTP statuses and sanitized messages", a
 });
 
 
+
+
+test("REST current user and profile reads require JWT and preserve all AuthorProfile fields", async () => {
+  const profile = {
+    userId: "me-user", displayName: "作者", bio: "个人简介",
+    avatarUrl: "/media/avatar.png", websiteUrl: "https://example.test/",
+    locale: "zh-CN", createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-02-01T00:00:00.000Z", followerCount: 7,
+    followingCount: 4, isFollowing: true,
+  };
+  await withServer(async (baseUrl) => {
+    const me = await fetch(baseUrl + "/api/v1/me", {
+      headers: { authorization: "Bearer " + signedToken("me-user") },
+    });
+    assert.equal(me.status, 200);
+    assert.deepEqual(await me.json(), { data: { id: "me-user" } });
+
+    const profileResponse = await fetch(baseUrl + "/api/v1/me/profile?locale=zh-CN", {
+      headers: { authorization: "Bearer " + signedToken("me-user") },
+    });
+    assert.equal(profileResponse.status, 200);
+    assert.deepEqual(await profileResponse.json(), { data: profile });
+  }, {
+    env: authEnv,
+    store: {
+      async isSessionRevoked() { return false; },
+      async getAuthorProfile(args) {
+        assert.deepEqual(args, { userId: "me-user", locale: "zh-CN", viewerId: "me-user" });
+        return profile;
+      },
+    },
+  });
+});
+
+test("REST user search and relationship lists retain GraphQL arguments and complete author fields", async () => {
+  const calls = [];
+  const profile = {
+    userId: "target-user", displayName: "作者甲", bio: "简介",
+    avatarUrl: null, websiteUrl: null, locale: "zh-CN",
+    createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-02T00:00:00.000Z",
+    followerCount: 5, followingCount: 2, isFollowing: false,
+  };
+  await withServer(async (baseUrl) => {
+    const search = await fetch(baseUrl + "/api/v1/users?query=%E4%BD%9C%E8%80%85&limit=7&locale=zh-CN", {
+      headers: { authorization: "Bearer " + signedToken("viewer-user") },
+    });
+    assert.equal(search.status, 200);
+    assert.deepEqual(await search.json(), { data: [profile] });
+    assert.deepEqual(calls[0], ["search", { query: "作者", locale: "zh-CN", limit: 7, viewerId: "viewer-user" }]);
+
+    for (const relation of ["followers", "following"]) {
+      const response = await fetch(baseUrl + "/api/v1/users/target-user/" + relation + "?limit=9", {
+        headers: { authorization: "Bearer " + signedToken("viewer-user") },
+      });
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { data: [profile] });
+    }
+    assert.deepEqual(calls[1], ["followers", { userId: "target-user", locale: "zh-CN", limit: 9, viewerId: "viewer-user" }]);
+    assert.deepEqual(calls[2], ["following", { userId: "target-user", locale: "zh-CN", limit: 9, viewerId: "viewer-user" }]);
+  }, {
+    env: authEnv,
+    store: {
+      async isSessionRevoked() { return false; },
+      async searchUsers(args) { calls.push(["search", args]); return [profile]; },
+      async listFollowers(args) { calls.push(["followers", args]); return [profile]; },
+      async listFollowing(args) { calls.push(["following", args]); return [profile]; },
+    },
+  });
+});
+
+test("REST liked articles, related articles, and article like info cover the GraphQL read operations", async () => {
+  const calls = [];
+  const article = {
+    id: "article-1", authorId: "writer-user", slug: "poetry-work", workType: "poetry",
+    status: "published", locale: "zh-CN", title: "诗", summary: "摘要",
+    contentBlocks: [{ id: "p1", type: "paragraph", text: "正文" }],
+    createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-02T00:00:00.000Z",
+    publishedAt: "2026-01-02T00:00:00.000Z", author: null, categories: [], tags: [],
+  };
+  const likeInfo = { articleId: "article-1", slug: "poetry-work", likeCount: 12, likedByViewer: true };
+  await withServer(async (baseUrl) => {
+    const liked = await fetch(baseUrl + "/api/v1/me/liked-articles?limit=8", {
+      headers: { authorization: "Bearer " + signedToken("reader-user") },
+    });
+    assert.equal(liked.status, 200);
+    assert.deepEqual(await liked.json(), { data: [article] });
+    assert.deepEqual(calls[0], ["liked", { actorId: "reader-user", locale: "zh-CN", limit: 8 }]);
+
+    const related = await fetch(baseUrl + "/api/v1/articles/poetry-work/related?limit=4");
+    assert.equal(related.status, 200);
+    assert.deepEqual(await related.json(), { data: [article] });
+    assert.deepEqual(calls[1], ["related", { slug: "poetry-work", locale: "zh-CN", limit: 4 }]);
+
+    const like = await fetch(baseUrl + "/api/v1/articles/poetry-work/like", {
+      headers: { authorization: "Bearer " + signedToken("reader-user") },
+    });
+    assert.equal(like.status, 200);
+    assert.deepEqual(await like.json(), { data: likeInfo });
+    assert.deepEqual(calls[2], ["like", { slug: "poetry-work", locale: "zh-CN", actorId: "reader-user" }]);
+  }, {
+    env: authEnv,
+    store: {
+      async isSessionRevoked() { return false; },
+      async listLikedArticles(args) { calls.push(["liked", args]); return [article]; },
+      async listRelatedArticles(args) { calls.push(["related", args]); return [article]; },
+      async getArticleLikeInfo(args) { calls.push(["like", args]); return likeInfo; },
+    },
+  });
+});
+
+test("REST public author profile reflects the optional viewer follow state", async () => {
+  let received;
+  await withServer(async (baseUrl) => {
+    const response = await fetch(baseUrl + "/api/v1/authors/target-user", {
+      headers: { authorization: "Bearer " + signedToken("viewer-user") },
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      data: {
+        userId: "target-user", displayName: "目标作者", bio: "",
+        avatarUrl: null, websiteUrl: null, locale: "zh-CN",
+        createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z",
+        followerCount: 2, followingCount: 1, isFollowing: true,
+      },
+    });
+    assert.deepEqual(received, { userId: "target-user", locale: "zh-CN", viewerId: "viewer-user" });
+  }, {
+    env: authEnv,
+    store: {
+      async isSessionRevoked() { return false; },
+      async getAuthorProfile(args) {
+        received = args;
+        return {
+          userId: args.userId, displayName: "目标作者", bio: "",
+          avatarUrl: null, websiteUrl: null, locale: args.locale,
+          createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z",
+          followerCount: 2, followingCount: 1, isFollowing: args.viewerId === "viewer-user",
+        };
+      },
+    },
+  });
+});
+
+test("REST current-session logout persists jti revocation through the token expiry", async () => {
+  let received;
+  await withServer(async (baseUrl) => {
+    const response = await fetch(baseUrl + "/api/v1/me/session", {
+      method: "DELETE",
+      headers: { authorization: "Bearer " + signedToken("logout-user") },
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { data: true });
+    assert.equal(received.sessionId, "session-logout-user");
+    assert.ok(received.expiresAt instanceof Date);
+    assert.ok(received.expiresAt.getTime() > Date.now());
+  }, {
+    env: authEnv,
+    store: {
+      async isSessionRevoked() { return false; },
+      async revokeSession(args) { received = args; return true; },
+    },
+  });
+});
+
+test("REST authentication fails closed if durable session revocation cannot be checked", async () => {
+  await withServer(async (baseUrl) => {
+    const response = await fetch(baseUrl + "/api/v1/me/articles", {
+      headers: { authorization: "Bearer " + signedToken("reader-user") },
+    });
+    assert.equal(response.status, 401);
+    assert.equal((await response.json()).error.code, "UNAUTHENTICATED");
+  }, {
+    env: authEnv,
+    store: {
+      async isSessionRevoked() { throw new Error("database unavailable"); },
+      async listMyArticles() { throw new Error("must not be called"); },
+    },
+  });
+});
+
+test("REST optional viewer authentication does not grant viewer state to revoked sessions", async () => {
+  let received;
+  await withServer(async (baseUrl) => {
+    const response = await fetch(baseUrl + "/api/v1/articles/poetry-work/like", {
+      headers: { authorization: "Bearer " + signedToken("revoked-viewer") },
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(received, { slug: "poetry-work", locale: "zh-CN", actorId: null });
+  }, {
+    env: authEnv,
+    store: {
+      async isSessionRevoked(sessionId) { return sessionId === "session-revoked-viewer"; },
+      async getArticleLikeInfo(args) { received = args; return null; },
+    },
+  });
+});
+
 test("REST profile update derives userId from the JWT and rejects identity fields", async () => {
   const received: { upsert: Record<string, unknown> | null; read: Record<string, unknown> | null } = { upsert: null, read: null };
   const savedProfile = {
