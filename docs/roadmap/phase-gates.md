@@ -35,8 +35,8 @@ On 2026-10-27, the product owner approved replacing GraphQL as the sole business
 - [x] Harden JWT verification with a pinned access-token type, required issuance/expiry claims, a bounded maximum TTL and fail-closed session-revocation checks.
 - [x] Add field-level Article/AuthorProfile/ArticleComment enrichment to REST responses so the route layer does not silently omit GraphQL-resolved fields.
 - [x] Record the operation-by-operation field and resolver parity inventory in [REST–GraphQL parity audit](../audit/rest-graphql-parity.md).
-- [ ] Complete REST taxonomy mutations, conversations/messages and notification operations with equivalent authorization, payload fields and regression tests.
-- [ ] Complete remaining REST discovery/engagement reads, taxonomy mutations, conversation lifecycle, messaging and notification APIs with regression tests.
+- [x] Add REST taxonomy mutations, conversation lifecycle/message read-send, and notification inbox/read-state operations with equivalent authorization, payload fields and regression tests.
+- [ ] Add a machine-enforced GraphQL schema-to-REST route contract check and complete Web caller migration before removing the transitional GraphQL runtime.
 - [ ] Select and validate SSE/WebSocket only for concrete real-time needs; keep database/outbox state authoritative.
 - [ ] Remove GraphQL schema, Yoga runtime, dependencies, environment variables and obsolete tests after REST parity is verified.
 

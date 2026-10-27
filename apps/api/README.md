@@ -111,6 +111,9 @@ The API exposes a versioned REST business contract under `/api/v1`. REST handler
 - `GET /api/v1/categories/:slug/articles?locale=zh-CN&limit=20&offset=0` — published articles in a category.
 - `GET /api/v1/tags?locale=zh-CN&query=&limit=100&offset=0` and `GET /api/v1/tags/:slug?locale=zh-CN` — hashtag discovery and detail.
 - `GET /api/v1/tags/:slug/articles?locale=zh-CN&limit=20&offset=0` — published articles associated with a hashtag.
+- `GET /api/v1/conversations?limit=50` — authenticated participant-scoped conversation list with last activity, unread count and last-message summary.
+- `GET /api/v1/conversations/:conversationId/messages?limit=100&before=:messageId` — authenticated message history; preserves the latest-window/oldest-first ordering and same-conversation cursor validation.
+- `GET /api/v1/me/notifications?limit=50` and `GET /api/v1/me/notifications/unread-count` — authenticated notification inbox and unread count.
 - `GET /api/v1/articles/:slug/comments?locale=zh-CN&limit=50` — public comment tree for a published article.
 
 ### Authenticated article, profile and community routes
@@ -123,6 +126,13 @@ All routes below require a valid, non-revoked bearer JWT, except for public comm
 - `PUT /api/v1/me/profile` — update the current user's profile using `displayName`, optional `bio`, `avatarUrl`, `websiteUrl` and optional `locale`. The profile owner is derived from JWT identity.
 - `POST /api/v1/users/:userId/follow` and `DELETE /api/v1/users/:userId/follow` — idempotently follow or unfollow the target stable user ID. The returned profile includes every GraphQL AuthorProfile field, including counts, timestamps, avatar/website, locale and viewer-specific follow state.
 - `DELETE /api/v1/me/session` — revoke the current verified token by its `jti`.
+- `POST /api/v1/tags` — create or reuse a normalized hashtag; the actor is derived from JWT.
+- `POST /api/v1/taxonomies` and `DELETE /api/v1/taxonomies/:taxonomyId` — create/delete a localized category or taxonomy; deletion is creator-scoped.
+- `POST /api/v1/conversations` — create a conversation with the authenticated actor plus submitted participants.
+- `POST /api/v1/conversations/:conversationId/messages` — send a message with a required `Idempotency-Key` header and JSON body `{"body":"..."}`. The sender is JWT-derived; persistence commits the message and transactional outbox intent together.
+- `PATCH /api/v1/conversations/:conversationId/participants` — manage participants under the existing creator/member rules and return the complete Conversation.
+- `PUT /api/v1/conversations/:conversationId/read` and `DELETE /api/v1/conversations/:conversationId` — update the current participant's read state or delete a conversation under creator/member rules.
+- `PUT /api/v1/me/notifications/:notificationId/read` and `POST /api/v1/me/notifications/read-all` — recipient-scoped single/batch read-state updates; batch response is the changed-row count.
 - `PUT /api/v1/articles/:slug/like?locale=zh-CN` — set an explicit like state with JSON body `{"liked": true}` or `{"liked": false}`. This is retry-safe state setting rather than a toggle.
 - `POST /api/v1/articles/:slug/comments?locale=zh-CN` — create a comment or reply with `{"content": "...", "parentCommentId": null}`; replies must reference a comment on the same article.
 - `DELETE /api/v1/comments/:commentId` — delete the current user's own comment. Returns `{"data":{"deleted":true}}` when deleted; the domain layer enforces ownership.
@@ -131,4 +141,4 @@ All routes below require a valid, non-revoked bearer JWT, except for public comm
 
 The versioned REST API currently accepts only locale `zh-CN`; unsupported locales return `400 BAD_USER_INPUT` instead of silently falling back. Article responses preserve all GraphQL Article fields, adding `author`, `categories`, and `tags` from the shared services. REST `contentBlocks` is a JSON array, while the legacy GraphQL field is a JSON-serialized string. Search terms are limited to 200 characters. Pagination limits are integers from 1 to 100 with bounded non-negative offsets. Domain validation, ownership rules, transactions and notification-outbox behavior remain in the existing application and persistence layers. Errors are mapped to stable HTTP codes and sanitized messages.
 
-This is still a staged migration, not full transport parity. Remaining work includes the rest of the profile/discovery/read-state routes, taxonomy mutations, conversation and notification APIs, corresponding Web client migration, contract/regression coverage and final GraphQL removal. Do not claim REST parity until those operations and their failure/security behavior have tests.
+This remains a staged migration. Backend REST routes now cover the GraphQL operations inventoried in `docs/audit/rest-graphql-parity.md`, except that legacy `toggleArticleLike` is intentionally migrated to explicit `PUT liked` state-setting semantics to avoid retries inverting state. Taxonomy, conversation/message and notification routes reuse existing persistence authorization, cursor, idempotency and outbox behavior. Remaining gates are a machine-enforced GraphQL-schema-to-REST contract check, Web caller migration and end-to-end verification; remove GraphQL/Yoga only after those gates pass. Do not remove GraphQL yet.

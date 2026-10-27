@@ -250,6 +250,106 @@ function normalizeCommentWriteBody(
   };
 }
 
+function normalizeCreateTagBody(
+  body: Record<string, unknown>,
+): { input: { name: string; locale: "zh-CN" } | null; error: string | null } {
+  if (Object.keys(body).some((key) => key !== "name" && key !== "locale")) {
+    return { input: null, error: "The request contains unsupported fields." };
+  }
+  if (body.locale !== undefined && body.locale !== "zh-CN") {
+    return { input: null, error: "The REST API currently supports only locale zh-CN." };
+  }
+  if (typeof body.name !== "string" || body.name.trim().length === 0 || body.name.length > 120) {
+    return { input: null, error: "name must be non-empty and no longer than 120 characters." };
+  }
+  return { input: { name: body.name, locale: "zh-CN" }, error: null };
+}
+
+function normalizeCreateTaxonomyBody(
+  body: Record<string, unknown>,
+): { input: { kind: string; slug: string; name: string; description: string; locale: "zh-CN" } | null; error: string | null } {
+  if (Object.keys(body).some((key) => !["kind", "slug", "name", "description", "locale"].includes(key))) {
+    return { input: null, error: "The request contains unsupported fields." };
+  }
+  if (body.locale !== undefined && body.locale !== "zh-CN") {
+    return { input: null, error: "The REST API currently supports only locale zh-CN." };
+  }
+  if (typeof body.kind !== "string" || typeof body.slug !== "string" || typeof body.name !== "string") {
+    return { input: null, error: "kind, slug, and name must be strings." };
+  }
+  if (body.description !== undefined && typeof body.description !== "string") {
+    return { input: null, error: "description must be a string." };
+  }
+  if (body.description !== undefined && body.description.length > 2000) {
+    return { input: null, error: "description must be no longer than 2000 characters." };
+  }
+  return {
+    input: {
+      kind: body.kind,
+      slug: body.slug,
+      name: body.name,
+      description: body.description ?? "",
+      locale: "zh-CN",
+    },
+    error: null,
+  };
+}
+
+function normalizeConversationCreateBody(
+  body: Record<string, unknown>,
+): { participantIds: string[] | null; error: string | null } {
+  if (Object.keys(body).some((key) => key !== "participantIds")) {
+    return { participantIds: null, error: "The request contains unsupported fields." };
+  }
+  if (!Array.isArray(body.participantIds) || body.participantIds.length === 0 || body.participantIds.length > 20 ||
+      body.participantIds.some((id) => typeof id !== "string" || id.length === 0 || id.length > 300 || id.trim() !== id)) {
+    return { participantIds: null, error: "participantIds must be a non-empty array of at most 20 user IDs." };
+  }
+  return { participantIds: body.participantIds as string[], error: null };
+}
+
+function normalizeConversationParticipantsBody(
+  body: Record<string, unknown>,
+): { input: { addUserIds: string[]; removeUserIds: string[] } | null; error: string | null } {
+  if (Object.keys(body).some((key) => key !== "addUserIds" && key !== "removeUserIds")) {
+    return { input: null, error: "The request contains unsupported fields." };
+  }
+  const addUserIds = body.addUserIds ?? [];
+  const removeUserIds = body.removeUserIds ?? [];
+  for (const [name, value] of [["addUserIds", addUserIds], ["removeUserIds", removeUserIds]] as const) {
+    if (!Array.isArray(value) || value.length > 20 ||
+        value.some((id) => typeof id !== "string" || id.length === 0 || id.length > 300 || id.trim() !== id)) {
+      return { input: null, error: name + " must be an array of at most 20 user IDs." };
+    }
+  }
+  return { input: { addUserIds: addUserIds as string[], removeUserIds: removeUserIds as string[] }, error: null };
+}
+
+function normalizeMessageWriteBody(
+  body: Record<string, unknown>,
+): { body: string | null; error: string | null } {
+  if (Object.keys(body).some((key) => key !== "body")) {
+    return { body: null, error: "The request contains unsupported fields." };
+  }
+  if (typeof body.body !== "string" || body.body.length === 0 || body.body.length > 20000 ||
+      body.body.trim().length === 0 || body.body.trim() !== body.body) {
+    return { body: null, error: "body must be non-empty, trimmed text no longer than 20000 characters." };
+  }
+  return { body: body.body, error: null };
+}
+
+function serializeRestNotification(notification: any): any {
+  if (!notification || typeof notification !== "object") return null;
+  // Match the GraphQL Notification contract; do not leak persistence-only userId.
+  return {
+    id: notification.id,
+    eventKey: notification.eventKey,
+    payload: JSON.stringify(notification.payload),
+    createdAt: notification.createdAt,
+    readAt: notification.readAt ?? null,
+  };
+}
+
 async function authenticatedUser(
   request: IncomingMessage,
   services: RestServices,
@@ -389,6 +489,18 @@ export function createRestHandler({ services, env = process.env }: { services: R
     const relatedArticlesMatch = url.pathname.match(/^\/api\/v1\/articles\/([^/]+)\/related$/);
     const articleCommentsPathMatch = url.pathname.match(/^\/api\/v1\/articles\/([^/]+)\/comments$/);
     const commentItemPathMatch = url.pathname.match(/^\/api\/v1\/comments\/([^/]+)$/);
+    const tagsCollectionPath = url.pathname === "/api/v1/tags";
+    const taxonomyCollectionPath = url.pathname === "/api/v1/taxonomies";
+    const taxonomyItemMatch = url.pathname.match(/^\/api\/v1\/taxonomies\/([^/]+)$/);
+    const conversationsPath = url.pathname === "/api/v1/conversations";
+    const conversationMessagesMatch = url.pathname.match(/^\/api\/v1\/conversations\/([^/]+)\/messages$/);
+    const conversationParticipantsMatch = url.pathname.match(/^\/api\/v1\/conversations\/([^/]+)\/participants$/);
+    const conversationReadMatch = url.pathname.match(/^\/api\/v1\/conversations\/([^/]+)\/read$/);
+    const conversationItemMatch = url.pathname.match(/^\/api\/v1\/conversations\/([^/]+)$/);
+    const notificationsPath = url.pathname === "/api/v1/me/notifications";
+    const unreadNotificationCountPath = url.pathname === "/api/v1/me/notifications/unread-count";
+    const notificationReadMatch = url.pathname.match(/^\/api\/v1\/me\/notifications\/([^/]+)\/read$/);
+    const readAllNotificationsPath = url.pathname === "/api/v1/me/notifications/read-all";
     const articleItemPath = /^\/api\/v1\/articles\/[^/]+$/.test(url.pathname);
     const isCreateArticle = request.method === "POST" && url.pathname === "/api/v1/articles";
     const isUpdateArticle = request.method === "PUT" && articleItemPath;
@@ -399,6 +511,16 @@ export function createRestHandler({ services, env = process.env }: { services: R
     const isSetArticleLike = request.method === "PUT" && articleLikePathMatch !== null;
     const isCreateArticleComment = request.method === "POST" && articleCommentsPathMatch !== null;
     const isDeleteArticleComment = request.method === "DELETE" && commentItemPathMatch !== null;
+    const isCreateTag = request.method === "POST" && tagsCollectionPath;
+    const isCreateTaxonomy = request.method === "POST" && taxonomyCollectionPath;
+    const isDeleteTaxonomy = request.method === "DELETE" && taxonomyItemMatch !== null;
+    const isCreateConversation = request.method === "POST" && conversationsPath;
+    const isSendMessage = request.method === "POST" && conversationMessagesMatch !== null;
+    const isUpdateConversationParticipants = request.method === "PATCH" && conversationParticipantsMatch !== null;
+    const isDeleteConversation = request.method === "DELETE" && conversationItemMatch !== null;
+    const isMarkConversationRead = request.method === "PUT" && conversationReadMatch !== null;
+    const isMarkNotificationRead = request.method === "PUT" && notificationReadMatch !== null;
+    const isMarkAllNotificationsRead = request.method === "POST" && readAllNotificationsPath;
 
     const rejectMethod = (allow: string) => {
       response.setHeader("allow", allow);
@@ -448,8 +570,59 @@ export function createRestHandler({ services, env = process.env }: { services: R
       rejectMethod("DELETE");
       return true;
     }
+    if (tagsCollectionPath && request.method !== "GET" && request.method !== "POST") {
+      rejectMethod("GET, POST");
+      return true;
+    }
+    if (taxonomyCollectionPath && request.method !== "POST") {
+      rejectMethod("POST");
+      return true;
+    }
+    if (taxonomyItemMatch && request.method !== "DELETE") {
+      rejectMethod("DELETE");
+      return true;
+    }
+    if (conversationsPath && request.method !== "GET" && request.method !== "POST") {
+      rejectMethod("GET, POST");
+      return true;
+    }
+    if (conversationMessagesMatch && request.method !== "GET" && request.method !== "POST") {
+      rejectMethod("GET, POST");
+      return true;
+    }
+    if (conversationParticipantsMatch && request.method !== "PATCH") {
+      rejectMethod("PATCH");
+      return true;
+    }
+    if (conversationReadMatch && request.method !== "PUT") {
+      rejectMethod("PUT");
+      return true;
+    }
+    if (conversationItemMatch && request.method !== "DELETE") {
+      rejectMethod("DELETE");
+      return true;
+    }
+    if (notificationsPath && request.method !== "GET") {
+      rejectMethod("GET");
+      return true;
+    }
+    if (unreadNotificationCountPath && request.method !== "GET") {
+      rejectMethod("GET");
+      return true;
+    }
+    if (notificationReadMatch && request.method !== "PUT") {
+      rejectMethod("PUT");
+      return true;
+    }
+    if (readAllNotificationsPath && request.method !== "POST") {
+      rejectMethod("POST");
+      return true;
+    }
     if (request.method !== "GET" && !isCreateArticle && !isUpdateArticle && !isUpdateMyProfile && !isRevokeSession &&
-        !isFollowUser && !isUnfollowUser && !isSetArticleLike && !isCreateArticleComment && !isDeleteArticleComment) {
+        !isFollowUser && !isUnfollowUser && !isSetArticleLike && !isCreateArticleComment && !isDeleteArticleComment &&
+        !isCreateTag && !isCreateTaxonomy && !isDeleteTaxonomy && !isCreateConversation && !isSendMessage &&
+        !isUpdateConversationParticipants && !isDeleteConversation && !isMarkConversationRead &&
+        !isMarkNotificationRead && !isMarkAllNotificationsRead) {
       response.setHeader("allow", url.pathname === "/api/v1/articles" ? "GET, POST" : articleItemPath ? "GET, PUT" : "GET");
       sendJson(response, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "The HTTP method is not supported for this endpoint." } });
       return true;
@@ -525,6 +698,211 @@ export function createRestHandler({ services, env = process.env }: { services: R
       } catch (error: unknown) {
         sendServiceError(response, error);
       }
+      return true;
+    }
+
+
+    if (tagsCollectionPath && request.method === "POST") {
+      if (!services) { sendUnavailable(response); return true; }
+      const bodyResult = await readJsonObject(request);
+      if (bodyResult.ok === false) { sendJsonBodyError(response, bodyResult); return true; }
+      const normalized = normalizeCreateTagBody(bodyResult.value);
+      if (!normalized.input) { sendBadInput(response, normalized.error ?? "Invalid tag input."); return true; }
+      try {
+        const actorId = await authenticatedActorId(request, services, env);
+        if (!actorId) { sendUnauthenticated(response); return true; }
+        const tag = await services.createTag({ ...normalized.input, actorId });
+        sendJson(response, 201, { data: tag });
+      } catch (error: unknown) { sendServiceError(response, error); }
+      return true;
+    }
+
+    if (taxonomyCollectionPath && request.method === "POST") {
+      if (!services) { sendUnavailable(response); return true; }
+      const bodyResult = await readJsonObject(request);
+      if (bodyResult.ok === false) { sendJsonBodyError(response, bodyResult); return true; }
+      const normalized = normalizeCreateTaxonomyBody(bodyResult.value);
+      if (!normalized.input) { sendBadInput(response, normalized.error ?? "Invalid taxonomy input."); return true; }
+      try {
+        const actorId = await authenticatedActorId(request, services, env);
+        if (!actorId) { sendUnauthenticated(response); return true; }
+        const taxonomy = await services.createTaxonomy({ ...normalized.input, actorId });
+        sendJson(response, 201, { data: taxonomy });
+      } catch (error: unknown) { sendServiceError(response, error); }
+      return true;
+    }
+
+    if (taxonomyItemMatch && request.method === "DELETE") {
+      if (!services) { sendUnavailable(response); return true; }
+      const taxonomyId = decodeUserId(taxonomyItemMatch[1]);
+      if (!taxonomyId) { sendBadInput(response, "Invalid taxonomy ID."); return true; }
+      try {
+        const actorId = await authenticatedActorId(request, services, env);
+        if (!actorId) { sendUnauthenticated(response); return true; }
+        const deleted = await services.deleteTaxonomy({ taxonomyId, actorId });
+        sendJson(response, 200, { data: deleted });
+      } catch (error: unknown) { sendServiceError(response, error); }
+      return true;
+    }
+
+    if (conversationsPath) {
+      if (!services) { sendUnavailable(response); return true; }
+      if (request.method === "POST") {
+        const bodyResult = await readJsonObject(request);
+        if (bodyResult.ok === false) { sendJsonBodyError(response, bodyResult); return true; }
+        const normalized = normalizeConversationCreateBody(bodyResult.value);
+        if (!normalized.participantIds) { sendBadInput(response, normalized.error ?? "Invalid conversation input."); return true; }
+        try {
+          const actorId = await authenticatedActorId(request, services, env);
+          if (!actorId) { sendUnauthenticated(response); return true; }
+          const conversation = await services.createConversation({ actorId, participantIds: normalized.participantIds });
+          sendJson(response, 201, { data: conversation });
+        } catch (error: unknown) { sendServiceError(response, error); }
+        return true;
+      }
+      const limit = parseInteger(url.searchParams, "limit", 50, 1, 100);
+      if (limit === null) { sendBadInput(response, "Invalid limit query parameter."); return true; }
+      try {
+        const actorId = await authenticatedActorId(request, services, env);
+        if (!actorId) { sendUnauthenticated(response); return true; }
+        const conversations = await services.listConversations({ actorId, limit });
+        sendJson(response, 200, { data: conversations });
+      } catch (error: unknown) { sendServiceError(response, error); }
+      return true;
+    }
+
+    if (conversationMessagesMatch) {
+      if (!services) { sendUnavailable(response); return true; }
+      const conversationId = decodeUserId(conversationMessagesMatch[1]);
+      if (!conversationId) { sendBadInput(response, "Invalid conversation ID."); return true; }
+      if (request.method === "GET") {
+        const limit = parseInteger(url.searchParams, "limit", 100, 1, 100);
+        const beforeRaw = url.searchParams.get("before");
+        const before = beforeRaw === null ? null : decodeUserId(beforeRaw);
+        if (limit === null || (beforeRaw !== null && !before)) {
+          sendBadInput(response, "Invalid limit or before cursor query parameter.");
+          return true;
+        }
+        try {
+          const actorId = await authenticatedActorId(request, services, env);
+          if (!actorId) { sendUnauthenticated(response); return true; }
+          const messages = await services.listConversationMessages({ conversationId, actorId, limit, before });
+          sendJson(response, 200, { data: messages });
+        } catch (error: unknown) { sendServiceError(response, error); }
+        return true;
+      }
+      const bodyResult = await readJsonObject(request);
+      if (bodyResult.ok === false) { sendJsonBodyError(response, bodyResult); return true; }
+      const normalized = normalizeMessageWriteBody(bodyResult.value);
+      if (normalized.body === null) { sendBadInput(response, normalized.error ?? "Invalid message input."); return true; }
+      const idempotencyKey = request.headers["idempotency-key"];
+      if (typeof idempotencyKey !== "string" || idempotencyKey.length === 0 ||
+          idempotencyKey.length > 300 || idempotencyKey.trim() !== idempotencyKey) {
+        sendBadInput(response, "A valid Idempotency-Key header is required.");
+        return true;
+      }
+      try {
+        const senderId = await authenticatedActorId(request, services, env);
+        if (!senderId) { sendUnauthenticated(response); return true; }
+        const message = await services.persistMessage({ conversationId, senderId, body: normalized.body, idempotencyKey });
+        sendJson(response, 201, { data: message });
+      } catch (error: unknown) { sendServiceError(response, error); }
+      return true;
+    }
+
+    if (conversationParticipantsMatch && request.method === "PATCH") {
+      if (!services) { sendUnavailable(response); return true; }
+      const conversationId = decodeUserId(conversationParticipantsMatch[1]);
+      if (!conversationId) { sendBadInput(response, "Invalid conversation ID."); return true; }
+      const bodyResult = await readJsonObject(request);
+      if (bodyResult.ok === false) { sendJsonBodyError(response, bodyResult); return true; }
+      const normalized = normalizeConversationParticipantsBody(bodyResult.value);
+      if (!normalized.input) { sendBadInput(response, normalized.error ?? "Invalid participant update input."); return true; }
+      try {
+        const actorId = await authenticatedActorId(request, services, env);
+        if (!actorId) { sendUnauthenticated(response); return true; }
+        await services.updateConversationParticipants({ conversationId, actorId, ...normalized.input });
+        const conversations = await services.listConversations({ actorId, limit: 100 });
+        const updated = Array.isArray(conversations)
+          ? conversations.find((conversation: any) => conversation?.id === conversationId)
+          : null;
+        if (!updated) sendJson(response, 404, { error: { code: "NOT_FOUND", message: "The conversation was not found." } });
+        else sendJson(response, 200, { data: updated });
+      } catch (error: unknown) { sendServiceError(response, error); }
+      return true;
+    }
+
+    if (conversationReadMatch && request.method === "PUT") {
+      if (!services) { sendUnavailable(response); return true; }
+      const conversationId = decodeUserId(conversationReadMatch[1]);
+      if (!conversationId) { sendBadInput(response, "Invalid conversation ID."); return true; }
+      try {
+        const actorId = await authenticatedActorId(request, services, env);
+        if (!actorId) { sendUnauthenticated(response); return true; }
+        const result = await services.markConversationAsRead({ conversationId, actorId });
+        sendJson(response, 200, { data: result });
+      } catch (error: unknown) { sendServiceError(response, error); }
+      return true;
+    }
+
+    if (conversationItemMatch && request.method === "DELETE") {
+      if (!services) { sendUnavailable(response); return true; }
+      const conversationId = decodeUserId(conversationItemMatch[1]);
+      if (!conversationId) { sendBadInput(response, "Invalid conversation ID."); return true; }
+      try {
+        const actorId = await authenticatedActorId(request, services, env);
+        if (!actorId) { sendUnauthenticated(response); return true; }
+        const deleted = await services.deleteConversation({ conversationId, actorId });
+        sendJson(response, 200, { data: deleted });
+      } catch (error: unknown) { sendServiceError(response, error); }
+      return true;
+    }
+
+    if (notificationsPath) {
+      if (!services) { sendUnavailable(response); return true; }
+      const limit = parseInteger(url.searchParams, "limit", 50, 1, 100);
+      if (limit === null) { sendBadInput(response, "Invalid limit query parameter."); return true; }
+      try {
+        const actorId = await authenticatedActorId(request, services, env);
+        if (!actorId) { sendUnauthenticated(response); return true; }
+        const notifications = await services.listNotifications({ actorId, limit });
+        sendJson(response, 200, { data: Array.isArray(notifications) ? notifications.map(serializeRestNotification) : [] });
+      } catch (error: unknown) { sendServiceError(response, error); }
+      return true;
+    }
+
+    if (unreadNotificationCountPath) {
+      if (!services) { sendUnavailable(response); return true; }
+      try {
+        const actorId = await authenticatedActorId(request, services, env);
+        if (!actorId) { sendUnauthenticated(response); return true; }
+        const count = await services.getUnreadNotificationCount({ actorId });
+        sendJson(response, 200, { data: count });
+      } catch (error: unknown) { sendServiceError(response, error); }
+      return true;
+    }
+
+    if (notificationReadMatch && request.method === "PUT") {
+      if (!services) { sendUnavailable(response); return true; }
+      const notificationId = decodeUserId(notificationReadMatch[1]);
+      if (!notificationId) { sendBadInput(response, "Invalid notification ID."); return true; }
+      try {
+        const actorId = await authenticatedActorId(request, services, env);
+        if (!actorId) { sendUnauthenticated(response); return true; }
+        const notification = await services.markNotificationRead({ notificationId, actorId });
+        sendJson(response, 200, { data: serializeRestNotification(notification) });
+      } catch (error: unknown) { sendServiceError(response, error); }
+      return true;
+    }
+
+    if (readAllNotificationsPath && request.method === "POST") {
+      if (!services) { sendUnavailable(response); return true; }
+      try {
+        const actorId = await authenticatedActorId(request, services, env);
+        if (!actorId) { sendUnauthenticated(response); return true; }
+        const count = await services.markAllNotificationsRead({ actorId });
+        sendJson(response, 200, { data: count });
+      } catch (error: unknown) { sendServiceError(response, error); }
       return true;
     }
 
