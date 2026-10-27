@@ -454,6 +454,82 @@ test("REST category articles verify category visibility and forward pagination",
   });
 });
 
+test("REST tag index reuses the taxonomy service and forwards bounded pagination", async () => {
+  let received;
+  const tags = [{ id: "tag-1", kind: "tag", slug: "ai-abc123", name: "人工智慧", locale: "zh-TW", articleCount: 3 }];
+  await withServer(async (baseUrl) => {
+    const response = await fetch(baseUrl + "/api/v1/tags?locale=zh-TW&query=人工&limit=10&offset=20");
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("cache-control") ?? "", /no-store/i);
+    assert.deepEqual(await response.json(), { data: tags });
+    assert.deepEqual(received, { kind: "tag", locale: "zh-TW", query: "人工", limit: 10, offset: 20 });
+  }, {
+    store: {
+      async listTaxonomies(args) { received = args; return tags; },
+    },
+  });
+});
+
+test("REST tag detail is localized and returns a stable 404 when absent", async () => {
+  const received = [];
+  await withServer(async (baseUrl) => {
+    const response = await fetch(baseUrl + "/api/v1/tags/ai-abc123?locale=en");
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      data: { id: "tag-1", kind: "tag", slug: "ai-abc123", name: "AI", locale: "en", articleCount: 2 },
+    });
+    assert.deepEqual(received[0], { kind: "tag", slug: "ai-abc123", locale: "en" });
+
+    const missing = await fetch(baseUrl + "/api/v1/tags/missing-tag?locale=zh-TW");
+    assert.equal(missing.status, 404);
+    assert.deepEqual(await missing.json(), {
+      error: { code: "NOT_FOUND", message: "The tag was not found." },
+    });
+    assert.deepEqual(received[1], { kind: "tag", slug: "missing-tag", locale: "zh-TW" });
+  }, {
+    store: {
+      async getTaxonomyBySlug(args) {
+        received.push(args);
+        return args.slug === "ai-abc123"
+          ? { id: "tag-1", kind: "tag", slug: args.slug, name: args.locale === "en" ? "AI" : "人工智慧", locale: args.locale, articleCount: 2 }
+          : null;
+      },
+    },
+  });
+});
+
+test("REST tag articles verify localized tag visibility before listing and forward pagination", async () => {
+  const calls = [];
+  const articles = [{ id: "article-1", slug: "article-about-ai", locale: "en", title: "AI" }];
+  await withServer(async (baseUrl) => {
+    const response = await fetch(baseUrl + "/api/v1/tags/ai-abc123/articles?locale=en&limit=5&offset=10");
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { data: articles });
+    assert.deepEqual(calls.slice(0, 2), [
+      ["lookup", { kind: "tag", slug: "ai-abc123", locale: "en" }],
+      ["articles", { kind: "tag", slug: "ai-abc123", locale: "en", limit: 5, offset: 10 }],
+    ]);
+
+    const missing = await fetch(baseUrl + "/api/v1/tags/missing-tag/articles?locale=en");
+    assert.equal(missing.status, 404);
+    assert.deepEqual(await missing.json(), {
+      error: { code: "NOT_FOUND", message: "The tag was not found." },
+    });
+    assert.deepEqual(calls[2], ["lookup", { kind: "tag", slug: "missing-tag", locale: "en" }]);
+    assert.equal(calls.length, 3, "missing tags must not trigger an article query");
+  }, {
+    store: {
+      async getTaxonomyBySlug(args) {
+        calls.push(["lookup", args]);
+        return args.slug === "ai-abc123" ? { id: "tag-1", slug: args.slug } : null;
+      },
+      async listTaxonomyArticles(args) {
+        calls.push(["articles", args]);
+        return articles;
+      },
+    },
+  });
+});
 test("REST rejects unsupported locales, oversized search terms and offsets before persistence", async () => {
   let calls = 0;
   const oversizedQuery = "x".repeat(201);
@@ -465,6 +541,9 @@ test("REST rejects unsupported locales, oversized search terms and offsets befor
       "/api/v1/categories?locale=fr",
       `/api/v1/categories?query=${oversizedQuery}`,
       "/api/v1/categories?offset=1000001",
+      "/api/v1/tags?locale=fr",
+      `/api/v1/tags?query=${oversizedQuery}`,
+      "/api/v1/tags?offset=1000001",
     ]) {
       const response = await fetch(`${baseUrl}${path}`);
       assert.equal(response.status, 400, path);
@@ -473,6 +552,12 @@ test("REST rejects unsupported locales, oversized search terms and offsets befor
     const malformedSlug = await fetch(`${baseUrl}/api/v1/categories/%E0%A4%A`);
     assert.equal(malformedSlug.status, 400);
     assert.equal((await malformedSlug.json()).error.code, "BAD_USER_INPUT");
+    const malformedTagSlug = await fetch(`${baseUrl}/api/v1/tags/%E0%A4%A`);
+    assert.equal(malformedTagSlug.status, 400);
+    assert.equal((await malformedTagSlug.json()).error.code, "BAD_USER_INPUT");
+    const malformedTagArticlesSlug = await fetch(`${baseUrl}/api/v1/tags/%E0%A4%A/articles`);
+    assert.equal(malformedTagArticlesSlug.status, 400);
+    assert.equal((await malformedTagArticlesSlug.json()).error.code, "BAD_USER_INPUT");
     assert.equal(calls, 0);
   }, {
     store: {

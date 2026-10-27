@@ -17,6 +17,9 @@ The standalone REST transport currently exposes public read-only endpoints along
 - `GET /api/v1/categories?locale=zh-CN&query=&limit=20&offset=0` — localized category discovery and pagination.
 - `GET /api/v1/categories/:slug?locale=zh-CN` — localized category detail.
 - `GET /api/v1/categories/:slug/articles?locale=zh-CN&limit=20&offset=0` — published localized articles in a category.
+- `GET /api/v1/tags?locale=zh-CN&query=&limit=20&offset=0` — localized public hashtag discovery and pagination.
+- `GET /api/v1/tags/:slug?locale=zh-CN` — one localized hashtag, or `404 NOT_FOUND`.
+- `GET /api/v1/tags/:slug/articles?locale=zh-CN&limit=20&offset=0` — published localized articles associated with a hashtag.
 
 Supported locales are `zh-CN`, `zh-TW`, and `en`; search terms are limited to 200 characters; limits are 1–100. Invalid query values return `400 BAD_USER_INPUT`, unknown article/category resources return `404 NOT_FOUND`, and missing persistence returns `503 SERVICE_UNAVAILABLE`. Domain errors thrown by application services map to stable REST statuses: `BAD_USER_INPUT` → 400, `FORBIDDEN` → 403, `NOT_FOUND` → 404, and `CONFLICT` / `IDEMPOTENCY_CONFLICT` → 409. The adapter does not forward domain exception text; unknown domain codes and unexpected exceptions return a generic `500 INTERNAL_SERVER_ERROR` response without internal details. Category article requests resolve the category before listing content, so unknown categories do not produce a misleading successful empty list.
 
@@ -79,4 +82,4 @@ The API now exposes a versioned REST surface alongside GraphQL. Both transports 
 
 List pagination accepts `limit` from 1 to 100 and a non-negative integer `offset`. Invalid values return `400 BAD_USER_INPUT`; a missing article returns `404`; a missing persistence configuration returns `503` for article reads. REST errors use a JSON `error.code` and a safe message. The existing `/health`, `/ready`, and `/graphql` endpoints remain available.
 
-This is deliberately a first vertical slice, not full transport parity: authenticated writes, profile/taxonomy/engagement routes, cross-transport contract tests for every resource, and the SQLite adapter are not implemented yet. Add REST resources by calling the same application services and extending transport-level tests before claiming behavioral parity.
+This is deliberately a partial REST surface, not full transport parity: authenticated writes, profile and engagement routes, and contract tests for every resource are not implemented yet. Public category and tag discovery share the taxonomy application services with GraphQL; tag article listings resolve the localized tag before querying published articles, so unknown or untranslated tags return a stable 404. Continue adding REST resources through the same application services and tests before claiming behavioral parity.
