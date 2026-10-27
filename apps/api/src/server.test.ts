@@ -1310,6 +1310,27 @@ test("REST profile and engagement routes enforce their declared HTTP methods", a
   });
 });
 
+test("REST rejects invalid UTF-8 rather than replacing bytes while parsing JSON", async () => {
+  await withServer(async (baseUrl) => {
+    // This would become syntactically valid JSON containing U+FFFD if the
+    // request were decoded with Buffer.toString("utf8")'s replacement mode.
+    const invalidUtf8Json = Buffer.from([
+      0x7b, 0x22, 0x6e, 0x61, 0x6d, 0x65, 0x22, 0x3a, 0x22,
+      0xff,
+      0x22, 0x7d,
+    ]);
+    const response = await fetch(baseUrl + "/api/v1/tags", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: invalidUtf8Json,
+    });
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), {
+      error: { code: "BAD_USER_INPUT", message: "The request body must be valid JSON." },
+    });
+  }, { store: {} });
+});
+
 test("REST stops reading oversized chunked JSON bodies and closes the connection", async () => {
   await withServer(async (baseUrl) => {
     const parsedUrl = new URL(baseUrl);

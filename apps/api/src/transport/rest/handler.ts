@@ -188,7 +188,7 @@ async function readJsonObject(request: IncomingMessage): Promise<JsonObjectResul
     const onEnd = () => {
       let parsed: unknown;
       try {
-        parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks)));
       } catch {
         finish({ ok: false, status: 400, code: "BAD_USER_INPUT", message: "The request body must be valid JSON." });
         return;
