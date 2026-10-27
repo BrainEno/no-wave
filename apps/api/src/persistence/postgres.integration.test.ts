@@ -124,7 +124,7 @@ test("GraphQL message operations authorize database membership and derive sender
   };
   const sign = (sub) => {
     const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
-    const header = encode({ alg: "HS256", typ: "at+jwt" });
+    const header = encode({ alg: "HS256", typ: "application/vnd.bot-thk.access+jwt" });
     const payload = encode({
       sub, iss: env.AUTH_JWT_ISSUER, aud: env.AUTH_JWT_AUDIENCE,
       iat: Math.floor(Date.now() / 1000),
@@ -247,7 +247,7 @@ test("GraphQL denies a JWT after its durable session ID is revoked", integration
   const userId = `it-revoked-user-${randomUUID()}`;
   const sessionId = `it-revoked-session-${randomUUID()}`;
   const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
-  const unsigned = `${encode({ alg: "HS256", typ: "at+jwt" })}.${encode({
+  const unsigned = `${encode({ alg: "HS256", typ: "application/vnd.bot-thk.access+jwt" })}.${encode({
     sub: userId, jti: sessionId, iss: env.AUTH_JWT_ISSUER, aud: env.AUTH_JWT_AUDIENCE,
     iat: Math.floor(Date.now() / 1000),
       exp: Math.floor(Date.now() / 1000) + 60,
@@ -368,7 +368,7 @@ test("GraphQL notification inbox is scoped to the verified actor and read state 
   });
   const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
   const sign = (sub) => {
-    const unsigned = `${encode({ alg: "HS256", typ: "at+jwt" })}.${encode({
+    const unsigned = `${encode({ alg: "HS256", typ: "application/vnd.bot-thk.access+jwt" })}.${encode({
       sub, iss: env.AUTH_JWT_ISSUER, aud: env.AUTH_JWT_AUDIENCE,
       iat: Math.floor(Date.now() / 1000),
       exp: Math.floor(Date.now() / 1000) + 60, jti: `session-${sub}`,
@@ -689,7 +689,7 @@ test("GraphQL article mutations derive authors from JWT and protect updates", in
   const blocks = JSON.stringify([{ id: "intro", type: "paragraph", text: "Persisted through GraphQL." }]);
   const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
   const sign = (sub) => {
-    const unsigned = `${encode({ alg: "HS256", typ: "at+jwt" })}.${encode({
+    const unsigned = `${encode({ alg: "HS256", typ: "application/vnd.bot-thk.access+jwt" })}.${encode({
       sub, iss: env.AUTH_JWT_ISSUER, aud: env.AUTH_JWT_AUDIENCE,
       iat: Math.floor(Date.now() / 1000),
       exp: Math.floor(Date.now() / 1000) + 60, jti: `session-${sub}`,
@@ -885,7 +885,7 @@ test("GraphQL taxonomy APIs derive creators from JWT and expose localized articl
   const blocks = JSON.stringify([{ id: "intro", type: "paragraph", text: "Categorized article body." }]);
   const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
   const sign = (sub) => {
-    const unsigned = `${encode({ alg: "HS256", typ: "at+jwt" })}.${encode({
+    const unsigned = `${encode({ alg: "HS256", typ: "application/vnd.bot-thk.access+jwt" })}.${encode({
       sub, iss: env.AUTH_JWT_ISSUER, aud: env.AUTH_JWT_AUDIENCE,
       iat: Math.floor(Date.now() / 1000),
       exp: Math.floor(Date.now() / 1000) + 60, jti: `session-${sub}`,
@@ -1175,7 +1175,7 @@ test("GraphQL article likes and comments derive actor identity from JWT and enfo
   });
   const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
   const sign = (sub) => {
-    const unsigned = `${encode({ alg: "HS256", typ: "at+jwt" })}.${encode({
+    const unsigned = `${encode({ alg: "HS256", typ: "application/vnd.bot-thk.access+jwt" })}.${encode({
       sub, iss: env.AUTH_JWT_ISSUER, aud: env.AUTH_JWT_AUDIENCE,
       iat: Math.floor(Date.now() / 1000),
       exp: Math.floor(Date.now() / 1000) + 60, jti: `session-${sub}`,
@@ -1324,7 +1324,7 @@ test("GraphQL follow mutations derive the follower from JWT and expose follow st
   await store.upsertAuthorProfile({ userId: targetId, displayName: "Target User", locale: "en" });
   const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
   const sign = (sub) => {
-    const unsigned = `${encode({ alg: "HS256", typ: "at+jwt" })}.${encode({
+    const unsigned = `${encode({ alg: "HS256", typ: "application/vnd.bot-thk.access+jwt" })}.${encode({
       sub, iss: env.AUTH_JWT_ISSUER, aud: env.AUTH_JWT_AUDIENCE,
       iat: Math.floor(Date.now() / 1000),
       exp: Math.floor(Date.now() / 1000) + 60, jti: `session-${sub}`,
@@ -1376,7 +1376,7 @@ test("GraphQL conversation lifecycle derives creator identity from JWT", integra
   const outsiderId = `it-convo-api-outsider-${randomUUID()}`;
   const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
   const sign = (sub) => {
-    const unsigned = `${encode({ alg: "HS256", typ: "at+jwt" })}.${encode({
+    const unsigned = `${encode({ alg: "HS256", typ: "application/vnd.bot-thk.access+jwt" })}.${encode({
       sub, iss: env.AUTH_JWT_ISSUER, aud: env.AUTH_JWT_AUDIENCE,
       iat: Math.floor(Date.now() / 1000),
       exp: Math.floor(Date.now() / 1000) + 60, jti: `session-${sub}`,
