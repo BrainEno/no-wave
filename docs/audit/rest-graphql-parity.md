@@ -90,5 +90,6 @@ The repository does not yet implement the sign-in/token-issuance or refresh-toke
 
 - Every operation above marked complete has a reviewed REST contract and authorization regression tests; the legacy `toggleArticleLike` remains an intentional migration to explicit state-setting semantics.
 - Every exposed object retains the fields listed in its GraphQL type unless a representation change is explicitly documented.
-- Add a machine-enforced schema-to-route contract check before deleting the transitional GraphQL schema/runtime.
+- A CI test parses the live GraphQL SDL, checks the exact Query/Mutation inventory against explicit REST mappings, verifies route markers remain in the handler, and checks key shared-object field lists against the reviewed contract.
+- The legacy `toggleArticleLike` maps to retry-safe `PUT` state setting; this is a documented semantic migration, not a native toggle equivalent.
 - Web callers have migrated; only then may GraphQL/Yoga and its configuration be removed.

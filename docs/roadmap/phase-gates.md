@@ -36,7 +36,8 @@ On 2026-10-27, the product owner approved replacing GraphQL as the sole business
 - [x] Add field-level Article/AuthorProfile/ArticleComment enrichment to REST responses so the route layer does not silently omit GraphQL-resolved fields.
 - [x] Record the operation-by-operation field and resolver parity inventory in [REST–GraphQL parity audit](../audit/rest-graphql-parity.md).
 - [x] Add REST taxonomy mutations, conversation lifecycle/message read-send, and notification inbox/read-state operations with equivalent authorization, payload fields and regression tests.
-- [ ] Add a machine-enforced GraphQL schema-to-REST route contract check and complete Web caller migration before removing the transitional GraphQL runtime.
+- [x] Add a CI-enforced GraphQL schema-to-REST operation/route inventory and shared-object field contract test.
+- [ ] Complete Web caller migration and end-to-end verification before removing the transitional GraphQL runtime.
 - [ ] Select and validate SSE/WebSocket only for concrete real-time needs; keep database/outbox state authoritative.
 - [ ] Remove GraphQL schema, Yoga runtime, dependencies, environment variables and obsolete tests after REST parity is verified.
 
