@@ -190,7 +190,7 @@ test("viewer resolves only from a valid server-verified bearer token", async () 
     });
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { data: { viewer: { id: "authenticated-user" } } });
-  }, { env: authEnv });
+  }, { env: authEnv, store: { async isSessionRevoked() { return false; } } });
 });
 
 test("viewer rejects forged bearer token and client-supplied identity", async () => {
@@ -519,7 +519,12 @@ test("REST public author profile uses stable userId and returns 404 for missing 
 
 test("REST author article listing forwards userId to persistence before pagination", async () => {
   let received;
-  const articles = [{ id: "article-1", authorId: "user-123", slug: "hello-world", locale: "zh-CN", title: "Hello", author: null, categories: [], tags: [] }];
+  const authorProfile = {
+    userId: "user-123", displayName: "Writer", bio: "简介", avatarUrl: null, websiteUrl: null,
+    locale: "zh-CN", createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-02T00:00:00.000Z",
+    followerCount: 0, followingCount: 0, isFollowing: false,
+  };
+  const articles = [{ id: "article-1", authorId: "user-123", slug: "hello-world", locale: "zh-CN", title: "Hello", author: authorProfile, categories: [], tags: [] }];
   await withServer(async (baseUrl) => {
     const response = await fetch(`${baseUrl}/api/v1/authors/user-123/articles?query=hello&limit=10&offset=20`);
     assert.equal(response.status, 200);
@@ -528,7 +533,7 @@ test("REST author article listing forwards userId to persistence before paginati
   }, {
     store: {
       async getAuthorProfile(args) {
-        return { userId: args.userId, displayName: "Writer", bio: "简介", locale: args.locale };
+        return { ...authorProfile, locale: args.locale };
       },
       async listPublishedArticles(args) {
         received = args;
