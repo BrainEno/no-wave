@@ -80,6 +80,7 @@ export function HomeExperience({
   const wrapRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const motionRef = useRef<HeroMotionState>({ rev: 0, sv: 0 });
+  const smootherRef = useRef<ScrollSmoother | null>(null);
 
   const handleOpened = useCallback(() => setOpened(true), []);
 
@@ -96,16 +97,62 @@ export function HomeExperience({
     if (reduced) motionRef.current.rev = 1;
   }, [reduced]);
 
+  // The demo wires ScrollSmoother + anchor scrolling at script init — before
+  // the curtain lifts — so the page glides and in-page nav clicks animate
+  // smoothly from the very first frame.
   useEffect(() => {
-    if (reduced || !opened) return;
+    if (reduced) return;
     const root = rootRef.current;
     const wrapper = wrapRef.current;
     const content = contentRef.current;
     if (!root || !wrapper || !content) return;
 
     let smoother: ScrollSmoother | null = null;
+    try {
+      smoother = ScrollSmoother.create({ wrapper, content, smooth: 1.2, effects: true });
+      smootherRef.current = smoother;
+    } catch {
+      wrapper.style.position = "static";
+      wrapper.style.overflow = "visible";
+    }
+
+    const controller = new AbortController();
+    root.querySelectorAll<HTMLAnchorElement>('a[href^="#"]').forEach((anchor) => {
+      anchor.addEventListener(
+        "click",
+        (event) => {
+          const hash = anchor.getAttribute("href");
+          if (!hash || hash.length < 2) return;
+          const target = root.querySelector<HTMLElement>(hash);
+          if (!target) return;
+          event.preventDefault();
+          const active = smootherRef.current;
+          if (active) {
+            active.scrollTo(target, true, "top 0px");
+          } else {
+            target.scrollIntoView({ behavior: "smooth" });
+          }
+        },
+        { signal: controller.signal },
+      );
+    });
+
+    return () => {
+      controller.abort();
+      smootherRef.current = null;
+      smoother?.kill();
+      wrapper.style.position = "";
+      wrapper.style.overflow = "";
+    };
+  }, [reduced]);
+
+  useEffect(() => {
+    if (reduced || !opened) return;
+    const root = rootRef.current;
+    const content = contentRef.current;
+    if (!root || !content) return;
+
     let velocityTrigger: ScrollTrigger | null = null;
-    let anchorController: AbortController | null = null;
     const marqueeTweens: gsap.core.Tween[] = [];
     const marqueeState = { v: 1 };
     const applyMarqueeSpeed = () => {
@@ -116,13 +163,6 @@ export function HomeExperience({
     };
 
     const ctx = gsap.context(() => {
-      try {
-        smoother = ScrollSmoother.create({ wrapper, content, smooth: 1.2, effects: true });
-      } catch {
-        wrapper.style.position = "static";
-        wrapper.style.overflow = "visible";
-      }
-
       const cnLetters = gsap.utils.toArray<HTMLElement>(`.${styles.cn} i`, root);
       const wordmarkLetters = gsap.utils.toArray<HTMLElement>(`.${styles.hero} .${styles.wm} i`, root);
       gsap.set(wordmarkLetters.concat(cnLetters), {
@@ -222,35 +262,13 @@ export function HomeExperience({
           scrollTrigger: { trigger: footer, start: "top 80%" },
         });
       }
-
-      const controller = new AbortController();
-      anchorController = controller;
-      root.querySelectorAll<HTMLAnchorElement>('a[href^="#"]').forEach((anchor) => {
-        anchor.addEventListener(
-          "click",
-          (event) => {
-            const hash = anchor.getAttribute("href");
-            if (!hash || hash.length < 2 || !smoother) return;
-            const target = root.querySelector(hash);
-            if (target) {
-              event.preventDefault();
-              smoother.scrollTo(target, true, "top 0px");
-            }
-          },
-          { signal: controller.signal },
-        );
-      });
     }, root);
 
     return () => {
-      anchorController?.abort();
       ScrollTrigger.removeEventListener("scrollEnd", onScrollEnd);
       velocityTrigger?.kill();
       gsap.ticker.remove(applyMarqueeSpeed);
       ctx.revert();
-      smoother?.kill();
-      wrapper.style.position = "";
-      wrapper.style.overflow = "";
     };
   }, [opened, reduced, motionRef]);
 
