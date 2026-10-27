@@ -31,9 +31,9 @@ Fields: `articleId`, `slug`, `likeCount`, `likedByViewer`. The REST GET operatio
 
 ### `Taxonomy`, `Message`, `Conversation`, and `Notification`
 
-Taxonomy fields are `id`, `kind`, `slug`, `name`, `description`, `locale`, `createdBy`, and `articleCount`. Existing taxonomy REST reads return these service objects; taxonomy mutations remain pending.
+Taxonomy fields are `id`, `kind`, `slug`, `name`, `description`, `locale`, `createdBy`, and `articleCount`. REST reads and mutations expose this full service contract. `POST /api/v1/tags` retains hashtag normalization and idempotent reuse; `POST /api/v1/taxonomies` creates a localized taxonomy; `DELETE /api/v1/taxonomies/:taxonomyId` remains creator-scoped and returns the original boolean outcome.
 
-Message fields are `id`, `conversationId`, `senderId`, `body`, `createdAt`. Conversation fields are `id`, `createdBy`, `participantIds`, `createdAt`, `lastActivityAt`, `unreadCount`, and `lastMessage`. Notification fields are `id`, `eventKey`, `payload`, `createdAt`, and `readAt`; GraphQL serializes `payload` to a JSON string. These resource groups do not yet have REST parity and must be added with equivalent membership/recipient authorization, cursor behavior, idempotency, outbox interaction and complete fields.
+Message fields are `id`, `conversationId`, `senderId`, `body`, `createdAt`. Conversation fields are `id`, `createdBy`, `participantIds`, `createdAt`, `lastActivityAt`, `unreadCount`, and `lastMessage`. Notification fields are `id`, `eventKey`, `payload`, `createdAt`, and `readAt`; REST keeps `payload` as a JSON-serialized string to match GraphQL. Conversation access is checked by the existing persistence service, message sends derive `senderId` from JWT and require `Idempotency-Key`, and inbox/read-state operations are scoped by the verified recipient identity. Message history preserves the existing latest-window, oldest-first ordering and validates that `before` belongs to the same conversation.
 
 ## Operation-by-operation inventory
 
@@ -56,10 +56,10 @@ Message fields are `id`, `conversationId`, `senderId`, `body`, `createdAt`. Conv
 | Query `taxonomy(kind, slug, locale)` | `GET /api/v1/categories/:slug`, `GET /api/v1/tags/:slug` | Read equivalent |
 | Query `taxonomyArticles(kind, slug, locale, limit, offset)` | `GET /api/v1/categories/:slug/articles`, `GET /api/v1/tags/:slug/articles` | Complete; enriched Article fields |
 | Query `myArticles(locale, limit)` | `GET /api/v1/me/articles` | Complete; authenticated; enriched Article fields |
-| Query `conversationMessages(conversationId, limit, before)` | — | Missing; preserve cursor semantics and oldest-first window |
-| Query `conversations(limit)` | — | Missing; must return last-activity, unread count and last-message fields |
-| Query `notifications(limit)` | — | Missing; recipient-scoped; JSON-string payload contract |
-| Query `unreadNotificationCount` | — | Missing |
+| Query `conversationMessages(conversationId, limit, before)` | `GET /api/v1/conversations/:conversationId/messages?limit=&before=` | Complete; JWT-derived membership, same-conversation cursor and oldest-first latest window |
+| Query `conversations(limit)` | `GET /api/v1/conversations?limit=` | Complete; viewer-scoped list preserves all Conversation fields |
+| Query `notifications(limit)` | `GET /api/v1/me/notifications?limit=` | Complete; recipient-scoped; payload remains a JSON string |
+| Query `unreadNotificationCount` | `GET /api/v1/me/notifications/unread-count` | Complete; recipient-scoped count |
 | Mutation `createArticle` | `POST /api/v1/articles` | Complete; owner derived from JWT; enriched response |
 | Mutation `updateArticle` | `PUT /api/v1/articles/:articleId` | Complete; ownership checked; enriched response |
 | Mutation `updateMyProfile` | `PUT /api/v1/me/profile` | Complete; owner derived from JWT |
@@ -69,16 +69,16 @@ Message fields are `id`, `conversationId`, `senderId`, `body`, `createdAt`. Conv
 | Mutation `createArticleComment` | `POST /api/v1/articles/:slug/comments` | Complete; author and replies fields retained |
 | Mutation `deleteArticleComment` | `DELETE /api/v1/comments/:commentId` | Complete; owner enforcement; boolean in REST envelope |
 | Mutation `revokeCurrentSession` | `DELETE /api/v1/me/session` | Complete; revoke the verified JWT `jti` until its expiry |
-| Mutation `createTag` | — | Missing; preserve hashtag normalization and idempotent reuse |
-| Mutation `createTaxonomy` | — | Missing; preserve creator ownership and localized labels |
-| Mutation `deleteTaxonomy` | — | Missing; preserve creator authorization and deletion behavior |
-| Mutation `createConversation` | — | Missing |
-| Mutation `updateConversationParticipants` | — | Missing; preserve membership/owner rules and return updated Conversation fields |
-| Mutation `deleteConversation` | — | Missing |
-| Mutation `markConversationAsRead` | — | Missing |
-| Mutation `sendMessage` | — | Missing; server-derived sender, idempotency key and transactional outbox must be preserved |
-| Mutation `markNotificationRead` | — | Missing; recipient-scoped |
-| Mutation `markAllNotificationsRead` | — | Missing; return changed-row count |
+| Mutation `createTag` | `POST /api/v1/tags` | Complete; strict body, JWT creator, existing normalization and idempotent reuse |
+| Mutation `createTaxonomy` | `POST /api/v1/taxonomies` | Complete; `zh-CN` contract and creator identity from JWT |
+| Mutation `deleteTaxonomy` | `DELETE /api/v1/taxonomies/:taxonomyId` | Complete; preserves creator authorization and boolean result |
+| Mutation `createConversation` | `POST /api/v1/conversations` | Complete; actor is included by persistence and cannot be spoofed in body |
+| Mutation `updateConversationParticipants` | `PATCH /api/v1/conversations/:conversationId/participants` | Complete; persistence enforces creator/member rules and full Conversation is returned |
+| Mutation `deleteConversation` | `DELETE /api/v1/conversations/:conversationId` | Complete; creator/member authorization remains in persistence |
+| Mutation `markConversationAsRead` | `PUT /api/v1/conversations/:conversationId/read` | Complete; only current participant's read state is changed |
+| Mutation `sendMessage` | `POST /api/v1/conversations/:conversationId/messages` | Complete; sender from JWT, `Idempotency-Key` header, persistence/outbox transaction preserved |
+| Mutation `markNotificationRead` | `PUT /api/v1/me/notifications/:notificationId/read` | Complete; recipient-scoped; missing/other-user rows remain `null` |
+| Mutation `markAllNotificationsRead` | `POST /api/v1/me/notifications/read-all` | Complete; returns changed-row count for authenticated recipient |
 
 ## JWT audit summary
 
@@ -88,7 +88,7 @@ The repository does not yet implement the sign-in/token-issuance or refresh-toke
 
 ## Acceptance before GraphQL removal
 
-- Every operation above marked missing has a reviewed REST contract and authorization regression tests.
+- Every operation above marked complete has a reviewed REST contract and authorization regression tests; the legacy `toggleArticleLike` remains an intentional migration to explicit state-setting semantics.
 - Every exposed object retains the fields listed in its GraphQL type unless a representation change is explicitly documented.
-- A machine-readable or test-enforced contract check compares the GraphQL schema inventory with the REST parity inventory.
+- Add a machine-enforced schema-to-route contract check before deleting the transitional GraphQL schema/runtime.
 - Web callers have migrated; only then may GraphQL/Yoga and its configuration be removed.

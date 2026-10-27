@@ -1029,6 +1029,42 @@ export function createPostgresStore(sql) {
       }
       return rows.map((row) => mapMessage(row));
     },
+    async getConversation({ conversationId, actorId }) {
+      requiredText("conversationId", conversationId, 300);
+      requiredText("actorId", actorId, 300);
+      const rows = await sql.unsafe(
+        `SELECT c.id, c.created_by, c.created_at,
+                COALESCE(latest.created_at, c.created_at) AS last_activity_at,
+                participants.user_ids AS participant_ids,
+                latest.id AS latest_message_id,
+                latest.conversation_id AS latest_message_conversation_id,
+                latest.sender_id AS latest_message_sender_id,
+                latest.body AS latest_message_body,
+                latest.created_at AS latest_message_created_at,
+                (SELECT count(*)::int FROM messages AS unread
+                 WHERE unread.conversation_id = c.id
+                   AND unread.sender_id <> $1
+                   AND (membership.last_read_at IS NULL OR unread.created_at > membership.last_read_at)) AS unread_count
+         FROM conversation_participants AS membership
+         JOIN conversations AS c ON c.id = membership.conversation_id
+         LEFT JOIN LATERAL (
+           SELECT m.id, m.conversation_id, m.sender_id, m.body, m.created_at
+           FROM messages AS m
+           WHERE m.conversation_id = c.id
+           ORDER BY m.created_at DESC, m.id DESC
+           LIMIT 1
+         ) AS latest ON true
+         LEFT JOIN LATERAL (
+           SELECT array_agg(cp.user_id ORDER BY cp.user_id) AS user_ids
+           FROM conversation_participants AS cp
+           WHERE cp.conversation_id = c.id AND cp.left_at IS NULL
+         ) AS participants ON true
+         WHERE membership.user_id = $1 AND membership.conversation_id = $2 AND membership.left_at IS NULL
+         LIMIT 1`,
+        [actorId, conversationId],
+      );
+      return rows[0] ? mapConversation(rows[0]) : null;
+    },
     async listConversations({ actorId, limit = 50 }) {
       if (typeof actorId !== "string" || actorId.trim().length === 0 || actorId !== actorId.trim()) {
         throw new TypeError("actorId must be a non-empty, trimmed string.");

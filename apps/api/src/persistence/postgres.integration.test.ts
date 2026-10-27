@@ -1249,6 +1249,11 @@ test("conversation lifecycle controls participants and unread state without dele
     conversation = await store.createConversation({ actorId: ownerId, participantIds: [recipientId] });
     assert.equal(conversation.createdBy, ownerId);
     assert.deepEqual(conversation.participantIds.sort(), [ownerId, recipientId].sort());
+    const directConversation = await store.getConversation({ conversationId: conversation.id, actorId: ownerId });
+    assert.ok(directConversation);
+    assert.equal(directConversation.id, conversation.id);
+    assert.deepEqual(directConversation.participantIds, conversation.participantIds);
+    assert.equal(await store.getConversation({ conversationId: conversation.id, actorId: outsiderId }), null);
     assert.equal((await store.listConversations({ actorId: ownerId }))[0].unreadCount, 0);
     await assert.rejects(
       store.createConversation({ actorId: ownerId, participantIds: [recipientId, recipientId] }),
@@ -1275,6 +1280,8 @@ test("conversation lifecycle controls participants and unread state without dele
       addUserIds: [addId], removeUserIds: [recipientId],
     });
     assert.equal((await store.listConversations({ actorId: recipientId })).length, 0);
+    assert.equal(await store.getConversation({ conversationId: conversation.id, actorId: recipientId }), null);
+    assert.equal((await store.getConversation({ conversationId: conversation.id, actorId: addId })).lastMessage.id, firstMessage.id);
     assert.equal((await store.listConversations({ actorId: addId }))[0].lastMessage.id, firstMessage.id);
     await assert.rejects(
       store.listConversationMessages({ conversationId: conversation.id, actorId: recipientId }),
