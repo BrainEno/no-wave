@@ -475,7 +475,7 @@ test("REST category detail is localized and returns a stable 404 when absent", a
     store: {
       async getTaxonomyBySlug(args) {
         received = args;
-        return args.slug === "poetry" ? { id: "category-1", slug: args.slug, locale: args.locale, name: args."诗歌" } : null;
+        return args.slug === "poetry" ? { id: "category-1", slug: args.slug, locale: args.locale, name: "诗歌" } : null;
       },
     },
   });
@@ -539,7 +539,7 @@ test("REST tag detail is localized and returns a stable 404 when absent", async 
       async getTaxonomyBySlug(args) {
         received.push(args);
         return args.slug === "ai-abc123"
-          ? { id: "tag-1", kind: "tag", slug: args.slug, name: args.locale === "en" ? "AI" : "人工智慧", locale: args.locale, articleCount: 2 }
+          ? { id: "tag-1", kind: "tag", slug: args.slug, name: "人工智能", locale: args.locale, articleCount: 2 }
           : null;
       },
     },
