@@ -1,0 +1,24 @@
+FROM node:24-alpine
+
+ENV NODE_ENV=production
+ENV HOST=0.0.0.0
+# Vercel container services default to port 80; the platform can override PORT.
+ENV PORT=80
+
+WORKDIR /app
+
+RUN corepack enable
+
+# Keep the API image reproducible by using the repository's single pnpm lockfile.
+# Both workspace manifests are copied because pnpm validates all workspace importers
+# against the lockfile, even when only the API package is selected for installation.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY apps/api/package.json ./apps/api/package.json
+COPY apps/web/package.json ./apps/web/package.json
+
+RUN pnpm install --frozen-lockfile --prod --filter @bot-thk/api
+
+COPY apps/api/src ./apps/api/src
+
+EXPOSE 80
+CMD ["node", "apps/api/src/server.ts"]
