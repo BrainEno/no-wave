@@ -905,24 +905,25 @@ test("REST profile update derives userId from the JWT and rejects identity field
 
 test("REST follow and unfollow use stable target userId and verified actor identity", async () => {
   const calls = [];
-  const profile = {
+  let isFollowing = false;
+  const getProfile = () => ({
     userId: "target-user", displayName: "目标作者", bio: "", locale: "zh-CN",
-    followerCount: 1, followingCount: 0, isFollowing: true,
-  };
+    followerCount: isFollowing ? 1 : 0, followingCount: 0, isFollowing,
+  });
   await withServer(async (baseUrl) => {
     const follow = await fetch(baseUrl + "/api/v1/users/target-user/follow", {
       method: "POST",
       headers: { authorization: "Bearer " + signedToken("follower-user") },
     });
     assert.equal(follow.status, 200);
-    assert.deepEqual(await follow.json(), { data: profile });
+    assert.deepEqual(await follow.json(), { data: getProfile() });
 
     const unfollow = await fetch(baseUrl + "/api/v1/users/target-user/follow", {
       method: "DELETE",
       headers: { authorization: "Bearer " + signedToken("follower-user") },
     });
     assert.equal(unfollow.status, 200);
-    assert.deepEqual(await unfollow.json(), { data: profile });
+    assert.deepEqual(await unfollow.json(), { data: getProfile() });
     assert.deepEqual(calls, [
       ["follow", { actorId: "follower-user", targetUserId: "target-user" }],
       ["unfollow", { actorId: "follower-user", targetUserId: "target-user" }],
@@ -931,11 +932,11 @@ test("REST follow and unfollow use stable target userId and verified actor ident
     env: authEnv,
     store: {
       async isSessionRevoked() { return false; },
-      async followUser(args) { calls.push(["follow", args]); },
-      async unfollowUser(args) { calls.push(["unfollow", args]); },
+      async followUser(args) { calls.push(["follow", args]); isFollowing = true; },
+      async unfollowUser(args) { calls.push(["unfollow", args]); isFollowing = false; },
       async getAuthorProfile(args) {
         assert.deepEqual(args, { userId: "target-user", locale: "zh-CN", viewerId: "follower-user" });
-        return profile;
+        return getProfile();
       },
     },
   });
