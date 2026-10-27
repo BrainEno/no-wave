@@ -10,7 +10,7 @@ const env = {
 };
 const now = 1_800_000_000;
 
-function token(claims = {}, header = { alg: "HS256", typ: "JWT" }, secret = env.AUTH_JWT_SECRET) {
+function token(claims = {}, header = { alg: "HS256", typ: "at+jwt" }, secret = env.AUTH_JWT_SECRET) {
   const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
   const unsigned = `${encode(header)}.${encode(claims)}`;
   const signature = createHmac("sha256", secret).update(unsigned).digest("base64url");
@@ -21,6 +21,7 @@ const validClaims = {
   sub: "user-123",
   iss: env.AUTH_JWT_ISSUER,
   aud: env.AUTH_JWT_AUDIENCE,
+  iat: now - 60,
   exp: now + 60,
   jti: "session-123",
 };
@@ -61,6 +62,16 @@ test("rejects invalid signature, unsupported algorithm, expired token, and wrong
   assert.equal(verifyBearerToken(requestWithToken(token({ ...validClaims, aud: "other-api" })), env, now), null);
   assert.equal(verifyBearerToken(requestWithToken(token({ ...validClaims, sub: "" })), env, now), null);
   assert.equal(verifyBearerToken(requestWithToken(token({ ...validClaims, sub: " user-123 " })), env, now), null);
+  assert.equal(verifyBearerToken(requestWithToken(token({ ...validClaims, iat: undefined })), env, now), null);
+  assert.equal(verifyBearerToken(requestWithToken(token({ ...validClaims, iat: now + 1 })), env, now), null);
+  assert.equal(verifyBearerToken(requestWithToken(token({ ...validClaims, iat: now - 901 })), env, now), null);
+  assert.equal(verifyBearerToken(requestWithToken(token({ ...validClaims, exp: now + 901 })), env, now), null);
+  assert.equal(verifyBearerToken(requestWithToken(token(validClaims, { alg: "HS256", typ: "JWT" })), env, now), null);
+  assert.equal(verifyBearerToken(requestWithToken(token(validClaims, { alg: "HS256", typ: "at+jwt", crit: ["example"] })), env, now), null);
+  assert.equal(verifyBearerToken(requestWithToken(token(validClaims)), { ...env, AUTH_JWT_MAX_TTL_SECONDS: "3600" }, now), null,
+    "max TTL configuration does not extend the actual token lifetime; it bounds it");
+  assert.throws(() => verifyBearerToken(requestWithToken(token(validClaims)), { ...env, AUTH_JWT_MAX_TTL_SECONDS: "abc" }, now),
+    /AUTH_JWT_MAX_TTL_SECONDS/);
   const { jti: _jti, ...withoutSessionId } = validClaims;
   assert.equal(verifyBearerToken(requestWithToken(token(withoutSessionId)), env, now), null);
   assert.equal(verifyBearerToken(requestWithToken(token({ ...validClaims, jti: " session-123 " })), env, now), null);
