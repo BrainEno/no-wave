@@ -72,14 +72,20 @@ Tests skip when `TEST_DATABASE_URL` is unset. Never set it to a production URL. 
 These helpers do not replace resource-level database checks in each resolver. See `docs/architecture/postgres-migration-plan.md` for persistence and optional data-import boundaries, `docs/architecture/decisions/0005-clean-architecture-and-replication.md` for multi-provider and failover tradeoffs, and `docs/architecture/persistence-adapter-contract.md` for the shared adapter acceptance contract.
 
 
-## REST transport (first slice)
+## REST transport
 
-The API now exposes a versioned REST surface alongside GraphQL. Both transports call the same application-service facade; REST handlers do not call GraphQL over HTTP and do not access PostgreSQL directly.
+The API exposes versioned, public, read-only REST endpoints alongside GraphQL. Both transports call the shared application-service facade; REST handlers do not call GraphQL over HTTP or access PostgreSQL directly. REST JSON responses use `Cache-Control: no-store`.
 
-- `GET /api/v1/health` — liveness response; no persistence required.
-- `GET /api/v1/articles?locale=zh-CN&query=&limit=20&offset=0` — published article list.
+- `GET /api/v1/health` — liveness response, independent of persistence.
+- `GET /api/v1/articles?locale=zh-CN&query=&limit=20&offset=0` — published article search and pagination.
 - `GET /api/v1/articles/:slug?locale=zh-CN` — one published article, or `404 NOT_FOUND`.
+- `GET /api/v1/categories?locale=zh-CN&query=&limit=20&offset=0` — localized category discovery and pagination.
+- `GET /api/v1/categories/:slug?locale=zh-CN` — one localized category, or `404 NOT_FOUND`.
+- `GET /api/v1/categories/:slug/articles?locale=zh-CN&limit=20&offset=0` — published localized articles in a category.
+- `GET /api/v1/tags?locale=zh-CN&query=&limit=20&offset=0` — localized hashtag discovery and pagination.
+- `GET /api/v1/tags/:slug?locale=zh-CN` — one localized hashtag, or `404 NOT_FOUND`.
+- `GET /api/v1/tags/:slug/articles?locale=zh-CN&limit=20&offset=0` — published localized articles associated with a hashtag.
 
-List pagination accepts `limit` from 1 to 100 and a non-negative integer `offset`. Invalid values return `400 BAD_USER_INPUT`; a missing article returns `404`; a missing persistence configuration returns `503` for article reads. REST errors use a JSON `error.code` and a safe message. The existing `/health`, `/ready`, and `/graphql` endpoints remain available.
+Locale must be `zh-CN`, `zh-TW`, or `en`; search terms are limited to 200 characters; `limit` must be an integer from 1 to 100 and `offset` must be a non-negative integer within the endpoint's bound. Invalid inputs return `400 BAD_USER_INPUT`; missing taxonomy resources (including tags without a localized label for the requested locale) return a stable `404 NOT_FOUND`. Tag article requests resolve the localized tag before querying articles so a nonexistent tag never masquerades as an empty successful list. The shared persistence queries return published articles in the requested locale only.
 
-This is deliberately a partial REST surface, not full transport parity: authenticated writes, profile and engagement routes, and contract tests for every resource are not implemented yet. Public category and tag discovery share the taxonomy application services with GraphQL; tag article listings resolve the localized tag before querying published articles, so unknown or untranslated tags return a stable 404. Continue adding REST resources through the same application services and tests before claiming behavioral parity.
+This remains a partial REST surface, not full transport parity: authenticated writes, profile and engagement routes, and complete cross-transport contract coverage are still pending. Add resources through the shared application services and extend transport-level tests before claiming behavioral parity.
