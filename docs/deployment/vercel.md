@@ -18,7 +18,8 @@ Configure these in Vercel's environment-variable settings for the environments w
 
 - `DATABASE_PROVIDER=postgres`
 - `DATABASE_URL`: connection URL for the PostgreSQL database. Configure it for the API and notification worker.
-- `AUTH_JWT_SECRET`, `AUTH_JWT_ISSUER`, `AUTH_JWT_AUDIENCE`: JWT verification settings that must match the token issuer.
+- `AUTH_JWT_SECRET`, `AUTH_JWT_ISSUER`, `AUTH_JWT_AUDIENCE`: JWT verification settings that must match the trusted token issuer. The issuer must use the application-specific `typ: application/vnd.bot-thk.access+jwt` and the required `iat`, `exp`, `sub`, and `jti` claims.
+- `AUTH_JWT_MAX_TTL_SECONDS` (optional): maximum accepted access-token lifetime in seconds; defaults to `900` (15 minutes) and accepts `60`–`86400`. Keep it as low as the trusted issuance/session design allows.
 - `NEXT_PUBLIC_SITE_URL`: the canonical public website URL for metadata.
 
 Do not manually set `API_SERVICE_URL`; Vercel injects it from the service binding. Leave `API_GRAPHQL_URL` unset when using this binding. An explicit `API_GRAPHQL_URL`, if present, takes precedence and must already be the complete GraphQL endpoint URL.
