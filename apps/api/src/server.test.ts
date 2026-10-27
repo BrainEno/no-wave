@@ -352,7 +352,7 @@ test("REST health endpoint is available independently of GraphQL", async () => {
 
 test("REST private article list derives the actor from the verified JWT", async () => {
   let received;
-  const articles = [{ id: "article-1", authorId: "writer-123", slug: "my-work", locale: "zh-CN", title: "My work" }];
+  const articles = [{ id: "article-1", authorId: "writer-123", slug: "my-work", locale: "zh-CN", title: "My work", author: null, categories: [], tags: [] }];
   await withServer(async (baseUrl) => {
     const response = await fetch(baseUrl + "/api/v1/me/articles?limit=10", {
       headers: { authorization: "Bearer " + signedToken("writer-123") },
@@ -386,7 +386,7 @@ test("REST article creation accepts JSON content blocks and never trusts a body 
     });
     assert.equal(response.status, 201);
     assert.deepEqual(await response.json(), {
-      data: { id: "created-article", authorId: "verified-writer", slug: "new-work", title: "新作品", locale: "zh-CN", contentBlocks },
+      data: { id: "created-article", authorId: "verified-writer", slug: "new-work", title: "新作品", locale: "zh-CN", contentBlocks, author: null, categories: [], tags: [] },
     });
     assert.deepEqual(received, {
       authorId: "verified-writer", slug: "new-work", title: "新作品", summary: "简介", locale: "zh-CN",
@@ -433,7 +433,7 @@ test("REST article updates derive actorId from JWT and use the path article ID",
     });
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), {
-      data: { id: articleId, actorId: "verified-writer", slug: "updated-work", title: "更新后的作品", contentBlocks },
+      data: { id: articleId, actorId: "verified-writer", slug: "updated-work", title: "更新后的作品", contentBlocks, author: null, categories: [], tags: [] },
     });
     assert.deepEqual(received, {
       articleId, actorId: "verified-writer", slug: "updated-work", title: "更新后的作品",
@@ -519,7 +519,7 @@ test("REST public author profile uses stable userId and returns 404 for missing 
 
 test("REST author article listing forwards userId to persistence before pagination", async () => {
   let received;
-  const articles = [{ id: "article-1", authorId: "user-123", slug: "hello-world", locale: "zh-CN", title: "Hello" }];
+  const articles = [{ id: "article-1", authorId: "user-123", slug: "hello-world", locale: "zh-CN", title: "Hello", author: null, categories: [], tags: [] }];
   await withServer(async (baseUrl) => {
     const response = await fetch(`${baseUrl}/api/v1/authors/user-123/articles?query=hello&limit=10&offset=20`);
     assert.equal(response.status, 200);
@@ -543,6 +543,7 @@ test("REST public article list calls the shared application service with validat
   const articles = [{
     id: "article-1", slug: "hello-world", locale: "zh-CN", title: "Hello",
     summary: "Summary", contentBlocks: [{ type: "paragraph", text: "Hello" }],
+    author: null, categories: [], tags: [],
   }];
   await withServer(async (baseUrl) => {
     const response = await fetch(`${baseUrl}/api/v1/articles?locale=zh-CN&query=poetry&limit=10&offset=20`);
@@ -562,7 +563,7 @@ test("REST public article detail calls the same service and returns 404 for miss
     const response = await fetch(`${baseUrl}/api/v1/articles/hello-world?locale=zh-CN`);
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), {
-      data: { id: "article-1", slug: "hello-world", locale: "zh-CN", title: "Hello" },
+      data: { id: "article-1", slug: "hello-world", locale: "zh-CN", title: "Hello", author: null, categories: [], tags: [] },
     });
     assert.deepEqual(received, { slug: "hello-world", locale: "zh-CN" });
 
@@ -625,7 +626,7 @@ test("REST category detail is localized and returns a stable 404 when absent", a
 test("REST category articles verify category visibility and forward pagination", async () => {
   let received;
   let categoryLookups = 0;
-  const articles = [{ id: "article-1", slug: "poem-one", locale: "zh-CN", title: "Poem One" }];
+  const articles = [{ id: "article-1", slug: "poem-one", locale: "zh-CN", title: "Poem One", author: null, categories: [], tags: [] }];
   await withServer(async (baseUrl) => {
     const response = await fetch(`${baseUrl}/api/v1/categories/poetry/articles?locale=zh-CN&limit=5&offset=10`);
     assert.equal(response.status, 200);
@@ -689,7 +690,7 @@ test("REST tag detail is localized and returns a stable 404 when absent", async 
 
 test("REST tag articles verify localized tag visibility before listing and forward pagination", async () => {
   const calls = [];
-  const articles = [{ id: "article-1", slug: "article-about-ai", locale: "zh-CN", title: "AI" }];
+  const articles = [{ id: "article-1", slug: "article-about-ai", locale: "zh-CN", title: "AI", author: null, categories: [], tags: [] }];
   await withServer(async (baseUrl) => {
     const response = await fetch(baseUrl + "/api/v1/tags/ai-abc123/articles?locale=zh-CN&limit=5&offset=10");
     assert.equal(response.status, 200);
@@ -1191,12 +1192,12 @@ test("REST article comments support public listing and authenticated replies", a
   const comment = {
     id: "22222222-2222-4222-8222-222222222222", articleId: "article-1",
     authorId: "commenter-user", parentCommentId, content: "很好的观点", locale: "zh-CN",
-    replies: [],
+    author: null, replies: [],
   };
   await withServer(async (baseUrl) => {
     const listed = await fetch(baseUrl + "/api/v1/articles/poetry-work/comments?limit=10");
     assert.equal(listed.status, 200);
-    assert.deepEqual(await listed.json(), { data: [{ id: parentCommentId, content: "根评论", replies: [] }] });
+    assert.deepEqual(await listed.json(), { data: [{ id: parentCommentId, content: "根评论", replies: [], author: null }] });
     assert.deepEqual(calls[0], { kind: "list", args: { slug: "poetry-work", locale: "zh-CN", limit: 10 } });
 
     const created = await fetch(baseUrl + "/api/v1/articles/poetry-work/comments", {
