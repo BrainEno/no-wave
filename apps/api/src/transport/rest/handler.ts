@@ -340,11 +340,6 @@ export function createRestHandler({ services, env = process.env }: { services: R
         return true;
       }
       const locale = parseLocale(url);
-      if (!services) {
-        sendUnavailable(response);
-        return true;
-      }
-      const locale = parseLocale(url);
       const query = parseQuery(url);
       const pagination = parsePagination(url, 20, MAX_ARTICLE_OFFSET);
       if (!locale || query === null || !pagination) {
@@ -393,7 +388,7 @@ export function createRestHandler({ services, env = process.env }: { services: R
         sendServiceError(response, error);
       }
       return true;
-    }/^\/api\/v1\/articles\/([^/]+)$/);
+    }
     if (articleMatch) {
       if (!services) {
         sendUnavailable(response);
