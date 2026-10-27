@@ -349,17 +349,65 @@ test("REST health endpoint is available independently of GraphQL", async () => {
   });
 });
 
+test("REST public author profile uses stable userId and returns 404 for missing authors", async () => {
+  let received;
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/v1/authors/user-123`);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      data: { userId: "user-123", displayName: "Writer", bio: "简介", locale: "zh-CN" },
+    });
+    assert.deepEqual(received, { userId: "user-123", locale: "zh-CN", viewerId: null });
+
+    const missing = await fetch(`${baseUrl}/api/v1/authors/missing-user`);
+    assert.equal(missing.status, 404);
+    assert.deepEqual(await missing.json(), {
+      error: { code: "NOT_FOUND", message: "The author was not found." },
+    });
+  }, {
+    store: {
+      async getAuthorProfile(args) {
+        received = args;
+        return args.userId === "user-123"
+          ? { userId: args.userId, displayName: "Writer", bio: "简介", locale: args.locale }
+          : null;
+      },
+    },
+  });
+});
+
+test("REST author article listing forwards userId to persistence before pagination", async () => {
+  let received;
+  const articles = [{ id: "article-1", authorId: "user-123", slug: "hello-world", locale: "zh-CN", title: "Hello" }];
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/v1/authors/user-123/articles?query=hello&limit=10&offset=20`);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { data: articles });
+    assert.deepEqual(received, { authorId: "user-123", locale: "zh-CN", query: "hello", limit: 10, offset: 20 });
+  }, {
+    store: {
+      async getAuthorProfile(args) {
+        return { userId: args.userId, displayName: "Writer", bio: "简介", locale: args.locale };
+      },
+      async listPublishedArticles(args) {
+        received = args;
+        return articles;
+      },
+    },
+  });
+});
+
 test("REST public article list calls the shared application service with validated query options", async () => {
   let received;
   const articles = [{
-    id: "article-1", slug: "hello-world", locale: "en", title: "Hello",
+    id: "article-1", slug: "hello-world", locale: "zh-CN", title: "Hello",
     summary: "Summary", contentBlocks: [{ type: "paragraph", text: "Hello" }],
   }];
   await withServer(async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/api/v1/articles?locale=en&query=poetry&limit=10&offset=20`);
+    const response = await fetch(`${baseUrl}/api/v1/articles?locale=zh-CN&query=poetry&limit=10&offset=20`);
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { data: articles });
-    assert.deepEqual(received, { locale: "en", query: "poetry", limit: 10, offset: 20 });
+    assert.deepEqual(received, { locale: "zh-CN", query: "poetry", limit: 10, offset: 20 });
   }, {
     store: {
       async listPublishedArticles(args) { received = args; return articles; },
@@ -370,12 +418,12 @@ test("REST public article list calls the shared application service with validat
 test("REST public article detail calls the same service and returns 404 for missing articles", async () => {
   let received;
   await withServer(async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/api/v1/articles/hello-world?locale=zh-TW`);
+    const response = await fetch(`${baseUrl}/api/v1/articles/hello-world?locale=zh-CN`);
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), {
-      data: { id: "article-1", slug: "hello-world", locale: "zh-TW", title: "Hello" },
+      data: { id: "article-1", slug: "hello-world", locale: "zh-CN", title: "Hello" },
     });
-    assert.deepEqual(received, { slug: "hello-world", locale: "zh-TW" });
+    assert.deepEqual(received, { slug: "hello-world", locale: "zh-CN" });
 
     const missing = await fetch(`${baseUrl}/api/v1/articles/missing`);
     assert.equal(missing.status, 404);
@@ -397,12 +445,12 @@ test("REST public article detail calls the same service and returns 404 for miss
 
 test("REST category index uses the shared taxonomy service and forwards bounded pagination", async () => {
   let received;
-  const categories = [{ id: "category-1", kind: "category", slug: "poetry", name: "Poetry", locale: "en", articleCount: 3 }];
+  const categories = [{ id: "category-1", kind: "category", slug: "poetry", name: "Poetry", locale: "zh-CN", articleCount: 3 }];
   await withServer(async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/api/v1/categories?locale=en&query=poe&limit=10&offset=20`);
+    const response = await fetch(`${baseUrl}/api/v1/categories?locale=zh-CN&query=poe&limit=10&offset=20`);
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { data: categories });
-    assert.deepEqual(received, { kind: "category", locale: "en", query: "poe", limit: 10, offset: 20 });
+    assert.deepEqual(received, { kind: "category", locale: "zh-CN", query: "poe", limit: 10, offset: 20 });
   }, {
     store: {
       async listTaxonomies(args) { received = args; return categories; },
@@ -413,12 +461,12 @@ test("REST category index uses the shared taxonomy service and forwards bounded 
 test("REST category detail is localized and returns a stable 404 when absent", async () => {
   let received;
   await withServer(async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/api/v1/categories/poetry?locale=zh-TW`);
+    const response = await fetch(`${baseUrl}/api/v1/categories/poetry?locale=zh-CN`);
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { data: { id: "category-1", slug: "poetry", locale: "zh-TW", name: "詩歌" } });
-    assert.deepEqual(received, { kind: "category", slug: "poetry", locale: "zh-TW" });
+    assert.deepEqual(await response.json(), { data: { id: "category-1", slug: "poetry", locale: "zh-CN", name: "诗歌" } });
+    assert.deepEqual(received, { kind: "category", slug: "poetry", locale: "zh-CN" });
 
-    const missing = await fetch(`${baseUrl}/api/v1/categories/missing?locale=en`);
+    const missing = await fetch(`${baseUrl}/api/v1/categories/missing?locale=zh-CN`);
     assert.equal(missing.status, 404);
     assert.deepEqual(await missing.json(), {
       error: { code: "NOT_FOUND", message: "The category was not found." },
@@ -427,7 +475,7 @@ test("REST category detail is localized and returns a stable 404 when absent", a
     store: {
       async getTaxonomyBySlug(args) {
         received = args;
-        return args.slug === "poetry" ? { id: "category-1", slug: args.slug, locale: args.locale, name: args.locale === "zh-TW" ? "詩歌" : "Poetry" } : null;
+        return args.slug === "poetry" ? { id: "category-1", slug: args.slug, locale: args.locale, name: args."诗歌" } : null;
       },
     },
   });
@@ -436,14 +484,14 @@ test("REST category detail is localized and returns a stable 404 when absent", a
 test("REST category articles verify category visibility and forward pagination", async () => {
   let received;
   let categoryLookups = 0;
-  const articles = [{ id: "article-1", slug: "poem-one", locale: "en", title: "Poem One" }];
+  const articles = [{ id: "article-1", slug: "poem-one", locale: "zh-CN", title: "Poem One" }];
   await withServer(async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/api/v1/categories/poetry/articles?locale=en&limit=5&offset=10`);
+    const response = await fetch(`${baseUrl}/api/v1/categories/poetry/articles?locale=zh-CN&limit=5&offset=10`);
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { data: articles });
-    assert.deepEqual(received, { kind: "category", slug: "poetry", locale: "en", limit: 5, offset: 10 });
+    assert.deepEqual(received, { kind: "category", slug: "poetry", locale: "zh-CN", limit: 5, offset: 10 });
 
-    const missing = await fetch(`${baseUrl}/api/v1/categories/missing/articles?locale=en`);
+    const missing = await fetch(`${baseUrl}/api/v1/categories/missing/articles?locale=zh-CN`);
     assert.equal(missing.status, 404);
     assert.equal(categoryLookups, 2);
   }, {
@@ -456,13 +504,13 @@ test("REST category articles verify category visibility and forward pagination",
 
 test("REST tag index reuses the taxonomy service and forwards bounded pagination", async () => {
   let received;
-  const tags = [{ id: "tag-1", kind: "tag", slug: "ai-abc123", name: "人工智慧", locale: "zh-TW", articleCount: 3 }];
+  const tags = [{ id: "tag-1", kind: "tag", slug: "ai-abc123", name: "人工智能", locale: "zh-CN", articleCount: 3 }];
   await withServer(async (baseUrl) => {
-    const response = await fetch(baseUrl + "/api/v1/tags?locale=zh-TW&query=人工&limit=10&offset=20");
+    const response = await fetch(baseUrl + "/api/v1/tags?locale=zh-CN&query=人工&limit=10&offset=20");
     assert.equal(response.status, 200);
     assert.match(response.headers.get("cache-control") ?? "", /no-store/i);
     assert.deepEqual(await response.json(), { data: tags });
-    assert.deepEqual(received, { kind: "tag", locale: "zh-TW", query: "人工", limit: 10, offset: 20 });
+    assert.deepEqual(received, { kind: "tag", locale: "zh-CN", query: "人工", limit: 10, offset: 20 });
   }, {
     store: {
       async listTaxonomies(args) { received = args; return tags; },
@@ -473,19 +521,19 @@ test("REST tag index reuses the taxonomy service and forwards bounded pagination
 test("REST tag detail is localized and returns a stable 404 when absent", async () => {
   const received = [];
   await withServer(async (baseUrl) => {
-    const response = await fetch(baseUrl + "/api/v1/tags/ai-abc123?locale=en");
+    const response = await fetch(baseUrl + "/api/v1/tags/ai-abc123?locale=zh-CN");
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), {
-      data: { id: "tag-1", kind: "tag", slug: "ai-abc123", name: "AI", locale: "en", articleCount: 2 },
+      data: { id: "tag-1", kind: "tag", slug: "ai-abc123", name: "AI", locale: "zh-CN", articleCount: 2 },
     });
-    assert.deepEqual(received[0], { kind: "tag", slug: "ai-abc123", locale: "en" });
+    assert.deepEqual(received[0], { kind: "tag", slug: "ai-abc123", locale: "zh-CN" });
 
-    const missing = await fetch(baseUrl + "/api/v1/tags/missing-tag?locale=zh-TW");
+    const missing = await fetch(baseUrl + "/api/v1/tags/missing-tag?locale=zh-CN");
     assert.equal(missing.status, 404);
     assert.deepEqual(await missing.json(), {
       error: { code: "NOT_FOUND", message: "The tag was not found." },
     });
-    assert.deepEqual(received[1], { kind: "tag", slug: "missing-tag", locale: "zh-TW" });
+    assert.deepEqual(received[1], { kind: "tag", slug: "missing-tag", locale: "zh-CN" });
   }, {
     store: {
       async getTaxonomyBySlug(args) {
@@ -500,22 +548,22 @@ test("REST tag detail is localized and returns a stable 404 when absent", async 
 
 test("REST tag articles verify localized tag visibility before listing and forward pagination", async () => {
   const calls = [];
-  const articles = [{ id: "article-1", slug: "article-about-ai", locale: "en", title: "AI" }];
+  const articles = [{ id: "article-1", slug: "article-about-ai", locale: "zh-CN", title: "AI" }];
   await withServer(async (baseUrl) => {
-    const response = await fetch(baseUrl + "/api/v1/tags/ai-abc123/articles?locale=en&limit=5&offset=10");
+    const response = await fetch(baseUrl + "/api/v1/tags/ai-abc123/articles?locale=zh-CN&limit=5&offset=10");
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { data: articles });
     assert.deepEqual(calls.slice(0, 2), [
-      ["lookup", { kind: "tag", slug: "ai-abc123", locale: "en" }],
-      ["articles", { kind: "tag", slug: "ai-abc123", locale: "en", limit: 5, offset: 10 }],
+      ["lookup", { kind: "tag", slug: "ai-abc123", locale: "zh-CN" }],
+      ["articles", { kind: "tag", slug: "ai-abc123", locale: "zh-CN", limit: 5, offset: 10 }],
     ]);
 
-    const missing = await fetch(baseUrl + "/api/v1/tags/missing-tag/articles?locale=en");
+    const missing = await fetch(baseUrl + "/api/v1/tags/missing-tag/articles?locale=zh-CN");
     assert.equal(missing.status, 404);
     assert.deepEqual(await missing.json(), {
       error: { code: "NOT_FOUND", message: "The tag was not found." },
     });
-    assert.deepEqual(calls[2], ["lookup", { kind: "tag", slug: "missing-tag", locale: "en" }]);
+    assert.deepEqual(calls[2], ["lookup", { kind: "tag", slug: "missing-tag", locale: "zh-CN" }]);
     assert.equal(calls.length, 3, "missing tags must not trigger an article query");
   }, {
     store: {
@@ -536,6 +584,8 @@ test("REST rejects unsupported locales, oversized search terms and offsets befor
   await withServer(async (baseUrl) => {
     for (const path of [
       "/api/v1/articles?locale=fr",
+      "/api/v1/articles?locale=en",
+      "/api/v1/articles?locale=zh-TW",
       `/api/v1/articles?query=${oversizedQuery}`,
       "/api/v1/articles?offset=100001",
       "/api/v1/categories?locale=fr",
