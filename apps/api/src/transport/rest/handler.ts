@@ -250,19 +250,45 @@ function normalizeCommentWriteBody(
   };
 }
 
+async function authenticatedUser(
+  request: IncomingMessage,
+  services: RestServices,
+  env: NodeJS.ProcessEnv,
+): Promise<{ id: string; sessionId: string; sessionExpiresAt: number } | null> {
+  const authorization = request.headers.authorization;
+  if (typeof authorization !== "string") return null;
+  const authRequest = new Request("http://localhost/", { headers: { authorization } });
+  const { user } = createAuthContext(authRequest, env);
+  if (!user || typeof services.isSessionRevoked !== "function") return null;
+  try {
+    if (await services.isSessionRevoked(user.sessionId)) return null;
+  } catch {
+    // Session status cannot be established. Fail closed rather than accepting the JWT.
+    return null;
+  }
+  return user;
+}
+
 async function authenticatedActorId(
   request: IncomingMessage,
   services: RestServices,
   env: NodeJS.ProcessEnv,
 ): Promise<string | null> {
-  const authorization = request.headers.authorization;
-  const authRequest = new Request("http://localhost/", {
-    headers: typeof authorization === "string" ? { authorization } : {},
-  });
-  const { user } = createAuthContext(authRequest, env);
-  if (!user) return null;
-  if (typeof services.isSessionRevoked === "function" && await services.isSessionRevoked(user.sessionId)) return null;
-  return user.id;
+  return (await authenticatedUser(request, services, env))?.id ?? null;
+}
+
+async function optionalViewerId(
+  request: IncomingMessage,
+  services: RestServices,
+  env: NodeJS.ProcessEnv,
+): Promise<string | null> {
+  if (typeof request.headers.authorization !== "string") return null;
+  try {
+    return (await authenticatedUser(request, services, env))?.id ?? null;
+  } catch {
+    // Public reads stay public; malformed credentials never gain viewer privileges.
+    return null;
+  }
 }
 
 function sendUnauthenticated(response: ServerResponse): void {
@@ -283,15 +309,22 @@ export function createRestHandler({ services, env = process.env }: { services: R
     const url = new URL(request.url ?? "/", "http://localhost");
     if (url.pathname !== "/api/v1" && !url.pathname.startsWith("/api/v1/")) return false;
 
+    const mePath = url.pathname === "/api/v1/me";
     const meProfilePath = url.pathname === "/api/v1/me/profile";
+    const meSessionPath = url.pathname === "/api/v1/me/session";
+    const meLikedArticlesPath = url.pathname === "/api/v1/me/liked-articles";
+    const usersSearchPath = url.pathname === "/api/v1/users";
+    const userRelationshipsMatch = url.pathname.match(/^\/api\/v1\/users\/([^/]+)\/(followers|following)$/);
     const followPathMatch = url.pathname.match(/^\/api\/v1\/users\/([^/]+)\/follow$/);
     const articleLikePathMatch = url.pathname.match(/^\/api\/v1\/articles\/([^/]+)\/like$/);
+    const relatedArticlesMatch = url.pathname.match(/^\/api\/v1\/articles\/([^/]+)\/related$/);
     const articleCommentsPathMatch = url.pathname.match(/^\/api\/v1\/articles\/([^/]+)\/comments$/);
     const commentItemPathMatch = url.pathname.match(/^\/api\/v1\/comments\/([^/]+)$/);
     const articleItemPath = /^\/api\/v1\/articles\/[^/]+$/.test(url.pathname);
     const isCreateArticle = request.method === "POST" && url.pathname === "/api/v1/articles";
     const isUpdateArticle = request.method === "PUT" && articleItemPath;
     const isUpdateMyProfile = request.method === "PUT" && meProfilePath;
+    const isRevokeSession = request.method === "DELETE" && meSessionPath;
     const isFollowUser = request.method === "POST" && followPathMatch !== null;
     const isUnfollowUser = request.method === "DELETE" && followPathMatch !== null;
     const isSetArticleLike = request.method === "PUT" && articleLikePathMatch !== null;
@@ -302,27 +335,51 @@ export function createRestHandler({ services, env = process.env }: { services: R
       response.setHeader("allow", allow);
       sendJson(response, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "The HTTP method is not supported for this endpoint." } });
     };
-    if (meProfilePath && request.method !== "PUT") {
-      rejectMethod("PUT");
+    if (mePath && request.method !== "GET") {
+      rejectMethod("GET");
+      return true;
+    }
+    if (meProfilePath && request.method !== "GET" && request.method !== "PUT") {
+      rejectMethod("GET, PUT");
+      return true;
+    }
+    if (meSessionPath && request.method !== "DELETE") {
+      rejectMethod("DELETE");
+      return true;
+    }
+    if (meLikedArticlesPath && request.method !== "GET") {
+      rejectMethod("GET");
+      return true;
+    }
+    if (usersSearchPath && request.method !== "GET") {
+      rejectMethod("GET");
+      return true;
+    }
+    if (userRelationshipsMatch && request.method !== "GET") {
+      rejectMethod("GET");
       return true;
     }
     if (followPathMatch && request.method !== "POST" && request.method !== "DELETE") {
       rejectMethod("POST, DELETE");
       return true;
     }
-    if (articleLikePathMatch && request.method !== "PUT") {
-      rejectMethod("PUT");
+    if (articleLikePathMatch && request.method !== "GET" && request.method !== "PUT") {
+      rejectMethod("GET, PUT");
       return true;
     }
     if (articleCommentsPathMatch && request.method !== "GET" && request.method !== "POST") {
       rejectMethod("GET, POST");
       return true;
     }
+    if (relatedArticlesMatch && request.method !== "GET") {
+      rejectMethod("GET");
+      return true;
+    }
     if (commentItemPathMatch && request.method !== "DELETE") {
       rejectMethod("DELETE");
       return true;
     }
-    if (request.method !== "GET" && !isCreateArticle && !isUpdateArticle && !isUpdateMyProfile &&
+    if (request.method !== "GET" && !isCreateArticle && !isUpdateArticle && !isUpdateMyProfile && !isRevokeSession &&
         !isFollowUser && !isUnfollowUser && !isSetArticleLike && !isCreateArticleComment && !isDeleteArticleComment) {
       response.setHeader("allow", url.pathname === "/api/v1/articles" ? "GET, POST" : articleItemPath ? "GET, PUT" : "GET");
       sendJson(response, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "The HTTP method is not supported for this endpoint." } });
@@ -331,6 +388,146 @@ export function createRestHandler({ services, env = process.env }: { services: R
 
     if (url.pathname === "/api/v1/health") {
       sendJson(response, 200, { status: "ok", service: "api", version: "0.1.0" });
+      return true;
+    }
+
+    if (mePath) {
+      if (!services) {
+        sendUnavailable(response);
+        return true;
+      }
+      try {
+        const actorId = await authenticatedActorId(request, services, env);
+        if (!actorId) {
+          sendUnauthenticated(response);
+          return true;
+        }
+        sendJson(response, 200, { data: { id: actorId } });
+      } catch (error: unknown) {
+        sendServiceError(response, error);
+      }
+      return true;
+    }
+
+    if (meProfilePath && request.method === "GET") {
+      if (!services) {
+        sendUnavailable(response);
+        return true;
+      }
+      const locale = parseLocale(url);
+      if (!locale) {
+        sendBadInput(response, "Invalid locale.");
+        return true;
+      }
+      try {
+        const actorId = await authenticatedActorId(request, services, env);
+        if (!actorId) {
+          sendUnauthenticated(response);
+          return true;
+        }
+        const profile = await services.getAuthorProfile({ userId: actorId, locale, viewerId: actorId });
+        if (!profile) {
+          sendJson(response, 404, { error: { code: "NOT_FOUND", message: "The author profile was not found." } });
+        } else {
+          sendJson(response, 200, { data: profile });
+        }
+      } catch (error: unknown) {
+        sendServiceError(response, error);
+      }
+      return true;
+    }
+
+    if (meSessionPath) {
+      if (!services) {
+        sendUnavailable(response);
+        return true;
+      }
+      try {
+        const user = await authenticatedUser(request, services, env);
+        if (!user) {
+          sendUnauthenticated(response);
+          return true;
+        }
+        await services.revokeSession({
+          sessionId: user.sessionId,
+          expiresAt: new Date(user.sessionExpiresAt * 1000),
+        });
+        sendJson(response, 200, { data: true });
+      } catch (error: unknown) {
+        sendServiceError(response, error);
+      }
+      return true;
+    }
+
+    if (usersSearchPath) {
+      if (!services) {
+        sendUnavailable(response);
+        return true;
+      }
+      const query = url.searchParams.get("query");
+      const locale = parseLocale(url);
+      const limit = parseInteger(url.searchParams, "limit", 20, 1, 100);
+      if (query === null || query.length > MAX_QUERY_LENGTH || !locale || limit === null) {
+        sendBadInput(response, "Invalid query, locale, or limit query parameter.");
+        return true;
+      }
+      try {
+        const viewerId = await optionalViewerId(request, services, env);
+        const users = await services.searchUsers({ query, locale, limit, viewerId });
+        sendJson(response, 200, { data: users });
+      } catch (error: unknown) {
+        sendServiceError(response, error);
+      }
+      return true;
+    }
+
+    if (userRelationshipsMatch) {
+      if (!services) {
+        sendUnavailable(response);
+        return true;
+      }
+      const userId = decodeUserId(userRelationshipsMatch[1]);
+      const relation = userRelationshipsMatch[2];
+      const locale = parseLocale(url);
+      const limit = parseInteger(url.searchParams, "limit", 50, 1, 100);
+      if (!userId || !locale || limit === null) {
+        sendBadInput(response, "Invalid user ID, locale, or limit query parameter.");
+        return true;
+      }
+      try {
+        const viewerId = await optionalViewerId(request, services, env);
+        const users = relation === "followers"
+          ? await services.listFollowers({ userId, locale, limit, viewerId })
+          : await services.listFollowing({ userId, locale, limit, viewerId });
+        sendJson(response, 200, { data: users });
+      } catch (error: unknown) {
+        sendServiceError(response, error);
+      }
+      return true;
+    }
+
+    if (meLikedArticlesPath) {
+      if (!services) {
+        sendUnavailable(response);
+        return true;
+      }
+      const locale = parseLocale(url);
+      const limit = parseInteger(url.searchParams, "limit", 50, 1, 100);
+      if (!locale || limit === null) {
+        sendBadInput(response, "Invalid locale or limit query parameter.");
+        return true;
+      }
+      try {
+        const actorId = await authenticatedActorId(request, services, env);
+        if (!actorId) {
+          sendUnauthenticated(response);
+          return true;
+        }
+        const articles = await services.listLikedArticles({ actorId, locale, limit });
+        sendJson(response, 200, { data: articles });
+      } catch (error: unknown) {
+        sendServiceError(response, error);
+      }
       return true;
     }
 
@@ -442,7 +639,8 @@ export function createRestHandler({ services, env = process.env }: { services: R
         return true;
       }
       try {
-        const author = await services.getAuthorProfile({ userId, locale, viewerId: null });
+        const viewerId = await optionalViewerId(request, services, env);
+        const author = await services.getAuthorProfile({ userId, locale, viewerId });
         if (!author) {
           sendJson(response, 404, { error: { code: "NOT_FOUND", message: "The author was not found." } });
           return true;
@@ -468,7 +666,8 @@ export function createRestHandler({ services, env = process.env }: { services: R
         return true;
       }
       try {
-        const author = await services.getAuthorProfile({ userId, locale, viewerId: null });
+        const viewerId = await optionalViewerId(request, services, env);
+        const author = await services.getAuthorProfile({ userId, locale, viewerId });
         if (!author) {
           sendJson(response, 404, { error: { code: "NOT_FOUND", message: "The author was not found." } });
         } else {
@@ -525,6 +724,27 @@ export function createRestHandler({ services, env = process.env }: { services: R
       return true;
     }
 
+    if (relatedArticlesMatch) {
+      if (!services) {
+        sendUnavailable(response);
+        return true;
+      }
+      const slug = decodeSlug(relatedArticlesMatch[1]);
+      const locale = parseLocale(url);
+      const limit = parseInteger(url.searchParams, "limit", 6, 1, 50);
+      if (!slug || !locale || limit === null) {
+        sendBadInput(response, "Invalid article slug, locale, or limit query parameter.");
+        return true;
+      }
+      try {
+        const articles = await services.listRelatedArticles({ slug, locale, limit });
+        sendJson(response, 200, { data: articles });
+      } catch (error: unknown) {
+        sendServiceError(response, error);
+      }
+      return true;
+    }
+
     if (articleLikePathMatch) {
       if (!services) {
         sendUnavailable(response);
@@ -534,6 +754,16 @@ export function createRestHandler({ services, env = process.env }: { services: R
       const locale = parseLocale(url);
       if (!slug || !locale) {
         sendBadInput(response, "Invalid article slug or locale.");
+        return true;
+      }
+      if (request.method === "GET") {
+        try {
+          const actorId = await optionalViewerId(request, services, env);
+          const result = await services.getArticleLikeInfo({ slug, locale, actorId });
+          sendJson(response, 200, { data: result });
+        } catch (error: unknown) {
+          sendServiceError(response, error);
+        }
         return true;
       }
       const bodyResult = await readJsonObject(request);
