@@ -101,7 +101,7 @@ function sendUnavailable(response: ServerResponse): void {
 
 type JsonObjectResult =
   | { ok: true; value: Record<string, unknown> }
-  | { ok: false; status: number; code: string; message: string };
+  | { ok: false; status: number; code: string; message: string; closeConnection?: boolean };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
