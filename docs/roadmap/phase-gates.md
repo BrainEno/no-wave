@@ -37,6 +37,19 @@ On 2026-10-27, the product owner approved replacing GraphQL as the sole business
 
 The decision is documented in [ADR 0006](decisions/0006-rest-only-business-api.md).
 
+## Approved editor technology — Lexical
+
+On 2026-10-27, the product owner selected Lexical for both the article editor and comment editor. It is a technology decision only; it does not mean that the editor or upload workflow has been implemented.
+
+- [x] Record Lexical as the shared editing engine and define separate article/comment capability profiles.
+- [ ] Define/version the application-owned rich-text document contract, including inline marks and links missing from the current article-block contract.
+- [ ] Add tested, lossless adapters between Lexical state and the application document schema; validate node types, URLs, nesting and payload limits on the server.
+- [ ] Implement the article editor, draft recovery and approved image-upload integration.
+- [ ] Implement the comment editor with a smaller supported-node set and explicit comment payload/storage contract.
+- [ ] Add round-trip, malformed-payload, security, Chinese IME, accessibility, keyboard and mobile tests.
+
+See [ADR 0007](decisions/0007-lexical-rich-text-editors.md) for the decision and boundaries.
+
 ## Phase 1 — Workspace, CI and API foundation
 
 - [x] Create pnpm workspace and repeatable CI.
@@ -59,7 +72,7 @@ Exit gate: clean install, typecheck, tests, production build and container smoke
 - [ ] Complete public content search and pagination against the API.
 - [x] Add API-backed localized category index and category detail routes for public literary discovery.
 - [ ] Confirm product rules for tag deletion/moderation and category creation/ownership before expanding those behaviors.
-- [ ] Build authenticated editor and profile-management UI.
+- [ ] Build the Lexical article editor and comment editor, plus profile-management UI.
 - [x] Add explicit literary work-type metadata to article records and the public GraphQL/Web contract.
 - [x] Make Simplified Chinese (zh-CN) the default Web/API locale while retaining Traditional Chinese compatibility.
 

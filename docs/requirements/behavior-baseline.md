@@ -12,6 +12,7 @@ The previous project provides the reference for user-visible capabilities and kn
 - Search, categories, tags, related articles and public comments remain available where supported.
 - Draft and unpublished content is not exposed in public queries.
 - Article bodies support structured blocks rather than assuming every article is a single plain-text field.
+- The article editor and comment editor use Lexical as the shared editing framework, with different allowed-node and feature configurations. The application-owned, versioned document contract—not raw HTML or an unvalidated editor payload—is authoritative; see [ADR 0007](../architecture/decisions/0007-lexical-rich-text-editors.md).
 
 ## Categories and user-generated hashtags
 

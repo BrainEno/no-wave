@@ -9,13 +9,14 @@ This repository is the independent implementation of BOT THK's Web and API produ
 - When a proposed improvement would change permissions, product behavior, lifecycle rules, data compatibility, or user-visible workflows, document the options, risks, and recommendation and obtain approval before implementing that decision.
 - The new application has its own PostgreSQL schema. Existing production data is not automatically connected to or migrated into it.
 - Design is a first-class workstream. The current Web UI remains a functional portability/content spike and is not the final visual design.
+- **Rich-text editor technology selected:** Lexical will power both article authoring and comment composition, with different feature configurations. The decision and content-contract requirements are recorded in [ADR 0007](docs/architecture/decisions/0007-lexical-rich-text-editors.md); editor UI, serialization adapters and media upload remain pending.
 
 ## Current implementation status
 
 - `apps/api` has a standalone GraphQL server, PostgreSQL persistence/migrations, authenticated article CRUD, author profiles, user-generated Unicode hashtags, categories, likes/comments, follow graph, conversation lifecycle, message history, notification inbox and an outbox worker.
 - The API has PostgreSQL integration tests for persistence, authorization, retries, taxonomy and article workflows.
 - `apps/web` provides localized home, article archive/detail and author pages. Set `API_GRAPHQL_URL` to use the standalone GraphQL API for public content; when it is unset, the local fixture registry remains available for isolated design/build work. If the API URL is configured but requests fail, the Web app surfaces the failure rather than silently replacing live content with fixtures. The sign-in page is intentionally a placeholder.
-- JWT issuance/real account authentication, API-to-Web integration, full editor UX, real-time client integration, external push providers and production operations remain incomplete.
+- JWT issuance/real account authentication, API-to-Web integration, full editor UX, Lexical integration, media upload, real-time client integration, external push providers and production operations remain incomplete.
 - No production deployment, historical data migration, traffic cutover or modification of the old project's repository is performed as part of this branch.
 
 See [phase gates](docs/roadmap/phase-gates.md), [feature traceability](docs/audit/feature-traceability.md), [the behavior baseline](docs/requirements/behavior-baseline.md), and [PostgreSQL and data migration plan](docs/architecture/postgres-migration-plan.md).
