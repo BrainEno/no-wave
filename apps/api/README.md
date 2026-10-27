@@ -80,36 +80,36 @@ These helpers do not replace resource-level database checks in each resolver. Se
 
 ## REST transport
 
-The API exposes a versioned REST business contract under \`/api/v1\`. REST handlers call the shared application-service facade and never call GraphQL over HTTP or access PostgreSQL directly. All REST JSON responses use \`Cache-Control: no-store\`. Private endpoints derive the acting user exclusively from a verified bearer JWT, reject revoked sessions and never accept client-supplied actor/owner IDs.
+The API exposes a versioned REST business contract under `/api/v1`. REST handlers call the shared application-service facade and never call GraphQL over HTTP or access PostgreSQL directly. All REST JSON responses use `Cache-Control: no-store`. Private endpoints derive the acting user exclusively from a verified bearer JWT, reject revoked sessions and never accept client-supplied actor/owner IDs.
 
 ### Public read routes
 
-- \`GET /api/v1/health\` — liveness response, independent of persistence.
-- \`GET /api/v1/articles?locale=zh-CN&query=&limit=20&offset=0\` — published article search and pagination.
-- \`GET /api/v1/articles/:slug?locale=zh-CN\` — one published article, or \`404 NOT_FOUND\`.
-- \`GET /api/v1/authors/:userId?locale=zh-CN\` — public author profile addressed by stable \`userId\`.
-- \`GET /api/v1/authors/:userId/articles?locale=zh-CN&query=&limit=20&offset=0\` — published articles by that author, filtered before pagination.
-- \`GET /api/v1/categories?locale=zh-CN&query=&limit=20&offset=0\` and \`GET /api/v1/categories/:slug?locale=zh-CN\` — category discovery and detail.
-- \`GET /api/v1/categories/:slug/articles?locale=zh-CN&limit=20&offset=0\` — published articles in a category.
-- \`GET /api/v1/tags?locale=zh-CN&query=&limit=20&offset=0\` and \`GET /api/v1/tags/:slug?locale=zh-CN\` — hashtag discovery and detail.
-- \`GET /api/v1/tags/:slug/articles?locale=zh-CN&limit=20&offset=0\` — published articles associated with a hashtag.
-- \`GET /api/v1/articles/:slug/comments?locale=zh-CN&limit=50\` — public comment tree for a published article.
+- `GET /api/v1/health` — liveness response, independent of persistence.
+- `GET /api/v1/articles?locale=zh-CN&query=&limit=20&offset=0` — published article search and pagination.
+- `GET /api/v1/articles/:slug?locale=zh-CN` — one published article, or `404 NOT_FOUND`.
+- `GET /api/v1/authors/:userId?locale=zh-CN` — public author profile addressed by stable `userId`.
+- `GET /api/v1/authors/:userId/articles?locale=zh-CN&query=&limit=20&offset=0` — published articles by that author, filtered before pagination.
+- `GET /api/v1/categories?locale=zh-CN&query=&limit=20&offset=0` and `GET /api/v1/categories/:slug?locale=zh-CN` — category discovery and detail.
+- `GET /api/v1/categories/:slug/articles?locale=zh-CN&limit=20&offset=0` — published articles in a category.
+- `GET /api/v1/tags?locale=zh-CN&query=&limit=20&offset=0` and `GET /api/v1/tags/:slug?locale=zh-CN` — hashtag discovery and detail.
+- `GET /api/v1/tags/:slug/articles?locale=zh-CN&limit=20&offset=0` — published articles associated with a hashtag.
+- `GET /api/v1/articles/:slug/comments?locale=zh-CN&limit=50` — public comment tree for a published article.
 
 ### Authenticated article, profile and community routes
 
-All routes below require a valid, non-revoked bearer JWT, except for public comment listing. JSON write bodies require \`Content-Type: application/json\` and are limited to 2 MiB. Unsupported body fields are rejected.
+All routes below require a valid, non-revoked bearer JWT, except for public comment listing. JSON write bodies require `Content-Type: application/json` and are limited to 2 MiB. Unsupported body fields are rejected.
 
-- \`GET /api/v1/me/articles?locale=zh-CN&limit=50\` — the signed-in user's own articles, including drafts.
-- \`POST /api/v1/articles\` — create an article. Accepts \`slug\`, \`title\`, optional \`summary\`, \`locale\` (\`zh-CN\` only), \`contentBlocks\` (JSON array), optional \`publish\`, \`workType\`, \`categoryIds\` and \`tagIds\`. The author is derived from JWT identity.
-- \`PUT /api/v1/articles/:articleId\` — update an article; the actor is derived from JWT and ownership is enforced in the application/persistence layer. Uses the same fields as create, and requires boolean \`publish\`.
-- \`PUT /api/v1/me/profile\` — update the current user's profile using \`displayName\`, optional \`bio\`, \`avatarUrl\`, \`websiteUrl\` and optional \`locale\`. The profile owner is derived from JWT identity.
-- \`POST /api/v1/users/:userId/follow\` and \`DELETE /api/v1/users/:userId/follow\` — idempotently follow or unfollow the target stable user ID. The returned profile includes viewer-specific follow state.
-- \`PUT /api/v1/articles/:slug/like?locale=zh-CN\` — set an explicit like state with JSON body \`{"liked": true}\` or \`{"liked": false}\`. This is retry-safe state setting rather than a toggle.
-- \`POST /api/v1/articles/:slug/comments?locale=zh-CN\` — create a comment or reply with \`{"content": "...", "parentCommentId": null}\`; replies must reference a comment on the same article.
-- \`DELETE /api/v1/comments/:commentId\` — delete the current user's own comment. Returns \`{"data":{"deleted":true}}\` when deleted; the domain layer enforces ownership.
+- `GET /api/v1/me/articles?locale=zh-CN&limit=50` — the signed-in user's own articles, including drafts.
+- `POST /api/v1/articles` — create an article. Accepts `slug`, `title`, optional `summary`, `locale` (`zh-CN` only), `contentBlocks` (JSON array), optional `publish`, `workType`, `categoryIds` and `tagIds`. The author is derived from JWT identity.
+- `PUT /api/v1/articles/:articleId` — update an article; the actor is derived from JWT and ownership is enforced in the application/persistence layer. Uses the same fields as create, and requires boolean `publish`.
+- `PUT /api/v1/me/profile` — update the current user's profile using `displayName`, optional `bio`, `avatarUrl`, `websiteUrl` and optional `locale`. The profile owner is derived from JWT identity.
+- `POST /api/v1/users/:userId/follow` and `DELETE /api/v1/users/:userId/follow` — idempotently follow or unfollow the target stable user ID. The returned profile includes viewer-specific follow state.
+- `PUT /api/v1/articles/:slug/like?locale=zh-CN` — set an explicit like state with JSON body `{"liked": true}` or `{"liked": false}`. This is retry-safe state setting rather than a toggle.
+- `POST /api/v1/articles/:slug/comments?locale=zh-CN` — create a comment or reply with `{"content": "...", "parentCommentId": null}`; replies must reference a comment on the same article.
+- `DELETE /api/v1/comments/:commentId` — delete the current user's own comment. Returns `{"data":{"deleted":true}}` when deleted; the domain layer enforces ownership.
 
 ### Validation and error behavior
 
-The versioned REST API currently accepts only locale \`zh-CN\`; unsupported locales return \`400 BAD_USER_INPUT\` instead of silently falling back. Search terms are limited to 200 characters. Pagination limits are integers from 1 to 100 with bounded non-negative offsets. Domain validation, ownership rules, transactions and notification-outbox behavior remain in the existing application and persistence layers. Errors are mapped to stable HTTP codes and sanitized messages.
+The versioned REST API currently accepts only locale `zh-CN`; unsupported locales return `400 BAD_USER_INPUT` instead of silently falling back. Search terms are limited to 200 characters. Pagination limits are integers from 1 to 100 with bounded non-negative offsets. Domain validation, ownership rules, transactions and notification-outbox behavior remain in the existing application and persistence layers. Errors are mapped to stable HTTP codes and sanitized messages.
 
 This is still a staged migration, not full transport parity. Remaining work includes the rest of the profile/discovery/read-state routes, taxonomy mutations, conversation and notification APIs, corresponding Web client migration, contract/regression coverage and final GraphQL removal. Do not claim REST parity until those operations and their failure/security behavior have tests.
