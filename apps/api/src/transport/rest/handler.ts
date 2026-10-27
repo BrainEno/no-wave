@@ -277,10 +277,12 @@ function normalizeCreateTaxonomyBody(
   if (typeof body.kind !== "string" || typeof body.slug !== "string" || typeof body.name !== "string") {
     return { input: null, error: "kind, slug, and name must be strings." };
   }
-  if (body.description !== undefined && typeof body.description !== "string") {
+  const descriptionValue = body.description;
+  if (descriptionValue !== undefined && typeof descriptionValue !== "string") {
     return { input: null, error: "description must be a string." };
   }
-  if (body.description !== undefined && body.description.length > 2000) {
+  const description = typeof descriptionValue === "string" ? descriptionValue : "";
+  if (description.length > 2000) {
     return { input: null, error: "description must be no longer than 2000 characters." };
   }
   return {
@@ -288,7 +290,7 @@ function normalizeCreateTaxonomyBody(
       kind: body.kind,
       slug: body.slug,
       name: body.name,
-      description: body.description ?? "",
+      description,
       locale: "zh-CN",
     },
     error: null,
