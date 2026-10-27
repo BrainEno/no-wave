@@ -8,7 +8,7 @@
     "start": "node src/server.ts",
     "migrate": "node src/persistence/migrate.ts",
     "worker:notifications": "node src/persistence/notification-worker.ts",
-    "test:integration": "node --test src/persistence/postgres.integration.test.ts src/persistence/persistence-adapter-contract.test.ts",
+    "test:integration": "node --test --test-concurrency=1 src/persistence/postgres.integration.test.ts src/persistence/persistence-adapter-contract.test.ts",
     "test:unit": "node --test src/application/persistence-ports.test.ts src/application/services.test.ts src/domain/article.test.ts src/domain/taxonomy.test.ts src/domain/validation.test.ts src/infrastructure/persistence-runtime.test.ts src/server.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.strict.json"
   },

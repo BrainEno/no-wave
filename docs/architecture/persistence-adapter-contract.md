@@ -6,7 +6,7 @@ This is the acceptance contract for every persistence provider in the rebuilt BO
 
 `GraphQL/HTTP → application services → domain-grouped persistence ports → provider adapter`
 
-The current operation lists live in `apps/api/src/application/persistence-ports.mjs`. Domain types, validation and policy live under `apps/api/src/domain/`. Driver-specific row mapping, query syntax, index definitions, transactions and connection handling stay inside the provider adapter.
+The current operation lists live in `apps/api/src/application/persistence-ports.ts`. Domain types, validation and policy live under `apps/api/src/domain/`. Driver-specific row mapping, query syntax, index definitions, transactions and connection handling stay inside the provider adapter.
 
 ## Required adapter contract
 
@@ -52,7 +52,8 @@ The current operation lists live in `apps/api/src/application/persistence-ports.
 - Event keys deduplicate logical notifications across delivery retries; a key reused with different payload content is rejected.
 - Unread counts and batch read updates are scoped to the current actor.
 - Session revocation is durable until the signed token expires; adapter health or transient errors must never cause a revoked token to be accepted.
-- Outbox claiming supports concurrent workers without claiming one active lease as if it belonged to multiple workers; failed deliveries can be rescheduled and recovered.
+- Outbox claiming supports concurrent workers without claiming one active lease as if it belonged to multiple workers. Each claim must issue a fresh token; acknowledgement and retry must atomically verify the matching, unexpired lease after acquiring any relevant lock. A released, expired or superseded token must not mark an event delivered or delay another worker's claim. Failed deliveries can be rescheduled and recovered, while consumers deduplicate at-least-once delivery.
+- Dispatchers should claim immediately before delivery rather than leasing an entire sequential batch while later leases expire. A worker upgrade must stop old token-unaware workers before the additive migration; mixed versions cannot provide fencing.
 - The adapter must preserve the required atomicity of the outbox event and its source mutation.
 
 ### Errors and operational behavior

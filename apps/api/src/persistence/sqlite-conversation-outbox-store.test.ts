@@ -70,12 +70,12 @@ test("SQLite outbox claims leases, increments attempts, and supports delivery/re
   assert.equal(events.length,1); assert.equal(events[0].event_key,"message:"+message.id); assert.equal(events[0].attempts,1);
   assert.deepEqual(events[0].payload,{messageId:message.id,conversationId:c.id,senderId:"alice"});
   assert.equal((await outbox.claimOutboxEvents()).length,0);
-  assert.equal(await outbox.markOutboxDelivered({eventId:events[0].id}),true);
-  assert.equal(await outbox.markOutboxDelivered({eventId:events[0].id}),false);
+  assert.equal(await outbox.markOutboxDelivered({eventId:events[0].id,leaseToken:events[0].lease_token}),true);
+  assert.equal(await outbox.markOutboxDelivered({eventId:events[0].id,leaseToken:events[0].lease_token}),false);
   const retry=await conversations.persistMessage({conversationId:c.id,senderId:"bob",body:"retry",idempotencyKey:"outbox-2"});
   const claimed=await outbox.claimOutboxEvents();
   assert.equal(claimed.length,1);
-  assert.equal(await outbox.rescheduleOutboxEvent({eventId:claimed[0].id,delaySeconds:60}),true);
+  assert.equal(await outbox.rescheduleOutboxEvent({eventId:claimed[0].id,leaseToken:claimed[0].lease_token,delaySeconds:60}),true);
   assert.equal((await outbox.claimOutboxEvents()).length,0);
   assert.ok(retry.id);
  } finally {db.close();}
