@@ -9,10 +9,12 @@ type PageProps = { params: Promise<{ slug: string }>; searchParams: Promise<{ pa
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
   const category = await getPublicCategory(slug, defaultLocale);
-  return category ? {
+  // 在流式外壳发出前抛出 notFound()，保证未知分类返回 404 状态码（而非软 404）。
+  if (!category) notFound();
+  return {
     title: category.name,
-    description: category.description || `瀏覽「${category.name}」分類中的已發表作品。`,
-  } : {};
+    description: category.description || `浏览「${category.name}」分类中的已发表作品。`,
+  };
 }
 
 export default async function CategoryPage({ params, searchParams }: PageProps) {

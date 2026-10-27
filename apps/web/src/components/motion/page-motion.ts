@@ -1,11 +1,12 @@
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { motionState } from "@/lib/motion-state.ts";
 
 /**
  * 页面级滚动动效：通过 data 属性声明，页面组件保持为服务端组件。
  *  [data-intro] i      首屏字标逐字落下（有载入页时等待 nw:loaded）
  *  [data-scatter] i    首屏字标随滚动散开
- *  [data-hero]         首屏滚动：品牌上移、精选条淡出
+ *  [data-hero]         首屏滚动：品牌上移
  *  [data-reveal]       进入视口：mask 遮罩展开 / row 左右撞入 / wipe 横扫 / 其余淡入上移
  *  [data-parallax]     内部图片视差
  *  [data-marquee]      跑马灯（随滚动速度加速、反向）
@@ -33,17 +34,19 @@ export function setupPageMotion(): { revert(): void } {
       const run = () => ctx.add(() => {
         gsap.to(letters, { yPercent: 0, rotate: 0, duration: 1.1, ease: "power4.out", stagger: { each: 0.06, from: "random" }, onComplete: scatter });
       });
-      if (document.querySelector("[data-loader]")) {
-        window.addEventListener("nw:loaded", run, { once: true });
-        cleanups.push(() => window.removeEventListener("nw:loaded", run));
-      } else run();
+      // 载入页可能先于本函数完成（会话内二次进入）：用状态位兜底，避免字标卡在隐藏位。
+      if (motionState.loaded) run();
+      else {
+        const onLoaded = () => run();
+        window.addEventListener("nw:loaded", onLoaded, { once: true });
+        cleanups.push(() => window.removeEventListener("nw:loaded", onLoaded));
+      }
     }
 
     const hero = document.querySelector("[data-hero]");
     if (hero) {
       const scrub = { trigger: hero, start: "top top", end: "bottom top", scrub: true };
       gsap.to(".nw-brand", { yPercent: -12, ease: "none", scrollTrigger: scrub });
-      gsap.to(".nw-feature", { yPercent: -120, opacity: 0, ease: "none", scrollTrigger: scrub });
     }
 
     all<HTMLElement>("[data-reveal]").forEach((element, index) => {
@@ -83,12 +86,19 @@ export function setupPageMotion(): { revert(): void } {
       });
     }
 
-    all<HTMLElement>("[data-footer-letters] i").forEach((letter) => {
-      gsap.from(letter, {
-        yPercent: gsap.utils.random(60, 140), rotate: gsap.utils.random(-45, 45), ease: "none",
-        scrollTrigger: { trigger: ".nw-footer", start: "top 95%", end: "top 30%", scrub: true },
+    // 页脚字标：demo/PR29 的入场式（触发一次、落定即停）。scrub 版在页脚接近
+    // 视口高度时永远走不到终点，字母会停在半空，故按 demo 改为触发式。
+    const footerLetters = all<HTMLElement>("[data-footer-letters] i");
+    if (footerLetters.length) {
+      gsap.from(footerLetters, {
+        yPercent: 110,
+        rotate: () => gsap.utils.random(-35, 35),
+        duration: 1,
+        ease: "power4.out",
+        stagger: 0.07,
+        scrollTrigger: { trigger: ".nw-footer", start: "top 80%" },
       });
-    });
+    }
   });
 
   return { revert() { cleanups.forEach((fn) => fn()); ctx.revert(); } };

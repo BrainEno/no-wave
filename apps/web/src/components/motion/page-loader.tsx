@@ -11,9 +11,17 @@ export function PageLoader({ label }: { label: string }) {
   const counter = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
+    let finished = false;
+    let started = false;
     const finish = () => {
+      if (finished) return;
+      finished = true;
+      motionState.loaded = true;
       setDone(true);
       window.dispatchEvent(new Event("nw:loaded"));
+    };
+    const revealNow = () => {
+      if (motionState.reveal < 1) gsap.to(motionState, { reveal: 1, duration: 2.8, ease: "power2.out" });
     };
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     let seen = false;
@@ -25,6 +33,18 @@ export function PageLoader({ label }: { label: string }) {
     }
     const state = { n: 0 };
     const paint = () => { if (counter.current) counter.current.textContent = String(Math.round(state.n)).padStart(3, "0"); };
+    const curtain = () => {
+      if (started) return;
+      started = true;
+      gsap.timeline()
+        .to(".nw-ct", { opacity: 0, scale: 1.12, duration: 0.35 })
+        .to(".nw-col", { yPercent: -101, duration: 0.9, ease: "power4.inOut", stagger: { each: 0.08, from: "random" } }, "-=0.1")
+        .add(() => {
+          try { window.sessionStorage.setItem("nw-loaded", "1"); } catch { /* ignore */ }
+          finish();
+          revealNow();
+        });
+    };
     const ctx = gsap.context(() => {
       gsap.to(state, { n: 88, duration: 1.8, ease: "power2.out", onUpdate: paint });
       const fonts = document.fonts ? document.fonts.ready : Promise.resolve();
@@ -33,20 +53,18 @@ export function PageLoader({ label }: { label: string }) {
       void Promise.all([fonts, loaded, minimum]).then(() => {
         gsap.to(state, {
           n: 100, duration: 0.35, onUpdate: paint,
-          onComplete: () => {
-            gsap.timeline()
-              .to(".nw-ct", { opacity: 0, scale: 1.12, duration: 0.35 })
-              .to(".nw-col", { yPercent: -101, duration: 0.9, ease: "power4.inOut", stagger: { each: 0.08, from: "random" } }, "-=0.1")
-              .add(() => {
-                try { window.sessionStorage.setItem("nw-loaded", "1"); } catch { /* ignore */ }
-                finish();
-                gsap.to(motionState, { reveal: 1, duration: 2.8, ease: "power2.out" });
-              });
-          },
+          onComplete: curtain,
         });
       });
     }, root);
-    return () => ctx.revert();
+    // 兜底：字体/加载事件悬挂时也必须掀开幕布，保证字标与首屏动画按时播放。
+    const bail = window.setTimeout(() => {
+      gsap.to(state, { n: 100, duration: 0.2, onUpdate: paint, onComplete: curtain });
+    }, 4500);
+    return () => {
+      window.clearTimeout(bail);
+      ctx.revert();
+    };
   }, []);
 
   if (done) return null;

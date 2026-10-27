@@ -10,7 +10,8 @@ type PageProps = { params: Promise<{ username: string }>; searchParams: Promise<
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { username } = await params;
   const author = await getPublicAuthor(username, "en");
-  if (!author) return {};
+  // 在流式外壳发出前抛出 notFound()，保证未知作者返回 404 状态码（而非软 404）。
+  if (!author) notFound();
   return authorMetadata(author, process.env.NEXT_PUBLIC_SITE_URL ?? "https://example.invalid") as Metadata;
 }
 
