@@ -19,10 +19,10 @@ The standalone REST transport exposes public read endpoints and initial authenti
 - `PUT /api/v1/articles/:articleId` — update an article; ownership is checked against the authenticated actor.
 - `GET /api/v1/authors/:userId?locale=zh-CN` — public author profile addressed by stable `userId`.
 - `GET /api/v1/authors/:userId/articles?query=&limit=20&offset=0` — published articles for that author; the author filter runs in persistence before pagination.
-- `GET /api/v1/categories?locale=zh-CN&query=&limit=20&offset=0` — localized category discovery and pagination.
+- `GET /api/v1/categories?locale=zh-CN&query=&limit=100&offset=0` — localized category discovery and pagination.
 - `GET /api/v1/categories/:slug?locale=zh-CN` — localized category detail.
 - `GET /api/v1/categories/:slug/articles?locale=zh-CN&limit=20&offset=0` — published localized articles in a category.
-- `GET /api/v1/tags?locale=zh-CN&query=&limit=20&offset=0` — localized public hashtag discovery and pagination.
+- `GET /api/v1/tags?locale=zh-CN&query=&limit=100&offset=0` — localized public hashtag discovery and pagination.
 - `GET /api/v1/tags/:slug?locale=zh-CN` — one localized hashtag, or `404 NOT_FOUND`.
 - `GET /api/v1/tags/:slug/articles?locale=zh-CN&limit=20&offset=0` — published localized articles associated with a hashtag.
 
@@ -107,9 +107,9 @@ The API exposes a versioned REST business contract under `/api/v1`. REST handler
 - `GET /api/v1/articles/:slug/like?locale=zh-CN` — like count and optional viewer liked state.
 - `GET /api/v1/authors/:userId?locale=zh-CN` — public author profile addressed by stable `userId`.
 - `GET /api/v1/authors/:userId/articles?locale=zh-CN&query=&limit=20&offset=0` — published articles by that author, filtered before pagination.
-- `GET /api/v1/categories?locale=zh-CN&query=&limit=20&offset=0` and `GET /api/v1/categories/:slug?locale=zh-CN` — category discovery and detail.
+- `GET /api/v1/categories?locale=zh-CN&query=&limit=100&offset=0` and `GET /api/v1/categories/:slug?locale=zh-CN` — category discovery and detail.
 - `GET /api/v1/categories/:slug/articles?locale=zh-CN&limit=20&offset=0` — published articles in a category.
-- `GET /api/v1/tags?locale=zh-CN&query=&limit=20&offset=0` and `GET /api/v1/tags/:slug?locale=zh-CN` — hashtag discovery and detail.
+- `GET /api/v1/tags?locale=zh-CN&query=&limit=100&offset=0` and `GET /api/v1/tags/:slug?locale=zh-CN` — hashtag discovery and detail.
 - `GET /api/v1/tags/:slug/articles?locale=zh-CN&limit=20&offset=0` — published articles associated with a hashtag.
 - `GET /api/v1/articles/:slug/comments?locale=zh-CN&limit=50` — public comment tree for a published article.
 
