@@ -31,7 +31,11 @@ On 2026-10-27, the product owner approved replacing GraphQL as the sole business
 - [x] Add public author-profile and author-article REST endpoints; filter author articles in persistence before pagination.
 - [x] Add authenticated REST endpoints for listing the current user's articles, creating articles and owner-checked updates; derive actor identity from a verified, non-revoked JWT.
 - [ ] Migrate the Web public-content client and sitemap from GraphQL/fixtures to REST.
-- [x] Add authenticated REST article create/update/list, profile update, follow/unfollow, explicit article-like state, and comment list/create/delete routes with JWT-derived identity and transport tests.
+- [x] Add authenticated REST article create/update/list, profile update, follow/unfollow, explicit article-like state, comment list/create/delete, current-user identity/profile, user search and follower/following list, liked-article/related-article/like-info reads, and current-session revocation routes.
+- [x] Harden JWT verification with a pinned access-token type, required issuance/expiry claims, a bounded maximum TTL and fail-closed session-revocation checks.
+- [x] Add field-level Article/AuthorProfile/ArticleComment enrichment to REST responses so the route layer does not silently omit GraphQL-resolved fields.
+- [x] Record the operation-by-operation field and resolver parity inventory in [REST–GraphQL parity audit](../audit/rest-graphql-parity.md).
+- [ ] Complete REST taxonomy mutations, conversations/messages and notification operations with equivalent authorization, payload fields and regression tests.
 - [ ] Complete remaining REST discovery/engagement reads, taxonomy mutations, conversation lifecycle, messaging and notification APIs with regression tests.
 - [ ] Select and validate SSE/WebSocket only for concrete real-time needs; keep database/outbox state authoritative.
 - [ ] Remove GraphQL schema, Yoga runtime, dependencies, environment variables and obsolete tests after REST parity is verified.
