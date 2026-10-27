@@ -41,7 +41,7 @@ The current operation lists live in `apps/api/src/application/persistence-ports.
 
 - Only verified participants can read history, send messages, manage participants or change read state where those operations are allowed.
 - Sender identity is derived from authenticated context, not request payload.
-- Message write, idempotency record and outbox intent commit atomically.
+- Message write, idempotency record and outbox intent commit atomically. Serialize the membership check and message/outbox insert with participant changes and conversation deletion, so a removal committed first denies the sender and deletion cannot leave a late orphan event.
 - Retrying the same idempotency key and payload returns the original logical message. Reusing it with another payload returns `IDEMPOTENCY_CONFLICT`.
 - Bounded cursor pagination returns older messages for a cursor belonging to the same conversation; malformed or foreign cursors fail predictably.
 - A participant removal must not accidentally delete other users' message history unless a product-level deletion rule is explicitly approved.
@@ -51,7 +51,9 @@ The current operation lists live in `apps/api/src/application/persistence-ports.
 - Notifications are recipient-scoped; another user cannot list, mark or infer private inbox state.
 - Event keys deduplicate logical notifications across delivery retries; a key reused with different payload content is rejected.
 - Unread counts and batch read updates are scoped to the current actor.
+- Message notification delivery selects the current active members, excluding the original sender even if they have left. Under one transaction, serialize recipient selection and all inbox inserts with membership changes and conversation deletion. A stale deleted-conversation event is a no-op; an existing conflicting payload rolls back the whole delivery. Older partial inbox rows remain idempotent.
 - Session revocation is durable until the signed token expires; adapter health or transient errors must never cause a revoked token to be accepted.
+- Self-hosted account creation and its initial session commit together. Refresh token rotation, replay detection and logout serialize on the session; a reused token or logout revokes all access IDs and refresh credentials in that family. Persist only salted password hashes and refresh-token digests, not raw credentials. Rate-limit increments are atomic and durable; expired identity-state pruning is bounded and must not delete active or recently expired sessions.
 - Outbox claiming supports concurrent workers without claiming one active lease as if it belonged to multiple workers. Each claim must issue a fresh token; acknowledgement and retry must atomically verify the matching, unexpired lease after acquiring any relevant lock. A released, expired or superseded token must not mark an event delivered or delay another worker's claim. Failed deliveries can be rescheduled and recovered, while consumers deduplicate at-least-once delivery.
 - Dispatchers should claim immediately before delivery rather than leasing an entire sequential batch while later leases expire. A worker upgrade must stop old token-unaware workers before the additive migration; mixed versions cannot provide fencing.
 - The adapter must preserve the required atomicity of the outbox event and its source mutation.

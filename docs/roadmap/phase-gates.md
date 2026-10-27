@@ -20,7 +20,8 @@ Security fixes and implementation details that fulfill already-approved behavior
 - [x] Select PostgreSQL for the new application's persistence.
 - [ ] Complete the feature-by-feature traceability inventory and record unresolved product behavior.
 - [ ] Agree on visual direction from the forthcoming design brief/design artifacts.
-- [ ] Define the new account/identity issuer integration and local development setup.
+- [x] Select self-hosted API identity and document the initial local issuer contract ([ADR 0008](../architecture/decisions/0008-self-hosted-api-identity.md)).
+- [ ] Complete email verification, recovery, browser storage, operational hardening and Web authentication before production use.
 
 ## Approved architecture change — REST-only API
 
@@ -33,6 +34,7 @@ On 2026-10-27, the product owner approved replacing GraphQL as the sole business
 - [ ] Migrate the Web public-content client and sitemap from GraphQL/fixtures to REST.
 - [x] Add authenticated REST article create/update/list, profile update, follow/unfollow, explicit article-like state, comment list/create/delete, current-user identity/profile, user search and follower/following list, liked-article/related-article/like-info reads, and current-session revocation routes.
 - [x] Harden JWT verification with a pinned access-token type, required issuance/expiry claims, a bounded maximum TTL and fail-closed session-revocation checks.
+- [x] Add initial self-hosted registration/login, refresh rotation/reuse detection, per-session logout and durable throttling; retain the existing verifier. Production identity gates remain open.
 - [x] Add field-level Article/AuthorProfile/ArticleComment enrichment to REST responses so the route layer does not silently omit GraphQL-resolved fields.
 - [x] Record the operation-by-operation field and resolver parity inventory in [REST–GraphQL parity audit](../audit/rest-graphql-parity.md).
 - [x] Add REST taxonomy mutations, conversation lifecycle/message read-send, and notification inbox/read-state operations with equivalent authorization, payload fields and regression tests.
@@ -89,7 +91,7 @@ Exit gate: public content exposes published data only; mutations are authorized;
 - [x] Persist conversations, membership, messages, unread/read state and notification inbox.
 - [x] Add cursor pagination, session revocation and transactional outbox dispatch/retry primitives.
 - [x] Fence outbox acknowledgements and retries with per-claim tokens; exercise expired/superseded leases, partial inbox retries and a PostgreSQL REST-to-inbox recovery journey.
-- [ ] Resolve recipient eligibility and deletion/membership races during notification delivery; the current consumer uses mutable delivery-time membership and can retry indefinitely if the sender has been removed.
+- [x] Apply the approved delivery-time recipient policy, recover when the sender has left, preserve legacy partial inbox rows, and serialize delivery with membership changes/deletion ([ADR 0009](../architecture/decisions/0009-message-notification-recipient-timing.md)).
 - [ ] Verify Web/API end-to-end behavior with real authentication, including reconnect/offline recovery.
 - [ ] Choose and configure any external Web Push/email provider only after requirements and credentials are approved.
 - [ ] Design cross-engine change capture/checkpoints and recovery after the write-authority and RPO/RTO decisions are approved.

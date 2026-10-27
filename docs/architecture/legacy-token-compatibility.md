@@ -30,4 +30,4 @@ Do not make the new verifier accept missing issuer/audience or silently fall bac
 
 ## Current boundary
 
-This repository currently implements and tests the verification mechanism and a minimal `viewer` query. It does not yet integrate with the legacy issuer or a database-backed user/session store, and it does not protect future domain operations automatically. Keep deployment disabled until the migration sequence and authorization coverage are complete.
+This repository now has database-backed self-hosted accounts and sessions as well as the existing JWT verifier and protected REST/GraphQL operations. It still does **not** integrate the historical issuer, recognize its old token shape, map `tokenVersion`, link legacy accounts or import legacy data. A separately issued token with the full current issuer/type/claim contract can still be verified, but local logout cannot revoke that issuer's refresh credentials. Keep deployment disabled until issuer migration (if desired), account/security gates and authorization coverage are reviewed; see [API authentication](api-authentication.md).

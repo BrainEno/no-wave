@@ -25,7 +25,7 @@ The previous project provides the reference for user-visible capabilities and kn
 
 ## Accounts and profiles
 
-- Users can register, sign in/out, refresh sessions and recover/reset passwords, subject to the verified product inventory.
+- Users can register, sign in/out, refresh sessions and recover/reset passwords, subject to the verified product inventory. The selected self-hosted API implements the first four; recovery and email verification remain open ([ADR 0008](../architecture/decisions/0008-self-hosted-api-identity.md)).
 - Users can view/edit permitted profile fields; public profile data is separate from private account data.
 - Client-supplied user IDs cannot impersonate another user.
 
@@ -48,6 +48,7 @@ The previous project provides the reference for user-visible capabilities and kn
 
 - Notifications have a recipient, stable identity, creation time and read state.
 - Persisted notification history is the source of truth; real-time/push delivery does not replace persistence.
+- Pending message notifications select current active members at delivery time, excluding the original sender; see [ADR 0009](../architecture/decisions/0009-message-notification-recipient-timing.md).
 - Push delivery is best effort and must not imply the user has seen a notification.
 - Push permissions are opt-in and revocable.
 

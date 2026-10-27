@@ -29,9 +29,13 @@ export const persistencePortMethods = Object.freeze({
   ]),
   notifications: Object.freeze([
     "listNotifications", "getUnreadNotificationCount", "markAllNotificationsRead",
-    "markNotificationRead", "createNotification",
+    "markNotificationRead", "createNotification", "deliverMessageNotifications",
   ]),
   sessions: Object.freeze(["revokeSession", "isSessionRevoked"]),
+  identity: Object.freeze([
+    "createIdentityAccount", "findIdentityAccount", "createIdentitySession",
+    "rotateIdentityRefresh", "revokeIdentityRefresh", "consumeIdentityRateLimit", "pruneExpiredIdentityState",
+  ]),
   outbox: Object.freeze([
     "claimOutboxEvents", "markOutboxDelivered", "rescheduleOutboxEvent",
   ]),

@@ -14,6 +14,26 @@ export class IdempotencyConflictError extends DomainError {
   }
 }
 
+export class IdentityInputError extends DomainError {
+  constructor() { super("IdentityInputError", "BAD_USER_INPUT", "The identity request is invalid."); }
+}
+export class IdentityConflictError extends DomainError {
+  constructor() { super("IdentityConflictError", "CONFLICT", "The account cannot be registered."); }
+}
+export class IdentityAuthenticationError extends DomainError {
+  constructor() { super("IdentityAuthenticationError", "UNAUTHENTICATED", "The credentials are invalid."); }
+}
+export class IdentityRateLimitError extends DomainError {
+  readonly retryAfterSeconds: number;
+  constructor(retryAfterSeconds: number) {
+    super("IdentityRateLimitError", "RATE_LIMITED", "Too many authentication attempts.");
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+export class IdentityUnavailableError extends DomainError {
+  constructor() { super("IdentityUnavailableError", "SERVICE_UNAVAILABLE", "Identity is not configured."); }
+}
+
 export class ConversationAccessError extends DomainError {
   constructor(message = "The sender is not a participant in this conversation.") {
     super("ConversationAccessError", "FORBIDDEN", message);

@@ -13,10 +13,10 @@ This repository is the independent implementation of BOT THK's Web and API produ
 
 ## Current implementation status
 
-- `apps/api` has a standalone GraphQL server, PostgreSQL persistence/migrations, authenticated article CRUD, author profiles, user-generated Unicode hashtags, categories, likes/comments, follow graph, conversation lifecycle, message history, notification inbox and an outbox worker.
+- `apps/api` has a standalone versioned REST API with transitional GraphQL, PostgreSQL persistence/migrations, initial self-hosted registration/login/refresh/logout, article CRUD, author profiles, tags, categories, likes/comments, follows, conversations, message history, notification inbox and an outbox worker.
 - The API has PostgreSQL integration tests for persistence, authorization, retries, taxonomy and article workflows.
 - `apps/web` provides localized home, article archive/detail and author pages. Set `API_GRAPHQL_URL` to use the standalone GraphQL API for public content; when it is unset, the local fixture registry remains available for isolated design/build work. If the API URL is configured but requests fail, the Web app surfaces the failure rather than silently replacing live content with fixtures. The sign-in page is intentionally a placeholder.
-- JWT issuance/real account authentication, API-to-Web integration, full editor UX, Lexical integration, media upload, real-time client integration, external push providers and production operations remain incomplete.
+- Backend identity is an initial lifecycle, not production-ready: email verification, recovery, browser token storage and other security/operational gates remain open. API-to-Web integration, editor UX, media upload, real-time clients and external push providers are also incomplete. See [the authentication contract](docs/architecture/api-authentication.md).
 - No production deployment, historical data migration, traffic cutover or modification of the old project's repository is performed as part of this branch.
 
 See [phase gates](docs/roadmap/phase-gates.md), [feature traceability](docs/audit/feature-traceability.md), [the behavior baseline](docs/requirements/behavior-baseline.md), and [PostgreSQL and data migration plan](docs/architecture/postgres-migration-plan.md).

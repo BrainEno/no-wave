@@ -24,11 +24,31 @@ after(async () => { if (sql) await sql.end({ timeout: 5 }); });
 test("migrations are repeatable and record applied versions once", integrationOptions, async () => {
   const first = await runMigrations(sql);
   const second = await runMigrations(sql);
-  assert.equal(first.discovered, 10);
+  assert.equal(first.discovered, 11);
   assert.equal(second.applied.length, 0);
-  const versions = ["0001_initial_domain_schema", "0002_article_content", "0003_author_profiles", "0004_article_engagement", "0005_article_taxonomies", "0006_conversation_lifecycle", "0007_user_follows", "0008_literary_work_types_and_zh_cn", "0009_public_article_search_trigram_indexes", "0010_outbox_lease_tokens"];
+  const versions = ["0001_initial_domain_schema", "0002_article_content", "0003_author_profiles", "0004_article_engagement", "0005_article_taxonomies", "0006_conversation_lifecycle", "0007_user_follows", "0008_literary_work_types_and_zh_cn", "0009_public_article_search_trigram_indexes", "0010_outbox_lease_tokens", "0011_self_hosted_identity"];
   const rows = await sql.unsafe("SELECT version FROM api_schema_migrations WHERE version = ANY($1::text[])", [versions]);
   assert.deepEqual(rows.map((row) => row.version).sort(), versions);
+});
+
+test("PostgreSQL identity migration preserves legacy revocations and pending outbox rows", integrationOptions, async () => {
+  const migration = await readFile(new URL("./migrations/0011_self_hosted_identity.sql", import.meta.url), "utf8");
+  const schema = `identity_migration_${randomUUID().replaceAll("-", "")}`;
+  const rollback = new Error("rollback disposable migration fixture");
+  await assert.rejects(sql.begin(async (tx) => {
+    // Transaction rollback removes this isolated test schema and all fixtures.
+    await tx.unsafe(`CREATE SCHEMA ${schema}`);
+    await tx.unsafe(`SET LOCAL search_path TO ${schema}`);
+    await tx.unsafe("CREATE TABLE revoked_sessions (session_id text PRIMARY KEY, expires_at timestamptz NOT NULL)");
+    await tx.unsafe("CREATE TABLE outbox_events (event_key text PRIMARY KEY, payload jsonb NOT NULL)");
+    await tx.unsafe("INSERT INTO revoked_sessions VALUES ('legacy-token', '2099-01-01Z')");
+    await tx.unsafe("INSERT INTO outbox_events VALUES ('legacy-pending', '{\"messageId\":\"legacy\"}'::jsonb)");
+    await tx.unsafe(migration);
+    assert.equal((await tx.unsafe("SELECT session_id FROM revoked_sessions WHERE session_id = 'legacy-token'")).length, 1);
+    assert.equal((await tx.unsafe("SELECT event_key FROM outbox_events WHERE event_key = 'legacy-pending'")).length, 1);
+    assert.equal((await tx.unsafe("SELECT user_id FROM auth_accounts")).length, 0);
+    throw rollback;
+  }), (error) => error === rollback);
 });
 
 test("PostgreSQL lease migration preserves legacy pending and delivered events", integrationOptions, async () => {
@@ -1632,5 +1652,172 @@ test("message outbox consumer creates deduplicated inbox notifications for other
     await sql.unsafe("DELETE FROM notifications WHERE user_id IN ($1, $2)", [senderId, recipientId]);
     await sql.unsafe("DELETE FROM outbox_events WHERE aggregate_id IN (SELECT id::text FROM messages WHERE conversation_id = $1)", [conversationId]);
     await sql.unsafe("DELETE FROM conversations WHERE id = $1", [conversationId]);
+  }
+});
+
+test("message delivery serializes with conversation deletion and cannot recreate orphaned notifications", integrationOptions, async () => {
+  const suffix = randomUUID();
+  const owner = `it-delete-owner-${suffix}`;
+  const recipient = `it-delete-recipient-${suffix}`;
+  const conversation = await store.createConversation({ actorId: owner, participantIds: [recipient] });
+  let releaseDeletion;
+  const holdDeletion = new Promise((resolve) => { releaseDeletion = resolve; });
+  let signalLocked;
+  const locked = new Promise((resolve) => { signalLocked = resolve; });
+  let deletion;
+  try {
+    const message = await store.persistMessage({
+      conversationId: conversation.id, senderId: owner, body: "in flight", idempotencyKey: `it-delete-${suffix}`,
+    });
+    const [event] = await store.claimOutboxEvents({ limit: 1 });
+    assert.equal(event.aggregate_id, message.id);
+    // Keep the transaction uncommitted after it has deleted the conversation.
+    // A non-locking reader sees the previous participants and could insert an
+    // orphaned notification after the delete has already swept the inbox.
+    deletion = sql.begin(async (tx) => {
+      await tx.unsafe("SELECT id FROM conversations WHERE id = $1 FOR UPDATE", [conversation.id]);
+      await tx.unsafe("DELETE FROM outbox_events WHERE aggregate_id = $1", [message.id]);
+      await tx.unsafe("DELETE FROM notifications WHERE payload->>'conversationId' = $1", [conversation.id]);
+      await tx.unsafe("DELETE FROM conversations WHERE id = $1", [conversation.id]);
+      signalLocked();
+      await holdDeletion;
+    });
+    await locked;
+    const delivery = createMessageNotificationDelivery({ store })(event);
+    const completedWhileDeletionHeld = await Promise.race([
+      delivery.then(() => true),
+      new Promise((resolve) => setTimeout(() => resolve(false), 150)),
+    ]);
+    releaseDeletion();
+    await deletion;
+    await delivery;
+    assert.equal(completedWhileDeletionHeld, false, "delivery must wait for the conversation lock");
+    const rows = await sql.unsafe("SELECT id FROM notifications WHERE payload->>'conversationId' = $1", [conversation.id]);
+    assert.equal(rows.length, 0);
+  } finally {
+    releaseDeletion();
+    if (deletion) await deletion;
+    await sql.unsafe("DELETE FROM notifications WHERE payload->>'conversationId' = $1", [conversation.id]);
+    await sql.unsafe("DELETE FROM outbox_events WHERE aggregate_id IN (SELECT id::text FROM messages WHERE conversation_id = $1)", [conversation.id]);
+    await sql.unsafe("DELETE FROM conversations WHERE id = $1", [conversation.id]);
+  }
+});
+
+test("message delivery observes a concurrent committed membership change", integrationOptions, async () => {
+  const suffix = randomUUID();
+  const owner = `it-membership-owner-${suffix}`;
+  const removed = `it-membership-removed-${suffix}`;
+  const added = `it-membership-added-${suffix}`;
+  const conversation = await store.createConversation({ actorId: owner, participantIds: [removed] });
+  let releaseUpdate;
+  const holdUpdate = new Promise((resolve) => { releaseUpdate = resolve; });
+  let signalLocked;
+  const locked = new Promise((resolve) => { signalLocked = resolve; });
+  let update;
+  try {
+    await store.persistMessage({
+      conversationId: conversation.id, senderId: owner, body: "membership changed", idempotencyKey: `it-membership-${suffix}`,
+    });
+    const [event] = await store.claimOutboxEvents({ limit: 1 });
+    update = sql.begin(async (tx) => {
+      await tx.unsafe("SELECT id FROM conversations WHERE id = $1 FOR UPDATE", [conversation.id]);
+      await tx.unsafe("UPDATE conversation_participants SET left_at = now() WHERE conversation_id = $1 AND user_id = $2", [conversation.id, removed]);
+      await tx.unsafe("INSERT INTO conversation_participants (conversation_id, user_id) VALUES ($1, $2)", [conversation.id, added]);
+      signalLocked();
+      await holdUpdate;
+    });
+    await locked;
+    const delivery = createMessageNotificationDelivery({ store })(event);
+    const completedWhileUpdateHeld = await Promise.race([
+      delivery.then(() => true),
+      new Promise((resolve) => setTimeout(() => resolve(false), 150)),
+    ]);
+    releaseUpdate();
+    await update;
+    await delivery;
+    assert.equal(completedWhileUpdateHeld, false, "delivery must wait for the conversation lock");
+    assert.equal((await store.listNotifications({ actorId: removed })).length, 0);
+    assert.equal((await store.listNotifications({ actorId: added })).length, 1);
+  } finally {
+    releaseUpdate();
+    if (update) await update;
+    await sql.unsafe("DELETE FROM notifications WHERE payload->>'conversationId' = $1", [conversation.id]);
+    await sql.unsafe("DELETE FROM outbox_events WHERE aggregate_id IN (SELECT id::text FROM messages WHERE conversation_id = $1)", [conversation.id]);
+    await sql.unsafe("DELETE FROM conversations WHERE id = $1", [conversation.id]);
+  }
+});
+
+test("message sending waits for concurrent sender removal and then denies the removed member", integrationOptions, async () => {
+  const suffix = randomUUID();
+  const owner = `it-send-lock-owner-${suffix}`;
+  const sender = `it-send-lock-sender-${suffix}`;
+  const conversation = await store.createConversation({ actorId: owner, participantIds: [sender] });
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  let signalLocked;
+  const locked = new Promise((resolve) => { signalLocked = resolve; });
+  let removal;
+  try {
+    removal = sql.begin(async (tx) => {
+      await tx.unsafe("SELECT id FROM conversations WHERE id = $1 FOR UPDATE", [conversation.id]);
+      await tx.unsafe("UPDATE conversation_participants SET left_at = now() WHERE conversation_id = $1 AND user_id = $2", [conversation.id, sender]);
+      signalLocked();
+      await held;
+    });
+    await locked;
+    const pending = store.persistMessage({ conversationId: conversation.id, senderId: sender, body: "must not send after removal", idempotencyKey: suffix });
+    const settledWhileRemovalHeld = await Promise.race([
+      pending.then(() => true, () => true),
+      new Promise((resolve) => setTimeout(() => resolve(false), 150)),
+    ]);
+    release();
+    await removal;
+    await assert.rejects(pending, ConversationAccessError);
+    assert.equal(settledWhileRemovalHeld, false, "message send must wait for the conversation lock");
+    assert.equal((await sql.unsafe("SELECT id FROM messages WHERE conversation_id = $1", [conversation.id])).length, 0);
+    assert.equal((await sql.unsafe("SELECT id FROM outbox_events WHERE payload->>'conversationId' = $1", [conversation.id])).length, 0);
+  } finally {
+    release();
+    if (removal) await removal;
+    await sql.unsafe("DELETE FROM outbox_events WHERE payload->>'conversationId' = $1", [conversation.id]);
+    await sql.unsafe("DELETE FROM conversations WHERE id = $1", [conversation.id]);
+  }
+});
+
+test("message sending cannot create an orphan outbox event during conversation deletion", integrationOptions, async () => {
+  const suffix = randomUUID();
+  const owner = `it-send-delete-owner-${suffix}`;
+  const recipient = `it-send-delete-recipient-${suffix}`;
+  const conversation = await store.createConversation({ actorId: owner, participantIds: [recipient] });
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  let signalSwept;
+  const swept = new Promise((resolve) => { signalSwept = resolve; });
+  let deletion;
+  try {
+    deletion = sql.begin(async (tx) => {
+      await tx.unsafe("SELECT id FROM conversations WHERE id = $1 FOR UPDATE", [conversation.id]);
+      await tx.unsafe("DELETE FROM outbox_events WHERE aggregate_id IN (SELECT id::text FROM messages WHERE conversation_id = $1)", [conversation.id]);
+      await tx.unsafe("DELETE FROM notifications WHERE payload->>'conversationId' = $1", [conversation.id]);
+      signalSwept();
+      await held;
+      await tx.unsafe("DELETE FROM conversations WHERE id = $1", [conversation.id]);
+    });
+    await swept;
+    const pending = store.persistMessage({ conversationId: conversation.id, senderId: owner, body: "must not orphan", idempotencyKey: suffix });
+    const settledWhileDeletionHeld = await Promise.race([
+      pending.then(() => true, () => true),
+      new Promise((resolve) => setTimeout(() => resolve(false), 150)),
+    ]);
+    release();
+    await deletion;
+    await assert.rejects(pending, ConversationAccessError);
+    assert.equal(settledWhileDeletionHeld, false, "message send must wait for the conversation lock");
+    assert.equal((await sql.unsafe("SELECT id FROM outbox_events WHERE payload->>'conversationId' = $1", [conversation.id])).length, 0);
+  } finally {
+    release();
+    if (deletion) await deletion;
+    await sql.unsafe("DELETE FROM outbox_events WHERE payload->>'conversationId' = $1", [conversation.id]);
+    await sql.unsafe("DELETE FROM conversations WHERE id = $1", [conversation.id]);
   }
 });

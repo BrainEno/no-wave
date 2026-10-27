@@ -11,13 +11,14 @@ test("SQLite domain migration creates the complete set of domain tables", async 
   const db = createSqliteClient({ filename: ":memory:", enableWal: false });
   try {
     const applied = await runSqliteMigrations(db);
-    assert.deepEqual(applied, ["0001_domain_schema", "0002_outbox_lease_tokens"]);
+    assert.deepEqual(applied, ["0001_domain_schema", "0002_outbox_lease_tokens", "0003_self_hosted_identity"]);
     const tables = db.prepare(
       "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
     ).all().map((row) => row.name);
     assert.deepEqual(tables, [
       "api_schema_migrations", "article_comments", "article_likes", "article_taxonomies",
-      "article_translations", "articles", "conversation_participants", "conversations",
+      "article_translations", "articles", "auth_access_tokens", "auth_accounts", "auth_rate_limits",
+      "auth_refresh_tokens", "auth_sessions", "conversation_participants", "conversations",
       "messages", "notifications", "outbox_events", "revoked_sessions", "taxonomies",
       "taxonomy_translations", "user_follows", "user_profile_translations", "user_profiles",
     ]);
@@ -28,6 +29,7 @@ test("SQLite domain migration creates the complete set of domain tables", async 
       "articles_published_idx", "messages_conversation_created_idx",
       "notifications_user_created_idx", "outbox_pending_idx",
       "article_taxonomies_taxonomy_article_idx", "user_follows_follower_created_idx",
+      "auth_sessions_expiry_idx", "auth_rate_limits_reset_idx", "auth_refresh_tokens_session_idx",
     ]) assert.ok(indexes.includes(required), `missing SQLite index: ${required}`);
   } finally {
     db.close();
@@ -49,8 +51,10 @@ test("SQLite lease migration preserves pending, leased, and delivered legacy eve
     insert.run(pendingId, "pending", "message.created", "a", "{}", 2, "2000-01-01T00:00:00.000Z", null);
     insert.run(leasedId, "leased", "message.created", "b", "{}", 3, "2999-01-01T00:00:00.000Z", null);
     insert.run(deliveredId, "delivered", "message.created", "c", "{}", 1, "2000-01-01T00:00:00.000Z", "2020-01-01T00:00:00.000Z");
+    db.prepare("INSERT INTO revoked_sessions (session_id, expires_at) VALUES (?, ?)").run("legacy-token", "2099-01-01T00:00:00.000Z");
 
-    assert.deepEqual(await runSqliteMigrations(db), ["0002_outbox_lease_tokens"]);
+    assert.deepEqual(await runSqliteMigrations(db), ["0002_outbox_lease_tokens", "0003_self_hosted_identity"]);
+    assert.equal(db.prepare("SELECT expires_at FROM revoked_sessions WHERE session_id = ?").get("legacy-token").expires_at, "2099-01-01T00:00:00.000Z");
     assert.deepEqual(await runSqliteMigrations(db), []);
     const legacy = db.prepare("SELECT event_key, attempts, delivered_at, lease_token FROM outbox_events ORDER BY event_key").all();
     assert.deepEqual(legacy.map((row) => ({ ...row })), [
