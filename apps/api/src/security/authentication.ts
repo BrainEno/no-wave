@@ -59,10 +59,6 @@ export function verifyBearerToken(
     throw new Error("AUTH_JWT_ISSUER and AUTH_JWT_AUDIENCE are required when JWT authentication is enabled.");
   }
   const maxTokenTtl = configuredMaxTokenTtl(env);
-  const expectedType = env.AUTH_JWT_TYPE ?? DEFAULT_ACCESS_TOKEN_TYPE;
-  if (expectedType.trim().length === 0) {
-    throw new Error("AUTH_JWT_TYPE must be a non-empty access-token type.");
-  }
 
   const authorization = request.headers.get("authorization");
   const match = typeof authorization === "string" ? BEARER_PREFIX.exec(authorization) : null;
@@ -76,7 +72,7 @@ export function verifyBearerToken(
   const decodedClaims = decodeSegment(encodedPayload);
   const header = decodedHeader?.value;
   const claims = decodedClaims?.value;
-  if (!isRecord(header) || header.alg !== "HS256" || header.typ !== expectedType || !isRecord(claims)) {
+  if (!isRecord(header) || header.alg !== "HS256" || header.typ !== DEFAULT_ACCESS_TOKEN_TYPE || !isRecord(claims)) {
     return null;
   }
   // The verifier intentionally supports only ordinary compact JWS access tokens;
