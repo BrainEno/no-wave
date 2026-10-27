@@ -1,5 +1,15 @@
-export const metadata = { title: "Sign in", robots: { index: false, follow: false } };
+import { getUi } from "@/lib/ui-copy.ts";
+
+export const metadata = { title: "登录", robots: { index: false, follow: false } };
 
 export default function SignInPage() {
-  return <main style={{ maxWidth: 480, margin: "4rem auto", padding: "0 1.25rem" }}><h1>Sign in</h1><p>Authentication is intentionally not implemented in this framework spike.</p></main>;
+  const ui = getUi("zh-CN");
+  return (
+    <main className="nw-w nw-head">
+      <h1><span className="nw-zh">{ui.signIn.title}</span> <i>Sign in</i></h1>
+      <p className="nw-ep" style={{ marginTop: 24 }}>{ui.signIn.body}</p>
+      <p className="nw-m" lang="en" style={{ marginTop: 12 }}>{getUi("en").signIn.body}</p>
+      <div style={{ height: 140 }} />
+    </main>
+  );
 }
