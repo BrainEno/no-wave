@@ -13,12 +13,19 @@ export function PageLoader({ label }: { label: string }) {
   useEffect(() => {
     let finished = false;
     let started = false;
+    let announced = false;
+    // 字标入场事件：demo 在幕布撕完前 0.4s 让字标开始落下（与 .col 撕开重叠）。
+    const announce = () => {
+      if (announced) return;
+      announced = true;
+      motionState.loaded = true;
+      window.dispatchEvent(new Event("nw:loaded"));
+    };
     const finish = () => {
       if (finished) return;
       finished = true;
-      motionState.loaded = true;
+      announce();
       setDone(true);
-      window.dispatchEvent(new Event("nw:loaded"));
     };
     const revealNow = () => {
       if (motionState.reveal < 1) gsap.to(motionState, { reveal: 1, duration: 2.8, ease: "power2.out" });
@@ -39,10 +46,12 @@ export function PageLoader({ label }: { label: string }) {
       gsap.timeline()
         .to(".nw-ct", { opacity: 0, scale: 1.12, duration: 0.35 })
         .to(".nw-col", { yPercent: -101, duration: 0.9, ease: "power4.inOut", stagger: { each: 0.08, from: "random" } }, "-=0.1")
+        // 与 demo 的 open() 逐拍对齐：浮现 .to(S,{rev:1},'-=.8')、字标 '-=2.4'（=幕布结束前 0.4s）。
+        .add(revealNow, "-=0.8")
+        .add(announce, "-=0.4")
         .add(() => {
           try { window.sessionStorage.setItem("nw-loaded", "1"); } catch { /* ignore */ }
           finish();
-          revealNow();
         });
     };
     const ctx = gsap.context(() => {
