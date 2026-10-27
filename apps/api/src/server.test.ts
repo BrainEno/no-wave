@@ -1312,11 +1312,11 @@ test("REST profile and engagement routes enforce their declared HTTP methods", a
 test("REST taxonomy mutations preserve normalization inputs, creator identity, and ownership result", async () => {
   const calls: Array<{ method: string; args: Record<string, unknown> }> = [];
   const tag = {
-    id: "tag-1", kind: "tag", slug: "ai-abc123", name: "人工智能", description: "",
+    id: "99999999-9999-4999-8999-999999999999", kind: "tag", slug: "ai-abc123", name: "人工智能", description: "",
     locale: "zh-CN", createdBy: "writer-user", articleCount: 0,
   };
   const category = {
-    id: "category-1", kind: "category", slug: "poetry", name: "诗歌", description: "诗歌分类",
+    id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", kind: "category", slug: "poetry", name: "诗歌", description: "诗歌分类",
     locale: "zh-CN", createdBy: "writer-user", articleCount: 2,
   };
   await withServer(async (baseUrl) => {
@@ -1332,7 +1332,7 @@ test("REST taxonomy mutations preserve normalization inputs, creator identity, a
     assert.equal(createdCategory.status, 201);
     assert.deepEqual(await createdCategory.json(), { data: category });
 
-    const deleted = await fetch(baseUrl + "/api/v1/taxonomies/category-1", { method: "DELETE", headers: { authorization: headers.authorization } });
+    const deleted = await fetch(baseUrl + "/api/v1/taxonomies/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", { method: "DELETE", headers: { authorization: headers.authorization } });
     assert.equal(deleted.status, 200);
     assert.deepEqual(await deleted.json(), { data: true });
 
@@ -1353,6 +1353,7 @@ test("REST taxonomy mutations preserve normalization inputs, creator identity, a
     });
     assert.equal(unauthenticated.status, 401);
   }, {
+    env: authEnv,
     store: {
       async createTag(args) { calls.push({ method: "createTag", args }); return tag; },
       async createTaxonomy(args) { calls.push({ method: "createTaxonomy", args }); return category; },
@@ -1362,19 +1363,19 @@ test("REST taxonomy mutations preserve normalization inputs, creator identity, a
   assert.deepEqual(calls, [
     { method: "createTag", args: { actorId: "writer-user", name: "人工智能", locale: "zh-CN" } },
     { method: "createTaxonomy", args: { kind: "category", slug: "poetry", name: "诗歌", description: "诗歌分类", locale: "zh-CN", actorId: "writer-user" } },
-    { method: "deleteTaxonomy", args: { taxonomyId: "category-1", actorId: "writer-user" } },
+    { method: "deleteTaxonomy", args: { taxonomyId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", actorId: "writer-user" } },
   ]);
 });
 
 test("REST conversation and message routes preserve full fields, cursor order contract, membership context, and idempotency", async () => {
   const calls: Array<{ method: string; args: Record<string, unknown> }> = [];
   const conversation = {
-    id: "conversation-1", createdBy: "writer-user", participantIds: ["reader-user", "writer-user"],
+    id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", createdBy: "writer-user", participantIds: ["reader-user", "writer-user"],
     createdAt: "2026-01-01T00:00:00.000Z", lastActivityAt: "2026-01-02T00:00:00.000Z",
     unreadCount: 2,
-    lastMessage: { id: "message-1", conversationId: "conversation-1", senderId: "reader-user", body: "收到", createdAt: "2026-01-02T00:00:00.000Z" },
+    lastMessage: { id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", conversationId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", senderId: "reader-user", body: "收到", createdAt: "2026-01-02T00:00:00.000Z" },
   };
-  const message = { id: "message-2", conversationId: "conversation-1", senderId: "writer-user", body: "你好", createdAt: "2026-01-03T00:00:00.000Z" };
+  const message = { id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", conversationId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", senderId: "writer-user", body: "你好", createdAt: "2026-01-03T00:00:00.000Z" };
   await withServer(async (baseUrl) => {
     const authorization = "Bearer " + signedToken("writer-user");
     const jsonHeaders = { authorization, "content-type": "application/json" };
@@ -1389,44 +1390,45 @@ test("REST conversation and message routes preserve full fields, cursor order co
     assert.equal(listed.status, 200);
     assert.deepEqual(await listed.json(), { data: [conversation] });
 
-    const history = await fetch(baseUrl + "/api/v1/conversations/conversation-1/messages?limit=2&before=message-cursor", { headers: { authorization } });
+    const history = await fetch(baseUrl + "/api/v1/conversations/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/messages?limit=2&before=eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", { headers: { authorization } });
     assert.equal(history.status, 200);
     assert.deepEqual(await history.json(), { data: [message] });
 
-    const sent = await fetch(baseUrl + "/api/v1/conversations/conversation-1/messages", {
+    const sent = await fetch(baseUrl + "/api/v1/conversations/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/messages", {
       method: "POST", headers: { ...jsonHeaders, "idempotency-key": "send-once-1" }, body: JSON.stringify({ body: "你好" }),
     });
     assert.equal(sent.status, 201);
     assert.deepEqual(await sent.json(), { data: message });
 
-    const bodyIdentityRejected = await fetch(baseUrl + "/api/v1/conversations/conversation-1/messages", {
+    const bodyIdentityRejected = await fetch(baseUrl + "/api/v1/conversations/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/messages", {
       method: "POST", headers: { ...jsonHeaders, "idempotency-key": "send-once-2" },
       body: JSON.stringify({ body: "你好", senderId: "admin-user" }),
     });
     assert.equal(bodyIdentityRejected.status, 400);
 
-    const missingKeyRejected = await fetch(baseUrl + "/api/v1/conversations/conversation-1/messages", {
+    const missingKeyRejected = await fetch(baseUrl + "/api/v1/conversations/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/messages", {
       method: "POST", headers: jsonHeaders, body: JSON.stringify({ body: "另一条消息" }),
     });
     assert.equal(missingKeyRejected.status, 400);
 
-    const updated = await fetch(baseUrl + "/api/v1/conversations/conversation-1/participants", {
+    const updated = await fetch(baseUrl + "/api/v1/conversations/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/participants", {
       method: "PATCH", headers: jsonHeaders, body: JSON.stringify({ addUserIds: ["third-user"], removeUserIds: [] }),
     });
     assert.equal(updated.status, 200);
     assert.deepEqual(await updated.json(), { data: conversation });
 
-    const markedRead = await fetch(baseUrl + "/api/v1/conversations/conversation-1/read", { method: "PUT", headers: { authorization } });
+    const markedRead = await fetch(baseUrl + "/api/v1/conversations/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/read", { method: "PUT", headers: { authorization } });
     assert.equal(markedRead.status, 200);
     assert.deepEqual(await markedRead.json(), { data: true });
 
-    const deleted = await fetch(baseUrl + "/api/v1/conversations/conversation-1", { method: "DELETE", headers: { authorization } });
+    const deleted = await fetch(baseUrl + "/api/v1/conversations/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", { method: "DELETE", headers: { authorization } });
     assert.equal(deleted.status, 200);
     assert.deepEqual(await deleted.json(), { data: true });
 
     const unauthenticated = await fetch(baseUrl + "/api/v1/conversations");
     assert.equal(unauthenticated.status, 401);
   }, {
+    env: authEnv,
     store: {
       async createConversation(args) { calls.push({ method: "createConversation", args }); return conversation; },
       async listConversations(args) { calls.push({ method: "listConversations", args }); return [conversation]; },
@@ -1441,33 +1443,33 @@ test("REST conversation and message routes preserve full fields, cursor order co
   assert.deepEqual(calls[0], { method: "createConversation", args: { actorId: "writer-user", participantIds: ["reader-user"] } });
   assert.deepEqual(calls.find((call) => call.method === "listConversationMessages"), {
     method: "listConversationMessages",
-    args: { conversationId: "conversation-1", actorId: "writer-user", limit: 2, before: "message-cursor" },
+    args: { conversationId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", actorId: "writer-user", limit: 2, before: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee" },
   });
   assert.deepEqual(calls.find((call) => call.method === "persistMessage"), {
     method: "persistMessage",
-    args: { conversationId: "conversation-1", senderId: "writer-user", body: "你好", idempotencyKey: "send-once-1" },
+    args: { conversationId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", senderId: "writer-user", body: "你好", idempotencyKey: "send-once-1" },
   });
   assert.deepEqual(calls.find((call) => call.method === "updateConversationParticipants"), {
     method: "updateConversationParticipants",
-    args: { conversationId: "conversation-1", actorId: "writer-user", addUserIds: ["third-user"], removeUserIds: [] },
+    args: { conversationId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", actorId: "writer-user", addUserIds: ["third-user"], removeUserIds: [] },
   });
   assert.deepEqual(calls.find((call) => call.method === "markConversationAsRead"), {
-    method: "markConversationAsRead", args: { conversationId: "conversation-1", actorId: "writer-user" },
+    method: "markConversationAsRead", args: { conversationId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", actorId: "writer-user" },
   });
   assert.deepEqual(calls.find((call) => call.method === "deleteConversation"), {
-    method: "deleteConversation", args: { conversationId: "conversation-1", actorId: "writer-user" },
+    method: "deleteConversation", args: { conversationId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", actorId: "writer-user" },
   });
 });
 
 test("REST notification routes are recipient-scoped and preserve the GraphQL JSON-string payload contract", async () => {
   const calls: Array<{ method: string; args: Record<string, unknown> }> = [];
   const notification = {
-    id: "notification-1", userId: "reader-user", eventKey: "message.created",
-    payload: { conversationId: "conversation-1", messageId: "message-1", type: "message.created" },
+    id: "ffffffff-ffff-4fff-8fff-ffffffffffff", userId: "reader-user", eventKey: "message.created",
+    payload: { conversationId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", messageId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", type: "message.created" },
     createdAt: "2026-01-01T00:00:00.000Z", readAt: null,
   };
   const publicShape = {
-    id: "notification-1", eventKey: "message.created", payload: JSON.stringify(notification.payload),
+    id: "ffffffff-ffff-4fff-8fff-ffffffffffff", eventKey: "message.created", payload: JSON.stringify(notification.payload),
     createdAt: notification.createdAt, readAt: null,
   };
   await withServer(async (baseUrl) => {
@@ -1480,7 +1482,7 @@ test("REST notification routes are recipient-scoped and preserve the GraphQL JSO
     assert.equal(unread.status, 200);
     assert.deepEqual(await unread.json(), { data: 4 });
 
-    const marked = await fetch(baseUrl + "/api/v1/me/notifications/notification-1/read", { method: "PUT", headers: { authorization } });
+    const marked = await fetch(baseUrl + "/api/v1/me/notifications/ffffffff-ffff-4fff-8fff-ffffffffffff/read", { method: "PUT", headers: { authorization } });
     assert.equal(marked.status, 200);
     assert.deepEqual(await marked.json(), { data: { ...publicShape, readAt: "2026-01-02T00:00:00.000Z" } });
 
@@ -1491,6 +1493,7 @@ test("REST notification routes are recipient-scoped and preserve the GraphQL JSO
     const unauthorized = await fetch(baseUrl + "/api/v1/me/notifications");
     assert.equal(unauthorized.status, 401);
   }, {
+    env: authEnv,
     store: {
       async listNotifications(args) { calls.push({ method: "listNotifications", args }); return [notification]; },
       async getUnreadNotificationCount(args) { calls.push({ method: "getUnreadNotificationCount", args }); return 4; },
@@ -1502,7 +1505,7 @@ test("REST notification routes are recipient-scoped and preserve the GraphQL JSO
   assert.deepEqual(calls, [
     { method: "listNotifications", args: { actorId: "reader-user", limit: 10 } },
     { method: "getUnreadNotificationCount", args: { actorId: "reader-user" } },
-    { method: "markNotificationRead", args: { notificationId: "notification-1", actorId: "reader-user" } },
+    { method: "markNotificationRead", args: { notificationId: "ffffffff-ffff-4fff-8fff-ffffffffffff", actorId: "reader-user" } },
     { method: "markAllNotificationsRead", args: { actorId: "reader-user" } },
   ]);
 });
