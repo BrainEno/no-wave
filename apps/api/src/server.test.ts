@@ -926,12 +926,20 @@ test("REST user search and relationship lists retain GraphQL arguments and compl
 
 test("REST liked articles, related articles, and article like info cover the GraphQL read operations", async () => {
   const calls = [];
+  const writerProfile = {
+    userId: "writer-user", displayName: "作者", bio: "简介", avatarUrl: "/avatar.png",
+    websiteUrl: "https://writer.example/", locale: "zh-CN",
+    createdAt: "2025-12-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z",
+    followerCount: 4, followingCount: 3, isFollowing: true,
+  };
+  const category = { id: "category-1", kind: "category", slug: "poetry", name: "诗歌", description: "", locale: "zh-CN", createdBy: "admin-user", articleCount: 2 };
+  const tag = { id: "tag-1", kind: "tag", slug: "modern-poetry", name: "现代诗", description: "", locale: "zh-CN", createdBy: "writer-user", articleCount: 7 };
   const article = {
     id: "article-1", authorId: "writer-user", slug: "poetry-work", workType: "poetry",
     status: "published", locale: "zh-CN", title: "诗", summary: "摘要",
     contentBlocks: [{ id: "p1", type: "paragraph", text: "正文" }],
     createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-02T00:00:00.000Z",
-    publishedAt: "2026-01-02T00:00:00.000Z", author: null, categories: [], tags: [],
+    publishedAt: "2026-01-02T00:00:00.000Z", author: writerProfile, categories: [category], tags: [tag],
   };
   const likeInfo = { articleId: "article-1", slug: "poetry-work", likeCount: 12, likedByViewer: true };
   await withServer(async (baseUrl) => {
@@ -959,6 +967,8 @@ test("REST liked articles, related articles, and article like info cover the Gra
       async isSessionRevoked() { return false; },
       async listLikedArticles(args) { calls.push(["liked", args]); return [article]; },
       async listRelatedArticles(args) { calls.push(["related", args]); return [article]; },
+      async getAuthorProfile(args) { return { ...writerProfile, isFollowing: args.viewerId === "reader-user" }; },
+      async listArticleTaxonomies(args) { return args.kind === "category" ? [category] : [tag]; },
       async getArticleLikeInfo(args) { calls.push(["like", args]); return likeInfo; },
     },
   });
@@ -1189,15 +1199,27 @@ test("REST article like endpoint sets an explicit idempotent state rather than t
 test("REST article comments support public listing and authenticated replies", async () => {
   const calls = [];
   const parentCommentId = "11111111-1111-4111-8111-111111111111";
+  const commenterProfile = {
+    userId: "commenter-user", displayName: "评论者", bio: "简介", avatarUrl: null,
+    websiteUrl: null, locale: "zh-CN",
+    createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-02T00:00:00.000Z",
+    followerCount: 2, followingCount: 5, isFollowing: false,
+  };
+  const rootComment = {
+    id: parentCommentId, articleId: "article-1", authorId: "root-author",
+    parentCommentId: null, content: "根评论", createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z", locale: "zh-CN", author: null, replies: [],
+  };
   const comment = {
     id: "22222222-2222-4222-8222-222222222222", articleId: "article-1",
-    authorId: "commenter-user", parentCommentId, content: "很好的观点", locale: "zh-CN",
-    author: null, replies: [],
+    authorId: "commenter-user", parentCommentId, content: "很好的观点",
+    createdAt: "2026-01-03T00:00:00.000Z", updatedAt: "2026-01-03T00:00:00.000Z",
+    locale: "zh-CN", author: commenterProfile, replies: [],
   };
   await withServer(async (baseUrl) => {
     const listed = await fetch(baseUrl + "/api/v1/articles/poetry-work/comments?limit=10");
     assert.equal(listed.status, 200);
-    assert.deepEqual(await listed.json(), { data: [{ id: parentCommentId, content: "根评论", replies: [], author: null }] });
+    assert.deepEqual(await listed.json(), { data: [rootComment] });
     assert.deepEqual(calls[0], { kind: "list", args: { slug: "poetry-work", locale: "zh-CN", limit: 10 } });
 
     const created = await fetch(baseUrl + "/api/v1/articles/poetry-work/comments", {
@@ -1223,7 +1245,10 @@ test("REST article comments support public listing and authenticated replies", a
       async isSessionRevoked() { return false; },
       async listArticleComments(args) {
         calls.push({ kind: "list", args });
-        return [{ id: parentCommentId, content: "根评论", replies: [] }];
+        return [rootComment];
+      },
+      async getAuthorProfile(args) {
+        return args.userId === "commenter-user" ? commenterProfile : null;
       },
       async createArticleComment(args) {
         calls.push({ kind: "create", args });
