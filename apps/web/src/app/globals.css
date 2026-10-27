@@ -32,7 +32,13 @@ img { max-width: 100%; }
 
 /* ---------- 外壳：竖脊 / 导航条 / 通知 / 菜单 ---------- */
 .nw-rail { position: fixed; z-index: 70; left: 0; top: 0; bottom: 0; width: 48px; background: var(--rail); color: #f2eee6; writing-mode: vertical-rl; padding: calc(28px + var(--st)) 17px 28px 0; font: 700 13px/14px var(--f-ss); letter-spacing: .24em; white-space: nowrap; }
-.nw-pill { position: fixed; z-index: 80; top: max(24px, var(--st)); right: max(40px, env(safe-area-inset-right, 0px)); display: flex; align-items: center; gap: 2px; height: 52px; padding: 0 8px 0 12px; background: var(--paper); color: var(--ink); border-radius: 999px; font: 500 15px/1 var(--f-ss); }
+.nw-pill {
+  /* 悬浮导航条保持深色台面（黑底纸字），在浅色页面背景上始终读作 nav bar。 */
+  --paper: #0f0d0c;
+  --ink: #f2eee6;
+  --t2: #b5aea3;
+  position: fixed; z-index: 80; top: max(24px, var(--st)); right: max(40px, env(safe-area-inset-right, 0px)); display: flex; align-items: center; gap: 2px; height: 52px; padding: 0 8px 0 12px; background: var(--paper); color: var(--ink); border-radius: 999px; font: 500 15px/1 var(--f-ss);
+}
 .nw-pill a, .nw-pill button { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 44px; padding: 0 12px; background: none; border: 0; position: relative; }
 .nw-pill a:hover { text-decoration: underline; }
 .nw-pill [aria-current="page"] { font-weight: 700; text-decoration: underline; }
@@ -43,7 +49,13 @@ img { max-width: 100%; }
 .nw-ic svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .nw-bdg { position: absolute; top: 3px; right: 1px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--or); color: #0f0d0c; font: 700 10px/16px var(--f-ss); text-align: center; pointer-events: none; }
 .nw-mnb { display: none !important; }
-.nw-np { position: fixed; z-index: 84; top: calc(max(24px, var(--st)) + 60px); right: max(40px, env(safe-area-inset-right, 0px)); width: min(360px, calc(100vw - 32px)); background: var(--paper); color: var(--ink); border: 1px solid var(--ink); }
+.nw-np {
+  /* 通知面板与导航条同款深色台面。 */
+  --paper: #0f0d0c;
+  --ink: #f2eee6;
+  --t2: #b5aea3;
+  position: fixed; z-index: 84; top: calc(max(24px, var(--st)) + 60px); right: max(40px, env(safe-area-inset-right, 0px)); width: min(360px, calc(100vw - 32px)); background: var(--paper); color: var(--ink); border: 1px solid var(--ink);
+}
 .nw-np[hidden], .nw-menu[hidden] { display: none; }
 .nw-np header { display: flex; justify-content: space-between; align-items: center; padding: 4px 4px 4px 16px; border-bottom: 1px solid var(--ink); font: 700 14px var(--f-ss); }
 .nw-np header button { min-height: 44px; padding: 0 12px; border: 0; background: none; font-size: 13px; }
@@ -115,7 +127,15 @@ mark { background: var(--or); color: #0f0d0c; }
 .nw-wm { margin: 0 0 calc(var(--w) * -.18); font-size: var(--w); line-height: .8; letter-spacing: -.04em; white-space: nowrap; }
 .nw-wm .nw-ss { font-weight: 700; }
 .nw-wm .nw-it { font-family: var(--f-sf); font-style: italic; font-weight: 400; }
-.nw-sel { padding: 120px 80px 100px; }
+.nw-sel {
+  /* 原稿的精选舞台：黑底纸字（两种主题下都保持深色台面），不随主题翻转。 */
+  --paper: #0f0d0c;
+  --ink: #f2eee6;
+  --t2: #b5aea3;
+  background: var(--paper);
+  color: var(--ink);
+  padding: 120px 80px 100px;
+}
 .nw-tri { display: flex; flex-wrap: wrap; gap: 80px; align-items: flex-start; margin-top: 64px; }
 .nw-item { display: block; flex: none; }
 .nw-ph { overflow: hidden; background: #0f0d0c; }

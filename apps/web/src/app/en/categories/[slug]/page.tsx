@@ -8,10 +8,12 @@ type PageProps = { params: Promise<{ slug: string }>; searchParams: Promise<{ pa
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
   const category = await getPublicCategory(slug, "en");
-  return category ? {
+  // 在流式外壳发出前抛出 notFound()，保证未知分类返回 404 状态码（而非软 404）。
+  if (!category) notFound();
+  return {
     title: category.name,
     description: category.description || `Published works in the “${category.name}” category.`,
-  } : {};
+  };
 }
 
 export default async function EnglishCategoryPage({ params, searchParams }: PageProps) {

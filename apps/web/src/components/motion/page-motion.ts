@@ -1,5 +1,6 @@
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { motionState } from "@/lib/motion-state.ts";
 
 /**
  * 页面级滚动动效：通过 data 属性声明，页面组件保持为服务端组件。
@@ -33,10 +34,13 @@ export function setupPageMotion(): { revert(): void } {
       const run = () => ctx.add(() => {
         gsap.to(letters, { yPercent: 0, rotate: 0, duration: 1.1, ease: "power4.out", stagger: { each: 0.06, from: "random" }, onComplete: scatter });
       });
-      if (document.querySelector("[data-loader]")) {
-        window.addEventListener("nw:loaded", run, { once: true });
-        cleanups.push(() => window.removeEventListener("nw:loaded", run));
-      } else run();
+      // 载入页可能先于本函数完成（会话内二次进入）：用状态位兜底，避免字标卡在隐藏位。
+      if (motionState.loaded) run();
+      else {
+        const onLoaded = () => run();
+        window.addEventListener("nw:loaded", onLoaded, { once: true });
+        cleanups.push(() => window.removeEventListener("nw:loaded", onLoaded));
+      }
     }
 
     const hero = document.querySelector("[data-hero]");

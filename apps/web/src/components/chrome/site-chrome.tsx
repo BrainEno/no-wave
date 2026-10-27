@@ -127,7 +127,22 @@ export function SiteChrome({ children }: { children: ReactNode }) {
     if (!first) smoother.current?.scrollTop(0);
     pageMotion.current = setupPageMotion();
     const frame = window.requestAnimationFrame(() => ScrollTrigger.refresh());
-    return () => window.cancelAnimationFrame(frame);
+    // 跨页 #hash 落点（如从文章页回到 /#selected）：挂载后滚到对应区块。
+    let hashTimer = 0;
+    const hash = window.location.hash.slice(1);
+    if (hash) {
+      const target = document.getElementById(hash);
+      if (target) {
+        hashTimer = window.setTimeout(() => {
+          if (smoother.current) smoother.current.scrollTo(target, true, "top 24px");
+          else target.scrollIntoView({ behavior: "smooth" });
+        }, 80);
+      }
+    }
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(hashTimer);
+    };
   });
   useEffect(() => () => { pageMotion.current?.revert(); pageMotion.current = null; lastKey.current = ""; }, []);
 
@@ -156,8 +171,14 @@ export function SiteChrome({ children }: { children: ReactNode }) {
 
   const other: Locale = locale === "en" ? "zh-CN" : "en";
   const current = (prefix: string) => (pathname === prefix || pathname.startsWith(prefix + "/") ? "page" : undefined);
-  const worksHref = archivePath(locale);
+  // 主导航：精选 / 最新 / 分类（按需求固定这三个入口）。
+  // 首页内点击平滑滚动到对应区块；其他页面回到首页区块，分类保留项目实际的分类页入口。
+  const onHome = pathname === "/" || pathname === "/en";
+  const home = homePath(locale);
+  const navSelected = onHome ? "#selected" : `${home}#selected`;
+  const navLatest = onHome ? "#latest" : `${home}#latest`;
   const topicsHref = locale === "en" ? "/en/categories" : "/categories";
+  const navTopics = onHome ? "#topics" : topicsHref;
   const searchHref = locale === "en" ? "/en/search" : "/search";
 
   return (
@@ -165,8 +186,9 @@ export function SiteChrome({ children }: { children: ReactNode }) {
       <GrainCanvas />
       <Link className="nw-rail" href={homePath(locale)} aria-label={ui.homeAria}>{ui.rail}</Link>
       <nav className="nw-pill" aria-label={ui.nav.primary} lang={locale}>
-        <Link className="nw-nv" href={worksHref} aria-current={current(worksHref)}>{ui.nav.works}</Link>
-        <Link className="nw-nv" href={topicsHref} aria-current={current(topicsHref)}>{ui.nav.topics}</Link>
+        <Link className="nw-nv" href={navSelected}>{ui.nav.selected}</Link>
+        <Link className="nw-nv" href={navLatest}>{ui.nav.latest}</Link>
+        <Link className="nw-nv" href={navTopics} aria-current={onHome ? undefined : current(topicsHref)}>{ui.nav.topics}</Link>
         <span className="nw-sep nw-nv" aria-hidden="true" />
         <Link className="nw-nv nw-lang" href={locale === "en" ? alternatePath(pathname, locale) : pathname} lang="zh-CN" aria-current={locale === "zh-CN" ? "true" : undefined}>简</Link>
         <span className="nw-nv" aria-hidden="true">/</span>
@@ -184,8 +206,9 @@ export function SiteChrome({ children }: { children: ReactNode }) {
       <div className="nw-menu" id="nw-menu" hidden={!menuOpen} role="dialog" aria-label={ui.nav.menu} lang={locale}>
         <button type="button" onClick={() => setMenuOpen(false)}>{ui.nav.close}</button>
         <Link href={homePath(locale)}>{ui.nav.home}</Link>
-        <Link href={worksHref}>{ui.nav.works}</Link>
-        <Link href={topicsHref}>{ui.nav.topics}</Link>
+        <Link href={navSelected}>{ui.nav.selected}</Link>
+        <Link href={navLatest}>{ui.nav.latest}</Link>
+        <Link href={navTopics}>{ui.nav.topics}</Link>
         <Link href={searchHref}>{ui.nav.search}</Link>
         <Link href={alternatePath(pathname, locale)} lang={other} aria-label={ui.nav.language}>{other === "en" ? "English" : "简体中文"}</Link>
       </div>

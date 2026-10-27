@@ -53,12 +53,12 @@ try {
 
   const categories = await fetch(`${baseUrl}/categories`);
   assert.equal(categories.status, 200, "category index should return 200 without API configuration");
-  assert.match(await categories.text(), /作品分類/);
+  assert.match(await categories.text(), /作品分类/, "category index should serve Simplified Chinese content");
   const missingCategory = await fetch(`${baseUrl}/categories/does-not-exist`);
   assert.equal(missingCategory.status, 404, "unknown category should return 404");
   const englishCategories = await fetch(`${baseUrl}/en/categories`);
   assert.equal(englishCategories.status, 200, "English category index should return 200");
-  assert.match(await englishCategories.text(), /Explore by category/);
+  assert.match(await englishCategories.text(), /Categories are maintained as real publication data/, "English category index should serve English content");
 
   const search = await fetch(`${baseUrl}/articles?q=不存在的文章`);
   assert.equal(search.status, 200, "empty search should return 200");

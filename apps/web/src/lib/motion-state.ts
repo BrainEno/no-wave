@@ -4,4 +4,6 @@ export const motionState = {
   scrollVelocity: 0,
   /** 首屏涂抹着色器的“浮现”进度：0 = 完全涂抹，1 = 清晰。 */
   reveal: 0,
+  /** 载入幕布是否已完成（nw:loaded 已派发）。字标入场用它兜底竞态。 */
+  loaded: false,
 };

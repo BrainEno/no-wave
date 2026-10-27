@@ -9,7 +9,8 @@ type PageProps = { params: Promise<{ slug: string }> };
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
   const article = await getPublicArticle(slug, defaultLocale);
-  if (!article) return {};
+  // 在流式外壳发出前抛出 notFound()，保证未知文章返回 404 状态码（而非软 404）。
+  if (!article) notFound();
   return articleMetadata(article, process.env.NEXT_PUBLIC_SITE_URL ?? "https://example.invalid") as Metadata;
 }
 
