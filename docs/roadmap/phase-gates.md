@@ -31,7 +31,8 @@ On 2026-10-27, the product owner approved replacing GraphQL as the sole business
 - [x] Add public author-profile and author-article REST endpoints; filter author articles in persistence before pagination.
 - [x] Add authenticated REST endpoints for listing the current user's articles, creating articles and owner-checked updates; derive actor identity from a verified, non-revoked JWT.
 - [ ] Migrate the Web public-content client and sitemap from GraphQL/fixtures to REST.
-- [ ] Migrate article/profile/engagement mutations and messaging/notification queries to REST with regression tests.
+- [x] Add authenticated REST article create/update/list, profile update, follow/unfollow, explicit article-like state, and comment list/create/delete routes with JWT-derived identity and transport tests.
+- [ ] Complete remaining REST discovery/engagement reads, taxonomy mutations, conversation lifecycle, messaging and notification APIs with regression tests.
 - [ ] Select and validate SSE/WebSocket only for concrete real-time needs; keep database/outbox state authoritative.
 - [ ] Remove GraphQL schema, Yoga runtime, dependencies, environment variables and obsolete tests after REST parity is verified.
 

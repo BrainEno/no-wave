@@ -185,6 +185,71 @@ function normalizeArticleWriteBody(
   };
 }
 
+
+const PROFILE_WRITE_FIELDS = new Set(["displayName", "bio", "avatarUrl", "websiteUrl", "locale"]);
+
+function normalizeProfileWriteBody(
+  body: Record<string, unknown>,
+): { input: Record<string, unknown> | null; error: string | null } {
+  if (Object.keys(body).some((key) => !PROFILE_WRITE_FIELDS.has(key))) {
+    return { input: null, error: "The request contains unsupported fields." };
+  }
+  if (body.locale !== undefined && body.locale !== "zh-CN") {
+    return { input: null, error: "The REST API currently supports only locale zh-CN." };
+  }
+  if (typeof body.displayName !== "string") {
+    return { input: null, error: "displayName must be a string." };
+  }
+  if (body.bio !== undefined && typeof body.bio !== "string") {
+    return { input: null, error: "bio must be a string." };
+  }
+  for (const field of ["avatarUrl", "websiteUrl"] as const) {
+    if (body[field] !== undefined && body[field] !== null && typeof body[field] !== "string") {
+      return { input: null, error: field + " must be a string or null." };
+    }
+  }
+  const input: Record<string, unknown> = {
+    displayName: body.displayName,
+    bio: body.bio ?? "",
+    locale: "zh-CN",
+  };
+  if (Object.hasOwn(body, "avatarUrl")) input.avatarUrl = body.avatarUrl;
+  if (Object.hasOwn(body, "websiteUrl")) input.websiteUrl = body.websiteUrl;
+  return { input, error: null };
+}
+
+function normalizeLikeWriteBody(
+  body: Record<string, unknown>,
+): { liked: boolean | null; error: string | null } {
+  if (Object.keys(body).some((key) => key !== "liked")) {
+    return { liked: null, error: "The request contains unsupported fields." };
+  }
+  if (typeof body.liked !== "boolean") {
+    return { liked: null, error: "liked must be a boolean." };
+  }
+  return { liked: body.liked, error: null };
+}
+
+function normalizeCommentWriteBody(
+  body: Record<string, unknown>,
+): { input: { content: string; parentCommentId: string | null } | null; error: string | null } {
+  if (Object.keys(body).some((key) => key !== "content" && key !== "parentCommentId")) {
+    return { input: null, error: "The request contains unsupported fields." };
+  }
+  if (typeof body.content !== "string" || body.content.trim().length === 0 || body.content.length > 5000) {
+    return { input: null, error: "content must be non-empty and no longer than 5000 characters." };
+  }
+  const parentCommentId = body.parentCommentId;
+  if (parentCommentId !== undefined && parentCommentId !== null &&
+      (typeof parentCommentId !== "string" || parentCommentId.length === 0 || parentCommentId.length > 300)) {
+    return { input: null, error: "parentCommentId must be a comment ID or null." };
+  }
+  return {
+    input: { content: body.content, parentCommentId: typeof parentCommentId === "string" ? parentCommentId : null },
+    error: null,
+  };
+}
+
 async function authenticatedActorId(
   request: IncomingMessage,
   services: RestServices,
@@ -218,10 +283,47 @@ export function createRestHandler({ services, env = process.env }: { services: R
     const url = new URL(request.url ?? "/", "http://localhost");
     if (url.pathname !== "/api/v1" && !url.pathname.startsWith("/api/v1/")) return false;
 
+    const meProfilePath = url.pathname === "/api/v1/me/profile";
+    const followPathMatch = url.pathname.match(/^\/api\/v1\/users\/([^/]+)\/follow$/);
+    const articleLikePathMatch = url.pathname.match(/^\/api\/v1\/articles\/([^/]+)\/like$/);
+    const articleCommentsPathMatch = url.pathname.match(/^\/api\/v1\/articles\/([^/]+)\/comments$/);
+    const commentItemPathMatch = url.pathname.match(/^\/api\/v1\/comments\/([^/]+)$/);
     const articleItemPath = /^\/api\/v1\/articles\/[^/]+$/.test(url.pathname);
     const isCreateArticle = request.method === "POST" && url.pathname === "/api/v1/articles";
     const isUpdateArticle = request.method === "PUT" && articleItemPath;
-    if (request.method !== "GET" && !isCreateArticle && !isUpdateArticle) {
+    const isUpdateMyProfile = request.method === "PUT" && meProfilePath;
+    const isFollowUser = request.method === "POST" && followPathMatch !== null;
+    const isUnfollowUser = request.method === "DELETE" && followPathMatch !== null;
+    const isSetArticleLike = request.method === "PUT" && articleLikePathMatch !== null;
+    const isCreateArticleComment = request.method === "POST" && articleCommentsPathMatch !== null;
+    const isDeleteArticleComment = request.method === "DELETE" && commentItemPathMatch !== null;
+
+    const rejectMethod = (allow: string) => {
+      response.setHeader("allow", allow);
+      sendJson(response, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "The HTTP method is not supported for this endpoint." } });
+    };
+    if (meProfilePath && request.method !== "PUT") {
+      rejectMethod("PUT");
+      return true;
+    }
+    if (followPathMatch && request.method !== "POST" && request.method !== "DELETE") {
+      rejectMethod("POST, DELETE");
+      return true;
+    }
+    if (articleLikePathMatch && request.method !== "PUT") {
+      rejectMethod("PUT");
+      return true;
+    }
+    if (articleCommentsPathMatch && request.method !== "GET" && request.method !== "POST") {
+      rejectMethod("GET, POST");
+      return true;
+    }
+    if (commentItemPathMatch && request.method !== "DELETE") {
+      rejectMethod("DELETE");
+      return true;
+    }
+    if (request.method !== "GET" && !isCreateArticle && !isUpdateArticle && !isUpdateMyProfile &&
+        !isFollowUser && !isUnfollowUser && !isSetArticleLike && !isCreateArticleComment && !isDeleteArticleComment) {
       response.setHeader("allow", url.pathname === "/api/v1/articles" ? "GET, POST" : articleItemPath ? "GET, PUT" : "GET");
       sendJson(response, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "The HTTP method is not supported for this endpoint." } });
       return true;
@@ -251,6 +353,74 @@ export function createRestHandler({ services, env = process.env }: { services: R
         }
         const articles = await services.listMyArticles({ actorId, locale, limit });
         sendJson(response, 200, { data: articles });
+      } catch (error: unknown) {
+        sendServiceError(response, error);
+      }
+      return true;
+    }
+
+    if (meProfilePath) {
+      if (!services) {
+        sendUnavailable(response);
+        return true;
+      }
+      const bodyResult = await readJsonObject(request);
+      if (bodyResult.ok === false) {
+        sendJsonBodyError(response, bodyResult);
+        return true;
+      }
+      const normalized = normalizeProfileWriteBody(bodyResult.value);
+      if (!normalized.input) {
+        sendBadInput(response, normalized.error ?? "Invalid profile input.");
+        return true;
+      }
+      try {
+        const userId = await authenticatedActorId(request, services, env);
+        if (!userId) {
+          sendUnauthenticated(response);
+          return true;
+        }
+        await services.upsertAuthorProfile({ ...normalized.input, userId });
+        const profile = await services.getAuthorProfile({ userId, locale: "zh-CN", viewerId: userId });
+        if (!profile) {
+          sendJson(response, 404, { error: { code: "NOT_FOUND", message: "The author profile was not found." } });
+        } else {
+          sendJson(response, 200, { data: profile });
+        }
+      } catch (error: unknown) {
+        sendServiceError(response, error);
+      }
+      return true;
+    }
+
+    if (followPathMatch) {
+      if (!services) {
+        sendUnavailable(response);
+        return true;
+      }
+      const targetUserId = decodeUserId(followPathMatch[1]);
+      const locale = parseLocale(url);
+      if (!targetUserId || !locale) {
+        sendBadInput(response, "Invalid target user ID or locale.");
+        return true;
+      }
+      try {
+        const actorId = await authenticatedActorId(request, services, env);
+        if (!actorId) {
+          sendUnauthenticated(response);
+          return true;
+        }
+        if (request.method === "POST") {
+          await services.followUser({ actorId, targetUserId });
+        } else {
+          await services.unfollowUser({ actorId, targetUserId });
+        }
+        const profile = await services.getAuthorProfile({ userId: targetUserId, locale, viewerId: actorId });
+        if (!profile) {
+          sendJson(response, 404, { error: { code: "NOT_FOUND", message: "The author was not found." } });
+        } else {
+          sendJson(response, 200, { data: profile });
+        }
       } catch (error: unknown) {
         sendServiceError(response, error);
       }
@@ -349,6 +519,117 @@ export function createRestHandler({ services, env = process.env }: { services: R
       try {
         const articles = await services.listPublishedArticles({ locale, query, ...pagination });
         sendJson(response, 200, { data: articles });
+      } catch (error: unknown) {
+        sendServiceError(response, error);
+      }
+      return true;
+    }
+
+    if (articleLikePathMatch) {
+      if (!services) {
+        sendUnavailable(response);
+        return true;
+      }
+      const slug = decodeSlug(articleLikePathMatch[1]);
+      const locale = parseLocale(url);
+      if (!slug || !locale) {
+        sendBadInput(response, "Invalid article slug or locale.");
+        return true;
+      }
+      const bodyResult = await readJsonObject(request);
+      if (bodyResult.ok === false) {
+        sendJsonBodyError(response, bodyResult);
+        return true;
+      }
+      const normalized = normalizeLikeWriteBody(bodyResult.value);
+      if (normalized.liked === null) {
+        sendBadInput(response, normalized.error ?? "Invalid like input.");
+        return true;
+      }
+      try {
+        const actorId = await authenticatedActorId(request, services, env);
+        if (!actorId) {
+          sendUnauthenticated(response);
+          return true;
+        }
+        const result = await services.setArticleLike({ slug, locale, actorId, liked: normalized.liked });
+        sendJson(response, 200, { data: result });
+      } catch (error: unknown) {
+        sendServiceError(response, error);
+      }
+      return true;
+    }
+
+    if (articleCommentsPathMatch) {
+      if (!services) {
+        sendUnavailable(response);
+        return true;
+      }
+      const slug = decodeSlug(articleCommentsPathMatch[1]);
+      const locale = parseLocale(url);
+      if (!slug || !locale) {
+        sendBadInput(response, "Invalid article slug or locale.");
+        return true;
+      }
+      if (request.method === "GET") {
+        const limit = parseInteger(url.searchParams, "limit", 50, 1, 100);
+        if (limit === null) {
+          sendBadInput(response, "Invalid comment limit.");
+          return true;
+        }
+        try {
+          const comments = await services.listArticleComments({ slug, locale, limit });
+          sendJson(response, 200, { data: comments });
+        } catch (error: unknown) {
+          sendServiceError(response, error);
+        }
+        return true;
+      }
+      const bodyResult = await readJsonObject(request);
+      if (bodyResult.ok === false) {
+        sendJsonBodyError(response, bodyResult);
+        return true;
+      }
+      const normalized = normalizeCommentWriteBody(bodyResult.value);
+      if (!normalized.input) {
+        sendBadInput(response, normalized.error ?? "Invalid comment input.");
+        return true;
+      }
+      try {
+        const actorId = await authenticatedActorId(request, services, env);
+        if (!actorId) {
+          sendUnauthenticated(response);
+          return true;
+        }
+        const comment = await services.createArticleComment({
+          slug, locale, actorId, content: normalized.input.content,
+          parentCommentId: normalized.input.parentCommentId,
+        });
+        sendJson(response, 201, { data: comment });
+      } catch (error: unknown) {
+        sendServiceError(response, error);
+      }
+      return true;
+    }
+
+    if (commentItemPathMatch) {
+      if (!services) {
+        sendUnavailable(response);
+        return true;
+      }
+      const commentId = decodeUserId(commentItemPathMatch[1]);
+      if (!commentId) {
+        sendBadInput(response, "Invalid comment ID.");
+        return true;
+      }
+      try {
+        const actorId = await authenticatedActorId(request, services, env);
+        if (!actorId) {
+          sendUnauthenticated(response);
+          return true;
+        }
+        const deleted = await services.deleteArticleComment({ commentId, actorId });
+        sendJson(response, 200, { data: { deleted } });
       } catch (error: unknown) {
         sendServiceError(response, error);
       }
