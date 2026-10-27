@@ -1004,7 +1004,7 @@ export function createRestHandler({ services, env = process.env }: { services: R
       }
       const locale = parseLocale(url);
       const query = parseQuery(url);
-      const pagination = parsePagination(url, 20, MAX_TAXONOMY_OFFSET);
+      const pagination = parsePagination(url, 100, MAX_TAXONOMY_OFFSET);
       if (!locale || query === null || !pagination) {
         sendBadInput(response, "Invalid locale, query, limit, or offset query parameter.");
         return true;
@@ -1078,7 +1078,7 @@ export function createRestHandler({ services, env = process.env }: { services: R
       }
       const locale = parseLocale(url);
       const query = parseQuery(url);
-      const pagination = parsePagination(url, 20, MAX_TAXONOMY_OFFSET);
+      const pagination = parsePagination(url, 100, MAX_TAXONOMY_OFFSET);
       if (!locale || query === null || !pagination) {
         sendBadInput(response, "Invalid locale, query, limit, or offset query parameter.");
         return true;
