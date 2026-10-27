@@ -13,11 +13,12 @@ const authEnv = {
 
 function signedToken(sub) {
   const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
-  const header = encode({ alg: "HS256", typ: "JWT" });
+  const header = encode({ alg: "HS256", typ: "at+jwt" });
   const payload = encode({
     sub,
     iss: authEnv.AUTH_JWT_ISSUER,
     aud: authEnv.AUTH_JWT_AUDIENCE,
+    iat: Math.floor(Date.now() / 1000),
     exp: Math.floor(Date.now() / 1000) + 60,
     jti: `session-${sub}`,
   });
