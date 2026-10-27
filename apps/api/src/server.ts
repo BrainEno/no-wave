@@ -24,8 +24,19 @@ export function createApiServer({ env = process.env, store = null, applicationSe
     graphiql: false,
     context: async ({ request }): Promise<ApiContext> => {
       const auth = createAuthContext(request, env);
-      if (auth.user?.sessionId && services && await services.isSessionRevoked(auth.user.sessionId)) {
-        return { user: null, services: contextServices };
+      if (auth.user) {
+        // Never treat an uncheckable session as active. Authentication is
+        // dependent on durable revocation state, not only a valid signature.
+        if (!services || typeof services.isSessionRevoked !== "function") {
+          return { user: null, services: contextServices };
+        }
+        try {
+          if (await services.isSessionRevoked(auth.user.sessionId)) {
+            return { user: null, services: contextServices };
+          }
+        } catch {
+          return { user: null, services: contextServices };
+        }
       }
       return { ...auth, services: contextServices };
     },
