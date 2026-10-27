@@ -950,7 +950,9 @@ test("REST liked articles, related articles, and article like info cover the Gra
     assert.deepEqual(await liked.json(), { data: [article] });
     assert.deepEqual(calls[0], ["liked", { actorId: "reader-user", locale: "zh-CN", limit: 8 }]);
 
-    const related = await fetch(baseUrl + "/api/v1/articles/poetry-work/related?limit=4");
+    const related = await fetch(baseUrl + "/api/v1/articles/poetry-work/related?limit=4", {
+      headers: { authorization: "Bearer " + signedToken("reader-user") },
+    });
     assert.equal(related.status, 200);
     assert.deepEqual(await related.json(), { data: [article] });
     assert.deepEqual(calls[1], ["related", { slug: "poetry-work", locale: "zh-CN", limit: 4 }]);
@@ -1116,7 +1118,8 @@ test("REST follow and unfollow use stable target userId and verified actor ident
   const calls = [];
   let isFollowing = false;
   const getProfile = () => ({
-    userId: "target-user", displayName: "目标作者", bio: "", locale: "zh-CN",
+    userId: "target-user", displayName: "目标作者", bio: "", avatarUrl: null, websiteUrl: null,
+    locale: "zh-CN", createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-02T00:00:00.000Z",
     followerCount: isFollowing ? 1 : 0, followingCount: 0, isFollowing,
   });
   await withServer(async (baseUrl) => {
@@ -1283,17 +1286,17 @@ test("REST comment deletion derives actor identity from JWT and returns deletion
 
 test("REST profile and engagement routes enforce their declared HTTP methods", async () => {
   await withServer(async (baseUrl) => {
-    const profile = await fetch(baseUrl + "/api/v1/me/profile");
+    const profile = await fetch(baseUrl + "/api/v1/me/profile", { method: "POST" });
     assert.equal(profile.status, 405);
-    assert.equal(profile.headers.get("allow"), "PUT");
+    assert.equal(profile.headers.get("allow"), "GET, PUT");
 
     const follow = await fetch(baseUrl + "/api/v1/users/some-user/follow");
     assert.equal(follow.status, 405);
     assert.equal(follow.headers.get("allow"), "POST, DELETE");
 
-    const like = await fetch(baseUrl + "/api/v1/articles/some-article/like");
+    const like = await fetch(baseUrl + "/api/v1/articles/some-article/like", { method: "PATCH" });
     assert.equal(like.status, 405);
-    assert.equal(like.headers.get("allow"), "PUT");
+    assert.equal(like.headers.get("allow"), "GET, PUT");
 
     const comments = await fetch(baseUrl + "/api/v1/articles/some-article/comments", { method: "DELETE" });
     assert.equal(comments.status, 405);
