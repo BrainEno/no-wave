@@ -109,7 +109,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 async function readJsonObject(request: IncomingMessage): Promise<JsonObjectResult> {
   const contentType = request.headers["content-type"];
-  if (typeof contentType !== "string" || !/^application\\/json(?:\\s*;|$)/i.test(contentType)) {
+  if (typeof contentType !== "string" || !/^application\/json(?:\s*;|$)/i.test(contentType)) {
     return { ok: false, status: 415, code: "UNSUPPORTED_MEDIA_TYPE", message: "Content-Type must be application/json." };
   }
 
@@ -218,7 +218,7 @@ export function createRestHandler({ services, env = process.env }: { services: R
     const url = new URL(request.url ?? "/", "http://localhost");
     if (url.pathname !== "/api/v1" && !url.pathname.startsWith("/api/v1/")) return false;
 
-    const articleItemPath = /^\\/api\\/v1\\/articles\\/[^/]+$/.test(url.pathname);
+    const articleItemPath = /^\/api\/v1\/articles\/[^/]+$/.test(url.pathname);
     const isCreateArticle = request.method === "POST" && url.pathname === "/api/v1/articles";
     const isUpdateArticle = request.method === "PUT" && articleItemPath;
     if (request.method !== "GET" && !isCreateArticle && !isUpdateArticle) {
@@ -360,7 +360,7 @@ export function createRestHandler({ services, env = process.env }: { services: R
       return true;
     }
 
-    const articleMatch = url.pathname.match(/^\\/api\\/v1\\/articles\\/([^/]+)$/);
+    const articleMatch = url.pathname.match(/^\/api\/v1\/articles\/([^/]+)$/);
     if (articleMatch && request.method === "PUT") {
       if (!services) {
         sendUnavailable(response);
