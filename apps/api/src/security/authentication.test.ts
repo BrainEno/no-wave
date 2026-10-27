@@ -10,7 +10,7 @@ const env = {
 };
 const now = 1_800_000_000;
 
-function token(claims = {}, header = { alg: "HS256", typ: "at+jwt" }, secret = env.AUTH_JWT_SECRET) {
+function token(claims = {}, header = { alg: "HS256", typ: "application/vnd.bot-thk.access+jwt" }, secret = env.AUTH_JWT_SECRET) {
   const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
   const unsigned = `${encode(header)}.${encode(claims)}`;
   const signature = createHmac("sha256", secret).update(unsigned).digest("base64url");
@@ -66,8 +66,8 @@ test("rejects invalid signature, unsupported algorithm, expired token, and wrong
   assert.equal(verifyBearerToken(requestWithToken(token({ ...validClaims, iat: now + 1 })), env, now), null);
   assert.equal(verifyBearerToken(requestWithToken(token({ ...validClaims, iat: now - 901 })), env, now), null);
   assert.equal(verifyBearerToken(requestWithToken(token({ ...validClaims, exp: now + 901 })), env, now), null);
-  assert.equal(verifyBearerToken(requestWithToken(token(validClaims, { alg: "HS256", typ: "JWT" })), env, now), null);
-  assert.equal(verifyBearerToken(requestWithToken(token(validClaims, { alg: "HS256", typ: "at+jwt", crit: ["example"] })), env, now), null);
+  assert.equal(verifyBearerToken(requestWithToken(token(validClaims, { alg: "HS256", typ: "at+jwt" })), env, now), null);
+  assert.equal(verifyBearerToken(requestWithToken(token(validClaims, { alg: "HS256", typ: "application/vnd.bot-thk.access+jwt", crit: ["example"] })), env, now), null);
   assert.equal(verifyBearerToken(requestWithToken(token(validClaims)), { ...env, AUTH_JWT_MAX_TTL_SECONDS: "60" }, now), null,
     "a 120-second access token must be rejected when the configured maximum is 60 seconds");
   assert.throws(() => verifyBearerToken(requestWithToken(token(validClaims)), { ...env, AUTH_JWT_MAX_TTL_SECONDS: "abc" }, now),
