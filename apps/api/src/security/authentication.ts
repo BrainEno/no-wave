@@ -47,6 +47,10 @@ export function verifyBearerToken(
   env: NodeJS.ProcessEnv = process.env,
   nowSeconds = Math.floor(Date.now() / 1000),
 ): { id: string; sessionId: string; sessionExpiresAt: number } | null {
+  const authorization = request.headers.get("authorization");
+  const match = typeof authorization === "string" ? BEARER_PREFIX.exec(authorization) : null;
+  if (!match || match[1].length > MAX_BEARER_TOKEN_LENGTH) return null;
+
   const secret = env.AUTH_JWT_SECRET;
   if (typeof secret !== "string" || secret.length === 0) return null;
   if (Buffer.byteLength(secret, "utf8") < 32) {
@@ -59,10 +63,6 @@ export function verifyBearerToken(
     throw new Error("AUTH_JWT_ISSUER and AUTH_JWT_AUDIENCE are required when JWT authentication is enabled.");
   }
   const maxTokenTtl = configuredMaxTokenTtl(env);
-
-  const authorization = request.headers.get("authorization");
-  const match = typeof authorization === "string" ? BEARER_PREFIX.exec(authorization) : null;
-  if (!match || match[1].length > MAX_BEARER_TOKEN_LENGTH) return null;
 
   const parts = match[1].split(".");
   if (parts.length !== 3 || parts.some((part) => part.length === 0)) return null;
