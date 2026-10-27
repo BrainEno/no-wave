@@ -34,10 +34,8 @@ export function resolveApiGraphqlEndpoint(
     throw new Error("API_SERVICE_URL must be an absolute HTTP(S) URL.");
   }
 
-  while (baseUrl.pathname.endsWith("/")) {
-    baseUrl.pathname = baseUrl.pathname.slice(0, -1);
-  }
-  baseUrl.pathname = `${baseUrl.pathname}/`;
+  const basePath = baseUrl.pathname.replace(new RegExp("/+$"), "");
+  baseUrl.pathname = basePath.length > 0 ? `${basePath}/` : "/";
   baseUrl.search = "";
   baseUrl.hash = "";
   return new URL("graphql", baseUrl).toString();
