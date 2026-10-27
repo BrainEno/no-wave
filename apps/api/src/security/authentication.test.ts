@@ -68,8 +68,8 @@ test("rejects invalid signature, unsupported algorithm, expired token, and wrong
   assert.equal(verifyBearerToken(requestWithToken(token({ ...validClaims, exp: now + 901 })), env, now), null);
   assert.equal(verifyBearerToken(requestWithToken(token(validClaims, { alg: "HS256", typ: "JWT" })), env, now), null);
   assert.equal(verifyBearerToken(requestWithToken(token(validClaims, { alg: "HS256", typ: "at+jwt", crit: ["example"] })), env, now), null);
-  assert.equal(verifyBearerToken(requestWithToken(token(validClaims)), { ...env, AUTH_JWT_MAX_TTL_SECONDS: "3600" }, now), null,
-    "max TTL configuration does not extend the actual token lifetime; it bounds it");
+  assert.equal(verifyBearerToken(requestWithToken(token(validClaims)), { ...env, AUTH_JWT_MAX_TTL_SECONDS: "60" }, now), null,
+    "a 120-second access token must be rejected when the configured maximum is 60 seconds");
   assert.throws(() => verifyBearerToken(requestWithToken(token(validClaims)), { ...env, AUTH_JWT_MAX_TTL_SECONDS: "abc" }, now),
     /AUTH_JWT_MAX_TTL_SECONDS/);
   const { jti: _jti, ...withoutSessionId } = validClaims;
