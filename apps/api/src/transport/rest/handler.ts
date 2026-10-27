@@ -101,7 +101,7 @@ function sendUnavailable(response: ServerResponse): void {
 
 type JsonObjectResult =
   | { ok: true; value: Record<string, unknown> }
-  | { ok: false; status: number; code: string; message: string };
+  | { ok: false; status: number; code: string; message: string; closeConnection?: boolean };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -109,38 +109,121 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 async function readJsonObject(request: IncomingMessage): Promise<JsonObjectResult> {
   const contentType = request.headers["content-type"];
+  const declaredLength = request.headers["content-length"];
+  const hasUnconsumedBody =
+    request.headers["transfer-encoding"] !== undefined ||
+    (typeof declaredLength === "string" && /^\d+$/.test(declaredLength) && BigInt(declaredLength) > 0n);
   if (typeof contentType !== "string" || !/^application\/json(?:\s*;|$)/i.test(contentType)) {
-    return { ok: false, status: 415, code: "UNSUPPORTED_MEDIA_TYPE", message: "Content-Type must be application/json." };
+    return {
+      ok: false,
+      status: 415,
+      code: "UNSUPPORTED_MEDIA_TYPE",
+      message: "Content-Type must be application/json.",
+      ...(hasUnconsumedBody ? { closeConnection: true } : {}),
+    };
   }
 
-  const chunks: Buffer[] = [];
-  let size = 0;
-  let tooLarge = false;
-  for await (const chunk of request) {
-    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    size += buffer.byteLength;
-    if (size > MAX_JSON_BODY_BYTES) {
-      tooLarge = true;
-      continue;
-    }
-    chunks.push(buffer);
-  }
-  if (tooLarge) {
-    return { ok: false, status: 413, code: "PAYLOAD_TOO_LARGE", message: "The JSON request body is too large." };
+  // Reject a known oversized body before reading any of its bytes.
+  if (typeof declaredLength === "string" && /^\d+$/.test(declaredLength) &&
+      BigInt(declaredLength) > BigInt(MAX_JSON_BODY_BYTES)) {
+    return {
+      ok: false,
+      status: 413,
+      code: "PAYLOAD_TOO_LARGE",
+      message: "The JSON request body is too large.",
+      closeConnection: true,
+    };
   }
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-  } catch {
-    return { ok: false, status: 400, code: "BAD_USER_INPUT", message: "The request body must be valid JSON." };
-  }
-  if (!isRecord(parsed)) {
-    return { ok: false, status: 400, code: "BAD_USER_INPUT", message: "The request body must be a JSON object." };
-  }
-  return { ok: true, value: parsed };
+  // Count streaming bytes and stop as soon as the limit is crossed. Do not
+  // drain an unbounded/chunked request just to report 413; the caller closes
+  // the connection after writing the response.
+  return new Promise<JsonObjectResult>((resolve) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let settled = false;
+    const ignoreStreamError = () => {};
+
+    const cleanup = () => {
+      request.off("data", onData);
+      request.off("end", onEnd);
+      request.off("error", onError);
+      request.off("aborted", onAborted);
+    };
+
+    const finish = (result: JsonObjectResult, closeConnection = false) => {
+      if (settled) return;
+      settled = true;
+      if (closeConnection) {
+        request.pause();
+        request.off("data", onData);
+        request.off("end", onEnd);
+        request.off("aborted", onAborted);
+        request.off("error", onError);
+        // A peer may reset the socket while the 413 response is flushing.
+        request.on("error", ignoreStreamError);
+        request.once("close", () => request.off("error", ignoreStreamError));
+      } else {
+        cleanup();
+      }
+      resolve(result);
+    };
+
+    const onData = (chunk: Buffer | string) => {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      size += buffer.byteLength;
+      if (size > MAX_JSON_BODY_BYTES) {
+        finish({
+          ok: false,
+          status: 413,
+          code: "PAYLOAD_TOO_LARGE",
+          message: "The JSON request body is too large.",
+          closeConnection: true,
+        }, true);
+        return;
+      }
+      chunks.push(buffer);
+    };
+
+    const onEnd = () => {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      } catch {
+        finish({ ok: false, status: 400, code: "BAD_USER_INPUT", message: "The request body must be valid JSON." });
+        return;
+      }
+      if (!isRecord(parsed)) {
+        finish({ ok: false, status: 400, code: "BAD_USER_INPUT", message: "The request body must be a JSON object." });
+        return;
+      }
+      finish({ ok: true, value: parsed });
+    };
+
+    const onError = () => {
+      finish({
+        ok: false,
+        status: 400,
+        code: "BAD_USER_INPUT",
+        message: "The request body could not be read.",
+      }, true);
+    };
+
+    const onAborted = () => {
+      finish({
+        ok: false,
+        status: 400,
+        code: "BAD_USER_INPUT",
+        message: "The request body was interrupted.",
+      }, true);
+    };
+
+    request.on("data", onData);
+    request.once("end", onEnd);
+    request.once("error", onError);
+    request.once("aborted", onAborted);
+  });
 }
-
 const ARTICLE_WRITE_FIELDS = new Set([
   "slug", "title", "summary", "locale", "contentBlocks", "publish", "workType", "categoryIds", "tagIds",
 ]);
@@ -397,7 +480,16 @@ function sendUnauthenticated(response: ServerResponse): void {
   sendJson(response, 401, { error: { code: "UNAUTHENTICATED", message: "Authentication is required." } });
 }
 
-function sendJsonBodyError(response: ServerResponse, result: Extract<JsonObjectResult, { ok: false }>): void {
+function sendJsonBodyError(
+  response: ServerResponse,
+  request: IncomingMessage,
+  result: Extract<JsonObjectResult, { ok: false }>,
+): void {
+  if (result.closeConnection) {
+    request.pause();
+    response.shouldKeepAlive = false;
+    response.setHeader("connection", "close");
+  }
   sendJson(response, result.status, { error: { code: result.code, message: result.message } });
 }
 
@@ -707,7 +799,7 @@ export function createRestHandler({ services, env = process.env }: { services: R
     if (tagsCollectionPath && request.method === "POST") {
       if (!services) { sendUnavailable(response); return true; }
       const bodyResult = await readJsonObject(request);
-      if (bodyResult.ok === false) { sendJsonBodyError(response, bodyResult); return true; }
+      if (bodyResult.ok === false) { sendJsonBodyError(response, request, bodyResult); return true; }
       const normalized = normalizeCreateTagBody(bodyResult.value);
       if (!normalized.input) { sendBadInput(response, normalized.error ?? "Invalid tag input."); return true; }
       try {
@@ -722,7 +814,7 @@ export function createRestHandler({ services, env = process.env }: { services: R
     if (taxonomyCollectionPath && request.method === "POST") {
       if (!services) { sendUnavailable(response); return true; }
       const bodyResult = await readJsonObject(request);
-      if (bodyResult.ok === false) { sendJsonBodyError(response, bodyResult); return true; }
+      if (bodyResult.ok === false) { sendJsonBodyError(response, request, bodyResult); return true; }
       const normalized = normalizeCreateTaxonomyBody(bodyResult.value);
       if (!normalized.input) { sendBadInput(response, normalized.error ?? "Invalid taxonomy input."); return true; }
       try {
@@ -751,7 +843,7 @@ export function createRestHandler({ services, env = process.env }: { services: R
       if (!services) { sendUnavailable(response); return true; }
       if (request.method === "POST") {
         const bodyResult = await readJsonObject(request);
-        if (bodyResult.ok === false) { sendJsonBodyError(response, bodyResult); return true; }
+        if (bodyResult.ok === false) { sendJsonBodyError(response, request, bodyResult); return true; }
         const normalized = normalizeConversationCreateBody(bodyResult.value);
         if (!normalized.participantIds) { sendBadInput(response, normalized.error ?? "Invalid conversation input."); return true; }
         try {
@@ -794,7 +886,7 @@ export function createRestHandler({ services, env = process.env }: { services: R
         return true;
       }
       const bodyResult = await readJsonObject(request);
-      if (bodyResult.ok === false) { sendJsonBodyError(response, bodyResult); return true; }
+      if (bodyResult.ok === false) { sendJsonBodyError(response, request, bodyResult); return true; }
       const normalized = normalizeMessageWriteBody(bodyResult.value);
       if (normalized.body === null) { sendBadInput(response, normalized.error ?? "Invalid message input."); return true; }
       const idempotencyKey = request.headers["idempotency-key"];
@@ -817,7 +909,7 @@ export function createRestHandler({ services, env = process.env }: { services: R
       const conversationId = decodeUserId(conversationParticipantsMatch[1]);
       if (!conversationId) { sendBadInput(response, "Invalid conversation ID."); return true; }
       const bodyResult = await readJsonObject(request);
-      if (bodyResult.ok === false) { sendJsonBodyError(response, bodyResult); return true; }
+      if (bodyResult.ok === false) { sendJsonBodyError(response, request, bodyResult); return true; }
       const normalized = normalizeConversationParticipantsBody(bodyResult.value);
       if (!normalized.input) { sendBadInput(response, normalized.error ?? "Invalid participant update input."); return true; }
       try {
@@ -1009,7 +1101,7 @@ export function createRestHandler({ services, env = process.env }: { services: R
       }
       const bodyResult = await readJsonObject(request);
       if (bodyResult.ok === false) {
-        sendJsonBodyError(response, bodyResult);
+        sendJsonBodyError(response, request, bodyResult);
         return true;
       }
       const normalized = normalizeProfileWriteBody(bodyResult.value);
@@ -1133,7 +1225,7 @@ export function createRestHandler({ services, env = process.env }: { services: R
       if (request.method === "POST") {
         const bodyResult = await readJsonObject(request);
         if (bodyResult.ok === false) {
-          sendJsonBodyError(response, bodyResult);
+          sendJsonBodyError(response, request, bodyResult);
           return true;
         }
         const normalized = normalizeArticleWriteBody(bodyResult.value, false);
@@ -1216,7 +1308,7 @@ export function createRestHandler({ services, env = process.env }: { services: R
       }
       const bodyResult = await readJsonObject(request);
       if (bodyResult.ok === false) {
-        sendJsonBodyError(response, bodyResult);
+        sendJsonBodyError(response, request, bodyResult);
         return true;
       }
       const normalized = normalizeLikeWriteBody(bodyResult.value);
@@ -1266,7 +1358,7 @@ export function createRestHandler({ services, env = process.env }: { services: R
       }
       const bodyResult = await readJsonObject(request);
       if (bodyResult.ok === false) {
-        sendJsonBodyError(response, bodyResult);
+        sendJsonBodyError(response, request, bodyResult);
         return true;
       }
       const normalized = normalizeCommentWriteBody(bodyResult.value);
@@ -1323,7 +1415,7 @@ export function createRestHandler({ services, env = process.env }: { services: R
       }
       const bodyResult = await readJsonObject(request);
       if (bodyResult.ok === false) {
-        sendJsonBodyError(response, bodyResult);
+        sendJsonBodyError(response, request, bodyResult);
         return true;
       }
       const normalized = normalizeArticleWriteBody(bodyResult.value, true);

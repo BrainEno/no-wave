@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import test from "node:test";
+import { request as httpRequest } from "node:http";
 import { createApiServer } from "./server.ts";
 import { persistencePortMethods } from "./application/persistence-ports.ts";
 import { ArticleAuthorizationError, ArticleInputError, ArticleNotFoundError, ArticleSlugConflictError, DomainError, IdempotencyConflictError } from "./domain/errors.ts";
@@ -1307,6 +1308,53 @@ test("REST profile and engagement routes enforce their declared HTTP methods", a
     assert.equal(comments.status, 405);
     assert.equal(comments.headers.get("allow"), "GET, POST");
   });
+});
+
+test("REST stops reading oversized chunked JSON bodies and closes the connection", async () => {
+  await withServer(async (baseUrl) => {
+    const parsedUrl = new URL(baseUrl);
+    let clientRequest;
+    const response = await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        clientRequest?.destroy();
+        reject(new Error("The API waited for the oversized request stream to finish instead of rejecting it."));
+      }, 3000);
+      clientRequest = httpRequest({
+        hostname: parsedUrl.hostname,
+        port: Number(parsedUrl.port),
+        path: "/api/v1/tags",
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "transfer-encoding": "chunked",
+        },
+      }, (incomingResponse) => {
+        const chunks = [];
+        incomingResponse.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+        incomingResponse.on("end", () => {
+          clearTimeout(timeout);
+          resolve({
+            status: incomingResponse.statusCode,
+            connection: incomingResponse.headers.connection,
+            body: Buffer.concat(chunks).toString("utf8"),
+          });
+        });
+      });
+      clientRequest.on("error", (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
+      // Deliberately do not end the request. A bounded reader must reject the
+      // chunked stream as soon as the byte limit is crossed, not wait for EOF.
+      clientRequest.write(Buffer.alloc(2 * 1024 * 1024 + 1, 0x20));
+    });
+
+    assert.equal(response.status, 413);
+    assert.equal(response.connection, "close");
+    assert.deepEqual(JSON.parse(response.body), {
+      error: { code: "PAYLOAD_TOO_LARGE", message: "The JSON request body is too large." },
+    });
+  }, { store: {} });
 });
 
 test("REST taxonomy mutations preserve normalization inputs, creator identity, and ownership result", async () => {
