@@ -300,6 +300,75 @@ function sendJsonBodyError(response: ServerResponse, result: Extract<JsonObjectR
 }
 
 
+
+
+async function serializeRestArticle(
+  services: RestServices,
+  article: any,
+  viewerId: string | null,
+): Promise<any> {
+  if (!article || typeof article !== "object") return article;
+  const locale = typeof article.locale === "string" ? article.locale : "zh-CN";
+  const [author, categoriesResult, tagsResult] = await Promise.all([
+    article.authorId
+      ? services.getAuthorProfile({ userId: article.authorId, locale, viewerId })
+      : Promise.resolve(null),
+    article.id
+      ? services.listArticleTaxonomies({ articleId: article.id, kind: "category", locale })
+      : Promise.resolve([]),
+    article.id
+      ? services.listArticleTaxonomies({ articleId: article.id, kind: "tag", locale })
+      : Promise.resolve([]),
+  ]);
+  // Match the GraphQL Article contract fields. REST intentionally represents
+  // contentBlocks as a JSON array rather than a JSON-encoded GraphQL string.
+  return {
+    ...article,
+    author: author ?? null,
+    categories: Array.isArray(categoriesResult) ? categoriesResult : [],
+    tags: Array.isArray(tagsResult) ? tagsResult : [],
+  };
+}
+
+async function serializeRestArticles(
+  services: RestServices,
+  articles: unknown,
+  viewerId: string | null,
+): Promise<unknown[]> {
+  if (!Array.isArray(articles)) return [];
+  return Promise.all(articles.map((article) => serializeRestArticle(services, article, viewerId)));
+}
+
+async function serializeRestComment(
+  services: RestServices,
+  comment: any,
+  viewerId: string | null,
+): Promise<any> {
+  if (!comment || typeof comment !== "object") return comment;
+  const author = comment.authorId
+    ? await services.getAuthorProfile({
+        userId: comment.authorId,
+        locale: typeof comment.locale === "string" ? comment.locale : "zh-CN",
+        viewerId,
+      })
+    : null;
+  const replies = Array.isArray(comment.replies) ? comment.replies : [];
+  return {
+    ...comment,
+    author: author ?? null,
+    replies: await Promise.all(replies.map((reply) => serializeRestComment(services, reply, viewerId))),
+  };
+}
+
+async function serializeRestComments(
+  services: RestServices,
+  comments: unknown,
+  viewerId: string | null,
+): Promise<unknown[]> {
+  if (!Array.isArray(comments)) return [];
+  return Promise.all(comments.map((comment) => serializeRestComment(services, comment, viewerId)));
+}
+
 /**
  * REST transport adapter. It calls application services directly; it never
  * makes an HTTP round-trip to GraphQL or reaches into persistence adapters.
@@ -549,7 +618,7 @@ export function createRestHandler({ services, env = process.env }: { services: R
           return true;
         }
         const articles = await services.listMyArticles({ actorId, locale, limit });
-        sendJson(response, 200, { data: articles });
+        sendJson(response, 200, { data: await serializeRestArticles(services, articles, actorId) });
       } catch (error: unknown) {
         sendServiceError(response, error);
       }
@@ -646,7 +715,7 @@ export function createRestHandler({ services, env = process.env }: { services: R
           return true;
         }
         const articles = await services.listPublishedArticles({ authorId: userId, locale, query, ...pagination });
-        sendJson(response, 200, { data: articles });
+        sendJson(response, 200, { data: await serializeRestArticles(services, articles, viewerId) });
       } catch (error: unknown) {
         sendServiceError(response, error);
       }
@@ -702,7 +771,7 @@ export function createRestHandler({ services, env = process.env }: { services: R
             return true;
           }
           const article = await services.createArticle({ ...normalized.input, authorId });
-          sendJson(response, 201, { data: article });
+          sendJson(response, 201, { data: await serializeRestArticle(services, article, authorId) });
         } catch (error: unknown) {
           sendServiceError(response, error);
         }
@@ -716,8 +785,9 @@ export function createRestHandler({ services, env = process.env }: { services: R
         return true;
       }
       try {
+        const viewerId = await optionalViewerId(request, services, env);
         const articles = await services.listPublishedArticles({ locale, query, ...pagination });
-        sendJson(response, 200, { data: articles });
+        sendJson(response, 200, { data: await serializeRestArticles(services, articles, viewerId) });
       } catch (error: unknown) {
         sendServiceError(response, error);
       }
@@ -737,8 +807,9 @@ export function createRestHandler({ services, env = process.env }: { services: R
         return true;
       }
       try {
+        const viewerId = await optionalViewerId(request, services, env);
         const articles = await services.listRelatedArticles({ slug, locale, limit });
-        sendJson(response, 200, { data: articles });
+        sendJson(response, 200, { data: await serializeRestArticles(services, articles, viewerId) });
       } catch (error: unknown) {
         sendServiceError(response, error);
       }
@@ -808,8 +879,9 @@ export function createRestHandler({ services, env = process.env }: { services: R
           return true;
         }
         try {
+          const viewerId = await optionalViewerId(request, services, env);
           const comments = await services.listArticleComments({ slug, locale, limit });
-          sendJson(response, 200, { data: comments });
+          sendJson(response, 200, { data: await serializeRestComments(services, comments, viewerId) });
         } catch (error: unknown) {
           sendServiceError(response, error);
         }
@@ -835,7 +907,7 @@ export function createRestHandler({ services, env = process.env }: { services: R
           slug, locale, actorId, content: normalized.input.content,
           parentCommentId: normalized.input.parentCommentId,
         });
-        sendJson(response, 201, { data: comment });
+        sendJson(response, 201, { data: await serializeRestComment(services, comment, actorId) });
       } catch (error: unknown) {
         sendServiceError(response, error);
       }
@@ -894,7 +966,7 @@ export function createRestHandler({ services, env = process.env }: { services: R
           return true;
         }
         const article = await services.updateArticle({ ...normalized.input, articleId, actorId });
-        sendJson(response, 200, { data: article });
+        sendJson(response, 200, { data: await serializeRestArticle(services, article, actorId) });
       } catch (error: unknown) {
         sendServiceError(response, error);
       }
@@ -912,11 +984,12 @@ export function createRestHandler({ services, env = process.env }: { services: R
         return true;
       }
       try {
+        const viewerId = await optionalViewerId(request, services, env);
         const article = await services.getPublishedArticle({ slug, locale });
         if (!article) {
           sendJson(response, 404, { error: { code: "NOT_FOUND", message: "The article was not found." } });
         } else {
-          sendJson(response, 200, { data: article });
+          sendJson(response, 200, { data: await serializeRestArticle(services, article, viewerId) });
         }
       } catch (error: unknown) {
         sendServiceError(response, error);
@@ -964,8 +1037,9 @@ export function createRestHandler({ services, env = process.env }: { services: R
           sendJson(response, 404, { error: { code: "NOT_FOUND", message: "The category was not found." } });
           return true;
         }
+        const viewerId = await optionalViewerId(request, services, env);
         const articles = await services.listTaxonomyArticles({ kind: "category", slug, locale, ...pagination });
-        sendJson(response, 200, { data: articles });
+        sendJson(response, 200, { data: await serializeRestArticles(services, articles, viewerId) });
       } catch (error: unknown) {
         sendServiceError(response, error);
       }
@@ -1037,8 +1111,9 @@ export function createRestHandler({ services, env = process.env }: { services: R
           sendJson(response, 404, { error: { code: "NOT_FOUND", message: "The tag was not found." } });
           return true;
         }
+        const viewerId = await optionalViewerId(request, services, env);
         const articles = await services.listTaxonomyArticles({ kind: "tag", slug, locale, ...pagination });
-        sendJson(response, 200, { data: articles });
+        sendJson(response, 200, { data: await serializeRestArticles(services, articles, viewerId) });
       } catch (error: unknown) {
         sendServiceError(response, error);
       }
