@@ -853,7 +853,7 @@ test("REST maps domain errors to stable HTTP statuses and sanitized messages", a
 
 
 test("REST profile update derives userId from the JWT and rejects identity fields", async () => {
-  const received = { upsert: null, read: null };
+  const received: { upsert: Record<string, unknown> | null; read: Record<string, unknown> | null } = { upsert: null, read: null };
   const savedProfile = {
     userId: "profile-owner", displayName: "新名字", bio: "简介", avatarUrl: null,
     websiteUrl: "https://example.test/", locale: "zh-CN", followerCount: 0,
