@@ -524,7 +524,7 @@ test("REST tag detail is localized and returns a stable 404 when absent", async 
     const response = await fetch(baseUrl + "/api/v1/tags/ai-abc123?locale=zh-CN");
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), {
-      data: { id: "tag-1", kind: "tag", slug: "ai-abc123", name: "AI", locale: "zh-CN", articleCount: 2 },
+      data: { id: "tag-1", kind: "tag", slug: "ai-abc123", name: "人工智能", locale: "zh-CN", articleCount: 2 },
     });
     assert.deepEqual(received[0], { kind: "tag", slug: "ai-abc123", locale: "zh-CN" });
 
