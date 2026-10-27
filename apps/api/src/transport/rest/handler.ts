@@ -225,6 +225,79 @@ export function createRestHandler({ services }: { services: RestServices | null 
       return true;
     }
 
+    if (url.pathname === "/api/v1/tags") {
+      if (!services) {
+        sendUnavailable(response);
+        return true;
+      }
+      const locale = parseLocale(url);
+      const query = parseQuery(url);
+      const pagination = parsePagination(url, 20, MAX_TAXONOMY_OFFSET);
+      if (!locale || query === null || !pagination) {
+        sendBadInput(response, "Invalid locale, query, limit, or offset query parameter.");
+        return true;
+      }
+      try {
+        const tags = await services.listTaxonomies({ kind: "tag", locale, query, ...pagination });
+        sendJson(response, 200, { data: tags });
+      } catch (error: unknown) {
+        sendServiceError(response, error);
+      }
+      return true;
+    }
+
+    const tagArticlesMatch = url.pathname.match(/^\/api\/v1\/tags\/([^/]+)\/articles$/);
+    if (tagArticlesMatch) {
+      if (!services) {
+        sendUnavailable(response);
+        return true;
+      }
+      const slug = decodeSlug(tagArticlesMatch[1]);
+      const locale = parseLocale(url);
+      const pagination = parsePagination(url, 20, MAX_TAXONOMY_OFFSET);
+      if (!slug || !locale || !pagination) {
+        sendBadInput(response, "Invalid tag slug, locale, limit, or offset query parameter.");
+        return true;
+      }
+      try {
+        const tag = await services.getTaxonomyBySlug({ kind: "tag", slug, locale });
+        if (!tag) {
+          sendJson(response, 404, { error: { code: "NOT_FOUND", message: "The tag was not found." } });
+          return true;
+        }
+        const articles = await services.listTaxonomyArticles({ kind: "tag", slug, locale, ...pagination });
+        sendJson(response, 200, { data: articles });
+      } catch (error: unknown) {
+        sendServiceError(response, error);
+      }
+      return true;
+    }
+
+    const tagMatch = url.pathname.match(/^\/api\/v1\/tags\/([^/]+)$/);
+    if (tagMatch) {
+      if (!services) {
+        sendUnavailable(response);
+        return true;
+      }
+      const slug = decodeSlug(tagMatch[1]);
+      const locale = parseLocale(url);
+      if (!slug || !locale) {
+        sendBadInput(response, "Invalid tag slug or locale.");
+        return true;
+      }
+      try {
+        const tag = await services.getTaxonomyBySlug({ kind: "tag", slug, locale });
+        if (!tag) {
+          sendJson(response, 404, { error: { code: "NOT_FOUND", message: "The tag was not found." } });
+        } else {
+          sendJson(response, 200, { data: tag });
+        }
+      } catch (error: unknown) {
+        sendServiceError(response, error);
+      }
+      return true;
+    }
+
     sendJson(response, 404, { error: { code: "NOT_FOUND", message: "The API route was not found." } });
     return true;
   };
