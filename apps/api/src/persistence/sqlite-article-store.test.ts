@@ -32,6 +32,33 @@ test("SQLite article store creates, lists, and reads published translations", as
   }
 });
 
+
+test("SQLite public article listing filters by stable authorId before pagination", async () => {
+  const { db, store } = await fixture();
+  try {
+    store.createArticle({
+      authorId: "author-a", slug: "author-a-first", title: "First",
+      locale: "zh-CN", contentBlocks: blocks, publish: true,
+    });
+    store.createArticle({
+      authorId: "author-b", slug: "author-b-only", title: "Other author",
+      locale: "zh-CN", contentBlocks: blocks, publish: true,
+    });
+    store.createArticle({
+      authorId: "author-a", slug: "author-a-second", title: "Second",
+      locale: "zh-CN", contentBlocks: blocks, publish: true,
+    });
+
+    const works = store.listPublishedArticles({ locale: "zh-CN", authorId: "author-a", limit: 100 });
+    assert.equal(works.length, 2);
+    assert.deepEqual(new Set(works.map((article) => article.authorId)), new Set(["author-a"]));
+    assert.deepEqual(new Set(works.map((article) => article.slug)), new Set(["author-a-first", "author-a-second"]));
+    assert.throws(() => store.listPublishedArticles({ authorId: " " }), ArticleInputError);
+  } finally {
+    db.close();
+  }
+});
+
 test("SQLite article writes enforce ownership, slug uniqueness, and transaction rollback", async () => {
   const { db, store } = await fixture();
   try {
