@@ -25,7 +25,6 @@ export async function HomeContent({ locale }: { locale: Locale }) {
   const sorted = [...articles].sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
   const selected = sorted.slice(0, 3);
   const latest = sorted.slice(3, 9);
-  const lead = sorted[0];
   const base = locale === "en" ? "/en" : "";
   const topics: { key: string; label: string; href: string }[] = categories.length
     ? categories.map((category) => ({ key: category.slug, label: category.name, href: `${base}/categories/${category.slug}` }))
@@ -42,11 +41,6 @@ export async function HomeContent({ locale }: { locale: Locale }) {
       <header className="nw-hero" data-hero>
         <img className="nw-hero-bg" src={heroCover.src} alt="" width={heroCover.width} height={heroCover.height} fetchPriority="high" />
         <HeroCanvas src={heroCover.src} />
-        {lead ? (
-          <Link className="nw-feature" href={articlePath(lead.slug, locale)}>
-            <span className="nw-m">01</span><span className="nw-zh">{lead.title}</span><span aria-hidden="true">→</span>
-          </Link>
-        ) : null}
         <div className="nw-brand">
           {locale === "en" ? null : <p className="nw-cn nw-zh" data-intro aria-hidden="true"><i>无</i><i>浪</i><i>潮</i></p>}
           <h1 className="nw-wm" data-intro data-scatter aria-label="No Wave">

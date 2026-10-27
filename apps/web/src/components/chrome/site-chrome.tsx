@@ -64,21 +64,26 @@ function GrainCanvas() {
 
 function SiteFooter({ locale }: { locale: Locale }) {
   const ui = getUi(locale);
+  const pathname = usePathname() ?? "/";
+  const onHome = pathname === "/" || pathname === "/en";
+  const home = homePath(locale);
+  const topicsHref = locale === "en" ? "/en/categories" : "/categories";
+  const searchHref = locale === "en" ? "/en/search" : "/search";
   return (
     <footer className="nw-footer">
       <div className="nw-fim">
         <img src="/covers/cover-oxblood-4x5.jpg" alt="" loading="lazy" width={1200} height={1500} />
         <div className="nw-fwm" aria-hidden="true" data-footer-letters><span className="nw-ss"><i>N</i><i>o</i></span> <span className="nw-it"><i>W</i><i>a</i><i>v</i><i>e</i></span></div>
       </div>
+      {/* 页尾条：demo 的四栏布置（首页 / Blog / 主题 / 搜索 → 首页 / 最新 / 分类 / 搜索）。 */}
       <div className="nw-fbar">
         <nav aria-label={ui.nav.footer}>
-          <Link href={homePath(locale)}>{ui.nav.home}</Link>
-          <Link href={archivePath(locale)}>{ui.nav.works}</Link>
-          <Link href={locale === "en" ? "/en/categories" : "/categories"}>{ui.nav.topics}</Link>
-          <Link href={locale === "en" ? "/en/search" : "/search"}>{ui.nav.search}</Link>
-          <Link href="/sign-in">{ui.footer.signIn}</Link>
+          <Link href={home}>{ui.nav.home}</Link>
+          <Link href={onHome ? "#latest" : `${home}#latest`}>{ui.nav.latest}</Link>
+          <Link href={onHome ? "#topics" : topicsHref}>{ui.nav.topics}</Link>
+          <Link href={searchHref}>{ui.nav.search}</Link>
         </nav>
-        <span>© {new Date().getFullYear()} {ui.footer.rights} · {ui.footer.language}</span>
+        <span>© {new Date().getFullYear()} {ui.footer.rights} · 简 / EN</span>
       </div>
     </footer>
   );
