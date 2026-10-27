@@ -151,7 +151,10 @@ export function SiteChrome({ children }: { children: ReactNode }) {
   });
   useEffect(() => () => { pageMotion.current?.revert(); pageMotion.current = null; lastKey.current = ""; }, []);
 
-  // 页内锚点（目录等）使用平滑滚动
+  // 页内锚点（目录等）使用平滑滚动。
+  // 捕获阶段拦截 + stopPropagation：Next <Link> 对 #hash 的默认处理会在冒泡阶段
+  // 调用 target.scrollIntoView()，把 overflow:hidden 的 #smooth-wrapper 也原生滚动，
+  // 导致整页内容被钳位上移（首屏缺一截、落点偏到按钮、页脚下方露黑底）。
   useEffect(() => {
     const onClick = (event: MouseEvent) => {
       const anchor = (event.target as Element | null)?.closest?.('a[href^="#"]');
@@ -160,11 +163,25 @@ export function SiteChrome({ children }: { children: ReactNode }) {
       const target = document.querySelector(hash);
       if (!target) return;
       event.preventDefault();
+      event.stopPropagation();
       if (smoother.current) smoother.current.scrollTo(target, true, "top 24px");
       else target.scrollIntoView({ behavior: "smooth" });
     };
-    document.addEventListener("click", onClick);
-    return () => document.removeEventListener("click", onClick);
+    document.addEventListener("click", onClick, true);
+    return () => document.removeEventListener("click", onClick, true);
+  }, []);
+
+  // 平滑容器只允许 transform 位移：任何原生滚动（scrollIntoView、焦点找回、
+  // 浏览器锚点跳转）都会钳位内容，立刻归零。
+  useEffect(() => {
+    const wrapper = document.getElementById("smooth-wrapper");
+    if (!wrapper) return;
+    const keepAtZero = () => {
+      if (wrapper.scrollTop !== 0) wrapper.scrollTop = 0;
+      if (wrapper.scrollLeft !== 0) wrapper.scrollLeft = 0;
+    };
+    wrapper.addEventListener("scroll", keepAtZero, { passive: true });
+    return () => wrapper.removeEventListener("scroll", keepAtZero);
   }, []);
 
   useEffect(() => { setBellOpen(false); setMenuOpen(false); }, [pathname]);
