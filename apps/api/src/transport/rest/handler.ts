@@ -317,7 +317,7 @@ export function createRestHandler({ services, env = process.env }: { services: R
       }
       if (request.method === "POST") {
         const bodyResult = await readJsonObject(request);
-        if (!bodyResult.ok) {
+        if (bodyResult.ok === false) {
           sendJsonBodyError(response, bodyResult);
           return true;
         }
@@ -362,7 +362,7 @@ export function createRestHandler({ services, env = process.env }: { services: R
         return true;
       }
       const bodyResult = await readJsonObject(request);
-      if (!bodyResult.ok) {
+      if (bodyResult.ok === false) {
         sendJsonBodyError(response, bodyResult);
         return true;
       }
