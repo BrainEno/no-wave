@@ -22,6 +22,25 @@ async function fixture() {
   return { db, adapter, message };
 }
 
+test("worker rejects invalid settings before claiming or delivering events", async () => {
+  let claims = 0;
+  const store = {
+    async claimOutboxEvents() { claims += 1; return []; },
+    async markOutboxDelivered() { throw new Error("must not mark"); },
+    async rescheduleOutboxEvent() { throw new Error("must not reschedule"); },
+  };
+  const deliver = async () => { throw new Error("must not deliver"); };
+  for (const invalid of [
+    { limit: 0 }, { limit: 101 }, { leaseSeconds: 0 }, { leaseSeconds: 3601 },
+    { retryDelaySeconds: 0 }, { retryDelaySeconds: 86401 },
+  ]) {
+    await assert.rejects(dispatchOutboxBatch({ store, deliver, ...invalid }), TypeError);
+  }
+  assert.equal(claims, 0);
+  assert.deepEqual(await dispatchOutboxBatch({ store, deliver }), { claimed: 0, delivered: 0, failed: 0 });
+  assert.equal(claims, 1);
+});
+
 test("composed SQLite adapter dispatches a message outbox event and marks it delivered", async () => {
   const { db, adapter, message } = await fixture();
   try {
@@ -42,7 +61,7 @@ test("composed SQLite adapter dispatches a message outbox event and marks it del
       conversationId: message.conversationId,
       senderId: message.senderId,
     });
-    assert.equal(await adapter.markOutboxDelivered({ eventId: delivered[0].id }), false);
+    assert.equal(await adapter.markOutboxDelivered({ eventId: delivered[0].id, leaseToken: delivered[0].lease_token }), false);
     assert.deepEqual(await adapter.claimOutboxEvents({ limit: 10 }), []);
     assert.equal(db.prepare("SELECT count(*) AS count FROM outbox_events WHERE delivered_at IS NOT NULL").get().count, 1);
   } finally {

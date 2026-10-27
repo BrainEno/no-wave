@@ -88,6 +88,8 @@ Exit gate: public content exposes published data only; mutations are authorized;
 
 - [x] Persist conversations, membership, messages, unread/read state and notification inbox.
 - [x] Add cursor pagination, session revocation and transactional outbox dispatch/retry primitives.
+- [x] Fence outbox acknowledgements and retries with per-claim tokens; exercise expired/superseded leases, partial inbox retries and a PostgreSQL REST-to-inbox recovery journey.
+- [ ] Resolve recipient eligibility and deletion/membership races during notification delivery; the current consumer uses mutable delivery-time membership and can retry indefinitely if the sender has been removed.
 - [ ] Verify Web/API end-to-end behavior with real authentication, including reconnect/offline recovery.
 - [ ] Choose and configure any external Web Push/email provider only after requirements and credentials are approved.
 - [ ] Design cross-engine change capture/checkpoints and recovery after the write-authority and RPO/RTO decisions are approved.

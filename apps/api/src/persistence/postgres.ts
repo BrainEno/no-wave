@@ -20,6 +20,7 @@ import { validateArticleLocale, validateArticleSlug, normalizeArticleInput, norm
 import { isUuid, requiredText } from "../domain/validation.ts";
 import { normalizeParticipantIds } from "../domain/conversation.ts";
 import { validateProfileUrl } from "../domain/profile.ts";
+import { assertOutboxLease } from "./outbox-lease.ts";
 
 export function createPostgresClient({
   connectionString = process.env.DATABASE_URL,
@@ -1157,34 +1158,51 @@ export function createPostgresStore(sql) {
         )
         UPDATE outbox_events AS event
         SET attempts = event.attempts + 1,
-            available_at = now() + ($2 * interval '1 second')
+            available_at = clock_timestamp() + ($2 * interval '1 second'),
+            lease_token = gen_random_uuid()
         FROM picked
         WHERE event.id = picked.id
         RETURNING event.id, event.event_key, event.event_type, event.aggregate_id,
-                  event.payload, event.attempts, event.available_at`,
+                  event.payload, event.attempts, event.available_at, event.lease_token`,
         [limit, leaseSeconds],
       ));
     },
-    async markOutboxDelivered({ eventId }) {
-      if (typeof eventId !== "string" || eventId.trim().length === 0 || eventId !== eventId.trim()) {
-        throw new TypeError("eventId must be a non-empty, trimmed string.");
-      }
+    async markOutboxDelivered({ eventId, leaseToken }) {
+      assertOutboxLease(eventId, leaseToken);
+      // Lock first and evaluate the wall clock after acquiring the lock. A
+      // statement delayed by another transaction must not use a stale time.
       const rows = await sql.unsafe(
-        "UPDATE outbox_events SET delivered_at = now() WHERE id = $1 AND delivered_at IS NULL RETURNING id",
-        [eventId],
+        `WITH locked AS MATERIALIZED (
+           SELECT id, lease_token, available_at, delivered_at
+           FROM outbox_events WHERE id = $1 FOR UPDATE
+         )
+         UPDATE outbox_events AS event
+         SET delivered_at = clock_timestamp(), lease_token = NULL
+         FROM locked
+         WHERE event.id = locked.id AND locked.delivered_at IS NULL
+           AND locked.lease_token = $2 AND locked.available_at > clock_timestamp()
+         RETURNING event.id`,
+        [eventId, leaseToken],
       );
       return rows.length === 1;
     },
-    async rescheduleOutboxEvent({ eventId, delaySeconds = 30 }) {
-      if (typeof eventId !== "string" || eventId.trim().length === 0 || eventId !== eventId.trim()) {
-        throw new TypeError("eventId must be a non-empty, trimmed string.");
-      }
+    async rescheduleOutboxEvent({ eventId, leaseToken, delaySeconds = 30 }) {
+      assertOutboxLease(eventId, leaseToken);
       if (!Number.isInteger(delaySeconds) || delaySeconds < 1 || delaySeconds > 86400) {
         throw new TypeError("delaySeconds must be an integer between 1 and 86400.");
       }
       const rows = await sql.unsafe(
-        "UPDATE outbox_events SET available_at = now() + ($2 * interval '1 second') WHERE id = $1 AND delivered_at IS NULL RETURNING id",
-        [eventId, delaySeconds],
+        `WITH locked AS MATERIALIZED (
+           SELECT id, lease_token, available_at, delivered_at
+           FROM outbox_events WHERE id = $1 FOR UPDATE
+         )
+         UPDATE outbox_events AS event
+         SET available_at = clock_timestamp() + ($3 * interval '1 second'), lease_token = NULL
+         FROM locked
+         WHERE event.id = locked.id AND locked.delivered_at IS NULL
+           AND locked.lease_token = $2 AND locked.available_at > clock_timestamp()
+         RETURNING event.id`,
+        [eventId, leaseToken, delaySeconds],
       );
       return rows.length === 1;
     },

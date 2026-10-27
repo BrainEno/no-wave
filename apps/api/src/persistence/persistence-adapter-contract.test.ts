@@ -7,6 +7,7 @@ import { runMigrations } from "./migrate.ts";
 import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
 import { createSqliteStore } from "./sqlite-store.ts";
 import { dispatchOutboxBatch } from "./outbox-worker.ts";
+import { createMessageNotificationDelivery } from "./message-notification-delivery.ts";
 
 const connectionString = process.env.TEST_DATABASE_URL;
 let postgresSql;
@@ -28,10 +29,17 @@ async function sqliteFixture() {
   await runSqliteMigrations(db);
   return {
     store: createSqliteStore(db),
+    async makeOutboxAvailable(eventId) {
+      db.prepare("UPDATE outbox_events SET available_at = ? WHERE id = ?").run("2000-01-01T00:00:00.000Z", eventId);
+    },
+    async outboxAvailableAt(eventId) {
+      return new Date(db.prepare("SELECT available_at FROM outbox_events WHERE id = ?").get(eventId).available_at).toISOString();
+    },
     async cleanup(conversationId, suffix) {
       if (conversationId) {
         const messages = db.prepare("SELECT id FROM messages WHERE conversation_id = ?").all(conversationId);
         for (const message of messages) {
+          db.prepare("DELETE FROM notifications WHERE event_key = ?").run(`message:${message.id}`);
           db.prepare("DELETE FROM outbox_events WHERE event_key = ?").run(`message:${message.id}`);
         }
         db.prepare("DELETE FROM conversations WHERE id = ?").run(conversationId);
@@ -60,6 +68,13 @@ async function sqliteFixture() {
 async function postgresFixture() {
   return {
     store: postgresStore,
+    async makeOutboxAvailable(eventId) {
+      await postgresSql.unsafe("UPDATE outbox_events SET available_at = '2000-01-01T00:00:00Z' WHERE id = $1", [eventId]);
+    },
+    async outboxAvailableAt(eventId) {
+      const [row] = await postgresSql.unsafe("SELECT available_at FROM outbox_events WHERE id = $1", [eventId]);
+      return new Date(row.available_at).toISOString();
+    },
     async cleanup(conversationId, suffix) {
       if (conversationId) {
         const messages = await postgresSql.unsafe(
@@ -67,6 +82,7 @@ async function postgresFixture() {
           [conversationId],
         );
         for (const message of messages) {
+          await postgresSql.unsafe("DELETE FROM notifications WHERE event_key = $1", [`message:${message.id}`]);
           await postgresSql.unsafe("DELETE FROM outbox_events WHERE event_key = $1", [`message:${message.id}`]);
         }
         await postgresSql.unsafe("DELETE FROM conversations WHERE id = $1", [conversationId]);
@@ -150,7 +166,7 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
     }
   });
 
-  test(`${adapterName}: outbox dispatch delivers a persisted message exactly once`, options, async () => {
+  test(`${adapterName}: a successful outbox dispatch marks a persisted event delivered`, options, async () => {
     const runtime = await fixture();
     const suffix = randomUUID();
     let conversationId;
@@ -176,8 +192,232 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       assert.deepEqual(result, { claimed: 1, delivered: 1, failed: 0 });
       assert.equal(delivered.length, 1);
       assert.equal(delivered[0].event_key, `message:${message.id}`);
-      assert.equal(await runtime.store.markOutboxDelivered({ eventId: delivered[0].id }), false);
+      assert.equal(await runtime.store.markOutboxDelivered({ eventId: delivered[0].id, leaseToken: delivered[0].lease_token }), false);
       assert.equal((await runtime.store.claimOutboxEvents({ limit: 10 })).length, 0);
+    } finally {
+      await runtime.cleanup(conversationId);
+    }
+  });
+
+  test(`${adapterName}: expired and superseded outbox leases cannot acknowledge or postpone events`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    let conversationId;
+    try {
+      const conversation = await runtime.store.createConversation({
+        actorId: `sender-${suffix}`,
+        participantIds: [`recipient-${suffix}`],
+      });
+      conversationId = conversation.id;
+      await runtime.store.persistMessage({
+        conversationId, senderId: `sender-${suffix}`, body: "lease fencing", idempotencyKey: `key-${suffix}`,
+      });
+
+      const [first] = await runtime.store.claimOutboxEvents({ limit: 1, leaseSeconds: 60 });
+      assert.ok(first);
+      await assert.rejects(runtime.store.markOutboxDelivered({ eventId: first.id }), /leaseToken/);
+      await assert.rejects(runtime.store.rescheduleOutboxEvent({ eventId: first.id, leaseToken: "not-a-uuid" }), /leaseToken/);
+      assert.equal(await runtime.store.markOutboxDelivered({ eventId: first.id, leaseToken: randomUUID() }), false);
+      assert.equal(await runtime.store.rescheduleOutboxEvent({ eventId: first.id, leaseToken: randomUUID() }), false);
+      await runtime.makeOutboxAvailable(first.id);
+      // Expiry alone invalidates the lease, even before another worker claims it.
+      assert.equal(await runtime.store.markOutboxDelivered({ eventId: first.id, leaseToken: first.lease_token }), false);
+      assert.equal(await runtime.store.rescheduleOutboxEvent({ eventId: first.id, leaseToken: first.lease_token }), false);
+
+      const [second] = await runtime.store.claimOutboxEvents({ limit: 1, leaseSeconds: 60 });
+      assert.equal(second.id, first.id);
+      assert.equal(second.attempts, 2);
+      assert.equal(typeof first.lease_token, "string");
+      assert.equal(typeof second.lease_token, "string");
+      assert.notEqual(second.lease_token, first.lease_token);
+      assert.equal(await runtime.store.markOutboxDelivered({ eventId: first.id, leaseToken: first.lease_token }), false);
+      assert.equal(await runtime.store.rescheduleOutboxEvent({ eventId: first.id, leaseToken: first.lease_token }), false);
+      assert.equal((await runtime.store.claimOutboxEvents({ limit: 1 })).length, 0);
+      assert.equal(await runtime.store.markOutboxDelivered({ eventId: second.id, leaseToken: second.lease_token }), true);
+      assert.equal(await runtime.store.markOutboxDelivered({ eventId: second.id, leaseToken: second.lease_token }), false);
+    } finally {
+      await runtime.cleanup(conversationId);
+    }
+  });
+
+  test(`${adapterName}: rescheduling releases a lease and a retry gets a new token`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    let conversationId;
+    try {
+      const conversation = await runtime.store.createConversation({
+        actorId: `sender-${suffix}`,
+        participantIds: [`recipient-${suffix}`],
+      });
+      conversationId = conversation.id;
+      await runtime.store.persistMessage({
+        conversationId, senderId: `sender-${suffix}`, body: "retry fencing", idempotencyKey: `key-${suffix}`,
+      });
+      const [first] = await runtime.store.claimOutboxEvents({ limit: 1 });
+      assert.equal(await runtime.store.rescheduleOutboxEvent({ eventId: first.id, leaseToken: first.lease_token, delaySeconds: 60 }), true);
+      assert.equal(await runtime.store.markOutboxDelivered({ eventId: first.id, leaseToken: first.lease_token }), false);
+      assert.equal(await runtime.store.rescheduleOutboxEvent({ eventId: first.id, leaseToken: first.lease_token }), false);
+      assert.equal((await runtime.store.claimOutboxEvents({ limit: 1 })).length, 0);
+      await runtime.makeOutboxAvailable(first.id);
+      const [retry] = await runtime.store.claimOutboxEvents({ limit: 1 });
+      assert.equal(retry.id, first.id);
+      assert.equal(retry.attempts, 2);
+      assert.notEqual(retry.lease_token, first.lease_token);
+      assert.equal(await runtime.store.markOutboxDelivered({ eventId: retry.id, leaseToken: retry.lease_token }), true);
+    } finally {
+      await runtime.cleanup(conversationId);
+    }
+  });
+
+  test(`${adapterName}: concurrent workers cannot claim the same active outbox lease`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    let conversationId;
+    try {
+      const conversation = await runtime.store.createConversation({
+        actorId: `sender-${suffix}`,
+        participantIds: [`recipient-${suffix}`],
+      });
+      conversationId = conversation.id;
+      await runtime.store.persistMessage({
+        conversationId, senderId: `sender-${suffix}`, body: "one lease", idempotencyKey: `key-${suffix}`,
+      });
+      const claims = await Promise.all([
+        runtime.store.claimOutboxEvents({ limit: 1 }),
+        runtime.store.claimOutboxEvents({ limit: 1 }),
+      ]);
+      assert.equal(claims.flat().length, 1);
+      const [event] = claims.flat();
+      assert.equal(await runtime.store.markOutboxDelivered({ eventId: event.id, leaseToken: event.lease_token }), true);
+    } finally {
+      await runtime.cleanup(conversationId);
+    }
+  });
+
+  for (const outcome of ["success", "failure"]) {
+    test(`${adapterName}: a ${outcome} from a stale worker cannot disturb a newer lease`, options, async () => {
+      const runtime = await fixture();
+      const suffix = randomUUID();
+      let conversationId;
+      try {
+        const conversation = await runtime.store.createConversation({
+          actorId: `sender-${suffix}`,
+          participantIds: [`recipient-${suffix}`],
+        });
+        conversationId = conversation.id;
+        await runtime.store.persistMessage({
+          conversationId, senderId: `sender-${suffix}`, body: "worker lease", idempotencyKey: `key-${suffix}`,
+        });
+        let newerLease;
+        const result = await dispatchOutboxBatch({
+          store: runtime.store,
+          limit: 1,
+          deliver: async (event) => {
+            await runtime.makeOutboxAvailable(event.id);
+            [newerLease] = await runtime.store.claimOutboxEvents({ limit: 1 });
+            if (outcome === "failure") throw new Error("simulated stale delivery failure");
+          },
+        });
+        assert.deepEqual(result, { claimed: 1, delivered: 0, failed: 1 });
+        assert.ok(newerLease);
+        assert.equal(await runtime.outboxAvailableAt(newerLease.id), new Date(newerLease.available_at).toISOString());
+        assert.equal(await runtime.store.markOutboxDelivered({ eventId: newerLease.id, leaseToken: newerLease.lease_token }), true);
+      } finally {
+        await runtime.cleanup(conversationId);
+      }
+    });
+  }
+
+  test(`${adapterName}: a worker does not lease the rest of a batch while delivering one event`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    let conversationId;
+    try {
+      const conversation = await runtime.store.createConversation({
+        actorId: `sender-${suffix}`,
+        participantIds: [`recipient-${suffix}`],
+      });
+      conversationId = conversation.id;
+      for (const key of ["first", "second"]) {
+        await runtime.store.persistMessage({
+          conversationId, senderId: `sender-${suffix}`, body: key, idempotencyKey: `${key}-${suffix}`,
+        });
+      }
+      let otherWorkerEvent;
+      const result = await dispatchOutboxBatch({
+        store: runtime.store,
+        limit: 2,
+        deliver: async () => { [otherWorkerEvent] = await runtime.store.claimOutboxEvents({ limit: 1 }); },
+      });
+      assert.ok(otherWorkerEvent, "the next event should remain available to another worker");
+      assert.deepEqual(result, { claimed: 1, delivered: 1, failed: 0 });
+      assert.equal(await runtime.store.markOutboxDelivered({ eventId: otherWorkerEvent.id, leaseToken: otherWorkerEvent.lease_token }), true);
+    } finally {
+      await runtime.cleanup(conversationId);
+    }
+  });
+
+  test(`${adapterName}: a partial inbox delivery retries without losing or duplicating notifications`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const sender = `sender-${suffix}`;
+    const firstRecipient = `recipient-a-${suffix}`;
+    const secondRecipient = `recipient-z-${suffix}`;
+    let conversationId;
+    try {
+      const conversation = await runtime.store.createConversation({
+        actorId: sender, participantIds: [firstRecipient, secondRecipient],
+      });
+      conversationId = conversation.id;
+      const message = await runtime.store.persistMessage({
+        conversationId, senderId: sender, body: "offline delivery", idempotencyKey: `key-${suffix}`,
+      });
+      let failedOnce = false;
+      let firstEvent;
+      const flakyDelivery = createMessageNotificationDelivery({
+        store: {
+          listConversationParticipantIds: (input) => runtime.store.listConversationParticipantIds(input),
+          async createNotification(input) {
+            if (input.userId === secondRecipient && !failedOnce) {
+              failedOnce = true;
+              throw new Error("simulated transient inbox failure");
+            }
+            return runtime.store.createNotification(input);
+          },
+        },
+      });
+      const firstAttempt = await dispatchOutboxBatch({
+        store: runtime.store, limit: 1, retryDelaySeconds: 60,
+        deliver: async (event) => { firstEvent = event; await flakyDelivery(event); },
+      });
+      assert.deepEqual(firstAttempt, { claimed: 1, delivered: 0, failed: 1 });
+      assert.equal((await runtime.store.listNotifications({ actorId: firstRecipient })).length, 1);
+      assert.equal((await runtime.store.listNotifications({ actorId: secondRecipient })).length, 0);
+      assert.equal((await runtime.store.listNotifications({ actorId: sender })).length, 0);
+      assert.equal((await runtime.store.claimOutboxEvents({ limit: 1 })).length, 0);
+
+      await runtime.makeOutboxAvailable(firstEvent.id);
+      let retryEvent;
+      const retry = await dispatchOutboxBatch({
+        store: runtime.store, limit: 1,
+        deliver: async (event) => {
+          retryEvent = event;
+          await createMessageNotificationDelivery({ store: runtime.store })(event);
+        },
+      });
+      assert.deepEqual(retry, { claimed: 1, delivered: 1, failed: 0 });
+      assert.equal(retryEvent.attempts, 2);
+      assert.notEqual(retryEvent.lease_token, firstEvent.lease_token);
+      for (const recipient of [firstRecipient, secondRecipient]) {
+        const inbox = await runtime.store.listNotifications({ actorId: recipient });
+        assert.equal(inbox.length, 1);
+        assert.equal(inbox[0].eventKey, `message:${message.id}`);
+        assert.equal(inbox[0].payload.messageId, message.id);
+        assert.equal(inbox[0].payload.conversationId, conversationId);
+        assert.equal(inbox[0].payload.senderId, sender);
+      }
+      assert.equal((await runtime.store.listNotifications({ actorId: sender })).length, 0);
+      assert.equal((await runtime.store.claimOutboxEvents({ limit: 1 })).length, 0);
     } finally {
       await runtime.cleanup(conversationId);
     }

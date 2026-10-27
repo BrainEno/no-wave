@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
-import { createHmac, randomUUID } from "node:crypto";
+import { createHmac, randomBytes, randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import test, { after, before } from "node:test";
 import { createPostgresClient, createPostgresStore } from "./postgres.ts";
 import { ConversationAccessError, IdempotencyConflictError } from "../domain/errors.ts";
 import { runMigrations } from "./migrate.ts";
 import { dispatchOutboxBatch } from "./outbox-worker.ts";
+import { createMessageNotificationDelivery } from "./message-notification-delivery.ts";
 
 const connectionString = process.env.TEST_DATABASE_URL;
 const integrationOptions = { skip: !connectionString && "Set TEST_DATABASE_URL to run PostgreSQL integration tests." };
@@ -22,10 +24,36 @@ after(async () => { if (sql) await sql.end({ timeout: 5 }); });
 test("migrations are repeatable and record applied versions once", integrationOptions, async () => {
   const first = await runMigrations(sql);
   const second = await runMigrations(sql);
-  assert.equal(first.discovered, 9);
+  assert.equal(first.discovered, 10);
   assert.equal(second.applied.length, 0);
-  const rows = await sql.unsafe("SELECT version FROM api_schema_migrations WHERE version IN ($1, $2, $3, $4, $5, $6, $7, $8, $9)", ["0001_initial_domain_schema", "0002_article_content", "0003_author_profiles", "0004_article_engagement", "0005_article_taxonomies", "0006_conversation_lifecycle", "0007_user_follows", "0008_literary_work_types_and_zh_cn", "0009_public_article_search_trigram_indexes"]);
-  assert.deepEqual(rows.map((row) => row.version).sort(), ["0001_initial_domain_schema", "0002_article_content", "0003_author_profiles", "0004_article_engagement", "0005_article_taxonomies", "0006_conversation_lifecycle", "0007_user_follows", "0008_literary_work_types_and_zh_cn", "0009_public_article_search_trigram_indexes"]);
+  const versions = ["0001_initial_domain_schema", "0002_article_content", "0003_author_profiles", "0004_article_engagement", "0005_article_taxonomies", "0006_conversation_lifecycle", "0007_user_follows", "0008_literary_work_types_and_zh_cn", "0009_public_article_search_trigram_indexes", "0010_outbox_lease_tokens"];
+  const rows = await sql.unsafe("SELECT version FROM api_schema_migrations WHERE version = ANY($1::text[])", [versions]);
+  assert.deepEqual(rows.map((row) => row.version).sort(), versions);
+});
+
+test("PostgreSQL lease migration preserves legacy pending and delivered events", integrationOptions, async () => {
+  const migration = await readFile(new URL("./migrations/0010_outbox_lease_tokens.sql", import.meta.url), "utf8");
+  await sql.begin(async (tx) => {
+    // A temporary legacy-shaped table shadows only this connection's table.
+    await tx.unsafe(`CREATE TEMP TABLE outbox_events (
+      event_key text PRIMARY KEY, attempts integer NOT NULL,
+      available_at timestamptz NOT NULL, delivered_at timestamptz
+    ) ON COMMIT DROP`);
+    await tx.unsafe(`INSERT INTO outbox_events (event_key, attempts, available_at, delivered_at) VALUES
+      ('pending', 2, '2000-01-01Z', NULL),
+      ('leased', 3, '2999-01-01Z', NULL),
+      ('delivered', 1, '2000-01-01Z', '2020-01-01Z')`);
+    await tx.unsafe(migration);
+    const rows = await tx.unsafe("SELECT event_key, attempts, delivered_at, lease_token FROM outbox_events ORDER BY event_key");
+    assert.deepEqual(rows.map((row) => ({
+      eventKey: row.event_key, attempts: row.attempts,
+      delivered: row.delivered_at !== null, leaseToken: row.lease_token,
+    })), [
+      { eventKey: "delivered", attempts: 1, delivered: true, leaseToken: null },
+      { eventKey: "leased", attempts: 3, delivered: false, leaseToken: null },
+      { eventKey: "pending", attempts: 2, delivered: false, leaseToken: null },
+    ]);
+  });
 });
 
 test("message write, outbox intent and idempotency are atomic", integrationOptions, async () => {
@@ -318,6 +346,146 @@ test("outbox worker marks successful delivery and leases failed events for retry
   } finally {
     await sql.unsafe("DELETE FROM outbox_events WHERE aggregate_id IN (SELECT id::text FROM messages WHERE conversation_id = $1)", [conversationId]);
     await sql.unsafe("DELETE FROM conversations WHERE id = $1", [conversationId]);
+  }
+});
+
+for (const action of ["acknowledge", "reschedule"]) {
+  test(`PostgreSQL checks lease expiry after a blocked ${action} acquires its row lock`, { ...integrationOptions, timeout: 10000 }, async () => {
+    const eventId = randomUUID();
+    await sql.unsafe(
+      "INSERT INTO outbox_events (id, event_key, event_type, aggregate_id, payload) VALUES ($1, $2, 'test', 'test', '{}'::jsonb)",
+      [eventId, `lease-lock-${eventId}`],
+    );
+    let unlock = () => {};
+    let holding;
+    try {
+      const [lease] = await store.claimOutboxEvents({ limit: 1, leaseSeconds: 1 });
+      assert.equal(lease.id, eventId);
+      let signalLocked;
+      const locked = new Promise((resolve) => { signalLocked = resolve; });
+      const release = new Promise((resolve) => { unlock = resolve; });
+      holding = sql.begin(async (tx) => {
+        await tx.unsafe("SELECT id FROM outbox_events WHERE id = $1 FOR UPDATE", [eventId]);
+        signalLocked();
+        await release;
+      });
+      await locked;
+      const change = action === "acknowledge"
+        ? store.markOutboxDelivered({ eventId, leaseToken: lease.lease_token })
+        : store.rescheduleOutboxEvent({ eventId, leaseToken: lease.lease_token });
+      // Wait until this specific lease has expired while the other transaction
+      // holds the row; PostgreSQL's clock is authoritative for its lease.
+      await sql.unsafe(
+        "SELECT pg_sleep(GREATEST(0, EXTRACT(EPOCH FROM available_at - clock_timestamp())) + 0.05) FROM outbox_events WHERE id = $1",
+        [eventId],
+      );
+      unlock();
+      assert.equal(await change, false);
+      await holding;
+      const [row] = await sql.unsafe("SELECT delivered_at, lease_token FROM outbox_events WHERE id = $1", [eventId]);
+      assert.equal(row.delivered_at, null);
+      assert.equal(row.lease_token, lease.lease_token);
+    } finally {
+      unlock();
+      if (holding) await holding;
+      await sql.unsafe("DELETE FROM outbox_events WHERE id = $1", [eventId]);
+    }
+  });
+}
+
+test("REST messages recover an interrupted notification delivery without duplicating a private inbox", integrationOptions, async () => {
+  const { createApiServer } = await import("../server.ts");
+  const secret = randomBytes(32).toString("base64url");
+  const env = {
+    AUTH_JWT_SECRET: secret,
+    AUTH_JWT_ISSUER: "https://auth.integration.test",
+    AUTH_JWT_AUDIENCE: "bot-thk-api",
+  };
+  const suffix = randomUUID();
+  const sender = `rest-sender-${suffix}`;
+  const recipient = `rest-recipient-${suffix}`;
+  const outsider = `rest-outsider-${suffix}`;
+  const sign = (sub) => {
+    const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
+    const now = Math.floor(Date.now() / 1000);
+    const unsigned = `${encode({ alg: "HS256", typ: "application/vnd.bot-thk.access+jwt" })}.${encode({
+      sub, iss: env.AUTH_JWT_ISSUER, aud: env.AUTH_JWT_AUDIENCE, iat: now, exp: now + 60, jti: `session-${sub}`,
+    })}`;
+    return `${unsigned}.${createHmac("sha256", secret).update(unsigned).digest("base64url")}`;
+  };
+  const server = createApiServer({ env, store });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const baseUrl = `http://127.0.0.1:${server.address().port}/api/v1`;
+  const auth = (user) => ({ authorization: `Bearer ${sign(user)}` });
+  const json = (user) => ({ ...auth(user), "content-type": "application/json" });
+  let conversationId;
+  try {
+    const created = await fetch(`${baseUrl}/conversations`, {
+      method: "POST", headers: json(sender), body: JSON.stringify({ participantIds: [recipient] }),
+    });
+    assert.equal(created.status, 201);
+    conversationId = (await created.json()).data.id;
+    const messageUrl = `${baseUrl}/conversations/${conversationId}/messages`;
+    const send = (body) => fetch(messageUrl, {
+      method: "POST", headers: { ...json(sender), "idempotency-key": `rest-message-${suffix}` },
+      body: JSON.stringify({ body }),
+    });
+    const sent = await send("offline message");
+    assert.equal(sent.status, 201);
+    const message = (await sent.json()).data;
+    assert.equal(message.senderId, sender);
+    const repeated = await send("offline message");
+    assert.equal(repeated.status, 201);
+    assert.equal((await repeated.json()).data.id, message.id);
+    assert.equal((await send("different content")).status, 409);
+
+    const deniedHistory = await fetch(messageUrl, { headers: auth(outsider) });
+    assert.equal(deniedHistory.status, 403);
+    const history = await fetch(messageUrl, { headers: auth(recipient) });
+    assert.equal(history.status, 200);
+    assert.deepEqual((await history.json()).data.map((item) => item.id), [message.id]);
+    const beforeDelivery = await fetch(`${baseUrl}/me/notifications`, { headers: auth(recipient) });
+    assert.deepEqual((await beforeDelivery.json()).data, []);
+
+    // Simulate a worker crash after persisting the inbox but before acknowledging
+    // the event; once its lease expires a new worker must safely replay it.
+    const [abandoned] = await store.claimOutboxEvents({ limit: 1 });
+    assert.equal(abandoned.event_key, `message:${message.id}`);
+    await createMessageNotificationDelivery({ store })(abandoned);
+    await sql.unsafe("UPDATE outbox_events SET available_at = '2000-01-01Z' WHERE id = $1", [abandoned.id]);
+    const recovery = await dispatchOutboxBatch({ store, limit: 1, deliver: createMessageNotificationDelivery({ store }) });
+    assert.deepEqual(recovery, { claimed: 1, delivered: 1, failed: 0 });
+    assert.equal(await store.markOutboxDelivered({ eventId: abandoned.id, leaseToken: abandoned.lease_token }), false);
+
+    const inboxResponse = await fetch(`${baseUrl}/me/notifications`, { headers: auth(recipient) });
+    assert.equal(inboxResponse.status, 200);
+    assert.match(inboxResponse.headers.get("cache-control"), /no-store/i);
+    const inbox = (await inboxResponse.json()).data;
+    assert.equal(inbox.length, 1);
+    assert.equal(inbox[0].eventKey, `message:${message.id}`);
+    assert.deepEqual(JSON.parse(inbox[0].payload), {
+      type: "message.created", messageId: message.id, conversationId, senderId: sender,
+    });
+    const otherInbox = await fetch(`${baseUrl}/me/notifications`, { headers: auth(outsider) });
+    assert.deepEqual((await otherInbox.json()).data, []);
+    const otherRead = await fetch(`${baseUrl}/me/notifications/${inbox[0].id}/read`, { method: "PUT", headers: auth(outsider) });
+    assert.equal((await otherRead.json()).data, null);
+    const unread = await fetch(`${baseUrl}/me/notifications/unread-count`, { headers: auth(recipient) });
+    assert.equal((await unread.json()).data, 1);
+    const read = await fetch(`${baseUrl}/me/notifications/${inbox[0].id}/read`, { method: "PUT", headers: auth(recipient) });
+    assert.ok((await read.json()).data.readAt);
+    const afterRead = await fetch(`${baseUrl}/me/notifications/unread-count`, { headers: auth(recipient) });
+    assert.equal((await afterRead.json()).data, 0);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    if (conversationId) {
+      await sql.unsafe("DELETE FROM notifications WHERE user_id = ANY($1::text[])", [[sender, recipient, outsider]]);
+      await sql.unsafe("DELETE FROM outbox_events WHERE aggregate_id IN (SELECT id::text FROM messages WHERE conversation_id = $1)", [conversationId]);
+      await sql.unsafe("DELETE FROM conversations WHERE id = $1", [conversationId]);
+    }
   }
 });
 

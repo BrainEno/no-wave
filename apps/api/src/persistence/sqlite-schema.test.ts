@@ -1,12 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { randomUUID } from "node:crypto";
+import { copyFile, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
+import { createSqliteOutboxStore } from "./sqlite-outbox-store.ts";
 
 test("SQLite domain migration creates the complete set of domain tables", async () => {
   const db = createSqliteClient({ filename: ":memory:", enableWal: false });
   try {
     const applied = await runSqliteMigrations(db);
-    assert.deepEqual(applied, ["0001_domain_schema"]);
+    assert.deepEqual(applied, ["0001_domain_schema", "0002_outbox_lease_tokens"]);
     const tables = db.prepare(
       "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
     ).all().map((row) => row.name);
@@ -26,6 +31,47 @@ test("SQLite domain migration creates the complete set of domain tables", async 
     ]) assert.ok(indexes.includes(required), `missing SQLite index: ${required}`);
   } finally {
     db.close();
+  }
+});
+
+test("SQLite lease migration preserves pending, leased, and delivered legacy events", async () => {
+  const oldMigrations = await mkdtemp(join(tmpdir(), "no-wave-sqlite-outbox-upgrade-"));
+  const db = createSqliteClient({ filename: ":memory:", enableWal: false });
+  try {
+    await copyFile(new URL("./migrations/sqlite/0001_domain_schema.sql", import.meta.url), join(oldMigrations, "0001_domain_schema.sql"));
+    assert.deepEqual(await runSqliteMigrations(db, { directory: oldMigrations }), ["0001_domain_schema"]);
+    const pendingId = randomUUID();
+    const leasedId = randomUUID();
+    const deliveredId = randomUUID();
+    const insert = db.prepare(`INSERT INTO outbox_events
+      (id,event_key,event_type,aggregate_id,payload,attempts,available_at,delivered_at)
+      VALUES (?,?,?,?,?,?,?,?)`);
+    insert.run(pendingId, "pending", "message.created", "a", "{}", 2, "2000-01-01T00:00:00.000Z", null);
+    insert.run(leasedId, "leased", "message.created", "b", "{}", 3, "2999-01-01T00:00:00.000Z", null);
+    insert.run(deliveredId, "delivered", "message.created", "c", "{}", 1, "2000-01-01T00:00:00.000Z", "2020-01-01T00:00:00.000Z");
+
+    assert.deepEqual(await runSqliteMigrations(db), ["0002_outbox_lease_tokens"]);
+    assert.deepEqual(await runSqliteMigrations(db), []);
+    const legacy = db.prepare("SELECT event_key, attempts, delivered_at, lease_token FROM outbox_events ORDER BY event_key").all();
+    assert.deepEqual(legacy.map((row) => ({ ...row })), [
+      { event_key: "delivered", attempts: 1, delivered_at: "2020-01-01T00:00:00.000Z", lease_token: null },
+      { event_key: "leased", attempts: 3, delivered_at: null, lease_token: null },
+      { event_key: "pending", attempts: 2, delivered_at: null, lease_token: null },
+    ]);
+    const store = createSqliteOutboxStore(db);
+    const [pending] = await store.claimOutboxEvents({ limit: 10 });
+    assert.equal(pending.id, pendingId);
+    assert.equal(pending.attempts, 3);
+    assert.equal(await store.markOutboxDelivered({ eventId: pending.id, leaseToken: pending.lease_token }), true);
+    assert.equal((await store.claimOutboxEvents({ limit: 10 })).length, 0);
+    db.prepare("UPDATE outbox_events SET available_at = ? WHERE id = ?").run("2000-01-01T00:00:00.000Z", leasedId);
+    const [recovered] = await store.claimOutboxEvents({ limit: 10 });
+    assert.equal(recovered.id, leasedId);
+    assert.equal(recovered.attempts, 4);
+    assert.equal(await store.markOutboxDelivered({ eventId: recovered.id, leaseToken: recovered.lease_token }), true);
+  } finally {
+    db.close();
+    await rm(oldMigrations, { recursive: true, force: true });
   }
 });
 
