@@ -850,3 +850,228 @@ test("REST maps domain errors to stable HTTP statuses and sanitized messages", a
     });
   }
 });
+
+
+test("REST profile update derives userId from the JWT and rejects identity fields", async () => {
+  const received = { upsert: null, read: null };
+  const savedProfile = {
+    userId: "profile-owner", displayName: "新名字", bio: "简介", avatarUrl: null,
+    websiteUrl: "https://example.test/", locale: "zh-CN", followerCount: 0,
+    followingCount: 0, isFollowing: false,
+  };
+  await withServer(async (baseUrl) => {
+    const response = await fetch(baseUrl + "/api/v1/me/profile", {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer " + signedToken("profile-owner"),
+      },
+      body: JSON.stringify({
+        displayName: "新名字", bio: "简介", avatarUrl: null,
+        websiteUrl: "https://example.test/", locale: "zh-CN",
+      }),
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { data: savedProfile });
+    assert.deepEqual(received.upsert, {
+      userId: "profile-owner", displayName: "新名字", bio: "简介",
+      avatarUrl: null, websiteUrl: "https://example.test/", locale: "zh-CN",
+    });
+    assert.deepEqual(received.read, { userId: "profile-owner", locale: "zh-CN", viewerId: "profile-owner" });
+
+    const spoofed = await fetch(baseUrl + "/api/v1/me/profile", {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer " + signedToken("profile-owner"),
+      },
+      body: JSON.stringify({ displayName: "冒名", userId: "victim" }),
+    });
+    assert.equal(spoofed.status, 400);
+    assert.equal((await spoofed.json()).error.code, "BAD_USER_INPUT");
+    assert.equal(received.upsert.userId, "profile-owner");
+  }, {
+    env: authEnv,
+    store: {
+      async isSessionRevoked() { return false; },
+      async upsertAuthorProfile(args) { received.upsert = args; },
+      async getAuthorProfile(args) {
+        received.read = args;
+        return { ...savedProfile, userId: args.userId, locale: args.locale };
+      },
+    },
+  });
+});
+
+test("REST follow and unfollow use stable target userId and verified actor identity", async () => {
+  const calls = [];
+  const profile = {
+    userId: "target-user", displayName: "目标作者", bio: "", locale: "zh-CN",
+    followerCount: 1, followingCount: 0, isFollowing: true,
+  };
+  await withServer(async (baseUrl) => {
+    const follow = await fetch(baseUrl + "/api/v1/users/target-user/follow", {
+      method: "POST",
+      headers: { authorization: "Bearer " + signedToken("follower-user") },
+    });
+    assert.equal(follow.status, 200);
+    assert.deepEqual(await follow.json(), { data: profile });
+
+    const unfollow = await fetch(baseUrl + "/api/v1/users/target-user/follow", {
+      method: "DELETE",
+      headers: { authorization: "Bearer " + signedToken("follower-user") },
+    });
+    assert.equal(unfollow.status, 200);
+    assert.deepEqual(await unfollow.json(), { data: profile });
+    assert.deepEqual(calls, [
+      ["follow", { actorId: "follower-user", targetUserId: "target-user" }],
+      ["unfollow", { actorId: "follower-user", targetUserId: "target-user" }],
+    ]);
+  }, {
+    env: authEnv,
+    store: {
+      async isSessionRevoked() { return false; },
+      async followUser(args) { calls.push(["follow", args]); },
+      async unfollowUser(args) { calls.push(["unfollow", args]); },
+      async getAuthorProfile(args) {
+        assert.deepEqual(args, { userId: "target-user", locale: "zh-CN", viewerId: "follower-user" });
+        return profile;
+      },
+    },
+  });
+});
+
+test("REST article like endpoint sets an explicit idempotent state rather than toggling", async () => {
+  const calls = [];
+  await withServer(async (baseUrl) => {
+    for (const liked of [true, true, false]) {
+      const response = await fetch(baseUrl + "/api/v1/articles/poetry-work/like?locale=zh-CN", {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer " + signedToken("reader-user"),
+        },
+        body: JSON.stringify({ liked }),
+      });
+      assert.equal(response.status, 200);
+      const body = await response.json();
+      assert.equal(body.data.likedByViewer, liked);
+      assert.equal(body.data.slug, "poetry-work");
+    }
+    const spoofed = await fetch(baseUrl + "/api/v1/articles/poetry-work/like", {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer " + signedToken("reader-user"),
+      },
+      body: JSON.stringify({ liked: true, actorId: "attacker" }),
+    });
+    assert.equal(spoofed.status, 400);
+    assert.equal((await spoofed.json()).error.code, "BAD_USER_INPUT");
+    assert.equal(calls.length, 3);
+    assert.deepEqual(calls.map((call) => call.liked), [true, true, false]);
+    assert.ok(calls.every((call) => call.actorId === "reader-user"));
+  }, {
+    env: authEnv,
+    store: {
+      async isSessionRevoked() { return false; },
+      async setArticleLike(args) {
+        calls.push(args);
+        return {
+          articleId: "article-1", slug: args.slug, likeCount: args.liked ? 1 : 0,
+          likedByViewer: args.liked,
+        };
+      },
+    },
+  });
+});
+
+test("REST article comments support public listing and authenticated replies", async () => {
+  const calls = [];
+  const parentCommentId = "11111111-1111-4111-8111-111111111111";
+  const comment = {
+    id: "22222222-2222-4222-8222-222222222222", articleId: "article-1",
+    authorId: "commenter-user", parentCommentId, content: "很好的观点", locale: "zh-CN",
+    replies: [],
+  };
+  await withServer(async (baseUrl) => {
+    const listed = await fetch(baseUrl + "/api/v1/articles/poetry-work/comments?limit=10");
+    assert.equal(listed.status, 200);
+    assert.deepEqual(await listed.json(), { data: [{ id: parentCommentId, content: "根评论", replies: [] }] });
+    assert.deepEqual(calls[0], { kind: "list", args: { slug: "poetry-work", locale: "zh-CN", limit: 10 } });
+
+    const created = await fetch(baseUrl + "/api/v1/articles/poetry-work/comments", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer " + signedToken("commenter-user"),
+      },
+      body: JSON.stringify({ content: "很好的观点", parentCommentId }),
+    });
+    assert.equal(created.status, 201);
+    assert.deepEqual(await created.json(), { data: comment });
+    assert.deepEqual(calls[1], {
+      kind: "create",
+      args: {
+        slug: "poetry-work", locale: "zh-CN", actorId: "commenter-user",
+        content: "很好的观点", parentCommentId,
+      },
+    });
+  }, {
+    env: authEnv,
+    store: {
+      async isSessionRevoked() { return false; },
+      async listArticleComments(args) {
+        calls.push({ kind: "list", args });
+        return [{ id: parentCommentId, content: "根评论", replies: [] }];
+      },
+      async createArticleComment(args) {
+        calls.push({ kind: "create", args });
+        return comment;
+      },
+    },
+  });
+});
+
+test("REST comment deletion derives actor identity from JWT and returns deletion state", async () => {
+  const commentId = "22222222-2222-4222-8222-222222222222";
+  let received;
+  await withServer(async (baseUrl) => {
+    const response = await fetch(baseUrl + "/api/v1/comments/" + commentId, {
+      method: "DELETE",
+      headers: { authorization: "Bearer " + signedToken("comment-author") },
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { data: { deleted: true } });
+    assert.deepEqual(received, { commentId, actorId: "comment-author" });
+
+    const unauthorized = await fetch(baseUrl + "/api/v1/comments/" + commentId, { method: "DELETE" });
+    assert.equal(unauthorized.status, 401);
+  }, {
+    env: authEnv,
+    store: {
+      async isSessionRevoked() { return false; },
+      async deleteArticleComment(args) { received = args; return true; },
+    },
+  });
+});
+
+test("REST profile and engagement routes enforce their declared HTTP methods", async () => {
+  await withServer(async (baseUrl) => {
+    const profile = await fetch(baseUrl + "/api/v1/me/profile");
+    assert.equal(profile.status, 405);
+    assert.equal(profile.headers.get("allow"), "PUT");
+
+    const follow = await fetch(baseUrl + "/api/v1/users/some-user/follow");
+    assert.equal(follow.status, 405);
+    assert.equal(follow.headers.get("allow"), "POST, DELETE");
+
+    const like = await fetch(baseUrl + "/api/v1/articles/some-article/like");
+    assert.equal(like.status, 405);
+    assert.equal(like.headers.get("allow"), "PUT");
+
+    const comments = await fetch(baseUrl + "/api/v1/articles/some-article/comments", { method: "DELETE" });
+    assert.equal(comments.status, 405);
+    assert.equal(comments.headers.get("allow"), "GET, POST");
+  });
+});
