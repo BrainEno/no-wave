@@ -778,13 +778,14 @@ export function createPostgresStore(sql) {
       );
       return rows.map(mapArticle);
     },
-    async listPublishedArticles({ locale = "zh-CN", query = "", limit = 20, offset = 0 } = {}) {
+    async listPublishedArticles({ locale = "zh-CN", query = "", authorId = null, limit = 20, offset = 0 } = {}) {
       validateArticleLocale(locale);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
       if (!Number.isInteger(offset) || offset < 0 || offset > 100000) {
         throw new ArticleInputError("offset must be an integer between 0 and 100000.");
       }
       if (typeof query !== "string" || query.length > 200) throw new ArticleInputError("query must be a string no longer than 200 characters.");
+      if (authorId !== null) requiredText("authorId", authorId, 300);
       const search = query.trim() ? query.trim() : null;
       // Escape LIKE metacharacters to preserve literal substring semantics.
       // The pg_trgm GIN indexes make non-empty title/summary searches indexable.
@@ -798,9 +799,10 @@ export function createPostgresStore(sql) {
          JOIN article_translations AS t ON t.article_id = a.id
          WHERE a.status = 'published' AND t.locale = $1
            AND ($2::text IS NULL OR t.title ILIKE $2 ESCAPE E'\\\\' OR t.summary ILIKE $2 ESCAPE E'\\\\')
+           AND ($3::text IS NULL OR a.author_id = $3)
          ORDER BY a.published_at DESC, a.id DESC
-         LIMIT $3 OFFSET $4`,
-        [locale, searchPattern, limit, offset],
+         LIMIT $4 OFFSET $5`,
+        [locale, searchPattern, authorId, limit, offset],
       );
       return rows.map(mapArticle);
     },

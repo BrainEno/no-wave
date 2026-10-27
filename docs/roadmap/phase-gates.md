@@ -22,6 +22,20 @@ Security fixes and implementation details that fulfill already-approved behavior
 - [ ] Agree on visual direction from the forthcoming design brief/design artifacts.
 - [ ] Define the new account/identity issuer integration and local development setup.
 
+## Approved architecture change — REST-only API
+
+On 2026-10-27, the product owner approved replacing GraphQL as the sole business HTTP API with versioned REST endpoints. This is a staged migration: do not remove GraphQL until all current operations have REST equivalents and authorization, persistence, retry, and failure behavior are covered by regression tests.
+
+- [x] Record the REST-only decision and require stable `userId` for author identity.
+- [x] Constrain the versioned REST public-content contract to `zh-CN`.
+- [x] Add public author-profile and author-article REST endpoints; filter author articles in persistence before pagination.
+- [ ] Migrate the Web public-content client and sitemap from GraphQL/fixtures to REST.
+- [ ] Migrate article/profile/engagement mutations and messaging/notification queries to REST with regression tests.
+- [ ] Select and validate SSE/WebSocket only for concrete real-time needs; keep database/outbox state authoritative.
+- [ ] Remove GraphQL schema, Yoga runtime, dependencies, environment variables and obsolete tests after REST parity is verified.
+
+The decision is documented in [ADR 0006](decisions/0006-rest-only-business-api.md).
+
 ## Phase 1 — Workspace, CI and API foundation
 
 - [x] Create pnpm workspace and repeatable CI.

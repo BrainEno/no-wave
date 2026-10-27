@@ -5,7 +5,7 @@ const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
   "cache-control": "no-store",
 };
-const SUPPORTED_LOCALES = new Set(["zh-CN", "zh-TW", "en"]);
+const SUPPORTED_LOCALES = new Set(["zh-CN"]);
 const MAX_QUERY_LENGTH = 200;
 const MAX_ARTICLE_OFFSET = 100_000;
 const MAX_TAXONOMY_OFFSET = 1_000_000;
@@ -53,6 +53,17 @@ function decodeSlug(encodedSlug: string): string | null {
     return null;
   }
   return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) ? slug : null;
+}
+
+function decodeUserId(encodedUserId: string): string | null {
+  let userId: string;
+  try {
+    userId = decodeURIComponent(encodedUserId);
+  } catch {
+    return null;
+  }
+  if (userId.length === 0 || userId.length > 300 || userId.trim() !== userId) return null;
+  return userId;
 }
 
 type RestErrorResponse = { status: number; code: string; message: string };
@@ -103,6 +114,59 @@ export function createRestHandler({ services }: { services: RestServices | null 
 
     if (url.pathname === "/api/v1/health") {
       sendJson(response, 200, { status: "ok", service: "api", version: "0.1.0" });
+      return true;
+    }
+
+    const authorArticlesMatch = url.pathname.match(/^\/api\/v1\/authors\/([^/]+)\/articles$/);
+    if (authorArticlesMatch) {
+      if (!services) {
+        sendUnavailable(response);
+        return true;
+      }
+      const userId = decodeUserId(authorArticlesMatch[1]);
+      const locale = parseLocale(url);
+      const query = parseQuery(url);
+      const pagination = parsePagination(url, 20, MAX_ARTICLE_OFFSET);
+      if (!userId || !locale || query === null || !pagination) {
+        sendBadInput(response, "Invalid author user ID, locale, query, limit, or offset query parameter.");
+        return true;
+      }
+      try {
+        const author = await services.getAuthorProfile({ userId, locale, viewerId: null });
+        if (!author) {
+          sendJson(response, 404, { error: { code: "NOT_FOUND", message: "The author was not found." } });
+          return true;
+        }
+        const articles = await services.listPublishedArticles({ authorId: userId, locale, query, ...pagination });
+        sendJson(response, 200, { data: articles });
+      } catch (error: unknown) {
+        sendServiceError(response, error);
+      }
+      return true;
+    }
+
+    const authorMatch = url.pathname.match(/^\/api\/v1\/authors\/([^/]+)$/);
+    if (authorMatch) {
+      if (!services) {
+        sendUnavailable(response);
+        return true;
+      }
+      const userId = decodeUserId(authorMatch[1]);
+      const locale = parseLocale(url);
+      if (!userId || !locale) {
+        sendBadInput(response, "Invalid author user ID or locale.");
+        return true;
+      }
+      try {
+        const author = await services.getAuthorProfile({ userId, locale, viewerId: null });
+        if (!author) {
+          sendJson(response, 404, { error: { code: "NOT_FOUND", message: "The author was not found." } });
+        } else {
+          sendJson(response, 200, { data: author });
+        }
+      } catch (error: unknown) {
+        sendServiceError(response, error);
+      }
       return true;
     }
 

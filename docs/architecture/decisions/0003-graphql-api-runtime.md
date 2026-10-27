@@ -1,7 +1,11 @@
 # ADR 0003: GraphQL API runtime
 
-- Status: Accepted for the initial API spike
+- Status: Superseded by ADR 0006 on 2026-10-27; GraphQL is retained only during staged migration.
 - Date: 2026-10-23
+
+## Status note
+
+This ADR records the initial GraphQL runtime decision. The product owner has since approved a REST-only business HTTP API; follow ADR 0006 for the target architecture and remove this runtime after REST parity is verified.
 
 ## Context
 
