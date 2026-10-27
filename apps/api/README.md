@@ -82,12 +82,12 @@ These helpers do not replace resource-level database checks in each resolver. Se
 
 The API verifies bearer access tokens; the repository does not yet implement the sign-in/token-issuance or refresh-token flow. Do not treat strict verification as proof that the full login lifecycle is production-ready.
 
-- The verifier accepts only HMAC-SHA-256 (`HS256`) compact JWS tokens and pins the header type to `at+jwt`; it rejects `none`, unknown algorithms, non-canonical base64url segments, detached-payload/critical header extensions, and malformed claims.
+- The verifier accepts only HMAC-SHA-256 (`HS256`) compact JWS tokens and pins the header type to the application-specific `application/vnd.bot-thk.access+jwt`; it rejects `none`, unknown algorithms, non-canonical base64url segments, detached-payload/critical header extensions, and malformed claims. This private type intentionally does not claim RFC 9068 OAuth JWT access-token-profile conformance: token issuance/refresh is not implemented here, and the current verifier uses a shared HS256 secret rather than a complete authorization-server/JWKS profile.
 - Required claims: `iss`, `aud`, integer NumericDate `iat` and `exp`, non-empty stable subject `sub`, and unique session identifier `jti`. Optional `nbf` is validated when present. Issuer and audience must match server configuration.
 - Access-token lifetime is bounded to **15 minutes by default** (`AUTH_JWT_MAX_TTL_SECONDS=900`). It can be configured from 60 to 86400 seconds; use a short-lived access token and build refresh-token rotation separately rather than issuing long-lived bearer tokens.
 - `AUTH_JWT_SECRET` must be at least 32 bytes and should be generated from a cryptographically secure random source. Do not commit it, log tokens or secrets, reuse the same secret across unrelated token types, or accept client-supplied identity headers/body fields.
 - Protected REST and GraphQL operations check the token's `jti` against durable session-revocation state. If the revocation query is missing or fails, authentication fails closed. `DELETE /api/v1/me/session` revokes the current token until its expiration.
-- The trusted issuer must emit this exact access-token profile. When wiring real sign-in, define issuer ownership, key/secret rotation, refresh/reuse detection, session expiration, password reset/recovery invalidation, abuse throttling, and cookie/CSRF policy where relevant.
+- The trusted issuer must emit this exact application-specific access-token profile. Do not substitute `typ: at+jwt` without deliberately adopting and implementing the complete RFC 9068 profile. When wiring real sign-in, define issuer ownership, key/secret rotation (prefer asymmetric signing/JWKS if issuer and resource server are separate trust domains), refresh/reuse detection, session expiration, password reset/recovery invalidation, abuse throttling, and cookie/CSRF policy where relevant.
 
 ## REST transport
 
