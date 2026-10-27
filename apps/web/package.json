@@ -6,13 +6,14 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test src/lib/*.test.ts"
   },
   "dependencies": {
-    "gsap": "3.13.0",
     "next": "16.4.2",
     "react": "19.2.0",
-    "react-dom": "19.2.0"
+    "react-dom": "19.2.0",
+    "gsap": "3.13.0"
   },
   "devDependencies": {
     "@types/node": "24.10.0",
