@@ -78,6 +78,17 @@ Tests skip when `TEST_DATABASE_URL` is unset. Never set it to a production URL. 
 These helpers do not replace resource-level database checks in each resolver. See `docs/architecture/postgres-migration-plan.md` for persistence and optional data-import boundaries, `docs/architecture/decisions/0005-clean-architecture-and-replication.md` for multi-provider and failover tradeoffs, and `docs/architecture/persistence-adapter-contract.md` for the shared adapter acceptance contract.
 
 
+## JWT access-token verification policy
+
+The API verifies bearer access tokens; the repository does not yet implement the sign-in/token-issuance or refresh-token flow. Do not treat strict verification as proof that the full login lifecycle is production-ready.
+
+- The verifier accepts only HMAC-SHA-256 (`HS256`) compact JWS tokens and pins the header type to `at+jwt`; it rejects `none`, unknown algorithms, non-canonical base64url segments, detached-payload/critical header extensions, and malformed claims.
+- Required claims: `iss`, `aud`, integer NumericDate `iat` and `exp`, non-empty stable subject `sub`, and unique session identifier `jti`. Optional `nbf` is validated when present. Issuer and audience must match server configuration.
+- Access-token lifetime is bounded to **15 minutes by default** (`AUTH_JWT_MAX_TTL_SECONDS=900`). It can be configured from 60 to 86400 seconds; use a short-lived access token and build refresh-token rotation separately rather than issuing long-lived bearer tokens.
+- `AUTH_JWT_SECRET` must be at least 32 bytes and should be generated from a cryptographically secure random source. Do not commit it, log tokens or secrets, reuse the same secret across unrelated token types, or accept client-supplied identity headers/body fields.
+- Protected REST and GraphQL operations check the token's `jti` against durable session-revocation state. If the revocation query is missing or fails, authentication fails closed. `DELETE /api/v1/me/session` revokes the current token until its expiration.
+- The trusted issuer must emit this exact access-token profile. When wiring real sign-in, define issuer ownership, key/secret rotation, refresh/reuse detection, session expiration, password reset/recovery invalidation, abuse throttling, and cookie/CSRF policy where relevant.
+
 ## REST transport
 
 The API exposes a versioned REST business contract under `/api/v1`. REST handlers call the shared application-service facade and never call GraphQL over HTTP or access PostgreSQL directly. All REST JSON responses use `Cache-Control: no-store`. Private endpoints derive the acting user exclusively from a verified bearer JWT, reject revoked sessions and never accept client-supplied actor/owner IDs.
@@ -85,8 +96,15 @@ The API exposes a versioned REST business contract under `/api/v1`. REST handler
 ### Public read routes
 
 - `GET /api/v1/health` — liveness response, independent of persistence.
+- `GET /api/v1/me` — authenticated current-user identity (`{ id }`).
+- `GET /api/v1/me/profile?locale=zh-CN` — current user profile; requires authentication.
+- `GET /api/v1/users?query=&locale=zh-CN&limit=20` — user search; accepts an optional valid JWT for viewer-specific follow state.
+- `GET /api/v1/users/:userId/followers?locale=zh-CN&limit=50` and `GET /api/v1/users/:userId/following?locale=zh-CN&limit=50` — relationship lists with complete AuthorProfile records.
+- `GET /api/v1/me/liked-articles?locale=zh-CN&limit=50` — authenticated liked-article list.
 - `GET /api/v1/articles?locale=zh-CN&query=&limit=20&offset=0` — published article search and pagination.
 - `GET /api/v1/articles/:slug?locale=zh-CN` — one published article, or `404 NOT_FOUND`.
+- `GET /api/v1/articles/:slug/related?locale=zh-CN&limit=6` — related published articles.
+- `GET /api/v1/articles/:slug/like?locale=zh-CN` — like count and optional viewer liked state.
 - `GET /api/v1/authors/:userId?locale=zh-CN` — public author profile addressed by stable `userId`.
 - `GET /api/v1/authors/:userId/articles?locale=zh-CN&query=&limit=20&offset=0` — published articles by that author, filtered before pagination.
 - `GET /api/v1/categories?locale=zh-CN&query=&limit=20&offset=0` and `GET /api/v1/categories/:slug?locale=zh-CN` — category discovery and detail.
@@ -103,13 +121,14 @@ All routes below require a valid, non-revoked bearer JWT, except for public comm
 - `POST /api/v1/articles` — create an article. Accepts `slug`, `title`, optional `summary`, `locale` (`zh-CN` only), `contentBlocks` (JSON array), optional `publish`, `workType`, `categoryIds` and `tagIds`. The author is derived from JWT identity.
 - `PUT /api/v1/articles/:articleId` — update an article; the actor is derived from JWT and ownership is enforced in the application/persistence layer. Uses the same fields as create, and requires boolean `publish`.
 - `PUT /api/v1/me/profile` — update the current user's profile using `displayName`, optional `bio`, `avatarUrl`, `websiteUrl` and optional `locale`. The profile owner is derived from JWT identity.
-- `POST /api/v1/users/:userId/follow` and `DELETE /api/v1/users/:userId/follow` — idempotently follow or unfollow the target stable user ID. The returned profile includes viewer-specific follow state.
+- `POST /api/v1/users/:userId/follow` and `DELETE /api/v1/users/:userId/follow` — idempotently follow or unfollow the target stable user ID. The returned profile includes every GraphQL AuthorProfile field, including counts, timestamps, avatar/website, locale and viewer-specific follow state.
+- `DELETE /api/v1/me/session` — revoke the current verified token by its `jti`.
 - `PUT /api/v1/articles/:slug/like?locale=zh-CN` — set an explicit like state with JSON body `{"liked": true}` or `{"liked": false}`. This is retry-safe state setting rather than a toggle.
 - `POST /api/v1/articles/:slug/comments?locale=zh-CN` — create a comment or reply with `{"content": "...", "parentCommentId": null}`; replies must reference a comment on the same article.
 - `DELETE /api/v1/comments/:commentId` — delete the current user's own comment. Returns `{"data":{"deleted":true}}` when deleted; the domain layer enforces ownership.
 
 ### Validation and error behavior
 
-The versioned REST API currently accepts only locale `zh-CN`; unsupported locales return `400 BAD_USER_INPUT` instead of silently falling back. Search terms are limited to 200 characters. Pagination limits are integers from 1 to 100 with bounded non-negative offsets. Domain validation, ownership rules, transactions and notification-outbox behavior remain in the existing application and persistence layers. Errors are mapped to stable HTTP codes and sanitized messages.
+The versioned REST API currently accepts only locale `zh-CN`; unsupported locales return `400 BAD_USER_INPUT` instead of silently falling back. Article responses preserve all GraphQL Article fields, adding `author`, `categories`, and `tags` from the shared services. REST `contentBlocks` is a JSON array, while the legacy GraphQL field is a JSON-serialized string. Search terms are limited to 200 characters. Pagination limits are integers from 1 to 100 with bounded non-negative offsets. Domain validation, ownership rules, transactions and notification-outbox behavior remain in the existing application and persistence layers. Errors are mapped to stable HTTP codes and sanitized messages.
 
 This is still a staged migration, not full transport parity. Remaining work includes the rest of the profile/discovery/read-state routes, taxonomy mutations, conversation and notification APIs, corresponding Web client migration, contract/regression coverage and final GraphQL removal. Do not claim REST parity until those operations and their failure/security behavior have tests.
