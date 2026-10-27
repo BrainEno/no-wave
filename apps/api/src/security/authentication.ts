@@ -4,7 +4,7 @@ const BEARER_PREFIX = /^Bearer\s+(.+)$/i;
 const MAX_BEARER_TOKEN_LENGTH = 8192;
 const DEFAULT_MAX_ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
 const MAX_CONFIGURABLE_ACCESS_TOKEN_TTL_SECONDS = 24 * 60 * 60;
-const DEFAULT_ACCESS_TOKEN_TYPE = "at+jwt";
+const DEFAULT_ACCESS_TOKEN_TYPE = "application/vnd.bot-thk.access+jwt";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
