@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
+import { createMigrationTransactionId } from "./provider-migration-journal.ts";
+import { createSqliteProviderMigrationCapture } from "./sqlite-provider-migration-capture.ts";
 import { InvalidMessageCursorError, IdempotencyConflictError } from "../domain/errors.ts";
 import { isUuid } from "../domain/validation.ts";
 
@@ -32,6 +34,7 @@ export function createSqliteNotificationStore(db) {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") {
     throw new TypeError("A SQLite database connection is required.");
   }
+  const migrationCapture = createSqliteProviderMigrationCapture(db);
   const list = db.prepare(
     "SELECT id, user_id, event_key, payload, created_at, read_at FROM notifications WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT ?",
   );
@@ -60,6 +63,8 @@ export function createSqliteNotificationStore(db) {
       const hash = requestHash(payload);
       // BEGIN IMMEDIATE serializes this transaction with membership changes
       // and conversation deletion, including across SQLite connections.
+      const transactionId = createMigrationTransactionId();
+      const changes = [];
       db.exec("BEGIN IMMEDIATE");
       try {
         const conversation = db.prepare("SELECT id FROM conversations WHERE id = ?").get(conversationId);
@@ -70,11 +75,17 @@ export function createSqliteNotificationStore(db) {
         const participants = db.prepare("SELECT user_id FROM conversation_participants WHERE conversation_id = ? AND left_at IS NULL AND user_id <> ? ORDER BY user_id")
           .all(conversationId, senderId);
         for (const { user_id: userId } of participants) {
-          insert.run(randomUUID(), userId, eventKey, JSON.stringify(payload), hash);
+          const notificationId = randomUUID();
+          const inserted = insert.run(notificationId, userId, eventKey, JSON.stringify(payload), hash);
           const row = getByKey.get(userId, eventKey);
+          if (Number(inserted.changes) === 1) {
+            const snapshot = db.prepare("SELECT * FROM notifications WHERE id = ?").get(notificationId);
+            if (snapshot) changes.push({ entityType: "notifications", entityId: notificationId, operation: "upsert", payload: snapshot });
+          }
           if (!row) throw new Error("Notification idempotency row disappeared during transaction.");
           if (row.payload_hash !== hash) throw new IdempotencyConflictError("The notification event key was already used with a different payload.");
         }
+        migrationCapture.captureInTransaction(db, transactionId, changes);
         db.exec("COMMIT");
         return true;
       } catch (error) {
@@ -95,31 +106,65 @@ export function createSqliteNotificationStore(db) {
     },
     async markAllNotificationsRead({ actorId }) {
       requiredText("actorId", actorId);
-      return Number(markAll.run(actorId).changes);
+      const transactionId = createMigrationTransactionId();
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        const targets = db.prepare("SELECT id FROM notifications WHERE user_id = ? AND read_at IS NULL ORDER BY id").all(actorId);
+        const changed = Number(markAll.run(actorId).changes);
+        const changes = targets.map(({ id }) => {
+          const snapshot = db.prepare("SELECT * FROM notifications WHERE id = ?").get(id);
+          return snapshot ? { entityType: "notifications", entityId: id, operation: "upsert", payload: snapshot } : null;
+        }).filter(Boolean);
+        migrationCapture.captureInTransaction(db, transactionId, changes);
+        db.exec("COMMIT");
+        return changed;
+      } catch (error) {
+        try { db.exec("ROLLBACK"); } catch {}
+        throw error;
+      }
     },
     async markNotificationRead({ notificationId, actorId }) {
       requiredText("actorId", actorId);
       if (!isUuid(notificationId)) {
         throw new InvalidMessageCursorError("notificationId must be a valid notification ID.");
       }
-      markOne.run(notificationId, actorId);
-      const row = getOne.get(notificationId, actorId);
-      return row ? mapNotification(row) : null;
+      const transactionId = createMigrationTransactionId();
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        const before = getOne.get(notificationId, actorId);
+        markOne.run(notificationId, actorId);
+        const row = getOne.get(notificationId, actorId);
+        if (before && before.read_at == null && row) {
+          migrationCapture.captureInTransaction(db, transactionId, [
+            { entityType: "notifications", entityId: notificationId, operation: "upsert", payload: db.prepare("SELECT * FROM notifications WHERE id = ?").get(notificationId) },
+          ]);
+        }
+        db.exec("COMMIT");
+        return row ? mapNotification(row) : null;
+      } catch (error) {
+        try { db.exec("ROLLBACK"); } catch {}
+        throw error;
+      }
     },
     async createNotification({ userId, eventKey, payload }) {
       requiredText("userId", userId);
       requiredText("eventKey", eventKey);
       if (payload === undefined) throw new TypeError("payload is required.");
       const hash = requestHash(payload);
+      const transactionId = createMigrationTransactionId();
       db.exec("BEGIN IMMEDIATE");
       try {
-        const insertResult = insert.run(randomUUID(), userId, eventKey, JSON.stringify(payload), hash);
+        const notificationId = randomUUID();
+        const insertResult = insert.run(notificationId, userId, eventKey, JSON.stringify(payload), hash);
         const row = getByKey.get(userId, eventKey);
         if (!row) throw new Error("Notification idempotency row disappeared during transaction.");
         if (row.payload_hash !== hash) {
           throw new IdempotencyConflictError("The notification event key was already used with a different payload.");
         }
         const duplicate = Number(insertResult.changes) === 0;
+        if (!duplicate) migrationCapture.captureInTransaction(db, transactionId, [
+          { entityType: "notifications", entityId: notificationId, operation: "upsert", payload: db.prepare("SELECT * FROM notifications WHERE id = ?").get(notificationId) },
+        ]);
         db.exec("COMMIT");
         return {
           id: row.id,
