@@ -137,10 +137,14 @@ export function createPostgresIdentityStore(sql) {
     },
     async revokeIdentityRefresh({ refreshHash }) {
       return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
         const token = await tx.unsafe("SELECT session_id FROM auth_refresh_tokens WHERE token_hash = $1", [refreshHash]);
         if (!token[0]) return true;
         const session = await tx.unsafe("SELECT id FROM auth_sessions WHERE id = $1 FOR UPDATE", [token[0].session_id]);
-        if (session[0]) await revokeLockedSession(tx, session[0].id);
+        if (session[0]) {
+          await revokeLockedSession(tx, session[0].id);
+          await captureSessionSnapshot(tx, transactionId, session[0].id);
+        }
         return true;
       });
     },
@@ -151,6 +155,7 @@ export function createPostgresIdentityStore(sql) {
       const expiration = new Date(expiresAt);
       if (!Number.isFinite(expiration.getTime())) throw new TypeError("expiresAt must be a valid date.");
       return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
         const access = await tx.unsafe("SELECT session_id FROM auth_access_tokens WHERE token_id = $1", [sessionId]);
         if (access[0]) {
           const session = await tx.unsafe("SELECT id FROM auth_sessions WHERE id = $1 FOR UPDATE", [access[0].session_id]);
@@ -161,6 +166,11 @@ export function createPostgresIdentityStore(sql) {
           "INSERT INTO revoked_sessions (session_id, expires_at) VALUES ($1, $2) ON CONFLICT (session_id) DO UPDATE SET expires_at = GREATEST(revoked_sessions.expires_at, EXCLUDED.expires_at), revoked_at = clock_timestamp()",
           [sessionId, expiration],
         );
+        if (access[0]) await captureSessionSnapshot(tx, transactionId, access[0].session_id);
+        const revoked = await tx.unsafe("SELECT * FROM revoked_sessions WHERE session_id = $1", [sessionId]);
+        await captureChanges(tx, transactionId, [
+          { entityType: "revoked_sessions", entityId: sessionId, operation: "upsert", payload: revoked[0] },
+        ]);
         return true;
       });
     },
