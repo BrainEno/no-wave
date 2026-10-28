@@ -150,7 +150,9 @@ test("REST content client fails visibly on HTTP and application errors", async (
     endpoint: "https://api.example.test",
     fetchImpl: captureFetch({ error: { code: "INTERNAL", message: "private database detail" } }),
   });
-  await assert.rejects(apiErrorClient.listArticles(), /API_ERROR/);
+  await assert.rejects(apiErrorClient.listArticles(), (error: unknown) =>
+    error instanceof Error && /INTERNAL/.test(error.message) && !error.message.includes("private database detail"),
+  );
 });
 
 test("REST content client rejects malformed serialized content blocks", async () => {
