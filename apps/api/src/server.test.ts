@@ -572,7 +572,7 @@ test("REST article updates derive actorId from JWT and use the path article ID",
   });
 });
 
-test("REST article writes require verified non-revoked authentication and zh-CN", async () => {
+test("REST article writes require verified non-revoked authentication and a supported locale", async () => {
   let writes = 0;
   const contentBlocks = [{ id: "p1", type: "paragraph", text: "Text" }];
   await withServer(async (baseUrl) => {
@@ -590,7 +590,7 @@ test("REST article writes require verified non-revoked authentication and zh-CN"
         "content-type": "application/json",
         authorization: "Bearer " + signedToken("writer"),
       },
-      body: JSON.stringify({ slug: "english", title: "English", contentBlocks, locale: "en" }),
+      body: JSON.stringify({ slug: "unsupported", title: "Unsupported", contentBlocks, locale: "fr" }),
     });
     assert.equal(unsupportedLocale.status, 400);
     assert.equal((await unsupportedLocale.json()).error.code, "BAD_USER_INPUT");
@@ -852,8 +852,6 @@ test("REST rejects unsupported locales, oversized search terms and offsets befor
   await withServer(async (baseUrl) => {
     for (const path of [
       "/api/v1/articles?locale=fr",
-      "/api/v1/articles?locale=en",
-      "/api/v1/articles?locale=zh-TW",
       `/api/v1/articles?query=${oversizedQuery}`,
       "/api/v1/articles?offset=100001",
       "/api/v1/categories?locale=fr",
@@ -882,6 +880,33 @@ test("REST rejects unsupported locales, oversized search terms and offsets befor
       async listPublishedArticles() { calls += 1; return []; },
       async listTaxonomies() { calls += 1; return []; },
       async getTaxonomyBySlug() { calls += 1; return null; },
+    },
+  });
+});
+
+test("REST public content routes accept zh-CN, zh-TW and en without locale fallback", async () => {
+  const calls: Array<[string, string]> = [];
+  await withServer(async (baseUrl) => {
+    for (const locale of ["zh-CN", "zh-TW", "en"]) {
+      for (const path of [
+        `/api/v1/articles?locale=${locale}`,
+        `/api/v1/categories?locale=${locale}`,
+        `/api/v1/tags?locale=${locale}`,
+      ]) {
+        const response = await fetch(baseUrl + path);
+        assert.equal(response.status, 200, path);
+        assert.deepEqual((await response.json()).data, [], path);
+      }
+    }
+    assert.deepEqual(calls, [
+      ["article", "zh-CN"], ["category", "zh-CN"], ["tag", "zh-CN"],
+      ["article", "zh-TW"], ["category", "zh-TW"], ["tag", "zh-TW"],
+      ["article", "en"], ["category", "en"], ["tag", "en"],
+    ]);
+  }, {
+    store: {
+      async listPublishedArticles(args) { calls.push(["article", args.locale]); return []; },
+      async listTaxonomies(args) { calls.push([args.kind, args.locale]); return []; },
     },
   });
 });
