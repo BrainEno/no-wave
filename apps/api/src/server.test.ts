@@ -1616,7 +1616,7 @@ test("REST taxonomy mutations preserve normalization inputs, creator identity, a
 
     const wrongLocale = await fetch(baseUrl + "/api/v1/taxonomies", {
       method: "POST", headers,
-      body: JSON.stringify({ kind: "category", slug: "poetry", name: "诗歌", locale: "en" }),
+      body: JSON.stringify({ kind: "category", slug: "poetry", name: "诗歌", locale: "fr" }),
     });
     assert.equal(wrongLocale.status, 400);
     assert.equal((await wrongLocale.json()).error.code, "BAD_USER_INPUT");
