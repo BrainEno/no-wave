@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createPersistenceRuntime } from "./persistence-runtime.ts";
+import { createPersistenceRuntime, describePersistenceRuntime } from "./persistence-runtime.ts";
 import { persistencePortMethods } from "../application/persistence-ports.ts";
 import { resolveDatabaseProvider, resolveSqliteDatabasePath } from "./database-config.ts";
 
@@ -90,4 +90,30 @@ test("provider factory results must include a close function", async () => {
     }),
     /must return \{ adapter, close \}/,
   );
+});
+
+test("SQLite startup notice identifies experimental Node 24 minors and the release-candidate floor", () => {
+  const oldNode24 = describePersistenceRuntime({ provider: "sqlite", nodeVersion: "v24.11.0" });
+  assert.equal(oldNode24.event, "api.runtime_compatibility");
+  assert.equal(oldNode24.level, "warn");
+  assert.equal(oldNode24.sqliteApiStability, "experimental");
+  assert.equal(oldNode24.deploymentProfile, "local-single-host");
+  assert.match(oldNode24.message, /experimental/i);
+  assert.match(oldNode24.message, /24\.15\.0/);
+
+  const releaseCandidate = describePersistenceRuntime({ provider: "sqlite", nodeVersion: "v24.15.0" });
+  assert.equal(releaseCandidate.sqliteApiStability, "release-candidate");
+  assert.match(releaseCandidate.message, /not a stable API/i);
+  assert.equal(
+    describePersistenceRuntime({ provider: "sqlite", nodeVersion: "v24.22.1" }).sqliteApiStability,
+    "release-candidate",
+  );
+});
+
+test("PostgreSQL startup notice recommends the production deployment profile without SQLite warnings", () => {
+  const notice = describePersistenceRuntime({ provider: "postgres", nodeVersion: "v24.15.0" });
+  assert.equal(notice.level, "info");
+  assert.equal(notice.deploymentProfile, "production-recommended");
+  assert.equal("sqliteApiStability" in notice, false);
+  assert.match(notice.message, /recommended provider for production/i);
 });

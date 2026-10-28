@@ -35,6 +35,53 @@ const builtInProviders = Object.freeze({
 });
 
 /**
+ * Describe the runtime/provider trade-off once during API startup.
+ *
+ * Node.js 24.15.0 moved node:sqlite to Stability 1.2 (Release Candidate).
+ * It remains a pre-stable API; earlier Node 24 releases still mark it
+ * experimental. Keep the supported Node major pinned until the adapter has
+ * been re-evaluated against a stable API contract.
+ */
+export function describePersistenceRuntime({
+  provider,
+  nodeVersion = process.version,
+}: {
+  provider: string;
+  nodeVersion?: string;
+}) {
+  if (provider !== "sqlite") {
+    return Object.freeze({
+      event: "api.runtime_compatibility",
+      level: "info",
+      provider,
+      nodeVersion,
+      deploymentProfile: provider === "postgres" ? "production-recommended" : "provider-specific",
+      message: provider === "postgres"
+        ? "PostgreSQL is the recommended provider for production/server deployments; SQLite remains intended for local or single-host use."
+        : "Review the configured persistence provider's operational and compatibility requirements before production use.",
+    });
+  }
+
+  const version = /^v?(\d+)\.(\d+)\.(\d+)/.exec(nodeVersion);
+  const releaseCandidate = version !== null
+    && Number(version[1]) === 24
+    && Number(version[2]) >= 15;
+  const sqliteApiStability = releaseCandidate ? "release-candidate" : "experimental";
+  return Object.freeze({
+    event: "api.runtime_compatibility",
+    level: "warn",
+    provider,
+    nodeVersion,
+    sqliteApiStability,
+    deploymentProfile: "local-single-host",
+    minimumRecommendedNodeVersion: "24.15.0",
+    message: releaseCandidate
+      ? "node:sqlite is a Release Candidate (Stability 1.2), not a stable API. Use SQLite for local/single-host deployments and prefer PostgreSQL for production/server deployments."
+      : "node:sqlite is still experimental on this Node.js version. Node.js 24.15.0 or newer is recommended for the Release Candidate API; prefer PostgreSQL for production/server deployments.",
+  });
+}
+
+/**
  * SQLite is the fresh-install default. Existing deployments that set only
  * DATABASE_URL keep using PostgreSQL; provider switches are always explicit.
  * MongoDB remains unavailable until its adapter passes the shared contracts.

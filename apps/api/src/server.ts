@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { createRestHandler } from "./transport/rest/handler.ts";
 import { createApplicationServices } from "./application/services.ts";
 import { assertPersistenceAdapter } from "./application/persistence-ports.ts";
-import { createPersistenceRuntime } from "./infrastructure/persistence-runtime.ts";
+import { createPersistenceRuntime, describePersistenceRuntime } from "./infrastructure/persistence-runtime.ts";
 
 /** REST is the only business HTTP transport exposed by this API. */
 export function createApiServer({ env = process.env, store = null, applicationServices = null } = {}) {
@@ -61,7 +61,8 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
     const host = env.HOST ?? "0.0.0.0";
     const server = createApiServer({ env, applicationServices: services });
     server.listen(port, host, () => {
-      process.stdout.write(`BOT THK API listening on http://${host}:${port}\n`);
+      const runtimeNotice = describePersistenceRuntime({ provider: runtime.provider });
+      process.stdout.write(`${JSON.stringify({ ...runtimeNotice, host, port })}\n`);
     });
     const shutdown = () => {
       server.close(async () => {

@@ -21,6 +21,55 @@ test("SQLite client rejects invalid configuration before opening a database", ()
   assert.throws(() => createSqliteClient({ filename: ":memory:", timeoutMs: -1 }), /timeoutMs/);
 });
 
+test("SQLite binding and row types stay explicit across null, number, text, and blobs", () => {
+  const db = createSqliteClient({ filename: ":memory:", enableWal: false });
+  try {
+    const binary = new Uint8Array([0, 127, 255]);
+    const json = JSON.stringify({ ok: true, count: 2 });
+    const row = db.prepare(`
+      SELECT
+        typeof(?1) AS null_type, ?1 AS null_value,
+        typeof(?2) AS number_type, ?2 AS number_value,
+        typeof(?3) AS integer_type, ?3 AS integer_value,
+        typeof(?4) AS real_type, ?4 AS real_value,
+        typeof(?5) AS text_type, ?5 AS text_value,
+        typeof(?6) AS blob_type, ?6 AS blob_value
+    `).get(null, 42, 42n, 1.25, json, binary);
+
+    assert.equal(row.null_type, "null");
+    assert.equal(row.null_value, null);
+    // JavaScript number bindings use SQLite REAL semantics, even for integral values.
+    assert.equal(row.number_type, "real");
+    assert.equal(row.number_value, 42);
+    // Use bigint when the application specifically requires SQLite INTEGER storage.
+    assert.equal(row.integer_type, "integer");
+    assert.equal(row.integer_value, 42);
+    assert.equal(row.real_type, "real");
+    assert.equal(row.real_value, 1.25);
+    assert.equal(row.text_type, "text");
+    assert.equal(row.text_value, json);
+    assert.equal(JSON.parse(row.text_value).ok, true);
+    assert.equal(row.blob_type, "blob");
+    assert.deepEqual([...row.blob_value], [0, 127, 255]);
+
+    // Pin Node 24's current boolean binding behavior as SQLite INTEGER 0/1.
+    // This is a runtime compatibility contract, not an assumption to leave untested.
+    const booleanStorage = db.prepare(`
+      SELECT
+        typeof(?1) AS true_type, ?1 AS true_value,
+        typeof(?2) AS false_type, ?2 AS false_value
+    `).get(true, false);
+    assert.deepEqual({ ...booleanStorage }, {
+      true_type: "integer",
+      true_value: 1,
+      false_type: "integer",
+      false_value: 0,
+    });
+  } finally {
+    db.close();
+  }
+});
+
 test("SQLite migrations are versioned, repeatable, and recorded atomically", async () => {
   const root = await mkdtemp(join(tmpdir(), "no-wave-sqlite-"));
   const migrations = join(root, "migrations");
