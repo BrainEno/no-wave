@@ -36,6 +36,25 @@ pnpm build
 pnpm dev
 ```
 
+## PostgreSQL integration tests
+
+The root `pnpm test` command can run without a database; PostgreSQL cases are deliberately skipped when `TEST_DATABASE_URL` is unset, and their skipped count appears in the test summary. That run alone is **not** evidence that the PostgreSQL adapter passes.
+
+For full local PostgreSQL coverage, start a disposable PostgreSQL 17 instance:
+
+```sh
+docker run -d --rm --name no-wave-test-postgres \
+  -e POSTGRES_USER=postgres \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=bot_thk_test \
+  -p 5432:5432 postgres:17-alpine
+until docker exec no-wave-test-postgres pg_isready -U postgres -d bot_thk_test; do sleep 1; done
+```
+
+In PowerShell, first set `$env:TEST_DATABASE_URL = "postgres://postgres:postgres@localhost:5432/bot_thk_test"` and then run `pnpm --filter @bot-thk/api test:integration`. In Bash-compatible shells, run `TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/bot_thk_test pnpm --filter @bot-thk/api test:integration`. To run the entire root test list with PostgreSQL cases enabled, run `pnpm test` in that same environment. Stop the disposable server afterward with `docker stop no-wave-test-postgres`.
+
+CI runs the database-independent verification and PostgreSQL integration suite separately. The `CI / required-checks` aggregate fails unless both jobs succeed, including when a job is skipped or cancelled. Configure `CI / required-checks` as a required status check for `main` in repository branch protection/rulesets; that setting is managed by GitHub repository settings and is not configurable from this workflow file.
+
 For a fresh local API, run `pnpm --filter @bot-thk/api migrate` before `pnpm --filter @bot-thk/api start`; SQLite defaults to `./data/no-wave.sqlite` and can be relocated with `DATABASE_PATH`. Existing deployments that only set `DATABASE_URL` remain on PostgreSQL for compatibility. To select PostgreSQL for new deployments, set `DATABASE_PROVIDER=postgres` and `DATABASE_URL`; MongoDB is not yet implemented. Online switching needs a separate change-capture and cutover process—changing `DATABASE_PROVIDER` alone does not migrate data. Until the Web caller is migrated to REST, API-backed Web pages still require `API_GRAPHQL_URL` (for example, `http://127.0.0.1:4000/graphql` when both processes run on the same host). In a container, use the API service's reachable network address rather than `127.0.0.1`. Leave the variable unset only when intentionally using the fixture registry. Migrations are explicit release steps; never connect the branch to production or run migrations against production without a separately approved plan and backup.
 
 Dependencies are pinned by the committed `pnpm-lock.yaml`. Update the lockfile intentionally when manifests change.

@@ -56,3 +56,23 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @bot-thk/api test:integration
+
+  required-checks:
+    name: required-checks
+    if: ${{ always() }}
+    needs:
+      - verify
+      - postgres-integration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every validation job to succeed
+        env:
+          VERIFY_RESULT: ${{ needs.verify.result }}
+          POSTGRES_RESULT: ${{ needs.postgres-integration.result }}
+        run: |
+          printf 'verify: %s\npostgres-integration: %s\n' "$VERIFY_RESULT" "$POSTGRES_RESULT"
+          if [ "$VERIFY_RESULT" != "success" ] || [ "$POSTGRES_RESULT" != "success" ]; then
+            echo "::error::Both verify and postgres-integration must succeed."
+            exit 1
+          fi
+          echo "All required validation jobs succeeded."
