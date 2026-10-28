@@ -19,7 +19,9 @@ test("SQLite domain migration creates the complete set of domain tables", async 
       "api_schema_migrations", "article_comments", "article_likes", "article_taxonomies",
       "article_translations", "articles", "auth_access_tokens", "auth_accounts", "auth_rate_limits",
       "auth_refresh_tokens", "auth_sessions", "conversation_participants", "conversations",
-      "messages", "notifications", "outbox_events",\n      "provider_migration_applied_changes", "provider_migration_changes",\n      "provider_migration_checkpoints", "provider_migration_sessions", "revoked_sessions", "taxonomies",
+      "messages", "notifications", "outbox_events",
+      "provider_migration_applied_changes", "provider_migration_changes",
+      "provider_migration_checkpoints", "provider_migration_sessions", "revoked_sessions", "taxonomies",
       "taxonomy_translations", "user_follows", "user_profile_translations", "user_profiles",
     ]);
     const indexes = db.prepare(
