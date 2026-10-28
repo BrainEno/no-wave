@@ -53,6 +53,22 @@ test("explicit REST API base takes precedence over the service binding", () => {
   );
 });
 
+test("legacy GraphQL environment value is mapped to its API base with a deprecation warning", () => {
+  const warnings: string[] = [];
+  const originalWarn = console.warn;
+  console.warn = (message?: unknown) => { warnings.push(String(message)); };
+  try {
+    assert.equal(
+      resolveApiBaseUrl({ legacyGraphqlUrl: "https://api.example.test/graphql" }),
+      "https://api.example.test",
+    );
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /API_GRAPHQL_URL is deprecated/);
+  } finally {
+    console.warn = originalWarn;
+  }
+});
+
 test("new base URL takes precedence and legacy override retains its previous precedence over service binding", () => {
   assert.equal(
     resolveApiBaseUrl({
@@ -69,22 +85,6 @@ test("new base URL takes precedence and legacy override retains its previous pre
     }),
     "https://api-legacy.example.test",
   );
-});
-
-test("legacy GraphQL environment value is mapped to its API base with a deprecation warning", () => {
-  const warnings: string[] = [];
-  const originalWarn = console.warn;
-  console.warn = (message?: unknown) => { warnings.push(String(message)); };
-  try {
-    assert.equal(
-      resolveApiBaseUrl({ legacyGraphqlUrl: "https://api.example.test/graphql" }),
-      "https://api.example.test",
-    );
-    assert.equal(warnings.length, 1);
-    assert.match(warnings[0], /API_GRAPHQL_URL is deprecated/);
-  } finally {
-    console.warn = originalWarn;
-  }
 });
 
 test("endpoint resolution preserves fixture mode when no endpoint is configured", () => {
