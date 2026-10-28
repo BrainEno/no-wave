@@ -277,7 +277,7 @@ test("SQLite migration replayer applies source transactions atomically, resumes,
     const sourceChanges = sourceJournal.readChangeBatch({ sessionId, afterSequence: 0, limit: 100 });
     assert.equal(sourceChanges.length, 5);
 
-    await assert.rejects(target.applyTransaction([sourceChanges[1]]), /expected sequence 1/i);
+    assert.throws(() => target.applyTransaction([sourceChanges[1]]), /expected sequence 1/i);
     assert.equal(await target.getCheckpoint(sessionId), 0);
 
     targetDb.exec("CREATE TRIGGER block_replay_translation BEFORE INSERT ON article_translations BEGIN SELECT RAISE(ABORT, 'target apply failure'); END");
