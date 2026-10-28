@@ -29,7 +29,8 @@ export function createPostgresProviderMigrationReplayer(sql: PgDatabase) {
       throw new MigrationJournalError("INVALID_PAYLOAD", "Upsert changes must contain a row object.");
     }
     const prepared = prepareMigrationRowPayload("postgres", valid.entityType, valid.entityId, valid.payload as Record<string, unknown>);
-    const placeholders = prepared.columns.map((_, index) => "$" + (index + 1)).join(", ");
+    const jsonColumns = new Set(prepared.spec.jsonColumns ?? []);
+    const placeholders = prepared.columns.map((column, index) => "$" + (index + 1) + (jsonColumns.has(column) ? "::jsonb" : "")).join(", ");
     const conflictKeys = prepared.spec.primaryKey.join(", ");
     const mutableColumns = prepared.columns.filter(column => !prepared.spec.primaryKey.includes(column));
     const conflict = mutableColumns.length
