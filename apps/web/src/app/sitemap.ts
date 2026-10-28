@@ -4,11 +4,13 @@ import {
   articlePath,
   authorPath,
   homePath,
-  listArticles,
   supportedLocales
 } from "@/lib/content.ts";
+import { listPublicArticles } from "@/lib/api-content.ts";
 
-export default function sitemap(): MetadataRoute.Sitemap {
+export const dynamic = "force-dynamic";
+
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://example.invalid";
   const result: MetadataRoute.Sitemap = [];
   const seenAuthors = new Set<string>();
@@ -23,22 +25,29 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "daily",
       priority: 0.8
     });
-    for (const article of listArticles({ locale })) {
-      result.push({
-        url: new URL(articlePath(article.slug, locale), baseUrl).toString(),
-        lastModified: new Date(article.publishedAt),
-        changeFrequency: "weekly",
-        priority: 0.7
-      });
-      const authorKey = locale + ":" + article.author.username;
-      if (!seenAuthors.has(authorKey)) {
-        seenAuthors.add(authorKey);
+    const pageSize = 100;
+    let offset = 0;
+    while (true) {
+      const articles = await listPublicArticles({ locale, limit: pageSize, offset });
+      for (const article of articles) {
         result.push({
-          url: new URL(authorPath(article.author.username, locale), baseUrl).toString(),
+          url: new URL(articlePath(article.slug, locale), baseUrl).toString(),
+          lastModified: new Date(article.publishedAt),
           changeFrequency: "weekly",
-          priority: 0.5
+          priority: 0.7
         });
+        const authorKey = locale + ":" + article.author.username;
+        if (!seenAuthors.has(authorKey)) {
+          seenAuthors.add(authorKey);
+          result.push({
+            url: new URL(authorPath(article.author.username, locale), baseUrl).toString(),
+            changeFrequency: "weekly",
+            priority: 0.5
+          });
+        }
       }
+      if (articles.length < pageSize) break;
+      offset += articles.length;
     }
   }
   return result;

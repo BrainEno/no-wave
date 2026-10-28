@@ -10,12 +10,6 @@ importers:
 
   apps/api:
     dependencies:
-      graphql:
-        specifier: 17.0.2
-        version: 17.0.2
-      graphql-yoga:
-        specifier: 5.24.6
-        version: 5.24.6(graphql@17.0.2)
       postgres:
         specifier: 3.4.7
         version: 3.4.7

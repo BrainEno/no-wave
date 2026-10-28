@@ -1,45 +1,20 @@
 import type { ArticleContentBlock, ArticleView, AuthorView, Locale, WorkType } from "./content.ts";
+import {
+  defaultLocale,
+  getArticleBySlug,
+  getAuthorByUsername,
+  listArticles as listFixtureArticles,
+} from "./content.ts";
 
 export type CategoryView = { slug: string; name: string; description: string; locale: string; articleCount: number };
-type GraphQLPayload = { data?: Record<string, unknown>; errors?: unknown[] };
-type JsonResponse = { ok: boolean; status: number; json(): Promise<GraphQLPayload> };
-type FetchImpl = (input: string, init?: RequestInit) => Promise<JsonResponse>;
 export type ArticleListOptions = { locale?: Locale; query?: string; authorUsername?: string | null; limit?: number; offset?: number };
 type CategoryListOptions = { locale?: Locale; query?: string; limit?: number; offset?: number };
+type ApiObject = Record<string, unknown>;
+type ApiPayload = { data?: unknown; error?: unknown };
+type JsonResponse = { ok: boolean; status: number; json(): Promise<unknown> };
+type FetchImpl = (input: string, init?: RequestInit) => Promise<JsonResponse>;
+type QueryValues = Record<string, string | number>;
 
-/**
- * Resolve either an explicit GraphQL endpoint (local/legacy configuration) or
- * the base URL injected by a Vercel service binding. Bindings are runtime-only,
- * so pages that depend on this value must render dynamically.
- */
-export function resolveApiGraphqlEndpoint(
-  config: { explicitUrl?: string; serviceUrl?: string } = {
-    explicitUrl: process.env.API_GRAPHQL_URL,
-    serviceUrl: process.env.API_SERVICE_URL,
-  },
-): string | undefined {
-  const explicitUrl = config.explicitUrl?.trim();
-  if (explicitUrl) return explicitUrl;
-
-  const serviceUrl = config.serviceUrl?.trim();
-  if (!serviceUrl) return undefined;
-
-  let baseUrl: URL;
-  try {
-    baseUrl = new URL(serviceUrl);
-  } catch {
-    throw new Error("API_SERVICE_URL must be an absolute HTTP(S) URL.");
-  }
-  if (baseUrl.protocol !== "http:" && baseUrl.protocol !== "https:") {
-    throw new Error("API_SERVICE_URL must be an absolute HTTP(S) URL.");
-  }
-
-  const basePath = baseUrl.pathname.replace(new RegExp("/+$"), "");
-  baseUrl.pathname = basePath.length > 0 ? `${basePath}/` : "/";
-  baseUrl.search = "";
-  baseUrl.hash = "";
-  return new URL("graphql", baseUrl).toString();
-}
 type ApiContentClient = {
   listArticles(options?: ArticleListOptions): Promise<ArticleView[]>;
   getArticleBySlug(slug: string, locale?: Locale): Promise<ArticleView | null>;
@@ -48,95 +23,101 @@ type ApiContentClient = {
   getCategoryBySlug(slug: string, locale?: Locale): Promise<CategoryView | null>;
   listCategoryArticles(slug: string, locale?: Locale, limit?: number, offset?: number): Promise<ArticleView[]>;
 };
+
 const WORK_TYPES = ["novel", "short_story", "poetry", "essay", "criticism", "literary_criticism", "nonfiction", "serial", "other"] as const;
-type ApiObject = Record<string, unknown>;
+let legacyGraphqlWarningShown = false;
+
 function isRecord(value: unknown): value is ApiObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+
 function isWorkType(value: unknown): value is WorkType {
   return typeof value === "string" && (WORK_TYPES as readonly string[]).includes(value);
 }
+
 function mapNames(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
-  return (value as unknown[]).map((item): unknown => isRecord(item) ? item.name : undefined)
+  return value.map((item): unknown => isRecord(item) ? item.name : undefined)
     .filter((name): name is string => typeof name === "string");
 }
+
 function isContentBlock(value: unknown): value is ArticleContentBlock {
   if (!isRecord(value) || typeof value.id !== "string") return false;
   switch (value.type) {
     case "paragraph": return typeof value.text === "string";
     case "heading": return typeof value.text === "string" && (value.level === 2 || value.level === 3 || value.level === 4) && (value.anchor === undefined || typeof value.anchor === "string");
     case "quote": return typeof value.text === "string" && (value.attribution === undefined || typeof value.attribution === "string");
-    case "list": return typeof value.ordered === "boolean" && Array.isArray(value.items) && (value.items as unknown[]).every((item) => typeof item === "string");
+    case "list": return typeof value.ordered === "boolean" && Array.isArray(value.items) && value.items.every((item) => typeof item === "string");
     case "image": return typeof value.src === "string" && typeof value.alt === "string" && (value.caption === undefined || typeof value.caption === "string");
     case "code": return typeof value.language === "string" && typeof value.code === "string";
     default: return false;
   }
 }
 
-import {
-  defaultLocale,
-  getArticleBySlug,
-  getAuthorByUsername,
-  listArticles as listFixtureArticles,
-} from "./content.ts";
-
-const ARTICLES_QUERY = `
-  query PublicArticles($locale: String!, $query: String!, $limit: Int!, $offset: Int!) {
-    articles(locale: $locale, query: $query, limit: $limit, offset: $offset) {
-      id authorId slug status locale title summary workType contentBlocks createdAt updatedAt publishedAt
-      author { userId displayName bio locale }
-      categories { name }
-      tags { name }
-    }
+function normalizeHttpUrl(value: string, name: string): string {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`${name} must be an absolute HTTP(S) URL.`);
   }
-`;
-
-const ARTICLE_QUERY = `
-  query PublicArticle($slug: String!, $locale: String!) {
-    article(slug: $slug, locale: $locale) {
-      id authorId slug status locale title summary workType contentBlocks createdAt updatedAt publishedAt
-      author { userId displayName bio locale }
-      categories { name }
-      tags { name }
-    }
+  if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password) {
+    throw new Error(`${name} must be an absolute HTTP(S) URL without embedded credentials.`);
   }
-`;
+  url.search = "";
+  url.hash = "";
+  url.pathname = url.pathname.replace(/\/+$/, "") || "/";
+  const normalized = url.toString();
+  return normalized.endsWith("/") && url.pathname === "/" ? normalized.slice(0, -1) : normalized;
+}
 
-const AUTHOR_QUERY = `
-  query PublicAuthor($userId: String!, $locale: String!) {
-    authorProfile(userId: $userId, locale: $locale) {
-      userId displayName bio locale
-    }
-  }
-`;
+/**
+ * Resolve the API origin supplied directly or by the Vercel service binding.
+ * API_GRAPHQL_URL remains a one-release compatibility alias and is never used
+ * as a GraphQL transport; callers are migrated to the versioned REST API.
+ */
+export function resolveApiBaseUrl(
+  config: { explicitUrl?: string; serviceUrl?: string; legacyGraphqlUrl?: string } = {
+    explicitUrl: process.env.API_BASE_URL,
+    serviceUrl: process.env.API_SERVICE_URL,
+    legacyGraphqlUrl: process.env.API_GRAPHQL_URL,
+  },
+): string | undefined {
+  const explicitUrl = config.explicitUrl?.trim();
+  if (explicitUrl) return normalizeHttpUrl(explicitUrl, "API_BASE_URL");
 
-const CATEGORIES_QUERY = `
-  query PublicCategories($locale: String!, $query: String!, $limit: Int!, $offset: Int!) {
-    taxonomies(kind: "category", locale: $locale, query: $query, limit: $limit, offset: $offset) {
-      id slug name description locale articleCount
+  // Preserve the old explicit override for one migration release, ahead of the
+  // service binding, while directing operators to API_BASE_URL.
+  const legacyGraphqlUrl = config.legacyGraphqlUrl?.trim();
+  if (legacyGraphqlUrl) {
+    let legacyUrl: URL;
+    try {
+      legacyUrl = new URL(legacyGraphqlUrl);
+    } catch {
+      throw new Error("API_GRAPHQL_URL compatibility value must be an absolute HTTP(S) /graphql URL; configure API_BASE_URL instead.");
     }
+    if ((legacyUrl.protocol !== "http:" && legacyUrl.protocol !== "https:") || !/\/graphql\/?$/.test(legacyUrl.pathname)) {
+      throw new Error("API_GRAPHQL_URL compatibility value must point to a /graphql endpoint; configure API_BASE_URL instead.");
+    }
+    legacyUrl.pathname = legacyUrl.pathname.replace(/\/graphql\/?$/, "") || "/";
+    const baseUrl = normalizeHttpUrl(legacyUrl.toString(), "API_GRAPHQL_URL");
+    if (!legacyGraphqlWarningShown) {
+      console.warn("API_GRAPHQL_URL is deprecated. Set API_BASE_URL to the REST API origin; GraphQL requests are no longer used by the Web content client.");
+      legacyGraphqlWarningShown = true;
+    }
+    return baseUrl;
   }
-`;
 
-const CATEGORY_QUERY = `
-  query PublicCategory($slug: String!, $locale: String!) {
-    taxonomy(kind: "category", slug: $slug, locale: $locale) {
-      id slug name description locale articleCount
-    }
-  }
-`;
+  const serviceUrl = config.serviceUrl?.trim();
+  return serviceUrl ? normalizeHttpUrl(serviceUrl, "API_SERVICE_URL") : undefined;
+}
 
-const CATEGORY_ARTICLES_QUERY = `
-  query PublicCategoryArticles($slug: String!, $locale: String!, $limit: Int!, $offset: Int!) {
-    taxonomyArticles(kind: "category", slug: $slug, locale: $locale, limit: $limit, offset: $offset) {
-      id authorId slug status locale title summary workType contentBlocks createdAt updatedAt publishedAt
-      author { userId displayName bio locale }
-      categories { name }
-      tags { name }
-    }
-  }
-`;
+function buildApiUrl(endpoint: string, path: string, query: QueryValues = {}): string {
+  const base = endpoint.replace(/\/+$/, "") + "/";
+  const url = new URL(path.replace(/^\/+/, ""), base);
+  for (const [key, value] of Object.entries(query)) url.searchParams.set(key, String(value));
+  return url.toString();
+}
 
 function parseContentBlocks(value: unknown): ArticleContentBlock[] {
   let blocks: unknown = value;
@@ -147,10 +128,10 @@ function parseContentBlocks(value: unknown): ArticleContentBlock[] {
       throw new Error("The content API returned malformed article content.");
     }
   }
-  if (!Array.isArray(blocks) || !(blocks as unknown[]).every(isContentBlock)) {
+  if (!Array.isArray(blocks) || !blocks.every(isContentBlock)) {
     throw new Error("The content API returned article content that is not a valid array of content blocks.");
   }
-  return blocks as ArticleContentBlock[];
+  return blocks;
 }
 
 function mapAuthor(author: unknown, locale: Locale): AuthorView | null {
@@ -168,7 +149,8 @@ function mapArticle(article: unknown, locale: Locale): ArticleView | null {
   if (!isRecord(article) || typeof article.slug !== "string" || typeof article.title !== "string") return null;
   const author = mapAuthor(article.author, locale);
   if (!author) return null;
-  const publishedAt = [article.publishedAt, article.updatedAt, article.createdAt].find((item): item is string => typeof item === "string");
+  const publishedAt = [article.publishedAt, article.updatedAt, article.createdAt]
+    .find((item): item is string => typeof item === "string");
   if (!publishedAt) return null;
   return {
     slug: article.slug,
@@ -197,69 +179,72 @@ function mapCategory(category: unknown): CategoryView | null {
 }
 
 export function createApiContentClient({ endpoint, fetchImpl = fetch }: { endpoint?: string; fetchImpl?: FetchImpl } = {}): ApiContentClient {
-  async function request(query: string, variables: Record<string, unknown>): Promise<Record<string, unknown>> {
-    if (typeof endpoint !== "string" || endpoint.length === 0) {
-      throw new Error("API_GRAPHQL_URL must be configured to use API-backed content.");
+  async function request(path: string, query: QueryValues = {}, allowNotFound = false): Promise<unknown | null> {
+    if (typeof endpoint !== "string" || endpoint.trim().length === 0) {
+      throw new Error("API_BASE_URL or API_SERVICE_URL must be configured to use API-backed content.");
     }
-    const response = await fetchImpl(endpoint, {
-      method: "POST",
-      headers: { "content-type": "application/json", accept: "application/json" },
-      body: JSON.stringify({ query, variables }),
+    const response = await fetchImpl(buildApiUrl(endpoint, path, query), {
+      method: "GET",
+      headers: { accept: "application/json" },
       cache: "no-store",
     });
-    if (!response.ok) throw new Error(`Content API request failed with HTTP ${response.status}.`);
-    const payload = await response.json();
-    if (Array.isArray(payload.errors) && payload.errors.length > 0) {
-      throw new Error("The content API returned a GraphQL error.");
+    if (!response.ok) {
+      if (allowNotFound && response.status === 404) return null;
+      throw new Error(`Content API request failed with HTTP ${response.status}.`);
     }
-    return payload.data ?? {};
+    const payload = await response.json();
+    if (!isRecord(payload)) throw new Error("The content API returned an invalid response.");
+    if (isRecord(payload.error)) {
+      const code = typeof payload.error.code === "string" ? payload.error.code : "API_ERROR";
+      throw new Error(`The content API returned ${code}.`);
+    }
+    if (!Object.hasOwn(payload, "data")) throw new Error("The content API response is missing its data field.");
+    return payload.data;
   }
 
   return Object.freeze({
     async listArticles({ locale = defaultLocale, query = "", authorUsername = null, limit = 100, offset = 0 }: ArticleListOptions = {}): Promise<ArticleView[]> {
-      const data = await request(ARTICLES_QUERY, { locale, query, limit, offset });
-      const articles = Array.isArray(data.articles)
-        ? (data.articles as unknown[]).map((article) => mapArticle(article, locale)).filter((article): article is ArticleView => article !== null)
-        : [];
-      return authorUsername ? articles.filter((article) => article.author.username === authorUsername) : articles;
+      const path = authorUsername
+        ? `api/v1/authors/${encodeURIComponent(authorUsername)}/articles`
+        : "api/v1/articles";
+      const data = await request(path, { locale, query, limit, offset });
+      if (!Array.isArray(data)) return [];
+      return data.map((article) => mapArticle(article, locale)).filter((article): article is ArticleView => article !== null);
     },
     async getArticleBySlug(slug: string, locale: Locale = defaultLocale): Promise<ArticleView | null> {
-      const data = await request(ARTICLE_QUERY, { slug, locale });
-      return mapArticle(data.article, locale);
+      const data = await request(`api/v1/articles/${encodeURIComponent(slug)}`, { locale }, true);
+      return mapArticle(data, locale);
     },
     async getAuthorByUsername(username: string, locale: Locale = defaultLocale): Promise<AuthorView | null> {
-      const data = await request(AUTHOR_QUERY, { userId: username, locale });
-      return mapAuthor(data.authorProfile, locale);
+      const data = await request(`api/v1/authors/${encodeURIComponent(username)}`, { locale }, true);
+      return mapAuthor(data, locale);
     },
     async listCategories({ locale = defaultLocale, query = "", limit = 100, offset = 0 }: CategoryListOptions = {}): Promise<CategoryView[]> {
-      const data = await request(CATEGORIES_QUERY, { locale, query, limit, offset });
-      return Array.isArray(data.taxonomies) ? (data.taxonomies as unknown[]).map(mapCategory).filter((item): item is CategoryView => item !== null) : [];
+      const data = await request("api/v1/categories", { locale, query, limit, offset });
+      if (!Array.isArray(data)) return [];
+      return data.map(mapCategory).filter((item): item is CategoryView => item !== null);
     },
     async getCategoryBySlug(slug: string, locale: Locale = defaultLocale): Promise<CategoryView | null> {
-      const data = await request(CATEGORY_QUERY, { slug, locale });
-      return mapCategory(data.taxonomy);
+      const data = await request(`api/v1/categories/${encodeURIComponent(slug)}`, { locale }, true);
+      return mapCategory(data);
     },
     async listCategoryArticles(slug: string, locale: Locale = defaultLocale, limit = 100, offset = 0): Promise<ArticleView[]> {
-      const data = await request(CATEGORY_ARTICLES_QUERY, { slug, locale, limit, offset });
-      return Array.isArray(data.taxonomyArticles)
-        ? (data.taxonomyArticles as unknown[]).map((article) => mapArticle(article, locale)).filter((article): article is ArticleView => article !== null)
-        : [];
+      const data = await request(`api/v1/categories/${encodeURIComponent(slug)}/articles`, { locale, limit, offset }, true);
+      if (!Array.isArray(data)) return [];
+      return data.map((article) => mapArticle(article, locale)).filter((article): article is ArticleView => article !== null);
     },
   });
 }
 
 function configuredClient(): ApiContentClient | null {
-  const endpoint = resolveApiGraphqlEndpoint();
+  const endpoint = resolveApiBaseUrl();
   return endpoint ? createApiContentClient({ endpoint }) : null;
 }
 
 /**
- * API-backed content is used when API_GRAPHQL_URL (an explicit GraphQL endpoint)
- * or API_SERVICE_URL (a Vercel service-binding base URL) is configured. The local
- * fixture registry remains an explicit development fallback when both are absent;
- * configured API failures are surfaced rather than hidden by fixtures.
- * Category data has no fixture equivalent yet, so discovery routes are empty
- * in fixture-only builds and become data-backed when the API is configured.
+ * Public pages use REST whenever API_BASE_URL / API_SERVICE_URL is configured.
+ * The local fixture registry remains the explicit fallback when no API endpoint
+ * is configured; live API failures are surfaced instead of silently using fixtures.
  */
 export async function listPublicArticles(options: ArticleListOptions = {}): Promise<ArticleView[]> {
   const client = configuredClient();

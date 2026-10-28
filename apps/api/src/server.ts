@@ -1,46 +1,13 @@
 import { createServer } from "node:http";
-import { createYoga } from "graphql-yoga";
-import { createApiSchema } from "./transport/graphql/schema.ts";
-import type { ApiContext } from "./transport/graphql/schema.ts";
 import { createRestHandler } from "./transport/rest/handler.ts";
-import { createAuthContext } from "./security/authentication.ts";
 import { createApplicationServices } from "./application/services.ts";
 import { assertPersistenceAdapter } from "./application/persistence-ports.ts";
 import { createPersistenceRuntime } from "./infrastructure/persistence-runtime.ts";
 
-/**
- * Identity is accepted only after server-side bearer verification.
- * Domain resolvers must check database membership before exposing or mutating
- * private resources. A client-supplied senderId is not part of the mutation API.
- */
+/** REST is the only business HTTP transport exposed by this API. */
 export function createApiServer({ env = process.env, store = null, applicationServices = null } = {}) {
   const services = applicationServices ?? (store ? createApplicationServices({ persistence: store }) : null);
-  // The service facade is dynamically assembled from the validated persistence ports.
-  const contextServices = services as unknown as ApiContext["services"];
   const handleRest = createRestHandler({ services, env });
-  const yoga = createYoga<ApiContext>({
-    schema: createApiSchema(),
-    graphqlEndpoint: "/graphql",
-    graphiql: false,
-    context: async ({ request }): Promise<ApiContext> => {
-      const auth = createAuthContext(request, env);
-      if (auth.user) {
-        // Never treat an uncheckable session as active. Authentication is
-        // dependent on durable revocation state, not only a valid signature.
-        if (!services || typeof services.isSessionRevoked !== "function") {
-          return { user: null, services: contextServices };
-        }
-        try {
-          if (await services.isSessionRevoked(auth.user.sessionId)) {
-            return { user: null, services: contextServices };
-          }
-        } catch {
-          return { user: null, services: contextServices };
-        }
-      }
-      return { ...auth, services: contextServices };
-    },
-  });
 
   return createServer(async (request, response) => {
     if (request.method === "GET" && request.url === "/health") {
@@ -70,7 +37,15 @@ export function createApiServer({ env = process.env, store = null, applicationSe
       return;
     }
     if (await handleRest(request, response)) return;
-    yoga(request, response);
+
+    // Unknown non-versioned paths are not routed to another transport.
+    response.writeHead(404, {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+    });
+    response.end(JSON.stringify({
+      error: { code: "NOT_FOUND", message: "The requested route was not found." },
+    }));
   });
 }
 
@@ -86,7 +61,7 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
     const host = env.HOST ?? "0.0.0.0";
     const server = createApiServer({ env, applicationServices: services });
     server.listen(port, host, () => {
-      process.stdout.write(`BOT THK API listening on http://${host}:${port}\\n`);
+      process.stdout.write(`BOT THK API listening on http://${host}:${port}\n`);
     });
     const shutdown = () => {
       server.close(async () => {
@@ -98,7 +73,7 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
     process.once("SIGTERM", shutdown);
   };
   start().catch((error) => {
-    process.stderr.write(`BOT THK API startup failed: ${error.message}\\n`);
+    process.stderr.write(`BOT THK API startup failed: ${error.message}\n`);
     process.exitCode = 1;
   });
 }

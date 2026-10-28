@@ -1,9 +1,10 @@
 # REST–GraphQL Contract Parity Audit
 
 - Audit date: 2026-10-27
-- Baseline: the current GraphQL schema and resolvers in `apps/api/src/transport/graphql/schema.ts`
-- Rule: an endpoint is marked complete only when its behavior, authorization, inputs, and return fields have a REST equivalent and tests. The existence of a similarly named route alone is not parity.
-- The public REST API intentionally accepts only `zh-CN`; this is an approved contract change documented in ADR 0006, not accidental field/operation parity.
+- Baseline: the former GraphQL schema and resolvers in `apps/api/src/transport/graphql/schema.ts`, as they existed during the 2026-10-27 migration review
+- Status: historical migration record only. The live GraphQL schema/runtime, `/graphql` route, and schema-parity test have been removed after the Web public-content client migrated to REST.
+- Rule used for this audit: an endpoint was marked complete only when its behavior, authorization, inputs, and return fields had a reviewed REST equivalent and tests; a similarly named route alone was not considered parity.
+- The current public REST content API accepts `zh-CN`, `zh-TW`, and `en`; unsupported locale values fail validation.
 
 ## Field-level contracts
 
@@ -17,13 +18,13 @@ REST profile/follow/search/follower/following responses must pass through the co
 
 GraphQL fields: `id`, `authorId`, `slug`, `workType`, `status`, `locale`, `title`, `summary`, `contentBlocks`, `contentBlocksVersion`, `createdAt`, `updatedAt`, `publishedAt`, `author`, `categories`, and `tags`.
 
-The database article mapper intentionally supplies the scalar/content fields only; GraphQL's `Article` field resolvers hydrate `author`, `categories`, and `tags`. REST must do the equivalent enrichment for all article-producing routes (public reads, author/category/tag lists, liked/related articles, current-user article lists, create, and update). REST represents `contentBlocks` as a JSON array, while the legacy GraphQL schema serializes it as a JSON string; `contentBlocksVersion` is shared by both transports. Version 0 retains the original plain-text block contract; version 1 adds application-owned inline text runs, supported marks, and safe HTTP(S) or root-relative links. The semantic data must round-trip without loss.
+The database article mapper intentionally supplies scalar/content fields only; the former GraphQL `Article` field resolvers hydrated `author`, `categories`, and `tags`. The REST implementation enriches all article-producing routes (public reads, author/category/tag lists, liked/related articles, current-user article lists, create, and update). REST represents `contentBlocks` as a JSON array, while the legacy GraphQL schema serializes it as a JSON string; `contentBlocksVersion` is shared by both transports. Version 0 retains the original plain-text block contract; version 1 adds application-owned inline text runs, supported marks, and safe HTTP(S) or root-relative links. The semantic data must round-trip without loss.
 
 ### `ArticleComment`
 
 GraphQL fields: `id`, `articleId`, `authorId`, `parentCommentId`, `content`, `contentBlocks`, `contentBlocksVersion`, `createdAt`, `updatedAt`, `author`, and `replies`.
 
-Comment REST responses include `author` (nullable when no profile exists), recursive `replies`, nullable `contentBlocks`, and `contentBlocksVersion`. Version 0 keeps the existing trimmed plain-text `content` and a null blocks value. Version 1 stores paragraph-only application content blocks plus an exactly matching plain-text fallback in `content`; the REST write boundary accepts either `contentBlocks` or serialized Lexical `editorState`, never both. The transitional GraphQL mutation remains legacy-text input, while GraphQL reads can select the additive versioned fields. Delete preserves the GraphQL boolean outcome inside the standard REST data envelope.
+Comment REST responses include `author` (nullable when no profile exists), recursive `replies`, nullable `contentBlocks`, and `contentBlocksVersion`. Version 0 keeps the existing trimmed plain-text `content` and a null blocks value. Version 1 stores paragraph-only application content blocks plus an exactly matching plain-text fallback in `content`; the REST write boundary accepts either `contentBlocks` or serialized Lexical `editorState`, never both. This audit documented the transitional GraphQL representation at the time; the live REST comment contract is the active API. Delete preserves the prior boolean outcome inside the standard REST data envelope.
 
 ### `ArticleLikeInfo`
 
@@ -33,7 +34,7 @@ Fields: `articleId`, `slug`, `likeCount`, `likedByViewer`. The REST GET operatio
 
 Taxonomy fields are `id`, `kind`, `slug`, `name`, `description`, `locale`, `createdBy`, and `articleCount`. REST reads and mutations expose this full service contract. `POST /api/v1/tags` retains hashtag normalization and idempotent reuse; `POST /api/v1/taxonomies` creates a localized taxonomy; `DELETE /api/v1/taxonomies/:taxonomyId` remains creator-scoped and returns the original boolean outcome.
 
-Message fields are `id`, `conversationId`, `senderId`, `body`, `createdAt`. Conversation fields are `id`, `createdBy`, `participantIds`, `createdAt`, `lastActivityAt`, `unreadCount`, and `lastMessage`. Notification fields are `id`, `eventKey`, `payload`, `createdAt`, and `readAt`; REST keeps `payload` as a JSON-serialized string to match GraphQL. Conversation access is checked by the existing persistence service, message sends derive `senderId` from JWT and require `Idempotency-Key`, and inbox/read-state operations are scoped by the verified recipient identity. Message history preserves the existing latest-window, oldest-first ordering and validates that `before` belongs to the same conversation.
+Message fields are `id`, `conversationId`, `senderId`, `body`, `createdAt`. Conversation fields are `id`, `createdBy`, `participantIds`, `createdAt`, `lastActivityAt`, `unreadCount`, and `lastMessage`. Notification fields are `id`, `eventKey`, `payload`, `createdAt`, and `readAt`; REST keeps `payload` as a JSON-serialized string for backward-compatible notification consumers. Conversation access is checked by the existing persistence service, message sends derive `senderId` from JWT and require `Idempotency-Key`, and inbox/read-state operations are scoped by the verified recipient identity. Message history preserves the existing latest-window, oldest-first ordering and validates that `before` belongs to the same conversation.
 
 ## Operation-by-operation inventory
 
@@ -86,10 +87,7 @@ The verifier requires `HS256`, the application-specific `typ: application/vnd.bo
 
 The independent API now has REST-only registration, password login, rotating refresh and logout endpoints; these are new API capabilities rather than GraphQL parity mappings. Email verification, account recovery, browser storage/cookie/CSRF policy, broader abuse protection, signing-key rotation and deployment remain open. See [API authentication](../architecture/api-authentication.md); do not mark the account system production-ready solely because token issuance is implemented.
 
-## Acceptance before GraphQL removal
+## Migration closeout — 2026-10-28
 
-- Every operation above marked complete has a reviewed REST contract and authorization regression tests; the legacy `toggleArticleLike` remains an intentional migration to explicit state-setting semantics.
-- Every exposed object retains the fields listed in its GraphQL type unless a representation change is explicitly documented.
-- A CI test parses the live GraphQL SDL, checks the exact Query/Mutation inventory against explicit REST mappings, verifies route markers remain in the handler, and checks key shared-object field lists against the reviewed contract.
-- The legacy `toggleArticleLike` maps to retry-safe `PUT` state setting; this is a documented semantic migration, not a native toggle equivalent.
-- Web callers have migrated; only then may GraphQL/Yoga and its configuration be removed.
+The former GraphQL transport has been removed after the Web client migration. This document remains for traceability of the former operation and field inventory; it is not executable code and must not be treated as a runtime dependency. Current regression protection resides in the REST handler tests, persistence adapter contracts, identity/integration tests, route smoke tests, and the required CI aggregate. The REST public-content locale contract is `zh-CN`, `zh-TW`, and `en`. The former `toggleArticleLike` behavior intentionally maps to idempotent `PUT liked` state-setting semantics.
+

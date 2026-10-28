@@ -10,7 +10,7 @@ const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
   "cache-control": "no-store",
 };
-const SUPPORTED_LOCALES = new Set(["zh-CN"]);
+const SUPPORTED_LOCALES = new Set(["zh-CN", "zh-TW", "en"]);
 const MAX_QUERY_LENGTH = 200;
 const MAX_ARTICLE_OFFSET = 100_000;
 const MAX_TAXONOMY_OFFSET = 1_000_000;

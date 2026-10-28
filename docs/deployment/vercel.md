@@ -7,7 +7,7 @@ This repository is configured for a single Vercel Services deployment containing
 - `web` builds from `apps/web` and receives the catch-all public route `/(.*)`.
 - `api` is built from the repository root so its container can use the shared `pnpm-lock.yaml`. Its runtime image contains only the API workspace dependencies and source.
 - Only the documented REST prefix `/api/v1/*` is routed publicly to `api`. The Next.js route `/api/spike/events` therefore remains with `web`.
-- The GraphQL endpoint (`/graphql`), `/health`, and `/ready` are not exposed by public rewrites. The current Web caller reaches the transitional GraphQL endpoint through the private `API_SERVICE_URL` binding. GraphQL is removal-only transition code: after the Web caller is migrated to REST, remove this dependency/binding and do not add new GraphQL operations.
+- The `/graphql` endpoint no longer exists. `/health` and `/ready` are not exposed by public rewrites. The Web content client reaches versioned REST endpoints through the private `API_SERVICE_URL` binding; only the documented `/api/v1/*` prefix is routed publicly to the API.
 - `notifications` runs `apps/api/src/persistence/notification-worker.ts` as a Vercel Daemon. It uses PostgreSQL directly and does not need a service binding.
 
 The Vercel project framework preset must be **Services**. If the preset remains Next.js, Vercel may ignore the multi-service configuration.
@@ -22,7 +22,7 @@ Configure these in Vercel's environment-variable settings for the environments w
 - `AUTH_JWT_MAX_TTL_SECONDS` (optional): maximum accepted access-token lifetime in seconds; defaults to `900` (15 minutes) and accepts `60`–`86400`. Keep it as low as the trusted issuance/session design allows.
 - `NEXT_PUBLIC_SITE_URL`: the canonical public website URL for metadata.
 
-Do not manually set `API_SERVICE_URL`; Vercel injects it from the service binding. Leave `API_GRAPHQL_URL` unset when using this binding. An explicit `API_GRAPHQL_URL`, if present, takes precedence and must already be the complete GraphQL endpoint URL.
+Do not manually set `API_SERVICE_URL`; Vercel injects it from the service binding. For non-Vercel deployments, set `API_BASE_URL` to the REST API origin. `API_BASE_URL` takes precedence over the binding. `API_GRAPHQL_URL` is accepted only as a one-release compatibility alias when no `API_BASE_URL` is configured; the Web client strips the terminal `/graphql` path, logs a deprecation warning, and sends REST requests only. Remove that legacy variable after deployment configuration has been migrated.
 
 ## Database and worker operations
 

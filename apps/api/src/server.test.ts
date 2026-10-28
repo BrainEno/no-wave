@@ -114,233 +114,21 @@ test("readiness hides persistence exceptions and returns service unavailable", a
   }, { store });
 });
 
-test("GraphQL endpoint serves a minimal health query", async () => {
+test("legacy GraphQL route is unavailable after the REST-only migration", async () => {
   await withServer(async (baseUrl) => {
     const response = await fetch(`${baseUrl}/graphql`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ query: "{ health { status version } }" }),
+      body: JSON.stringify({ query: "{ health { status } }" }),
     });
-    assert.equal(response.status, 200);
+    assert.equal(response.status, 404);
     assert.deepEqual(await response.json(), {
-      data: { health: { status: "ok", version: "0.1.0" } },
+      error: { code: "NOT_FOUND", message: "The requested route was not found." },
     });
   });
 });
 
-test("GraphQL article contentBlocks serializes domain arrays at the field boundary", async () => {
-  const store = {
-    async getPublishedArticle() {
-      return {
-        id: "article-1",
-        authorId: "author-1",
-        slug: "hello-world",
-        status: "published",
-        locale: "zh-TW",
-        title: "Hello",
-        summary: "",
-        contentBlocks: [{ id: "block-1", type: "paragraph", text: "Hello" }],
-        createdAt: "2026-01-01T00:00:00.000Z",
-        updatedAt: "2026-01-01T00:00:00.000Z",
-        publishedAt: "2026-01-01T00:00:00.000Z",
-      };
-    },
-  };
-  await withServer(async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/graphql`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ query: '{ article(slug: "hello-world") { contentBlocks } }' }),
-    });
-    const result = await response.json();
-    assert.equal(response.status, 200);
-    assert.deepEqual(result, {
-      data: {
-        article: {
-          contentBlocks: JSON.stringify([{ id: "block-1", type: "paragraph", text: "Hello" }]),
-        },
-      },
-    });
-  }, { store });
-});
-
-test("private viewer query fails closed without server-verified identity", async () => {
-  await withServer(async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/graphql`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ query: "{ viewer { id } }" }),
-    });
-    assert.equal(response.status, 200);
-    const result = await response.json();
-    assert.equal(result.data.viewer, null);
-    assert.equal(result.errors?.[0]?.message, "Authentication is required.");
-    assert.equal(result.errors?.[0]?.extensions?.code, "UNAUTHENTICATED");
-  });
-});
-
-test("viewer resolves only from a valid server-verified bearer token", async () => {
-  await withServer(async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/graphql`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${signedToken("authenticated-user")}`,
-      },
-      body: JSON.stringify({ query: "{ viewer { id } }" }),
-    });
-    assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { data: { viewer: { id: "authenticated-user" } } });
-  }, { env: authEnv, store: { async isSessionRevoked() { return false; } } });
-});
-
-test("viewer rejects forged bearer token and client-supplied identity", async () => {
-  await withServer(async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/graphql`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: "Bearer forged.token.value",
-        "x-user-id": "attacker",
-      },
-      body: JSON.stringify({ query: "{ viewer { id } }" }),
-    });
-    const result = await response.json();
-    assert.equal(result.data.viewer, null);
-    assert.equal(result.errors?.[0]?.extensions?.code, "UNAUTHENTICATED");
-  }, { env: authEnv });
-});
-
-test("GraphQL rejects invalid fields instead of returning fabricated data", async () => {
-  await withServer(async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/graphql`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ query: "{ privateMessages }" }),
-    });
-    assert.equal(response.status, 200);
-    const result = await response.json();
-    assert.ok(Array.isArray(result.errors));
-  });
-});
-
-test("current session can be revoked and subsequent requests fail closed", async () => {
-  const revoked = new Set();
-  let recordedExpiry = null;
-  const store = {
-    async isSessionRevoked(sessionId) { return revoked.has(sessionId); },
-    async revokeSession({ sessionId, expiresAt }) {
-      revoked.add(sessionId);
-      recordedExpiry = expiresAt;
-      return true;
-    },
-  };
-  await withServer(async (baseUrl) => {
-    const request = (query) => fetch(`${baseUrl}/graphql`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${signedToken("logout-user")}`,
-      },
-      body: JSON.stringify({ query }),
-    });
-    const logoutResponse = await request("mutation { revokeCurrentSession }");
-    assert.deepEqual(await logoutResponse.json(), { data: { revokeCurrentSession: true } });
-    assert.ok(recordedExpiry instanceof Date);
-    assert.ok(recordedExpiry.getTime() > Date.now());
-
-    const viewerResponse = await request("{ viewer { id } }");
-    const viewerResult = await viewerResponse.json();
-    assert.equal(viewerResult.data.viewer, null);
-    assert.equal(viewerResult.errors?.[0]?.extensions?.code, "UNAUTHENTICATED");
-  }, { env: authEnv, store });
-});
-
-
-test("createArticle reports malformed contentBlocks as a client input error", async () => {
-  await withServer(async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/graphql`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${signedToken("article-author")}`,
-      },
-      body: JSON.stringify({
-        query: 'mutation { createArticle(slug: "bad-json", title: "Bad JSON", contentBlocks: "not-json") { id } }',
-      }),
-    });
-    const result = await response.json();
-    assert.equal(result.data, null);
-    assert.equal(result.errors?.[0]?.extensions?.code, "BAD_USER_INPUT");
-    assert.equal(result.errors?.[0]?.message, "contentBlocks must be a valid JSON array.");
-  }, { env: authEnv, store: { async isSessionRevoked() { return false; } } });
-});
-
-test("updateArticle reports malformed contentBlocks as a client input error", async () => {
-  await withServer(async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/graphql`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${signedToken("article-author")}`,
-      },
-      body: JSON.stringify({
-        query: 'mutation { updateArticle(articleId: "article-1", slug: "bad-json", title: "Bad JSON", contentBlocks: "not-json", publish: false) { id } }',
-      }),
-    });
-    const result = await response.json();
-    assert.equal(result.data, null);
-    assert.equal(result.errors?.[0]?.extensions?.code, "BAD_USER_INPUT");
-    assert.equal(result.errors?.[0]?.message, "contentBlocks must be a valid JSON array.");
-  }, { env: authEnv, store: { async isSessionRevoked() { return false; } } });
-});
-
-test("public article query forwards pagination arguments to persistence", async () => {
-  let received;
-  const store = {
-    async listPublishedArticles(args) {
-      received = args;
-      return [];
-    },
-  };
-  await withServer(async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/graphql`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        query: '{ articles(locale: "en", query: "poetry", limit: 10, offset: 20) { id slug } }',
-      }),
-    });
-    assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { data: { articles: [] } });
-    assert.deepEqual(received, { locale: "en", query: "poetry", limit: 10, offset: 20 });
-  }, { store });
-});
-
-
-test("public taxonomy query forwards pagination arguments to persistence", async () => {
-  let received;
-  const store = {
-    async listTaxonomies(args) {
-      received = args;
-      return [];
-    },
-  };
-  await withServer(async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/graphql`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        query: '{ taxonomies(kind: "category", locale: "en", query: "poetry", limit: 10, offset: 20) { id slug } }',
-      }),
-    });
-    assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { data: { taxonomies: [] } });
-    assert.deepEqual(received, { kind: "category", locale: "en", query: "poetry", limit: 10, offset: 20 });
-  }, { store });
-});
-
-test("REST health endpoint is available independently of GraphQL", async () => {
+test("REST health endpoint is available independently of business routes", async () => {
   await withServer(async (baseUrl) => {
     const response = await fetch(`${baseUrl}/api/v1/health`);
     assert.equal(response.status, 200);
@@ -572,7 +360,7 @@ test("REST article updates derive actorId from JWT and use the path article ID",
   });
 });
 
-test("REST article writes require verified non-revoked authentication and zh-CN", async () => {
+test("REST article writes require verified non-revoked authentication and a supported locale", async () => {
   let writes = 0;
   const contentBlocks = [{ id: "p1", type: "paragraph", text: "Text" }];
   await withServer(async (baseUrl) => {
@@ -590,7 +378,7 @@ test("REST article writes require verified non-revoked authentication and zh-CN"
         "content-type": "application/json",
         authorization: "Bearer " + signedToken("writer"),
       },
-      body: JSON.stringify({ slug: "english", title: "English", contentBlocks, locale: "en" }),
+      body: JSON.stringify({ slug: "unsupported", title: "Unsupported", contentBlocks, locale: "fr" }),
     });
     assert.equal(unsupportedLocale.status, 400);
     assert.equal((await unsupportedLocale.json()).error.code, "BAD_USER_INPUT");
@@ -852,8 +640,6 @@ test("REST rejects unsupported locales, oversized search terms and offsets befor
   await withServer(async (baseUrl) => {
     for (const path of [
       "/api/v1/articles?locale=fr",
-      "/api/v1/articles?locale=en",
-      "/api/v1/articles?locale=zh-TW",
       `/api/v1/articles?query=${oversizedQuery}`,
       "/api/v1/articles?offset=100001",
       "/api/v1/categories?locale=fr",
@@ -882,6 +668,33 @@ test("REST rejects unsupported locales, oversized search terms and offsets befor
       async listPublishedArticles() { calls += 1; return []; },
       async listTaxonomies() { calls += 1; return []; },
       async getTaxonomyBySlug() { calls += 1; return null; },
+    },
+  });
+});
+
+test("REST public content routes accept zh-CN, zh-TW and en without locale fallback", async () => {
+  const calls: Array<[string, string]> = [];
+  await withServer(async (baseUrl) => {
+    for (const locale of ["zh-CN", "zh-TW", "en"]) {
+      for (const path of [
+        `/api/v1/articles?locale=${locale}`,
+        `/api/v1/categories?locale=${locale}`,
+        `/api/v1/tags?locale=${locale}`,
+      ]) {
+        const response = await fetch(baseUrl + path);
+        assert.equal(response.status, 200, path);
+        assert.deepEqual((await response.json()).data, [], path);
+      }
+    }
+    assert.deepEqual(calls, [
+      ["article", "zh-CN"], ["category", "zh-CN"], ["tag", "zh-CN"],
+      ["article", "zh-TW"], ["category", "zh-TW"], ["tag", "zh-TW"],
+      ["article", "en"], ["category", "en"], ["tag", "en"],
+    ]);
+  }, {
+    store: {
+      async listPublishedArticles(args) { calls.push(["article", args.locale]); return []; },
+      async listTaxonomies(args) { calls.push([args.kind, args.locale]); return []; },
     },
   });
 });
@@ -1014,7 +827,7 @@ test("REST current user and profile reads require JWT and preserve all AuthorPro
   });
 });
 
-test("REST user search and relationship lists retain GraphQL arguments and complete author fields", async () => {
+test("REST user search and relationship lists preserve complete author fields", async () => {
   const calls = [];
   const profile = {
     userId: "target-user", displayName: "作者甲", bio: "简介",
@@ -1050,7 +863,7 @@ test("REST user search and relationship lists retain GraphQL arguments and compl
   });
 });
 
-test("REST liked articles, related articles, and article like info cover the GraphQL read operations", async () => {
+test("REST liked articles, related articles, and article like info are available", async () => {
   const calls = [];
   const writerProfile = {
     userId: "writer-user", displayName: "作者", bio: "简介", avatarUrl: "/avatar.png",
@@ -1591,7 +1404,7 @@ test("REST taxonomy mutations preserve normalization inputs, creator identity, a
 
     const wrongLocale = await fetch(baseUrl + "/api/v1/taxonomies", {
       method: "POST", headers,
-      body: JSON.stringify({ kind: "category", slug: "poetry", name: "诗歌", locale: "en" }),
+      body: JSON.stringify({ kind: "category", slug: "poetry", name: "诗歌", locale: "fr" }),
     });
     assert.equal(wrongLocale.status, 400);
     assert.equal((await wrongLocale.json()).error.code, "BAD_USER_INPUT");
@@ -1721,7 +1534,7 @@ test("REST conversation and message routes preserve full fields, cursor order co
   });
 });
 
-test("REST notification routes are recipient-scoped and preserve the GraphQL JSON-string payload contract", async () => {
+test("REST notification routes are recipient-scoped and preserve their JSON-string payload contract", async () => {
   const calls: Array<{ method: string; args: Record<string, unknown> }> = [];
   const notification = {
     id: "ffffffff-ffff-4fff-8fff-ffffffffffff", userId: "reader-user", eventKey: "message.created",
