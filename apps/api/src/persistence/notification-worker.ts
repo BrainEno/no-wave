@@ -70,7 +70,6 @@ async function runWorker() {
         writeWorkerLog("error", "outbox_batch_failed", { errorName: safeErrorName(error) });
         await delay(pollIntervalMs);
       }
-      }
     }
   } finally {
     writeWorkerLog("info", "worker_stopping");
