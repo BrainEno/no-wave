@@ -45,10 +45,14 @@ export function createSqliteIdentityStore(db) {
   }
   return Object.freeze({
     async createIdentityAccount({ userId, email, passwordHash, session }) {
-      return transaction(() => {
+      return transaction((transactionId) => {
         const result = run("INSERT INTO auth_accounts (user_id,email,password_hash) VALUES (?, ?, ?) ON CONFLICT(email) DO NOTHING", userId, email, passwordHash);
         if (Number(result.changes) === 0) return false;
         insertSession({ ...session, userId });
+        migrationCapture.captureInTransaction(db, transactionId, [
+          { entityType: "auth_accounts", entityId: userId, operation: "upsert", payload: get("SELECT * FROM auth_accounts WHERE user_id = ?", userId) },
+        ]);
+        captureSessionSnapshot(transactionId, session.sessionId);
         return true;
       });
     },
@@ -57,10 +61,14 @@ export function createSqliteIdentityStore(db) {
       return row ? { userId: row.user_id, passwordHash: row.password_hash } : null;
     },
     async createIdentitySession(session) {
-      return transaction(() => { insertSession(session); return true; });
+      return transaction((transactionId) => {
+        insertSession(session);
+        captureSessionSnapshot(transactionId, session.sessionId);
+        return true;
+      });
     },
     async rotateIdentityRefresh({ refreshHash, nextRefreshHash, accessTokenId, issuedAt, accessExpiresAt }) {
-      return transaction(() => {
+      return transaction((transactionId) => {
         const token = get("SELECT session_id, used_at FROM auth_refresh_tokens WHERE token_hash = ?", refreshHash);
         if (!token) return { status: "invalid" };
         const session = get("SELECT id, user_id, expires_at, revoked_at FROM auth_sessions WHERE id = ?", token.session_id);
@@ -68,6 +76,7 @@ export function createSqliteIdentityStore(db) {
         if (!session || session.revoked_at || expires <= Date.now() || expires <= new Date(issuedAt).getTime()) return { status: "invalid" };
         if (token.used_at) {
           revokeSessionFamily(session.id);
+          captureSessionSnapshot(transactionId, session.id);
           return { status: "reused" };
         }
         const cappedExpiry = new Date(Math.min(expires, new Date(accessExpiresAt).getTime()));
@@ -76,6 +85,11 @@ export function createSqliteIdentityStore(db) {
         run("UPDATE auth_refresh_tokens SET used_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE token_hash = ?", refreshHash);
         run("INSERT INTO auth_refresh_tokens (token_hash, session_id) VALUES (?, ?)", nextRefreshHash, session.id);
         run("INSERT INTO auth_access_tokens (token_id, session_id, expires_at) VALUES (?, ?, ?)", accessTokenId, session.id, cappedExpiry.toISOString());
+        migrationCapture.captureInTransaction(db, transactionId, [
+          { entityType: "auth_refresh_tokens", entityId: refreshHash, operation: "upsert", payload: get("SELECT * FROM auth_refresh_tokens WHERE token_hash = ?", refreshHash) },
+          { entityType: "auth_refresh_tokens", entityId: nextRefreshHash, operation: "upsert", payload: get("SELECT * FROM auth_refresh_tokens WHERE token_hash = ?", nextRefreshHash) },
+          { entityType: "auth_access_tokens", entityId: accessTokenId, operation: "upsert", payload: get("SELECT * FROM auth_access_tokens WHERE token_id = ?", accessTokenId) },
+        ]);
         return { status: "rotated", userId: session.user_id, accessExpiresAt: cappedExpiry.toISOString(), refreshExpiresAt: new Date(session.expires_at).toISOString() };
       });
     },
