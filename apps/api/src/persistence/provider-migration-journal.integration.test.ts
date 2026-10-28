@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test, { after, before } from "node:test";
-import { createPostgresClient } from "./postgres.ts";
+import { createPostgresClient, createPostgresStore } from "./postgres.ts";
 import { runMigrations } from "./migrate.ts";
 import { createPostgresProviderMigrationJournal } from "./postgres-provider-migration-journal.ts";
 
@@ -48,5 +48,49 @@ test("PostgreSQL migration journal orders transactional changes and commits repl
     assert.equal(await journal.getCheckpoint(sessionId), 2);
   } finally {
     if (sql) await sql.unsafe("DELETE FROM provider_migration_sessions WHERE session_id = $1", [sessionId]);
+  }
+});
+
+
+test("PostgreSQL domain writes capture profile, taxonomy-independent notification and read-state updates", options, async () => {
+  const suffix = randomUUID();
+  const sessionId = "business-capture-" + suffix;
+  const userId = "migration-user-" + suffix;
+  const notificationEventKey = "migration-notification-" + suffix;
+  const journal = createPostgresProviderMigrationJournal(sql);
+  const store = createPostgresStore(sql);
+  try {
+    await journal.createSession({ sessionId, sourceProvider: "postgres", targetProvider: "sqlite", schemaVersion: "integration-v1" });
+    await journal.transitionSession({ sessionId, expectedStatus: "prepared", nextStatus: "recording" });
+
+    await store.upsertAuthorProfile({ userId, displayName: "Migration Capture", bio: "profile snapshot", locale: "en" });
+    const notification = await store.createNotification({
+      userId, eventKey: notificationEventKey, payload: { type: "capture.test", source: "postgres-integration" },
+    });
+    assert.equal(notification.duplicate, false);
+    const marked = await store.markNotificationRead({ notificationId: notification.id, actorId: userId });
+    assert.ok(marked?.readAt);
+
+    const changes = await journal.readChangeBatch({ sessionId, afterSequence: 0, limit: 100 });
+    const entityTypes = new Set(changes.map((change: any) => change.entityType));
+    assert.ok(entityTypes.has("user_profiles"));
+    assert.ok(entityTypes.has("user_profile_translations"));
+    assert.ok(entityTypes.has("notifications"));
+
+    const profileChange = changes.find((change: any) => change.entityType === "user_profiles" && change.entityId === userId);
+    const translationChange = changes.find((change: any) => change.entityType === "user_profile_translations" && change.entityId === JSON.stringify([userId, "en"]));
+    assert.ok(profileChange);
+    assert.ok(translationChange);
+    assert.equal(profileChange.transactionId, translationChange.transactionId);
+
+    const notificationChanges = changes.filter((change: any) => change.entityType === "notifications" && change.entityId === notification.id);
+    assert.equal(notificationChanges.length, 2, "creation and read state must each be captured");
+    assert.notEqual(notificationChanges[0].transactionId, notificationChanges[1].transactionId);
+  } finally {
+    if (sql) {
+      await sql.unsafe("DELETE FROM notifications WHERE user_id = $1", [userId]);
+      await sql.unsafe("DELETE FROM user_profiles WHERE user_id = $1", [userId]);
+      await sql.unsafe("DELETE FROM provider_migration_sessions WHERE session_id = $1", [sessionId]);
+    }
   }
 });
