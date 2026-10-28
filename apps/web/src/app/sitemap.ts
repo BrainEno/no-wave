@@ -8,6 +8,8 @@ import {
 } from "@/lib/content.ts";
 import { listPublicArticles } from "@/lib/api-content.ts";
 
+export const dynamic = "force-dynamic";
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://example.invalid";
   const result: MetadataRoute.Sitemap = [];
