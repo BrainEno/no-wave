@@ -995,6 +995,7 @@ export function createPostgresStore(sql) {
       const allIds = [actorId, ...others];
       const conversationId = randomUUID();
       return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
         const created = await tx.unsafe(
           "INSERT INTO conversations (id, created_by) VALUES ($1, $2) RETURNING id, created_by, created_at",
           [conversationId, actorId],
@@ -1006,6 +1007,14 @@ export function createPostgresStore(sql) {
           );
         }
         const row = created[0];
+        const [conversationSnapshot, participantSnapshots] = await Promise.all([
+          tx.unsafe("SELECT * FROM conversations WHERE id = $1", [conversationId]),
+          tx.unsafe("SELECT * FROM conversation_participants WHERE conversation_id = $1 ORDER BY user_id", [conversationId]),
+        ]);
+        await captureChanges(tx, transactionId, [
+          { entityType: "conversations", entityId: conversationId, operation: "upsert", payload: conversationSnapshot[0] },
+          ...participantSnapshots.map((participant) => ({ entityType: "conversation_participants", entityId: migrationEntityKey(conversationId, participant.user_id), operation: "upsert", payload: participant })),
+        ]);
         return {
           id: row.id,
           createdBy: row.created_by,
@@ -1025,6 +1034,7 @@ export function createPostgresStore(sql) {
       if (removes.includes(actorId)) throw new ConversationInputError("The current user cannot remove themself; delete the conversation instead.");
       if (adds.some((id) => removes.includes(id))) throw new ConversationInputError("A user cannot be added and removed in the same operation.");
       return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
         const conversations = await tx.unsafe("SELECT created_by FROM conversations WHERE id = $1 FOR UPDATE", [conversationId]);
         if (!conversations[0]) throw new ConversationNotFoundError();
         const membership = await tx.unsafe(
@@ -1050,6 +1060,11 @@ export function createPostgresStore(sql) {
             [conversationId, userId],
           );
         }
+        const changedIds = [...new Set([...adds, ...removes])];
+        const snapshots = changedIds.length ? await tx.unsafe("SELECT * FROM conversation_participants WHERE conversation_id = $1 AND user_id = ANY($2::text[])", [conversationId, changedIds]) : [];
+        await captureChanges(tx, transactionId, snapshots.map((participant) => ({
+          entityType: "conversation_participants", entityId: migrationEntityKey(conversationId, participant.user_id), operation: "upsert", payload: participant,
+        })));
         return true;
       });
     },
@@ -1057,6 +1072,7 @@ export function createPostgresStore(sql) {
       requiredText("conversationId", conversationId, 300);
       requiredText("actorId", actorId, 300);
       return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
         const rows = await tx.unsafe("SELECT created_by FROM conversations WHERE id = $1 FOR UPDATE", [conversationId]);
         if (!rows[0]) return false;
         if (rows[0].created_by !== actorId) {
@@ -1067,6 +1083,12 @@ export function createPostgresStore(sql) {
           [conversationId, actorId],
         );
         if (membership.length === 0) throw new ConversationAccessError();
+        const [participants, messages, outbox, notifications] = await Promise.all([
+          tx.unsafe("SELECT * FROM conversation_participants WHERE conversation_id = $1", [conversationId]),
+          tx.unsafe("SELECT * FROM messages WHERE conversation_id = $1", [conversationId]),
+          tx.unsafe("SELECT * FROM outbox_events WHERE aggregate_id IN (SELECT id::text FROM messages WHERE conversation_id = $1)", [conversationId]),
+          tx.unsafe("SELECT * FROM notifications WHERE payload->>'conversationId' = $1 AND payload->>'type' = 'message.created'", [conversationId]),
+        ]);
         await tx.unsafe(
           "DELETE FROM outbox_events WHERE aggregate_id IN (SELECT id::text FROM messages WHERE conversation_id = $1)",
           [conversationId],
@@ -1076,18 +1098,32 @@ export function createPostgresStore(sql) {
           [conversationId],
         );
         await tx.unsafe("DELETE FROM conversations WHERE id = $1", [conversationId]);
+        await captureChanges(tx, transactionId, [
+          { entityType: "conversations", entityId: conversationId, operation: "delete", payload: null },
+          ...participants.map((row) => ({ entityType: "conversation_participants", entityId: migrationEntityKey(conversationId, row.user_id), operation: "delete", payload: null })),
+          ...messages.map((row) => ({ entityType: "messages", entityId: row.id, operation: "delete", payload: null })),
+          ...outbox.map((row) => ({ entityType: "outbox_events", entityId: row.id, operation: "delete", payload: null })),
+          ...notifications.map((row) => ({ entityType: "notifications", entityId: row.id, operation: "delete", payload: null })),
+        ]);
         return true;
       });
     },
     async markConversationAsRead({ conversationId, actorId }) {
       requiredText("conversationId", conversationId, 300);
       requiredText("actorId", actorId, 300);
-      const rows = await sql.unsafe(
-        "UPDATE conversation_participants SET last_read_at = now() WHERE conversation_id = $1 AND user_id = $2 AND left_at IS NULL RETURNING user_id",
-        [conversationId, actorId],
-      );
-      if (rows.length === 0) throw new ConversationAccessError();
-      return true;
+      return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const rows = await tx.unsafe(
+          "UPDATE conversation_participants SET last_read_at = now() WHERE conversation_id = $1 AND user_id = $2 AND left_at IS NULL RETURNING user_id",
+          [conversationId, actorId],
+        );
+        if (rows.length === 0) throw new ConversationAccessError();
+        const snapshots = await tx.unsafe("SELECT * FROM conversation_participants WHERE conversation_id = $1 AND user_id = $2", [conversationId, actorId]);
+        await captureChanges(tx, transactionId, [
+          { entityType: "conversation_participants", entityId: migrationEntityKey(conversationId, actorId), operation: "upsert", payload: snapshots[0] },
+        ]);
+        return true;
+      });
     },
     async listConversationMessages({ conversationId, actorId, limit = 100, before = null }) {
       for (const [name, value] of Object.entries({ conversationId, actorId })) {
@@ -1210,6 +1246,7 @@ export function createPostgresStore(sql) {
       }
       const hash = requestHash({ conversationId, senderId, body });
       return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
         // Serialize the membership check and outbox insert with participant
         // changes, deletion and notification delivery, all of which lock this
         // conversation first. Otherwise a removed sender can still write or
@@ -1234,11 +1271,17 @@ export function createPostgresStore(sql) {
           return assertSameRequest(raced, hash);
         }
         const message = inserted[0];
+        const outboxId = randomUUID();
         await tx.unsafe(
           "INSERT INTO outbox_events (id, event_key, event_type, aggregate_id, payload) VALUES ($1, $2, $3, $4, $5::jsonb)",
-          [randomUUID(), `message:${message.id}`, "message.created", message.id,
+          [outboxId, `message:${message.id}`, "message.created", message.id,
             { messageId: message.id, conversationId: message.conversation_id, senderId: message.sender_id }],
         );
+        const outboxRows = await tx.unsafe("SELECT * FROM outbox_events WHERE id = $1", [outboxId]);
+        await captureChanges(tx, transactionId, [
+          { entityType: "messages", entityId: message.id, operation: "upsert", payload: message },
+          { entityType: "outbox_events", entityId: outboxId, operation: "upsert", payload: outboxRows[0] },
+        ]);
         return mapMessage(message, false);
       });
     },
