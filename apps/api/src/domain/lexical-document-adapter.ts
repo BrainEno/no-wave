@@ -137,7 +137,7 @@ function parseBlock(node, index) {
     const runs = parseInlineNodes(children, path + ".children");
     const text = plainText(runs);
     if (children.length === 0) fail(path + ".children", "cannot represent an empty block.");
-    const block = { id: "lexical-block-" + (index + 1), type: node.type, text };
+    const block: Record<string, any> = { id: "lexical-block-" + (index + 1), type: node.type, text };
     if (node.type === "heading") {
       if (typeof node.tag !== "string" || !/^h[2-4]$/.test(node.tag)) fail(path + ".tag", "must be h2, h3, or h4.");
       block.level = Number(node.tag.slice(1));
@@ -172,7 +172,7 @@ function parseBlock(node, index) {
       itemInlines.push(runs);
       anyMarkup ||= hasInlineMarkup(runs);
     }
-    const block = { id: "lexical-block-" + (index + 1), type: "list", ordered, items };
+    const block: Record<string, any> = { id: "lexical-block-" + (index + 1), type: "list", ordered, items };
     if (anyMarkup) block.itemInlines = itemInlines;
     return block;
   }
