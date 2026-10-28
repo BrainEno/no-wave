@@ -1365,7 +1365,7 @@ test("REST article comments support public listing and authenticated replies", a
       kind: "create",
       args: {
         slug: "poetry-work", locale: "zh-CN", actorId: "commenter-user",
-        content: "很好的观点", parentCommentId,
+        content: "很好的观点", contentBlocks: null, contentBlocksVersion: 0, parentCommentId,
       },
     });
   }, {

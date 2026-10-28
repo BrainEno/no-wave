@@ -49,7 +49,7 @@ test("SQLite rich-comment migration preserves legacy rows and constrains content
     assert.equal(row.content_blocks_version, 0);
     assert.throws(() => db.prepare("UPDATE article_comments SET content_blocks_version = 1 WHERE id = ?").run("legacy-comment"), /content version mismatch/i);
     assert.throws(() => db.prepare("INSERT INTO article_comments (id, article_id, author_id, content, content_blocks, content_blocks_version) VALUES (?, ?, ?, ?, ?, ?)").run("bad-comment-version", "comment-migration-article", "reader", "x", null, 2), /CHECK constraint failed/i);
-    assert.throws(() => db.prepare("INSERT INTO article_comments (id, article_id, author_id, content, content_blocks, content_blocks_version) VALUES (?, ?, ?, ?, ?, ?)").run("bad-comment-shape", "comment-migration-article", "reader", "x", "{\\"type\\":\\"paragraph\\"}", 1), /CHECK constraint failed/i);
+    assert.throws(() => db.prepare("INSERT INTO article_comments (id, article_id, author_id, content, content_blocks, content_blocks_version) VALUES (?, ?, ?, ?, ?, ?)").run("bad-comment-shape", "comment-migration-article", "reader", "x", "{\"type\":\"paragraph\"}", 1), /CHECK constraint failed/i);
   } finally { db.close(); }
 });
 
