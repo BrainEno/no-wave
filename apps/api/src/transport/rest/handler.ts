@@ -1,9 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { DomainError, IdentityRateLimitError } from "../../domain/errors.ts";
+import { DomainError, RateLimitError } from "../../domain/errors.ts";
 import { lexicalEditorStateToArticleDocument } from "../../domain/lexical-document-adapter.ts";
 import { normalizeCommentContentInput } from "../../domain/comment-content.ts";
 import { createAuthContext } from "../../security/authentication.ts";
 import { createIdentityService } from "../../application/identity.ts";
+import { createRateLimitService, resolveWriteRateLimitPolicy, type RateLimitBucket, type RateLimitStore } from "../../application/rate-limit.ts";
 import type { IdentityStore } from "../../application/identity.ts";
 
 const JSON_HEADERS = {
@@ -16,7 +17,7 @@ const MAX_ARTICLE_OFFSET = 100_000;
 const MAX_TAXONOMY_OFFSET = 1_000_000;
 const MAX_JSON_BODY_BYTES = 2 * 1024 * 1024;
 
-type RestServices = Record<string, (...args: any[]) => any>;
+type RestServices = Record<string, (...args: any[]) => any> & Partial<RateLimitStore> & Partial<IdentityStore>;
 
 function sendJson(response: ServerResponse, status: number, body: unknown): void {
   response.writeHead(status, JSON_HEADERS);
@@ -87,7 +88,7 @@ const DOMAIN_ERROR_RESPONSES: Record<string, RestErrorResponse> = {
   BAD_USER_INPUT: { status: 400, code: "BAD_USER_INPUT", message: "The request input is invalid." },
   FORBIDDEN: { status: 403, code: "FORBIDDEN", message: "You are not allowed to access this resource." },
   UNAUTHENTICATED: { status: 401, code: "UNAUTHENTICATED", message: "The credentials are invalid." },
-  RATE_LIMITED: { status: 429, code: "RATE_LIMITED", message: "Too many authentication attempts. Try again later." },
+  RATE_LIMITED: { status: 429, code: "RATE_LIMITED", message: "Too many requests. Try again later." },
   SERVICE_UNAVAILABLE: { status: 503, code: "SERVICE_UNAVAILABLE", message: "Identity is not configured." },
   NOT_FOUND: { status: 404, code: "NOT_FOUND", message: "The requested resource was not found." },
   CONFLICT: { status: 409, code: "CONFLICT", message: "The request conflicts with the current resource state." },
@@ -101,7 +102,7 @@ const DOMAIN_ERROR_RESPONSES: Record<string, RestErrorResponse> = {
 function sendServiceError(response: ServerResponse, error: unknown): void {
   const mapped = error instanceof DomainError ? DOMAIN_ERROR_RESPONSES[error.code] : undefined;
   if (mapped) {
-    if (error instanceof IdentityRateLimitError) response.setHeader("retry-after", String(error.retryAfterSeconds));
+    if (error instanceof RateLimitError) response.setHeader("retry-after", String(error.retryAfterSeconds));
     sendJson(response, mapped.status, { error: { code: mapped.code, message: mapped.message } });
     return;
   }
@@ -623,6 +624,15 @@ async function serializeRestComments(
 export function createRestHandler({ services, env = process.env }: { services: RestServices | null; env?: NodeJS.ProcessEnv }) {
   // The facade is assembled dynamically from the validated persistence ports.
   const identity = services ? createIdentityService({ store: services as unknown as IdentityStore, env }) : null;
+  const rateLimitStore: RateLimitStore | null = services && typeof services.consumeRateLimit === "function"
+    ? {
+        consumeRateLimit: (input: RateLimitBucket) => services.consumeRateLimit!(input),
+        pruneExpiredIdentityState: typeof services.pruneExpiredIdentityState === "function"
+          ? () => services.pruneExpiredIdentityState!()
+          : undefined,
+      }
+    : null;
+  const writeRateLimiter = rateLimitStore ? createRateLimitService({ store: rateLimitStore, env }) : null;
   return async function handleRest(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
     const url = new URL(request.url ?? "/", "http://localhost");
     if (url.pathname !== "/api/v1" && !url.pathname.startsWith("/api/v1/")) return false;
@@ -809,6 +819,24 @@ export function createRestHandler({ services, env = process.env }: { services: R
       response.setHeader("allow", url.pathname === "/api/v1/articles" ? "GET, POST" : articleItemPath ? "GET, PUT" : "GET");
       sendJson(response, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "The HTTP method is not supported for this endpoint." } });
       return true;
+    }
+
+    const writePolicy = resolveWriteRateLimitPolicy(request.method ?? "GET", url.pathname);
+    if (writePolicy && writeRateLimiter && services) {
+      try {
+        const actorId = await optionalViewerId(request, services, env);
+        // Use only the TCP peer address. X-Forwarded-For is untrusted unless a
+        // separately configured trusted proxy has already enforced this policy.
+        await writeRateLimiter.checkWrite({
+          method: request.method ?? "GET",
+          pathname: url.pathname,
+          ip: request.socket.remoteAddress ?? "unknown",
+          actorId,
+        });
+      } catch (error: unknown) {
+        sendServiceError(response, error);
+        return true;
+      }
     }
 
     if (url.pathname === "/api/v1/health") {
