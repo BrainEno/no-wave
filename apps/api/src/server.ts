@@ -42,6 +42,16 @@ export function createApiServer({
       return;
     }
     if (request.method === "GET" && new URL(request.url ?? "/", "http://localhost").pathname === "/metrics") {
+      if (env.API_METRICS_ENABLED !== "true") {
+        response.writeHead(404, {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "no-store",
+        });
+        response.end(JSON.stringify({
+          error: { code: "NOT_FOUND", message: "The requested route was not found." },
+        }));
+        return;
+      }
       response.writeHead(200, {
         "content-type": "text/plain; version=0.0.4; charset=utf-8",
         "cache-control": "no-store",
