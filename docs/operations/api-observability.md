@@ -19,12 +19,20 @@ Current in-process metrics:
 - `api_persistence_operations_total{operation,outcome}`: persistence-port operation count, separated into success/error.
 - `api_persistence_operation_duration_ms_{bucket,sum,count}`: persistence-port operation wall-clock duration in milliseconds.
 
+The notification worker is a separate process. Enable its dedicated Prometheus listener with `OUTBOX_METRICS_PORT=9100`; `OUTBOX_METRICS_HOST` defaults to `127.0.0.1` and should only be changed to a reachable interface when the scrape network is restricted. The optional endpoint exposes:
+
+- `api_outbox_events_claimed_total`, `api_outbox_events_delivered_total`, `api_outbox_events_failed_total`: delivery results.
+- `api_outbox_pending_events`, `api_outbox_oldest_pending_age_seconds`: backlog depth and age, sampled every `OUTBOX_METRICS_REFRESH_INTERVAL_MS` milliseconds (default 5000).
+- `api_outbox_batch_duration_ms_{bucket,sum,count}`, `api_outbox_batch_failures_total`, `api_outbox_backlog_read_failures_total`: worker duration and observability/dispatch failures.
+
+The worker metrics listener is disabled unless a nonzero port is configured. For container or remote scraping, set `OUTBOX_METRICS_HOST` deliberately and enforce a private network policy; the listener has no authentication and must not be exposed to the public Internet.
+
 Labels intentionally use a small fixed set of HTTP methods and route groups. Resource IDs, query values, users, IP addresses and exception text never become metric labels. Persistence timing measures complete application persistence-port calls (including adapter logic), not individual SQL statements.
 
 Metrics are in-memory, process-local counters; a restart resets them. Scrape and aggregate every API instance separately. Do not expose `/metrics` publicly: restrict it with the deployment network or trusted reverse-proxy/ingress policy. The endpoint does not reveal identities or payloads, but traffic and operation rates are operational information.
 
 ## Known boundaries
 
-The standalone notification worker is a separate process and its existing structured logs report batch and delivery failures; the API's process-local metrics do not provide worker queue depth or delivery-lag metrics. Dedicated worker metrics and optional OpenTelemetry export are follow-up work rather than something this endpoint claims to cover. The project currently has no distributed tracing exporter and a trace ID is correlation metadata, not a complete trace/span.
+The API and worker metrics are process-local and reset when their process restarts. The API trace ID is correlation metadata only; it does not create distributed spans and there is no OpenTelemetry exporter in this change. Optional OTLP tracing can be evaluated separately once an endpoint, sampling policy, and sensitive-attribute allowlist are specified.
 
 For a production release, configure a metrics scraper, retention, dashboards, alert thresholds, log collection, and restricted network access in the actual deployment environment. The repository does not configure external alerting services or production infrastructure automatically.
