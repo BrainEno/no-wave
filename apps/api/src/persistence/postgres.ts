@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import { createPostgresProviderMigrationCapture, migrationEntityKey } from "./postgres-provider-migration-capture.ts";
+import { createMigrationTransactionId } from "./provider-migration-journal.ts";
+import { createPostgresProviderMigrationCapture, migrationEntityKey } from "./postgres-provider-migration-capture.ts";
 
 import {
   IdempotencyConflictError,
@@ -259,6 +261,10 @@ export function createPostgresStore(sql) {
   async function captureChanges(tx, transactionId, changes) {
     await migrationCapture.captureInTransaction(tx, transactionId, changes);
   }
+  const migrationCapture = createPostgresProviderMigrationCapture(sql);
+  async function captureChanges(tx, transactionId, changes) {
+    await migrationCapture.captureInTransaction(tx, transactionId, changes);
+  }
   async function findMessage(tx, senderId, idempotencyKey) {
     const rows = await tx.unsafe(
       "SELECT id, conversation_id, sender_id, body, request_hash, created_at FROM messages WHERE sender_id = $1 AND idempotency_key = $2",
@@ -448,6 +454,8 @@ export function createPostgresStore(sql) {
         throw new ArticleInputError("parentCommentId must be a valid comment ID.");
       }
       return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const changes = [];
         const articles = await tx.unsafe(
           "SELECT a.id, a.author_id FROM articles AS a JOIN article_translations AS t ON t.article_id = a.id WHERE a.slug = $1 AND a.status = 'published' AND t.locale = $2 FOR SHARE OF a",
           [slug, locale],
@@ -470,6 +478,7 @@ export function createPostgresStore(sql) {
             normalizedContent.contentBlocksVersion],
         );
         const comment = rows[0];
+        changes.push({ entityType: "article_comments", entityId: comment.id, operation: "upsert", payload: comment });
         const recipients = new Map();
         if (article.author_id !== actorId) recipients.set(article.author_id, "article.commented");
         if (parentAuthorId && parentAuthorId !== actorId) recipients.set(parentAuthorId, "article.comment_replied");
@@ -478,11 +487,15 @@ export function createPostgresStore(sql) {
             type, articleId: article.id, slug, commentId: comment.id,
             commenterId: actorId, parentCommentId,
           };
+          const notificationId = randomUUID();
           await tx.unsafe(
             "INSERT INTO notifications (id, user_id, event_key, payload, payload_hash) VALUES ($1, $2, $3, $4::jsonb, $5) ON CONFLICT (user_id, event_key) DO NOTHING",
-            [randomUUID(), userId, type + ":" + comment.id, payload, requestHash(payload)],
+            [notificationId, userId, type + ":" + comment.id, payload, requestHash(payload)],
           );
+          const notificationRows = await tx.unsafe("SELECT * FROM notifications WHERE id = $1", [notificationId]);
+          if (notificationRows[0]) changes.push({ entityType: "notifications", entityId: notificationId, operation: "upsert", payload: notificationRows[0] });
         }
+        await captureChanges(tx, transactionId, changes);
         return mapArticleComment({ ...comment, locale });
       });
     },
@@ -490,13 +503,19 @@ export function createPostgresStore(sql) {
       if (!isUuid(commentId)) throw new ArticleInputError("commentId must be a valid comment ID.");
       requiredText("actorId", actorId, 300);
       return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
         const rows = await tx.unsafe(
           "SELECT author_id FROM article_comments WHERE id = $1 FOR UPDATE",
           [commentId],
         );
         if (rows.length === 0) return false;
         if (rows[0].author_id !== actorId) throw new ArticleAuthorizationError("You can delete only your own comment.");
+        const descendants = await tx.unsafe(
+          "WITH RECURSIVE descendants(id) AS (SELECT id FROM article_comments WHERE id = $1 UNION ALL SELECT child.id FROM article_comments child JOIN descendants parent ON child.parent_comment_id = parent.id) SELECT id FROM descendants",
+          [commentId],
+        );
         await tx.unsafe("DELETE FROM article_comments WHERE id = $1", [commentId]);
+        await captureChanges(tx, transactionId, descendants.map((row) => ({ entityType: "article_comments", entityId: row.id, operation: "delete", payload: null })));
         return true;
       });
     },
