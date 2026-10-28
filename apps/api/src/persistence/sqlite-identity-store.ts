@@ -1,11 +1,17 @@
+import { createMigrationTransactionId } from "./provider-migration-journal.ts";
+import { createSqliteProviderMigrationCapture, type CapturedChange } from "./sqlite-provider-migration-capture.ts";
+
 /** SQLite identity contract adapter, composed by sqlite-store.ts. */
 export function createSqliteIdentityStore(db) {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") throw new TypeError("A SQLite database connection is required.");
   const run = (sql, ...args) => db.prepare(sql).run(...args);
   const get = (sql, ...args) => db.prepare(sql).get(...args);
+  const all = (sql, ...args) => db.prepare(sql).all(...args);
+  const migrationCapture = createSqliteProviderMigrationCapture(db);
   function transaction(work) {
+    const transactionId = createMigrationTransactionId();
     db.exec("BEGIN IMMEDIATE");
-    try { const result = work(); db.exec("COMMIT"); return result; }
+    try { const result = work(transactionId); db.exec("COMMIT"); return result; }
     catch (error) { try { db.exec("ROLLBACK"); } catch {} throw error; }
   }
   function insertSession(session) {
@@ -20,6 +26,22 @@ export function createSqliteIdentityStore(db) {
       ON CONFLICT (session_id) DO UPDATE SET
         expires_at = CASE WHEN excluded.expires_at > revoked_sessions.expires_at THEN excluded.expires_at ELSE revoked_sessions.expires_at END,
         revoked_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')`, sessionId);
+  }
+
+  function captureSessionSnapshot(transactionId, sessionId) {
+    const changes: CapturedChange[] = [];
+    const session = get("SELECT * FROM auth_sessions WHERE id = ?", sessionId);
+    const accessTokens = all("SELECT * FROM auth_access_tokens WHERE session_id = ?", sessionId);
+    const refreshTokens = all("SELECT * FROM auth_refresh_tokens WHERE session_id = ?", sessionId);
+    if (session) changes.push({ entityType: "auth_sessions", entityId: session.id, operation: "upsert", payload: session });
+    changes.push(...accessTokens.map((row) => ({ entityType: "auth_access_tokens", entityId: row.token_id, operation: "upsert" as const, payload: row })));
+    changes.push(...refreshTokens.map((row) => ({ entityType: "auth_refresh_tokens", entityId: row.token_hash, operation: "upsert" as const, payload: row })));
+    const tokenIds = accessTokens.map((row) => row.token_id);
+    const revoked = tokenIds.length
+      ? all("SELECT * FROM revoked_sessions WHERE session_id = ? OR session_id IN (" + tokenIds.map(() => "?").join(",") + ")", sessionId, ...tokenIds)
+      : all("SELECT * FROM revoked_sessions WHERE session_id = ?", sessionId);
+    changes.push(...revoked.map((row) => ({ entityType: "revoked_sessions", entityId: row.session_id, operation: "upsert" as const, payload: row })));
+    migrationCapture.captureInTransaction(db, transactionId, changes);
   }
   return Object.freeze({
     async createIdentityAccount({ userId, email, passwordHash, session }) {
