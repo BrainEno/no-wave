@@ -1736,5 +1736,15 @@ test("Prometheus metrics endpoint exposes bounded HTTP and authentication metric
     assert.match(metrics, /api_http_active_requests 1|api_http_active_requests 0/);
     assert.equal(metrics.includes("not-for-metrics"), false);
     assert.equal(metrics.includes("secret="), false);
+  }, { env: { API_METRICS_ENABLED: "true" } });
+});
+
+test("metrics endpoint is disabled by default to avoid public operational-data exposure", async () => {
+  await withServer(async (baseUrl) => {
+    const response = await fetch(baseUrl + "/metrics");
+    assert.equal(response.status, 404);
+    assert.deepEqual(await response.json(), {
+      error: { code: "NOT_FOUND", message: "The requested route was not found." },
+    });
   });
 });
