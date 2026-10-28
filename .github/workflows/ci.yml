@@ -70,7 +70,7 @@ jobs:
           VERIFY_RESULT: ${{ needs.verify.result }}
           POSTGRES_RESULT: ${{ needs.postgres-integration.result }}
         run: |
-          printf 'verify: %s\\npostgres-integration: %s\\n' "$VERIFY_RESULT" "$POSTGRES_RESULT"
+          printf 'verify: %s\npostgres-integration: %s\n' "$VERIFY_RESULT" "$POSTGRES_RESULT"
           if [ "$VERIFY_RESULT" != "success" ] || [ "$POSTGRES_RESULT" != "success" ]; then
             echo "::error::Both verify and postgres-integration must succeed."
             exit 1
