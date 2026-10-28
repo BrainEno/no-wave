@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
+import { createMigrationTransactionId } from "./provider-migration-journal.ts";
+import { createSqliteProviderMigrationCapture, migrationEntityKey } from "./sqlite-provider-migration-capture.ts";
 import { ArticleAuthorizationError, ArticleInputError, ArticleNotFoundError } from "../domain/errors.ts";
 import { validateArticleLocale, validateArticleSlug } from "../domain/article.ts";
 import { validateStoredCommentContent } from "../domain/comment-content.ts";
@@ -11,9 +13,11 @@ export function createSqliteEngagementStore(db) {
   const run = (sql, ...params) => db.prepare(sql).run(...params);
   const get = (sql, ...params) => db.prepare(sql).get(...params);
   const all = (sql, ...params) => db.prepare(sql).all(...params);
+  const migrationCapture = createSqliteProviderMigrationCapture(db);
   const transaction = (work) => {
+    const transactionId = createMigrationTransactionId();
     db.exec("BEGIN IMMEDIATE");
-    try { const value = work(); db.exec("COMMIT"); return value; }
+    try { const value = work(transactionId); db.exec("COMMIT"); return value; }
     catch (error) { try { db.exec("ROLLBACK"); } catch {} throw error; }
   };
   const requestHash = (value) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -45,38 +49,58 @@ export function createSqliteEngagementStore(db) {
   }
   function notify(userId, eventKey, payload) {
     run("INSERT INTO notifications (id, user_id, event_key, payload, payload_hash) VALUES (?, ?, ?, ?, ?) ON CONFLICT (user_id, event_key) DO NOTHING", randomUUID(), userId, eventKey, JSON.stringify(payload), requestHash(payload));
+    return get("SELECT * FROM notifications WHERE user_id = ? AND event_key = ?", userId, eventKey);
   }
   function insertLikeNotification(article, slug, locale, actorId) {
     if (article.author_id === actorId) return;
     const payload = { type: "article.liked", articleId: article.id, slug, actorId, locale };
-    notify(article.author_id, "article.liked:" + article.id + ":" + actorId + ":" + randomUUID(), payload);
+    return notify(article.author_id, "article.liked:" + article.id + ":" + actorId + ":" + randomUUID(), payload);
   }
 
   return Object.freeze({
     getArticleLikeInfo(args) { return likeInfo(args); },
     toggleArticleLike({ slug, locale = "zh-CN", actorId }) {
       validateActor(actorId);
-      return transaction(() => {
+      return transaction((transactionId) => {
         const article = publishedArticle(slug, locale);
         const existing = get("SELECT 1 AS present FROM article_likes WHERE article_id = ? AND user_id = ?", article.id, actorId);
-        if (existing) run("DELETE FROM article_likes WHERE article_id = ? AND user_id = ?", article.id, actorId);
-        else {
+        const changes = [];
+        if (existing) {
+          run("DELETE FROM article_likes WHERE article_id = ? AND user_id = ?", article.id, actorId);
+          changes.push({ entityType: "article_likes", entityId: migrationEntityKey(article.id, actorId), operation: "delete", payload: null });
+        } else {
           const inserted = run("INSERT INTO article_likes (article_id, user_id) VALUES (?, ?) ON CONFLICT (article_id, user_id) DO NOTHING", article.id, actorId);
-          if (inserted.changes === 1) insertLikeNotification(article, slug, locale, actorId);
+          if (inserted.changes === 1) {
+            const like = get("SELECT * FROM article_likes WHERE article_id = ? AND user_id = ?", article.id, actorId);
+            changes.push({ entityType: "article_likes", entityId: migrationEntityKey(article.id, actorId), operation: "upsert", payload: like });
+            const notification = insertLikeNotification(article, slug, locale, actorId);
+            if (notification) changes.push({ entityType: "notifications", entityId: notification.id, operation: "upsert", payload: notification });
+          }
         }
+        migrationCapture.captureInTransaction(db, transactionId, changes);
         return likeInfo({ slug, locale, actorId });
       });
     },
     setArticleLike({ slug, locale = "zh-CN", actorId, liked }) {
       validateArticleSlug(slug); validateArticleLocale(locale); validateActor(actorId);
       if (typeof liked !== "boolean") throw new ArticleInputError("liked must be a boolean.");
-      return transaction(() => {
+      return transaction((transactionId) => {
         const article = publishedArticle(slug, locale);
         const existing = get("SELECT 1 AS present FROM article_likes WHERE article_id = ? AND user_id = ?", article.id, actorId);
+        const changes = [];
         if (liked && !existing) {
           const inserted = run("INSERT INTO article_likes (article_id, user_id) VALUES (?, ?) ON CONFLICT (article_id, user_id) DO NOTHING", article.id, actorId);
-          if (inserted.changes === 1) insertLikeNotification(article, slug, locale, actorId);
-        } else if (!liked && existing) run("DELETE FROM article_likes WHERE article_id = ? AND user_id = ?", article.id, actorId);
+          if (inserted.changes === 1) {
+            const like = get("SELECT * FROM article_likes WHERE article_id = ? AND user_id = ?", article.id, actorId);
+            changes.push({ entityType: "article_likes", entityId: migrationEntityKey(article.id, actorId), operation: "upsert", payload: like });
+            const notification = insertLikeNotification(article, slug, locale, actorId);
+            if (notification) changes.push({ entityType: "notifications", entityId: notification.id, operation: "upsert", payload: notification });
+          }
+        } else if (!liked && existing) {
+          run("DELETE FROM article_likes WHERE article_id = ? AND user_id = ?", article.id, actorId);
+          changes.push({ entityType: "article_likes", entityId: migrationEntityKey(article.id, actorId), operation: "delete", payload: null });
+        }
+        migrationCapture.captureInTransaction(db, transactionId, changes);
         return likeInfo({ slug, locale, actorId });
       });
     },
@@ -97,7 +121,7 @@ export function createSqliteEngagementStore(db) {
       validateActor(actorId); validateArticleSlug(slug); validateArticleLocale(locale);
       const normalizedContent = validateStoredCommentContent({ content, contentBlocks, contentBlocksVersion });
       if (parentCommentId !== null && !isUuid(parentCommentId)) throw new ArticleInputError("parentCommentId must be a valid comment ID.");
-      return transaction(() => {
+      return transaction((transactionId) => {
         const article = publishedArticle(slug, locale);
         let parentAuthorId = null;
         if (parentCommentId !== null) {
@@ -111,24 +135,34 @@ export function createSqliteEngagementStore(db) {
           normalizedContent.contentBlocks === null ? null : JSON.stringify(normalizedContent.contentBlocks),
           normalizedContent.contentBlocksVersion);
         const row = get("SELECT id, article_id, author_id, parent_comment_id, content, content_blocks, content_blocks_version, created_at, updated_at FROM article_comments WHERE id = ?", id);
+        const changes = [{ entityType: "article_comments", entityId: id, operation: "upsert", payload: get("SELECT * FROM article_comments WHERE id = ?", id) }];
         const recipients = new Map();
         if (article.author_id !== actorId) recipients.set(article.author_id, "article.commented");
         if (parentAuthorId && parentAuthorId !== actorId) recipients.set(parentAuthorId, "article.comment_replied");
         for (const [userId, type] of recipients) {
           const payload = { type, articleId: article.id, slug, commentId: id, commenterId: actorId, parentCommentId };
-          notify(userId, type + ":" + id, payload);
+          const notification = notify(userId, type + ":" + id, payload);
+          if (notification) changes.push({ entityType: "notifications", entityId: notification.id, operation: "upsert", payload: notification });
         }
+        migrationCapture.captureInTransaction(db, transactionId, changes);
         return mapComment({ ...row, locale });
       });
     },
     deleteArticleComment({ commentId, actorId }) {
       if (!isUuid(commentId)) throw new ArticleInputError("commentId must be a valid comment ID.");
       validateActor(actorId);
-      return transaction(() => {
+      return transaction((transactionId) => {
         const row = get("SELECT author_id FROM article_comments WHERE id = ?", commentId);
         if (!row) return false;
         if (row.author_id !== actorId) throw new ArticleAuthorizationError("You can delete only your own comment.");
+        const deleted = all(`WITH RECURSIVE descendants(id) AS (
+          SELECT id FROM article_comments WHERE id = ?
+          UNION ALL SELECT child.id FROM article_comments child JOIN descendants parent ON child.parent_comment_id = parent.id
+        ) SELECT id FROM descendants`, commentId);
         run("DELETE FROM article_comments WHERE id = ?", commentId);
+        migrationCapture.captureInTransaction(db, transactionId, deleted.map((item) => ({
+          entityType: "article_comments", entityId: item.id, operation: "delete", payload: null,
+        })));
         return true;
       });
     },
