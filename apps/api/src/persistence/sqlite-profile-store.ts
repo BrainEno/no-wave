@@ -189,7 +189,9 @@ export function createSqliteProfileStore(db) {
              website_url = CASE WHEN ? THEN excluded.website_url ELSE user_profiles.website_url END,
              updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`,
           userId, validatedAvatarUrl ?? null, validatedWebsiteUrl ?? null,
-          avatarUrl !== undefined, websiteUrl !== undefined,
+          // node:sqlite expects SQL input values; use integer flags rather than JS booleans.
+          avatarUrl !== undefined ? 1 : 0,
+          websiteUrl !== undefined ? 1 : 0,
         );
         run(
           `INSERT INTO user_profile_translations (user_id, locale, display_name, bio) VALUES (?, ?, ?, ?)
