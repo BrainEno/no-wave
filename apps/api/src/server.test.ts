@@ -417,6 +417,126 @@ test("REST article creation accepts JSON content blocks and never trusts a body 
   });
 });
 
+test("REST article writes normalize Lexical EditorState into the application-owned v1 content contract", async () => {
+  let createdInput;
+  let updatedInput;
+  const articleId = "11111111-1111-4111-8111-111111111111";
+  const editorState = {
+    root: {
+      children: [
+        {
+          children: [
+            { detail: 0, format: 1, mode: "normal", style: "", text: "中文", type: "text", version: 1 },
+            {
+              children: [
+                { detail: 0, format: 0, mode: "normal", style: "", text: "链接", type: "text", version: 1 },
+              ],
+              direction: null, format: "", indent: 0, type: "link",
+              url: "/articles/example", rel: null, target: null, title: null, version: 1,
+            },
+          ],
+          direction: null, format: "", indent: 0, type: "paragraph", version: 1,
+        },
+      ],
+      direction: null, format: "", indent: 0, type: "root", version: 1,
+    },
+  };
+  const expectedBlocks = [{
+    id: "lexical-block-1",
+    type: "paragraph",
+    text: "中文链接",
+    inlines: [
+      { text: "中文", marks: ["bold"] },
+      { text: "链接", href: "/articles/example" },
+    ],
+  }];
+
+  await withServer(async (baseUrl) => {
+    const created = await fetch(baseUrl + "/api/v1/articles", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer " + signedToken("verified-writer"),
+      },
+      body: JSON.stringify({
+        slug: "lexical-work", title: "Lexical 作品", editorState, publish: true,
+      }),
+    });
+    assert.equal(created.status, 201);
+    assert.deepEqual(createdInput.contentBlocks, expectedBlocks);
+    assert.equal(createdInput.contentBlocksVersion, 1);
+    assert.equal(Object.hasOwn(createdInput, "editorState"), false);
+
+    const updated = await fetch(baseUrl + "/api/v1/articles/" + articleId, {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer " + signedToken("verified-writer"),
+      },
+      body: JSON.stringify({
+        slug: "lexical-work-updated", title: "更新后的作品", editorState, contentBlocksVersion: 1, publish: false,
+      }),
+    });
+    assert.equal(updated.status, 200);
+    assert.deepEqual(updatedInput.contentBlocks, expectedBlocks);
+    assert.equal(updatedInput.contentBlocksVersion, 1);
+    assert.equal(Object.hasOwn(updatedInput, "editorState"), false);
+  }, {
+    env: authEnv,
+    store: {
+      async isSessionRevoked() { return false; },
+      async createArticle(args) {
+        createdInput = args;
+        return { id: "created-article", authorId: args.authorId, slug: args.slug, title: args.title, locale: args.locale, contentBlocks: args.contentBlocks, contentBlocksVersion: args.contentBlocksVersion };
+      },
+      async updateArticle(args) {
+        updatedInput = args;
+        return { id: args.articleId, actorId: args.actorId, slug: args.slug, title: args.title, locale: args.locale, contentBlocks: args.contentBlocks, contentBlocksVersion: args.contentBlocksVersion };
+      },
+    },
+  });
+});
+
+test("REST article writes reject ambiguous or unsupported Lexical editor payloads before persistence", async () => {
+  let writes = 0;
+  const editorState = {
+    root: {
+      children: [{
+        children: [{ detail: 0, format: 0, mode: "normal", style: "", text: "Cover", type: "text", version: 1 }],
+        direction: null, format: "", indent: 0, type: "image", version: 1, src: "/cover.png",
+      }],
+      direction: null, format: "", indent: 0, type: "root", version: 1,
+    },
+  };
+
+  await withServer(async (baseUrl) => {
+    const requests = [
+      { slug: "mixed-input", title: "Mixed", editorState, contentBlocks: [{ id: "p", type: "paragraph", text: "text" }] },
+      { slug: "unsupported-image", title: "Unsupported", editorState },
+      { slug: "wrong-version", title: "Wrong version", editorState, contentBlocksVersion: 0 },
+    ];
+    for (const payload of requests) {
+      const response = await fetch(baseUrl + "/api/v1/articles", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer " + signedToken("verified-writer"),
+        },
+        body: JSON.stringify(payload),
+      });
+      assert.equal(response.status, 400);
+      assert.equal((await response.json()).error.code, "BAD_USER_INPUT");
+    }
+    assert.equal(writes, 0);
+  }, {
+    env: authEnv,
+    store: {
+      async isSessionRevoked() { return false; },
+      async createArticle() { writes += 1; return {}; },
+    },
+  });
+});
+
 test("REST article updates derive actorId from JWT and use the path article ID", async () => {
   let received;
   const contentBlocks = [{ id: "p1", type: "paragraph", text: "更新后的作品" }];

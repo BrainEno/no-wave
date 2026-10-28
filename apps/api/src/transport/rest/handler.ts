@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { DomainError, IdentityRateLimitError } from "../../domain/errors.ts";
+import { lexicalEditorStateToArticleDocument } from "../../domain/lexical-document-adapter.ts";
 import { createAuthContext } from "../../security/authentication.ts";
 import { createIdentityService } from "../../application/identity.ts";
 import type { IdentityStore } from "../../application/identity.ts";
@@ -240,7 +241,7 @@ async function readJsonObject(request: IncomingMessage, maxBytes = MAX_JSON_BODY
   });
 }
 const ARTICLE_WRITE_FIELDS = new Set([
-  "slug", "title", "summary", "locale", "contentBlocks", "contentBlocksVersion", "publish", "workType", "categoryIds", "tagIds",
+  "slug", "title", "summary", "locale", "contentBlocks", "editorState", "contentBlocksVersion", "publish", "workType", "categoryIds", "tagIds",
 ]);
 
 function normalizeArticleWriteBody(
@@ -256,9 +257,34 @@ function normalizeArticleWriteBody(
   if (typeof body.slug !== "string" || typeof body.title !== "string") {
     return { input: null, error: "slug and title must be strings." };
   }
-  if (!Array.isArray(body.contentBlocks)) {
-    return { input: null, error: "contentBlocks must be a JSON array." };
+
+  // Lexical is an ingress format only. Normalize immediately to the
+  // application-owned versioned block document; never persist EditorState JSON.
+  const hasContentBlocks = Object.hasOwn(body, "contentBlocks");
+  const hasEditorState = Object.hasOwn(body, "editorState");
+  if (hasContentBlocks === hasEditorState) {
+    return { input: null, error: "Supply exactly one of contentBlocks or editorState." };
   }
+  let contentBlocks: unknown[];
+  if (hasEditorState) {
+    if (!isRecord(body.editorState)) {
+      return { input: null, error: "editorState must be a serialized Lexical EditorState object." };
+    }
+    if (body.contentBlocksVersion !== undefined && body.contentBlocksVersion !== 1) {
+      return { input: null, error: "editorState requires contentBlocksVersion 1." };
+    }
+    try {
+      contentBlocks = lexicalEditorStateToArticleDocument(body.editorState).contentBlocks;
+    } catch {
+      return { input: null, error: "editorState contains invalid or unsupported article content." };
+    }
+  } else {
+    if (!Array.isArray(body.contentBlocks)) {
+      return { input: null, error: "contentBlocks must be a JSON array." };
+    }
+    contentBlocks = body.contentBlocks;
+  }
+
   if (body.summary !== undefined && typeof body.summary !== "string") {
     return { input: null, error: "summary must be a string." };
   }
@@ -271,8 +297,9 @@ function normalizeArticleWriteBody(
   if (requirePublish && typeof body.publish !== "boolean") {
     return { input: null, error: "publish must be supplied as a boolean for article updates." };
   }
-  const contentBlocksVersion = body.contentBlocksVersion === undefined ? 0 : body.contentBlocksVersion;
-  if (!Number.isInteger(contentBlocksVersion) || (contentBlocksVersion !== 0 && contentBlocksVersion !== 1)) {
+  if (body.contentBlocksVersion !== undefined &&
+      (!Number.isInteger(body.contentBlocksVersion) ||
+       (body.contentBlocksVersion !== 0 && body.contentBlocksVersion !== 1))) {
     return { input: null, error: "contentBlocksVersion must be 0 or 1." };
   }
   for (const field of ["categoryIds", "tagIds"] as const) {
@@ -281,10 +308,14 @@ function normalizeArticleWriteBody(
     }
   }
 
-  return {
-    input: { ...body, locale: "zh-CN", contentBlocks: JSON.stringify(body.contentBlocks) },
-    error: null,
+  const input: Record<string, unknown> = {
+    ...body,
+    locale: "zh-CN",
+    contentBlocks: JSON.stringify(contentBlocks),
   };
+  delete input.editorState;
+  if (hasEditorState) input.contentBlocksVersion = 1;
+  return { input, error: null };
 }
 
 
