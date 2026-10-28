@@ -7,7 +7,7 @@ on:
     branches: ["main"]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify:
@@ -29,6 +29,19 @@ jobs:
           name: lexical-lockfile-bootstrap
           path: pnpm-lock.yaml
           if-no-files-found: error
+
+      - name: Commit generated lockfile to the authoring branch
+        if: github.ref == 'refs/heads/feat/lexical-authoring-loop-20261028'
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pnpm-lock.yaml
+          if git diff --cached --quiet; then
+            echo "No lockfile change to persist."
+          else
+            git commit -m "chore(deps): pin Lexical workspace lockfile"
+            git push origin HEAD:refs/heads/feat/lexical-authoring-loop-20261028
+          fi
       - run: pnpm test
       - run: pnpm typecheck
       - run: pnpm build
