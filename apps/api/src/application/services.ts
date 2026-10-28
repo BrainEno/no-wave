@@ -8,8 +8,8 @@ import { ArticleInputError } from "../domain/errors.ts";
  * a database driver. Business use cases can be moved into this module without
  * changing transport resolvers or adapter implementations.
  */
-export function createApplicationServices({ persistence }) {
-  const ports = createPersistencePorts(persistence);
+export function createApplicationServices({ persistence, onPersistenceOperation = null }) {
+  const ports = createPersistencePorts(persistence, { onOperation: onPersistenceOperation });
   const serviceMethods = Object.values(ports).flatMap((group) => Object.entries(group));
   const services = Object.fromEntries(serviceMethods);
 
