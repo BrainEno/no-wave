@@ -7,7 +7,7 @@ This repository is configured for a single Vercel Services deployment containing
 - `web` builds from `apps/web` and receives the catch-all public route `/(.*)`.
 - `api` is built from the repository root so its container can use the shared `pnpm-lock.yaml`. Its runtime image contains only the API workspace dependencies and source.
 - Only the documented REST prefix `/api/v1/*` is routed publicly to `api`. The Next.js route `/api/spike/events` therefore remains with `web`.
-- The GraphQL endpoint (`/graphql`), `/health`, and `/ready` are not exposed by public rewrites. The Web content client now reaches versioned REST endpoints through the private `API_SERVICE_URL` binding. GraphQL remains removal-only transition code until the runtime and dependency cleanup PR; do not add new GraphQL operations.
+- The `/graphql` endpoint no longer exists. `/health` and `/ready` are not exposed by public rewrites. The Web content client reaches versioned REST endpoints through the private `API_SERVICE_URL` binding; only the documented `/api/v1/*` prefix is routed publicly to the API.
 - `notifications` runs `apps/api/src/persistence/notification-worker.ts` as a Vercel Daemon. It uses PostgreSQL directly and does not need a service binding.
 
 The Vercel project framework preset must be **Services**. If the preset remains Next.js, Vercel may ignore the multi-service configuration.
