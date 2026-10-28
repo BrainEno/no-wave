@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createHttpObservability } from "./http-observability.ts";
+import { createPersistencePorts } from "../application/persistence-ports.ts";
 
 function fakeResponse() {
   const headers = new Map();
@@ -100,4 +101,26 @@ test("duplicate completion callbacks do not double count requests or decrement a
   assert.match(metrics, /api_http_requests_total\{method="GET",route="\/",status="200"\} 1/);
   assert.equal(metrics.includes('status="500"'), false);
   assert.match(metrics, /api_http_active_requests 0/);
+});
+
+
+test("persistence port instrumentation measures async success and failure without logging payloads", async () => {
+  const observability = createHttpObservability({ logger: () => {} });
+  const ports = createPersistencePorts({
+    async getAuthorProfile() { return { userId: "private-user", displayName: "Private" }; },
+    async persistMessage() { throw new Error("private message body and database details"); },
+  }, {
+    onOperation: (sample) => observability.observePersistenceOperation(sample),
+  });
+
+  await ports.profiles.getAuthorProfile({ userId: "private-user" });
+  await assert.rejects(ports.conversations.persistMessage({ body: "private message body" }), /private message body/);
+
+  const metrics = observability.renderMetrics();
+  assert.match(metrics, /api_persistence_operations_total\{operation="getAuthorProfile",outcome="success"\} 1/);
+  assert.match(metrics, /api_persistence_operations_total\{operation="persistMessage",outcome="error"\} 1/);
+  assert.match(metrics, /api_persistence_operation_duration_ms_count\{operation="getAuthorProfile",outcome="success"\} 1/);
+  assert.equal(metrics.includes("private-user"), false);
+  assert.equal(metrics.includes("private message body"), false);
+  assert.equal(metrics.includes("database details"), false);
 });
