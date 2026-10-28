@@ -344,10 +344,14 @@ export function createPostgresStore(sql) {
             changes.push({ entityType: "article_likes", entityId: migrationEntityKey(articleId, actorId), operation: "upsert", payload: likeRows[0] });
             if (article.author_id !== actorId) {
             const payload = { type: "article.liked", articleId, slug, actorId, locale };
+            const notificationId = randomUUID();
+            const eventKey = `article.liked:${articleId}:${actorId}:${randomUUID()}`;
             await tx.unsafe(
               "INSERT INTO notifications (id, user_id, event_key, payload, payload_hash) VALUES ($1, $2, $3, $4::jsonb, $5) ON CONFLICT (user_id, event_key) DO NOTHING",
-              [randomUUID(), article.author_id, `article.liked:${articleId}:${actorId}:${randomUUID()}`, payload, requestHash(payload)],
+              [notificationId, article.author_id, eventKey, payload, requestHash(payload)],
             );
+            const notificationRows = await tx.unsafe("SELECT * FROM notifications WHERE id = $1", [notificationId]);
+            if (notificationRows[0]) changes.push({ entityType: "notifications", entityId: notificationId, operation: "upsert", payload: notificationRows[0] });
             }
           }
         }
@@ -383,10 +387,14 @@ export function createPostgresStore(sql) {
             changes.push({ entityType: "article_likes", entityId: migrationEntityKey(article.id, actorId), operation: "upsert", payload: likeRows[0] });
             if (article.author_id !== actorId) {
             const payload = { type: "article.liked", articleId: article.id, slug, actorId, locale };
+            const notificationId = randomUUID();
+            const eventKey = `article.liked:${article.id}:${actorId}:${randomUUID()}`;
             await tx.unsafe(
               "INSERT INTO notifications (id, user_id, event_key, payload, payload_hash) VALUES ($1, $2, $3, $4::jsonb, $5) ON CONFLICT (user_id, event_key) DO NOTHING",
-              [randomUUID(), article.author_id, `article.liked:${article.id}:${actorId}:${randomUUID()}`, payload, requestHash(payload)],
+              [notificationId, article.author_id, eventKey, payload, requestHash(payload)],
             );
+            const notificationRows = await tx.unsafe("SELECT * FROM notifications WHERE id = $1", [notificationId]);
+            if (notificationRows[0]) changes.push({ entityType: "notifications", entityId: notificationId, operation: "upsert", payload: notificationRows[0] });
             }
           }
         } else if (!liked && existing.length > 0) {
