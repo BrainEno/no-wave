@@ -29,7 +29,7 @@ See [phase gates](docs/roadmap/phase-gates.md), [feature traceability](docs/audi
 
 ## Observability
 
-The API emits allowlisted JSON request logs with a generated `X-Request-Id`, trace-correlation metadata, bounded route labels, status and elapsed time. `GET /metrics` exposes Prometheus request, duration, authentication-failure and persistence-port metrics. The separate notification worker can expose outbox backlog and delivery metrics when `OUTBOX_METRICS_PORT` is set; its listener binds to `127.0.0.1` by default. Restrict both metrics endpoints to a trusted monitoring network. See [API observability operations guide](docs/operations/api-observability.md) for names, labels, configuration and limits.
+The API emits allowlisted JSON request logs with a generated `X-Request-Id`, trace-correlation metadata, bounded route labels, status and elapsed time. `GET /metrics` exposes Prometheus request, duration, authentication-failure and persistence-port metrics after you set `API_METRICS_ENABLED=true` (disabled by default). The separate notification worker can expose outbox backlog and delivery metrics when `OUTBOX_METRICS_PORT` is set; its listener binds to `127.0.0.1` by default. Restrict both metrics endpoints to a trusted monitoring network. See [API observability operations guide](docs/operations/api-observability.md) for names, labels, configuration and limits.
 
 ## Commands
 
