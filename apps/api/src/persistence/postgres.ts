@@ -259,10 +259,6 @@ export function createPostgresStore(sql) {
   async function captureChanges(tx, transactionId, changes) {
     await migrationCapture.captureInTransaction(tx, transactionId, changes);
   }
-  const migrationCapture = createPostgresProviderMigrationCapture(sql);
-  async function captureChanges(tx, transactionId, changes) {
-    await migrationCapture.captureInTransaction(tx, transactionId, changes);
-  }
   async function findMessage(tx, senderId, idempotencyKey) {
     const rows = await tx.unsafe(
       "SELECT id, conversation_id, sender_id, body, request_hash, created_at FROM messages WHERE sender_id = $1 AND idempotency_key = $2",
