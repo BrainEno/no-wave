@@ -250,7 +250,7 @@ function registerIdentityContracts(provider, options = {}) {
     }
   });
 
-  test(`${provider}: bounded maintenance removes only long-expired sessions and expired limits`, options, async () => {
+  test(`${provider}: bounded maintenance removes expired sessions, limits and revocations without touching active state`, options, async () => {
     const f = await fixture(provider);
     const expiredKey = randomBytes(32).toString("hex");
     const activeKey = randomBytes(32).toString("hex");
@@ -280,6 +280,20 @@ function registerIdentityContracts(provider, options = {}) {
       await f.store.consumeIdentityRateLimit({ key: activeKey, limit: 2, windowSeconds: 60 });
       if (f.db) f.db.prepare("UPDATE auth_rate_limits SET reset_at = ? WHERE key = ?").run("2000-01-01T00:00:00.000Z", expiredKey);
       else await sql.unsafe("UPDATE auth_rate_limits SET reset_at = '2000-01-01T00:00:00Z' WHERE key = $1", [expiredKey]);
+
+      const expiredRevocationId = `cleanup-expired-${randomUUID()}`;
+      const activeRevocationId = `cleanup-active-${randomUUID()}`;
+      if (f.db) {
+        const insertRevocation = f.db.prepare("INSERT INTO revoked_sessions (session_id, expires_at) VALUES (?, ?)");
+        insertRevocation.run(expiredRevocationId, "2000-01-01T00:00:00.000Z");
+        insertRevocation.run(activeRevocationId, new Date(Date.now() + 60 * 60 * 1000).toISOString());
+      } else {
+        await sql.unsafe(
+          "INSERT INTO revoked_sessions (session_id, expires_at) VALUES ($1, '2000-01-01T00:00:00Z'), ($2, clock_timestamp() + interval '1 hour')",
+          [expiredRevocationId, activeRevocationId],
+        );
+      }
+
       await f.store.pruneExpiredIdentityState();
       assert.ok(await f.store.findIdentityAccount({ email: f.email }), "account data is not part of session cleanup");
       if (f.db) {
@@ -287,14 +301,21 @@ function registerIdentityContracts(provider, options = {}) {
         assert.ok(f.db.prepare("SELECT id FROM auth_sessions WHERE id = ?").get(recentSession));
         assert.equal(f.db.prepare("SELECT key FROM auth_rate_limits WHERE key = ?").get(expiredKey), undefined);
         assert.ok(f.db.prepare("SELECT key FROM auth_rate_limits WHERE key = ?").get(activeKey));
+        assert.equal(f.db.prepare("SELECT session_id FROM revoked_sessions WHERE session_id = ?").get(expiredRevocationId), undefined);
+        assert.ok(f.db.prepare("SELECT session_id FROM revoked_sessions WHERE session_id = ?").get(activeRevocationId));
       } else {
         assert.equal((await sql.unsafe("SELECT id FROM auth_sessions WHERE id = $1", [sessionId])).length, 0);
         assert.equal((await sql.unsafe("SELECT id FROM auth_sessions WHERE id = $1", [recentSession])).length, 1);
         assert.equal((await sql.unsafe("SELECT key FROM auth_rate_limits WHERE key = $1", [expiredKey])).length, 0);
         assert.equal((await sql.unsafe("SELECT key FROM auth_rate_limits WHERE key = $1", [activeKey])).length, 1);
+        assert.equal((await sql.unsafe("SELECT session_id FROM revoked_sessions WHERE session_id = $1", [expiredRevocationId])).length, 0);
+        assert.equal((await sql.unsafe("SELECT session_id FROM revoked_sessions WHERE session_id = $1", [activeRevocationId])).length, 1);
       }
     } finally {
-      if (!f.db) await sql.unsafe("DELETE FROM auth_rate_limits WHERE key = ANY($1::text[])", [[expiredKey, activeKey]]);
+      if (!f.db) {
+        await sql.unsafe("DELETE FROM auth_rate_limits WHERE key = ANY($1::text[])", [[expiredKey, activeKey]]);
+        await sql.unsafe("DELETE FROM revoked_sessions WHERE session_id = ANY($1::text[])", [[expiredRevocationId, activeRevocationId]]);
+      }
       await f.close();
     }
   });

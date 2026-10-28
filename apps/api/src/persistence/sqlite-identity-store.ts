@@ -87,7 +87,14 @@ export function createSqliteIdentityStore(db) {
           AND NOT EXISTS (SELECT 1 FROM auth_access_tokens a WHERE a.session_id = s.id AND a.expires_at > ?)
           ORDER BY s.expires_at LIMIT 100)`, cutoff, now);
         const limits = run("DELETE FROM auth_rate_limits WHERE key IN (SELECT key FROM auth_rate_limits WHERE reset_at < ? ORDER BY reset_at LIMIT 512)", now);
-        return { sessions: Number(sessions.changes), rateLimits: Number(limits.changes) };
+        // Expired revocations are no longer consulted by isSessionRevoked.
+        // BEGIN IMMEDIATE serializes this bounded cleanup with concurrent writers.
+        const revokedSessions = run("DELETE FROM revoked_sessions WHERE session_id IN (SELECT session_id FROM revoked_sessions WHERE expires_at <= ? ORDER BY expires_at LIMIT 512)", now);
+        return {
+          sessions: Number(sessions.changes),
+          rateLimits: Number(limits.changes),
+          revokedSessions: Number(revokedSessions.changes),
+        };
       });
     },
     async consumeIdentityRateLimit({ key, limit, windowSeconds }) {
