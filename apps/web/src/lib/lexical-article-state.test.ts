@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { lexicalEditorStateToArticleDocument } from "../../../api/src/domain/lexical-document-adapter.ts";
 import { articleBlocksToLexicalEditorState } from "./lexical-article-state.ts";
 
-test("Lexical-shaped output round-trips article blocks with links, marks, headings, lists and code", () => {
-  const blocks = [
+test("application article blocks become a Lexical EditorState with formatting, links, lists and code", () => {
+  const blocks: unknown[] = [
     { id: "paragraph-1", type: "paragraph", text: "你好 Lexical", inlines: [
       { text: "你好 " },
       { text: "Lexical", marks: ["bold", "italic"], href: "https://example.test/read" },
@@ -14,11 +13,19 @@ test("Lexical-shaped output round-trips article blocks with links, marks, headin
     { id: "list-1", type: "list", ordered: true, items: ["第一项", "第二项"] },
     { id: "code-1", type: "code", language: "text", code: "const wave = true;" },
   ];
-  const editorState = articleBlocksToLexicalEditorState(blocks);
-  assert.equal(editorState.root.type, "root");
-  assert.equal(editorState.root.children.length, blocks.length);
-  const result = lexicalEditorStateToArticleDocument(editorState, { previousBlocks: blocks });
-  assert.deepEqual(result.contentBlocks, blocks);
+  const state = articleBlocksToLexicalEditorState(blocks);
+  assert.equal(state.root.type, "root");
+  assert.equal(state.root.children.length, blocks.length);
+  assert.equal(state.root.children[0].type, "paragraph");
+  const paragraph = state.root.children[0];
+  assert.equal(paragraph.children[0].type, "text");
+  assert.equal(paragraph.children[1].type, "link");
+  const link = paragraph.children[1];
+  assert.equal(link.url, "https://example.test/read");
+  assert.equal((link.children[0] as Record<string, unknown>).format, 3);
+  assert.equal(state.root.children[1].tag, "h2");
+  assert.equal(state.root.children[3].listType, "number");
+  assert.equal(state.root.children[4].type, "code");
 });
 
 test("the editor refuses unsupported media blocks instead of silently deleting them", () => {

@@ -41,7 +41,7 @@ const extensionDependencies = [
   LinkExtension,
   ListExtension,
   CodeExtension,
-] as const;
+];
 
 const editorTheme = {
   paragraph: "nw-lexical-paragraph",
@@ -169,7 +169,7 @@ export function ArticleEditor({ article, onSaved }: ArticleEditorProps) {
     namespace: "no-wave-article-authoring",
     dependencies: extensionDependencies,
     theme: editorTheme,
-    $initialEditorState: initialState,
+    $initialEditorState: JSON.stringify(initialState),
   }) : null, [initialState]);
 
   const onEditorChange = useCallback((next: LexicalEditorStateJson) => setEditorState(next), []);
