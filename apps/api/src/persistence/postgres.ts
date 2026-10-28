@@ -1317,70 +1317,63 @@ export function createPostgresStore(sql) {
         return mapMessage(message, false);
       });
     },
-    async claimOutboxEvents({ limit = 25, leaseSeconds = 60 } = {}) {
-      if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
-        throw new TypeError("limit must be an integer between 1 and 100.");
-      }
-      if (!Number.isInteger(leaseSeconds) || leaseSeconds < 1 || leaseSeconds > 3600) {
-        throw new TypeError("leaseSeconds must be an integer between 1 and 3600.");
-      }
-      return sql.begin(async (tx) => tx.unsafe(
-        `WITH picked AS (
-          SELECT id FROM outbox_events
-          WHERE delivered_at IS NULL AND available_at <= now()
-          ORDER BY created_at, id
-          LIMIT $1
-          FOR UPDATE SKIP LOCKED
-        )
-        UPDATE outbox_events AS event
-        SET attempts = event.attempts + 1,
-            available_at = clock_timestamp() + ($2 * interval '1 second'),
-            lease_token = gen_random_uuid()
-        FROM picked
-        WHERE event.id = picked.id
-        RETURNING event.id, event.event_key, event.event_type, event.aggregate_id,
-                  event.payload, event.attempts, event.available_at, event.lease_token`,
-        [limit, leaseSeconds],
-      ));
+        async claimOutboxEvents({ limit = 25, leaseSeconds = 60 } = {}) {
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new TypeError("limit must be an integer between 1 and 100.");
+      if (!Number.isInteger(leaseSeconds) || leaseSeconds < 1 || leaseSeconds > 3600) throw new TypeError("leaseSeconds must be an integer between 1 and 3600.");
+      return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const rows = await tx.unsafe(
+          "WITH picked AS ( SELECT id FROM outbox_events WHERE delivered_at IS NULL AND available_at <= now() ORDER BY created_at, id LIMIT $1 FOR UPDATE SKIP LOCKED ) " +
+          "UPDATE outbox_events AS event SET attempts = event.attempts + 1, available_at = clock_timestamp() + ($2 * interval '1 second'), lease_token = gen_random_uuid() " +
+          "FROM picked WHERE event.id = picked.id " +
+          "RETURNING event.id, event.event_key, event.event_type, event.aggregate_id, event.payload, event.attempts, event.available_at, event.lease_token",
+          [limit, leaseSeconds],
+        );
+        const changes = [];
+        for (const row of rows) {
+          const snapshot = await tx.unsafe("SELECT * FROM outbox_events WHERE id = $1", [row.id]);
+          if (snapshot[0]) changes.push({ entityType: "outbox_events", entityId: row.id, operation: "upsert" as const, payload: snapshot[0] });
+        }
+        await captureChanges(tx, transactionId, changes);
+        return rows;
+      });
     },
-    async markOutboxDelivered({ eventId, leaseToken }) {
+        async markOutboxDelivered({ eventId, leaseToken }) {
       assertOutboxLease(eventId, leaseToken);
-      // Lock first and evaluate the wall clock after acquiring the lock. A
-      // statement delayed by another transaction must not use a stale time.
-      const rows = await sql.unsafe(
-        `WITH locked AS MATERIALIZED (
-           SELECT id, lease_token, available_at, delivered_at
-           FROM outbox_events WHERE id = $1 FOR UPDATE
-         )
-         UPDATE outbox_events AS event
-         SET delivered_at = clock_timestamp(), lease_token = NULL
-         FROM locked
-         WHERE event.id = locked.id AND locked.delivered_at IS NULL
-           AND locked.lease_token = $2 AND locked.available_at > clock_timestamp()
-         RETURNING event.id`,
-        [eventId, leaseToken],
-      );
-      return rows.length === 1;
+      return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const rows = await tx.unsafe(
+          "WITH locked AS MATERIALIZED ( SELECT id, lease_token, available_at, delivered_at FROM outbox_events WHERE id = $1 FOR UPDATE ) " +
+          "UPDATE outbox_events AS event SET delivered_at = clock_timestamp(), lease_token = NULL FROM locked " +
+          "WHERE event.id = locked.id AND locked.delivered_at IS NULL AND locked.lease_token = $2 AND locked.available_at > clock_timestamp() " +
+          "RETURNING event.id",
+          [eventId, leaseToken],
+        );
+        if (rows.length === 1) {
+          const snapshot = await tx.unsafe("SELECT * FROM outbox_events WHERE id = $1", [eventId]);
+          await captureChanges(tx, transactionId, [{ entityType: "outbox_events", entityId: eventId, operation: "upsert", payload: snapshot[0] }]);
+        }
+        return rows.length === 1;
+      });
     },
-    async rescheduleOutboxEvent({ eventId, leaseToken, delaySeconds = 30 }) {
+        async rescheduleOutboxEvent({ eventId, leaseToken, delaySeconds = 30 }) {
       assertOutboxLease(eventId, leaseToken);
-      if (!Number.isInteger(delaySeconds) || delaySeconds < 1 || delaySeconds > 86400) {
-        throw new TypeError("delaySeconds must be an integer between 1 and 86400.");
-      }
-      const rows = await sql.unsafe(
-        `WITH locked AS MATERIALIZED (
-           SELECT id, lease_token, available_at, delivered_at
-           FROM outbox_events WHERE id = $1 FOR UPDATE
-         )
-         UPDATE outbox_events AS event
-         SET available_at = clock_timestamp() + ($3 * interval '1 second'), lease_token = NULL
-         FROM locked
-         WHERE event.id = locked.id AND locked.delivered_at IS NULL
-           AND locked.lease_token = $2 AND locked.available_at > clock_timestamp()
-         RETURNING event.id`,
-        [eventId, leaseToken, delaySeconds],
-      );
-      return rows.length === 1;
+      if (!Number.isInteger(delaySeconds) || delaySeconds < 1 || delaySeconds > 86400) throw new TypeError("delaySeconds must be an integer between 1 and 86400.");
+      return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const rows = await tx.unsafe(
+          "WITH locked AS MATERIALIZED ( SELECT id, lease_token, available_at, delivered_at FROM outbox_events WHERE id = $1 FOR UPDATE ) " +
+          "UPDATE outbox_events AS event SET available_at = clock_timestamp() + ($3 * interval '1 second'), lease_token = NULL FROM locked " +
+          "WHERE event.id = locked.id AND locked.delivered_at IS NULL AND locked.lease_token = $2 AND locked.available_at > clock_timestamp() " +
+          "RETURNING event.id",
+          [eventId, leaseToken, delaySeconds],
+        );
+        if (rows.length === 1) {
+          const snapshot = await tx.unsafe("SELECT * FROM outbox_events WHERE id = $1", [eventId]);
+          await captureChanges(tx, transactionId, [{ entityType: "outbox_events", entityId: eventId, operation: "upsert", payload: snapshot[0] }]);
+        }
+        return rows.length === 1;
+      });
     },
     async listConversationParticipantIds({ conversationId }) {
       if (typeof conversationId !== "string" || conversationId.trim().length === 0 || conversationId !== conversationId.trim()) {
