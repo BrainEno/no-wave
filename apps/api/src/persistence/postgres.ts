@@ -446,7 +446,7 @@ export function createPostgresStore(sql) {
         const rows = await tx.unsafe(
           "INSERT INTO article_comments (id, article_id, author_id, parent_comment_id, content, content_blocks, content_blocks_version) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7) RETURNING id, article_id, author_id, parent_comment_id, content, content_blocks, content_blocks_version, created_at, updated_at",
           [randomUUID(), article.id, actorId, parentCommentId, normalizedContent.content,
-            normalizedContent.contentBlocks === null ? null : JSON.stringify(normalizedContent.contentBlocks),
+            normalizedContent.contentBlocks === null ? null : normalizedContent.contentBlocks,
             normalizedContent.contentBlocksVersion],
         );
         const comment = rows[0];
