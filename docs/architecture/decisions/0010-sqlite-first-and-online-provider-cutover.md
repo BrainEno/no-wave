@@ -8,14 +8,14 @@
 
 The project needs to work locally with minimal infrastructure, while retaining a path to PostgreSQL and MongoDB deployments and the ability to move between providers without treating database selection as a data migration. The codebase already has provider-independent persistence ports, a composed SQLite adapter and a PostgreSQL adapter. MongoDB is not yet implemented. The previous plan made PostgreSQL the only runtime provider and deferred SQLite despite its store/contract test coverage.
 
-The product owner has also confirmed that REST is the sole business HTTP API and GraphQL must be completely removed. The remaining Web GraphQL caller is tracked as a separate Web-focused migration; no new GraphQL features or fields should be added while that removal is pending.
+The product owner has confirmed that REST is the sole business HTTP API. The Web caller has been migrated, and the GraphQL runtime, schema, endpoint, dependencies and obsolete tests have been removed; no GraphQL transport is part of the target architecture.
 
 ## Decisions
 
 1. **SQLite is the default for fresh/local installs.** Use `DATABASE_PATH` (default `./data/no-wave.sqlite`). Local database files, WAL files and SHM files must not be committed. Migrations are explicit by default; startup refuses an uninitialized or stale SQLite schema. `DATABASE_AUTO_MIGRATE=true` is an explicit local/test convenience, not a production release policy.
 2. **PostgreSQL remains supported.** Select it with `DATABASE_PROVIDER=postgres` and `DATABASE_URL`. For backwards compatibility, a pre-existing environment that sets `DATABASE_URL` but no `DATABASE_PROVIDER` continues to select PostgreSQL rather than silently switching to a new SQLite database.
 3. **MongoDB remains a target adapter, not an available provider yet.** It may be selected only after every persistence port, transaction/outbox guarantee, migration path and shared behavioral contract passes. Unsupported providers fail closed; they never fall back to another engine.
-4. **REST is the only target business HTTP API.** GraphQL is removal-only transition code. Do not add operations to it; remove the schema, route, Yoga packages, configuration and obsolete GraphQL tests after the remaining Web caller migrates to REST. Backend-only provider changes do not modify `apps/web/`.
+4. **REST is the only business HTTP API.** The GraphQL runtime/schema/endpoint, Yoga packages, configuration and obsolete GraphQL tests have been removed after the Web caller migrated to REST. Do not reintroduce the GraphQL transport or add a parallel business API. Backend-only provider changes do not modify `apps/web/`.
 5. **A provider setting is not an online data cutover.** The goal is an online/near-zero-downtime migration capability across SQLite, PostgreSQL and MongoDB, but it must use a controlled protocol with one authoritative writer at a time:
    - take a consistent source snapshot and tag it with a schema/contract version;
    - capture committed changes in an ordered durable journal or engine change-data-capture stream, including deletes/tombstones and outbox state;
@@ -35,7 +35,7 @@ The product owner has also confirmed that REST is the sole business HTTP API and
 - Capture coverage is not exhaustive yet: direct SQL writes or future mutation paths outside the instrumented stores may bypass the journal. Transactional target replayers for SQLite and PostgreSQL are now implemented with an explicit entity/column allowlist, row-key validation, JSON-column normalization, delete tombstones, transaction-envelope atomicity, and an idempotent applied-change ledger/checkpoint. Replay resumes from the durable target checkpoint; a stopped source session can still be drained after capture is fenced. MongoDB replay is not implemented.
 - The capture journal includes sensitive identity snapshots while a migration is active, including password hashes and refresh-token hashes (never plaintext passwords or raw refresh-token secrets). Treat the journal as credential-sensitive data: restrict database and log access, minimize retention, and explicitly review the security/retention policy before any production capture session is enabled.
 - Online cross-provider replication/hot cutover: not implemented. Consistent initial snapshot and watermark coordination, full write-path audit, reconciliation, authoritative writer fencing, cutover and rollback remain required. Changing `DATABASE_PROVIDER` is not a data migration.
-- GraphQL: removal is the accepted target; the runtime remains transitional only until the Web caller migration is completed separately.
+- GraphQL: the runtime, endpoint and Web GraphQL caller have been removed; REST is the sole business HTTP transport.
 
 ## Risks and mitigation
 
