@@ -276,6 +276,8 @@ test("SQLite migration replayer applies source transactions atomically, resumes,
 
     const sourceChanges = sourceJournal.readChangeBatch({ sessionId, afterSequence: 0, limit: 100 });
     assert.equal(sourceChanges.length, 5);
+    assert.equal(sourceJournal.transitionSession({ sessionId, expectedStatus: "recording", nextStatus: "catching_up" }), true);
+    assert.equal(sourceJournal.transitionSession({ sessionId, expectedStatus: "catching_up", nextStatus: "stopped" }), true);
 
     assert.throws(() => target.applyTransaction([sourceChanges[1]]), /expected sequence 1/i);
     assert.equal(await target.getCheckpoint(sessionId), 0);
