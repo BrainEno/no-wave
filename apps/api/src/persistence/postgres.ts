@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
+import { createMigrationTransactionId } from "./provider-migration-journal.ts";
+import { createPostgresProviderMigrationCapture, migrationEntityKey } from "./postgres-provider-migration-capture.ts";
 
 import {
   IdempotencyConflictError,
@@ -253,6 +255,10 @@ export function createPostgresStore(sql) {
   if (!sql || typeof sql.unsafe !== "function" || typeof sql.begin !== "function") {
     throw new TypeError("A postgres.js SQL client is required.");
   }
+  const migrationCapture = createPostgresProviderMigrationCapture(sql);
+  async function captureChanges(tx, transactionId, changes) {
+    await migrationCapture.captureInTransaction(tx, transactionId, changes);
+  }
   async function findMessage(tx, senderId, idempotencyKey) {
     const rows = await tx.unsafe(
       "SELECT id, conversation_id, sender_id, body, request_hash, created_at FROM messages WHERE sender_id = $1 AND idempotency_key = $2",
@@ -306,6 +312,8 @@ export function createPostgresStore(sql) {
       validateArticleLocale(locale);
       requiredText("actorId", actorId, 300);
       return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const changes = [];
         const articles = await tx.unsafe(
           "SELECT a.id, a.author_id FROM articles AS a JOIN article_translations AS t ON t.article_id = a.id WHERE a.slug = $1 AND a.status = 'published' AND t.locale = $2 FOR UPDATE OF a",
           [slug, locale],
@@ -319,12 +327,16 @@ export function createPostgresStore(sql) {
         );
         if (existing.length > 0) {
           await tx.unsafe("DELETE FROM article_likes WHERE article_id = $1 AND user_id = $2", [articleId, actorId]);
+          changes.push({ entityType: "article_likes", entityId: migrationEntityKey(articleId, actorId), operation: "delete", payload: null });
         } else {
           const inserted = await tx.unsafe(
             "INSERT INTO article_likes (article_id, user_id) VALUES ($1, $2) ON CONFLICT (article_id, user_id) DO NOTHING RETURNING article_id",
             [articleId, actorId],
           );
-          if (inserted.length === 1 && article.author_id !== actorId) {
+          if (inserted.length === 1) {
+            const likeRows = await tx.unsafe("SELECT * FROM article_likes WHERE article_id = $1 AND user_id = $2", [articleId, actorId]);
+            changes.push({ entityType: "article_likes", entityId: migrationEntityKey(articleId, actorId), operation: "upsert", payload: likeRows[0] });
+            if (article.author_id !== actorId) {
             const payload = { type: "article.liked", articleId, slug, actorId, locale };
             await tx.unsafe(
               "INSERT INTO notifications (id, user_id, event_key, payload, payload_hash) VALUES ($1, $2, $3, $4::jsonb, $5) ON CONFLICT (user_id, event_key) DO NOTHING",
@@ -332,6 +344,7 @@ export function createPostgresStore(sql) {
             );
           }
         }
+        await captureChanges(tx, transactionId, changes);
         return readArticleLikeInfo(tx, { slug, locale, actorId });
       });
     },
@@ -341,6 +354,8 @@ export function createPostgresStore(sql) {
       requiredText("actorId", actorId, 300);
       if (typeof liked !== "boolean") throw new ArticleInputError("liked must be a boolean.");
       return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const changes = [];
         const articles = await tx.unsafe(
           "SELECT a.id, a.author_id FROM articles AS a JOIN article_translations AS t ON t.article_id = a.id WHERE a.slug = $1 AND a.status = 'published' AND t.locale = $2 FOR UPDATE OF a",
           [slug, locale],
@@ -356,7 +371,10 @@ export function createPostgresStore(sql) {
             "INSERT INTO article_likes (article_id, user_id) VALUES ($1, $2) ON CONFLICT (article_id, user_id) DO NOTHING RETURNING article_id",
             [article.id, actorId],
           );
-          if (inserted.length === 1 && article.author_id !== actorId) {
+          if (inserted.length === 1) {
+            const likeRows = await tx.unsafe("SELECT * FROM article_likes WHERE article_id = $1 AND user_id = $2", [article.id, actorId]);
+            changes.push({ entityType: "article_likes", entityId: migrationEntityKey(article.id, actorId), operation: "upsert", payload: likeRows[0] });
+            if (article.author_id !== actorId) {
             const payload = { type: "article.liked", articleId: article.id, slug, actorId, locale };
             await tx.unsafe(
               "INSERT INTO notifications (id, user_id, event_key, payload, payload_hash) VALUES ($1, $2, $3, $4::jsonb, $5) ON CONFLICT (user_id, event_key) DO NOTHING",
@@ -365,7 +383,9 @@ export function createPostgresStore(sql) {
           }
         } else if (!liked && existing.length > 0) {
           await tx.unsafe("DELETE FROM article_likes WHERE article_id = $1 AND user_id = $2", [article.id, actorId]);
+          changes.push({ entityType: "article_likes", entityId: migrationEntityKey(article.id, actorId), operation: "delete", payload: null });
         }
+        await captureChanges(tx, transactionId, changes);
         return readArticleLikeInfo(tx, { slug, locale, actorId });
       });
     },
