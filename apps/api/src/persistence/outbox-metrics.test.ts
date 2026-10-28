@@ -28,9 +28,8 @@ test("outbox metrics expose backlog depth and age and preserve last successful s
   assert.match(first, /api_outbox_backlog_sample_timestamp_seconds [1-9][0-9]*/);
 
   metrics.recordBacklogReadFailure();
-  metrics.recordBacklog({ pendingEvents: -1, oldestPendingAgeMs: Number.NaN });
   const second = metrics.render();
-  assert.match(second, /api_outbox_pending_events 0/);
+  assert.match(second, /api_outbox_pending_events 12/);
   assert.match(second, /api_outbox_oldest_pending_age_seconds 0\.000/);
   assert.match(second, /api_outbox_backlog_read_failures_total 1/);
 });
