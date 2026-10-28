@@ -32,7 +32,9 @@ function completeFakeAdapter(overrides = {}) {
   for (const methods of Object.values(persistencePortMethods)) {
     for (const method of methods) {
       if (typeof adapter[method] !== "function") {
-        adapter[method] = async () => null;
+        adapter[method] = method === "consumeRateLimit"
+          ? async () => ({ allowed: true, resetAt: new Date(Date.now() + 60000).toISOString() })
+          : async () => null;
       }
     }
   }
