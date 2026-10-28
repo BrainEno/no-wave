@@ -185,7 +185,7 @@ export function createSqliteArticleStore(db) {
       const categories = normalizeTaxonomyIds("categoryIds", categoryIds, 100);
       const tags = normalizeTaxonomyIds("tagIds", tagIds, 100);
       try {
-        return transaction(() => {
+        return transaction((transactionId) => {
           const existing = statement("SELECT id, author_id, created_at FROM articles WHERE id = ?").get(articleId);
           if (!existing) throw new ArticleNotFoundError("The article was not found.");
           if (existing.author_id !== actorId) throw new ArticleAuthorizationError("Only the article author can update it.");
