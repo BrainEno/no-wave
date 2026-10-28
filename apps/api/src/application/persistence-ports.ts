@@ -58,7 +58,14 @@ export function assertPersistenceAdapter(adapter) {
 }
 
 /** Group a flat adapter into domain-specific repository ports. */
-export function createPersistencePorts(adapter, { onOperation } = {}) {
+export function createPersistencePorts(
+  adapter,
+  {
+    onOperation,
+  }: {
+    onOperation?: (sample: { operation: string; success: boolean; durationMs: number }) => void;
+  } = {},
+) {
   if (!adapter || typeof adapter !== "object") {
     throw new TypeError("A persistence adapter object is required.");
   }
