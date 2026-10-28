@@ -38,12 +38,16 @@ export type ReplayNextBatchResult = {
   remainingAtRead: number;
 };
 
+function isSourceReplayable(status: MigrationSessionStatus): boolean {
+  return isMigrationSessionActive(status) || status === "stopped";
+}
+
 function assertCompatibleSession(source: MigrationReplaySession, target: MigrationReplaySession, targetProvider: MigrationProvider): void {
   if (source.targetProvider !== targetProvider || target.targetProvider !== targetProvider ||
       source.sourceProvider !== target.sourceProvider || source.schemaVersion !== target.schemaVersion) {
     throw new MigrationJournalError("REPLAY_SESSION_MISMATCH", "Source and target migration session settings do not match the replay target.");
   }
-  if (!isMigrationSessionActive(source.status)) throw new MigrationJournalError("SOURCE_SESSION_NOT_ACTIVE", "The source migration session is not active.");
+  if (!isSourceReplayable(source.status)) throw new MigrationJournalError("SOURCE_SESSION_NOT_REPLAYABLE", "The source session is not in a replayable state.");
   if (!isMigrationSessionActive(target.status)) throw new MigrationJournalError("TARGET_SESSION_NOT_ACTIVE", "The target replay session is not active.");
 }
 
@@ -58,8 +62,8 @@ export async function prepareMigrationReplayTarget(input: {
   if (source.targetProvider !== input.targetProvider || source.sourceProvider === input.targetProvider) {
     throw new MigrationJournalError("REPLAY_PROVIDER_MISMATCH", "The requested replay target does not match the source session.");
   }
-  if (!isMigrationSessionActive(source.status)) {
-    throw new MigrationJournalError("SOURCE_SESSION_NOT_ACTIVE", "The source migration session is not active.");
+  if (!isSourceReplayable(source.status)) {
+    throw new MigrationJournalError("SOURCE_SESSION_NOT_REPLAYABLE", "The source session is not in a replayable state.");
   }
   await input.targetJournal.createSession({
     sessionId: source.sessionId,
