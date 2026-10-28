@@ -115,6 +115,8 @@ test("adapter rejects unsupported formats, CSS styles, nested lists and malforme
       lexicalElement("listitem", [lexicalElement("list", [lexicalElement("listitem", [lexicalText("nested")])], { listType: "bullet", tag: "ul", start: 1 })]),
     ], { listType: "bullet", tag: "ul", start: 1 })]) },
     { root: lexicalElement("root", [lexicalElement("heading", [lexicalText("x")], { tag: "h1" })]) },
+    { root: lexicalElement("root", [lexicalElement("code", [lexicalText("bold code", 1)], { language: "text", theme: "" })]) },
+    { root: lexicalElement("root", [lexicalElement("code", [lexicalElement("link", [lexicalText("linked code")], { url: "/unsafe-for-code", rel: null, target: null, title: null })], { language: "text", theme: "" })]) },
   ];
   for (const state of cases) assert.throws(() => lexicalEditorStateToArticleDocument(state), { code: "BAD_USER_INPUT" });
   assert.throws(() => lexicalEditorStateToArticleDocument("{not json"), { code: "BAD_USER_INPUT" });

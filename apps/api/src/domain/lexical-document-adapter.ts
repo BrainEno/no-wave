@@ -64,6 +64,7 @@ function parseTextNode(node, path, href, { code = false } = {}) {
   if (node.mode !== undefined && node.mode !== "normal") fail(path + ".mode", "uses unsupported text mode.");
   if (node.style !== undefined && node.style !== "") fail(path + ".style", "uses inline CSS that the article contract cannot preserve.");
   const marks = textMarks(node.format, path);
+  if (code && marks.length) fail(path + ".format", "uses inline formatting inside a code block.");
   return {
     text: node.text,
     ...(marks.length ? { marks } : {}),
@@ -91,6 +92,9 @@ function parseInlineNodes(nodes, path, { code = false } = {}) {
   for (let index = 0; index < nodes.length; index += 1) {
     const nodePath = path + "[" + index + "]";
     const node = expectRecord(nodes[index], nodePath);
+    if (code && node.type !== "text" && node.type !== "code-highlight") {
+      fail(nodePath, "contains a node unsupported by the plain-code contract.");
+    }
     if (node.type === "text" || (code && node.type === "code-highlight")) {
       runs.push(parseTextNode(node, nodePath, undefined, { code }));
       continue;
