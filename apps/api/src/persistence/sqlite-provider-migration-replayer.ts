@@ -4,10 +4,15 @@ import {
   type MigrationChange,
 } from "./provider-migration-journal.ts";
 import { createSqliteProviderMigrationJournal, type SqliteMigrationExecutor } from "./sqlite-provider-migration-journal.ts";
+
+type SqliteReplayDatabase = SqliteMigrationExecutor & {
+  exec(sql: string): void;
+  readonly isTransaction: boolean;
+};
 import { prepareMigrationRowPayload, migrationEntityKeyValues } from "./provider-migration-row-applier.ts";
 
 /** SQLite target applier; row mutations and apply-ledger/checkpoint writes share one transaction. */
-export function createSqliteProviderMigrationReplayer(db: SqliteMigrationExecutor) {
+export function createSqliteProviderMigrationReplayer(db: SqliteReplayDatabase) {
   if (!db || typeof db.prepare !== "function" || typeof db.isTransaction !== "boolean") {
     throw new TypeError("A SQLite DatabaseSync connection is required.");
   }
