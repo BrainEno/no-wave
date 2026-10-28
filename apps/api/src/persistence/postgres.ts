@@ -348,6 +348,7 @@ export function createPostgresStore(sql) {
               "INSERT INTO notifications (id, user_id, event_key, payload, payload_hash) VALUES ($1, $2, $3, $4::jsonb, $5) ON CONFLICT (user_id, event_key) DO NOTHING",
               [randomUUID(), article.author_id, `article.liked:${articleId}:${actorId}:${randomUUID()}`, payload, requestHash(payload)],
             );
+            }
           }
         }
         await captureChanges(tx, transactionId, changes);
@@ -386,6 +387,7 @@ export function createPostgresStore(sql) {
               "INSERT INTO notifications (id, user_id, event_key, payload, payload_hash) VALUES ($1, $2, $3, $4::jsonb, $5) ON CONFLICT (user_id, event_key) DO NOTHING",
               [randomUUID(), article.author_id, `article.liked:${article.id}:${actorId}:${randomUUID()}`, payload, requestHash(payload)],
             );
+            }
           }
         } else if (!liked && existing.length > 0) {
           await tx.unsafe("DELETE FROM article_likes WHERE article_id = $1 AND user_id = $2", [article.id, actorId]);
