@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Standalone REST API with a transitional GraphQL runtime during migration",
+  "description": "Standalone versioned REST API with SQLite-first, provider-independent persistence",
   "scripts": {
     "start": "node src/server.ts",
     "migrate": "node src/persistence/migrate.ts",

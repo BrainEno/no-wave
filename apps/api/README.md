@@ -1,6 +1,6 @@
 # API Security and Persistence Foundation
 
-This package is the API layer of the independent BOT THK rebuild. The previous project is a source of feature/behavior evidence, not a requirement to preserve its implementation. PostgreSQL is the only registered runtime provider. A composed SQLite adapter and some shared contract tests exist, but SQLite is not enabled as a runtime provider until its full acceptance gates pass; MongoDB remains planned.
+This package is the backend API of the independent BOT THK rebuild. REST is the target and sole business HTTP API; the remaining GraphQL runtime is transitional and must be removed after the Web caller migration, with no new GraphQL operations added. SQLite is the default provider for new/local installs, PostgreSQL remains supported when selected, and MongoDB is planned but not yet implemented. All providers must pass the shared persistence behavior contracts; unsupported providers fail closed.
 
 ## Runtime probes
 
@@ -9,7 +9,7 @@ This package is the API layer of the independent BOT THK rebuild. The previous p
 
 ## Versioned REST API
 
-The standalone REST transport exposes public read endpoints and initial authenticated article-management endpoints alongside the transitional GraphQL runtime. All REST responses use JSON and `Cache-Control: no-store`.
+The versioned REST transport exposes business endpoints under `/api/v1`, with JSON responses and `Cache-Control: no-store`. The legacy GraphQL endpoint has not yet been deleted because the Web client still needs a separate REST-caller migration; treat it as removal-only transition code, not as a direction for new features.
 
 - `POST /api/v1/auth/register` and `POST /api/v1/auth/login` — create an unverified email/password account or sign in; return access and refresh tokens in JSON.
 - `POST /api/v1/auth/refresh` and `POST /api/v1/auth/logout` — rotate or revoke a refresh-token session. Reuse revokes the whole session family.
@@ -31,6 +31,19 @@ The standalone REST transport exposes public read endpoints and initial authenti
 The versioned REST API accepts only `zh-CN`. Requests specifying `zh-TW`, `en`, or another locale return `400 BAD_USER_INPUT`; search terms are limited to 200 characters and limits are 1–100. Comment creation accepts legacy `content` plain text or exactly one of `contentBlocks` / `editorState` for rich comments. Rich comments use version 1, are limited to 20 paragraph blocks and 5,000 fallback characters, and allow only application-v1 inline marks and safe links. The existing `content` field remains the canonical plain-text fallback for older clients; versioned blocks are stored separately and exposed alongside it.
 Article write requests require `Authorization: Bearer <JWT>` with a valid issuer, audience, expiry and `jti`; revoked sessions fail with `401 UNAUTHENTICATED`. The server derives `authorId`/`actorId` from the verified JWT and rejects client-supplied identity fields. Write bodies must use `Content-Type: application/json`, contain a JSON object, and fit within 2 MiB. For article create/update, send exactly one of `contentBlocks` (the application-owned JSON block array) or `editorState` (a serialized Lexical EditorState object). The write-only `editorState` ingress is validated by the strict adapter and immediately normalized to application content version `1`; Lexical JSON is never persisted or returned. Existing `contentBlocksVersion` behavior is unchanged: it defaults to `0` for legacy block arrays and may be set to `1` for rich text; an `editorState` request must use version `1` if the field is supplied. Image/custom nodes and all unsupported metadata still fail closed. Only `zh-CN` is accepted. Create returns `201`, update returns `200`, and domain failures map to the documented sanitized status codes. Invalid query values return `400 BAD_USER_INPUT`, unknown article/category resources return `404 NOT_FOUND`, and missing persistence returns `503 SERVICE_UNAVAILABLE`. Domain errors thrown by application services map to stable REST statuses: `BAD_USER_INPUT` → 400, `FORBIDDEN` → 403, `NOT_FOUND` → 404, and `CONFLICT` / `IDEMPOTENCY_CONFLICT` → 409. The adapter does not forward domain exception text; unknown domain codes and unexpected exceptions return a generic `500 INTERNAL_SERVER_ERROR` response without internal details. Category article requests resolve the category before listing content, so unknown categories do not produce a misleading successful empty list.
 
+## SQLite-first local setup
+
+Fresh installations use SQLite by default at `./data/no-wave.sqlite`. The location may be changed with `DATABASE_PATH`; local database files and their WAL sidecars are ignored by Git. Run migrations before starting the API:
+
+```sh
+pnpm --filter @bot-thk/api migrate
+pnpm --filter @bot-thk/api start
+```
+
+Migrations remain an explicit step. Startup fails closed when the SQLite schema is missing or behind. `DATABASE_AUTO_MIGRATE=true` is an opt-in for controlled local/test setup only; it should not replace a reviewed release migration step.
+
+An existing environment that sets only `DATABASE_URL` continues to select PostgreSQL for backwards compatibility. For new PostgreSQL deployments, set `DATABASE_PROVIDER=postgres` explicitly.
+
 ## PostgreSQL setup
 
 Set `DATABASE_PROVIDER=postgres` and `DATABASE_URL` to a developer-owned PostgreSQL database, then run:
@@ -44,11 +57,12 @@ Migrations are explicit release steps; API startup does not silently change the 
 
 ## Persistence API
 
-- `createPostgresClient()` creates a postgres.js connection pool and validates the connection URL.
-- `runMigrations(sql)` applies ordered SQL migrations under an advisory lock and records versions.
-- `createPostgresStore(sql)` is the current infrastructure adapter.
+- `createSqliteClient()` opens a local SQLite database with foreign keys, a busy timeout and WAL for file-backed databases.
+- `runSqliteMigrations(db)` applies ordered SQLite-native migrations transactionally; `pnpm --filter @bot-thk/api migrate` selects the matching migration runner for the chosen provider.
+- `createSqliteStore(db)` composes the SQLite domain slices into the full persistence adapter and is the default fresh-install provider.
+- `createPostgresClient()`, `runMigrations(sql)` and `createPostgresStore(sql)` remain the supported PostgreSQL adapter and migration path.
 - `src/application/persistence-ports.ts` defines the required domain-grouped adapter contract, and `src/application/services.ts` is the application-facing composition seam. Domain validation and errors live under `src/domain/`; PostgreSQL-specific queries, transactions, constraints and row mapping remain in `src/persistence/`.
-- `DATABASE_PROVIDER` selects a registered adapter at startup. Currently only `postgres` is registered. `mongodb` and `sqlite` fail explicitly until their adapters pass the full provider acceptance gates; the application never silently falls back to PostgreSQL.
+- `DATABASE_PROVIDER` selects the adapter at startup. New installs default to SQLite; a legacy `DATABASE_URL` with no provider keeps PostgreSQL selected. PostgreSQL remains supported. MongoDB is not yet registered and fails explicitly; there is no silent fallback to another engine. Changing this setting alone is not a live data migration.
 - Message writes require an existing conversation membership. Sender identity must come from the server-verified actor, never a client-supplied `senderId`.
 - Reusing an idempotency key with a different payload fails with `IDEMPOTENCY_CONFLICT`.
 - JWTs require a non-empty `jti`; the API checks its durable revocation on each authenticated request and fails closed. For self-hosted sessions, REST/GraphQL logout revokes the whole refresh family and all issued access-token IDs. An independently issued token can only have its own `jti` revoked locally.
@@ -149,3 +163,9 @@ All routes below require a valid, non-revoked bearer JWT, except for public comm
 Repeated query parameter names are rejected with `400 BAD_USER_INPUT` because all current REST query parameters are scalar; rejected requests close the connection when a write body may remain unread. The versioned REST API currently accepts only locale `zh-CN`; unsupported locales return `400 BAD_USER_INPUT` instead of silently falling back. Article responses preserve all GraphQL Article fields, adding `author`, `categories`, and `tags` from the shared services. REST `contentBlocks` is a JSON array, while the legacy GraphQL field is a JSON-serialized string. Search terms are limited to 200 characters. Pagination limits are integers from 1 to 100 with bounded non-negative offsets. Domain validation, ownership rules, transactions and notification-outbox behavior remain in the existing application and persistence layers. Errors are mapped to stable HTTP codes and sanitized messages.
 
 This remains a staged migration. The article rich-text contract is application-owned and versioned; Lexical JSON and client-supplied HTML are not accepted as canonical content. The current version-1 scope includes inline marks and hyperlinks inside existing block types. A pure serialized-Lexical adapter supports paragraphs, h2–h4 headings, quotes without attribution, ordered/unordered lists, inline text/link/marks, and code. It rejects custom image nodes, quote attribution, nested lists, unsupported CSS/alignment/direction metadata, and other payload features that the application contract cannot preserve; comment rich text and approved media upload integration remain open tasks. Backend REST routes now cover the GraphQL operations inventoried in `docs/audit/rest-graphql-parity.md`, except that legacy `toggleArticleLike` is intentionally migrated to explicit `PUT liked` state-setting semantics to avoid retries inverting state. Taxonomy, conversation/message and notification routes reuse existing persistence authorization, cursor, idempotency and outbox behavior. A CI test checks the GraphQL-schema-to-REST operation inventory and shared object fields. Remaining gates are Web caller migration and end-to-end verification; remove GraphQL/Yoga only after those gates pass. Do not remove GraphQL yet.
+
+
+## Cross-provider live-migration boundary
+
+The product direction is SQLite-first while retaining PostgreSQL and adding MongoDB as an adapter. Online migration/cutover is a separate capability, not something that happens by changing `DATABASE_PROVIDER`: the source must remain the single write authority while a consistent snapshot and ordered change stream are applied idempotently to the target, validated to a watermark, then fenced and switched. Reverse replication/rollback, delete tombstones, schema versions, lag monitoring and split-brain prevention must be tested before advertising live switching. This change enables the SQLite runtime and provider-specific migrations; it does not yet implement cross-engine replication or the MongoDB adapter.
+

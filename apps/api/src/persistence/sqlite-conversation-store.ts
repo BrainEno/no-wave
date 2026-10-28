@@ -25,7 +25,7 @@ function mapConversation(row) {
   };
 }
 
-/** SQLite conversation/message persistence slice; intentionally not a runtime provider. */
+/** SQLite conversation/message persistence slice, composed by sqlite-store.ts. */
 export function createSqliteConversationStore(db) {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") {
     throw new TypeError("A node:sqlite DatabaseSync connection is required.");

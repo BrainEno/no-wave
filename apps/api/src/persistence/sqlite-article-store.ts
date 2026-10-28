@@ -15,8 +15,7 @@ import { isUuid, requiredText } from "../domain/validation.ts";
 
 /**
  * SQLite implementation of the article/content persistence slice.
- * This is deliberately not a full persistence adapter: runtime registration
- * must wait until every persistence port has behavioral parity.
+ * This is a domain slice composed into the SQLite provider by sqlite-store.ts.
  */
 export function createSqliteArticleStore(db) {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") {

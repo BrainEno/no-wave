@@ -1,11 +1,11 @@
 # ADR 0004: PostgreSQL as the new product's system of record
 
-- Status: Accepted for the new implementation; production rollout and any historical-data import remain gated
+- Status: Superseded for provider priority by [ADR 0010](0010-sqlite-first-and-online-provider-cutover.md); the relational schema remains the PostgreSQL adapter reference
 - Date: 2026-10-24
 
 ## Decision
 
-Use PostgreSQL as the durable persistence layer for the new BOT THK implementation. Use the `postgres` JavaScript client and versioned SQL migrations while domain contracts are still evolving; introduce an ORM only if a demonstrated maintenance need justifies it.
+Retain PostgreSQL as a supported persistence adapter and use the `postgres` JavaScript client with versioned SQL migrations. The project-wide provider priority is now SQLite-first under ADR 0010. This ADR's relational schema, transactions and constraints remain requirements for the PostgreSQL adapter; they do not make PostgreSQL the default for fresh installs.
 
 The previous project is a feature/behavior reference. The new application is not required to preserve the old MongoDB schema, resolver implementation, or other legacy technical choices.
 

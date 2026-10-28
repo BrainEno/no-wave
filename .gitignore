@@ -8,3 +8,9 @@ coverage/
 .env.*
 !.env.example
 .DS_Store
+
+# Local SQLite data and write-ahead log files
+data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal

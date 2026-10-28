@@ -1,4 +1,4 @@
-/** SQLite identity contract adapter; not registered as a runtime provider. */
+/** SQLite identity contract adapter, composed by sqlite-store.ts. */
 export function createSqliteIdentityStore(db) {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") throw new TypeError("A SQLite database connection is required.");
   const run = (sql, ...args) => db.prepare(sql).run(...args);

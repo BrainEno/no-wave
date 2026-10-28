@@ -12,7 +12,7 @@ The product requires published content, author profiles, categories and tags, au
 
 ## Decision
 
-1. **REST is the only business HTTP API.** Use explicit, versioned JSON routes under `/api/v1`. Do not add new GraphQL operations.
+1. **REST is the only business HTTP API, and GraphQL is to be completely removed.** Use explicit, versioned JSON routes under `/api/v1`. Do not add GraphQL operations or extend the transitional runtime. Keep the runtime only until existing Web callers have moved in a separate Web-focused change, then remove its endpoint, schema, Yoga runtime, packages and obsolete tests.
 2. **Migrate in stages.** Keep GraphQL temporarily while Web and all existing callers are migrated and REST equivalents are covered by tests. Only then remove the GraphQL schema, Yoga runtime, dependency, endpoint configuration and GraphQL-specific tests.
 3. **Preserve domain boundaries.** REST handlers validate and serialize transport input/output, then call application services. Business rules, authorization, transactions, idempotency, persistence and outbox behavior remain in their existing domain/application/infrastructure layers.
 4. **Use stable author identity.** Public author routes and article filtering use `userId`, not a display name or a field misleadingly called `username`. Author filtering must occur in persistence before sorting/pagination.
@@ -27,7 +27,7 @@ The product requires published content, author profiles, categories and tags, au
 - Switch Web public content, author pages, discovery pages and sitemap to REST with contract tests.
 - Migrate article writes, profile changes, follows, engagement, conversation lifecycle, message history/send/read state, and notification queries/updates.
 - Define and test SSE/WebSocket reconnect behavior only when each client flow needs it; verify outbox retries, idempotency, offline recovery and authorization.
-- Remove GraphQL/Yoga and GraphQL-specific configuration only after a repository-wide caller search and the full test/typecheck/build/route-smoke suite pass.
+- No GraphQL features are in scope from this point. Migrate the remaining `apps/web` API caller to REST in its dedicated Web change, then remove GraphQL/Yoga and GraphQL-specific configuration/tests from the backend after a repository-wide caller search and the full test/typecheck/build/route-smoke suite pass.
 
 ## Deployment and acceptance
 

@@ -1,6 +1,5 @@
 /**
- * SQLite persistence slice for revoked sessions.
- * Not registered as a runtime provider until all persistence ports reach parity.
+ * SQLite persistence slice for revoked sessions, composed by sqlite-store.ts.
  */
 function requiredSessionId(sessionId) {
   if (typeof sessionId !== "string" || sessionId.trim().length === 0 || sessionId !== sessionId.trim()) {

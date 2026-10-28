@@ -1,6 +1,6 @@
 # ADR 0005: Clean Architecture and provider-independent persistence
 
-- Status: Accepted for boundary design; additional adapters and cross-engine replication are not yet implemented
+- Status: Accepted; provider priority and live-switch requirements updated by [ADR 0010](0010-sqlite-first-and-online-provider-cutover.md)
 - Date: 2026-10-24
 
 ## Context
@@ -13,9 +13,9 @@ The desired future providers are PostgreSQL, MongoDB, and SQLite. The same domai
 
 Use dependency direction:
 
-`GraphQL/HTTP transport → application use cases/services → domain repository ports → infrastructure adapter`.
+`REST transport → application use cases/services → domain repository ports → infrastructure adapter`. GraphQL is removal-only transition code; it must not receive new operations and is not part of the target architecture.
 
-- GraphQL resolvers authenticate the request and translate transport inputs/errors; they should not contain SQL, driver queries or provider-specific branching.
+- REST handlers authenticate the request and translate transport inputs/errors; they should not contain SQL, driver queries or provider-specific branching.
 - Application services express user-visible use cases and coordinate domain operations.
 - Persistence ports are grouped by bounded domain: content, taxonomy, profiles, engagement, conversations, notifications, sessions, outbox and operational health.
 - Provider adapters implement the same contracts and return domain-shaped records. Driver-native rows and query types stay inside the adapter.
@@ -25,9 +25,10 @@ Use dependency direction:
 
 ## Adapter status
 
-- PostgreSQL: current implementation.
-- MongoDB: planned adapter; not yet available.
-- SQLite: planned adapter; intended initially for local/single-host and lightweight deployments; distributed/high-concurrency production use must be assessed separately.
+- SQLite: registered default runtime provider for fresh/local installs; shared persistence contracts are exercised in CI.
+- PostgreSQL: supported adapter and optional provider, retained for deployments that explicitly select it.
+- MongoDB: planned adapter; unavailable until all ports, transaction/outbox semantics and provider contract tests pass.
+- Live cross-provider migration: architecture target only; change capture, watermark validation, fencing and rollback orchestration are not yet implemented.
 
 ## Replication and failover
 
@@ -51,7 +52,7 @@ SQLite is useful as a local/test/single-node provider, but it is not a drop-in d
 - Which consistency level is required for posts, likes/comments, follows, messages, notification read state and deletions.
 - Whether SQLite is only for local/edge use or should be eligible in any server production environment.
 
-Until those decisions are approved, this branch provides the adapter boundary and keeps PostgreSQL as its only implemented provider; no cross-engine data sync or automatic promotion is started.
+SQLite is the default for fresh installs, with PostgreSQL retained as an adapter. No MongoDB adapter, cross-engine data synchronization, hot provider switch or automatic promotion is implied until the separate acceptance gates in ADR 0010 pass.
 
 ## Operational references
 
