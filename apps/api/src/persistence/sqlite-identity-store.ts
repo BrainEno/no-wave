@@ -94,9 +94,12 @@ export function createSqliteIdentityStore(db) {
       });
     },
     async revokeIdentityRefresh({ refreshHash }) {
-      return transaction(() => {
+      return transaction((transactionId) => {
         const token = get("SELECT session_id FROM auth_refresh_tokens WHERE token_hash = ?", refreshHash);
-        if (token) revokeSessionFamily(token.session_id);
+        if (token) {
+          revokeSessionFamily(token.session_id);
+          captureSessionSnapshot(transactionId, token.session_id);
+        }
         return true;
       });
     },
@@ -104,13 +107,17 @@ export function createSqliteIdentityStore(db) {
       if (typeof sessionId !== "string" || sessionId.trim().length === 0 || sessionId !== sessionId.trim()) throw new TypeError("sessionId must be a non-empty, trimmed string.");
       const expiration = new Date(expiresAt);
       if (!Number.isFinite(expiration.getTime())) throw new TypeError("expiresAt must be a valid date.");
-      return transaction(() => {
+      return transaction((transactionId) => {
         const access = get("SELECT session_id FROM auth_access_tokens WHERE token_id = ?", sessionId);
         if (access) revokeSessionFamily(access.session_id);
         run(`INSERT INTO revoked_sessions (session_id, expires_at) VALUES (?, ?)
           ON CONFLICT (session_id) DO UPDATE SET
             expires_at = CASE WHEN excluded.expires_at > revoked_sessions.expires_at THEN excluded.expires_at ELSE revoked_sessions.expires_at END,
             revoked_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')`, sessionId, expiration.toISOString());
+        if (access) captureSessionSnapshot(transactionId, access.session_id);
+        migrationCapture.captureInTransaction(db, transactionId, [
+          { entityType: "revoked_sessions", entityId: sessionId, operation: "upsert", payload: get("SELECT * FROM revoked_sessions WHERE session_id = ?", sessionId) },
+        ]);
         return true;
       });
     },
