@@ -135,7 +135,7 @@ export function createSqliteEngagementStore(db) {
           normalizedContent.contentBlocks === null ? null : JSON.stringify(normalizedContent.contentBlocks),
           normalizedContent.contentBlocksVersion);
         const row = get("SELECT id, article_id, author_id, parent_comment_id, content, content_blocks, content_blocks_version, created_at, updated_at FROM article_comments WHERE id = ?", id);
-        const changes = [{ entityType: "article_comments", entityId: id, operation: "upsert", payload: get("SELECT * FROM article_comments WHERE id = ?", id) }];
+        const changes = [{ entityType: "article_comments", entityId: id, operation: "upsert" as const, payload: get("SELECT * FROM article_comments WHERE id = ?", id) }];
         const recipients = new Map();
         if (article.author_id !== actorId) recipients.set(article.author_id, "article.commented");
         if (parentAuthorId && parentAuthorId !== actorId) recipients.set(parentAuthorId, "article.comment_replied");
