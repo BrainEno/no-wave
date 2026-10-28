@@ -176,12 +176,17 @@ export function createPostgresIdentityStore(sql) {
     },
     async pruneExpiredIdentityState() {
       return sql.begin(async (tx) => {
-        const sessions = await tx.unsafe(`WITH expired AS (
-          SELECT s.id FROM auth_sessions s
+        const transactionId = createMigrationTransactionId();
+        const sessionRows = await tx.unsafe(`SELECT s.id FROM auth_sessions s
           WHERE s.expires_at < clock_timestamp() - interval '24 hours'
             AND NOT EXISTS (SELECT 1 FROM auth_access_tokens a WHERE a.session_id = s.id AND a.expires_at > clock_timestamp())
-          ORDER BY s.expires_at LIMIT 100 FOR UPDATE OF s SKIP LOCKED
-        ) DELETE FROM auth_sessions WHERE id IN (SELECT id FROM expired) RETURNING id`);
+          ORDER BY s.expires_at LIMIT 100 FOR UPDATE OF s SKIP LOCKED`);
+        const sessionIds = sessionRows.map((row) => row.id);
+        const [accessTokens, refreshTokens] = sessionIds.length ? await Promise.all([
+          tx.unsafe("SELECT * FROM auth_access_tokens WHERE session_id = ANY($1::text[])", [sessionIds]),
+          tx.unsafe("SELECT * FROM auth_refresh_tokens WHERE session_id = ANY($1::text[])", [sessionIds]),
+        ]) : [[], []];
+        const sessions = sessionIds.length ? await tx.unsafe("DELETE FROM auth_sessions WHERE id = ANY($1::text[]) RETURNING id", [sessionIds]) : [];
         const limits = await tx.unsafe(`WITH expired AS (
           SELECT key FROM auth_rate_limits WHERE reset_at < clock_timestamp()
           ORDER BY reset_at LIMIT 512 FOR UPDATE SKIP LOCKED
@@ -194,21 +199,35 @@ export function createPostgresIdentityStore(sql) {
           ORDER BY expires_at LIMIT 512 FOR UPDATE SKIP LOCKED
         ) DELETE FROM revoked_sessions WHERE session_id IN (SELECT session_id FROM expired)
           AND expires_at <= clock_timestamp() RETURNING session_id`);
+        const changes: CapturedChange[] = [
+          ...sessions.map((row) => ({ entityType: "auth_sessions", entityId: row.id, operation: "delete" as const, payload: null })),
+          ...accessTokens.map((row) => ({ entityType: "auth_access_tokens", entityId: row.token_id, operation: "delete" as const, payload: null })),
+          ...refreshTokens.map((row) => ({ entityType: "auth_refresh_tokens", entityId: row.token_hash, operation: "delete" as const, payload: null })),
+          ...limits.map((row) => ({ entityType: "auth_rate_limits", entityId: row.key, operation: "delete" as const, payload: null })),
+          ...revokedSessions.map((row) => ({ entityType: "revoked_sessions", entityId: row.session_id, operation: "delete" as const, payload: null })),
+        ];
+        await captureChanges(tx, transactionId, changes);
         return { sessions: sessions.length, rateLimits: limits.length, revokedSessions: revokedSessions.length };
       });
     },
     async consumeIdentityRateLimit({ key, limit, windowSeconds }) {
-      const rows = await sql.unsafe(
-        `INSERT INTO auth_rate_limits (key, attempts, reset_at)
-         VALUES ($1, 1, statement_timestamp() + ($2 * interval '1 second'))
-         ON CONFLICT (key) DO UPDATE SET
-           attempts = CASE WHEN auth_rate_limits.reset_at <= statement_timestamp() THEN 1
-                           WHEN auth_rate_limits.attempts >= $3 THEN $3 ELSE auth_rate_limits.attempts + 1 END,
-           reset_at = CASE WHEN auth_rate_limits.reset_at <= statement_timestamp() THEN statement_timestamp() + ($2 * interval '1 second') ELSE auth_rate_limits.reset_at END
-         RETURNING attempts, reset_at`,
-        [key, windowSeconds, limit + 1],
-      );
-      return { allowed: Number(rows[0].attempts) <= limit, resetAt: new Date(rows[0].reset_at).toISOString() };
+      return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const rows = await tx.unsafe(
+          `INSERT INTO auth_rate_limits (key, attempts, reset_at)
+           VALUES ($1, 1, statement_timestamp() + ($2 * interval '1 second'))
+           ON CONFLICT (key) DO UPDATE SET
+             attempts = CASE WHEN auth_rate_limits.reset_at <= statement_timestamp() THEN 1
+                             WHEN auth_rate_limits.attempts >= $3 THEN $3 ELSE auth_rate_limits.attempts + 1 END,
+             reset_at = CASE WHEN auth_rate_limits.reset_at <= statement_timestamp() THEN statement_timestamp() + ($2 * interval '1 second') ELSE auth_rate_limits.reset_at END
+           RETURNING *`,
+          [key, windowSeconds, limit + 1],
+        );
+        await captureChanges(tx, transactionId, [
+          { entityType: "auth_rate_limits", entityId: key, operation: "upsert", payload: rows[0] },
+        ]);
+        return { allowed: Number(rows[0].attempts) <= limit, resetAt: new Date(rows[0].reset_at).toISOString() };
+      });
     },
   });
 }
