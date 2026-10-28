@@ -70,10 +70,8 @@ export function createOutboxMetrics() {
       "# HELP api_outbox_batch_duration_ms Outbox batch dispatch duration in milliseconds.",
       "# TYPE api_outbox_batch_duration_ms histogram",
     ];
-    let cumulative = 0;
     HISTOGRAM_BUCKETS_MS.forEach((bound, index) => {
-      cumulative += batchDuration.buckets[index];
-      lines.push(`api_outbox_batch_duration_ms_bucket{le="${bound}"} ${cumulative}`);
+      lines.push(`api_outbox_batch_duration_ms_bucket{le="${bound}"} ${batchDuration.buckets[index]}`);
     });
     lines.push(
       `api_outbox_batch_duration_ms_bucket{le="+Inf"} ${batchDuration.count}`,
