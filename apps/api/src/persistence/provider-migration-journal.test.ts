@@ -10,6 +10,8 @@ import { createSqliteTaxonomyStore } from "./sqlite-taxonomy-store.ts";
 import { createSqliteNotificationStore } from "./sqlite-notification-store.ts";
 import { createSqliteIdentityStore } from "./sqlite-identity-store.ts";
 import { createSqliteOutboxStore } from "./sqlite-outbox-store.ts";
+import { createSqliteProviderMigrationReplayer } from "./sqlite-provider-migration-replayer.ts";
+import { prepareMigrationReplayTarget, replayNextMigrationBatch } from "./provider-migration-replay.ts";
 import { canonicalJson, validateMigrationChange } from "./provider-migration-journal.ts";
 
 function change(sessionId: string, changeId: string, transactionId: string, entityId: string, body: Record<string, unknown>) {
@@ -219,5 +221,105 @@ test("SQLite domain writes roll back when change capture fails", async () => {
   } finally {
     if (db.isTransaction) db.exec("ROLLBACK");
     db.close();
+  }
+});
+
+
+test("SQLite migration replayer applies source transactions atomically, resumes, normalizes JSON and honors tombstones", async () => {
+  const sourceDb = createSqliteClient({ filename: ":memory:", enableWal: false });
+  const targetDb = createSqliteClient({ filename: ":memory:", enableWal: false });
+  try {
+    await runSqliteMigrations(sourceDb);
+    await runSqliteMigrations(targetDb);
+    const sourceJournal = createSqliteProviderMigrationJournal(sourceDb);
+    const target = createSqliteProviderMigrationReplayer(targetDb);
+    const sessionId = "sqlite-replay-transactional";
+    sourceJournal.createSession({ sessionId, sourceProvider: "postgres", targetProvider: "sqlite", schemaVersion: "replay-v1" });
+    sourceJournal.transitionSession({ sessionId, expectedStatus: "prepared", nextStatus: "recording" });
+    await prepareMigrationReplayTarget({ sourceJournal, targetJournal: target, sessionId, targetProvider: "sqlite" });
+
+    const append = (changeId: string, transactionId: string, entityType: string, entityId: string, operation: "upsert" | "delete", payload: Record<string, unknown> | null) => {
+      sourceDb.exec("BEGIN IMMEDIATE");
+      try {
+        const result = sourceJournal.appendChangeInTransaction(sourceDb, {
+          sessionId, changeId, transactionId, entityType, entityId, operation, payload,
+        });
+        sourceDb.exec("COMMIT");
+        return result;
+      } catch (error) {
+        try { sourceDb.exec("ROLLBACK"); } catch {}
+        throw error;
+      }
+    };
+
+    append("article-upsert", "source-tx-article", "articles", "article-replay-1", "upsert", {
+      id: "article-replay-1", author_id: "writer-1", slug: "replay-article", status: "draft",
+      work_type: "essay", created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z", published_at: null,
+    });
+    append("translation-upsert", "source-tx-article", "article_translations", JSON.stringify(["article-replay-1", "en"]), "upsert", {
+      article_id: "article-replay-1", locale: "en", title: "Replayable", summary: "Atomic row group",
+      content_blocks: JSON.stringify([{ id: "block-1", type: "paragraph", text: "replayed" }]),
+      content_blocks_version: 0, created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z",
+    });
+    append("notification-upsert", "source-tx-notification", "notifications", "notification-replay-1", "upsert", {
+      id: "notification-replay-1", user_id: "reader-1", event_key: "replay-event-1",
+      payload: JSON.stringify({ type: "replay.test", nested: { ok: true } }), payload_hash: "a".repeat(64),
+      created_at: "2026-01-01T00:00:00.000Z", read_at: null,
+    });
+    append("outbox-upsert", "source-tx-outbox", "outbox_events", "outbox-replay-1", "upsert", {
+      id: "outbox-replay-1", event_key: "replay-outbox-1", event_type: "replay.test",
+      aggregate_id: "article-replay-1", payload: JSON.stringify({ operation: "replay", nested: [1, 2] }),
+      attempts: 0, available_at: "2026-01-01T00:00:00.000Z", created_at: "2026-01-01T00:00:00.000Z",
+      delivered_at: null, lease_token: null,
+    });
+    append("notification-delete", "source-tx-delete", "notifications", "notification-replay-1", "delete", null);
+
+    const sourceChanges = sourceJournal.readChangeBatch({ sessionId, afterSequence: 0, limit: 100 });
+    assert.equal(sourceChanges.length, 5);
+    assert.equal(sourceJournal.transitionSession({ sessionId, expectedStatus: "recording", nextStatus: "catching_up" }), true);
+    assert.equal(sourceJournal.transitionSession({ sessionId, expectedStatus: "catching_up", nextStatus: "stopped" }), true);
+
+    assert.throws(() => target.applyTransaction([sourceChanges[1]]), /expected sequence 1/i);
+    assert.equal(await target.getCheckpoint(sessionId), 0);
+
+    targetDb.exec("CREATE TRIGGER block_replay_translation BEFORE INSERT ON article_translations BEGIN SELECT RAISE(ABORT, 'target apply failure'); END");
+    await assert.rejects(
+      replayNextMigrationBatch({ sourceJournal, target, sessionId, limit: 1 }),
+      /target apply failure/i,
+    );
+    assert.equal(await target.getCheckpoint(sessionId), 0, "failed transaction must not advance the checkpoint");
+    assert.equal(targetDb.prepare("SELECT count(*) AS count FROM articles WHERE id = ?").get("article-replay-1").count, 0, "parent insert must roll back with the failed child insert");
+    assert.equal(targetDb.prepare("SELECT count(*) AS count FROM provider_migration_applied_changes WHERE session_id = ?").get(sessionId).count, 0);
+
+    targetDb.exec("DROP TRIGGER block_replay_translation");
+    const first = await replayNextMigrationBatch({ sourceJournal, target, sessionId, limit: 1 });
+    assert.deepEqual({ appliedChanges: first.appliedChanges, transactions: first.transactions, lastSequence: first.lastSequence }, {
+      appliedChanges: 2, transactions: 1, lastSequence: 2,
+    });
+    const translation = targetDb.prepare("SELECT content_blocks FROM article_translations WHERE article_id = ? AND locale = ?").get("article-replay-1", "en");
+    assert.deepEqual(JSON.parse(translation.content_blocks), [{ id: "block-1", type: "paragraph", text: "replayed" }]);
+
+    const second = await replayNextMigrationBatch({ sourceJournal, target, sessionId, limit: 1 });
+    assert.equal(second.lastSequence, 3);
+    const notificationPayload = targetDb.prepare("SELECT payload FROM notifications WHERE id = ?").get("notification-replay-1");
+    assert.deepEqual(JSON.parse(notificationPayload.payload), { type: "replay.test", nested: { ok: true } });
+
+    const third = await replayNextMigrationBatch({ sourceJournal, target, sessionId, limit: 1 });
+    assert.equal(third.lastSequence, 4);
+    const fourth = await replayNextMigrationBatch({ sourceJournal, target, sessionId, limit: 1 });
+    assert.equal(fourth.lastSequence, 5);
+    assert.equal(targetDb.prepare("SELECT count(*) AS count FROM notifications WHERE id = ?").get("notification-replay-1").count, 0, "delete tombstone must remove the target row");
+    const outboxPayload = targetDb.prepare("SELECT payload FROM outbox_events WHERE id = ?").get("outbox-replay-1");
+    assert.deepEqual(JSON.parse(outboxPayload.payload), { operation: "replay", nested: [1, 2] });
+
+    await target.applyTransaction(sourceChanges.slice(0, 2));
+    assert.equal(await target.getCheckpoint(sessionId), 5, "replaying an already-applied transaction must be idempotent");
+    const done = await replayNextMigrationBatch({ sourceJournal, target, sessionId });
+    assert.deepEqual({ appliedChanges: done.appliedChanges, lastSequence: done.lastSequence }, { appliedChanges: 0, lastSequence: 5 });
+  } finally {
+    if (sourceDb.isTransaction) sourceDb.exec("ROLLBACK");
+    if (targetDb.isTransaction) targetDb.exec("ROLLBACK");
+    sourceDb.close();
+    targetDb.close();
   }
 });

@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import test, { after, before } from "node:test";
 import { createPostgresClient, createPostgresStore } from "./postgres.ts";
 import { createPostgresIdentityStore } from "./postgres-identity-store.ts";
+import { createPostgresProviderMigrationReplayer } from "./postgres-provider-migration-replayer.ts";
+import { prepareMigrationReplayTarget, replayNextMigrationBatch } from "./provider-migration-replay.ts";
 import { runMigrations } from "./migrate.ts";
 import { createPostgresProviderMigrationJournal } from "./postgres-provider-migration-journal.ts";
 
@@ -141,6 +143,65 @@ test("PostgreSQL domain writes capture profile, taxonomy-independent notificatio
       await sql.unsafe("DELETE FROM auth_sessions WHERE id = $1", [identitySessionId]);
       await sql.unsafe("DELETE FROM auth_accounts WHERE user_id = $1", [userId]);
       await sql.unsafe("DELETE FROM user_profiles WHERE user_id = $1", [userId]);
+      await sql.unsafe("DELETE FROM provider_migration_sessions WHERE session_id = $1", [sessionId]);
+    }
+  }
+});
+
+
+test("PostgreSQL migration replayer applies JSON snapshots and tombstones with a durable resumable checkpoint", options, async () => {
+  const suffix = randomUUID();
+  const sessionId = "replay-postgres-" + suffix;
+  const notificationId = randomUUID();
+  const userId = "replay-user-" + suffix;
+  const eventKey = "replay-event-" + suffix;
+  const journal = createPostgresProviderMigrationJournal(sql);
+  const target = createPostgresProviderMigrationReplayer(sql);
+  try {
+    await journal.createSession({ sessionId, sourceProvider: "sqlite", targetProvider: "postgres", schemaVersion: "replay-integration-v1" });
+    await journal.transitionSession({ sessionId, expectedStatus: "prepared", nextStatus: "recording" });
+    await prepareMigrationReplayTarget({ sourceJournal: journal, targetJournal: target, sessionId, targetProvider: "postgres" });
+
+    await sql.begin(async (tx: any) => {
+      await journal.appendChangeInTransaction(tx, {
+        sessionId, changeId: "notification-upsert-" + suffix, transactionId: "notification-upsert-tx-" + suffix,
+        entityType: "notifications", entityId: notificationId, operation: "upsert",
+        payload: {
+          id: notificationId, user_id: userId, event_key: eventKey,
+          payload: JSON.stringify({ type: "replay.integration", nested: { valid: true } }),
+          payload_hash: "b".repeat(64), created_at: new Date().toISOString(), read_at: null,
+        },
+      });
+    });
+    await sql.begin(async (tx: any) => {
+      await journal.appendChangeInTransaction(tx, {
+        sessionId, changeId: "notification-delete-" + suffix, transactionId: "notification-delete-tx-" + suffix,
+        entityType: "notifications", entityId: notificationId, operation: "delete", payload: null,
+      });
+    });
+
+    const changes = await journal.readChangeBatch({ sessionId, afterSequence: 0, limit: 10 });
+    assert.equal(changes.length, 2);
+    await assert.rejects(target.applyTransaction([changes[1]]), /expected sequence 1/i);
+    assert.equal(await target.getCheckpoint(sessionId), 0);
+
+    const first = await replayNextMigrationBatch({ sourceJournal: journal, target, sessionId, limit: 1 });
+    assert.equal(first.lastSequence, 1);
+    const rows = await sql.unsafe("SELECT payload FROM notifications WHERE id = $1", [notificationId]);
+    assert.deepEqual(rows[0].payload, { type: "replay.integration", nested: { valid: true } });
+
+    const second = await replayNextMigrationBatch({ sourceJournal: journal, target, sessionId, limit: 1 });
+    assert.equal(second.lastSequence, 2);
+    assert.equal((await sql.unsafe("SELECT id FROM notifications WHERE id = $1", [notificationId])).length, 0);
+
+    await target.applyTransaction([changes[0]]);
+    assert.equal(await target.getCheckpoint(sessionId), 2, "duplicate replay must not rewind the checkpoint or recreate a tombstoned row");
+    assert.equal((await sql.unsafe("SELECT id FROM notifications WHERE id = $1", [notificationId])).length, 0);
+    const done = await replayNextMigrationBatch({ sourceJournal: journal, target, sessionId });
+    assert.equal(done.appliedChanges, 0);
+  } finally {
+    if (sql) {
+      await sql.unsafe("DELETE FROM notifications WHERE id = $1", [notificationId]);
       await sql.unsafe("DELETE FROM provider_migration_sessions WHERE session_id = $1", [sessionId]);
     }
   }
