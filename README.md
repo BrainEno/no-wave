@@ -33,6 +33,10 @@ The built-in `node:sqlite` API is **not yet stable**: official Node.js v24 docum
 
 SQLite remains the default for local development and single-host installs. **For production/server deployments, PostgreSQL is the recommended provider** while `node:sqlite` remains a release-candidate API. SQLite WAL is not cross-host replication or high availability. See [Persistence provider deployment guidance](docs/deployment/persistence-provider-guidance.md) and [ADR 0010](docs/architecture/decisions/0010-sqlite-first-and-online-provider-cutover.md) for operating boundaries, runtime-upgrade regression requirements, and conditions for revisiting the driver choice.
 
+## Observability
+
+The API emits allowlisted JSON request logs with a generated `X-Request-Id`, trace-correlation metadata, bounded route labels, status and elapsed time. `GET /metrics` exposes Prometheus request, duration, authentication-failure and persistence-port metrics after you set `API_METRICS_ENABLED=true` (disabled by default). The separate notification worker can expose outbox backlog and delivery metrics when `OUTBOX_METRICS_PORT` is set; its listener binds to `127.0.0.1` by default. Restrict both metrics endpoints to a trusted monitoring network. See [API observability operations guide](docs/operations/api-observability.md) for names, labels, configuration and limits.
+
 ## Commands
 
 ```sh
