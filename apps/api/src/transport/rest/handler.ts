@@ -282,7 +282,7 @@ function normalizeArticleWriteBody(
   }
 
   return {
-    input: { ...body, locale: "zh-CN", contentBlocksVersion, contentBlocks: JSON.stringify(body.contentBlocks) },
+    input: { ...body, locale: "zh-CN", contentBlocks: JSON.stringify(body.contentBlocks) },
     error: null,
   };
 }
