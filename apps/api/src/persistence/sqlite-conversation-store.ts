@@ -69,7 +69,7 @@ export function createSqliteConversationStore(db) {
         const row = get("SELECT * FROM conversations WHERE id = ?", id);
         migrationCapture.captureInTransaction(db, transactionId, [
           { entityType: "conversations", entityId: id, operation: "upsert", payload: row },
-          ...ids.map((userId) => ({ entityType: "conversation_participants", entityId: migrationEntityKey(id, userId), operation: "upsert", payload: get("SELECT * FROM conversation_participants WHERE conversation_id = ? AND user_id = ?", id, userId) })),
+          ...ids.map((userId) => ({ entityType: "conversation_participants", entityId: migrationEntityKey(id, userId), operation: "upsert" as const, payload: get("SELECT * FROM conversation_participants WHERE conversation_id = ? AND user_id = ?", id, userId) })),
         ]);
         return { id: row.id, createdBy: row.created_by, participantIds: ids, createdAt: iso(row.created_at), lastActivityAt: iso(row.created_at), unreadCount: 0, lastMessage: null };
       });
