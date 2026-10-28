@@ -161,7 +161,7 @@ export function createSqliteEngagementStore(db) {
         ) SELECT id FROM descendants`, commentId);
         run("DELETE FROM article_comments WHERE id = ?", commentId);
         migrationCapture.captureInTransaction(db, transactionId, deleted.map((item) => ({
-          entityType: "article_comments", entityId: item.id, operation: "delete", payload: null,
+          entityType: "article_comments", entityId: item.id, operation: "delete" as const, payload: null,
         })));
         return true;
       });
