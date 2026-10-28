@@ -1398,6 +1398,8 @@ export function createPostgresStore(sql) {
       const payload = { type: "message.created", messageId, conversationId, senderId };
       const hash = requestHash(payload);
       return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const changes = [];
         // All membership edits and deletes lock this same row first. A stale
         // event whose conversation has been deleted is a harmless no-op.
         const conversation = await tx.unsafe("SELECT id FROM conversations WHERE id = $1 FOR UPDATE", [conversationId]);
@@ -1412,10 +1414,15 @@ export function createPostgresStore(sql) {
           [conversationId, senderId],
         );
         for (const { user_id: userId } of participants) {
+          const notificationId = randomUUID();
           const inserted = await tx.unsafe(
             "INSERT INTO notifications (id, user_id, event_key, payload, payload_hash) VALUES ($1, $2, $3, $4::jsonb, $5) ON CONFLICT (user_id, event_key) DO NOTHING RETURNING id",
-            [randomUUID(), userId, eventKey, payload, hash],
+            [notificationId, userId, eventKey, payload, hash],
           );
+          if (inserted.length === 1) {
+            const snapshot = await tx.unsafe("SELECT * FROM notifications WHERE id = $1", [notificationId]);
+            if (snapshot[0]) changes.push({ entityType: "notifications", entityId: notificationId, operation: "upsert", payload: snapshot[0] });
+          }
           if (inserted.length === 0) {
             const existing = await tx.unsafe(
               "SELECT payload_hash FROM notifications WHERE user_id = $1 AND event_key = $2",
@@ -1425,6 +1432,7 @@ export function createPostgresStore(sql) {
             if (existing[0].payload_hash !== hash) throw new IdempotencyConflictError("The notification event key was already used with a different payload.");
           }
         }
+        await captureChanges(tx, transactionId, changes);
         return true;
       });
     },
@@ -1462,11 +1470,15 @@ export function createPostgresStore(sql) {
       if (typeof actorId !== "string" || actorId.trim().length === 0 || actorId !== actorId.trim()) {
         throw new TypeError("actorId must be a non-empty, trimmed string.");
       }
-      const rows = await sql.unsafe(
-        "UPDATE notifications SET read_at = now() WHERE user_id = $1 AND read_at IS NULL RETURNING id",
-        [actorId],
-      );
-      return rows.length;
+      return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const rows = await tx.unsafe(
+          "UPDATE notifications SET read_at = now() WHERE user_id = $1 AND read_at IS NULL RETURNING *",
+          [actorId],
+        );
+        await captureChanges(tx, transactionId, rows.map((row) => ({ entityType: "notifications", entityId: row.id, operation: "upsert", payload: row })));
+        return rows.length;
+      });
     },
     async markNotificationRead({ notificationId, actorId }) {
       if (typeof actorId !== "string" || actorId.trim().length === 0 || actorId !== actorId.trim()) {
@@ -1475,20 +1487,28 @@ export function createPostgresStore(sql) {
       if (!isUuid(notificationId)) {
         throw new InvalidMessageCursorError("notificationId must be a valid notification ID.");
       }
-      const rows = await sql.unsafe(
-        "UPDATE notifications SET read_at = COALESCE(read_at, now()) WHERE id = $1 AND user_id = $2 RETURNING id, user_id, event_key, payload, created_at, read_at",
-        [notificationId, actorId],
-      );
-      const row = rows[0];
-      if (!row) return null;
-      return {
-        id: row.id,
-        userId: row.user_id,
-        eventKey: row.event_key,
-        payload: parseJsonValue(row.payload),
-        createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : new Date(row.created_at).toISOString(),
-        readAt: row.read_at instanceof Date ? row.read_at.toISOString() : new Date(row.read_at).toISOString(),
-      };
+      return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const before = await tx.unsafe("SELECT read_at FROM notifications WHERE id = $1 AND user_id = $2 FOR UPDATE", [notificationId, actorId]);
+        const rows = await tx.unsafe(
+          "UPDATE notifications SET read_at = COALESCE(read_at, now()) WHERE id = $1 AND user_id = $2 RETURNING id, user_id, event_key, payload, created_at, read_at",
+          [notificationId, actorId],
+        );
+        const row = rows[0];
+        if (!row) return null;
+        if (before[0]?.read_at == null) {
+          const snapshots = await tx.unsafe("SELECT * FROM notifications WHERE id = $1", [notificationId]);
+          await captureChanges(tx, transactionId, [{ entityType: "notifications", entityId: notificationId, operation: "upsert", payload: snapshots[0] }]);
+        }
+        return {
+          id: row.id,
+          userId: row.user_id,
+          eventKey: row.event_key,
+          payload: parseJsonValue(row.payload),
+          createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : new Date(row.created_at).toISOString(),
+          readAt: row.read_at instanceof Date ? row.read_at.toISOString() : new Date(row.read_at).toISOString(),
+        };
+      });
     },
     async createNotification({ userId, eventKey, payload }) {
       for (const [name, value] of Object.entries({ userId, eventKey })) {
@@ -1499,12 +1519,16 @@ export function createPostgresStore(sql) {
       if (payload === undefined) throw new TypeError("payload is required.");
       const hash = requestHash(payload);
       return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
         const inserted = await tx.unsafe(
           "INSERT INTO notifications (id, user_id, event_key, payload, payload_hash) VALUES ($1, $2, $3, $4::jsonb, $5) ON CONFLICT (user_id, event_key) DO NOTHING RETURNING id, user_id, event_key, payload, created_at, payload_hash",
           [randomUUID(), userId, eventKey, payload, hash],
         );
         let row = inserted[0];
         let duplicate = false;
+        if (row) await captureChanges(tx, transactionId, [
+          { entityType: "notifications", entityId: row.id, operation: "upsert", payload: row },
+        ]);
         if (!row) {
           const existing = await tx.unsafe(
             "SELECT id, user_id, event_key, payload, created_at, payload_hash FROM notifications WHERE user_id = $1 AND event_key = $2",
