@@ -8,6 +8,8 @@ import { createSqliteProfileStore } from "./sqlite-profile-store.ts";
 import { createSqliteConversationStore } from "./sqlite-conversation-store.ts";
 import { createSqliteTaxonomyStore } from "./sqlite-taxonomy-store.ts";
 import { createSqliteNotificationStore } from "./sqlite-notification-store.ts";
+import { createSqliteIdentityStore } from "./sqlite-identity-store.ts";
+import { createSqliteOutboxStore } from "./sqlite-outbox-store.ts";
 import { canonicalJson, validateMigrationChange } from "./provider-migration-journal.ts";
 
 function change(sessionId: string, changeId: string, transactionId: string, entityId: string, body: Record<string, unknown>) {
@@ -137,7 +139,17 @@ test("SQLite domain writes atomically capture article, engagement, profile, conv
     const conversations = createSqliteConversationStore(db);
     const taxonomies = createSqliteTaxonomyStore(db);
     const notifications = createSqliteNotificationStore(db);
+    const identities = createSqliteIdentityStore(db);
+    const outbox = createSqliteOutboxStore(db);
     taxonomies.createTaxonomy({ actorId: "author-1", kind: "category", slug: "capture-category", name: "Capture Category", locale: "en" });
+    await identities.createIdentityAccount({
+      userId: "identity-capture-user", email: "identity-capture@example.test", passwordHash: "test-password-hash",
+      session: {
+        sessionId: "identity-capture-session", accessTokenId: "identity-capture-access",
+        refreshHash: "a".repeat(64), expiresAt: new Date(Date.now() + 3600000).toISOString(),
+        accessExpiresAt: new Date(Date.now() + 1800000).toISOString(),
+      },
+    });
     const article = articles.createArticle({
       authorId: "author-1", slug: "capture-article", title: "Capture Article",
       locale: "en", contentBlocks: [{ id: "p1", type: "paragraph", text: "Capture me" }], publish: true,
@@ -153,6 +165,9 @@ test("SQLite domain writes atomically capture article, engagement, profile, conv
     const message = await conversations.persistMessage({
       conversationId: conversation.id, senderId: "author-1", body: "Captured message", idempotencyKey: "capture-message-1",
     });
+    const claimed = await outbox.claimOutboxEvents({ limit: 10, leaseSeconds: 60 });
+    assert.equal(claimed.length, 1);
+    assert.equal(await outbox.markOutboxDelivered({ eventId: claimed[0].id, leaseToken: claimed[0].lease_token }), true);
     const beforeDuplicate = db.prepare("SELECT count(*) AS count FROM provider_migration_changes WHERE session_id = ?").get("business-capture").count;
     const duplicate = await conversations.persistMessage({
       conversationId: conversation.id, senderId: "author-1", body: "Captured message", idempotencyKey: "capture-message-1",
@@ -165,6 +180,7 @@ test("SQLite domain writes atomically capture article, engagement, profile, conv
     for (const expected of [
       "articles", "article_translations", "article_likes", "article_comments", "user_profiles",
       "user_profile_translations", "taxonomies", "taxonomy_translations", "notifications",
+      "auth_accounts", "auth_sessions", "auth_access_tokens", "auth_refresh_tokens",
       "conversations", "conversation_participants", "messages", "outbox_events",
     ]) assert.ok(entityTypes.has(expected), "missing capture for " + expected);
 
@@ -173,6 +189,12 @@ test("SQLite domain writes atomically capture article, engagement, profile, conv
     assert.ok(messageChange);
     assert.ok(outboxChange);
     assert.equal(messageChange.transactionId, outboxChange.transactionId, "message and outbox events must share the same source transaction envelope");
+    const outboxStateChanges = changes.filter((change) => change.entityType === "outbox_events" && change.entityId === claimed[0].id);
+    assert.ok(outboxStateChanges.length >= 3, "message creation, lease claim and delivery must all be captured");
+    assert.ok(outboxStateChanges.some((change) => change.payload?.attempts === 1));
+    assert.ok(outboxStateChanges.some((change) => change.payload?.delivered_at != null));
+    assert.ok(changes.some((change) => change.entityType === "auth_accounts" && change.entityId === "identity-capture-user"));
+    assert.ok(changes.some((change) => change.entityType === "auth_refresh_tokens" && change.entityId === "a".repeat(64)));
   } finally {
     if (db.isTransaction) db.exec("ROLLBACK");
     db.close();
