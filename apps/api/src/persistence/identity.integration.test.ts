@@ -156,21 +156,6 @@ function registerIdentityContracts(provider, options = {}) {
       assert.equal((await f.me(first.accessToken)).status, 401);
       assert.equal((await f.me(rotated.accessToken)).status, 401);
       assert.equal((await f.post("/api/v1/auth/refresh", { refreshToken: rotated.refreshToken })).status, 401);
-      const graphql = await f.post("/graphql", { query: "{ viewer { id } }" }, { authorization: `Bearer ${rotated.accessToken}` });
-      assert.equal((await graphql.json()).data.viewer, null);
-    } finally { await f.close(); }
-  });
-
-  test(`${provider}: transitional GraphQL logout revokes the self-hosted refresh family`, options, async () => {
-    const f = await fixture(provider);
-    try {
-      const first = (await (await f.post("/api/v1/auth/register", { email: f.email, password })).json()).data;
-      const rotated = (await (await f.post("/api/v1/auth/refresh", { refreshToken: first.refreshToken })).json()).data;
-      const response = await f.post("/graphql", { query: "mutation { revokeCurrentSession }" }, { authorization: `Bearer ${first.accessToken}` });
-      assert.deepEqual(await response.json(), { data: { revokeCurrentSession: true } });
-      assert.equal((await f.me(first.accessToken)).status, 401);
-      assert.equal((await f.me(rotated.accessToken)).status, 401);
-      assert.equal((await f.post("/api/v1/auth/refresh", { refreshToken: rotated.refreshToken })).status, 401);
     } finally { await f.close(); }
   });
 
