@@ -31,7 +31,7 @@ The product owner has also confirmed that REST is the sole business HTTP API and
 - SQLite: registered runtime provider and default for fresh/local installs; provider-matched explicit migrations and stale-schema refusal are implemented in this step.
 - PostgreSQL: existing adapter and versioned migrations remain available.
 - MongoDB: not implemented; provider selection fails closed.
-- Online cross-provider replication/hot cutover: not implemented yet. The protocol above is the acceptance target, not a claim that changing `DATABASE_PROVIDER` migrates data.
+- Migration journal foundation: durable session/change/checkpoint/apply-ledger schema and SQLite/PostgreSQL storage primitives are implemented. Recording remains opt-in and manual; no existing domain write path is wired to append changes yet, so this is not end-to-end change capture.\n- Online cross-provider replication/hot cutover: not implemented. Consistent snapshot coordination, capture across every mutation path, target entity replay, reconciliation and authoritative writer fencing remain required. Changing `DATABASE_PROVIDER` is not a data migration.
 - GraphQL: removal is the accepted target; the runtime remains transitional only until the Web caller migration is completed separately.
 
 ## Acceptance gates for online switching
