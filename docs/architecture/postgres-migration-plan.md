@@ -1,16 +1,18 @@
-# New-project persistence and optional data-migration plan
+# Persistence-provider and online data-migration plan
 
 ## Scope and product boundary
 
 The current repository is an independent implementation, not a code-preserving refactor. The previous BOT THK project is used to identify product capabilities, user-visible behavior, data concepts, and known defects. Its programming patterns, database schema, resolver structure, and UI layout are not binding design constraints.
 
-PostgreSQL is the only implemented database adapter for the new application's system of record. The application is being separated into GraphQL transport, application services, domain-grouped repository ports and infrastructure adapters so PostgreSQL, MongoDB and SQLite can implement the same behavior without leaking driver specifics. The current work builds and verifies a new domain schema and APIs. It does **not** copy production data, run dual writes, cut over live traffic, or modify the previous project's repository.
+SQLite is the default provider for fresh/local installs. PostgreSQL is retained as an optional adapter and MongoDB is a planned adapter. REST is the target business API; GraphQL must be removed after the remaining Web caller is migrated, and no new GraphQL work is allowed. Domain-grouped repository ports isolate database drivers so all registered providers can implement equivalent behavior. This document defines the online migration target but does **not** copy production data, run cross-engine replication, switch live traffic, or modify the previous project's repository.
 
 Product behavior changes must be reviewed: when an improvement would change user-visible behavior, authorization policy, destructive lifecycle rules, compatibility guarantees, or data semantics, present the options, impact and recommendation and obtain approval before committing the behavior change.
 
 ## New-project environments
 
-- **Local development:** use `DATABASE_URL` with a developer-owned PostgreSQL instance, then run `pnpm --filter @bot-thk/api migrate`.
+- **Local development/default:** use SQLite at `./data/no-wave.sqlite`; `DATABASE_PATH` overrides the location. Run `pnpm --filter @bot-thk/api migrate` before `pnpm --filter @bot-thk/api start`.
+- **Optional PostgreSQL:** set `DATABASE_PROVIDER=postgres` and `DATABASE_URL`, then use the same explicit migration command.
+- **MongoDB:** not yet available; selecting it fails explicitly without falling back to another engine.
 - **Integration tests:** use `TEST_DATABASE_URL` with a disposable database. The suite can create versioned schema and writes uniquely identified fixtures that it cleans up. Never point it at production or user data.
 - **CI:** a dedicated PostgreSQL service and throwaway database run the integration tests.
 - **Production:** secrets, TLS, backup schedule, retention, monitoring and process supervision remain release decisions. They are not hard-coded into source.
@@ -19,7 +21,7 @@ API startup does not silently execute migrations. Schema changes run as an expli
 
 ## Current persistence responsibilities
 
-The new PostgreSQL schema includes conversations/participants/messages, notification inbox and outbox, revoked sessions, article and localized content blocks, user profiles, dynamic taxonomy/tag associations, article likes/comments, and user follows. The GraphQL API applies authentication and resource-level authorization at the persistence boundary for the covered operations.
+The provider-independent contract covers conversations/participants/messages, notification inbox and outbox, revoked sessions, article/localized content blocks, user profiles, dynamic taxonomy/tag associations, article likes/comments, and follows. PostgreSQL implements the relational schema; SQLite is the default registered adapter. MongoDB remains unimplemented and must not be represented as a supported switch target yet.
 
 The database is a new system of record. It is not currently wired to the legacy MongoDB database and no current feature depends on reading or writing both systems.
 
@@ -48,10 +50,19 @@ A new-app release does not require the old implementation to remain active indef
 - [ ] Historical import and traffic cutover have separate written acceptance plans and explicit approval.
 - [ ] Rollback accounts for writes made after the new system becomes authoritative.
 
-## Multi-provider architecture and disaster recovery
+## Online cross-provider migration and switching
 
-The current API composes resolvers over application services and domain-grouped persistence ports. PostgreSQL is the only implemented adapter at this stage; choosing `DATABASE_PROVIDER=mongodb` or `sqlite` must fail explicitly until those adapters pass the shared adapter contract and behavior suites.
+The project goal is a near-zero-downtime move between supported engines, not an unsafe configuration-only swap. Until the synchronization pipeline is implemented, exactly one engine is authoritative for writes and `DATABASE_PROVIDER` only selects the adapter on process startup.
 
-Do not equate multi-provider switching with cross-engine HA. First provide tested adapter parity. For production resilience, prefer high availability within the active engine. If a secondary cross-engine copy is required, start with one write authority and an asynchronous, checkpointed replication pipeline into a read-only warm standby. Requiring the API to write to both databases synchronously is a separate and higher-risk decision because partial commits create divergence.
+The eventual cutover must:
+1. Create a consistent source snapshot and assign a schema/contract version.
+2. Capture every committed change in a durable, ordered journal or engine CDC feed, including deletes/tombstones and outbox state.
+3. Apply changes idempotently to the target using stable IDs and per-entity or global checkpoints; do not use independent synchronous dual writes.
+4. Reconcile counts, unique constraints, relations, content hashes and representative business journeys while monitoring lag.
+5. Fence source writes, drain the stream to a verified watermark, atomically switch all API and worker processes, then verify reads and writes against the new authority.
+6. Keep a rollback plan. Once target-only writes are accepted, rollback requires reverse change capture or a controlled maintenance window; changing the environment variable alone is not rollback.
+7. Record operator, source/target IDs, watermarks, counts and validation outcomes without recording credentials or user secrets.
 
-Before building automated cross-engine promotion, approve RPO/RTO targets, consistency requirements by domain, conflict/deletion rules, promotion authority and fencing/split-brain prevention. See ADR 0005.
+SQLite WAL is same-host; it is not a cross-host HA mechanism. PostgreSQL remains available for deployments requiring relational server semantics. MongoDB must implement the full adapter and transaction/outbox capability contract before it can be selected. RPO/RTO, automatic promotion and active-active writes remain out of scope for this initial runtime-provider change.
+
+See ADR 0005 for provider boundaries and ADR 0010 for the accepted SQLite-first decision.

@@ -13,9 +13,8 @@ import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
 /**
  * Compose the SQLite domain slices into one adapter-shaped object.
  *
- * This factory deliberately does not register SQLite with the application
- * runtime. Shape validation is necessary but not sufficient: provider
- * activation remains gated on shared behavioral contract parity with Postgres.
+ * This full adapter is registered as the default runtime provider. Its
+ * operations are covered by the shared persistence-adapter contract tests.
  */
 export function createSqliteStore(db) {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") {
@@ -49,7 +48,9 @@ export function createSqliteStore(db) {
 /**
  * Open and migrate a SQLite database, then return the composed adapter.
  * The caller owns the returned connection and must call close() on shutdown.
- * This is an opt-in construction helper, not a registered runtime provider.
+ * This remains a convenience helper for callers that explicitly want migration
+ * before exposing the adapter; normal API startup checks migrations but does not
+ * change the schema unless DATABASE_AUTO_MIGRATE=true is explicitly set.
  */
 export async function createSqlitePersistence({
   filename,

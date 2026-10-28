@@ -8,9 +8,8 @@ const defaultDirectory = join(here, "migrations", "sqlite");
 const migrationPattern = /^\d{4}_[a-z0-9_]+\.sql$/;
 
 /**
- * Open a local SQLite database with the safety settings required by the API.
- * This is a low-level client only; it is not a complete persistence adapter
- * and must not be registered as a runtime provider until all ports are implemented.
+ * Open a local SQLite database with API safety defaults. The full adapter is
+ * composed by sqlite-store.ts and registered in persistence-runtime.ts.
  */
 export function createSqliteClient({
   filename,
@@ -37,6 +36,28 @@ export function createSqliteClient({
     db.close();
     throw error;
   }
+}
+
+/**
+ * Report pending/applied schema files without changing the database. An
+ * uninitialized DB reports every migration pending, allowing runtime startup
+ * to fail with an actionable instruction rather than serve a half-built schema.
+ */
+export async function getSqliteMigrationStatus(db, { directory = defaultDirectory } = {}) {
+  if (!db || typeof db.exec !== "function" || typeof db.prepare !== "function") {
+    throw new TypeError("A SQLite database connection is required.");
+  }
+  const files = (await readdir(directory)).filter((name) => migrationPattern.test(name)).sort();
+  if (files.length === 0) throw new Error("No versioned SQLite migrations were found.");
+  const table = db.prepare(
+    "SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'api_schema_migrations'",
+  ).get();
+  const appliedVersions = new Set(table
+    ? db.prepare("SELECT version FROM api_schema_migrations").all().map((row) => row.version)
+    : []);
+  const applied = files.filter((file) => appliedVersions.has(file.slice(0, -".sql".length)));
+  const pending = files.filter((file) => !appliedVersions.has(file.slice(0, -".sql".length)));
+  return { discovered: files.length, applied, pending };
 }
 
 /**

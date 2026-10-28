@@ -16,8 +16,8 @@ Security fixes and implementation details that fulfill already-approved behavior
 - [x] Establish agentic coding and behavior-first, risk-based testing rules.
 - [x] Review representative legacy source and record an initial capability/security inventory.
 - [x] Decide that this repository is an independent implementation; legacy source is a product reference rather than a technical constraint.
-- [x] Select Next.js App Router for Web and a standalone GraphQL API.
-- [x] Select PostgreSQL for the new application's persistence.
+- [x] Select Next.js App Router for Web and a versioned REST-only business API; GraphQL is removal-only transition code.
+- [x] Select SQLite as the default provider for new/local installs, retain PostgreSQL as a supported adapter, and record MongoDB as a future adapter with online change-capture/cutover requirements (ADR 0010).
 - [ ] Complete the feature-by-feature traceability inventory and record unresolved product behavior.
 - [ ] Agree on visual direction from the forthcoming design brief/design artifacts.
 - [x] Select self-hosted API identity and document the initial local issuer contract ([ADR 0008](../architecture/decisions/0008-self-hosted-api-identity.md)).
@@ -25,7 +25,7 @@ Security fixes and implementation details that fulfill already-approved behavior
 
 ## Approved architecture change — REST-only API
 
-On 2026-10-27, the product owner approved replacing GraphQL as the sole business HTTP API with versioned REST endpoints. This is a staged migration: do not remove GraphQL until all current operations have REST equivalents and authorization, persistence, retry, and failure behavior are covered by regression tests.
+The product owner has confirmed that GraphQL must be completely removed and REST is the sole business HTTP API. Do not add GraphQL operations. Complete the remaining Web caller migration in a separate Web-focused change, then remove the transitional GraphQL/Yoga runtime and packages. This backend-only provider change does not edit `apps/web/` to avoid conflict with the active UI work.
 
 - [x] Record the REST-only decision and require stable `userId` for author identity.
 - [x] Constrain the versioned REST public-content contract to `zh-CN`.
@@ -41,7 +41,7 @@ On 2026-10-27, the product owner approved replacing GraphQL as the sole business
 - [x] Add a CI-enforced GraphQL schema-to-REST operation/route inventory and shared-object field contract test.
 - [ ] Complete Web caller migration and end-to-end verification before removing the transitional GraphQL runtime.
 - [ ] Select and validate SSE/WebSocket only for concrete real-time needs; keep database/outbox state authoritative.
-- [ ] Remove GraphQL schema, Yoga runtime, dependencies, environment variables and obsolete tests after REST parity is verified.
+- [ ] Remove GraphQL schema, Yoga runtime, dependencies, endpoint/configuration and obsolete tests after the remaining Web caller migrates to REST; no new GraphQL code is permitted.
 
 The decision is documented in [ADR 0006](decisions/0006-rest-only-business-api.md).
 
@@ -65,13 +65,14 @@ See [ADR 0007](decisions/0007-lexical-rich-text-editors.md) for the decision and
 ## Phase 1 — Workspace, CI and API foundation
 
 - [x] Create pnpm workspace and repeatable CI.
-- [x] Add GraphQL API, input validation, server-derived identity and database-aware readiness.
-- [x] Introduce application service composition and domain-grouped persistence ports.
-- [x] Add disposable PostgreSQL integration tests and versioned migrations.
-- [ ] Add MongoDB and SQLite adapters against the shared port contract, with transaction and capability differences explicit.
-- [ ] Add provider contract tests so each adapter demonstrates equivalent business behavior.
+- [x] Build the API core, application services and domain-grouped persistence ports; REST is the target business transport.
+- [x] Keep PostgreSQL as a supported adapter with versioned migrations.
+- [x] Register SQLite as the default runtime provider, run provider-matched migrations explicitly, and fail closed if its schema is missing or stale.
+- [ ] Implement the MongoDB adapter against the shared port contract, including transaction/outbox semantics.
+- [ ] Complete cross-provider contract parity for all domain operations and provider-specific failure behavior.
+- [ ] Implement online change capture, target replay/checkpoints, reconciliation and fenced provider cutover; a configuration-only switch is not a live migration.
 - [ ] Eliminate remaining config/runtime gaps and add API/Web contract checks.
-- [ ] Finish API/Web contract verification and remove fixture fallback from environments that are configured for API-backed content. Public article listing, article detail, and author routes now support `API_GRAPHQL_URL`; fixture content remains for isolated builds and local design work.
+- [ ] Migrate remaining Web API callers from GraphQL/fixtures to versioned REST, then remove the transitional GraphQL runtime. Do not change `apps/web/` as part of backend-only provider work.
 
 Exit gate: clean install, typecheck, tests, production build and container smoke are green; Web/API contracts are explicit.
 
@@ -85,7 +86,7 @@ Exit gate: clean install, typecheck, tests, production build and container smoke
 - [x] Add API-backed localized category index and category detail routes for public literary discovery.
 - [ ] Confirm product rules for tag deletion/moderation and category creation/ownership before expanding those behaviors.
 - [ ] Build the Lexical article editor and comment editor, plus profile-management UI.
-- [x] Add explicit literary work-type metadata to article records and the public GraphQL/Web contract.
+- [x] Add explicit literary work-type metadata to article records and the public REST/Web contract.
 - [x] Make Simplified Chinese (zh-CN) the default Web/API locale while retaining Traditional Chinese compatibility.
 
 Exit gate: public content exposes published data only; mutations are authorized; tags can be created/reused and attached through the API with integration coverage.

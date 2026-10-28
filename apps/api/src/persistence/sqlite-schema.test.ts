@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { copyFile, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
+import { createSqliteClient, getSqliteMigrationStatus, runSqliteMigrations } from "./sqlite.ts";
 import { createSqliteOutboxStore } from "./sqlite-outbox-store.ts";
 
 test("SQLite domain migration creates the complete set of domain tables", async () => {
@@ -31,6 +31,23 @@ test("SQLite domain migration creates the complete set of domain tables", async 
       "article_taxonomies_taxonomy_article_idx", "user_follows_follower_created_idx",
       "auth_sessions_expiry_idx", "auth_rate_limits_reset_idx", "auth_refresh_tokens_session_idx",
     ]) assert.ok(indexes.includes(required), `missing SQLite index: ${required}`);
+  } finally {
+    db.close();
+  }
+});
+
+test("SQLite migration status reports stale and current schemas without changing the database", async () => {
+  const db = createSqliteClient({ filename: ":memory:", enableWal: false });
+  try {
+    const initial = await getSqliteMigrationStatus(db);
+    assert.equal(initial.applied.length, 0);
+    assert.ok(initial.pending.length > 0);
+    assert.equal(initial.pending.length, initial.discovered);
+
+    await runSqliteMigrations(db);
+    const current = await getSqliteMigrationStatus(db);
+    assert.equal(current.pending.length, 0);
+    assert.equal(current.applied.length, current.discovered);
   } finally {
     db.close();
   }

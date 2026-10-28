@@ -77,15 +77,11 @@ export function createApiServer({ env = process.env, store = null, applicationSe
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
   const start = async () => {
     const env = process.env;
-    let services = null;
-    let closePersistence = async () => {};
-    if (env.DATABASE_URL || env.DATABASE_PROVIDER) {
-      const runtime = await createPersistenceRuntime({ provider: env.DATABASE_PROVIDER ?? "postgres", env });
-      assertPersistenceAdapter(runtime.adapter);
-      services = createApplicationServices({ persistence: runtime.adapter });
-      await services.health();
-      closePersistence = runtime.close;
-    }
+    const runtime = await createPersistenceRuntime({ env });
+    assertPersistenceAdapter(runtime.adapter);
+    const services = createApplicationServices({ persistence: runtime.adapter });
+    await services.health();
+    const closePersistence = runtime.close;
     const port = Number(env.PORT ?? 4000);
     const host = env.HOST ?? "0.0.0.0";
     const server = createApiServer({ env, applicationServices: services });

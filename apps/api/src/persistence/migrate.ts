@@ -1,7 +1,9 @@
-import { readdir, readFile } from "node:fs/promises";
+import { mkdir, readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createPostgresClient } from "./postgres.ts";
+import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
+import { resolveDatabaseProvider, resolveSqliteDatabasePath } from "../infrastructure/database-config.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const defaultDirectory = join(here, "migrations");
@@ -34,16 +36,38 @@ export async function runMigrations(sql, { directory = defaultDirectory } = {}) 
   return { discovered: files.length, applied };
 }
 
+export async function runConfiguredMigrations({ env = process.env } = {}) {
+  const provider = resolveDatabaseProvider({ env });
+  if (provider === "sqlite") {
+    const filename = resolveSqliteDatabasePath({ env });
+    if (filename !== ":memory:") await mkdir(dirname(filename), { recursive: true });
+    const db = createSqliteClient({ filename });
+    try {
+      const applied = await runSqliteMigrations(db);
+      const discovered = Number(db.prepare("SELECT count(*) AS count FROM api_schema_migrations").get().count);
+      return { provider, discovered, applied };
+    } finally {
+      db.close();
+    }
+  }
+  if (provider === "postgres") {
+    let sql;
+    try {
+      sql = await createPostgresClient({ connectionString: env.DATABASE_URL });
+      return { provider, ...(await runMigrations(sql)) };
+    } finally {
+      if (sql) await sql.end({ timeout: 5 });
+    }
+  }
+  throw new Error(`No migration runner is registered for DATABASE_PROVIDER="${provider}". No other database was modified.`);
+}
+
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
-  let sql;
   try {
-    sql = await createPostgresClient();
-    const result = await runMigrations(sql);
-    process.stdout.write(`PostgreSQL migrations checked: ${result.discovered}; newly applied: ${result.applied.length}\n`);
+    const result = await runConfiguredMigrations();
+    process.stdout.write(`${result.provider} migrations checked: ${result.discovered}; newly applied: ${result.applied.length}\n`);
   } catch (error) {
-    process.stderr.write(`PostgreSQL migration failed: ${error.message}\n`);
+    process.stderr.write(`Database migration failed: ${error.message}\n`);
     process.exitCode = 1;
-  } finally {
-    if (sql) await sql.end({ timeout: 5 });
   }
 }
