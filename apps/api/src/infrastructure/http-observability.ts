@@ -211,10 +211,8 @@ export function createHttpObservability({
     );
     for (const metric of [...requests.values()].sort((a, b) =>
       a.method.localeCompare(b.method) || a.route.localeCompare(b.route) || a.status.localeCompare(b.status))) {
-      let cumulative = 0;
       HISTOGRAM_BUCKETS_MS.forEach((bound, index) => {
-        cumulative += metric.duration.buckets[index];
-        lines.push(`api_http_request_duration_ms_bucket{method="${metric.method}",route="${metric.route}",status="${metric.status}",le="${bound}"} ${cumulative}`);
+        lines.push(`api_http_request_duration_ms_bucket{method="${metric.method}",route="${metric.route}",status="${metric.status}",le="${bound}"} ${metric.duration.buckets[index]}`);
       });
       lines.push(`api_http_request_duration_ms_bucket{method="${metric.method}",route="${metric.route}",status="${metric.status}",le="+Inf"} ${metric.duration.count}`);
       lines.push(`api_http_request_duration_ms_sum{method="${metric.method}",route="${metric.route}",status="${metric.status}"} ${metric.duration.sum.toFixed(3)}`);
@@ -248,10 +246,8 @@ export function createHttpObservability({
     );
     for (const metric of [...persistence.values()].sort((a, b) =>
       a.operation.localeCompare(b.operation) || a.outcome.localeCompare(b.outcome))) {
-      let cumulative = 0;
       HISTOGRAM_BUCKETS_MS.forEach((bound, index) => {
-        cumulative += metric.duration.buckets[index];
-        lines.push(`api_persistence_operation_duration_ms_bucket{operation="${metric.operation}",outcome="${metric.outcome}",le="${bound}"} ${cumulative}`);
+        lines.push(`api_persistence_operation_duration_ms_bucket{operation="${metric.operation}",outcome="${metric.outcome}",le="${bound}"} ${metric.duration.buckets[index]}`);
       });
       lines.push(`api_persistence_operation_duration_ms_bucket{operation="${metric.operation}",outcome="${metric.outcome}",le="+Inf"} ${metric.duration.count}`);
       lines.push(`api_persistence_operation_duration_ms_sum{operation="${metric.operation}",outcome="${metric.outcome}"} ${metric.duration.sum.toFixed(3)}`);
