@@ -71,7 +71,7 @@ export function createPostgresProviderMigrationJournal(sql: PgDatabase) {
     if (!allocated[0]) throw new MigrationJournalError("SESSION_NOT_RECORDING", "Migration session stopped accepting changes.");
     const sequence = validateMigrationSequence(Number(allocated[0].sequence));
     const inserted = await tx.unsafe("INSERT INTO provider_migration_changes (session_id, sequence, change_id, transaction_id, entity_type, entity_id, operation, payload, change_hash) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9) RETURNING *",
-      [change.sessionId, sequence, change.changeId, change.transactionId, change.entityType, change.entityId, change.operation, change.payloadJson, change.changeHash]);
+      [change.sessionId, sequence, change.changeId, change.transactionId, change.entityType, change.entityId, change.operation, change.payload, change.changeHash]);
     if (!inserted[0]) throw new MigrationJournalError("JOURNAL_INSERT_FAILED", "PostgreSQL did not return the inserted change.");
     return mapChange(inserted[0]);
   }
