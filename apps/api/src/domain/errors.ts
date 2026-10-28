@@ -23,11 +23,21 @@ export class IdentityConflictError extends DomainError {
 export class IdentityAuthenticationError extends DomainError {
   constructor() { super("IdentityAuthenticationError", "UNAUTHENTICATED", "The credentials are invalid."); }
 }
-export class IdentityRateLimitError extends DomainError {
+export class RateLimitError extends DomainError {
   readonly retryAfterSeconds: number;
+  constructor(name: string, message: string, retryAfterSeconds: number) {
+    super(name, "RATE_LIMITED", message);
+    this.retryAfterSeconds = Math.max(1, Math.ceil(retryAfterSeconds));
+  }
+}
+export class IdentityRateLimitError extends RateLimitError {
   constructor(retryAfterSeconds: number) {
-    super("IdentityRateLimitError", "RATE_LIMITED", "Too many authentication attempts.");
-    this.retryAfterSeconds = retryAfterSeconds;
+    super("IdentityRateLimitError", "Too many authentication attempts.", retryAfterSeconds);
+  }
+}
+export class WriteRateLimitError extends RateLimitError {
+  constructor(retryAfterSeconds: number) {
+    super("WriteRateLimitError", "Too many requests. Try again later.", retryAfterSeconds);
   }
 }
 export class IdentityUnavailableError extends DomainError {
