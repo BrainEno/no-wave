@@ -345,6 +345,9 @@ export function createApiSchema() {
         contentBlocks: (source) => typeof source.contentBlocks === "string"
           ? source.contentBlocks
           : JSON.stringify(source.contentBlocks),
+        contentBlocksVersion: (source) => Number.isInteger(source.contentBlocksVersion)
+          ? source.contentBlocksVersion
+          : 0,
         author: async (source, _args, context) => {
           if (!context.services || !source.authorId) return null;
           return context.services.getAuthorProfile({ userId: source.authorId, locale: source.locale, viewerId: context.user?.id ?? null });

@@ -8,6 +8,7 @@ const ARTICLE_CONTENT_BLOCK_VERSIONS = new Set([0, 1]);
 const INLINE_MARKS = new Set(["bold", "italic", "underline", "strikethrough", "code"]);
 const MAX_DOCUMENT_JSON_CHARACTERS = 1_000_000;
 const MAX_INLINE_RUNS_PER_BLOCK = 1_000;
+export const supportedArticleWorkTypes = Object.freeze([...ARTICLE_WORK_TYPES]);
 
 export { SUPPORTED_ARTICLE_LOCALES };
 
