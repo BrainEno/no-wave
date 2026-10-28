@@ -34,7 +34,8 @@ Lexical is an extensible editor framework with official React bindings, a struct
 
 - Article and comment editing share a maintained core while using different feature profiles.
 - Article inline marks and hyperlinks now have an explicit version-1 application contract and additive persisted version column; version-0 rows remain readable without rewriting their content.
-- Lexical-state adapters, comment rich-text persistence, media upload integration, safe public rendering and the editor UI remain implementation work. The API contract deliberately does not expose Lexical internal JSON as the canonical format.
+- The pure Lexical JSON adapter maps standard paragraph, heading (h2–h4), quote, ordered/unordered list, inline text/link/marks and code nodes to application v1 and back. It deliberately rejects unsupported custom nodes, image nodes, quote attribution, nested lists, unsupported style/alignment/direction metadata and other content the contract cannot represent.
+- The adapter does not depend on Lexical runtime packages: it handles the documented serialized EditorState shape. Applications must keep Lexical node registration/configuration in sync with this allowlist. Comment rich-text persistence, image upload/custom-node integration, safe public rendering and the editor UI remain implementation work.
 
 ## References
 
