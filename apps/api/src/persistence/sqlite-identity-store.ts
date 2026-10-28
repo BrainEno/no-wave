@@ -122,9 +122,26 @@ export function createSqliteIdentityStore(db) {
       });
     },
     async pruneExpiredIdentityState() {
-      return transaction(() => {
+      return transaction((transactionId) => {
         const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
         const now = new Date().toISOString();
+        const expiredSessionIds = all(`SELECT s.id FROM auth_sessions s WHERE s.expires_at < ?
+          AND NOT EXISTS (SELECT 1 FROM auth_access_tokens a WHERE a.session_id = s.id AND a.expires_at > ?)
+          ORDER BY s.expires_at LIMIT 100`, cutoff, now).map((row) => row.id);
+        const expiredLimits = all("SELECT * FROM auth_rate_limits WHERE reset_at < ? ORDER BY reset_at LIMIT 512", now);
+        const expiredRevocations = all("SELECT * FROM revoked_sessions WHERE expires_at <= ? ORDER BY expires_at LIMIT 512", now);
+        const changes: CapturedChange[] = [];
+        for (const sessionId of expiredSessionIds) {
+          changes.push({ entityType: "auth_sessions", entityId: sessionId, operation: "delete", payload: null });
+          for (const row of all("SELECT token_id FROM auth_access_tokens WHERE session_id = ?", sessionId)) {
+            changes.push({ entityType: "auth_access_tokens", entityId: row.token_id, operation: "delete", payload: null });
+          }
+          for (const row of all("SELECT token_hash FROM auth_refresh_tokens WHERE session_id = ?", sessionId)) {
+            changes.push({ entityType: "auth_refresh_tokens", entityId: row.token_hash, operation: "delete", payload: null });
+          }
+        }
+        for (const row of expiredLimits) changes.push({ entityType: "auth_rate_limits", entityId: row.key, operation: "delete", payload: null });
+        for (const row of expiredRevocations) changes.push({ entityType: "revoked_sessions", entityId: row.session_id, operation: "delete", payload: null });
         const sessions = run(`DELETE FROM auth_sessions WHERE id IN (
           SELECT s.id FROM auth_sessions s WHERE s.expires_at < ?
           AND NOT EXISTS (SELECT 1 FROM auth_access_tokens a WHERE a.session_id = s.id AND a.expires_at > ?)
@@ -133,6 +150,7 @@ export function createSqliteIdentityStore(db) {
         // Expired revocations are no longer consulted by isSessionRevoked.
         // BEGIN IMMEDIATE serializes this bounded cleanup with concurrent writers.
         const revokedSessions = run("DELETE FROM revoked_sessions WHERE session_id IN (SELECT session_id FROM revoked_sessions WHERE expires_at <= ? ORDER BY expires_at LIMIT 512)", now);
+        migrationCapture.captureInTransaction(db, transactionId, changes);
         return {
           sessions: Number(sessions.changes),
           rateLimits: Number(limits.changes),
@@ -141,15 +159,20 @@ export function createSqliteIdentityStore(db) {
       });
     },
     async consumeIdentityRateLimit({ key, limit, windowSeconds }) {
-      const now = new Date().toISOString();
-      const resetAt = new Date(Date.now() + windowSeconds * 1000).toISOString();
-      const row = get(`INSERT INTO auth_rate_limits (key, attempts, reset_at) VALUES (?, 1, ?)
-        ON CONFLICT (key) DO UPDATE SET
-          attempts = CASE WHEN auth_rate_limits.reset_at <= ? THEN 1
-                          WHEN auth_rate_limits.attempts >= ? THEN ? ELSE auth_rate_limits.attempts + 1 END,
-          reset_at = CASE WHEN auth_rate_limits.reset_at <= ? THEN excluded.reset_at ELSE auth_rate_limits.reset_at END
-        RETURNING attempts, reset_at`, key, resetAt, now, limit + 1, limit + 1, now);
-      return { allowed: Number(row.attempts) <= limit, resetAt: row.reset_at };
+      return transaction((transactionId) => {
+        const now = new Date().toISOString();
+        const resetAt = new Date(Date.now() + windowSeconds * 1000).toISOString();
+        const row = get(`INSERT INTO auth_rate_limits (key, attempts, reset_at) VALUES (?, 1, ?)
+          ON CONFLICT (key) DO UPDATE SET
+            attempts = CASE WHEN auth_rate_limits.reset_at <= ? THEN 1
+                            WHEN auth_rate_limits.attempts >= ? THEN ? ELSE auth_rate_limits.attempts + 1 END,
+            reset_at = CASE WHEN auth_rate_limits.reset_at <= ? THEN excluded.reset_at ELSE auth_rate_limits.reset_at END
+          RETURNING attempts, reset_at`, key, resetAt, now, limit + 1, limit + 1, now);
+        migrationCapture.captureInTransaction(db, transactionId, [
+          { entityType: "auth_rate_limits", entityId: key, operation: "upsert", payload: get("SELECT * FROM auth_rate_limits WHERE key = ?", key) },
+        ]);
+        return { allowed: Number(row.attempts) <= limit, resetAt: row.reset_at };
+      });
     },
   });
 }
