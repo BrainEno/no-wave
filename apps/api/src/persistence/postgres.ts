@@ -17,6 +17,7 @@ import {
 } from "../domain/errors.ts";
 import { normalizeHashtag, validateTaxonomyKind } from "../domain/taxonomy.ts";
 import { validateArticleLocale, validateArticleSlug, normalizeArticleInput, normalizeTaxonomyIds } from "../domain/article.ts";
+import { validateStoredCommentContent } from "../domain/comment-content.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
 import { normalizeParticipantIds } from "../domain/conversation.ts";
 import { validateProfileUrl } from "../domain/profile.ts";
@@ -83,6 +84,8 @@ function mapArticleComment(row) {
     authorId: row.author_id,
     parentCommentId: row.parent_comment_id,
     content: row.content,
+    contentBlocks: row.content_blocks == null ? null : parseJsonValue(row.content_blocks),
+    contentBlocksVersion: Number(row.content_blocks_version ?? 0),
     createdAt: iso(row.created_at),
     updatedAt: iso(row.updated_at),
     locale: row.locale,
@@ -380,7 +383,8 @@ export function createPostgresStore(sql) {
           WHERE a.slug = $1 AND a.status = 'published' AND t.locale = $2
         ),
         root_comments AS (
-          SELECT c.id, c.article_id, c.author_id, c.parent_comment_id, c.content, c.created_at, c.updated_at, 0::int AS depth
+          SELECT c.id, c.article_id, c.author_id, c.parent_comment_id, c.content,
+                 c.content_blocks, c.content_blocks_version, c.created_at, c.updated_at, 0::int AS depth
           FROM article_comments AS c
           JOIN target_article AS a ON a.id = c.article_id
           WHERE c.parent_comment_id IS NULL
@@ -391,12 +395,14 @@ export function createPostgresStore(sql) {
           SELECT * FROM root_comments
           UNION ALL
           SELECT child.id, child.article_id, child.author_id, child.parent_comment_id,
-                 child.content, child.created_at, child.updated_at, parent.depth + 1
+                 child.content, child.content_blocks, child.content_blocks_version,
+                 child.created_at, child.updated_at, parent.depth + 1
           FROM article_comments AS child
           JOIN comment_tree AS parent ON child.parent_comment_id = parent.id
           WHERE parent.depth < 10
         )
-        SELECT id, article_id, author_id, parent_comment_id, content, created_at, updated_at, depth
+        SELECT id, article_id, author_id, parent_comment_id, content,
+               content_blocks, content_blocks_version, created_at, updated_at, depth
         FROM comment_tree
         ORDER BY created_at ASC, id ASC`,
         [slug, locale, limit],
@@ -413,13 +419,11 @@ export function createPostgresStore(sql) {
       }
       return roots;
     },
-    async createArticleComment({ slug, locale = "zh-CN", actorId, content, parentCommentId = null }) {
+    async createArticleComment({ slug, locale = "zh-CN", actorId, content, contentBlocks = null, contentBlocksVersion = 0, parentCommentId = null }) {
       validateArticleSlug(slug);
       validateArticleLocale(locale);
       requiredText("actorId", actorId, 300);
-      if (typeof content !== "string" || content.trim().length === 0 || content.length > 5000) {
-        throw new ArticleInputError("content must be non-empty and no longer than 5000 characters.");
-      }
+      const normalizedContent = validateStoredCommentContent({ content, contentBlocks, contentBlocksVersion });
       if (parentCommentId !== null && !isUuid(parentCommentId)) {
         throw new ArticleInputError("parentCommentId must be a valid comment ID.");
       }
@@ -440,8 +444,10 @@ export function createPostgresStore(sql) {
           parentAuthorId = parentRows[0].author_id;
         }
         const rows = await tx.unsafe(
-          "INSERT INTO article_comments (id, article_id, author_id, parent_comment_id, content) VALUES ($1, $2, $3, $4, $5) RETURNING id, article_id, author_id, parent_comment_id, content, created_at, updated_at",
-          [randomUUID(), article.id, actorId, parentCommentId, content.trim()],
+          "INSERT INTO article_comments (id, article_id, author_id, parent_comment_id, content, content_blocks, content_blocks_version) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7) RETURNING id, article_id, author_id, parent_comment_id, content, content_blocks, content_blocks_version, created_at, updated_at",
+          [randomUUID(), article.id, actorId, parentCommentId, normalizedContent.content,
+            normalizedContent.contentBlocks === null ? null : JSON.stringify(normalizedContent.contentBlocks),
+            normalizedContent.contentBlocksVersion],
         );
         const comment = rows[0];
         const recipients = new Map();

@@ -21,9 +21,9 @@ The database article mapper intentionally supplies the scalar/content fields onl
 
 ### `ArticleComment`
 
-GraphQL fields: `id`, `articleId`, `authorId`, `parentCommentId`, `content`, `createdAt`, `updatedAt`, `author`, and `replies`.
+GraphQL fields: `id`, `articleId`, `authorId`, `parentCommentId`, `content`, `contentBlocks`, `contentBlocksVersion`, `createdAt`, `updatedAt`, `author`, and `replies`.
 
-Comment REST responses must include `author` (nullable when no profile exists) and recursively include `replies`; this mirrors the GraphQL resolver rather than dropping the nested author field. Delete preserves the GraphQL boolean outcome inside the standard REST data envelope.
+Comment REST responses include `author` (nullable when no profile exists), recursive `replies`, nullable `contentBlocks`, and `contentBlocksVersion`. Version 0 keeps the existing trimmed plain-text `content` and a null blocks value. Version 1 stores paragraph-only application content blocks plus an exactly matching plain-text fallback in `content`; the REST write boundary accepts either `contentBlocks` or serialized Lexical `editorState`, never both. The transitional GraphQL mutation remains legacy-text input, while GraphQL reads can select the additive versioned fields. Delete preserves the GraphQL boolean outcome inside the standard REST data envelope.
 
 ### `ArticleLikeInfo`
 

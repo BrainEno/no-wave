@@ -24,9 +24,9 @@ after(async () => { if (sql) await sql.end({ timeout: 5 }); });
 test("migrations are repeatable and record applied versions once", integrationOptions, async () => {
   const first = await runMigrations(sql);
   const second = await runMigrations(sql);
-  assert.equal(first.discovered, 12);
+  assert.equal(first.discovered, 13);
   assert.equal(second.applied.length, 0);
-  const versions = ["0001_initial_domain_schema", "0002_article_content", "0003_author_profiles", "0004_article_engagement", "0005_article_taxonomies", "0006_conversation_lifecycle", "0007_user_follows", "0008_literary_work_types_and_zh_cn", "0009_public_article_search_trigram_indexes", "0010_outbox_lease_tokens", "0011_self_hosted_identity", "0012_article_content_versions"];
+  const versions = ["0001_initial_domain_schema", "0002_article_content", "0003_author_profiles", "0004_article_engagement", "0005_article_taxonomies", "0006_conversation_lifecycle", "0007_user_follows", "0008_literary_work_types_and_zh_cn", "0009_public_article_search_trigram_indexes", "0010_outbox_lease_tokens", "0011_self_hosted_identity", "0012_article_content_versions", "0013_comment_content_versions"];
   const rows = await sql.unsafe("SELECT version FROM api_schema_migrations WHERE version = ANY($1::text[])", [versions]);
   assert.deepEqual(rows.map((row) => row.version).sort(), versions);
 });
@@ -1341,6 +1341,47 @@ test("article comments are threaded, locale-scoped and deletions enforce ownersh
     assert.equal(remaining.length, 0);
   } finally {
     if (article) await sql.unsafe("DELETE FROM articles WHERE id = $1", [article.id]);
+  }
+});
+
+test("PostgreSQL comment v1 persists validated rich blocks and retains plain-text fallback", integrationOptions, async () => {
+  const ownerId = `it-comment-rich-owner-${randomUUID()}`;
+  const commenterId = `it-comment-rich-user-${randomUUID()}`;
+  const slug = `it-comment-rich-${randomUUID().replaceAll("-", "")}`;
+  let article;
+  try {
+    article = await store.createArticle({
+      authorId: ownerId, slug, title: "Rich comment contract", locale: "zh-CN",
+      contentBlocks: [{ id: "p1", type: "paragraph", text: "Comment body." }], publish: true,
+    });
+    const contentBlocks = [{
+      id: "comment-p1", type: "paragraph", text: "重点 链接",
+      inlines: [{ text: "重点", marks: ["bold"] }, { text: " " }, { text: "链接", href: "https://example.test/comment" }],
+    }];
+    const comment = await store.createArticleComment({
+      slug, locale: "zh-CN", actorId: commenterId, content: "重点 链接",
+      contentBlocks, contentBlocksVersion: 1,
+    });
+    assert.equal(comment.content, "重点 链接");
+    assert.equal(comment.contentBlocksVersion, 1);
+    assert.deepEqual(comment.contentBlocks, contentBlocks);
+    const listed = await store.listArticleComments({ slug, locale: "zh-CN" });
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0].contentBlocksVersion, 1);
+    assert.deepEqual(listed[0].contentBlocks, contentBlocks);
+    const rows = await sql.unsafe("SELECT content, content_blocks, content_blocks_version FROM article_comments WHERE id = $1", [comment.id]);
+    assert.equal(rows[0].content, "重点 链接");
+    assert.equal(Number(rows[0].content_blocks_version), 1);
+    assert.deepEqual(rows[0].content_blocks, contentBlocks);
+    await assert.rejects(
+      store.createArticleComment({ slug, locale: "zh-CN", actorId: commenterId, content: "mismatch", contentBlocks, contentBlocksVersion: 1 }),
+      { code: "BAD_USER_INPUT" },
+    );
+  } finally {
+    if (article) {
+      await sql.unsafe("DELETE FROM notifications WHERE payload->>'articleId' = $1", [article.id]);
+      await sql.unsafe("DELETE FROM articles WHERE id = $1", [article.id]);
+    }
   }
 });
 

@@ -57,6 +57,34 @@ test("SQLite comment trees preserve parent-child structure and notify article an
   } finally { db.close(); }
 });
 
+test("SQLite comments persist rich v1 blocks and reject inconsistent fallback or unsupported nodes", async () => {
+  const { db, engagement } = await fixture();
+  try {
+    const blocks = [{
+      id: "comment-p1", type: "paragraph", text: "重点 链接",
+      inlines: [{ text: "重点", marks: ["bold"] }, { text: " " }, { text: "链接", href: "/articles/example" }],
+    }];
+    const created = engagement.createArticleComment({
+      slug: "engagement-test", locale: "en", actorId: "reader-rich",
+      content: "重点 链接", contentBlocks: blocks, contentBlocksVersion: 1,
+    });
+    assert.equal(created.content, "重点 链接");
+    assert.equal(created.contentBlocksVersion, 1);
+    assert.deepEqual(created.contentBlocks, blocks);
+    const listed = engagement.listArticleComments({ slug: "engagement-test", locale: "en" });
+    assert.deepEqual(listed[0].contentBlocks, blocks);
+    assert.equal(Number(db.prepare("SELECT content_blocks_version FROM article_comments WHERE id = ?").get(created.id).content_blocks_version), 1);
+    assert.throws(() => engagement.createArticleComment({
+      slug: "engagement-test", locale: "en", actorId: "reader-rich",
+      content: "wrong", contentBlocks: blocks, contentBlocksVersion: 1,
+    }), ArticleInputError);
+    assert.throws(() => engagement.createArticleComment({
+      slug: "engagement-test", locale: "en", actorId: "reader-rich", content: "code",
+      contentBlocks: [{ id: "code", type: "code", language: "text", code: "code" }], contentBlocksVersion: 1,
+    }), ArticleInputError);
+  } finally { db.close(); }
+});
+
 test("SQLite comments validate parent ownership by article, input bounds, and delete authorization", async () => {
   const { db, articles, engagement } = await fixture();
   try {

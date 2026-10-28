@@ -1387,6 +1387,70 @@ test("REST article comments support public listing and authenticated replies", a
   });
 });
 
+test("REST article comments normalize Lexical state to a versioned paragraph-only document", async () => {
+  const received = [];
+  const editorState = {
+    root: {
+      children: [
+        { children: [
+          { detail: 0, format: 1, mode: "normal", style: "", text: "重点", type: "text", version: 1 },
+          { detail: 0, format: 0, mode: "normal", style: "", text: " ", type: "text", version: 1 },
+          { children: [{ detail: 0, format: 0, mode: "normal", style: "", text: "链接", type: "text", version: 1 }],
+            direction: null, format: "", indent: 0, type: "link", url: "/articles/example", rel: null, target: null, title: null, version: 1 },
+        ], direction: null, format: "", indent: 0, type: "paragraph", version: 1 },
+        { children: [{ detail: 0, format: 0, mode: "normal", style: "", text: "第二段", type: "text", version: 1 }],
+          direction: null, format: "", indent: 0, type: "paragraph", version: 1 },
+      ],
+      direction: null, format: "", indent: 0, type: "root", version: 1,
+    },
+  };
+  await withServer(async (baseUrl) => {
+    const response = await fetch(baseUrl + "/api/v1/articles/poetry-work/comments", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer " + signedToken("commenter-user") },
+      body: JSON.stringify({ editorState, parentCommentId: null }),
+    });
+    assert.equal(response.status, 201);
+    assert.deepEqual(received[0], {
+      slug: "poetry-work", locale: "zh-CN", actorId: "commenter-user",
+      content: "重点 链接\n第二段",
+      contentBlocks: [
+        { id: "lexical-block-1", type: "paragraph", text: "重点 链接", inlines: [{ text: "重点", marks: ["bold"] }, { text: " " }, { text: "链接", href: "/articles/example" }] },
+        { id: "lexical-block-2", type: "paragraph", text: "第二段" },
+      ],
+      contentBlocksVersion: 1, parentCommentId: null,
+    });
+    const responseBody = await response.json();
+    assert.equal(responseBody.data.contentBlocksVersion, 1);
+    assert.deepEqual(responseBody.data.contentBlocks, received[0].contentBlocks);
+    for (const invalidPayload of [
+      { editorState: { root: { type: "root", version: 1, children: [{ type: "image", version: 1, children: [], direction: null, format: "", indent: 0, src: "/x" }] } } },
+      { content: "plain", editorState },
+      { contentBlocks: [{ id: "h", type: "heading", level: 2, text: "Heading" }] },
+      { editorState, contentBlocksVersion: 0 },
+    ]) {
+      const rejected = await fetch(baseUrl + "/api/v1/articles/poetry-work/comments", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer " + signedToken("commenter-user") },
+        body: JSON.stringify(invalidPayload),
+      });
+      assert.equal(rejected.status, 400);
+      assert.equal((await rejected.json()).error.code, "BAD_USER_INPUT");
+    }
+    assert.equal(received.length, 1);
+  }, {
+    env: authEnv,
+    store: {
+      async isSessionRevoked() { return false; },
+      async getAuthorProfile() { return null; },
+      async createArticleComment(args) {
+        received.push(args);
+        return { id: "rich-comment", articleId: "article-1", authorId: args.actorId, parentCommentId: args.parentCommentId, content: args.content, contentBlocks: args.contentBlocks, contentBlocksVersion: args.contentBlocksVersion, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z", locale: args.locale, replies: [] };
+      },
+    },
+  });
+});
+
 test("REST comment deletion derives actor identity from JWT and returns deletion state", async () => {
   const commentId = "22222222-2222-4222-8222-222222222222";
   let received;

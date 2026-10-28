@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { DomainError, IdentityRateLimitError } from "../../domain/errors.ts";
 import { lexicalEditorStateToArticleDocument } from "../../domain/lexical-document-adapter.ts";
+import { normalizeCommentContentInput } from "../../domain/comment-content.ts";
 import { createAuthContext } from "../../security/authentication.ts";
 import { createIdentityService } from "../../application/identity.ts";
 import type { IdentityStore } from "../../application/identity.ts";
@@ -365,22 +366,24 @@ function normalizeLikeWriteBody(
 
 function normalizeCommentWriteBody(
   body: Record<string, unknown>,
-): { input: { content: string; parentCommentId: string | null } | null; error: string | null } {
-  if (Object.keys(body).some((key) => key !== "content" && key !== "parentCommentId")) {
+): { input: { content: string; contentBlocks: unknown[] | null; contentBlocksVersion: number; parentCommentId: string | null } | null; error: string | null } {
+  if (Object.keys(body).some((key) => !["content", "contentBlocks", "editorState", "contentBlocksVersion", "parentCommentId"].includes(key))) {
     return { input: null, error: "The request contains unsupported fields." };
-  }
-  if (typeof body.content !== "string" || body.content.trim().length === 0 || body.content.length > 5000) {
-    return { input: null, error: "content must be non-empty and no longer than 5000 characters." };
   }
   const parentCommentId = body.parentCommentId;
   if (parentCommentId !== undefined && parentCommentId !== null &&
       (typeof parentCommentId !== "string" || parentCommentId.length === 0 || parentCommentId.length > 300)) {
     return { input: null, error: "parentCommentId must be a comment ID or null." };
   }
-  return {
-    input: { content: body.content, parentCommentId: typeof parentCommentId === "string" ? parentCommentId : null },
-    error: null,
-  };
+  try {
+    const normalizedContent = normalizeCommentContentInput(body);
+    return {
+      input: { ...normalizedContent, parentCommentId: typeof parentCommentId === "string" ? parentCommentId : null },
+      error: null,
+    };
+  } catch {
+    return { input: null, error: "Comment content is invalid or contains unsupported rich-text content." };
+  }
 }
 
 function normalizeCreateTagBody(
@@ -1459,8 +1462,7 @@ export function createRestHandler({ services, env = process.env }: { services: R
           return true;
         }
         const comment = await services.createArticleComment({
-          slug, locale, actorId, content: normalized.input.content,
-          parentCommentId: normalized.input.parentCommentId,
+          slug, locale, actorId, ...normalized.input,
         });
         sendJson(response, 201, { data: await serializeRestComment(services, comment, actorId) });
       } catch (error: unknown) {
