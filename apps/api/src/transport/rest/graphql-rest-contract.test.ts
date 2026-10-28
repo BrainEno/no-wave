@@ -110,7 +110,7 @@ const fieldContracts = {
   Health: ["status", "version"],
   Viewer: ["id"],
   AuthorProfile: ["userId", "displayName", "bio", "avatarUrl", "websiteUrl", "locale", "createdAt", "updatedAt", "followerCount", "followingCount", "isFollowing"],
-  Article: ["id", "authorId", "slug", "workType", "status", "locale", "title", "summary", "contentBlocks", "createdAt", "updatedAt", "publishedAt", "author", "categories", "tags"],
+  Article: ["id", "authorId", "slug", "workType", "status", "locale", "title", "summary", "contentBlocks", "contentBlocksVersion", "createdAt", "updatedAt", "publishedAt", "author", "categories", "tags"],
   ArticleComment: ["id", "articleId", "authorId", "parentCommentId", "content", "createdAt", "updatedAt", "author", "replies"],
   ArticleLikeInfo: ["articleId", "slug", "likeCount", "likedByViewer"],
   Taxonomy: ["id", "kind", "slug", "name", "description", "locale", "createdBy", "articleCount"],
