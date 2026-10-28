@@ -21,6 +21,42 @@ test("SQLite client rejects invalid configuration before opening a database", ()
   assert.throws(() => createSqliteClient({ filename: ":memory:", timeoutMs: -1 }), /timeoutMs/);
 });
 
+test("SQLite binding and row types stay explicit across null, number, text, and blobs", () => {
+  const db = createSqliteClient({ filename: ":memory:", enableWal: false });
+  try {
+    const binary = new Uint8Array([0, 127, 255]);
+    const json = JSON.stringify({ ok: true, count: 2 });
+    const row = db.prepare(`
+      SELECT
+        typeof(?1) AS null_type, ?1 AS null_value,
+        typeof(?2) AS integer_type, ?2 AS integer_value,
+        typeof(?3) AS real_type, ?3 AS real_value,
+        typeof(?4) AS text_type, ?4 AS text_value,
+        typeof(?5) AS blob_type, ?5 AS blob_value
+    `).get(null, 42, 1.25, json, binary);
+
+    assert.equal(row.null_type, "null");
+    assert.equal(row.null_value, null);
+    assert.equal(row.integer_type, "integer");
+    assert.equal(row.integer_value, 42);
+    assert.equal(row.real_type, "real");
+    assert.equal(row.real_value, 1.25);
+    assert.equal(row.text_type, "text");
+    assert.equal(row.text_value, json);
+    assert.equal(JSON.parse(row.text_value).ok, true);
+    assert.equal(row.blob_type, "blob");
+    assert.deepEqual([...row.blob_value], [0, 127, 255]);
+
+    // node:sqlite's SQLInputValue does not accept JS booleans. Domain booleans
+    // must be mapped deliberately (normally to SQLite's 0/1 integer storage).
+    assert.throws(() => db.prepare("SELECT ? AS value").get(true), TypeError);
+    const booleanStorage = db.prepare("SELECT ? AS false_value, ? AS true_value").get(0, 1);
+    assert.deepEqual({ ...booleanStorage }, { false_value: 0, true_value: 1 });
+  } finally {
+    db.close();
+  }
+});
+
 test("SQLite migrations are versioned, repeatable, and recorded atomically", async () => {
   const root = await mkdtemp(join(tmpdir(), "no-wave-sqlite-"));
   const migrations = join(root, "migrations");
