@@ -101,12 +101,16 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
     const env = process.env;
     const runtime = await createPersistenceRuntime({ env });
     assertPersistenceAdapter(runtime.adapter);
-    const services = createApplicationServices({ persistence: runtime.adapter });
+    const observability = createHttpObservability();
+    const services = createApplicationServices({
+      persistence: runtime.adapter,
+      onPersistenceOperation: observability.observePersistenceOperation,
+    });
     await services.health();
     const closePersistence = runtime.close;
     const port = Number(env.PORT ?? 4000);
     const host = env.HOST ?? "0.0.0.0";
-    const server = createApiServer({ env, applicationServices: services });
+    const server = createApiServer({ env, applicationServices: services, observability });
     server.listen(port, host, () => {
       process.stdout.write(`BOT THK API listening on http://${host}:${port}\n`);
     });
