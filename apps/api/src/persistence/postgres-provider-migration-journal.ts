@@ -6,8 +6,8 @@ import {
 } from "./provider-migration-journal.ts";
 
 type Row = Record<string, any>;
-type PgExecutor = { unsafe(sql: string, parameters?: unknown[]): Promise<Row[]> };
-type PgDatabase = PgExecutor & { begin<T>(callback: (tx: PgExecutor) => Promise<T>): Promise<T> };
+type PgExecutor = any;
+type PgDatabase = any;
 
 function fieldText(row: Row, key: string): string {
   if (typeof row[key] !== "string") throw new MigrationJournalError("INVALID_STORED_ROW", "Stored field " + key + " is not text.");
