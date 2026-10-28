@@ -52,11 +52,19 @@ test("SQLite binding and row types stay explicit across null, number, text, and 
     assert.equal(row.blob_type, "blob");
     assert.deepEqual([...row.blob_value], [0, 127, 255]);
 
-    // node:sqlite's SQLInputValue does not accept JS booleans. Domain booleans
-    // must be mapped deliberately (normally to SQLite's 0/1 integer storage).
-    assert.throws(() => db.prepare("SELECT ? AS value").get(true), TypeError);
-    const booleanStorage = db.prepare("SELECT ? AS false_value, ? AS true_value").get(0, 1);
-    assert.deepEqual({ ...booleanStorage }, { false_value: 0, true_value: 1 });
+    // Pin Node 24's current boolean binding behavior as SQLite INTEGER 0/1.
+    // This is a runtime compatibility contract, not an assumption to leave untested.
+    const booleanStorage = db.prepare(`
+      SELECT
+        typeof(?1) AS true_type, ?1 AS true_value,
+        typeof(?2) AS false_type, ?2 AS false_value
+    `).get(true, false);
+    assert.deepEqual({ ...booleanStorage }, {
+      true_type: "integer",
+      true_value: 1,
+      false_type: "integer",
+      false_value: 0,
+    });
   } finally {
     db.close();
   }
