@@ -61,7 +61,7 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
     const host = env.HOST ?? "0.0.0.0";
     const server = createApiServer({ env, applicationServices: services });
     server.listen(port, host, () => {
-      process.stdout.write(`BOT THK API listening on http://${host}:${port}\\n`);
+      process.stdout.write(`BOT THK API listening on http://${host}:${port}\n`);
     });
     const shutdown = () => {
       server.close(async () => {
@@ -73,7 +73,7 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
     process.once("SIGTERM", shutdown);
   };
   start().catch((error) => {
-    process.stderr.write(`BOT THK API startup failed: ${error.message}\\n`);
+    process.stderr.write(`BOT THK API startup failed: ${error.message}\n`);
     process.exitCode = 1;
   });
 }
