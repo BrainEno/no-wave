@@ -29,14 +29,19 @@ test("SQLite binding and row types stay explicit across null, number, text, and 
     const row = db.prepare(`
       SELECT
         typeof(?1) AS null_type, ?1 AS null_value,
-        typeof(?2) AS integer_type, ?2 AS integer_value,
-        typeof(?3) AS real_type, ?3 AS real_value,
-        typeof(?4) AS text_type, ?4 AS text_value,
-        typeof(?5) AS blob_type, ?5 AS blob_value
-    `).get(null, 42, 1.25, json, binary);
+        typeof(?2) AS number_type, ?2 AS number_value,
+        typeof(?3) AS integer_type, ?3 AS integer_value,
+        typeof(?4) AS real_type, ?4 AS real_value,
+        typeof(?5) AS text_type, ?5 AS text_value,
+        typeof(?6) AS blob_type, ?6 AS blob_value
+    `).get(null, 42, 42n, 1.25, json, binary);
 
     assert.equal(row.null_type, "null");
     assert.equal(row.null_value, null);
+    // JavaScript number bindings use SQLite REAL semantics, even for integral values.
+    assert.equal(row.number_type, "real");
+    assert.equal(row.number_value, 42);
+    // Use bigint when the application specifically requires SQLite INTEGER storage.
     assert.equal(row.integer_type, "integer");
     assert.equal(row.integer_value, 42);
     assert.equal(row.real_type, "real");
