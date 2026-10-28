@@ -51,7 +51,8 @@ On 2026-10-27, the product owner selected Lexical for both the article editor an
 
 - [x] Record Lexical as the shared editing engine and define separate article/comment capability profiles.
 - [x] Define and persist the application-owned article rich-text contract version 1, adding inline marks and safe links while retaining version-0 compatibility.
-- [ ] Add tested, lossless adapters between Lexical state and the application document schema; versioned API validation is implemented, but adapters and editor-state round-trip tests remain open.
+- [x] Add tested JSON adapters between Lexical EditorState and article content v1 for standard paragraph, heading, quote, list, link/mark and code nodes; unsupported/custom nodes fail closed and both directions have round-trip tests.
+- [ ] Add registered custom-image node/upload support and preserve additional Lexical metadata only after its application document contract is approved.
 - [x] Validate versioned article node types, safe URLs, inline marks, plain-text fallbacks and serialized payload limits on the server.
 - [ ] Implement the article editor, draft recovery and approved image-upload integration.
 - [ ] Implement the comment editor with a smaller supported-node set and explicit comment payload/storage contract.
