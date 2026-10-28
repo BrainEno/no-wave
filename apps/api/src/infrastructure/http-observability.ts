@@ -68,11 +68,6 @@ function traceIdFor(request: IncomingMessage): string {
   return randomBytes(16).toString("hex");
 }
 
-function safeErrorName(error: unknown): string {
-  if (!(error instanceof Error)) return "NonErrorThrow";
-  return /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name) ? error.name : "Error";
-}
-
 /** Emit only explicitly assembled fields; request headers, URLs and bodies are never logged. */
 export function writeStructuredLog(entry: Omit<LogRecord, "timestamp" | "component"> & Partial<Pick<LogRecord, "timestamp" | "component">>): void {
   const record: LogRecord = {
