@@ -1,8 +1,34 @@
+import { createMigrationTransactionId } from "./provider-migration-journal.ts";
+import { createPostgresProviderMigrationCapture, type CapturedChange } from "./postgres-provider-migration-capture.ts";
+
 /**
  * PostgreSQL identity persistence. Refresh rotation, replay detection, logout
  * and access-token revocation all serialize on the same session row.
  */
 export function createPostgresIdentityStore(sql) {
+  const migrationCapture = createPostgresProviderMigrationCapture(sql);
+  async function captureChanges(tx, transactionId, changes: readonly CapturedChange[]) {
+    await migrationCapture.captureInTransaction(tx, transactionId, changes);
+  }
+
+  async function captureSessionSnapshot(tx, transactionId, sessionId) {
+    const [sessions, accessTokens, refreshTokens] = await Promise.all([
+      tx.unsafe("SELECT * FROM auth_sessions WHERE id = $1", [sessionId]),
+      tx.unsafe("SELECT * FROM auth_access_tokens WHERE session_id = $1", [sessionId]),
+      tx.unsafe("SELECT * FROM auth_refresh_tokens WHERE session_id = $1", [sessionId]),
+    ]);
+    const accessIds = accessTokens.map((row) => row.token_id);
+    const revoked = accessIds.length
+      ? await tx.unsafe("SELECT * FROM revoked_sessions WHERE session_id = $1 OR session_id = ANY($2::text[])", [sessionId, accessIds])
+      : await tx.unsafe("SELECT * FROM revoked_sessions WHERE session_id = $1", [sessionId]);
+    const changes: CapturedChange[] = [];
+    if (sessions[0]) changes.push({ entityType: "auth_sessions", entityId: sessions[0].id, operation: "upsert", payload: sessions[0] });
+    changes.push(...accessTokens.map((row) => ({ entityType: "auth_access_tokens", entityId: row.token_id, operation: "upsert" as const, payload: row })));
+    changes.push(...refreshTokens.map((row) => ({ entityType: "auth_refresh_tokens", entityId: row.token_hash, operation: "upsert" as const, payload: row })));
+    changes.push(...revoked.map((row) => ({ entityType: "revoked_sessions", entityId: row.session_id, operation: "upsert" as const, payload: row })));
+    await captureChanges(tx, transactionId, changes);
+  }
+
   async function insertSession(tx, session) {
     await tx.unsafe(
       "INSERT INTO auth_sessions (id, user_id, expires_at) VALUES ($1, $2, $3)",
@@ -32,12 +58,18 @@ export function createPostgresIdentityStore(sql) {
   return Object.freeze({
     async createIdentityAccount({ userId, email, passwordHash, session }) {
       return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
         const inserted = await tx.unsafe(
           "INSERT INTO auth_accounts (user_id, email, password_hash) VALUES ($1, $2, $3) ON CONFLICT (email) DO NOTHING RETURNING user_id",
           [userId, email, passwordHash],
         );
         if (!inserted[0]) return false;
         await insertSession(tx, { ...session, userId });
+        const accounts = await tx.unsafe("SELECT * FROM auth_accounts WHERE user_id = $1", [userId]);
+        await captureChanges(tx, transactionId, [
+          { entityType: "auth_accounts", entityId: userId, operation: "upsert", payload: accounts[0] },
+        ]);
+        await captureSessionSnapshot(tx, transactionId, session.sessionId);
         return true;
       });
     },
@@ -46,10 +78,16 @@ export function createPostgresIdentityStore(sql) {
       return rows[0] ? { userId: rows[0].user_id, passwordHash: rows[0].password_hash } : null;
     },
     async createIdentitySession(session) {
-      return sql.begin(async (tx) => { await insertSession(tx, session); return true; });
+      return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        await insertSession(tx, session);
+        await captureSessionSnapshot(tx, transactionId, session.sessionId);
+        return true;
+      });
     },
     async rotateIdentityRefresh({ refreshHash, nextRefreshHash, accessTokenId, issuedAt, accessExpiresAt }) {
       return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
         const token = await tx.unsafe("SELECT session_id FROM auth_refresh_tokens WHERE token_hash = $1", [refreshHash]);
         if (!token[0]) return { status: "invalid" };
         const rows = await tx.unsafe(
@@ -71,6 +109,7 @@ export function createPostgresIdentityStore(sql) {
         if (!current[0]) return { status: "invalid" };
         if (current[0].used_at) {
           await revokeLockedSession(tx, session.id);
+          await captureSessionSnapshot(tx, transactionId, session.id);
           return { status: "reused" };
         }
         const cappedExpiry = new Date(Math.min(expires, new Date(accessExpiresAt).getTime()));
@@ -83,6 +122,16 @@ export function createPostgresIdentityStore(sql) {
         await tx.unsafe("UPDATE auth_refresh_tokens SET used_at = clock_timestamp() WHERE token_hash = $1", [refreshHash]);
         await tx.unsafe("INSERT INTO auth_refresh_tokens (token_hash, session_id) VALUES ($1, $2)", [nextRefreshHash, session.id]);
         await tx.unsafe("INSERT INTO auth_access_tokens (token_id, session_id, expires_at) VALUES ($1, $2, $3)", [accessTokenId, session.id, cappedExpiry]);
+        const [usedToken, nextToken, accessRows] = await Promise.all([
+          tx.unsafe("SELECT * FROM auth_refresh_tokens WHERE token_hash = $1", [refreshHash]),
+          tx.unsafe("SELECT * FROM auth_refresh_tokens WHERE token_hash = $1", [nextRefreshHash]),
+          tx.unsafe("SELECT * FROM auth_access_tokens WHERE token_id = $1", [accessTokenId]),
+        ]);
+        await captureChanges(tx, transactionId, [
+          { entityType: "auth_refresh_tokens", entityId: refreshHash, operation: "upsert", payload: usedToken[0] },
+          { entityType: "auth_refresh_tokens", entityId: nextRefreshHash, operation: "upsert", payload: nextToken[0] },
+          { entityType: "auth_access_tokens", entityId: accessTokenId, operation: "upsert", payload: accessRows[0] },
+        ]);
         return { status: "rotated", userId: session.user_id, accessExpiresAt: cappedExpiry.toISOString(), refreshExpiresAt: new Date(session.expires_at).toISOString() };
       });
     },
