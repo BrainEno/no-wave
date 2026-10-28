@@ -914,6 +914,7 @@ export function createPostgresStore(sql) {
       const selectedTags = normalizeTaxonomyIds("tagIds", tagIds, 50);
       try {
         return await sql.begin(async (tx) => {
+          const transactionId = createMigrationTransactionId();
           const rows = await tx.unsafe(
             "INSERT INTO articles (id, author_id, slug, work_type, status, published_at) VALUES ($1, $2, $3, $4, $5, CASE WHEN $6 THEN now() ELSE NULL END) RETURNING id, author_id, slug, work_type, status, created_at, updated_at, published_at",
             [randomUUID(), authorId, input.slug, input.workType ?? "other", input.publish ? "published" : "draft", input.publish],
@@ -925,6 +926,16 @@ export function createPostgresStore(sql) {
           );
           await replaceArticleTaxonomyKind(tx, article.id, "category", selectedCategories);
           await replaceArticleTaxonomyKind(tx, article.id, "tag", selectedTags);
+          const [articleSnapshot, translationSnapshot, links] = await Promise.all([
+            tx.unsafe("SELECT * FROM articles WHERE id = $1", [article.id]),
+            tx.unsafe("SELECT * FROM article_translations WHERE article_id = $1 AND locale = $2", [article.id, input.locale]),
+            tx.unsafe("SELECT * FROM article_taxonomies WHERE article_id = $1", [article.id]),
+          ]);
+          await captureChanges(tx, transactionId, [
+            { entityType: "articles", entityId: article.id, operation: "upsert", payload: articleSnapshot[0] },
+            { entityType: "article_translations", entityId: migrationEntityKey(article.id, input.locale), operation: "upsert", payload: translationSnapshot[0] },
+            ...links.map((link) => ({ entityType: "article_taxonomies", entityId: migrationEntityKey(link.article_id, link.taxonomy_id), operation: "upsert", payload: link })),
+          ]);
           return mapArticle({ ...article, ...translations[0] });
         });
       } catch (error) {
@@ -941,9 +952,11 @@ export function createPostgresStore(sql) {
       const selectedTags = normalizeTaxonomyIds("tagIds", tagIds, 50);
       try {
         return await sql.begin(async (tx) => {
+          const transactionId = createMigrationTransactionId();
           const ownership = await tx.unsafe("SELECT author_id FROM articles WHERE id = $1 FOR UPDATE", [articleId]);
           if (!ownership[0]) throw new ArticleNotFoundError();
           if (ownership[0].author_id !== actorId) throw new ArticleAuthorizationError();
+          const previousLinks = await tx.unsafe("SELECT * FROM article_taxonomies WHERE article_id = $1", [articleId]);
           const rows = await tx.unsafe(
             "UPDATE articles SET slug = $2, work_type = COALESCE($6, work_type), status = $3, published_at = CASE WHEN $4 THEN COALESCE(published_at, now()) ELSE NULL END, updated_at = now() WHERE id = $1 AND author_id = $5 RETURNING id, author_id, slug, work_type, status, created_at, updated_at, published_at",
             [articleId, input.slug, input.publish ? "published" : "draft", input.publish, actorId, input.workType ?? null],
@@ -955,6 +968,18 @@ export function createPostgresStore(sql) {
           );
           await replaceArticleTaxonomyKind(tx, articleId, "category", selectedCategories);
           await replaceArticleTaxonomyKind(tx, articleId, "tag", selectedTags);
+          const [articleSnapshot, translationSnapshot, currentLinks] = await Promise.all([
+            tx.unsafe("SELECT * FROM articles WHERE id = $1", [articleId]),
+            tx.unsafe("SELECT * FROM article_translations WHERE article_id = $1 AND locale = $2", [articleId, input.locale]),
+            tx.unsafe("SELECT * FROM article_taxonomies WHERE article_id = $1", [articleId]),
+          ]);
+          const currentIds = new Set(currentLinks.map((link) => migrationEntityKey(link.article_id, link.taxonomy_id)));
+          await captureChanges(tx, transactionId, [
+            { entityType: "articles", entityId: articleId, operation: "upsert", payload: articleSnapshot[0] },
+            { entityType: "article_translations", entityId: migrationEntityKey(articleId, input.locale), operation: "upsert", payload: translationSnapshot[0] },
+            ...currentLinks.map((link) => ({ entityType: "article_taxonomies", entityId: migrationEntityKey(link.article_id, link.taxonomy_id), operation: "upsert", payload: link })),
+            ...previousLinks.filter((link) => !currentIds.has(migrationEntityKey(link.article_id, link.taxonomy_id))).map((link) => ({ entityType: "article_taxonomies", entityId: migrationEntityKey(link.article_id, link.taxonomy_id), operation: "delete", payload: null })),
+          ]);
           return mapArticle({ ...rows[0], ...translations[0] });
         });
       } catch (error) {
