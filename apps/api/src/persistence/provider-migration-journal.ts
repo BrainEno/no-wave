@@ -30,7 +30,7 @@ function text(name: string, value: unknown, max = 256): string {
   return value;
 }
 function canonicalize(value: unknown, path: string): string {
-  if (value === null || typeof value === "string" || typeof value === "boolean") return JSON.stringify(value);
+  if (value === null || typeof value === "string" || typeof value === "boolean") return JSON.stringify(value) as string;
   if (typeof value === "number") {
     if (!Number.isFinite(value)) throw new MigrationJournalError("INVALID_PAYLOAD", path + " cannot contain non-finite numbers.");
     return JSON.stringify(value);
@@ -50,8 +50,8 @@ function canonicalize(value: unknown, path: string): string {
 export function canonicalJson(value: unknown): string { return canonicalize(value, "payload"); }
 export function validateMigrationSession(input: MigrationSessionInput): MigrationSessionInput {
   const sessionId = text("sessionId", input?.sessionId, 128);
-  if (!providers.has(input?.sourceProvider)) throw new MigrationJournalError("INVALID_INPUT", "sourceProvider is unsupported.");
-  if (!providers.has(input?.targetProvider)) throw new MigrationJournalError("INVALID_INPUT", "targetProvider is unsupported.");
+  if (!providers.has(input.sourceProvider)) throw new MigrationJournalError("INVALID_INPUT", "sourceProvider is unsupported.");
+  if (!providers.has(input.targetProvider)) throw new MigrationJournalError("INVALID_INPUT", "targetProvider is unsupported.");
   if (input.sourceProvider === input.targetProvider) throw new MigrationJournalError("INVALID_INPUT", "Source and target providers must differ.");
   return { sessionId, sourceProvider: input.sourceProvider, targetProvider: input.targetProvider, schemaVersion: text("schemaVersion", input?.schemaVersion, 100) };
 }
@@ -71,7 +71,7 @@ export function validateMigrationChange(input: MigrationChangeInput): ValidatedM
   const normalized: MigrationChangeInput = {
     sessionId: text("sessionId", input?.sessionId, 128), changeId: text("changeId", input?.changeId, 128),
     transactionId: text("transactionId", input?.transactionId, 128), entityType: text("entityType", input?.entityType, 128),
-    entityId: text("entityId", input?.entityId, 512), operation: input?.operation, payload: input?.payload,
+    entityId: text("entityId", input?.entityId, 512), operation: input.operation, payload: input.payload,
   };
   if (normalized.operation !== "upsert" && normalized.operation !== "delete")
     throw new MigrationJournalError("INVALID_INPUT", "operation must be upsert or delete.");
