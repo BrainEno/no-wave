@@ -43,6 +43,10 @@ export async function createPersistenceRuntime({
   provider,
   env = process.env,
   providers = builtInProviders,
+}: {
+  provider?: string;
+  env?: NodeJS.ProcessEnv;
+  providers?: Record<string, (args: { env: NodeJS.ProcessEnv }) => Promise<any> | any>;
 } = {}) {
   const selectedProvider = resolveDatabaseProvider({ provider, env });
   const factory = providers[selectedProvider];
