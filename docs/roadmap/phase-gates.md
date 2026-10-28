@@ -56,7 +56,8 @@ On 2026-10-27, the product owner selected Lexical for both the article editor an
 - [ ] Add registered custom-image node/upload support and preserve additional Lexical metadata only after its application document contract is approved.
 - [x] Validate versioned article node types, safe URLs, inline marks, plain-text fallbacks and serialized payload limits on the server.
 - [ ] Implement the article editor, draft recovery and approved image-upload integration.
-- [ ] Implement the comment editor with a smaller supported-node set and explicit comment payload/storage contract.
+- [x] Define and persist the smaller paragraph-only comment rich-text v1 contract with legacy plain-text fallback, safe inline marks/links, REST Lexical ingress, PostgreSQL/SQLite migrations and persistence/security tests.
+- [ ] Implement the comment editor with the approved smaller supported-node set.
 - [ ] Add round-trip, malformed-payload, security, Chinese IME, accessibility, keyboard and mobile tests.
 
 See [ADR 0007](decisions/0007-lexical-rich-text-editors.md) for the decision and boundaries.

@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { ArticleAuthorizationError, ArticleInputError, ArticleNotFoundError } from "../domain/errors.ts";
 import { validateArticleLocale, validateArticleSlug } from "../domain/article.ts";
+import { validateStoredCommentContent } from "../domain/comment-content.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
 
 export function createSqliteEngagementStore(db) {
@@ -33,7 +34,14 @@ export function createSqliteEngagementStore(db) {
   }
   function mapComment(row) {
     const iso = (value) => value instanceof Date ? value.toISOString() : new Date(value).toISOString();
-    return { id: row.id, articleId: row.article_id, authorId: row.author_id, parentCommentId: row.parent_comment_id ?? null, content: row.content, createdAt: iso(row.created_at), updatedAt: iso(row.updated_at), locale: row.locale, replies: [] };
+    return {
+      id: row.id, articleId: row.article_id, authorId: row.author_id,
+      parentCommentId: row.parent_comment_id ?? null, content: row.content,
+      contentBlocks: row.content_blocks == null ? null : JSON.parse(row.content_blocks),
+      contentBlocksVersion: Number(row.content_blocks_version ?? 0),
+      createdAt: iso(row.created_at), updatedAt: iso(row.updated_at),
+      locale: row.locale, replies: [],
+    };
   }
   function notify(userId, eventKey, payload) {
     run("INSERT INTO notifications (id, user_id, event_key, payload, payload_hash) VALUES (?, ?, ?, ?, ?) ON CONFLICT (user_id, event_key) DO NOTHING", randomUUID(), userId, eventKey, JSON.stringify(payload), requestHash(payload));
@@ -75,7 +83,7 @@ export function createSqliteEngagementStore(db) {
     listArticleComments({ slug, locale = "zh-CN", limit = 50 }) {
       validateArticleSlug(slug); validateArticleLocale(locale);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
-      const rows = all("WITH RECURSIVE target_article AS (SELECT a.id FROM articles a JOIN article_translations t ON t.article_id = a.id WHERE a.slug = ? AND a.status = 'published' AND t.locale = ?), root_comments AS (SELECT c.id, c.article_id, c.author_id, c.parent_comment_id, c.content, c.created_at, c.updated_at, 0 AS depth FROM article_comments c JOIN target_article a ON a.id = c.article_id WHERE c.parent_comment_id IS NULL ORDER BY c.created_at ASC, c.id ASC LIMIT ?), comment_tree AS (SELECT * FROM root_comments UNION ALL SELECT child.id, child.article_id, child.author_id, child.parent_comment_id, child.content, child.created_at, child.updated_at, parent.depth + 1 FROM article_comments child JOIN comment_tree parent ON child.parent_comment_id = parent.id WHERE parent.depth < 10) SELECT id, article_id, author_id, parent_comment_id, content, created_at, updated_at, depth FROM comment_tree ORDER BY created_at ASC, id ASC", slug, locale, limit);
+      const rows = all("WITH RECURSIVE target_article AS (SELECT a.id FROM articles a JOIN article_translations t ON t.article_id = a.id WHERE a.slug = ? AND a.status = 'published' AND t.locale = ?), root_comments AS (SELECT c.id, c.article_id, c.author_id, c.parent_comment_id, c.content, c.content_blocks, c.content_blocks_version, c.created_at, c.updated_at, 0 AS depth FROM article_comments c JOIN target_article a ON a.id = c.article_id WHERE c.parent_comment_id IS NULL ORDER BY c.created_at ASC, c.id ASC LIMIT ?), comment_tree AS (SELECT * FROM root_comments UNION ALL SELECT child.id, child.article_id, child.author_id, child.parent_comment_id, child.content, child.content_blocks, child.content_blocks_version, child.created_at, child.updated_at, parent.depth + 1 FROM article_comments child JOIN comment_tree parent ON child.parent_comment_id = parent.id WHERE parent.depth < 10) SELECT id, article_id, author_id, parent_comment_id, content, content_blocks, content_blocks_version, created_at, updated_at, depth FROM comment_tree ORDER BY created_at ASC, id ASC", slug, locale, limit);
       const nodes = new Map();
       for (const row of rows) nodes.set(row.id, mapComment({ ...row, locale }));
       const roots = [];
@@ -85,9 +93,9 @@ export function createSqliteEngagementStore(db) {
       }
       return roots;
     },
-    createArticleComment({ slug, locale = "zh-CN", actorId, content, parentCommentId = null }) {
+    createArticleComment({ slug, locale = "zh-CN", actorId, content, contentBlocks = null, contentBlocksVersion = 0, parentCommentId = null }) {
       validateActor(actorId); validateArticleSlug(slug); validateArticleLocale(locale);
-      if (typeof content !== "string" || content.trim().length === 0 || content.length > 5000) throw new ArticleInputError("content must be non-empty and no longer than 5000 characters.");
+      const normalizedContent = validateStoredCommentContent({ content, contentBlocks, contentBlocksVersion });
       if (parentCommentId !== null && !isUuid(parentCommentId)) throw new ArticleInputError("parentCommentId must be a valid comment ID.");
       return transaction(() => {
         const article = publishedArticle(slug, locale);
@@ -98,8 +106,11 @@ export function createSqliteEngagementStore(db) {
           parentAuthorId = parent.author_id;
         }
         const id = randomUUID();
-        run("INSERT INTO article_comments (id, article_id, author_id, parent_comment_id, content) VALUES (?, ?, ?, ?, ?)", id, article.id, actorId, parentCommentId, content.trim());
-        const row = get("SELECT id, article_id, author_id, parent_comment_id, content, created_at, updated_at FROM article_comments WHERE id = ?", id);
+        run("INSERT INTO article_comments (id, article_id, author_id, parent_comment_id, content, content_blocks, content_blocks_version) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          id, article.id, actorId, parentCommentId, normalizedContent.content,
+          normalizedContent.contentBlocks === null ? null : JSON.stringify(normalizedContent.contentBlocks),
+          normalizedContent.contentBlocksVersion);
+        const row = get("SELECT id, article_id, author_id, parent_comment_id, content, content_blocks, content_blocks_version, created_at, updated_at FROM article_comments WHERE id = ?", id);
         const recipients = new Map();
         if (article.author_id !== actorId) recipients.set(article.author_id, "article.commented");
         if (parentAuthorId && parentAuthorId !== actorId) recipients.set(parentAuthorId, "article.comment_replied");

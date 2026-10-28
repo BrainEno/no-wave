@@ -11,7 +11,7 @@ test("SQLite domain migration creates the complete set of domain tables", async 
   const db = createSqliteClient({ filename: ":memory:", enableWal: false });
   try {
     const applied = await runSqliteMigrations(db);
-    assert.deepEqual(applied, ["0001_domain_schema", "0002_outbox_lease_tokens", "0003_self_hosted_identity", "0004_article_content_versions"]);
+    assert.deepEqual(applied, ["0001_domain_schema", "0002_outbox_lease_tokens", "0003_self_hosted_identity", "0004_article_content_versions", "0005_comment_content_versions"]);
     const tables = db.prepare(
       "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
     ).all().map((row) => row.name);
@@ -36,6 +36,23 @@ test("SQLite domain migration creates the complete set of domain tables", async 
   }
 });
 
+test("SQLite rich-comment migration preserves legacy rows and constrains content versions", async () => {
+  const db = createSqliteClient({ filename: ":memory:", enableWal: false });
+  try {
+    await runSqliteMigrations(db);
+    db.prepare("INSERT INTO articles (id, author_id, slug) VALUES (?, ?, ?)").run("comment-migration-article", "writer", "comment-migration-article");
+    db.prepare("INSERT INTO article_translations (article_id, locale, title, content_blocks) VALUES (?, ?, ?, ?)").run("comment-migration-article", "en", "Title", "[]");
+    db.prepare("INSERT INTO article_comments (id, article_id, author_id, content) VALUES (?, ?, ?, ?)").run("legacy-comment", "comment-migration-article", "reader", "Legacy text");
+    const row = db.prepare("SELECT content, content_blocks, content_blocks_version FROM article_comments WHERE id = ?").get("legacy-comment");
+    assert.equal(row.content, "Legacy text");
+    assert.equal(row.content_blocks, null);
+    assert.equal(row.content_blocks_version, 0);
+    assert.throws(() => db.prepare("UPDATE article_comments SET content_blocks_version = 1 WHERE id = ?").run("legacy-comment"), /content version mismatch/i);
+    assert.throws(() => db.prepare("INSERT INTO article_comments (id, article_id, author_id, content, content_blocks, content_blocks_version) VALUES (?, ?, ?, ?, ?, ?)").run("bad-comment-version", "comment-migration-article", "reader", "x", null, 2), /CHECK constraint failed|content version mismatch/i);
+    assert.throws(() => db.prepare("INSERT INTO article_comments (id, article_id, author_id, content, content_blocks, content_blocks_version) VALUES (?, ?, ?, ?, ?, ?)").run("bad-comment-shape", "comment-migration-article", "reader", "x", "{\"type\":\"paragraph\"}", 1), /CHECK constraint failed|content version mismatch/i);
+  } finally { db.close(); }
+});
+
 test("SQLite lease migration preserves pending, leased, and delivered legacy events", async () => {
   const oldMigrations = await mkdtemp(join(tmpdir(), "no-wave-sqlite-outbox-upgrade-"));
   const db = createSqliteClient({ filename: ":memory:", enableWal: false });
@@ -53,7 +70,7 @@ test("SQLite lease migration preserves pending, leased, and delivered legacy eve
     insert.run(deliveredId, "delivered", "message.created", "c", "{}", 1, "2000-01-01T00:00:00.000Z", "2020-01-01T00:00:00.000Z");
     db.prepare("INSERT INTO revoked_sessions (session_id, expires_at) VALUES (?, ?)").run("legacy-token", "2099-01-01T00:00:00.000Z");
 
-    assert.deepEqual(await runSqliteMigrations(db), ["0002_outbox_lease_tokens", "0003_self_hosted_identity", "0004_article_content_versions"]);
+    assert.deepEqual(await runSqliteMigrations(db), ["0002_outbox_lease_tokens", "0003_self_hosted_identity", "0004_article_content_versions", "0005_comment_content_versions"]);
     assert.equal(db.prepare("SELECT expires_at FROM revoked_sessions WHERE session_id = ?").get("legacy-token").expires_at, "2099-01-01T00:00:00.000Z");
     assert.deepEqual(await runSqliteMigrations(db), []);
     const legacy = db.prepare("SELECT event_key, attempts, delivered_at, lease_token FROM outbox_events ORDER BY event_key").all();

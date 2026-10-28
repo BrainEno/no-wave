@@ -111,7 +111,7 @@ const fieldContracts = {
   Viewer: ["id"],
   AuthorProfile: ["userId", "displayName", "bio", "avatarUrl", "websiteUrl", "locale", "createdAt", "updatedAt", "followerCount", "followingCount", "isFollowing"],
   Article: ["id", "authorId", "slug", "workType", "status", "locale", "title", "summary", "contentBlocks", "contentBlocksVersion", "createdAt", "updatedAt", "publishedAt", "author", "categories", "tags"],
-  ArticleComment: ["id", "articleId", "authorId", "parentCommentId", "content", "createdAt", "updatedAt", "author", "replies"],
+  ArticleComment: ["id", "articleId", "authorId", "parentCommentId", "content", "contentBlocks", "contentBlocksVersion", "createdAt", "updatedAt", "author", "replies"],
   ArticleLikeInfo: ["articleId", "slug", "likeCount", "likedByViewer"],
   Taxonomy: ["id", "kind", "slug", "name", "description", "locale", "createdBy", "articleCount"],
   Message: ["id", "conversationId", "senderId", "body", "createdAt"],
