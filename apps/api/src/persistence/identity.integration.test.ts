@@ -254,6 +254,8 @@ function registerIdentityContracts(provider, options = {}) {
     const f = await fixture(provider);
     const expiredKey = randomBytes(32).toString("hex");
     const activeKey = randomBytes(32).toString("hex");
+    const expiredRevocationId = `cleanup-expired-${randomUUID()}`;
+    const activeRevocationId = `cleanup-active-${randomUUID()}`;
     try {
       const registration = await f.post("/api/v1/auth/register", { email: f.email, password });
       assert.equal(registration.status, 201);
@@ -281,8 +283,6 @@ function registerIdentityContracts(provider, options = {}) {
       if (f.db) f.db.prepare("UPDATE auth_rate_limits SET reset_at = ? WHERE key = ?").run("2000-01-01T00:00:00.000Z", expiredKey);
       else await sql.unsafe("UPDATE auth_rate_limits SET reset_at = '2000-01-01T00:00:00Z' WHERE key = $1", [expiredKey]);
 
-      const expiredRevocationId = `cleanup-expired-${randomUUID()}`;
-      const activeRevocationId = `cleanup-active-${randomUUID()}`;
       if (f.db) {
         const insertRevocation = f.db.prepare("INSERT INTO revoked_sessions (session_id, expires_at) VALUES (?, ?)");
         insertRevocation.run(expiredRevocationId, "2000-01-01T00:00:00.000Z");
