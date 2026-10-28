@@ -719,6 +719,8 @@ export function createPostgresStore(sql) {
       requiredText("targetUserId", targetUserId, 300);
       if (actorId === targetUserId) throw new ProfileInputError("You cannot follow your own account.");
       return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const changes = [];
         const target = await tx.unsafe("SELECT user_id FROM user_profiles WHERE user_id = $1", [targetUserId]);
         if (target.length === 0) throw new ProfileNotFoundError();
         const inserted = await tx.unsafe(
@@ -726,13 +728,18 @@ export function createPostgresStore(sql) {
           [actorId, targetUserId],
         );
         if (inserted.length === 1) {
+          const followRows = await tx.unsafe("SELECT * FROM user_follows WHERE follower_id = $1 AND followed_id = $2", [actorId, targetUserId]);
+          changes.push({ entityType: "user_follows", entityId: migrationEntityKey(actorId, targetUserId), operation: "upsert", payload: followRows[0] });
           const payload = { type: "user.followed", followerId: actorId };
           const eventKey = `user.followed:${actorId}:${randomUUID()}`;
           await tx.unsafe(
             "INSERT INTO notifications (id, user_id, event_key, payload, payload_hash) VALUES ($1, $2, $3, $4::jsonb, $5) ON CONFLICT (user_id, event_key) DO NOTHING",
             [randomUUID(), targetUserId, eventKey, payload, requestHash(payload)],
           );
+          const notificationRows = await tx.unsafe("SELECT * FROM notifications WHERE user_id = $1 AND event_key = $2", [targetUserId, eventKey]);
+          if (notificationRows[0]) changes.push({ entityType: "notifications", entityId: notificationRows[0].id, operation: "upsert", payload: notificationRows[0] });
         }
+        await captureChanges(tx, transactionId, changes);
         return inserted.length === 1;
       });
     },
@@ -740,11 +747,17 @@ export function createPostgresStore(sql) {
       requiredText("actorId", actorId, 300);
       requiredText("targetUserId", targetUserId, 300);
       if (actorId === targetUserId) throw new ProfileInputError("You cannot unfollow your own account.");
-      const rows = await sql.unsafe(
-        "DELETE FROM user_follows WHERE follower_id = $1 AND followed_id = $2 RETURNING follower_id",
-        [actorId, targetUserId],
-      );
-      return rows.length === 1;
+      return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const rows = await tx.unsafe(
+          "DELETE FROM user_follows WHERE follower_id = $1 AND followed_id = $2 RETURNING follower_id",
+          [actorId, targetUserId],
+        );
+        if (rows.length === 1) await captureChanges(tx, transactionId, [
+          { entityType: "user_follows", entityId: migrationEntityKey(actorId, targetUserId), operation: "delete", payload: null },
+        ]);
+        return rows.length === 1;
+      });
     },
     async upsertAuthorProfile({ userId, displayName, bio = "", avatarUrl = undefined, websiteUrl = undefined, locale = "zh-CN" }) {
       requiredText("userId", userId, 300);
@@ -756,6 +769,7 @@ export function createPostgresStore(sql) {
       const validatedAvatarUrl = validateProfileUrl("avatarUrl", avatarUrl, true);
       const validatedWebsiteUrl = validateProfileUrl("websiteUrl", websiteUrl, false);
       return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
         await tx.unsafe(
           "INSERT INTO user_profiles (user_id, avatar_url, website_url) VALUES ($1, $2, $3) ON CONFLICT (user_id) DO UPDATE SET avatar_url = CASE WHEN $4 THEN $2 ELSE user_profiles.avatar_url END, website_url = CASE WHEN $5 THEN $3 ELSE user_profiles.website_url END, updated_at = now()",
           [userId, validatedAvatarUrl ?? null, validatedWebsiteUrl ?? null, avatarUrl !== undefined, websiteUrl !== undefined],
@@ -769,6 +783,14 @@ export function createPostgresStore(sql) {
           [userId, locale],
         );
         if (!rows[0]) throw new Error("Profile row was not available after upsert.");
+        const [profileRows, translationRows] = await Promise.all([
+          tx.unsafe("SELECT * FROM user_profiles WHERE user_id = $1", [userId]),
+          tx.unsafe("SELECT * FROM user_profile_translations WHERE user_id = $1 AND locale = $2", [userId, locale]),
+        ]);
+        await captureChanges(tx, transactionId, [
+          { entityType: "user_profiles", entityId: userId, operation: "upsert", payload: profileRows[0] },
+          { entityType: "user_profile_translations", entityId: migrationEntityKey(userId, locale), operation: "upsert", payload: translationRows[0] },
+        ]);
         return mapAuthorProfile(rows[0]);
       });
     },
