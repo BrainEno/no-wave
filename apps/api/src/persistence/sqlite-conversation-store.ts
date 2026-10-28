@@ -96,7 +96,7 @@ export function createSqliteConversationStore(db) {
         for (const userId of removes) run("UPDATE conversation_participants SET left_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE conversation_id = ? AND user_id = ? AND left_at IS NULL", conversationId, userId);
         const changedUserIds = [...new Set([...adds, ...removes])];
         migrationCapture.captureInTransaction(db, transactionId, changedUserIds.map((userId) => ({
-          entityType: "conversation_participants", entityId: migrationEntityKey(conversationId, userId), operation: "upsert",
+          entityType: "conversation_participants", entityId: migrationEntityKey(conversationId, userId), operation: "upsert" as const,
           payload: get("SELECT * FROM conversation_participants WHERE conversation_id = ? AND user_id = ?", conversationId, userId),
         })).filter((change) => change.payload != null));
         return all("SELECT user_id FROM conversation_participants WHERE conversation_id = ? AND left_at IS NULL ORDER BY user_id", conversationId).map((row) => row.user_id);
