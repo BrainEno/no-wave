@@ -8,7 +8,7 @@ The log schema is intentionally allowlisted. It does **not** include the raw req
 
 ## Prometheus metrics
 
-Scrape `GET /metrics` from a trusted monitoring network. The response is plain-text Prometheus exposition format and marked `Cache-Control: no-store`.
+Enable API metrics explicitly with `API_METRICS_ENABLED=true`, then scrape `GET /metrics` from a trusted monitoring network. The endpoint is disabled by default and returns 404 otherwise. When enabled, the response is plain-text Prometheus exposition format and marked `Cache-Control: no-store`.
 
 Current in-process metrics:
 
