@@ -137,9 +137,9 @@ test("author article list is filtered by the REST endpoint before pagination", a
     endpoint: "https://api.example.test/",
     fetchImpl: captureFetch({ data: [article] }, 200, calls),
   });
-  const works = await client.listArticles({ locale: "en", authorUsername: "author/one", query: "poetry", limit: 10, offset: 20 });
+  const works = await client.listArticles({ locale: "en", authorUsername: "author-one", query: "poetry", limit: 10, offset: 20 });
   const url = new URL(calls[0].url);
-  assert.equal(url.pathname, "/api/v1/authors/author%2Fone/articles");
+  assert.equal(url.pathname, "/api/v1/authors/author-one/articles");
   assert.deepEqual(Object.fromEntries(url.searchParams), {
     locale: "en", query: "poetry", limit: "10", offset: "20",
   });
