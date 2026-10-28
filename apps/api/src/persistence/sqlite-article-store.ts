@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { createMigrationTransactionId } from "./provider-migration-journal.ts";
+import { createSqliteProviderMigrationCapture, migrationEntityKey } from "./sqlite-provider-migration-capture.ts";
 import {
   ArticleInputError,
   ArticleSlugConflictError,
@@ -21,6 +23,8 @@ export function createSqliteArticleStore(db) {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") {
     throw new TypeError("A node:sqlite DatabaseSync connection is required.");
   }
+
+  const migrationCapture = createSqliteProviderMigrationCapture(db);
 
   const articleSelect = `
     SELECT a.id, a.author_id, a.slug, a.work_type, a.status, t.locale,
@@ -49,9 +53,10 @@ export function createSqliteArticleStore(db) {
   );
 
   function transaction(work) {
+    const transactionId = createMigrationTransactionId();
     db.exec("BEGIN IMMEDIATE");
     try {
-      const result = work();
+      const result = work(transactionId);
       db.exec("COMMIT");
       return result;
     } catch (error) {
@@ -77,6 +82,19 @@ export function createSqliteArticleStore(db) {
     for (const id of ids) insert.run(articleId, id);
   }
 
+
+  function captureArticleState(transactionId, articleId, locale, previousLinks = []) {
+    const article = statement("SELECT * FROM articles WHERE id = ?").get(articleId);
+    const translation = statement("SELECT * FROM article_translations WHERE article_id = ? AND locale = ?").get(articleId, locale);
+    const links = statement("SELECT article_id, taxonomy_id FROM article_taxonomies WHERE article_id = ?").all(articleId);
+    const currentIds = new Set(links.map((link) => link.taxonomy_id));
+    const changes = [];
+    if (article) changes.push({ entityType: "articles", entityId: articleId, operation: "upsert", payload: article });
+    if (translation) changes.push({ entityType: "article_translations", entityId: migrationEntityKey(articleId, locale), operation: "upsert", payload: translation });
+    for (const link of links) changes.push({ entityType: "article_taxonomies", entityId: migrationEntityKey(articleId, link.taxonomy_id), operation: "upsert", payload: link });
+    for (const link of previousLinks) if (!currentIds.has(link.taxonomy_id)) changes.push({ entityType: "article_taxonomies", entityId: migrationEntityKey(articleId, link.taxonomy_id), operation: "delete", payload: null });
+    migrationCapture.captureInTransaction(db, transactionId, changes);
+  }
 
   return Object.freeze({
     listPublishedArticles({ locale = "zh-CN", query = "", authorId = null, limit = 20, offset = 0 } = {}) {
@@ -143,7 +161,7 @@ export function createSqliteArticleStore(db) {
       const tags = normalizeTaxonomyIds("tagIds", tagIds, 50) ?? [];
       const id = randomUUID();
       try {
-        return transaction(() => {
+        return transaction((transactionId) => {
           const now = new Date().toISOString();
           db.prepare("INSERT INTO articles (id, author_id, slug, status, work_type, created_at, updated_at, published_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
             .run(id, authorId, input.slug, input.publish ? "published" : "draft", input.workType ?? "other", now, now, input.publish ? now : null);
@@ -151,6 +169,7 @@ export function createSqliteArticleStore(db) {
             .run(id, input.locale, input.title, input.summary, JSON.stringify(input.contentBlocks), input.contentBlocksVersion, now, now);
           replaceTaxonomies(id, "category", categories);
           replaceTaxonomies(id, "tag", tags);
+          captureArticleState(transactionId, id, input.locale);
           return mapArticle(statement(articleSelect + " WHERE a.id = ? AND t.locale = ?").get(id, input.locale));
         });
       } catch (error) {
@@ -166,10 +185,11 @@ export function createSqliteArticleStore(db) {
       const categories = normalizeTaxonomyIds("categoryIds", categoryIds, 100);
       const tags = normalizeTaxonomyIds("tagIds", tagIds, 100);
       try {
-        return transaction(() => {
+        return transaction((transactionId) => {
           const existing = statement("SELECT id, author_id, created_at FROM articles WHERE id = ?").get(articleId);
           if (!existing) throw new ArticleNotFoundError("The article was not found.");
           if (existing.author_id !== actorId) throw new ArticleAuthorizationError("Only the article author can update it.");
+          const previousLinks = statement("SELECT taxonomy_id FROM article_taxonomies WHERE article_id = ?").all(articleId);
           const now = new Date().toISOString();
           db.prepare("UPDATE articles SET slug = ?, status = ?, work_type = COALESCE(?, work_type), updated_at = ?, published_at = CASE WHEN ? = 1 THEN COALESCE(published_at, ?) ELSE NULL END WHERE id = ?")
             .run(input.slug, input.publish ? "published" : "draft", input.workType ?? null, now, input.publish ? 1 : 0, now, articleId);
@@ -180,6 +200,7 @@ export function createSqliteArticleStore(db) {
             .run(articleId, input.locale, input.title, input.summary, JSON.stringify(input.contentBlocks), input.contentBlocksVersion, now, now);
           replaceTaxonomies(articleId, "category", categories);
           replaceTaxonomies(articleId, "tag", tags);
+          captureArticleState(transactionId, articleId, input.locale, previousLinks);
           return mapArticle(statement(articleSelect + " WHERE a.id = ? AND t.locale = ?").get(articleId, input.locale));
         });
       } catch (error) {

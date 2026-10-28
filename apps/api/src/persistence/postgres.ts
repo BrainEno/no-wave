@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
+import { createMigrationTransactionId } from "./provider-migration-journal.ts";
+import { createPostgresProviderMigrationCapture, migrationEntityKey } from "./postgres-provider-migration-capture.ts";
 
 import {
   IdempotencyConflictError,
@@ -253,6 +255,10 @@ export function createPostgresStore(sql) {
   if (!sql || typeof sql.unsafe !== "function" || typeof sql.begin !== "function") {
     throw new TypeError("A postgres.js SQL client is required.");
   }
+  const migrationCapture = createPostgresProviderMigrationCapture(sql);
+  async function captureChanges(tx, transactionId, changes) {
+    await migrationCapture.captureInTransaction(tx, transactionId, changes);
+  }
   async function findMessage(tx, senderId, idempotencyKey) {
     const rows = await tx.unsafe(
       "SELECT id, conversation_id, sender_id, body, request_hash, created_at FROM messages WHERE sender_id = $1 AND idempotency_key = $2",
@@ -306,6 +312,8 @@ export function createPostgresStore(sql) {
       validateArticleLocale(locale);
       requiredText("actorId", actorId, 300);
       return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const changes = [];
         const articles = await tx.unsafe(
           "SELECT a.id, a.author_id FROM articles AS a JOIN article_translations AS t ON t.article_id = a.id WHERE a.slug = $1 AND a.status = 'published' AND t.locale = $2 FOR UPDATE OF a",
           [slug, locale],
@@ -319,19 +327,29 @@ export function createPostgresStore(sql) {
         );
         if (existing.length > 0) {
           await tx.unsafe("DELETE FROM article_likes WHERE article_id = $1 AND user_id = $2", [articleId, actorId]);
+          changes.push({ entityType: "article_likes", entityId: migrationEntityKey(articleId, actorId), operation: "delete", payload: null });
         } else {
           const inserted = await tx.unsafe(
             "INSERT INTO article_likes (article_id, user_id) VALUES ($1, $2) ON CONFLICT (article_id, user_id) DO NOTHING RETURNING article_id",
             [articleId, actorId],
           );
-          if (inserted.length === 1 && article.author_id !== actorId) {
+          if (inserted.length === 1) {
+            const likeRows = await tx.unsafe("SELECT * FROM article_likes WHERE article_id = $1 AND user_id = $2", [articleId, actorId]);
+            changes.push({ entityType: "article_likes", entityId: migrationEntityKey(articleId, actorId), operation: "upsert", payload: likeRows[0] });
+            if (article.author_id !== actorId) {
             const payload = { type: "article.liked", articleId, slug, actorId, locale };
+            const notificationId = randomUUID();
+            const eventKey = `article.liked:${articleId}:${actorId}:${randomUUID()}`;
             await tx.unsafe(
               "INSERT INTO notifications (id, user_id, event_key, payload, payload_hash) VALUES ($1, $2, $3, $4::jsonb, $5) ON CONFLICT (user_id, event_key) DO NOTHING",
-              [randomUUID(), article.author_id, `article.liked:${articleId}:${actorId}:${randomUUID()}`, payload, requestHash(payload)],
+              [notificationId, article.author_id, eventKey, payload, requestHash(payload)],
             );
+            const notificationRows = await tx.unsafe("SELECT * FROM notifications WHERE id = $1", [notificationId]);
+            if (notificationRows[0]) changes.push({ entityType: "notifications", entityId: notificationId, operation: "upsert", payload: notificationRows[0] });
+            }
           }
         }
+        await captureChanges(tx, transactionId, changes);
         return readArticleLikeInfo(tx, { slug, locale, actorId });
       });
     },
@@ -341,6 +359,8 @@ export function createPostgresStore(sql) {
       requiredText("actorId", actorId, 300);
       if (typeof liked !== "boolean") throw new ArticleInputError("liked must be a boolean.");
       return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const changes = [];
         const articles = await tx.unsafe(
           "SELECT a.id, a.author_id FROM articles AS a JOIN article_translations AS t ON t.article_id = a.id WHERE a.slug = $1 AND a.status = 'published' AND t.locale = $2 FOR UPDATE OF a",
           [slug, locale],
@@ -356,16 +376,26 @@ export function createPostgresStore(sql) {
             "INSERT INTO article_likes (article_id, user_id) VALUES ($1, $2) ON CONFLICT (article_id, user_id) DO NOTHING RETURNING article_id",
             [article.id, actorId],
           );
-          if (inserted.length === 1 && article.author_id !== actorId) {
+          if (inserted.length === 1) {
+            const likeRows = await tx.unsafe("SELECT * FROM article_likes WHERE article_id = $1 AND user_id = $2", [article.id, actorId]);
+            changes.push({ entityType: "article_likes", entityId: migrationEntityKey(article.id, actorId), operation: "upsert", payload: likeRows[0] });
+            if (article.author_id !== actorId) {
             const payload = { type: "article.liked", articleId: article.id, slug, actorId, locale };
+            const notificationId = randomUUID();
+            const eventKey = `article.liked:${article.id}:${actorId}:${randomUUID()}`;
             await tx.unsafe(
               "INSERT INTO notifications (id, user_id, event_key, payload, payload_hash) VALUES ($1, $2, $3, $4::jsonb, $5) ON CONFLICT (user_id, event_key) DO NOTHING",
-              [randomUUID(), article.author_id, `article.liked:${article.id}:${actorId}:${randomUUID()}`, payload, requestHash(payload)],
+              [notificationId, article.author_id, eventKey, payload, requestHash(payload)],
             );
+            const notificationRows = await tx.unsafe("SELECT * FROM notifications WHERE id = $1", [notificationId]);
+            if (notificationRows[0]) changes.push({ entityType: "notifications", entityId: notificationId, operation: "upsert", payload: notificationRows[0] });
+            }
           }
         } else if (!liked && existing.length > 0) {
           await tx.unsafe("DELETE FROM article_likes WHERE article_id = $1 AND user_id = $2", [article.id, actorId]);
+          changes.push({ entityType: "article_likes", entityId: migrationEntityKey(article.id, actorId), operation: "delete", payload: null });
         }
+        await captureChanges(tx, transactionId, changes);
         return readArticleLikeInfo(tx, { slug, locale, actorId });
       });
     },
@@ -428,6 +458,8 @@ export function createPostgresStore(sql) {
         throw new ArticleInputError("parentCommentId must be a valid comment ID.");
       }
       return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const changes = [];
         const articles = await tx.unsafe(
           "SELECT a.id, a.author_id FROM articles AS a JOIN article_translations AS t ON t.article_id = a.id WHERE a.slug = $1 AND a.status = 'published' AND t.locale = $2 FOR SHARE OF a",
           [slug, locale],
@@ -450,6 +482,7 @@ export function createPostgresStore(sql) {
             normalizedContent.contentBlocksVersion],
         );
         const comment = rows[0];
+        changes.push({ entityType: "article_comments", entityId: comment.id, operation: "upsert", payload: comment });
         const recipients = new Map();
         if (article.author_id !== actorId) recipients.set(article.author_id, "article.commented");
         if (parentAuthorId && parentAuthorId !== actorId) recipients.set(parentAuthorId, "article.comment_replied");
@@ -458,11 +491,15 @@ export function createPostgresStore(sql) {
             type, articleId: article.id, slug, commentId: comment.id,
             commenterId: actorId, parentCommentId,
           };
+          const notificationId = randomUUID();
           await tx.unsafe(
             "INSERT INTO notifications (id, user_id, event_key, payload, payload_hash) VALUES ($1, $2, $3, $4::jsonb, $5) ON CONFLICT (user_id, event_key) DO NOTHING",
-            [randomUUID(), userId, type + ":" + comment.id, payload, requestHash(payload)],
+            [notificationId, userId, type + ":" + comment.id, payload, requestHash(payload)],
           );
+          const notificationRows = await tx.unsafe("SELECT * FROM notifications WHERE id = $1", [notificationId]);
+          if (notificationRows[0]) changes.push({ entityType: "notifications", entityId: notificationId, operation: "upsert", payload: notificationRows[0] });
         }
+        await captureChanges(tx, transactionId, changes);
         return mapArticleComment({ ...comment, locale });
       });
     },
@@ -470,13 +507,19 @@ export function createPostgresStore(sql) {
       if (!isUuid(commentId)) throw new ArticleInputError("commentId must be a valid comment ID.");
       requiredText("actorId", actorId, 300);
       return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
         const rows = await tx.unsafe(
           "SELECT author_id FROM article_comments WHERE id = $1 FOR UPDATE",
           [commentId],
         );
         if (rows.length === 0) return false;
         if (rows[0].author_id !== actorId) throw new ArticleAuthorizationError("You can delete only your own comment.");
+        const descendants = await tx.unsafe(
+          "WITH RECURSIVE descendants(id) AS (SELECT id FROM article_comments WHERE id = $1 UNION ALL SELECT child.id FROM article_comments child JOIN descendants parent ON child.parent_comment_id = parent.id) SELECT id FROM descendants",
+          [commentId],
+        );
         await tx.unsafe("DELETE FROM article_comments WHERE id = $1", [commentId]);
+        await captureChanges(tx, transactionId, descendants.map((row) => ({ entityType: "article_comments", entityId: row.id, operation: "delete", payload: null })));
         return true;
       });
     },
@@ -557,6 +600,7 @@ export function createPostgresStore(sql) {
       validateArticleLocale(locale);
       const normalized = normalizeHashtag(name);
       return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
         await tx.unsafe(
           "INSERT INTO taxonomies (id, kind, slug, created_by) VALUES ($1, 'tag', $2, $3) ON CONFLICT (kind, slug) DO NOTHING",
           [randomUUID(), normalized.slug, actorId],
@@ -584,6 +628,14 @@ export function createPostgresStore(sql) {
           [taxonomy.id, locale],
         );
         if (!found[0]) throw new TaxonomyConflictError("Tag exists but has no display label for the requested locale.");
+        const [taxonomySnapshot, translationSnapshot] = await Promise.all([
+          tx.unsafe("SELECT * FROM taxonomies WHERE id = $1", [taxonomy.id]),
+          tx.unsafe("SELECT * FROM taxonomy_translations WHERE taxonomy_id = $1 AND locale = $2", [taxonomy.id, locale]),
+        ]);
+        await captureChanges(tx, transactionId, [
+          { entityType: "taxonomies", entityId: taxonomy.id, operation: "upsert", payload: taxonomySnapshot[0] },
+          { entityType: "taxonomy_translations", entityId: migrationEntityKey(taxonomy.id, locale), operation: "upsert", payload: translationSnapshot[0] },
+        ]);
         return mapTaxonomy(found[0]);
       });
     },
@@ -596,6 +648,7 @@ export function createPostgresStore(sql) {
       validateArticleLocale(locale);
       try {
         return await sql.begin(async (tx) => {
+          const transactionId = createMigrationTransactionId();
           let taxonomyRows = await tx.unsafe(
             "INSERT INTO taxonomies (id, kind, slug, created_by) VALUES ($1, $2, $3, $4) ON CONFLICT (kind, slug) DO NOTHING RETURNING id, kind, slug, created_by",
             [randomUUID(), kind, normalizedSlug, actorId],
@@ -615,6 +668,14 @@ export function createPostgresStore(sql) {
             "SELECT tax.id, tax.kind, tax.slug, tax.created_by, tr.name, tr.description, tr.locale, 0::int AS article_count FROM taxonomies AS tax JOIN taxonomy_translations AS tr ON tr.taxonomy_id = tax.id AND tr.locale = $2 WHERE tax.id = $1",
             [taxonomy.id, locale],
           );
+          const [taxonomySnapshot, translationSnapshot] = await Promise.all([
+            tx.unsafe("SELECT * FROM taxonomies WHERE id = $1", [taxonomy.id]),
+            tx.unsafe("SELECT * FROM taxonomy_translations WHERE taxonomy_id = $1 AND locale = $2", [taxonomy.id, locale]),
+          ]);
+          await captureChanges(tx, transactionId, [
+            { entityType: "taxonomies", entityId: taxonomy.id, operation: "upsert", payload: taxonomySnapshot[0] },
+            { entityType: "taxonomy_translations", entityId: migrationEntityKey(taxonomy.id, locale), operation: "upsert", payload: translationSnapshot[0] },
+          ]);
           return mapTaxonomy(found[0]);
         });
       } catch (error) {
@@ -626,10 +687,20 @@ export function createPostgresStore(sql) {
       if (!isUuid(taxonomyId)) throw new ArticleInputError("taxonomyId must be a valid UUID.");
       requiredText("actorId", actorId, 300);
       return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
         const rows = await tx.unsafe("SELECT created_by FROM taxonomies WHERE id = $1 FOR UPDATE", [taxonomyId]);
         if (rows.length === 0) return false;
         if (rows[0].created_by !== actorId) throw new ArticleAuthorizationError("Only the taxonomy creator can delete it.");
+        const [translations, links] = await Promise.all([
+          tx.unsafe("SELECT taxonomy_id, locale FROM taxonomy_translations WHERE taxonomy_id = $1", [taxonomyId]),
+          tx.unsafe("SELECT article_id, taxonomy_id FROM article_taxonomies WHERE taxonomy_id = $1", [taxonomyId]),
+        ]);
         await tx.unsafe("DELETE FROM taxonomies WHERE id = $1", [taxonomyId]);
+        await captureChanges(tx, transactionId, [
+          { entityType: "taxonomies", entityId: taxonomyId, operation: "delete", payload: null },
+          ...translations.map((row) => ({ entityType: "taxonomy_translations", entityId: migrationEntityKey(taxonomyId, row.locale), operation: "delete", payload: null })),
+          ...links.map((row) => ({ entityType: "article_taxonomies", entityId: migrationEntityKey(row.article_id, taxonomyId), operation: "delete", payload: null })),
+        ]);
         return true;
       });
     },
@@ -680,6 +751,8 @@ export function createPostgresStore(sql) {
       requiredText("targetUserId", targetUserId, 300);
       if (actorId === targetUserId) throw new ProfileInputError("You cannot follow your own account.");
       return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const changes = [];
         const target = await tx.unsafe("SELECT user_id FROM user_profiles WHERE user_id = $1", [targetUserId]);
         if (target.length === 0) throw new ProfileNotFoundError();
         const inserted = await tx.unsafe(
@@ -687,13 +760,18 @@ export function createPostgresStore(sql) {
           [actorId, targetUserId],
         );
         if (inserted.length === 1) {
+          const followRows = await tx.unsafe("SELECT * FROM user_follows WHERE follower_id = $1 AND followed_id = $2", [actorId, targetUserId]);
+          changes.push({ entityType: "user_follows", entityId: migrationEntityKey(actorId, targetUserId), operation: "upsert", payload: followRows[0] });
           const payload = { type: "user.followed", followerId: actorId };
           const eventKey = `user.followed:${actorId}:${randomUUID()}`;
           await tx.unsafe(
             "INSERT INTO notifications (id, user_id, event_key, payload, payload_hash) VALUES ($1, $2, $3, $4::jsonb, $5) ON CONFLICT (user_id, event_key) DO NOTHING",
             [randomUUID(), targetUserId, eventKey, payload, requestHash(payload)],
           );
+          const notificationRows = await tx.unsafe("SELECT * FROM notifications WHERE user_id = $1 AND event_key = $2", [targetUserId, eventKey]);
+          if (notificationRows[0]) changes.push({ entityType: "notifications", entityId: notificationRows[0].id, operation: "upsert", payload: notificationRows[0] });
         }
+        await captureChanges(tx, transactionId, changes);
         return inserted.length === 1;
       });
     },
@@ -701,11 +779,17 @@ export function createPostgresStore(sql) {
       requiredText("actorId", actorId, 300);
       requiredText("targetUserId", targetUserId, 300);
       if (actorId === targetUserId) throw new ProfileInputError("You cannot unfollow your own account.");
-      const rows = await sql.unsafe(
-        "DELETE FROM user_follows WHERE follower_id = $1 AND followed_id = $2 RETURNING follower_id",
-        [actorId, targetUserId],
-      );
-      return rows.length === 1;
+      return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const rows = await tx.unsafe(
+          "DELETE FROM user_follows WHERE follower_id = $1 AND followed_id = $2 RETURNING follower_id",
+          [actorId, targetUserId],
+        );
+        if (rows.length === 1) await captureChanges(tx, transactionId, [
+          { entityType: "user_follows", entityId: migrationEntityKey(actorId, targetUserId), operation: "delete", payload: null },
+        ]);
+        return rows.length === 1;
+      });
     },
     async upsertAuthorProfile({ userId, displayName, bio = "", avatarUrl = undefined, websiteUrl = undefined, locale = "zh-CN" }) {
       requiredText("userId", userId, 300);
@@ -717,6 +801,7 @@ export function createPostgresStore(sql) {
       const validatedAvatarUrl = validateProfileUrl("avatarUrl", avatarUrl, true);
       const validatedWebsiteUrl = validateProfileUrl("websiteUrl", websiteUrl, false);
       return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
         await tx.unsafe(
           "INSERT INTO user_profiles (user_id, avatar_url, website_url) VALUES ($1, $2, $3) ON CONFLICT (user_id) DO UPDATE SET avatar_url = CASE WHEN $4 THEN $2 ELSE user_profiles.avatar_url END, website_url = CASE WHEN $5 THEN $3 ELSE user_profiles.website_url END, updated_at = now()",
           [userId, validatedAvatarUrl ?? null, validatedWebsiteUrl ?? null, avatarUrl !== undefined, websiteUrl !== undefined],
@@ -730,6 +815,14 @@ export function createPostgresStore(sql) {
           [userId, locale],
         );
         if (!rows[0]) throw new Error("Profile row was not available after upsert.");
+        const [profileRows, translationRows] = await Promise.all([
+          tx.unsafe("SELECT * FROM user_profiles WHERE user_id = $1", [userId]),
+          tx.unsafe("SELECT * FROM user_profile_translations WHERE user_id = $1 AND locale = $2", [userId, locale]),
+        ]);
+        await captureChanges(tx, transactionId, [
+          { entityType: "user_profiles", entityId: userId, operation: "upsert", payload: profileRows[0] },
+          { entityType: "user_profile_translations", entityId: migrationEntityKey(userId, locale), operation: "upsert", payload: translationRows[0] },
+        ]);
         return mapAuthorProfile(rows[0]);
       });
     },
@@ -853,6 +946,7 @@ export function createPostgresStore(sql) {
       const selectedTags = normalizeTaxonomyIds("tagIds", tagIds, 50);
       try {
         return await sql.begin(async (tx) => {
+          const transactionId = createMigrationTransactionId();
           const rows = await tx.unsafe(
             "INSERT INTO articles (id, author_id, slug, work_type, status, published_at) VALUES ($1, $2, $3, $4, $5, CASE WHEN $6 THEN now() ELSE NULL END) RETURNING id, author_id, slug, work_type, status, created_at, updated_at, published_at",
             [randomUUID(), authorId, input.slug, input.workType ?? "other", input.publish ? "published" : "draft", input.publish],
@@ -864,6 +958,16 @@ export function createPostgresStore(sql) {
           );
           await replaceArticleTaxonomyKind(tx, article.id, "category", selectedCategories);
           await replaceArticleTaxonomyKind(tx, article.id, "tag", selectedTags);
+          const [articleSnapshot, translationSnapshot, links] = await Promise.all([
+            tx.unsafe("SELECT * FROM articles WHERE id = $1", [article.id]),
+            tx.unsafe("SELECT * FROM article_translations WHERE article_id = $1 AND locale = $2", [article.id, input.locale]),
+            tx.unsafe("SELECT * FROM article_taxonomies WHERE article_id = $1", [article.id]),
+          ]);
+          await captureChanges(tx, transactionId, [
+            { entityType: "articles", entityId: article.id, operation: "upsert", payload: articleSnapshot[0] },
+            { entityType: "article_translations", entityId: migrationEntityKey(article.id, input.locale), operation: "upsert", payload: translationSnapshot[0] },
+            ...links.map((link) => ({ entityType: "article_taxonomies", entityId: migrationEntityKey(link.article_id, link.taxonomy_id), operation: "upsert", payload: link })),
+          ]);
           return mapArticle({ ...article, ...translations[0] });
         });
       } catch (error) {
@@ -880,9 +984,11 @@ export function createPostgresStore(sql) {
       const selectedTags = normalizeTaxonomyIds("tagIds", tagIds, 50);
       try {
         return await sql.begin(async (tx) => {
+          const transactionId = createMigrationTransactionId();
           const ownership = await tx.unsafe("SELECT author_id FROM articles WHERE id = $1 FOR UPDATE", [articleId]);
           if (!ownership[0]) throw new ArticleNotFoundError();
           if (ownership[0].author_id !== actorId) throw new ArticleAuthorizationError();
+          const previousLinks = await tx.unsafe("SELECT * FROM article_taxonomies WHERE article_id = $1", [articleId]);
           const rows = await tx.unsafe(
             "UPDATE articles SET slug = $2, work_type = COALESCE($6, work_type), status = $3, published_at = CASE WHEN $4 THEN COALESCE(published_at, now()) ELSE NULL END, updated_at = now() WHERE id = $1 AND author_id = $5 RETURNING id, author_id, slug, work_type, status, created_at, updated_at, published_at",
             [articleId, input.slug, input.publish ? "published" : "draft", input.publish, actorId, input.workType ?? null],
@@ -894,6 +1000,18 @@ export function createPostgresStore(sql) {
           );
           await replaceArticleTaxonomyKind(tx, articleId, "category", selectedCategories);
           await replaceArticleTaxonomyKind(tx, articleId, "tag", selectedTags);
+          const [articleSnapshot, translationSnapshot, currentLinks] = await Promise.all([
+            tx.unsafe("SELECT * FROM articles WHERE id = $1", [articleId]),
+            tx.unsafe("SELECT * FROM article_translations WHERE article_id = $1 AND locale = $2", [articleId, input.locale]),
+            tx.unsafe("SELECT * FROM article_taxonomies WHERE article_id = $1", [articleId]),
+          ]);
+          const currentIds = new Set(currentLinks.map((link) => migrationEntityKey(link.article_id, link.taxonomy_id)));
+          await captureChanges(tx, transactionId, [
+            { entityType: "articles", entityId: articleId, operation: "upsert", payload: articleSnapshot[0] },
+            { entityType: "article_translations", entityId: migrationEntityKey(articleId, input.locale), operation: "upsert", payload: translationSnapshot[0] },
+            ...currentLinks.map((link) => ({ entityType: "article_taxonomies", entityId: migrationEntityKey(link.article_id, link.taxonomy_id), operation: "upsert", payload: link })),
+            ...previousLinks.filter((link) => !currentIds.has(migrationEntityKey(link.article_id, link.taxonomy_id))).map((link) => ({ entityType: "article_taxonomies", entityId: migrationEntityKey(link.article_id, link.taxonomy_id), operation: "delete", payload: null })),
+          ]);
           return mapArticle({ ...rows[0], ...translations[0] });
         });
       } catch (error) {
@@ -909,6 +1027,7 @@ export function createPostgresStore(sql) {
       const allIds = [actorId, ...others];
       const conversationId = randomUUID();
       return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
         const created = await tx.unsafe(
           "INSERT INTO conversations (id, created_by) VALUES ($1, $2) RETURNING id, created_by, created_at",
           [conversationId, actorId],
@@ -920,6 +1039,14 @@ export function createPostgresStore(sql) {
           );
         }
         const row = created[0];
+        const [conversationSnapshot, participantSnapshots] = await Promise.all([
+          tx.unsafe("SELECT * FROM conversations WHERE id = $1", [conversationId]),
+          tx.unsafe("SELECT * FROM conversation_participants WHERE conversation_id = $1 ORDER BY user_id", [conversationId]),
+        ]);
+        await captureChanges(tx, transactionId, [
+          { entityType: "conversations", entityId: conversationId, operation: "upsert", payload: conversationSnapshot[0] },
+          ...participantSnapshots.map((participant) => ({ entityType: "conversation_participants", entityId: migrationEntityKey(conversationId, participant.user_id), operation: "upsert", payload: participant })),
+        ]);
         return {
           id: row.id,
           createdBy: row.created_by,
@@ -939,6 +1066,7 @@ export function createPostgresStore(sql) {
       if (removes.includes(actorId)) throw new ConversationInputError("The current user cannot remove themself; delete the conversation instead.");
       if (adds.some((id) => removes.includes(id))) throw new ConversationInputError("A user cannot be added and removed in the same operation.");
       return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
         const conversations = await tx.unsafe("SELECT created_by FROM conversations WHERE id = $1 FOR UPDATE", [conversationId]);
         if (!conversations[0]) throw new ConversationNotFoundError();
         const membership = await tx.unsafe(
@@ -964,6 +1092,11 @@ export function createPostgresStore(sql) {
             [conversationId, userId],
           );
         }
+        const changedIds = [...new Set([...adds, ...removes])];
+        const snapshots = changedIds.length ? await tx.unsafe("SELECT * FROM conversation_participants WHERE conversation_id = $1 AND user_id = ANY($2::text[])", [conversationId, changedIds]) : [];
+        await captureChanges(tx, transactionId, snapshots.map((participant) => ({
+          entityType: "conversation_participants", entityId: migrationEntityKey(conversationId, participant.user_id), operation: "upsert", payload: participant,
+        })));
         return true;
       });
     },
@@ -971,6 +1104,7 @@ export function createPostgresStore(sql) {
       requiredText("conversationId", conversationId, 300);
       requiredText("actorId", actorId, 300);
       return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
         const rows = await tx.unsafe("SELECT created_by FROM conversations WHERE id = $1 FOR UPDATE", [conversationId]);
         if (!rows[0]) return false;
         if (rows[0].created_by !== actorId) {
@@ -981,6 +1115,12 @@ export function createPostgresStore(sql) {
           [conversationId, actorId],
         );
         if (membership.length === 0) throw new ConversationAccessError();
+        const [participants, messages, outbox, notifications] = await Promise.all([
+          tx.unsafe("SELECT * FROM conversation_participants WHERE conversation_id = $1", [conversationId]),
+          tx.unsafe("SELECT * FROM messages WHERE conversation_id = $1", [conversationId]),
+          tx.unsafe("SELECT * FROM outbox_events WHERE aggregate_id IN (SELECT id::text FROM messages WHERE conversation_id = $1)", [conversationId]),
+          tx.unsafe("SELECT * FROM notifications WHERE payload->>'conversationId' = $1 AND payload->>'type' = 'message.created'", [conversationId]),
+        ]);
         await tx.unsafe(
           "DELETE FROM outbox_events WHERE aggregate_id IN (SELECT id::text FROM messages WHERE conversation_id = $1)",
           [conversationId],
@@ -990,18 +1130,32 @@ export function createPostgresStore(sql) {
           [conversationId],
         );
         await tx.unsafe("DELETE FROM conversations WHERE id = $1", [conversationId]);
+        await captureChanges(tx, transactionId, [
+          { entityType: "conversations", entityId: conversationId, operation: "delete", payload: null },
+          ...participants.map((row) => ({ entityType: "conversation_participants", entityId: migrationEntityKey(conversationId, row.user_id), operation: "delete", payload: null })),
+          ...messages.map((row) => ({ entityType: "messages", entityId: row.id, operation: "delete", payload: null })),
+          ...outbox.map((row) => ({ entityType: "outbox_events", entityId: row.id, operation: "delete", payload: null })),
+          ...notifications.map((row) => ({ entityType: "notifications", entityId: row.id, operation: "delete", payload: null })),
+        ]);
         return true;
       });
     },
     async markConversationAsRead({ conversationId, actorId }) {
       requiredText("conversationId", conversationId, 300);
       requiredText("actorId", actorId, 300);
-      const rows = await sql.unsafe(
-        "UPDATE conversation_participants SET last_read_at = now() WHERE conversation_id = $1 AND user_id = $2 AND left_at IS NULL RETURNING user_id",
-        [conversationId, actorId],
-      );
-      if (rows.length === 0) throw new ConversationAccessError();
-      return true;
+      return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const rows = await tx.unsafe(
+          "UPDATE conversation_participants SET last_read_at = now() WHERE conversation_id = $1 AND user_id = $2 AND left_at IS NULL RETURNING user_id",
+          [conversationId, actorId],
+        );
+        if (rows.length === 0) throw new ConversationAccessError();
+        const snapshots = await tx.unsafe("SELECT * FROM conversation_participants WHERE conversation_id = $1 AND user_id = $2", [conversationId, actorId]);
+        await captureChanges(tx, transactionId, [
+          { entityType: "conversation_participants", entityId: migrationEntityKey(conversationId, actorId), operation: "upsert", payload: snapshots[0] },
+        ]);
+        return true;
+      });
     },
     async listConversationMessages({ conversationId, actorId, limit = 100, before = null }) {
       for (const [name, value] of Object.entries({ conversationId, actorId })) {
@@ -1124,6 +1278,7 @@ export function createPostgresStore(sql) {
       }
       const hash = requestHash({ conversationId, senderId, body });
       return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
         // Serialize the membership check and outbox insert with participant
         // changes, deletion and notification delivery, all of which lock this
         // conversation first. Otherwise a removed sender can still write or
@@ -1148,78 +1303,77 @@ export function createPostgresStore(sql) {
           return assertSameRequest(raced, hash);
         }
         const message = inserted[0];
+        const outboxId = randomUUID();
         await tx.unsafe(
           "INSERT INTO outbox_events (id, event_key, event_type, aggregate_id, payload) VALUES ($1, $2, $3, $4, $5::jsonb)",
-          [randomUUID(), `message:${message.id}`, "message.created", message.id,
+          [outboxId, `message:${message.id}`, "message.created", message.id,
             { messageId: message.id, conversationId: message.conversation_id, senderId: message.sender_id }],
         );
+        const outboxRows = await tx.unsafe("SELECT * FROM outbox_events WHERE id = $1", [outboxId]);
+        await captureChanges(tx, transactionId, [
+          { entityType: "messages", entityId: message.id, operation: "upsert", payload: message },
+          { entityType: "outbox_events", entityId: outboxId, operation: "upsert", payload: outboxRows[0] },
+        ]);
         return mapMessage(message, false);
       });
     },
-    async claimOutboxEvents({ limit = 25, leaseSeconds = 60 } = {}) {
-      if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
-        throw new TypeError("limit must be an integer between 1 and 100.");
-      }
-      if (!Number.isInteger(leaseSeconds) || leaseSeconds < 1 || leaseSeconds > 3600) {
-        throw new TypeError("leaseSeconds must be an integer between 1 and 3600.");
-      }
-      return sql.begin(async (tx) => tx.unsafe(
-        `WITH picked AS (
-          SELECT id FROM outbox_events
-          WHERE delivered_at IS NULL AND available_at <= now()
-          ORDER BY created_at, id
-          LIMIT $1
-          FOR UPDATE SKIP LOCKED
-        )
-        UPDATE outbox_events AS event
-        SET attempts = event.attempts + 1,
-            available_at = clock_timestamp() + ($2 * interval '1 second'),
-            lease_token = gen_random_uuid()
-        FROM picked
-        WHERE event.id = picked.id
-        RETURNING event.id, event.event_key, event.event_type, event.aggregate_id,
-                  event.payload, event.attempts, event.available_at, event.lease_token`,
-        [limit, leaseSeconds],
-      ));
+        async claimOutboxEvents({ limit = 25, leaseSeconds = 60 } = {}) {
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new TypeError("limit must be an integer between 1 and 100.");
+      if (!Number.isInteger(leaseSeconds) || leaseSeconds < 1 || leaseSeconds > 3600) throw new TypeError("leaseSeconds must be an integer between 1 and 3600.");
+      return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const rows = await tx.unsafe(
+          "WITH picked AS ( SELECT id FROM outbox_events WHERE delivered_at IS NULL AND available_at <= now() ORDER BY created_at, id LIMIT $1 FOR UPDATE SKIP LOCKED ) " +
+          "UPDATE outbox_events AS event SET attempts = event.attempts + 1, available_at = clock_timestamp() + ($2 * interval '1 second'), lease_token = gen_random_uuid() " +
+          "FROM picked WHERE event.id = picked.id " +
+          "RETURNING event.id, event.event_key, event.event_type, event.aggregate_id, event.payload, event.attempts, event.available_at, event.lease_token",
+          [limit, leaseSeconds],
+        );
+        const changes = [];
+        for (const row of rows) {
+          const snapshot = await tx.unsafe("SELECT * FROM outbox_events WHERE id = $1", [row.id]);
+          if (snapshot[0]) changes.push({ entityType: "outbox_events", entityId: row.id, operation: "upsert" as const, payload: snapshot[0] });
+        }
+        await captureChanges(tx, transactionId, changes);
+        return rows;
+      });
     },
-    async markOutboxDelivered({ eventId, leaseToken }) {
+        async markOutboxDelivered({ eventId, leaseToken }) {
       assertOutboxLease(eventId, leaseToken);
-      // Lock first and evaluate the wall clock after acquiring the lock. A
-      // statement delayed by another transaction must not use a stale time.
-      const rows = await sql.unsafe(
-        `WITH locked AS MATERIALIZED (
-           SELECT id, lease_token, available_at, delivered_at
-           FROM outbox_events WHERE id = $1 FOR UPDATE
-         )
-         UPDATE outbox_events AS event
-         SET delivered_at = clock_timestamp(), lease_token = NULL
-         FROM locked
-         WHERE event.id = locked.id AND locked.delivered_at IS NULL
-           AND locked.lease_token = $2 AND locked.available_at > clock_timestamp()
-         RETURNING event.id`,
-        [eventId, leaseToken],
-      );
-      return rows.length === 1;
+      return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const rows = await tx.unsafe(
+          "WITH locked AS MATERIALIZED ( SELECT id, lease_token, available_at, delivered_at FROM outbox_events WHERE id = $1 FOR UPDATE ) " +
+          "UPDATE outbox_events AS event SET delivered_at = clock_timestamp(), lease_token = NULL FROM locked " +
+          "WHERE event.id = locked.id AND locked.delivered_at IS NULL AND locked.lease_token = $2 AND locked.available_at > clock_timestamp() " +
+          "RETURNING event.id",
+          [eventId, leaseToken],
+        );
+        if (rows.length === 1) {
+          const snapshot = await tx.unsafe("SELECT * FROM outbox_events WHERE id = $1", [eventId]);
+          await captureChanges(tx, transactionId, [{ entityType: "outbox_events", entityId: eventId, operation: "upsert", payload: snapshot[0] }]);
+        }
+        return rows.length === 1;
+      });
     },
-    async rescheduleOutboxEvent({ eventId, leaseToken, delaySeconds = 30 }) {
+        async rescheduleOutboxEvent({ eventId, leaseToken, delaySeconds = 30 }) {
       assertOutboxLease(eventId, leaseToken);
-      if (!Number.isInteger(delaySeconds) || delaySeconds < 1 || delaySeconds > 86400) {
-        throw new TypeError("delaySeconds must be an integer between 1 and 86400.");
-      }
-      const rows = await sql.unsafe(
-        `WITH locked AS MATERIALIZED (
-           SELECT id, lease_token, available_at, delivered_at
-           FROM outbox_events WHERE id = $1 FOR UPDATE
-         )
-         UPDATE outbox_events AS event
-         SET available_at = clock_timestamp() + ($3 * interval '1 second'), lease_token = NULL
-         FROM locked
-         WHERE event.id = locked.id AND locked.delivered_at IS NULL
-           AND locked.lease_token = $2 AND locked.available_at > clock_timestamp()
-         RETURNING event.id`,
-        [eventId, leaseToken, delaySeconds],
-      );
-      return rows.length === 1;
+      if (!Number.isInteger(delaySeconds) || delaySeconds < 1 || delaySeconds > 86400) throw new TypeError("delaySeconds must be an integer between 1 and 86400.");
+      return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const rows = await tx.unsafe(
+          "WITH locked AS MATERIALIZED ( SELECT id, lease_token, available_at, delivered_at FROM outbox_events WHERE id = $1 FOR UPDATE ) " +
+          "UPDATE outbox_events AS event SET available_at = clock_timestamp() + ($3 * interval '1 second'), lease_token = NULL FROM locked " +
+          "WHERE event.id = locked.id AND locked.delivered_at IS NULL AND locked.lease_token = $2 AND locked.available_at > clock_timestamp() " +
+          "RETURNING event.id",
+          [eventId, leaseToken, delaySeconds],
+        );
+        if (rows.length === 1) {
+          const snapshot = await tx.unsafe("SELECT * FROM outbox_events WHERE id = $1", [eventId]);
+          await captureChanges(tx, transactionId, [{ entityType: "outbox_events", entityId: eventId, operation: "upsert", payload: snapshot[0] }]);
+        }
+        return rows.length === 1;
+      });
     },
     async listConversationParticipantIds({ conversationId }) {
       if (typeof conversationId !== "string" || conversationId.trim().length === 0 || conversationId !== conversationId.trim()) {
@@ -1237,6 +1391,8 @@ export function createPostgresStore(sql) {
       const payload = { type: "message.created", messageId, conversationId, senderId };
       const hash = requestHash(payload);
       return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const changes = [];
         // All membership edits and deletes lock this same row first. A stale
         // event whose conversation has been deleted is a harmless no-op.
         const conversation = await tx.unsafe("SELECT id FROM conversations WHERE id = $1 FOR UPDATE", [conversationId]);
@@ -1251,10 +1407,15 @@ export function createPostgresStore(sql) {
           [conversationId, senderId],
         );
         for (const { user_id: userId } of participants) {
+          const notificationId = randomUUID();
           const inserted = await tx.unsafe(
             "INSERT INTO notifications (id, user_id, event_key, payload, payload_hash) VALUES ($1, $2, $3, $4::jsonb, $5) ON CONFLICT (user_id, event_key) DO NOTHING RETURNING id",
-            [randomUUID(), userId, eventKey, payload, hash],
+            [notificationId, userId, eventKey, payload, hash],
           );
+          if (inserted.length === 1) {
+            const snapshot = await tx.unsafe("SELECT * FROM notifications WHERE id = $1", [notificationId]);
+            if (snapshot[0]) changes.push({ entityType: "notifications", entityId: notificationId, operation: "upsert", payload: snapshot[0] });
+          }
           if (inserted.length === 0) {
             const existing = await tx.unsafe(
               "SELECT payload_hash FROM notifications WHERE user_id = $1 AND event_key = $2",
@@ -1264,6 +1425,7 @@ export function createPostgresStore(sql) {
             if (existing[0].payload_hash !== hash) throw new IdempotencyConflictError("The notification event key was already used with a different payload.");
           }
         }
+        await captureChanges(tx, transactionId, changes);
         return true;
       });
     },
@@ -1301,11 +1463,15 @@ export function createPostgresStore(sql) {
       if (typeof actorId !== "string" || actorId.trim().length === 0 || actorId !== actorId.trim()) {
         throw new TypeError("actorId must be a non-empty, trimmed string.");
       }
-      const rows = await sql.unsafe(
-        "UPDATE notifications SET read_at = now() WHERE user_id = $1 AND read_at IS NULL RETURNING id",
-        [actorId],
-      );
-      return rows.length;
+      return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const rows = await tx.unsafe(
+          "UPDATE notifications SET read_at = now() WHERE user_id = $1 AND read_at IS NULL RETURNING *",
+          [actorId],
+        );
+        await captureChanges(tx, transactionId, rows.map((row) => ({ entityType: "notifications", entityId: row.id, operation: "upsert", payload: row })));
+        return rows.length;
+      });
     },
     async markNotificationRead({ notificationId, actorId }) {
       if (typeof actorId !== "string" || actorId.trim().length === 0 || actorId !== actorId.trim()) {
@@ -1314,20 +1480,28 @@ export function createPostgresStore(sql) {
       if (!isUuid(notificationId)) {
         throw new InvalidMessageCursorError("notificationId must be a valid notification ID.");
       }
-      const rows = await sql.unsafe(
-        "UPDATE notifications SET read_at = COALESCE(read_at, now()) WHERE id = $1 AND user_id = $2 RETURNING id, user_id, event_key, payload, created_at, read_at",
-        [notificationId, actorId],
-      );
-      const row = rows[0];
-      if (!row) return null;
-      return {
-        id: row.id,
-        userId: row.user_id,
-        eventKey: row.event_key,
-        payload: parseJsonValue(row.payload),
-        createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : new Date(row.created_at).toISOString(),
-        readAt: row.read_at instanceof Date ? row.read_at.toISOString() : new Date(row.read_at).toISOString(),
-      };
+      return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const before = await tx.unsafe("SELECT read_at FROM notifications WHERE id = $1 AND user_id = $2 FOR UPDATE", [notificationId, actorId]);
+        const rows = await tx.unsafe(
+          "UPDATE notifications SET read_at = COALESCE(read_at, now()) WHERE id = $1 AND user_id = $2 RETURNING id, user_id, event_key, payload, created_at, read_at",
+          [notificationId, actorId],
+        );
+        const row = rows[0];
+        if (!row) return null;
+        if (before[0]?.read_at == null) {
+          const snapshots = await tx.unsafe("SELECT * FROM notifications WHERE id = $1", [notificationId]);
+          await captureChanges(tx, transactionId, [{ entityType: "notifications", entityId: notificationId, operation: "upsert", payload: snapshots[0] }]);
+        }
+        return {
+          id: row.id,
+          userId: row.user_id,
+          eventKey: row.event_key,
+          payload: parseJsonValue(row.payload),
+          createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : new Date(row.created_at).toISOString(),
+          readAt: row.read_at instanceof Date ? row.read_at.toISOString() : new Date(row.read_at).toISOString(),
+        };
+      });
     },
     async createNotification({ userId, eventKey, payload }) {
       for (const [name, value] of Object.entries({ userId, eventKey })) {
@@ -1338,12 +1512,16 @@ export function createPostgresStore(sql) {
       if (payload === undefined) throw new TypeError("payload is required.");
       const hash = requestHash(payload);
       return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
         const inserted = await tx.unsafe(
           "INSERT INTO notifications (id, user_id, event_key, payload, payload_hash) VALUES ($1, $2, $3, $4::jsonb, $5) ON CONFLICT (user_id, event_key) DO NOTHING RETURNING id, user_id, event_key, payload, created_at, payload_hash",
           [randomUUID(), userId, eventKey, payload, hash],
         );
         let row = inserted[0];
         let duplicate = false;
+        if (row) await captureChanges(tx, transactionId, [
+          { entityType: "notifications", entityId: row.id, operation: "upsert", payload: row },
+        ]);
         if (!row) {
           const existing = await tx.unsafe(
             "SELECT id, user_id, event_key, payload, created_at, payload_hash FROM notifications WHERE user_id = $1 AND event_key = $2",

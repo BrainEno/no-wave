@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
+import { createMigrationTransactionId } from "./provider-migration-journal.ts";
+import { createSqliteProviderMigrationCapture, migrationEntityKey } from "./sqlite-provider-migration-capture.ts";
 import {
   IdempotencyConflictError, ConversationAccessError, ConversationInputError,
   ConversationNotFoundError, InvalidMessageCursorError,
@@ -30,12 +32,14 @@ export function createSqliteConversationStore(db) {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") {
     throw new TypeError("A node:sqlite DatabaseSync connection is required.");
   }
+  const migrationCapture = createSqliteProviderMigrationCapture(db);
   const get = (sql, ...args) => db.prepare(sql).get(...args);
   const all = (sql, ...args) => db.prepare(sql).all(...args);
   const run = (sql, ...args) => db.prepare(sql).run(...args);
   function transaction(work) {
+    const transactionId = createMigrationTransactionId();
     db.exec("BEGIN IMMEDIATE");
-    try { const value = work(); db.exec("COMMIT"); return value; }
+    try { const value = work(transactionId); db.exec("COMMIT"); return value; }
     catch (error) { try { db.exec("ROLLBACK"); } catch {} throw error; }
   }
   function activeMember(conversationId, userId) {
@@ -58,11 +62,15 @@ export function createSqliteConversationStore(db) {
       const others = supplied.filter((id) => id !== actorId);
       if (!others.length) throw new ConversationInputError("A conversation requires at least one other participant.");
       const ids = [actorId, ...others], id = randomUUID();
-      return transaction(() => {
+      return transaction((transactionId) => {
         run("INSERT INTO conversations (id, created_by) VALUES (?, ?)", id, actorId);
         const insert = db.prepare("INSERT INTO conversation_participants (conversation_id, user_id, last_read_at) VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))");
         for (const userId of ids) insert.run(id, userId);
-        const row = get("SELECT id, created_by, created_at FROM conversations WHERE id = ?", id);
+        const row = get("SELECT * FROM conversations WHERE id = ?", id);
+        migrationCapture.captureInTransaction(db, transactionId, [
+          { entityType: "conversations", entityId: id, operation: "upsert", payload: row },
+          ...ids.map((userId) => ({ entityType: "conversation_participants", entityId: migrationEntityKey(id, userId), operation: "upsert" as const, payload: get("SELECT * FROM conversation_participants WHERE conversation_id = ? AND user_id = ?", id, userId) })),
+        ]);
         return { id: row.id, createdBy: row.created_by, participantIds: ids, createdAt: iso(row.created_at), lastActivityAt: iso(row.created_at), unreadCount: 0, lastMessage: null };
       });
     },
@@ -72,7 +80,7 @@ export function createSqliteConversationStore(db) {
       const removes = normalizeParticipantIds("removeUserIds", removeUserIds, 20);
       if (removes.includes(actorId)) throw new ConversationInputError("The current user cannot remove themself; delete the conversation instead.");
       if (adds.some((id) => removes.includes(id))) throw new ConversationInputError("A user cannot be added and removed in the same operation.");
-      return transaction(() => {
+      return transaction((transactionId) => {
         const conversation = get("SELECT created_by FROM conversations WHERE id = ?", conversationId);
         if (!conversation) throw new ConversationNotFoundError();
         requireMember(conversationId, actorId);
@@ -86,27 +94,48 @@ export function createSqliteConversationStore(db) {
             last_read_at=CASE WHEN conversation_participants.left_at IS NOT NULL THEN strftime('%Y-%m-%dT%H:%M:%fZ','now') ELSE conversation_participants.last_read_at END`, conversationId, userId);
         }
         for (const userId of removes) run("UPDATE conversation_participants SET left_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE conversation_id = ? AND user_id = ? AND left_at IS NULL", conversationId, userId);
+        const changedUserIds = [...new Set([...adds, ...removes])];
+        migrationCapture.captureInTransaction(db, transactionId, changedUserIds.map((userId) => ({
+          entityType: "conversation_participants", entityId: migrationEntityKey(conversationId, userId), operation: "upsert" as const,
+          payload: get("SELECT * FROM conversation_participants WHERE conversation_id = ? AND user_id = ?", conversationId, userId),
+        })).filter((change) => change.payload != null));
         return all("SELECT user_id FROM conversation_participants WHERE conversation_id = ? AND left_at IS NULL ORDER BY user_id", conversationId).map((row) => row.user_id);
       });
     },
     async deleteConversation({ conversationId, actorId }) {
       requiredText("conversationId", conversationId, 300); requiredText("actorId", actorId, 300);
-      return transaction(() => {
-        const conversation = get("SELECT created_by FROM conversations WHERE id = ?", conversationId);
+      return transaction((transactionId) => {
+        const conversation = get("SELECT * FROM conversations WHERE id = ?", conversationId);
         if (!conversation) return false;
         if (conversation.created_by !== actorId) throw new ConversationAccessError("Only the conversation creator can delete this conversation.");
         requireMember(conversationId, actorId);
+        const participants = all("SELECT * FROM conversation_participants WHERE conversation_id = ?", conversationId);
+        const messages = all("SELECT * FROM messages WHERE conversation_id = ?", conversationId);
+        const outbox = all("SELECT * FROM outbox_events WHERE aggregate_id IN (SELECT id FROM messages WHERE conversation_id = ?)", conversationId);
+        const notifications = all("SELECT * FROM notifications WHERE json_extract(payload, '$.conversationId') = ? AND json_extract(payload, '$.type') = 'message.created'", conversationId);
         run("DELETE FROM outbox_events WHERE aggregate_id IN (SELECT id FROM messages WHERE conversation_id = ?)", conversationId);
         run("DELETE FROM notifications WHERE json_extract(payload, '$.conversationId') = ? AND json_extract(payload, '$.type') = 'message.created'", conversationId);
         run("DELETE FROM conversations WHERE id = ?", conversationId);
+        migrationCapture.captureInTransaction(db, transactionId, [
+          { entityType: "conversations", entityId: conversationId, operation: "delete", payload: null },
+          ...participants.map((row) => ({ entityType: "conversation_participants", entityId: migrationEntityKey(conversationId, row.user_id), operation: "delete", payload: null })),
+          ...messages.map((row) => ({ entityType: "messages", entityId: row.id, operation: "delete", payload: null })),
+          ...outbox.map((row) => ({ entityType: "outbox_events", entityId: row.id, operation: "delete", payload: null })),
+          ...notifications.map((row) => ({ entityType: "notifications", entityId: row.id, operation: "delete", payload: null })),
+        ]);
         return true;
       });
     },
     async markConversationAsRead({ conversationId, actorId }) {
       requiredText("conversationId", conversationId, 300); requiredText("actorId", actorId, 300);
-      const result = run("UPDATE conversation_participants SET last_read_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE conversation_id = ? AND user_id = ? AND left_at IS NULL", conversationId, actorId);
-      if (!result.changes) throw new ConversationAccessError();
-      return true;
+      return transaction((transactionId) => {
+        const result = run("UPDATE conversation_participants SET last_read_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE conversation_id = ? AND user_id = ? AND left_at IS NULL", conversationId, actorId);
+        if (!result.changes) throw new ConversationAccessError();
+        migrationCapture.captureInTransaction(db, transactionId, [
+          { entityType: "conversation_participants", entityId: migrationEntityKey(conversationId, actorId), operation: "upsert", payload: get("SELECT * FROM conversation_participants WHERE conversation_id = ? AND user_id = ?", conversationId, actorId) },
+        ]);
+        return true;
+      });
     },
     async listConversationMessages({ conversationId, actorId, limit = 100, before = null }) {
       requiredText("conversationId", conversationId, 300); requiredText("actorId", actorId, 300);
@@ -152,14 +181,20 @@ export function createSqliteConversationStore(db) {
     async persistMessage({ conversationId, senderId, body, idempotencyKey }) {
       for (const [name, value] of Object.entries({ conversationId, senderId, body, idempotencyKey })) requiredText(name, value, name === "body" ? 20000 : 300);
       const requestHash = hash({ conversationId, senderId, body });
-      return transaction(() => {
+      return transaction((transactionId) => {
         requireMember(conversationId, senderId);
         const existing = findMessage(senderId, idempotencyKey);
         if (existing) return sameRequest(existing, requestHash);
         const id = randomUUID();
         const createdAt = new Date().toISOString();
         run("INSERT INTO messages (id,conversation_id,sender_id,body,idempotency_key,request_hash,created_at) VALUES (?,?,?,?,?,?,?)", id, conversationId, senderId, body, idempotencyKey, requestHash, createdAt);
-        run("INSERT INTO outbox_events (id,event_key,event_type,aggregate_id,payload) VALUES (?,?,?,?,?)", randomUUID(), `message:${id}`, "message.created", id, JSON.stringify({ messageId:id, conversationId, senderId }));
+        const outboxId = randomUUID();
+        const outboxPayload = { messageId:id, conversationId, senderId };
+        run("INSERT INTO outbox_events (id,event_key,event_type,aggregate_id,payload) VALUES (?,?,?,?,?)", outboxId, `message:${id}`, "message.created", id, JSON.stringify(outboxPayload));
+        migrationCapture.captureInTransaction(db, transactionId, [
+          { entityType: "messages", entityId: id, operation: "upsert", payload: get("SELECT * FROM messages WHERE id = ?", id) },
+          { entityType: "outbox_events", entityId: outboxId, operation: "upsert", payload: get("SELECT * FROM outbox_events WHERE id = ?", outboxId) },
+        ]);
         return mapMessage(get("SELECT id,conversation_id,sender_id,body,created_at FROM messages WHERE id = ?", id));
       });
     },

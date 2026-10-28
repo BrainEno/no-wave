@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
+import { createMigrationTransactionId } from "./provider-migration-journal.ts";
+import { createSqliteProviderMigrationCapture, migrationEntityKey } from "./sqlite-provider-migration-capture.ts";
 import {
   ProfileInputError,
   ProfileNotFoundError,
@@ -19,10 +21,12 @@ export function createSqliteProfileStore(db) {
   const run = (sql, ...params) => db.prepare(sql).run(...params);
   const get = (sql, ...params) => db.prepare(sql).get(...params);
   const all = (sql, ...params) => db.prepare(sql).all(...params);
+  const migrationCapture = createSqliteProviderMigrationCapture(db);
   const transaction = (fn) => {
+    const transactionId = createMigrationTransactionId();
     db.exec("BEGIN IMMEDIATE");
     try {
-      const result = fn();
+      const result = fn(transactionId);
       db.exec("COMMIT");
       return result;
     } catch (error) {
@@ -130,7 +134,7 @@ export function createSqliteProfileStore(db) {
       requiredText("actorId", actorId, 300);
       requiredText("targetUserId", targetUserId, 300);
       if (actorId === targetUserId) throw new ProfileInputError("You cannot follow your own account.");
-      return transaction(() => {
+      return transaction((transactionId) => {
         if (!get("SELECT user_id FROM user_profiles WHERE user_id = ?", targetUserId)) {
           throw new ProfileNotFoundError();
         }
@@ -140,11 +144,16 @@ export function createSqliteProfileStore(db) {
         );
         if (inserted.changes === 1) {
           const payload = { type: "user.followed", followerId: actorId };
-          const eventKey = `user.followed:${actorId}:${randomUUID()}`;
+          const eventKey = "user.followed:" + actorId + ":" + randomUUID();
           run(
             "INSERT INTO notifications (id, user_id, event_key, payload, payload_hash) VALUES (?, ?, ?, ?, ?) ON CONFLICT (user_id, event_key) DO NOTHING",
             randomUUID(), targetUserId, eventKey, JSON.stringify(payload), requestHash(payload),
           );
+          const notification = get("SELECT * FROM notifications WHERE user_id = ? AND event_key = ?", targetUserId, eventKey);
+          migrationCapture.captureInTransaction(db, transactionId, [
+            { entityType: "user_follows", entityId: migrationEntityKey(actorId, targetUserId), operation: "upsert", payload: get("SELECT * FROM user_follows WHERE follower_id = ? AND followed_id = ?", actorId, targetUserId) },
+            { entityType: "notifications", entityId: notification.id, operation: "upsert", payload: notification },
+          ]);
         }
         return inserted.changes === 1;
       });
@@ -153,10 +162,13 @@ export function createSqliteProfileStore(db) {
       requiredText("actorId", actorId, 300);
       requiredText("targetUserId", targetUserId, 300);
       if (actorId === targetUserId) throw new ProfileInputError("You cannot unfollow your own account.");
-      return run(
-        "DELETE FROM user_follows WHERE follower_id = ? AND followed_id = ?",
-        actorId, targetUserId,
-      ).changes === 1;
+      return transaction((transactionId) => {
+        const result = run("DELETE FROM user_follows WHERE follower_id = ? AND followed_id = ?", actorId, targetUserId);
+        if (result.changes === 1) migrationCapture.captureInTransaction(db, transactionId, [
+          { entityType: "user_follows", entityId: migrationEntityKey(actorId, targetUserId), operation: "delete", payload: null },
+        ]);
+        return result.changes === 1;
+      });
     },
     upsertAuthorProfile({
       userId, displayName, bio = "", avatarUrl = undefined, websiteUrl = undefined, locale = "zh-CN",
@@ -169,7 +181,7 @@ export function createSqliteProfileStore(db) {
       validateArticleLocale(locale);
       const validatedAvatarUrl = validateProfileUrl("avatarUrl", avatarUrl, true);
       const validatedWebsiteUrl = validateProfileUrl("websiteUrl", websiteUrl, false);
-      return transaction(() => {
+      return transaction((transactionId) => {
         run(
           `INSERT INTO user_profiles (user_id, avatar_url, website_url) VALUES (?, ?, ?)
            ON CONFLICT (user_id) DO UPDATE SET
@@ -198,6 +210,10 @@ export function createSqliteProfileStore(db) {
           userId, locale,
         );
         if (!row) throw new Error("Profile row was not available after upsert.");
+        migrationCapture.captureInTransaction(db, transactionId, [
+          { entityType: "user_profiles", entityId: userId, operation: "upsert", payload: get("SELECT * FROM user_profiles WHERE user_id = ?", userId) },
+          { entityType: "user_profile_translations", entityId: migrationEntityKey(userId, locale), operation: "upsert", payload: get("SELECT * FROM user_profile_translations WHERE user_id = ? AND locale = ?", userId, locale) },
+        ]);
         return mapProfile(row);
       });
     },

@@ -2,6 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
 import { createSqliteProviderMigrationJournal } from "./sqlite-provider-migration-journal.ts";
+import { createSqliteArticleStore } from "./sqlite-article-store.ts";
+import { createSqliteEngagementStore } from "./sqlite-engagement-store.ts";
+import { createSqliteProfileStore } from "./sqlite-profile-store.ts";
+import { createSqliteConversationStore } from "./sqlite-conversation-store.ts";
+import { createSqliteTaxonomyStore } from "./sqlite-taxonomy-store.ts";
+import { createSqliteNotificationStore } from "./sqlite-notification-store.ts";
+import { createSqliteIdentityStore } from "./sqlite-identity-store.ts";
+import { createSqliteOutboxStore } from "./sqlite-outbox-store.ts";
 import { canonicalJson, validateMigrationChange } from "./provider-migration-journal.ts";
 
 function change(sessionId: string, changeId: string, transactionId: string, entityId: string, body: Record<string, unknown>) {
@@ -114,4 +122,102 @@ test("migration sessions reject invalid state transitions and immutable-setting 
     assert.equal(journal.transitionSession({ sessionId: "journal-state", expectedStatus: "recording", nextStatus: "aborted" }), true);
     assert.throws(() => journal.transitionSession({ sessionId: "journal-state", expectedStatus: "aborted", nextStatus: "recording" }), /cannot transition/i);
   } finally { db.close(); }
+});
+
+
+test("SQLite domain writes atomically capture article, engagement, profile, conversation and outbox snapshots", async () => {
+  const db = createSqliteClient({ filename: ":memory:", enableWal: false });
+  try {
+    await runSqliteMigrations(db);
+    const journal = createSqliteProviderMigrationJournal(db);
+    journal.createSession({ sessionId: "business-capture", sourceProvider: "sqlite", targetProvider: "postgres", schemaVersion: "1" });
+    journal.transitionSession({ sessionId: "business-capture", expectedStatus: "prepared", nextStatus: "recording" });
+
+    const articles = createSqliteArticleStore(db);
+    const engagement = createSqliteEngagementStore(db);
+    const profiles = createSqliteProfileStore(db);
+    const conversations = createSqliteConversationStore(db);
+    const taxonomies = createSqliteTaxonomyStore(db);
+    const notifications = createSqliteNotificationStore(db);
+    const identities = createSqliteIdentityStore(db);
+    const outbox = createSqliteOutboxStore(db);
+    taxonomies.createTaxonomy({ actorId: "author-1", kind: "category", slug: "capture-category", name: "Capture Category", locale: "en" });
+    await identities.createIdentityAccount({
+      userId: "identity-capture-user", email: "identity-capture@example.test", passwordHash: "test-password-hash",
+      session: {
+        sessionId: "identity-capture-session", accessTokenId: "identity-capture-access",
+        refreshHash: "a".repeat(64), expiresAt: new Date(Date.now() + 3600000).toISOString(),
+        accessExpiresAt: new Date(Date.now() + 1800000).toISOString(),
+      },
+    });
+    const article = articles.createArticle({
+      authorId: "author-1", slug: "capture-article", title: "Capture Article",
+      locale: "en", contentBlocks: [{ id: "p1", type: "paragraph", text: "Capture me" }], publish: true,
+    });
+    engagement.setArticleLike({ slug: article.slug, locale: "en", actorId: "reader-1", liked: true });
+    engagement.createArticleComment({ slug: article.slug, locale: "en", actorId: "reader-1", content: "A captured comment" });
+    profiles.upsertAuthorProfile({ userId: "author-1", displayName: "Author", bio: "Profile snapshot", locale: "en" });
+    const notice = await notifications.createNotification({ userId: "reader-1", eventKey: "capture-notification-1", payload: { type: "capture.test", label: "journal" } });
+    assert.equal(notice.duplicate, false);
+    const markedNotice = await notifications.markNotificationRead({ notificationId: notice.id, actorId: "reader-1" });
+    assert.ok(markedNotice?.readAt);
+    const conversation = await conversations.createConversation({ actorId: "author-1", participantIds: ["reader-1"] });
+    const message = await conversations.persistMessage({
+      conversationId: conversation.id, senderId: "author-1", body: "Captured message", idempotencyKey: "capture-message-1",
+    });
+    const claimed = await outbox.claimOutboxEvents({ limit: 10, leaseSeconds: 60 });
+    assert.equal(claimed.length, 1);
+    assert.equal(await outbox.markOutboxDelivered({ eventId: claimed[0].id, leaseToken: claimed[0].lease_token }), true);
+    const beforeDuplicate = db.prepare("SELECT count(*) AS count FROM provider_migration_changes WHERE session_id = ?").get("business-capture").count;
+    const duplicate = await conversations.persistMessage({
+      conversationId: conversation.id, senderId: "author-1", body: "Captured message", idempotencyKey: "capture-message-1",
+    });
+    assert.equal(duplicate.duplicate, true);
+    assert.equal(db.prepare("SELECT count(*) AS count FROM provider_migration_changes WHERE session_id = ?").get("business-capture").count, beforeDuplicate);
+
+    const changes = journal.readChangeBatch({ sessionId: "business-capture", afterSequence: 0, limit: 1000 });
+    const entityTypes = new Set(changes.map((change) => change.entityType));
+    for (const expected of [
+      "articles", "article_translations", "article_likes", "article_comments", "user_profiles",
+      "user_profile_translations", "taxonomies", "taxonomy_translations", "notifications",
+      "auth_accounts", "auth_sessions", "auth_access_tokens", "auth_refresh_tokens",
+      "conversations", "conversation_participants", "messages", "outbox_events",
+    ]) assert.ok(entityTypes.has(expected), "missing capture for " + expected);
+
+    const messageChange = changes.find((change) => change.entityType === "messages" && change.entityId === message.id);
+    const outboxChange = changes.find((change) => change.entityType === "outbox_events" && change.payload?.aggregate_id === message.id);
+    assert.ok(messageChange);
+    assert.ok(outboxChange);
+    assert.equal(messageChange.transactionId, outboxChange.transactionId, "message and outbox events must share the same source transaction envelope");
+    const outboxStateChanges = changes.filter((change) => change.entityType === "outbox_events" && change.entityId === claimed[0].id);
+    assert.ok(outboxStateChanges.length >= 3, "message creation, lease claim and delivery must all be captured");
+    assert.ok(outboxStateChanges.some((change) => change.payload?.attempts === 1));
+    assert.ok(outboxStateChanges.some((change) => change.payload?.delivered_at != null));
+    assert.ok(changes.some((change) => change.entityType === "auth_accounts" && change.entityId === "identity-capture-user"));
+    assert.ok(changes.some((change) => change.entityType === "auth_refresh_tokens" && change.entityId === "a".repeat(64)));
+  } finally {
+    if (db.isTransaction) db.exec("ROLLBACK");
+    db.close();
+  }
+});
+
+test("SQLite domain writes roll back when change capture fails", async () => {
+  const db = createSqliteClient({ filename: ":memory:", enableWal: false });
+  try {
+    await runSqliteMigrations(db);
+    const journal = createSqliteProviderMigrationJournal(db);
+    journal.createSession({ sessionId: "business-capture-failure", sourceProvider: "sqlite", targetProvider: "postgres", schemaVersion: "1" });
+    journal.transitionSession({ sessionId: "business-capture-failure", expectedStatus: "prepared", nextStatus: "recording" });
+    const articles = createSqliteArticleStore(db);
+    db.exec("CREATE TRIGGER fail_provider_capture BEFORE INSERT ON provider_migration_changes BEGIN SELECT RAISE(ABORT, 'capture blocked for test'); END");
+    assert.throws(() => articles.createArticle({
+      authorId: "author-rollback", slug: "capture-rollback", title: "Must Roll Back",
+      locale: "en", contentBlocks: [{ id: "p1", type: "paragraph", text: "Rollback" }], publish: false,
+    }), /capture blocked for test/);
+    assert.equal(db.prepare("SELECT count(*) AS count FROM articles WHERE slug = ?").get("capture-rollback").count, 0);
+    assert.equal(db.prepare("SELECT count(*) AS count FROM provider_migration_changes WHERE session_id = ?").get("business-capture-failure").count, 0);
+  } finally {
+    if (db.isTransaction) db.exec("ROLLBACK");
+    db.close();
+  }
 });
