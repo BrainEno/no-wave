@@ -222,7 +222,7 @@ function registerIdentityContracts(provider, options = {}) {
     const key = randomBytes(32).toString("hex");
     try {
       const results = await Promise.all(Array.from({ length: 20 }, () =>
-        f.store.consumeIdentityRateLimit({ key, limit: 5, windowSeconds: 60 })));
+        f.store.consumeRateLimit({ key, limit: 5, windowSeconds: 60 })));
       assert.equal(results.filter((result) => result.allowed).length, 5);
       assert.equal(results.filter((result) => !result.allowed).length, 15);
       const row = f.db
@@ -263,8 +263,8 @@ function registerIdentityContracts(provider, options = {}) {
         userId: stored.account.user_id, sessionId: recentSession, expiresAt: recentExpiry,
         accessTokenId: randomUUID(), accessExpiresAt: recentExpiry, refreshHash: randomBytes(32).toString("hex"),
       });
-      await f.store.consumeIdentityRateLimit({ key: expiredKey, limit: 2, windowSeconds: 60 });
-      await f.store.consumeIdentityRateLimit({ key: activeKey, limit: 2, windowSeconds: 60 });
+      await f.store.consumeRateLimit({ key: expiredKey, limit: 2, windowSeconds: 60 });
+      await f.store.consumeRateLimit({ key: activeKey, limit: 2, windowSeconds: 60 });
       if (f.db) f.db.prepare("UPDATE auth_rate_limits SET reset_at = ? WHERE key = ?").run("2000-01-01T00:00:00.000Z", expiredKey);
       else await sql.unsafe("UPDATE auth_rate_limits SET reset_at = '2000-01-01T00:00:00Z' WHERE key = $1", [expiredKey]);
 
@@ -359,7 +359,7 @@ test("identity HTTP errors are bounded, sanitized and fail closed when configura
   const underlying = createSqliteStore(db);
   const badStore = {
     ...underlying,
-    async consumeIdentityRateLimit() { throw new Error(`private diagnostic ${password}`); },
+    async consumeRateLimit() { throw new Error(`private diagnostic ${password}`); },
   };
   const goodEnv = { AUTH_JWT_SECRET: "disposable-test-only-secret-32-bytes", AUTH_JWT_ISSUER: "test", AUTH_JWT_AUDIENCE: "test" };
   let server;
@@ -401,7 +401,7 @@ test("identity HTTP errors are bounded, sanitized and fail closed when configura
 test("identity rate limiting uses the socket peer and ignores spoofed forwarding headers", async () => {
   const keys = [];
   const services = {
-    async consumeIdentityRateLimit({ key }) { keys.push(key); return { allowed: true, resetAt: new Date(Date.now() + 60000).toISOString() }; },
+    async consumeRateLimit({ key }) { keys.push(key); return { allowed: true, resetAt: new Date(Date.now() + 60000).toISOString() }; },
     async revokeIdentityRefresh() { return true; },
     async pruneExpiredIdentityState() {},
   };

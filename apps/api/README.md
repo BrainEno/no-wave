@@ -7,6 +7,23 @@ This package is the backend API of the independent BOT THK rebuild. Versioned RE
 - `GET /health` is a liveness probe and does not require persistence.
 - `GET /ready` is a readiness probe: it returns `200` only when a configured persistence store passes its health check, otherwise `503` with a sanitized response. Both responses are non-cacheable.
 
+## Write rate limits
+
+All business write routes under `/api/v1` use the shared persistent rate-limit port. Limits are enforced independently by verified user ID and the TCP peer IP, with a route-specific bucket; requests without a valid viewer identity are still covered by the IP bucket. Bucket identifiers are HMAC digests, not raw account IDs or IP addresses. The API ignores client-supplied `X-Forwarded-For`; deployments behind a reverse proxy must configure trusted edge/proxy rate limiting rather than forwarding untrusted client values.
+
+| Write operation | Per verified user | Per socket IP | Window |
+| --- | ---: | ---: | --- |
+| Create article | 10 | 30 | 1 hour |
+| Update article | 20 | 60 | 1 hour |
+| Update profile | 20 | 60 | 1 hour |
+| Create comment | 20 | 60 | 1 minute |
+| Send message | 30 | 120 | 1 minute |
+| Follow/unfollow, set article-like state | 60 | 120 | 1 minute |
+| Create/delete taxonomy, delete comment | 30–60 | 60–120 | 1 minute |
+| Other conversation/session/notification writes | 60 | 120 | 1 minute |
+
+The existing registration/login/refresh/logout policies remain separately stricter. Rate-limit state is stored using the same atomic persistent counter contract on SQLite and PostgreSQL, so counters are not limited to a single API process. Exceeded limits return `429 RATE_LIMITED` and a positive `Retry-After` number of seconds. Authentication writes still fail closed if JWT configuration is missing or invalid.
+
 ## Versioned REST API
 
 The versioned REST transport exposes business endpoints under `/api/v1`, with JSON responses and `Cache-Control: no-store`. Unknown legacy paths, including `/graphql`, return a sanitized JSON `404 NOT_FOUND` response.

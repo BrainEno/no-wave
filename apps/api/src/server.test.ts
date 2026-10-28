@@ -32,7 +32,9 @@ function completeFakeAdapter(overrides = {}) {
   for (const methods of Object.values(persistencePortMethods)) {
     for (const method of methods) {
       if (typeof adapter[method] !== "function") {
-        adapter[method] = async () => null;
+        adapter[method] = method === "consumeRateLimit"
+          ? async () => ({ allowed: true, resetAt: new Date(Date.now() + 60000).toISOString() })
+          : async () => null;
       }
     }
   }
@@ -634,6 +636,77 @@ test("REST tag articles verify localized tag visibility before listing and forwa
     },
   });
 });
+test("REST write rate limits return 429 and Retry-After before invoking a mutation", async () => {
+  const calls = [];
+  let writes = 0;
+  const applicationServices = {
+    async isSessionRevoked() { return false; },
+    async consumeRateLimit(input) {
+      calls.push(input);
+      return {
+        allowed: calls.length === 1,
+        resetAt: new Date(Date.now() + 3200).toISOString(),
+      };
+    },
+    async createArticle() { writes += 1; return {}; },
+  };
+  await withServer(async (baseUrl) => {
+    const response = await fetch(baseUrl + "/api/v1/articles", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer " + signedToken("rate-limited-writer"),
+        "x-forwarded-for": "203.0.113.99",
+      },
+      body: JSON.stringify({
+        slug: "rate-limited",
+        title: "Rate limited",
+        contentBlocks: [{ id: "p1", type: "paragraph", text: "Test" }],
+      }),
+    });
+    assert.equal(response.status, 429);
+    assert.match(response.headers.get("retry-after") ?? "", /^[1-4]$/);
+    assert.deepEqual(await response.json(), {
+      error: { code: "RATE_LIMITED", message: "Too many requests. Try again later." },
+    });
+    assert.equal(calls.length, 2);
+    assert.deepEqual(calls.map((call) => call.limit), [10, 30]);
+    assert.ok(calls.every((call) => /^[a-f0-9]{64}$/.test(call.key)));
+    assert.ok(calls.every((call) => !call.key.includes("203.0.113.99") && !call.key.includes("rate-limited-writer")));
+    assert.equal(writes, 0);
+  }, { env: authEnv, applicationServices });
+});
+
+test("REST write rate limiter ignores spoofed forwarding headers and uses the verified user", async () => {
+  const calls = [];
+  const applicationServices = {
+    async isSessionRevoked() { return false; },
+    async consumeRateLimit(input) {
+      calls.push(input);
+      return { allowed: true, resetAt: new Date(Date.now() + 60000).toISOString() };
+    },
+    async createArticle() { throw new Error("The rate-limit smoke test must not reach persistence."); },
+  };
+  await withServer(async (baseUrl) => {
+    for (const forwardedFor of ["198.51.100.1", "198.51.100.2"]) {
+      const response = await fetch(baseUrl + "/api/v1/articles", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer " + signedToken("same-writer"),
+          "x-forwarded-for": forwardedFor,
+        },
+        body: "not json",
+      });
+      // The request passed throttling and then reached normal JSON validation.
+      assert.equal(response.status, 400);
+    }
+    assert.equal(calls.length, 4);
+    assert.equal(calls[0].key, calls[2].key, "verified user bucket must be stable");
+    assert.equal(calls[1].key, calls[3].key, "IP bucket must use the socket peer, not X-Forwarded-For");
+  }, { env: authEnv, applicationServices });
+});
+
 test("REST rejects unsupported locales, oversized search terms and offsets before persistence", async () => {
   let calls = 0;
   const oversizedQuery = "x".repeat(201);

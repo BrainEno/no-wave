@@ -34,8 +34,9 @@ export const persistencePortMethods = Object.freeze({
   sessions: Object.freeze(["revokeSession", "isSessionRevoked"]),
   identity: Object.freeze([
     "createIdentityAccount", "findIdentityAccount", "createIdentitySession",
-    "rotateIdentityRefresh", "revokeIdentityRefresh", "consumeIdentityRateLimit", "pruneExpiredIdentityState",
+    "rotateIdentityRefresh", "revokeIdentityRefresh", "pruneExpiredIdentityState",
   ]),
+  rateLimits: Object.freeze(["consumeRateLimit"]),
   outbox: Object.freeze([
     "claimOutboxEvents", "markOutboxDelivered", "rescheduleOutboxEvent",
   ]),

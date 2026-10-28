@@ -9,7 +9,7 @@ test("identity maintenance is periodically invoked without exposing throttle sub
   const service = createIdentityService({
     env: { AUTH_JWT_SECRET: "fixture-secret-not-a-real-key-32-bytes", AUTH_JWT_ISSUER: "test", AUTH_JWT_AUDIENCE: "test" },
     store: {
-      async consumeIdentityRateLimit({ key }) { keys.push(key); return { allowed: true, resetAt: new Date(Date.now() + 60000).toISOString() }; },
+      async consumeRateLimit({ key }) { keys.push(key); return { allowed: true, resetAt: new Date(Date.now() + 60000).toISOString() }; },
       async revokeIdentityRefresh() { return true; },
       async pruneExpiredIdentityState() { cleanups += 1; },
     },

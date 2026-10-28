@@ -22,7 +22,7 @@ export type IdentityStore = {
   createIdentitySession(session: IdentitySession): Promise<unknown>;
   rotateIdentityRefresh(input: { refreshHash: string; nextRefreshHash: string; accessTokenId: string; issuedAt: string; accessExpiresAt: string }): Promise<Rotation>;
   revokeIdentityRefresh(input: { refreshHash: string }): Promise<unknown>;
-  consumeIdentityRateLimit(input: { key: string; limit: number; windowSeconds: number }): Promise<{ allowed: boolean; resetAt: string }>;
+  consumeRateLimit(input: { key: string; limit: number; windowSeconds: number }): Promise<{ allowed: boolean; resetAt: string }>;
   pruneExpiredIdentityState(): Promise<unknown>;
 };
 
@@ -82,7 +82,7 @@ export function createIdentityService({ store, env }: { store: IdentityStore; en
       rateOperations = 0;
       await store.pruneExpiredIdentityState();
     }
-    const result = await store.consumeIdentityRateLimit({ key: rateKey(secret, scope, subject), limit, windowSeconds });
+    const result = await store.consumeRateLimit({ key: rateKey(secret, scope, subject), limit, windowSeconds });
     if (!result.allowed) {
       const wait = Math.ceil((new Date(result.resetAt).getTime() - Date.now()) / 1000);
       throw new IdentityRateLimitError(Number.isFinite(wait) ? Math.max(1, wait) : windowSeconds);
