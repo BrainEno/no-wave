@@ -181,7 +181,7 @@ export function createSqliteProfileStore(db) {
       validateArticleLocale(locale);
       const validatedAvatarUrl = validateProfileUrl("avatarUrl", avatarUrl, true);
       const validatedWebsiteUrl = validateProfileUrl("websiteUrl", websiteUrl, false);
-      return transaction(() => {
+      return transaction((transactionId) => {
         run(
           `INSERT INTO user_profiles (user_id, avatar_url, website_url) VALUES (?, ?, ?)
            ON CONFLICT (user_id) DO UPDATE SET
