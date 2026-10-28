@@ -53,6 +53,24 @@ test("explicit REST API base takes precedence over the service binding", () => {
   );
 });
 
+test("new base URL takes precedence and legacy override retains its previous precedence over service binding", () => {
+  assert.equal(
+    resolveApiBaseUrl({
+      explicitUrl: "https://api-new.example.test",
+      legacyGraphqlUrl: "https://api-legacy.example.test/graphql",
+      serviceUrl: "https://api-service.example.test",
+    }),
+    "https://api-new.example.test",
+  );
+  assert.equal(
+    resolveApiBaseUrl({
+      legacyGraphqlUrl: "https://api-legacy.example.test/graphql",
+      serviceUrl: "https://api-service.example.test",
+    }),
+    "https://api-legacy.example.test",
+  );
+});
+
 test("legacy GraphQL environment value is mapped to its API base with a deprecation warning", () => {
   const warnings: string[] = [];
   const originalWarn = console.warn;
