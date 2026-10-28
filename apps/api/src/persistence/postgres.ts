@@ -604,6 +604,7 @@ export function createPostgresStore(sql) {
       validateArticleLocale(locale);
       const normalized = normalizeHashtag(name);
       return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
         await tx.unsafe(
           "INSERT INTO taxonomies (id, kind, slug, created_by) VALUES ($1, 'tag', $2, $3) ON CONFLICT (kind, slug) DO NOTHING",
           [randomUUID(), normalized.slug, actorId],
@@ -631,6 +632,14 @@ export function createPostgresStore(sql) {
           [taxonomy.id, locale],
         );
         if (!found[0]) throw new TaxonomyConflictError("Tag exists but has no display label for the requested locale.");
+        const [taxonomySnapshot, translationSnapshot] = await Promise.all([
+          tx.unsafe("SELECT * FROM taxonomies WHERE id = $1", [taxonomy.id]),
+          tx.unsafe("SELECT * FROM taxonomy_translations WHERE taxonomy_id = $1 AND locale = $2", [taxonomy.id, locale]),
+        ]);
+        await captureChanges(tx, transactionId, [
+          { entityType: "taxonomies", entityId: taxonomy.id, operation: "upsert", payload: taxonomySnapshot[0] },
+          { entityType: "taxonomy_translations", entityId: migrationEntityKey(taxonomy.id, locale), operation: "upsert", payload: translationSnapshot[0] },
+        ]);
         return mapTaxonomy(found[0]);
       });
     },
@@ -643,6 +652,7 @@ export function createPostgresStore(sql) {
       validateArticleLocale(locale);
       try {
         return await sql.begin(async (tx) => {
+          const transactionId = createMigrationTransactionId();
           let taxonomyRows = await tx.unsafe(
             "INSERT INTO taxonomies (id, kind, slug, created_by) VALUES ($1, $2, $3, $4) ON CONFLICT (kind, slug) DO NOTHING RETURNING id, kind, slug, created_by",
             [randomUUID(), kind, normalizedSlug, actorId],
@@ -662,6 +672,14 @@ export function createPostgresStore(sql) {
             "SELECT tax.id, tax.kind, tax.slug, tax.created_by, tr.name, tr.description, tr.locale, 0::int AS article_count FROM taxonomies AS tax JOIN taxonomy_translations AS tr ON tr.taxonomy_id = tax.id AND tr.locale = $2 WHERE tax.id = $1",
             [taxonomy.id, locale],
           );
+          const [taxonomySnapshot, translationSnapshot] = await Promise.all([
+            tx.unsafe("SELECT * FROM taxonomies WHERE id = $1", [taxonomy.id]),
+            tx.unsafe("SELECT * FROM taxonomy_translations WHERE taxonomy_id = $1 AND locale = $2", [taxonomy.id, locale]),
+          ]);
+          await captureChanges(tx, transactionId, [
+            { entityType: "taxonomies", entityId: taxonomy.id, operation: "upsert", payload: taxonomySnapshot[0] },
+            { entityType: "taxonomy_translations", entityId: migrationEntityKey(taxonomy.id, locale), operation: "upsert", payload: translationSnapshot[0] },
+          ]);
           return mapTaxonomy(found[0]);
         });
       } catch (error) {
@@ -673,10 +691,20 @@ export function createPostgresStore(sql) {
       if (!isUuid(taxonomyId)) throw new ArticleInputError("taxonomyId must be a valid UUID.");
       requiredText("actorId", actorId, 300);
       return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
         const rows = await tx.unsafe("SELECT created_by FROM taxonomies WHERE id = $1 FOR UPDATE", [taxonomyId]);
         if (rows.length === 0) return false;
         if (rows[0].created_by !== actorId) throw new ArticleAuthorizationError("Only the taxonomy creator can delete it.");
+        const [translations, links] = await Promise.all([
+          tx.unsafe("SELECT taxonomy_id, locale FROM taxonomy_translations WHERE taxonomy_id = $1", [taxonomyId]),
+          tx.unsafe("SELECT article_id, taxonomy_id FROM article_taxonomies WHERE taxonomy_id = $1", [taxonomyId]),
+        ]);
         await tx.unsafe("DELETE FROM taxonomies WHERE id = $1", [taxonomyId]);
+        await captureChanges(tx, transactionId, [
+          { entityType: "taxonomies", entityId: taxonomyId, operation: "delete", payload: null },
+          ...translations.map((row) => ({ entityType: "taxonomy_translations", entityId: migrationEntityKey(taxonomyId, row.locale), operation: "delete", payload: null })),
+          ...links.map((row) => ({ entityType: "article_taxonomies", entityId: migrationEntityKey(row.article_id, taxonomyId), operation: "delete", payload: null })),
+        ]);
         return true;
       });
     },
