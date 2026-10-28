@@ -98,7 +98,7 @@ test("duplicate completion callbacks do not double count requests or decrement a
   observation.finish({ statusCode: 200, durationMs: 1 });
   observation.finish({ statusCode: 500, durationMs: 999 });
   const metrics = observability.renderMetrics();
-  assert.match(metrics, /api_http_requests_total\{method="GET",route="\/",status="200"\} 1/);
+  assert.match(metrics, /api_http_requests_total\{method="GET",route="\/not_found",status="200"\} 1/);
   assert.equal(metrics.includes('status="500"'), false);
   assert.match(metrics, /api_http_active_requests 0/);
 });
