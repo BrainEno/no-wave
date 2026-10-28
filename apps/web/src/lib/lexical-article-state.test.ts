@@ -23,7 +23,8 @@ test("application article blocks become a Lexical EditorState with formatting, l
   assert.equal(paragraphChildren[1].type, "link");
   const link = paragraphChildren[1] as Record<string, unknown>;
   assert.equal(link.url, "https://example.test/read");
-  assert.equal((link.children[0] as Record<string, unknown>).format, 3);
+  const linkChildren = link.children as Record<string, unknown>[];
+  assert.equal(linkChildren[0].format, 3);
   assert.equal(state.root.children[1].tag, "h2");
   assert.equal(state.root.children[3].listType, "number");
   assert.equal(state.root.children[4].type, "code");

@@ -153,7 +153,11 @@ export async function handleAuthPost(
     const response = NextResponse.json(safeApiError(payload, upstream.status), { status: upstream.status, headers: NO_STORE });
     if (action === "logout") {
       clearTokenCookies(response, request);
-      if (upstream.status === 401) return NextResponse.json({ data: { ok: true } }, { status: 200, headers: NO_STORE });
+      if (upstream.status === 401) {
+        const loggedOut = NextResponse.json({ data: { ok: true } }, { status: 200, headers: NO_STORE });
+        clearTokenCookies(loggedOut, request);
+        return loggedOut;
+      }
     }
     return response;
   }
