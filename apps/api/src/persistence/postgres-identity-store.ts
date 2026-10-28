@@ -210,7 +210,7 @@ export function createPostgresIdentityStore(sql) {
         return { sessions: sessions.length, rateLimits: limits.length, revokedSessions: revokedSessions.length };
       });
     },
-    async consumeIdentityRateLimit({ key, limit, windowSeconds }) {
+    async consumeRateLimit({ key, limit, windowSeconds }) {
       return sql.begin(async (tx) => {
         const transactionId = createMigrationTransactionId();
         const rows = await tx.unsafe(
