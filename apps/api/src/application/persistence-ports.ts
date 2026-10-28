@@ -58,7 +58,7 @@ export function assertPersistenceAdapter(adapter) {
 }
 
 /** Group a flat adapter into domain-specific repository ports. */
-export function createPersistencePorts(adapter) {
+export function createPersistencePorts(adapter, { onOperation } = {}) {
   if (!adapter || typeof adapter !== "object") {
     throw new TypeError("A persistence adapter object is required.");
   }
@@ -72,7 +72,35 @@ export function createPersistencePorts(adapter) {
           if (typeof operation !== "function") {
             throw new TypeError(`Persistence adapter does not implement ${port}.${method}.`);
           }
-          return Reflect.apply(operation, adapter, args);
+          const startedAt = process.hrtime.bigint();
+          const report = (success) => {
+            if (typeof onOperation !== "function") return;
+            try {
+              onOperation({
+                operation: method,
+                success,
+                durationMs: Number(process.hrtime.bigint() - startedAt) / 1_000_000,
+              });
+            } catch {
+              // Metrics are best effort and never change persistence semantics.
+            }
+          };
+          let result;
+          try {
+            result = Reflect.apply(operation, adapter, args);
+          } catch (error) {
+            report(false);
+            throw error;
+          }
+          if (result !== null && (typeof result === "object" || typeof result === "function") &&
+              typeof result.then === "function") {
+            return result.then(
+              (value) => { report(true); return value; },
+              (error) => { report(false); throw error; },
+            );
+          }
+          report(true);
+          return result;
         },
       ]))),
     ]),
