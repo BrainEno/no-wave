@@ -128,7 +128,14 @@ export function createPostgresIdentityStore(sql) {
           ORDER BY reset_at LIMIT 512 FOR UPDATE SKIP LOCKED
         ) DELETE FROM auth_rate_limits WHERE key IN (SELECT key FROM expired)
           AND reset_at < clock_timestamp() RETURNING key`);
-        return { sessions: sessions.length, rateLimits: limits.length };
+        // Expired revocations are no longer consulted by isSessionRevoked.
+        // Keep cleanup bounded and skip rows another maintenance transaction holds.
+        const revokedSessions = await tx.unsafe(`WITH expired AS (
+          SELECT session_id FROM revoked_sessions WHERE expires_at <= clock_timestamp()
+          ORDER BY expires_at LIMIT 512 FOR UPDATE SKIP LOCKED
+        ) DELETE FROM revoked_sessions WHERE session_id IN (SELECT session_id FROM expired)
+          AND expires_at <= clock_timestamp() RETURNING session_id`);
+        return { sessions: sessions.length, rateLimits: limits.length, revokedSessions: revokedSessions.length };
       });
     },
     async consumeIdentityRateLimit({ key, limit, windowSeconds }) {
