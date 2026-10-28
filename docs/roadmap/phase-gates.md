@@ -95,7 +95,8 @@ Exit gate: public content exposes published data only; mutations are authorized;
 - [ ] Verify Web/API end-to-end behavior with real authentication, including reconnect/offline recovery.
 - [ ] Choose and configure any external Web Push/email provider only after requirements and credentials are approved.
 - [ ] Design cross-engine change capture/checkpoints and recovery after the write-authority and RPO/RTO decisions are approved.
-- [ ] Complete delivery observability and failure-recovery acceptance.
+- [x] Emit structured outbox worker failure logs with sanitized error classes, attempt counts and explicit retry-scheduling outcome; keep logging failures isolated from retry handling.
+- [ ] Complete delivery observability and failure-recovery acceptance, including queue-depth metrics, alert thresholds and operational recovery drills.
 
 Exit gate: persisted state is the source of truth, access denial is tested, and retries/reconnect do not lose or duplicate logical messages/notifications.
 

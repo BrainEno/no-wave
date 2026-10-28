@@ -18,6 +18,23 @@ const leaseSeconds = integerSetting("OUTBOX_LEASE_SECONDS", 60, 1, 3600);
 const retryDelaySeconds = integerSetting("OUTBOX_RETRY_DELAY_SECONDS", 30, 1, 86400);
 const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
+function safeErrorName(error) {
+  if (!(error instanceof Error)) return "NonErrorThrow";
+  return /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name) ? error.name : "Error";
+}
+
+function writeWorkerLog(level, event, fields = {}) {
+  const line = JSON.stringify({
+    timestamp: new Date().toISOString(),
+    level,
+    component: "notification-worker",
+    event,
+    ...fields,
+  }) + "\n";
+  if (level === "warn" || level === "error") process.stderr.write(line);
+  else process.stdout.write(line);
+}
+
 async function runWorker() {
   if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required for the notification worker.");
   const sql = await createPostgresClient({ connectionString: process.env.DATABASE_URL });
@@ -29,26 +46,39 @@ async function runWorker() {
     const store = createPostgresStore(sql);
     await store.health();
     const deliver = createMessageNotificationDelivery({ store });
-    process.stdout.write("Notification outbox worker started.\n");
+    writeWorkerLog("info", "worker_started", { pollIntervalMs, batchLimit, leaseSeconds, retryDelaySeconds });
     while (!stopping) {
       try {
         const result = await dispatchOutboxBatch({
-          store, deliver, limit: batchLimit, leaseSeconds, retryDelaySeconds,
+          store,
+          deliver,
+          limit: batchLimit,
+          leaseSeconds,
+          retryDelaySeconds,
+          onDeliveryFailure: (failure) => writeWorkerLog(
+            failure.retryScheduled && !failure.retryScheduleErrorName ? "warn" : "error",
+            "outbox_event_failed",
+            failure,
+          ),
         });
-        if (result.claimed > 0) process.stdout.write(`Outbox batch: ${JSON.stringify(result)}\n`);
+        if (result.claimed > 0) {
+          writeWorkerLog(result.failed > 0 ? "warn" : "info", "outbox_batch_completed", result);
+        }
         if (result.claimed === 0) await delay(pollIntervalMs);
       } catch (error) {
-        process.stderr.write(`Outbox batch failed: ${error.message}\n`);
+        // Driver exception messages can contain SQL details or infrastructure values.
+        writeWorkerLog("error", "outbox_batch_failed", { errorName: safeErrorName(error) });
         await delay(pollIntervalMs);
+      }
       }
     }
   } finally {
-    process.stdout.write("Notification outbox worker stopping.\n");
+    writeWorkerLog("info", "worker_stopping");
     await sql.end({ timeout: 5 });
   }
 }
 
 runWorker().catch((error) => {
-  process.stderr.write(`Notification worker failed to start: ${error.message}\n`);
+  writeWorkerLog("error", "worker_failed_to_start", { errorName: safeErrorName(error) });
   process.exitCode = 1;
 });

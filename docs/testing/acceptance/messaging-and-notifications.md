@@ -106,3 +106,16 @@ Given delivery races with a membership edit or conversation deletion<br>
 Then recipient selection and all inbox inserts serialize with that change<br>
 And a stale event for a deleted conversation creates no orphan inbox rows.<br>
 Retries retain and deduplicate inbox rows committed by older partial deliveries.
+
+
+## NOTIF-07 — Worker failures are observable without leaking payloads
+
+**Risk:** High
+
+Given an outbox event fails delivery or loses its lease
+When the worker schedules recovery
+Then it emits a structured JSON failure record with event ID/type, attempt count, error class and retry-scheduling outcome
+And logs do not include event payloads, raw exception messages, access tokens, refresh tokens or lease tokens
+And a failure in the logging callback does not interrupt durable retry handling.
+
+If retry scheduling itself fails, the worker records a sanitized batch-level error and continues polling after the configured delay.
