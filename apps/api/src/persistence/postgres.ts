@@ -114,6 +114,7 @@ function mapArticle(row) {
     title: row.title,
     summary: row.summary,
     contentBlocks: parseJsonValue(row.content_blocks),
+    contentBlocksVersion: Number(row.content_blocks_version ?? 0),
     createdAt: iso(row.created_at),
     updatedAt: iso(row.updated_at),
     publishedAt: iso(row.published_at),
@@ -508,7 +509,7 @@ export function createPostgresStore(sql) {
       if (!Number.isInteger(offset) || offset < 0 || offset > 1000000) throw new ArticleInputError("offset must be an integer between 0 and 1000000.");
       const rows = await sql.unsafe(
         `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at,
-                at.locale, at.title, at.summary, at.content_blocks
+                at.locale, at.title, at.summary, at.content_blocks, at.content_blocks_version
          FROM taxonomies AS tax
          JOIN taxonomy_translations AS tt ON tt.taxonomy_id = tax.id AND tt.locale = $3
          JOIN article_taxonomies AS link ON link.taxonomy_id = tax.id
@@ -734,7 +735,7 @@ export function createPostgresStore(sql) {
       }
       const rows = await sql.unsafe(
         `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at,
-                t.locale, t.title, t.summary, t.content_blocks
+                t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version
          FROM article_likes AS likes
          JOIN articles AS a ON a.id = likes.article_id AND a.status = 'published'
          JOIN article_translations AS t ON t.article_id = a.id AND t.locale = $2
@@ -761,7 +762,7 @@ export function createPostgresStore(sql) {
         ),
         candidates AS (
           SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at,
-                 t.locale, t.title, t.summary, t.content_blocks,
+                 t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version,
                  count(DISTINCT candidate_link.taxonomy_id)::int AS shared_taxonomy_count,
                  (a.author_id = target.author_id) AS same_author
           FROM target
@@ -771,9 +772,9 @@ export function createPostgresStore(sql) {
           LEFT JOIN article_taxonomies AS candidate_link
             ON candidate_link.article_id = a.id AND candidate_link.taxonomy_id = target_link.taxonomy_id
           GROUP BY a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at,
-                   t.locale, t.title, t.summary, t.content_blocks, target.author_id
+                   t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version, target.author_id
         )
-        SELECT id, author_id, slug, status, created_at, updated_at, published_at, locale, title, summary, content_blocks
+        SELECT id, author_id, slug, status, created_at, updated_at, published_at, locale, title, summary, content_blocks, content_blocks_version
         FROM candidates
         ORDER BY shared_taxonomy_count DESC, same_author DESC, published_at DESC, id DESC
         LIMIT $3`,
@@ -797,7 +798,7 @@ export function createPostgresStore(sql) {
         : "%" + search.replace(/[\\%_]/g, "\\$&") + "%";
       const rows = await sql.unsafe(
         `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at,
-                t.locale, t.title, t.summary, t.content_blocks
+                t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version
          FROM articles AS a
          JOIN article_translations AS t ON t.article_id = a.id
          WHERE a.status = 'published' AND t.locale = $1
@@ -814,7 +815,7 @@ export function createPostgresStore(sql) {
       validateArticleLocale(locale);
       const rows = await sql.unsafe(
         `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at,
-                t.locale, t.title, t.summary, t.content_blocks
+                t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version
          FROM articles AS a
          JOIN article_translations AS t ON t.article_id = a.id
          WHERE a.slug = $1 AND a.status = 'published' AND t.locale = $2
@@ -829,7 +830,7 @@ export function createPostgresStore(sql) {
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
       const rows = await sql.unsafe(
         `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at,
-                t.locale, t.title, t.summary, t.content_blocks
+                t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version
          FROM articles AS a
          JOIN article_translations AS t ON t.article_id = a.id
          WHERE a.author_id = $1 AND t.locale = $2
@@ -839,9 +840,9 @@ export function createPostgresStore(sql) {
       );
       return rows.map(mapArticle);
     },
-    async createArticle({ authorId, slug, title, summary = "", locale = "zh-CN", contentBlocks, publish = false, workType = "other", categoryIds = [], tagIds = [] }) {
+    async createArticle({ authorId, slug, title, summary = "", locale = "zh-CN", contentBlocks, contentBlocksVersion = 0, publish = false, workType = "other", categoryIds = [], tagIds = [] }) {
       requiredText("authorId", authorId, 300);
-      const input = normalizeArticleInput({ slug, title, summary, locale, contentBlocks, publish, workType });
+      const input = normalizeArticleInput({ slug, title, summary, locale, contentBlocks, contentBlocksVersion, publish, workType });
       const selectedCategories = normalizeTaxonomyIds("categoryIds", categoryIds, 20);
       const selectedTags = normalizeTaxonomyIds("tagIds", tagIds, 50);
       try {
@@ -852,8 +853,8 @@ export function createPostgresStore(sql) {
           );
           const article = rows[0];
           const translations = await tx.unsafe(
-            "INSERT INTO article_translations (article_id, locale, title, summary, content_blocks) VALUES ($1, $2, $3, $4, $5::jsonb) RETURNING locale, title, summary, content_blocks",
-            [article.id, input.locale, input.title, input.summary, input.contentBlocks],
+            "INSERT INTO article_translations (article_id, locale, title, summary, content_blocks, content_blocks_version) VALUES ($1, $2, $3, $4, $5::jsonb, $6) RETURNING locale, title, summary, content_blocks, content_blocks_version",
+            [article.id, input.locale, input.title, input.summary, input.contentBlocks, input.contentBlocksVersion],
           );
           await replaceArticleTaxonomyKind(tx, article.id, "category", selectedCategories);
           await replaceArticleTaxonomyKind(tx, article.id, "tag", selectedTags);
@@ -864,11 +865,11 @@ export function createPostgresStore(sql) {
         throw error;
       }
     },
-    async updateArticle({ articleId, actorId, slug, title, summary = "", locale = "zh-CN", contentBlocks, publish = false, workType = undefined, categoryIds = undefined, tagIds = undefined }) {
+    async updateArticle({ articleId, actorId, slug, title, summary = "", locale = "zh-CN", contentBlocks, contentBlocksVersion = 0, publish = false, workType = undefined, categoryIds = undefined, tagIds = undefined }) {
 
       if (!isUuid(articleId)) throw new ArticleInputError("articleId must be a valid article ID.");
       requiredText("actorId", actorId, 300);
-      const input = normalizeArticleInput({ slug, title, summary, locale, contentBlocks, publish, workType });
+      const input = normalizeArticleInput({ slug, title, summary, locale, contentBlocks, contentBlocksVersion, publish, workType });
       const selectedCategories = normalizeTaxonomyIds("categoryIds", categoryIds, 20);
       const selectedTags = normalizeTaxonomyIds("tagIds", tagIds, 50);
       try {
@@ -882,8 +883,8 @@ export function createPostgresStore(sql) {
           );
           if (!rows[0]) throw new ArticleNotFoundError();
           const translations = await tx.unsafe(
-            "INSERT INTO article_translations (article_id, locale, title, summary, content_blocks) VALUES ($1, $2, $3, $4, $5::jsonb) ON CONFLICT (article_id, locale) DO UPDATE SET title = EXCLUDED.title, summary = EXCLUDED.summary, content_blocks = EXCLUDED.content_blocks, updated_at = now() RETURNING locale, title, summary, content_blocks",
-            [articleId, input.locale, input.title, input.summary, input.contentBlocks],
+            "INSERT INTO article_translations (article_id, locale, title, summary, content_blocks, content_blocks_version) VALUES ($1, $2, $3, $4, $5::jsonb, $6) ON CONFLICT (article_id, locale) DO UPDATE SET title = EXCLUDED.title, summary = EXCLUDED.summary, content_blocks = EXCLUDED.content_blocks, content_blocks_version = EXCLUDED.content_blocks_version, updated_at = now() RETURNING locale, title, summary, content_blocks, content_blocks_version",
+            [articleId, input.locale, input.title, input.summary, input.contentBlocks, input.contentBlocksVersion],
           );
           await replaceArticleTaxonomyKind(tx, articleId, "category", selectedCategories);
           await replaceArticleTaxonomyKind(tx, articleId, "tag", selectedTags);

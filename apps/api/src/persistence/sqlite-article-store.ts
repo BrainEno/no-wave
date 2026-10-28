@@ -25,7 +25,7 @@ export function createSqliteArticleStore(db) {
 
   const articleSelect = `
     SELECT a.id, a.author_id, a.slug, a.work_type, a.status, t.locale,
-           t.title, t.summary, t.content_blocks, a.created_at, a.updated_at, a.published_at
+           t.title, t.summary, t.content_blocks, t.content_blocks_version, a.created_at, a.updated_at, a.published_at
     FROM articles a
     JOIN article_translations t ON t.article_id = a.id
   `;
@@ -39,6 +39,7 @@ export function createSqliteArticleStore(db) {
     title: row.title,
     summary: row.summary,
     contentBlocks: JSON.parse(row.content_blocks),
+    contentBlocksVersion: row.content_blocks_version ?? 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     publishedAt: row.published_at,
@@ -131,14 +132,14 @@ export function createSqliteArticleStore(db) {
         LEFT JOIN article_taxonomies target_link ON target_link.article_id = ?
         LEFT JOIN article_taxonomies candidate_link ON candidate_link.article_id = a.id AND candidate_link.taxonomy_id = target_link.taxonomy_id
         WHERE a.status = 'published' AND a.id <> ? AND t.locale = ?
-        GROUP BY a.id, a.author_id, a.slug, a.work_type, a.status, t.locale, t.title, t.summary, t.content_blocks, a.created_at, a.updated_at, a.published_at
+        GROUP BY a.id, a.author_id, a.slug, a.work_type, a.status, t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version, a.created_at, a.updated_at, a.published_at
         ORDER BY count(DISTINCT candidate_link.taxonomy_id) DESC, (a.author_id = ?) DESC, a.published_at DESC, a.id DESC LIMIT ?
       `).all(current.id, current.id, locale, current.author_id, limit).map(mapArticle);
     },
 
-    createArticle({ authorId, slug, title, summary = "", locale = "zh-CN", contentBlocks, publish = false, workType = "other", categoryIds = [], tagIds = [] }) {
+    createArticle({ authorId, slug, title, summary = "", locale = "zh-CN", contentBlocks, contentBlocksVersion = 0, publish = false, workType = "other", categoryIds = [], tagIds = [] }) {
       requiredText("authorId", authorId, 300);
-      const input = normalizeArticleInput({ slug, title, summary, locale, contentBlocks, publish, workType });
+      const input = normalizeArticleInput({ slug, title, summary, locale, contentBlocks, contentBlocksVersion, publish, workType });
       const categories = normalizeTaxonomyIds("categoryIds", categoryIds, 20) ?? [];
       const tags = normalizeTaxonomyIds("tagIds", tagIds, 50) ?? [];
       const id = randomUUID();
@@ -147,8 +148,8 @@ export function createSqliteArticleStore(db) {
           const now = new Date().toISOString();
           db.prepare("INSERT INTO articles (id, author_id, slug, status, work_type, created_at, updated_at, published_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
             .run(id, authorId, input.slug, input.publish ? "published" : "draft", input.workType ?? "other", now, now, input.publish ? now : null);
-          db.prepare("INSERT INTO article_translations (article_id, locale, title, summary, content_blocks, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-            .run(id, input.locale, input.title, input.summary, JSON.stringify(input.contentBlocks), now, now);
+          db.prepare("INSERT INTO article_translations (article_id, locale, title, summary, content_blocks, content_blocks_version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+            .run(id, input.locale, input.title, input.summary, JSON.stringify(input.contentBlocks), input.contentBlocksVersion, now, now);
           replaceTaxonomies(id, "category", categories);
           replaceTaxonomies(id, "tag", tags);
           return mapArticle(statement(articleSelect + " WHERE a.id = ? AND t.locale = ?").get(id, input.locale));
@@ -159,10 +160,10 @@ export function createSqliteArticleStore(db) {
       }
     },
 
-    updateArticle({ articleId, actorId, slug, title, summary = "", locale = "zh-CN", contentBlocks, publish = false, workType, categoryIds, tagIds }) {
+    updateArticle({ articleId, actorId, slug, title, summary = "", locale = "zh-CN", contentBlocks, contentBlocksVersion = 0, publish = false, workType, categoryIds, tagIds }) {
       if (!isUuid(articleId)) throw new ArticleInputError("articleId must be a valid article ID.");
       requiredText("actorId", actorId, 300);
-      const input = normalizeArticleInput({ slug, title, summary, locale, contentBlocks, publish, workType });
+      const input = normalizeArticleInput({ slug, title, summary, locale, contentBlocks, contentBlocksVersion, publish, workType });
       const categories = normalizeTaxonomyIds("categoryIds", categoryIds, 100);
       const tags = normalizeTaxonomyIds("tagIds", tagIds, 100);
       try {
@@ -173,11 +174,11 @@ export function createSqliteArticleStore(db) {
           const now = new Date().toISOString();
           db.prepare("UPDATE articles SET slug = ?, status = ?, work_type = COALESCE(?, work_type), updated_at = ?, published_at = CASE WHEN ? = 1 THEN COALESCE(published_at, ?) ELSE NULL END WHERE id = ?")
             .run(input.slug, input.publish ? "published" : "draft", input.workType ?? null, now, input.publish ? 1 : 0, now, articleId);
-          db.prepare(`INSERT INTO article_translations (article_id, locale, title, summary, content_blocks, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+          db.prepare(`INSERT INTO article_translations (article_id, locale, title, summary, content_blocks, content_blocks_version, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(article_id, locale) DO UPDATE SET title = excluded.title, summary = excluded.summary,
-              content_blocks = excluded.content_blocks, updated_at = excluded.updated_at`)
-            .run(articleId, input.locale, input.title, input.summary, JSON.stringify(input.contentBlocks), now, now);
+              content_blocks = excluded.content_blocks, content_blocks_version = excluded.content_blocks_version, updated_at = excluded.updated_at`)
+            .run(articleId, input.locale, input.title, input.summary, JSON.stringify(input.contentBlocks), input.contentBlocksVersion, now, now);
           replaceTaxonomies(articleId, "category", categories);
           replaceTaxonomies(articleId, "tag", tags);
           return mapArticle(statement(articleSelect + " WHERE a.id = ? AND t.locale = ?").get(articleId, input.locale));

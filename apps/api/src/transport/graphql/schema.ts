@@ -97,6 +97,7 @@ export function createApiSchema() {
         title: String!
         summary: String!
         contentBlocks: String!
+        contentBlocksVersion: Int!
         createdAt: String!
         updatedAt: String!
         publishedAt: String
@@ -168,8 +169,8 @@ export function createApiSchema() {
         markAllNotificationsRead: Int!
         revokeCurrentSession: Boolean!
 
-        createArticle(slug: String!, title: String!, summary: String = "", locale: String = "zh-CN", contentBlocks: String!, publish: Boolean = false, workType: String = "other", categoryIds: [ID!]! = [], tagIds: [ID!]! = []): Article!
-        updateArticle(articleId: ID!, slug: String!, title: String!, summary: String = "", locale: String = "zh-CN", contentBlocks: String!, publish: Boolean!, workType: String, categoryIds: [ID!], tagIds: [ID!]): Article!
+        createArticle(slug: String!, title: String!, summary: String = "", locale: String = "zh-CN", contentBlocks: String!, contentBlocksVersion: Int = 0, publish: Boolean = false, workType: String = "other", categoryIds: [ID!]! = [], tagIds: [ID!]! = []): Article!
+        updateArticle(articleId: ID!, slug: String!, title: String!, summary: String = "", locale: String = "zh-CN", contentBlocks: String!, contentBlocksVersion: Int = 0, publish: Boolean!, workType: String, categoryIds: [ID!], tagIds: [ID!]): Article!
         updateMyProfile(displayName: String!, bio: String = "", avatarUrl: String, websiteUrl: String, locale: String = "zh-CN"): AuthorProfile!
         followUser(userId: String!, locale: String = "zh-CN"): AuthorProfile!
         unfollowUser(userId: String!, locale: String = "zh-CN"): AuthorProfile!

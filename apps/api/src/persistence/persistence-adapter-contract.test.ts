@@ -627,14 +627,20 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
     const runtime = await fixture();
     const suffix = randomUUID();
     const slug = `contract-draft-${suffix}`;
+    const richTextBlocks = [{
+      id: "p1", type: "paragraph", text: "Shared contract content.",
+      inlines: [{ text: "Shared " }, { text: "contract", marks: ["bold"] }, { text: " content.", href: "/articles/contract" }],
+    }];
     let articleId;
     try {
       const draft = await runtime.store.createArticle({
         authorId: `author-${suffix}`, slug, title: "Contract draft", summary: "Not public yet",
-        locale: "zh-CN", contentBlocks: [{ id: "p1", type: "paragraph", text: "Shared contract content." }], publish: false,
+        locale: "zh-CN", contentBlocks: richTextBlocks, contentBlocksVersion: 1, publish: false,
       });
       articleId = draft.id;
       assert.equal(draft.status, "draft");
+      assert.equal(draft.contentBlocksVersion, 1);
+      assert.deepEqual(draft.contentBlocks, richTextBlocks);
       assert.equal((await runtime.store.listPublishedArticles({ locale: "zh-CN", query: slug })).length, 0);
       assert.ok((await runtime.store.listMyArticles({ actorId: `author-${suffix}`, locale: "zh-CN" })).some((article) => article.id === articleId));
       await assert.rejects(Promise.resolve().then(() => runtime.store.updateArticle({
@@ -643,9 +649,11 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       })), ArticleAuthorizationError);
       const published = await runtime.store.updateArticle({
         articleId, actorId: `author-${suffix}`, slug, title: "Now published", summary: "Visible in public feed",
-        locale: "zh-CN", contentBlocks: [{ id: "p1", type: "paragraph", text: "Shared contract content." }], publish: true,
+        locale: "zh-CN", contentBlocks: richTextBlocks, contentBlocksVersion: 1, publish: true,
       });
       assert.equal(published.status, "published");
+      assert.equal(published.contentBlocksVersion, 1);
+      assert.deepEqual(published.contentBlocks, richTextBlocks);
       assert.ok((await runtime.store.listPublishedArticles({ locale: "zh-CN", query: "Now published" })).some((article) => article.id === articleId));
     } finally { await runtime.cleanup(undefined, suffix); }
   });

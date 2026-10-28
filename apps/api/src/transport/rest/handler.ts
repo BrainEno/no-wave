@@ -240,7 +240,7 @@ async function readJsonObject(request: IncomingMessage, maxBytes = MAX_JSON_BODY
   });
 }
 const ARTICLE_WRITE_FIELDS = new Set([
-  "slug", "title", "summary", "locale", "contentBlocks", "publish", "workType", "categoryIds", "tagIds",
+  "slug", "title", "summary", "locale", "contentBlocks", "contentBlocksVersion", "publish", "workType", "categoryIds", "tagIds",
 ]);
 
 function normalizeArticleWriteBody(
@@ -271,6 +271,10 @@ function normalizeArticleWriteBody(
   if (requirePublish && typeof body.publish !== "boolean") {
     return { input: null, error: "publish must be supplied as a boolean for article updates." };
   }
+  const contentBlocksVersion = body.contentBlocksVersion === undefined ? 0 : body.contentBlocksVersion;
+  if (!Number.isInteger(contentBlocksVersion) || (contentBlocksVersion !== 0 && contentBlocksVersion !== 1)) {
+    return { input: null, error: "contentBlocksVersion must be 0 or 1." };
+  }
   for (const field of ["categoryIds", "tagIds"] as const) {
     if (body[field] !== undefined && !Array.isArray(body[field])) {
       return { input: null, error: field + " must be an array when supplied." };
@@ -278,7 +282,7 @@ function normalizeArticleWriteBody(
   }
 
   return {
-    input: { ...body, locale: "zh-CN", contentBlocks: JSON.stringify(body.contentBlocks) },
+    input: { ...body, locale: "zh-CN", contentBlocksVersion, contentBlocks: JSON.stringify(body.contentBlocks) },
     error: null,
   };
 }

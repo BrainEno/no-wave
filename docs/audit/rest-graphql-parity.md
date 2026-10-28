@@ -15,9 +15,9 @@ REST profile/follow/search/follower/following responses must pass through the co
 
 ### `Article`
 
-GraphQL fields: `id`, `authorId`, `slug`, `workType`, `status`, `locale`, `title`, `summary`, `contentBlocks`, `createdAt`, `updatedAt`, `publishedAt`, `author`, `categories`, and `tags`.
+GraphQL fields: `id`, `authorId`, `slug`, `workType`, `status`, `locale`, `title`, `summary`, `contentBlocks`, `contentBlocksVersion`, `createdAt`, `updatedAt`, `publishedAt`, `author`, `categories`, and `tags`.
 
-The database article mapper intentionally supplies the scalar/content fields only; GraphQL's `Article` field resolvers hydrate `author`, `categories`, and `tags`. REST must do the equivalent enrichment for all article-producing routes (public reads, author/category/tag lists, liked/related articles, current-user article lists, create, and update). REST represents `contentBlocks` as a JSON array, while the legacy GraphQL schema serializes it as a JSON string; this is an explicit transport representation difference, not a missing field, and the semantic data must round-trip without loss.
+The database article mapper intentionally supplies the scalar/content fields only; GraphQL's `Article` field resolvers hydrate `author`, `categories`, and `tags`. REST must do the equivalent enrichment for all article-producing routes (public reads, author/category/tag lists, liked/related articles, current-user article lists, create, and update). REST represents `contentBlocks` as a JSON array, while the legacy GraphQL schema serializes it as a JSON string; `contentBlocksVersion` is shared by both transports. Version 0 retains the original plain-text block contract; version 1 adds application-owned inline text runs, supported marks, and safe HTTP(S) or root-relative links. The semantic data must round-trip without loss.
 
 ### `ArticleComment`
 
