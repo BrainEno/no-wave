@@ -15,6 +15,7 @@ export function createSqliteTaxonomyStore(db) {
   const run = (sql, ...params) => db.prepare(sql).run(...params);
   const get = (sql, ...params) => db.prepare(sql).get(...params);
   const all = (sql, ...params) => db.prepare(sql).all(...params);
+  const migrationCapture = createSqliteProviderMigrationCapture(db);
   const transaction = (fn) => {
     const transactionId = createMigrationTransactionId();
     db.exec("BEGIN IMMEDIATE");
@@ -116,7 +117,7 @@ export function createSqliteTaxonomyStore(db) {
       requiredText("name", name, 120);
       if (typeof description !== "string" || description.length > 2000) throw new ArticleInputError("description must be a string no longer than 2000 characters.");
       validateArticleLocale(locale);
-      return transaction(() => {
+      return transaction((transactionId) => {
         run("INSERT INTO taxonomies (id, kind, slug, created_by) VALUES (?, ?, ?, ?) ON CONFLICT(kind, slug) DO NOTHING", randomUUID(), kind, normalizedSlug, actorId);
         const tax = get("SELECT id, created_by FROM taxonomies WHERE kind = ? AND slug = ?", kind, normalizedSlug);
         if (!tax) throw new TaxonomyConflictError();
@@ -132,7 +133,7 @@ export function createSqliteTaxonomyStore(db) {
     deleteTaxonomy({ taxonomyId, actorId }) {
       if (!isUuid(taxonomyId)) throw new ArticleInputError("taxonomyId must be a valid UUID.");
       requiredText("actorId", actorId, 300);
-      return transaction(() => {
+      return transaction((transactionId) => {
         const tax = get("SELECT created_by FROM taxonomies WHERE id = ?", taxonomyId);
         if (!tax) return false;
         if (tax.created_by !== actorId) throw new ArticleAuthorizationError("Only the taxonomy creator can delete it.");
