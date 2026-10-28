@@ -158,7 +158,7 @@ export function createSqliteIdentityStore(db) {
         };
       });
     },
-    async consumeIdentityRateLimit({ key, limit, windowSeconds }) {
+    async consumeRateLimit({ key, limit, windowSeconds }) {
       return transaction((transactionId) => {
         const now = new Date().toISOString();
         const resetAt = new Date(Date.now() + windowSeconds * 1000).toISOString();
