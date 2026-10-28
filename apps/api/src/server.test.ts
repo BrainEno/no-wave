@@ -1736,7 +1736,10 @@ test("Prometheus metrics endpoint exposes bounded HTTP and authentication metric
     assert.match(metrics, /api_http_active_requests 1|api_http_active_requests 0/);
     assert.equal(metrics.includes("not-for-metrics"), false);
     assert.equal(metrics.includes("secret="), false);
-  }, { env: { API_METRICS_ENABLED: "true" } });
+  }, {
+    env: { ...authEnv, API_METRICS_ENABLED: "true" },
+    store: { async isSessionRevoked() { return false; } },
+  });
 });
 
 test("metrics endpoint is disabled by default to avoid public operational-data exposure", async () => {
