@@ -48,10 +48,10 @@ docker run -d --rm --name no-wave-test-postgres \
   -e POSTGRES_PASSWORD=postgres \
   -e POSTGRES_DB=bot_thk_test \
   -p 5432:5432 postgres:17-alpine
-docker exec no-wave-test-postgres pg_isready -U postgres -d bot_thk_test
+until docker exec no-wave-test-postgres pg_isready -U postgres -d bot_thk_test; do sleep 1; done
 ```
 
-After the server reports that it is accepting connections, run `pnpm --filter @bot-thk/api test:integration`. In PowerShell, set the variable first with `$env:TEST_DATABASE_URL = "postgres://postgres:postgres@localhost:5432/bot_thk_test"`; in Bash-compatible shells, run `TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/bot_thk_test pnpm --filter @bot-thk/api test:integration`. To run the entire root test list with PostgreSQL cases enabled, run `pnpm test` in that same environment. Stop the disposable server afterward with `docker stop no-wave-test-postgres`.
+In PowerShell, first set `$env:TEST_DATABASE_URL = "postgres://postgres:postgres@localhost:5432/bot_thk_test"` and then run `pnpm --filter @bot-thk/api test:integration`. In Bash-compatible shells, run `TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/bot_thk_test pnpm --filter @bot-thk/api test:integration`. To run the entire root test list with PostgreSQL cases enabled, run `pnpm test` in that same environment. Stop the disposable server afterward with `docker stop no-wave-test-postgres`.
 
 CI runs the database-independent verification and PostgreSQL integration suite separately. The `CI / required-checks` aggregate fails unless both jobs succeed, including when a job is skipped or cancelled. Configure `CI / required-checks` as a required status check for `main` in repository branch protection/rulesets; that setting is managed by GitHub repository settings and is not configurable from this workflow file.
 
