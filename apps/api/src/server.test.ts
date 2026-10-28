@@ -45,7 +45,7 @@ async function withServer(run, options = {}) {
   const serverOptions = options.store
     ? { ...options, store: completeFakeAdapter(options.store) }
     : options;
-  const server = createApiServer(serverOptions);
+  const server = createApiServer({ ...serverOptions, logger: serverOptions.logger ?? (() => {}) });
   await new Promise((resolve, reject) => {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", resolve);
@@ -1688,3 +1688,53 @@ test("REST rejects duplicated query parameters before reading or writing route d
   });
 });
 
+
+
+test("HTTP requests include a correlation ID and logs exclude URL, query, and credential values", async () => {
+  const logs = [];
+  const secret = "sensitive-token-value";
+  await withServer(async (baseUrl) => {
+    const response = await fetch(baseUrl + "/graphql/private-path?access_token=" + secret, {
+      headers: {
+        authorization: "Bearer " + secret,
+        cookie: "session=" + secret,
+        traceparent: "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01",
+      },
+    });
+    assert.equal(response.status, 404);
+    assert.match(response.headers.get("x-request-id") ?? "", /^[0-9a-f-]{36}$/i);
+    await response.text();
+  }, { logger: (record) => logs.push(record) });
+
+  assert.equal(logs.length, 1);
+  assert.equal(logs[0].event, "http_request_completed");
+  assert.equal(logs[0].traceId, "0123456789abcdef0123456789abcdef");
+  assert.equal(logs[0].route, "/not_found");
+  const serialized = JSON.stringify(logs);
+  assert.equal(serialized.includes(secret), false);
+  assert.equal(serialized.includes("private-path"), false);
+  assert.equal(serialized.includes("access_token"), false);
+});
+
+test("Prometheus metrics endpoint exposes bounded HTTP and authentication metrics", async () => {
+  await withServer(async (baseUrl) => {
+    const health = await fetch(baseUrl + "/health");
+    await health.text();
+
+    const unauthenticated = await fetch(baseUrl + "/api/v1/me/profile?secret=not-for-metrics");
+    assert.equal(unauthenticated.status, 401);
+    await unauthenticated.text();
+
+    const response = await fetch(baseUrl + "/metrics");
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type") ?? "", /text\/plain.*version=0\.0\.4/i);
+    assert.match(response.headers.get("cache-control") ?? "", /no-store/i);
+    const metrics = await response.text();
+    assert.match(metrics, /api_http_requests_total\{method="GET",route="\/health",status="200"\} 1/);
+    assert.match(metrics, /api_http_request_duration_ms_bucket/);
+    assert.match(metrics, /api_http_auth_failures_total\{method="GET",status="401"\} 1/);
+    assert.match(metrics, /api_http_active_requests 1|api_http_active_requests 0/);
+    assert.equal(metrics.includes("not-for-metrics"), false);
+    assert.equal(metrics.includes("secret="), false);
+  });
+});
