@@ -69,24 +69,56 @@ test("composed SQLite adapter dispatches a message outbox event and marks it del
   }
 });
 
-test("composed SQLite adapter preserves failed deliveries and schedules a retry", async () => {
+test("composed SQLite adapter preserves failed deliveries, schedules retries, and reports safe failure metadata", async () => {
   const { db, adapter, message } = await fixture();
   try {
+    const failures = [];
+    const rawFailure = "temporary delivery failure: refreshToken=must-not-appear";
     const result = await dispatchOutboxBatch({
       store: adapter,
-      deliver: async () => { throw new Error("temporary delivery failure"); },
+      deliver: async () => { throw new Error(rawFailure); },
       limit: 10,
       leaseSeconds: 30,
       retryDelaySeconds: 30,
+      onDeliveryFailure: (failure) => failures.push(failure),
     });
 
     assert.deepEqual(result, { claimed: 1, delivered: 0, failed: 1 });
-    const row = db.prepare("SELECT event_key, attempts, available_at, delivered_at FROM outbox_events WHERE event_key = ?").get(`message:${message.id}`);
+    const row = db.prepare("SELECT id, event_key, attempts, available_at, delivered_at FROM outbox_events WHERE event_key = ?").get(`message:${message.id}`);
     assert.ok(row);
     assert.equal(row.attempts, 1);
     assert.equal(row.delivered_at, null);
     assert.ok(Date.parse(row.available_at) > Date.now());
+    assert.deepEqual(failures, [{
+      eventId: row.id,
+      eventType: "message.created",
+      attempts: 1,
+      errorName: "Error",
+      retryScheduled: true,
+      retryScheduleErrorName: null,
+    }]);
+    assert.ok(!JSON.stringify(failures).includes(rawFailure), "failure diagnostics must not expose exception messages");
     assert.deepEqual(await adapter.claimOutboxEvents({ limit: 10 }), []);
+  } finally {
+    db.close();
+  }
+});
+
+test("outbox failure observers cannot interrupt retry recovery", async () => {
+  const { db, adapter } = await fixture();
+  try {
+    const result = await dispatchOutboxBatch({
+      store: adapter,
+      deliver: async () => { throw new Error("temporary failure"); },
+      limit: 1,
+      leaseSeconds: 30,
+      retryDelaySeconds: 30,
+      onDeliveryFailure: () => { throw new Error("logger failed"); },
+    });
+    assert.deepEqual(result, { claimed: 1, delivered: 0, failed: 1 });
+    const row = db.prepare("SELECT attempts, delivered_at FROM outbox_events").get();
+    assert.equal(row.attempts, 1);
+    assert.equal(row.delivered_at, null);
   } finally {
     db.close();
   }
