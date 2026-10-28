@@ -6,6 +6,8 @@ import { createSqliteArticleStore } from "./sqlite-article-store.ts";
 import { createSqliteEngagementStore } from "./sqlite-engagement-store.ts";
 import { createSqliteProfileStore } from "./sqlite-profile-store.ts";
 import { createSqliteConversationStore } from "./sqlite-conversation-store.ts";
+import { createSqliteTaxonomyStore } from "./sqlite-taxonomy-store.ts";
+import { createSqliteNotificationStore } from "./sqlite-notification-store.ts";
 import { canonicalJson, validateMigrationChange } from "./provider-migration-journal.ts";
 
 function change(sessionId: string, changeId: string, transactionId: string, entityId: string, body: Record<string, unknown>) {
@@ -133,6 +135,9 @@ test("SQLite domain writes atomically capture article, engagement, profile, conv
     const engagement = createSqliteEngagementStore(db);
     const profiles = createSqliteProfileStore(db);
     const conversations = createSqliteConversationStore(db);
+    const taxonomies = createSqliteTaxonomyStore(db);
+    const notifications = createSqliteNotificationStore(db);
+    taxonomies.createTaxonomy({ actorId: "author-1", kind: "category", slug: "capture-category", name: "Capture Category", locale: "en" });
     const article = articles.createArticle({
       authorId: "author-1", slug: "capture-article", title: "Capture Article",
       locale: "en", contentBlocks: [{ id: "p1", type: "paragraph", text: "Capture me" }], publish: true,
@@ -140,6 +145,10 @@ test("SQLite domain writes atomically capture article, engagement, profile, conv
     engagement.setArticleLike({ slug: article.slug, locale: "en", actorId: "reader-1", liked: true });
     engagement.createArticleComment({ slug: article.slug, locale: "en", actorId: "reader-1", content: "A captured comment" });
     profiles.upsertAuthorProfile({ userId: "author-1", displayName: "Author", bio: "Profile snapshot", locale: "en" });
+    const notice = await notifications.createNotification({ userId: "reader-1", eventKey: "capture-notification-1", payload: { type: "capture.test", label: "journal" } });
+    assert.equal(notice.duplicate, false);
+    const markedNotice = await notifications.markNotificationRead({ notificationId: notice.id, actorId: "reader-1" });
+    assert.ok(markedNotice?.readAt);
     const conversation = await conversations.createConversation({ actorId: "author-1", participantIds: ["reader-1"] });
     const message = await conversations.persistMessage({
       conversationId: conversation.id, senderId: "author-1", body: "Captured message", idempotencyKey: "capture-message-1",
@@ -155,7 +164,8 @@ test("SQLite domain writes atomically capture article, engagement, profile, conv
     const entityTypes = new Set(changes.map((change) => change.entityType));
     for (const expected of [
       "articles", "article_translations", "article_likes", "article_comments", "user_profiles",
-      "user_profile_translations", "conversations", "conversation_participants", "messages", "outbox_events",
+      "user_profile_translations", "taxonomies", "taxonomy_translations", "notifications",
+      "conversations", "conversation_participants", "messages", "outbox_events",
     ]) assert.ok(entityTypes.has(expected), "missing capture for " + expected);
 
     const messageChange = changes.find((change) => change.entityType === "messages" && change.entityId === message.id);
