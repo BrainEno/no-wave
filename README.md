@@ -24,8 +24,14 @@ See [phase gates](docs/roadmap/phase-gates.md), [feature traceability](docs/audi
 
 ## Prerequisites
 
-- Node.js 24
+- Node.js 24 (Node.js 24.15.0 or newer is recommended when using SQLite)
 - Corepack-enabled pnpm 10
+
+## Persistence runtime and deployment guidance
+
+The built-in `node:sqlite` API is **not yet stable**: official Node.js v24 documentation classifies it as Stability 1.2 — Release Candidate beginning with Node.js 24.15.0, and earlier Node 24 minors remain experimental. Startup emits a JSON compatibility notice with the selected provider, Node version, API stability classification and deployment recommendation.
+
+SQLite remains the default for local development and single-host installs. **For production/server deployments, PostgreSQL is the recommended provider** while `node:sqlite` remains a release-candidate API. SQLite WAL is not cross-host replication or high availability. See [Persistence provider deployment guidance](docs/deployment/persistence-provider-guidance.md) and [ADR 0010](docs/architecture/decisions/0010-sqlite-first-and-online-provider-cutover.md) for operating boundaries, runtime-upgrade regression requirements, and conditions for revisiting the driver choice.
 
 ## Commands
 
