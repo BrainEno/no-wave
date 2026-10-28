@@ -124,7 +124,10 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
     process.once("SIGTERM", shutdown);
   };
   start().catch((error) => {
-    process.stderr.write(`BOT THK API startup failed: ${error.message}\n`);
+    const errorName = error instanceof Error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name)
+      ? error.name
+      : "Error";
+    writeStructuredLog({ level: "error", event: "api_startup_failed", errorName });
     process.exitCode = 1;
   });
 }
