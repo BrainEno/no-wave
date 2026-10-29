@@ -45,10 +45,11 @@ function apiUrl(base: string, path: string): string {
   return new URL(path.replace(/^\/+/, ""), base.replace(/\/+$/, "") + "/").toString();
 }
 
-async function callApi(base: string, path: string, method: string, body: BodyInit | undefined, token?: string, contentType = "application/json; charset=utf-8"): Promise<Response> {
+async function callApi(base: string, path: string, method: string, body: BodyInit | undefined, token?: string, contentType = "application/json; charset=utf-8", idempotencyKey?: string | null): Promise<Response> {
   const headers = new Headers({ accept: "application/json" });
   if (body !== undefined) headers.set("content-type", contentType);
   if (token) headers.set("authorization", `Bearer ${token}`);
+  if (idempotencyKey !== undefined && idempotencyKey !== null) headers.set("idempotency-key", idempotencyKey);
   return fetch(apiUrl(base, path), {
     method,
     headers,
@@ -194,14 +195,14 @@ export async function forwardAuthoringApi(
   let clearCookies = false;
   let upstream: Response;
   try {
-    upstream = await callApi(base, path, method, body, accessToken, contentType);
+    upstream = await callApi(base, path, method, body, accessToken, contentType, request.headers.get("idempotency-key"));
     if (upstream.status === 401 && refreshToken) {
       const refreshed = await callApi(base, "api/v1/auth/refresh", "POST", JSON.stringify({ refreshToken }));
       const refreshedPayload = await readPayload(refreshed);
       if (refreshed.ok && isTokenEnvelope(refreshedPayload)) {
         rotated = refreshedPayload.data;
         accessToken = rotated.accessToken;
-        upstream = await callApi(base, path, method, body, accessToken, contentType);
+        upstream = await callApi(base, path, method, body, accessToken, contentType, request.headers.get("idempotency-key"));
       } else if (refreshed.status === 400 || refreshed.status === 401) {
         clearCookies = true;
       }
