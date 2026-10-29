@@ -5,8 +5,20 @@ import { setTimeout as delay } from "node:timers/promises";
 const port = Number(process.env.SMOKE_PORT ?? 3187);
 const baseUrl = `http://127.0.0.1:${port}`;
 let serverOutput = "";
+// The smoke checks assert the local fixture registry, so the API origin is
+// cleared explicitly: `apps/web/next.config.ts` loads the repository-root
+// .env.local, and a developer machine that configured API_BASE_URL there would
+// otherwise render API data (or fail) instead of fixtures. An empty value is
+// already present in the child environment, so the env file cannot fill it in.
 const server = spawn("pnpm", ["--filter", "@bot-thk/web", "start"], {
-  env: { ...process.env, HOSTNAME: "127.0.0.1", PORT: String(port) },
+  env: {
+    ...process.env,
+    HOSTNAME: "127.0.0.1",
+    PORT: String(port),
+    API_BASE_URL: "",
+    API_SERVICE_URL: "",
+    API_GRAPHQL_URL: "",
+  },
   stdio: ["ignore", "pipe", "pipe"],
   // Keep the package manager and its Next.js child in one process group so cleanup
   // below does not leave the server running after the smoke checks finish.
@@ -95,6 +107,7 @@ try {
   assert.match(events.headers.get("cache-control") ?? "", /no-store/i);
   // SSE responses are intentionally long-lived; response.text() waits for EOF and
   // hangs forever. Read only until the expected event arrives, then cancel the stream.
+  assert.ok(events.body, "the SSE response should include a body stream");
   const eventsReader = events.body.getReader();
   const eventsDecoder = new TextDecoder();
   let eventsText = "";
@@ -140,7 +153,7 @@ try {
       try {
         process.kill(-server.pid, "SIGTERM");
       } catch (error) {
-        if (error.code !== "ESRCH") throw error;
+        if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
       }
     } else {
       server.kill("SIGTERM");

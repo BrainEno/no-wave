@@ -19,7 +19,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ slu
 }
 
 export async function POST(request: NextRequest, context: { params: Promise<{ slug: string }> }): Promise<NextResponse> {
-  if (!isSameOriginMutation(request.url, request.headers.get("origin"))) {
+  if (!isSameOriginMutation(request.url, request.headers.get("origin"), request.headers.get("host"))) {
     return NextResponse.json({ error: { code: "ORIGIN_REJECTED", message: "The request origin was rejected." } }, { status: 403, headers: { "cache-control": "no-store" } });
   }
   const { slug } = await context.params;

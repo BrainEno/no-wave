@@ -57,7 +57,7 @@ async function readBoundedImageBody(request: NextRequest): Promise<BodyReadResul
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  if (!isSameOriginMutation(request.url, request.headers.get("origin"))) {
+  if (!isSameOriginMutation(request.url, request.headers.get("origin"), request.headers.get("host"))) {
     return NextResponse.json({ error: { code: "ORIGIN_REJECTED", message: "The request origin was rejected." } }, { status: 403, headers: NO_STORE });
   }
   const contentType = (request.headers.get("content-type") ?? "").split(";")[0]?.trim().toLowerCase() ?? "";

@@ -1,0 +1,43 @@
+# Local development infrastructure.
+#
+# This file deliberately contains ONLY the stateful dependency (PostgreSQL).
+# The API and the Web app run on the host through `pnpm dev`, so they keep
+# hot reload, native debugging and stack traces pointing at the real files. A
+# containerised API/Web pair would need an image rebuild for every edit and would
+# not be what `pnpm check:local` exercises.
+#
+#   pnpm db:up      start PostgreSQL 17 and wait for the health check
+#   pnpm db:migrate apply the versioned migrations
+#   pnpm db:down    stop, keeping the volume
+#   pnpm db:reset   stop and delete the volume (all local data is lost)
+#
+# The credentials below are throwaway local values. They must never be reused
+# outside a developer machine.
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: no-wave-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      # Development database; the test database is created by the init script.
+      POSTGRES_DB: bot_thk_dev
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      # Override POSTGRES_PORT when 5432 is already taken by another instance.
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # Runs only when the volume is empty, so restarting keeps existing data.
+      - ./scripts/docker/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d bot_thk_dev"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+
+volumes:
+  postgres-data:
+    name: no-wave-postgres-data

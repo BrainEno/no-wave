@@ -54,12 +54,22 @@ Article write requests require `Authorization: Bearer <JWT>` with a valid issuer
 
 ## SQLite-first local setup
 
-Fresh installations use SQLite by default at `./data/no-wave.sqlite`. The location may be changed with `DATABASE_PATH`; local database files and their WAL sidecars are ignored by Git. Run migrations before starting the API:
+Fresh installations use SQLite by default at `./data/no-wave.sqlite`, resolved against this package directory (so `apps/api/data/no-wave.sqlite` when started through pnpm). The location may be changed with `DATABASE_PATH`; local database files and their WAL sidecars are ignored by Git. Run migrations before starting the API:
 
 ```sh
-pnpm --filter @bot-thk/api migrate
-pnpm --filter @bot-thk/api start
+pnpm --filter @bot-thk/api migrate   # or `pnpm db:migrate` from the repository root
+pnpm --filter @bot-thk/api start     # or `pnpm dev:api` / `pnpm dev` for API + Web
 ```
+
+`pnpm --filter @bot-thk/api dev` runs the API under `node --watch`. From the
+repository root, `pnpm dev` starts the API and the Web dev server together with
+the readiness gates described in
+[Local development](../../docs/development/local-development.md), and
+`pnpm check:local` verifies database -> API -> Web connectivity.
+
+`AUTH_JWT_SECRET` must be at least 32 bytes. The REST layer reports a missing or
+short secret as `503 SERVICE_UNAVAILABLE` on the authentication routes, so the
+root tooling checks it before starting the process.
 
 Migrations remain an explicit step. Startup fails closed when the SQLite schema is missing or behind. `DATABASE_AUTO_MIGRATE=true` is an opt-in for controlled local/test setup only; it should not replace a reviewed release migration step.
 
