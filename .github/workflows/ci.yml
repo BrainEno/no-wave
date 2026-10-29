@@ -57,22 +57,105 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @bot-thk/api test:integration
 
+  # Proves the documented local chain on both persistence providers:
+  # migrate -> start the API -> probe it, then build the Web app and probe the
+  # Web -> API path. The probe is the same `pnpm check:local` developers run, so
+  # a broken local setup fails here instead of on someone's laptop.
+  local-dev-chain:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        provider: [sqlite, postgres]
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: bot_thk_dev
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d bot_thk_dev"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      DATABASE_PROVIDER: ${{ matrix.provider }}
+      DATABASE_URL: ${{ matrix.provider == 'postgres' && 'postgres://postgres:postgres@127.0.0.1:5432/bot_thk_dev' || '' }}
+      AUTH_JWT_SECRET: local-development-ci-secret-0123456789abcdef
+      AUTH_JWT_ISSUER: http://localhost:4000
+      AUTH_JWT_AUDIENCE: no-wave
+      API_BASE_URL: http://127.0.0.1:4000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10.20.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Apply migrations for ${{ matrix.provider }}
+        run: pnpm db:migrate
+      - name: Start the API
+        run: |
+          pnpm --filter @bot-thk/api start > "$RUNNER_TEMP/api.log" 2>&1 &
+          for _ in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:4000/ready > /dev/null 2>&1 && break
+            sleep 1
+          done
+          if ! curl -fsS http://127.0.0.1:4000/ready > /dev/null; then
+            echo "::error::The API never became ready."
+            cat "$RUNNER_TEMP/api.log"
+            exit 1
+          fi
+      - name: Probe database -> API
+        run: pnpm check:local --api-only
+      - name: Build and start the Web app
+        if: matrix.provider == 'sqlite'
+        run: |
+          pnpm build
+          pnpm --filter @bot-thk/web start > "$RUNNER_TEMP/web.log" 2>&1 &
+          for _ in $(seq 1 90); do
+            curl -fsS http://127.0.0.1:3000/ > /dev/null 2>&1 && break
+            sleep 1
+          done
+          if ! curl -fsS http://127.0.0.1:3000/ > /dev/null; then
+            echo "::error::The Web server never became ready."
+            cat "$RUNNER_TEMP/web.log"
+            exit 1
+          fi
+      - name: Probe database -> API -> Web
+        if: matrix.provider == 'sqlite'
+        run: pnpm check:local
+      - name: Show service logs on failure
+        if: failure()
+        run: |
+          echo "--- api.log ---"; cat "$RUNNER_TEMP/api.log" 2>/dev/null || true
+          echo "--- web.log ---"; cat "$RUNNER_TEMP/web.log" 2>/dev/null || true
+
   required-checks:
     name: required-checks
     if: ${{ always() }}
     needs:
       - verify
       - postgres-integration
+      - local-dev-chain
     runs-on: ubuntu-latest
     steps:
       - name: Require every validation job to succeed
         env:
           VERIFY_RESULT: ${{ needs.verify.result }}
           POSTGRES_RESULT: ${{ needs.postgres-integration.result }}
+          LOCAL_CHAIN_RESULT: ${{ needs.local-dev-chain.result }}
         run: |
-          printf 'verify: %s\npostgres-integration: %s\n' "$VERIFY_RESULT" "$POSTGRES_RESULT"
-          if [ "$VERIFY_RESULT" != "success" ] || [ "$POSTGRES_RESULT" != "success" ]; then
-            echo "::error::Both verify and postgres-integration must succeed."
+          printf 'verify: %s\npostgres-integration: %s\nlocal-dev-chain: %s\n' \
+            "$VERIFY_RESULT" "$POSTGRES_RESULT" "$LOCAL_CHAIN_RESULT"
+          if [ "$VERIFY_RESULT" != "success" ] || [ "$POSTGRES_RESULT" != "success" ] || [ "$LOCAL_CHAIN_RESULT" != "success" ]; then
+            echo "::error::verify, postgres-integration and local-dev-chain must all succeed."
             exit 1
           fi
           echo "All required validation jobs succeeded."
