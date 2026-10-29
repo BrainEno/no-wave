@@ -53,6 +53,7 @@ For static copy, simple presentational styling and trivial component markup, use
 - **Integration:** real isolated database or disposable containers for persistence, unique constraints, transaction behavior and query isolation.
 - **Contract:** GraphQL schema/operation validation and generated client types.
 - **E2E:** a small critical user journey set: sign-in, publish/read article, follow, comment/like, send message, offline recovery and access denial.
+- **Local chain (integration seam):** `pnpm check:local` exercises the real running stack over HTTP — database readiness, identity, an authorized write, a published read, the Web server's server-side API call and the browser-facing same-origin proxies. It complements the layers above because it is the only check that proves the configured environment actually wires the processes together; see [local development](../development/local-development.md).
 - **Manual exploratory:** visual quality, responsive behavior, accessibility and PWA installation on supported devices. Record what was checked.
 
 Do not repeat the same assertion at every layer. Each layer should catch a different class of failure.

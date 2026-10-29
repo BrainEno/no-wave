@@ -26,6 +26,7 @@ See [phase gates](docs/roadmap/phase-gates.md), [feature traceability](docs/audi
 
 - Node.js 24 (Node.js 24.15.0 or newer is recommended when using SQLite)
 - Corepack-enabled pnpm 10
+- Docker (optional, for the PostgreSQL profile: `pnpm db:up`)
 
 ## Persistence runtime and deployment guidance
 
@@ -37,6 +38,37 @@ SQLite remains the default for local development and single-host installs. **For
 
 The API emits allowlisted JSON request logs with a generated `X-Request-Id`, trace-correlation metadata, bounded route labels, status and elapsed time. `GET /metrics` exposes Prometheus request, duration, authentication-failure and persistence-port metrics after you set `API_METRICS_ENABLED=true` (disabled by default). The separate notification worker can expose outbox backlog and delivery metrics when `OUTBOX_METRICS_PORT` is set; its listener binds to `127.0.0.1` by default. Restrict both metrics endpoints to a trusted monitoring network. See [API observability operations guide](docs/operations/api-observability.md) for names, labels, configuration and limits.
 
+## Local development
+
+```sh
+pnpm install --frozen-lockfile
+pnpm setup:local      # writes .env.local with a generated development JWT secret
+pnpm db:migrate       # create the SQLite schema (explicit step, never automatic)
+pnpm dev              # API on :4000 and Web dev server on :3000, plus readiness gates
+pnpm check:local      # prove database -> API -> Web -> browser proxy connectivity
+```
+
+`pnpm dev` starts both processes from one configuration file and stops both with
+one Ctrl+C. `pnpm dev --api-only` / `--web-only` start one of them, and
+`pnpm dev --check` runs the connectivity probe as soon as both are ready.
+
+PostgreSQL instead of SQLite (Docker required):
+
+```sh
+pnpm db:up                  # postgres:17-alpine + bot_thk_dev + bot_thk_test
+pnpm setup:local --force --postgres
+pnpm db:migrate && pnpm dev
+```
+
+`compose.yaml` contains only the database: the API and Web app run as native Node
+processes so hot reload, stack traces and debugging behave normally. The root
+`.env.local` is read by both the API (`node --env-file-if-exists`) and the Web app
+(`apps/web/next.config.ts`), and a shell export always takes precedence.
+
+See [Local development and local verification](docs/development/local-development.md)
+for the environment contract, the full command reference, the probe's assertions
+and a troubleshooting table.
+
 ## Commands
 
 ```sh
@@ -44,28 +76,36 @@ pnpm install --frozen-lockfile
 pnpm test
 pnpm typecheck
 pnpm build
-pnpm dev
+pnpm test:routes
 ```
 
 ## PostgreSQL integration tests
 
 The root `pnpm test` command can run without a database; PostgreSQL cases are deliberately skipped when `TEST_DATABASE_URL` is unset, and their skipped count appears in the test summary. That run alone is **not** evidence that the PostgreSQL adapter passes.
 
-For full local PostgreSQL coverage, start a disposable PostgreSQL 17 instance:
+For full local PostgreSQL coverage, start the disposable stack and point the tests at its test database:
 
 ```sh
-docker run -d --rm --name no-wave-test-postgres \
-  -e POSTGRES_USER=postgres \
-  -e POSTGRES_PASSWORD=postgres \
-  -e POSTGRES_DB=bot_thk_test \
-  -p 5432:5432 postgres:17-alpine
-until docker exec no-wave-test-postgres pg_isready -U postgres -d bot_thk_test; do sleep 1; done
+pnpm db:up
+# add to .env.local (compose creates bot_thk_test for this purpose)
+#   TEST_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/bot_thk_test
+pnpm test                                              # full list, PostgreSQL cases enabled
+pnpm --filter @bot-thk/api test:integration            # integration suites only
+pnpm db:down                                           # stop, keeping the volume
 ```
 
-In PowerShell, first set `$env:TEST_DATABASE_URL = "postgres://postgres:postgres@localhost:5432/bot_thk_test"` and then run `pnpm --filter @bot-thk/api test:integration`. In Bash-compatible shells, run `TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/bot_thk_test pnpm --filter @bot-thk/api test:integration`. To run the entire root test list with PostgreSQL cases enabled, run `pnpm test` in that same environment. Stop the disposable server afterward with `docker stop no-wave-test-postgres`.
+Both commands read `.env.local`, so `TEST_DATABASE_URL` can also be exported in the
+shell (PowerShell: `$env:TEST_DATABASE_URL = "..."`). Without it the PostgreSQL
+suites skip themselves and report their skipped count.
 
-CI runs the database-independent verification and PostgreSQL integration suite separately. The `CI / required-checks` aggregate fails unless both jobs succeed, including when a job is skipped or cancelled. Configure `CI / required-checks` as a required status check for `main` in repository branch protection/rulesets; that setting is managed by GitHub repository settings and is not configurable from this workflow file.
+CI runs the database-independent verification, the PostgreSQL integration suite
+and the local-chain job separately (the latter boots both providers through the
+scripts above). The `CI / required-checks` aggregate fails unless every job
+succeeds, including when a job is skipped or cancelled. Configure
+`CI / required-checks` as a required status check for `main` in repository branch
+protection/rulesets; that setting is managed by GitHub repository settings and is
+not configurable from this workflow file.
 
-For a fresh local API, run `pnpm --filter @bot-thk/api migrate` before `pnpm --filter @bot-thk/api start`; SQLite defaults to `./data/no-wave.sqlite` and can be relocated with `DATABASE_PATH`. Existing deployments that only set `DATABASE_URL` remain on PostgreSQL for compatibility. To select PostgreSQL for new deployments, set `DATABASE_PROVIDER=postgres` and `DATABASE_URL`; MongoDB is not yet implemented. Online switching needs a separate change-capture and cutover process—changing `DATABASE_PROVIDER` alone does not migrate data. For local API-backed Web pages, set `API_BASE_URL` to the API origin (for example, `http://127.0.0.1:4000`). In a container, use the API service's reachable network address rather than `127.0.0.1`. Leave both `API_BASE_URL` and `API_SERVICE_URL` unset only when intentionally using the fixture registry. Migrations are explicit release steps; never connect the branch to production or run migrations against production without a separately approved plan and backup.
+For a fresh local API, run `pnpm db:migrate` (or `pnpm --filter @bot-thk/api migrate`) before starting it; SQLite defaults to `apps/api/data/no-wave.sqlite` because `DATABASE_PATH` is resolved against the API package directory, and it can be relocated with `DATABASE_PATH`. Existing deployments that only set `DATABASE_URL` remain on PostgreSQL for compatibility. To select PostgreSQL for new deployments, set `DATABASE_PROVIDER=postgres` and `DATABASE_URL`; MongoDB is not yet implemented. Online switching needs a separate change-capture and cutover process—changing `DATABASE_PROVIDER` alone does not migrate data. For local API-backed Web pages, set `API_BASE_URL` to the API origin (for example, `http://127.0.0.1:4000`). In a container, use the API service's reachable network address rather than `127.0.0.1`. Leave both `API_BASE_URL` and `API_SERVICE_URL` unset only when intentionally using the fixture registry. Migrations are explicit release steps; never connect the branch to production or run migrations against production without a separately approved plan and backup.
 
 The Web article editor uses the pinned Lexical 0.52.0 extension packages. See [Web article authoring operations](docs/operations/web-authoring.md) for the editor contract, cookie boundary, and current limitations. Dependencies are pinned by the committed `pnpm-lock.yaml`. Update the lockfile intentionally when manifests change.

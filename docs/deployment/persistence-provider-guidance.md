@@ -6,6 +6,8 @@
 - **Production/server deployments:** prefer PostgreSQL while the API's built-in `node:sqlite` driver is a release-candidate API. PostgreSQL has an independently versioned driver and is the recommended provider for multi-instance deployments and workloads needing server-side concurrency controls.
 - **MongoDB:** not currently implemented as a runtime provider. Do not select it for a deployment.
 
+For a local machine, `compose.yaml` and `pnpm db:up` provide PostgreSQL 17 with a development and a test database; see [local development](../development/local-development.md) for the whole local chain, including the explicit migration step.
+
 This recommendation does not mean changing `DATABASE_PROVIDER` migrates data. Provider selection only chooses the adapter at process startup. Cross-provider migration requires the separate, reviewed snapshot/change-capture/reconciliation/cutover procedure documented in [the migration plan](../architecture/postgres-migration-plan.md).
 
 ## Runtime compatibility notice
