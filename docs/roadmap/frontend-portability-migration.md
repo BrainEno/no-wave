@@ -171,11 +171,33 @@ environment, and comparison against a real host (Phase 6).
 
 ### Phase 4 — Migrate authentication and writing desk
 
-- [ ] Port sign-in/account redirects and the writing desk route.
+**Phase 4a (2026-10-29) and 4b (2026-10-30) in this phase:**
+
+- [x] Port sign-in/account redirects. → `/sign-in`, `/account` and
+  `/api/auth/:action` are resource-route adapters over `handleAuthRequest`
+  (`@bot-thk/web-http`), with the redirect, `no-store` and token-free-HTML
+  properties asserted by `pnpm test:prototype`.
+- [x] Port the writing desk route **and the API it calls**. → Phase 4b moved the
+  four calls the desk makes — session, list, create, update — into
+  `handleAuthoring{Session,Articles,Article}Request`
+  (`packages/web-http/src/authoring.ts`), so both frameworks serve them from one
+  implementation, and added `write.tsx`, which renders the shared
+  `AuthoringWorkspace`. **The seam had to come with the page**: the desk is a
+  client component that fetches its own data, so porting the markup without the
+  endpoints would have produced a page that renders and never loads — the same
+  failure the comment section had in Phase 4a.
+
+  The client-bundle guard now covers `AuthoringWorkspace` and `ArticleEditor`,
+  which is the useful result: the Lexical editor **does** survive the prototype's
+  client build, so the heaviest client surface in the product is not a blocker for
+  this migration. Not covered: what those components *do* in a browser at this
+  level — the App Router's desk has browser coverage (`pnpm test:e2e`, CI only),
+  the prototype's does not.
 - [ ] Keep the Lexical editor client-interactive; test Chinese IME, keyboard accessibility, save/publish and error recovery without changing the article contract.
-- [ ] Migrate auth, session, article authoring and comment routes to React Router actions/resource routes or a framework-neutral handler adapter.
+- [ ] Keep the Lexical editor client-interactive; test Chinese IME, keyboard accessibility, save/publish and error recovery without changing the article contract.
+- [x] Migrate auth, session and **article authoring** routes to framework-neutral handler adapters (Phase 4a: comments; 4b: authoring). Media was already shared (Phase 5).
 - [ ] Preserve cookie attributes, token refresh rotation, origin checks, request limits, API authorization and no-store policy.
-- [ ] Re-run auth and writing end-to-end journeys against a disposable API/database.
+- [ ] Re-run auth and writing end-to-end journeys against a disposable API/database. → partially: `pnpm test:prototype` drives the prototype's desk API over real HTTP against the mock (session, list, create, update, origin and id checks) and the App Router's desk journeys run in CI (`pnpm test:e2e`); neither runs both frameworks against one disposable database yet.
 
 **Exit gate:** no token leaks; user-specific content remains private; create/edit/save/publish and logout flows are regression-tested.
 

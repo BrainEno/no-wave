@@ -30,6 +30,19 @@ export {
 export { forwardAuthoringRequest, type ForwardMethod } from "./forward.ts";
 export { NO_STORE, errorResponse, isRecord, jsonResponse, safeApiError } from "./http.ts";
 export {
+  AUTHORING_ARTICLES_LIMIT,
+  AUTHORING_ARTICLE_ID_PATTERN,
+  AUTHORING_BODY_MAX_BYTES,
+  AUTHORING_DEFAULT_LOCALE,
+  AUTHORING_LOCALES,
+  authoringArticlePath,
+  authoringArticlesPath,
+  handleAuthoringArticleRequest,
+  handleAuthoringArticlesRequest,
+  handleAuthoringSessionRequest,
+  isAuthoringLocale,
+} from "./authoring.ts";
+export {
   COMMENT_BODY_MAX_BYTES,
   COMMENT_DEFAULT_LOCALE,
   COMMENT_LOCALES,
