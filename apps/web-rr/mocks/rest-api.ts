@@ -578,6 +578,10 @@ function handle(request: IncomingMessage, response: ServerResponse, body: Record
     // An update publishes, but only an explicit `publish: false` unpublishes and
     // only in the mock's terms: the real rule lives in the API's article store.
     if (body.publish !== undefined) existing.status = publish ? "published" : "draft";
+    // The store clears `published_at` when a work is withdrawn and keeps the
+    // original date when it is published again; the mock mirrors both, so a
+    // test that reads the date here is reading the API's rule.
+    if (!publish) existing.publishedAt = null;
     if (publish && !existing.publishedAt) existing.publishedAt = new Date().toISOString();
     existing.updatedAt = new Date().toISOString();
     send(response, 200, { data: authoredPayload(existing) });

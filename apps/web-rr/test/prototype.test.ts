@@ -691,6 +691,29 @@ test("saving the same work again updates it instead of creating a second one", a
   assert.equal((list.body.match(/desk-draft-beta/g) ?? []).length, 1, "a second save must not duplicate the work");
 });
 
+test("a published work can be withdrawn to a draft again", async () => {
+  const created = await post("/api/authoring/articles", articleBody("Desk Withdraw Gamma"), { cookie: DESK_COOKIE });
+  assert.equal(created.status, 201);
+  const { id } = (JSON.parse(created.body) as { data: { id: string } }).data;
+
+  const published = await put(`/api/authoring/articles/${id}`, articleBody("Desk Withdraw Gamma", true), { cookie: DESK_COOKIE });
+  assert.equal((JSON.parse(published.body) as { data: { status: string } }).data.status, "published");
+
+  // The desk's 转为草稿 is the same PUT with `publish: false`; nothing new was
+  // added to the contract, so this is the prototype proving the seam carries
+  // the intent rather than the framework.
+  const withdrawn = await put(`/api/authoring/articles/${id}`, articleBody("Desk Withdraw Gamma", false), { cookie: DESK_COOKIE });
+  assert.equal(withdrawn.status, 200);
+  const article = (JSON.parse(withdrawn.body) as { data: { id: string; status: string; publishedAt: string | null } }).data;
+  assert.equal(article.id, id, "withdrawing must address the same work, not create another");
+  assert.equal(article.status, "draft");
+  assert.equal(article.publishedAt, null, "a withdrawn work has no publication date");
+
+  // Withdrawn, not lost: it is still the author's own work.
+  const list = await get("/api/authoring/articles", { cookie: DESK_COOKIE });
+  assert.match(list.body, /Desk Withdraw Gamma/);
+});
+
 test("the desk's writes are origin-checked, and the origin check comes first", async () => {
   const cross = await post("/api/authoring/articles", articleBody("Cross Origin"), {
     cookie: DESK_COOKIE,

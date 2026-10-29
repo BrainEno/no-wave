@@ -238,10 +238,20 @@ export function ArticleEditor({ article, onSaved }: ArticleEditorProps) {
 
   const onEditorChange = useCallback((next: LexicalEditorStateJson) => setEditorState(next), []);
 
-  async function save(publish: boolean) {
+  /**
+   * Save the document in the state the button asks for.
+   *
+   * `intent` names the target state rather than toggling a flag: a published
+   * work that is saved again stays published, and 转为草稿 is the one save that
+   * asks for the draft state explicitly. With a boolean the two cannot be told
+   * apart — `publish: false` had to mean "leave the status alone" for a work
+   * that was already public, which is precisely what unpublishing needs to say.
+   */
+  async function save(intent: "draft" | "publish") {
     if (!title.trim()) { setError("请填写作品标题。"); return; }
     if (!editorState) { setError("编辑器内容尚未初始化，请重新载入页面。"); return; }
     if (!collectPlainText(editorState.root).trim()) { setError("请先输入正文内容。"); return; }
+    const wasPublished = article?.status === "published";
     setBusy(true);
     setError("");
     setStatus("");
@@ -261,7 +271,7 @@ export function ArticleEditor({ article, onSaved }: ArticleEditorProps) {
           workType,
           editorState,
           contentBlocksVersion: 1,
-          publish: publish || article?.status === "published",
+          publish: intent === "publish",
         }),
       });
       const payload: unknown = await response.json().catch(() => null);
@@ -269,7 +279,12 @@ export function ArticleEditor({ article, onSaved }: ArticleEditorProps) {
       const data = typeof payload === "object" && payload !== null && "data" in payload ? (payload as { data?: unknown }).data : null;
       if (!isSavedArticle(data)) throw new Error("API 响应格式不正确，作品可能已保存，请刷新列表核对。");
       onSaved(data);
-      setStatus(`${data.status === "published" ? "作品已发布。" : "草稿已保存。"} 作品地址：/articles/${data.slug}`);
+      // Withdrawing a work is not the same message as saving one: the address
+      // the author was given a minute ago is the address that just stopped
+      // answering, so say so instead of pointing at it.
+      setStatus(wasPublished && intent === "draft"
+        ? "作品已转为草稿，公开页面已不可访问；重新发布即可恢复同一地址。"
+        : `${data.status === "published" ? "作品已发布。" : "草稿已保存。"} 作品地址：/articles/${data.slug}`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "保存失败，请重试。");
     } finally {
@@ -308,9 +323,19 @@ export function ArticleEditor({ article, onSaved }: ArticleEditorProps) {
       {error ? <p className="nw-auth-error" role="alert">{error}</p> : null}
       {status ? <p className="nw-auth-status" role="status">{status}</p> : null}
       <div className="nw-authoring-actions">
-        <button className="nw-btn" type="button" disabled={busy} onClick={() => void save(false)}>{busy ? "保存中…" : article?.status === "published" ? "保存更新" : "保存草稿"}</button>
-        <button className="nw-btn nw-pri" type="button" disabled={busy} onClick={() => void save(true)}>{busy ? "正在保存…" : article?.status === "published" ? "保存并发布" : "发布作品"}</button>
-        {article?.status === "published" ? <a className="nw-btn" href={`/articles/${encodeURIComponent(article.slug)}`} target="_blank" rel="noreferrer">查看已发布作品 ↗</a> : null}
+        <button className="nw-btn" type="button" disabled={busy} onClick={() => void save(article?.status === "published" ? "publish" : "draft")}>{busy ? "保存中…" : article?.status === "published" ? "保存更新" : "保存草稿"}</button>
+        <button className="nw-btn nw-pri" type="button" disabled={busy} onClick={() => void save("publish")}>{busy ? "正在保存…" : article?.status === "published" ? "保存并发布" : "发布作品"}</button>
+        {article && article.status === "published" ? (
+          <>
+            {/* Withdrawing a public page is one click and it takes the address
+                away from anyone who was reading it, so the desk asks first. */}
+            <button className="nw-btn" type="button" disabled={busy} onClick={() => {
+              const confirmed = window.confirm(`转为草稿后，/articles/${article.slug} 将对读者不可访问（内容会保留在写作台）。确定继续？`);
+              if (confirmed) void save("draft");
+            }}>转为草稿</button>
+            <a className="nw-btn" href={`/articles/${encodeURIComponent(article.slug)}`} target="_blank" rel="noreferrer">查看已发布作品 ↗</a>
+          </>
+        ) : null}
       </div>
     </section>
   );
