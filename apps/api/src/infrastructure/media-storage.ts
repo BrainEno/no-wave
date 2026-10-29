@@ -45,7 +45,7 @@ function resolveConfig(env: NodeJS.ProcessEnv): MediaStorageConfig | null {
   // Do not accidentally enable media storage just because another AWS integration
   // happens to populate generic AWS_* variables. The app's bucket name is an
   // explicit opt-in; after that, Neon credentials can use the standard AWS names.
-  if (!Object.values(mediaOverrides).some(Boolean)) return null;
+  if (![mediaOverrides.bucket, mediaOverrides.region, mediaOverrides.accessKeyId, mediaOverrides.secretAccessKey, mediaOverrides.endpoint].some(Boolean)) return null;
 
   const values = {
     bucket: mediaOverrides.bucket,
