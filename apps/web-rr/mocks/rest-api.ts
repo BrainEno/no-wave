@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 
@@ -29,6 +30,24 @@ export const MOCK_TOKENS = {
 export const MOCK_DISPLAY_NAME = "林可行";
 
 export const MOCK_AUTHOR = { username: "writer", bio: "在无浪潮写作。" } as const;
+
+/**
+ * A 1x1 WebP and its content hash.
+ *
+ * Media objects are content-addressed in the API (the SHA-256 is the ETag), so
+ * the mock must produce a stable ETag too — otherwise conditional requests and
+ * immutable caching could not be asserted.
+ */
+const MOCK_MEDIA_BYTES = Buffer.from(
+  "UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==",
+  "base64",
+);
+export const MOCK_MEDIA = {
+  id: "3f7c1d90-8a2b-4c1e-9f3a-6c5b2e8d1a44",
+  contentType: "image/webp",
+  etag: `"${createHash("sha256").update(MOCK_MEDIA_BYTES).digest("hex")}"`,
+  bytes: MOCK_MEDIA_BYTES,
+} as const;
 
 type MockArticle = {
   slug: string;
@@ -284,6 +303,40 @@ function handle(request: IncomingMessage, response: ServerResponse, body: Record
   if (method === "POST" && path === "/api/v1/auth/logout") {
     response.writeHead(204, { "cache-control": "no-store" });
     response.end();
+    return;
+  }
+
+  const mediaDetail = /^\/api\/v1\/media\/([^/]+)$/.exec(path);
+  if (method === "GET" && mediaDetail) {
+    const id = decodeURIComponent(mediaDetail[1] ?? "");
+    if (id !== MOCK_MEDIA.id) {
+      send(response, 404, { error: { code: "NOT_FOUND", message: "The requested media asset was not found." } });
+      return;
+    }
+    if (request.headers["if-none-match"] === MOCK_MEDIA.etag) {
+      response.writeHead(304, { "cache-control": "public, max-age=31536000, immutable", etag: MOCK_MEDIA.etag });
+      response.end();
+      return;
+    }
+    response.writeHead(200, {
+      "content-type": MOCK_MEDIA.contentType,
+      "content-length": MOCK_MEDIA.bytes.byteLength,
+      "cache-control": "public, max-age=31536000, immutable",
+      etag: MOCK_MEDIA.etag,
+    });
+    response.end(MOCK_MEDIA.bytes);
+    return;
+  }
+
+  if (method === "POST" && path === "/api/v1/me/media") {
+    const authorization = request.headers.authorization ?? "";
+    if (authorization !== `Bearer ${MOCK_TOKENS.accessToken}`) {
+      send(response, 401, { error: { code: "UNAUTHENTICATED", message: "Please sign in again." } });
+      return;
+    }
+    send(response, 201, {
+      data: { id: MOCK_MEDIA.id, contentType: "image/webp", byteSize: MOCK_MEDIA.bytes.byteLength, sha256: MOCK_MEDIA.etag.slice(1, -1) },
+    });
     return;
   }
 

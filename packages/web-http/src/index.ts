@@ -8,7 +8,14 @@
  */
 export { AUTH_ACTIONS, handleAuthRequest, isAuthAction, type AuthAction } from "./auth.ts";
 export { apiUrl, readPayload, type ApiProxyConfig, type FetchImpl } from "./api.ts";
-export { readLimitedBytes, readLimitedJson, type BytesBodyResult, type JsonBodyResult } from "./body.ts";
+export {
+  readLimitedBytes,
+  readLimitedJson,
+  readLimitedStream,
+  type BytesBodyResult,
+  type JsonBodyResult,
+  type StreamReadFailure,
+} from "./body.ts";
 export {
   ACCESS_COOKIE_PATH,
   REFRESH_COOKIE_PATH,
@@ -22,6 +29,14 @@ export {
 } from "./cookies.ts";
 export { forwardAuthoringRequest, type ForwardMethod } from "./forward.ts";
 export { NO_STORE, errorResponse, isRecord, jsonResponse, safeApiError } from "./http.ts";
+export {
+  MEDIA_ID_PATTERN,
+  MEDIA_IMMUTABLE_CACHE,
+  MEDIA_MAX_BYTES,
+  MEDIA_UPLOAD_TYPES,
+  handleMediaUploadRequest,
+  handlePublicMediaRequest,
+} from "./media.ts";
 export {
   ACCESS_TOKEN_COOKIE,
   REFRESH_TOKEN_COOKIE,

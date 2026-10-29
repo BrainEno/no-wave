@@ -4,7 +4,7 @@ import type { ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { createServer } from "node:net";
 import { after, before, test } from "node:test";
-import { MOCK_CREDENTIALS, MOCK_DISPLAY_NAME, MOCK_TOKENS, startMockRestApi } from "../mocks/rest-api.ts";
+import { MOCK_CREDENTIALS, MOCK_DISPLAY_NAME, MOCK_MEDIA, MOCK_TOKENS, startMockRestApi } from "../mocks/rest-api.ts";
 import type { MockRestApi } from "../mocks/rest-api.ts";
 
 /**
@@ -360,4 +360,66 @@ test("every migrated public page spends at most two API calls", async () => {
     assert.ok(calls.length >= 1, `${pathname} must read content from the API, not fixtures`);
     assert.ok(calls.length <= 2, `${pathname} exceeded the two-call budget: ${calls.join(", ")}`);
   }
+});
+
+/* --------------------------------------------------- Phase 5a: media adapter */
+
+/**
+ * Media relayed through the app rather than the bucket.
+ *
+ * The storage credentials stay in the API; what is asserted here is what the
+ * browser is allowed to see — immutable caching keyed on a content hash, 304
+ * revalidation, a locked-down content type, and an upload path that rejects
+ * cross-origin and non-image requests before buffering anything.
+ */
+test("a media object is relayed with immutable caching and its content-hash ETag", async () => {
+  const result = await get(`/api/media/${MOCK_MEDIA.id}`);
+  assert.equal(result.status, 200);
+  assert.equal(result.headers.get("content-type"), "image/webp");
+  assert.match(result.headers.get("cache-control") ?? "", /public, max-age=31536000, immutable/);
+  assert.equal(result.headers.get("etag"), MOCK_MEDIA.etag);
+  assert.equal(result.headers.get("x-content-type-options"), "nosniff");
+  assert.equal(result.headers.get("content-security-policy"), "default-src 'none'; sandbox");
+  assert.equal(Number(result.headers.get("content-length")), MOCK_MEDIA.bytes.byteLength);
+});
+
+test("a conditional media request is answered with 304 and no body", async () => {
+  const result = await get(`/api/media/${MOCK_MEDIA.id}`, { "if-none-match": MOCK_MEDIA.etag });
+  assert.equal(result.status, 304);
+  assert.equal(result.headers.get("etag"), MOCK_MEDIA.etag);
+  assert.equal(result.body, "");
+});
+
+test("an unknown or malformed media id is a 404 that never reaches the API", async () => {
+  mockApi.resetRequests();
+  for (const pathname of ["/api/media/not-a-uuid", `/api/media/${"0".repeat(8)}-0000-0000-0000-000000000000`]) {
+    const result = await get(pathname);
+    assert.equal(result.status, 404);
+    assert.match(result.body, /NOT_FOUND/);
+  }
+  assert.deepEqual(mockApi.requests(), []);
+});
+
+test("media uploads are origin-checked, type-checked and authenticated", async () => {
+  const crossOrigin = await post("/api/authoring/media", "x".repeat(32), {
+    origin: "https://attacker.example",
+    "content-type": "image/png",
+  });
+  assert.equal(crossOrigin.status, 403);
+  assert.match(crossOrigin.body, /ORIGIN_REJECTED/);
+
+  const wrongType = await post("/api/authoring/media", "x".repeat(32), { "content-type": "text/html" });
+  assert.equal(wrongType.status, 415);
+  assert.match(wrongType.body, /UNSUPPORTED_MEDIA_TYPE/);
+
+  const anonymous = await post("/api/authoring/media", "x".repeat(32), { "content-type": "image/png" });
+  assert.equal(anonymous.status, 401);
+
+  const signedIn = await post("/api/authoring/media", "x".repeat(32), {
+    "content-type": "image/png",
+    cookie: `nw_access=${MOCK_TOKENS.accessToken}`,
+  });
+  assert.equal(signedIn.status, 201);
+  assert.match(signedIn.body, new RegExp(MOCK_MEDIA.id));
+  assert.match(signedIn.headers.get("cache-control") ?? "", /no-store/);
 });

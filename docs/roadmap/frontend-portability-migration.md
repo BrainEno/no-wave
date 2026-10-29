@@ -162,8 +162,8 @@ and side-by-side comparison against a real host (blocked on Phase 6).
 
 ### Phase 5 — Migrate media and detach the worker from Vercel
 
-- [ ] Port the media request/response adapter without exposing private storage keys or service credentials. (Storage itself now passes the gate via Neon Object Storage — see [hosting qualification §4](hosting-qualification.md); the adapter also gained `WHEN_REQUIRED` checksums and bounded `SlowDown` retries.)
-- [ ] Verify media upload, normalized WebP retrieval, access denial, checksums, ETag and cache headers.
+- [x] Port the media request/response adapter without exposing private storage keys or service credentials. (Storage itself now passes the gate via Neon Object Storage — see [hosting qualification §4](hosting-qualification.md); the adapter also gained `WHEN_REQUIRED` checksums and bounded `SlowDown` retries.) → `packages/web-http/src/media.ts`, called by both apps (2026-10-29); see [media relay](media-relay.md).
+- [x] Verify media upload, normalized WebP retrieval, access denial, checksums, ETag and cache headers. → `packages/web-http/test/media.test.ts` (8 tests) plus prototype tests over real HTTP; the Next.js handlers were re-checked manually against a stub API (200/304/404/403/415/201). Not covered: a live Neon bucket round trip.
 - [ ] Run the notification outbox worker outside the Web server and validate duplicate prevention, lease expiry, retry and shutdown recovery against a disposable PostgreSQL database.
 - [ ] Select a worker/scheduler execution model that actually fits the qualified zero-cost host. If it cannot, stop before choosing that host or silently weakening delivery guarantees.
 

@@ -30,4 +30,6 @@ export default [
   route("sign-in", "routes/sign-in.tsx"),
   route("account", "routes/account.tsx"),
   route("api/auth/:action", "routes/api.auth.ts"),
+  route("api/media/:id", "routes/api.media.ts"),
+  route("api/authoring/media", "routes/api.authoring.media.ts"),
 ] satisfies RouteConfig;

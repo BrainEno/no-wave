@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import {
   forwardAuthoringRequest,
   handleAuthRequest,
+  handleMediaUploadRequest,
+  handlePublicMediaRequest,
   readLimitedJson,
   type ForwardMethod,
 } from "@bot-thk/web-http";
@@ -65,6 +67,20 @@ export async function forwardAuthoringApi(
   return toNextResponse(
     await forwardAuthoringRequest(request, path, forwardMethod(method), apiConfig(), body, contentType),
   );
+}
+
+/**
+ * Media relay (Phase 5). The behavior — id validation, immutable caching, ETag
+ * revalidation, size ceiling, content-type lockdown, Origin check and error
+ * sanitization — lives in the shared package; this adapter only resolves the API
+ * origin and converts the standard `Response`, exactly like the routes above.
+ */
+export async function fetchPublicMedia(request: NextRequest, id: string): Promise<NextResponse> {
+  return toNextResponse(await handlePublicMediaRequest(request, id, apiConfig()));
+}
+
+export async function handleMediaPost(request: NextRequest): Promise<NextResponse> {
+  return toNextResponse(await handleMediaUploadRequest(request, apiConfig()));
 }
 
 export type LimitedJsonObjectResult =
