@@ -1,0 +1,28 @@
+{
+  "name": "@bot-thk/web-rr",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "scripts": {
+    "dev": "react-router dev",
+    "build": "react-router build",
+    "start": "node server.ts",
+    "typecheck": "react-router typegen && tsc --noEmit",
+    "test": "node --test test/*.test.ts"
+  },
+  "dependencies": {
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "react-router": "7.18.5"
+  },
+  "devDependencies": {
+    "@react-router/dev": "7.18.5",
+    "@react-router/node": "7.18.5",
+    "@types/node": "24.10.0",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "typescript": "5.9.3",
+    "vite": "7.1.12"
+  }
+}
