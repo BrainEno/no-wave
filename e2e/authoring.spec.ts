@@ -47,6 +47,60 @@ async function pageDigest(page: Page): Promise<string> {
  * The profile is not decoration: the public reader drops articles whose author
  * has none, so a published work would be unreachable without it.
  */
+type SessionCookie = { name: string; value: string; path: string; maxAge: number; httpOnly: boolean; secure: boolean; sameSite: "Lax" | "Strict" | "None" };
+
+/**
+ * Read the session cookies out of a login response.
+ *
+ * They are written into the browser context explicitly rather than relying on
+ * the API client sharing its cookie jar with the page: the suite is about the
+ * browser, and it should not depend on that sharing being true.
+ */
+function sessionCookies(headers: { name: string; value: string }[]): SessionCookie[] {
+  const cookies: SessionCookie[] = [];
+  for (const header of headers) {
+    if (header.name.toLowerCase() !== "set-cookie") continue;
+    const parts = header.value.split(";").map((part) => part.trim()).filter((part) => part.length > 0);
+    const [pair, ...attributes] = parts;
+    const separator = pair.indexOf("=");
+    if (separator <= 0) continue;
+    const cookie: SessionCookie = {
+      name: pair.slice(0, separator).trim(),
+      value: pair.slice(separator + 1).trim(),
+      path: "/",
+      maxAge: 3600,
+      httpOnly: false,
+      secure: false,
+      sameSite: "Lax",
+    };
+    for (const attribute of attributes) {
+      const [key, value = ""] = attribute.split("=");
+      switch (key.trim().toLowerCase()) {
+        case "path": cookie.path = value.trim(); break;
+        case "max-age": cookie.maxAge = Number.parseInt(value.trim(), 10) || cookie.maxAge; break;
+        case "httponly": cookie.httpOnly = true; break;
+        case "secure": cookie.secure = true; break;
+        case "samesite": {
+          const sameSite = value.trim().toLowerCase();
+          if (sameSite === "strict") cookie.sameSite = "Strict";
+          else if (sameSite === "none") cookie.sameSite = "None";
+          else cookie.sameSite = "Lax";
+          break;
+        }
+        default: break;
+      }
+    }
+    if (cookie.value.length > 0) cookies.push(cookie);
+  }
+  return cookies;
+}
+
+/**
+ * Create an account with a profile and hand the browser its session.
+ *
+ * The profile is not decoration: the public reader drops articles whose author
+ * has none, so a published work would be unreachable without it.
+ */
 async function registerWriter(page: Page, request: APIRequestContext): Promise<string> {
   const email = uniqueEmail("writer");
   const registered = await request.post(`${API_BASE_URL}/api/v1/auth/register`, {
@@ -61,18 +115,39 @@ async function registerWriter(page: Page, request: APIRequestContext): Promise<s
   });
   expect(profile.status(), `creating the author profile: ${await profile.text()}`).toBe(200);
 
-  // Sign in through the same-origin proxy the application uses, so the
-  // HttpOnly session cookie is stored in the browser context. The proxy
+  // Sign in through the same-origin proxy the application uses. The proxy
   // rejects mutations without an exact same-origin Origin header, which a
   // plain HTTP client does not send.
-  const session = await page.request.post("/api/auth/login", {
+  const login = await page.request.post("/api/auth/login", {
     data: { email, password: PASSWORD },
     headers: { origin: WEB_ORIGIN },
   });
-  expect(session.status(), `signing the browser in: ${await session.text()}`).toBe(200);
+  expect(login.status(), `signing the browser in: ${await login.text()}`).toBe(200);
+  const cookies = sessionCookies(await login.headersArray());
+  expect(cookies.length, `the login response must set session cookies; headers: ${JSON.stringify(await login.headersArray())}`).toBeGreaterThan(0);
+  await page.context().addCookies(cookies.map((cookie) => ({
+    name: cookie.name,
+    value: cookie.value,
+    url: WEB_ORIGIN,
+    path: cookie.path,
+    expires: Math.floor(Date.now() / 1000) + cookie.maxAge,
+    httpOnly: cookie.httpOnly,
+    secure: cookie.secure,
+    sameSite: cookie.sameSite,
+  })));
 
   await page.goto("/write");
-  await expect(page.getByRole("heading", { name: /写作台/ })).toBeVisible({ timeout: 45_000 });
+  try {
+    await expect(page.getByRole("heading", { name: /写作台/ })).toBeVisible({ timeout: 45_000 });
+  } catch (caught) {
+    const sessionStatus = await page.evaluate(async () => {
+      const response = await fetch("/api/authoring/session", { credentials: "same-origin", cache: "no-store" });
+      return response.status;
+    }).catch((error: unknown) => `evaluate failed: ${String(error)}`);
+    throw new Error(
+      `/write did not open the authoring desk (session probe: ${String(sessionStatus)}); page:\n${await pageDigest(page)}\n${String(caught)}`,
+    );
+  }
   return email;
 }
 
@@ -81,6 +156,11 @@ async function waitForEditor(page: Page): Promise<void> {
   await expect(page.getByLabel("标题")).toBeVisible();
   await expect(page.getByRole("toolbar", { name: "富文本格式" })).toBeVisible({ timeout: 45_000 });
 }
+
+test.afterEach(async ({ page }, testInfo) => {
+  if (testInfo.status !== "failed" && testInfo.status !== "timedOut") return;
+  console.log(`FAILED ${testInfo.title} at ${page.url()}\n${await pageDigest(page)}`);
+});
 
 const TITLE_PREFIX = "无浪是一只没有波浪的文学站点，第一段用来验证保存链路。";
 const SECOND_PARAGRAPH = "第二段用来验证摘要会取正文开头，而不是把整篇文章塞进去。";
