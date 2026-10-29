@@ -1,33 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
-import { forwardAuthoringApi, readLimitedJsonObject } from "@/lib/authoring-proxy.ts";
-import { isSameOriginMutation } from "@/lib/authoring-proxy-policy.ts";
+import { handleArticleCommentsRequest } from "@bot-thk/web-http";
+import { apiConfig } from "@/lib/authoring-proxy.ts";
 
-const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const LOCALES = new Set(["zh-CN", "zh-TW", "en"]);
+/**
+ * Article comments (`GET`/`POST`) — Phase 4a.
+ *
+ * The behaviour — slug/locale validation, the exact-Origin check on mutations,
+ * the bounded body, cookie-attached forwarding — lives in the framework-neutral
+ * handler, so the React Router prototype serves this endpoint from the same code
+ * instead of a second copy. This file does only what the App Router requires:
+ * read the slug from the route params and convert the standard `Response`.
+ */
+function toNextResponse(response: Response): NextResponse {
+  const next = new NextResponse(response.status === 204 || response.status === 304 ? null : response.body, {
+    status: response.status,
+  });
+  response.headers.forEach((value, name) => {
+    if (name !== "set-cookie") next.headers.set(name, value);
+  });
+  for (const cookie of response.headers.getSetCookie()) next.headers.append("set-cookie", cookie);
+  return next;
+}
 
-function requestPath(slug: string, locale: string): string {
-  return "api/v1/articles/" + encodeURIComponent(slug) + "/comments?locale=" + encodeURIComponent(locale) + "&limit=50";
+async function handle(request: NextRequest, slug: string): Promise<NextResponse> {
+  const locale = request.nextUrl.searchParams.get("locale");
+  return toNextResponse(
+    await handleArticleCommentsRequest(request, { slug, locale }, apiConfig()),
+  );
 }
 
 export async function GET(request: NextRequest, context: { params: Promise<{ slug: string }> }): Promise<NextResponse> {
   const { slug } = await context.params;
-  const locale = request.nextUrl.searchParams.get("locale") ?? "zh-CN";
-  if (!SLUG.test(slug) || !LOCALES.has(locale)) {
-    return NextResponse.json({ error: { code: "BAD_USER_INPUT", message: "Invalid article slug or locale." } }, { status: 400, headers: { "cache-control": "no-store" } });
-  }
-  return forwardAuthoringApi(request, requestPath(slug, locale), "GET");
+  return handle(request, slug);
 }
 
 export async function POST(request: NextRequest, context: { params: Promise<{ slug: string }> }): Promise<NextResponse> {
-  if (!isSameOriginMutation(request.url, request.headers.get("origin"), request.headers.get("host"))) {
-    return NextResponse.json({ error: { code: "ORIGIN_REJECTED", message: "The request origin was rejected." } }, { status: 403, headers: { "cache-control": "no-store" } });
-  }
   const { slug } = await context.params;
-  const locale = request.nextUrl.searchParams.get("locale") ?? "zh-CN";
-  if (!SLUG.test(slug) || !LOCALES.has(locale)) {
-    return NextResponse.json({ error: { code: "BAD_USER_INPUT", message: "Invalid article slug or locale." } }, { status: 400, headers: { "cache-control": "no-store" } });
-  }
-  const body = await readLimitedJsonObject(request, 512 * 1024);
-  if (!body.ok) return body.response;
-  return forwardAuthoringApi(request, requestPath(slug, locale), "POST", body.text);
+  return handle(request, slug);
 }

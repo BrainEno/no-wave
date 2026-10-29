@@ -153,7 +153,16 @@ and compares 105 observations over 17 routes with **0 unexpected differences**
 (the 13 remaining divergences are the public-page caching policy, reasoned in
 [public SSR migration §5](public-ssr-migration.md#5-the-one-divergence-the-gate-accepts-and-the-decision-it-forced)).
 It runs nightly in `.github/workflows/ssr-parity.yml` and on demand, not per
-commit, because it needs two production builds. The gate forced one owner
+commit, because it needs two production builds.
+
+**Phase 4a (2026-10-29, same branch):** the article page stopped being a reduced
+body. It now renders the shared `ArticlePageView` — reader toolbar, table of
+contents and comment section — from the shared `loadArticleDetailPage`, and the
+comment endpoint those components call is one handler (`@bot-thk/web-http`)
+served by both frameworks. A `client-bundle.test.ts` guard asserts every client
+component of a migrated page is present in the emitted client assets, because
+markup that never hydrates is invisible to every HTML comparison above. Details
+in [public SSR migration §6](public-ssr-migration.md#6-phase-4a-the-page-after-hydration). The gate forced one owner
 decision, which is now landed: canonical and hreflang URLs resolve through a
 single `configuredSiteUrl()` instead of the `content.ts` fixture origin (§5 of
 the same document, including the production effect and the revert path). Still
