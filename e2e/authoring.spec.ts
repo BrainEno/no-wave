@@ -125,10 +125,13 @@ async function registerWriter(page: Page, request: APIRequestContext): Promise<s
   expect(login.status(), `signing the browser in: ${await login.text()}`).toBe(200);
   const cookies = sessionCookies(await login.headersArray());
   expect(cookies.length, `the login response must set session cookies; headers: ${JSON.stringify(await login.headersArray())}`).toBeGreaterThan(0);
+  // `domain` + `path` (not `url`): Playwright derives the path from a url's
+  // directory, and the access cookie is deliberately scoped to /api/authoring
+  // so it is never sent to page routes.
   await page.context().addCookies(cookies.map((cookie) => ({
     name: cookie.name,
     value: cookie.value,
-    url: WEB_ORIGIN,
+    domain: new URL(WEB_ORIGIN).hostname,
     path: cookie.path,
     expires: Math.floor(Date.now() / 1000) + cookie.maxAge,
     httpOnly: cookie.httpOnly,
