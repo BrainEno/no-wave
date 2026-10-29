@@ -1,6 +1,12 @@
 export const ACCESS_TOKEN_COOKIE = "nw_access";
 export const REFRESH_TOKEN_COOKIE = "nw_refresh";
 
+export function setIdempotencyKeyHeader(headers: Headers, idempotencyKey?: string | null): void {
+  if (idempotencyKey !== undefined && idempotencyKey !== null) {
+    headers.set("idempotency-key", idempotencyKey);
+  }
+}
+
 export type TokenSet = {
   accessToken: string;
   tokenType: "Bearer";
