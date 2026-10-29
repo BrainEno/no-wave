@@ -17,6 +17,11 @@ coverage/
 .neon
 .neon/
 
+# Playwright browser-level test output
+test-results/
+playwright-report/
+blob-report/
+
 # Local SQLite data and write-ahead log files
 data/
 *.sqlite

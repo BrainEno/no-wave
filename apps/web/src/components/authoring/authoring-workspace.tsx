@@ -26,6 +26,13 @@ export function AuthoringWorkspace() {
   const [state, setState] = useState<WorkspaceState>("loading");
   const [articles, setArticles] = useState<AuthoringArticle[]>([]);
   const [selected, setSelected] = useState<AuthoringArticle | null>(null);
+  // The editor is keyed by its own state rather than by `selected`. Keying by
+  // the selected article re-mounted the editor the moment a save selected the
+  // saved article, which discarded the very status line the save had rendered
+  // ("草稿已保存。作品地址：…") together with everything the author had typed.
+  // The key now changes only when the author actually changes document: opening
+  // a different work must reload it, saving the current one must not.
+  const [editorKey, setEditorKey] = useState("new-0");
   const [newCounter, setNewCounter] = useState(0);
   const [error, setError] = useState("");
 
@@ -57,8 +64,24 @@ export function AuthoringWorkspace() {
     return () => { active = false; };
   }, []);
 
-  async function afterSave(article: AuthoringArticle) {
+  function openNewDocument() {
+    const next = newCounter + 1;
+    setNewCounter(next);
+    setSelected(null);
+    setEditorKey(`new-${next}`);
+  }
+
+  function openDocument(article: AuthoringArticle) {
     setSelected(article);
+    setEditorKey(article.id);
+  }
+
+  async function afterSave(article: AuthoringArticle) {
+    // Selecting the saved article keeps the editor mounted: it is the same
+    // document the author is looking at, and it now knows its own id, so the
+    // next save updates it instead of creating a second one.
+    setSelected(article);
+    setError("");
     setArticles((current) => [article, ...current.filter((item) => item.id !== article.id)].slice(0, 100));
     try { await reloadArticles(); } catch (caught) {
       setError(caught instanceof Error ? caught.message : "作品已保存，但列表刷新失败。");
@@ -70,6 +93,7 @@ export function AuthoringWorkspace() {
       await fetch("/api/auth/logout", { method: "POST", headers: { "content-type": "application/json" }, credentials: "same-origin", cache: "no-store", body: "{}" });
     } finally {
       setSelected(null);
+      setEditorKey("signed-out");
       setState("unauthenticated");
     }
   }
@@ -91,16 +115,16 @@ export function AuthoringWorkspace() {
       <div className="nw-authoring-grid">
         <aside className="nw-authoring-sidebar" aria-label="我的作品">
           <h2>我的作品（{articles.length}）</h2>
-          <button className="nw-btn nw-pri" type="button" onClick={() => { setSelected(null); setNewCounter((value) => value + 1); }}>新建作品 +</button>
+          <button className="nw-btn nw-pri" type="button" onClick={openNewDocument}>新建作品 +</button>
           {articles.length === 0 ? <p className="nw-m">还没有草稿或已发布作品。</p> : articles.map((article) => (
-            <button className="nw-authoring-article" key={article.id} type="button" aria-current={selected?.id === article.id ? "true" : undefined} onClick={() => setSelected(article)}>
+            <button className="nw-authoring-article" key={article.id} type="button" aria-current={selected?.id === article.id ? "true" : undefined} onClick={() => openDocument(article)}>
               <span>{article.title}</span>
               <small>{article.status === "published" ? "已发布" : "草稿"} · {article.updatedAt ? new Date(article.updatedAt).toLocaleDateString("zh-CN") : article.slug}</small>
             </button>
           ))}
         </aside>
         <div>
-          <ArticleEditor key={selected?.id ?? `new-${newCounter}`} article={selected} onSaved={(article) => void afterSave(article)} />
+          <ArticleEditor key={editorKey} article={selected} onSaved={(article) => void afterSave(article)} />
         </div>
       </div>
     </section>
