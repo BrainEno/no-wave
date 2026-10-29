@@ -43,7 +43,7 @@ The product owner has confirmed that GraphQL must be completely removed and REST
 - [ ] Select and validate SSE/WebSocket only for concrete real-time needs; keep database/outbox state authoritative.
 - [ ] Remove GraphQL schema, Yoga runtime, dependencies, endpoint/configuration and obsolete tests after the remaining Web caller migrates to REST; no new GraphQL code is permitted.
 
-The decision is documented in [ADR 0006](decisions/0006-rest-only-business-api.md).
+The decision is documented in [ADR 0006](../architecture/decisions/0006-rest-only-business-api.md).
 
 ## Approved editor technology — Lexical
 
@@ -60,7 +60,7 @@ On 2026-10-27, the product owner selected Lexical for both the article editor an
 - [ ] Implement the comment editor with the approved smaller supported-node set.
 - [ ] Add round-trip, malformed-payload, security, Chinese IME, accessibility, keyboard and mobile tests.
 
-See [ADR 0007](decisions/0007-lexical-rich-text-editors.md) for the decision and boundaries.
+See [ADR 0007](../architecture/decisions/0007-lexical-rich-text-editors.md) for the decision and boundaries.
 
 ## Phase 1 — Workspace, CI and API foundation
 
