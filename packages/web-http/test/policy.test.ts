@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isSameOriginMutation, safeRedirectPath, setIdempotencyKeyHeader, tokenMaxAge } from "./authoring-proxy-policy.ts";
+import { isSameOriginMutation, safeRedirectPath, setIdempotencyKeyHeader, tokenMaxAge } from "../src/policy.ts";
 
 test("authoring mutations require an exact same-origin browser origin", () => {
   assert.equal(isSameOriginMutation("https://example.test/api/authoring/articles", "https://example.test"), true);

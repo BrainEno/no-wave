@@ -10,21 +10,22 @@
     "test": "node --test src/lib/*.test.ts"
   },
   "dependencies": {
-    "next": "16.4.2",
-    "react": "19.2.0",
-    "react-dom": "19.2.0",
-    "gsap": "3.13.0",
+    "@bot-thk/web-http": "workspace:*",
     "@lexical/clipboard": "0.52.0",
     "@lexical/code": "0.52.0",
     "@lexical/extension": "0.52.0",
     "@lexical/history": "0.52.0",
     "@lexical/link": "0.52.0",
     "@lexical/list": "0.52.0",
+    "@lexical/plain-text": "0.52.0",
     "@lexical/react": "0.52.0",
     "@lexical/rich-text": "0.52.0",
     "@lexical/selection": "0.52.0",
+    "gsap": "3.13.0",
     "lexical": "0.52.0",
-    "@lexical/plain-text": "0.52.0"
+    "next": "16.4.2",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
   },
   "devDependencies": {
     "@types/node": "24.10.0",

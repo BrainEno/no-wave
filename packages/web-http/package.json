@@ -1,0 +1,19 @@
+{
+  "name": "@bot-thk/web-http",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./policy": "./src/policy.ts"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.0",
+    "typescript": "5.9.3"
+  }
+}

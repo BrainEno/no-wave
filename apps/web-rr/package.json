@@ -12,6 +12,7 @@
     "test": "node --test test/*.test.ts"
   },
   "dependencies": {
+    "@bot-thk/web-http": "workspace:*",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-router": "7.18.5"
