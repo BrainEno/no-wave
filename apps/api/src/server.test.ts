@@ -1242,6 +1242,7 @@ test("REST article comments support public listing and authenticated replies", a
       headers: {
         "content-type": "application/json",
         authorization: "Bearer " + signedToken("commenter-user"),
+        "idempotency-key": "comment-once-1",
       },
       body: JSON.stringify({ content: "很好的观点", parentCommentId }),
     });
@@ -1252,6 +1253,7 @@ test("REST article comments support public listing and authenticated replies", a
       args: {
         slug: "poetry-work", locale: "zh-CN", actorId: "commenter-user",
         content: "很好的观点", contentBlocks: null, contentBlocksVersion: 0, parentCommentId,
+        idempotencyKey: "comment-once-1",
       },
     });
   }, {
