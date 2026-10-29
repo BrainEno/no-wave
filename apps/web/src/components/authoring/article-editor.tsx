@@ -134,7 +134,7 @@ function Toolbar({ onStatus, onError }: { onStatus(message: string): void; onErr
         ? (payload as { data?: unknown }).data : null;
       if (!data || typeof data !== "object" || !("src" in data) ||
         typeof (data as { src?: unknown }).src !== "string" ||
-        !/^\/api\/media\/[0-9a-f-]{36}$/i.test((data as { src: string }).src)) {
+        !/^\/api\/media\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test((data as { src: string }).src)) {
         throw new Error("上传服务返回了无效的图片地址。");
       }
       const src = (data as { src: string }).src;

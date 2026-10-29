@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import sharp from "sharp";
 import { normalizeUploadedImage, createMediaAssetService } from "./media-assets.ts";
+import { MediaStorageUnavailableError } from "../infrastructure/media-storage.ts";
 
 async function pngBuffer() {
   return sharp({ create: { width: 24, height: 18, channels: 4, background: { r: 240, g: 30, b: 120, alpha: 1 } } }).png().toBuffer();
@@ -44,4 +45,38 @@ test("media service removes uploaded objects if metadata persistence fails", asy
   assert.equal(keyLog.length, 2);
   assert.match(keyLog[0]!, /^put:assets\/11111111-1111-4111-8111-111111111111\//);
   assert.equal(keyLog[0]!.replace("put:", "delete:"), keyLog[1]);
+});
+
+test("object-storage failures are sanitized as service-unavailable errors", async () => {
+  const store = {
+    async createMediaAsset() { throw new Error("not expected"); },
+    async getMediaAsset() {
+      return {
+        id: "22222222-2222-4222-8222-222222222222",
+        ownerId: "11111111-1111-4111-8111-111111111111",
+        storageKey: "assets/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222.webp",
+        contentType: "image/webp",
+        byteSize: 10,
+        width: 10,
+        height: 10,
+        sha256: "a".repeat(64),
+        createdAt: "2026-10-29T00:00:00.000Z",
+      };
+    },
+  };
+  const storage = {
+    async putObject() { throw new Error("private bucket credentials leaked"); },
+    async getObject() { throw new Error("private bucket credentials leaked"); },
+    async deleteObject() { throw new Error("bucket unavailable"); },
+    close() {},
+  };
+  const service = createMediaAssetService({ store, storage });
+  await assert.rejects(
+    service.upload({ ownerId: "11111111-1111-4111-8111-111111111111", bytes: await pngBuffer(), contentType: "image/png" }),
+    (error) => error instanceof MediaStorageUnavailableError && !error.message.includes("credentials"),
+  );
+  await assert.rejects(
+    service.getPublic({ id: "22222222-2222-4222-8222-222222222222" }),
+    (error) => error instanceof MediaStorageUnavailableError && !error.message.includes("credentials"),
+  );
 });
