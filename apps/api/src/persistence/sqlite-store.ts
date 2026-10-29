@@ -1,4 +1,4 @@
-import { assertPersistenceAdapter } from "../application/persistence-ports.ts";
+import { assertPersistenceAdapter, type PersistenceAdapterContract } from "../application/persistence-ports.ts";
 import { createSqliteArticleStore } from "./sqlite-article-store.ts";
 import { createSqliteTaxonomyStore } from "./sqlite-taxonomy-store.ts";
 import { createSqliteProfileStore } from "./sqlite-profile-store.ts";
@@ -17,7 +17,7 @@ import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
  * This full adapter is registered as the default runtime provider. Its
  * operations are covered by the shared persistence-adapter contract tests.
  */
-export function createSqliteStore(db) {
+export function createSqliteStore(db): PersistenceAdapterContract {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") {
     throw new TypeError("A node:sqlite DatabaseSync connection is required.");
   }
