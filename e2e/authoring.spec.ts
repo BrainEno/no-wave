@@ -218,9 +218,36 @@ async function savedSlug(page: Page, title: string, status: SavedArticle["status
   return slug;
 }
 
+/**
+ * Everything the page sent to and received from the authoring API.
+ *
+ * Printed for a failing test. "The click did nothing", "the click hit another
+ * button" and "the request was rejected" look identical from the outside, and
+ * only the traffic tells them apart.
+ */
+let traffic: string[] = [];
+
+test.beforeEach(async ({ page }) => {
+  traffic = [];
+  const record = (line: string): void => { if (traffic.length < 40) traffic.push(line); };
+  const watched = (url: string): boolean => /\/api\/(authoring|auth)/.test(url);
+  page.on("request", (request) => {
+    if (!watched(request.url())) return;
+    record(`-> ${request.method()} ${new URL(request.url()).pathname} ${(request.postData() ?? "").slice(0, 200)}`);
+  });
+  page.on("response", (response) => {
+    if (!watched(response.url())) return;
+    record(`<- ${response.status()} ${new URL(response.url()).pathname}`);
+  });
+  page.on("requestfailed", (request) => {
+    if (!watched(request.url())) return;
+    record(`!! ${request.method()} ${request.url()} ${request.failure()?.errorText ?? "failed"}`);
+  });
+});
+
 test.afterEach(async ({ page }, testInfo) => {
   if (testInfo.status !== "failed" && testInfo.status !== "timedOut") return;
-  console.log(`FAILED ${testInfo.title} at ${page.url()}\n${await pageDigest(page)}`);
+  console.log(`FAILED ${testInfo.title} at ${page.url()}\ntraffic:\n${traffic.join("\n")}\n${await pageDigest(page)}`);
 });
 
 test("the sign-in form registers an account and opens the authoring desk", async ({ page }) => {
@@ -271,7 +298,7 @@ test("saving a draft creates the article with a generated address, and it surviv
     const editorText = ((await page.getByLabel("作品正文").textContent()) ?? "").slice(0, 120);
     const titleValue = await page.getByLabel("标题").inputValue();
     throw new Error(
-      `publishing the saved draft did not report success; alerts=${JSON.stringify(alerts)} editor=${JSON.stringify(editorText)} title=${JSON.stringify(titleValue)}\n${await pageDigest(page)}\n${String(caught)}`,
+      `publishing the saved draft did not report success; alerts=${JSON.stringify(alerts)} editor=${JSON.stringify(editorText)} title=${JSON.stringify(titleValue)}\ntraffic:\n${traffic.join("\n")}\n${String(caught)}`,
     );
   }
   await expect(async () => {
