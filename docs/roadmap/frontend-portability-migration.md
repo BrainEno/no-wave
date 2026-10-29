@@ -127,16 +127,16 @@ The owner accepts cold starts and free-instance sleep but does not accept card-r
 still open** — no candidate has been verified against the no-card/zero-cost terms,
 so the phase is not complete and no provider-specific code exists.
 
-### Phase 2 — Framework-independent HTTP and deployment seams (current stage: seam + contract tests done, worker contract open)
+### Phase 2 — Framework-independent HTTP and deployment seams (complete)
 
 - [x] Separate request validation/cookie policy/response mapping from the Next adapter where this reduces coupling, using standard web Request/Response types and explicit inputs. → `packages/web-http` (`handleAuthRequest`, `forwardAuthoringRequest`, `readLimitedJson`, cookie helpers), consumed by both `apps/web` and `apps/web-rr`.
 - [x] Add contract tests for cookie paths/options, exact-Origin validation, token refresh/retry, invalid refresh logout, payload size limits and private cache headers. → `packages/web-http/test/*` (26 tests).
 - [x] Ensure every server-side API call can use an explicit server-only `API_BASE_URL`; keep any temporary Vercel binding support behind a small adapter. → the seam takes `apiBaseUrl` as an argument; the Next adapter keeps the existing resolution order and the RR prototype passes it explicitly.
-- [ ] Document the production worker's standalone start/stop, health/metrics, retry and graceful-shutdown contract without running or moving the live worker. (Drain model candidate recorded in [hosting qualification §5](hosting-qualification.md); contract still unwritten.)
+- [x] Document the production worker's standalone start/stop, health/metrics, retry and graceful-shutdown contract without running or moving the live worker. → [notification worker contract](../operations/notification-worker.md); the cardless scheduler-drain model is recorded in [hosting qualification §5](hosting-qualification.md) and remains unimplemented.
 
 **Exit gate:** the critical auth/media/REST behavior is tested without requiring Next.js request objects or Vercel's service-binding injection.
 
-### Phase 3 — Migrate public SSR routes first
+### Phase 3 — Migrate public SSR routes first (current stage)
 
 - [ ] Port localized home, article archive/detail, author, category and search routes in small reviewed batches.
 - [ ] Preserve URLs, `zh-CN` defaults, English routes, canonical/Open Graph metadata and status codes.
@@ -158,7 +158,7 @@ so the phase is not complete and no provider-specific code exists.
 
 ### Phase 5 — Migrate media and detach the worker from Vercel
 
-- [ ] Port the media request/response adapter without exposing private storage keys or service credentials.
+- [ ] Port the media request/response adapter without exposing private storage keys or service credentials. (Storage itself now passes the gate via Neon Object Storage — see [hosting qualification §4](hosting-qualification.md); the adapter also gained `WHEN_REQUIRED` checksums and bounded `SlowDown` retries.)
 - [ ] Verify media upload, normalized WebP retrieval, access denial, checksums, ETag and cache headers.
 - [ ] Run the notification outbox worker outside the Web server and validate duplicate prevention, lease expiry, retry and shutdown recovery against a disposable PostgreSQL database.
 - [ ] Select a worker/scheduler execution model that actually fits the qualified zero-cost host. If it cannot, stop before choosing that host or silently weakening delivery guarantees.
