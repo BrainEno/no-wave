@@ -34,6 +34,8 @@ Always automated before acceptance where technically feasible:
 
 Use unit tests for pure policy and domain rules, integration tests for persistence/transactions, API/contract tests for exposed operations, and a small number of E2E tests for complete journeys.
 
+That E2E layer now exists: Playwright drives a real browser against the local stack (`pnpm test:e2e`, see [end-to-end.md](end-to-end.md)). Use it for journeys that cross the editor, the proxy and the API at once — the authoring save/publish round trip is the reference case. Keep it small: a behaviour belongs in the cheapest layer that can actually see it.
+
 ### Medium
 
 Automate representative behavior:
