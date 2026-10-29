@@ -9,7 +9,7 @@ import {
   siteOrigin,
   type SitemapEntry,
 } from "./site-metadata.ts";
-import { supportedLocales } from "./content.ts";
+import { supportedLocales, type ArticleView, type Locale } from "./content.ts";
 
 /**
  * Sitemap/robots output is a public contract: search engines consume it and both
@@ -53,8 +53,48 @@ test("robots.txt allows crawling and points at the sitemap", () => {
   assert.equal(renderRobotsTxt(undefined).includes("https://example.invalid/sitemap.xml"), true);
 });
 
+/**
+ * Fixture articles, injected instead of the network.
+ *
+ * `loadSitemapEntries` reads the archive through an injectable lister so this
+ * test cannot depend on whether a developer has a local `.env.local` pointing at
+ * an API that is not running.
+ */
+// Only `slug`, `publishedAt` and `author.username` are read by the builder, so
+// the fixtures carry just those rather than a full article.
+const SITEMAP_ARTICLES: Record<string, ArticleView[]> = {
+  "zh-CN": [
+    {
+      slug: "portable-web-foundation",
+      locale: "zh-CN",
+      publishedAt: "2026-10-01T09:00:00.000Z",
+      author: { username: "writer", displayName: "林可行" },
+    } as unknown as ArticleView,
+    {
+      slug: "reading-as-resistance",
+      locale: "zh-CN",
+      publishedAt: "2026-09-20T12:30:00.000Z",
+      // Same author on purpose: the sitemap must list the profile once.
+      author: { username: "writer", displayName: "林可行" },
+    } as unknown as ArticleView,
+  ],
+  en: [
+    {
+      slug: "portable-web-foundation",
+      locale: "en",
+      publishedAt: "2026-10-01T09:00:00.000Z",
+      author: { username: "writer", displayName: "林可行" },
+    } as unknown as ArticleView,
+  ],
+};
+
+function fixtureLister(options: { locale: Locale; limit: number; offset: number }): Promise<ArticleView[]> {
+  const all = SITEMAP_ARTICLES[options.locale] ?? [];
+  return Promise.resolve(all.slice(options.offset, options.offset + options.limit));
+}
+
 test("every locale publishes home, archive, article and author URLs, authors once", async () => {
-  const entries = await loadSitemapEntries({ siteUrl: SITE });
+  const entries = await loadSitemapEntries({ siteUrl: SITE, listArticles: fixtureLister });
   const urls = entries.map((entry) => entry.url);
 
   for (const locale of supportedLocales) {
@@ -66,6 +106,7 @@ test("every locale publishes home, archive, article and author URLs, authors onc
 
   const authorUrls = urls.filter((url) => url.includes("/authors/"));
   assert.equal(new Set(authorUrls).size, authorUrls.length, "an author must not be listed twice");
+  assert.equal(authorUrls.length, 2, "one author profile per locale, even though zh-CN has two works by them");
   assert.ok(entries.every((entry) => entry.url.startsWith(SITE)), "every URL must be absolute");
   assert.ok(entries.every((entry) => entry.priority === undefined || (entry.priority >= 0 && entry.priority <= 1)));
 });

@@ -33,6 +33,7 @@ export default [
   route("sitemap.xml", "routes/sitemap.xml.ts"),
   route("robots.txt", "routes/robots.txt.ts"),
   route("api/auth/:action", "routes/api.auth.ts"),
+  route("api/articles/:slug/comments", "routes/api.articles.comments.ts"),
   route("api/media/:id", "routes/api.media.ts"),
   route("api/authoring/media", "routes/api.authoring.media.ts"),
 ] satisfies RouteConfig;

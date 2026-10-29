@@ -30,6 +30,16 @@ export {
 export { forwardAuthoringRequest, type ForwardMethod } from "./forward.ts";
 export { NO_STORE, errorResponse, isRecord, jsonResponse, safeApiError } from "./http.ts";
 export {
+  COMMENT_BODY_MAX_BYTES,
+  COMMENT_DEFAULT_LOCALE,
+  COMMENT_LOCALES,
+  COMMENT_PAGE_LIMIT,
+  COMMENT_SLUG_PATTERN,
+  commentsRequestPath,
+  handleArticleCommentsRequest,
+  isCommentLocale,
+} from "./comments.ts";
+export {
   MEDIA_ID_PATTERN,
   MEDIA_IMMUTABLE_CACHE,
   MEDIA_MAX_BYTES,

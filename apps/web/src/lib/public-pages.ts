@@ -1,5 +1,6 @@
 import type { ArticleView, AuthorView, Locale, WorkType } from "./content.ts";
 import {
+  getPublicArticle,
   getPublicCategory,
   listPublicArticles,
   listPublicCategories,
@@ -215,4 +216,58 @@ export async function loadHomePage(options: { locale: Locale }): Promise<HomePag
     listPublicCategories({ locale: options.locale, limit: HOME_CATEGORY_LIMIT }).catch((): CategoryView[] => []),
   ]);
   return { locale: options.locale, articles, categories };
+}
+
+/* ------------------------------------------------------------------ 阅读页 */
+
+/** How many articles are scanned for previous/next and related links. */
+export const ARTICLE_SCAN_LIMIT = 100;
+
+/** Related works shown at the foot of an article. */
+export const ARTICLE_RELATED_LIMIT = 3;
+
+export type ArticleDetailPageData = {
+  locale: Locale;
+  article: ArticleView;
+  /** The next-newer and next-older work, when the scan found them. */
+  newer?: ArticleView;
+  older?: ArticleView;
+  related: ArticleView[];
+};
+
+/**
+ * Article detail.
+ *
+ * `null` means "no such article", which each framework turns into its own 404:
+ * the App Router calls `notFound()`, the prototype throws `entityNotFound()`. The
+ * view never has to know which.
+ *
+ * Two calls, and the second is optional in the strictest sense — the article is
+ * the page, while the scan only decorates it, so a failure there degrades to an
+ * article without neighbours instead of a broken page.
+ */
+export async function loadArticleDetailPage(options: {
+  slug: string;
+  locale: Locale;
+}): Promise<ArticleDetailPageData | null> {
+  const { slug, locale } = options;
+  const article = await getPublicArticle(slug, locale);
+  if (!article) return null;
+  const everything = await listPublicArticles({ locale, limit: ARTICLE_SCAN_LIMIT })
+    .then((items) => [...items].sort((a, b) => b.publishedAt.localeCompare(a.publishedAt)))
+    .catch((): ArticleView[] => []);
+  const position = everything.findIndex((candidate) => candidate.slug === article.slug);
+  const others = everything.filter((candidate) => candidate.slug !== article.slug);
+  const sameAuthor = others.filter((candidate) => candidate.author.username === article.author.username);
+  const related = [
+    ...sameAuthor,
+    ...others.filter((candidate) => candidate.author.username !== article.author.username),
+  ].slice(0, ARTICLE_RELATED_LIMIT);
+  return {
+    locale,
+    article,
+    ...(position > 0 ? { newer: everything[position - 1] } : {}),
+    ...(position >= 0 && position < everything.length - 1 ? { older: everything[position + 1] } : {}),
+    related,
+  };
 }

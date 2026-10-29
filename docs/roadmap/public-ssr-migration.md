@@ -61,7 +61,7 @@ which is how a `User-agent` / `User-Agent` case difference was caught.
 | --- | --- | --- |
 | `routes/home.tsx` | `/`, `/en` | `app/page.tsx`, `app/en/page.tsx` |
 | `routes/archive.tsx` | `/articles`, `/en/articles` | `app/articles/page.tsx`, `app/en/articles/page.tsx` |
-| `routes/article.tsx` | `/articles/:slug`, `/en/articles/:slug` | `app/articles/[slug]/page.tsx`, `app/en/articles/[slug]/page.tsx` |
+| `routes/article.tsx` | `/articles/:slug`, `/en/articles/:slug` | `app/articles/[slug]/page.tsx`, `app/en/articles/[slug]/page.tsx` — both render the shared `ArticlePageView` (Phase 4a) |
 | `routes/author.tsx` | `/authors/:username`, `/en/authors/:username` | `app/authors/[username]/page.tsx`, `app/en/authors/[username]/page.tsx` |
 | `routes/categories.tsx` | `/categories`, `/en/categories` | `app/categories/page.tsx`, `app/en/categories/page.tsx` |
 | `routes/category.tsx` | `/categories/:slug`, `/en/categories/:slug` | `app/categories/[slug]/page.tsx`, `app/en/categories/[slug]/page.tsx` |
@@ -223,11 +223,54 @@ argument) — the gate would then fail again, which is the point.
 The gate no longer excuses this: the known-divergence entry was deleted, so a
 regression now fails the run.
 
-## 6. Verification status
+## 6. Phase 4a: the page after hydration
+
+Markup is not the page. `ArticleComments`, `ReaderBar`, `ReaderToc` and
+`ReadingProgress` are client components, and the prototype's article route used
+to render **none of them**: it hand-wrote a reduced body in Phase 2, because the
+App Router's `ArticleDetailContent` is an `async` server component and could not
+be imported into a route module. Every HTML comparison — including the parity
+gate — stayed green, because the missing markup was never rendered by either
+side to compare.
+
+Two things made that visible, and both are now guarded:
+
+**1. The load/render split, applied to the last page.** `loadArticleDetailPage()`
+(`public-pages.ts`) owns the data — the article plus one bounded scan (100 works)
+for previous/next and related links — and `ArticlePageView`
+(`components/public/article-view.tsx`) is synchronous and renders the whole tree.
+The App Router's page and the prototype's route now call the same pair, so the
+prototype renders the reader toolbar, the table of contents and the comment
+section for the first time.
+
+**2. A client-bundle guard** (`apps/web-rr/test/client-bundle.test.ts`). A
+component that is not in the client bundle produces markup that never hydrates,
+and no HTML assertion can see it. The test asserts a string that exists only in
+each client component's code is present in the emitted client assets, for every
+client component a migrated page renders. It is crude on purpose — it proves the
+code is there, not that hydration succeeds.
+
+**3. The endpoint the comment section calls.** `/api/articles/:slug/comments`
+did not exist in the prototype, so the component had nothing to talk to. The
+behaviour now lives in `handleArticleCommentsRequest` (`@bot-thk/web-http`) —
+slug/locale validation, the exact-Origin check on mutations, a bounded body,
+cookie-attached forwarding — and both frameworks contribute a ~15-line adapter,
+the same shape as the media relay.
+
+The check order is the App Router's and is not cosmetic: the Origin check
+precedes slug validation on mutations, so a cross-origin request never learns
+whether the slug it guessed was valid.
+
+**What this slice does not prove.** Nothing here runs a browser. Hover switching
+in `HomeLatest`, the GSAP intro, the WebGL hero, IME input in the comment
+composer and focus management are still unasserted; the sandbox has no browser
+and the repo has no DOM test stack. §7 records them.
+
+## 7. Verification status
 
 | Claim | How it was checked |
 | --- | --- |
-| Every migrated public page renders server-side with API data | `pnpm test:prototype` (28 tests, real HTTP against the production build) |
+| Every migrated public page renders server-side with API data | `pnpm test:prototype` (33 tests, real HTTP against the production build) |
 | English paths render English content and localized canonical URLs | same suite |
 | Unknown article / author / category → hard, titled, `no-store` 404 | same suite |
 | Query and work-type filtering still scope the archive | same suite |
@@ -235,7 +278,10 @@ regression now fails the run.
 | ≤ 2 API calls per page (home included) | same suite (mock API request counter) |
 | `<title>` uses the App Router's template, including the root-page exception | same suite |
 | `sitemap.xml` / `robots.txt` are well-formed, bounded and localized | `apps/web/src/lib/site-metadata.test.ts` (5 tests) + the prototype suite |
-| **Both implementations agree on status, title, canonical, hreflang targets and content** | `pnpm check:ssr-parity` (105 comparisons, 0 unexpected differences — output above) |
+| **Both implementations agree on status, title, canonical, hreflang targets and content** | `pnpm check:ssr-parity` (112 comparisons, 0 unexpected differences — output above) |
+| The article page ships its interactive parts (reader bar, TOC, comment section) | `pnpm test:prototype`: server-rendered mount points + `client-bundle.test.ts` (the code that hydrates them) |
+| Comments are proxied with the origin check, the bounded body and the API's own auth | `packages/web-http/test/comments.test.ts` (9 contract tests) + the prototype suite (3 end-to-end tests against the mock API) |
+| The App Router's comment route still works against a live API | `pnpm dev --check --exit` (the local chain probes it: 10/0) — this caught the adapter that forgot to pass the API origin |
 | Every page's canonical origin comes from one function, with the same fallback when it is unset | `apps/web/src/lib/site-metadata.test.ts` (5 tests) |
 | The Next.js app still renders every page, and its canonical origin is resolved once | `pnpm build` + `pnpm test:routes` (route smoke, fixtures only) + `pnpm check:ssr-parity` (the behaviour change is scoped in §5) |
 | No provider-specific code was introduced | grep: new modules import no host SDK; `MEDIA_S3_*` / `API_BASE_URL` remain the only configuration surface |
@@ -243,12 +289,18 @@ regression now fails the run.
 | `pnpm check:ssr-parity` in CI | the nightly workflow was **dispatched by hand against this branch** after the push — see the run linked in the PR. The scheduled (nightly) trigger has not fired yet, because it only exists from the moment the workflow lands on `main`. |
 | `pnpm check:ssr-parity` as a per-PR gate | **no** — nightly only, by design (§4) |
 
-## 7. Known gaps
+## 8. Known gaps
 
-- **Interaction is Phase 4, not migrated or asserted here**: the home hero
-  canvas and intro animation, article comments, the reader toolbar and related
-  works. The markup for all of them is ported; their behaviour is not
-  exercised by either suite.
+- **No browser, so no behaviour after hydration is asserted**: hover switching in
+  `HomeLatest`, the GSAP intro counter, the WebGL hero, IME composition in the
+  comment composer, focus order and ARIA state changes. The mount points and the
+  client code are asserted; what they *do* in a browser is not. Closing this
+  needs a DOM test stack or a real browser, which the sandbox has neither.
+- **Upstream 5xx bodies are relayed verbatim** by the shared authoring forwarder
+  (asserted, not fixed, in `comments.test.ts`): a server error from the API
+  reaches the browser with whatever detail the API put in it. Sanitizing it
+  belongs in `forwardAuthoringRequest` and would change every proxied route at
+  once — **an owner decision**, not a Phase 4a side effect.
 - **The parity gate runs nightly, not per PR** (§4). A regression is caught
   within a day rather than before the merge button; closing that gap means
   making the run fast enough (a shared build cache, or comparing against

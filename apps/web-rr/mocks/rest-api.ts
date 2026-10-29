@@ -32,6 +32,24 @@ export const MOCK_DISPLAY_NAME = "林可行";
 export const MOCK_AUTHOR = { username: "writer", bio: "在无浪潮写作。" } as const;
 
 /**
+ * One seeded comment per article.
+ *
+ * Comments are the only interactive, state-changing surface on a migrated public
+ * page (Phase 4a), so the mock has to model both halves of it: a readable thread
+ * and a write that requires a session. `MOCK_COMMENT_ID` is exported so a test
+ * can assert on a specific comment without depending on the text.
+ */
+export const MOCK_COMMENT_ID = "9c1f0a52-3d4e-4f7a-8b21-5e6d7c8a9b01";
+
+const MOCK_COMMENTS: Record<string, { id: string; body: Record<"zh-CN" | "en", string>; createdAt: string }> = {
+  "portable-web-foundation": {
+    id: MOCK_COMMENT_ID,
+    body: { "zh-CN": "这篇把托管成本讲得很清楚。", en: "This lays out the hosting costs clearly." },
+    createdAt: "2026-10-02T08:30:00.000Z",
+  },
+};
+
+/**
  * A 1x1 WebP and its content hash.
  *
  * Media objects are content-addressed in the API (the SHA-256 is the ETag), so
@@ -72,11 +90,15 @@ const ARTICLES: MockArticle[] = [
         { id: "b3", type: "paragraph", text: "服务端渲染、标准 Node 运行时与独立的 REST API，三者共同构成了可迁移的底线。" },
         { id: "b4", type: "quote", text: "先把事实写进数据库，再谈渲染。", attribution: "架构备忘" },
         { id: "b5", type: "list", ordered: false, items: ["服务端渲染的公开页面", "客户端交互的写作台", "可作为纯 Node 进程启动"] },
+        // A second level-2 heading: the table of contents only appears from two
+        // headings on, and it is one of the interactive parts under test.
+        { id: "b6", type: "heading", level: 2, text: "可移植性的代价" },
       ],
       en: [
         { id: "b1", type: "paragraph", text: "A literary site should not tie its fate to one host's lifecycle." },
         { id: "b2", type: "heading", level: 2, text: "Why portability" },
         { id: "b3", type: "paragraph", text: "Server rendering, a standard Node runtime and a standalone REST API form the floor." },
+        { id: "b4", type: "heading", level: 2, text: "The cost of portability" },
       ],
     },
   },
@@ -285,6 +307,55 @@ function handle(request: IncomingMessage, response: ServerResponse, body: Record
     return;
   }
 
+  const commentList = /^\/api\/v1\/articles\/([^/]+)\/comments$/.exec(path);
+  if (commentList) {
+    const slug = decodeURIComponent(commentList[1] ?? "");
+    const article = ARTICLES.find((candidate) => candidate.slug === slug);
+    if (!article) {
+      send(response, 404, { error: { code: "NOT_FOUND", message: "Article not found." } });
+      return;
+    }
+    if (method === "GET") {
+      const seeded = MOCK_COMMENTS[slug];
+      const data = seeded
+        ? [{
+            id: seeded.id,
+            body: seeded.body[locale],
+            createdAt: seeded.createdAt,
+            author: { userId: MOCK_AUTHOR.username, displayName: MOCK_DISPLAY_NAME, username: MOCK_AUTHOR.username },
+            replies: [],
+          }]
+        : [];
+      send(response, 200, { data });
+      return;
+    }
+    if (method !== "POST") {
+      send(response, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed." } });
+      return;
+    }
+    // Writing a comment requires a session: the access token travels in an
+    // HttpOnly cookie, so it is the proxy — never the browser — that sets it.
+    if (!request.headers.authorization) {
+      send(response, 401, { error: { code: "UNAUTHENTICATED", message: "Sign in to comment." } });
+      return;
+    }
+    const content = typeof body.body === "string" ? body.body.trim() : "";
+    if (!content) {
+      send(response, 400, { error: { code: "BAD_USER_INPUT", message: "Comment is empty." } });
+      return;
+    }
+    send(response, 201, {
+      data: {
+        id: "d2e3f4a5-6b7c-4d8e-9f01-2a3b4c5d6e7f",
+        body: content,
+        createdAt: new Date().toISOString(),
+        author: { userId: MOCK_AUTHOR.username, displayName: MOCK_DISPLAY_NAME, username: MOCK_AUTHOR.username },
+        replies: [],
+      },
+    });
+    return;
+  }
+
   if (method === "POST" && (path === "/api/v1/auth/login" || path === "/api/v1/auth/register")) {
     const email = typeof body.email === "string" ? body.email : "";
     const password = typeof body.password === "string" ? body.password : "";
@@ -366,7 +437,10 @@ export type MockRestApi = {
 export async function startMockRestApi({ port = 0 }: { port?: number } = {}): Promise<MockRestApi> {
   let recorded: string[] = [];
   const server: Server = createServer((request, response) => {
-    recorded.push(`${request.method ?? "GET"} ${new URL(request.url ?? "/", "http://mock.invalid").pathname}`);
+    // The query string is recorded too: the page limit of a list request is part
+    // of the contract the proxy is asserting, not an implementation detail.
+    const target = new URL(request.url ?? "/", "http://mock.invalid");
+    recorded.push(`${request.method ?? "GET"} ${target.pathname}${target.search}`);
     void readJson(request).then(
       (body) => handle(request, response, body),
       () => send(response, 400, { error: { code: "BAD_USER_INPUT", message: "Unreadable body." } }),
