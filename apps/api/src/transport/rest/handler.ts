@@ -765,6 +765,8 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
     const notificationReadMatch = url.pathname.match(/^\/api\/v1\/me\/notifications\/([^/]+)\/read$/);
     const readAllNotificationsPath = url.pathname === "/api/v1/me/notifications/read-all";
     const articleItemPath = /^\/api\/v1\/articles\/[^/]+$/.test(url.pathname);
+    const mediaItemMatch = url.pathname.match(/^\/api\/v1\/media\/([^/]+)$/);
+    const isUploadMedia = request.method === "POST" && url.pathname === "/api/v1/me/media";
     const isCreateArticle = request.method === "POST" && url.pathname === "/api/v1/articles";
     const isUpdateArticle = request.method === "PUT" && articleItemPath;
     const isUpdateMyProfile = request.method === "PUT" && meProfilePath;
