@@ -31,6 +31,28 @@ test("migrations are repeatable and record applied versions once", integrationOp
   assert.deepEqual(rows.map((row) => row.version).sort(), versions);
 });
 
+test("PostgreSQL comment idempotency migration preserves existing comments", integrationOptions, async () => {
+  const migration = await readFile(new URL("./migrations/0016_article_comment_idempotency.sql", import.meta.url), "utf8");
+  const commentId = randomUUID();
+  await sql.begin(async (tx) => {
+    // A temporary legacy-shaped table verifies the migration adds nullable columns without dropping rows.
+    await tx.unsafe("CREATE TEMP TABLE article_comments (id uuid PRIMARY KEY, author_id text NOT NULL) ON COMMIT DROP");
+    await tx.unsafe("INSERT INTO article_comments (id, author_id) VALUES ($1, $2)", [commentId, "legacy-author"]);
+    await tx.unsafe(migration);
+    const rows = await tx.unsafe("SELECT idempotency_key_hash, request_hash FROM article_comments WHERE id = $1", [commentId]);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].idempotency_key_hash, null);
+    assert.equal(rows[0].request_hash, null);
+    await assert.rejects(tx.unsafe(
+      "INSERT INTO article_comments (id, author_id, idempotency_key_hash, request_hash) VALUES ($1, $2, $3, $4)",
+      [randomUUID(), "legacy-author", "a".repeat(64), "b".repeat(64)],
+    ).then(() => tx.unsafe(
+      "INSERT INTO article_comments (id, author_id, idempotency_key_hash, request_hash) VALUES ($1, $2, $3, $4)",
+      [randomUUID(), "legacy-author", "a".repeat(64), "c".repeat(64)],
+    )));
+  });
+});
+
 test("PostgreSQL media metadata persists normalized image fields and enforces ownership constraints", integrationOptions, async () => {
   const ownerId = randomUUID();
   const assetId = randomUUID();
