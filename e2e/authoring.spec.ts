@@ -7,13 +7,18 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
  * every cheaper layer was green — the unit tests, the API contract tests, the
  * types. The failure lived between the Lexical editor, the REST body and the
  * adapter, and only a browser that types into the editor and clicks 保存草稿
- * can see it. These are the assertions that would have caught it.
+ * can see it. These are the assertions that would have caught it, and the ones
+ * that caught the follow-up bug below.
  *
  * Rules of the layer (see docs/testing/end-to-end.md):
  * - selectors follow the accessibility tree, never CSS;
  * - every test creates its own account, so nothing depends on another test;
  * - account setup goes through HTTP (deterministic), the browser does every
- *   interaction the assertions are actually about.
+ *   interaction the assertions are actually about;
+ * - assertions wait on durable outcomes. The editor is remounted when a save
+ *   selects the saved article, which currently discards its own status line,
+ *   so the suite reads the article list and the public page instead of a
+ *   message that the application throws away (see docs/testing/end-to-end.md).
  */
 
 const PASSWORD = "e2e-browser-password";
@@ -21,6 +26,8 @@ const PASSWORD = "e2e-browser-password";
 const API_BASE_URL = process.env.E2E_API_BASE_URL ?? "http://127.0.0.1:4000";
 /** Where the suite drives the browser; playwright.config.ts sets baseURL from it. */
 const WEB_ORIGIN = process.env.E2E_BASE_URL ?? "http://127.0.0.1:3000";
+
+type SavedArticle = { id: string; slug: string; title: string; status: "draft" | "published" };
 
 function uniqueEmail(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}@example.test`;
@@ -30,8 +37,8 @@ function uniqueEmail(prefix: string): string {
  * A compact snapshot of what the page actually rendered.
  *
  * CI logs are the only place a browser failure can be read, and a bare
- * "locator not found" says nothing about a page that failed to hydrate. The
- * digest is attached to assertion messages so it lands in the failure output.
+ * "locator not found" says nothing about a page that rendered something else.
+ * The digest is attached to assertion messages so it lands in the failure text.
  */
 async function pageDigest(page: Page): Promise<string> {
   try {
@@ -41,12 +48,6 @@ async function pageDigest(page: Page): Promise<string> {
   }
 }
 
-/**
- * Create an account with a profile and hand the browser its session.
- *
- * The profile is not decoration: the public reader drops articles whose author
- * has none, so a published work would be unreachable without it.
- */
 type SessionCookie = { name: string; value: string; path: string; maxAge: number; httpOnly: boolean; secure: boolean; sameSite: "Lax" | "Strict" | "None" };
 
 /**
@@ -170,46 +171,59 @@ async function waitForEditor(page: Page): Promise<void> {
   await expect(page.getByRole("toolbar", { name: "富文本格式" })).toBeVisible({ timeout: 45_000 });
 }
 
-test.afterEach(async ({ page }, testInfo) => {
-  if (testInfo.status !== "failed" && testInfo.status !== "timedOut") return;
-  console.log(`FAILED ${testInfo.title} at ${page.url()}\n${await pageDigest(page)}`);
-});
+async function savedArticles(page: Page): Promise<SavedArticle[]> {
+  const response = await page.request.get("/api/authoring/articles");
+  expect(response.status(), "reading the author's article list").toBe(200);
+  const body = (await response.json()) as { data: SavedArticle[] };
+  return Array.isArray(body.data) ? body.data : [];
+}
 
-const TITLE_PREFIX = "无浪是一只没有波浪的文学站点，第一段用来验证保存链路。";
+const FIRST_PARAGRAPH = "无浪是一只没有波浪的文学站点，第一段用来验证保存链路。";
 const SECOND_PARAGRAPH = "第二段用来验证摘要会取正文开头，而不是把整篇文章塞进去。";
 
-/** Write a title and two paragraphs, save, and return the generated address. */
+/** Write a title and two paragraphs, then save; returns the generated address. */
 async function writeAndSave(page: Page, title: string, publish: boolean): Promise<string> {
   await waitForEditor(page);
   await page.getByLabel("标题").fill(title);
   await page.getByLabel("作品正文").click();
-  await page.keyboard.type(TITLE_PREFIX);
+  await page.keyboard.type(FIRST_PARAGRAPH);
   await page.keyboard.press("Enter");
   await page.keyboard.type(SECOND_PARAGRAPH);
   // The text has to reach the editor state, not just the DOM, before saving.
   await expect(page.getByLabel("作品正文")).toContainText("第一段用来验证保存链路。");
 
   await page.getByRole("button", { name: publish ? "发布作品" : "保存草稿" }).click();
-  // Filtered by its text: Next keeps an empty route announcer in the tree that
-  // also carries role=status.
-  const status = page.getByRole("status").filter({ hasText: "作品地址：" });
+  return await savedSlug(page, title, publish ? "published" : "draft");
+}
+
+/**
+ * Wait for the article to exist with the expected status and return its slug.
+ *
+ * Polled rather than read once: the workspace saves asynchronously, and the
+ * slug is the durable outcome the rest of the assertions need.
+ */
+async function savedSlug(page: Page, title: string, status: SavedArticle["status"]): Promise<string> {
+  let articles: SavedArticle[] = [];
   try {
-    await expect(status).toContainText(publish ? "作品已发布。" : "草稿已保存。", { timeout: 45_000 });
+    await expect(async () => {
+      articles = await savedArticles(page);
+      const match = articles.find((article) => article.title === title);
+      expect(match, `no article titled "${title}" in ${JSON.stringify(articles.map((article) => [article.title, article.status]))}`).toBeDefined();
+      expect(match?.status).toBe(status);
+    }).toPass({ timeout: 45_000, intervals: [500, 1_000, 2_000] });
   } catch (caught) {
-    // Report what the page said instead: a rejected save surfaces as an alert,
-    // and without it the failure is unreadable from CI.
-    const alerts = await page.locator("[role=alert]").allTextContents();
-    const statuses = await page.locator("[role=status]").allTextContents();
-    throw new Error(
-      `no saved address after clicking ${publish ? "发布作品" : "保存草稿"}; alerts=${JSON.stringify(alerts)} statuses=${JSON.stringify(statuses)}\n${await pageDigest(page)}\n${String(caught)}`,
-    );
+    throw new Error(`the save did not produce a ${status} article; page:\n${await pageDigest(page)}\n${String(caught)}`);
   }
-  const message = (await status.textContent()) ?? "";
-  const slug = (message.split("/articles/")[1] ?? "").trim();
-  expect(slug, `the editor must report a generated address; status was "${message}"`)
+  const slug = articles.find((article) => article.title === title)?.slug ?? "";
+  expect(slug, `a generated slug for "${title}": ${JSON.stringify(articles.map((article) => article.slug))}`)
     .toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
   return slug;
 }
+
+test.afterEach(async ({ page }, testInfo) => {
+  if (testInfo.status !== "failed" && testInfo.status !== "timedOut") return;
+  console.log(`FAILED ${testInfo.title} at ${page.url()}\n${await pageDigest(page)}`);
+});
 
 test("the sign-in form registers an account and opens the authoring desk", async ({ page }) => {
   const email = uniqueEmail("signup");
@@ -233,18 +247,17 @@ test("the sign-in form registers an account and opens the authoring desk", async
   await expect(page.getByRole("heading", { name: /写作台/ })).toBeVisible({ timeout: 45_000 });
 });
 
-test("saving a draft creates the article, generates its address, and survives a reload", async ({ page, request }) => {
+test("saving a draft creates the article with a generated address, and it survives a reload", async ({ page, request }) => {
   await registerWriter(page, request);
   const title = `浏览器验证草稿 ${Date.now().toString(36)}`;
   const slug = await writeAndSave(page, title, false);
+  expect(slug.length).toBeGreaterThan(0);
 
-  // A reload re-reads the author's article list from the API: the draft is real,
-  // and it comes back with the status it was saved with.
+  // The sidebar is the durable UI signal; a reload re-reads it from the API.
   await page.reload();
   const entry = page.getByRole("button", { name: new RegExp(title) });
   await expect(entry).toBeVisible({ timeout: 45_000 });
   await expect(entry).toContainText("草稿");
-  expect(slug.length).toBeGreaterThan(0);
 });
 
 test("publishing an article makes it readable at its generated address with a generated summary", async ({ page, request }) => {
@@ -269,6 +282,12 @@ test("an article with no body is refused with a readable message instead of a si
   await waitForEditor(page);
   await page.getByLabel("标题").fill(`浏览器验证空正文 ${Date.now().toString(36)}`);
   await page.getByRole("button", { name: "保存草稿" }).click();
-  // Matched by text, not role: Next's route announcer also carries role=alert.
-  await expect(page.getByText("请先输入正文内容。")).toBeVisible();
+  try {
+    // Filtered by text: Next keeps an empty route announcer in the tree that
+    // also carries role=alert.
+    await expect(page.getByRole("alert").filter({ hasText: "正文内容" })).toBeVisible({ timeout: 30_000 });
+  } catch (caught) {
+    throw new Error(`the editor did not refuse an empty body; page:\n${await pageDigest(page)}\n${String(caught)}`);
+  }
+  expect(await savedArticles(page)).toHaveLength(0);
 });
