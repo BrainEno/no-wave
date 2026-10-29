@@ -77,6 +77,19 @@ variables. Set `MEDIA_S3_BUCKET=media` explicitly: the bucket name is app config
 not one of the injected credentials. Neon Object Storage requires S3 path-style
 addressing, so keep `MEDIA_S3_FORCE_PATH_STYLE=true` when overriding the default.
 
+The adapter in `apps/api/src/infrastructure/media-storage.ts` stays a generic S3
+client; three details make it work against Neon Object Storage without any
+provider-specific code:
+
+- `requestChecksumCalculation: "WHEN_REQUIRED"` is set on the client. The
+  flexible-checksum trailer the AWS SDK adds by default is rejected by
+  S3-compatible stores.
+- Throttling (`503 SlowDown`) and timeouts are retried a bounded three times with
+  100/200 ms backoff on the idempotent operations (`putObject`, `getObject`,
+  `deleteObject`). Credential, key and checksum errors are *not* retried.
+- Stored objects are normalized WebP images capped at 8 MiB, far below Neon's
+  5 GiB single-request upload limit, so multipart upload is never needed.
+
 Generate a strong JWT key locally (do not commit the generated result):
 
 ```sh
