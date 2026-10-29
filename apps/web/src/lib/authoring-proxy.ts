@@ -5,6 +5,7 @@ import {
   isSameOriginMutation,
   isTokenEnvelope,
   REFRESH_TOKEN_COOKIE,
+  setIdempotencyKeyHeader,
   tokenMaxAge,
   type TokenSet,
 } from "./authoring-proxy-policy.ts";
@@ -49,7 +50,7 @@ async function callApi(base: string, path: string, method: string, body: BodyIni
   const headers = new Headers({ accept: "application/json" });
   if (body !== undefined) headers.set("content-type", contentType);
   if (token) headers.set("authorization", `Bearer ${token}`);
-  if (idempotencyKey !== undefined && idempotencyKey !== null) headers.set("idempotency-key", idempotencyKey);
+  setIdempotencyKeyHeader(headers, idempotencyKey);
   return fetch(apiUrl(base, path), {
     method,
     headers,
