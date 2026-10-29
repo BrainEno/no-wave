@@ -53,8 +53,12 @@ const ROUTES: readonly Expectation[] = [
   { path: "/articles?q=抵抗", markers: [/作为抵抗的阅读/] },
   { path: "/articles?type=short_story", markers: [/作为抵抗的阅读/] },
   { path: "/en/articles", markers: [/A Portable Literary Foundation/] },
-  { path: "/articles/portable-web-foundation", markers: [/可移植的文学基础设施/] },
-  { path: "/en/articles/portable-web-foundation", markers: [/A Portable Literary Foundation/] },
+  // The reader toolbar (`nw-rs`), the article body id the reading progress
+  // measures, the table of contents (`nw-toc`) and the comment section
+  // (`nw-comment-section`) are Phase 4a: the prototype used to render a reduced
+  // body without any of them, which no title or status comparison could see.
+  { path: "/articles/portable-web-foundation", markers: [/可移植的文学基础设施/, /id="nw-article"/, /nw-rs/, /nw-toc/, /nw-comment-section/] },
+  { path: "/en/articles/portable-web-foundation", markers: [/A Portable Literary Foundation/, /id="nw-article"/, /nw-rs/, /nw-comment-section/] },
   { path: "/authors/writer", markers: [/可移植的文学基础设施/] },
   { path: "/en/authors/writer", markers: [/A Portable Literary Foundation/] },
   { path: "/categories", markers: [/随笔/] },

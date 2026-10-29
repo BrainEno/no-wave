@@ -4,7 +4,7 @@ import type { ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { createServer } from "node:net";
 import { after, before, test } from "node:test";
-import { MOCK_CREDENTIALS, MOCK_DISPLAY_NAME, MOCK_MEDIA, MOCK_TOKENS, startMockRestApi } from "../mocks/rest-api.ts";
+import { MOCK_COMMENT_ID, MOCK_CREDENTIALS, MOCK_DISPLAY_NAME, MOCK_MEDIA, MOCK_TOKENS, startMockRestApi } from "../mocks/rest-api.ts";
 import type { MockRestApi } from "../mocks/rest-api.ts";
 
 /**
@@ -504,4 +504,78 @@ test("a missing public entity is a hard 404 that is titled, no-store and noindex
     assert.match(result.body, /name="robots" content="noindex, nofollow"/);
     assert.match(result.headers.get("cache-control") ?? "", /no-store/, `${pathname} must not be cached`);
   }
+});
+
+/* ------------------------------------ Phase 4a: comments, the page after hydration */
+
+/**
+ * A page can be perfectly server-rendered and still be dead: `ArticleComments`
+ * renders in both frameworks, but until this slice the prototype had no
+ * `/api/articles/:slug/comments` route at all, so the component had nothing to
+ * talk to. These assertions cover the endpoint the component calls — including
+ * the two rules that make it a mutation proxy rather than an open relay.
+ */
+test("the comment thread the component fetches is served, no-store and API-backed", async () => {
+  const result = await get("/api/articles/portable-web-foundation/comments?locale=zh-CN");
+  assert.equal(result.status, 200);
+  assert.match(result.headers.get("cache-control") ?? "", /no-store/);
+  const payload = JSON.parse(result.body) as {
+    data: { id: string; body: string; author: { displayName: string } }[];
+  };
+  assert.equal(payload.data[0]?.id, MOCK_COMMENT_ID);
+  assert.match(payload.data[0]?.body ?? "", /托管成本/);
+  assert.equal(payload.data[0]?.author.displayName, MOCK_DISPLAY_NAME);
+  // The page limit is part of the shared contract, not a per-framework detail.
+  assert.ok(
+    mockApi.requests().some((request) => request.includes("limit=50")),
+    `the upstream call must carry the documented page limit: ${mockApi.requests().join(", ")}`,
+  );
+});
+
+test("a malformed slug is a local 400 that never reaches the API", async () => {
+  mockApi.resetRequests();
+  const result = await get("/api/articles/Not_A_Slug/comments");
+  assert.equal(result.status, 400);
+  assert.deepEqual(mockApi.requests(), [], "an invalid slug must be rejected before proxying");
+});
+
+test("posting a comment requires our own origin and a session", async () => {
+  const path = "/api/articles/portable-web-foundation/comments?locale=zh-CN";
+
+  mockApi.resetRequests();
+  const crossOrigin = await post(path, JSON.stringify({ body: "好" }), { origin: "https://evil.test" });
+  assert.equal(crossOrigin.status, 403);
+  assert.deepEqual(mockApi.requests(), [], "a cross-origin write must not be forwarded at all");
+
+  const anonymous = await post(path, JSON.stringify({ body: "好" }));
+  assert.equal(anonymous.status, 401, "the API's own refusal is forwarded, not replaced by fixtures");
+
+  const signedIn = await post(path, JSON.stringify({ body: "值得一读" }), {
+    cookie: `nw_access=${MOCK_TOKENS.accessToken}`,
+  });
+  assert.equal(signedIn.status, 201);
+  const created = JSON.parse(signedIn.body) as { data: { body: string } };
+  assert.equal(created.data.body, "值得一读");
+});
+
+/**
+ * The article page's interactive parts are part of the page, not of a later
+ * phase: the reader toolbar, the table of contents and the comment section are
+ * client components, and the comment section is only useful together with the
+ * endpoint it calls. They are asserted in the server-rendered HTML (the mount
+ * points) and in the client bundle (`client-bundle.test.ts`, the code that
+ * hydrates them) — the two halves that together mean "this will work in a
+ * browser".
+ */
+test("the article page renders the reader toolbar, the table of contents and the comment section", async () => {
+  const result = await get("/articles/portable-web-foundation");
+  assert.equal(result.status, 200);
+  // ReaderBar: font size, paper/ink and copy-link controls.
+  assert.match(result.body, /class="nw-rs" role="group"/);
+  // ReadingProgress measures this element; ReaderToc links to its headings.
+  assert.match(result.body, /id="nw-article"/);
+  assert.match(result.body, /class="nw-toc"/);
+  // ArticleComments: the section, and the composer that posts to the proxy above.
+  assert.match(result.body, /class="nw-comment-section"/);
+  assert.match(result.body, /nw-comment-editor/);
 });

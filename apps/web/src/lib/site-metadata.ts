@@ -1,4 +1,4 @@
-import { archivePath, articlePath, authorPath, homePath, supportedLocales } from "./content.ts";
+import { archivePath, articlePath, authorPath, homePath, supportedLocales, type ArticleView, type Locale } from "./content.ts";
 import { listPublicArticles } from "./api-content.ts";
 
 /**
@@ -66,11 +66,25 @@ export function configuredSiteUrl(): string {
  * points at a profile the site does not link to, and each author appears once per
  * locale.
  */
+export type SitemapArticleLister = (options: {
+  locale: Locale;
+  limit: number;
+  offset: number;
+}) => Promise<ArticleView[]>;
+
 export async function loadSitemapEntries(
-  options: { siteUrl?: string; maxPages?: number } = {},
+  options: { siteUrl?: string; maxPages?: number; listArticles?: SitemapArticleLister } = {},
 ): Promise<SitemapEntry[]> {
   const baseUrl = siteOrigin(options.siteUrl);
   const maxPages = options.maxPages ?? SITEMAP_MAX_PAGES;
+  /**
+   * Injectable so the builder can be tested without a running API.
+   *
+   * A test that reaches the network silently starts asserting on whatever the
+   * environment happens to be: green in CI (no `.env.local`), red on a laptop
+   * that has one. The list is the only input this function reads from outside.
+   */
+  const listArticles = options.listArticles ?? listPublicArticles;
   const entries: SitemapEntry[] = [];
   const seenAuthors = new Set<string>();
 
@@ -80,7 +94,7 @@ export async function loadSitemapEntries(
 
     let offset = 0;
     for (let page = 0; page < maxPages; page += 1) {
-      const articles = await listPublicArticles({ locale, limit: SITEMAP_PAGE_SIZE, offset });
+      const articles = await listArticles({ locale, limit: SITEMAP_PAGE_SIZE, offset });
       for (const article of articles) {
         entries.push({
           url: new URL(articlePath(article.slug, locale), baseUrl).toString(),

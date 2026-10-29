@@ -23,7 +23,16 @@ import { resolveApiBaseUrl } from "./api-content.ts";
  * can reach it too.
  */
 
-function apiConfig(): { apiBaseUrl: string | undefined } {
+/**
+ * The API origin for the browser-facing proxies, or `undefined` when none is
+ * configured — or when the configured value is invalid.
+ *
+ * A malformed value is a deployment error, but it must surface as the route's
+ * own 503 rather than as an unhandled exception, so it is resolved here and
+ * handed to the shared handlers explicitly: they take the origin as an input and
+ * never read the environment themselves.
+ */
+export function apiConfig(): { apiBaseUrl: string | undefined } {
   try {
     // `resolveApiBaseUrl` validates the value and prefers the explicit
     // `API_BASE_URL`; a malformed value is treated as "not configured" so the
