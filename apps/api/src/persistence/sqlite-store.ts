@@ -8,6 +8,7 @@ import { createSqliteNotificationStore } from "./sqlite-notification-store.ts";
 import { createSqliteSessionStore } from "./sqlite-session-store.ts";
 import { createSqliteIdentityStore } from "./sqlite-identity-store.ts";
 import { createSqliteOutboxStore } from "./sqlite-outbox-store.ts";
+import { createSqliteMediaStore } from "./sqlite-media-store.ts";
 import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
 
 /**
@@ -34,6 +35,7 @@ export function createSqliteStore(db) {
     // preserving the legacy revoked-session lookup from the session slice.
     createSqliteIdentityStore(db),
     createSqliteOutboxStore(db),
+    createSqliteMediaStore(db),
     {
       async health() {
         db.prepare("SELECT 1 AS ok").get();
