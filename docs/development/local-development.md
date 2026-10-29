@@ -250,7 +250,7 @@ Neon direct-connection guidance.
 | Route smoke (Web, fixtures) | `pnpm test:routes` | ~1 min | no |
 | Persistence integration | `TEST_DATABASE_URL=... pnpm --filter @bot-thk/api test:integration` | ~1 min | PostgreSQL |
 | Local chain | `pnpm check:local` | seconds | only for the PostgreSQL profile |
-| CI | `.github/workflows/ci.yml` | ~10 min | GitHub service container |
+| CI | `.github/workflows/ci.yml` | ~1 min per chain leg | GitHub service container |
 
 The CI `local-dev-chain` job runs exactly the documented commands —
 `pnpm dev --check --exit` (SQLite) and `pnpm dev --api-only --check --exit`
