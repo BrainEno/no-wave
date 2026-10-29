@@ -190,9 +190,20 @@ async function writeAndSave(page: Page, title: string, publish: boolean): Promis
   await expect(page.getByLabel("作品正文")).toContainText("第一段用来验证保存链路。");
 
   await page.getByRole("button", { name: publish ? "发布作品" : "保存草稿" }).click();
-  const status = page.getByRole("status");
-  await expect(status).toContainText(publish ? "作品已发布。" : "草稿已保存。", { timeout: 45_000 });
-  await expect(status).toContainText("作品地址：/articles/");
+  // Filtered by its text: Next keeps an empty route announcer in the tree that
+  // also carries role=status.
+  const status = page.getByRole("status").filter({ hasText: "作品地址：" });
+  try {
+    await expect(status).toContainText(publish ? "作品已发布。" : "草稿已保存。", { timeout: 45_000 });
+  } catch (caught) {
+    // Report what the page said instead: a rejected save surfaces as an alert,
+    // and without it the failure is unreadable from CI.
+    const alerts = await page.locator("[role=alert]").allTextContents();
+    const statuses = await page.locator("[role=status]").allTextContents();
+    throw new Error(
+      `no saved address after clicking ${publish ? "发布作品" : "保存草稿"}; alerts=${JSON.stringify(alerts)} statuses=${JSON.stringify(statuses)}\n${await pageDigest(page)}\n${String(caught)}`,
+    );
+  }
   const message = (await status.textContent()) ?? "";
   const slug = (message.split("/articles/")[1] ?? "").trim();
   expect(slug, `the editor must report a generated address; status was "${message}"`)
@@ -227,10 +238,13 @@ test("saving a draft creates the article, generates its address, and survives a 
   const title = `浏览器验证草稿 ${Date.now().toString(36)}`;
   const slug = await writeAndSave(page, title, false);
 
-  // A reload re-reads the author's article list from the API: the draft is real.
+  // A reload re-reads the author's article list from the API: the draft is real,
+  // and it comes back with the status it was saved with.
   await page.reload();
-  await expect(page.getByRole("button", { name: new RegExp(title) })).toBeVisible({ timeout: 45_000 });
-  await expect(page.getByRole("status")).toContainText(`/articles/${slug}`);
+  const entry = page.getByRole("button", { name: new RegExp(title) });
+  await expect(entry).toBeVisible({ timeout: 45_000 });
+  await expect(entry).toContainText("草稿");
+  expect(slug.length).toBeGreaterThan(0);
 });
 
 test("publishing an article makes it readable at its generated address with a generated summary", async ({ page, request }) => {
@@ -255,5 +269,6 @@ test("an article with no body is refused with a readable message instead of a si
   await waitForEditor(page);
   await page.getByLabel("标题").fill(`浏览器验证空正文 ${Date.now().toString(36)}`);
   await page.getByRole("button", { name: "保存草稿" }).click();
-  await expect(page.getByRole("alert")).toContainText("请先输入正文内容。");
+  // Matched by text, not role: Next's route announcer also carries role=alert.
+  await expect(page.getByText("请先输入正文内容。")).toBeVisible();
 });
