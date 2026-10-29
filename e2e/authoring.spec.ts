@@ -287,8 +287,16 @@ test("saving a draft creates the article with a generated address, and it surviv
 
   // Saving again updates that article instead of creating a second one, and it
   // is published from the same document without retyping anything.
-  await expect(page.getByRole("button", { name: "发布作品" })).toBeVisible();
-  await page.getByRole("button", { name: "发布作品" }).click();
+  const publishButton = page.getByRole("button", { name: "发布作品" });
+  await expect(publishButton).toBeVisible();
+  const requestsBefore = traffic.length;
+  await publishButton.click();
+  // A button takes focus when it is really clicked; if the click landed
+  // somewhere else, this says where it went instead.
+  const focused = await page.evaluate(() => {
+    const active = document.activeElement;
+    return active ? `${active.tagName}.${active.className} ${(active.textContent ?? "").slice(0, 40)}` : "none";
+  });
   try {
     await expect(status).toContainText("作品已发布。", { timeout: 45_000 });
   } catch (caught) {
@@ -298,7 +306,7 @@ test("saving a draft creates the article with a generated address, and it surviv
     const editorText = ((await page.getByLabel("作品正文").textContent()) ?? "").slice(0, 120);
     const titleValue = await page.getByLabel("标题").inputValue();
     throw new Error(
-      `publishing the saved draft did not report success; alerts=${JSON.stringify(alerts)} editor=${JSON.stringify(editorText)} title=${JSON.stringify(titleValue)}\ntraffic:\n${traffic.join("\n")}\n${String(caught)}`,
+      `publishing the saved draft did not report success; focused=${JSON.stringify(focused)} requests=${requestsBefore}->${traffic.length} alerts=${JSON.stringify(alerts)} editor=${JSON.stringify(editorText)}\ntraffic:\n${traffic.join("\n")}\n${String(caught)}`,
     );
   }
   await expect(async () => {
