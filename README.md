@@ -20,7 +20,7 @@ This repository is the independent implementation of BOT THK's Web and API produ
 - Backend identity is an initial lifecycle, not production-ready: email verification, account recovery and other security/operational gates remain open. The article authoring and limited rich-comment flows are integrated with REST. Email verification, account recovery, moderation tools, real-time clients and external push providers remain incomplete. See [the authentication contract](docs/architecture/api-authentication.md).
 - No production deployment, historical data migration, traffic cutover or modification of the old project's repository is performed as part of this branch.
 
-See [phase gates](docs/roadmap/phase-gates.md), [feature traceability](docs/audit/feature-traceability.md), [the behavior baseline](docs/requirements/behavior-baseline.md), and [Persistence-provider and online data-migration plan](docs/architecture/postgres-migration-plan.md).
+See [phase gates](docs/roadmap/phase-gates.md), [feature traceability](docs/audit/feature-traceability.md), [the behavior baseline](docs/requirements/behavior-baseline.md), and [Persistence-provider and online data-migration plan](docs/architecture/postgres-migration-plan.md). The approved Web framework and hosting-portability work is tracked in [the frontend portability migration roadmap](docs/roadmap/frontend-portability-migration.md) and [ADR 0012](docs/architecture/decisions/0012-portable-web-framework-migration.md).
 
 ## Prerequisites
 
