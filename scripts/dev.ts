@@ -5,6 +5,7 @@
  *   pnpm dev --api-only  API only
  *   pnpm dev --web-only  Web only (e.g. when the API runs in a container)
  *   pnpm dev --check     run `pnpm check:local` once both processes are ready
+ *   pnpm dev --check --exit  stop after the probe; exit 0 only if every step passed
  *
  * Why an orchestrator instead of two terminals:
  *   - one source of truth for API_BASE_URL, so the Web process cannot silently
@@ -96,7 +97,7 @@ async function main(): Promise<void> {
     process.exitCode = 2;
     return;
   }
-  const { apiOnly, webOnly, check } = parsed.args;
+  const { apiOnly, webOnly, check, exit } = parsed.args;
   const config = resolveLocalDevConfig(process.env);
   const startApi = !webOnly;
   const startWeb = !apiOnly;
@@ -286,6 +287,11 @@ async function main(): Promise<void> {
     })}\n`);
     if (failed > 0) {
       process.stdout.write("`pnpm dev --check` reported failures; the processes stay up so you can inspect them.\n");
+    }
+    if (exit) {
+      // One-shot verification (CI, scripts): stop both processes and report the
+      // probe result as the command's exit code.
+      shutdown(failed > 0 ? 1 : 0);
     }
   }
 

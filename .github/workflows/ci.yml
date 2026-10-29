@@ -100,42 +100,15 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Apply migrations for ${{ matrix.provider }}
         run: pnpm db:migrate
-      - name: Start the API
-        run: |
-          pnpm --filter @bot-thk/api start > "$RUNNER_TEMP/api.log" 2>&1 &
-          for _ in $(seq 1 60); do
-            curl -fsS http://127.0.0.1:4000/ready > /dev/null 2>&1 && break
-            sleep 1
-          done
-          if ! curl -fsS http://127.0.0.1:4000/ready > /dev/null; then
-            echo "::error::The API never became ready."
-            cat "$RUNNER_TEMP/api.log"
-            exit 1
-          fi
+      # Runs the documented developer command: start the processes, wait for
+      # readiness, probe the chain, stop, and exit with the probe result. No
+      # background process has to survive between steps.
       - name: Probe database -> API
-        run: pnpm check:local --api-only
-      - name: Build and start the Web app
-        if: matrix.provider == 'sqlite'
-        run: |
-          pnpm build
-          pnpm --filter @bot-thk/web start > "$RUNNER_TEMP/web.log" 2>&1 &
-          for _ in $(seq 1 90); do
-            curl -fsS http://127.0.0.1:3000/ > /dev/null 2>&1 && break
-            sleep 1
-          done
-          if ! curl -fsS http://127.0.0.1:3000/ > /dev/null; then
-            echo "::error::The Web server never became ready."
-            cat "$RUNNER_TEMP/web.log"
-            exit 1
-          fi
+        if: matrix.provider == 'postgres'
+        run: pnpm dev --api-only --check --exit
       - name: Probe database -> API -> Web
         if: matrix.provider == 'sqlite'
-        run: pnpm check:local
-      - name: Show service logs on failure
-        if: failure()
-        run: |
-          echo "--- api.log ---"; cat "$RUNNER_TEMP/api.log" 2>/dev/null || true
-          echo "--- web.log ---"; cat "$RUNNER_TEMP/web.log" 2>/dev/null || true
+        run: pnpm dev --check --exit
 
   required-checks:
     name: required-checks

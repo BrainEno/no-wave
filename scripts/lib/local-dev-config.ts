@@ -323,18 +323,22 @@ export function extractEnvFileKeys(document: string): string[] {
   return keys;
 }
 
-export type DevArguments = { apiOnly: boolean; webOnly: boolean; check: boolean };
+export type DevArguments = { apiOnly: boolean; webOnly: boolean; check: boolean; exit: boolean };
 
 export function parseDevArguments(argv: readonly string[]): { args?: DevArguments; error?: string } {
-  const args: DevArguments = { apiOnly: false, webOnly: false, check: false };
+  const args: DevArguments = { apiOnly: false, webOnly: false, check: false, exit: false };
   for (const argument of argv) {
     if (argument === "--api-only") args.apiOnly = true;
     else if (argument === "--web-only") args.webOnly = true;
     else if (argument === "--check") args.check = true;
-    else return { error: `Unknown option "${argument}". Supported: --api-only, --web-only, --check.` };
+    else if (argument === "--exit") args.exit = true;
+    else return { error: `Unknown option "${argument}". Supported: --api-only, --web-only, --check, --exit.` };
   }
   if (args.apiOnly && args.webOnly) {
     return { error: "--api-only and --web-only cannot be combined." };
+  }
+  if (args.exit && !args.check) {
+    return { error: "--exit requires --check: it stops the processes after the connectivity probe." };
   }
   return { args };
 }

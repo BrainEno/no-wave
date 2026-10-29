@@ -130,9 +130,21 @@ test("generated .env.local selects exactly one persistence provider", () => {
 });
 
 test("dev and check argument parsing rejects unknown options", () => {
-  assert.deepEqual(parseDevArguments([]).args, { apiOnly: false, webOnly: false, check: false });
-  assert.deepEqual(parseDevArguments(["--api-only", "--check"]).args, { apiOnly: true, webOnly: false, check: true });
+  assert.deepEqual(parseDevArguments([]).args, { apiOnly: false, webOnly: false, check: false, exit: false });
+  assert.deepEqual(parseDevArguments(["--api-only", "--check"]).args, {
+    apiOnly: true,
+    webOnly: false,
+    check: true,
+    exit: false,
+  });
+  assert.deepEqual(parseDevArguments(["--api-only", "--check", "--exit"]).args, {
+    apiOnly: true,
+    webOnly: false,
+    check: true,
+    exit: true,
+  });
   assert.match(parseDevArguments(["--api-only", "--web-only"]).error ?? "", /cannot be combined/);
+  assert.match(parseDevArguments(["--exit"]).error ?? "", /requires --check/);
   assert.match(parseDevArguments(["--nope"]).error ?? "", /Unknown option/);
 
   const parsed = parseCheckArguments(["--api-only", "--read-only", "--api-url", "http://127.0.0.1:4100", "--timeout", "5000"]);

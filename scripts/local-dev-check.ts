@@ -275,7 +275,11 @@ export async function runLocalChecks(options: CheckOptions): Promise<{ results: 
     return { detail: `200 OK for "${String(data?.title ?? articleSlug)}"` };
   }));
 
-  if (options.readOnly) {
+  if (options.apiOnly) {
+    // --api-only must not touch the Web server at all: CI and container workflows
+    // probe a running API without a Web dev server.
+    results.push(skipped("web-auth-proxy", "Web auth proxy (login)", "--api-only"));
+  } else if (options.readOnly) {
     results.push(skipped("web-auth-proxy", "Web auth proxy (login)", "--read-only"));
   } else {
     results.push(await runStep("web-auth-proxy", "Web auth proxy (login + cookie)", async () => {

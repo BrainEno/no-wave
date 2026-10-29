@@ -187,8 +187,9 @@ or deleting `apps/api/data/` (SQLite) is the documented reset.
 | `pnpm dev` | API (`node --watch`) + Web dev server, readiness-gated. |
 | `pnpm dev --api-only` / `--web-only` | Start one process (e.g. API in Docker, Web on the host). |
 | `pnpm dev --check` | Run the connectivity probe once both are ready. |
+| `pnpm dev --check --exit` | Probe, then stop both processes and exit with the probe result (CI, scripts). |
 | `pnpm check:local` | Probe an already running chain. |
-| `pnpm check:local --api-only` | Skip the Web layers (useful in CI or against a container). |
+| `pnpm check:local --api-only` | Skip every Web layer, including the Web auth proxy (useful in CI or against a container). |
 | `pnpm check:local --read-only` | Skip the write probes. |
 | `pnpm check:local --api-url <url> --web-url <url>` | Probe another origin. |
 
@@ -250,6 +251,10 @@ Neon direct-connection guidance.
 | Persistence integration | `TEST_DATABASE_URL=... pnpm --filter @bot-thk/api test:integration` | ~1 min | PostgreSQL |
 | Local chain | `pnpm check:local` | seconds | only for the PostgreSQL profile |
 | CI | `.github/workflows/ci.yml` | ~10 min | GitHub service container |
+
+The CI `local-dev-chain` job runs exactly the documented commands —
+`pnpm dev --check --exit` (SQLite) and `pnpm dev --api-only --check --exit`
+(PostgreSQL) — so the developer path and the CI path cannot drift apart.
 
 `pnpm test` runs the tooling's own unit tests
 (`scripts/lib/local-dev-config.test.ts`, `apps/web/src/lib/dev-origins.test.ts`)
