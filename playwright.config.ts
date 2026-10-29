@@ -34,6 +34,15 @@ export default defineConfig({
     actionTimeout: 20_000,
     trace: "on-first-retry",
     screenshot: "only-on-failure",
+    // The site smooth-scrolls its content behind a transform (GSAP
+    // ScrollSmoother, loaded only when the reader has not asked for reduced
+    // motion). While that animation runs, content moves under the pointer:
+    // mousedown and mouseup land on different elements, the browser dispatches
+    // the resulting click on their common ancestor and the button's own handler
+    // never runs — a click that silently does nothing. The suite asserts
+    // behaviour, not animation, and the site already skips the smoother under
+    // reduced motion, so that is how the browser is driven.
+    reducedMotion: "reduce",
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
