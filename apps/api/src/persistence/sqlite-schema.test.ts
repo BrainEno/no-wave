@@ -82,6 +82,11 @@ test("SQLite lease migration preserves pending, leased, and delivered legacy eve
   try {
     await copyFile(new URL("./migrations/sqlite/0001_domain_schema.sql", import.meta.url), join(oldMigrations, "0001_domain_schema.sql"));
     assert.deepEqual(await runSqliteMigrations(db, { directory: oldMigrations }), ["0001_domain_schema"]);
+    const legacyArticleId = "idempotency-migration-article";
+    db.prepare("INSERT INTO articles (id, author_id, slug) VALUES (?, ?, ?)").run(legacyArticleId, "legacy-writer", legacyArticleId);
+    db.prepare("INSERT INTO article_translations (article_id, locale, title, content_blocks) VALUES (?, ?, ?, ?)").run(legacyArticleId, "en", "Legacy article", "[]");
+    db.prepare("INSERT INTO article_comments (id, article_id, author_id, content) VALUES (?, ?, ?, ?)").run("legacy-idempotency-comment", legacyArticleId, "legacy-reader", "Legacy comment before migration");
+
     const pendingId = randomUUID();
     const leasedId = randomUUID();
     const deliveredId = randomUUID();
@@ -95,6 +100,10 @@ test("SQLite lease migration preserves pending, leased, and delivered legacy eve
 
     assert.deepEqual(await runSqliteMigrations(db), ["0002_outbox_lease_tokens", "0003_self_hosted_identity", "0004_article_content_versions", "0005_comment_content_versions", "0006_provider_migration_journal", "0007_media_assets", "0008_article_comment_idempotency"]);
     assert.equal(db.prepare("SELECT expires_at FROM revoked_sessions WHERE session_id = ?").get("legacy-token").expires_at, "2099-01-01T00:00:00.000Z");
+    const legacyComment = db.prepare("SELECT content, idempotency_key_hash, request_hash FROM article_comments WHERE id = ?").get("legacy-idempotency-comment");
+    assert.equal(legacyComment.content, "Legacy comment before migration");
+    assert.equal(legacyComment.idempotency_key_hash, null);
+    assert.equal(legacyComment.request_hash, null);
     assert.deepEqual(await runSqliteMigrations(db), []);
     const legacy = db.prepare("SELECT event_key, attempts, delivered_at, lease_token FROM outbox_events ORDER BY event_key").all();
     assert.deepEqual(legacy.map((row) => ({ ...row })), [
