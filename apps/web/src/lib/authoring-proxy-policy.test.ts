@@ -35,12 +35,12 @@ test("comment idempotency keys survive the same-origin API proxy", async () => {
     API_SERVICE_URL: process.env.API_SERVICE_URL,
     API_GRAPHQL_URL: process.env.API_GRAPHQL_URL,
   };
-  let forwardedHeaders: Headers | null = null;
+  const forwardedHeaders: Headers[] = [];
   process.env.API_BASE_URL = "https://api.example.test";
   delete process.env.API_SERVICE_URL;
   delete process.env.API_GRAPHQL_URL;
   globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
-    forwardedHeaders = new Headers(init?.headers);
+    forwardedHeaders.push(new Headers(init?.headers));
     return new Response(JSON.stringify({ data: { accepted: true } }), {
       status: 201,
       headers: { "content-type": "application/json; charset=utf-8" },
@@ -58,7 +58,7 @@ test("comment idempotency keys survive the same-origin API proxy", async () => {
       JSON.stringify({ content: "A comment" }),
     );
     assert.equal(response.status, 201);
-    assert.equal(forwardedHeaders?.get("idempotency-key"), "comment-once-7");
+    assert.equal(forwardedHeaders[0]?.get("idempotency-key"), "comment-once-7");
   } finally {
     globalThis.fetch = originalFetch;
     for (const [key, value] of Object.entries(previousEnv)) {
