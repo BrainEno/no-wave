@@ -100,7 +100,7 @@ The owner accepts cold starts and free-instance sleep but does not accept card-r
 
 ## 4. Incremental implementation phases
 
-### Phase 0 — Record decision and inventory (current stage)
+### Phase 0 — Record decision and inventory
 
 - [x] Record the accepted target in ADR 0012.
 - [x] Update the main roadmap and this document with the owner constraints.
@@ -112,7 +112,7 @@ The owner accepts cold starts and free-instance sleep but does not accept card-r
 ### Phase 1 — Hosting feasibility and isolated portability prototype
 
 - [x] Re-check main and all nested `AGENTS.md` / relevant ADRs before coding.
-- [ ] Verify one or more no-card, zero-cost hosting candidates. If none pass, stop and report options without relaxing the requirement.
+- [x] Verify one or more no-card, zero-cost hosting candidates → [hosting qualification](hosting-qualification.md): Render free web service + Neon free Postgres qualify on published terms; object storage stays **blocked** (R2 is card-gated), so no media migration code is written.
 - [x] Build an isolated React Router 7 Framework Mode proof of concept using a mocked REST API, separate from the current production `apps/web`. → `apps/web-rr`
 - [x] Prove a public article route renders server HTML, title/description/canonical/Open Graph metadata and a hard 404 for an unknown slug.
 - [x] Prove a client-interactive form handles valid input, validation errors, API failures and explicit pending/success states.
@@ -127,12 +127,12 @@ The owner accepts cold starts and free-instance sleep but does not accept card-r
 still open** — no candidate has been verified against the no-card/zero-cost terms,
 so the phase is not complete and no provider-specific code exists.
 
-### Phase 2 — Framework-independent HTTP and deployment seams
+### Phase 2 — Framework-independent HTTP and deployment seams (current stage: seam + contract tests done, worker contract open)
 
-- [ ] Separate request validation/cookie policy/response mapping from the Next adapter where this reduces coupling, using standard web Request/Response types and explicit inputs.
-- [ ] Add contract tests for cookie paths/options, exact-Origin validation, token refresh/retry, invalid refresh logout, payload size limits and private cache headers.
-- [ ] Ensure every server-side API call can use an explicit server-only `API_BASE_URL`; keep any temporary Vercel binding support behind a small adapter.
-- [ ] Document the production worker's standalone start/stop, health/metrics, retry and graceful-shutdown contract without running or moving the live worker.
+- [x] Separate request validation/cookie policy/response mapping from the Next adapter where this reduces coupling, using standard web Request/Response types and explicit inputs. → `packages/web-http` (`handleAuthRequest`, `forwardAuthoringRequest`, `readLimitedJson`, cookie helpers), consumed by both `apps/web` and `apps/web-rr`.
+- [x] Add contract tests for cookie paths/options, exact-Origin validation, token refresh/retry, invalid refresh logout, payload size limits and private cache headers. → `packages/web-http/test/*` (26 tests).
+- [x] Ensure every server-side API call can use an explicit server-only `API_BASE_URL`; keep any temporary Vercel binding support behind a small adapter. → the seam takes `apiBaseUrl` as an argument; the Next adapter keeps the existing resolution order and the RR prototype passes it explicitly.
+- [ ] Document the production worker's standalone start/stop, health/metrics, retry and graceful-shutdown contract without running or moving the live worker. (Drain model candidate recorded in [hosting qualification §5](hosting-qualification.md); contract still unwritten.)
 
 **Exit gate:** the critical auth/media/REST behavior is tested without requiring Next.js request objects or Vercel's service-binding injection.
 

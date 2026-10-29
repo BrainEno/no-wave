@@ -28,6 +28,9 @@ const nextConfig: NextConfig = {
   // Development-only: allow the dev server to serve assets to LAN addresses and
   // preview proxies. Production builds do not use this list.
   allowedDevOrigins: parseAllowedDevOrigins(process.env.WEB_DEV_ALLOWED_ORIGINS),
+  // The framework-neutral HTTP seam is authored in TypeScript and consumed as a
+  // workspace source package, so Next has to compile it like application code.
+  transpilePackages: ["@bot-thk/web-http"],
 };
 
 export default nextConfig;
