@@ -65,12 +65,27 @@ export type PortMethodName<K extends PortName> = PortGroups[K][number];
  */
 export type PersistenceAdapterMethods = Record<string, (...args: any[]) => any>;
 
+/**
+ * The shape an adapter must actually return.
+ *
+ * `PersistenceAdapterMethods` is deliberately open (`Record<string, ...>`) so the
+ * port types can be derived from an adapter's own method list. That openness is
+ * exactly what lets an adapter forget a method, so adapters annotate their return
+ * value with *this* contract: every port method must exist, and a renamed or
+ * dropped method becomes a compile error instead of a runtime 500 behind a route.
+ * Parameter types stay permissive until the adapters are annotated method by
+ * method (the remainder of issue #66).
+ */
+export type PersistenceAdapterContract = {
+  readonly [M in PortMethodName<PortName>]: (...args: any[]) => any;
+};
+
 /** Domain-grouped repository ports, typed from the adapter that backs them. */
 export type PersistencePorts<A extends PersistenceAdapterMethods = PersistenceAdapterMethods> = {
   [K in PortName]: { [M in PortMethodName<K>]: A[M] };
 };
 
-export function assertPersistenceAdapter(adapter) {
+export function assertPersistenceAdapter<T extends PersistenceAdapterMethods>(adapter: T): T {
   if (!adapter || typeof adapter !== "object") {
     throw new TypeError("A persistence adapter object is required.");
   }

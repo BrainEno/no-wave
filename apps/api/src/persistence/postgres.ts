@@ -17,6 +17,7 @@ import {
   TaxonomyConflictError,
   TaxonomyNotFoundError
 } from "../domain/errors.ts";
+import type { PersistenceAdapterContract } from "../application/persistence-ports.ts";
 import { normalizeHashtag, validateTaxonomyKind } from "../domain/taxonomy.ts";
 import { validateArticleLocale, validateArticleSlug, normalizeArticleInput, normalizeTaxonomyIds } from "../domain/article.ts";
 import { validateStoredCommentContent } from "../domain/comment-content.ts";
@@ -251,7 +252,7 @@ async function listRelatedProfiles(executor, { relationship, userId, locale = "z
   return rows.map(mapAuthorProfile);
 }
 
-export function createPostgresStore(sql) {
+export function createPostgresStore(sql): PersistenceAdapterContract {
   if (!sql || typeof sql.unsafe !== "function" || typeof sql.begin !== "function") {
     throw new TypeError("A postgres.js SQL client is required.");
   }

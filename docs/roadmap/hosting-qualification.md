@@ -2,7 +2,7 @@
 
 - Date: 2026-10-29
 - Gate defined in: [ADR 0012](../architecture/decisions/0012-portable-web-framework-migration.md) (decision 8) and [migration roadmap §3](frontend-portability-migration.md)
-- Verdict: **PASS, with a named primary candidate and two named exclusions.**
+- Verdict: **PASS. Web, database and object storage each have a cardless, zero-cost, hard-stop candidate; the notification worker has a documented gap.**
 
 ## 1. What the gate actually demands
 
@@ -49,19 +49,28 @@ Consequences to design against, not to paper over:
 
 Decision: **Neon Free** is the qualified durable database for a hosted deployment, used through the existing PostgreSQL adapter. The hard cutoff is a real constraint: hitting 100 CU-hours suspends the DB until the cycle resets, so the operations guide must include a usage check and a recovery step. This validates Neon as *implementation* only — ADR 0012 decision 6 explicitly refuses to treat the pre-existing Neon integration as proof.
 
-## 4. Candidate: private object storage (media) — **BLOCKED**
+## 4. Candidate: private object storage (media) — **PASSES via Neon Object Storage**
 
 | Candidate | No card | Notes |
 | --- | --- | --- |
-| Cloudflare R2 (10 GB free) | **No** | R2 is a usage-based service; activating it requires a payment method / billing profile even inside the free allowance. Documented repeatedly, and consistent with Cloudflare's own billing policy for usage-based products. |
-| Neon object storage (5 GB, free plan) | Claimed yes | Advertised in Neon's free-plan summary; **not verified against Neon's own docs this round** |
-| Supabase Storage free (1 GB) | Claimed yes | Same status: unverified |
-| Render persistent disk | **No** | $0.25/GB/month, i.e. requires payment |
+| **Neon Object Storage** | Yes — the Free plan needs no payment method | 5 GB per project, S3-compatible (AWS SDK/boto3/CLI), private buckets, presigned URLs, branch-scoped credentials, objects branch copy-on-write with the database |
+| Cloudflare R2 (10 GB free) | **No** | R2 is a usage-based service; activating it requires a payment method / billing profile even inside the free allowance |
+| Render persistent disk | **No** | $0.25/GB/month |
 | Instance-local disk | n/a | Ephemeral — forbidden as the only copy |
 
-Decision: **media storage does not pass the gate this round.** R2 — the obvious choice, and the one the current stack is shaped around — is card-gated. Per ADR 0012, the correct action is to record the blocker and **not** write provider-specific media migration code. Media therefore stays on the existing API/Next path until Phase 5 either (a) verifies Neon or Supabase object storage on their own documentation, or (b) the owner accepts a card-backed storage account for media only.
+Verified on Neon's own documentation (object-storage overview, plans, and pricing, read 2026-10-29):
 
-This does not block Phase 3 (public SSR routes render text and API-served images; the media *proxy* is Phase 5).
+- **Free plan allowance**: 5 GB Object Storage *per project*, available on every plan including Free; storage is metered at `$0.023/GB-month` on paid plans with **no per-operation charge**; egress counts against the project's transfer allowance (5 GB/month on Free, shared with Postgres and Functions).
+- **Object size**: 5 GiB per single-request upload, 10 GiB per multipart upload. Article images are normalized to WebP and capped at 8 MiB by the API, so this is not a constraint.
+- **Regions**: `aws-us-east-2`, `aws-us-east-1`, `aws-eu-central-1`, `aws-ap-southeast-1`. The project must be created in one of them.
+- **Failure mode**: throttling returns `503 SlowDown`; Neon documents "back off and retry" rather than requiring a paid tier.
+
+**Result: the media part of the gate now passes**, so no ADR violation occurs in continuing media work. Two properties of the adapter matter for this provider and were added/hardened this round:
+
+1. `requestChecksumCalculation: "WHEN_REQUIRED"` on the S3 client — the flexible-checksum trailer the SDK adds by default is rejected by S3-compatible stores, Neon's included.
+2. Bounded retry (`withStorageRetry`, 3 attempts, 100/200 ms backoff) for `SlowDown` / `RequestTimeout` / `Throttling` / HTTP 429 / 503 on the three idempotent operations (`putObject`, `getObject`, `deleteObject`). Non-retryable errors (bad key, credentials, checksum) still fail on the first attempt so misconfiguration is not masked.
+
+Configuration stays provider-neutral (`MEDIA_S3_*` with `AWS_*` fallbacks, path-style addressing); see [Neon deployment](../operations/neon-deployment.md) and ADR 0011. No Neon-specific code exists in business logic, and no live bucket was created or tested this round — the runtime rows in §1 stay unverified until Phase 6.
 
 ## 5. Candidate: notification outbox worker
 
@@ -73,6 +82,8 @@ This does not block Phase 3 (public SSR routes render text and API-served images
 
 Decision: **deferred to Phase 5**, with the cardless fallback recorded now: the worker stays a separate process for local/self-hosted use, and a scheduler-invoked drain over durable outbox state is the hosted option to validate. No code is written for it in this round.
 
+The worker's own start/stop, retry, metrics and shutdown contract is now written down in [notification worker](../operations/notification-worker.md).
+
 ## 6. What is now allowed, and what is still forbidden
 
 Allowed after this gate:
@@ -82,10 +93,10 @@ Allowed after this gate:
 
 Still forbidden:
 - Any Render-specific deploy file, `render.yaml`, or provider SDK in business logic. A deploy descriptor, if added later, stays a top-level ops artifact.
-- Writing media migration/storage code (Phase 5 blocked on §4).
+- Any Neon-specific media code: the storage adapter must stay a generic S3 client, configured only through environment variables.
 - Creating a live deployment, provisioning Neon, changing DNS, or touching production.
-- Relaxing the no-card requirement because media is blocked.
+- Relaxing the no-card requirement (it no longer needs relaxing: web, database, and object storage all have cardless free tiers).
 
 ## 7. Evidence basis and honesty note
 
-Terms above come from vendor pricing/product pages and from third-party trackers that quote them, not from a live signup. The published-terms check is what ADR 0012 asks for *before* provider-specific code; the runtime rows (§1 items 3–7) remain unverified until a disposable deployment exists. This document therefore claims: **gate passed on published terms for Render (web), Neon (Postgres), and a cardless scheduler-drain fallback; and explicitly *not* passed for object storage.**
+Terms above come from vendor pricing/product pages and from third-party trackers that quote them, not from a live signup. The published-terms check is what ADR 0012 asks for *before* provider-specific code; the runtime rows (§1 items 3–7) remain unverified until a disposable deployment exists. This document therefore claims: **gate passed on published terms for Render (web), Neon Postgres (database), and Neon Object Storage (media), plus a cardless scheduler-drain fallback for notifications; runtime behavior for all four remains unverified until a disposable deployment exists.**

@@ -12,6 +12,24 @@ export type MediaObjectStorage = {
   close(): void;
 };
 
+type MediaStorageClient = {
+  send(command: unknown): Promise<any>;
+  destroy(): void;
+};
+
+/**
+ * Test seams. Production callers pass nothing; the adapter builds a real
+ * `S3Client` and sleeps with a real timer.
+ */
+export type MediaObjectStorageDependencies = {
+  createClient?: (config: MediaStorageConfig) => MediaStorageClient;
+  sleep?: (milliseconds: number) => Promise<void>;
+};
+
+/** S3-compatible stores throttle with `503 SlowDown`; retry a bounded number of times. */
+const STORAGE_MAX_ATTEMPTS = 3;
+const STORAGE_BASE_DELAY_MS = 100;
+
 export class MediaStorageUnavailableError extends Error {
   constructor(message = "Media storage is not configured or is temporarily unavailable.") {
     super(message);
@@ -88,18 +106,76 @@ function resolveConfig(env: NodeJS.ProcessEnv): MediaStorageConfig | null {
 }
 
 /** Build a portable S3-compatible adapter. Missing credentials disable uploads; partial configuration fails fast. */
-export function createMediaObjectStorage(env: NodeJS.ProcessEnv = process.env): MediaObjectStorage | null {
+/**
+ * Describe the failure modes that are safe to retry.
+ *
+ * `putObject`, `getObject` and `deleteObject` are all idempotent, so a throttled
+ * or timed-out attempt can be repeated without changing the outcome. Anything
+ * else (bad credentials, missing bucket, checksum mismatch) fails immediately so
+ * a misconfiguration is not hidden behind three slow attempts.
+ */
+export function isRetryableStorageError(error: unknown): boolean {
+  const candidate = error as { name?: unknown; Code?: unknown; code?: unknown; $metadata?: { httpStatusCode?: unknown } } | null;
+  if (candidate === null || typeof candidate !== "object") return false;
+  const code = [candidate.name, candidate.Code, candidate.code].find((value): value is string => typeof value === "string") ?? "";
+  const status = candidate.$metadata?.httpStatusCode;
+  return code === "SlowDown"
+    || code === "RequestTimeout"
+    || code === "Throttling"
+    || code === "ThrottlingException"
+    || status === 429
+    || status === 503;
+}
+
+/** Retry an idempotent storage operation with bounded, capped exponential backoff. */
+export async function withStorageRetry<T>(
+  operation: () => Promise<T>,
+  { sleep = defaultSleep, maxAttempts = STORAGE_MAX_ATTEMPTS }: { sleep?: (milliseconds: number) => Promise<void>; maxAttempts?: number } = {},
+): Promise<T> {
+  let attempt = 0;
+  for (;;) {
+    try {
+      return await operation();
+    } catch (error: unknown) {
+      attempt += 1;
+      if (attempt >= maxAttempts || !isRetryableStorageError(error)) throw error;
+      await sleep(Math.min(STORAGE_BASE_DELAY_MS * 2 ** (attempt - 1), 1000));
+    }
+  }
+}
+
+function defaultSleep(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+/**
+ * Build a portable S3-compatible adapter.
+ *
+ * One configuration covers AWS S3, Neon Object Storage (the qualified zero-cost
+ * provider, see docs/roadmap/hosting-qualification.md) and any other S3-style
+ * endpoint; nothing here is specific to a vendor. Missing credentials disable
+ * uploads, partial configuration fails fast.
+ */
+export function createMediaObjectStorage(
+  env: NodeJS.ProcessEnv = process.env,
+  { createClient, sleep }: MediaObjectStorageDependencies = {},
+): MediaObjectStorage | null {
   const config = resolveConfig(env);
   if (!config) return null;
-  const client = new S3Client({
-    region: config.region,
-    ...(config.endpoint ? { endpoint: config.endpoint } : {}),
-    forcePathStyle: config.forcePathStyle,
-    credentials: { accessKeyId: config.accessKeyId, secretAccessKey: config.secretAccessKey },
-  });
+  const client = createClient
+    ? createClient(config)
+    : new S3Client({
+        region: config.region,
+        ...(config.endpoint ? { endpoint: config.endpoint } : {}),
+        forcePathStyle: config.forcePathStyle,
+        credentials: { accessKeyId: config.accessKeyId, secretAccessKey: config.secretAccessKey },
+        // S3-compatible endpoints (Neon Object Storage among them) reject the
+        // flexible-checksum trailer the SDK would otherwise add by default.
+        requestChecksumCalculation: "WHEN_REQUIRED",
+      });
   return Object.freeze({
     async putObject({ key, bytes, sha256 }) {
-      await client.send(new PutObjectCommand({
+      await withStorageRetry(() => client.send(new PutObjectCommand({
         Bucket: config.bucket,
         Key: key,
         Body: bytes,
@@ -107,10 +183,13 @@ export function createMediaObjectStorage(env: NodeJS.ProcessEnv = process.env): 
         ContentType: "image/webp",
         CacheControl: "public, max-age=31536000, immutable",
         Metadata: { sha256 },
-      }));
+      })), { sleep });
     },
     async getObject(key) {
-      const response = await client.send(new GetObjectCommand({ Bucket: config.bucket, Key: key }));
+      const response = await withStorageRetry(
+        () => client.send(new GetObjectCommand({ Bucket: config.bucket, Key: key })),
+        { sleep },
+      );
       if (!response.Body) throw new MediaStorageUnavailableError("The stored media object has no body.");
       const chunks: Buffer[] = [];
       let size = 0;
@@ -123,7 +202,7 @@ export function createMediaObjectStorage(env: NodeJS.ProcessEnv = process.env): 
       return Buffer.concat(chunks, size);
     },
     async deleteObject(key) {
-      await client.send(new DeleteObjectCommand({ Bucket: config.bucket, Key: key }));
+      await withStorageRetry(() => client.send(new DeleteObjectCommand({ Bucket: config.bucket, Key: key })), { sleep });
     },
     close() { client.destroy(); },
   });
