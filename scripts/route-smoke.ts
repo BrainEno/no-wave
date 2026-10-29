@@ -109,6 +109,20 @@ try {
     await eventsReader.cancel();
   }
 
+
+  const writingDesk = await fetch(`${baseUrl}/write`);
+  assert.equal(writingDesk.status, 200, "writing desk should render when the API and media store are not configured");
+  const anonymousMediaUpload = await fetch(`${baseUrl}/api/authoring/media`, {
+    method: "POST",
+    headers: { "content-type": "image/png" },
+    body: Buffer.from("not-an-image"),
+  });
+  assert.equal(anonymousMediaUpload.status, 403, "media upload proxy must reject cross-origin or origin-less mutations");
+  const unavailableMedia = await fetch(`${baseUrl}/api/media/11111111-1111-4111-8111-111111111111`);
+  assert.equal(unavailableMedia.status, 503, "public media proxy should report missing API configuration explicitly");
+  const commentList = await fetch(`${baseUrl}/api/articles/portable-web-foundation/comments?locale=zh-CN`);
+  assert.equal(commentList.status, 503, "comment route should report missing API configuration without fabricating fixture comments");
+
   const robots = await fetch(`${baseUrl}/robots.txt`);
   assert.equal(robots.status, 200);
   assert.match(await robots.text(), /Sitemap:/);

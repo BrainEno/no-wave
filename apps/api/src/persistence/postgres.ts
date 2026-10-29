@@ -1535,6 +1535,33 @@ export function createPostgresStore(sql) {
         return { id: row.id, userId: row.user_id, eventKey: row.event_key, payload: parseJsonValue(row.payload), createdAt: row.created_at, duplicate };
       });
     },
+    async createMediaAsset(asset) {
+      return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const inserted = await tx.unsafe(
+          "INSERT INTO media_assets (id, owner_id, storage_key, content_type, byte_size, width, height, sha256) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *",
+          [asset.id, asset.ownerId, asset.storageKey, asset.contentType, asset.byteSize, asset.width, asset.height, asset.sha256],
+        );
+        const row = inserted[0];
+        if (!row) throw new Error("Media metadata insert did not return a row.");
+        await captureChanges(tx, transactionId, [{ entityType: "media_assets", entityId: row.id, operation: "upsert", payload: row }]);
+        return {
+          id: row.id, ownerId: row.owner_id, storageKey: row.storage_key, contentType: row.content_type,
+          byteSize: row.byte_size, width: row.width, height: row.height, sha256: row.sha256,
+          createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : new Date(row.created_at).toISOString(),
+        };
+      });
+    },
+    async getMediaAsset({ id }) {
+      if (typeof id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) return null;
+      const rows = await sql.unsafe("SELECT * FROM media_assets WHERE id = $1", [id]);
+      const row = rows[0];
+      return row ? {
+        id: row.id, ownerId: row.owner_id, storageKey: row.storage_key, contentType: row.content_type,
+        byteSize: row.byte_size, width: row.width, height: row.height, sha256: row.sha256,
+        createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : new Date(row.created_at).toISOString(),
+      } : null;
+    },
     async isSessionRevoked(sessionId) {
       const rows = await sql.unsafe("SELECT 1 FROM revoked_sessions WHERE session_id = $1 AND expires_at > now()", [sessionId]);
       return rows.length > 0;

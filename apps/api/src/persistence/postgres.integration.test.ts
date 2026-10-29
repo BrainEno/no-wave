@@ -24,11 +24,53 @@ after(async () => { if (sql) await sql.end({ timeout: 5 }); });
 test("migrations are repeatable and record applied versions once", integrationOptions, async () => {
   const first = await runMigrations(sql);
   const second = await runMigrations(sql);
-  assert.equal(first.discovered, 14);
+  assert.equal(first.discovered, 15);
   assert.equal(second.applied.length, 0);
-  const versions = ["0001_initial_domain_schema", "0002_article_content", "0003_author_profiles", "0004_article_engagement", "0005_article_taxonomies", "0006_conversation_lifecycle", "0007_user_follows", "0008_literary_work_types_and_zh_cn", "0009_public_article_search_trigram_indexes", "0010_outbox_lease_tokens", "0011_self_hosted_identity", "0012_article_content_versions", "0013_comment_content_versions", "0014_provider_migration_journal"];
+  const versions = ["0001_initial_domain_schema", "0002_article_content", "0003_author_profiles", "0004_article_engagement", "0005_article_taxonomies", "0006_conversation_lifecycle", "0007_user_follows", "0008_literary_work_types_and_zh_cn", "0009_public_article_search_trigram_indexes", "0010_outbox_lease_tokens", "0011_self_hosted_identity", "0012_article_content_versions", "0013_comment_content_versions", "0014_provider_migration_journal", "0015_media_assets"];
   const rows = await sql.unsafe("SELECT version FROM api_schema_migrations WHERE version = ANY($1::text[])", [versions]);
   assert.deepEqual(rows.map((row) => row.version).sort(), versions);
+});
+
+test("PostgreSQL media metadata persists normalized image fields and enforces ownership constraints", integrationOptions, async () => {
+  const ownerId = randomUUID();
+  const assetId = randomUUID();
+  const email = "it-media-" + ownerId + "@example.test";
+  await sql.unsafe("INSERT INTO auth_accounts (user_id, email, password_hash) VALUES ($1, $2, $3)", [ownerId, email, "integration-test-password-hash"]);
+  try {
+    const input = {
+      id: assetId,
+      ownerId,
+      storageKey: "assets/" + ownerId + "/" + assetId + ".webp",
+      contentType: "image/webp",
+      byteSize: 1234,
+      width: 400,
+      height: 300,
+      sha256: "a".repeat(64),
+    };
+    const created = await store.createMediaAsset(input);
+    assert.deepEqual({
+      id: created.id,
+      ownerId: created.ownerId,
+      storageKey: created.storageKey,
+      contentType: created.contentType,
+      byteSize: created.byteSize,
+      width: created.width,
+      height: created.height,
+      sha256: created.sha256,
+    }, input);
+    assert.equal(typeof created.createdAt, "string");
+    assert.deepEqual(await store.getMediaAsset({ id: assetId }), created);
+    assert.equal(await store.getMediaAsset({ id: "not-a-uuid" }), null);
+    await assert.rejects(store.createMediaAsset(input));
+    await assert.rejects(sql.unsafe(
+      "INSERT INTO media_assets (id, owner_id, storage_key, content_type, byte_size, width, height, sha256) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+      [randomUUID(), randomUUID(), "assets/missing-owner.webp", "image/webp", 10, 10, 10, "b".repeat(64)],
+    ));
+    assert.equal((await sql.unsafe("SELECT id FROM media_assets WHERE id = $1", [assetId])).length, 1);
+  } finally {
+    await sql.unsafe("DELETE FROM media_assets WHERE owner_id = $1", [ownerId]);
+    await sql.unsafe("DELETE FROM auth_accounts WHERE user_id = $1", [ownerId]);
+  }
 });
 
 test("PostgreSQL identity migration preserves legacy revocations and pending outbox rows", integrationOptions, async () => {

@@ -26,6 +26,7 @@ const entities: Record<string, EntitySpec> = {
   auth_access_tokens: { table: "auth_access_tokens", primaryKey: ["token_id"], columns: ["token_id", "session_id", "expires_at"] },
   auth_refresh_tokens: { table: "auth_refresh_tokens", primaryKey: ["token_hash"], columns: ["token_hash", "session_id", "used_at", "created_at"] },
   auth_rate_limits: { table: "auth_rate_limits", primaryKey: ["key"], columns: ["key", "attempts", "reset_at"] },
+  media_assets: { table: "media_assets", primaryKey: ["id"], columns: ["id", "owner_id", "storage_key", "content_type", "byte_size", "width", "height", "sha256", "created_at"] },
 };
 
 export type MigrationEntitySpec = EntitySpec;

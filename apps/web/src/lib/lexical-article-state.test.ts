@@ -30,10 +30,18 @@ test("application article blocks become a Lexical EditorState with formatting, l
   assert.equal(state.root.children[4].type, "code");
 });
 
-test("the editor refuses unsupported media blocks instead of silently deleting them", () => {
+test("approved image blocks round-trip as the registered custom Lexical image node", () => {
+  const state = articleBlocksToLexicalEditorState([{
+    id: "image-1", type: "image", src: "/api/media/11111111-1111-4111-8111-111111111111",
+    alt: "Cover", caption: "Cover caption",
+  }]);
+  assert.deepEqual(state.root.children[0], {
+    type: "image", version: 1, src: "/api/media/11111111-1111-4111-8111-111111111111",
+    alt: "Cover", caption: "Cover caption",
+  });
   assert.throws(
-    () => articleBlocksToLexicalEditorState([{ id: "image-1", type: "image", src: "/image.png", alt: "cover" }]),
-    /media-upload workflow/,
+    () => articleBlocksToLexicalEditorState([{ id: "image-2", type: "image", src: "javascript:alert(1)", alt: "unsafe" }]),
+    /unsafe image URL/,
   );
 });
 

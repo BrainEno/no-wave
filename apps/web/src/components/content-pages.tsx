@@ -8,6 +8,7 @@ import { lengthLabel, minutesLabel, readingMinutes, textLength } from "@/lib/rea
 import { firstLines, PAGE_SIZE, paginate } from "@/lib/work-types.ts";
 import { getUi } from "@/lib/ui-copy.ts";
 import { ReaderBar, ReaderToc, ReadingProgress } from "@/components/reader/reader-tools.tsx";
+import { ArticleComments } from "@/components/comments/article-comments.tsx";
 import { EmptyState, hrefWith, Highlight, Pager, SectionHeading, TypeChip, TypeTabs, WorkRow } from "@/components/ui/parts.tsx";
 
 export { HomeContent } from "@/components/home-page.tsx";
@@ -161,6 +162,8 @@ export async function ArticleDetailContent({ article }: { article: ArticleView }
         </article>
         <aside className="nw-ra" aria-label={ui.reader.toc}>{toc.length >= 2 ? <ReaderToc items={toc} title={ui.reader.toc} /> : null}</aside>
       </div>
+
+      <ArticleComments slug={article.slug} locale={locale} />
 
       <section style={{ maxWidth: 640, margin: "96px auto 0" }} aria-label={ui.reader.aboutAuthor}>
         <div className="nw-au">

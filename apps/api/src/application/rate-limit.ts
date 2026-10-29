@@ -20,6 +20,7 @@ export type WriteRateLimitPolicy = {
 const DEFAULT_POLICY = Object.freeze({ windowSeconds: 60, ipLimit: 120, userLimit: 60 });
 const POLICIES: Readonly<Record<string, Omit<WriteRateLimitPolicy, "endpoint">>> = Object.freeze({
   "article.create": { windowSeconds: 60 * 60, ipLimit: 30, userLimit: 10 },
+  "media.upload": { windowSeconds: 60 * 60, ipLimit: 20, userLimit: 10 },
   "article.update": { windowSeconds: 60 * 60, ipLimit: 60, userLimit: 20 },
   "comment.create": { windowSeconds: 60, ipLimit: 60, userLimit: 20 },
   "comment.delete": { windowSeconds: 60, ipLimit: 120, userLimit: 60 },
@@ -34,6 +35,7 @@ const POLICIES: Readonly<Record<string, Omit<WriteRateLimitPolicy, "endpoint">>>
 
 function endpointFor(method: string, pathname: string): string | null {
   if (method === "POST" && pathname === "/api/v1/articles") return "article.create";
+  if (method === "POST" && pathname === "/api/v1/me/media") return "media.upload";
   if (method === "PUT" && /^\/api\/v1\/articles\/[^/]+$/.test(pathname)) return "article.update";
   if (method === "PUT" && /^\/api\/v1\/me\/profile$/.test(pathname)) return "profile.update";
   if (method === "DELETE" && pathname === "/api/v1/me/session") return "session.revoke";

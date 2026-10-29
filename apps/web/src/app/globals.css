@@ -337,3 +337,25 @@ mark { background: var(--or); color: #0f0d0c; }
   .nw-article-fields .nw-field-wide { grid-column: auto; }
   .nw-lexical-input { min-height: 320px; font-size: 18px; }
 }
+
+/* ---------- 媒体图片节点与评论 ---------- */
+.nw-lexical-image-host { display: block; max-width: 100%; }
+.nw-lexical-image { margin: 24px 0; }
+.nw-lexical-image img { display: block; max-width: 100%; max-height: 960px; width: auto; height: auto; margin: 0 auto; object-fit: contain; }
+.nw-lexical-image figcaption { margin-top: 8px; text-align: center; color: var(--t2); font-size: 13px; }
+.nw-comment-section { max-width: 760px; margin: 88px auto 0; padding-top: 24px; border-top: 1px solid var(--ink); }
+.nw-comment-section h2 { margin: 0 0 24px; font: 400 clamp(32px, 5vw, 48px)/1.15 var(--f-zh); }
+.nw-comment-form { margin: 24px 0 42px; }
+.nw-comment-toolbar { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px; border: 1px solid var(--ink); }
+.nw-comment-toolbar button { min-height: 40px; padding: 5px 10px; background: transparent; border: 1px solid var(--ink); }
+.nw-comment-editor { min-height: 150px; padding: 16px; border: 1px solid var(--ink); border-top: 0; outline: none; font: 400 17px/1.8 var(--f-zh); overflow-wrap: anywhere; }
+.nw-comment-editor p { margin: 0 0 12px; }
+.nw-comment-list { display: grid; gap: 22px; }
+.nw-comment-item { padding: 16px 0; border-top: 1px solid color-mix(in srgb, var(--ink) 24%, transparent); }
+.nw-comment-item header { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+.nw-comment-item header strong { font-size: 15px; }
+.nw-comment-item header time { color: var(--t2); font-size: 12px; }
+.nw-comment-body { font: 400 16px/1.85 var(--f-zh); overflow-wrap: anywhere; }
+.nw-comment-body p { margin: 12px 0; }
+.nw-comment-body a { text-decoration: underline; text-decoration-color: var(--or); text-underline-offset: 3px; }
+.nw-comment-body code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }

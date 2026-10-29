@@ -45,9 +45,9 @@ function apiUrl(base: string, path: string): string {
   return new URL(path.replace(/^\/+/, ""), base.replace(/\/+$/, "") + "/").toString();
 }
 
-async function callApi(base: string, path: string, method: string, body: string | undefined, token?: string): Promise<Response> {
+async function callApi(base: string, path: string, method: string, body: BodyInit | undefined, token?: string, contentType = "application/json; charset=utf-8"): Promise<Response> {
   const headers = new Headers({ accept: "application/json" });
-  if (body !== undefined) headers.set("content-type", "application/json; charset=utf-8");
+  if (body !== undefined) headers.set("content-type", contentType);
   if (token) headers.set("authorization", `Bearer ${token}`);
   return fetch(apiUrl(base, path), {
     method,
@@ -179,7 +179,8 @@ export async function forwardAuthoringApi(
   request: NextRequest,
   path: string,
   method: "GET" | "POST" | "PUT",
-  body?: string,
+  body?: BodyInit,
+  contentType = "application/json; charset=utf-8",
 ): Promise<NextResponse> {
   let base: string | undefined;
   try { base = resolveApiBaseUrl(); } catch { base = undefined; }
@@ -193,14 +194,14 @@ export async function forwardAuthoringApi(
   let clearCookies = false;
   let upstream: Response;
   try {
-    upstream = await callApi(base, path, method, body, accessToken);
+    upstream = await callApi(base, path, method, body, accessToken, contentType);
     if (upstream.status === 401 && refreshToken) {
       const refreshed = await callApi(base, "api/v1/auth/refresh", "POST", JSON.stringify({ refreshToken }));
       const refreshedPayload = await readPayload(refreshed);
       if (refreshed.ok && isTokenEnvelope(refreshedPayload)) {
         rotated = refreshedPayload.data;
         accessToken = rotated.accessToken;
-        upstream = await callApi(base, path, method, body, accessToken);
+        upstream = await callApi(base, path, method, body, accessToken, contentType);
       } else if (refreshed.status === 400 || refreshed.status === 401) {
         clearCookies = true;
       }

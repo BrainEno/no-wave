@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalExtensionComposer } from "@lexical/react/LexicalExtensionComposer";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
@@ -11,7 +11,8 @@ import { LinkExtension, TOGGLE_LINK_COMMAND } from "@lexical/link";
 import { INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND, ListExtension } from "@lexical/list";
 import { $createHeadingNode, $createQuoteNode, RichTextExtension } from "@lexical/rich-text";
 import { $setBlocksType } from "@lexical/selection";
-import { $createParagraphNode, $getSelection, $isRangeSelection, defineExtension, FORMAT_TEXT_COMMAND, REDO_COMMAND, UNDO_COMMAND, type ElementNode } from "lexical";
+import { $createParagraphNode, $getSelection, $insertNodes, $isRangeSelection, defineExtension, FORMAT_TEXT_COMMAND, REDO_COMMAND, UNDO_COMMAND, type ElementNode } from "lexical";
+import { ArticleImageNode, $createArticleImageNode } from "./article-image-node.tsx";
 import type { WorkType } from "@/lib/content.ts";
 import { articleBlocksToLexicalEditorState, type LexicalEditorStateJson } from "@/lib/lexical-article-state.ts";
 
@@ -60,8 +61,10 @@ function EditorStatePlugin({ onChange }: { onChange(state: LexicalEditorStateJso
   return null;
 }
 
-function Toolbar() {
+function Toolbar({ onStatus, onError }: { onStatus(message: string): void; onError(message: string): void }) {
   const [editor] = useLexicalComposerContext();
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
   const setBlock = useCallback((createNode: () => ElementNode) => {
     editor.update(() => {
       const selection = $getSelection();
@@ -73,7 +76,7 @@ function Toolbar() {
     const url = window.prompt("输入链接（https:// 或站内绝对路径）");
     if (url === null) return;
     const candidate = url.trim();
-    if (!candidate || candidate.startsWith("//") || /[\u0000-\u0020\u007f\\]/.test(candidate)) {
+    if (!candidate || candidate.startsWith("//") || /[\\u0000-\\u0020\\u007f\\\\]/.test(candidate)) {
       window.alert("请输入有效的 HTTP(S) 链接或站内绝对路径。");
       return;
     }
@@ -87,6 +90,65 @@ function Toolbar() {
       }
     }
     editor.dispatchCommand(TOGGLE_LINK_COMMAND, candidate);
+  }
+
+  async function uploadImage(file: File | undefined) {
+    if (!file) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      onError("图片只支持 JPEG、PNG 与 WebP 格式。");
+      return;
+    }
+    if (file.size < 1 || file.size > 8 * 1024 * 1024) {
+      onError("单张图片大小必须大于 0 且不超过 8 MiB。");
+      return;
+    }
+    const alt = window.prompt("请填写图片替代文本（用于屏幕阅读器与无障碍访问）");
+    if (alt === null) return;
+    if (!alt.trim() || alt.trim().length > 500) {
+      onError("图片替代文本不能为空，且不得超过 500 字符。");
+      return;
+    }
+    const caption = window.prompt("图片说明（可留空）") ?? "";
+    if (caption.length > 1000) {
+      onError("图片说明不得超过 1000 字符。");
+      return;
+    }
+    setUploading(true);
+    onError("");
+    onStatus("正在安全处理并上传图片……");
+    try {
+      const response = await fetch("/api/authoring/media", {
+        method: "POST",
+        headers: { "content-type": file.type, accept: "application/json" },
+        credentials: "same-origin",
+        cache: "no-store",
+        body: file,
+      });
+      const payload: unknown = await response.json().catch(() => null);
+      if (!response.ok) {
+        const message = typeof payload === "object" && payload !== null && "error" in payload
+          ? (payload as { error?: { message?: unknown } }).error?.message : undefined;
+        throw new Error(typeof message === "string" ? message : "图片上传失败，请稍后重试。");
+      }
+      const data = typeof payload === "object" && payload !== null && "data" in payload
+        ? (payload as { data?: unknown }).data : null;
+      if (!data || typeof data !== "object" || !("src" in data) ||
+        typeof (data as { src?: unknown }).src !== "string" ||
+        !/^\/api\/media\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test((data as { src: string }).src)) {
+        throw new Error("上传服务返回了无效的图片地址。");
+      }
+      const src = (data as { src: string }).src;
+      editor.update(() => {
+        $insertNodes([$createArticleImageNode({ src, alt: alt.trim(), caption: caption.trim() })]);
+      });
+      onStatus("图片已上传并插入正文。");
+    } catch (caught) {
+      onStatus("");
+      onError(caught instanceof Error ? caught.message : "图片上传失败，请稍后重试。");
+    } finally {
+      setUploading(false);
+      if (fileInput.current) fileInput.current.value = "";
+    }
   }
 
   return (
@@ -103,6 +165,8 @@ function Toolbar() {
       <button type="button" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "underline")}><u>U</u></button>
       <button type="button" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "strikethrough")}><s>S</s></button>
       <button type="button" onClick={addLink}>链接</button>
+      <button type="button" disabled={uploading} onClick={() => fileInput.current?.click()}>{uploading ? "上传图片中…" : "插入图片"}</button>
+      <input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp" aria-label="选择要上传的图片" hidden onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; void uploadImage(file); }} />
       <button type="button" onClick={() => setBlock(() => $createCodeNode())}>代码块</button>
       <button type="button" onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)} aria-label="撤销">撤销</button>
       <button type="button" onClick={() => editor.dispatchCommand(REDO_COMMAND, undefined)} aria-label="重做">重做</button>
@@ -168,6 +232,7 @@ export function ArticleEditor({ article, onSaved }: ArticleEditorProps) {
     name: "@no-wave/article-authoring",
     namespace: "no-wave-article-authoring",
     dependencies: extensionDependencies,
+    nodes: [ArticleImageNode],
     theme: editorTheme,
     $initialEditorState: JSON.stringify(initialState),
   }) : null, [initialState]);
@@ -213,7 +278,7 @@ export function ArticleEditor({ article, onSaved }: ArticleEditorProps) {
   }
 
   if (!initialState || !extension) {
-    return <p className="nw-auth-error" role="alert">此作品含有当前编辑器尚不支持的内容块（例如图片或带署名的引用）。没有修改任何内容；请先返回作品列表。图片编辑会在媒体上传工作流完成后接入。</p>;
+    return <p className="nw-auth-error" role="alert">此作品含有当前编辑器尚不支持的内容块（例如带署名的引用）。没有修改任何内容；请先返回作品列表。</p>;
   }
 
   return (
@@ -235,13 +300,13 @@ export function ArticleEditor({ article, onSaved }: ArticleEditorProps) {
         </label>
       </div>
       <LexicalExtensionComposer extension={extension} contentEditable={null}>
-        <Toolbar />
+        <Toolbar onStatus={setStatus} onError={setError} />
         <div className="nw-lexical-shell">
           <ContentEditable className="nw-lexical-input" aria-label="作品正文" aria-placeholder="从这里开始写作" placeholder={<p className="nw-lexical-placeholder">从这里开始写作……</p>} />
         </div>
         <EditorStatePlugin onChange={onEditorChange} />
       </LexicalExtensionComposer>
-      <p className="nw-lexical-empty-note">支持段落、二至四级标题、引用、列表、粗体、斜体、下划线、删除线、链接与代码块。当前版本暂不支持插入图片。</p>
+      <p className="nw-lexical-empty-note">支持段落、二至四级标题、引用、列表、文本格式、链接、代码块及经服务端安全处理的图片。每张图片都会被重编码为 WebP；图片上传需配置 S3 兼容存储。</p>
       {error ? <p className="nw-auth-error" role="alert">{error}</p> : null}
       {status ? <p className="nw-auth-status" role="status">{status}</p> : null}
       <div className="nw-authoring-actions">
