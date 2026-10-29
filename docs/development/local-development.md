@@ -250,15 +250,16 @@ Neon direct-connection guidance.
 | Route smoke (Web, fixtures) | `pnpm test:routes` | ~1 min | no |
 | Persistence integration | `TEST_DATABASE_URL=... pnpm --filter @bot-thk/api test:integration` | ~1 min | PostgreSQL |
 | Local chain | `pnpm check:local` | seconds | only for the PostgreSQL profile |
-| CI | `.github/workflows/ci.yml` | ~1 min per chain leg | GitHub service container |
+| CI | `.github/workflows/ci.yml` | ~30 s per chain leg | GitHub service container |
 
 The CI `local-dev-chain` job runs exactly the documented commands —
 `pnpm dev --check --exit` (SQLite) and `pnpm dev --api-only --check --exit`
 (PostgreSQL) — so the developer path and the CI path cannot drift apart.
 
 `pnpm test` runs the tooling's own unit tests
-(`scripts/lib/local-dev-config.test.ts`, `apps/web/src/lib/dev-origins.test.ts`)
-on every run, so the environment rules above cannot silently regress.
+(`scripts/lib/local-dev-config.test.ts`, `scripts/local-dev-check.test.ts`,
+`apps/web/src/lib/dev-origins.test.ts`) on every run, so the environment rules and
+the probe's skip semantics cannot silently regress.
 
 ## 9. Troubleshooting
 
