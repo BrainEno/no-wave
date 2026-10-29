@@ -262,7 +262,18 @@ test("saving a draft creates the article with a generated address, and it surviv
   // is published from the same document without retyping anything.
   await expect(page.getByRole("button", { name: "发布作品" })).toBeVisible();
   await page.getByRole("button", { name: "发布作品" }).click();
-  await expect(status).toContainText("作品已发布。", { timeout: 45_000 });
+  try {
+    await expect(status).toContainText("作品已发布。", { timeout: 45_000 });
+  } catch (caught) {
+    // The client refuses a save before it sends anything, so what the page
+    // says now is the only way to tell a refused save from a failed request.
+    const alerts = await page.locator("[role=alert]").allTextContents();
+    const editorText = ((await page.getByLabel("作品正文").textContent()) ?? "").slice(0, 120);
+    const titleValue = await page.getByLabel("标题").inputValue();
+    throw new Error(
+      `publishing the saved draft did not report success; alerts=${JSON.stringify(alerts)} editor=${JSON.stringify(editorText)} title=${JSON.stringify(titleValue)}\n${await pageDigest(page)}\n${String(caught)}`,
+    );
+  }
   await expect(async () => {
     const saved = await savedArticles(page);
     expect(saved).toHaveLength(1);
