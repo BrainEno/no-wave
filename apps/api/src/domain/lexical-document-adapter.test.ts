@@ -143,3 +143,55 @@ test("adapter preserves unchanged IDs and assigns unique IDs to new or edited bl
   assert.equal(document.contentBlocks[1].id, "kept-id");
   assert.equal(new Set(document.contentBlocks.map((block) => block.id)).size, 2);
 });
+
+test("element-level textFormat/textStyle emitted by Lexical >= 0.52 is accepted and ignored", () => {
+  const state = {
+    root: lexicalElement("root", [
+      lexicalElement("paragraph", [lexicalText("正文")], { textFormat: 1, textStyle: "" }),
+      lexicalElement("paragraph", [lexicalText("更多")], { textFormat: 2, textStyle: "color: red" }),
+    ]),
+  };
+  const document = lexicalEditorStateToArticleDocument(state);
+  assert.deepEqual(document.contentBlocks.map((block) => block.text), ["正文", "更多"]);
+});
+
+test("blank blocks are dropped so a trailing empty paragraph cannot fail a save", () => {
+  const state = {
+    root: lexicalElement("root", [
+      lexicalElement("paragraph", [lexicalText("")]),
+      lexicalElement("paragraph", [lexicalText("正文")]),
+      lexicalElement("paragraph", [lexicalText("   ")]),
+      lexicalElement("list", [
+        lexicalElement("listitem", [lexicalText("")]),
+        lexicalElement("listitem", [lexicalText("项目")]),
+      ], { listType: "bullet", start: 1, tag: "ul" }),
+      lexicalElement("code", [], { language: "text", theme: "" }),
+    ]),
+  };
+  const document = lexicalEditorStateToArticleDocument(state);
+  assert.deepEqual(document.contentBlocks.map((block) => block.type), ["paragraph", "list"]);
+  assert.deepEqual(document.contentBlocks[1].items, ["项目"]);
+});
+
+test("a document without any text content is rejected as empty, not as unsupported", () => {
+  assert.throws(
+    () => lexicalEditorStateToArticleDocument({
+      root: lexicalElement("root", [lexicalElement("paragraph", [lexicalText("")])]),
+    }),
+    /at least one block with text content/,
+  );
+});
+
+test("edge whitespace typed in the editor is trimmed so a save cannot fail on it", () => {
+  const state = {
+    root: lexicalElement("root", [
+      lexicalElement("paragraph", [lexicalText("  "), lexicalText("正文"), lexicalText("  ")]),
+      lexicalElement("paragraph", [lexicalText("   ")]),
+      lexicalElement("paragraph", [lexicalText("  粗体  ", 1)]),
+      lexicalElement("list", [lexicalElement("listitem", [lexicalText("  项目  ")])], { listType: "bullet", start: 1, tag: "ul" }),
+    ]),
+  };
+  const document = lexicalEditorStateToArticleDocument(state);
+  assert.deepEqual(document.contentBlocks.map((block) => block.text ?? block.items), ["正文", "粗体", ["项目"]]);
+  assert.deepEqual(document.contentBlocks[1].inlines, [{ text: "粗体", marks: ["bold"] }]);
+});

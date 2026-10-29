@@ -221,7 +221,6 @@ export function ArticleEditor({ article, onSaved }: ArticleEditorProps) {
   });
   const [editorState, setEditorState] = useState<LexicalEditorStateJson | null>(initialState);
   const [title, setTitle] = useState(article?.title ?? "");
-  const [slug, setSlug] = useState(article?.slug ?? "");
   const [summary, setSummary] = useState(article?.summary ?? "");
   const [workType, setWorkType] = useState<WorkType>(article?.workType ?? "other");
   const [busy, setBusy] = useState(false);
@@ -241,7 +240,6 @@ export function ArticleEditor({ article, onSaved }: ArticleEditorProps) {
 
   async function save(publish: boolean) {
     if (!title.trim()) { setError("请填写作品标题。"); return; }
-    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) { setError("slug 仅支持小写英文字母、数字和单个连字符。"); return; }
     if (!editorState) { setError("编辑器内容尚未初始化，请重新载入页面。"); return; }
     if (!collectPlainText(editorState.root).trim()) { setError("请先输入正文内容。"); return; }
     setBusy(true);
@@ -254,7 +252,9 @@ export function ArticleEditor({ article, onSaved }: ArticleEditorProps) {
         credentials: "same-origin",
         cache: "no-store",
         body: JSON.stringify({
-          slug: slug.trim(),
+          // New articles let the API derive the slug from the title; existing
+          // ones are addressed by the slug they already have.
+          ...(article ? { slug: article.slug } : {}),
           title: title.trim(),
           summary: summary.trim(),
           locale: "zh-CN",
@@ -269,7 +269,7 @@ export function ArticleEditor({ article, onSaved }: ArticleEditorProps) {
       const data = typeof payload === "object" && payload !== null && "data" in payload ? (payload as { data?: unknown }).data : null;
       if (!isSavedArticle(data)) throw new Error("API 响应格式不正确，作品可能已保存，请刷新列表核对。");
       onSaved(data);
-      setStatus(data.status === "published" ? "作品已发布。" : "草稿已保存。");
+      setStatus(`${data.status === "published" ? "作品已发布。" : "草稿已保存。"} 作品地址：/articles/${data.slug}`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "保存失败，请重试。");
     } finally {
@@ -287,16 +287,14 @@ export function ArticleEditor({ article, onSaved }: ArticleEditorProps) {
         <label className="nw-field-wide">标题
           <input value={title} onChange={(event) => setTitle(event.target.value)} required maxLength={200} />
         </label>
-        <label>作品地址 slug
-          <input value={slug} onChange={(event) => setSlug(event.target.value)} required pattern="[a-z0-9]+(?:-[a-z0-9]+)*" maxLength={120} autoCapitalize="none" />
-        </label>
+        <p className="nw-field-note">作品地址（slug）由系统根据标题自动生成，无需填写。</p>
         <label>作品类型
           <select value={workType} onChange={(event) => setWorkType(event.target.value as WorkType)}>
             {workTypes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
           </select>
         </label>
         <label className="nw-field-wide">摘要
-          <textarea value={summary} onChange={(event) => setSummary(event.target.value)} maxLength={2000} />
+          <textarea value={summary} onChange={(event) => setSummary(event.target.value)} maxLength={2000} placeholder="留空则由系统摘取正文开头自动生成" />
         </label>
       </div>
       <LexicalExtensionComposer extension={extension} contentEditable={null}>

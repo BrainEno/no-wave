@@ -10,7 +10,11 @@ const TEXT_FORMATS = Object.freeze([
 ]);
 const TEXT_FORMAT_MASK = TEXT_FORMATS.reduce((mask, item) => mask | item.flag, 0);
 const MAX_LEXICAL_JSON_CHARACTERS = 1_000_000;
-const ELEMENT_KEYS = new Set(["children", "direction", "format", "indent", "type", "version"]);
+// Lexical >= 0.52 emits `textFormat`/`textStyle` on element nodes whenever a
+// block inherits a text format (e.g. bold applied to a whole block). The
+// article contract stores marks per inline run, and the format is already
+// carried by the child text nodes, so the keys are accepted and ignored.
+const ELEMENT_KEYS = new Set(["children", "direction", "format", "indent", "textFormat", "textStyle", "type", "version"]);
 const TEXT_KEYS = new Set(["detail", "format", "mode", "style", "text", "type", "version"]);
 
 function fail(path, message) {
@@ -122,6 +126,22 @@ function parseInlineNodes(nodes, path, { code = false } = {}) {
   }
   return mergeInlineRuns(runs);
 }
+/**
+ * Drop whitespace at the edges of a run list. Lexical keeps the spaces an
+ * author typed, but the article contract requires trimmed block text — without
+ * this a paragraph ending in a space would fail to save.
+ */
+function trimRuns(runs) {
+  const trimmed = runs.map((run) => ({ ...run }));
+  while (trimmed.length > 0 && trimmed[0].text.trim().length === 0) trimmed.shift();
+  while (trimmed.length > 0 && trimmed[trimmed.length - 1].text.trim().length === 0) trimmed.pop();
+  if (trimmed.length === 0) return trimmed;
+  // Applied in order: with a single run, the tail must be trimmed from the
+  // already head-trimmed text.
+  trimmed[0] = { ...trimmed[0], text: trimmed[0].text.trimStart() };
+  trimmed[trimmed.length - 1] = { ...trimmed[trimmed.length - 1], text: trimmed[trimmed.length - 1].text.trimEnd() };
+  return trimmed;
+}
 function hasInlineMarkup(runs) {
   return runs.some((run) => run.href !== undefined || (run.marks && run.marks.length > 0));
 }
@@ -138,9 +158,12 @@ function parseBlock(node, index) {
     const keys = new Set([...ELEMENT_KEYS, ...(node.type === "heading" ? ["tag"] : [])]);
     onlyKeys(node, keys, path);
     const children = validateElementEnvelope(node, path);
-    const runs = parseInlineNodes(children, path + ".children");
+    const runs = trimRuns(parseInlineNodes(children, path + ".children"));
     const text = plainText(runs);
-    if (children.length === 0) fail(path + ".children", "cannot represent an empty block.");
+    // Lexical always keeps a trailing (possibly empty) paragraph, and authors
+    // leave blank lines behind. Blank blocks carry no content, so they are
+    // dropped instead of failing a save.
+    if (!text.trim()) return null;
     const block: Record<string, any> = { id: "lexical-block-" + (index + 1), type: node.type, text };
     if (node.type === "heading") {
       if (typeof node.tag !== "string" || !/^h[2-4]$/.test(node.tag)) fail(path + ".tag", "must be h2, h3, or h4.");
@@ -157,7 +180,7 @@ function parseBlock(node, index) {
     const unordered = node.listType === "bullet" && node.tag === "ul";
     if (!ordered && !unordered) fail(path, "must be an ordered or unordered list; checklists are not supported.");
     if (node.start !== undefined && node.start !== 1) fail(path + ".start", "must be 1 because custom list start values are not supported.");
-    if (children.length < 1 || children.length > 100) fail(path + ".children", "must contain 1 to 100 list items.");
+    if (children.length > 100) fail(path + ".children", "must contain at most 100 list items.");
     const items = [];
     const itemInlines = [];
     let anyMarkup = false;
@@ -169,13 +192,14 @@ function parseBlock(node, index) {
       const itemChildren = validateElementEnvelope(item, itemPath);
       if (item.checked !== undefined && item.checked !== null) fail(itemPath + ".checked", "represents checkbox state not supported by the article contract.");
       if (item.value !== undefined && (!Number.isInteger(item.value) || item.value < 1)) fail(itemPath + ".value", "must be a positive integer.");
-      const runs = parseInlineNodes(itemChildren, itemPath + ".children");
+      const runs = trimRuns(parseInlineNodes(itemChildren, itemPath + ".children"));
       const text = plainText(runs);
-      if (!text.trim()) fail(itemPath, "cannot represent an empty list item.");
+      if (!text.trim()) continue;
       items.push(text);
       itemInlines.push(runs);
       anyMarkup ||= hasInlineMarkup(runs);
     }
+    if (items.length === 0) return null;
     const block: Record<string, any> = { id: "lexical-block-" + (index + 1), type: "list", ordered, items };
     if (anyMarkup) block.itemInlines = itemInlines;
     return block;
@@ -188,6 +212,7 @@ function parseBlock(node, index) {
       fail(path + ".theme", "uses a custom code theme that the article contract cannot preserve.");
     }
     const code = parseInlineNodes(children, path + ".children", { code: true }).map((run) => run.text).join("");
+    if (!code.trim()) return null;
     const language = node.language === undefined || node.language === null || node.language === "" ? "text" : node.language;
     if (typeof language !== "string") fail(path + ".language", "must be a string or null.");
     return { id: "lexical-block-" + (index + 1), type: "code", language, code };
@@ -371,7 +396,10 @@ export function lexicalEditorStateToArticleDocument(serializedState, { previousB
   if (root.type !== "root") fail("state.root", "must be a Lexical root node.");
   const children = validateElementEnvelope(root, "state.root");
   if (children.length < 1 || children.length > 200) fail("state.root.children", "must contain 1 to 200 blocks.");
-  const blocks = children.map((node, index) => parseBlock(node, index));
+  const blocks = children.map((node, index) => parseBlock(node, index)).filter((block) => block !== null);
+  if (blocks.length === 0) {
+    fail("state.root.children", "must contain at least one block with text content.");
+  }
   const contentBlocks = assignBlockIds(blocks, previousBlocks, idFactory);
   return {
     contentBlocksVersion: 1,
