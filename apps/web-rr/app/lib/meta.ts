@@ -33,6 +33,23 @@ export type SharedMetadata = {
 };
 
 /**
+ * A URL as the App Router emits it.
+ *
+ * `new URL("/", origin).toString()` ends in a slash, while Next resolves the
+ * site root to the bare origin (`https://site.example`). Both identify the same
+ * resource, so this is cosmetic — but the parity gate compares bytes, and one
+ * spelling in one adapter is cheaper than a permanent exception.
+ */
+function routerUrl(href: string): string {
+  if (!href.endsWith("/")) return href;
+  try {
+    return new URL(href).pathname === "/" ? href.slice(0, -1) : href;
+  } catch {
+    return href;
+  }
+}
+
+/**
  * @param absoluteTitle — render the page title without the site suffix.
  *
  * The App Router applies its root layout's `title.template` to descendant
@@ -49,10 +66,10 @@ export function metaDescriptors(
   if (metadata.description) descriptors.push({ name: "description", content: metadata.description });
 
   const canonical = metadata.alternates?.canonical;
-  if (canonical) descriptors.push({ tagName: "link", rel: "canonical", href: canonical });
+  if (canonical) descriptors.push({ tagName: "link", rel: "canonical", href: routerUrl(canonical) });
 
   for (const [locale, href] of Object.entries(metadata.alternates?.languages ?? {})) {
-    descriptors.push({ tagName: "link", rel: "alternate", hrefLang: locale, href });
+    descriptors.push({ tagName: "link", rel: "alternate", hrefLang: locale, href: routerUrl(href) });
   }
 
   const openGraph = metadata.openGraph;

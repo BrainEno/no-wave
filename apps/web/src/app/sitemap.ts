@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { loadSitemapEntries } from "@/lib/site-metadata.ts";
+import { configuredSiteUrl, loadSitemapEntries } from "@/lib/site-metadata.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -9,5 +9,5 @@ export const dynamic = "force-dynamic";
  * serve the same list.
  */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  return (await loadSitemapEntries({ siteUrl: process.env.NEXT_PUBLIC_SITE_URL })) as MetadataRoute.Sitemap;
+  return (await loadSitemapEntries({ siteUrl: configuredSiteUrl() })) as MetadataRoute.Sitemap;
 }

@@ -147,14 +147,18 @@ so the phase is not complete and no provider-specific code exists.
 **Exit gate:** public routes pass side-by-side behavior assertions with no known SEO, locale or hard-404 regression.
 
 **Status 2026-10-29:** every public route — home included — plus sitemap and
-robots is ported, and the exit gate is executable: `pnpm check:ssr-parity`
-builds both applications, points them at one mock API and compares 105
-observations over 17 routes with **0 unexpected differences** (19 divergences
-are known and reasoned in
-[public SSR migration §5](public-ssr-migration.md#5-known-divergences-found-by-the-parity-check)).
-It is run locally, not in CI, because it needs two production builds. Still
-open: the App Router's fixture-origin canonicals (owner decision), Phase 4
-interaction behavior, and comparison against a real host (Phase 6).
+robots is ported, and the exit gate is executable and scheduled:
+`pnpm check:ssr-parity` builds both applications, points them at one mock API
+and compares 105 observations over 17 routes with **0 unexpected differences**
+(the 13 remaining divergences are the public-page caching policy, reasoned in
+[public SSR migration §5](public-ssr-migration.md#5-the-one-divergence-the-gate-accepts-and-the-decision-it-forced)).
+It runs nightly in `.github/workflows/ssr-parity.yml` and on demand, not per
+commit, because it needs two production builds. The gate forced one owner
+decision, which is now landed: canonical and hreflang URLs resolve through a
+single `configuredSiteUrl()` instead of the `content.ts` fixture origin (§5 of
+the same document, including the production effect and the revert path). Still
+open: Phase 4 interaction behavior, configuring `NEXT_PUBLIC_SITE_URL` in every
+environment, and comparison against a real host (Phase 6).
 
 ### Phase 4 — Migrate authentication and writing desk
 

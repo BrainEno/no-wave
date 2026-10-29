@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { ArticleArchiveContent } from "@/components/content-pages";
 import { archiveMetadata } from "@/lib/content.ts";
+import { configuredSiteUrl } from "@/lib/site-metadata.ts";
 import { parsePage, parseWorkType } from "@/lib/work-types.ts";
 
-export const metadata: Metadata = archiveMetadata("en") as Metadata;
+export const metadata: Metadata = archiveMetadata("en", configuredSiteUrl()) as Metadata;
 
 type PageProps = { searchParams: Promise<{ q?: string | string[]; page?: string | string[]; type?: string | string[] }> };
 
