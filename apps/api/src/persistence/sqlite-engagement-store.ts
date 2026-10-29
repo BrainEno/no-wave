@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import { createSqliteProviderMigrationCapture, migrationEntityKey } from "./sqlite-provider-migration-capture.ts";
-import { ArticleAuthorizationError, ArticleInputError, ArticleNotFoundError } from "../domain/errors.ts";
+import { ArticleAuthorizationError, ArticleInputError, ArticleNotFoundError, IdempotencyConflictError } from "../domain/errors.ts";
 import { validateArticleLocale, validateArticleSlug } from "../domain/article.ts";
 import { validateStoredCommentContent } from "../domain/comment-content.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
@@ -117,11 +117,30 @@ export function createSqliteEngagementStore(db) {
       }
       return roots;
     },
-    createArticleComment({ slug, locale = "zh-CN", actorId, content, contentBlocks = null, contentBlocksVersion = 0, parentCommentId = null }) {
+    createArticleComment({ slug, locale = "zh-CN", actorId, content, contentBlocks = null, contentBlocksVersion = 0, parentCommentId = null, idempotencyKey = null }) {
       validateActor(actorId); validateArticleSlug(slug); validateArticleLocale(locale);
       const normalizedContent = validateStoredCommentContent({ content, contentBlocks, contentBlocksVersion });
       if (parentCommentId !== null && !isUuid(parentCommentId)) throw new ArticleInputError("parentCommentId must be a valid comment ID.");
+      if (idempotencyKey !== null && (typeof idempotencyKey !== "string" || idempotencyKey.length === 0 ||
+          idempotencyKey.length > 300 || idempotencyKey.trim() !== idempotencyKey)) {
+        throw new ArticleInputError("Idempotency-Key must be a non-empty trimmed string no longer than 300 characters.");
+      }
+      const idempotencyKeyHash = idempotencyKey === null ? null : requestHash({
+        method: "POST", route: "/api/v1/articles/" + slug + "/comments", actorId, key: idempotencyKey,
+      });
+      const fingerprint = requestHash({
+        slug, locale, actorId, content: normalizedContent.content,
+        contentBlocks: normalizedContent.contentBlocks,
+        contentBlocksVersion: normalizedContent.contentBlocksVersion, parentCommentId,
+      });
       return transaction((transactionId) => {
+        if (idempotencyKeyHash !== null) {
+          const existing = get("SELECT * FROM article_comments WHERE author_id = ? AND idempotency_key_hash = ?", actorId, idempotencyKeyHash);
+          if (existing) {
+            if (existing.request_hash !== fingerprint) throw new IdempotencyConflictError();
+            return mapComment({ ...existing, locale });
+          }
+        }
         const article = publishedArticle(slug, locale);
         let parentAuthorId = null;
         if (parentCommentId !== null) {
@@ -130,12 +149,12 @@ export function createSqliteEngagementStore(db) {
           parentAuthorId = parent.author_id;
         }
         const id = randomUUID();
-        run("INSERT INTO article_comments (id, article_id, author_id, parent_comment_id, content, content_blocks, content_blocks_version) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        run("INSERT INTO article_comments (id, article_id, author_id, parent_comment_id, content, content_blocks, content_blocks_version, idempotency_key_hash, request_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
           id, article.id, actorId, parentCommentId, normalizedContent.content,
           normalizedContent.contentBlocks === null ? null : JSON.stringify(normalizedContent.contentBlocks),
-          normalizedContent.contentBlocksVersion);
-        const row = get("SELECT id, article_id, author_id, parent_comment_id, content, content_blocks, content_blocks_version, created_at, updated_at FROM article_comments WHERE id = ?", id);
-        const changes = [{ entityType: "article_comments", entityId: id, operation: "upsert" as const, payload: get("SELECT * FROM article_comments WHERE id = ?", id) }];
+          normalizedContent.contentBlocksVersion, idempotencyKeyHash, idempotencyKeyHash === null ? null : fingerprint);
+        const row = get("SELECT * FROM article_comments WHERE id = ?", id);
+        const changes = [{ entityType: "article_comments", entityId: id, operation: "upsert" as const, payload: row }];
         const recipients = new Map();
         if (article.author_id !== actorId) recipients.set(article.author_id, "article.commented");
         if (parentAuthorId && parentAuthorId !== actorId) recipients.set(parentAuthorId, "article.comment_replied");
