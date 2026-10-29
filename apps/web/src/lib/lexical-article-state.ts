@@ -93,11 +93,7 @@ export function articleBlocksToLexicalEditorState(value: unknown): LexicalEditor
           throw new Error("The saved article contains an invalid image block.");
         }
         const src = block.src;
-        const containsUnsafeCharacter = Array.from(src).some((character) => {
-          const code = character.charCodeAt(0);
-          return code <= 0x20 || code === 0x7f || code === 0x5c;
-        });
-        if (src.startsWith("//") || containsUnsafeCharacter) {
+        if (src.startsWith("//") || src.includes("\\\\") || /[\\u0000-\\u0020\\u007f]/.test(src)) {
           throw new Error("The saved article contains an unsafe image URL.");
         }
         if (!src.startsWith("/")) {
