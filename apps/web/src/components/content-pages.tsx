@@ -2,95 +2,30 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { archivePath, articlePath, authorPath, getMessages, type ArticleContentBlock, type ArticleView, type AuthorView, type Locale, type WorkType } from "@/lib/content.ts";
 import { listPublicArticles } from "@/lib/api-content.ts";
-import { dateLabel, initial, pad } from "@/lib/format.ts";
-import { pickDefaultCover } from "@/lib/covers.ts";
+import { dateLabel, initial } from "@/lib/format.ts";
 import { lengthLabel, minutesLabel, readingMinutes, textLength } from "@/lib/reading.ts";
-import { firstLines, PAGE_SIZE, paginate } from "@/lib/work-types.ts";
 import { getUi } from "@/lib/ui-copy.ts";
+import { loadArchivePage, loadAuthorPage } from "@/lib/public-pages.ts";
+import { ArchivePageView } from "@/components/public/archive-view.tsx";
+import { AuthorPageView } from "@/components/public/author-view.tsx";
 import { ReaderBar, ReaderToc, ReadingProgress } from "@/components/reader/reader-tools.tsx";
 import { ArticleComments } from "@/components/comments/article-comments.tsx";
-import { EmptyState, hrefWith, Highlight, Pager, SectionHeading, TypeChip, TypeTabs, WorkRow } from "@/components/ui/parts.tsx";
+import { Highlight, SectionHeading, TypeChip, WorkRow } from "@/components/ui/parts.tsx";
 
 export { HomeContent } from "@/components/home-page.tsx";
 
 /* ---------------------------------------------------------------- 作品目录 */
 
-export async function ArticleArchiveContent({ locale, query, page = 1, type = null }: { locale: Locale; query: string; page?: number; type?: WorkType | null }) {
-  const ui = getUi(locale);
-  const messages = getMessages(locale);
-  const base = archivePath(locale);
-  let visible: ArticleView[];
-  let hasNextPage: boolean;
-  if (type) {
-    // API 暂无作品类型参数：在最新 100 篇匹配作品中筛选并分页
-    const matches = (await listPublicArticles({ locale, query, limit: 100 })).filter((article) => article.workType === type);
-    ({ visible, hasNextPage } = paginate(matches, page));
-  } else {
-    const results = await listPublicArticles({ locale, query, limit: PAGE_SIZE + 1, offset: (page - 1) * PAGE_SIZE });
-    visible = results.slice(0, PAGE_SIZE);
-    hasNextPage = results.length > PAGE_SIZE;
-  }
-  const showLead = page === 1 && !query && !type && visible.length > 0;
-  const lead = showLead ? visible[0] : undefined;
-  const rows = lead ? visible.slice(1) : visible;
-  const poem = rows.find((article) => article.workType === "poetry");
-  const poemParagraph = poem?.contentBlocks.find((block) => block.type === "paragraph");
-  const poemLines = poemParagraph?.type === "paragraph" ? firstLines(poemParagraph.text, 2) : [];
-  const poemAfter = Math.min(3, rows.length - 1);
-
-  return (
-    <main lang={locale} className="nw-w">
-      <header className="nw-head">
-        <div className="nw-m" style={{ marginBottom: 12 }}>{messages.blogDescription}</div>
-        <h1><span className="nw-zh">{ui.archive.title}</span> <i>{ui.archive.titleEn}</i></h1>
-        <form className="nw-sf-form" action={base} method="get" role="search" aria-label={ui.archive.search}>
-          {type ? <input type="hidden" name="type" value={type} /> : null}
-          <div className="nw-fgrow"><label className="nw-lab" htmlFor="works-q">{ui.archive.search}</label><input id="works-q" className="nw-fld" type="search" name="q" defaultValue={query} placeholder={ui.archive.placeholder} /></div>
-          <button className="nw-btn nw-sec" type="submit">{ui.archive.button}</button>
-          {query || type ? <Link className="nw-btn" href={base}>{ui.archive.clear}</Link> : null}
-        </form>
-      </header>
-      <div style={{ marginTop: 40 }}><TypeTabs locale={locale} base={base} current={type} params={{ q: query }} /></div>
-      {type ? <p className="nw-m" style={{ marginTop: 8 }}>{ui.archive.limitNote}</p> : null}
-
-      <div className="nw-bodygrid">
-        {lead ? <ArchiveLead article={lead} locale={locale} label={ui.archive.lead} /> : null}
-        {rows.length || lead ? (
-          <div>
-            {rows.map((article, index) => (
-              <div key={article.slug}>
-                <WorkRow article={article} locale={locale} index={(lead ? 2 : 1) + index + (page - 1) * PAGE_SIZE} withCover query={query} />
-                {poem && poemLines.length && index === poemAfter ? (
-                  <div className="nw-pi"><div className="nw-m">{ui.archive.poemFrom} · {poem.author.displayName} · 《{poem.title}》</div><p className="nw-po">{poemLines.map((line) => <span key={line}>{line}<br /></span>)}</p></div>
-                ) : null}
-              </div>
-            ))}
-            <Pager locale={locale} page={page} hasNextPage={hasNextPage} hrefFor={(next) => hrefWith(base, { q: query, type, page: next })} />
-          </div>
-        ) : (
-          <EmptyState title={ui.archive.noResults} body={ui.archive.noResultsHint} href={base} action={ui.archive.clear} />
-        )}
-      </div>
-      <div style={{ height: 140 }} />
-    </main>
-  );
-}
-
-function ArchiveLead({ article, locale, label }: { article: ArticleView; locale: Locale; label: string }) {
-  const cover = pickDefaultCover(article.slug);
-  const messages = getMessages(locale);
-  return (
-    <Link className="nw-ft" href={articlePath(article.slug, locale)} data-reveal>
-      <div className="nw-ftp"><img src={cover.src} alt="" width={cover.width} height={cover.height} /></div>
-      <div>
-        <div className="nw-m"><span className="nw-gc" style={{ background: "var(--ink)", color: "var(--paper)" }}>{label}</span> <TypeChip type={article.workType} locale={locale} /> · {dateLabel(article.publishedAt, locale)}</div>
-        <h2>{article.title}</h2>
-        <p>{article.description}</p>
-        <div className="nw-m">{article.author.displayName} · {lengthLabel(textLength(article.contentBlocks, locale), locale)}</div>
-        <span className="nw-btn nw-sec" style={{ marginTop: 20 }}>{messages.readArticle} →</span>
-      </div>
-    </Link>
-  );
+/**
+ * 作品目录 — App Router entry point.
+ *
+ * The data is loaded by the framework-neutral `loadArchivePage` and rendered by
+ * the synchronous `ArchivePageView`, which is what lets the React Router prototype
+ * serve the same page from the same data without an async server component.
+ */
+export async function ArticleArchiveContent({ locale, query = "", page = 1, type = null }: { locale: Locale; query?: string; page?: number; type?: WorkType | null }) {
+  const data = await loadArchivePage({ locale, query, page, type });
+  return <ArchivePageView {...data} />;
 }
 
 /* ---------------------------------------------------------------- 阅读页 */
@@ -198,61 +133,12 @@ export async function ArticleDetailContent({ article }: { article: ArticleView }
 
 /* ---------------------------------------------------------------- 作者主页 */
 
+/**
+ * 作者主页 — App Router entry point (same load/render split as the archive).
+ */
 export async function AuthorProfileContent({ locale, author, type = null, page = 1 }: { locale: Locale; author: AuthorView; type?: WorkType | null; page?: number }) {
-  const ui = getUi(locale);
-  const messages = getMessages(locale);
-  const base = authorPath(author.username, locale);
-  const works = (await listPublicArticles({ locale, authorUsername: author.username, limit: 100 })).sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
-  const filtered = type ? works.filter((article) => article.workType === type) : works;
-  const { visible, hasNextPage } = paginate(filtered, page);
-  const recent = !type && page === 1 ? works.slice(0, 3) : [];
-  const portrait = pickDefaultCover(author.username);
-
-  return (
-    <main lang={locale} className="nw-w">
-      <div className="nw-ah">
-        <aside className="nw-ai">
-          <img className="nw-pt" src={portrait.src} alt="" width={portrait.width} height={portrait.height} />
-          <div className="nw-m">{ui.author.profile} · {ui.author.count(works.length)}</div>
-          <h1 data-reveal>{author.displayName}</h1>
-          {author.bio ? <p className="nw-bio">{author.bio}</p> : null}
-        </aside>
-        <div>
-          {recent.length ? (
-            <section>
-              <SectionHeading zh={ui.author.recent} latin="Recent" />
-              <div style={{ marginTop: 32 }}>
-                {recent.map((article, index) => (
-                  <Link key={article.slug} className="nw-rp3" href={articlePath(article.slug, locale)} data-reveal="row">
-                    <span className="nw-m" style={{ paddingTop: 12 }}>{pad(index + 1)}</span>
-                    <span><span className="nw-m"><TypeChip type={article.workType} locale={locale} /> · {dateLabel(article.publishedAt, locale)}</span><span className="nw-t">{article.title}</span><span className="nw-x">{article.description}</span></span>
-                  </Link>
-                ))}
-              </div>
-            </section>
-          ) : null}
-          <section className={recent.length ? "nw-sec2" : undefined} id="catalogue">
-            <SectionHeading zh={ui.author.works} latin={ui.author.worksEn} aside={<span className="nw-m">{ui.author.count(filtered.length)}</span>} />
-            <div style={{ margin: "24px 0 8px" }}><TypeTabs locale={locale} base={base} current={type} /></div>
-            {visible.length ? (
-              <>
-                {visible.map((article) => (
-                  <Link key={article.slug} className="nw-cr" href={articlePath(article.slug, locale)}>
-                    <span className="nw-m">{dateLabel(article.publishedAt, locale)}</span>
-                    <span className="nw-zh">{article.title}</span>
-                    <span className="nw-m"><TypeChip type={article.workType} locale={locale} /> {lengthLabel(textLength(article.contentBlocks, locale), locale)}</span>
-                  </Link>
-                ))}
-                <Pager locale={locale} page={page} hasNextPage={hasNextPage} hrefFor={(next) => hrefWith(base, { type, page: next })} />
-                <p className="nw-m" style={{ marginTop: 16 }}>{ui.author.limitNote}</p>
-              </>
-            ) : <EmptyState title={messages.noAuthorArticles} body={ui.author.none} href={archivePath(locale)} action={ui.archive.title} />}
-          </section>
-        </div>
-      </div>
-      <div style={{ height: 140 }} />
-    </main>
-  );
+  const data = await loadAuthorPage({ locale, author, type, page });
+  return <AuthorPageView {...data} />;
 }
 
 export { Highlight };

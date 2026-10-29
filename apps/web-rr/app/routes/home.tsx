@@ -1,8 +1,9 @@
 import { Link, useLoaderData } from "react-router";
-import type { LoaderFunctionArgs, MetaFunction } from "react-router";
+import type { HeadersFunction, LoaderFunctionArgs, MetaFunction } from "react-router";
 import { SectionHeading, WorkRow } from "@/components/ui/parts.tsx";
 import { homeMetadata, homePath, type Locale } from "@/lib/content.ts";
 import { listPublicArticles } from "@/lib/api-content.ts";
+import { PUBLIC_PAGE_HEADERS } from "../lib/http-policy.ts";
 import { metaDescriptors } from "../lib/meta.ts";
 import { siteUrl } from "../lib/runtime.ts";
 
@@ -20,6 +21,8 @@ export async function loader(_args: LoaderFunctionArgs) {
   const articles = await listPublicArticles({ locale, limit: 5 });
   return { articles };
 }
+
+export const headers: HeadersFunction = () => PUBLIC_PAGE_HEADERS;
 
 export const meta: MetaFunction<typeof loader> = () => metaDescriptors(homeMetadata(locale, siteUrl()));
 

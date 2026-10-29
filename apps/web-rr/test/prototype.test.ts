@@ -246,3 +246,118 @@ test("logout clears both token cookies", async () => {
   assert.ok(cookies.some((cookie) => cookie.startsWith("nw_access=;") && /Max-Age=0/.test(cookie)));
   assert.ok(cookies.some((cookie) => cookie.startsWith("nw_refresh=;") && /Max-Age=0/.test(cookie)));
 });
+
+/* ------------------------------------------------------------------ Phase 3 */
+
+/**
+ * Public SSR routes migrated in Phase 3: archive, author, category index/detail
+ * and search.
+ *
+ * The assertions are the migration contract, not markup snapshots:
+ *
+ *   1. server-rendered (the content is in the first response, no JS required);
+ *   2. localized by path, with canonical/hreflang metadata;
+ *   3. unknown entities are hard 404s;
+ *   4. shared caching is allowed only where the HTML is public;
+ *   5. each page costs at most **two** API calls — the budget that keeps a
+ *      0.1-CPU, cold-starting instance responsive.
+ */
+
+async function upstreamCalls(pathname: string): Promise<string[]> {
+  mockApi.resetRequests();
+  await get(pathname);
+  return mockApi.requests().filter((entry) => entry.includes("/api/v1/"));
+}
+
+test("archive is server-rendered, localized and shared-cacheable", async () => {
+  const result = await get("/articles");
+  assert.equal(result.status, 200);
+  assert.match(result.body, /可移植的文学基础设施/);
+  assert.match(result.body, /rel="canonical" href="https:\/\/no-wave\.example\/articles"/);
+  assert.match(result.body, /rel="alternate" hrefLang="en"/);
+  assert.match(result.headers.get("cache-control") ?? "", /public/);
+  assert.match(result.headers.get("cache-control") ?? "", /s-maxage=60/);
+  assert.match(result.headers.get("cache-control") ?? "", /stale-while-revalidate=300/);
+
+  const english = await get("/en/articles");
+  assert.equal(english.status, 200);
+  assert.match(english.body, /A Portable Literary Foundation/);
+  assert.match(english.body, /rel="canonical" href="https:\/\/no-wave\.example\/en\/articles"/);
+});
+
+test("archive filters by query and by work type without extra API calls", async () => {
+  const matching = await get("/articles?q=抵抗");
+  assert.equal(matching.status, 200);
+  assert.match(matching.body, /作为抵抗的阅读/);
+  assert.doesNotMatch(matching.body, /可移植的文学基础设施/);
+
+  const empty = await get("/articles?q=肯定不存在的关键词");
+  assert.equal(empty.status, 200);
+  assert.match(empty.body, /没有符合条件的作品/);
+
+  const byType = await get("/articles?type=short_story");
+  assert.equal(byType.status, 200);
+  assert.match(byType.body, /作为抵抗的阅读/);
+  assert.doesNotMatch(byType.body, /可移植的文学基础设施/);
+  // Type filtering scans a bounded window and is served by one call.
+  assert.equal((await upstreamCalls("/articles?type=short_story")).length, 1);
+});
+
+test("author pages render the profile and its catalogue, unknown authors are 404", async () => {
+  const result = await get("/authors/writer");
+  assert.equal(result.status, 200);
+  assert.match(result.body, new RegExp(MOCK_DISPLAY_NAME));
+  assert.match(result.body, /可移植的文学基础设施/);
+  assert.match(result.body, /rel="canonical" href="https:\/\/no-wave\.example\/authors\/writer"/);
+
+  const missing = await get("/authors/nobody");
+  assert.equal(missing.status, 404);
+  assert.match(missing.body, /这一页不存在/);
+});
+
+test("category index and detail are server-rendered with hard 404s", async () => {
+  const index = await get("/categories");
+  assert.equal(index.status, 200);
+  assert.match(index.body, /随笔/);
+  assert.match(index.body, /href="\/categories\/essays"/);
+
+  const detail = await get("/categories/essays");
+  assert.equal(detail.status, 200);
+  assert.match(detail.body, /可移植的文学基础设施/);
+
+  const english = await get("/en/categories");
+  assert.equal(english.status, 200);
+  assert.match(english.body, /Essays/);
+
+  const missing = await get("/categories/does-not-exist");
+  assert.equal(missing.status, 404);
+  assert.match(missing.body, /这一页不存在/);
+});
+
+test("search is server-rendered, no-store and excluded from indexing", async () => {
+  // Search is locale-scoped, exactly like the App Router page: the query is run
+  // against the content in the language of the path.
+  const result = await get("/search?q=抵抗");
+  assert.equal(result.status, 200);
+  assert.match(result.body, /作为抵抗的阅读/);
+  assert.doesNotMatch(result.body, /可移植的文学基础设施/);
+
+  const english = await get("/en/search?q=portable");
+  assert.equal(english.status, 200);
+  assert.match(english.body, /A Portable Literary Foundation/);
+  assert.match(result.headers.get("cache-control") ?? "", /no-store/);
+  assert.match(result.body, /name="robots" content="noindex, follow"/);
+
+  const empty = await get("/search");
+  assert.equal(empty.status, 200);
+  assert.match(empty.body, /按类型浏览/);
+});
+
+test("every migrated public page spends at most two API calls", async () => {
+  const pages = ["/", "/articles", "/articles?q=抵抗", "/authors/writer", "/categories", "/categories/essays", "/search?q=portable"];
+  for (const pathname of pages) {
+    const calls = await upstreamCalls(pathname);
+    assert.ok(calls.length >= 1, `${pathname} must read content from the API, not fixtures`);
+    assert.ok(calls.length <= 2, `${pathname} exceeded the two-call budget: ${calls.join(", ")}`);
+  }
+});

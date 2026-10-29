@@ -1,12 +1,14 @@
 import { data, useLoaderData } from "react-router";
-import type { LoaderFunctionArgs, MetaFunction } from "react-router";
+import type { HeadersFunction, LoaderFunctionArgs, MetaFunction } from "react-router";
 import { Link } from "react-router";
 import { TypeChip } from "@/components/ui/parts.tsx";
-import { articleMetadata, archivePath, defaultLocale, getMessages, type Locale } from "@/lib/content.ts";
+import { articleMetadata, archivePath, getMessages } from "@/lib/content.ts";
 import { getPublicArticle } from "@/lib/api-content.ts";
 import { dateLabel } from "@/lib/format.ts";
 import { lengthLabel, minutesLabel, readingMinutes, textLength } from "@/lib/reading.ts";
+import { PUBLIC_PAGE_HEADERS } from "../lib/http-policy.ts";
 import { metaDescriptors } from "../lib/meta.ts";
+import { localeFor } from "../lib/locale.ts";
 import { siteUrl } from "../lib/runtime.ts";
 
 /**
@@ -19,10 +21,6 @@ import { siteUrl } from "../lib/runtime.ts";
  * shared leaf components (`TypeChip`, `WorkRow`, `SectionHeading`) render here
  * unchanged.
  */
-function localeFor(request: Request): Locale {
-  return new URL(request.url).pathname.startsWith("/en/") ? "en" : defaultLocale;
-}
-
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const locale = localeFor(request);
   const article = await getPublicArticle(params.slug ?? "", locale);
@@ -31,6 +29,8 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   if (!article) throw data({ slug: params.slug ?? null, locale }, { status: 404 });
   return { article };
 }
+
+export const headers: HeadersFunction = () => PUBLIC_PAGE_HEADERS;
 
 export const meta: MetaFunction<typeof loader> = ({ data: loaded }) => {
   if (!loaded) return [{ title: "页面未找到 | 无浪潮" }];
