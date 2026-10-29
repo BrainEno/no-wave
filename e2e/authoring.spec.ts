@@ -369,6 +369,46 @@ test("publishing an article makes it readable at its generated address with a ge
   expect(description.length).toBeLessThanOrEqual(111);
 });
 
+test("returning a published work to draft withdraws it from the public site", async ({ page, request }) => {
+  // The desk asks before it withdraws a page that readers may be on. That
+  // confirmation is the product's own guard, so the suite answers it instead of
+  // muting it — a dialog that never appears is then a failure, not a no-op.
+  page.on("dialog", (dialog) => void dialog.accept());
+
+  await registerWriter(page, request);
+  const title = `浏览器验证撤稿 ${Date.now().toString(36)}`;
+  const slug = await writeAndSave(page, title, true);
+
+  const publicHeading = page.getByRole("heading", { level: 1, name: title });
+  await page.goto(`/articles/${slug}`);
+  await expect(publicHeading).toBeVisible({ timeout: 45_000 });
+
+  // The desk opens on a new document, so the published work has to be opened
+  // from the list before it can be withdrawn — the 转为草稿 action only exists
+  // for a work that is currently public.
+  await page.goto("/write");
+  await waitForEditor(page);
+  const entry = page.getByRole("button", { name: new RegExp(title) });
+  await expect(entry).toBeVisible({ timeout: 45_000 });
+  await entry.click();
+  await waitForEditor(page);
+  const withdraw = page.getByRole("button", { name: "转为草稿" });
+  await expect(withdraw).toBeVisible({ timeout: 45_000 });
+  await withdraw.click();
+
+  await expect(async () => {
+    const saved = await savedArticles(page);
+    expect(saved.find((article) => article.title === title)?.status, JSON.stringify(saved)).toBe("draft");
+  }).toPass({ timeout: 45_000, intervals: [500, 1_000, 2_000] });
+
+  // The durable outcome readers can see: the address stops serving the work,
+  // while the draft itself is untouched and still listed in the desk.
+  await page.goto(`/articles/${slug}`);
+  await expect(publicHeading, `the withdrawn work must not be readable at /articles/${slug}`).toHaveCount(0);
+  await page.goto("/write");
+  await expect(page.getByRole("button", { name: new RegExp(title) })).toContainText("草稿", { timeout: 45_000 });
+});
+
 test("an article with no body is refused with a readable message instead of a silent failure", async ({ page, request }) => {
   await registerWriter(page, request);
   await waitForEditor(page);

@@ -16,7 +16,7 @@ that can be asserted more cheaply must be asserted more cheaply.
 | Path | Purpose |
 | --- | --- |
 | `playwright.config.ts` | Two chromium projects — `app-router` and `prototype` — one worker; `webServer` starts the API (`node scripts/dev.ts --api-only`) and the **production** builds of both frameworks (`pnpm --filter @bot-thk/web start`, `pnpm --filter @bot-thk/web-rr start`) |
-| `e2e/authoring.spec.ts` | Register → write → save draft → publish → read the public page, run once per framework |
+| `e2e/authoring.spec.ts` | Register → write → save draft → publish → read the public page → withdraw it again, run once per framework |
 
 Conventions:
 
