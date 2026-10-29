@@ -3,6 +3,9 @@ node_modules/
 .pnpm-store/
 .next/
 out/
+# React Router prototype build output and generated route types
+apps/web-rr/build/
+apps/web-rr/.react-router/
 dist/
 coverage/
 .env

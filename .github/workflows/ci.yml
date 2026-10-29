@@ -110,6 +110,25 @@ jobs:
         if: matrix.provider == 'sqlite'
         run: pnpm dev --check --exit
 
+  # Phase 1 of the Web framework migration: the isolated React Router prototype
+  # must build and pass its behavior tests on plain Node.js. The job starts the
+  # production build with `node server.ts` and NO Vercel-specific variables, so a
+  # platform dependency cannot sneak in unnoticed.
+  react-router-prototype:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10.20.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build and behavior-test the prototype
+        run: pnpm test:prototype
+
   required-checks:
     name: required-checks
     if: ${{ always() }}
@@ -117,6 +136,7 @@ jobs:
       - verify
       - postgres-integration
       - local-dev-chain
+      - react-router-prototype
     runs-on: ubuntu-latest
     steps:
       - name: Require every validation job to succeed
@@ -124,11 +144,12 @@ jobs:
           VERIFY_RESULT: ${{ needs.verify.result }}
           POSTGRES_RESULT: ${{ needs.postgres-integration.result }}
           LOCAL_CHAIN_RESULT: ${{ needs.local-dev-chain.result }}
+          PROTOTYPE_RESULT: ${{ needs.react-router-prototype.result }}
         run: |
-          printf 'verify: %s\npostgres-integration: %s\nlocal-dev-chain: %s\n' \
-            "$VERIFY_RESULT" "$POSTGRES_RESULT" "$LOCAL_CHAIN_RESULT"
-          if [ "$VERIFY_RESULT" != "success" ] || [ "$POSTGRES_RESULT" != "success" ] || [ "$LOCAL_CHAIN_RESULT" != "success" ]; then
-            echo "::error::verify, postgres-integration and local-dev-chain must all succeed."
+          printf 'verify: %s\npostgres-integration: %s\nlocal-dev-chain: %s\nreact-router-prototype: %s\n' \
+            "$VERIFY_RESULT" "$POSTGRES_RESULT" "$LOCAL_CHAIN_RESULT" "$PROTOTYPE_RESULT"
+          if [ "$VERIFY_RESULT" != "success" ] || [ "$POSTGRES_RESULT" != "success" ] || [ "$LOCAL_CHAIN_RESULT" != "success" ] || [ "$PROTOTYPE_RESULT" != "success" ]; then
+            echo "::error::verify, postgres-integration, local-dev-chain and react-router-prototype must all succeed."
             exit 1
           fi
           echo "All required validation jobs succeeded."
