@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { forwardAuthoringApi, readLimitedJsonObject } from "@/lib/authoring-proxy.ts";
-import { isSameOriginMutation } from "@/lib/authoring-proxy-policy.ts";
+import { handleAuthoringArticlesRequest } from "@bot-thk/web-http";
+import { apiConfig, toNextResponse } from "@/lib/authoring-proxy.ts";
 
-export async function GET(request: NextRequest) {
-  return forwardAuthoringApi(request, "api/v1/me/articles?locale=zh-CN&limit=100", "GET");
+/**
+ * `GET`/`POST /api/authoring/articles` — Phase 4b.
+ *
+ * The author's list, and a new work. The Origin check, the bounded body, the
+ * cookie-attached forwarding and the refresh-and-retry all live in the shared
+ * handler, so the React Router prototype serves the writing desk from the same
+ * code instead of a second copy.
+ */
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  return toNextResponse(await handleAuthoringArticlesRequest(request, apiConfig()));
 }
 
-export async function POST(request: NextRequest) {
-  if (!isSameOriginMutation(request.url, request.headers.get("origin"), request.headers.get("host"))) {
-    return NextResponse.json({ error: { code: "ORIGIN_REJECTED", message: "The request origin was rejected." } }, { status: 403, headers: { "cache-control": "no-store" } });
-  }
-  const parsed = await readLimitedJsonObject(request);
-  if (!parsed.ok) return parsed.response;
-  return forwardAuthoringApi(request, "api/v1/articles", "POST", parsed.text);
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  return toNextResponse(await handleAuthoringArticlesRequest(request, apiConfig()));
 }

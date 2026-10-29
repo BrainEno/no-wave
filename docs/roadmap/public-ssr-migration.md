@@ -291,11 +291,15 @@ and the repo has no DOM test stack. §7 records them.
 
 ## 8. Known gaps
 
-- **No browser, so no behaviour after hydration is asserted**: hover switching in
-  `HomeLatest`, the GSAP intro counter, the WebGL hero, IME composition in the
-  comment composer, focus order and ARIA state changes. The mount points and the
-  client code are asserted; what they *do* in a browser is not. Closing this
-  needs a DOM test stack or a real browser, which the sandbox has neither.
+- **Behaviour after hydration is asserted only in CI, and only for the App
+  Router**: `pnpm test:e2e` (Playwright, added 2026-10-29, see
+  [testing/end-to-end.md](../testing/end-to-end.md)) covers the authoring
+  journey in a real browser — sign-up, save, publish and the public page. It does
+  not run locally (the sandbox cannot install a browser) and it does not cover
+  the prototype, so hover switching in `HomeLatest`, the GSAP intro counter, the
+  WebGL hero, IME composition in the comment composer, focus order and ARIA state
+  changes are still unasserted. The mount points and the client code are asserted
+  for both frameworks; what they *do* in a browser is asserted for one.
 - **Upstream 5xx bodies are relayed verbatim** by the shared authoring forwarder
   (asserted, not fixed, in `comments.test.ts`): a server error from the API
   reaches the browser with whatever detail the API put in it. Sanitizing it

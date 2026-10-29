@@ -43,7 +43,14 @@ export function apiConfig(): { apiBaseUrl: string | undefined } {
   }
 }
 
-function toNextResponse(response: Response): NextResponse {
+/**
+ * Convert a framework-neutral `Response` into a `NextResponse`.
+ *
+ * Exported because every proxied route needs it and a copy per route file is
+ * exactly the duplication this seam exists to remove. `set-cookie` is copied
+ * with `append` (there can be several) and kept out of the plain header loop.
+ */
+export function toNextResponse(response: Response): NextResponse {
   const body = response.status === 204 || response.status === 304 ? null : response.body;
   const next = new NextResponse(body, { status: response.status });
   response.headers.forEach((value, name) => {

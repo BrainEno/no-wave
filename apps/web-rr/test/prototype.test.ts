@@ -114,6 +114,16 @@ async function post(pathname: string, body: string, headers: Record<string, stri
   return { status: response.status, headers: response.headers, body: await response.text() };
 }
 
+async function put(pathname: string, body: string, headers: Record<string, string> = {}): Promise<Result> {
+  const response = await fetch(`${baseUrl}${pathname}`, {
+    method: "PUT",
+    body,
+    headers: { "content-type": "application/json", origin: baseUrl, ...headers },
+    redirect: "manual",
+  });
+  return { status: response.status, headers: response.headers, body: await response.text() };
+}
+
 test("home renders API-backed articles on the server", async () => {
   const result = await get("/");
   assert.equal(result.status, 200);
@@ -579,3 +589,126 @@ test("the article page renders the reader toolbar, the table of contents and the
   assert.match(result.body, /class="nw-comment-section"/);
   assert.match(result.body, /nw-comment-editor/);
 });
+
+/**
+ * The writing desk (Phase 4b).
+ *
+ * `AuthoringWorkspace` is a shared client component, so the desk renders in both
+ * frameworks — what it needs from the framework is the API it calls. These tests
+ * drive that API over real HTTP against the production build: a signed-out desk
+ * must be told it is signed out, a signed-in one must be able to read its own
+ * work, and writing twice must update one article rather than create two.
+ */
+const DESK_COOKIE = `nw_access=${MOCK_TOKENS.accessToken}`;
+
+function editorStateOf(text: string): unknown {
+  return {
+    root: {
+      children: [
+        {
+          children: [{ detail: 0, format: 0, mode: "normal", style: "", text, type: "text", version: 1 }],
+          direction: "ltr",
+          format: "",
+          indent: 0,
+          type: "paragraph",
+          version: 1,
+        },
+      ],
+      direction: "ltr",
+      format: "",
+      indent: 0,
+      type: "root",
+      version: 1,
+    },
+  };
+}
+
+function articleBody(title: string, publish = false): string {
+  return JSON.stringify({
+    title,
+    summary: "",
+    locale: "zh-CN",
+    workType: "essay",
+    editorState: editorStateOf(`${title} 的第一段，用来验证保存链路。`),
+    contentBlocksVersion: 1,
+    publish,
+  });
+}
+
+test("the writing desk renders its shared client component, privately", async () => {
+  const result = await get("/write");
+  assert.equal(result.status, 200);
+  assert.match(result.body, /data-route="write"/);
+  // The desk's own first line: the shared workspace is rendered here, not a
+  // reduced stand-in, and it is the client component that draws the rest.
+  assert.match(result.body, /正在验证登录状态并载入草稿/);
+  assert.match(result.headers.get("cache-control") ?? "", /no-store/);
+  assert.match(result.body, /noindex/);
+});
+
+test("a signed-out desk is told it is signed out, not handed an error page", async () => {
+  const result = await get("/api/authoring/session");
+  assert.equal(result.status, 401);
+  assert.match(result.headers.get("cache-control") ?? "", /no-store/);
+});
+
+test("a signed-in desk reads its session and its own work", async () => {
+  const session = await get("/api/authoring/session", { cookie: DESK_COOKIE });
+  assert.equal(session.status, 200);
+  assert.match(session.body, new RegExp(MOCK_DISPLAY_NAME));
+  assert.match(session.headers.get("cache-control") ?? "", /no-store/);
+
+  const list = await get("/api/authoring/articles", { cookie: DESK_COOKIE });
+  assert.equal(list.status, 200);
+  assert.match(list.headers.get("cache-control") ?? "", /no-store/);
+  // Seeded from the catalogue, so the desk lists what this author published.
+  assert.match(list.body, /可移植的文学基础设施/);
+});
+
+test("the desk creates a work, and it shows up in the author's list", async () => {
+  const created = await post("/api/authoring/articles", articleBody("Desk Draft Alpha"), { cookie: DESK_COOKIE });
+  assert.equal(created.status, 201);
+  const article = (JSON.parse(created.body) as { data: { slug: string; status: string } }).data;
+  assert.equal(article.slug, "desk-draft-alpha", "the address is derived, not supplied");
+  assert.equal(article.status, "draft");
+
+  const list = await get("/api/authoring/articles", { cookie: DESK_COOKIE });
+  assert.match(list.body, /Desk Draft Alpha/);
+});
+
+test("saving the same work again updates it instead of creating a second one", async () => {
+  const created = await post("/api/authoring/articles", articleBody("Desk Draft Beta"), { cookie: DESK_COOKIE });
+  assert.equal(created.status, 201);
+  const { id } = (JSON.parse(created.body) as { data: { id: string } }).data;
+
+  const updated = await put(`/api/authoring/articles/${id}`, articleBody("Desk Draft Beta", true), { cookie: DESK_COOKIE });
+  assert.equal(updated.status, 200);
+  const article = (JSON.parse(updated.body) as { data: { id: string; status: string } }).data;
+  assert.equal(article.id, id, "the update must address the same article");
+  assert.equal(article.status, "published");
+
+  const list = await get("/api/authoring/articles", { cookie: DESK_COOKIE });
+  assert.equal((list.body.match(/desk-draft-beta/g) ?? []).length, 1, "a second save must not duplicate the work");
+});
+
+test("the desk's writes are origin-checked, and the origin check comes first", async () => {
+  const cross = await post("/api/authoring/articles", articleBody("Cross Origin"), {
+    cookie: DESK_COOKIE,
+    origin: "https://attacker.example",
+  });
+  assert.equal(cross.status, 403);
+  assert.match(cross.body, /ORIGIN_REJECTED/);
+
+  const malformed = await put("/api/authoring/articles/not-a-uuid", "{}", { cookie: DESK_COOKIE });
+  assert.equal(malformed.status, 400);
+  assert.match(malformed.body, /BAD_USER_INPUT/);
+
+  // Order: a cross-origin request must be refused for its origin, so it cannot
+  // use the status code to learn whether the id it guessed exists.
+  const both = await put("/api/authoring/articles/not-a-uuid", "{}", {
+    cookie: DESK_COOKIE,
+    origin: "https://attacker.example",
+  });
+  assert.equal(both.status, 403);
+});
+

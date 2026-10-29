@@ -36,6 +36,10 @@ const CLIENT_COMPONENTS: readonly ClientComponent[] = [
   { component: "PageLoader", sentinel: "nw-load", page: "/" },
   { component: "HomeLatest", sentinel: "nw-more", page: "/" },
   { component: "HeroGlCanvas", sentinel: "precision highp float", page: "/" },
+  // Phase 4b: the desk is the most client-heavy page in the product — a Lexical
+  // editor behind a session — so "it renders" says the least about it here.
+  { component: "AuthoringWorkspace", sentinel: "正在验证登录状态并载入草稿", page: "write" },
+  { component: "ArticleEditor", sentinel: "作品地址（slug）由系统根据标题自动生成", page: "write" },
 ];
 
 function clientBundle(): string {

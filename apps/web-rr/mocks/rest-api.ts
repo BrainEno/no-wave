@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 
@@ -66,6 +66,78 @@ export const MOCK_MEDIA = {
   etag: `"${createHash("sha256").update(MOCK_MEDIA_BYTES).digest("hex")}"`,
   bytes: MOCK_MEDIA_BYTES,
 } as const;
+
+/**
+ * The writing desk's own store (Phase 4b).
+ *
+ * The mock is deliberately not a general-purpose API, but the desk is the one
+ * surface where a read and a write have to agree with each other: a created work
+ * must appear in the author's list, and saving it again must update that row
+ * instead of appending a second one. So authored works are kept in memory for
+ * the lifetime of the process, seeded from the published catalogue — which is
+ * what makes "the desk lists what this author wrote" assertable at all.
+ */
+type AuthoredArticle = {
+  id: string;
+  slug: string;
+  title: string;
+  summary: string;
+  locale: string;
+  workType: string;
+  status: "draft" | "published";
+  contentBlocks: unknown[];
+  contentBlocksVersion: number;
+  publishedAt: string | null;
+  updatedAt: string;
+};
+
+/** Fixed ids so a test can name one without depending on the insertion order. */
+export const MOCK_AUTHORED_IDS: readonly string[] = Object.freeze([
+  "1f0b7c2e-5a4d-4c8b-9e13-7a6d5c4b3a21",
+  "2a1c8d3f-6b5e-4d9c-8f24-8b7e6d5c4b32",
+]);
+
+const AUTHORED: AuthoredArticle[] = [];
+
+/** Newest first, like the API's author list. */
+function authoredPayload(article: AuthoredArticle) {
+  return { ...article };
+}
+
+/**
+ * A crude slug: lowercase ASCII, dashes for everything else, capped at 60
+ * characters, with the API's own `article-<hex>` fallback for a title that has
+ * no ASCII letters or digits in it (a Chinese title, for instance). The real
+ * transliteration is the API's job; the mock only needs a stable, valid-looking
+ * address that a test can assert against.
+ */
+function authoredSlug(title: string): string {
+  const slug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60)
+    .replace(/-+$/g, "");
+  return slug.length > 0 ? slug : `article-${randomUUID().replace(/-/g, "").slice(0, 8)}`;
+}
+
+/**
+ * The mock's stand-in for the API's Lexical adapter: one paragraph block holding
+ * the document's text. Enough for the desk to round-trip a body without
+ * reimplementing the adapter — the conversion itself is asserted in the API's
+ * own tests.
+ */
+function blocksFromEditorState(editorState: unknown): unknown[] {
+  let text = "";
+  const visit = (node: unknown): void => {
+    if (typeof node !== "object" || node === null) return;
+    const item = node as { type?: unknown; text?: unknown; children?: unknown };
+    if (item.type === "text" && typeof item.text === "string") text += item.text;
+    if (Array.isArray(item.children)) item.children.forEach(visit);
+  };
+  visit((editorState as { root?: unknown } | null)?.root);
+  return text.trim().length > 0 ? [{ id: randomUUID(), type: "paragraph", text }] : [];
+}
 
 type MockArticle = {
   slug: string;
@@ -151,6 +223,24 @@ function categoryPayload(category: MockCategory, locale: "zh-CN" | "en") {
     locale,
     articleCount: articles.length,
   };
+}
+
+// Seeded from the published catalogue so "the desk lists what this author
+// wrote" is assertable from a cold mock.
+for (const [index, article] of ARTICLES.entries()) {
+  AUTHORED.push({
+    id: MOCK_AUTHORED_IDS[index] ?? randomUUID(),
+    slug: article.slug,
+    title: article.title["zh-CN"],
+    summary: article.summary["zh-CN"],
+    locale: "zh-CN",
+    workType: article.workType,
+    status: "published",
+    contentBlocks: article.blocks["zh-CN"] as unknown[],
+    contentBlocksVersion: 1,
+    publishedAt: article.publishedAt,
+    updatedAt: article.publishedAt,
+  });
 }
 
 function articlePayload(article: MockArticle, locale: "zh-CN" | "en") {
@@ -408,6 +498,89 @@ function handle(request: IncomingMessage, response: ServerResponse, body: Record
     send(response, 201, {
       data: { id: MOCK_MEDIA.id, contentType: "image/webp", byteSize: MOCK_MEDIA.bytes.byteLength, sha256: MOCK_MEDIA.etag.slice(1, -1) },
     });
+    return;
+  }
+
+  if (path === "/api/v1/me/articles") {
+    if (method !== "GET") {
+      send(response, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed." } });
+      return;
+    }
+    if (request.headers.authorization !== `Bearer ${MOCK_TOKENS.accessToken}`) {
+      send(response, 401, { error: { code: "UNAUTHENTICATED", message: "Please sign in again." } });
+      return;
+    }
+    send(response, 200, { data: AUTHORED.map(authoredPayload) });
+    return;
+  }
+
+  if (method === "POST" && path === "/api/v1/articles") {
+    if (request.headers.authorization !== `Bearer ${MOCK_TOKENS.accessToken}`) {
+      send(response, 401, { error: { code: "UNAUTHENTICATED", message: "Please sign in again." } });
+      return;
+    }
+    const title = typeof body.title === "string" ? body.title.trim() : "";
+    if (!title) {
+      send(response, 400, { error: { code: "BAD_USER_INPUT", message: "标题不能为空。" } });
+      return;
+    }
+    const blocks = Array.isArray(body.contentBlocks) ? body.contentBlocks : blocksFromEditorState(body.editorState);
+    if (blocks.length === 0) {
+      send(response, 400, { error: { code: "BAD_USER_INPUT", message: "正文不能为空。" } });
+      return;
+    }
+    const publish = body.publish === true;
+    const now = new Date().toISOString();
+    const article: AuthoredArticle = {
+      id: randomUUID(),
+      slug: authoredSlug(title),
+      title,
+      summary: typeof body.summary === "string" ? body.summary : "",
+      locale: "zh-CN",
+      workType: typeof body.workType === "string" ? body.workType : "other",
+      status: publish ? "published" : "draft",
+      contentBlocks: blocks,
+      contentBlocksVersion: 1,
+      publishedAt: publish ? now : null,
+      updatedAt: now,
+    };
+    AUTHORED.unshift(article);
+    send(response, 201, { data: article });
+    return;
+  }
+
+  const authoredArticle = /^\/api\/v1\/articles\/([^/]+)$/.exec(path);
+  if (method === "PUT" && authoredArticle) {
+    if (request.headers.authorization !== `Bearer ${MOCK_TOKENS.accessToken}`) {
+      send(response, 401, { error: { code: "UNAUTHENTICATED", message: "Please sign in again." } });
+      return;
+    }
+    const id = decodeURIComponent(authoredArticle[1] ?? "");
+    const existing = AUTHORED.find((item) => item.id === id);
+    if (!existing) {
+      send(response, 404, { error: { code: "NOT_FOUND", message: "The article was not found." } });
+      return;
+    }
+    const blocks = Array.isArray(body.contentBlocks)
+      ? body.contentBlocks
+      : body.editorState === undefined
+        ? existing.contentBlocks
+        : blocksFromEditorState(body.editorState);
+    if (blocks.length === 0) {
+      send(response, 400, { error: { code: "BAD_USER_INPUT", message: "正文不能为空。" } });
+      return;
+    }
+    const publish = body.publish === true;
+    if (typeof body.title === "string" && body.title.trim()) existing.title = body.title.trim();
+    if (typeof body.summary === "string") existing.summary = body.summary;
+    if (typeof body.workType === "string") existing.workType = body.workType;
+    existing.contentBlocks = blocks;
+    // An update publishes, but only an explicit `publish: false` unpublishes and
+    // only in the mock's terms: the real rule lives in the API's article store.
+    if (body.publish !== undefined) existing.status = publish ? "published" : "draft";
+    if (publish && !existing.publishedAt) existing.publishedAt = new Date().toISOString();
+    existing.updatedAt = new Date().toISOString();
+    send(response, 200, { data: authoredPayload(existing) });
     return;
   }
 

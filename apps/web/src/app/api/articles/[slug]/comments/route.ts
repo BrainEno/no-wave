@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { handleArticleCommentsRequest } from "@bot-thk/web-http";
-import { apiConfig } from "@/lib/authoring-proxy.ts";
+import { apiConfig, toNextResponse } from "@/lib/authoring-proxy.ts";
 
 /**
  * Article comments (`GET`/`POST`) — Phase 4a.
@@ -11,17 +11,6 @@ import { apiConfig } from "@/lib/authoring-proxy.ts";
  * instead of a second copy. This file does only what the App Router requires:
  * read the slug from the route params and convert the standard `Response`.
  */
-function toNextResponse(response: Response): NextResponse {
-  const next = new NextResponse(response.status === 204 || response.status === 304 ? null : response.body, {
-    status: response.status,
-  });
-  response.headers.forEach((value, name) => {
-    if (name !== "set-cookie") next.headers.set(name, value);
-  });
-  for (const cookie of response.headers.getSetCookie()) next.headers.append("set-cookie", cookie);
-  return next;
-}
-
 async function handle(request: NextRequest, slug: string): Promise<NextResponse> {
   const locale = request.nextUrl.searchParams.get("locale");
   return toNextResponse(
