@@ -438,7 +438,13 @@ test("home is server-rendered from the shared home view for both locales", async
   assert.match(result.body, /id="topics"/);
   assert.match(result.body, /可移植的文学基础设施/);
   assert.match(result.body, /href="\/articles\/portable-web-foundation"/);
-  assert.match(result.body, /rel="canonical" href="https:\/\/no-wave\.example\/"/);
+  // The App Router resolves the site root to the bare origin (no trailing
+  // slash); `routerUrl()` in app/lib/meta.ts mirrors it so both emit the same
+  // bytes. The hreflang target is asserted too — a link that announces `zh-CN`
+  // and points somewhere else is a real SEO bug.
+  assert.match(result.body, /rel="canonical" href="https:\/\/no-wave\.example"\/>/);
+  assert.match(result.body, /rel="alternate" hrefLang="zh-CN" href="https:\/\/no-wave\.example"\/>/);
+  assert.match(result.body, /rel="alternate" hrefLang="en" href="https:\/\/no-wave\.example\/en"\/>/);
   assert.match(result.headers.get("cache-control") ?? "", /s-maxage=60/);
 
   const english = await get("/en");

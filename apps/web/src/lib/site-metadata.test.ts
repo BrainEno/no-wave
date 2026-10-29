@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  configuredSiteUrl,
   renderRobotsTxt,
   renderSitemapXml,
   loadSitemapEntries,
@@ -67,4 +68,24 @@ test("every locale publishes home, archive, article and author URLs, authors onc
   assert.equal(new Set(authorUrls).size, authorUrls.length, "an author must not be listed twice");
   assert.ok(entries.every((entry) => entry.url.startsWith(SITE)), "every URL must be absolute");
   assert.ok(entries.every((entry) => entry.priority === undefined || (entry.priority >= 0 && entry.priority <= 1)));
+});
+
+test("the site origin is resolved once and the configured value always wins", () => {
+  // `configuredSiteUrl()` is the single place a page may learn the deployment
+  // origin. Before it existed, the home and archive pages canonicalised against
+  // the fixture constant while the article and author pages used the
+  // configured one — the same page set disagreeing about its own origin.
+  const previous = process.env.NEXT_PUBLIC_SITE_URL;
+  try {
+    delete process.env.NEXT_PUBLIC_SITE_URL;
+    assert.equal(configuredSiteUrl(), "https://example.invalid");
+    process.env.NEXT_PUBLIC_SITE_URL = "https://no-wave.example/";
+    assert.equal(configuredSiteUrl(), "https://no-wave.example/");
+    // Blank configuration must fall back rather than produce `undefined` URLs.
+    process.env.NEXT_PUBLIC_SITE_URL = "   ";
+    assert.equal(configuredSiteUrl(), "https://example.invalid");
+  } finally {
+    if (previous === undefined) delete process.env.NEXT_PUBLIC_SITE_URL;
+    else process.env.NEXT_PUBLIC_SITE_URL = previous;
+  }
 });

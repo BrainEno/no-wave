@@ -129,6 +129,9 @@ jobs:
       - name: Build and behavior-test the prototype
         run: pnpm test:prototype
 
+  # `pnpm check:ssr-parity` (the Phase 3 exit gate) lives in its own nightly
+  # workflow — see .github/workflows/ssr-parity.yml — because it builds both
+  # applications and is too slow to sit on the path of every commit.
   required-checks:
     name: required-checks
     if: ${{ always() }}

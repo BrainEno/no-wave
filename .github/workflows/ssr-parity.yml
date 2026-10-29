@@ -1,0 +1,47 @@
+name: SSR parity
+
+# The Phase 3 exit gate, on a schedule.
+#
+# `pnpm check:ssr-parity` builds the Next.js app *and* the React Router
+# prototype, points both at one mock API and compares 105 observations over 17
+# routes — status, title, canonical, hreflang targets, content, sitemap and
+# robots. That is minutes of work, which is why it does not run on every commit.
+#
+# A check that only a person remembers to run is a check that quietly stops
+# being true, so it runs nightly against `main` and can be dispatched by hand
+# (for example to verify a cutover branch). It is deliberately **not** part of
+# `required-checks` in ci.yml: a nightly job must never block a merge.
+on:
+  schedule:
+    # 03:17 UTC, outside the top of the hour when runners are busiest.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Ref to compare (branch, tag or SHA)"
+        required: false
+        default: main
+
+permissions:
+  contents: read
+
+jobs:
+  ssr-parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || 'main' }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10.20.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Builds both applications itself, with the same NEXT_PUBLIC_SITE_URL, so
+      # there is no separate build step to drift out of sync with it.
+      - name: Compare both implementations side by side
+        run: pnpm check:ssr-parity

@@ -147,7 +147,7 @@ Output of the last local run:
 ```
 ssr-parity: building both applications with NEXT_PUBLIC_SITE_URL=https://no-wave.example
 ssr-parity: comparing
-SSR parity: 105 comparisons over 17 routes plus sitemap/robots; 0 unexpected difference(s), 19 known divergence(s).
+SSR parity: 105 comparisons over 17 routes plus sitemap/robots; 0 unexpected difference(s), 13 known divergence(s).
 Both implementations agree on status, title, canonical, hreflang and content presence.
 ```
 
@@ -159,6 +159,11 @@ Two implementation details matter for trusting that output:
   rendering regression pass while a test showed green.
 - **Hard 404s are compared as a class, not a string.** Both send `no-store`;
   the exact header spelling is framework-specific.
+- **Hreflang targets are compared, not just the language list.** A page that
+  announces `en` but points it at the Chinese URL is a classic SEO bug and it is
+  invisible if only `hrefLang` values are checked. The whole set is compared as
+  `lang target` pairs; a deliberate one-character mutation of the target was
+  used to confirm the check fails when it should.
 
 The gate found four real divergences while it was being written, each now fixed:
 
@@ -168,23 +173,55 @@ The gate found four real divergences while it was being written, each now fixed:
 | `/` carries **no** suffix: the App Router applies the template to descendant segments only, so the root page is the exception | `metaDescriptors(..., { absoluteTitle })` for the default-locale home, asserted by a test |
 | 404s had no `<title>`, no `robots` and no `Cache-Control` in the prototype | error boundary sets `404 \| 无浪潮` + `noindex, nofollow`; `entityNotFound()` sends `PRIVATE_PAGE_HEADERS` |
 | `robots.txt` disagreed on field case (`User-agent` vs Next's `User-Agent`) | the shared builder now emits the App Router's spelling |
+| **The App Router's home and archive pages canonicalised against `https://example.invalid`** | `configuredSiteUrl()` (§5) — the gate no longer excuses it |
+| The prototype emitted `https://site.example/` where the App Router resolves the root to `https://site.example` | `routerUrl()` in `app/lib/meta.ts`; the two spellings identify the same resource, so this is byte-parity only |
 
-**Not wired into CI.** The gate needs two production builds and two servers,
-which is a poor fit for the current job set (§5). It is run locally before each
-migration PR and its output is recorded in §5 below; promoting it to a
-scheduled or nightly job is the natural next step.
+**Runs nightly in CI**, not per commit: `.github/workflows/ssr-parity.yml`
+(schedule + `workflow_dispatch`) builds both applications and runs the gate. A
+check that only a person remembers to run quietly stops being true, so it runs
+against `main` every night; it stays out of `required-checks` because a nightly
+job must not block a merge. The trade-off is accepted and recorded in §7: a
+regression is caught within a day, not before the merge button.
 
-## 5. Known divergences found by the parity check
-
-These are differences the gate reports and does *not* fail on, each with the
-reason it is accepted:
+## 5. The one divergence the gate accepts, and the decision it forced
 
 | Divergence | Why it is accepted |
 | --- | --- |
 | Public pages: `public, max-age=0, s-maxage=60, stale-while-revalidate=300` (prototype) vs `private, no-store` (App Router) | This is the migration's purpose: a sleeping free instance needs a shared cache in front of it. |
-| `app/page.tsx`, `app/articles/page.tsx`, `app/categories/*` and their `/en` twins canonicalise against `https://example.invalid` | They call `homeMetadata` / `archiveMetadata` / `categoryMetadata` **without** a base URL, so they fall back to the `content.ts` fixture constant instead of `NEXT_PUBLIC_SITE_URL` — while the article and author pages do pass it. Fixing it rewrites canonical URLs in production, which is an SEO-visible change: **an owner decision, not a migration side effect.** The prototype honours the configured origin on every page. |
 
-The second row is the one that needs a decision before cutover.
+### Decision: canonical URLs must use the configured origin (landed 2026-10-29)
+
+The gate's first run reported a second divergence: `app/page.tsx`,
+`app/en/page.tsx`, `app/articles/page.tsx` and `app/en/articles/page.tsx` built
+their `canonical` and `hreflang` links from the `content.ts` fixture constant
+`https://example.invalid`, because they called `homeMetadata` / `archiveMetadata`
+without a base URL — while the article and author pages did pass
+`NEXT_PUBLIC_SITE_URL`. Fixing it changes what search engines see in production,
+so it was escalated instead of taken as a side effect of a migration PR.
+
+It is now fixed, on these grounds:
+
+- `docs/deployment/vercel.md` already defines `NEXT_PUBLIC_SITE_URL` as *"the
+  canonical public website URL for metadata"*, so a page that ignores it is
+  contradicting the project's own configuration contract — a defect, not a
+  deliberate choice.
+- The origin is resolved in **one** function, `configuredSiteUrl()`
+  (`apps/web/src/lib/site-metadata.ts`), used by every page, by the sitemap, by
+  robots and by `metadataBase`. Six copies of the
+  `?? "https://example.invalid"` fallback became one.
+- **Where the variable is unset, behaviour is byte-identical to today** — the
+  fallback is the same constant. Nothing changes for a deployment that does not
+  configure it.
+
+**The one production-visible effect:** on an environment that *does* configure
+`NEXT_PUBLIC_SITE_URL`, the home and archive pages now emit that origin in their
+`canonical` and `hreflang` links instead of the placeholder. Because
+`NEXT_PUBLIC_*` is inlined at build time, this takes effect on the next deploy,
+not on restart. Reverting the decision is one line per page (drop the second
+argument) — the gate would then fail again, which is the point.
+
+The gate no longer excuses this: the known-divergence entry was deleted, so a
+regression now fails the run.
 
 ## 6. Verification status
 
@@ -197,12 +234,14 @@ The second row is the one that needs a decision before cutover.
 | Public pages are shared-cacheable; search/account are `no-store` | same suite |
 | ≤ 2 API calls per page (home included) | same suite (mock API request counter) |
 | `<title>` uses the App Router's template, including the root-page exception | same suite |
-| `sitemap.xml` / `robots.txt` are well-formed, bounded and localized | `apps/web/src/lib/site-metadata.test.ts` (4 tests) + the prototype suite |
-| **Both implementations agree on status, title, canonical, hreflang and content** | `pnpm check:ssr-parity` (105 comparisons, 0 unexpected differences — output above) |
-| The Next.js app is unchanged in behavior | `pnpm build` + `pnpm test:routes` (route smoke, fixtures only) |
+| `sitemap.xml` / `robots.txt` are well-formed, bounded and localized | `apps/web/src/lib/site-metadata.test.ts` (5 tests) + the prototype suite |
+| **Both implementations agree on status, title, canonical, hreflang targets and content** | `pnpm check:ssr-parity` (105 comparisons, 0 unexpected differences — output above) |
+| Every page's canonical origin comes from one function, with the same fallback when it is unset | `apps/web/src/lib/site-metadata.test.ts` (5 tests) |
+| The Next.js app still renders every page, and its canonical origin is resolved once | `pnpm build` + `pnpm test:routes` (route smoke, fixtures only) + `pnpm check:ssr-parity` (the behaviour change is scoped in §5) |
 | No provider-specific code was introduced | grep: new modules import no host SDK; `MEDIA_S3_*` / `API_BASE_URL` remain the only configuration surface |
 | Real hosting behavior (cold start duration, wake latency, memory ceiling) | **not run** — requires a Render deployment, which ADR 0012 forbids before the cutover phase |
-| `pnpm check:ssr-parity` in CI | **not run** — see §4 |
+| `pnpm check:ssr-parity` in CI | the nightly workflow was **dispatched by hand against this branch** after the push — see the run linked in the PR. The scheduled (nightly) trigger has not fired yet, because it only exists from the moment the workflow lands on `main`. |
+| `pnpm check:ssr-parity` as a per-PR gate | **no** — nightly only, by design (§4) |
 
 ## 7. Known gaps
 
@@ -210,11 +249,18 @@ The second row is the one that needs a decision before cutover.
   canvas and intro animation, article comments, the reader toolbar and related
   works. The markup for all of them is ported; their behaviour is not
   exercised by either suite.
-- **The parity gate is not in CI** (§4) and does not cover locales beyond
-  `zh-CN`/`en` (there are none) or the private pages (`/account`, `/write`),
-  which the App Router and the prototype deliberately handle differently.
-- **Canonical URLs in the App Router still use the fixture origin** (§5) —
-  awaiting an owner decision.
+- **The parity gate runs nightly, not per PR** (§4). A regression is caught
+  within a day rather than before the merge button; closing that gap means
+  making the run fast enough (a shared build cache, or comparing against
+  committed fixtures) to sit on the commit path.
+- It does not cover locales beyond `zh-CN`/`en` (there are none) or the private
+  pages (`/account`, `/write`), which the App Router and the prototype
+  deliberately handle differently.
+- **The canonical-origin change is only as good as the deployment's
+  configuration** (§5): where `NEXT_PUBLIC_SITE_URL` is unset, every canonical
+  URL still resolves to the `https://example.invalid` placeholder. That is now
+  consistent across pages and visible in one place, but it is not fixed by
+  code — someone has to configure the variable in each environment.
 - The prototype caps `page` at `MAX_PAGE` (5001) via `parsePage`, while the
   legacy category pages clamp at 50001. Both are far beyond real pagination;
   the App Router pages were left untouched.

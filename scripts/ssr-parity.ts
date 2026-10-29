@@ -17,13 +17,13 @@
  *   - `Cache-Control` class (private responses must be `no-store` in both);
  *   - `sitemap.xml` URL sets and `robots.txt` text, compared exactly.
  *
- * Two differences are reported but not failed (`KNOWN_DIVERGENCES` below, and in
+ * One difference is reported but not failed (`KNOWN_DIVERGENCES` below, and in
  * more detail in docs/roadmap/public-ssr-migration.md §5): public pages are
- * shared-cacheable in the prototype but `private, no-store` in the App Router —
- * which is the migration's intent — and the App Router's home/archive/category
- * canonical URLs point at the `content.ts` fixture origin instead of
- * `NEXT_PUBLIC_SITE_URL`. The gate is meant to fail on *new* divergence, so each
- * entry carries the reason it is accepted and is printed with it.
+ * shared-cacheable in the prototype but `private, no-store` in the App Router,
+ * which is the migration's intent. Everything else fails the run — including a
+ * canonical URL that points anywhere other than the configured origin, which is
+ * what caught the App Router's home/archive pages canonicalising against the
+ * `content.ts` fixture constant (now fixed by `configuredSiteUrl()`).
  *
  * Unlike `scripts/local-dev-check.ts`, this script *does* import app code — the
  * mock REST API — because the point is to compare two applications, not to probe
@@ -32,14 +32,11 @@
  */
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
-import { existsSync } from "node:fs";
 import { createServer } from "node:net";
 
 import { startMockRestApi, type MockRestApi } from "../apps/web-rr/mocks/rest-api.ts";
 
 const SITE_URL = "https://no-wave.example";
-const NEXT_ENTRY = "apps/web/.next/BUILD_ID";
-const RR_ENTRY = "apps/web-rr/build/server/index.js";
 
 type Expectation = {
   path: string;
@@ -187,8 +184,8 @@ async function snapshot(baseUrl: string, path: string): Promise<Snapshot> {
     cacheControl: response.headers.get("cache-control") ?? "",
     title: /<title>([^<]*)<\/title>/.exec(body)?.[1] ?? null,
     canonical: /<link[^>]+rel="canonical"[^>]+href="([^"]+)"/.exec(body)?.[1] ?? null,
-    alternates: [...body.matchAll(/<link[^>]+rel="alternate"[^>]+hrefLang="([^"]+)"/g)]
-      .map((match) => match[1] ?? "")
+    alternates: [...body.matchAll(/<link[^>]+rel="alternate"[^>]+hrefLang="([^"]+)"[^>]+href="([^"]+)"/g)]
+      .map((match) => `${match[1]} ${match[2]}`)
       .sort(),
     body: stripScripts(body),
   };
@@ -215,17 +212,6 @@ const KNOWN_DIVERGENCES: readonly {
     reason: "public pages are shared-cacheable in the prototype but private/no-store in the App Router (intended)",
     matches: (d) => d.check === "cache-control" && d.next.includes("no-store") && d.rr.includes("s-maxage"),
   },
-  {
-    // `app/page.tsx`, `app/articles/page.tsx`, `app/categories/*` and their `/en`
-    // twins call `homeMetadata`/`archiveMetadata`/`categoryMetadata` without a
-    // base URL, so they canonicalise against the `content.ts` fixture origin
-    // instead of `NEXT_PUBLIC_SITE_URL` (the article and author pages do pass
-    // it). Changing that rewrites canonical URLs in production, which is an
-    // owner decision — see docs/roadmap/public-ssr-migration.md, "Known
-    // divergences found by the parity check".
-    reason: "App Router home/archive/category canonical URLs use the fixture origin, not NEXT_PUBLIC_SITE_URL (owner decision)",
-    matches: (d) => d.check === "canonical" && d.next.startsWith("https://example.invalid"),
-  },
 ];
 
 function compareScalar(path: string, check: string, next: unknown, rr: unknown, out: Difference[]): void {
@@ -236,10 +222,6 @@ function compareScalar(path: string, check: string, next: unknown, rr: unknown, 
 }
 
 async function main(): Promise<number> {
-  if (!existsSync(RR_ENTRY)) {
-    throw new Error("The React Router prototype must be built first: pnpm --filter @bot-thk/web-rr build");
-  }
-
   // `NEXT_PUBLIC_*` is inlined by Next.js at **build** time, so comparing a
   // prototype built with `NEXT_PUBLIC_SITE_URL` set against an App Router build
   // made without it would report every canonical URL as a difference while

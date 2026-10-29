@@ -40,6 +40,26 @@ export function siteOrigin(siteUrl: string | undefined): string {
 }
 
 /**
+ * The site origin this deployment was configured with.
+ *
+ * Read through this function rather than inlining `process.env…
+ * ?? "https://example.invalid"`, for two reasons:
+ *
+ * - **The fallback must be identical everywhere.** A canonical URL, a sitemap
+ *   entry and a robots `Sitemap:` line that disagree about the origin are three
+ *   different bugs to debug; they are one bug if the origin is resolved once.
+ * - **A page that forgets it is invisible in review.** That is exactly how the
+ *   home and archive pages came to canonicalise against the fixture origin
+ *   while the article and author pages used the configured one.
+ *
+ * `NEXT_PUBLIC_*` is inlined by Next.js at **build** time, so changing the
+ * variable requires a rebuild, not a restart.
+ */
+export function configuredSiteUrl(): string {
+  return siteOrigin(process.env.NEXT_PUBLIC_SITE_URL);
+}
+
+/**
  * Build every indexable URL.
  *
  * Authors are collected from the articles actually listed, so the sitemap never

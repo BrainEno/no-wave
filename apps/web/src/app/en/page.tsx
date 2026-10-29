@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import { HomeContent } from "@/components/content-pages";
 import { homeMetadata } from "@/lib/content.ts";
+import { configuredSiteUrl } from "@/lib/site-metadata.ts";
 
 // Vercel service bindings are only injected at runtime, not during the build.
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = homeMetadata("en") as Metadata;
+export const metadata: Metadata = homeMetadata("en", configuredSiteUrl()) as Metadata;
 
 export default function EnglishHomePage() {
   return <HomeContent locale="en" />;

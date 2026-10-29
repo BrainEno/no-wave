@@ -1,10 +1,11 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { SiteChrome } from "@/components/chrome/site-chrome.tsx";
+import { configuredSiteUrl } from "@/lib/site-metadata.ts";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://example.invalid"),
+  metadataBase: new URL(configuredSiteUrl()),
   title: { default: "无浪潮 · No Wave", template: "%s | 无浪潮" },
   description: "以文学作品发表、认真阅读与深度交流为中心的独立数字出版平台。",
   applicationName: "无浪潮 No Wave",
