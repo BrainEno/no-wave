@@ -313,6 +313,7 @@ mark { background: var(--or); color: #0f0d0c; }
 .nw-article-editor { min-width: 0; }
 .nw-article-fields { margin-top: 0; max-width: none; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .nw-article-fields .nw-field-wide { grid-column: 1 / -1; }
+.nw-article-fields .nw-field-note { grid-column: 1 / -1; margin: 0; color: var(--t2); font-size: 13px; }
 .nw-lexical-toolbar { display: flex; flex-wrap: wrap; gap: 6px; border: 1px solid var(--ink); padding: 10px; margin-top: 22px; }
 .nw-lexical-toolbar button { min-height: 40px; min-width: 42px; padding: 6px 10px; border: 1px solid var(--ink); background: transparent; font-size: 13px; }
 .nw-lexical-toolbar button:hover { background: var(--ink); color: var(--paper); }

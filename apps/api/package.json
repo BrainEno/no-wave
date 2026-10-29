@@ -10,13 +10,14 @@
     "migrate": "node --env-file-if-exists=../../.env.local --env-file-if-exists=../../.env src/persistence/migrate.ts",
     "worker:notifications": "node src/persistence/notification-worker.ts",
     "drain:notifications": "node src/persistence/notification-drain.ts",
-    "test:unit": "node --test src/application/media-assets.test.ts src/application/persistence-ports.test.ts src/application/services.test.ts src/application/identity.test.ts src/application/rate-limit.test.ts src/security/passwords.test.ts src/domain/article.test.ts src/domain/lexical-document-adapter.test.ts src/domain/lexical-web-compat.test.ts src/domain/comment-content.test.ts src/domain/taxonomy.test.ts src/domain/validation.test.ts src/infrastructure/persistence-runtime.test.ts src/infrastructure/media-storage.test.ts src/neon/health.test.ts src/infrastructure/http-observability.test.ts src/persistence/provider-migration-journal.test.ts src/persistence/sqlite-media-store.test.ts src/persistence/outbox-drain.test.ts src/persistence/outbox-metrics.test.ts src/server.test.ts src/transport/rest/route-dispatch.test.ts",
+    "test:unit": "node --test src/application/media-assets.test.ts src/application/persistence-ports.test.ts src/application/services.test.ts src/application/identity.test.ts src/application/rate-limit.test.ts src/security/passwords.test.ts src/domain/article-slug.test.ts src/domain/article-summary.test.ts src/domain/article.test.ts src/domain/lexical-document-adapter.test.ts src/domain/lexical-web-compat.test.ts src/domain/comment-content.test.ts src/domain/taxonomy.test.ts src/domain/validation.test.ts src/infrastructure/persistence-runtime.test.ts src/infrastructure/media-storage.test.ts src/neon/health.test.ts src/infrastructure/http-observability.test.ts src/persistence/provider-migration-journal.test.ts src/persistence/sqlite-media-store.test.ts src/persistence/outbox-drain.test.ts src/persistence/outbox-metrics.test.ts src/server.test.ts src/transport/rest/article-write.test.ts src/transport/rest/route-dispatch.test.ts",
     "test:integration": "node --env-file-if-exists=../../.env.local --env-file-if-exists=../../.env --test --test-concurrency=1 src/persistence/postgres.integration.test.ts src/persistence/provider-migration-journal.integration.test.ts src/persistence/persistence-adapter-contract.test.ts src/persistence/identity.integration.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.strict.json"
   },
   "dependencies": {
-    "postgres": "3.4.7",
     "@aws-sdk/client-s3": "3.1157.0",
+    "pinyin-pro": "3.29.5",
+    "postgres": "3.4.7",
     "sharp": "0.35.5"
   },
   "devDependencies": {

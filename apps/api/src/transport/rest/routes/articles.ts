@@ -2,6 +2,37 @@ import type { RestRouteContext, RestRouteHandler } from "./context.ts";
 import { MAX_ARTICLE_OFFSET, authenticatedActorId, decodeSlug, decodeUserId, optionalViewerId, parseInteger, parseLocale, parsePagination, parseQuery, readJsonObject, sendBadInput, sendJson, sendJsonBodyError, sendServiceError, sendUnauthenticated, sendUnavailable } from "../http.ts";
 import { normalizeArticleWriteBody, normalizeCommentWriteBody, normalizeLikeWriteBody } from "../bodies.ts";
 import { serializeRestArticle, serializeRestArticles, serializeRestComment, serializeRestComments } from "../serializers.ts";
+import { slugifyArticleTitle, uniquifyArticleSlug } from "../../../domain/article-slug.ts";
+import { ArticleSlugConflictError } from "../../../domain/errors.ts";
+
+const MAX_AUTO_SLUG_ATTEMPTS = 25;
+
+/**
+ * Create an article, deriving its slug from the title when the client did not
+ * supply one.
+ *
+ * Uniqueness is owned by the database (a unique index on `articles.slug`), so a
+ * generated slug that is already taken is re-suffixed rather than surfacing a
+ * conflict the author cannot act on: the author never typed it. A
+ * client-supplied slug is never rewritten and keeps its 409 conflict.
+ */
+async function createArticleWithSlug(
+  services: NonNullable<RestRouteContext["services"]>,
+  input: Record<string, unknown>,
+  authorId: string,
+): Promise<unknown> {
+  const requestedSlug = typeof input.slug === "string" && input.slug.length > 0 ? input.slug : null;
+  const baseSlug = requestedSlug ?? slugifyArticleTitle(input.title);
+  for (let attempt = 1; ; attempt += 1) {
+    const slug = attempt === 1 ? baseSlug : uniquifyArticleSlug(baseSlug, attempt);
+    try {
+      return await services.createArticle({ ...input, slug, authorId });
+    } catch (error: unknown) {
+      const retryable = requestedSlug === null && error instanceof ArticleSlugConflictError && attempt < MAX_AUTO_SLUG_ATTEMPTS;
+      if (!retryable) throw error;
+    }
+  }
+}
 
 /** Article collection/detail writes, related/like/comment reads and the current
  * user's own article lists. */
@@ -77,7 +108,7 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
           sendUnauthenticated(response);
           return;
         }
-        const article = await services.createArticle({ ...normalized.input, authorId });
+        const article = await createArticleWithSlug(services, normalized.input, authorId);
         sendJson(response, 201, { data: await serializeRestArticle(services, article, authorId) });
       } catch (error: unknown) {
         sendServiceError(response, error);

@@ -1,5 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { lexicalEditorStateToArticleDocument } from "../../domain/lexical-document-adapter.ts";
+import { ARTICLE_SUMMARY_MAX_LENGTH, summarizeArticleBlocks } from "../../domain/article-summary.ts";
+import { ArticleInputError } from "../../domain/errors.ts";
 import { normalizeCommentContentInput } from "../../domain/comment-content.ts";
 import { isRecord } from "./http.ts";
 
@@ -17,8 +19,17 @@ export function normalizeArticleWriteBody(
   if (body.locale !== undefined && body.locale !== "zh-CN") {
     return { input: null, error: "The REST API currently supports only locale zh-CN." };
   }
-  if (typeof body.slug !== "string" || typeof body.title !== "string") {
-    return { input: null, error: "slug and title must be strings." };
+  if (typeof body.title !== "string") {
+    return { input: null, error: "title must be a string." };
+  }
+  if (body.slug !== undefined && typeof body.slug !== "string") {
+    return { input: null, error: "slug must be a string when supplied." };
+  }
+  // Article creation may omit the slug: the route then derives one from the
+  // title. Updates address a stored article, so they must name its slug.
+  const requestedSlug = typeof body.slug === "string" ? body.slug.trim() : "";
+  if (requirePublish && requestedSlug.length === 0) {
+    return { input: null, error: "slug must be supplied as a non-empty string for article updates." };
   }
 
   // Lexical is an ingress format only. Normalize immediately to the
@@ -38,7 +49,12 @@ export function normalizeArticleWriteBody(
     }
     try {
       contentBlocks = lexicalEditorStateToArticleDocument(body.editorState).contentBlocks;
-    } catch {
+    } catch (error: unknown) {
+      if (error instanceof ArticleInputError) {
+        // Report the adapter's reason — an empty document must not read like an
+        // unsupported node — without exposing the internal error prefix.
+        return { input: null, error: "editorState " + String(error.message).replace(/^Lexical adapter: /, "") };
+      }
       return { input: null, error: "editorState contains invalid or unsupported article content." };
     }
   } else {
@@ -78,6 +94,17 @@ export function normalizeArticleWriteBody(
   };
   delete input.editorState;
   if (hasEditorState) input.contentBlocksVersion = 1;
+  if (requestedSlug.length > 0) {
+    input.slug = requestedSlug;
+  } else {
+    // No slug supplied: signal the route to generate one instead of sending an
+    // empty value that the domain validator would reject.
+    delete input.slug;
+  }
+  // An empty summary is derived from the beginning of the body text.
+  if (typeof body.summary !== "string" || body.summary.trim().length === 0) {
+    input.summary = summarizeArticleBlocks(contentBlocks, { maxLength: ARTICLE_SUMMARY_MAX_LENGTH });
+  }
   return { input, error: null };
 }
 

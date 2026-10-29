@@ -349,6 +349,8 @@ test("REST article updates derive actorId from JWT and use the path article ID",
     assert.deepEqual(received, {
       articleId, actorId: "verified-writer", slug: "updated-work", title: "更新后的作品",
       contentBlocks, publish: false, locale: "zh-CN",
+      // No summary was supplied, so the transport derived one from the body.
+      summary: "更新后的作品",
     });
   }, {
     env: authEnv,
