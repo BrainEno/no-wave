@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isSameOriginMutation, safeRedirectPath, tokenMaxAge } from "./authoring-proxy-policy.ts";
+import { isSameOriginMutation, safeRedirectPath, setIdempotencyKeyHeader, tokenMaxAge } from "./authoring-proxy-policy.ts";
 
 test("authoring mutations require an exact same-origin browser origin", () => {
   assert.equal(isSameOriginMutation("https://example.test/api/authoring/articles", "https://example.test"), true);
@@ -23,4 +23,18 @@ test("cookie lifetimes are finite and capped", () => {
   assert.equal(tokenMaxAge("2026-10-28T00:01:00.000Z", now), 60);
   assert.equal(tokenMaxAge("2027-12-01T00:00:00.000Z", now), 30 * 24 * 60 * 60);
   assert.equal(tokenMaxAge("not-a-date", now), 0);
+});
+
+test("idempotency keys are forwarded unchanged and absent keys stay absent", () => {
+  const forwarded = new Headers({ accept: "application/json" });
+  setIdempotencyKeyHeader(forwarded, "comment-once-7");
+  assert.equal(forwarded.get("idempotency-key"), "comment-once-7");
+
+  const absent = new Headers({ accept: "application/json" });
+  setIdempotencyKeyHeader(absent, null);
+  assert.equal(absent.has("idempotency-key"), false);
+
+  const undefinedKey = new Headers();
+  setIdempotencyKeyHeader(undefinedKey);
+  assert.equal(undefinedKey.has("idempotency-key"), false);
 });
