@@ -11,7 +11,7 @@ test("SQLite domain migration creates the complete set of domain tables", async 
   const db = createSqliteClient({ filename: ":memory:", enableWal: false });
   try {
     const applied = await runSqliteMigrations(db);
-    assert.deepEqual(applied, ["0001_domain_schema", "0002_outbox_lease_tokens", "0003_self_hosted_identity", "0004_article_content_versions", "0005_comment_content_versions", "0006_provider_migration_journal", "0007_media_assets"]);
+    assert.deepEqual(applied, ["0001_domain_schema", "0002_outbox_lease_tokens", "0003_self_hosted_identity", "0004_article_content_versions", "0005_comment_content_versions", "0006_provider_migration_journal", "0007_media_assets", "0008_article_comment_idempotency"]);
     const tables = db.prepare(
       "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
     ).all().map((row) => row.name);
@@ -32,7 +32,7 @@ test("SQLite domain migration creates the complete set of domain tables", async 
       "notifications_user_created_idx", "outbox_pending_idx",
       "article_taxonomies_taxonomy_article_idx", "user_follows_follower_created_idx",
       "auth_sessions_expiry_idx", "auth_rate_limits_reset_idx", "auth_refresh_tokens_session_idx",
-      "media_assets_owner_created_idx",
+      "media_assets_owner_created_idx", "article_comments_author_idempotency_key_idx",
     ]) assert.ok(indexes.includes(required), `missing SQLite index: ${required}`);
   } finally {
     db.close();
@@ -67,6 +67,9 @@ test("SQLite rich-comment migration preserves legacy rows and constrains content
     assert.equal(row.content, "Legacy text");
     assert.equal(row.content_blocks, null);
     assert.equal(row.content_blocks_version, 0);
+    const legacyIdempotency = db.prepare("SELECT idempotency_key_hash, request_hash FROM article_comments WHERE id = ?").get("legacy-comment");
+    assert.equal(legacyIdempotency.idempotency_key_hash, null);
+    assert.equal(legacyIdempotency.request_hash, null);
     assert.throws(() => db.prepare("UPDATE article_comments SET content_blocks_version = 1 WHERE id = ?").run("legacy-comment"), /content version mismatch/i);
     assert.throws(() => db.prepare("INSERT INTO article_comments (id, article_id, author_id, content, content_blocks, content_blocks_version) VALUES (?, ?, ?, ?, ?, ?)").run("bad-comment-version", "comment-migration-article", "reader", "x", null, 2), /CHECK constraint failed|content version mismatch/i);
     assert.throws(() => db.prepare("INSERT INTO article_comments (id, article_id, author_id, content, content_blocks, content_blocks_version) VALUES (?, ?, ?, ?, ?, ?)").run("bad-comment-shape", "comment-migration-article", "reader", "x", "{\"type\":\"paragraph\"}", 1), /CHECK constraint failed|content version mismatch/i);
@@ -90,7 +93,7 @@ test("SQLite lease migration preserves pending, leased, and delivered legacy eve
     insert.run(deliveredId, "delivered", "message.created", "c", "{}", 1, "2000-01-01T00:00:00.000Z", "2020-01-01T00:00:00.000Z");
     db.prepare("INSERT INTO revoked_sessions (session_id, expires_at) VALUES (?, ?)").run("legacy-token", "2099-01-01T00:00:00.000Z");
 
-    assert.deepEqual(await runSqliteMigrations(db), ["0002_outbox_lease_tokens", "0003_self_hosted_identity", "0004_article_content_versions", "0005_comment_content_versions", "0006_provider_migration_journal", "0007_media_assets"]);
+    assert.deepEqual(await runSqliteMigrations(db), ["0002_outbox_lease_tokens", "0003_self_hosted_identity", "0004_article_content_versions", "0005_comment_content_versions", "0006_provider_migration_journal", "0007_media_assets", "0008_article_comment_idempotency"]);
     assert.equal(db.prepare("SELECT expires_at FROM revoked_sessions WHERE session_id = ?").get("legacy-token").expires_at, "2099-01-01T00:00:00.000Z");
     assert.deepEqual(await runSqliteMigrations(db), []);
     const legacy = db.prepare("SELECT event_key, attempts, delivered_at, lease_token FROM outbox_events ORDER BY event_key").all();
