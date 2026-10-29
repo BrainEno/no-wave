@@ -172,7 +172,7 @@ All routes below require a valid, non-revoked bearer JWT, except for public comm
 - `PUT /api/v1/conversations/:conversationId/read` and `DELETE /api/v1/conversations/:conversationId` — update the current participant's read state or delete a conversation under creator/member rules.
 - `PUT /api/v1/me/notifications/:notificationId/read` and `POST /api/v1/me/notifications/read-all` — recipient-scoped single/batch read-state updates; batch response is the changed-row count.
 - `PUT /api/v1/articles/:slug/like?locale=zh-CN` — set an explicit like state with JSON body `{"liked": true}` or `{"liked": false}`. This is retry-safe state setting rather than a toggle.
-- `POST /api/v1/articles/:slug/comments?locale=zh-CN` — create a comment or reply with `{"content": "...", "parentCommentId": null}`; replies must reference a comment on the same article.
+- `POST /api/v1/articles/:slug/comments?locale=zh-CN` — create a comment or reply with `{"content": "...", "parentCommentId": null}`; replies must reference a comment on the same article. Supplying an optional `Idempotency-Key` (1–300 trimmed characters) makes a retry with the same normalized request return the same persisted comment and avoids duplicate comment notifications; reusing the key with a different request returns `409 IDEMPOTENCY_CONFLICT`. Only a SHA-256 key digest is stored, not the raw header. This first slice retains the digest with the comment row and does not yet define an independent key expiry or cover other write routes; issue #71 remains open.
 - `DELETE /api/v1/comments/:commentId` — delete the current user's own comment. Returns `{"data":{"deleted":true}}` when deleted; the domain layer enforces ownership.
 
 ### Validation and error behavior
