@@ -49,9 +49,36 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
   if (Number.isFinite(declaredSize) && declaredSize > 8 * 1024 * 1024) {
     return NextResponse.json({ error: { code: "MEDIA_STORAGE_UNAVAILABLE", message: "The media object exceeded the response limit." } }, { status: 502, headers: NO_STORE });
   }
-  const body = await upstream.arrayBuffer();
-  if (body.byteLength < 1 || body.byteLength > 8 * 1024 * 1024) {
-    return NextResponse.json({ error: { code: "MEDIA_STORAGE_UNAVAILABLE", message: "The media object exceeded the response limit." } }, { status: 502, headers: NO_STORE });
+  if (!upstream.body) {
+    return NextResponse.json({ error: { code: "MEDIA_STORAGE_UNAVAILABLE", message: "The media object has no response body." } }, { status: 502, headers: NO_STORE });
+  }
+  const reader = upstream.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const next = await reader.read();
+      if (next.done) break;
+      size += next.value.byteLength;
+      if (size > 8 * 1024 * 1024) {
+        await reader.cancel().catch(() => {});
+        return NextResponse.json({ error: { code: "MEDIA_STORAGE_UNAVAILABLE", message: "The media object exceeded the response limit." } }, { status: 502, headers: NO_STORE });
+      }
+      chunks.push(next.value);
+    }
+  } catch {
+    return NextResponse.json({ error: { code: "MEDIA_STORAGE_UNAVAILABLE", message: "The media object could not be read." } }, { status: 502, headers: NO_STORE });
+  } finally {
+    reader.releaseLock();
+  }
+  if (size < 1) {
+    return NextResponse.json({ error: { code: "MEDIA_STORAGE_UNAVAILABLE", message: "The media object is empty." } }, { status: 502, headers: NO_STORE });
+  }
+  const body = new Uint8Array(new ArrayBuffer(size));
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
   }
   return new NextResponse(body, {
     status: 200,
