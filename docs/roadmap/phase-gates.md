@@ -16,7 +16,7 @@ Security fixes and implementation details that fulfill already-approved behavior
 - [x] Establish agentic coding and behavior-first, risk-based testing rules.
 - [x] Review representative legacy source and record an initial capability/security inventory.
 - [x] Decide that this repository is an independent implementation; legacy source is a product reference rather than a technical constraint.
-- [x] Select Next.js App Router for Web and a versioned REST-only business API; GraphQL is removal-only transition code.
+- [x] Record Next.js App Router as the initial Web framework decision ([ADR 0002](../architecture/decisions/0002-web-framework-evaluation.md)); the current framework target is superseded by [ADR 0012](../architecture/decisions/0012-portable-web-framework-migration.md), which selects React Router 7 Framework Mode.
 - [x] Select SQLite as the default provider for new/local installs, retain PostgreSQL as a supported adapter, and record MongoDB as a future adapter with online change-capture/cutover requirements (ADR 0010).
 - [ ] Complete the feature-by-feature traceability inventory and record unresolved product behavior.
 - [ ] Agree on visual direction from the forthcoming design brief/design artifacts.
@@ -104,6 +104,24 @@ Exit gate: public content exposes published data only; mutations are authorized;
 - [ ] Complete delivery observability and failure-recovery acceptance, including queue-depth metrics, alert thresholds and operational recovery drills.
 
 Exit gate: persisted state is the source of truth, access denial is tested, and retries/reconnect do not lose or duplicate logical messages/notifications.
+
+## Approved architecture change — Portable Web framework migration
+
+On 2026-10-29, the owner approved public-page SSR, a client-interactive writing desk, portability-first hosting, and a hard zero-fee/no-credit-card requirement (instance sleep is acceptable). The target is React Router 7 Framework Mode; see [ADR 0012](../architecture/decisions/0012-portable-web-framework-migration.md) and the executable [migration roadmap](frontend-portability-migration.md).
+
+- [x] Record the React Router 7 target and the staged migration decision.
+- [x] Audit the current Next.js/Vercel coupling against main commit `d9515c6d66881a7599d35581f38640b0ebb74a78`.
+- [ ] Qualify at least one actual hosting candidate for zero cost, no credit card, public access, supported Node SSR and persistent-data/worker requirements before selecting a final host.
+- [ ] Build and test an isolated React Router 7 Framework Mode portability proof of concept without replacing the live Next.js app.
+- [ ] Prove public SSR, route metadata, hard 404 behavior, private-response cache isolation and standard Node/Docker startup.
+- [ ] Move public read-only routes first, preserving URLs, locale behavior, metadata, sitemap and robots output.
+- [ ] Migrate auth, writing, comment and media route handlers while preserving the existing HttpOnly cookie, CSRF/origin, token refresh and authorization contracts.
+- [ ] Make the notification worker independently runnable with durable processing; do not require a Vercel Daemon as the target design.
+- [ ] Validate the selected host's actual signup/payment conditions, sleep/recovery behavior, database durability, object storage and worker execution before deployment.
+- [ ] Complete route/E2E/build/typecheck/PostgreSQL integration regression and rehearse rollback before any traffic cutover.
+- [ ] Remove Next.js/Vercel-only dependencies only after the replacement is verified and the cutover has explicit approval.
+
+**Scope guard:** the existing API contract, product behavior, database migration protocol and media storage security remain unchanged during the Web framework migration. The existing Neon wiring is not proof that a live account, free/no-card eligibility or a production deployment has been validated. No production deployment, DNS change, paid provisioning, database migration or traffic cutover is implied by this roadmap.
 
 ## Phase 4 — Web product and design system
 
