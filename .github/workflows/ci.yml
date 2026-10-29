@@ -136,6 +136,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Apply migrations
         run: pnpm db:migrate
+      # The suite drives the production Web build, so it has to exist first.
+      - name: Build the Web application
+        run: pnpm build
       - name: Install the Chromium build Playwright drives
         run: pnpm exec playwright install --with-deps chromium
       - name: Run the browser-level suite

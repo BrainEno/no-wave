@@ -143,12 +143,22 @@ async function registerWriter(page: Page, request: APIRequestContext): Promise<s
   try {
     await expect(page.getByRole("heading", { name: /写作台/ })).toBeVisible({ timeout: 45_000 });
   } catch (caught) {
-    const sessionStatus = await page.evaluate(async () => {
-      const response = await fetch("/api/authoring/session", { credentials: "same-origin", cache: "no-store" });
-      return response.status;
-    }).catch((error: unknown) => `evaluate failed: ${String(error)}`);
+    // Distinguish "no session", "an API call hangs" and "client JS never ran":
+    // all three leave the page on its server-rendered loading state.
+    const probe = await page.evaluate(async () => {
+      const status = async (path: string): Promise<number> => {
+        const response = await fetch(path, { credentials: "same-origin", cache: "no-store" });
+        return response.status;
+      };
+      return {
+        session: await status("/api/authoring/session"),
+        articles: await status("/api/authoring/articles"),
+        hydrated: typeof (window as unknown as { next?: unknown }).next === "object",
+        scripts: document.scripts.length,
+      };
+    }).catch((error: unknown) => `probe failed: ${String(error)}`);
     throw new Error(
-      `/write did not open the authoring desk (session probe: ${String(sessionStatus)}); page:\n${await pageDigest(page)}\n${String(caught)}`,
+      `/write did not open the authoring desk (probe: ${JSON.stringify(probe)}); page:\n${await pageDigest(page)}\n${String(caught)}`,
     );
   }
   return email;

@@ -15,7 +15,7 @@ that can be asserted more cheaply must be asserted more cheaply.
 
 | Path | Purpose |
 | --- | --- |
-| `playwright.config.ts` | One chromium project, one worker, `webServer` starts `node scripts/dev.ts` |
+| `playwright.config.ts` | One chromium project, one worker; `webServer` starts the API (`node scripts/dev.ts --api-only`) and the **production** Web build (`pnpm --filter @bot-thk/web start`) |
 | `e2e/authoring.spec.ts` | Register → write → save draft → publish → read the public page |
 
 Conventions:
@@ -32,11 +32,18 @@ Conventions:
 
 ```sh
 pnpm test:e2e:install   # once per machine: downloads the Chromium build
-pnpm test:e2e           # starts the dev stack if it is not already running
+pnpm build              # the suite drives the production Web build
+pnpm test:e2e           # starts the API and the Web server if they are not running
 ```
 
+The suite runs against the **production** build rather than `next dev`: on a cold
+CI runner the dev server needs longer to compile the editor than a test should
+wait, and the production server is what readers actually use. `pnpm build` is
+therefore required before a local run.
+
 `reuseExistingServer` is on outside CI, so a developer who already has
-`pnpm dev` running does not pay for a second stack. In CI the job starts its own.
+`pnpm dev` running keeps it and pays for nothing. In CI the job builds, then
+starts its own API and Web server.
 
 Browsers are downloaded from `cdn.playwright.dev` into Playwright's cache — not
 from the npm registry and not into the repository. A machine with no access to

@@ -38,13 +38,27 @@ export default defineConfig({
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
   ],
-  webServer: {
-    command: "node scripts/dev.ts",
-    url: baseURL,
-    // A developer usually already has the stack running; CI never does.
-    reuseExistingServer: process.env.CI ? false : true,
-    stdout: "pipe",
-    stderr: "pipe",
-    timeout: 240_000,
-  },
+  // The suite runs against the production Web build, not the dev server: on a
+  // cold CI runner `next dev` needs longer to compile the editor than a test
+  // should wait, and the production server is what readers actually use. The
+  // API side is the same process `pnpm dev --api-only` starts. A developer who
+  // already has `pnpm dev` running keeps it — nothing is started twice.
+  webServer: [
+    {
+      command: "node scripts/dev.ts --api-only",
+      url: (process.env.E2E_API_BASE_URL ?? "http://127.0.0.1:4000") + "/ready",
+      reuseExistingServer: process.env.CI ? false : true,
+      stdout: "pipe",
+      stderr: "pipe",
+      timeout: 240_000,
+    },
+    {
+      command: "pnpm --filter @bot-thk/web start",
+      url: baseURL,
+      reuseExistingServer: process.env.CI ? false : true,
+      stdout: "pipe",
+      stderr: "pipe",
+      timeout: 240_000,
+    },
+  ],
 });
