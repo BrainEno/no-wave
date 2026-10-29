@@ -1,4 +1,5 @@
 import { data } from "react-router";
+import { PRIVATE_PAGE_HEADERS } from "./http-policy.ts";
 
 /**
  * Loader failure policy for public pages.
@@ -15,5 +16,18 @@ function safeErrorName(error: unknown): string {
 }
 
 export function upstreamUnavailable(error: unknown) {
-  return data({ reason: "content-api-unavailable", errorName: safeErrorName(error) }, { status: 503 });
+  return data(
+    { reason: "content-api-unavailable", errorName: safeErrorName(error) },
+    { status: 503, headers: PRIVATE_PAGE_HEADERS },
+  );
+}
+
+/**
+ * 404 for a public entity that does not exist.
+ *
+ * The headers matter as much as the status: an error page must never be stored
+ * by a shared cache, because the entity may appear a minute later.
+ */
+export function entityNotFound(reason: string) {
+  return data({ reason }, { status: 404, headers: PRIVATE_PAGE_HEADERS });
 }

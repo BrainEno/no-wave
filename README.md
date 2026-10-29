@@ -81,6 +81,7 @@ pnpm typecheck
 pnpm build
 pnpm test:routes
 pnpm test:prototype   # React Router migration prototype: build + behavior tests
+pnpm check:ssr-parity # compare the prototype and the App Router side by side
 ```
 
 ## PostgreSQL integration tests

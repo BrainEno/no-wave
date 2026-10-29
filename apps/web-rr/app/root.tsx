@@ -9,7 +9,9 @@ import {
   useLocation,
   useRouteError,
 } from "react-router";
-import type { LinksFunction } from "react-router";
+import type { HeadersFunction, LinksFunction } from "react-router";
+import { PRIVATE_PAGE_HEADERS } from "./lib/http-policy.ts";
+import { titleWithSite } from "./lib/meta.ts";
 // Shared stylesheet from the existing Web app, emitted as a hashed asset by Vite
 // instead of being copied into this package.
 import globalStyles from "../../web/src/app/globals.css?url";
@@ -24,12 +26,24 @@ export const links: LinksFunction = () => [
   { rel: "stylesheet", href: globalStyles },
 ];
 
-function Document({ children, lang = "zh-CN" }: { children: ReactNode; lang?: string }) {
+function Document({
+  children,
+  lang = "zh-CN",
+  title,
+  robots,
+}: {
+  children: ReactNode;
+  lang?: string;
+  title?: string;
+  robots?: string;
+}) {
   return (
     <html lang={lang}>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        {title ? <title>{title}</title> : null}
+        {robots ? <meta name="robots" content={robots} /> : null}
         <Meta />
         <Links />
       </head>
@@ -58,13 +72,21 @@ export default function App() {
  * Error boundary for both hard 404s (thrown from loaders as `data(..., 404)`)
  * and unexpected failures. The status code is preserved: a missing article must
  * answer 404, never a soft 404 with a 200 status.
+ *
+ * The response is also private and titled: a crawler that follows a dead link
+ * has to see a 404 *and* a page that says so (the App Router renders its
+ * `not-found` title), while route-level `meta` is not applied to error
+ * responses, so both are set here.
  */
+export const headers: HeadersFunction = ({ errorHeaders }) =>
+  errorHeaders ? { ...PRIVATE_PAGE_HEADERS } : {};
+
 export function ErrorBoundary() {
   const error = useRouteError();
   const notFound = isRouteErrorResponse(error) && error.status === 404;
 
   return (
-    <Document lang="zh-CN">
+    <Document lang="zh-CN" title={titleWithSite(notFound ? "404" : "服务暂时不可用")} robots="noindex, nofollow">
       <main className="nw-w" data-error-boundary={notFound ? "404" : "500"}>
         <h1 data-reveal>{notFound ? "这一页不存在" : "服务暂时不可用"}</h1>
         <p className="nw-ep">

@@ -6,9 +6,9 @@ import { loadAuthorPage } from "@/lib/public-pages.ts";
 import { parsePage, parseWorkType } from "@/lib/work-types.ts";
 import { AuthorPageView } from "@/components/public/author-view.tsx";
 import { PUBLIC_PAGE_HEADERS } from "../lib/http-policy.ts";
-import { upstreamUnavailable } from "../lib/loader-errors.ts";
+import { entityNotFound, upstreamUnavailable } from "../lib/loader-errors.ts";
 import { localeFor } from "../lib/locale.ts";
-import { metaDescriptors } from "../lib/meta.ts";
+import { metaDescriptors, titleWithSite } from "../lib/meta.ts";
 import { siteUrl } from "../lib/runtime.ts";
 
 /**
@@ -31,7 +31,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   }
   // Thrown outside the try block on purpose: a 404 must reach the boundary as a
   // 404, not be re-labelled as an upstream failure.
-  if (!author) throw data({ reason: "author-not-found", username: params.username ?? null }, { status: 404 });
+  if (!author) throw entityNotFound("author-not-found");
 
   try {
     return await loadAuthorPage({
@@ -48,7 +48,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 export const headers: HeadersFunction = () => PUBLIC_PAGE_HEADERS;
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
-  if (!data) return [{ title: "页面未找到 | 无浪潮" }];
+  if (!data) return [{ title: titleWithSite(undefined) }];
   return metaDescriptors(authorMetadata(data.author, siteUrl()));
 };
 

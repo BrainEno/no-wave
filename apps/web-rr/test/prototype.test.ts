@@ -127,7 +127,9 @@ test("home renders API-backed articles on the server", async () => {
 test("article route server-renders content, canonical alternates and Open Graph metadata", async () => {
   const result = await get("/articles/portable-web-foundation");
   assert.equal(result.status, 200);
-  assert.match(result.body, /<title>可移植的文学基础设施<\/title>/);
+  // The site title suffix comes from the App Router's root layout template
+  // (`title.template: "%s | 无浪潮"`); see app/lib/meta.ts.
+  assert.match(result.body, /<title>可移植的文学基础设施 | 无浪潮<\/title>/);
   assert.match(result.body, /rel="canonical" href="https:\/\/no-wave\.example\/articles\/portable-web-foundation"/);
   assert.match(result.body, /property="og:title" content="可移植的文学基础设施"/);
   assert.match(result.body, /rel="alternate" hrefLang="zh-CN"/);
@@ -422,4 +424,78 @@ test("media uploads are origin-checked, type-checked and authenticated", async (
   assert.equal(signedIn.status, 201);
   assert.match(signedIn.body, new RegExp(MOCK_MEDIA.id));
   assert.match(signedIn.headers.get("cache-control") ?? "", /no-store/);
+});
+
+/* ------------------------------------------------ Phase 3: home, sitemap, robots */
+
+test("home is server-rendered from the shared home view for both locales", async () => {
+  const result = await get("/");
+  assert.equal(result.status, 200);
+  // The hero, the selected triptych and the topic row are all in the first
+  // response: no client-side navigation is required to see the page.
+  assert.match(result.body, /data-hero/);
+  assert.match(result.body, /nw-tri/);
+  assert.match(result.body, /id="topics"/);
+  assert.match(result.body, /可移植的文学基础设施/);
+  assert.match(result.body, /href="\/articles\/portable-web-foundation"/);
+  assert.match(result.body, /rel="canonical" href="https:\/\/no-wave\.example\/"/);
+  assert.match(result.headers.get("cache-control") ?? "", /s-maxage=60/);
+
+  const english = await get("/en");
+  assert.equal(english.status, 200);
+  assert.match(english.body, /<html lang="en"/);
+  assert.match(english.body, /A Portable Literary Foundation/);
+  assert.match(english.body, /rel="canonical" href="https:\/\/no-wave\.example\/en"/);
+});
+
+test("sitemap.xml lists both locales and robots.txt points at it", async () => {
+  const sitemap = await get("/sitemap.xml");
+  assert.equal(sitemap.status, 200);
+  assert.match(sitemap.headers.get("content-type") ?? "", /application\/xml/);
+  assert.match(sitemap.body, /<urlset xmlns="http:\/\/www\.sitemaps\.org\/schemas\/sitemap\/0\.9">/);
+  assert.match(sitemap.body, /<loc>https:\/\/no-wave\.example\/<\/loc>/);
+  assert.match(sitemap.body, /<loc>https:\/\/no-wave\.example\/en\/articles<\/loc>/);
+  assert.match(sitemap.body, /<loc>https:\/\/no-wave\.example\/authors\/writer<\/loc>/);
+  assert.match(sitemap.body, /<loc>https:\/\/no-wave\.example\/en\/articles\/portable-web-foundation<\/loc>/);
+  // Shared-cacheable: crawlers hit it repeatedly and it is expensive to build.
+  assert.match(sitemap.headers.get("cache-control") ?? "", /s-maxage/);
+
+  const robots = await get("/robots.txt");
+  assert.equal(robots.status, 200);
+  assert.match(robots.headers.get("content-type") ?? "", /text\/plain/);
+  assert.match(robots.body, /User-Agent: \*/);
+  assert.match(robots.body, /Sitemap: https:\/\/no-wave\.example\/sitemap\.xml/);
+});
+
+test("page titles carry the App Router's site suffix, and the root page does not", async () => {
+  // The App Router applies `title.template` to descendant segments only, so `/`
+  // is served with the bare home title while `/en` carries the suffix. Both
+  // spellings are asserted here because they are what search engines see.
+  const home = await get("/");
+  assert.match(home.body, /<title>以文学作品为中心，构建独立的数字出版空间<\/title>/);
+
+  const englishHome = await get("/en");
+  assert.match(englishHome.body, /<title>A home for serious literature | 无浪潮<\/title>/);
+
+  // Strings taken from app/search/page.tsx and app/en/search/page.tsx.
+  const search = await get("/search?q=抵抗");
+  assert.match(search.body, /<title>搜索 | 无浪潮<\/title>/);
+
+  const englishSearch = await get("/en/search?q=portable");
+  assert.match(englishSearch.body, /<title>Search | 无浪潮<\/title>/);
+
+  const categories = await get("/categories");
+  assert.match(categories.body, /<title>作品分类 | 无浪潮<\/title>/);
+});
+
+test("a missing public entity is a hard 404 that is titled, no-store and noindex", async () => {
+  for (const pathname of ["/articles/does-not-exist", "/authors/nobody", "/categories/does-not-exist"]) {
+    const result = await get(pathname);
+    assert.equal(result.status, 404, `${pathname} must be a hard 404`);
+    // A crawler must see a page that says what happened, and must not be given
+    // a copy that a shared cache is allowed to keep.
+    assert.match(result.body, /<title>404 | 无浪潮<\/title>/, `${pathname} needs a title`);
+    assert.match(result.body, /name="robots" content="noindex, nofollow"/);
+    assert.match(result.headers.get("cache-control") ?? "", /no-store/, `${pathname} must not be cached`);
+  }
 });

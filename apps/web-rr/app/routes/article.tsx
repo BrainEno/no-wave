@@ -7,7 +7,8 @@ import { getPublicArticle } from "@/lib/api-content.ts";
 import { dateLabel } from "@/lib/format.ts";
 import { lengthLabel, minutesLabel, readingMinutes, textLength } from "@/lib/reading.ts";
 import { PUBLIC_PAGE_HEADERS } from "../lib/http-policy.ts";
-import { metaDescriptors } from "../lib/meta.ts";
+import { entityNotFound } from "../lib/loader-errors.ts";
+import { metaDescriptors, titleWithSite } from "../lib/meta.ts";
 import { localeFor } from "../lib/locale.ts";
 import { siteUrl } from "../lib/runtime.ts";
 
@@ -26,14 +27,14 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   const article = await getPublicArticle(params.slug ?? "", locale);
   // Throwing keeps the framework from committing a 200 shell before the status is
   // known, so an unknown article is a hard 404 rather than a soft 404 page.
-  if (!article) throw data({ slug: params.slug ?? null, locale }, { status: 404 });
+  if (!article) throw entityNotFound("article-not-found");
   return { article };
 }
 
 export const headers: HeadersFunction = () => PUBLIC_PAGE_HEADERS;
 
 export const meta: MetaFunction<typeof loader> = ({ data: loaded }) => {
-  if (!loaded) return [{ title: "页面未找到 | 无浪潮" }];
+  if (!loaded) return [{ title: titleWithSite(undefined) }];
   return metaDescriptors(articleMetadata(loaded.article, siteUrl()));
 };
 

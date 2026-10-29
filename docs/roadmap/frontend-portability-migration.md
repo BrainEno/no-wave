@@ -138,17 +138,23 @@ so the phase is not complete and no provider-specific code exists.
 
 ### Phase 3 — Migrate public SSR routes first (current stage)
 
-- [x] Port localized home, article archive/detail, author, category and search routes in small reviewed batches. → archive/author/category index/category detail/search landed in `apps/web-rr` (2026-10-29); **home** is still the Phase 2 placeholder because it depends on client components (Phase 4).
-- [x] Preserve URLs, `zh-CN` defaults, English routes, canonical/Open Graph metadata and status codes. → asserted by `pnpm test:prototype` (20 tests) over real HTTP.
-- [ ] Port sitemap and robots output; avoid using fake fallback content when a configured API fails.
+- [x] Port localized home, article archive/detail, author, category and search routes in small reviewed batches. → archive/author/category index/category detail/search landed in `apps/web-rr` (2026-10-29); **home** followed on 2026-10-29 with `loadHomePage` + `HomePageView`. Its three client components (`PageLoader`, `HeroCanvas`, `HomeLatest`) hydrate in both frameworks; their *behaviour* stays Phase 4.
+- [x] Preserve URLs, `zh-CN` defaults, English routes, canonical/Open Graph metadata and status codes. → asserted by `pnpm test:prototype` (28 tests) over real HTTP, including the App Router's title template and the root-page exception.
+- [x] Port sitemap and robots output; avoid using fake fallback content when a configured API fails. → one shared builder (`apps/web/src/lib/site-metadata.ts`) with a thin adapter per framework; the scan is bounded and a failing API yields an empty, non-fixture entry set.
 - [x] Reuse React presentation components and neutral content helpers where appropriate; avoid a styling redesign within this migration. → the load/render split in `apps/web/src/lib/public-pages.ts` + `apps/web/src/components/public/*` is shared by both apps, so the App Router renders the same view; see [public SSR migration](public-ssr-migration.md).
 - [x] Update route-smoke checks to start the migrated Node server and keep asserting observable output/status/cache semantics. → the prototype suite starts `apps/web-rr/server.ts` and asserts status, cache policy, hard 404s and a ≤2 API-call-per-page budget; `pnpm test:routes` still covers the App Router.
 
 **Exit gate:** public routes pass side-by-side behavior assertions with no known SEO, locale or hard-404 regression.
 
-**Status 2026-10-29:** the first batch is complete for archive/author/category/
-search. Remaining: home (blocked on Phase 4 client components), sitemap/robots,
-and side-by-side comparison against a real host (blocked on Phase 6).
+**Status 2026-10-29:** every public route — home included — plus sitemap and
+robots is ported, and the exit gate is executable: `pnpm check:ssr-parity`
+builds both applications, points them at one mock API and compares 105
+observations over 17 routes with **0 unexpected differences** (19 divergences
+are known and reasoned in
+[public SSR migration §5](public-ssr-migration.md#5-known-divergences-found-by-the-parity-check)).
+It is run locally, not in CI, because it needs two production builds. Still
+open: the App Router's fixture-origin canonicals (owner decision), Phase 4
+interaction behavior, and comparison against a real host (Phase 6).
 
 ### Phase 4 — Migrate authentication and writing desk
 
