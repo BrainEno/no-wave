@@ -78,9 +78,15 @@ Configuration stays provider-neutral (`MEDIA_S3_*` with `AWS_*` fallbacks, path-
 | --- | --- |
 | Render free "Background Worker" | Free instance type is limited to web services; background workers start on paid instances |
 | Render Cron Job | Starts on paid instances |
-| A `/api/internal/drain` route invoked by an external free scheduler (e.g. GitHub Actions schedule) | Cardless; drains persisted outbox rows with lease/idempotency semantics already in the DB |
+| A one-shot drain process started by any external free scheduler (`pnpm --filter @bot-thk/api drain:notifications`) | Cardless; drains persisted outbox rows with lease/idempotency semantics already in the DB; **chosen and implemented (2026-10-29)** |
+| A `/api/internal/drain` route invoked by an external free scheduler | Same delivery semantics, but needs a new public route plus a shared secret in the Web app's environment, and pays a cold start on every tick. Rejected in favour of the process: the only credential involved is the `DATABASE_URL` the API already holds. |
 
-Decision: **deferred to Phase 5**, with the cardless fallback recorded now: the worker stays a separate process for local/self-hosted use, and a scheduler-invoked drain over durable outbox state is the hosted option to validate. No code is written for it in this round.
+Decision: the worker stays a separate process for local/self-hosted use, and the
+hosted path is a **scheduler-invoked one-shot drain**
+(`apps/api/src/persistence/notification-drain.ts`, bounded by a wall-clock
+deadline and a batch cap). Both share `dispatchOutboxBatch`, so leasing,
+rescheduling and idempotency are identical; see
+[notification worker §6a](../operations/notification-worker.md).
 
 The worker's own start/stop, retry, metrics and shutdown contract is now written down in [notification worker](../operations/notification-worker.md).
 

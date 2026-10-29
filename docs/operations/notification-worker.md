@@ -54,17 +54,66 @@ Operational rule: send `SIGTERM`, wait for exit, and only then start the replace
 
 ## 6. What the hosting gate implies
 
-The qualified zero-cost host (Render free web service, see [hosting qualification](../roadmap/hosting-qualification.md)) does **not** include a free background-worker or cron instance: those start on paid instances. The cardless option on that platform is a scheduler-invoked drain — an authenticated endpoint or CLI invocation that runs `dispatchOutboxBatch` once per interval against the same database.
+The qualified zero-cost host (Render free web service, see [hosting qualification](../roadmap/hosting-qualification.md)) does **not** include a free background-worker or cron instance: those start on paid instances. The cardless option on that platform is a scheduler-invoked drain — a short-lived run that dispatches due outbox events once per interval against the same database.
 
-That path is **not implemented**. It stays in Phase 5 with the requirement that it must not weaken delivery guarantees: a single drain invocation must use the same leasing, rescheduling and idempotency semantics, must be safe to run concurrently with a long-lived worker, and must never require the Web server to own delivery state.
+## 6a. Scheduled drain (implemented 2026-10-29)
+
+    pnpm --filter @bot-thk/api drain:notifications
+
+A one-shot process: it opens a PostgreSQL connection, checks `store.health()`,
+drains what is due, logs a summary and exits **0** (or **1** on failure, so a
+scheduler records it). Any external scheduler that can start a process — a
+scheduled GitHub Action, cron-job.org, or a cron on any machine that can reach
+the database — is enough.
+
+**Why a process and not an HTTP endpoint.** A drain endpoint would need to be
+reachable by the scheduler, which means a new public route, a shared secret in
+the Web app's environment, and a cold start (up to ~30 s on a sleeping free
+instance) on every tick. A one-shot process needs none of that: no new attack
+surface, no secret, no dependency on the web instance being awake. The only
+credential involved is `DATABASE_URL`, which the API already holds.
+
+**Why it is safe to run more than one.** Events are claimed under a lease and
+marked delivered by lease token, so an overlapping drain — or a drain alongside
+the long-lived worker — cannot deliver an event whose lease it does not own.
+Delivery remains at-least-once and consumers still deduplicate by `eventKey`.
+
+**Why it is bounded.** `OUTBOX_DRAIN_DEADLINE_MS` (default 10 000 ms, 1–600 000)
+and `OUTBOX_DRAIN_MAX_BATCHES` (default 20, 1–1000) stop one invocation from
+pinning a 0.1-CPU instance or overrunning the scheduler's timeout. Remaining
+events stay in the outbox and are picked up by the next tick — a backlog is
+drained over several intervals, which is the intended behavior on a host this
+small. The per-batch settings are the worker's: `OUTBOX_BATCH_LIMIT`,
+`OUTBOX_LEASE_SECONDS`, `OUTBOX_RETRY_DELAY_SECONDS` (all validated, out of range
+= startup error).
+
+| Log event | Level | Meaning |
+| --- | --- | --- |
+| `outbox_drain_started` | info | settings in effect (batch limit, lease, retry, deadline, batch cap) |
+| `outbox_drain_completed` | info (warn if any event failed) | `batches`, `claimed`, `delivered`, `failed`, `stopReason`, `durationMs` |
+| `outbox_drain_failed` | error | a batch-level failure stopped the drain; `errorName` only |
+| `outbox_drain_failed_to_start` | error | configuration or database failure before the first claim; exit code 1 |
+| `outbox_event_failed` | warn/error | one event's delivery failed, as in the worker |
+
+`stopReason` is one of `empty` (nothing left due), `deadline`, `batch-limit`,
+`batch-failed`. Driver messages are never logged — only a safe error class — so a
+connection string cannot reach the log stream.
+
+The drain requires PostgreSQL (`DATABASE_URL`), matching the worker; SQLite is a
+single-process store and has no scheduler-driven delivery scenario.
 
 ## 7. Verification status
 
 | Claim | Status |
 | --- | --- |
 | Batch dispatch, leasing, retry and dedup semantics | Covered by `apps/api/src/persistence/sqlite-outbox-worker-contract.test.ts`, `outbox-metrics.test.ts`, and the PostgreSQL integration suites |
+| Drain loop: drains until empty, batch cap, deadline, batch failure, delivery failures, invalid settings, real SQLite rows | Covered by `apps/api/src/persistence/outbox-drain.test.ts` (7 tests) |
+| Drain CLI exits 1 and logs only an error class when `DATABASE_URL` is missing or unreachable | Verified by running it (no PostgreSQL available locally): exit code 1, no connection string in the output |
+| A successful drain against PostgreSQL | **Not run** — no local PostgreSQL; the path shares `dispatchOutboxBatch` with the worker, which the PostgreSQL integration suite covers |
+| An external scheduler actually invoking it on the qualified host | **Not run** — no deployment |
 | `SIGTERM` drains the current batch then closes the pool | **Not covered by an automated test**; reviewed from source only |
 | Metrics endpoint behavior | Covered by `outbox-metrics.test.ts` (rendering); live scrape not exercised |
-| Deployed execution model | Not chosen; no deployment exists for this worker outside the local chain |
+| Deployed execution model | Long-lived worker for self-hosted use; scheduler-driven one-shot drain for the cardless host. Neither is deployed yet |
 
-No worker process was started while writing this document.
+No worker process and no scheduled drain against a real database were run while
+writing this document; only the failure paths of the CLI were executed locally.
