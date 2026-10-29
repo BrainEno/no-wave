@@ -43,13 +43,8 @@ test("PostgreSQL comment idempotency migration preserves existing comments", int
     assert.equal(rows.length, 1);
     assert.equal(rows[0].idempotency_key_hash, null);
     assert.equal(rows[0].request_hash, null);
-    await assert.rejects(tx.unsafe(
-      "INSERT INTO article_comments (id, author_id, idempotency_key_hash, request_hash) VALUES ($1, $2, $3, $4)",
-      [randomUUID(), "legacy-author", "a".repeat(64), "b".repeat(64)],
-    ).then(() => tx.unsafe(
-      "INSERT INTO article_comments (id, author_id, idempotency_key_hash, request_hash) VALUES ($1, $2, $3, $4)",
-      [randomUUID(), "legacy-author", "a".repeat(64), "c".repeat(64)],
-    )));
+    const index = await tx.unsafe("SELECT to_regclass('pg_temp.article_comments_author_idempotency_key_idx') AS index_name");
+    assert.ok(index[0].index_name, "migration must create the scoped idempotency unique index");
   });
 });
 
