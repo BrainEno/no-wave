@@ -31,3 +31,12 @@ export type RestRouteContext = {
  * response; `false` means "not mine", and dispatch continues with the next group.
  */
 export type RestRouteGroup = (context: RestRouteContext) => Promise<boolean>;
+
+/**
+ * One route id's handler inside a group.
+ *
+ * Handlers are `Promise<void>`, not `Promise<boolean>`: a matched route always
+ * writes exactly one response, so the boolean was pure noise (`return true` on
+ * every exit path). The group owns the claim, the handler owns the response.
+ */
+export type RestRouteHandler = (context: RestRouteContext) => Promise<void>;

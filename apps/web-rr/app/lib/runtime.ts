@@ -12,6 +12,20 @@ export function apiBaseUrl(): string | undefined {
   return resolveApiBaseUrl();
 }
 
+/**
+ * The API origin, or `undefined` when none is configured — or when the
+ * configured value is invalid. A malformed value is a deployment error, but it
+ * must surface as the route's own 503, not as an unhandled exception in a
+ * resource route.
+ */
+export function optionalApiBaseUrl(): string | undefined {
+  try {
+    return apiBaseUrl();
+  } catch {
+    return undefined;
+  }
+}
+
 export function requireContentClient() {
   const endpoint = apiBaseUrl();
   if (!endpoint) throw new Error("API_BASE_URL must be configured to read API-backed content.");

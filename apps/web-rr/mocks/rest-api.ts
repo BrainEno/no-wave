@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 
@@ -27,6 +28,26 @@ export const MOCK_TOKENS = {
 } as const;
 
 export const MOCK_DISPLAY_NAME = "林可行";
+
+export const MOCK_AUTHOR = { username: "writer", bio: "在无浪潮写作。" } as const;
+
+/**
+ * A 1x1 WebP and its content hash.
+ *
+ * Media objects are content-addressed in the API (the SHA-256 is the ETag), so
+ * the mock must produce a stable ETag too — otherwise conditional requests and
+ * immutable caching could not be asserted.
+ */
+const MOCK_MEDIA_BYTES = Buffer.from(
+  "UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==",
+  "base64",
+);
+export const MOCK_MEDIA = {
+  id: "3f7c1d90-8a2b-4c1e-9f3a-6c5b2e8d1a44",
+  contentType: "image/webp",
+  etag: `"${createHash("sha256").update(MOCK_MEDIA_BYTES).digest("hex")}"`,
+  bytes: MOCK_MEDIA_BYTES,
+} as const;
 
 type MockArticle = {
   slug: string;
@@ -72,6 +93,44 @@ const ARTICLES: MockArticle[] = [
   },
 ];
 
+type MockCategory = {
+  slug: string;
+  names: Record<"zh-CN" | "en", string>;
+  descriptions: Record<"zh-CN" | "en", string>;
+  articleSlugs: string[];
+};
+
+const CATEGORIES: MockCategory[] = [
+  {
+    slug: "essays",
+    names: { "zh-CN": "随笔", en: "Essays" },
+    descriptions: {
+      "zh-CN": "关于出版、写作与基础设施的长文与短论。",
+      en: "Long-form and short-form writing about publishing, writing and infrastructure.",
+    },
+    articleSlugs: ["portable-web-foundation"],
+  },
+  {
+    slug: "fiction",
+    names: { "zh-CN": "小说", en: "Fiction" },
+    descriptions: { "zh-CN": "虚构作品：短篇、连载与长篇节选。", en: "Short stories, serials and novel excerpts." },
+    articleSlugs: ["reading-as-resistance"],
+  },
+];
+
+function categoryPayload(category: MockCategory, locale: "zh-CN" | "en") {
+  const articles = category.articleSlugs
+    .map((slug) => ARTICLES.find((candidate) => candidate.slug === slug))
+    .filter((article): article is MockArticle => Boolean(article));
+  return {
+    slug: category.slug,
+    name: category.names[locale],
+    description: category.descriptions[locale],
+    locale,
+    articleCount: articles.length,
+  };
+}
+
 function articlePayload(article: MockArticle, locale: "zh-CN" | "en") {
   return {
     slug: article.slug,
@@ -89,6 +148,21 @@ function articlePayload(article: MockArticle, locale: "zh-CN" | "en") {
 
 function localeOf(url: URL): "zh-CN" | "en" {
   return url.searchParams.get("locale") === "en" ? "en" : "zh-CN";
+}
+
+/** Title/summary substring match, case-insensitive, mirroring the API's `query`. */
+function matchesQuery(article: MockArticle, locale: "zh-CN" | "en", query: string): boolean {
+  const needle = query.trim().toLocaleLowerCase();
+  if (!needle) return true;
+  return article.title[locale].toLocaleLowerCase().includes(needle) ||
+    article.summary[locale].toLocaleLowerCase().includes(needle);
+}
+
+function paginated<T>(items: T[], url: URL): T[] {
+  const limit = Number(url.searchParams.get("limit") ?? items.length);
+  const offset = Number(url.searchParams.get("offset") ?? 0);
+  const size = Number.isFinite(limit) ? limit : items.length;
+  return items.slice(offset, offset + size);
 }
 
 function send(response: ServerResponse, status: number, body: unknown): void {
@@ -133,10 +207,69 @@ function handle(request: IncomingMessage, response: ServerResponse, body: Record
   const locale = localeOf(url);
 
   if (method === "GET" && path === "/api/v1/articles") {
-    const limit = Number(url.searchParams.get("limit") ?? ARTICLES.length);
-    const offset = Number(url.searchParams.get("offset") ?? 0);
-    const page = ARTICLES.slice(offset, offset + (Number.isFinite(limit) ? limit : ARTICLES.length));
+    const query = url.searchParams.get("query") ?? "";
+    const page = paginated(ARTICLES.filter((article) => matchesQuery(article, locale, query)), url);
     send(response, 200, { data: page.map((article) => articlePayload(article, locale)) });
+    return;
+  }
+
+  const authorArticles = /^\/api\/v1\/authors\/([^/]+)\/articles$/.exec(path);
+  if (method === "GET" && authorArticles) {
+    const username = decodeURIComponent(authorArticles[1] ?? "");
+    if (username !== MOCK_AUTHOR.username) {
+      send(response, 404, { error: { code: "NOT_FOUND", message: "Author not found." } });
+      return;
+    }
+    const query = url.searchParams.get("query") ?? "";
+    const page = paginated(ARTICLES.filter((article) => matchesQuery(article, locale, query)), url);
+    send(response, 200, { data: page.map((article) => articlePayload(article, locale)) });
+    return;
+  }
+
+  const authorDetail = /^\/api\/v1\/authors\/([^/]+)$/.exec(path);
+  if (method === "GET" && authorDetail) {
+    const username = decodeURIComponent(authorDetail[1] ?? "");
+    if (username !== MOCK_AUTHOR.username) {
+      send(response, 404, { error: { code: "NOT_FOUND", message: "Author not found." } });
+      return;
+    }
+    send(response, 200, { data: { userId: MOCK_AUTHOR.username, displayName: MOCK_DISPLAY_NAME, bio: MOCK_AUTHOR.bio } });
+    return;
+  }
+
+  if (method === "GET" && path === "/api/v1/categories") {
+    const query = (url.searchParams.get("query") ?? "").trim().toLocaleLowerCase();
+    const matched = CATEGORIES.filter((category) => !query ||
+      category.names[locale].toLocaleLowerCase().includes(query) ||
+      category.descriptions[locale].toLocaleLowerCase().includes(query));
+    send(response, 200, { data: paginated(matched, url).map((category) => categoryPayload(category, locale)) });
+    return;
+  }
+
+  const categoryArticles = /^\/api\/v1\/categories\/([^/]+)\/articles$/.exec(path);
+  if (method === "GET" && categoryArticles) {
+    const slug = decodeURIComponent(categoryArticles[1] ?? "");
+    const category = CATEGORIES.find((candidate) => candidate.slug === slug);
+    if (!category) {
+      send(response, 404, { error: { code: "NOT_FOUND", message: "Category not found." } });
+      return;
+    }
+    const articles = category.articleSlugs
+      .map((articleSlug) => ARTICLES.find((candidate) => candidate.slug === articleSlug))
+      .filter((article): article is MockArticle => Boolean(article));
+    send(response, 200, { data: paginated(articles, url).map((article) => articlePayload(article, locale)) });
+    return;
+  }
+
+  const categoryDetail = /^\/api\/v1\/categories\/([^/]+)$/.exec(path);
+  if (method === "GET" && categoryDetail) {
+    const slug = decodeURIComponent(categoryDetail[1] ?? "");
+    const category = CATEGORIES.find((candidate) => candidate.slug === slug);
+    if (!category) {
+      send(response, 404, { error: { code: "NOT_FOUND", message: "Category not found." } });
+      return;
+    }
+    send(response, 200, { data: categoryPayload(category, locale) });
     return;
   }
 
@@ -173,6 +306,40 @@ function handle(request: IncomingMessage, response: ServerResponse, body: Record
     return;
   }
 
+  const mediaDetail = /^\/api\/v1\/media\/([^/]+)$/.exec(path);
+  if (method === "GET" && mediaDetail) {
+    const id = decodeURIComponent(mediaDetail[1] ?? "");
+    if (id !== MOCK_MEDIA.id) {
+      send(response, 404, { error: { code: "NOT_FOUND", message: "The requested media asset was not found." } });
+      return;
+    }
+    if (request.headers["if-none-match"] === MOCK_MEDIA.etag) {
+      response.writeHead(304, { "cache-control": "public, max-age=31536000, immutable", etag: MOCK_MEDIA.etag });
+      response.end();
+      return;
+    }
+    response.writeHead(200, {
+      "content-type": MOCK_MEDIA.contentType,
+      "content-length": MOCK_MEDIA.bytes.byteLength,
+      "cache-control": "public, max-age=31536000, immutable",
+      etag: MOCK_MEDIA.etag,
+    });
+    response.end(MOCK_MEDIA.bytes);
+    return;
+  }
+
+  if (method === "POST" && path === "/api/v1/me/media") {
+    const authorization = request.headers.authorization ?? "";
+    if (authorization !== `Bearer ${MOCK_TOKENS.accessToken}`) {
+      send(response, 401, { error: { code: "UNAUTHENTICATED", message: "Please sign in again." } });
+      return;
+    }
+    send(response, 201, {
+      data: { id: MOCK_MEDIA.id, contentType: "image/webp", byteSize: MOCK_MEDIA.bytes.byteLength, sha256: MOCK_MEDIA.etag.slice(1, -1) },
+    });
+    return;
+  }
+
   if (method === "GET" && path === "/api/v1/me") {
     const authorization = request.headers.authorization ?? "";
     if (authorization !== `Bearer ${MOCK_TOKENS.accessToken}`) {
@@ -188,10 +355,18 @@ function handle(request: IncomingMessage, response: ServerResponse, body: Record
   send(response, 404, { error: { code: "NOT_FOUND", message: `No mock route for ${method} ${path}.` } });
 }
 
-export type MockRestApi = { url: string; close: () => Promise<void> };
+export type MockRestApi = {
+  url: string;
+  close: () => Promise<void>;
+  /** Upstream calls recorded since the last reset, e.g. `GET /api/v1/articles`. */
+  requests: () => string[];
+  resetRequests: () => void;
+};
 
 export async function startMockRestApi({ port = 0 }: { port?: number } = {}): Promise<MockRestApi> {
+  let recorded: string[] = [];
   const server: Server = createServer((request, response) => {
+    recorded.push(`${request.method ?? "GET"} ${new URL(request.url ?? "/", "http://mock.invalid").pathname}`);
     void readJson(request).then(
       (body) => handle(request, response, body),
       () => send(response, 400, { error: { code: "BAD_USER_INPUT", message: "Unreadable body." } }),
@@ -208,6 +383,8 @@ export async function startMockRestApi({ port = 0 }: { port?: number } = {}): Pr
 
   return {
     url: `http://127.0.0.1:${address.port}`,
+    requests: () => [...recorded],
+    resetRequests: () => { recorded = []; },
     close: () => new Promise<void>((resolve, reject) => {
       server.closeAllConnections?.();
       server.close((error) => (error ? reject(error) : resolve()));

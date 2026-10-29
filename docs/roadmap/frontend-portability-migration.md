@@ -138,13 +138,17 @@ so the phase is not complete and no provider-specific code exists.
 
 ### Phase 3 — Migrate public SSR routes first (current stage)
 
-- [ ] Port localized home, article archive/detail, author, category and search routes in small reviewed batches.
-- [ ] Preserve URLs, `zh-CN` defaults, English routes, canonical/Open Graph metadata and status codes.
+- [x] Port localized home, article archive/detail, author, category and search routes in small reviewed batches. → archive/author/category index/category detail/search landed in `apps/web-rr` (2026-10-29); **home** is still the Phase 2 placeholder because it depends on client components (Phase 4).
+- [x] Preserve URLs, `zh-CN` defaults, English routes, canonical/Open Graph metadata and status codes. → asserted by `pnpm test:prototype` (20 tests) over real HTTP.
 - [ ] Port sitemap and robots output; avoid using fake fallback content when a configured API fails.
-- [ ] Reuse React presentation components and neutral content helpers where appropriate; avoid a styling redesign within this migration.
-- [ ] Update route-smoke checks to start the migrated Node server and keep asserting observable output/status/cache semantics.
+- [x] Reuse React presentation components and neutral content helpers where appropriate; avoid a styling redesign within this migration. → the load/render split in `apps/web/src/lib/public-pages.ts` + `apps/web/src/components/public/*` is shared by both apps, so the App Router renders the same view; see [public SSR migration](public-ssr-migration.md).
+- [x] Update route-smoke checks to start the migrated Node server and keep asserting observable output/status/cache semantics. → the prototype suite starts `apps/web-rr/server.ts` and asserts status, cache policy, hard 404s and a ≤2 API-call-per-page budget; `pnpm test:routes` still covers the App Router.
 
 **Exit gate:** public routes pass side-by-side behavior assertions with no known SEO, locale or hard-404 regression.
+
+**Status 2026-10-29:** the first batch is complete for archive/author/category/
+search. Remaining: home (blocked on Phase 4 client components), sitemap/robots,
+and side-by-side comparison against a real host (blocked on Phase 6).
 
 ### Phase 4 — Migrate authentication and writing desk
 
@@ -158,10 +162,10 @@ so the phase is not complete and no provider-specific code exists.
 
 ### Phase 5 — Migrate media and detach the worker from Vercel
 
-- [ ] Port the media request/response adapter without exposing private storage keys or service credentials. (Storage itself now passes the gate via Neon Object Storage — see [hosting qualification §4](hosting-qualification.md); the adapter also gained `WHEN_REQUIRED` checksums and bounded `SlowDown` retries.)
-- [ ] Verify media upload, normalized WebP retrieval, access denial, checksums, ETag and cache headers.
-- [ ] Run the notification outbox worker outside the Web server and validate duplicate prevention, lease expiry, retry and shutdown recovery against a disposable PostgreSQL database.
-- [ ] Select a worker/scheduler execution model that actually fits the qualified zero-cost host. If it cannot, stop before choosing that host or silently weakening delivery guarantees.
+- [x] Port the media request/response adapter without exposing private storage keys or service credentials. (Storage itself now passes the gate via Neon Object Storage — see [hosting qualification §4](hosting-qualification.md); the adapter also gained `WHEN_REQUIRED` checksums and bounded `SlowDown` retries.) → `packages/web-http/src/media.ts`, called by both apps (2026-10-29); see [media relay](media-relay.md).
+- [x] Verify media upload, normalized WebP retrieval, access denial, checksums, ETag and cache headers. → `packages/web-http/test/media.test.ts` (8 tests) plus prototype tests over real HTTP; the Next.js handlers were re-checked manually against a stub API (200/304/404/403/415/201). Not covered: a live Neon bucket round trip.
+- [x] Select a worker/scheduler execution model that actually fits the qualified zero-cost host. If it cannot, stop before choosing that host or silently weakening delivery guarantees. → long-lived worker for self-hosted use; **scheduler-invoked one-shot drain** for the cardless host (bounded by deadline and batch cap, sharing `dispatchOutboxBatch`). See [notification worker §6a](../operations/notification-worker.md) and [hosting qualification §5](hosting-qualification.md).
+- [ ] Run the notification outbox worker outside the Web server and validate duplicate prevention, lease expiry, retry and shutdown recovery against a disposable PostgreSQL database. → the drain loop is unit-tested (`outbox-drain.test.ts`, 7 tests, incl. a real SQLite store) and its CLI failure paths were executed; a **PostgreSQL** run has not happened locally (no server available) and remains the open item.
 
 **Exit gate:** media remains private and durable; notification delivery remains database/outbox-backed and recovers after worker restarts.
 
