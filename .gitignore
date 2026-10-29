@@ -9,6 +9,10 @@ coverage/
 !.env.example
 .DS_Store
 
+# Neon CLI project context (organization, project and branch IDs)
+.neon
+.neon/
+
 # Local SQLite data and write-ahead log files
 data/
 *.sqlite

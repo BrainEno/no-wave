@@ -33,18 +33,32 @@ function normalizedEnv(value: string | undefined): string {
 }
 
 function resolveConfig(env: NodeJS.ProcessEnv): MediaStorageConfig | null {
-  const values = {
+  const mediaOverrides = {
     bucket: normalizedEnv(env.MEDIA_S3_BUCKET),
     region: normalizedEnv(env.MEDIA_S3_REGION),
     accessKeyId: normalizedEnv(env.MEDIA_S3_ACCESS_KEY_ID),
     secretAccessKey: normalizedEnv(env.MEDIA_S3_SECRET_ACCESS_KEY),
     endpoint: normalizedEnv(env.MEDIA_S3_ENDPOINT),
+    forcePathStyle: normalizedEnv(env.MEDIA_S3_FORCE_PATH_STYLE),
   };
-  const provided = Object.values(values).filter(Boolean).length;
-  const requiredCount = 4;
-  if (provided === 0) return null;
+
+  // Do not accidentally enable media storage just because another AWS integration
+  // happens to populate generic AWS_* variables. The app's bucket name is an
+  // explicit opt-in; after that, Neon credentials can use the standard AWS names.
+  if (![mediaOverrides.bucket, mediaOverrides.region, mediaOverrides.accessKeyId, mediaOverrides.secretAccessKey, mediaOverrides.endpoint].some(Boolean)) return null;
+
+  const values = {
+    bucket: mediaOverrides.bucket,
+    // App-specific aliases intentionally win over Neon/AWS-standard environment variables.
+    region: mediaOverrides.region || normalizedEnv(env.AWS_REGION),
+    accessKeyId: mediaOverrides.accessKeyId || normalizedEnv(env.AWS_ACCESS_KEY_ID),
+    secretAccessKey: mediaOverrides.secretAccessKey || normalizedEnv(env.AWS_SECRET_ACCESS_KEY),
+    endpoint: mediaOverrides.endpoint || normalizedEnv(env.AWS_ENDPOINT_URL_S3),
+  };
   if (!values.bucket || !values.region || !values.accessKeyId || !values.secretAccessKey) {
-    throw new Error("MEDIA_S3_BUCKET, MEDIA_S3_REGION, MEDIA_S3_ACCESS_KEY_ID and MEDIA_S3_SECRET_ACCESS_KEY must be configured together.");
+    throw new Error(
+      "MEDIA_S3_BUCKET, a region (MEDIA_S3_REGION or AWS_REGION), an access key (MEDIA_S3_ACCESS_KEY_ID or AWS_ACCESS_KEY_ID), and a secret key (MEDIA_S3_SECRET_ACCESS_KEY or AWS_SECRET_ACCESS_KEY) are required when media storage is configured.",
+    );
   }
   if (values.bucket.length > 255 || /[\\/]/.test(values.bucket)) throw new Error("MEDIA_S3_BUCKET is invalid.");
   if (values.region.length > 100 || !/^[a-z0-9-]+$/.test(values.region)) throw new Error("MEDIA_S3_REGION is invalid.");
@@ -59,7 +73,7 @@ function resolveConfig(env: NodeJS.ProcessEnv): MediaStorageConfig | null {
     }
     endpoint = parsed.toString().replace(/\/$/, "");
   }
-  const forcePathStyleValue = normalizedEnv(env.MEDIA_S3_FORCE_PATH_STYLE);
+  const forcePathStyleValue = mediaOverrides.forcePathStyle;
   if (forcePathStyleValue && forcePathStyleValue !== "true" && forcePathStyleValue !== "false") {
     throw new Error("MEDIA_S3_FORCE_PATH_STYLE must be true or false.");
   }

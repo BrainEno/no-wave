@@ -5,11 +5,11 @@
   "type": "module",
   "description": "Standalone versioned REST API with SQLite-first, provider-independent persistence",
   "scripts": {
-    "start": "node src/server.ts",
-    "migrate": "node src/persistence/migrate.ts",
+    "start": "node --env-file-if-exists=../../.env.local --env-file-if-exists=../../.env src/server.ts",
+    "migrate": "node --env-file-if-exists=../../.env.local --env-file-if-exists=../../.env src/persistence/migrate.ts",
     "worker:notifications": "node src/persistence/notification-worker.ts",
     "test:integration": "node --test --test-concurrency=1 src/persistence/postgres.integration.test.ts src/persistence/provider-migration-journal.integration.test.ts src/persistence/persistence-adapter-contract.test.ts src/persistence/identity.integration.test.ts",
-    "test:unit": "node --test src/application/media-assets.test.ts src/application/persistence-ports.test.ts src/application/services.test.ts src/application/identity.test.ts src/application/rate-limit.test.ts src/security/passwords.test.ts src/domain/article.test.ts src/domain/lexical-document-adapter.test.ts src/domain/lexical-web-compat.test.ts src/domain/comment-content.test.ts src/domain/taxonomy.test.ts src/domain/validation.test.ts src/infrastructure/persistence-runtime.test.ts src/infrastructure/http-observability.test.ts src/persistence/provider-migration-journal.test.ts src/persistence/sqlite-media-store.test.ts src/persistence/outbox-metrics.test.ts src/server.test.ts",
+    "test:unit": "node --test src/application/media-assets.test.ts src/application/persistence-ports.test.ts src/application/services.test.ts src/application/identity.test.ts src/application/rate-limit.test.ts src/security/passwords.test.ts src/domain/article.test.ts src/domain/lexical-document-adapter.test.ts src/domain/lexical-web-compat.test.ts src/domain/comment-content.test.ts src/domain/taxonomy.test.ts src/domain/validation.test.ts src/infrastructure/persistence-runtime.test.ts src/infrastructure/media-storage.test.ts src/neon/health.test.ts src/infrastructure/http-observability.test.ts src/persistence/provider-migration-journal.test.ts src/persistence/sqlite-media-store.test.ts src/persistence/outbox-metrics.test.ts src/server.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.strict.json"
   },
   "dependencies": {

@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createPostgresClient } from "./postgres.ts";
 import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
-import { resolveDatabaseProvider, resolveSqliteDatabasePath } from "../infrastructure/database-config.ts";
+import { resolveDatabaseProvider, resolvePostgresMigrationUrl, resolveSqliteDatabasePath } from "../infrastructure/database-config.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const defaultDirectory = join(here, "migrations");
@@ -53,7 +53,7 @@ export async function runConfiguredMigrations({ env = process.env } = {}) {
   if (provider === "postgres") {
     let sql;
     try {
-      sql = await createPostgresClient({ connectionString: env.DATABASE_URL });
+      sql = await createPostgresClient({ connectionString: resolvePostgresMigrationUrl({ env }) });
       return { provider, ...(await runMigrations(sql)) };
     } finally {
       if (sql) await sql.end({ timeout: 5 });
