@@ -1,7 +1,7 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
 /**
- * Authoring journey, end to end in a real browser.
+ * Authoring journey, end to end in a real browser — twice.
  *
  * Why this exists: the save button was broken for most real documents while
  * every cheaper layer was green — the unit tests, the API contract tests, the
@@ -9,6 +9,15 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
  * adapter, and only a browser that types into the editor and clicks 保存草稿
  * can see it. These are the assertions that would have caught it, and the ones
  * that caught the follow-up bug below.
+ *
+ * The file runs once per framework (see playwright.config.ts): the App Router
+ * and the React Router prototype, both against the **same** API and the same
+ * database. That is the claim the migration needs — "an author can sign up,
+ * write and publish here" — and running one spec against both is the only way to
+ * make it a measurement instead of two separate assertions nobody compared. So
+ * nothing in this file may hard-code which framework it is talking to: the
+ * origin comes from the project's `baseURL`, and every route below is one both
+ * frameworks serve.
  *
  * Rules of the layer (see docs/testing/end-to-end.md):
  * - selectors follow the accessibility tree, never CSS;
@@ -20,10 +29,21 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
  */
 
 const PASSWORD = "e2e-browser-password";
-/** The API the Web proxy talks to; the dev stack binds it to localhost. */
+/** The API both frameworks proxy to; every project shares one database. */
 const API_BASE_URL = process.env.E2E_API_BASE_URL ?? "http://127.0.0.1:4000";
-/** Where the suite drives the browser; playwright.config.ts sets baseURL from it. */
-const WEB_ORIGIN = process.env.E2E_BASE_URL ?? "http://127.0.0.1:3000";
+
+/**
+ * The origin the current project is driving.
+ *
+ * Read from the project rather than from the environment: the two projects differ
+ * only in `baseURL`, and the login proxy rejects a mutation whose `Origin` is not
+ * exactly its own — so the header has to follow the project, not a constant.
+ */
+function currentOrigin(): string {
+  const baseURL = test.info().project.use.baseURL;
+  if (!baseURL) throw new Error("every browser project must define a baseURL");
+  return new URL(baseURL).origin;
+}
 
 type SavedArticle = { id: string; slug: string; title: string; status: "draft" | "published" };
 
@@ -117,9 +137,10 @@ async function registerWriter(page: Page, request: APIRequestContext): Promise<s
   // Sign in through the same-origin proxy the application uses. The proxy
   // rejects mutations without an exact same-origin Origin header, which a
   // plain HTTP client does not send.
+  const origin = currentOrigin();
   const login = await page.request.post("/api/auth/login", {
     data: { email, password: PASSWORD },
-    headers: { origin: WEB_ORIGIN },
+    headers: { origin },
   });
   expect(login.status(), `signing the browser in: ${await login.text()}`).toBe(200);
   const cookies = sessionCookies(await login.headersArray());
@@ -130,7 +151,7 @@ async function registerWriter(page: Page, request: APIRequestContext): Promise<s
   await page.context().addCookies(cookies.map((cookie) => ({
     name: cookie.name,
     value: cookie.value,
-    domain: new URL(WEB_ORIGIN).hostname,
+    domain: new URL(origin).hostname,
     path: cookie.path,
     expires: Math.floor(Date.now() / 1000) + cookie.maxAge,
     httpOnly: cookie.httpOnly,

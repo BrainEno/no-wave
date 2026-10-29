@@ -197,7 +197,7 @@ environment, and comparison against a real host (Phase 6).
 - [ ] Keep the Lexical editor client-interactive; test Chinese IME, keyboard accessibility, save/publish and error recovery without changing the article contract.
 - [x] Migrate auth, session and **article authoring** routes to framework-neutral handler adapters (Phase 4a: comments; 4b: authoring). Media was already shared (Phase 5).
 - [ ] Preserve cookie attributes, token refresh rotation, origin checks, request limits, API authorization and no-store policy.
-- [ ] Re-run auth and writing end-to-end journeys against a disposable API/database. → partially: `pnpm test:prototype` drives the prototype's desk API over real HTTP against the mock (session, list, create, update, origin and id checks) and the App Router's desk journeys run in CI (`pnpm test:e2e`); neither runs both frameworks against one disposable database yet.
+- [x] Re-run auth and writing end-to-end journeys against a disposable API/database. → `playwright.config.ts` now defines two projects — `app-router` (:3000) and `prototype` (:3100) — that run the same `e2e/authoring.spec.ts` (4 journeys × 2 frameworks = 8 tests, executed in CI) against **one** API and **one** disposable SQLite file (`DATABASE_PATH` = `runner.temp`); the spec names no framework, taking its origin from the project's `baseURL`. `pnpm test:prototype` still covers the prototype's desk API over real HTTP against the mock.
 
 **Exit gate:** no token leaks; user-specific content remains private; create/edit/save/publish and logout flows are regression-tested.
 
