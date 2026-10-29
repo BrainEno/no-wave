@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createPersistenceRuntime, describePersistenceRuntime } from "./persistence-runtime.ts";
 import { persistencePortMethods } from "../application/persistence-ports.ts";
-import { resolveDatabaseProvider, resolveSqliteDatabasePath } from "./database-config.ts";
+import { resolveDatabaseProvider, resolvePostgresMigrationUrl, resolveSqliteDatabasePath } from "./database-config.ts";
 
 function completeFakeAdapter() {
   const adapter = {};
@@ -37,6 +37,23 @@ test("fresh configuration defaults to SQLite and legacy DATABASE_URL continues t
   assert.throws(() => resolveDatabaseProvider({ env: { DATABASE_PROVIDER: " sqlite " } }), /non-empty provider name/i);
   assert.equal(resolveSqliteDatabasePath({ env: { DATABASE_PATH: ":memory:" } }), ":memory:");
   assert.match(resolveSqliteDatabasePath({ env: {} }), /data[\\/]no-wave\.sqlite$/);
+});
+
+test("PostgreSQL migrations prefer Neon's direct URL and fall back to the application URL", () => {
+  assert.equal(
+    resolvePostgresMigrationUrl({
+      env: {
+        DATABASE_URL: "postgres://pooled.example/no-wave",
+        DATABASE_URL_UNPOOLED: "postgres://direct.example/no-wave",
+      },
+    }),
+    "postgres://direct.example/no-wave",
+  );
+  assert.equal(
+    resolvePostgresMigrationUrl({ env: { DATABASE_URL: "postgres://pooled.example/no-wave" } }),
+    "postgres://pooled.example/no-wave",
+  );
+  assert.throws(() => resolvePostgresMigrationUrl({ env: {} }), /DATABASE_URL_UNPOOLED or DATABASE_URL is required/i);
 });
 
 test("the built-in SQLite provider migrates explicitly, validates full port shape and closes cleanly", async () => {

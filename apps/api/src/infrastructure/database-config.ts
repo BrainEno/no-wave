@@ -33,3 +33,20 @@ export function resolveSqliteDatabasePath({
   if (configured === ":memory:") return configured;
   return resolve(cwd, configured);
 }
+
+
+/**
+ * Prefer Neon's direct (unpooled) connection for schema migrations and other
+ * multi-statement operations; normal API query traffic should use DATABASE_URL.
+ */
+export function resolvePostgresMigrationUrl({
+  env = process.env,
+}: {
+  env?: NodeJS.ProcessEnv;
+} = {}): string {
+  const connectionString = env.DATABASE_URL_UNPOOLED || env.DATABASE_URL;
+  if (typeof connectionString !== "string" || connectionString.length === 0) {
+    throw new Error("DATABASE_URL_UNPOOLED or DATABASE_URL is required for PostgreSQL migrations.");
+  }
+  return connectionString;
+}
