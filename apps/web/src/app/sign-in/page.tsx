@@ -1,15 +1,12 @@
-import { getUi } from "@/lib/ui-copy.ts";
+import type { Metadata } from "next";
+import { SignInForm } from "@/components/auth/sign-in-form.tsx";
+import { safeRedirectPath } from "@/lib/authoring-proxy-policy.ts";
 
-export const metadata = { title: "登录", robots: { index: false, follow: false } };
+export const metadata: Metadata = { title: "登录", robots: { index: false, follow: false } };
 
-export default function SignInPage() {
-  const ui = getUi("zh-CN");
-  return (
-    <main className="nw-w nw-head">
-      <h1><span className="nw-zh">{ui.signIn.title}</span> <i>Sign in</i></h1>
-      <p className="nw-ep" style={{ marginTop: 24 }}>{ui.signIn.body}</p>
-      <p className="nw-m" lang="en" style={{ marginTop: 12 }}>{getUi("en").signIn.body}</p>
-      <div style={{ height: 140 }} />
-    </main>
-  );
+export default async function SignInPage({ searchParams }: { searchParams: Promise<{ next?: string | string[] }> }) {
+  const params = await searchParams;
+  const raw = Array.isArray(params.next) ? params.next[0] : params.next;
+  const nextPath = safeRedirectPath(raw);
+  return <main className="nw-w nw-head"><SignInForm nextPath={nextPath} /></main>;
 }

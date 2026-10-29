@@ -291,3 +291,49 @@ mark { background: var(--or); color: #0f0d0c; }
   .nw-stb { padding: 56px 0; }
 }
 @media print { .nw-rail, .nw-pill, .nw-grain, .nw-np, .nw-menu { display: none !important; } }
+
+
+/* ---------- 内容编辑 / Lexical ---------- */
+.nw-auth-panel, .nw-authoring { padding-bottom: 96px; }
+.nw-auth-panel h1, .nw-authoring h1 { max-width: 900px; font-size: clamp(44px, 8vw, 104px); font-weight: 400; line-height: 1.05; }
+.nw-auth-form, .nw-article-fields { display: grid; gap: 18px; max-width: 720px; margin-top: 36px; }
+.nw-auth-form label, .nw-article-fields label { display: grid; gap: 8px; font-size: 14px; }
+.nw-auth-form input, .nw-article-fields input, .nw-article-fields textarea, .nw-article-fields select { width: 100%; min-height: 48px; border: 1px solid var(--ink); border-radius: 0; padding: 10px 12px; background: transparent; }
+.nw-auth-form input:focus-visible, .nw-article-fields input:focus-visible, .nw-article-fields textarea:focus-visible, .nw-article-fields select:focus-visible, .nw-lexical-input:focus-visible { outline: 3px solid var(--or); outline-offset: 2px; }
+.nw-auth-form textarea, .nw-article-fields textarea { min-height: 100px; resize: vertical; }
+.nw-auth-switch { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+.nw-auth-error, .nw-auth-status { margin: 16px 0; padding: 12px 0; border-top: 1px solid var(--ink); }
+.nw-auth-error { color: var(--red); }
+.nw-authoring-grid { display: grid; grid-template-columns: minmax(180px, .32fr) minmax(0, 1fr); align-items: start; gap: clamp(24px, 4vw, 64px); margin-top: 40px; }
+.nw-authoring-sidebar { display: grid; gap: 8px; }
+.nw-authoring-sidebar h2 { margin: 0 0 10px; font-size: 18px; }
+.nw-authoring-article { display: grid; gap: 4px; text-align: left; padding: 12px; border: 1px solid var(--ink); background: transparent; overflow-wrap: anywhere; }
+.nw-authoring-article[aria-current="true"] { border-color: var(--or); box-shadow: inset 4px 0 var(--or); }
+.nw-authoring-article small { color: var(--t2); }
+.nw-article-editor { min-width: 0; }
+.nw-article-fields { margin-top: 0; max-width: none; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.nw-article-fields .nw-field-wide { grid-column: 1 / -1; }
+.nw-lexical-toolbar { display: flex; flex-wrap: wrap; gap: 6px; border: 1px solid var(--ink); padding: 10px; margin-top: 22px; }
+.nw-lexical-toolbar button { min-height: 40px; min-width: 42px; padding: 6px 10px; border: 1px solid var(--ink); background: transparent; font-size: 13px; }
+.nw-lexical-toolbar button:hover { background: var(--ink); color: var(--paper); }
+.nw-lexical-shell { border: 1px solid var(--ink); border-top: 0; background: color-mix(in srgb, var(--paper) 96%, var(--ink)); }
+.nw-lexical-input { min-height: 420px; padding: clamp(18px, 4vw, 40px); outline: none; line-height: 1.9; font: 400 20px/1.9 var(--f-zh); overflow-wrap: anywhere; }
+.nw-lexical-input p { margin: 0 0 1.2em; }
+.nw-lexical-input h2, .nw-lexical-input h3, .nw-lexical-input h4 { font-family: var(--f-zh); line-height: 1.35; margin: 1.4em 0 .6em; }
+.nw-lexical-input h2 { font-size: 1.75em; } .nw-lexical-input h3 { font-size: 1.45em; } .nw-lexical-input h4 { font-size: 1.2em; }
+.nw-lexical-input blockquote { margin: 1.25em 0; padding: .1em 0 .1em 1.2em; border-left: 3px solid var(--or); color: var(--t2); }
+.nw-lexical-input ul, .nw-lexical-input ol { padding-left: 1.6em; }
+.nw-lexical-input a { text-decoration: underline; text-decoration-color: var(--or); text-underline-offset: 3px; }
+.nw-lexical-input pre { overflow-x: auto; padding: 16px; background: var(--ink); color: var(--paper); font: 14px/1.7 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.nw-lexical-input code { font: .85em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.nw-lexical-placeholder { color: var(--t2); opacity: .7; font: 400 20px/1.9 var(--f-zh); margin: 0; }
+.nw-lexical-empty-note { color: var(--t2); font-size: 13px; margin: 10px 0 0; }
+.nw-authoring-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 20px; }
+.nw-authoring-actions .nw-m { flex: 1 1 100%; }
+@media (max-width: 767px) {
+  .nw-auth-panel h1, .nw-authoring h1 { font-size: 48px; }
+  .nw-authoring-grid { grid-template-columns: 1fr; }
+  .nw-article-fields { grid-template-columns: 1fr; }
+  .nw-article-fields .nw-field-wide { grid-column: auto; }
+  .nw-lexical-input { min-height: 320px; font-size: 18px; }
+}
