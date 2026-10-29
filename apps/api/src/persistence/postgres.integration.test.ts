@@ -24,11 +24,28 @@ after(async () => { if (sql) await sql.end({ timeout: 5 }); });
 test("migrations are repeatable and record applied versions once", integrationOptions, async () => {
   const first = await runMigrations(sql);
   const second = await runMigrations(sql);
-  assert.equal(first.discovered, 15);
+  assert.equal(first.discovered, 16);
   assert.equal(second.applied.length, 0);
-  const versions = ["0001_initial_domain_schema", "0002_article_content", "0003_author_profiles", "0004_article_engagement", "0005_article_taxonomies", "0006_conversation_lifecycle", "0007_user_follows", "0008_literary_work_types_and_zh_cn", "0009_public_article_search_trigram_indexes", "0010_outbox_lease_tokens", "0011_self_hosted_identity", "0012_article_content_versions", "0013_comment_content_versions", "0014_provider_migration_journal", "0015_media_assets"];
+  const versions = ["0001_initial_domain_schema", "0002_article_content", "0003_author_profiles", "0004_article_engagement", "0005_article_taxonomies", "0006_conversation_lifecycle", "0007_user_follows", "0008_literary_work_types_and_zh_cn", "0009_public_article_search_trigram_indexes", "0010_outbox_lease_tokens", "0011_self_hosted_identity", "0012_article_content_versions", "0013_comment_content_versions", "0014_provider_migration_journal", "0015_media_assets", "0016_article_comment_idempotency"];
   const rows = await sql.unsafe("SELECT version FROM api_schema_migrations WHERE version = ANY($1::text[])", [versions]);
   assert.deepEqual(rows.map((row) => row.version).sort(), versions);
+});
+
+test("PostgreSQL comment idempotency migration preserves existing comments", integrationOptions, async () => {
+  const migration = await readFile(new URL("./migrations/0016_article_comment_idempotency.sql", import.meta.url), "utf8");
+  const commentId = randomUUID();
+  await sql.begin(async (tx) => {
+    // A temporary legacy-shaped table verifies the migration adds nullable columns without dropping rows.
+    await tx.unsafe("CREATE TEMP TABLE article_comments (id uuid PRIMARY KEY, author_id text NOT NULL) ON COMMIT DROP");
+    await tx.unsafe("INSERT INTO article_comments (id, author_id) VALUES ($1, $2)", [commentId, "legacy-author"]);
+    await tx.unsafe(migration);
+    const rows = await tx.unsafe("SELECT idempotency_key_hash, request_hash FROM article_comments WHERE id = $1", [commentId]);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].idempotency_key_hash, null);
+    assert.equal(rows[0].request_hash, null);
+    const index = await tx.unsafe("SELECT to_regclass('pg_temp.article_comments_author_idempotency_key_idx') AS index_name");
+    assert.ok(index[0].index_name, "migration must create the scoped idempotency unique index");
+  });
 });
 
 test("PostgreSQL media metadata persists normalized image fields and enforces ownership constraints", integrationOptions, async () => {

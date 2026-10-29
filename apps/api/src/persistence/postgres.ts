@@ -449,7 +449,7 @@ export function createPostgresStore(sql) {
       }
       return roots;
     },
-    async createArticleComment({ slug, locale = "zh-CN", actorId, content, contentBlocks = null, contentBlocksVersion = 0, parentCommentId = null }) {
+    async createArticleComment({ slug, locale = "zh-CN", actorId, content, contentBlocks = null, contentBlocksVersion = 0, parentCommentId = null, idempotencyKey = null }) {
       validateArticleSlug(slug);
       validateArticleLocale(locale);
       requiredText("actorId", actorId, 300);
@@ -457,7 +457,29 @@ export function createPostgresStore(sql) {
       if (parentCommentId !== null && !isUuid(parentCommentId)) {
         throw new ArticleInputError("parentCommentId must be a valid comment ID.");
       }
+      if (idempotencyKey !== null && (typeof idempotencyKey !== "string" || idempotencyKey.length === 0 ||
+          idempotencyKey.length > 300 || idempotencyKey.trim() !== idempotencyKey)) {
+        throw new ArticleInputError("Idempotency-Key must be a non-empty trimmed string no longer than 300 characters.");
+      }
+      const idempotencyKeyHash = idempotencyKey === null ? null : requestHash({
+        method: "POST", route: "/api/v1/articles/" + slug + "/comments", actorId, key: idempotencyKey,
+      });
+      const fingerprint = requestHash({
+        slug, locale, actorId, content: normalizedContent.content,
+        contentBlocks: normalizedContent.contentBlocks,
+        contentBlocksVersion: normalizedContent.contentBlocksVersion, parentCommentId,
+      });
       return sql.begin(async (tx) => {
+        if (idempotencyKeyHash !== null) {
+          const existing = await tx.unsafe(
+            "SELECT * FROM article_comments WHERE author_id = $1 AND idempotency_key_hash = $2 FOR UPDATE",
+            [actorId, idempotencyKeyHash],
+          );
+          if (existing[0]) {
+            if (existing[0].request_hash !== fingerprint) throw new IdempotencyConflictError();
+            return mapArticleComment({ ...existing[0], locale });
+          }
+        }
         const transactionId = createMigrationTransactionId();
         const changes = [];
         const articles = await tx.unsafe(
@@ -476,12 +498,24 @@ export function createPostgresStore(sql) {
           parentAuthorId = parentRows[0].author_id;
         }
         const rows = await tx.unsafe(
-          "INSERT INTO article_comments (id, article_id, author_id, parent_comment_id, content, content_blocks, content_blocks_version) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7) RETURNING id, article_id, author_id, parent_comment_id, content, content_blocks, content_blocks_version, created_at, updated_at",
+          "INSERT INTO article_comments (id, article_id, author_id, parent_comment_id, content, content_blocks, content_blocks_version, idempotency_key_hash, request_hash) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9) ON CONFLICT (author_id, idempotency_key_hash) WHERE idempotency_key_hash IS NOT NULL DO NOTHING RETURNING *",
           [randomUUID(), article.id, actorId, parentCommentId, normalizedContent.content,
             normalizedContent.contentBlocks === null ? null : normalizedContent.contentBlocks,
-            normalizedContent.contentBlocksVersion],
+            normalizedContent.contentBlocksVersion, idempotencyKeyHash, idempotencyKeyHash === null ? null : fingerprint],
         );
-        const comment = rows[0];
+        let comment = rows[0];
+        if (!comment && idempotencyKeyHash !== null) {
+          // A concurrent request may have committed after our first read. The
+          // unique index is the arbiter; read its winner under a fresh statement snapshot.
+          const raced = await tx.unsafe(
+            "SELECT * FROM article_comments WHERE author_id = $1 AND idempotency_key_hash = $2 FOR UPDATE",
+            [actorId, idempotencyKeyHash],
+          );
+          if (!raced[0]) throw new Error("Idempotency record disappeared during comment creation.");
+          if (raced[0].request_hash !== fingerprint) throw new IdempotencyConflictError();
+          return mapArticleComment({ ...raced[0], locale });
+        }
+        if (!comment) throw new Error("Comment insert did not return a row.");
         changes.push({ entityType: "article_comments", entityId: comment.id, operation: "upsert", payload: comment });
         const recipients = new Map();
         if (article.author_id !== actorId) recipients.set(article.author_id, "article.commented");

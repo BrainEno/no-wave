@@ -1629,6 +1629,13 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
         sendBadInput(response, normalized.error ?? "Invalid comment input.");
         return true;
       }
+      const rawIdempotencyKey = request.headers["idempotency-key"];
+      if (rawIdempotencyKey !== undefined &&
+          (typeof rawIdempotencyKey !== "string" || rawIdempotencyKey.length === 0 ||
+           rawIdempotencyKey.length > 300 || rawIdempotencyKey.trim() !== rawIdempotencyKey)) {
+        sendBadInput(response, "Idempotency-Key must be a non-empty trimmed string no longer than 300 characters.");
+        return true;
+      }
       try {
         const actorId = await authenticatedActorId(request, services, env);
         if (!actorId) {
@@ -1637,6 +1644,7 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
         }
         const comment = await services.createArticleComment({
           slug, locale, actorId, ...normalized.input,
+          ...(typeof rawIdempotencyKey === "string" ? { idempotencyKey: rawIdempotencyKey } : {}),
         });
         sendJson(response, 201, { data: await serializeRestComment(services, comment, actorId) });
       } catch (error: unknown) {

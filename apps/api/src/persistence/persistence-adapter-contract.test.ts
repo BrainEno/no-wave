@@ -751,9 +751,19 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
         authorId: articleAuthor, slug, title: "Comment notification contract", summary: "",
         locale: "zh-CN", contentBlocks: [{ id: "p1", type: "paragraph", text: "Shared persistence contract content." }], publish: true,
       });
-      const root = await runtime.store.createArticleComment({
+      const rootInput = {
         slug, locale: "zh-CN", actorId: commenterA, content: "Root comment",
-      });
+        idempotencyKey: `root-comment-once-${suffix}`,
+      };
+      const [root, rootRetry] = await Promise.all([
+        runtime.store.createArticleComment(rootInput),
+        runtime.store.createArticleComment(rootInput),
+      ]);
+      assert.equal(rootRetry.id, root.id, "concurrent retries must return the original comment");
+      await assert.rejects(
+        Promise.resolve().then(() => runtime.store.createArticleComment({ ...rootInput, content: "different comment" })),
+        IdempotencyConflictError,
+      );
       const rootNotifications = await runtime.store.listNotifications({ actorId: articleAuthor, limit: 100 });
       assert.equal(rootNotifications.filter((item) => item.eventKey === `article.commented:${root.id}`).length, 1);
       assert.equal((await runtime.store.listNotifications({ actorId: commenterA, limit: 100 })).length, 0);
