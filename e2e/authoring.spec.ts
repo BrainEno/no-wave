@@ -226,10 +226,17 @@ async function savedSlug(page: Page, title: string, status: SavedArticle["status
  * only the traffic tells them apart.
  */
 let traffic: string[] = [];
+/** Console output and uncaught exceptions: a handler that throws looks like a
+ *  click that did nothing, and the page error is the only trace it leaves. */
+let consoleLog: string[] = [];
 
 test.beforeEach(async ({ page }) => {
   traffic = [];
+  consoleLog = [];
   const record = (line: string): void => { if (traffic.length < 40) traffic.push(line); };
+  const recordConsole = (line: string): void => { if (consoleLog.length < 40) consoleLog.push(line); };
+  page.on("console", (message) => recordConsole(`${message.type()}: ${message.text().slice(0, 300)}`));
+  page.on("pageerror", (error) => recordConsole(`pageerror: ${String(error).slice(0, 300)}`));
   const watched = (url: string): boolean => /\/api\/(authoring|auth)/.test(url);
   page.on("request", (request) => {
     if (!watched(request.url())) return;
@@ -247,7 +254,7 @@ test.beforeEach(async ({ page }) => {
 
 test.afterEach(async ({ page }, testInfo) => {
   if (testInfo.status !== "failed" && testInfo.status !== "timedOut") return;
-  console.log(`FAILED ${testInfo.title} at ${page.url()}\ntraffic:\n${traffic.join("\n")}\n${await pageDigest(page)}`);
+  console.log(`FAILED ${testInfo.title} at ${page.url()}\ntraffic:\n${traffic.join("\n")}\nconsole:\n${consoleLog.join("\n")}\n${await pageDigest(page)}`);
 });
 
 test("the sign-in form registers an account and opens the authoring desk", async ({ page }) => {
@@ -306,7 +313,7 @@ test("saving a draft creates the article with a generated address, and it surviv
     const editorText = ((await page.getByLabel("作品正文").textContent()) ?? "").slice(0, 120);
     const titleValue = await page.getByLabel("标题").inputValue();
     throw new Error(
-      `publishing the saved draft did not report success; focused=${JSON.stringify(focused)} requests=${requestsBefore}->${traffic.length} alerts=${JSON.stringify(alerts)} editor=${JSON.stringify(editorText)}\ntraffic:\n${traffic.join("\n")}\n${String(caught)}`,
+      `publishing the saved draft did not report success; focused=${JSON.stringify(focused)} requests=${requestsBefore}->${traffic.length} alerts=${JSON.stringify(alerts)}\ntraffic:\n${traffic.join("\n")}\nconsole:\n${consoleLog.join("\n")}\n${String(caught)}`,
     );
   }
   await expect(async () => {
