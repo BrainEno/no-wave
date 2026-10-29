@@ -15,6 +15,7 @@ import { index, route } from "@react-router/dev/routes";
  */
 export default [
   index("routes/home.tsx"),
+  route("en", "routes/home.tsx", { id: "en-home" }),
   route("articles", "routes/archive.tsx"),
   route("en/articles", "routes/archive.tsx", { id: "en-archive" }),
   route("authors/:username", "routes/author.tsx"),
@@ -29,6 +30,8 @@ export default [
   route("en/articles/:slug", "routes/article.tsx", { id: "en-article" }),
   route("sign-in", "routes/sign-in.tsx"),
   route("account", "routes/account.tsx"),
+  route("sitemap.xml", "routes/sitemap.xml.ts"),
+  route("robots.txt", "routes/robots.txt.ts"),
   route("api/auth/:action", "routes/api.auth.ts"),
   route("api/media/:id", "routes/api.media.ts"),
   route("api/authoring/media", "routes/api.authoring.media.ts"),

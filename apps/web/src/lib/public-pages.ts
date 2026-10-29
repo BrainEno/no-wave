@@ -192,3 +192,27 @@ export async function loadCategoryDetailPage(
     hasNextPage: results.length > CATEGORY_PAGE_SIZE,
   };
 }
+
+export const HOME_LATEST_LIMIT = 10;
+export const HOME_CATEGORY_LIMIT = 8;
+
+export type HomePageData = {
+  locale: Locale;
+  articles: ArticleView[];
+  categories: CategoryView[];
+};
+
+/**
+ * Home page data: the newest articles plus the category chips.
+ *
+ * Two calls, run together. The category read is failure-isolated — a broken
+ * taxonomy endpoint must degrade the topics row to the work-type fallback, not
+ * take the home page down with it.
+ */
+export async function loadHomePage(options: { locale: Locale }): Promise<HomePageData> {
+  const [articles, categories] = await Promise.all([
+    listPublicArticles({ locale: options.locale, limit: HOME_LATEST_LIMIT }),
+    listPublicCategories({ locale: options.locale, limit: HOME_CATEGORY_LIMIT }).catch((): CategoryView[] => []),
+  ]);
+  return { locale: options.locale, articles, categories };
+}

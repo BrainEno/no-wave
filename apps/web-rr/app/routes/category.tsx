@@ -4,8 +4,9 @@ import { loadCategoryDetailPage } from "@/lib/public-pages.ts";
 import { parsePage } from "@/lib/work-types.ts";
 import { CategoryDetailContent } from "@/components/discovery-pages.tsx";
 import { PUBLIC_PAGE_HEADERS } from "../lib/http-policy.ts";
-import { upstreamUnavailable } from "../lib/loader-errors.ts";
+import { entityNotFound, upstreamUnavailable } from "../lib/loader-errors.ts";
 import { localeFor } from "../lib/locale.ts";
+import { titleWithSite } from "../lib/meta.ts";
 
 /**
  * Category detail for `/categories/:slug` and `/en/categories/:slug`.
@@ -28,7 +29,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     throw upstreamUnavailable(error);
   }
   // Unknown slug: 404 before any HTML is committed, never a soft 404.
-  if (!loaded.category) throw data({ reason: "category-not-found", slug: params.slug ?? null }, { status: 404 });
+  if (!loaded.category) throw entityNotFound("category-not-found");
   // Narrowed: the view requires a category, and the route has already answered
   // 404 when there is none.
   return { locale: loaded.locale, category: loaded.category, articles: loaded.articles, page: loaded.page, hasNextPage: loaded.hasNextPage };
@@ -37,9 +38,9 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 export const headers: HeadersFunction = () => PUBLIC_PAGE_HEADERS;
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
-  if (!data) return [{ title: "页面未找到 | 无浪潮" }];
+  if (!data) return [{ title: titleWithSite(undefined) }];
   return [
-    { title: data.category.name },
+    { title: titleWithSite(data.category.name) },
     { name: "description", content: data.category.description || `浏览「${data.category.name}」分类中的已发表作品。` },
   ];
 };

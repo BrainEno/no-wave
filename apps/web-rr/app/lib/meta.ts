@@ -9,6 +9,22 @@ import type { MetaDescriptor } from "react-router";
  * alternates, Open Graph fields — stays in one shared, framework-free place
  * while the framework-specific spelling lives in one 40-line file.
  */
+/**
+ * The site title template.
+ *
+ * Mirrors `apps/web/src/app/layout.tsx` (`title.template: "%s | 无浪潮"`), so a
+ * page that is rendered by either application carries the same `<title>` — this
+ * is part of the SEO parity the migration is required to preserve.
+ */
+export const SITE_TITLE_SUFFIX = " | 无浪潮";
+export const DEFAULT_TITLE = "无浪潮 · No Wave";
+
+export function titleWithSite(title: string | undefined): string {
+  if (!title) return DEFAULT_TITLE;
+  if (title === DEFAULT_TITLE || title.endsWith(SITE_TITLE_SUFFIX)) return title;
+  return `${title}${SITE_TITLE_SUFFIX}`;
+}
+
 export type SharedMetadata = {
   title: string;
   description?: string;
@@ -16,8 +32,20 @@ export type SharedMetadata = {
   openGraph?: { type?: string; title?: string; description?: string; url?: string; locale?: string };
 };
 
-export function metaDescriptors(metadata: SharedMetadata): MetaDescriptor[] {
-  const descriptors: MetaDescriptor[] = [{ title: metadata.title }];
+/**
+ * @param absoluteTitle — render the page title without the site suffix.
+ *
+ * The App Router applies its root layout's `title.template` to descendant
+ * segments only, so `/` is served with the bare home title while `/en` (one
+ * segment deeper) carries " | 无浪潮". The prototype mirrors both exactly.
+ */
+export function metaDescriptors(
+  metadata: SharedMetadata,
+  options: { absoluteTitle?: boolean } = {},
+): MetaDescriptor[] {
+  const descriptors: MetaDescriptor[] = [
+    { title: options.absoluteTitle ? metadata.title ?? DEFAULT_TITLE : titleWithSite(metadata.title) },
+  ];
   if (metadata.description) descriptors.push({ name: "description", content: metadata.description });
 
   const canonical = metadata.alternates?.canonical;
