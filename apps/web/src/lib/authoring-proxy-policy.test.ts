@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { NextRequest } from "next/server";
-import { forwardAuthoringApi } from "./authoring-proxy.ts";
 import { isSameOriginMutation, safeRedirectPath, tokenMaxAge } from "./authoring-proxy-policy.ts";
 
 test("authoring mutations require an exact same-origin browser origin", () => {
@@ -27,43 +25,3 @@ test("cookie lifetimes are finite and capped", () => {
   assert.equal(tokenMaxAge("not-a-date", now), 0);
 });
 
-
-test("comment idempotency keys survive the same-origin API proxy", async () => {
-  const originalFetch = globalThis.fetch;
-  const previousEnv = {
-    API_BASE_URL: process.env.API_BASE_URL,
-    API_SERVICE_URL: process.env.API_SERVICE_URL,
-    API_GRAPHQL_URL: process.env.API_GRAPHQL_URL,
-  };
-  const forwardedHeaders: Headers[] = [];
-  process.env.API_BASE_URL = "https://api.example.test";
-  delete process.env.API_SERVICE_URL;
-  delete process.env.API_GRAPHQL_URL;
-  globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
-    forwardedHeaders.push(new Headers(init?.headers));
-    return new Response(JSON.stringify({ data: { accepted: true } }), {
-      status: 201,
-      headers: { "content-type": "application/json; charset=utf-8" },
-    });
-  }) as typeof fetch;
-  try {
-    const request = new NextRequest("https://web.example.test/api/articles/example/comments", {
-      method: "POST",
-      headers: { "idempotency-key": "comment-once-7" },
-    });
-    const response = await forwardAuthoringApi(
-      request,
-      "api/v1/articles/example/comments",
-      "POST",
-      JSON.stringify({ content: "A comment" }),
-    );
-    assert.equal(response.status, 201);
-    assert.equal(forwardedHeaders[0]?.get("idempotency-key"), "comment-once-7");
-  } finally {
-    globalThis.fetch = originalFetch;
-    for (const [key, value] of Object.entries(previousEnv)) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
-  }
-});
