@@ -1751,3 +1751,75 @@ test("metrics endpoint is disabled by default to avoid public operational-data e
     });
   });
 });
+
+
+test("media upload route requires authentication and passes bounded binary data to the media service", async () => {
+  const calls: Array<{ ownerId: string; contentType: string; bytes: Buffer }> = [];
+  const assetId = "11111111-1111-4111-8111-111111111111";
+  const mediaAssets = {
+    async upload(input) {
+      calls.push({ ownerId: input.ownerId, contentType: input.contentType, bytes: input.bytes });
+      return { id: assetId, src: "/api/media/" + assetId, contentType: "image/webp", byteSize: 12, width: 10, height: 8 };
+    },
+    async getPublic() { throw new Error("unused"); },
+  };
+  const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
+  await withServer(async (baseUrl) => {
+    const unauthenticated = await fetch(baseUrl + "/api/v1/me/media", {
+      method: "POST",
+      headers: { "content-type": "image/png" },
+      body: bytes,
+    });
+    assert.equal(unauthenticated.status, 401);
+
+    const response = await fetch(baseUrl + "/api/v1/me/media", {
+      method: "POST",
+      headers: { authorization: "Bearer " + signedToken("media-writer"), "content-type": "image/png" },
+      body: bytes,
+    });
+    assert.equal(response.status, 201);
+    assert.deepEqual(await response.json(), { data: { id: assetId, src: "/api/media/" + assetId, contentType: "image/webp", byteSize: 12, width: 10, height: 8 } });
+
+    const unsupported = await fetch(baseUrl + "/api/v1/me/media", {
+      method: "POST",
+      headers: { authorization: "Bearer " + signedToken("media-writer"), "content-type": "image/svg+xml" },
+      body: "<svg/>",
+    });
+    assert.equal(unsupported.status, 415);
+  }, { env: authEnv, store: {}, mediaAssets });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].ownerId, "media-writer");
+  assert.equal(calls[0].contentType, "image/png");
+  assert.deepEqual(calls[0].bytes, bytes);
+});
+
+test("public media route emits an immutable WebP response and supports conditional requests", async () => {
+  const assetId = "11111111-1111-4111-8111-111111111111";
+  const bytes = Buffer.from("RIFF-test-webp");
+  const sha256 = "a".repeat(64);
+  let calls = 0;
+  const mediaAssets = {
+    async upload() { throw new Error("unused"); },
+    async getPublic({ id }) {
+      calls += 1;
+      assert.equal(id, assetId);
+      return { id, bytes, byteSize: bytes.byteLength, width: 10, height: 8, sha256, contentType: "image/webp" as const };
+    },
+  };
+  await withServer(async (baseUrl) => {
+    const url = baseUrl + "/api/v1/media/" + assetId;
+    const response = await fetch(url);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("content-type"), "image/webp");
+    assert.match(response.headers.get("cache-control") ?? "", /immutable/);
+    assert.equal(response.headers.get("etag"), '"' + sha256 + '"');
+    assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+    assert.deepEqual(Buffer.from(await response.arrayBuffer()), bytes);
+
+    const cached = await fetch(url, { headers: { "if-none-match": '"' + sha256 + '"' } });
+    assert.equal(cached.status, 304);
+    assert.equal(cached.headers.get("etag"), '"' + sha256 + '"');
+  }, { mediaAssets });
+  assert.equal(calls, 2);
+});
