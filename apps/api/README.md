@@ -7,6 +7,10 @@ This package is the backend API of the independent BOT THK rebuild. Versioned RE
 - `GET /health` is a liveness probe and does not require persistence.
 - `GET /ready` is a readiness probe: it returns `200` only when a configured persistence store passes its health check, otherwise `503` with a sanitized response. Both responses are non-cacheable.
 
+## Write idempotency
+
+The reviewed mutation-by-mutation classification and follow-up acceptance plan for `Idempotency-Key` is maintained in [the REST write idempotency inventory](../../docs/audit/rest-write-idempotency-inventory.md). Keep that inventory current when adding or changing a REST mutation. The current comment-create implementation is a first slice; do not assume all write routes support replay semantics.
+
 ## Write rate limits
 
 All business write routes under `/api/v1` use the shared persistent rate-limit port. Limits are enforced independently by verified user ID and the TCP peer IP, with a route-specific bucket; requests without a valid viewer identity are still covered by the IP bucket. Bucket identifiers are HMAC digests, not raw account IDs or IP addresses. The API ignores client-supplied `X-Forwarded-For`; deployments behind a reverse proxy must configure trusted edge/proxy rate limiting rather than forwarding untrusted client values.
