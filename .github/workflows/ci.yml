@@ -121,8 +121,13 @@ jobs:
       DATABASE_PROVIDER: sqlite
       DATABASE_URL: ""
       # A disposable database: the suite registers accounts and writes articles,
-      # so nothing it creates should outlive the runner.
-      DATABASE_PATH: ${{ runner.temp }}/no-wave-e2e.sqlite
+      # so nothing it creates should outlive the job. A literal path rather than
+      # `${{ runner.temp }}` — a job-level `env` entry that expands the `runner`
+      # context is rejected when the workflow file is validated, and the run then
+      # starts zero jobs ("workflow file may be broken") instead of failing a
+      # step. `/tmp` on a GitHub-hosted runner is writable and is discarded with
+      # the VM the job ran on.
+      DATABASE_PATH: /tmp/no-wave-e2e.sqlite
       AUTH_JWT_SECRET: local-development-ci-secret-0123456789abcdef
       AUTH_JWT_ISSUER: http://localhost:4000
       AUTH_JWT_AUDIENCE: no-wave

@@ -53,8 +53,7 @@ therefore required before a local run.
 started. In CI the job builds both and starts its own stack.
 
 `DATABASE_PATH` decides where the SQLite file lives. CI points it at
-`${{ runner.temp }}/no-wave-e2e.sqlite`, so every run starts from an empty
-database — the journeys create real accounts and real articles, and nothing they
+`/tmp/no-wave-e2e.sqlite`, so every run starts from an empty database — the journeys create real accounts and real articles, and nothing they
 write outlives the runner. Locally it defaults to the development database; point
 it somewhere temporary for a clean run:
 
