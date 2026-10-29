@@ -89,8 +89,12 @@ test("Lexical list types and code language/text survive conversion", () => {
 });
 
 test("unsupported custom nodes and data that the application contract cannot represent fail closed", () => {
-  const imageDocument = [{ id: "image", type: "image", src: "/media/cover.webp", alt: "Cover" }];
-  assert.throws(() => articleDocumentToLexicalEditorState(imageDocument), { code: "BAD_USER_INPUT" });
+  const imageDocument = [{ id: "image", type: "image", src: "/api/media/11111111-1111-4111-8111-111111111111", alt: "Cover", caption: "A safe caption" }];
+  const imageState = articleDocumentToLexicalEditorState(imageDocument);
+  assert.deepEqual(lexicalEditorStateToArticleDocument(imageState, { previousBlocks: imageDocument }).contentBlocks, imageDocument);
+  assert.throws(() => lexicalEditorStateToArticleDocument({
+    root: lexicalElement("root", [{ type: "image", version: 1, src: "javascript:alert(1)", alt: "unsafe" }]),
+  }), { code: "BAD_USER_INPUT" });
   assert.throws(() => articleDocumentToLexicalEditorState([
     { id: "quote", type: "quote", text: "Attribution", attribution: "A writer" },
   ]), { code: "BAD_USER_INPUT" });

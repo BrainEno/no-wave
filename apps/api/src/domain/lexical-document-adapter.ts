@@ -193,6 +193,23 @@ function parseBlock(node, index) {
     return { id: "lexical-block-" + (index + 1), type: "code", language, code };
   }
 
+  if (node.type === "image") {
+    onlyKeys(node, new Set(["type", "version", "src", "alt", "caption"]), path);
+    if (typeof node.src !== "string" || typeof node.alt !== "string") {
+      fail(path, "requires string src and alt fields for an approved image node.");
+    }
+    if (node.caption !== undefined && typeof node.caption !== "string") {
+      fail(path + ".caption", "must be a string when present.");
+    }
+    return {
+      id: "lexical-block-" + (index + 1),
+      type: "image",
+      src: node.src,
+      alt: node.alt,
+      ...(typeof node.caption === "string" && node.caption.length > 0 ? { caption: node.caption } : {}),
+    };
+  }
+
   fail(path, 'contains unsupported block node type "' + node.type + '".');
 }
 function textFormat(marks = []) {
@@ -269,6 +286,15 @@ function toLexicalBlock(block, index) {
   if (block.type === "code") {
     const children = block.code.length ? [lexicalTextNode({ text: block.code })] : [];
     return lexicalElement("code", children, { language: block.language, theme: "" });
+  }
+  if (block.type === "image") {
+    return {
+      type: "image",
+      version: 1,
+      src: block.src,
+      alt: block.alt,
+      ...(block.caption ? { caption: block.caption } : {}),
+    };
   }
   fail(path, 'block type "' + block.type + '" has no registered Lexical node adapter.');
 }
