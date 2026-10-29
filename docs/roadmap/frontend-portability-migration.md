@@ -4,7 +4,8 @@
 - Target: React Router 7 Framework Mode
 - Current implementation: Next.js App Router, preserved until staged migration passes
 - Baseline audited: `main@d9515c6d66881a7599d35581f38640b0ebb74a78`
-- Status: Architecture/route inventory recorded; no production framework code has been replaced yet
+- Status: Architecture/route inventory recorded; **Phase 1 prototype delivered** in `apps/web-rr`
+  ([report](react-router-prototype.md)); no production framework code has been replaced yet
 
 ## 1. Approved outcome
 
@@ -110,16 +111,21 @@ The owner accepts cold starts and free-instance sleep but does not accept card-r
 
 ### Phase 1 — Hosting feasibility and isolated portability prototype
 
-- [ ] Re-check main and all nested `AGENTS.md` / relevant ADRs before coding.
+- [x] Re-check main and all nested `AGENTS.md` / relevant ADRs before coding.
 - [ ] Verify one or more no-card, zero-cost hosting candidates. If none pass, stop and report options without relaxing the requirement.
-- [ ] Build an isolated React Router 7 Framework Mode proof of concept using a mocked REST API, separate from the current production `apps/web`.
-- [ ] Prove a public article route renders server HTML, title/description/canonical/Open Graph metadata and a hard 404 for an unknown slug.
-- [ ] Prove a client-interactive form handles valid input, validation errors, API failures and explicit pending/success states.
-- [ ] Prove a private route/response does not expose user data in SSR HTML or shared caches.
-- [ ] Build and start via standard Node.js in a container or equivalent neutral environment, without Vercel bindings.
-- [ ] Add the minimum deterministic test/build workflow for the prototype and record platform-specific assumptions.
+- [x] Build an isolated React Router 7 Framework Mode proof of concept using a mocked REST API, separate from the current production `apps/web`. → `apps/web-rr`
+- [x] Prove a public article route renders server HTML, title/description/canonical/Open Graph metadata and a hard 404 for an unknown slug.
+- [x] Prove a client-interactive form handles valid input, validation errors, API failures and explicit pending/success states.
+- [x] Prove a private route/response does not expose user data in SSR HTML or shared caches.
+- [x] Build and start via standard Node.js in a container or equivalent neutral environment, without Vercel bindings. → `apps/web-rr/server.ts`
+- [x] Add the minimum deterministic test/build workflow for the prototype and record platform-specific assumptions. → `pnpm test:prototype` + CI job `react-router-prototype`
 
 **Exit gate:** framework SSR/client behavior and standard-runtime startup are demonstrated; host feasibility is established independently of marketing claims.
+
+**Status 2026-10-29:** all framework/runtime items are done and recorded in the
+[prototype report](react-router-prototype.md). The **hosting qualification gate is
+still open** — no candidate has been verified against the no-card/zero-cost terms,
+so the phase is not complete and no provider-specific code exists.
 
 ### Phase 2 — Framework-independent HTTP and deployment seams
 
