@@ -22,7 +22,7 @@ test("Neon database health function sanitizes database failures", async () => {
   const body = JSON.stringify(await response.json());
   assert.equal(response.status, 503);
   assert.match(body, /not_ready/);
-  assert.doesNotMatch(body, /secret connection string|postgres:///i);
+  assert.doesNotMatch(body, /secret connection string|postgres:/i);
 });
 
 test("Neon database health function only supports GET / and GET /health", async () => {
