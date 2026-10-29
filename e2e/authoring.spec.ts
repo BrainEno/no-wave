@@ -267,7 +267,9 @@ test("publishing an article makes it readable at its generated address with a ge
 
   await page.goto(`/articles/${slug}`);
   await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible({ timeout: 45_000 });
-  await expect(page.getByText("第一段用来验证保存链路。")).toBeVisible();
+  // Exact: the summary is rendered as a standfirst paragraph that starts with
+  // the same sentence, so a substring match would be ambiguous.
+  await expect(page.getByText(FIRST_PARAGRAPH, { exact: true })).toBeVisible();
 
   // The summary was left blank in the editor, so the API derived it from the
   // body: the page description must be the beginning of the prose, not empty.
