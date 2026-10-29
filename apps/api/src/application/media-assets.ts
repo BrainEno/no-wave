@@ -105,7 +105,12 @@ export function createMediaAssetService({ store, storage }: {
       const normalized = await normalizeUploadedImage(bytes, contentType);
       const id = randomUUID();
       const storageKey = `assets/${ownerId}/${id}.webp`;
-      await storage.putObject({ key: storageKey, bytes: normalized.bytes, sha256: normalized.sha256 });
+      try {
+        await storage.putObject({ key: storageKey, bytes: normalized.bytes, sha256: normalized.sha256 });
+      } catch {
+        try { await storage.deleteObject(storageKey); } catch { /* storage may be unavailable; no database row exists yet */ }
+        throw new MediaStorageUnavailableError("The image could not be stored. Check the configured media service.");
+      }
       try {
         const asset = await store.createMediaAsset({
           id, ownerId, storageKey, contentType: normalized.contentType,
@@ -124,7 +129,12 @@ export function createMediaAssetService({ store, storage }: {
       if (!asset.storageKey.startsWith(`assets/${asset.ownerId}/`) || !asset.storageKey.endsWith(`.webp`) || asset.contentType !== "image/webp") {
         throw new MediaStorageUnavailableError("Stored media metadata is inconsistent.");
       }
-      const bytes = await storage.getObject(asset.storageKey);
+      let bytes: Buffer;
+      try {
+        bytes = await storage.getObject(asset.storageKey);
+      } catch {
+        throw new MediaStorageUnavailableError("The stored image could not be retrieved.");
+      }
       if (bytes.byteLength !== asset.byteSize || createHash("sha256").update(bytes).digest("hex") !== asset.sha256) {
         throw new MediaStorageUnavailableError("Stored media integrity validation failed.");
       }

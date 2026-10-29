@@ -166,7 +166,7 @@ function Toolbar({ onStatus, onError }: { onStatus(message: string): void; onErr
       <button type="button" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "strikethrough")}><s>S</s></button>
       <button type="button" onClick={addLink}>链接</button>
       <button type="button" disabled={uploading} onClick={() => fileInput.current?.click()}>{uploading ? "上传图片中…" : "插入图片"}</button>
-      <input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp" aria-label="选择要上传的图片" hidden onChange={(event) => void uploadImage(event.currentTarget.files?.[0])} />
+      <input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp" aria-label="选择要上传的图片" hidden onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; void uploadImage(file); }} />
       <button type="button" onClick={() => setBlock(() => $createCodeNode())}>代码块</button>
       <button type="button" onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)} aria-label="撤销">撤销</button>
       <button type="button" onClick={() => editor.dispatchCommand(REDO_COMMAND, undefined)} aria-label="重做">重做</button>
