@@ -15,10 +15,8 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
  * - every test creates its own account, so nothing depends on another test;
  * - account setup goes through HTTP (deterministic), the browser does every
  *   interaction the assertions are actually about;
- * - assertions wait on durable outcomes. The editor is remounted when a save
- *   selects the saved article, which currently discards its own status line,
- *   so the suite reads the article list and the public page instead of a
- *   message that the application throws away (see docs/testing/end-to-end.md).
+ * - assertions wait on durable outcomes (the article list, the public page,
+ *   the sidebar), so a flaky transient state cannot turn them green or red.
  */
 
 const PASSWORD = "e2e-browser-password";
@@ -253,11 +251,29 @@ test("saving a draft creates the article with a generated address, and it surviv
   const slug = await writeAndSave(page, title, false);
   expect(slug.length).toBeGreaterThan(0);
 
+  // The success line, with the generated address, has to stay on screen: it is
+  // the only place that tells the author where the work lives. It used to be
+  // discarded by the remount that followed the save.
+  const status = page.getByRole("status").filter({ hasText: "作品地址：" });
+  await expect(status).toContainText("草稿已保存。", { timeout: 45_000 });
+  await expect(status).toContainText(`作品地址：/articles/${slug}`);
+
+  // Saving again updates that article instead of creating a second one, and it
+  // is published from the same document without retyping anything.
+  await expect(page.getByRole("button", { name: "发布作品" })).toBeVisible();
+  await page.getByRole("button", { name: "发布作品" }).click();
+  await expect(status).toContainText("作品已发布。", { timeout: 45_000 });
+  await expect(async () => {
+    const saved = await savedArticles(page);
+    expect(saved).toHaveLength(1);
+    expect(saved[0]?.status).toBe("published");
+  }).toPass({ timeout: 45_000, intervals: [500, 1_000, 2_000] });
+
   // The sidebar is the durable UI signal; a reload re-reads it from the API.
   await page.reload();
   const entry = page.getByRole("button", { name: new RegExp(title) });
   await expect(entry).toBeVisible({ timeout: 45_000 });
-  await expect(entry).toContainText("草稿");
+  await expect(entry).toContainText("已发布");
 });
 
 test("publishing an article makes it readable at its generated address with a generated summary", async ({ page, request }) => {
