@@ -4,23 +4,31 @@ import { lexicalEditorStateToArticleDocument } from "../../domain/lexical-docume
 import { normalizeCommentContentInput } from "../../domain/comment-content.ts";
 import { createAuthContext } from "../../security/authentication.ts";
 import { createIdentityService } from "../../application/identity.ts";
+import type { ApplicationServices } from "../../application/services.ts";
 import { createRateLimitService, resolveWriteRateLimitPolicy, type RateLimitBucket, type RateLimitStore } from "../../application/rate-limit.ts";
-import type { IdentityStore } from "../../application/identity.ts";
 import { MediaAssetNotFoundError, MediaUploadInputError } from "../../application/media-assets.ts";
 import { MediaStorageUnavailableError } from "../../infrastructure/media-storage.ts";
+import { resolveRestRoute } from "./routes.ts";
 
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
   "cache-control": "no-store",
 };
 const SUPPORTED_LOCALES = new Set(["zh-CN", "zh-TW", "en"]);
+const NO_ROUTE_PARAMS: Readonly<Record<string, string>> = Object.freeze({});
 const MAX_QUERY_LENGTH = 200;
 const MAX_ARTICLE_OFFSET = 100_000;
 const MAX_TAXONOMY_OFFSET = 1_000_000;
 const MAX_JSON_BODY_BYTES = 2 * 1024 * 1024;
 const MAX_IMAGE_UPLOAD_BYTES = 8 * 1024 * 1024;
 
-type RestServices = Record<string, (...args: any[]) => any> & Partial<RateLimitStore> & Partial<IdentityStore>;
+/**
+ * The REST transport consumes the application facade, not an open-ended record of
+ * functions: `ApplicationServices` is derived from the persistence port table, so
+ * a mistyped method name fails `tsc` instead of failing on the one branch a test
+ * happens to miss (issue #66).
+ */
+type RestServices = ApplicationServices;
 
 function sendJson(response: ServerResponse, status: number, body: unknown): void {
   response.writeHead(status, JSON_HEADERS);
@@ -693,7 +701,10 @@ async function serializeRestComments(
  */
 export function createRestHandler({ services, env = process.env, mediaAssets = null }: { services: RestServices | null; env?: NodeJS.ProcessEnv; mediaAssets?: MediaAssetsPort | null }) {
   // The facade is assembled dynamically from the validated persistence ports.
-  const identity = services ? createIdentityService({ store: services as unknown as IdentityStore, env }) : null;
+  // `ApplicationServices` already carries the identity store methods
+  // (`createIdentityAccount`, `findIdentityAccount`, ...), so no assertion is
+  // needed to reach them (issue #66).
+  const identity = services ? createIdentityService({ store: services, env }) : null;
   const rateLimitStore: RateLimitStore | null = services && typeof services.consumeRateLimit === "function"
     ? {
         consumeRateLimit: (input: RateLimitBucket) => services.consumeRateLimit!(input),
@@ -718,13 +729,18 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    const identityRoute = url.pathname.match(/^\/api\/v1\/auth\/(register|login|refresh|logout)$/);
-    if (identityRoute) {
-      if (request.method !== "POST") {
-        response.setHeader("allow", "POST");
-        sendJson(response, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "The HTTP method is not supported for this endpoint." } });
-        return true;
-      }
+    // One parse per request. The route table owns every path, the methods each one
+    // accepts, and therefore the 405 allow-list; nothing below re-derives them.
+    const route = resolveRestRoute(url.pathname, request.method ?? "GET");
+    if (route.kind === "method_not_allowed") {
+      response.setHeader("allow", route.allow);
+      sendJson(response, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "The HTTP method is not supported for this endpoint." } });
+      return true;
+    }
+    const routeId = route.kind === "matched" ? route.id : null;
+    const routeParams: Readonly<Record<string, string>> = route.kind === "matched" ? route.params : NO_ROUTE_PARAMS;
+
+    if (routeId === "auth") {
       if (!identity) { sendUnavailable(response); return true; }
       const bodyResult = await readJsonObject(request, 4096);
       if (bodyResult.ok === false) { sendJsonBodyError(response, request, bodyResult); return true; }
@@ -732,172 +748,12 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
         // Never trust X-Forwarded-For supplied by the client. An operator must
         // enforce additional trusted-proxy/edge throttling when behind a proxy.
         const ip = request.socket.remoteAddress ?? "unknown";
-        const action = identityRoute[1] as "register" | "login" | "refresh" | "logout";
+        const action = routeParams.action as "register" | "login" | "refresh" | "logout";
         const data = await identity[action](bodyResult.value, ip);
         sendJson(response, action === "register" ? 201 : 200, { data });
       } catch (error: unknown) {
         sendServiceError(response, error);
       }
-      return true;
-    }
-
-    const mePath = url.pathname === "/api/v1/me";
-    const meProfilePath = url.pathname === "/api/v1/me/profile";
-    const meSessionPath = url.pathname === "/api/v1/me/session";
-    const meLikedArticlesPath = url.pathname === "/api/v1/me/liked-articles";
-    const usersSearchPath = url.pathname === "/api/v1/users";
-    const userRelationshipsMatch = url.pathname.match(/^\/api\/v1\/users\/([^/]+)\/(followers|following)$/);
-    const followPathMatch = url.pathname.match(/^\/api\/v1\/users\/([^/]+)\/follow$/);
-    const articleLikePathMatch = url.pathname.match(/^\/api\/v1\/articles\/([^/]+)\/like$/);
-    const relatedArticlesMatch = url.pathname.match(/^\/api\/v1\/articles\/([^/]+)\/related$/);
-    const articleCommentsPathMatch = url.pathname.match(/^\/api\/v1\/articles\/([^/]+)\/comments$/);
-    const commentItemPathMatch = url.pathname.match(/^\/api\/v1\/comments\/([^/]+)$/);
-    const tagsCollectionPath = url.pathname === "/api/v1/tags";
-    const taxonomyCollectionPath = url.pathname === "/api/v1/taxonomies";
-    const taxonomyItemMatch = url.pathname.match(/^\/api\/v1\/taxonomies\/([^/]+)$/);
-    const conversationsPath = url.pathname === "/api/v1/conversations";
-    const conversationMessagesMatch = url.pathname.match(/^\/api\/v1\/conversations\/([^/]+)\/messages$/);
-    const conversationParticipantsMatch = url.pathname.match(/^\/api\/v1\/conversations\/([^/]+)\/participants$/);
-    const conversationReadMatch = url.pathname.match(/^\/api\/v1\/conversations\/([^/]+)\/read$/);
-    const conversationItemMatch = url.pathname.match(/^\/api\/v1\/conversations\/([^/]+)$/);
-    const notificationsPath = url.pathname === "/api/v1/me/notifications";
-    const unreadNotificationCountPath = url.pathname === "/api/v1/me/notifications/unread-count";
-    const notificationReadMatch = url.pathname.match(/^\/api\/v1\/me\/notifications\/([^/]+)\/read$/);
-    const readAllNotificationsPath = url.pathname === "/api/v1/me/notifications/read-all";
-    const articleItemPath = /^\/api\/v1\/articles\/[^/]+$/.test(url.pathname);
-    const mediaItemMatch = url.pathname.match(/^\/api\/v1\/media\/([^/]+)$/);
-    const isUploadMedia = request.method === "POST" && url.pathname === "/api/v1/me/media";
-    const isCreateArticle = request.method === "POST" && url.pathname === "/api/v1/articles";
-    const isUpdateArticle = request.method === "PUT" && articleItemPath;
-    const isUpdateMyProfile = request.method === "PUT" && meProfilePath;
-    const isRevokeSession = request.method === "DELETE" && meSessionPath;
-    const isFollowUser = request.method === "POST" && followPathMatch !== null;
-    const isUnfollowUser = request.method === "DELETE" && followPathMatch !== null;
-    const isSetArticleLike = request.method === "PUT" && articleLikePathMatch !== null;
-    const isCreateArticleComment = request.method === "POST" && articleCommentsPathMatch !== null;
-    const isDeleteArticleComment = request.method === "DELETE" && commentItemPathMatch !== null;
-    const isCreateTag = request.method === "POST" && tagsCollectionPath;
-    const isCreateTaxonomy = request.method === "POST" && taxonomyCollectionPath;
-    const isDeleteTaxonomy = request.method === "DELETE" && taxonomyItemMatch !== null;
-    const isCreateConversation = request.method === "POST" && conversationsPath;
-    const isSendMessage = request.method === "POST" && conversationMessagesMatch !== null;
-    const isUpdateConversationParticipants = request.method === "PATCH" && conversationParticipantsMatch !== null;
-    const isDeleteConversation = request.method === "DELETE" && conversationItemMatch !== null;
-    const isMarkConversationRead = request.method === "PUT" && conversationReadMatch !== null;
-    const isMarkNotificationRead = request.method === "PUT" && notificationReadMatch !== null;
-    const isMarkAllNotificationsRead = request.method === "POST" && readAllNotificationsPath;
-
-    const rejectMethod = (allow: string) => {
-      response.setHeader("allow", allow);
-      sendJson(response, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "The HTTP method is not supported for this endpoint." } });
-    };
-    if (mePath && request.method !== "GET") {
-      rejectMethod("GET");
-      return true;
-    }
-    if (meProfilePath && request.method !== "GET" && request.method !== "PUT") {
-      rejectMethod("GET, PUT");
-      return true;
-    }
-    if (meSessionPath && request.method !== "DELETE") {
-      rejectMethod("DELETE");
-      return true;
-    }
-    if (meLikedArticlesPath && request.method !== "GET") {
-      rejectMethod("GET");
-      return true;
-    }
-    if (usersSearchPath && request.method !== "GET") {
-      rejectMethod("GET");
-      return true;
-    }
-    if (userRelationshipsMatch && request.method !== "GET") {
-      rejectMethod("GET");
-      return true;
-    }
-    if (followPathMatch && request.method !== "POST" && request.method !== "DELETE") {
-      rejectMethod("POST, DELETE");
-      return true;
-    }
-    if (articleLikePathMatch && request.method !== "GET" && request.method !== "PUT") {
-      rejectMethod("GET, PUT");
-      return true;
-    }
-    if (articleCommentsPathMatch && request.method !== "GET" && request.method !== "POST") {
-      rejectMethod("GET, POST");
-      return true;
-    }
-    if (relatedArticlesMatch && request.method !== "GET") {
-      rejectMethod("GET");
-      return true;
-    }
-    if (mediaItemMatch && request.method !== "GET") {
-      rejectMethod("GET");
-      return true;
-    }
-    if (url.pathname === "/api/v1/me/media" && request.method !== "POST") {
-      rejectMethod("POST");
-      return true;
-    }
-    if (commentItemPathMatch && request.method !== "DELETE") {
-      rejectMethod("DELETE");
-      return true;
-    }
-    if (tagsCollectionPath && request.method !== "GET" && request.method !== "POST") {
-      rejectMethod("GET, POST");
-      return true;
-    }
-    if (taxonomyCollectionPath && request.method !== "POST") {
-      rejectMethod("POST");
-      return true;
-    }
-    if (taxonomyItemMatch && request.method !== "DELETE") {
-      rejectMethod("DELETE");
-      return true;
-    }
-    if (conversationsPath && request.method !== "GET" && request.method !== "POST") {
-      rejectMethod("GET, POST");
-      return true;
-    }
-    if (conversationMessagesMatch && request.method !== "GET" && request.method !== "POST") {
-      rejectMethod("GET, POST");
-      return true;
-    }
-    if (conversationParticipantsMatch && request.method !== "PATCH") {
-      rejectMethod("PATCH");
-      return true;
-    }
-    if (conversationReadMatch && request.method !== "PUT") {
-      rejectMethod("PUT");
-      return true;
-    }
-    if (conversationItemMatch && request.method !== "DELETE") {
-      rejectMethod("DELETE");
-      return true;
-    }
-    if (notificationsPath && request.method !== "GET") {
-      rejectMethod("GET");
-      return true;
-    }
-    if (unreadNotificationCountPath && request.method !== "GET") {
-      rejectMethod("GET");
-      return true;
-    }
-    if (notificationReadMatch && request.method !== "PUT") {
-      rejectMethod("PUT");
-      return true;
-    }
-    if (readAllNotificationsPath && request.method !== "POST") {
-      rejectMethod("POST");
-      return true;
-    }
-    if (request.method !== "GET" && !isUploadMedia && !isCreateArticle && !isUpdateArticle && !isUpdateMyProfile && !isRevokeSession &&
-        !isFollowUser && !isUnfollowUser && !isSetArticleLike && !isCreateArticleComment && !isDeleteArticleComment &&
-        !isCreateTag && !isCreateTaxonomy && !isDeleteTaxonomy && !isCreateConversation && !isSendMessage &&
-        !isUpdateConversationParticipants && !isDeleteConversation && !isMarkConversationRead &&
-        !isMarkNotificationRead && !isMarkAllNotificationsRead) {
-      response.setHeader("allow", url.pathname === "/api/v1/articles" ? "GET, POST" : articleItemPath ? "GET, PUT" : "GET");
-      sendJson(response, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "The HTTP method is not supported for this endpoint." } });
       return true;
     }
 
@@ -919,9 +775,9 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       }
     }
 
-    if (mediaItemMatch && request.method === "GET") {
+    if (routeId === "media.item") {
       if (!mediaAssets) { sendUnavailable(response); return true; }
-      const id = decodeUserId(mediaItemMatch[1]);
+      const id = decodeUserId(routeParams.id);
       if (!id) {
         sendJson(response, 404, { error: { code: "NOT_FOUND", message: "The requested media asset was not found." } });
         return true;
@@ -956,7 +812,7 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    if (isUploadMedia) {
+    if (routeId === "me.media") {
       if (!services) { sendUnavailable(response); return true; }
       if (!mediaAssets) {
         sendJson(response, 503, { error: { code: "MEDIA_STORAGE_UNAVAILABLE", message: "Image uploads are not configured for this deployment." } });
@@ -985,12 +841,12 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    if (url.pathname === "/api/v1/health") {
+    if (routeId === "health") {
       sendJson(response, 200, { status: "ok", service: "api", version: "0.1.0" });
       return true;
     }
 
-    if (mePath) {
+    if (routeId === "me") {
       if (!services) {
         sendUnavailable(response);
         return true;
@@ -1008,7 +864,7 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    if (meProfilePath && request.method === "GET") {
+    if (routeId === "me.profile" && request.method === "GET") {
       if (!services) {
         sendUnavailable(response);
         return true;
@@ -1036,7 +892,7 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    if (meSessionPath) {
+    if (routeId === "me.session") {
       if (!services) {
         sendUnavailable(response);
         return true;
@@ -1059,7 +915,7 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
     }
 
 
-    if (tagsCollectionPath && request.method === "POST") {
+    if (routeId === "tags" && request.method === "POST") {
       if (!services) { sendUnavailable(response); return true; }
       const bodyResult = await readJsonObject(request);
       if (bodyResult.ok === false) { sendJsonBodyError(response, request, bodyResult); return true; }
@@ -1074,7 +930,7 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    if (taxonomyCollectionPath && request.method === "POST") {
+    if (routeId === "taxonomies" && request.method === "POST") {
       if (!services) { sendUnavailable(response); return true; }
       const bodyResult = await readJsonObject(request);
       if (bodyResult.ok === false) { sendJsonBodyError(response, request, bodyResult); return true; }
@@ -1089,9 +945,9 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    if (taxonomyItemMatch && request.method === "DELETE") {
+    if (routeId === "taxonomies.item") {
       if (!services) { sendUnavailable(response); return true; }
-      const taxonomyId = decodeUserId(taxonomyItemMatch[1]);
+      const taxonomyId = decodeUserId(routeParams.id);
       if (!taxonomyId) { sendBadInput(response, "Invalid taxonomy ID."); return true; }
       try {
         const actorId = await authenticatedActorId(request, services, env);
@@ -1102,7 +958,7 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    if (conversationsPath) {
+    if (routeId === "conversations") {
       if (!services) { sendUnavailable(response); return true; }
       if (request.method === "POST") {
         const bodyResult = await readJsonObject(request);
@@ -1128,9 +984,9 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    if (conversationMessagesMatch) {
+    if (routeId === "conversations.messages") {
       if (!services) { sendUnavailable(response); return true; }
-      const conversationId = decodeUserId(conversationMessagesMatch[1]);
+      const conversationId = decodeUserId(routeParams.id);
       if (!conversationId) { sendBadInput(response, "Invalid conversation ID."); return true; }
       if (request.method === "GET") {
         const limit = parseInteger(url.searchParams, "limit", 100, 1, 100);
@@ -1167,9 +1023,9 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    if (conversationParticipantsMatch && request.method === "PATCH") {
+    if (routeId === "conversations.participants") {
       if (!services) { sendUnavailable(response); return true; }
-      const conversationId = decodeUserId(conversationParticipantsMatch[1]);
+      const conversationId = decodeUserId(routeParams.id);
       if (!conversationId) { sendBadInput(response, "Invalid conversation ID."); return true; }
       const bodyResult = await readJsonObject(request);
       if (bodyResult.ok === false) { sendJsonBodyError(response, request, bodyResult); return true; }
@@ -1186,9 +1042,9 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    if (conversationReadMatch && request.method === "PUT") {
+    if (routeId === "conversations.read") {
       if (!services) { sendUnavailable(response); return true; }
-      const conversationId = decodeUserId(conversationReadMatch[1]);
+      const conversationId = decodeUserId(routeParams.id);
       if (!conversationId) { sendBadInput(response, "Invalid conversation ID."); return true; }
       try {
         const actorId = await authenticatedActorId(request, services, env);
@@ -1199,9 +1055,9 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    if (conversationItemMatch && request.method === "DELETE") {
+    if (routeId === "conversations.item") {
       if (!services) { sendUnavailable(response); return true; }
-      const conversationId = decodeUserId(conversationItemMatch[1]);
+      const conversationId = decodeUserId(routeParams.id);
       if (!conversationId) { sendBadInput(response, "Invalid conversation ID."); return true; }
       try {
         const actorId = await authenticatedActorId(request, services, env);
@@ -1212,7 +1068,7 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    if (notificationsPath) {
+    if (routeId === "me.notifications") {
       if (!services) { sendUnavailable(response); return true; }
       const limit = parseInteger(url.searchParams, "limit", 50, 1, 100);
       if (limit === null) { sendBadInput(response, "Invalid limit query parameter."); return true; }
@@ -1225,7 +1081,7 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    if (unreadNotificationCountPath) {
+    if (routeId === "me.notifications.unread-count") {
       if (!services) { sendUnavailable(response); return true; }
       try {
         const actorId = await authenticatedActorId(request, services, env);
@@ -1236,9 +1092,9 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    if (notificationReadMatch && request.method === "PUT") {
+    if (routeId === "me.notifications.read") {
       if (!services) { sendUnavailable(response); return true; }
-      const notificationId = decodeUserId(notificationReadMatch[1]);
+      const notificationId = decodeUserId(routeParams.id);
       if (!notificationId) { sendBadInput(response, "Invalid notification ID."); return true; }
       try {
         const actorId = await authenticatedActorId(request, services, env);
@@ -1249,7 +1105,7 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    if (readAllNotificationsPath && request.method === "POST") {
+    if (routeId === "me.notifications.read-all") {
       if (!services) { sendUnavailable(response); return true; }
       try {
         const actorId = await authenticatedActorId(request, services, env);
@@ -1260,7 +1116,7 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    if (usersSearchPath) {
+    if (routeId === "users") {
       if (!services) {
         sendUnavailable(response);
         return true;
@@ -1282,13 +1138,13 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    if (userRelationshipsMatch) {
+    if (routeId === "users.relationships") {
       if (!services) {
         sendUnavailable(response);
         return true;
       }
-      const userId = decodeUserId(userRelationshipsMatch[1]);
-      const relation = userRelationshipsMatch[2];
+      const userId = decodeUserId(routeParams.username);
+      const relation = routeParams.relation;
       const locale = parseLocale(url);
       const limit = parseInteger(url.searchParams, "limit", 50, 1, 100);
       if (!userId || !locale || limit === null) {
@@ -1307,7 +1163,7 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    if (meLikedArticlesPath) {
+    if (routeId === "me.liked-articles") {
       if (!services) {
         sendUnavailable(response);
         return true;
@@ -1332,7 +1188,7 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    if (url.pathname === "/api/v1/me/articles") {
+    if (routeId === "me.articles") {
       if (!services) {
         sendUnavailable(response);
         return true;
@@ -1357,7 +1213,7 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    if (meProfilePath) {
+    if (routeId === "me.profile") {
       if (!services) {
         sendUnavailable(response);
         return true;
@@ -1391,12 +1247,12 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    if (followPathMatch) {
+    if (routeId === "users.follow") {
       if (!services) {
         sendUnavailable(response);
         return true;
       }
-      const targetUserId = decodeUserId(followPathMatch[1]);
+      const targetUserId = decodeUserId(routeParams.username);
       const locale = parseLocale(url);
       if (!targetUserId || !locale) {
         sendBadInput(response, "Invalid target user ID or locale.");
@@ -1425,13 +1281,13 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    const authorArticlesMatch = url.pathname.match(/^\/api\/v1\/authors\/([^/]+)\/articles$/);
-    if (authorArticlesMatch) {
+    const onAuthorArticlesRoute = routeId === "authors.articles";
+    if (onAuthorArticlesRoute) {
       if (!services) {
         sendUnavailable(response);
         return true;
       }
-      const userId = decodeUserId(authorArticlesMatch[1]);
+      const userId = decodeUserId(routeParams.username);
       const locale = parseLocale(url);
       const query = parseQuery(url);
       const pagination = parsePagination(url, 20, MAX_ARTICLE_OFFSET);
@@ -1454,13 +1310,13 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    const authorMatch = url.pathname.match(/^\/api\/v1\/authors\/([^/]+)$/);
-    if (authorMatch) {
+    const onAuthorRoute = routeId === "authors.item";
+    if (onAuthorRoute) {
       if (!services) {
         sendUnavailable(response);
         return true;
       }
-      const userId = decodeUserId(authorMatch[1]);
+      const userId = decodeUserId(routeParams.username);
       const locale = parseLocale(url);
       if (!userId || !locale) {
         sendBadInput(response, "Invalid author user ID or locale.");
@@ -1480,7 +1336,7 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    if (url.pathname === "/api/v1/articles") {
+    if (routeId === "articles") {
       if (!services) {
         sendUnavailable(response);
         return true;
@@ -1526,12 +1382,12 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    if (relatedArticlesMatch) {
+    if (routeId === "articles.related") {
       if (!services) {
         sendUnavailable(response);
         return true;
       }
-      const slug = decodeSlug(relatedArticlesMatch[1]);
+      const slug = decodeSlug(routeParams.slug);
       const locale = parseLocale(url);
       const limit = parseInteger(url.searchParams, "limit", 6, 1, 50);
       if (!slug || !locale || limit === null) {
@@ -1548,12 +1404,12 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    if (articleLikePathMatch) {
+    if (routeId === "articles.like") {
       if (!services) {
         sendUnavailable(response);
         return true;
       }
-      const slug = decodeSlug(articleLikePathMatch[1]);
+      const slug = decodeSlug(routeParams.slug);
       const locale = parseLocale(url);
       if (!slug || !locale) {
         sendBadInput(response, "Invalid article slug or locale.");
@@ -1593,12 +1449,12 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    if (articleCommentsPathMatch) {
+    if (routeId === "articles.comments") {
       if (!services) {
         sendUnavailable(response);
         return true;
       }
-      const slug = decodeSlug(articleCommentsPathMatch[1]);
+      const slug = decodeSlug(routeParams.slug);
       const locale = parseLocale(url);
       if (!slug || !locale) {
         sendBadInput(response, "Invalid article slug or locale.");
@@ -1653,12 +1509,12 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    if (commentItemPathMatch) {
+    if (routeId === "comments.item") {
       if (!services) {
         sendUnavailable(response);
         return true;
       }
-      const commentId = decodeUserId(commentItemPathMatch[1]);
+      const commentId = decodeUserId(routeParams.id);
       if (!commentId) {
         sendBadInput(response, "Invalid comment ID.");
         return true;
@@ -1677,8 +1533,8 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    const articleMatch = url.pathname.match(/^\/api\/v1\/articles\/([^/]+)$/);
-    if (articleMatch && request.method === "PUT") {
+    const onArticleRoute = routeId === "articles.item";
+    if (onArticleRoute && request.method === "PUT") {
       if (!services) {
         sendUnavailable(response);
         return true;
@@ -1693,7 +1549,7 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
         sendBadInput(response, normalized.error ?? "Invalid article input.");
         return true;
       }
-      const articleId = decodeUserId(articleMatch[1]);
+      const articleId = decodeUserId(routeParams.slug);
       if (!articleId) {
         sendBadInput(response, "Invalid article ID.");
         return true;
@@ -1711,12 +1567,12 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       }
       return true;
     }
-    if (articleMatch) {
+    if (onArticleRoute) {
       if (!services) {
         sendUnavailable(response);
         return true;
       }
-      const slug = decodeSlug(articleMatch[1]);
+      const slug = decodeSlug(routeParams.slug);
       const locale = parseLocale(url);
       if (!slug || !locale) {
         sendBadInput(response, "Invalid article slug or locale.");
@@ -1736,7 +1592,7 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    if (url.pathname === "/api/v1/categories") {
+    if (routeId === "categories") {
       if (!services) {
         sendUnavailable(response);
         return true;
@@ -1757,13 +1613,13 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    const categoryArticlesMatch = url.pathname.match(/^\/api\/v1\/categories\/([^/]+)\/articles$/);
-    if (categoryArticlesMatch) {
+    const onCategoryArticlesRoute = routeId === "categories.articles";
+    if (onCategoryArticlesRoute) {
       if (!services) {
         sendUnavailable(response);
         return true;
       }
-      const slug = decodeSlug(categoryArticlesMatch[1]);
+      const slug = decodeSlug(routeParams.slug);
       const locale = parseLocale(url);
       const pagination = parsePagination(url, 20, MAX_TAXONOMY_OFFSET);
       if (!slug || !locale || !pagination) {
@@ -1785,13 +1641,13 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    const categoryMatch = url.pathname.match(/^\/api\/v1\/categories\/([^/]+)$/);
-    if (categoryMatch) {
+    const onCategoryRoute = routeId === "categories.item";
+    if (onCategoryRoute) {
       if (!services) {
         sendUnavailable(response);
         return true;
       }
-      const slug = decodeSlug(categoryMatch[1]);
+      const slug = decodeSlug(routeParams.slug);
       const locale = parseLocale(url);
       if (!slug || !locale) {
         sendBadInput(response, "Invalid category slug or locale.");
@@ -1810,7 +1666,7 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    if (url.pathname === "/api/v1/tags") {
+    if (routeId === "tags") {
       if (!services) {
         sendUnavailable(response);
         return true;
@@ -1831,13 +1687,13 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    const tagArticlesMatch = url.pathname.match(/^\/api\/v1\/tags\/([^/]+)\/articles$/);
-    if (tagArticlesMatch) {
+    const onTagArticlesRoute = routeId === "tags.articles";
+    if (onTagArticlesRoute) {
       if (!services) {
         sendUnavailable(response);
         return true;
       }
-      const slug = decodeSlug(tagArticlesMatch[1]);
+      const slug = decodeSlug(routeParams.slug);
       const locale = parseLocale(url);
       const pagination = parsePagination(url, 20, MAX_TAXONOMY_OFFSET);
       if (!slug || !locale || !pagination) {
@@ -1859,13 +1715,13 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
       return true;
     }
 
-    const tagMatch = url.pathname.match(/^\/api\/v1\/tags\/([^/]+)$/);
-    if (tagMatch) {
+    const onTagRoute = routeId === "tags.item";
+    if (onTagRoute) {
       if (!services) {
         sendUnavailable(response);
         return true;
       }
-      const slug = decodeSlug(tagMatch[1]);
+      const slug = decodeSlug(routeParams.slug);
       const locale = parseLocale(url);
       if (!slug || !locale) {
         sendBadInput(response, "Invalid tag slug or locale.");
