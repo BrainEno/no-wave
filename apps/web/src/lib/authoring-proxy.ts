@@ -112,7 +112,7 @@ export async function handleAuthPost(
   request: NextRequest,
   action: "login" | "register" | "refresh" | "logout",
 ): Promise<NextResponse> {
-  if (!isSameOriginMutation(request.url, request.headers.get("origin"))) {
+  if (!isSameOriginMutation(request.url, request.headers.get("origin"), request.headers.get("host"))) {
     return NextResponse.json({ error: { code: "ORIGIN_REJECTED", message: "The request origin was rejected." } }, { status: 403, headers: NO_STORE });
   }
   let body: string;

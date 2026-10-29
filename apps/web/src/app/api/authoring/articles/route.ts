@@ -7,7 +7,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!isSameOriginMutation(request.url, request.headers.get("origin"))) {
+  if (!isSameOriginMutation(request.url, request.headers.get("origin"), request.headers.get("host"))) {
     return NextResponse.json({ error: { code: "ORIGIN_REJECTED", message: "The request origin was rejected." } }, { status: 403, headers: { "cache-control": "no-store" } });
   }
   const parsed = await readLimitedJsonObject(request);
