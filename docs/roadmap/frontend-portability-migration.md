@@ -95,7 +95,7 @@ The owner accepts cold starts and free-instance sleep but does not accept card-r
 - [ ] Usage limits, idle behavior, log retention, backup/export and account deletion/export paths are documented.
 - [ ] A failed or exhausted free instance fails safely and can recover without data loss or a surprise bill.
 
-**No provider is selected by this checklist alone.** Netlify, Render, Neon or any other provider must be evaluated against the same current evidence. The existing Neon code/configuration does not prove that a live branch has been provisioned, that the user's account passes the no-card gate, or that a full production deployment works. Do not provision resources or paste credentials into Git/PRs during qualification.
+**No provider is selected by this checklist alone.** Hosting candidates such as Netlify, Render or any other eligible platform must be evaluated against current evidence. Database and object-storage services (including Neon) have separate free/no-card, durability and quota gates; a database provider is not a Web hosting candidate by itself. Existing Neon code/configuration does not prove that a live branch has been provisioned, that the user's account passes the no-card gate, or that a full production deployment works. Do not provision resources or paste credentials into Git/PRs during qualification.
 
 ## 4. Incremental implementation phases
 
