@@ -11,6 +11,7 @@ test("Web-generated Lexical state round-trips through the real API content adapt
     { id: "q1", type: "quote", text: "quote" },
     { id: "l1", type: "list", ordered: false, items: ["first", "second"] },
     { id: "c1", type: "code", language: "text", code: "const answer = 42;" },
+    { id: "image1", type: "image", src: "/api/media/11111111-1111-4111-8111-111111111111", alt: "cover", caption: "A caption" },
   ];
   const editorState = articleBlocksToLexicalEditorState(blocks);
   const converted = lexicalEditorStateToArticleDocument(editorState, { previousBlocks: blocks });

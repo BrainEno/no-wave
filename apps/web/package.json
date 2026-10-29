@@ -23,7 +23,8 @@
     "@lexical/react": "0.52.0",
     "@lexical/rich-text": "0.52.0",
     "@lexical/selection": "0.52.0",
-    "lexical": "0.52.0"
+    "lexical": "0.52.0",
+    "@lexical/plain-text": "0.52.0"
   },
   "devDependencies": {
     "@types/node": "24.10.0",
