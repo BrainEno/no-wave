@@ -6,6 +6,8 @@ import { createAuthContext } from "../../security/authentication.ts";
 import { createIdentityService } from "../../application/identity.ts";
 import { createRateLimitService, resolveWriteRateLimitPolicy, type RateLimitBucket, type RateLimitStore } from "../../application/rate-limit.ts";
 import type { IdentityStore } from "../../application/identity.ts";
+import { MediaAssetNotFoundError, MediaUploadInputError } from "../../application/media-assets.ts";
+import { MediaStorageUnavailableError } from "../../infrastructure/media-storage.ts";
 
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
@@ -16,6 +18,7 @@ const MAX_QUERY_LENGTH = 200;
 const MAX_ARTICLE_OFFSET = 100_000;
 const MAX_TAXONOMY_OFFSET = 1_000_000;
 const MAX_JSON_BODY_BYTES = 2 * 1024 * 1024;
+const MAX_IMAGE_UPLOAD_BYTES = 8 * 1024 * 1024;
 
 type RestServices = Record<string, (...args: any[]) => any> & Partial<RateLimitStore> & Partial<IdentityStore>;
 
@@ -534,6 +537,73 @@ function sendUnauthenticated(response: ServerResponse): void {
   sendJson(response, 401, { error: { code: "UNAUTHENTICATED", message: "Authentication is required." } });
 }
 
+type RawImageBodyResult =
+  | { ok: true; bytes: Buffer }
+  | { ok: false; status: number; code: string; message: string; closeConnection?: boolean };
+
+function readRawImageBody(request: IncomingMessage, maxBytes = MAX_IMAGE_UPLOAD_BYTES): Promise<RawImageBodyResult> {
+  const contentType = request.headers["content-type"];
+  const declaredLength = request.headers["content-length"];
+  const hasUnconsumedBody = request.headers["transfer-encoding"] !== undefined ||
+    (typeof declaredLength === "string" && /^\\d+$/.test(declaredLength) && BigInt(declaredLength) > 0n);
+  if (typeof contentType !== "string" || !["image/jpeg", "image/png", "image/webp"].includes(contentType.toLowerCase())) {
+    return Promise.resolve({ ok: false, status: 415, code: "UNSUPPORTED_MEDIA_TYPE", message: "Content-Type must be image/jpeg, image/png or image/webp.", ...(hasUnconsumedBody ? { closeConnection: true } : {}) });
+  }
+  if (typeof declaredLength === "string" && /^\\d+$/.test(declaredLength) && BigInt(declaredLength) > BigInt(maxBytes)) {
+    return Promise.resolve({ ok: false, status: 413, code: "PAYLOAD_TOO_LARGE", message: "The image request body exceeds 8 MiB.", closeConnection: true });
+  }
+  return new Promise((resolve) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let settled = false;
+    const cleanup = () => {
+      request.off("data", onData);
+      request.off("end", onEnd);
+      request.off("error", onError);
+      request.off("aborted", onAborted);
+    };
+    const finish = (result: RawImageBodyResult, closeConnection = false) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (closeConnection) {
+        request.pause();
+        request.on("error", () => {});
+      }
+      resolve(result);
+    };
+    const onData = (chunk: Buffer | string) => {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      size += buffer.byteLength;
+      if (size > maxBytes) {
+        finish({ ok: false, status: 413, code: "PAYLOAD_TOO_LARGE", message: "The image request body exceeds 8 MiB.", closeConnection: true }, true);
+        return;
+      }
+      chunks.push(buffer);
+    };
+    const onEnd = () => finish({ ok: true, bytes: Buffer.concat(chunks, size) });
+    const onError = () => finish({ ok: false, status: 400, code: "BAD_USER_INPUT", message: "The image request body could not be read.", closeConnection: true }, true);
+    const onAborted = () => finish({ ok: false, status: 400, code: "BAD_USER_INPUT", message: "The image request body was interrupted.", closeConnection: true }, true);
+    request.on("data", onData);
+    request.once("end", onEnd);
+    request.once("error", onError);
+    request.once("aborted", onAborted);
+  });
+}
+
+function sendRawImageBodyError(response: ServerResponse, result: Exclude<RawImageBodyResult, { ok: true }>): void {
+  if (result.closeConnection) {
+    response.shouldKeepAlive = false;
+    response.setHeader("connection", "close");
+  }
+  sendJson(response, result.status, { error: { code: result.code, message: result.message } });
+}
+
+type MediaAssetsPort = {
+  upload(input: { ownerId: string; bytes: Buffer; contentType: string }): Promise<{ id: string; src: string; contentType: string; byteSize: number; width: number; height: number }>;
+  getPublic(input: { id: string }): Promise<{ id: string; bytes: Buffer; byteSize: number; width: number; height: number; sha256: string; contentType: "image/webp" }>;
+};
+
 function sendJsonBodyError(
   response: ServerResponse,
   request: IncomingMessage,
@@ -621,7 +691,7 @@ async function serializeRestComments(
  * REST transport adapter. It calls application services directly; it never
  * makes an HTTP round-trip to GraphQL or reaches into persistence adapters.
  */
-export function createRestHandler({ services, env = process.env }: { services: RestServices | null; env?: NodeJS.ProcessEnv }) {
+export function createRestHandler({ services, env = process.env, mediaAssets = null }: { services: RestServices | null; env?: NodeJS.ProcessEnv; mediaAssets?: MediaAssetsPort | null }) {
   // The facade is assembled dynamically from the validated persistence ports.
   const identity = services ? createIdentityService({ store: services as unknown as IdentityStore, env }) : null;
   const rateLimitStore: RateLimitStore | null = services && typeof services.consumeRateLimit === "function"
@@ -759,6 +829,14 @@ export function createRestHandler({ services, env = process.env }: { services: R
       rejectMethod("GET");
       return true;
     }
+    if (mediaItemMatch && request.method !== "GET") {
+      rejectMethod("GET");
+      return true;
+    }
+    if (url.pathname === "/api/v1/me/media" && request.method !== "POST") {
+      rejectMethod("POST");
+      return true;
+    }
     if (commentItemPathMatch && request.method !== "DELETE") {
       rejectMethod("DELETE");
       return true;
@@ -811,7 +889,7 @@ export function createRestHandler({ services, env = process.env }: { services: R
       rejectMethod("POST");
       return true;
     }
-    if (request.method !== "GET" && !isCreateArticle && !isUpdateArticle && !isUpdateMyProfile && !isRevokeSession &&
+    if (request.method !== "GET" && !isUploadMedia && !isCreateArticle && !isUpdateArticle && !isUpdateMyProfile && !isRevokeSession &&
         !isFollowUser && !isUnfollowUser && !isSetArticleLike && !isCreateArticleComment && !isDeleteArticleComment &&
         !isCreateTag && !isCreateTaxonomy && !isDeleteTaxonomy && !isCreateConversation && !isSendMessage &&
         !isUpdateConversationParticipants && !isDeleteConversation && !isMarkConversationRead &&
@@ -837,6 +915,72 @@ export function createRestHandler({ services, env = process.env }: { services: R
         sendServiceError(response, error);
         return true;
       }
+    }
+
+    if (mediaItemMatch && request.method === "GET") {
+      if (!mediaAssets) { sendUnavailable(response); return true; }
+      const id = decodeUserId(mediaItemMatch[1]);
+      if (!id) {
+        sendJson(response, 404, { error: { code: "NOT_FOUND", message: "The requested media asset was not found." } });
+        return true;
+      }
+      try {
+        const media = await mediaAssets.getPublic({ id });
+        const etag = `"${media.sha256}"`;
+        const cacheHeaders = {
+          "content-type": media.contentType,
+          "content-length": String(media.byteSize),
+          "cache-control": "public, max-age=31536000, immutable",
+          "etag": etag,
+          "x-content-type-options": "nosniff",
+          "content-security-policy": "default-src 'none'; sandbox",
+        };
+        if (request.headers["if-none-match"]?.split(",").map((value) => value.trim()).includes(etag)) {
+          response.writeHead(304, { "cache-control": cacheHeaders["cache-control"], etag });
+          response.end();
+        } else {
+          response.writeHead(200, cacheHeaders);
+          response.end(media.bytes);
+        }
+      } catch (error: unknown) {
+        if (error instanceof MediaAssetNotFoundError) {
+          sendJson(response, 404, { error: { code: "NOT_FOUND", message: "The requested media asset was not found." } });
+        } else if (error instanceof MediaStorageUnavailableError) {
+          sendJson(response, 503, { error: { code: "MEDIA_STORAGE_UNAVAILABLE", message: "The media service is temporarily unavailable." } });
+        } else {
+          sendServiceError(response, error);
+        }
+      }
+      return true;
+    }
+
+    if (isUploadMedia) {
+      if (!services) { sendUnavailable(response); return true; }
+      if (!mediaAssets) {
+        sendJson(response, 503, { error: { code: "MEDIA_STORAGE_UNAVAILABLE", message: "Image uploads are not configured for this deployment." } });
+        return true;
+      }
+      try {
+        const actorId = await authenticatedActorId(request, services, env);
+        if (!actorId) { sendUnauthenticated(response); return true; }
+        const body = await readRawImageBody(request);
+        if (body.ok === false) {
+          sendRawImageBodyError(response, body);
+          return true;
+        }
+        const contentType = String(request.headers["content-type"] ?? "").toLowerCase();
+        const asset = await mediaAssets.upload({ ownerId: actorId, bytes: body.bytes, contentType });
+        sendJson(response, 201, { data: asset });
+      } catch (error: unknown) {
+        if (error instanceof MediaUploadInputError) {
+          sendJson(response, 400, { error: { code: error.code, message: error.message } });
+        } else if (error instanceof MediaStorageUnavailableError) {
+          sendJson(response, 503, { error: { code: "MEDIA_STORAGE_UNAVAILABLE", message: "The media service is temporarily unavailable." } });
+        } else {
+          sendServiceError(response, error);
+        }
+      }
+      return true;
     }
 
     if (url.pathname === "/api/v1/health") {

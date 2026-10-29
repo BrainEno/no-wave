@@ -4,6 +4,8 @@ import { createApplicationServices } from "./application/services.ts";
 import { assertPersistenceAdapter } from "./application/persistence-ports.ts";
 import { createPersistenceRuntime, describePersistenceRuntime } from "./infrastructure/persistence-runtime.ts";
 import { createHttpObservability, writeStructuredLog } from "./infrastructure/http-observability.ts";
+import { createMediaAssetService } from "./application/media-assets.ts";
+import { createMediaObjectStorage } from "./infrastructure/media-storage.ts";
 
 /** REST is the only business HTTP transport exposed by this API. */
 export function createApiServer({
@@ -12,12 +14,13 @@ export function createApiServer({
   applicationServices = null,
   logger = writeStructuredLog,
   observability: suppliedObservability = null,
+  mediaAssets = null,
 } = {}) {
   const observability = suppliedObservability ?? createHttpObservability({ logger });
   const services = applicationServices ?? (store
     ? createApplicationServices({ persistence: store, onPersistenceOperation: observability.observePersistenceOperation })
     : null);
-  const handleRest = createRestHandler({ services, env });
+  const handleRest = createRestHandler({ services, env, mediaAssets });
 
   return createServer(async (request, response) => {
     const startedAt = process.hrtime.bigint();
@@ -112,6 +115,8 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
     const runtime = await createPersistenceRuntime({ env });
     assertPersistenceAdapter(runtime.adapter);
     const observability = createHttpObservability();
+    const mediaStorage = createMediaObjectStorage(env);
+    const mediaAssets = mediaStorage ? createMediaAssetService({ store: runtime.adapter, storage: mediaStorage }) : null;
     const services = createApplicationServices({
       persistence: runtime.adapter,
       onPersistenceOperation: observability.observePersistenceOperation,
@@ -120,7 +125,7 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
     const closePersistence = runtime.close;
     const port = Number(env.PORT ?? 4000);
     const host = env.HOST ?? "0.0.0.0";
-    const server = createApiServer({ env, applicationServices: services, observability });
+    const server = createApiServer({ env, applicationServices: services, observability, mediaAssets });
     server.listen(port, host, () => {
       const runtimeNotice = describePersistenceRuntime({ provider: runtime.provider });
       writeStructuredLog({ ...runtimeNotice, host, port });
@@ -128,6 +133,7 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
     const shutdown = () => {
       server.close(async () => {
         await closePersistence();
+        mediaStorage?.close();
         process.exit(0);
       });
     };
