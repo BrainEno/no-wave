@@ -1,7 +1,9 @@
 # ADR 0002: Select Next.js App Router for the Web Application
 
-- Status: Accepted, subject to a minimal portability proof of concept
+- Status: Superseded by [ADR 0012](0012-portable-web-framework-migration.md) on 2026-10-29
 - Date: 2026-10-23
+
+This ADR records the initial framework selection. The approved migration target is now React Router 7 Framework Mode; see ADR 0012. This historical record is retained to explain why the current Next.js implementation exists.
 
 ## Context
 
