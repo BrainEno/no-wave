@@ -87,8 +87,27 @@ export function articleBlocksToLexicalEditorState(value: unknown): LexicalEditor
       case "code":
         if (typeof block.code !== "string" || typeof block.language !== "string") throw new Error("The saved article contains an invalid code block.");
         return element("code", block.code.length ? [textNode(block.code)] : [], { language: block.language || null, theme: "" });
-      case "image":
-        throw new Error("This article contains media blocks. Image editing will be available after the media-upload workflow is implemented.");
+      case "image": {
+        if (typeof block.src !== "string" || typeof block.alt !== "string" ||
+          (block.caption !== undefined && typeof block.caption !== "string")) {
+          throw new Error("The saved article contains an invalid image block.");
+        }
+        const src = block.src;
+        if (src.startsWith("//") || src.includes("\\\\") || /[\\u0000-\\u0020\\u007f]/.test(src)) {
+          throw new Error("The saved article contains an unsafe image URL.");
+        }
+        if (!src.startsWith("/")) {
+          let url: URL;
+          try { url = new URL(src); } catch { throw new Error("The saved article contains an unsafe image URL."); }
+          if ((url.protocol !== "https:" && url.protocol !== "http:") || url.username || url.password) {
+            throw new Error("The saved article contains an unsafe image URL.");
+          }
+        }
+        return {
+          type: "image", version: 1, src, alt: block.alt,
+          ...(typeof block.caption === "string" && block.caption.length > 0 ? { caption: block.caption } : {}),
+        };
+      }
       default:
         throw new Error("This article contains a block type that the current editor cannot safely edit.");
     }
