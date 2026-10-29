@@ -124,7 +124,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-async export function readJsonObject(request: IncomingMessage, maxBytes = MAX_JSON_BODY_BYTES): Promise<JsonObjectResult> {
+export async function readJsonObject(request: IncomingMessage, maxBytes = MAX_JSON_BODY_BYTES): Promise<JsonObjectResult> {
   const contentType = request.headers["content-type"];
   const declaredLength = request.headers["content-length"];
   const hasUnconsumedBody =
@@ -488,7 +488,7 @@ export function serializeRestNotification(notification: any): any {
   };
 }
 
-async export function authenticatedUser(
+export async function authenticatedUser(
   request: IncomingMessage,
   services: RestServices,
   env: NodeJS.ProcessEnv,
@@ -507,7 +507,7 @@ async export function authenticatedUser(
   return user;
 }
 
-async export function authenticatedActorId(
+export async function authenticatedActorId(
   request: IncomingMessage,
   services: RestServices,
   env: NodeJS.ProcessEnv,
@@ -515,7 +515,7 @@ async export function authenticatedActorId(
   return (await authenticatedUser(request, services, env))?.id ?? null;
 }
 
-async export function optionalViewerId(
+export async function optionalViewerId(
   request: IncomingMessage,
   services: RestServices,
   env: NodeJS.ProcessEnv,
@@ -549,7 +549,7 @@ export function sendJsonBodyError(
 
 
 
-async export function serializeRestArticle(
+export async function serializeRestArticle(
   services: RestServices,
   article: any,
   viewerId: string | null,
@@ -577,7 +577,7 @@ async export function serializeRestArticle(
   };
 }
 
-async export function serializeRestArticles(
+export async function serializeRestArticles(
   services: RestServices,
   articles: unknown,
   viewerId: string | null,
@@ -586,7 +586,7 @@ async export function serializeRestArticles(
   return Promise.all(articles.map((article) => serializeRestArticle(services, article, viewerId)));
 }
 
-async export function serializeRestComment(
+export async function serializeRestComment(
   services: RestServices,
   comment: any,
   viewerId: string | null,
@@ -607,7 +607,7 @@ async export function serializeRestComment(
   };
 }
 
-async export function serializeRestComments(
+export async function serializeRestComments(
   services: RestServices,
   comments: unknown,
   viewerId: string | null,
