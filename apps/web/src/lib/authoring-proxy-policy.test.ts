@@ -24,4 +24,3 @@ test("cookie lifetimes are finite and capped", () => {
   assert.equal(tokenMaxAge("2027-12-01T00:00:00.000Z", now), 30 * 24 * 60 * 60);
   assert.equal(tokenMaxAge("not-a-date", now), 0);
 });
-
