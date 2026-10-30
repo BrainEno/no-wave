@@ -29,6 +29,7 @@ export const persistencePortMethods = Object.freeze({
   engagement: Object.freeze([
     "getArticleLikeInfo", "toggleArticleLike", "setArticleLike",
     "listArticleComments", "createArticleComment", "deleteArticleComment",
+    "listArticleCommentAuthorIds",
   ] as const),
   conversations: Object.freeze([
     "createConversation", "getConversation", "updateConversationParticipants", "deleteConversation",

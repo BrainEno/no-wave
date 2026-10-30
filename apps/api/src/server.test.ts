@@ -916,6 +916,38 @@ test("REST restores the author's own deleted work and refuses everyone else", as
   });
 });
 
+test("REST tells the readers who commented on a deleted work when their words go", async () => {
+  const articleId = "3f7c1d90-8a2b-4c1e-9f3a-6c5b2e8d1a44";
+  const deletedAt = "2026-01-02T03:04:05.678Z";
+  const notified: Array<{ userId: string; eventKey: string; payload: unknown }> = [];
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/v1/articles/${articleId}`, {
+      method: "DELETE",
+      headers: { authorization: "Bearer " + signedToken("owner") },
+    });
+    assert.equal(response.status, 200);
+    // The commenters hear about it; the author who pressed the button does not.
+    assert.deepEqual(notified.map((input) => input.userId), ["reader-1", "reader-2"]);
+    assert.deepEqual(notified[0].payload, {
+      type: "article.deleted",
+      articleId,
+      purgesAt: "2026-02-01T03:04:05.678Z",
+    });
+    assert.equal(notified[0].eventKey, `article.deleted:${articleId}:reader-1`);
+  }, {
+    env: { ...authEnv, ARTICLE_TOMBSTONE_RETENTION_DAYS: "30" },
+    store: {
+      async isSessionRevoked() { return false; },
+      async deleteArticle(args) { return { id: args.articleId, deletedAt }; },
+      async listArticleCommentAuthorIds() { return ["reader-1", "reader-2", "owner"]; },
+      async createNotification(input) {
+        notified.push(input);
+        return { id: `notification-${notified.length}`, duplicate: false };
+      },
+    },
+  });
+});
+
 test("REST rejects invalid pagination instead of silently coercing values", async () => {
   await withServer(async (baseUrl) => {
     for (const query of ["?limit=0", "?limit=1.5", "?offset=-1", "?limit=101"]) {

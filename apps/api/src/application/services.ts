@@ -43,6 +43,15 @@ export const DEFAULT_TOMBSTONE_RETENTION_DAYS = 30;
 export const TOMBSTONE_PURGE_EVERY_WRITES = 32;
 
 /**
+ * How many commenters a single deletion tells about itself.
+ *
+ * Bounded because the notifications are written inside the deleting request:
+ * a work with ten thousand commenters is not a reason to hold a request open,
+ * and the cap is the honest place to admit that.
+ */
+export const TOMBSTONE_NOTIFICATION_LIMIT = 200;
+
+/**
  * Read the retention window from the environment.
  *
  * A value outside the accepted range is not clamped — clamping `0` up to `1`
@@ -84,9 +93,53 @@ export function createApplicationServices<A extends import("./persistence-ports.
     ports.content.createArticle({ ...input, authorId, contentBlocks: parseContentBlocks(input.contentBlocks) });
   services.updateArticle = async ({ actorId, ...input }) =>
     ports.content.updateArticle({ ...input, actorId, contentBlocks: parseContentBlocks(input.contentBlocks) });
+  /**
+   * Tell the readers who commented on a work what deleting it means for them.
+   *
+   * The sweep takes the comments with the row, and there is no scheduler that
+   * could warn those readers the day before — so the only moment the system can
+   * reach them is the deletion itself. One notification each, naming the date
+   * their words go, deduplicated by the notification store's own event key.
+   *
+   * Every failure here is swallowed on purpose: a work the author cannot delete
+   * because an inbox row could not be written would be a far worse bug than a
+   * reader who was never told.
+   */
+  async function notifyCommentAuthors(articleId: string, actorId: string, purgesAt: string): Promise<void> {
+    if (typeof ports.engagement.listArticleCommentAuthorIds !== "function") return;
+    if (typeof ports.notifications.createNotification !== "function") return;
+    let authorIds: unknown;
+    try {
+      authorIds = await ports.engagement.listArticleCommentAuthorIds({ articleId, limit: TOMBSTONE_NOTIFICATION_LIMIT });
+    } catch {
+      return;
+    }
+    if (!Array.isArray(authorIds)) return;
+    for (const userId of authorIds) {
+      // The author deleting their own work needs no notice about it.
+      if (typeof userId !== "string" || userId.length === 0 || userId === actorId) continue;
+      try {
+        await ports.notifications.createNotification({
+          userId,
+          eventKey: `article.deleted:${articleId}:${userId}`,
+          payload: { type: "article.deleted", articleId, purgesAt },
+        });
+      } catch {
+        // One undeliverable inbox row must not stop the others.
+      }
+    }
+  }
+
   // Deletion carries no body: it addresses a work the author already has.
-  services.deleteArticle = async ({ actorId, articleId }) =>
-    ports.content.deleteArticle({ articleId, actorId });
+  services.deleteArticle = async ({ actorId, articleId }) => {
+    const deleted = await ports.content.deleteArticle({ articleId, actorId });
+    const deletedAt = new Date(deleted?.deletedAt);
+    if (Number.isFinite(deletedAt.getTime())) {
+      const purgesAt = new Date(deletedAt.getTime() + resolveTombstoneRetentionDays(env) * 86_400_000).toISOString();
+      await notifyCommentAuthors(articleId, actorId, purgesAt);
+    }
+    return deleted;
+  };
 
   // The recycle bin is what makes a soft delete recoverable, and the expiry
   // date is what makes it a deletion rather than an archive. The window is

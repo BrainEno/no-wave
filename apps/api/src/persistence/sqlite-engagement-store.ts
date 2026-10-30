@@ -185,5 +185,23 @@ export function createSqliteEngagementStore(db) {
         return true;
       });
     },
+
+    /**
+     * Everyone who has commented on a work, once each.
+     *
+     * Deleting a work eventually deletes its comments, and those are other
+     * people's words: this is the list the service layer tells what is about to
+     * happen to them. Distinct because one reader who wrote ten comments still
+     * has one inbox, and bounded because it is read inside the request that
+     * performs the deletion.
+     */
+    listArticleCommentAuthorIds({ articleId, limit = 200 }) {
+      if (!isUuid(articleId)) throw new ArticleInputError("articleId must be a valid article ID.");
+      if (!Number.isInteger(limit) || limit < 1 || limit > 1000) throw new ArticleInputError("limit must be an integer between 1 and 1000.");
+      return all(
+        "SELECT author_id AS authorId, min(created_at) AS firstAt FROM article_comments WHERE article_id = ? GROUP BY author_id ORDER BY firstAt ASC, authorId ASC LIMIT ?",
+        articleId, limit,
+      ).map((row) => String(row.authorId));
+    },
   });
 }

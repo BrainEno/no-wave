@@ -558,6 +558,25 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
         return true;
       });
     },
+    /**
+     * Everyone who has commented on a work, once each (see the SQLite slice for
+     * why deleting one needs this list). Distinct, oldest comment first, and
+     * bounded because it is read inside the deleting request.
+     */
+    async listArticleCommentAuthorIds({ articleId, limit = 200 }) {
+      if (!isUuid(articleId)) throw new ArticleInputError("articleId must be a valid article ID.");
+      if (!Number.isInteger(limit) || limit < 1 || limit > 1000) throw new ArticleInputError("limit must be an integer between 1 and 1000.");
+      const rows = await sql.unsafe(
+        `SELECT author_id, min(created_at) AS first_at
+         FROM article_comments
+         WHERE article_id = $1
+         GROUP BY author_id
+         ORDER BY first_at ASC, author_id ASC
+         LIMIT $2`,
+        [articleId, limit],
+      );
+      return rows.map((row) => String(row.author_id));
+    },
     async listTaxonomies({ kind, locale = "zh-CN", query = "", limit = 100, offset = 0 }) {
       return listTaxonomiesFrom(sql, { kind, locale, query, limit, offset });
     },

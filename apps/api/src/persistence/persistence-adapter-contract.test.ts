@@ -63,6 +63,7 @@ async function sqliteFixture() {
         db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`contract-delete-${suffix}%`);
         // Restore and sweep leave reclaimed and released addresses behind.
         db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`contract-restore-${suffix}%`);
+        db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`contract-commenters-${suffix}%`);
         db.prepare("DELETE FROM taxonomies WHERE slug = ?").run(`contract-category-${suffix}`);
       }
       db.close();
@@ -107,6 +108,7 @@ async function postgresFixture() {
         await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`contract-delete-${suffix}%`]);
         // Restore and sweep leave reclaimed and released addresses behind.
         await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`contract-restore-${suffix}%`]);
+        await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`contract-commenters-${suffix}%`]);
         await postgresSql.unsafe("DELETE FROM taxonomies WHERE slug = $1", [`contract-category-${suffix}`]);
       }
     },
@@ -776,6 +778,40 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       await assert.rejects(Promise.resolve().then(() => runtime.store.restoreArticle({
         articleId: swept.id, actorId: authorId,
       })), ArticleNotFoundError);
+    } finally { await runtime.cleanup(undefined, suffix); }
+  });
+
+  test(`${adapterName}: a work's commenters are listed once each, in the order they first wrote`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const slug = `contract-commenters-${suffix}`;
+    const articleId = `commenter-article-${suffix}`;
+    try {
+      const article = await runtime.store.createArticle({
+        authorId: `article-author-${suffix}`, slug, title: "Commenters contract article", summary: "",
+        locale: "zh-CN", contentBlocks: [{ id: "p1", type: "paragraph", text: "Shared contract content." }], publish: true,
+      });
+      // One reader who wrote twice is still one reader with one inbox.
+      await runtime.store.createArticleComment({ slug, locale: "zh-CN", actorId: `commenter-a-${suffix}`, content: "First." });
+      await runtime.store.createArticleComment({ slug, locale: "zh-CN", actorId: `commenter-b-${suffix}`, content: "Second." });
+      await runtime.store.createArticleComment({ slug, locale: "zh-CN", actorId: `commenter-a-${suffix}`, content: "Again." });
+
+      assert.deepEqual(
+        await runtime.store.listArticleCommentAuthorIds({ articleId: article.id }),
+        [`commenter-a-${suffix}`, `commenter-b-${suffix}`],
+      );
+      // Bounded, because the list is read inside the request that deletes the
+      // work: a work with ten thousand commenters is not a reason to hold it open.
+      assert.deepEqual(await runtime.store.listArticleCommentAuthorIds({ articleId: article.id, limit: 1 }), [`commenter-a-${suffix}`]);
+      assert.deepEqual(await runtime.store.listArticleCommentAuthorIds({ articleId: randomUUID() }), []);
+      await assert.rejects(
+        Promise.resolve().then(() => runtime.store.listArticleCommentAuthorIds({ articleId: "not-a-uuid" })),
+        { code: "BAD_USER_INPUT" },
+      );
+      await assert.rejects(
+        Promise.resolve().then(() => runtime.store.listArticleCommentAuthorIds({ articleId, limit: 0 })),
+        { code: "BAD_USER_INPUT" },
+      );
     } finally { await runtime.cleanup(undefined, suffix); }
   });
 
