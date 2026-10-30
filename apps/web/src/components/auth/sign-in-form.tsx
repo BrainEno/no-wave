@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 
@@ -67,6 +68,7 @@ export function SignInForm({ nextPath }: SignInFormProps) {
         <button className="nw-btn" type="button" disabled={busy} onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); setStatus(""); }}>
           {mode === "login" ? "没有账户？创建账户" : "已有账户？登录"}
         </button>
+        <Link className="nw-btn" href="/forgot-password">忘记密码？</Link>
         <a className="nw-btn" href="/">返回首页</a>
       </div>
     </section>

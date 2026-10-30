@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { handleAuthRequest } from "../src/auth.ts";
+import { handleAuthRequest, IDENTITY_ACTIONS } from "../src/auth.ts";
 import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE } from "../src/policy.ts";
 import {
   API_BASE,
@@ -245,4 +245,147 @@ test("logout is idempotent and clears cookies with or without a session", async 
   assert.equal(rejected.status, 200);
   assert.equal(setCookies(rejected).length, 2);
   assert.deepEqual(JSON.parse(String(stub.calls[0]?.init?.body)), { refreshToken: TOKENS.refreshToken });
+});
+
+/**
+ * Recovery and verification (ADR 0014) share the route family but not the
+ * session machinery. These tests exist because the failure mode of getting that
+ * split wrong is not an error page — it is either a 502 on every recovery
+ * request (envelope check) or a browser that stays signed in with a session the
+ * API just revoked (missing cookie clear).
+ */
+
+const OK_BODY = { data: { ok: true } };
+
+/** `init.headers` is a `Headers` in some handlers and a plain object in others. */
+function headerOf(call: { init?: RequestInit } | undefined, name: string): string | null {
+  const headers = call?.init?.headers as Headers | Record<string, string> | undefined;
+  if (!headers) return null;
+  return typeof (headers as Headers).get === "function"
+    ? (headers as Headers).get(name)
+    : (headers as Record<string, string>)[name] ?? null;
+}
+
+function identityRequest(action: string, body: string, headers: Record<string, string> = {}): Request {
+  return request(`/api/auth/${action}`, {
+    method: "POST",
+    body,
+    headers: { host: "no-wave.test", origin: "https://no-wave.test", ...headers },
+  });
+}
+
+test("recovery and verification forward the body and answer without touching the session", async () => {
+  for (const action of IDENTITY_ACTIONS) {
+    const stub = stubFetch({ [`api/v1/auth/${action}`]: () => json(OK_BODY, action === "forgot-password" ? 202 : 200) });
+    const body = JSON.stringify({ token: "abc", password: "a-long-enough-password", email: "writer@example.test" });
+    const response = await handleAuthRequest(identityRequest(action, body), action, {
+      apiBaseUrl: API_BASE,
+      fetchImpl: stub.fetchImpl,
+    });
+
+    assert.equal(response.status, action === "forgot-password" ? 202 : 200, `${action} must keep the upstream status`);
+    assertNoStore(response);
+    assert.deepEqual(await response.json(), OK_BODY);
+    assert.equal(stub.calls.length, 1, `${action} must reach the API exactly once`);
+    assert.equal(stub.calls[0]?.url, `${API_BASE}/api/v1/auth/${action}`);
+    assert.equal(headerOf(stub.calls[0], "content-type"), "application/json; charset=utf-8");
+    // `reset-password` is the exception and has its own test: a successful
+    // reset revokes the account's sessions, so it clears the cookies.
+    if (action !== "reset-password") {
+      assert.equal(setCookies(response).length, 0, `${action} carries no token, so it must not write one`);
+    }
+  }
+});
+
+test("a successful password reset clears the session cookies, because the API revoked every session", async () => {
+  const stub = stubFetch({ "api/v1/auth/reset-password": () => json(OK_BODY, 200) });
+  const response = await handleAuthRequest(
+    identityRequest("reset-password", JSON.stringify({ token: "t", password: "a-long-enough-password" }), {
+      cookie: `${ACCESS_TOKEN_COOKIE}=${TOKENS.accessToken}; ${REFRESH_TOKEN_COOKIE}=${TOKENS.refreshToken}`,
+    }),
+    "reset-password",
+    { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+  );
+
+  assert.equal(response.status, 200);
+  const access = findCookie(response, ACCESS_TOKEN_COOKIE);
+  const refresh = findCookie(response, REFRESH_TOKEN_COOKIE);
+  assert.ok(access && refresh, "both cookies must be cleared, not just the access token");
+  assert.match(access, /Max-Age=0/);
+  assert.match(refresh, /Max-Age=0/);
+  assert.equal(await response.clone().text().then((text) => text.includes(TOKENS.refreshToken)), false);
+});
+
+test("a rejected password reset leaves the visitor's cookies alone", async () => {
+  // A 401 means the link was spent or expired — the account was not recovered,
+  // so nothing was revoked and clearing cookies would sign out a bystander.
+  for (const status of [400, 401, 429]) {
+    const stub = stubFetch({
+      "api/v1/auth/reset-password": () => json({ error: { code: "AUTHENTICATION_FAILED", message: "nope" } }, status),
+    });
+    const response = await handleAuthRequest(
+      identityRequest("reset-password", JSON.stringify({ token: "t", password: "a-long-enough-password" }), {
+        cookie: `${ACCESS_TOKEN_COOKIE}=${TOKENS.accessToken}`,
+      }),
+      "reset-password",
+      { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+    );
+    assert.equal(response.status, status, `status ${status} must pass through`);
+    assert.equal(setCookies(response).length, 0, `status ${status} must not clear cookies`);
+  }
+});
+
+test("recovery and verification keep the origin check and the bounded body", async () => {
+  const stub = stubFetch({ "api/v1/auth/": () => json(OK_BODY, 202) });
+
+  const crossOrigin = await handleAuthRequest(
+    identityRequest("forgot-password", JSON.stringify({ email: "writer@example.test" }), { origin: "https://evil.test" }),
+    "forgot-password",
+    { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+  );
+  assert.equal(crossOrigin.status, 403);
+
+  const oversized = await handleAuthRequest(
+    identityRequest("reset-password", JSON.stringify({ token: "x".repeat(9000), password: "a-long-enough-password" })),
+    "reset-password",
+    { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+  );
+  assert.equal(oversized.status, 413);
+
+  assert.equal(stub.calls.length, 0, "neither request may reach the API");
+});
+
+test("recovery failures are sanitized: a rate limit keeps its message, a 5xx keeps nothing", async () => {
+  const throttled = stubFetch({
+    "api/v1/auth/forgot-password": () => json({ error: { code: "RATE_LIMITED", message: "请稍后再试。" } }, 429),
+  });
+  const limited = await handleAuthRequest(
+    identityRequest("forgot-password", JSON.stringify({ email: "writer@example.test" })),
+    "forgot-password",
+    { apiBaseUrl: API_BASE, fetchImpl: throttled.fetchImpl },
+  );
+  assert.equal(limited.status, 429);
+  assert.match(await limited.text(), /请稍后再试。/);
+
+  const broken = stubFetch({
+    "api/v1/auth/verify-email": () => json({ error: { code: "INTERNAL", message: "connection string: postgres://…" } }, 500),
+  });
+  const failed = await handleAuthRequest(identityRequest("verify-email", JSON.stringify({ token: "abc" })), "verify-email", {
+    apiBaseUrl: API_BASE,
+    fetchImpl: broken.fetchImpl,
+  });
+  assert.equal(failed.status, 500);
+  const text = await failed.text();
+  assert.match(text, /SERVICE_UNAVAILABLE/);
+  assert.equal(text.includes("postgres://"), false, "an upstream secret must not reach the browser");
+});
+
+test("a recovery answer without a data object is a proxy error, not a half-success", async () => {
+  const stub = stubFetch({ "api/v1/auth/verify-email": () => json({ ok: true }, 200) });
+  const response = await handleAuthRequest(identityRequest("verify-email", JSON.stringify({ token: "abc" })), "verify-email", {
+    apiBaseUrl: API_BASE,
+    fetchImpl: stub.fetchImpl,
+  });
+  assert.equal(response.status, 502);
+  assert.match(await response.text(), /INVALID_AUTH_RESPONSE/);
 });
