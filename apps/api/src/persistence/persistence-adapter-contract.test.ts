@@ -720,12 +720,20 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       const created = await runtime.store.createArticle({
         authorId, slug, title: "Soon restored", locale: "zh-CN", contentBlocks, publish: true,
       });
+      // A reader's words, written before the deletion: the sweep removes them
+      // with the work, so the recycle bin has to name them.
+      await runtime.store.createArticleComment({
+        slug, locale: "zh-CN", actorId: `commenter-a-${suffix}`, content: "A reader's words.",
+      });
       await runtime.store.deleteArticle({ articleId: created.id, actorId: authorId });
 
       // The recycle bin is the author's own tombstones, each one timestamped.
       const tombstones = await runtime.store.listMyDeletedArticles({ actorId: authorId, locale: "zh-CN" });
       assert.ok(tombstones.some((article) => article.id === created.id), "a deleted work is still the author's to find");
       assert.ok(tombstones.every((article) => typeof article.deletedAt === "string" && article.deletedAt.length > 0));
+      // The cost of the window is other people's words, and it is counted here
+      // rather than guessed by the desk.
+      assert.equal(tombstones.find((article) => article.id === created.id)?.commentCount, 1);
       // One author's recycle bin is not another author's.
       assert.equal((await runtime.store.listMyDeletedArticles({ actorId: `other-${suffix}`, locale: "zh-CN" })).filter((article) => article.id === created.id).length, 0);
 
@@ -756,6 +764,7 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       // written: inside it the work is still recoverable, past it, it is gone.
       const swept = await runtime.store.createArticle({ authorId, slug: `${slug}-swept`, title: "Soon swept", locale: "zh-CN", contentBlocks });
       await runtime.store.deleteArticle({ articleId: swept.id, actorId: authorId });
+      assert.equal((await runtime.store.listMyDeletedArticles({ actorId: authorId, locale: "zh-CN" })).find((article) => article.id === swept.id)?.commentCount, 0);
       const kept = await runtime.store.createArticle({ authorId, slug: `${slug}-kept`, title: "Not yet swept", locale: "zh-CN", contentBlocks });
       await runtime.store.deleteArticle({ articleId: kept.id, actorId: authorId });
       const deletedAt = new Date();

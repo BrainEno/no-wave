@@ -104,6 +104,15 @@ const AUTHORED: AuthoredArticle[] = [];
 /** The mock's retention window, in days; the API's own default. */
 const MOCK_RETENTION_DAYS = 30;
 
+/**
+ * Comments written through the mock, counted by slug.
+ *
+ * The recycle bin reports how many comments a tombstone still carries, because
+ * the sweep takes them with it. A mock that always answered zero would let the
+ * desk display a number nobody had ever checked.
+ */
+const MOCK_COMMENT_COUNTS = new Map<string, number>();
+
 /** Newest first, like the API's author list. */
 function authoredPayload(article: AuthoredArticle) {
   return { ...article };
@@ -405,7 +414,11 @@ function handle(request: IncomingMessage, response: ServerResponse, body: Record
   const commentList = /^\/api\/v1\/articles\/([^/]+)\/comments$/.exec(path);
   if (commentList) {
     const slug = decodeURIComponent(commentList[1] ?? "");
-    const article = ARTICLES.find((candidate) => candidate.slug === slug);
+    // A work written through the desk is commentable too, while it is published:
+    // the mock answers for the two registries the way the API answers for one
+    // table, and a draft or a tombstone is still not a public thread.
+    const article = ARTICLES.find((candidate) => candidate.slug === slug)
+      ?? AUTHORED.find((candidate) => candidate.slug === slug && candidate.status === "published" && !candidate.deletedAt);
     if (!article) {
       send(response, 404, { error: { code: "NOT_FOUND", message: "Article not found." } });
       return;
@@ -439,6 +452,7 @@ function handle(request: IncomingMessage, response: ServerResponse, body: Record
       send(response, 400, { error: { code: "BAD_USER_INPUT", message: "Comment is empty." } });
       return;
     }
+    MOCK_COMMENT_COUNTS.set(slug, (MOCK_COMMENT_COUNTS.get(slug) ?? 0) + 1);
     send(response, 201, {
       data: {
         id: "d2e3f4a5-6b7c-4d8e-9f01-2a3b4c5d6e7f",
@@ -536,6 +550,7 @@ function handle(request: IncomingMessage, response: ServerResponse, body: Record
         .map((article) => ({
           ...authoredPayload(article),
           purgesAt: new Date(new Date(article.deletedAt as string).getTime() + MOCK_RETENTION_DAYS * 86_400_000).toISOString(),
+          commentCount: MOCK_COMMENT_COUNTS.get(article.slug) ?? 0,
         })),
     });
     return;
