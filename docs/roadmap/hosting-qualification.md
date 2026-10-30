@@ -2,7 +2,7 @@
 
 - Date: 2026-10-29
 - Gate defined in: [ADR 0012](../architecture/decisions/0012-portable-web-framework-migration.md) (decision 8) and [migration roadmap §3](frontend-portability-migration.md)
-- Verdict: **PASS. Web, database and object storage each have a cardless, zero-cost, hard-stop candidate; the notification worker has a documented gap.**
+- Verdict: **PASS. Web, database, object storage and transactional mail each have a cardless, zero-cost, hard-stop candidate; the notification worker has a documented gap.**
 
 ## 1. What the gate actually demands
 
@@ -90,19 +90,56 @@ rescheduling and idempotency are identical; see
 
 The worker's own start/stop, retry, metrics and shutdown contract is now written down in [notification worker](../operations/notification-worker.md).
 
-## 6. What is now allowed, and what is still forbidden
+## 6. Candidate: transactional mail
+
+Recovery and verification (ADR 0014) end in an outbound mail, so the same gate
+has to be asked of a mail provider: signup without a card, and a hard stop at $0
+rather than an automatic overage.
+
+| Candidate | No card | Zero cost with hard stop | Verdict |
+| --- | --- | --- | --- |
+| **Brevo — Free** | Yes — the free plan needs no payment method | Yes: **300 emails/day** (~9,000/month), no time limit, quota resets daily; SMTP relay (`smtp-relay.brevo.com:587` STARTTLS) **and** REST API; sender addresses must be added/verified first | **Primary candidate — qualified on published terms** |
+| Resend — Free | Yes | Yes: 3,000 emails/month, no card, **but capped at 100/day**; REST API and SMTP | **Secondary** — passes the same gate with a third of the daily ceiling |
+| Postmark | Yes (trial) | Free tier is ~100 emails/month total — enough to verify an integration, not to run one | **Excluded** for this use |
+| SendGrid | Free tier has changed repeatedly | Not a durable published no-card allowance for transactional sending | **Excluded** |
+| Mailgun / usage-billed ESPs | Card required for anything beyond a short trial | No hard stop at $0 | **Excluded** |
+
+Read from vendor and third-party pages on 2026-10-31 (Brevo's email-API and
+pricing pages, Resend pricing/plan write-ups, and a Brevo/Postmark comparison).
+**No account was created and no credential was obtained** — the same evidence
+rule as the rest of this document: published terms now, runtime behaviour at
+Phase 6.
+
+Why Brevo over Resend: the daily ceiling. The API throttles recovery to five
+requests per address per hour and 20 per peer, so this site's account mail is a
+few dozen messages a day at most — but a quota that resets *daily* rather than
+*monthly* is what keeps a burst (a mail outage that everybody retries at once)
+from pausing recovery for the rest of the month.
+
+Decision: **Brevo Free is the qualified relay.** It is reached over **generic
+SMTP submission** — not a provider SDK — so switching to Resend or any other
+relay is an environment change rather than a code change, and no provider name
+appears in business logic. See ADR 0015.
+
+## 7. What is now allowed, and what is still forbidden
 
 Allowed after this gate:
 - Phase 3 public SSR route migration against the **plain Node server** (no adapter imports, no provider SDK).
 - Treating Render's free instance shape as the sizing/behavior baseline (cold start, 0.1 CPU, ephemeral disk).
 - Documenting environment variables and the `PORT`/`0.0.0.0` contract.
+- A **generic SMTP submission client** behind the identity mail port (ADR 0015):
+  no provider SDK, no new dependency, configured only through `MAIL_SMTP_*`
+  environment variables.
 
 Still forbidden:
 - Any Render-specific deploy file, `render.yaml`, or provider SDK in business logic. A deploy descriptor, if added later, stays a top-level ops artifact.
 - Any Neon-specific media code: the storage adapter must stay a generic S3 client, configured only through environment variables.
-- Creating a live deployment, provisioning Neon, changing DNS, or touching production.
+- Any Brevo- or Resend-specific code, SDK or credential handling: the mailer talks
+  SMTP submission, and which relay answers is an environment variable.
+- Creating a live deployment, provisioning Neon **or a mail account**, changing DNS,
+  or touching production. Credentials are never committed (AGENTS.md).
 - Relaxing the no-card requirement (it no longer needs relaxing: web, database, and object storage all have cardless free tiers).
 
-## 7. Evidence basis and honesty note
+## 8. Evidence basis and honesty note
 
-Terms above come from vendor pricing/product pages and from third-party trackers that quote them, not from a live signup. The published-terms check is what ADR 0012 asks for *before* provider-specific code; the runtime rows (§1 items 3–7) remain unverified until a disposable deployment exists. This document therefore claims: **gate passed on published terms for Render (web), Neon Postgres (database), and Neon Object Storage (media), plus a cardless scheduler-drain fallback for notifications; runtime behavior for all four remains unverified until a disposable deployment exists.**
+Terms above come from vendor pricing/product pages and from third-party trackers that quote them, not from a live signup. The published-terms check is what ADR 0012 asks for *before* provider-specific code; the runtime rows (§1 items 3–7) remain unverified until a disposable deployment exists. This document therefore claims: **gate passed on published terms for Render (web), Neon Postgres (database), Neon Object Storage (media) and Brevo (transactional mail, over generic SMTP submission), plus a cardless scheduler-drain fallback for notifications; runtime behavior for all five remains unverified until a disposable deployment exists.**

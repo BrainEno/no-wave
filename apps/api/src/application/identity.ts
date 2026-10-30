@@ -159,9 +159,22 @@ export function createIdentityService({ store, env, mailer = null }: {
     if (!delivery) return;
     try {
       await delivery.send({ to, purpose, subject, text, link: identityLink({ env, purpose, token }) });
-    } catch {
-      // Swallowed on purpose: the account state is already committed, and an
-      // undeliverable mail is not a reason to tell the caller the request failed.
+    } catch (error: unknown) {
+      // Swallowed as far as the caller is concerned: the account state is
+      // already committed, and an undeliverable mail is not a reason to report
+      // a failed request. It *is* a reason to leave a trace. Before a relay
+      // existed, a swallowed failure cost nothing; with one configured, silence
+      // is how recovery breaks for a week without anybody noticing. The address
+      // is deliberately absent — a mailbox in a failure log is a mailing list.
+      process.stdout.write(`${JSON.stringify({
+        timestamp: new Date().toISOString(),
+        level: "error",
+        component: "api",
+        event: "identity_mail_failed",
+        purpose,
+        code: typeof (error as { code?: unknown }).code === "string" ? (error as { code: string }).code : "MAIL_FAILED",
+        message: error instanceof Error ? error.message.slice(0, 240) : "The mail could not be delivered.",
+      })}\n`);
     }
   }
   function prepareSession(userId: string, config: ReturnType<typeof accessIssuerConfiguration>): { refreshToken: string; issuedAt: number; session: IdentitySession } {
