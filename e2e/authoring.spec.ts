@@ -409,6 +409,55 @@ test("returning a published work to draft withdraws it from the public site", as
   await expect(page.getByRole("button", { name: new RegExp(title) })).toContainText("草稿", { timeout: 45_000 });
 });
 
+test("text committed by an IME reaches the editor state and is saved", async ({ page, request }) => {
+  await registerWriter(page, request);
+  await waitForEditor(page);
+  const title = `浏览器验证输入法 ${Date.now().toString(36)}`;
+  await page.getByLabel("标题").fill(title);
+  await page.getByLabel("作品正文").click();
+  // An IME commits a candidate with an `input` event and no keydown/keyup pair
+  // for the characters it produced. `insertText` is exactly that shape, so a
+  // composition bug that only shows up with a Chinese IME is reachable from CI
+  // instead of only from a desktop with an IME installed.
+  await page.keyboard.insertText(FIRST_PARAGRAPH);
+  await expect(page.getByLabel("作品正文")).toContainText("第一段用来验证保存链路。");
+  await page.getByRole("button", { name: "保存草稿" }).click();
+  await savedSlug(page, title, "draft");
+
+  // It has to survive the round trip, not just the screen: reopening the work
+  // rebuilds the editor from the blocks the API stored.
+  await page.reload();
+  await waitForEditor(page);
+  await page.getByRole("button", { name: new RegExp(title) }).click();
+  await expect(page.getByLabel("作品正文")).toContainText("第一段用来验证保存链路。", { timeout: 45_000 });
+});
+
+test("formatting applied without a mouse survives the save round trip", async ({ page, request }) => {
+  await registerWriter(page, request);
+  await waitForEditor(page);
+  const title = `浏览器验证键盘 ${Date.now().toString(36)}`;
+  await page.getByLabel("标题").fill(title);
+  await page.getByLabel("作品正文").click();
+  await page.keyboard.type(FIRST_PARAGRAPH);
+  await expect(page.getByLabel("作品正文")).toContainText("第一段用来验证保存链路。");
+
+  // Keyboard only: select the paragraph, then bold it with the editor's own
+  // shortcut — no pointer. A toolbar that answers only the mouse is not
+  // accessible, and this is the keyboard path the editor itself provides.
+  await page.keyboard.press("Control+A");
+  await page.keyboard.press("Control+B");
+  await expect(page.getByLabel("作品正文").locator("strong")).toContainText("第一段用来验证保存链路。", { timeout: 30_000 });
+
+  // The article contract carries inline marks, so what the keyboard applied has
+  // to come back when the work is reopened, not only stay on this screen.
+  await page.getByRole("button", { name: "保存草稿" }).click();
+  await savedSlug(page, title, "draft");
+  await page.reload();
+  await waitForEditor(page);
+  await page.getByRole("button", { name: new RegExp(title) }).click();
+  await expect(page.getByLabel("作品正文").locator("strong")).toContainText("第一段用来验证保存链路。", { timeout: 45_000 });
+});
+
 test("an article with no body is refused with a readable message instead of a silent failure", async ({ page, request }) => {
   await registerWriter(page, request);
   await waitForEditor(page);
