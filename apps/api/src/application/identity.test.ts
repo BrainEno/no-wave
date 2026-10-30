@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import test from "node:test";
 import { createIdentityService } from "./identity.ts";
 import { createLogMailer } from "./identity-mailer.ts";
+import { SmtpError } from "../infrastructure/smtp-client.ts";
 import { IdentityAuthenticationError } from "../domain/errors.ts";
 
 test("identity maintenance is periodically invoked without exposing throttle subjects", async () => {
@@ -236,4 +237,41 @@ test("the recovery link is not written to the log unless an operator opts in", a
     assert.equal(entry.event, "identity_mail");
     assert.equal(entry.link === null, !expectLink, `link in the log with ${JSON.stringify(env)}`);
   }
+});
+test("an undeliverable mail is recorded, and the caller is told nothing about it", async () => {
+  const store = fakeIdentityStore({ accounts: [{ userId: "user-1", email: "owner@example.test", passwordHash: "hash-1" }] });
+  const observations: Array<{ purpose: string; outcome: string; code?: string; message?: string }> = [];
+  const service = createIdentityService({
+    env: identityEnv,
+    store,
+    mailer: { async send() { throw new SmtpError("CONNECT", "connect ECONNREFUSED relay.test:587"); } },
+    onMailDelivery: (sample) => { observations.push(sample); },
+  });
+
+  assert.deepEqual(
+    await service.requestPasswordReset({ email: "owner@example.test" }, "192.0.2.10"),
+    { ok: true },
+    "a broken relay must not look like a failed recovery request",
+  );
+  assert.equal(observations.length, 1);
+  assert.equal(observations[0]?.purpose, "password_reset");
+  assert.equal(observations[0]?.outcome, "failed");
+  assert.equal(observations[0]?.code, "CONNECT");
+  assert.equal(String(observations[0]?.message).includes("owner@example.test"), false, "the observation carries no address");
+  assert.ok(store.tokens.size > 0, "the token is stored either way, so the user can ask for a new link");
+});
+
+test("a delivered mail is recorded as sent", async () => {
+  const store = fakeIdentityStore({ accounts: [{ userId: "user-1", email: "owner@example.test", passwordHash: "hash-1" }] });
+  const observations: Array<{ purpose: string; outcome: string }> = [];
+  const service = createIdentityService({
+    env: identityEnv,
+    store,
+    mailer: capturingMailer().mailer,
+    onMailDelivery: (sample) => { observations.push(sample); },
+  });
+
+  await service.requestEmailVerification("user-1", "192.0.2.10");
+  assert.deepEqual(observations, [{ purpose: "email_verification", outcome: "sent", durationMs: observations[0]?.durationMs }]);
+  assert.ok(typeof observations[0]?.durationMs === "number");
 });

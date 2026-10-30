@@ -124,3 +124,62 @@ test("persistence port instrumentation measures async success and failure withou
   assert.equal(metrics.includes("private message body"), false);
   assert.equal(metrics.includes("database details"), false);
 });
+
+/**
+ * Account-mail observations.
+ *
+ * The recovery request answers `202` whether or not the mail went out, so these
+ * counters are the only signal an operator has that recovery is broken — and the
+ * only place an alert can rule on.
+ */
+
+test("a failed delivery is counted, logged at error level, and carries no address", () => {
+  const logs = [];
+  const observability = createHttpObservability({ logger: (record) => logs.push(record) });
+  observability.observeMailDelivery({
+    purpose: "password_reset",
+    outcome: "failed",
+    durationMs: 12.5,
+    code: "CONNECT",
+    message: "connect ECONNREFUSED 127.0.0.1:2525",
+  });
+
+  const log = logs.at(-1);
+  assert.equal(log.level, "error");
+  assert.equal(log.event, "identity_mail_failed");
+  assert.equal(log.purpose, "password_reset");
+  assert.equal(log.code, "CONNECT");
+  assert.equal(JSON.stringify(log).includes("writer@example.test"), false);
+
+  const rendered = observability.renderMetrics();
+  assert.match(rendered, /api_identity_mail_deliveries_total\{purpose="password_reset",outcome="failed"\} 1/);
+  assert.match(rendered, /api_identity_mail_delivery_duration_ms_count\{purpose="password_reset",outcome="failed"\} 1/);
+});
+
+test("a delivered mail is counted as sent and stays out of the error stream", () => {
+  const logs = [];
+  const observability = createHttpObservability({ logger: (record) => logs.push(record) });
+  observability.observeMailDelivery({ purpose: "email_verification", outcome: "sent", durationMs: 240 });
+
+  assert.equal(logs.at(-1).level, "info");
+  assert.equal(logs.at(-1).event, "identity_mail_delivered");
+  assert.match(
+    observability.renderMetrics(),
+    /api_identity_mail_deliveries_total\{purpose="email_verification",outcome="sent"\} 1/,
+  );
+});
+
+test("a purpose outside the closed set cannot become an unbounded label", () => {
+  const observability = createHttpObservability({ logger: () => {} });
+  observability.observeMailDelivery({ purpose: "writer@example.test", outcome: "weird", durationMs: 1 });
+  const rendered = observability.renderMetrics();
+  assert.match(rendered, /purpose="other"/);
+  assert.equal(rendered.includes("writer@example.test"), false, "a request-derived string must never become a label");
+});
+
+test("a failure message is truncated rather than relayed whole", () => {
+  const logs = [];
+  const observability = createHttpObservability({ logger: (record) => logs.push(record) });
+  observability.observeMailDelivery({ purpose: "password_reset", outcome: "failed", durationMs: 1, message: "x".repeat(5000) });
+  assert.equal(String(logs.at(-1).message).length, 240);
+});

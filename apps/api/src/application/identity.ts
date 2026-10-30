@@ -118,10 +118,11 @@ function rateKey(secret: string, scope: string, subject: string): string {
 function timestamp(seconds: number): string { return new Date(seconds * 1000).toISOString(); }
 
 /** Transport-independent registration, login, rotation and logout use cases. */
-export function createIdentityService({ store, env, mailer = null }: {
+export function createIdentityService({ store, env, mailer = null, onMailDelivery = null }: {
   store: IdentityStore;
   env: NodeJS.ProcessEnv;
   mailer?: IdentityMailer | null;
+  onMailDelivery?: ((sample: { purpose: string; outcome: string; durationMs: number; code?: string; message?: string }) => void) | null;
 }) {
   const delivery: IdentityMailer | null = mailer ?? resolveIdentityMailer(env);
   let rateOperations = 0;
@@ -157,24 +158,24 @@ export function createIdentityService({ store, env, mailer = null }: {
     purpose: IdentityTokenPurpose; to: string; token: string; subject: string; text: string;
   }): Promise<void> {
     if (!delivery) return;
+    const startedAt = Date.now();
     try {
       await delivery.send({ to, purpose, subject, text, link: identityLink({ env, purpose, token }) });
+      onMailDelivery?.({ purpose, outcome: "sent", durationMs: Date.now() - startedAt });
     } catch (error: unknown) {
       // Swallowed as far as the caller is concerned: the account state is
       // already committed, and an undeliverable mail is not a reason to report
-      // a failed request. It *is* a reason to leave a trace. Before a relay
+      // a failed request. It *is* a reason to record one. Before a relay
       // existed, a swallowed failure cost nothing; with one configured, silence
       // is how recovery breaks for a week without anybody noticing. The address
-      // is deliberately absent — a mailbox in a failure log is a mailing list.
-      process.stdout.write(`${JSON.stringify({
-        timestamp: new Date().toISOString(),
-        level: "error",
-        component: "api",
-        event: "identity_mail_failed",
+      // is left out here on purpose — the observer decides what is safe to keep.
+      onMailDelivery?.({
         purpose,
+        outcome: "failed",
+        durationMs: Date.now() - startedAt,
         code: typeof (error as { code?: unknown }).code === "string" ? (error as { code: string }).code : "MAIL_FAILED",
-        message: error instanceof Error ? error.message.slice(0, 240) : "The mail could not be delivered.",
-      })}\n`);
+        message: error instanceof Error ? error.message : "The mail could not be delivered.",
+      });
     }
   }
   function prepareSession(userId: string, config: ReturnType<typeof accessIssuerConfiguration>): { refreshToken: string; issuedAt: number; session: IdentitySession } {

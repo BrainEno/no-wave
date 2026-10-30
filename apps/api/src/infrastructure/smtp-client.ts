@@ -266,7 +266,10 @@ export function socketConnection(
  */
 export function dialSmtp(config: SmtpConfig): Promise<SmtpConnection> {
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const timeout = new SmtpError("TIMEOUT", "The SMTP server did not accept the connection in time.");
+  // A distinct code from the in-conversation `TIMEOUT`: before the server has
+  // said anything, nothing can have been delivered, so a connect failure is the
+  // one class of failure that is safe to retry.
+  const timeout = new SmtpError("CONNECT", "The SMTP server did not accept the connection in time.");
   if (config.security === "implicit") {
     return new Promise<SmtpConnection>((resolve, reject) => {
       const socket = tlsConnect(

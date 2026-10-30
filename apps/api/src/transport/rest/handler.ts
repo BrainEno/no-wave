@@ -15,12 +15,12 @@ import { hasDuplicateQueryParameters, NO_ROUTE_PARAMS, sendBadInput, sendJson, t
  * per-request {@link RestRouteContext}. Everything else lives in `./routes/*.ts`
  * behind the ordered `REST_ROUTE_GROUPS` list (issue #58).
  */
-export function createRestHandler({ services, env = process.env, mediaAssets = null }: { services: RestServices | null; env?: NodeJS.ProcessEnv; mediaAssets?: MediaAssetsPort | null }) {
+export function createRestHandler({ services, env = process.env, mediaAssets = null, onMailDelivery = null }: { services: RestServices | null; env?: NodeJS.ProcessEnv; mediaAssets?: MediaAssetsPort | null; onMailDelivery?: ((sample: { purpose: string; outcome: string; durationMs: number; code?: string; message?: string }) => void) | null }) {
   // The facade is assembled dynamically from the validated persistence ports.
   // `ApplicationServices` already carries the identity store methods
   // (`createIdentityAccount`, `findIdentityAccount`, ...), so no assertion is
   // needed to reach them (issue #66).
-  const identity = services ? createIdentityService({ store: services, env }) : null;
+  const identity = services ? createIdentityService({ store: services, env, onMailDelivery }) : null;
   const rateLimitStore: RateLimitStore | null = services && typeof services.consumeRateLimit === "function"
     ? {
         consumeRateLimit: (input: RateLimitBucket) => services.consumeRateLimit!(input),

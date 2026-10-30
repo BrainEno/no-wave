@@ -75,7 +75,23 @@ export function createLogMailer({ env = process.env, log = (line: string) => pro
   });
 }
 
-export type SmtpMailerConfig = SmtpConfig & { from: string; fromName?: string };
+/**
+ * One retry, and only inside this budget.
+ *
+ * A refused connection fails in microseconds, so the retry is nearly free; a
+ * relay that hangs for ten seconds has already spent the budget, and a retry
+ * would turn one slow recovery request into two slow ones.
+ */
+const DELIVERY_ATTEMPTS = 2;
+const DEFAULT_DELIVERY_DEADLINE_MS = 2_000;
+const RETRY_DELAY_MS = 150;
+
+export type SmtpMailerConfig = SmtpConfig & {
+  from: string;
+  fromName?: string;
+  /** Total time a delivery may spend across all attempts; capped at 10s. */
+  deliveryDeadlineMs?: number;
+};
 
 function configured(value: string | undefined | null): string {
   return typeof value === "string" ? value.trim() : "";
@@ -109,12 +125,14 @@ export function resolveSmtpMailerConfig(env: NodeJS.ProcessEnv = process.env): S
   const user = configured(env.MAIL_SMTP_USER);
   const password = typeof env.MAIL_SMTP_PASSWORD === "string" ? env.MAIL_SMTP_PASSWORD : "";
   const timeout = configured(env.MAIL_SMTP_TIMEOUT_MS);
+  const deadline = configured(env.MAIL_SMTP_DELIVERY_DEADLINE_MS);
   return {
     host,
     port: portFromEnv(env.MAIL_SMTP_PORT, security),
     security,
     ...(user.length > 0 ? { user, password } : {}),
     ...(/^[1-9]\d*$/.test(timeout) ? { timeoutMs: Math.min(Number(timeout), 60_000) } : {}),
+    ...(/^[1-9]\d*$/.test(deadline) ? { deliveryDeadlineMs: Math.min(Number(deadline), 10_000) } : {}),
     from,
     ...(configured(env.MAIL_FROM_NAME) ? { fromName: configured(env.MAIL_FROM_NAME) } : {}),
   };
@@ -128,32 +146,64 @@ export function resolveSmtpMailerConfig(env: NodeJS.ProcessEnv = process.env): S
  * host speaks submission, so switching is an environment change, not a code
  * change. See ADR 0015.
  */
-export function createSmtpMailer({ config, deps = {}, log = (line: string) => process.stdout.write(`${line}\n`) }: {
+/**
+ * Whether a failure is worth another attempt.
+ *
+ * Only failures that happened **before the relay could have accepted anything**:
+ * a refused connection, a DNS miss, a connect timeout. Once the server has
+ * opened its mouth — a rejected credential, a rejected recipient, a lost reply
+ * to DATA — the outcome is either a decision or an unknown, and retrying a
+ * message that may already be queued is how one reset link becomes two mails.
+ */
+export function isRetryableMailFailure(error: unknown): boolean {
+  if (error instanceof SmtpError) return error.code === "CONNECT";
+  // `dialSmtp` rejects with the raw system error for everything else that can
+  // go wrong while connecting (ECONNREFUSED, ENOTFOUND, EAI_AGAIN, ECONNRESET).
+  return error instanceof Error;
+}
+
+export function createSmtpMailer({ config, deps = {}, log = (line: string) => process.stdout.write(`${line}\n`), sleep = defaultSleep }: {
   config: SmtpMailerConfig;
   deps?: SmtpDependencies;
   log?: (line: string) => void;
+  sleep?: (milliseconds: number) => Promise<void>;
 } = { config: { host: "", port: 587, security: "starttls", from: "" } }): IdentityMailer {
   return Object.freeze({
     async send({ to, subject, text, link }: IdentityMailMessage): Promise<void> {
       // The link is the point of the mail, so it goes on a line of its own
       // rather than buried in a paragraph an operator might edit.
       const body = [text, "", link].join("\n");
-      try {
-        await sendSmtpMessage(
-          { host: config.host, port: config.port, security: config.security, ...(config.user ? { user: config.user, password: config.password ?? "" } : {}), ...(config.timeoutMs ? { timeoutMs: config.timeoutMs } : {}), ...(config.clientName ? { clientName: config.clientName } : {}) },
-          { from: config.from, ...(config.fromName ? { fromName: config.fromName } : {}), to, subject, text: body },
-          deps,
-        );
-      } catch (error: unknown) {
-        // Re-thrown with the recipient's purpose but **without** the address:
-        // the caller logs this, and a mailbox address in a failure log is the
-        // kind of detail that turns a log store into a mailing list.
-        const code = error instanceof SmtpError ? error.code : "SMTP_UNAVAILABLE";
-        const detail = error instanceof Error ? error.message : "The mail relay could not be reached.";
-        throw new SmtpError(code, `delivery of a ${subject} mail failed: ${detail}`);
+      const startedAt = Date.now();
+      const deadlineMs = config.deliveryDeadlineMs ?? DEFAULT_DELIVERY_DEADLINE_MS;
+
+      for (let attempt = 1; ; attempt += 1) {
+        try {
+          await sendSmtpMessage(
+            { host: config.host, port: config.port, security: config.security, ...(config.user ? { user: config.user, password: config.password ?? "" } : {}), ...(config.timeoutMs ? { timeoutMs: config.timeoutMs } : {}), ...(config.clientName ? { clientName: config.clientName } : {}) },
+            { from: config.from, ...(config.fromName ? { fromName: config.fromName } : {}), to, subject, text: body },
+            deps,
+          );
+          return;
+        } catch (error: unknown) {
+          const outOfTime = Date.now() - startedAt >= deadlineMs;
+          if (attempt >= DELIVERY_ATTEMPTS || outOfTime || !isRetryableMailFailure(error)) {
+            // Re-thrown with the purpose but **without** the address: the caller
+            // records this, and a mailbox in a failure log is the kind of detail
+            // that turns a log store into a mailing list.
+            const code = error instanceof SmtpError ? error.code : "SMTP_UNAVAILABLE";
+            const detail = error instanceof Error ? error.message : "The mail relay could not be reached.";
+            throw new SmtpError(code, `delivery of a ${subject} mail failed: ${detail}`);
+          }
+          log(`smtp: delivery attempt ${attempt} failed (${(error as { code?: string }).code ?? "CONNECTION"}); retrying once`);
+          await sleep(RETRY_DELAY_MS);
+        }
       }
     },
   });
+}
+
+function defaultSleep(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => { setTimeout(resolve, milliseconds); });
 }
 
 /**

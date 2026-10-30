@@ -23,7 +23,10 @@ export function createApiServer({
   const services = applicationServices ?? (store
     ? createApplicationServices({ persistence: store, onPersistenceOperation: observability.observePersistenceOperation, env })
     : null);
-  const handleRest = createRestHandler({ services, env, mediaAssets });
+  // Mail delivery is invisible in the HTTP status code by design (a recovery
+  // request answers 202 whether or not the mail went out), so the counter is the
+  // only thing an alert can rule on.
+  const handleRest = createRestHandler({ services, env, mediaAssets, onMailDelivery: observability.observeMailDelivery });
 
   return createServer(async (request, response) => {
     const startedAt = process.hrtime.bigint();
