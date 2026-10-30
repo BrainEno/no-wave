@@ -47,6 +47,15 @@ export function createSqliteArticleStore(db) {
     updatedAt: row.updated_at,
     publishedAt: row.published_at,
   }) : null;
+  // The desk's recycle bin reads the same article shape plus the tombstone
+  // timestamp, so it gets its own select rather than a flag on the shared one.
+  const deletedArticleSelect = `
+    SELECT a.id, a.author_id, a.slug, a.work_type, a.status, t.locale,
+           t.title, t.summary, t.content_blocks, t.content_blocks_version, a.created_at, a.updated_at, a.published_at, a.deleted_at
+    FROM articles a
+    JOIN article_translations t ON t.article_id = a.id
+  `;
+  const mapDeletedArticle = (row) => row ? ({ ...mapArticle(row), deletedAt: row.deleted_at }) : null;
   const statement = (sql) => db.prepare(sql);
   const publishedArticleBySlug = statement(
     articleSelect + " WHERE a.slug = ? AND a.status = 'published' AND t.locale = ? LIMIT 1",
@@ -143,6 +152,23 @@ export function createSqliteArticleStore(db) {
       // desk must not list it — deletion would otherwise be invisible.
       return statement(articleSelect + " WHERE a.author_id = ? AND t.locale = ? AND a.deleted_at IS NULL ORDER BY a.updated_at DESC, a.id LIMIT ?")
         .all(actorId, locale, limit).map(mapArticle);
+    },
+
+    /**
+     * The author's own tombstones, newest deletion first.
+     *
+     * This is the list that makes a soft delete honest: without it, a deleted
+     * work is invisible and unrecoverable, which is the one thing an author
+     * cannot tell apart from a bug. `purgesAt` is deliberately *not* computed
+     * here — the retention window is policy the service layer owns, so a store
+     * test never has to fake an environment to read a timestamp.
+     */
+    listMyDeletedArticles({ actorId, locale = "zh-CN", limit = 50 }) {
+      requiredText("actorId", actorId, 300);
+      validateArticleLocale(locale);
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
+      return statement(deletedArticleSelect + " WHERE a.author_id = ? AND t.locale = ? AND a.deleted_at IS NOT NULL ORDER BY a.deleted_at DESC, a.id DESC LIMIT ?")
+        .all(actorId, locale, limit).map(mapDeletedArticle);
     },
 
     listLikedArticles({ actorId, locale = "zh-CN", limit = 50 }) {
@@ -255,6 +281,92 @@ export function createSqliteArticleStore(db) {
           .run(now, releasedSlug, now, articleId);
         captureArticleRow(transactionId, articleId);
         return { id: articleId, deletedAt: now };
+      });
+    },
+
+    /**
+     * Bring one of the author's own tombstones back.
+     *
+     * A restored work returns as a **draft**, never as published: deleting it
+     * withdrew it from the public site, and restoring must not quietly put a
+     * public address back that the author may have decided against. Republishing
+     * is one deliberate press of a button.
+     *
+     * The address the tombstone released is reclaimed when it is still free, so
+     * the author does not carry `-deleted-…` around; when something else has
+     * taken it since, the tombstone's own slug stays and the restore still
+     * succeeds — a restore must never fail over a slug the author cannot see.
+     */
+    restoreArticle({ articleId, actorId, locale = "zh-CN" }) {
+      if (!isUuid(articleId)) throw new ArticleInputError("articleId must be a valid article ID.");
+      requiredText("actorId", actorId, 300);
+      validateArticleLocale(locale);
+      return transaction((transactionId) => {
+        const existing = statement("SELECT author_id, slug, deleted_at FROM articles WHERE id = ?").get(articleId);
+        // Not a tombstone: an unknown id, a live work and a second restore are
+        // all the same answer, so this cannot be used to probe what exists.
+        if (!existing || !existing.deleted_at) throw new ArticleNotFoundError("The article was not found.");
+        if (existing.author_id !== actorId) throw new ArticleAuthorizationError("Only the article author can restore it.");
+        const translation = statement("SELECT locale FROM article_translations WHERE article_id = ? AND locale = ?").get(articleId, locale);
+        if (!translation) throw new ArticleNotFoundError(`The article has no ${locale} translation.`);
+        const now = new Date().toISOString();
+        const suffix = `-deleted-${articleId.slice(0, 8)}`;
+        const preferred = existing.slug.endsWith(suffix) ? existing.slug.slice(0, -suffix.length) : existing.slug;
+        const taken = preferred === existing.slug
+          ? undefined
+          : statement("SELECT 1 AS found FROM articles WHERE slug = ? AND id <> ?").get(preferred, articleId);
+        db.prepare("UPDATE articles SET deleted_at = NULL, status = 'draft', slug = ?, updated_at = ? WHERE id = ?")
+          .run(taken ? existing.slug : preferred, now, articleId);
+        captureArticleRow(transactionId, articleId);
+        return mapArticle(statement(articleSelect + " WHERE a.id = ? AND t.locale = ?").get(articleId, locale));
+      });
+    },
+
+    /**
+     * Hard-delete tombstones that have outlived the retention window.
+     *
+     * This is the only irreversible step in the slice, so it is deliberately
+     * unreachable from the desk: the author has no "delete forever" button, and
+     * the window is what gives "you can undo this" an expiry date. Rows go, and
+     * the foreign keys take the translations, likes, comments and taxonomy links
+     * with them — which is why those children are captured one by one *before*
+     * the delete, the way `deleteConversation` does it: a replica replaying this
+     * journal must not keep orphaned comments behind.
+     *
+     * Bounded and awaitable, like `pruneExpiredIdentityState`: the sweep never
+     * outlives the request that triggered it.
+     */
+    purgeExpiredArticles({ retentionDays = 30, now = new Date(), limit = 100 } = {}) {
+      if (!Number.isInteger(retentionDays) || retentionDays < 1 || retentionDays > 3650) {
+        throw new ArticleInputError("retentionDays must be an integer between 1 and 3650.");
+      }
+      if (!Number.isInteger(limit) || limit < 1 || limit > 500) throw new ArticleInputError("limit must be an integer between 1 and 500.");
+      const at = now instanceof Date ? now : new Date(now);
+      if (Number.isNaN(at.getTime())) throw new ArticleInputError("now must be a valid date.");
+      const cutoff = new Date(at.getTime() - retentionDays * 86_400_000).toISOString();
+      return transaction((transactionId) => {
+        const expired = statement("SELECT id FROM articles WHERE deleted_at IS NOT NULL AND deleted_at < ? ORDER BY deleted_at, id LIMIT ?")
+          .all(cutoff, limit).map((row) => row.id);
+        const changes = [];
+        for (const id of expired) {
+          changes.push({ entityType: "articles", entityId: id, operation: "delete", payload: null });
+          for (const row of statement("SELECT locale FROM article_translations WHERE article_id = ?").all(id)) {
+            changes.push({ entityType: "article_translations", entityId: migrationEntityKey(id, row.locale), operation: "delete", payload: null });
+          }
+          for (const row of statement("SELECT user_id FROM article_likes WHERE article_id = ?").all(id)) {
+            changes.push({ entityType: "article_likes", entityId: migrationEntityKey(id, row.user_id), operation: "delete", payload: null });
+          }
+          for (const row of statement("SELECT id FROM article_comments WHERE article_id = ?").all(id)) {
+            changes.push({ entityType: "article_comments", entityId: row.id, operation: "delete", payload: null });
+          }
+          for (const row of statement("SELECT taxonomy_id FROM article_taxonomies WHERE article_id = ?").all(id)) {
+            changes.push({ entityType: "article_taxonomies", entityId: migrationEntityKey(id, row.taxonomy_id), operation: "delete", payload: null });
+          }
+        }
+        const remove = statement("DELETE FROM articles WHERE id = ?");
+        for (const id of expired) remove.run(id);
+        if (changes.length) migrationCapture.captureInTransaction(db, transactionId, changes);
+        return { purged: expired.length };
       });
     },
   });

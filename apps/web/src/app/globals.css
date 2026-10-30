@@ -310,6 +310,11 @@ mark { background: var(--or); color: #0f0d0c; }
 .nw-authoring-article { display: grid; gap: 4px; text-align: left; padding: 12px; border: 1px solid var(--ink); background: transparent; overflow-wrap: anywhere; }
 .nw-authoring-article[aria-current="true"] { border-color: var(--or); box-shadow: inset 4px 0 var(--or); }
 .nw-authoring-article small { color: var(--t2); }
+.nw-authoring-trash { margin-top: clamp(32px, 5vw, 72px); padding-top: 24px; border-top: 1px solid var(--ink); display: grid; gap: 10px; }
+.nw-authoring-trash h2 { margin: 0; font-size: 18px; }
+.nw-authoring-trash-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 12px; border: 1px solid var(--t2); overflow-wrap: anywhere; }
+.nw-authoring-trash-row > span { flex: 1 1 240px; }
+.nw-authoring-trash-row small { color: var(--t2); }
 .nw-article-editor { min-width: 0; }
 .nw-article-fields { margin-top: 0; max-width: none; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .nw-article-fields .nw-field-wide { grid-column: 1 / -1; }

@@ -15,7 +15,8 @@
 export const persistencePortMethods = Object.freeze({
   content: Object.freeze([
     "listPublishedArticles", "getPublishedArticle", "listMyArticles",
-    "createArticle", "updateArticle", "deleteArticle", "listLikedArticles", "listRelatedArticles",
+    "createArticle", "updateArticle", "deleteArticle", "restoreArticle",
+    "listMyDeletedArticles", "purgeExpiredArticles", "listLikedArticles", "listRelatedArticles",
   ] as const),
   taxonomy: Object.freeze([
     "listTaxonomies", "getTaxonomyBySlug", "listTaxonomyArticles",

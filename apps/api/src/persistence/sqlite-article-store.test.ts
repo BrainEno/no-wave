@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
 import { createSqliteArticleStore } from "./sqlite-article-store.ts";
+import { createSqliteEngagementStore } from "./sqlite-engagement-store.ts";
+import { createSqliteProviderMigrationJournal } from "./sqlite-provider-migration-journal.ts";
 import { ArticleAuthorizationError, ArticleSlugConflictError, ArticleInputError, ArticleNotFoundError } from "../domain/errors.ts";
 
 const blocks = [{ id: "p1", type: "paragraph", text: "A small test article." }];
@@ -126,6 +128,123 @@ test("SQLite article deletion tombstones the work, releases its slug and hides i
       authorId: "author-1", slug: "delete-me", title: "Delete me", contentBlocks: blocks, publish: true,
     });
     assert.equal(rewritten.slug, "delete-me");
+  } finally {
+    db.close();
+  }
+});
+
+test("SQLite restore brings a tombstone back to the desk as a draft and reclaims its address", async () => {
+  const { db, store } = await fixture();
+  try {
+    const created = store.createArticle({
+      authorId: "author-1", slug: "restore-me", title: "Restore me",
+      contentBlocks: blocks, publish: true,
+    });
+    store.deleteArticle({ articleId: created.id, actorId: "author-1" });
+
+    // The recycle bin is the author's own tombstones, each one timestamped.
+    const trashed = store.listMyDeletedArticles({ actorId: "author-1", locale: "zh-CN" });
+    assert.equal(trashed.length, 1);
+    assert.equal(trashed[0].id, created.id);
+    assert.equal(typeof trashed[0].deletedAt, "string");
+    assert.equal(store.listMyDeletedArticles({ actorId: "author-2", locale: "zh-CN" }).length, 0);
+    assert.throws(() => store.listMyDeletedArticles({ actorId: "author-1", locale: "zh-CN", limit: 0 }), ArticleInputError);
+
+    assert.throws(() => store.restoreArticle({ articleId: "not-a-uuid", actorId: "author-1" }), ArticleInputError);
+    assert.throws(() => store.restoreArticle({ articleId: created.id, actorId: "intruder" }), ArticleAuthorizationError);
+
+    const restored = store.restoreArticle({ articleId: created.id, actorId: "author-1", locale: "zh-CN" });
+    assert.equal(restored.id, created.id);
+    // A restore must not republish: deleting withdrew the work, and putting a
+    // public address back is the author's decision to make again.
+    assert.equal(restored.status, "draft");
+    assert.equal(restored.slug, "restore-me", "the address the tombstone released comes back");
+    assert.equal(store.listMyArticles({ actorId: "author-1", locale: "zh-CN" }).length, 1);
+    assert.equal(store.getPublishedArticle({ slug: "restore-me" }), null);
+    assert.equal(store.listMyDeletedArticles({ actorId: "author-1", locale: "zh-CN" }).length, 0);
+    // A live work is not a tombstone, so a second restore is a 404.
+    assert.throws(() => store.restoreArticle({ articleId: created.id, actorId: "author-1" }), ArticleNotFoundError);
+  } finally {
+    db.close();
+  }
+});
+
+test("SQLite restore keeps the tombstone's own address when the original has been taken", async () => {
+  const { db, store } = await fixture();
+  try {
+    const original = store.createArticle({
+      authorId: "author-1", slug: "taken-me", title: "Taken",
+      contentBlocks: blocks, publish: true,
+    });
+    store.deleteArticle({ articleId: original.id, actorId: "author-1" });
+    const released = db.prepare("SELECT slug FROM articles WHERE id = ?").get(original.id).slug;
+    assert.notEqual(released, "taken-me");
+
+    const other = store.createArticle({
+      authorId: "author-1", slug: "taken-me", title: "Someone else now",
+      contentBlocks: blocks, publish: true,
+    });
+    // A restore must never fail over an address the author cannot see: the
+    // reclaimed slug is taken, so the tombstone keeps the one it was given.
+    const restored = store.restoreArticle({ articleId: original.id, actorId: "author-1", locale: "zh-CN" });
+    assert.equal(restored.slug, released);
+    assert.equal(store.getPublishedArticle({ slug: "taken-me" }).id, other.id);
+  } finally {
+    db.close();
+  }
+});
+
+test("SQLite expired tombstones are swept with the rows that depend on them", async () => {
+  const { db, store } = await fixture();
+  const engagement = createSqliteEngagementStore(db);
+  // A recording session is what makes capture observable at all: without one the
+  // journal is correctly a no-op, and this test would be asserting nothing.
+  const journal = createSqliteProviderMigrationJournal(db);
+  const sessionId = `sweep-session-${Date.now()}`;
+  journal.createSession({ sessionId, sourceProvider: "sqlite", targetProvider: "postgres", schemaVersion: "1" });
+  assert.equal(journal.transitionSession({ sessionId, expectedStatus: "prepared", nextStatus: "recording" }), true);
+  try {
+    const created = store.createArticle({
+      authorId: "author-1", slug: "sweep-me", title: "Sweep me",
+      contentBlocks: blocks, publish: true,
+    });
+    // A reader's engagement is written before the deletion, and it is the
+    // cascade — not the author — that makes purging a tombstone irreversible.
+    engagement.setArticleLike({ slug: "sweep-me", locale: "zh-CN", actorId: "reader-1", liked: true });
+    engagement.createArticleComment({ slug: "sweep-me", locale: "zh-CN", actorId: "reader-1", content: "A comment that outlives nothing." });
+    store.deleteArticle({ articleId: created.id, actorId: "author-1" });
+
+    // Inside the window the work is still recoverable.
+    assert.equal(store.purgeExpiredArticles({ retentionDays: 30, now: new Date() }).purged, 0);
+    assert.equal(db.prepare("SELECT count(*) AS count FROM articles WHERE id = ?").get(created.id).count, 1);
+    assert.throws(() => store.purgeExpiredArticles({ retentionDays: 0 }), ArticleInputError);
+    assert.throws(() => store.purgeExpiredArticles({ retentionDays: 30, limit: 0 }), ArticleInputError);
+
+    // Past it, the row goes with everything that referred to it.
+    const past = new Date(Date.now() + 31 * 86_400_000);
+    assert.equal(store.purgeExpiredArticles({ retentionDays: 30, now: past }).purged, 1);
+    assert.equal(db.prepare("SELECT count(*) AS count FROM articles WHERE id = ?").get(created.id).count, 0);
+    assert.equal(db.prepare("SELECT count(*) AS count FROM article_translations WHERE article_id = ?").get(created.id).count, 0);
+    assert.equal(db.prepare("SELECT count(*) AS count FROM article_likes WHERE article_id = ?").get(created.id).count, 0);
+    assert.equal(db.prepare("SELECT count(*) AS count FROM article_comments WHERE article_id = ?").get(created.id).count, 0);
+
+    // The journal carries the deletion and its children, so a replica replaying
+    // this transaction does not keep a work the sweep has removed.
+    // A comment is keyed by its own id, so the journal is read by entity type
+    // here: what matters is that every row the cascade removes is named.
+    const deleted = db.prepare("SELECT entity_type AS entityType FROM provider_migration_changes WHERE session_id = ? AND operation = 'delete'").all(sessionId).map((row) => row.entityType);
+    assert.ok(deleted.includes("articles"));
+    assert.ok(deleted.includes("article_translations"));
+    assert.ok(deleted.includes("article_likes"));
+    assert.ok(deleted.includes("article_comments"));
+
+    // Bounded: a limit of one leaves the second tombstone for the next sweep.
+    const first = store.createArticle({ authorId: "author-1", slug: "sweep-two", title: "Sweep two", contentBlocks: blocks });
+    const second = store.createArticle({ authorId: "author-1", slug: "sweep-three", title: "Sweep three", contentBlocks: blocks });
+    store.deleteArticle({ articleId: first.id, actorId: "author-1" });
+    store.deleteArticle({ articleId: second.id, actorId: "author-1" });
+    assert.equal(store.purgeExpiredArticles({ retentionDays: 30, now: past, limit: 1 }).purged, 1);
+    assert.equal(store.listMyDeletedArticles({ actorId: "author-1", locale: "zh-CN" }).length, 1);
   } finally {
     db.close();
   }

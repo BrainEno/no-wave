@@ -37,8 +37,12 @@ export {
   AUTHORING_LOCALES,
   authoringArticlePath,
   authoringArticlesPath,
+  authoringDeletedArticlesPath,
+  authoringRestoreArticlePath,
   handleAuthoringArticleRequest,
   handleAuthoringArticlesRequest,
+  handleAuthoringDeletedArticlesRequest,
+  handleAuthoringRestoreRequest,
   handleAuthoringSessionRequest,
   isAuthoringLocale,
 } from "./authoring.ts";

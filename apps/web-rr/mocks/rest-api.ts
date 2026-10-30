@@ -89,6 +89,8 @@ type AuthoredArticle = {
   contentBlocksVersion: number;
   publishedAt: string | null;
   updatedAt: string;
+  /** Set when the work is deleted, cleared again when it is restored. */
+  deletedAt?: string | null;
 };
 
 /** Fixed ids so a test can name one without depending on the insertion order. */
@@ -98,6 +100,9 @@ export const MOCK_AUTHORED_IDS: readonly string[] = Object.freeze([
 ]);
 
 const AUTHORED: AuthoredArticle[] = [];
+
+/** The mock's retention window, in days; the API's own default. */
+const MOCK_RETENTION_DAYS = 30;
 
 /** Newest first, like the API's author list. */
 function authoredPayload(article: AuthoredArticle) {
@@ -510,7 +515,29 @@ function handle(request: IncomingMessage, response: ServerResponse, body: Record
       send(response, 401, { error: { code: "UNAUTHENTICATED", message: "Please sign in again." } });
       return;
     }
-    send(response, 200, { data: AUTHORED.map(authoredPayload) });
+    // A deleted work leaves the desk, exactly as it does behind the real API.
+    send(response, 200, { data: AUTHORED.filter((article) => !article.deletedAt).map(authoredPayload) });
+    return;
+  }
+
+  if (path === "/api/v1/me/articles/deleted") {
+    if (method !== "GET") {
+      send(response, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed." } });
+      return;
+    }
+    if (request.headers.authorization !== `Bearer ${MOCK_TOKENS.accessToken}`) {
+      send(response, 401, { error: { code: "UNAUTHENTICATED", message: "Please sign in again." } });
+      return;
+    }
+    // The mock mirrors the API's contract, not its storage: the desk depends on
+    // a tombstone carrying its deletion time and an expiry the desk can show.
+    send(response, 200, {
+      data: AUTHORED.filter((article) => Boolean(article.deletedAt))
+        .map((article) => ({
+          ...authoredPayload(article),
+          purgesAt: new Date(new Date(article.deletedAt as string).getTime() + MOCK_RETENTION_DAYS * 86_400_000).toISOString(),
+        })),
+    });
     return;
   }
 
@@ -600,11 +627,35 @@ function handle(request: IncomingMessage, response: ServerResponse, body: Record
       send(response, 404, { error: { code: "NOT_FOUND", message: "The article was not found." } });
       return;
     }
-    // The mock drops the row instead of keeping a tombstone: it stands in for the
-    // API's *contract*, and the contract the desk depends on is that the work is
-    // gone from the author's list. The tombstone itself is the API's business.
-    AUTHORED.splice(AUTHORED.indexOf(existing), 1);
-    send(response, 200, { data: { id, deletedAt: new Date().toISOString() } });
+    // The row stays, as a tombstone: the desk now depends on the recycle bin, so
+    // a mock that dropped the row would be standing in for a contract the desk
+    // no longer uses. The window itself is the API's business.
+    if (existing.deletedAt) {
+      send(response, 404, { error: { code: "NOT_FOUND", message: "The article was not found." } });
+      return;
+    }
+    existing.deletedAt = new Date().toISOString();
+    existing.status = "draft";
+    send(response, 200, { data: { id, deletedAt: existing.deletedAt } });
+    return;
+  }
+
+  if (method === "POST" && /^\/api\/v1\/articles\/([^/]+)\/restore$/.test(path)) {
+    if (request.headers.authorization !== `Bearer ${MOCK_TOKENS.accessToken}`) {
+      send(response, 401, { error: { code: "UNAUTHENTICATED", message: "Please sign in again." } });
+      return;
+    }
+    const id = decodeURIComponent((/^\/api\/v1\/articles\/([^/]+)\/restore$/.exec(path) as RegExpExecArray)[1] ?? "");
+    const existing = AUTHORED.find((item) => item.id === id);
+    // Not a tombstone — an unknown id, a live work or a second restore are all
+    // the same answer, so nothing here can be used to probe what exists.
+    if (!existing || !existing.deletedAt) {
+      send(response, 404, { error: { code: "NOT_FOUND", message: "The article was not found." } });
+      return;
+    }
+    existing.deletedAt = null;
+    existing.updatedAt = new Date().toISOString();
+    send(response, 200, { data: authoredPayload(existing) });
     return;
   }
 

@@ -974,6 +974,27 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
       );
       return rows.map(mapArticle);
     },
+    /**
+     * The author's own tombstones, newest deletion first (see the SQLite slice
+     * for why the desk needs them). `purgesAt` is added by the service layer,
+     * which owns the retention window; a store returns the timestamp it has.
+     */
+    async listMyDeletedArticles({ actorId, locale = "zh-CN", limit = 50 }: { actorId: string; locale?: string; limit?: number } = { actorId: "" }) {
+      requiredText("actorId", actorId, 300);
+      validateArticleLocale(locale);
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
+      const rows = await sql.unsafe(
+        `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.deleted_at,
+                t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version
+         FROM articles AS a
+         JOIN article_translations AS t ON t.article_id = a.id
+         WHERE a.author_id = $1 AND t.locale = $2 AND a.deleted_at IS NOT NULL
+         ORDER BY a.deleted_at DESC, a.id DESC
+         LIMIT $3`,
+        [actorId, locale, limit],
+      );
+      return rows.map((row) => ({ ...mapArticle(row), deletedAt: isoDate(row.deleted_at) }));
+    },
     async createArticle({ authorId, slug, title, summary = "", locale = "zh-CN", contentBlocks, contentBlocksVersion = 0, publish = false, workType = "other", categoryIds = [], tagIds = [] }) {
       requiredText("authorId", authorId, 300);
       const input = normalizeArticleInput({ slug, title, summary, locale, contentBlocks, contentBlocksVersion, publish, workType });
@@ -1079,6 +1100,93 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
           { entityType: "articles", entityId: articleId, operation: "upsert", payload: snapshot[0] },
         ]);
         return { id: articleId, deletedAt: isoDate(rows[0].deleted_at) };
+      });
+    },
+    /**
+     * Bring one of the author's own tombstones back, as a draft.
+     *
+     * Restoring must never republish: deleting withdrew the work from the public
+     * site, and putting a public address back is the author's decision to make
+     * again, not a side effect of undoing a mistake.
+     *
+     * The released address is reclaimed inside the UPDATE and only while nothing
+     * else holds it, so a restore cannot fail with a conflict over a slug the
+     * author cannot see and cannot clear.
+     */
+    async restoreArticle({ articleId, actorId, locale = "zh-CN" }) {
+      if (!isUuid(articleId)) throw new ArticleInputError("articleId must be a valid article ID.");
+      requiredText("actorId", actorId, 300);
+      validateArticleLocale(locale);
+      return await sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const existing = await tx.unsafe("SELECT author_id, slug, deleted_at FROM articles WHERE id = $1 FOR UPDATE", [articleId]);
+        if (!existing[0] || !existing[0].deleted_at) throw new ArticleNotFoundError("The article was not found.");
+        if (existing[0].author_id !== actorId) throw new ArticleAuthorizationError("Only the article author can restore it.");
+        const translation = await tx.unsafe("SELECT locale FROM article_translations WHERE article_id = $1 AND locale = $2", [articleId, locale]);
+        if (!translation[0]) throw new ArticleNotFoundError(`The article has no ${locale} translation.`);
+        const suffix = `-deleted-${articleId.slice(0, 8)}`;
+        const current = existing[0].slug;
+        const preferred = current.endsWith(suffix) ? current.slice(0, -suffix.length) : current;
+        const rows = await tx.unsafe(
+          `UPDATE articles SET deleted_at = NULL, status = 'draft', updated_at = now(),
+             slug = CASE WHEN EXISTS (SELECT 1 FROM articles AS o WHERE o.slug = $2 AND o.id <> $1) THEN articles.slug ELSE $2 END
+           WHERE id = $1 RETURNING id, author_id, slug, work_type, status, created_at, updated_at, published_at`,
+          [articleId, preferred],
+        );
+        if (!rows[0]) throw new ArticleNotFoundError("The article was not found.");
+        const translations = await tx.unsafe(
+          "SELECT locale, title, summary, content_blocks, content_blocks_version FROM article_translations WHERE article_id = $1 AND locale = $2",
+          [articleId, locale],
+        );
+        const snapshot = await tx.unsafe("SELECT * FROM articles WHERE id = $1", [articleId]);
+        await captureChanges(tx, transactionId, [
+          { entityType: "articles", entityId: articleId, operation: "upsert", payload: snapshot[0] },
+        ]);
+        return mapArticle({ ...rows[0], ...translations[0] });
+      });
+    },
+    /**
+     * Hard-delete tombstones past the retention window.
+     *
+     * The only irreversible step in this slice, and therefore unreachable from
+     * the desk: the author has no "delete forever" button, and the window is
+     * what turns "you can undo this" into a promise with an expiry date.
+     *
+     * Children are captured before the delete rather than left to the foreign
+     * keys, because the migration journal — not the cascade — is what a replica
+     * replays. Bounded and awaitable, like `pruneExpiredIdentityState`: the
+     * sweep never outlives the request that triggered it.
+     */
+    async purgeExpiredArticles({ retentionDays = 30, now = new Date(), limit = 100 }: { retentionDays?: number; now?: Date | string; limit?: number } = {}) {
+      if (!Number.isInteger(retentionDays) || retentionDays < 1 || retentionDays > 3650) {
+        throw new ArticleInputError("retentionDays must be an integer between 1 and 3650.");
+      }
+      if (!Number.isInteger(limit) || limit < 1 || limit > 500) throw new ArticleInputError("limit must be an integer between 1 and 500.");
+      const at = now instanceof Date ? now : new Date(now);
+      if (Number.isNaN(at.getTime())) throw new ArticleInputError("now must be a valid date.");
+      const cutoff = new Date(at.getTime() - retentionDays * 86_400_000).toISOString();
+      return await sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const expired = (await tx.unsafe(
+          "SELECT id FROM articles WHERE deleted_at IS NOT NULL AND deleted_at < $1 ORDER BY deleted_at, id LIMIT $2",
+          [cutoff, limit],
+        )).map((row) => row.id);
+        if (expired.length === 0) return { purged: 0 };
+        const [translations, likes, comments, links] = await Promise.all([
+          tx.unsafe("SELECT article_id, locale FROM article_translations WHERE article_id = ANY($1::uuid[])", [expired]),
+          tx.unsafe("SELECT article_id, user_id FROM article_likes WHERE article_id = ANY($1::uuid[])", [expired]),
+          tx.unsafe("SELECT id FROM article_comments WHERE article_id = ANY($1::uuid[])", [expired]),
+          tx.unsafe("SELECT article_id, taxonomy_id FROM article_taxonomies WHERE article_id = ANY($1::uuid[])", [expired]),
+        ]);
+        await tx.unsafe("DELETE FROM articles WHERE id = ANY($1::uuid[])", [expired]);
+        await captureChanges(tx, transactionId, [
+          ...expired.map((id) => ({ entityType: "articles", entityId: id, operation: "delete", payload: null })),
+          ...translations.map((row) => ({ entityType: "article_translations", entityId: migrationEntityKey(row.article_id, row.locale), operation: "delete", payload: null })),
+          ...likes.map((row) => ({ entityType: "article_likes", entityId: migrationEntityKey(row.article_id, row.user_id), operation: "delete", payload: null })),
+          ...comments.map((row) => ({ entityType: "article_comments", entityId: row.id, operation: "delete", payload: null })),
+          ...links.map((row) => ({ entityType: "article_taxonomies", entityId: migrationEntityKey(row.article_id, row.taxonomy_id), operation: "delete", payload: null })),
+        ]);
+        return { purged: expired.length };
       });
     },
     async createConversation({ actorId, participantIds }) {

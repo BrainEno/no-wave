@@ -6,6 +6,27 @@ import { ArticleEditor, type AuthoringArticle } from "./article-editor.tsx";
 
 type WorkspaceState = "loading" | "unauthenticated" | "ready" | "error";
 
+/**
+ * A tombstone, as the desk sees it: the work the author deleted, when it was
+ * deleted, and when the sweep will make that permanent. The two timestamps come
+ * from the API, so the window shown here is always the window the API is using —
+ * the desk never carries its own copy of the retention policy.
+ */
+type DeletedArticle = AuthoringArticle & { deletedAt?: string; purgesAt?: string };
+
+function isDeletedArticle(value: unknown): value is DeletedArticle {
+  return isArticle(value) && typeof (value as DeletedArticle).deletedAt === "string";
+}
+
+/** Whole days until the sweep removes a tombstone, floored at zero. */
+function daysUntilPurge(entry: DeletedArticle): number | null {
+  const target = entry.purgesAt ?? entry.deletedAt;
+  if (!target) return null;
+  const remaining = new Date(target).getTime() - Date.now();
+  if (!Number.isFinite(remaining)) return null;
+  return Math.max(0, Math.ceil(remaining / 86_400_000));
+}
+
 function isArticle(value: unknown): value is AuthoringArticle {
   if (typeof value !== "object" || value === null) return false;
   const item = value as Partial<AuthoringArticle>;
@@ -38,6 +59,10 @@ export function AuthoringWorkspace() {
   // A line about the desk as a whole rather than about the open document: the
   // message that follows a deletion outlives the editor, which is remounted.
   const [notice, setNotice] = useState("");
+  // The recycle bin. A deleted work is recoverable only while the author can see
+  // it, so the tombstones are part of the desk rather than a separate screen.
+  const [deleted, setDeleted] = useState<DeletedArticle[]>([]);
+  const [trashError, setTrashError] = useState("");
 
   async function reloadArticles() {
     const response = await fetch("/api/authoring/articles", { credentials: "same-origin", cache: "no-store" });
@@ -50,6 +75,22 @@ export function AuthoringWorkspace() {
     setState("ready");
   }
 
+  /**
+   * The recycle bin is loaded separately and never blocks the desk: a failing
+   * list of deleted works must not stop the author from writing, so its error is
+   * reported inside the section it belongs to.
+   */
+  async function reloadDeletedArticles() {
+    const response = await fetch("/api/authoring/deleted-articles", { credentials: "same-origin", cache: "no-store" });
+    const payload: unknown = await response.json().catch(() => null);
+    if (response.status === 401) { setState("unauthenticated"); return; }
+    if (!response.ok) throw new Error(messageOf(payload));
+    const data = typeof payload === "object" && payload !== null && "data" in payload ? (payload as { data?: unknown }).data : null;
+    if (!Array.isArray(data)) throw new Error("回收站响应格式不正确。");
+    setDeleted(data.filter(isDeletedArticle));
+    setTrashError("");
+  }
+
   useEffect(() => {
     let active = true;
     async function load() {
@@ -59,6 +100,8 @@ export function AuthoringWorkspace() {
         if (response.status === 401) { setState("unauthenticated"); return; }
         if (!response.ok) throw new Error("无法验证登录状态。");
         await reloadArticles();
+        // Best effort: the desk is usable without the recycle bin.
+        await reloadDeletedArticles().catch(() => { if (active) setTrashError("回收站暂时无法载入。"); });
       } catch (caught) {
         if (active) { setError(caught instanceof Error ? caught.message : "暂时无法载入写作台。"); setState("error"); }
       }
@@ -92,9 +135,39 @@ export function AuthoringWorkspace() {
     setSelected(null);
     setEditorKey(`deleted-${next}`);
     setError("");
-    setNotice(`《${article.title}》已删除。`);
+    // The notice names the recycle bin because that is where the work now is:
+    // "deleted" has to read as "moved", not as "gone".
+    setNotice(`《${article.title}》已删除，可在回收站还原。`);
     setArticles((current) => current.filter((item) => item.id !== article.id));
     try { await reloadArticles(); } catch { /* the list is already correct locally */ }
+    try { await reloadDeletedArticles(); } catch { setTrashError("回收站暂时无法载入。"); }
+  }
+
+  /**
+   * Restore a tombstone without touching the open editor: the author may be
+   * mid-sentence in another document, and a restore is not a request to switch
+   * documents. The work comes back as a draft, which is what the API returns.
+   */
+  async function restoreDeleted(entry: DeletedArticle) {
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch(`/api/authoring/articles/${entry.id}/restore`, {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+      const payload: unknown = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(messageOf(payload));
+      setNotice(`《${entry.title}》已还原为草稿。`);
+      setDeleted((current) => current.filter((item) => item.id !== entry.id));
+      try { await reloadArticles(); } catch (caught) {
+        setError(caught instanceof Error ? caught.message : "作品已还原，但列表刷新失败。");
+      }
+      try { await reloadDeletedArticles(); } catch { setTrashError("回收站暂时无法载入。"); }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "暂时无法还原这个作品。");
+    }
   }
 
   async function afterSave(article: AuthoringArticle) {
@@ -155,6 +228,27 @@ export function AuthoringWorkspace() {
           />
         </div>
       </div>
+      <section className="nw-authoring-trash" aria-label="回收站">
+        <h2>回收站（{deleted.length}）</h2>
+        {trashError ? <p className="nw-auth-error" role="alert">{trashError}</p> : null}
+        {deleted.length === 0 && !trashError
+          ? <p className="nw-m">没有已删除的作品。</p>
+          : deleted.map((entry) => {
+            const days = daysUntilPurge(entry);
+            return (
+              <div className="nw-authoring-trash-row" key={entry.id}>
+                <span>{entry.title}</span>
+                <small>
+                  {entry.deletedAt ? `删除于 ${new Date(entry.deletedAt).toLocaleDateString("zh-CN")}` : "已删除"}
+                  {days === null ? null : days === 0 ? " · 即将自动清除" : ` · 将在 ${days} 天后自动清除`}
+                </small>
+                <button className="nw-btn" type="button" onClick={() => void restoreDeleted(entry)}>
+                  还原《{entry.title}》
+                </button>
+              </div>
+            );
+          })}
+      </section>
     </section>
   );
 }

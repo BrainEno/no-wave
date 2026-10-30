@@ -37,6 +37,8 @@ export default [
   route("api/authoring/session", "routes/api.authoring.session.ts"),
   route("api/authoring/articles", "routes/api.authoring.articles.ts"),
   route("api/authoring/articles/:id", "routes/api.authoring.articles.$id.ts"),
+  route("api/authoring/articles/:id/restore", "routes/api.authoring.articles.$id.restore.ts"),
+  route("api/authoring/deleted-articles", "routes/api.authoring.deleted-articles.ts"),
   route("api/articles/:slug/comments", "routes/api.articles.comments.ts"),
   route("api/media/:id", "routes/api.media.ts"),
   route("api/authoring/media", "routes/api.authoring.media.ts"),

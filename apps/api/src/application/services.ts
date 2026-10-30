@@ -28,9 +28,39 @@ export type ApplicationServices<A extends import("./persistence-ports.ts").Persi
  * a database driver. Business use cases can be moved into this module without
  * changing transport resolvers or adapter implementations.
  */
-export function createApplicationServices<A extends import("./persistence-ports.ts").PersistenceAdapterMethods>({ persistence, onPersistenceOperation = null }: {
+/**
+ * How long a deleted work stays recoverable.
+ *
+ * A tombstone that never expires is not a deletion, and one that expires the
+ * moment it is written is not recoverable. Thirty days is the shortest window
+ * that still covers "I noticed the mistake over the weekend", and it is
+ * configurable because the right number belongs to whoever runs the instance,
+ * not to this repository.
+ */
+export const DEFAULT_TOMBSTONE_RETENTION_DAYS = 30;
+
+/** The sweep runs on the desk's own writes, so no scheduler is needed. */
+export const TOMBSTONE_PURGE_EVERY_WRITES = 32;
+
+/**
+ * Read the retention window from the environment.
+ *
+ * A value outside the accepted range is not clamped — clamping `0` up to `1`
+ * would purge tomorrow what the operator asked to purge today — it falls back to
+ * the default, which is always the longer, safer retention.
+ */
+export function resolveTombstoneRetentionDays(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env?.ARTICLE_TOMBSTONE_RETENTION_DAYS;
+  if (raw === undefined || raw === null || String(raw).trim() === "") return DEFAULT_TOMBSTONE_RETENTION_DAYS;
+  const parsed = Number.parseInt(String(raw).trim(), 10);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 3650) return DEFAULT_TOMBSTONE_RETENTION_DAYS;
+  return parsed;
+}
+
+export function createApplicationServices<A extends import("./persistence-ports.ts").PersistenceAdapterMethods>({ persistence, onPersistenceOperation = null, env = process.env }: {
   persistence: A;
   onPersistenceOperation?: ((sample: { operation: string; success: boolean; durationMs: number }) => void) | null;
+  env?: NodeJS.ProcessEnv;
 }): ApplicationServices<A> {
   const ports = createPersistencePorts(persistence, { onOperation: onPersistenceOperation ?? undefined });
   const serviceMethods = Object.values(ports).flatMap((group) => Object.entries(group));
@@ -57,6 +87,56 @@ export function createApplicationServices<A extends import("./persistence-ports.
   // Deletion carries no body: it addresses a work the author already has.
   services.deleteArticle = async ({ actorId, articleId }) =>
     ports.content.deleteArticle({ articleId, actorId });
+
+  // The recycle bin is what makes a soft delete recoverable, and the expiry
+  // date is what makes it a deletion rather than an archive. The window is
+  // policy, so it is resolved here and not in the stores: one place reads the
+  // environment, both transports and every test see the same number.
+  services.listMyDeletedArticles = async ({ actorId, locale, limit }) => {
+    const retentionDays = resolveTombstoneRetentionDays(env);
+    const articles = await ports.content.listMyDeletedArticles({ actorId, locale, limit });
+    return articles.map((article) => {
+      const deletedAt = new Date(article.deletedAt);
+      // A tombstone without a usable timestamp is still listed; it simply
+      // carries no promise about when it will go.
+      if (Number.isNaN(deletedAt.getTime())) return article;
+      return { ...article, purgesAt: new Date(deletedAt.getTime() + retentionDays * 86_400_000).toISOString() };
+    });
+  };
+  services.restoreArticle = async ({ actorId, articleId, locale }) =>
+    ports.content.restoreArticle({ articleId, actorId, locale });
+  services.purgeExpiredArticles = async ({ retentionDays = resolveTombstoneRetentionDays(env), now, limit }: { retentionDays?: number; now?: Date | string; limit?: number } = {}) =>
+    ports.content.purgeExpiredArticles({ retentionDays, now: now ?? new Date(), limit });
+
+  /**
+   * Bounded best-effort sweep, on the pattern of `pruneExpiredIdentityState`:
+   * it rides on the desk's own writes, is awaited inside the request, and is
+   * never allowed to fail the write that triggered it. Nothing is detached, so
+   * no work can outlive the process or the request.
+   */
+  let writesUntilTombstonePurge = TOMBSTONE_PURGE_EVERY_WRITES;
+  async function sweepTombstones(): Promise<void> {
+    writesUntilTombstonePurge -= 1;
+    if (writesUntilTombstonePurge > 0) return;
+    writesUntilTombstonePurge = TOMBSTONE_PURGE_EVERY_WRITES;
+    if (typeof ports.content.purgeExpiredArticles !== "function") return;
+    try {
+      await ports.content.purgeExpiredArticles({ retentionDays: resolveTombstoneRetentionDays(env) });
+    } catch {
+      // The next write tries again; a failed sweep must not look like a failed save.
+    }
+  }
+  const withTombstoneSweep = (work: (input: any) => Promise<any>) => async (input: any) => {
+    try {
+      return await work(input);
+    } finally {
+      await sweepTombstones();
+    }
+  };
+  services.createArticle = withTombstoneSweep(services.createArticle);
+  services.updateArticle = withTombstoneSweep(services.updateArticle);
+  services.deleteArticle = withTombstoneSweep(services.deleteArticle);
+  services.restoreArticle = withTombstoneSweep(services.restoreArticle);
 
   return Object.freeze(services) as ApplicationServices<A>;
 }

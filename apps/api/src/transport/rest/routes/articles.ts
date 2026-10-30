@@ -358,6 +358,60 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
       sendServiceError(response, error);
     }
   },
+  "me.deleted-articles": async (ctx: RestRouteContext): Promise<void> => {
+    const { request, response, url, services, env } = ctx;
+    if (!services) {
+      sendUnavailable(response);
+      return;
+    }
+    const locale = parseLocale(url);
+    const limit = parseInteger(url.searchParams, "limit", 50, 1, 100);
+    if (!locale || limit === null) {
+      sendBadInput(response, "Invalid locale or limit query parameter.");
+      return;
+    }
+    try {
+      const actorId = await authenticatedActorId(request, services, env);
+      if (!actorId) {
+        sendUnauthenticated(response);
+        return;
+      }
+      // The recycle bin: the author's own tombstones, each carrying the moment
+      // it was deleted and the moment the sweep will make that irreversible.
+      const articles = await services.listMyDeletedArticles({ actorId, locale, limit });
+      sendJson(response, 200, { data: await serializeRestArticles(services, articles, actorId) });
+    } catch (error: unknown) {
+      sendServiceError(response, error);
+    }
+  },
+  "articles.restore": async (ctx: RestRouteContext): Promise<void> => {
+    const { request, response, url, services, env, routeParams } = ctx;
+    if (!services) {
+      sendUnavailable(response);
+      return;
+    }
+    const articleId = decodeUserId(routeParams.id);
+    if (!articleId) {
+      sendBadInput(response, "Invalid article ID.");
+      return;
+    }
+    const locale = parseLocale(url);
+    if (!locale) {
+      sendBadInput(response, "Invalid locale query parameter.");
+      return;
+    }
+    try {
+      const actorId = await authenticatedActorId(request, services, env);
+      if (!actorId) {
+        sendUnauthenticated(response);
+        return;
+      }
+      const article = await services.restoreArticle({ articleId, actorId, locale });
+      sendJson(response, 200, { data: await serializeRestArticle(services, article, actorId) });
+    } catch (error: unknown) {
+      sendServiceError(response, error);
+    }
+  },
 });
 
 export const ARTICLE_ROUTE_IDS: readonly string[] = Object.freeze(Object.keys(ARTICLE_ROUTE_HANDLERS));

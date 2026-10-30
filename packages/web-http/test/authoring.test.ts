@@ -6,8 +6,12 @@ import {
   AUTHORING_BODY_MAX_BYTES,
   authoringArticlePath,
   authoringArticlesPath,
+  authoringDeletedArticlesPath,
+  authoringRestoreArticlePath,
   handleAuthoringArticleRequest,
   handleAuthoringArticlesRequest,
+  handleAuthoringDeletedArticlesRequest,
+  handleAuthoringRestoreRequest,
   handleAuthoringSessionRequest,
 } from "../src/authoring.ts";
 import { ACCESS_TOKEN_COOKIE } from "../src/policy.ts";
@@ -36,6 +40,20 @@ function deleteRequest(id: string, headers: Record<string, string> = {}): Reques
   return request(`/api/authoring/articles/${id}`, {
     method: "DELETE",
     headers: { host: "no-wave.test", origin: "https://no-wave.test", ...headers },
+  });
+}
+
+function restoreRequest(id: string, headers: Record<string, string> = {}): Request {
+  return request(`/api/authoring/articles/${id}/restore`, {
+    method: "POST",
+    headers: { host: "no-wave.test", origin: "https://no-wave.test", ...headers },
+  });
+}
+
+function trashRequest(method = "GET", headers: Record<string, string> = {}): Request {
+  return request("/api/authoring/deleted-articles", {
+    method,
+    headers: { host: "no-wave.test", ...headers },
   });
 }
 
@@ -238,6 +256,77 @@ test("deleting a work is a body-less DELETE that only leaves our own origin", as
     { apiBaseUrl: API_BASE, fetchImpl: upstream().fetchImpl },
   );
   assert.equal(both.status, 403);
+});
+
+test("the recycle bin is a no-store read of the author's own tombstones", async () => {
+  const stub = upstream({ data: [{ id: ARTICLE_ID, deletedAt: "2026-01-02T03:04:05.678Z", purgesAt: "2026-02-01T03:04:05.678Z" }] });
+  const listed = await handleAuthoringDeletedArticlesRequest(
+    trashRequest(),
+    { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+  );
+  assert.equal(listed.status, 200);
+  assertNoStore(listed);
+  assert.equal(stub.calls[0]?.url, `${API_BASE}/${authoringDeletedArticlesPath()}`);
+  assert.equal(stub.calls[0]?.init?.method, "GET");
+  assert.deepEqual(await listed.json(), { data: [{ id: ARTICLE_ID, deletedAt: "2026-01-02T03:04:05.678Z", purgesAt: "2026-02-01T03:04:05.678Z" }] });
+
+  // A read that is also a write: only GET is documented here.
+  const write = await handleAuthoringDeletedArticlesRequest(
+    trashRequest("DELETE"),
+    { apiBaseUrl: API_BASE, fetchImpl: upstream().fetchImpl },
+  );
+  assert.equal(write.status, 405);
+});
+
+test("restoring a work is a body-less POST that only leaves our own origin", async () => {
+  const stub = upstream({ data: { id: ARTICLE_ID, status: "draft" } });
+  const restored = await handleAuthoringRestoreRequest(
+    restoreRequest(ARTICLE_ID),
+    { id: ARTICLE_ID },
+    { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+  );
+  assert.equal(restored.status, 200);
+  assertNoStore(restored);
+  assert.equal(stub.calls[0]?.url, `${API_BASE}/${authoringRestoreArticlePath(ARTICLE_ID)}`);
+  assert.equal(stub.calls[0]?.init?.method, "POST");
+  assert.equal(stub.calls[0]?.init?.body, undefined, "a restore carries no body");
+
+  const stub2 = upstream({ data: { id: ARTICLE_ID } });
+  const cross = await handleAuthoringRestoreRequest(
+    restoreRequest(ARTICLE_ID, { origin: "https://evil.test" }),
+    { id: ARTICLE_ID },
+    { apiBaseUrl: API_BASE, fetchImpl: stub2.fetchImpl },
+  );
+  assert.equal(cross.status, 403);
+  assert.equal((await cross.json() as { error: { code: string } }).error.code, "ORIGIN_REJECTED");
+  assert.deepEqual(stub2.calls, [], "a foreign origin must not restore a work");
+
+  // The id is checked only after the origin, as it is for a save and a delete.
+  const both = await handleAuthoringRestoreRequest(
+    restoreRequest("not-a-uuid", { origin: "https://evil.test" }),
+    { id: "not-a-uuid" },
+    { apiBaseUrl: API_BASE, fetchImpl: upstream().fetchImpl },
+  );
+  assert.equal(both.status, 403);
+
+  const malformed = await handleAuthoringRestoreRequest(
+    restoreRequest("not-a-uuid"),
+    { id: "not-a-uuid" },
+    { apiBaseUrl: API_BASE, fetchImpl: upstream().fetchImpl },
+  );
+  assert.equal(malformed.status, 400);
+  assert.equal((await malformed.json() as { error: { code: string } }).error.code, "BAD_USER_INPUT");
+});
+
+test("only POST reaches the restore endpoint", async () => {
+  const stub = upstream();
+  const response = await handleAuthoringRestoreRequest(
+    request(`/api/authoring/articles/${ARTICLE_ID}/restore`, { method: "GET", headers: { host: "no-wave.test" } }),
+    { id: ARTICLE_ID },
+    { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+  );
+  assert.equal(response.status, 405);
+  assert.deepEqual(stub.calls, []);
 });
 
 test("an oversized body is refused before it is forwarded", async () => {

@@ -123,6 +123,16 @@ async function del(pathname: string, headers: Record<string, string> = {}): Prom
   return { status: response.status, headers: response.headers, body: await response.text() };
 }
 
+/** A write with no body at all, which is what restoring a work is. */
+async function postEmpty(pathname: string, headers: Record<string, string> = {}): Promise<Result> {
+  const response = await fetch(`${baseUrl}${pathname}`, {
+    method: "POST",
+    headers: { origin: baseUrl, ...headers },
+    redirect: "manual",
+  });
+  return { status: response.status, headers: response.headers, body: await response.text() };
+}
+
 async function put(pathname: string, body: string, headers: Record<string, string> = {}): Promise<Result> {
   const response = await fetch(`${baseUrl}${pathname}`, {
     method: "PUT",
@@ -745,6 +755,52 @@ test("a work can be deleted, and it leaves the author's list", async () => {
   assert.match(cross.body, /ORIGIN_REJECTED/);
   const anonymous = await del(`/api/authoring/articles/${id}`);
   assert.equal(anonymous.status, 401);
+});
+
+test("a deleted work can be restored from the recycle bin, as a draft", async () => {
+  const created = await post("/api/authoring/articles", articleBody("Desk Restore Epsilon"), { cookie: DESK_COOKIE });
+  assert.equal(created.status, 201);
+  const { id, slug } = (JSON.parse(created.body) as { data: { id: string; slug: string } }).data;
+
+  const published = await put(`/api/authoring/articles/${id}`, articleBody("Desk Restore Epsilon", true), { cookie: DESK_COOKIE });
+  assert.equal((JSON.parse(published.body) as { data: { status: string } }).data.status, "published");
+  await del(`/api/authoring/articles/${id}`, { cookie: DESK_COOKIE });
+
+  // The recycle bin is where the work went: the author's to find, carrying both
+  // the moment it was deleted and the moment the sweep will make that permanent.
+  const trash = await get("/api/authoring/deleted-articles", { cookie: DESK_COOKIE });
+  assert.equal(trash.status, 200);
+  const trashed = (JSON.parse(trash.body) as { data: Array<{ id: string; deletedAt: string; purgesAt: string }> }).data;
+  const entry = trashed.find((item) => item.id === id);
+  assert.ok(entry, "a deleted work is in the recycle bin, not nowhere");
+  assert.ok(entry.deletedAt);
+  assert.ok(new Date(entry.purgesAt).getTime() > new Date(entry.deletedAt).getTime(), "the expiry follows the deletion");
+
+  const restored = await postEmpty(`/api/authoring/articles/${id}/restore`, { cookie: DESK_COOKIE });
+  assert.equal(restored.status, 200);
+  const restoredData = (JSON.parse(restored.body) as { data: { id: string; status: string; slug: string } }).data;
+  assert.equal(restoredData.id, id);
+  // A restore must not republish: deleting withdrew the work, and putting it
+  // back is the author's decision to make again.
+  assert.equal(restoredData.status, "draft");
+  assert.equal(restoredData.slug, slug, "the address the deletion released comes back with it");
+
+  const list = await get("/api/authoring/articles", { cookie: DESK_COOKIE });
+  assert.match(list.body, /Desk Restore Epsilon/);
+  const afterTrash = await get("/api/authoring/deleted-articles", { cookie: DESK_COOKIE });
+  assert.doesNotMatch(afterTrash.body, new RegExp(id));
+
+  // A work that is not a tombstone cannot be restored, and the recycle bin and
+  // the restore are as authenticated and origin-checked as every desk write.
+  const again = await postEmpty(`/api/authoring/articles/${id}/restore`, { cookie: DESK_COOKIE });
+  assert.equal(again.status, 404);
+  const anonymousRestore = await postEmpty(`/api/authoring/articles/${id}/restore`);
+  assert.equal(anonymousRestore.status, 401);
+  const cross = await postEmpty(`/api/authoring/articles/${id}/restore`, { cookie: DESK_COOKIE, origin: "https://attacker.example" });
+  assert.equal(cross.status, 403);
+  assert.match(cross.body, /ORIGIN_REJECTED/);
+  const anonymousTrash = await get("/api/authoring/deleted-articles");
+  assert.equal(anonymousTrash.status, 401);
 });
 
 test("the desk's writes are origin-checked, and the origin check comes first", async () => {
