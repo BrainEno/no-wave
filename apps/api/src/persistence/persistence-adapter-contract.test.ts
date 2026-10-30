@@ -219,11 +219,13 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
     let conversationId = null;
     try {
       const input = { actorId: creator, participantIds: [invited], idempotencyKey: `open-once-${suffix}` };
-      const [first, retried] = await Promise.all([
+      const [first, retried, thirdAttempt] = await Promise.all([
+        runtime.store.createConversation(input),
         runtime.store.createConversation(input),
         runtime.store.createConversation(input),
       ]);
       conversationId = first.id;
+      assert.equal(new Set([first.id, retried.id, thirdAttempt.id]).size, 1, "concurrent retries must all return the one conversation");
       assert.equal(retried.id, first.id, "a retry must return the conversation the first attempt opened, not a second one beside it");
       assert.equal(
         (await runtime.store.listConversations({ actorId: creator, limit: 100 })).filter((item) => item.id === first.id).length,
@@ -1009,10 +1011,16 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       locale: "zh-CN", contentBlocks: blocks, publish: true, idempotencyKey: `publish-once-${suffix}`,
     };
     try {
-      const [first, retried] = await Promise.all([
+      // Three at once, not two: a single pair raced rarely enough that the
+      // PostgreSQL half passed by luck locally and failed under CI's load, and
+      // the failure it hides is either a duplicate work or a bogus slug conflict.
+      const attempts = await Promise.all([
+        runtime.store.createArticle(input),
         runtime.store.createArticle(input),
         runtime.store.createArticle(input),
       ]);
+      const [first, retried] = attempts;
+      assert.equal(new Set(attempts.map((article) => article.id)).size, 1, "concurrent retries must all return the one work");
       assert.equal(retried.id, first.id, "a retry must return the work the first attempt published");
       assert.equal(retried.slug, first.slug, "and must not have been handed a uniquified second address");
       assert.equal(

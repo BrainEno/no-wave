@@ -1100,9 +1100,24 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
       try {
         return await sql.begin(async (tx) => {
           const transactionId = createMigrationTransactionId();
-          // A retried publish is a replay, not a second work. A slug collision
-          // is deliberately left to the unique index so the route's uniquifier
-          // still does its job on a genuinely different work.
+          // A retried publish is a replay, not a second work — and it is decided
+          // here rather than in the catch, because an insert that conflicts on
+          // both the key and the slug raises one unique violation and PostgreSQL
+          // does not promise which index reports it. Measured before this check:
+          // eight of forty concurrent retries came back as a slug collision and
+          // were sent to the uniquifier to be published a second time.
+          if (keyHash !== null) {
+            const [existing] = await tx.unsafe(
+              "SELECT id, request_hash FROM articles WHERE author_id = $1 AND idempotency_key_hash = $2",
+              [authorId, keyHash],
+            );
+            if (existing) {
+              if (existing.request_hash !== fingerprint) {
+                throw new IdempotencyConflictError("The idempotency key was already used for a different article request.");
+              }
+              return readArticleForAuthor(tx, { articleId: existing.id, locale: input.locale });
+            }
+          }
           const rows = await tx.unsafe(
             "INSERT INTO articles (id, author_id, slug, work_type, status, idempotency_key_hash, request_hash, published_at) " +
             "VALUES ($1, $2, $3, $4, $5, $6, $7, CASE WHEN $8 THEN now() ELSE NULL END) " +
@@ -1142,8 +1157,23 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
           return mapArticle({ ...article, ...translations[0] });
         });
       } catch (error) {
-        if (error?.code === "23505") throw new ArticleSlugConflictError();
-        throw error;
+        if (error?.code !== "23505") throw error;
+        // Two writers raced on the same key and the slug index reported the
+        // collision first: the work exists now, so answer with it rather than
+        // sending the author back to the slug uniquifier for a second copy.
+        if (keyHash !== null) {
+          const [existing] = await sql.unsafe(
+            "SELECT id, request_hash FROM articles WHERE author_id = $1 AND idempotency_key_hash = $2",
+            [authorId, keyHash],
+          );
+          if (existing) {
+            if (existing.request_hash !== fingerprint) {
+              throw new IdempotencyConflictError("The idempotency key was already used for a different article request.");
+            }
+            return readArticleForAuthor(sql, { articleId: existing.id, locale: input.locale });
+          }
+        }
+        throw new ArticleSlugConflictError();
       }
     },
     async updateArticle({ articleId, actorId, slug, title, summary = "", locale = "zh-CN", contentBlocks, contentBlocksVersion = 0, publish = false, workType = undefined, categoryIds = undefined, tagIds = undefined }) {
