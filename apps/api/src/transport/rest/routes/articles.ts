@@ -16,17 +16,25 @@ const MAX_AUTO_SLUG_ATTEMPTS = 25;
  * conflict the author cannot act on: the author never typed it. A
  * client-supplied slug is never rewritten and keeps its 409 conflict.
  */
+/**
+ * Create a work, uniquifying the slug while the address is taken.
+ *
+ * `idempotencyKey` is forwarded on every attempt: the store replays the work a
+ * retried request already created, and without it the uniquifier would hand a
+ * retry a new address and quietly publish a second copy.
+ */
 async function createArticleWithSlug(
   services: NonNullable<RestRouteContext["services"]>,
   input: Record<string, unknown>,
   authorId: string,
+  idempotencyKey: string | null,
 ): Promise<unknown> {
   const requestedSlug = typeof input.slug === "string" && input.slug.length > 0 ? input.slug : null;
   const baseSlug = requestedSlug ?? slugifyArticleTitle(input.title);
   for (let attempt = 1; ; attempt += 1) {
     const slug = attempt === 1 ? baseSlug : uniquifyArticleSlug(baseSlug, attempt);
     try {
-      return await services.createArticle({ ...input, slug, authorId });
+      return await services.createArticle({ ...input, slug, authorId, idempotencyKey });
     } catch (error: unknown) {
       const retryable = requestedSlug === null && error instanceof ArticleSlugConflictError && attempt < MAX_AUTO_SLUG_ATTEMPTS;
       if (!retryable) throw error;
@@ -102,13 +110,20 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
         sendBadInput(response, normalized.error ?? "Invalid article input.");
         return;
       }
+      const rawIdempotencyKey = request.headers["idempotency-key"] ?? null;
+      if (rawIdempotencyKey !== null && (typeof rawIdempotencyKey !== "string" || rawIdempotencyKey.length === 0 ||
+          rawIdempotencyKey.length > 300 || rawIdempotencyKey.trim() !== rawIdempotencyKey)) {
+        sendBadInput(response, "An Idempotency-Key header must be a non-empty trimmed string no longer than 300 characters.");
+        return;
+      }
+      const idempotencyKey = typeof rawIdempotencyKey === "string" ? rawIdempotencyKey : null;
       try {
         const authorId = await authenticatedActorId(request, services, env);
         if (!authorId) {
           sendUnauthenticated(response);
           return;
         }
-        const article = await createArticleWithSlug(services, normalized.input, authorId);
+        const article = await createArticleWithSlug(services, normalized.input, authorId, idempotencyKey);
         sendJson(response, 201, { data: await serializeRestArticle(services, article, authorId) });
       } catch (error: unknown) {
         sendServiceError(response, error);

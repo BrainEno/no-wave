@@ -12,10 +12,19 @@ const CONVERSATION_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = 
       if (bodyResult.ok === false) { sendJsonBodyError(response, request, bodyResult); return; }
       const normalized = normalizeConversationCreateBody(bodyResult.value);
       if (!normalized.participantIds) { sendBadInput(response, normalized.error ?? "Invalid conversation input."); return; }
+      // Opening a conversation is not idempotent, so the key is required here
+      // rather than optional: a retry with no key is a second conversation, and
+      // the older one quietly stops receiving anything.
+      const idempotencyKey = request.headers["idempotency-key"];
+      if (typeof idempotencyKey !== "string" || idempotencyKey.length === 0 ||
+          idempotencyKey.length > 300 || idempotencyKey.trim() !== idempotencyKey) {
+        sendBadInput(response, "A valid Idempotency-Key header is required.");
+        return;
+      }
       try {
         const actorId = await authenticatedActorId(request, services, env);
         if (!actorId) { sendUnauthenticated(response); return; }
-        const conversation = await services.createConversation({ actorId, participantIds: normalized.participantIds });
+        const conversation = await services.createConversation({ actorId, participantIds: normalized.participantIds, idempotencyKey });
         sendJson(response, 201, { data: conversation });
       } catch (error: unknown) { sendServiceError(response, error); }
       return;
@@ -102,6 +111,18 @@ const CONVERSATION_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = 
     if (!services) { sendUnavailable(response); return; }
     const conversationId = decodeUserId(routeParams.id);
     if (!conversationId) { sendBadInput(response, "Invalid conversation ID."); return; }
+    if (request.method === "GET") {
+      try {
+        const actorId = await authenticatedActorId(request, services, env);
+        if (!actorId) { sendUnauthenticated(response); return; }
+        const conversation = await services.getConversation({ conversationId, actorId });
+        // A conversation the caller is not a member of is indistinguishable from
+        // one that does not exist: membership is the only way to learn one.
+        if (!conversation) sendJson(response, 404, { error: { code: "NOT_FOUND", message: "The conversation was not found." } });
+        else sendJson(response, 200, { data: conversation });
+      } catch (error: unknown) { sendServiceError(response, error); }
+      return;
+    }
     try {
       const actorId = await authenticatedActorId(request, services, env);
       if (!actorId) { sendUnauthenticated(response); return; }

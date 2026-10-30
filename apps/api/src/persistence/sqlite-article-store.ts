@@ -1,9 +1,10 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import { createSqliteProviderMigrationCapture, migrationEntityKey } from "./sqlite-provider-migration-capture.ts";
 import {
   ArticleInputError,
   ArticleSlugConflictError,
+  IdempotencyConflictError,
   ArticleAuthorizationError,
   ArticleNotFoundError,
 } from "../domain/errors.ts";
@@ -14,6 +15,9 @@ import {
   normalizeTaxonomyIds,
 } from "../domain/article.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
+
+/** Digests used to recognise a retried write; the raw caller key is never stored. */
+const fingerprintHash = (value) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
 /**
  * SQLite implementation of the article/content persistence slice.
@@ -129,6 +133,15 @@ export function createSqliteArticleStore(db) {
     migrationCapture.captureInTransaction(db, transactionId, changes);
   }
 
+  /**
+   * Read back a work that a replayed create already made, in the locale the
+   * caller asked for (falling back to the translation it was written in).
+   */
+  function readCreatedArticle(articleId, locale) {
+    return mapArticle(statement(articleSelect + " WHERE a.id = ? AND t.locale = COALESCE((SELECT locale FROM article_translations WHERE article_id = ? AND locale = ?), (SELECT locale FROM article_translations WHERE article_id = ? ORDER BY created_at LIMIT 1))")
+      .get(articleId, articleId, locale, articleId));
+  }
+
   return Object.freeze({
     listPublishedArticles({ locale = "zh-CN", query = "", authorId = null, limit = 20, offset = 0 } = {}) {
       validateArticleLocale(locale);
@@ -206,17 +219,39 @@ export function createSqliteArticleStore(db) {
       `).all(current.id, current.id, locale, current.author_id, limit).map(mapArticle);
     },
 
-    createArticle({ authorId, slug, title, summary = "", locale = "zh-CN", contentBlocks, contentBlocksVersion = 0, publish = false, workType = "other", categoryIds = [], tagIds = [] }) {
+    createArticle({ authorId, slug, title, summary = "", locale = "zh-CN", contentBlocks, contentBlocksVersion = 0, publish = false, workType = "other", categoryIds = [], tagIds = [], idempotencyKey = null }) {
       requiredText("authorId", authorId, 300);
       const input = normalizeArticleInput({ slug, title, summary, locale, contentBlocks, contentBlocksVersion, publish, workType });
       const categories = normalizeTaxonomyIds("categoryIds", categoryIds, 20) ?? [];
       const tags = normalizeTaxonomyIds("tagIds", tagIds, 50) ?? [];
+      if (idempotencyKey !== null && (typeof idempotencyKey !== "string" || idempotencyKey.length === 0 ||
+          idempotencyKey.length > 300 || idempotencyKey.trim() !== idempotencyKey)) {
+        throw new ArticleInputError("Idempotency-Key must be a non-empty trimmed string no longer than 300 characters.");
+      }
       const id = randomUUID();
+      const keyHash = idempotencyKey === null ? null : fingerprintHash({ method: "POST", route: "/api/v1/articles", actorId: authorId, key: idempotencyKey });
+      const fingerprint = fingerprintHash({
+        authorId, slug: input.slug, title: input.title, summary: input.summary, locale: input.locale,
+        contentBlocks: input.contentBlocks, contentBlocksVersion: input.contentBlocksVersion,
+        publish: input.publish, workType: input.workType ?? "other",
+        categoryIds: [...categories].sort(), tagIds: [...tags].sort(),
+      });
       try {
         return transaction((transactionId) => {
+          // A retried publish is a replay, not a second work: without this the
+          // slug uniquifier in the route would hand the retry a new address and
+          // the author would end up with two copies of the same text.
+          if (keyHash !== null) {
+            const existing = db.prepare("SELECT id, request_hash FROM articles WHERE author_id = ? AND idempotency_key_hash = ?").get(authorId, keyHash);
+            if (existing) {
+              if (existing.request_hash !== fingerprint) throw new IdempotencyConflictError();
+              return readCreatedArticle(existing.id, input.locale);
+            }
+          }
           const now = new Date().toISOString();
-          db.prepare("INSERT INTO articles (id, author_id, slug, status, work_type, created_at, updated_at, published_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-            .run(id, authorId, input.slug, input.publish ? "published" : "draft", input.workType ?? "other", now, now, input.publish ? now : null);
+          db.prepare("INSERT INTO articles (id, author_id, slug, status, work_type, idempotency_key_hash, request_hash, created_at, updated_at, published_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+            .run(id, authorId, input.slug, input.publish ? "published" : "draft", input.workType ?? "other",
+              keyHash, keyHash === null ? null : fingerprint, now, now, input.publish ? now : null);
           db.prepare("INSERT INTO article_translations (article_id, locale, title, summary, content_blocks, content_blocks_version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
             .run(id, input.locale, input.title, input.summary, JSON.stringify(input.contentBlocks), input.contentBlocksVersion, now, now);
           replaceTaxonomies(id, "category", categories);
@@ -226,6 +261,15 @@ export function createSqliteArticleStore(db) {
         });
       } catch (error) {
         if (/UNIQUE constraint failed: articles\.slug/i.test(error.message)) throw new ArticleSlugConflictError();
+        // Another writer took the same key between the replay check and the
+        // insert: the work exists now, so answer with it rather than a 500.
+        if (keyHash !== null && /articles_author_idempotency_key_idx|articles\.idempotency_key_hash/i.test(error.message)) {
+          const existing = db.prepare("SELECT id, request_hash FROM articles WHERE author_id = ? AND idempotency_key_hash = ?").get(authorId, keyHash);
+          if (existing) {
+            if (existing.request_hash !== fingerprint) throw new IdempotencyConflictError();
+            return readCreatedArticle(existing.id, input.locale);
+          }
+        }
         throw error;
       }
     },

@@ -79,6 +79,66 @@ function mapConversation(row) {
     }) : null,
   };
 }
+
+/**
+ * One conversation as one of its active members sees it.
+ *
+ * The executor is a parameter so the same statement can run on the pool (a plain
+ * read) and inside a `sql.begin` transaction (the replay path of
+ * `createConversation`, which must see the row the competing writer committed).
+ */
+const CONVERSATION_FOR_MEMBER_SQL = `SELECT c.id, c.created_by, c.created_at,
+                COALESCE(latest.created_at, c.created_at) AS last_activity_at,
+                participants.user_ids AS participant_ids,
+                latest.id AS latest_message_id,
+                latest.conversation_id AS latest_message_conversation_id,
+                latest.sender_id AS latest_message_sender_id,
+                latest.body AS latest_message_body,
+                latest.created_at AS latest_message_created_at,
+                (SELECT count(*)::int FROM messages AS unread
+                 WHERE unread.conversation_id = c.id
+                   AND unread.sender_id <> $1
+                   AND (membership.last_read_at IS NULL OR unread.created_at > membership.last_read_at)) AS unread_count
+         FROM conversation_participants AS membership
+         JOIN conversations AS c ON c.id = membership.conversation_id
+         LEFT JOIN LATERAL (
+           SELECT m.id, m.conversation_id, m.sender_id, m.body, m.created_at
+           FROM messages AS m
+           WHERE m.conversation_id = c.id
+           ORDER BY m.created_at DESC, m.id DESC
+           LIMIT 1
+         ) AS latest ON true
+         LEFT JOIN LATERAL (
+           SELECT array_agg(cp.user_id ORDER BY cp.user_id) AS user_ids
+           FROM conversation_participants AS cp
+           WHERE cp.conversation_id = c.id AND cp.left_at IS NULL
+         ) AS participants ON true
+         WHERE membership.user_id = $1 AND membership.conversation_id = $2 AND membership.left_at IS NULL
+         LIMIT 1`;
+
+/**
+ * One work as its author sees it, used to answer a replayed create with the work
+ * it already made rather than with a frozen copy of the first response.
+ */
+async function readArticleForAuthor(executor, { articleId, locale }) {
+  const rows = await executor.unsafe(
+    `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at,
+            t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version
+     FROM articles AS a
+     JOIN article_translations AS t ON t.article_id = a.id
+     WHERE a.id = $1
+     ORDER BY (t.locale = $2) DESC, t.created_at
+     LIMIT 1`,
+    [articleId, locale],
+  );
+  return rows[0] ? mapArticle(rows[0]) : null;
+}
+
+async function findConversationForMember(executor, { conversationId, actorId }) {
+  const rows = await executor.unsafe(CONVERSATION_FOR_MEMBER_SQL, [actorId, conversationId]);
+  return rows[0] ? mapConversation(rows[0]) : null;
+}
+
 function mapArticleComment(row) {
   const iso = (value) => value instanceof Date ? value.toISOString() : new Date(value).toISOString();
   return {
@@ -1019,18 +1079,49 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
         commentCount: Number(row.comment_count ?? 0),
       }));
     },
-    async createArticle({ authorId, slug, title, summary = "", locale = "zh-CN", contentBlocks, contentBlocksVersion = 0, publish = false, workType = "other", categoryIds = [], tagIds = [] }) {
+    async createArticle({ authorId, slug, title, summary = "", locale = "zh-CN", contentBlocks, contentBlocksVersion = 0, publish = false, workType = "other", categoryIds = [], tagIds = [], idempotencyKey = null }) {
       requiredText("authorId", authorId, 300);
       const input = normalizeArticleInput({ slug, title, summary, locale, contentBlocks, contentBlocksVersion, publish, workType });
       const selectedCategories = normalizeTaxonomyIds("categoryIds", categoryIds, 20);
       const selectedTags = normalizeTaxonomyIds("tagIds", tagIds, 50);
+      if (idempotencyKey !== null && (typeof idempotencyKey !== "string" || idempotencyKey.length === 0 ||
+          idempotencyKey.length > 300 || idempotencyKey.trim() !== idempotencyKey)) {
+        throw new ArticleInputError("Idempotency-Key must be a non-empty trimmed string no longer than 300 characters.");
+      }
+      const keyHash = idempotencyKey === null ? null : requestHash({
+        method: "POST", route: "/api/v1/articles", actorId: authorId, key: idempotencyKey,
+      });
+      const fingerprint = requestHash({
+        authorId, slug: input.slug, title: input.title, summary: input.summary, locale: input.locale,
+        contentBlocks: input.contentBlocks, contentBlocksVersion: input.contentBlocksVersion,
+        publish: input.publish, workType: input.workType ?? "other",
+        categoryIds: [...(selectedCategories ?? [])].sort(), tagIds: [...(selectedTags ?? [])].sort(),
+      });
       try {
         return await sql.begin(async (tx) => {
           const transactionId = createMigrationTransactionId();
+          // A retried publish is a replay, not a second work. A slug collision
+          // is deliberately left to the unique index so the route's uniquifier
+          // still does its job on a genuinely different work.
           const rows = await tx.unsafe(
-            "INSERT INTO articles (id, author_id, slug, work_type, status, published_at) VALUES ($1, $2, $3, $4, $5, CASE WHEN $6 THEN now() ELSE NULL END) RETURNING id, author_id, slug, work_type, status, created_at, updated_at, published_at",
-            [randomUUID(), authorId, input.slug, input.workType ?? "other", input.publish ? "published" : "draft", input.publish],
+            "INSERT INTO articles (id, author_id, slug, work_type, status, idempotency_key_hash, request_hash, published_at) " +
+            "VALUES ($1, $2, $3, $4, $5, $6, $7, CASE WHEN $8 THEN now() ELSE NULL END) " +
+            "ON CONFLICT (author_id, idempotency_key_hash) WHERE idempotency_key_hash IS NOT NULL DO NOTHING " +
+            "RETURNING id, author_id, slug, work_type, status, created_at, updated_at, published_at",
+            [randomUUID(), authorId, input.slug, input.workType ?? "other", input.publish ? "published" : "draft",
+              keyHash, keyHash === null ? null : fingerprint, input.publish],
           );
+          if (rows.length === 0) {
+            const [existing] = await tx.unsafe(
+              "SELECT id, request_hash FROM articles WHERE author_id = $1 AND idempotency_key_hash = $2",
+              [authorId, keyHash],
+            );
+            if (!existing) throw new ArticleInputError("The article could not be created; retry the request.");
+            if (existing.request_hash !== fingerprint) {
+              throw new IdempotencyConflictError("The idempotency key was already used for a different article request.");
+            }
+            return readArticleForAuthor(tx, { articleId: existing.id, locale: input.locale });
+          }
           const article = rows[0];
           const translations = await tx.unsafe(
             "INSERT INTO article_translations (article_id, locale, title, summary, content_blocks, content_blocks_version) VALUES ($1, $2, $3, $4, $5::jsonb, $6) RETURNING locale, title, summary, content_blocks, content_blocks_version",
@@ -1213,19 +1304,44 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
         return { purged: expired.length };
       });
     },
-    async createConversation({ actorId, participantIds }) {
+    async createConversation({ actorId, participantIds, idempotencyKey = null }) {
       requiredText("actorId", actorId, 300);
       const suppliedIds = normalizeParticipantIds("participantIds", participantIds, 20);
       const others = suppliedIds.filter((id) => id !== actorId);
       if (others.length === 0) throw new ConversationInputError("A conversation requires at least one other participant.");
+      if (idempotencyKey !== null && (typeof idempotencyKey !== "string" || idempotencyKey.length === 0 ||
+          idempotencyKey.length > 300 || idempotencyKey.trim() !== idempotencyKey)) {
+        throw new ConversationInputError("Idempotency-Key must be a non-empty trimmed string no longer than 300 characters.");
+      }
       const allIds = [actorId, ...others];
       const conversationId = randomUUID();
+      const keyHash = idempotencyKey === null ? null : requestHash({
+        method: "POST", route: "/api/v1/conversations", actorId, key: idempotencyKey,
+      });
+      const fingerprint = requestHash({ actorId, participantIds: [...allIds].sort() });
       return sql.begin(async (tx) => {
         const transactionId = createMigrationTransactionId();
+        // A retried create is a replay, not a second conversation. Two writers
+        // racing on the same key: one inserts, the other blocks on the unique
+        // index and then reads back what the winner committed.
         const created = await tx.unsafe(
-          "INSERT INTO conversations (id, created_by) VALUES ($1, $2) RETURNING id, created_by, created_at",
-          [conversationId, actorId],
+          "INSERT INTO conversations (id, created_by, idempotency_key_hash, request_hash) VALUES ($1, $2, $3, $4) " +
+          "ON CONFLICT (created_by, idempotency_key_hash) WHERE idempotency_key_hash IS NOT NULL DO NOTHING " +
+          "RETURNING id, created_by, created_at",
+          [conversationId, actorId, keyHash, keyHash === null ? null : fingerprint],
         );
+        if (created.length === 0) {
+          const existing = await tx.unsafe(
+            "SELECT id, request_hash FROM conversations WHERE created_by = $1 AND idempotency_key_hash = $2",
+            [actorId, keyHash],
+          );
+          const row = existing[0];
+          if (!row) throw new ConversationInputError("The conversation could not be created; retry the request.");
+          if (row.request_hash !== fingerprint) {
+            throw new IdempotencyConflictError("The idempotency key was already used for a different conversation request.");
+          }
+          return findConversationForMember(tx, { conversationId: row.id, actorId });
+        }
         for (const userId of allIds) {
           await tx.unsafe(
             "INSERT INTO conversation_participants (conversation_id, user_id, last_read_at) VALUES ($1, $2, now())",
@@ -1390,38 +1506,7 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
     async getConversation({ conversationId, actorId }) {
       requiredText("conversationId", conversationId, 300);
       requiredText("actorId", actorId, 300);
-      const rows = await sql.unsafe(
-        `SELECT c.id, c.created_by, c.created_at,
-                COALESCE(latest.created_at, c.created_at) AS last_activity_at,
-                participants.user_ids AS participant_ids,
-                latest.id AS latest_message_id,
-                latest.conversation_id AS latest_message_conversation_id,
-                latest.sender_id AS latest_message_sender_id,
-                latest.body AS latest_message_body,
-                latest.created_at AS latest_message_created_at,
-                (SELECT count(*)::int FROM messages AS unread
-                 WHERE unread.conversation_id = c.id
-                   AND unread.sender_id <> $1
-                   AND (membership.last_read_at IS NULL OR unread.created_at > membership.last_read_at)) AS unread_count
-         FROM conversation_participants AS membership
-         JOIN conversations AS c ON c.id = membership.conversation_id
-         LEFT JOIN LATERAL (
-           SELECT m.id, m.conversation_id, m.sender_id, m.body, m.created_at
-           FROM messages AS m
-           WHERE m.conversation_id = c.id
-           ORDER BY m.created_at DESC, m.id DESC
-           LIMIT 1
-         ) AS latest ON true
-         LEFT JOIN LATERAL (
-           SELECT array_agg(cp.user_id ORDER BY cp.user_id) AS user_ids
-           FROM conversation_participants AS cp
-           WHERE cp.conversation_id = c.id AND cp.left_at IS NULL
-         ) AS participants ON true
-         WHERE membership.user_id = $1 AND membership.conversation_id = $2 AND membership.left_at IS NULL
-         LIMIT 1`,
-        [actorId, conversationId],
-      );
-      return rows[0] ? mapConversation(rows[0]) : null;
+      return findConversationForMember(sql, { conversationId, actorId });
     },
     async listConversations({ actorId, limit = 50 }) {
       if (typeof actorId !== "string" || actorId.trim().length === 0 || actorId !== actorId.trim()) {

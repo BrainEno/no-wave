@@ -182,8 +182,9 @@ test("REST article creation accepts JSON content blocks and never trusts a body 
     });
     assert.deepEqual(received, {
       authorId: "verified-writer", slug: "new-work", title: "新作品", summary: "简介", locale: "zh-CN",
-      contentBlocks, publish: true, workType: "poetry", categoryIds: [], tagIds: [],
+      contentBlocks, publish: true, workType: "poetry", categoryIds: [], tagIds: [], idempotencyKey: null,
     });
+
 
     const spoofed = await fetch(baseUrl + "/api/v1/articles", {
       method: "POST",
@@ -196,6 +197,33 @@ test("REST article creation accepts JSON content blocks and never trusts a body 
     assert.equal(spoofed.status, 400);
     assert.equal((await spoofed.json()).error.code, "BAD_USER_INPUT");
     assert.equal(received.slug, "new-work", "unsupported identity fields must not reach persistence");
+
+    // A retried publish is the most likely duplicate write on the desk, so the
+    // caller's key travels with the create instead of being dropped by the
+    // slug uniquifier on the way to persistence.
+    const keyed = await fetch(baseUrl + "/api/v1/articles", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer " + signedToken("verified-writer"),
+        "idempotency-key": "publish-once-1",
+      },
+      body: JSON.stringify({ slug: "keyed-work", title: "带键作品", contentBlocks }),
+    });
+    assert.equal(keyed.status, 201);
+    assert.equal(received.idempotencyKey, "publish-once-1");
+
+    const malformed = await fetch(baseUrl + "/api/v1/articles", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer " + signedToken("verified-writer"),
+        "idempotency-key": "k".repeat(301),
+      },
+      body: JSON.stringify({ slug: "malformed-key", title: "坏键作品", contentBlocks }),
+    });
+    assert.equal(malformed.status, 400);
+    assert.equal((await malformed.json()).error.code, "BAD_USER_INPUT");
   }, {
     env: authEnv,
     store: {
@@ -1698,14 +1726,23 @@ test("REST conversation and message routes preserve full fields, cursor order co
     const jsonHeaders = { authorization, "content-type": "application/json" };
 
     const created = await fetch(baseUrl + "/api/v1/conversations", {
-      method: "POST", headers: jsonHeaders, body: JSON.stringify({ participantIds: ["reader-user"] }),
+      method: "POST", headers: { ...jsonHeaders, "idempotency-key": "open-once-1" }, body: JSON.stringify({ participantIds: ["reader-user"] }),
     });
     assert.equal(created.status, 201);
     assert.deepEqual(await created.json(), { data: conversation });
 
+    const missingCreateKeyRejected = await fetch(baseUrl + "/api/v1/conversations", {
+      method: "POST", headers: jsonHeaders, body: JSON.stringify({ participantIds: ["reader-user"] }),
+    });
+    assert.equal(missingCreateKeyRejected.status, 400, "a retried create without a key would silently open a second conversation");
+
     const listed = await fetch(baseUrl + "/api/v1/conversations?limit=5", { headers: { authorization } });
     assert.equal(listed.status, 200);
     assert.deepEqual(await listed.json(), { data: [conversation] });
+
+    const fetched = await fetch(baseUrl + "/api/v1/conversations/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", { headers: { authorization } });
+    assert.equal(fetched.status, 200);
+    assert.deepEqual(await fetched.json(), { data: conversation });
 
     const history = await fetch(baseUrl + "/api/v1/conversations/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/messages?limit=2&before=eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", { headers: { authorization } });
     assert.equal(history.status, 200);
@@ -1758,7 +1795,7 @@ test("REST conversation and message routes preserve full fields, cursor order co
     },
   });
 
-  assert.deepEqual(calls[0], { method: "createConversation", args: { actorId: "writer-user", participantIds: ["reader-user"] } });
+  assert.deepEqual(calls[0], { method: "createConversation", args: { actorId: "writer-user", participantIds: ["reader-user"], idempotencyKey: "open-once-1" } });
   assert.deepEqual(calls.find((call) => call.method === "listConversationMessages"), {
     method: "listConversationMessages",
     args: { conversationId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", actorId: "writer-user", limit: 2, before: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee" },
@@ -1782,6 +1819,31 @@ test("REST conversation and message routes preserve full fields, cursor order co
   });
   assert.deepEqual(calls.find((call) => call.method === "deleteConversation"), {
     method: "deleteConversation", args: { conversationId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", actorId: "writer-user" },
+  });
+});
+
+test("REST conversation detail is member-scoped: a stranger's read is indistinguishable from a missing conversation", async () => {
+  const conversation = {
+    id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", createdBy: "writer-user", participantIds: ["reader-user", "writer-user"],
+    createdAt: "2026-01-01T00:00:00.000Z", lastActivityAt: "2026-01-02T00:00:00.000Z", unreadCount: 0, lastMessage: null,
+  };
+  await withServer(async (baseUrl) => {
+    const authorization = "Bearer " + signedToken("stranger-user");
+    const read = await fetch(baseUrl + "/api/v1/conversations/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", { headers: { authorization } });
+    assert.equal(read.status, 404);
+    assert.deepEqual(await read.json(), { error: { code: "NOT_FOUND", message: "The conversation was not found." } });
+
+    const unauthenticated = await fetch(baseUrl + "/api/v1/conversations/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
+    assert.equal(unauthenticated.status, 401);
+
+    const unsupported = await fetch(baseUrl + "/api/v1/conversations/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", { method: "PUT", headers: { authorization } });
+    assert.equal(unsupported.status, 405);
+    assert.equal(unsupported.headers.get("allow"), "GET, DELETE");
+  }, {
+    env: authEnv,
+    store: {
+      async getConversation() { return null; },
+    },
   });
 });
 
