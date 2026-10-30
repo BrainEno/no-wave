@@ -4,7 +4,17 @@ import type { ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { createServer } from "node:net";
 import { after, before, test } from "node:test";
-import { MOCK_COMMENT_ID, MOCK_CREDENTIALS, MOCK_DISPLAY_NAME, MOCK_MEDIA, MOCK_TOKENS, startMockRestApi } from "../mocks/rest-api.ts";
+import {
+  MOCK_COMMENT_ID,
+  MOCK_CREDENTIALS,
+  MOCK_DELETED_ARTICLE_ID,
+  MOCK_DISPLAY_NAME,
+  MOCK_MEDIA,
+  MOCK_NOTIFICATION,
+  MOCK_TOKENS,
+  resetMockNotifications,
+  startMockRestApi,
+} from "../mocks/rest-api.ts";
 import type { MockRestApi } from "../mocks/rest-api.ts";
 
 /**
@@ -832,3 +842,91 @@ test("the desk's writes are origin-checked, and the origin check comes first", a
   assert.equal(both.status, 403);
 });
 
+/**
+ * The notification inbox.
+ *
+ * Deleting a work eventually deletes the comments under it, and those are other
+ * people's words, so the API writes each commenter a notice naming the date the
+ * sweep runs. A notice nobody can read is a ledger entry rather than a message,
+ * and this is where it becomes readable: the same four endpoints, served by the
+ * same shared handler, in both frameworks.
+ */
+test("the inbox is private, no-store and API-backed", async () => {
+  const anonymous = await get("/api/authoring/notifications");
+  assert.equal(anonymous.status, 401, "an inbox belongs to a signed-in reader");
+
+  mockApi.resetRequests();
+  const list = await get("/api/authoring/notifications", { cookie: DESK_COOKIE });
+  assert.equal(list.status, 200);
+  // An inbox a shared cache could keep would be a privacy bug, not a win.
+  assert.match(list.headers.get("cache-control") ?? "", /no-store/);
+  const notices = (JSON.parse(list.body) as { data: Array<{ id: string; payload: string }> }).data;
+  assert.equal(notices[0]?.id, MOCK_NOTIFICATION.id);
+  // The payload is a JSON string on the wire, and what it carries is the two
+  // facts the reader can act on: which work, and when the sweep runs.
+  assert.deepEqual(JSON.parse(notices[0]?.payload ?? "{}"), {
+    type: "article.deleted",
+    articleId: MOCK_DELETED_ARTICLE_ID,
+    purgesAt: (JSON.parse(MOCK_NOTIFICATION.payload) as { purgesAt: string }).purgesAt,
+  });
+  assert.ok(
+    mockApi.requests().some((request) => request.includes("limit=50")),
+    `the upstream call must carry the documented page limit: ${mockApi.requests().join(", ")}`,
+  );
+});
+
+test("marking a notice read, one at a time or all at once, is the API's own answer", async () => {
+  resetMockNotifications();
+  const unread = await get("/api/authoring/notifications/unread-count", { cookie: DESK_COOKIE });
+  assert.equal((JSON.parse(unread.body) as { data: number }).data, 1);
+
+  const marked = await put(`/api/authoring/notifications/${MOCK_NOTIFICATION.id}/read`, "{}", { cookie: DESK_COOKIE });
+  assert.equal(marked.status, 200);
+  assert.ok((JSON.parse(marked.body) as { data: { readAt: string | null } }).data.readAt);
+
+  const after = await get("/api/authoring/notifications/unread-count", { cookie: DESK_COOKIE });
+  assert.equal((JSON.parse(after.body) as { data: number }).data, 0, "the count follows the mark");
+
+  // A notice that is already read is not marked twice, and an unknown id is not
+  // distinguishable from someone else's notice by its status.
+  const again = await put(`/api/authoring/notifications/${MOCK_NOTIFICATION.id}/read`, "{}", { cookie: DESK_COOKIE });
+  assert.equal(again.status, 404);
+
+  resetMockNotifications();
+  const all = await post("/api/authoring/notifications/read-all", "{}", { cookie: DESK_COOKIE });
+  assert.equal(all.status, 200);
+  assert.equal((JSON.parse(all.body) as { data: number }).data, 1, "read-all reports what it marked");
+  const afterAll = await get("/api/authoring/notifications/unread-count", { cookie: DESK_COOKIE });
+  assert.equal((JSON.parse(afterAll.body) as { data: number }).data, 0);
+});
+
+test("the inbox's writes are origin-checked, and a malformed id never reaches the API", async () => {
+  mockApi.resetRequests();
+  const crossAll = await post("/api/authoring/notifications/read-all", "{}", {
+    cookie: DESK_COOKIE,
+    origin: "https://attacker.example",
+  });
+  assert.equal(crossAll.status, 403);
+  assert.match(crossAll.body, /ORIGIN_REJECTED/);
+  const crossOne = await put(`/api/authoring/notifications/${MOCK_NOTIFICATION.id}/read`, "{}", {
+    cookie: DESK_COOKIE,
+    origin: "https://attacker.example",
+  });
+  assert.equal(crossOne.status, 403);
+  assert.deepEqual(mockApi.requests(), [], "a cross-origin write must not be forwarded at all");
+
+  const malformed = await put("/api/authoring/notifications/not-a-uuid/read", "{}", { cookie: DESK_COOKIE });
+  assert.equal(malformed.status, 400);
+  assert.match(malformed.body, /BAD_USER_INPUT/);
+
+  // Order: origin first, so a cross-origin caller cannot use the status code to
+  // learn which notification ids exist.
+  const both = await put("/api/authoring/notifications/not-a-uuid/read", "{}", {
+    cookie: DESK_COOKIE,
+    origin: "https://attacker.example",
+  });
+  assert.equal(both.status, 403);
+
+  const anonymous = await put(`/api/authoring/notifications/${MOCK_NOTIFICATION.id}/read`, "{}");
+  assert.equal(anonymous.status, 401);
+});

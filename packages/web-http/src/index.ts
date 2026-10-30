@@ -57,6 +57,18 @@ export {
   isCommentLocale,
 } from "./comments.ts";
 export {
+  NOTIFICATION_ID_PATTERN,
+  NOTIFICATIONS_LIMIT,
+  handleNotificationReadRequest,
+  handleNotificationsReadAllRequest,
+  handleNotificationsRequest,
+  handleNotificationsUnreadCountRequest,
+  notificationReadPath,
+  notificationsPath,
+  notificationsReadAllPath,
+  notificationsUnreadCountPath,
+} from "./notifications.ts";
+export {
   MEDIA_ID_PATTERN,
   MEDIA_IMMUTABLE_CACHE,
   MEDIA_MAX_BYTES,

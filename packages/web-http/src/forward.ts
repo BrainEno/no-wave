@@ -5,7 +5,7 @@ import { isTokenEnvelope, setIdempotencyKeyHeader } from "./policy.ts";
 
 /**
  * Authenticated API forwarder for the browser-facing authoring/session/media
- * routes.
+ * and inbox routes.
  *
  * The access token lives in an `HttpOnly` cookie, so this function — not the
  * browser — attaches the `Authorization` header, performs one refresh-and-retry

@@ -113,6 +113,55 @@ const MOCK_RETENTION_DAYS = 30;
  */
 const MOCK_COMMENT_COUNTS = new Map<string, number>();
 
+/**
+ * The mock's notification inbox.
+ *
+ * The API writes each commenter a notice when a work they commented on is
+ * deleted, and the mock cannot produce one: it has a single account, and an
+ * author is never notified of their own deletion. So this notice is a fixture,
+ * standing in for a message another author's deletion would have sent. The
+ * *rule* is tested against the real API (and, end to end, in `e2e/`); what the
+ * prototype needs from it is the screen, and the endpoints below are real —
+ * they count, mark and clear notices exactly as the API does.
+ *
+ * The purge date is computed from the mock's own retention window, so the date
+ * the inbox shows is the same window the recycle bin is using.
+ */
+export type MockNotification = {
+  id: string;
+  eventKey: string;
+  payload: string;
+  createdAt: string;
+  readAt: string | null;
+};
+
+export const MOCK_DELETED_ARTICLE_ID = "7b1c9d2e-3f4a-4b5c-8d6e-9f0a1b2c3d4e";
+
+export const MOCK_NOTIFICATION: MockNotification = Object.freeze({
+  id: "2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f",
+  eventKey: `article.deleted:${MOCK_DELETED_ARTICLE_ID}:writer`,
+  payload: JSON.stringify({
+    type: "article.deleted",
+    articleId: MOCK_DELETED_ARTICLE_ID,
+    purgesAt: new Date(Date.now() + MOCK_RETENTION_DAYS * 86_400_000).toISOString(),
+  }),
+  createdAt: new Date().toISOString(),
+  readAt: null,
+});
+
+/** Newest first, and mutable: marking a notice read is the point of the inbox. */
+const MOCK_NOTIFICATIONS: MockNotification[] = [{ ...MOCK_NOTIFICATION }];
+
+/**
+ * Put every notice back to unread.
+ *
+ * The mock's inbox is process-wide, and the tests that mark a notice read must
+ * not depend on which of them ran first.
+ */
+export function resetMockNotifications(): void {
+  for (const notice of MOCK_NOTIFICATIONS) notice.readAt = null;
+}
+
 /** Newest first, like the API's author list. */
 function authoredPayload(article: AuthoredArticle) {
   return { ...article };
@@ -683,6 +732,83 @@ function handle(request: IncomingMessage, response: ServerResponse, body: Record
     send(response, 200, {
       data: { userId: "writer", displayName: MOCK_DISPLAY_NAME, email: MOCK_CREDENTIALS.email },
     });
+    return;
+  }
+
+  /**
+   * The inbox endpoints. Reads and writes both need a session: the access token
+   * travels in an HttpOnly cookie, so it is the proxy — never the browser —
+   * that presents it.
+   */
+  if (path === "/api/v1/me/notifications") {
+    if (method !== "GET") {
+      send(response, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed." } });
+      return;
+    }
+    if (request.headers.authorization !== `Bearer ${MOCK_TOKENS.accessToken}`) {
+      send(response, 401, { error: { code: "UNAUTHENTICATED", message: "Please sign in again." } });
+      return;
+    }
+    const raw = url.searchParams.get("limit");
+    if (raw !== null && !/^[1-9][0-9]*$/.test(raw)) {
+      send(response, 400, { error: { code: "BAD_USER_INPUT", message: "Invalid limit query parameter." } });
+      return;
+    }
+    const limit = raw === null ? 50 : Math.min(100, Math.max(1, Number(raw)));
+    send(response, 200, { data: MOCK_NOTIFICATIONS.slice(0, limit) });
+    return;
+  }
+
+  if (path === "/api/v1/me/notifications/unread-count") {
+    if (method !== "GET") {
+      send(response, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed." } });
+      return;
+    }
+    if (request.headers.authorization !== `Bearer ${MOCK_TOKENS.accessToken}`) {
+      send(response, 401, { error: { code: "UNAUTHENTICATED", message: "Please sign in again." } });
+      return;
+    }
+    send(response, 200, { data: MOCK_NOTIFICATIONS.filter((notice) => notice.readAt === null).length });
+    return;
+  }
+
+  if (path === "/api/v1/me/notifications/read-all") {
+    if (method !== "POST") {
+      send(response, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed." } });
+      return;
+    }
+    if (request.headers.authorization !== `Bearer ${MOCK_TOKENS.accessToken}`) {
+      send(response, 401, { error: { code: "UNAUTHENTICATED", message: "Please sign in again." } });
+      return;
+    }
+    let marked = 0;
+    for (const notice of MOCK_NOTIFICATIONS) {
+      if (notice.readAt === null) { notice.readAt = new Date().toISOString(); marked += 1; }
+    }
+    send(response, 200, { data: marked });
+    return;
+  }
+
+  const notificationRead = /^\/api\/v1\/me\/notifications\/([^/]+)\/read$/.exec(path);
+  if (notificationRead) {
+    if (method !== "PUT") {
+      send(response, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed." } });
+      return;
+    }
+    if (request.headers.authorization !== `Bearer ${MOCK_TOKENS.accessToken}`) {
+      send(response, 401, { error: { code: "UNAUTHENTICATED", message: "Please sign in again." } });
+      return;
+    }
+    const id = decodeURIComponent(notificationRead[1] ?? "");
+    const notice = MOCK_NOTIFICATIONS.find((candidate) => candidate.id === id && candidate.readAt === null);
+    // An unknown id, an already-read notice and someone else's notice are the
+    // same answer, so nothing here can be used to probe what exists.
+    if (!notice) {
+      send(response, 404, { error: { code: "NOT_FOUND", message: "Notification not found." } });
+      return;
+    }
+    notice.readAt = new Date().toISOString();
+    send(response, 200, { data: { ...notice } });
     return;
   }
 
