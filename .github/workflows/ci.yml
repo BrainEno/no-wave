@@ -131,6 +131,13 @@ jobs:
       AUTH_JWT_SECRET: local-development-ci-secret-0123456789abcdef
       AUTH_JWT_ISSUER: http://localhost:4000
       AUTH_JWT_AUDIENCE: no-wave
+      # The suite registers one account per journey, and one journey needs a
+      # second account in it — the reader who is told about a deletion is not
+      # the author who made it. Behind one address the API allows 20
+      # registrations an hour, which the suite now passes; this widens the
+      # budget for the disposable API instance only, and leaves the default —
+      # the one a deployment runs with — untouched.
+      AUTH_REGISTER_IP_LIMIT: "60"
       API_BASE_URL: http://127.0.0.1:4000
     steps:
       - uses: actions/checkout@v4
