@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
 import { createSqliteArticleStore } from "./sqlite-article-store.ts";
-import { ArticleAuthorizationError, ArticleSlugConflictError, ArticleInputError } from "../domain/errors.ts";
+import { ArticleAuthorizationError, ArticleSlugConflictError, ArticleInputError, ArticleNotFoundError } from "../domain/errors.ts";
 
 const blocks = [{ id: "p1", type: "paragraph", text: "A small test article." }];
 
@@ -87,6 +87,45 @@ test("SQLite article writes enforce ownership, slug uniqueness, and transaction 
       title: "Updated", contentBlocks: blocks, publish: true,
     });
     assert.equal(updated.title, "Updated");
+  } finally {
+    db.close();
+  }
+});
+
+test("SQLite article deletion tombstones the work, releases its slug and hides it from the desk", async () => {
+  const { db, store } = await fixture();
+  try {
+    const created = store.createArticle({
+      authorId: "author-1", slug: "delete-me", title: "Delete me",
+      contentBlocks: blocks, publish: true,
+    });
+    assert.equal(store.getPublishedArticle({ slug: "delete-me" }).title, "Delete me");
+
+    assert.throws(() => store.deleteArticle({ articleId: "not-a-uuid", actorId: "author-1" }), ArticleInputError);
+    assert.throws(() => store.deleteArticle({ articleId: created.id, actorId: "intruder" }), ArticleAuthorizationError);
+
+    const deleted = store.deleteArticle({ articleId: created.id, actorId: "author-1" });
+    assert.equal(deleted.id, created.id);
+    assert.equal(typeof deleted.deletedAt, "string");
+
+    // Hidden from the reader and from the author's own desk — the row is kept,
+    // which is what `deleted_at` and the status rollback accomplish.
+    assert.equal(store.getPublishedArticle({ slug: "delete-me" }), null);
+    assert.equal(store.listPublishedArticles({ locale: "zh-CN" }).length, 0);
+    assert.equal(store.listMyArticles({ actorId: "author-1", locale: "zh-CN" }).length, 0);
+    assert.equal(db.prepare("SELECT count(*) AS count FROM articles WHERE id = ?").get(created.id).count, 1);
+
+    // A tombstone is not a work: no update, and no second delete.
+    assert.throws(() => store.updateArticle({
+      articleId: created.id, actorId: "author-1", slug: "delete-me", title: "Back", contentBlocks: blocks,
+    }), ArticleNotFoundError);
+    assert.throws(() => store.deleteArticle({ articleId: created.id, actorId: "author-1" }), ArticleNotFoundError);
+
+    // The address is released, so rewriting the same title is not a dead end.
+    const rewritten = store.createArticle({
+      authorId: "author-1", slug: "delete-me", title: "Delete me", contentBlocks: blocks, publish: true,
+    });
+    assert.equal(rewritten.slug, "delete-me");
   } finally {
     db.close();
   }

@@ -32,6 +32,13 @@ function upstream(body: unknown = { data: [] }, status = 200) {
   return stubFetch({ "api/v1/": () => json(body, status) });
 }
 
+function deleteRequest(id: string, headers: Record<string, string> = {}): Request {
+  return request(`/api/authoring/articles/${id}`, {
+    method: "DELETE",
+    headers: { host: "no-wave.test", origin: "https://no-wave.test", ...headers },
+  });
+}
+
 function sessionRequest(method = "GET", headers: Record<string, string> = {}): Request {
   return request("/api/authoring/session", { method, headers: { host: "no-wave.test", ...headers } });
 }
@@ -189,13 +196,48 @@ test("only the documented methods reach the article endpoints", async () => {
     { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
   );
   assert.equal(list.status, 405);
+  // DELETE is a documented method on a work, PUT is not on the collection, and
+  // PATCH is documented nowhere: it must never reach the API.
   const article = await handleAuthoringArticleRequest(
-    request(`/api/authoring/articles/${ARTICLE_ID}`, { method: "DELETE", headers: { host: "no-wave.test" } }),
+    request(`/api/authoring/articles/${ARTICLE_ID}`, { method: "PATCH", headers: { host: "no-wave.test" } }),
     { id: ARTICLE_ID },
     { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
   );
   assert.equal(article.status, 405);
   assert.deepEqual(stub.calls, []);
+});
+
+test("deleting a work is a body-less DELETE that only leaves our own origin", async () => {
+  const stub = upstream({ data: { id: ARTICLE_ID, deletedAt: "2026-01-02T03:04:05.678Z" } });
+  const deleted = await handleAuthoringArticleRequest(
+    deleteRequest(ARTICLE_ID),
+    { id: ARTICLE_ID },
+    { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+  );
+  assert.equal(deleted.status, 200);
+  assertNoStore(deleted);
+  assert.equal(stub.calls[0]?.url, `${API_BASE}/${authoringArticlePath(ARTICLE_ID)}`);
+  assert.equal(stub.calls[0]?.init?.method, "DELETE");
+  assert.equal(stub.calls[0]?.init?.body, undefined, "a delete carries no body");
+
+  const stub2 = upstream({ data: { id: ARTICLE_ID } });
+  const cross = await handleAuthoringArticleRequest(
+    deleteRequest(ARTICLE_ID, { origin: "https://evil.test" }),
+    { id: ARTICLE_ID },
+    { apiBaseUrl: API_BASE, fetchImpl: stub2.fetchImpl },
+  );
+  assert.equal(cross.status, 403);
+  assert.equal((await cross.json() as { error: { code: string } }).error.code, "ORIGIN_REJECTED");
+  assert.deepEqual(stub2.calls, [], "a foreign origin must not delete a work");
+
+  // Same order as a save: the origin is refused before the id is inspected, so a
+  // cross-origin caller cannot learn which ids exist from the status code.
+  const both = await handleAuthoringArticleRequest(
+    deleteRequest("not-a-uuid", { origin: "https://evil.test" }),
+    { id: "not-a-uuid" },
+    { apiBaseUrl: API_BASE, fetchImpl: upstream().fetchImpl },
+  );
+  assert.equal(both.status, 403);
 });
 
 test("an oversized body is refused before it is forwarded", async () => {

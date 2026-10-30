@@ -279,6 +279,30 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
   },
   "articles.item": async (ctx: RestRouteContext): Promise<void> => {
     const { request, response, url, services, env, routeParams } = ctx;
+    if (request.method === "DELETE") {
+      if (!services) {
+        sendUnavailable(response);
+        return;
+      }
+      const articleId = decodeUserId(routeParams.slug);
+      if (!articleId) {
+        sendBadInput(response, "Invalid article ID.");
+        return;
+      }
+      try {
+        const actorId = await authenticatedActorId(request, services, env);
+        if (!actorId) {
+          sendUnauthenticated(response);
+          return;
+        }
+        // Soft delete: the row stays, the work leaves every list it was in.
+        const result = await services.deleteArticle({ articleId, actorId });
+        sendJson(response, 200, { data: result });
+      } catch (error: unknown) {
+        sendServiceError(response, error);
+      }
+      return;
+    }
     if (request.method === "PUT") {
       if (!services) {
         sendUnavailable(response);

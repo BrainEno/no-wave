@@ -589,6 +589,25 @@ function handle(request: IncomingMessage, response: ServerResponse, body: Record
     return;
   }
 
+  if (method === "DELETE" && authoredArticle) {
+    if (request.headers.authorization !== `Bearer ${MOCK_TOKENS.accessToken}`) {
+      send(response, 401, { error: { code: "UNAUTHENTICATED", message: "Please sign in again." } });
+      return;
+    }
+    const id = decodeURIComponent(authoredArticle[1] ?? "");
+    const existing = AUTHORED.find((item) => item.id === id);
+    if (!existing) {
+      send(response, 404, { error: { code: "NOT_FOUND", message: "The article was not found." } });
+      return;
+    }
+    // The mock drops the row instead of keeping a tombstone: it stands in for the
+    // API's *contract*, and the contract the desk depends on is that the work is
+    // gone from the author's list. The tombstone itself is the API's business.
+    AUTHORED.splice(AUTHORED.indexOf(existing), 1);
+    send(response, 200, { data: { id, deletedAt: new Date().toISOString() } });
+    return;
+  }
+
   if (method === "GET" && path === "/api/v1/me") {
     const authorization = request.headers.authorization ?? "";
     if (authorization !== `Bearer ${MOCK_TOKENS.accessToken}`) {

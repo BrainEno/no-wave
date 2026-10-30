@@ -108,25 +108,33 @@ export async function handleAuthoringArticlesRequest(
 
 /**
  * `PUT /api/authoring/articles/:id` — save or publish an existing work.
+ * `DELETE /api/authoring/articles/:id` — delete it.
  *
- * Order matters and is the App Router's order: the Origin check runs before the
- * id is validated, so a cross-origin caller cannot use the status code to probe
- * which article ids exist.
+ * Order matters and is the App Router's order: the method is checked first, then
+ * the Origin, then the id, so a cross-origin caller cannot use the status code to
+ * probe which article ids exist, and a DELETE is refused for its origin before
+ * anything looks at the work it names.
+ *
+ * DELETE carries no body, so it is forwarded without the body ceiling a save is
+ * subject to.
  */
 export async function handleAuthoringArticleRequest(
   request: Request,
   params: { id: string },
   config: ApiProxyConfig = {},
 ): Promise<Response> {
-  const method = methodOf(request, ["PUT"]);
+  const method = methodOf(request, ["PUT", "DELETE"]);
   if (method === null) {
-    return errorResponse("METHOD_NOT_ALLOWED", "Only PUT is supported for an article.", 405);
+    return errorResponse("METHOD_NOT_ALLOWED", "Only PUT and DELETE are supported for an article.", 405);
   }
   if (rejectCrossOrigin(request)) {
     return errorResponse("ORIGIN_REJECTED", "The request origin was rejected.", 403);
   }
   if (!AUTHORING_ARTICLE_ID_PATTERN.test(params.id)) {
     return errorResponse("BAD_USER_INPUT", "Invalid article ID.", 400);
+  }
+  if (method === "DELETE") {
+    return forwardAuthoringRequest(request, authoringArticlePath(params.id), "DELETE", config);
   }
   const body = await readLimitedJson(request, AUTHORING_BODY_MAX_BYTES);
   if (!body.ok) return body.response;

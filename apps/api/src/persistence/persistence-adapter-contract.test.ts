@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
 import { randomUUID } from "node:crypto";
-import { IdempotencyConflictError, ConversationAccessError, ArticleAuthorizationError, ProfileInputError, ProfileNotFoundError } from "../domain/errors.ts";
+import { IdempotencyConflictError, ConversationAccessError, ArticleAuthorizationError, ArticleNotFoundError, ProfileInputError, ProfileNotFoundError } from "../domain/errors.ts";
 import { createPostgresClient, createPostgresStore } from "./postgres.ts";
 import { runMigrations } from "./migrate.ts";
 import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
@@ -58,6 +58,9 @@ async function sqliteFixture() {
         db.prepare(`DELETE FROM user_profiles WHERE user_id IN (${userIds.map(() => "?").join(",")})`).run(...userIds);
         db.prepare("DELETE FROM revoked_sessions WHERE session_id = ?").run(`contract-session-${suffix}`);
         for (const slug of [`contract-draft-${suffix}`, `contract-published-${suffix}`, `contract-liked-${suffix}`, `contract-comment-${suffix}`, `contract-comment-notifications-${suffix}`]) db.prepare("DELETE FROM articles WHERE slug = ?").run(slug);
+        // A deleted work keeps its row under a released slug (`...-deleted-<id>`),
+        // so match the whole family the deletion test can leave behind.
+        db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`contract-delete-${suffix}%`);
         db.prepare("DELETE FROM taxonomies WHERE slug = ?").run(`contract-category-${suffix}`);
       }
       db.close();
@@ -98,6 +101,8 @@ async function postgresFixture() {
         await postgresSql.unsafe("DELETE FROM user_profiles WHERE user_id = ANY($1::text[])", [userIds]);
         await postgresSql.unsafe("DELETE FROM revoked_sessions WHERE session_id = ANY($1::text[])", [[`contract-session-${suffix}`, `contract-expired-session-${suffix}`]]);
         await postgresSql.unsafe("DELETE FROM articles WHERE slug = ANY($1::text[])", [[`contract-draft-${suffix}`, `contract-published-${suffix}`, `contract-liked-${suffix}`, `contract-comment-${suffix}`, `contract-comment-notifications-${suffix}`]]);
+        // A deleted work keeps its row under a released slug (`...-deleted-<id>`).
+        await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`contract-delete-${suffix}%`]);
         await postgresSql.unsafe("DELETE FROM taxonomies WHERE slug = $1", [`contract-category-${suffix}`]);
       }
     },
@@ -655,6 +660,49 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       assert.equal(published.contentBlocksVersion, 1);
       assert.deepEqual(published.contentBlocks, richTextBlocks);
       assert.ok((await runtime.store.listPublishedArticles({ locale: "zh-CN", query: "Now published" })).some((article) => article.id === articleId));
+    } finally { await runtime.cleanup(undefined, suffix); }
+  });
+
+  test(`${adapterName}: deleting a work takes it out of the desk and releases its address`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const slug = `contract-delete-${suffix}`;
+    const authorId = `author-${suffix}`;
+    const contentBlocks = [{ id: "p1", type: "paragraph", text: "Deleted on purpose." }];
+    try {
+      const created = await runtime.store.createArticle({
+        authorId, slug, title: "Soon deleted", locale: "zh-CN", contentBlocks, publish: true,
+      });
+      // The public list searches titles and summaries, not addresses.
+      assert.ok((await runtime.store.listPublishedArticles({ locale: "zh-CN", query: "Soon deleted" })).some((article) => article.id === created.id));
+
+      await assert.rejects(Promise.resolve().then(() => runtime.store.deleteArticle({
+        articleId: created.id, actorId: `not-author-${suffix}`,
+      })), ArticleAuthorizationError);
+
+      const deleted = await runtime.store.deleteArticle({ articleId: created.id, actorId: authorId });
+      assert.equal(deleted.id, created.id);
+      assert.ok(deleted.deletedAt, "deletion is timestamped, not silent");
+
+      // Gone from the reader's feed and from the author's own desk.
+      assert.equal((await runtime.store.listPublishedArticles({ locale: "zh-CN", query: "Soon deleted" })).length, 0);
+      assert.equal((await runtime.store.listMyArticles({ actorId: authorId, locale: "zh-CN" })).filter((article) => article.id === created.id).length, 0);
+
+      // A tombstone is not a work any more: it cannot be updated, and deleting it
+      // twice is a 404 rather than a second tombstone over the first.
+      await assert.rejects(Promise.resolve().then(() => runtime.store.updateArticle({
+        articleId: created.id, actorId: authorId, slug, title: "Back again", locale: "zh-CN", contentBlocks, publish: true,
+      })), ArticleNotFoundError);
+      await assert.rejects(Promise.resolve().then(() => runtime.store.deleteArticle({
+        articleId: created.id, actorId: authorId,
+      })), ArticleNotFoundError);
+
+      // The address is released, so rewriting the same title is not a dead end.
+      const rewritten = await runtime.store.createArticle({
+        authorId, slug, title: "Written again", locale: "zh-CN", contentBlocks, publish: true,
+      });
+      assert.equal(rewritten.slug, slug);
+      assert.ok((await runtime.store.listPublishedArticles({ locale: "zh-CN", query: "Written again" })).some((article) => article.id === rewritten.id));
     } finally { await runtime.cleanup(undefined, suffix); }
   });
 

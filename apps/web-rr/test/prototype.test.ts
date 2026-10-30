@@ -114,6 +114,15 @@ async function post(pathname: string, body: string, headers: Record<string, stri
   return { status: response.status, headers: response.headers, body: await response.text() };
 }
 
+async function del(pathname: string, headers: Record<string, string> = {}): Promise<Result> {
+  const response = await fetch(`${baseUrl}${pathname}`, {
+    method: "DELETE",
+    headers: { origin: baseUrl, ...headers },
+    redirect: "manual",
+  });
+  return { status: response.status, headers: response.headers, body: await response.text() };
+}
+
 async function put(pathname: string, body: string, headers: Record<string, string> = {}): Promise<Result> {
   const response = await fetch(`${baseUrl}${pathname}`, {
     method: "PUT",
@@ -712,6 +721,30 @@ test("a published work can be withdrawn to a draft again", async () => {
   // Withdrawn, not lost: it is still the author's own work.
   const list = await get("/api/authoring/articles", { cookie: DESK_COOKIE });
   assert.match(list.body, /Desk Withdraw Gamma/);
+});
+
+test("a work can be deleted, and it leaves the author's list", async () => {
+  const created = await post("/api/authoring/articles", articleBody("Desk Delete Delta"), { cookie: DESK_COOKIE });
+  assert.equal(created.status, 201);
+  const { id } = (JSON.parse(created.body) as { data: { id: string } }).data;
+
+  const published = await put(`/api/authoring/articles/${id}`, articleBody("Desk Delete Delta", true), { cookie: DESK_COOKIE });
+  assert.equal((JSON.parse(published.body) as { data: { status: string } }).data.status, "published");
+
+  const deleted = await del(`/api/authoring/articles/${id}`, { cookie: DESK_COOKIE });
+  assert.equal(deleted.status, 200);
+  assert.match(deleted.body, /deletedAt/);
+
+  // Deleted, not hidden: the desk's own list is the author's only view of it.
+  const list = await get("/api/authoring/articles", { cookie: DESK_COOKIE });
+  assert.doesNotMatch(list.body, /Desk Delete Delta/);
+
+  // The desk's delete is origin-checked and authenticated like every other write.
+  const cross = await del(`/api/authoring/articles/${id}`, { cookie: DESK_COOKIE, origin: "https://attacker.example" });
+  assert.equal(cross.status, 403);
+  assert.match(cross.body, /ORIGIN_REJECTED/);
+  const anonymous = await del(`/api/authoring/articles/${id}`);
+  assert.equal(anonymous.status, 401);
 });
 
 test("the desk's writes are origin-checked, and the origin check comes first", async () => {

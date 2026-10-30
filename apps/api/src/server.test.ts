@@ -5,6 +5,7 @@ import { request as httpRequest } from "node:http";
 import { createApiServer } from "./server.ts";
 import { persistencePortMethods } from "./application/persistence-ports.ts";
 import { ArticleAuthorizationError, ArticleInputError, ArticleNotFoundError, ArticleSlugConflictError, DomainError, IdempotencyConflictError } from "./domain/errors.ts";
+import { isUuid } from "./domain/validation.ts";
 
 const authEnv = {
   AUTH_JWT_SECRET: "test-only-secret-that-is-at-least-32-bytes",
@@ -770,6 +771,48 @@ test("REST public content routes accept zh-CN, zh-TW and en without locale fallb
     store: {
       async listPublishedArticles(args) { calls.push(["article", args.locale]); return []; },
       async listTaxonomies(args) { calls.push([args.kind, args.locale]); return []; },
+    },
+  });
+});
+
+test("REST deletes the author's own work and refuses everyone else", async () => {
+  const articleId = "3f7c1d90-8a2b-4c1e-9f3a-6c5b2e8d1a44";
+  const deletedAt = "2026-01-02T03:04:05.678Z";
+  let received;
+  await withServer(async (baseUrl) => {
+    const bearer = (userId: string) => ({ authorization: "Bearer " + signedToken(userId) });
+
+    // No session, no delete — and the id is not looked at before that.
+    const anonymous = await fetch(`${baseUrl}/api/v1/articles/${articleId}`, { method: "DELETE" });
+    assert.equal(anonymous.status, 401);
+
+    const malformed = await fetch(`${baseUrl}/api/v1/articles/not-a-uuid`, { method: "DELETE", headers: bearer("owner") });
+    assert.equal(malformed.status, 400);
+    assert.equal((await malformed.json()).error.code, "BAD_USER_INPUT");
+
+    // A work that is not yours is a 403, never a 404: the second would tell a
+    // caller which ids exist.
+    const foreign = await fetch(`${baseUrl}/api/v1/articles/${articleId}`, { method: "DELETE", headers: bearer("intruder") });
+    assert.equal(foreign.status, 403);
+    assert.equal((await foreign.json()).error.code, "FORBIDDEN");
+
+    const deleted = await fetch(`${baseUrl}/api/v1/articles/${articleId}`, { method: "DELETE", headers: bearer("owner") });
+    assert.equal(deleted.status, 200);
+    assert.deepEqual(await deleted.json(), { data: { id: articleId, deletedAt } });
+    // The actor comes from the session, so a body cannot name the author.
+    assert.deepEqual(received, { articleId, actorId: "owner" });
+  }, {
+    env: authEnv,
+    store: {
+      async isSessionRevoked() { return false; },
+      async deleteArticle(args) {
+        received = args;
+        // The route hands the id over unchanged; the shape check is the store's,
+        // exactly as it is for an update.
+        if (!isUuid(args.articleId)) throw new ArticleInputError("articleId must be a valid article ID.");
+        if (args.actorId !== "owner") throw new ArticleAuthorizationError("private owner id must not leak");
+        return { id: args.articleId, deletedAt };
+      },
     },
   });
 });

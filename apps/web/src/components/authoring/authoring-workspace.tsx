@@ -35,6 +35,9 @@ export function AuthoringWorkspace() {
   const [editorKey, setEditorKey] = useState("new-0");
   const [newCounter, setNewCounter] = useState(0);
   const [error, setError] = useState("");
+  // A line about the desk as a whole rather than about the open document: the
+  // message that follows a deletion outlives the editor, which is remounted.
+  const [notice, setNotice] = useState("");
 
   async function reloadArticles() {
     const response = await fetch("/api/authoring/articles", { credentials: "same-origin", cache: "no-store" });
@@ -69,11 +72,29 @@ export function AuthoringWorkspace() {
     setNewCounter(next);
     setSelected(null);
     setEditorKey(`new-${next}`);
+    setNotice("");
   }
 
   function openDocument(article: AuthoringArticle) {
     setSelected(article);
     setEditorKey(article.id);
+    setNotice("");
+  }
+
+  /**
+   * A deleted work is gone from the desk, so the editor is reset to a new
+   * document: keeping it mounted would show a work the API no longer returns,
+   * and the next save would try to update a tombstone.
+   */
+  async function afterDelete(article: AuthoringArticle) {
+    const next = newCounter + 1;
+    setNewCounter(next);
+    setSelected(null);
+    setEditorKey(`deleted-${next}`);
+    setError("");
+    setNotice(`《${article.title}》已删除。`);
+    setArticles((current) => current.filter((item) => item.id !== article.id));
+    try { await reloadArticles(); } catch { /* the list is already correct locally */ }
   }
 
   async function afterSave(article: AuthoringArticle) {
@@ -82,6 +103,7 @@ export function AuthoringWorkspace() {
     // next save updates it instead of creating a second one.
     setSelected(article);
     setError("");
+    setNotice("");
     setArticles((current) => [article, ...current.filter((item) => item.id !== article.id)].slice(0, 100));
     try { await reloadArticles(); } catch (caught) {
       setError(caught instanceof Error ? caught.message : "作品已保存，但列表刷新失败。");
@@ -112,6 +134,7 @@ export function AuthoringWorkspace() {
       </div>
       <p className="nw-ep" style={{ marginTop: 18 }}>草稿与发布状态由 API 持久化；关闭页面后，可从作品列表继续编辑。</p>
       {error ? <p className="nw-auth-error" role="alert">{error}</p> : null}
+      {notice ? <p className="nw-auth-status" role="status">{notice}</p> : null}
       <div className="nw-authoring-grid">
         <aside className="nw-authoring-sidebar" aria-label="我的作品">
           <h2>我的作品（{articles.length}）</h2>
@@ -124,7 +147,12 @@ export function AuthoringWorkspace() {
           ))}
         </aside>
         <div>
-          <ArticleEditor key={editorKey} article={selected} onSaved={(article) => void afterSave(article)} />
+          <ArticleEditor
+            key={editorKey}
+            article={selected}
+            onSaved={(article) => void afterSave(article)}
+            onDeleted={(article) => void afterDelete(article)}
+          />
         </div>
       </div>
     </section>

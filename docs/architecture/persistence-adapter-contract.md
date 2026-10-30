@@ -18,6 +18,7 @@ The current operation lists live in `apps/api/src/application/persistence-ports.
 - Drafts are visible only to the owner-authorized operation; public list, detail and taxonomy queries return published content only.
 - Localized translations are keyed by `zh-TW` or `en`; a missing requested translation is not silently represented as another language's content. Display fallback is allowed only where the domain contract explicitly specifies it.
 - Update changes, publication state and taxonomy associations are atomic. If any association fails, no partial article update is retained.
+- Deleting a work is a tombstone, not a row removal: `deleted_at` is stamped, the status returns to `draft` so every published read already excludes it, and the row keeps the comments, likes and taxonomy links that refer to it. A tombstone is invisible to every read — public lists, the author's own desk, likes and related works — and it can be neither updated nor deleted a second time (both are a not-found). Deletion releases the slug, so rewriting the same title cannot collide with the tombstone.
 
 ### User-generated hashtags and categories
 
