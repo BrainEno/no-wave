@@ -68,10 +68,12 @@ provider driver exists yet, by ADR 0012.
 
 ## Consequences and remaining gates
 
-- **Recovery is not usable in production yet.** The mechanism is complete and tested; the last mile
-  is not. Until a provider adapter exists behind the port, the mails are log lines. This is a
-  deliberate, documented state rather than a stub — the alternative is provider code written before
-  the hosting decision that would have to be rewritten.
+- **Recovery was shipped without the last mile and now has one.** Until ADR 0015 the mails were log
+  lines: deliberate, because ADR 0012 forbids provider code before the zero-cost/no-card gate, and
+  the gate had not been asked of a mail provider. It has now ([hosting qualification
+  §6](../roadmap/hosting-qualification.md)), and [ADR 0015](0015-transactional-mail-over-a-generic-smtp-relay.md)
+  wires a generic SMTP submission client behind the port. What remains is an operator's step, not a
+  developer's: configure a relay, verify a sender, and send a real mail.
 - **Every device signs out on a password change.** This is intended and must be explained to users:
   the page that confirms the change should say so.
 - **A reset link is live for thirty minutes and works once**; verification links last a day and work
@@ -142,3 +144,7 @@ expiry, superseded links, session revocation).
 - Web: `/forgot-password`, `/reset-password`, `/verify-email`, the account line in the writing desk,
   the widened `/api/auth/[action]` family and `POST /api/authoring/email-verification`, covered by
   `web-http` proxy contract tests and the route smoke checks.
+- Delivery: `apps/api/src/infrastructure/smtp-client.ts` (submission client) and
+  `createSmtpMailer`/`resolveSmtpMailerConfig` in `application/identity-mailer.ts`, covered by unit
+  tests over a scripted peer and by an end-to-end test against a loopback relay that decodes the
+  delivered message. The default is still the log mailer.

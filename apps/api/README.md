@@ -37,7 +37,21 @@ The versioned REST transport exposes business endpoints under `/api/v1`, with JS
 - `POST /api/v1/auth/verify-email` — spend a verification link with `{"token": "..."}`. Stamps `email_verified_at` on the account. Verification **gates nothing**: an unverified address still signs in, publishes and comments; it only records that the address was reachable once.
 - `POST /api/v1/me/email-verification` — authenticated, sends (or re-sends) the verification link for the signed-in account's own address. `202 {"data":{"ok":true,"alreadyVerified":false}}`; an already verified address is not mailed again.
 
-Outbound mail goes through the `IdentityMailer` port (`apps/api/src/application/identity-mailer.ts`). The shipped implementation writes a structured log line and, by default, **not the link** — a log line that can reset a password is a password reset waiting to be read; set `AUTH_IDENTITY_MAIL_LOG_LINK=1` to include it during local development, and `AUTH_IDENTITY_BASE_URL` for the public origin the links point at. No provider adapter exists yet (ADR 0012), so recovery is not production-usable until one is added behind that port.
+Outbound mail goes through the `IdentityMailer` port (`apps/api/src/application/identity-mailer.ts`). Its default implementation writes a structured log line and, by default, **not the link** — a log line that can reset a password is a password reset waiting to be read; set `AUTH_IDENTITY_MAIL_LOG_LINK=1` to include it during local development, and `AUTH_IDENTITY_BASE_URL` for the public origin the links point at.
+
+To actually deliver, point the API at an SMTP **submission** relay — `MAIL_SMTP_HOST` plus `MAIL_FROM` are enough; without them the log mailer stays in place. It is generic submission rather than a provider SDK ([ADR 0015](../docs/architecture/decisions/0015-transactional-mail-over-a-generic-smtp-relay.md)): Brevo, Resend, SMTP2GO and a mailbox host are all the same code with different environment variables. TLS is mandatory by default — a relay that does not advertise STARTTLS is refused before any credential is sent, and an unrecognized `MAIL_SMTP_SECURITY` value falls back to `starttls`, never to plaintext.
+
+| Variable | Meaning |
+| --- | --- |
+| `MAIL_SMTP_HOST` | relay hostname; mail is sent only when this **and** `MAIL_FROM` are set |
+| `MAIL_SMTP_PORT` | default 587 (`starttls`), 465 (`implicit`) |
+| `MAIL_SMTP_SECURITY` | `starttls` (default), `implicit`, or `none` for a local relay |
+| `MAIL_SMTP_USER` / `MAIL_SMTP_PASSWORD` | relay credentials; never written to a log |
+| `MAIL_SMTP_TIMEOUT_MS` | per-reply wait, capped at 60 000 ms |
+| `MAIL_FROM` | envelope sender and `From` header |
+| `MAIL_FROM_NAME` | optional display name (encoded when it is not ASCII) |
+
+A delivery failure is logged as `identity_mail_failed` with the purpose and the error code — never the address — and never fails the request: the token is already stored, so the user can simply ask for a new link.
 
 - `POST /api/v1/auth/register` and `POST /api/v1/auth/login` — create an unverified email/password account or sign in; return access and refresh tokens in JSON.
 - `POST /api/v1/auth/refresh` and `POST /api/v1/auth/logout` — rotate or revoke a refresh-token session. Reuse revokes the whole session family.

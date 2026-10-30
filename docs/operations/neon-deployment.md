@@ -148,6 +148,10 @@ Vercel project for the environments that should connect to this Neon branch:
 - `AUTH_JWT_SECRET`, `AUTH_JWT_ISSUER`, `AUTH_JWT_AUDIENCE`
 - `MEDIA_S3_BUCKET=media`
 - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_ENDPOINT_URL_S3`, `AWS_REGION`
+- `MAIL_SMTP_HOST`, `MAIL_SMTP_PORT`, `MAIL_SMTP_SECURITY`, `MAIL_SMTP_USER`, `MAIL_SMTP_PASSWORD`,
+  `MAIL_FROM`, `MAIL_FROM_NAME` — optional, but until `MAIL_SMTP_HOST` **and** `MAIL_FROM` are set the
+  API logs account mail instead of delivering it, so password recovery stays a dead letter. Generic
+  SMTP submission, so any relay works; TLS is required by default (ADR 0015).
 
 Use values from the linked Neon branch, not from a preview branch. Never add secrets to
 `vercel.json`, GitHub Actions YAML, a tracked dotenv file, or the browser bundle. After
