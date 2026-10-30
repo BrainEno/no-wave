@@ -48,14 +48,23 @@ export function createSqliteArticleStore(db) {
     publishedAt: row.published_at,
   }) : null;
   // The desk's recycle bin reads the same article shape plus the tombstone
-  // timestamp, so it gets its own select rather than a flag on the shared one.
+  // timestamp and the number of comments that would die with it, so it gets its
+  // own select rather than a flag on the shared one. The count is part of the
+  // listing because the sweep's cost is other people's words, and a row that
+  // says "will be removed" without saying "and their comments with it" hides
+  // the only irreversible thing the slice can do to a third party.
   const deletedArticleSelect = `
     SELECT a.id, a.author_id, a.slug, a.work_type, a.status, t.locale,
-           t.title, t.summary, t.content_blocks, t.content_blocks_version, a.created_at, a.updated_at, a.published_at, a.deleted_at
+           t.title, t.summary, t.content_blocks, t.content_blocks_version, a.created_at, a.updated_at, a.published_at, a.deleted_at,
+           (SELECT count(*) FROM article_comments c WHERE c.article_id = a.id) AS comment_count
     FROM articles a
     JOIN article_translations t ON t.article_id = a.id
   `;
-  const mapDeletedArticle = (row) => row ? ({ ...mapArticle(row), deletedAt: row.deleted_at }) : null;
+  const mapDeletedArticle = (row) => row ? ({
+    ...mapArticle(row),
+    deletedAt: row.deleted_at,
+    commentCount: Number(row.comment_count ?? 0),
+  }) : null;
   const statement = (sql) => db.prepare(sql);
   const publishedArticleBySlug = statement(
     articleSelect + " WHERE a.slug = ? AND a.status = 'published' AND t.locale = ? LIMIT 1",

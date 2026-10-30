@@ -410,10 +410,14 @@ test("returning a published work to draft withdraws it from the public site", as
 });
 
 test("deleting a work takes it out of the desk and off the site", async ({ page, request }) => {
-  // Deleting has no undo from the desk, so the product asks first; the suite
-  // answers rather than muting the dialog, which keeps "no confirmation" a
-  // failure instead of a silent delete.
-  page.on("dialog", (dialog) => void dialog.accept());
+  // The product asks before deleting, so the suite answers rather than muting
+  // the dialog: that keeps "no confirmation" a failure instead of a silent
+  // delete, and it lets the journey read what the author was actually told.
+  let confirmation = "";
+  page.on("dialog", (dialog) => {
+    confirmation = dialog.message();
+    void dialog.accept();
+  });
 
   await registerWriter(page, request);
   const title = `浏览器验证删除 ${Date.now().toString(36)}`;
@@ -430,6 +434,13 @@ test("deleting a work takes it out of the desk and off the site", async ({ page,
   await entry.click();
   await waitForEditor(page);
   await page.getByRole("button", { name: "删除作品" }).click();
+
+  // What the confirmation says is part of the feature. It used to promise
+  // \u201c删除后无法恢复\u201d; with a recycle bin behind the button that was the desk
+  // lying about its own undo. It now names the way back and the one thing a
+  // restore cannot give back to a third party — the comments under the work.
+  expect(confirmation).toContain("回收站");
+  expect(confirmation).toContain("评论");
 
   // The notice belongs to the desk, not to the editor: the editor is reset to a
   // new document, so a message that only the editor could show would vanish with

@@ -12,7 +12,7 @@ type WorkspaceState = "loading" | "unauthenticated" | "ready" | "error";
  * from the API, so the window shown here is always the window the API is using —
  * the desk never carries its own copy of the retention policy.
  */
-type DeletedArticle = AuthoringArticle & { deletedAt?: string; purgesAt?: string };
+type DeletedArticle = AuthoringArticle & { deletedAt?: string; purgesAt?: string; commentCount?: number };
 
 function isDeletedArticle(value: unknown): value is DeletedArticle {
   return isArticle(value) && typeof (value as DeletedArticle).deletedAt === "string";
@@ -241,6 +241,10 @@ export function AuthoringWorkspace() {
                 <small>
                   {entry.deletedAt ? `删除于 ${new Date(entry.deletedAt).toLocaleDateString("zh-CN")}` : "已删除"}
                   {days === null ? null : days === 0 ? " · 即将自动清除" : ` · 将在 ${days} 天后自动清除`}
+                  {/* The one thing a restore cannot give back to a third party:
+                      the sweep takes the comments with it, so the row says how
+                      many rather than leaving the author to imagine it. */}
+                  {entry.commentCount ? ` · 连同 ${entry.commentCount} 条评论` : null}
                 </small>
                 <button className="nw-btn" type="button" onClick={() => void restoreDeleted(entry)}>
                   还原《{entry.title}》

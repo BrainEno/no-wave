@@ -297,14 +297,22 @@ export function ArticleEditor({ article, onSaved, onDeleted }: ArticleEditorProp
   /**
    * Delete the open work.
    *
-   * The API soft-deletes it (the row stays, the work leaves every list), but from
-   * the author's side there is no undo button: the confirmation names the work
-   * and says so. A published work disappears from its public address too, which
-   * is why this asks even when the work is only a draft.
+   * The API soft-deletes it: the row stays, the work leaves every list, and the
+   * recycle bin is where it goes. The confirmation therefore has to say three
+   * things rather than one — what happens now (the desk and the public page lose
+   * it at once), how far the author can undo it (the recycle bin, until the
+   * sweep), and what undoing it later cannot save (the comments under it). It
+   * used to promise "无法恢复"; with a recycle bin behind the button, that was a
+   * lie the desk was telling about its own feature.
    */
   async function destroy() {
     if (!article) return;
-    if (!window.confirm(`删除《${article.title}》？删除后无法恢复：作品会从写作台移除，已发布的页面也会立即不可访问。`)) return;
+    const confirmed = window.confirm(
+      `删除《${article.title}》？\n\n`
+      + "作品会立刻从写作台移除，已发布的页面也会立即不可访问。\n"
+      + "删除后可在回收站还原，但到期自动清除时，这篇作品下的评论会一起消失。",
+    );
+    if (!confirmed) return;
     setBusy(true);
     setError("");
     setStatus("");

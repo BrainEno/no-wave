@@ -764,16 +764,24 @@ test("a deleted work can be restored from the recycle bin, as a draft", async ()
 
   const published = await put(`/api/authoring/articles/${id}`, articleBody("Desk Restore Epsilon", true), { cookie: DESK_COOKIE });
   assert.equal((JSON.parse(published.body) as { data: { status: string } }).data.status, "published");
+
+  // A reader's words, written before the deletion. The sweep will remove them
+  // with the work, so the recycle bin counts them rather than staying silent.
+  const comment = await post(`/api/articles/${slug}/comments`, JSON.stringify({ body: "值得一读" }), {
+    cookie: `nw_access=${MOCK_TOKENS.accessToken}`,
+  });
+  assert.equal(comment.status, 201);
   await del(`/api/authoring/articles/${id}`, { cookie: DESK_COOKIE });
 
   // The recycle bin is where the work went: the author's to find, carrying both
   // the moment it was deleted and the moment the sweep will make that permanent.
   const trash = await get("/api/authoring/deleted-articles", { cookie: DESK_COOKIE });
   assert.equal(trash.status, 200);
-  const trashed = (JSON.parse(trash.body) as { data: Array<{ id: string; deletedAt: string; purgesAt: string }> }).data;
+  const trashed = (JSON.parse(trash.body) as { data: Array<{ id: string; deletedAt: string; purgesAt: string; commentCount: number }> }).data;
   const entry = trashed.find((item) => item.id === id);
   assert.ok(entry, "a deleted work is in the recycle bin, not nowhere");
   assert.ok(entry.deletedAt);
+  assert.equal(entry.commentCount, 1, "the sweep takes the comments with it, so the row must say how many");
   assert.ok(new Date(entry.purgesAt).getTime() > new Date(entry.deletedAt).getTime(), "the expiry follows the deletion");
 
   const restored = await postEmpty(`/api/authoring/articles/${id}/restore`, { cookie: DESK_COOKIE });

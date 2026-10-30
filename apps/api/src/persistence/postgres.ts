@@ -985,7 +985,8 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
       const rows = await sql.unsafe(
         `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.deleted_at,
-                t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version
+                t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version,
+                (SELECT count(*) FROM article_comments AS c WHERE c.article_id = a.id) AS comment_count
          FROM articles AS a
          JOIN article_translations AS t ON t.article_id = a.id
          WHERE a.author_id = $1 AND t.locale = $2 AND a.deleted_at IS NOT NULL
@@ -993,7 +994,11 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
          LIMIT $3`,
         [actorId, locale, limit],
       );
-      return rows.map((row) => ({ ...mapArticle(row), deletedAt: isoDate(row.deleted_at) }));
+      return rows.map((row) => ({
+        ...mapArticle(row),
+        deletedAt: isoDate(row.deleted_at),
+        commentCount: Number(row.comment_count ?? 0),
+      }));
     },
     async createArticle({ authorId, slug, title, summary = "", locale = "zh-CN", contentBlocks, contentBlocksVersion = 0, publish = false, workType = "other", categoryIds = [], tagIds = [] }) {
       requiredText("authorId", authorId, 300);
