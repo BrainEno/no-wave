@@ -44,6 +44,19 @@ export class IdentityUnavailableError extends DomainError {
   constructor() { super("IdentityUnavailableError", "SERVICE_UNAVAILABLE", "Identity is not configured."); }
 }
 
+/**
+ * A feature that would deliver mail was asked for while mail is switched off.
+ *
+ * Not the same as "the relay is broken": this instance has deliberately not
+ * enabled account mail at all, so there is nothing to retry and nothing to wait
+ * for. It answers 409 — not 503, which would promise that trying again later
+ * helps — so a client can say "this site cannot do that" instead of "your
+ * request succeeded", which is what a swallowed failure would look like.
+ */
+export class MailDisabledError extends DomainError {
+  constructor() { super("MailDisabledError", "MAIL_DISABLED", "Account mail is not enabled on this instance."); }
+}
+
 export class ConversationAccessError extends DomainError {
   constructor(message = "The sender is not a participant in this conversation.") {
     super("ConversationAccessError", "FORBIDDEN", message);

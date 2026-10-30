@@ -10,6 +10,7 @@
  */
 
 import { sendSmtpMessage, SmtpError, type SmtpConfig, type SmtpDependencies, type SmtpSecurity } from "../infrastructure/smtp-client.ts";
+import { MailDisabledError } from "../domain/errors.ts";
 
 export type IdentityTokenPurpose = "password_reset" | "email_verification";
 
@@ -207,14 +208,42 @@ function defaultSleep(milliseconds: number): Promise<void> {
 }
 
 /**
+ * The switch for every feature that would put mail in somebody's inbox.
+ *
+ * Off by default, and off means off: an instance that has not enabled mail does
+ * not send, does not queue and does not pretend. A configured relay is not
+ * enough on its own — this is the operator's decision, not a side effect of
+ * having filled in `MAIL_SMTP_HOST`, so a deployment can hold working
+ * credentials while keeping recovery switched off.
+ *
+ * The variable is read at request time by both tiers (the API here, the Web app
+ * for what it shows), so it can be changed without a rebuild. Unset, empty and
+ * unrecognised values all mean "off": a typo must not switch mail on.
+ */
+export function isMailEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const raw = typeof env.MAIL_ENABLED === "string" ? env.MAIL_ENABLED.trim().toLowerCase() : "";
+  return raw === "true" || raw === "1" || raw === "yes" || raw === "on";
+}
+
+/**
  * The mailer the API runs with: a relay when one is configured, a log line
- * otherwise.
+ * otherwise — and nothing at all while mail is switched off.
  *
  * The log mailer stays the default on purpose. A deployment that has not
  * configured a relay has not finished setting up recovery, and pretending
  * otherwise by inventing a sender would be worse than saying so.
+ *
+ * The disabled mailer throws rather than dropping the message on the floor:
+ * reaching it means some path tried to deliver without checking the switch, and
+ * the one thing a switched-off instance must never do is look like it sent
+ * something. Callers check {@link isMailEnabled} first and answer 503.
  */
 export function resolveIdentityMailer(env: NodeJS.ProcessEnv = process.env): IdentityMailer {
+  if (isMailEnabled(env) === false) {
+    return {
+      async send() { throw new MailDisabledError(); },
+    };
+  }
   const config = resolveSmtpMailerConfig(env);
   return config ? createSmtpMailer({ config }) : createLogMailer({ env });
 }

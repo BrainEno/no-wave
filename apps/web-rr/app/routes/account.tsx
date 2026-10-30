@@ -1,7 +1,8 @@
-import { redirect, type LoaderFunctionArgs } from "react-router";
+import { redirect, useLoaderData, type LoaderFunctionArgs } from "react-router";
 import type { HeadersFunction, MetaFunction } from "react-router";
 import { AccountPanel } from "@/components/auth/account-panel.tsx";
 import { SESSION_MARKER_COOKIE, hasUsableSession, sessionMarkerFrom } from "@bot-thk/web-http";
+import { isMailEnabled } from "@/lib/mail-feature.ts";
 
 /**
  * Private route.
@@ -19,7 +20,7 @@ import { SESSION_MARKER_COOKIE, hasUsableSession, sessionMarkerFrom } from "@bot
  */
 export async function loader({ request }: LoaderFunctionArgs) {
   if (!hasUsableSession(sessionMarkerFrom(request))) throw redirect("/sign-in?next=%2Faccount");
-  return null;
+  return { mailEnabled: isMailEnabled() };
 }
 
 /** Private: no shared cache may keep a copy, and the page is never indexed. */
@@ -31,9 +32,10 @@ export const meta: MetaFunction = () => [
 ];
 
 export default function AccountRoute() {
+  const { mailEnabled } = useLoaderData<typeof loader>();
   return (
     <main className="nw-w nw-head" data-route="account">
-      <AccountPanel />
+      <AccountPanel mailEnabled={mailEnabled} />
     </main>
   );
 }

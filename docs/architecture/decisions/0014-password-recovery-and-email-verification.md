@@ -68,6 +68,18 @@ provider driver exists yet, by ADR 0012.
 
 ## Consequences and remaining gates
 
+- **Mail is a switch, and it is off by default.** `MAIL_ENABLED` gates every
+  feature that would put a link in an inbox. Off, the API answers `503
+  MAIL_DISABLED` for `POST /api/v1/auth/forgot-password` and `POST
+  /api/v1/me/email-verification` — no token issued, no rate limit spent, and the
+  same answer for every address, so a switched-off recovery cannot become an
+  enumeration oracle — and the Web tier stops rendering the pages and buttons
+  that lead to them. Both processes read the same variable, at request time, so
+  they cannot disagree and switching it needs no rebuild. The reason it exists
+  is that the rest of this decision deliberately gates nothing: an unverified
+  account already signs in, writes and publishes, so "mail is off" must mean
+  "these two buttons are gone", not "this account is broken". A configured relay
+  is not consent — `MAIL_SMTP_HOST` alone never switches mail on.
 - **Recovery was shipped without the last mile and now has one.** Until ADR 0015 the mails were log
   lines: deliberate, because ADR 0012 forbids provider code before the zero-cost/no-card gate, and
   the gate had not been asked of a mail provider. It has now ([hosting qualification
@@ -90,9 +102,10 @@ use. Three pages close the loop, at the paths `identityLink()` already emits.
 
 | Page | What it does |
 |---|---|
-| `/forgot-password` | asks for a link. Says the same thing whatever the address is, because the API does. |
+| `/forgot-password` | asks for a link. Says the same thing whatever the address is, because the API does. With mail off, says that instead of showing the form. |
 | `/reset-password?token=…` | sets a new password, then tells the visitor they have been signed out everywhere |
 | `/verify-email?token=…` | redeems the link once, on arrival |
+| `/account` | the account's own page: email, verification state, "send the mail again" (with mail on), sign out — reachable from the site navigation |
 
 - **The token comes out of the query string and goes back in a request body.**
   Mail can only carry a URL, so the query string is forced on us; the path the
@@ -146,6 +159,14 @@ expiry, superseded links, session revocation).
   `GET /api/v1/me` now returns `{ id, email, emailVerifiedAt }` — additive fields only.
 - Covered by identity service unit tests, adapter-contract tests on SQLite and PostgreSQL, and HTTP
   tests for the enumeration answer, single use, session revocation and the unauthenticated case.
+- Switch: `MAIL_ENABLED` — `isMailEnabled` in `apps/api/src/application/identity-mailer.ts` and
+  `apps/web/src/lib/mail-feature.ts` (two copies on purpose: the API must not depend on a Web
+  package; both are tested against the same contract). Covered by identity unit tests, HTTP tests
+  over `/api/v1/auth/forgot-password` and `/api/v1/me/email-verification`, the route smoke checks
+  (mail off and, on a second server, mail on) and the prototype's switch tests.
+  `/forgot-password`, `/reset-password` and `/verify-email` are `force-dynamic`: as static
+  prerenders they baked the build's answer into the HTML, so flipping the switch changed
+  nothing until a rebuild — the F4 trap (`NEXT_PUBLIC_SITE_URL`) again, one layer down.
 - Web: `/forgot-password`, `/reset-password`, `/verify-email`, `/account` (shared `AccountPanel`:
   email, verification state, resend, sign-out), the account line in the writing desk,
   the widened `/api/auth/[action]` family and `POST /api/authoring/email-verification`, covered by

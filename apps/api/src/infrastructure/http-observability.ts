@@ -176,14 +176,20 @@ export function createHttpObservability({
       log({ level: "info", event: "identity_mail_delivered", purpose: safePurpose, durationMs: Math.round(durationMs) });
       return;
     }
+    // A skipped delivery is not a failed one, and a log line that says
+    // "could not be delivered" for a feature that is simply off sends whoever
+    // greps it looking for a broken relay.
+    const skipped = safeOutcome === "skipped";
     log({
-      level: safeOutcome === "skipped" ? "info" : "error",
-      event: safeOutcome === "skipped" ? "identity_mail_skipped" : "identity_mail_failed",
+      level: skipped ? "info" : "error",
+      event: skipped ? "identity_mail_skipped" : "identity_mail_failed",
       purpose: safePurpose,
       // The address is deliberately absent: a mailbox in a failure log is a
       // mailing list, and this line is the one people grep.
-      code: code && SAFE_OPERATION.test(code) ? code : "MAIL_FAILED",
-      message: typeof message === "string" ? message.slice(0, 240) : "The mail could not be delivered.",
+      code: code && SAFE_OPERATION.test(code) ? code : skipped ? "MAIL_SKIPPED" : "MAIL_FAILED",
+      message: typeof message === "string" && message.length > 0
+        ? message.slice(0, 240)
+        : skipped ? "No mail was sent because account mail is switched off." : "The mail could not be delivered.",
     });
   }
 

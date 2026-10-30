@@ -211,6 +211,15 @@ export function SiteChrome({ children }: { children: ReactNode }) {
         <Link className="nw-nv" href={navSelected}>{ui.nav.selected}</Link>
         <Link className="nw-nv" href={navLatest}>{ui.nav.latest}</Link>
         <Link className="nw-nv" href="/write">写作</Link>
+        {/*
+          The account entry is a plain link, not a session-aware one: the chrome
+          is shared by every page, and reading a cookie in the layout would make
+          every public page uncacheable. `/account` already answers both states
+          — it redirects to sign-in with `next=/account` when there is no
+          session, so a signed-out visitor who clicks it is sent to log in and
+          comes straight back.
+        */}
+        <Link className="nw-nv" href="/account" aria-current={current("/account")}>{ui.nav.account}</Link>
         <Link className="nw-nv" href={navTopics} aria-current={onHome ? undefined : current(topicsHref)}>{ui.nav.topics}</Link>
         <span className="nw-sep nw-nv" aria-hidden="true" />
         <Link className="nw-nv nw-lang" href={locale === "en" ? alternatePath(pathname, locale) : pathname} lang="zh-CN" aria-current={locale === "zh-CN" ? "true" : undefined}>简</Link>
@@ -232,6 +241,7 @@ export function SiteChrome({ children }: { children: ReactNode }) {
         <Link href={navSelected}>{ui.nav.selected}</Link>
         <Link href={navLatest}>{ui.nav.latest}</Link>
         <Link href="/write">写作</Link>
+        <Link href="/account">{ui.nav.account}</Link>
         <Link href={navTopics}>{ui.nav.topics}</Link>
         <Link href={searchHref}>{ui.nav.search}</Link>
         <Link href={alternatePath(pathname, locale)} lang={other} aria-label={ui.nav.language}>{other === "en" ? "English" : "简体中文"}</Link>

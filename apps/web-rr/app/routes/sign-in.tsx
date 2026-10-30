@@ -4,6 +4,7 @@ import type { LoaderFunctionArgs, MetaFunction } from "react-router";
 // which resolves to `app/shims/next-navigation.ts` under this app.
 import { SignInForm } from "@/components/auth/sign-in-form.tsx";
 import { safeRedirectPath } from "@/lib/authoring-proxy-policy.ts";
+import { isMailEnabled } from "@/lib/mail-feature.ts";
 
 /**
  * Sign-in route.
@@ -14,7 +15,9 @@ import { safeRedirectPath } from "@/lib/authoring-proxy-policy.ts";
  */
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
-  return { nextPath: safeRedirectPath(url.searchParams.get("next") ?? "/account") };
+  // Read at request time, not build time: switching mail on must not require a
+  // rebuild, and the App Router page reads the same variable the same way.
+  return { nextPath: safeRedirectPath(url.searchParams.get("next") ?? "/account"), mailEnabled: isMailEnabled() };
 }
 
 export const meta: MetaFunction = () => [
@@ -23,10 +26,10 @@ export const meta: MetaFunction = () => [
 ];
 
 export default function SignInRoute() {
-  const { nextPath } = useLoaderData<typeof loader>();
+  const { nextPath, mailEnabled } = useLoaderData<typeof loader>();
   return (
     <main className="nw-w" data-route="sign-in">
-      <SignInForm nextPath={nextPath} />
+      <SignInForm nextPath={nextPath} mailEnabled={mailEnabled} />
     </main>
   );
 }
