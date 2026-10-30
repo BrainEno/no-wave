@@ -34,7 +34,7 @@ const literal = (value: string): RouteSegment => ({ kind: "literal", value });
 const param = (name: string, values?: readonly string[]): RouteSegment =>
   values ? { kind: "param", name, values } : { kind: "param", name };
 
-const AUTH_ACTIONS = ["register", "login", "refresh", "logout"] as const;
+const AUTH_ACTIONS = ["register", "login", "refresh", "logout", "forgot-password", "reset-password", "verify-email"] as const;
 const RELATIONS = ["followers", "following"] as const;
 
 export const REST_ROUTES: readonly RestRoute[] = Object.freeze([
@@ -51,6 +51,7 @@ export const REST_ROUTES: readonly RestRoute[] = Object.freeze([
     methods: ["GET"],
     segments: [literal("me"), literal("articles"), literal("deleted")],
   },
+  { id: "me.email-verification", methods: ["POST"], segments: [literal("me"), literal("email-verification")] },
   { id: "me.media", methods: ["POST"], segments: [literal("me"), literal("media")] },
   { id: "me.notifications", methods: ["GET"], segments: [literal("me"), literal("notifications")] },
   {

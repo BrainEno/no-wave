@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createHmac } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import test from "node:test";
 import { request as httpRequest } from "node:http";
 import { createApiServer } from "./server.ts";
@@ -1085,7 +1085,7 @@ test("REST current user and profile reads require JWT and preserve all AuthorPro
       headers: { authorization: "Bearer " + signedToken("me-user") },
     });
     assert.equal(me.status, 200);
-    assert.deepEqual(await me.json(), { data: { id: "me-user" } });
+    assert.deepEqual(await me.json(), { data: { id: "me-user", email: "me-user@example.test", emailVerifiedAt: null } });
 
     const profileResponse = await fetch(baseUrl + "/api/v1/me/profile?locale=zh-CN", {
       headers: { authorization: "Bearer " + signedToken("me-user") },
@@ -1096,6 +1096,9 @@ test("REST current user and profile reads require JWT and preserve all AuthorPro
     env: authEnv,
     store: {
       async isSessionRevoked() { return false; },
+      async findIdentityAccountByUserId({ userId }) {
+        return { userId, email: `${userId}@example.test`, emailVerifiedAt: null };
+      },
       async getAuthorProfile(args) {
         assert.deepEqual(args, { userId: "me-user", locale: "zh-CN", viewerId: "me-user" });
         return profile;
@@ -2062,4 +2065,128 @@ test("public media route emits an immutable WebP response and supports condition
     assert.equal(cached.headers.get("etag"), '"' + sha256 + '"');
   }, { mediaAssets });
   assert.equal(calls, 2);
+});
+
+/**
+ * Recovery and verification, at the transport boundary.
+ *
+ * The assertions that matter here are the ones a client can observe: a recovery
+ * request is accepted with 202 whether or not the address exists, the token is
+ * never accepted from the path, and an unauthenticated caller cannot make the API
+ * send mail at all.
+ */
+function recoveryStore(overrides: Record<string, unknown> = {}) {
+  const calls: Array<{ method: string; args: Record<string, unknown> }> = [];
+  const store: Record<string, unknown> = {
+    calls,
+    async consumeRateLimit() { return { allowed: true, resetAt: new Date(Date.now() + 60_000).toISOString() }; },
+    async pruneExpiredIdentityState() { return true; },
+    async findIdentityAccount({ email }) {
+      calls.push({ method: "findIdentityAccount", args: { email } });
+      return email === "owner@example.test" ? { userId: "owner-user", passwordHash: "hash-before" } : null;
+    },
+    async issueIdentityToken(args) { calls.push({ method: "issueIdentityToken", args }); return true; },
+    async consumeIdentityToken({ tokenHash, purpose }) {
+      calls.push({ method: "consumeIdentityToken", args: { tokenHash, purpose } });
+      return tokenHash === RESET_TOKEN_HASH ? { userId: "owner-user", email: "owner@example.test" } : null;
+    },
+    async setIdentityPassword(args) { calls.push({ method: "setIdentityPassword", args }); return true; },
+    async revokeIdentitySessions(args) { calls.push({ method: "revokeIdentitySessions", args }); return 2; },
+    async markIdentityEmailVerified(args) { calls.push({ method: "markIdentityEmailVerified", args }); return true; },
+    async findIdentityAccountByUserId({ userId }) {
+      calls.push({ method: "findIdentityAccountByUserId", args: { userId } });
+      return userId === "owner-user" ? { userId, email: "owner@example.test", emailVerifiedAt: null } : null;
+    },
+    ...overrides,
+  };
+  return store;
+}
+
+const RESET_TOKEN = "A".repeat(43);
+/** The only digest the fake store recognises, so the test exercises the real hashing. */
+const RESET_TOKEN_HASH = createHash("sha256").update(RESET_TOKEN, "utf8").digest("hex");
+
+test("REST password recovery accepts every address identically and never takes the token from the path", async () => {
+  const store = recoveryStore();
+  await withServer(async (baseUrl) => {
+    const post = (path: string, body: unknown) => fetch(baseUrl + path, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+    });
+
+    const known = await post("/api/v1/auth/forgot-password", { email: "owner@example.test" });
+    assert.equal(known.status, 202, "an accepted recovery request is not confirmed, only acknowledged");
+    assert.deepEqual(await known.json(), { data: { ok: true } });
+
+    // The whole point: the same answer for an address with no account behind it.
+    const unknown = await post("/api/v1/auth/forgot-password", { email: "nobody@example.test" });
+    assert.equal(unknown.status, 202);
+    assert.deepEqual(await unknown.json(), { data: { ok: true } });
+
+    const malformed = await post("/api/v1/auth/forgot-password", { email: "not-an-address" });
+    assert.equal(malformed.status, 400);
+    assert.equal((await malformed.json()).error.code, "BAD_USER_INPUT");
+
+    // A token in the path would be logged by every proxy between here and the
+    // reader, so no route reads one: the path is simply not a route, and nothing
+    // is spent. (Unknown paths answer a write with 405/allow: GET, the same
+    // contract every other unrouted write gets.)
+    const inPath = await fetch(baseUrl + "/api/v1/auth/reset-password/" + RESET_TOKEN, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ password: "a-brand-new-password" }),
+    });
+    assert.equal(inPath.status, 405);
+    assert.equal(inPath.headers.get("allow"), "GET");
+    assert.ok(!store.calls.some((call) => call.method === "consumeIdentityToken"), "a token carried in a path is never spent");
+
+    const wrongMethod = await fetch(baseUrl + "/api/v1/auth/forgot-password");
+    assert.equal(wrongMethod.status, 405);
+    assert.equal(wrongMethod.headers.get("allow"), "POST");
+  }, { env: authEnv, store });
+});
+
+test("REST password reset spends the token once, replaces the credential and ends the sessions", async () => {
+  const store = recoveryStore();
+  await withServer(async (baseUrl) => {
+    const post = (body: unknown) => fetch(baseUrl + "/api/v1/auth/reset-password", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+    });
+    const accepted = await post({ token: RESET_TOKEN, password: "a-brand-new-password" });
+    assert.equal(accepted.status, 200);
+    assert.deepEqual(await accepted.json(), { data: { ok: true } });
+
+    assert.ok(store.calls.some((call) => call.method === "setIdentityPassword"));
+    assert.deepEqual(store.calls.find((call) => call.method === "revokeIdentitySessions"), {
+      method: "revokeIdentitySessions", args: { userId: "owner-user" },
+    });
+
+    // Well-formed but never issued: 401, not 400 — the shape is fine, the
+    // credential is not. (A malformed one is rejected as bad input instead.)
+    const unknown = await post({ token: randomBytes(32).toString("base64url"), password: "a-brand-new-password" });
+    assert.equal(unknown.status, 401, "a token that was never issued is not a reset");
+    const malformed = await post({ token: "not-a-token", password: "a-brand-new-password" });
+    assert.equal(malformed.status, 400);
+
+    const short = await post({ token: RESET_TOKEN, password: "short" });
+    assert.equal(short.status, 400, "a recovered account gets a registration-strength password");
+  }, { env: authEnv, store });
+});
+
+test("REST email verification stamps the account and only the account holder may ask for the mail", async () => {
+  const store = recoveryStore();
+  await withServer(async (baseUrl) => {
+    const authorization = "Bearer " + signedToken("owner-user");
+    const verified = await fetch(baseUrl + "/api/v1/auth/verify-email", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: RESET_TOKEN }),
+    });
+    assert.equal(verified.status, 200);
+    assert.ok(store.calls.some((call) => call.method === "markIdentityEmailVerified"));
+
+    const requested = await fetch(baseUrl + "/api/v1/me/email-verification", { method: "POST", headers: { authorization } });
+    assert.equal(requested.status, 202);
+    assert.deepEqual(await requested.json(), { data: { ok: true, alreadyVerified: false } });
+    assert.deepEqual(store.calls.find((call) => call.method === "issueIdentityToken").args.purpose, "email_verification");
+
+    // Unauthenticated: no way to aim mail at an address.
+    const anonymous = await fetch(baseUrl + "/api/v1/me/email-verification", { method: "POST" });
+    assert.equal(anonymous.status, 401);
+  }, { env: authEnv, store });
 });

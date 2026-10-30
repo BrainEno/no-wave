@@ -32,6 +32,13 @@ The existing registration/login/refresh/logout policies remain separately strict
 
 The versioned REST transport exposes business endpoints under `/api/v1`, with JSON responses and `Cache-Control: no-store`. Unknown legacy paths, including `/graphql`, return a sanitized JSON `404 NOT_FOUND` response.
 
+- `POST /api/v1/auth/forgot-password` — ask for a recovery link with `{"email": "..."}`. Answers `202 {"data":{"ok":true}}` whether or not the address has an account: telling the two apart would be an account-enumeration oracle. The work (issue a single-use token, hand it to the mailer) only happens when there is an account behind the address.
+- `POST /api/v1/auth/reset-password` — spend a recovery link with `{"token": "...", "password": "..."}`. The token is a 32-byte base64url value that arrives by mail and is redeemed in the body, never in a path; it works once and expires after 30 minutes. The password is held to registration rules (12–128 characters), and **every session of the account is revoked** — a recovered account is signed out everywhere. `401` for a token that was never issued, is already spent or has expired; `400` for a malformed token or a weak password.
+- `POST /api/v1/auth/verify-email` — spend a verification link with `{"token": "..."}`. Stamps `email_verified_at` on the account. Verification **gates nothing**: an unverified address still signs in, publishes and comments; it only records that the address was reachable once.
+- `POST /api/v1/me/email-verification` — authenticated, sends (or re-sends) the verification link for the signed-in account's own address. `202 {"data":{"ok":true,"alreadyVerified":false}}`; an already verified address is not mailed again.
+
+Outbound mail goes through the `IdentityMailer` port (`apps/api/src/application/identity-mailer.ts`). The shipped implementation writes a structured log line and, by default, **not the link** — a log line that can reset a password is a password reset waiting to be read; set `AUTH_IDENTITY_MAIL_LOG_LINK=1` to include it during local development, and `AUTH_IDENTITY_BASE_URL` for the public origin the links point at. No provider adapter exists yet (ADR 0012), so recovery is not production-usable until one is added behind that port.
+
 - `POST /api/v1/auth/register` and `POST /api/v1/auth/login` — create an unverified email/password account or sign in; return access and refresh tokens in JSON.
 - `POST /api/v1/auth/refresh` and `POST /api/v1/auth/logout` — rotate or revoke a refresh-token session. Reuse revokes the whole session family.
 - `GET /api/v1/health` — liveness probe.

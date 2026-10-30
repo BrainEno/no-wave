@@ -5,11 +5,23 @@ import {
 } from "../domain/errors.ts";
 import { accessIssuerConfiguration, signAccessToken } from "../security/authentication.ts";
 import { hashPassword, verifyPassword } from "../security/passwords.ts";
+import { identityLink, resolveIdentityMailer, type IdentityMailer, type IdentityTokenPurpose } from "./identity-mailer.ts";
 
 const REFRESH_LIFETIME_SECONDS = 30 * 24 * 60 * 60;
 const WINDOW_SECONDS = 15 * 60;
 /** Registration is throttled over a longer window than login: it creates rows. */
 const REGISTER_WINDOW_SECONDS = 60 * 60;
+/**
+ * How long a recovery or verification token stays usable.
+ *
+ * A reset link is a credential that arrives by mail and sits in an inbox
+ * nobody watches: thirty minutes is short enough that a forwarded or leaked
+ * mailbox is not a standing key to the account. Verification is not a
+ * credential — it only proves the address was reachable — so a day is enough
+ * to survive an inbox that delivers slowly.
+ */
+const RESET_TOKEN_LIFETIME_SECONDS = 30 * 60;
+const VERIFICATION_TOKEN_LIFETIME_SECONDS = 24 * 60 * 60;
 
 /**
  * How many accounts one address may create in that window.
@@ -47,6 +59,12 @@ export type IdentityStore = {
   rotateIdentityRefresh(input: { refreshHash: string; nextRefreshHash: string; accessTokenId: string; issuedAt: string; accessExpiresAt: string }): Promise<Rotation>;
   revokeIdentityRefresh(input: { refreshHash: string }): Promise<unknown>;
   consumeRateLimit(input: { key: string; limit: number; windowSeconds: number }): Promise<{ allowed: boolean; resetAt: string }>;
+  issueIdentityToken(input: { userId: string; purpose: IdentityTokenPurpose; email: string; tokenHash: string; expiresAt: string }): Promise<unknown>;
+  consumeIdentityToken(input: { tokenHash: string; purpose: IdentityTokenPurpose }): Promise<{ userId: string; email: string } | null>;
+  setIdentityPassword(input: { userId: string; passwordHash: string }): Promise<boolean>;
+  revokeIdentitySessions(input: { userId: string }): Promise<number>;
+  markIdentityEmailVerified(input: { userId: string; verifiedAt: string }): Promise<boolean>;
+  findIdentityAccountByUserId(input: { userId: string }): Promise<{ userId: string; email: string; emailVerifiedAt: string | null } | null>;
   pruneExpiredIdentityState(): Promise<unknown>;
 };
 
@@ -87,6 +105,9 @@ function tokenInput(value: unknown): string {
   return value;
 }
 function refreshHash(token: string): string { return createHash("sha256").update(token, "utf8").digest("hex"); }
+/** Same shape as a refresh credential, so `tokenInput` accepts it unchanged. */
+function randomToken(): string { return randomBytes(32).toString("base64url"); }
+function tokenHash(token: string): string { return createHash("sha256").update(token, "utf8").digest("hex"); }
 function randomRefresh(): string { return randomBytes(32).toString("base64url"); }
 function rateKey(secret: string, scope: string, subject: string): string {
   // Domain-separate throttle identifiers from JWT signatures even though both
@@ -97,7 +118,12 @@ function rateKey(secret: string, scope: string, subject: string): string {
 function timestamp(seconds: number): string { return new Date(seconds * 1000).toISOString(); }
 
 /** Transport-independent registration, login, rotation and logout use cases. */
-export function createIdentityService({ store, env }: { store: IdentityStore; env: NodeJS.ProcessEnv }) {
+export function createIdentityService({ store, env, mailer = null }: {
+  store: IdentityStore;
+  env: NodeJS.ProcessEnv;
+  mailer?: IdentityMailer | null;
+}) {
+  const delivery: IdentityMailer | null = mailer ?? resolveIdentityMailer(env);
   let rateOperations = 0;
   async function consume(scope: string, subject: string, limit: number, windowSeconds: number, secret: string): Promise<void> {
     // Opportunistic bounded cleanup; no detached work can outlive the request.
@@ -119,6 +145,24 @@ export function createIdentityService({ store, env }: { store: IdentityStore; en
   }
   async function limitTokenRequest(action: "refresh" | "logout", ip: string, secret: string): Promise<void> {
     await consume(`${action}:ip`, ip, 120, WINDOW_SECONDS, secret);
+  }
+  /**
+   * Hand a message to the mailer, if one is configured.
+   *
+   * A recovery flow that fails because mail is broken must not look like a
+   * failed request to the caller — the token is already stored, and the answer
+   * is the same either way. The failure is logged by the observability layer.
+   */
+  async function deliver({ purpose, to, token, subject, text }: {
+    purpose: IdentityTokenPurpose; to: string; token: string; subject: string; text: string;
+  }): Promise<void> {
+    if (!delivery) return;
+    try {
+      await delivery.send({ to, purpose, subject, text, link: identityLink({ env, purpose, token }) });
+    } catch {
+      // Swallowed on purpose: the account state is already committed, and an
+      // undeliverable mail is not a reason to tell the caller the request failed.
+    }
   }
   function prepareSession(userId: string, config: ReturnType<typeof accessIssuerConfiguration>): { refreshToken: string; issuedAt: number; session: IdentitySession } {
     const issuedAt = Math.floor(Date.now() / 1000);
@@ -197,6 +241,107 @@ export function createIdentityService({ store, env }: { store: IdentityStore; en
       await limitTokenRequest("logout", ip, config.secret);
       await store.revokeIdentityRefresh({ refreshHash: refreshHash(token) });
       return { ok: true };
+    },
+    /**
+     * Ask for a recovery link.
+     *
+     * The answer is identical whether or not the address exists. Registration
+     * already answers a duplicate address with a conflict and therefore leaks
+     * which addresses have accounts; this endpoint is the one an attacker would
+     * actually automate, so it does not repeat the mistake. The work is only
+     * done when there is an account to do it for.
+     */
+    async requestPasswordReset(body: Record<string, unknown>, ip: string) {
+      requireOnly(body, ["email"]);
+      const email = normalizeEmail(body.email);
+      const config = configuration(env);
+      await consume("password-reset:ip", ip, 20, REGISTER_WINDOW_SECONDS, config.secret);
+      await consume("password-reset:email", email, 5, REGISTER_WINDOW_SECONDS, config.secret);
+      const account = await store.findIdentityAccount({ email });
+      if (account) {
+        const token = randomToken();
+        await store.issueIdentityToken({
+          userId: account.userId, purpose: "password_reset", email,
+          tokenHash: tokenHash(token), expiresAt: timestamp(Math.floor(Date.now() / 1000) + RESET_TOKEN_LIFETIME_SECONDS),
+        });
+        await deliver({
+          purpose: "password_reset",
+          to: email,
+          token,
+          subject: "重置你的密码",
+          text: "我们收到了重置密码的请求。如果这不是你本人操作，忽略这封邮件即可，你的密码不会改变。",
+        });
+      }
+      return { ok: true };
+    },
+    async resetPassword(body: Record<string, unknown>, ip: string) {
+      requireOnly(body, ["token", "password"]);
+      const token = tokenInput(body.token);
+      // A recovered account is being handed a new credential, so hold it to the
+      // same length rules as registration rather than the laxer login check.
+      const password = passwordInput(body.password, true);
+      const config = configuration(env);
+      await consume("reset-password:ip", ip, 20, WINDOW_SECONDS, config.secret);
+      await consume("reset-password:token", tokenHash(token), 5, WINDOW_SECONDS, config.secret);
+      const consumed = await store.consumeIdentityToken({ tokenHash: tokenHash(token), purpose: "password_reset" });
+      if (!consumed) throw new IdentityAuthenticationError();
+      const passwordHash = await hashPassword(password);
+      await store.setIdentityPassword({ userId: consumed.userId, passwordHash });
+      // Every device signs out. Changing the password has to answer "what about
+      // the session that was already stolen", and the refresh family would
+      // otherwise outlive the credential it was issued against.
+      await store.revokeIdentitySessions({ userId: consumed.userId });
+      return { ok: true };
+    },
+    /**
+     * Send (or re-send) the verification link for the signed-in user's address.
+     *
+     * Authenticated, because the address it proves belongs to the caller is the
+     * one already on the account — letting an unauthenticated caller ask would
+     * turn this into a mail-bomb aimed at any address in the database.
+     */
+    async requestEmailVerification(userId: string, ip: string) {
+      const config = configuration(env);
+      await consume("email-verification:user", userId, 5, REGISTER_WINDOW_SECONDS, config.secret);
+      await consume("email-verification:ip", ip, 20, REGISTER_WINDOW_SECONDS, config.secret);
+      const account = await store.findIdentityAccountByUserId({ userId });
+      if (!account) throw new IdentityAuthenticationError();
+      if (account.emailVerifiedAt) return { ok: true, alreadyVerified: true };
+      const token = randomToken();
+      await store.issueIdentityToken({
+        userId, purpose: "email_verification", email: account.email,
+        tokenHash: tokenHash(token), expiresAt: timestamp(Math.floor(Date.now() / 1000) + VERIFICATION_TOKEN_LIFETIME_SECONDS),
+      });
+      await deliver({
+        purpose: "email_verification",
+        to: account.email,
+        token,
+        subject: "确认你的邮箱",
+        text: "请打开下面的链接确认这个邮箱属于你。链接只用一次，一天后失效。",
+      });
+      return { ok: true, alreadyVerified: false };
+    },
+    async verifyEmail(body: Record<string, unknown>, ip: string) {
+      requireOnly(body, ["token"]);
+      const token = tokenInput(body.token);
+      const config = configuration(env);
+      await consume("verify-email:ip", ip, 30, WINDOW_SECONDS, config.secret);
+      const consumed = await store.consumeIdentityToken({ tokenHash: tokenHash(token), purpose: "email_verification" });
+      if (!consumed) throw new IdentityAuthenticationError();
+      await store.markIdentityEmailVerified({ userId: consumed.userId, verifiedAt: timestamp(Math.floor(Date.now() / 1000)) });
+      return { ok: true };
+    },
+    /**
+     * What the account holder is allowed to know about their own account.
+     *
+     * Deliberately not gated on verification: proving an address must not be a
+     * precondition for reading your own state, or the screen that explains why
+     * you should verify would be behind the thing it explains.
+     */
+    async describeAccount(userId: string) {
+      const account = await store.findIdentityAccountByUserId({ userId });
+      if (!account) return { id: userId, email: null, emailVerifiedAt: null };
+      return { id: account.userId, email: account.email, emailVerifiedAt: account.emailVerifiedAt };
     },
   });
 }
