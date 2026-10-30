@@ -1,6 +1,23 @@
 export const ACCESS_TOKEN_COOKIE = "nw_access";
 export const REFRESH_TOKEN_COOKIE = "nw_refresh";
 
+/**
+ * Session *marker*, not a credential (`nw_session`).
+ *
+ * The two token cookies are deliberately scoped below `/` — the access token to
+ * `/api/authoring`, the refresh token to `/api` — so a page render never sees
+ * them and cannot leak them into a log, a cache or an error page. The cost of
+ * that scoping is that a private page render cannot tell a signed-in visitor
+ * from a signed-out one, and would have to redirect everyone.
+ *
+ * The marker closes exactly that gap and nothing more: it is scoped to `/`, is
+ * `HttpOnly`, and its value is the refresh expiry as unix seconds. It grants no
+ * access — every byte of account data still comes from the API behind the access
+ * token — and a forged or stale marker earns the forger an empty shell that
+ * immediately redirects once the browser asks `/api/authoring/session`.
+ */
+export const SESSION_MARKER_COOKIE = "nw_session";
+
 export function setIdempotencyKeyHeader(headers: Headers, idempotencyKey?: string | null): void {
   if (idempotencyKey !== undefined && idempotencyKey !== null) {
     headers.set("idempotency-key", idempotencyKey);

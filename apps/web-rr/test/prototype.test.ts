@@ -263,21 +263,43 @@ test("a signed-out account request redirects instead of rendering an empty page"
   assert.equal(result.headers.get("location"), "/sign-in?next=%2Faccount");
 });
 
-test("a signed-in account request is private, no-store and token-free", async () => {
-  const result = await get("/account", { cookie: `nw_access=${MOCK_TOKENS.accessToken}` });
+/**
+ * The account page is private, but the token cookies are scoped below `/` — so
+ * the render cannot read them and must not try. What it reads instead is the
+ * session marker, whose only claim is "the session can still be renewed".
+ *
+ * The consequence the assertions pin down: the HTML is a shell. No address, no
+ * token and no account data are in it, because all of that is resolved by the
+ * browser from `/api/authoring/session`, which is the request that can present
+ * the access token to the API.
+ */
+test("a live session marker opens a private, no-store, data-free account shell", async () => {
+  const result = await get("/account", { cookie: `nw_session=${Math.floor((Date.now() + 3_600_000) / 1000)}` });
   assert.equal(result.status, 200);
   assert.match(result.headers.get("cache-control") ?? "", /no-store/);
-  assert.match(result.body, new RegExp(MOCK_DISPLAY_NAME));
+  assert.match(result.body, /我的账户/);
   assert.equal(result.body.includes(MOCK_TOKENS.accessToken), false);
+  assert.equal(result.body.includes(MOCK_CREDENTIALS.email), false, "no address in the HTML: the shell is filled by the browser");
 });
 
 test("an expired session is treated as signed out", async () => {
-  const result = await get("/account", { cookie: "nw_access=stale-token-value" });
+  const result = await get("/account", { cookie: `nw_session=${Math.floor((Date.now() - 1_000) / 1000)}` });
   assert.equal(result.status, 302);
   assert.equal(result.headers.get("location"), "/sign-in?next=%2Faccount");
 });
 
-test("logout clears both token cookies", async () => {
+test("a marker that does not parse is treated as signed out", async () => {
+  for (const value of ["soon", "", "0", "-1", `${Math.floor(Date.now() / 1000)}.5`]) {
+    const result = await get("/account", { cookie: `nw_session=${value}` });
+    assert.equal(result.status, 302, `marker ${JSON.stringify(value)} must not open the page`);
+  }
+  // The token cookies are deliberately invisible to a page render: presenting
+  // one here is not a session as far as the route is concerned.
+  const withToken = await get("/account", { cookie: `nw_access=${MOCK_TOKENS.accessToken}` });
+  assert.equal(withToken.status, 302);
+});
+
+test("logout clears every session cookie, including the marker", async () => {
   const result = await post("/api/auth/logout", "", {
     cookie: `nw_access=${MOCK_TOKENS.accessToken}; nw_refresh=${MOCK_TOKENS.refreshToken}`,
     "content-type": "application/json",
@@ -286,6 +308,26 @@ test("logout clears both token cookies", async () => {
   const cookies = result.headers.getSetCookie();
   assert.ok(cookies.some((cookie) => cookie.startsWith("nw_access=;") && /Max-Age=0/.test(cookie)));
   assert.ok(cookies.some((cookie) => cookie.startsWith("nw_refresh=;") && /Max-Age=0/.test(cookie)));
+  // The marker is what a page render reads: leaving it behind would keep private
+  // pages rendering for a session the API has already refused.
+  assert.ok(cookies.some((cookie) => cookie.startsWith("nw_session=;") && /Max-Age=0/.test(cookie)));
+
+  const after = await get("/account", { cookie: `nw_session=${Math.floor((Date.now() + 3_600_000) / 1000)}` });
+  assert.equal(after.status, 200, "the marker is set by a session, not by this request");
+});
+
+test("sign-in sets the session marker the account page reads", async () => {
+  const result = await post(
+    "/api/auth/login",
+    JSON.stringify({ email: MOCK_CREDENTIALS.email, password: MOCK_CREDENTIALS.password }),
+  );
+  const marker = result.headers.getSetCookie().find((cookie) => cookie.startsWith("nw_session="));
+  assert.ok(marker, "the marker must be set with the tokens");
+  assert.match(marker, /Path=\//, "a page render can only read a cookie scoped to /");
+  assert.match(marker, /HttpOnly/);
+  assert.match(marker, /SameSite=Lax/);
+  const value = marker.slice("nw_session=".length, marker.indexOf(";"));
+  assert.match(value, /^\d+$/, "the marker carries an expiry, never a credential");
 });
 
 /* ------------------------------------------------------------------ Phase 3 */
@@ -684,7 +726,12 @@ test("a signed-out desk is told it is signed out, not handed an error page", asy
 test("a signed-in desk reads its session and its own work", async () => {
   const session = await get("/api/authoring/session", { cookie: DESK_COOKIE });
   assert.equal(session.status, 200);
-  assert.match(session.body, new RegExp(MOCK_DISPLAY_NAME));
+  // The account, as `GET /api/v1/me` answers it: an id, an address and a
+  // verification state. The display name is not part of it, and the desk never
+  // asked for one.
+  assert.match(session.body, /"email"/);
+  assert.match(session.body, /"emailVerifiedAt"/);
+  assert.equal(session.body.includes(MOCK_TOKENS.accessToken), false);
   assert.match(session.headers.get("cache-control") ?? "", /no-store/);
 
   const list = await get("/api/authoring/articles", { cookie: DESK_COOKIE });

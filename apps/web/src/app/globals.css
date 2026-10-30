@@ -304,6 +304,9 @@ mark { background: var(--or); color: #0f0d0c; }
 .nw-auth-switch { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
 .nw-auth-error, .nw-auth-status { margin: 16px 0; padding: 12px 0; border-top: 1px solid var(--ink); }
 .nw-auth-error { color: var(--red); }
+.nw-account-fields { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 10px 20px; max-width: 720px; margin-top: 32px; font-size: 15px; }
+.nw-account-fields dt { color: var(--t2); }
+.nw-account-fields dd { margin: 0; overflow-wrap: anywhere; }
 .nw-authoring-grid { display: grid; grid-template-columns: minmax(180px, .32fr) minmax(0, 1fr); align-items: start; gap: clamp(24px, 4vw, 64px); margin-top: 40px; }
 .nw-authoring-sidebar { display: grid; gap: 8px; }
 .nw-authoring-sidebar h2 { margin: 0 0 10px; font-size: 18px; }

@@ -87,8 +87,10 @@ export function AuthoringWorkspace() {
   const [deleted, setDeleted] = useState<DeletedArticle[]>([]);
   const [trashError, setTrashError] = useState("");
   // Who is signed in, read from the session call the desk already makes: the
-  // response used to be discarded, and the writing desk is the only signed-in
-  // surface this app has — the `/account` page is still a deliberate redirect.
+  // response used to be discarded. The account page now shows the same thing
+  // in full — this line stays because the desk is where the author works, and
+  // asking them to open another page to be told their address is unverified
+  // would be a detour, not a feature.
   const [account, setAccount] = useState<Account | null>(null);
   const [verificationBusy, setVerificationBusy] = useState(false);
   const [verificationStatus, setVerificationStatus] = useState("");
