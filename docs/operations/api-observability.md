@@ -18,6 +18,8 @@ Current in-process metrics:
 - `api_http_auth_failures_total{method,status}`: API responses with status 401 or 403.
 - `api_persistence_operations_total{operation,outcome}`: persistence-port operation count, separated into success/error.
 - `api_persistence_operation_duration_ms_{bucket,sum,count}`: persistence-port operation wall-clock duration in milliseconds.
+- `api_identity_mail_deliveries_total{purpose,outcome}`: account-mail delivery attempts, by `password_reset` / `email_verification` and `sent` / `failed` / `skipped`.
+- `api_identity_mail_delivery_duration_ms_{bucket,sum,count}`: wall-clock duration of one delivery attempt (including its retry).
 
 The notification worker is a separate process. Enable its dedicated Prometheus listener with `OUTBOX_METRICS_PORT=9100`; `OUTBOX_METRICS_HOST` defaults to `127.0.0.1` and should only be changed to a reachable interface when the scrape network is restricted. The optional endpoint exposes:
 
@@ -30,6 +32,30 @@ The worker metrics listener is disabled unless a nonzero port is configured. For
 Labels intentionally use a small fixed set of HTTP methods and route groups. Resource IDs, query values, users, IP addresses and exception text never become metric labels. Persistence timing measures complete application persistence-port calls (including adapter logic), not individual SQL statements.
 
 Metrics are in-memory, process-local counters; a restart resets them. Scrape and aggregate every API instance separately. Do not expose `/metrics` publicly: restrict it with the deployment network or trusted reverse-proxy/ingress policy. The endpoint does not reveal identities or payloads, but traffic and operation rates are operational information.
+
+## Alerting on account mail
+
+Recovery is the one flow that can be completely broken while every HTTP metric
+looks healthy: `POST /api/v1/auth/forgot-password` answers `202` whether or not
+the mail went out, because the token is already stored and telling the caller
+would reopen the account-enumeration question. So the delivery counter is the
+**only** signal that recovery is working.
+
+```
+# No recovery mail has been delivered for two hours while requests kept coming.
+sum(increase(api_identity_mail_deliveries_total{purpose="password_reset",outcome="sent"}[2h])) == 0
+
+# More than a fifth of the last hour's attempts failed.
+sum(rate(api_identity_mail_deliveries_total{outcome="failed"}[1h]))
+  / clamp_min(sum(rate(api_identity_mail_deliveries_total[1h])), 1) > 0.2
+```
+
+Both rules need traffic to mean anything; on a quiet site, pair them with the
+`identity_mail_failed` log line, which is emitted at `error` level with the
+purpose and the SMTP error code. There is no queue and no retry after the
+request ends: a transient relay failure is retried **once, inside the request**,
+and a failure that survives that is final — the user asks again and gets a new
+link.
 
 ## Known boundaries
 

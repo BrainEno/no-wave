@@ -69,9 +69,17 @@ dependency.**
   PLAIN/LOGIN, MAIL FROM, RCPT TO, DATA and QUIT; anything a relay says that it
   does not expect is an error, not a surprise. There is no pipelining, no
   connection reuse, no `BDAT`.
-- **No queue, no retry, no bounce handling.** A send either succeeds on the
-  socket or is logged and dropped. Recovery survives that — the user asks again
-  and gets a fresh link — but a relay that is down is only visible in the logs.
+- **No queue, no bounce handling, one bounded retry.** A failure that happened
+  before the relay could have accepted anything (refused connection, DNS miss,
+  connect timeout) is retried once inside the same request; anything after the
+  server has spoken is final, because retrying a message the relay may already
+  have queued is how one reset link becomes two mails. The retry shares a
+  wall-clock budget with the first attempt (default 2 s), so it cannot turn one
+  slow recovery request into two.
+- **Delivery is counted, not just logged.** `api_identity_mail_deliveries_total`
+  and the matching duration histogram make a broken relay alertable; the
+  `identity_mail_failed` log line carries the purpose and the SMTP error code.
+  Without this, recovery can be down for weeks while every HTTP metric is green.
 - **Deliverability is the provider's job and the operator's.** SPF, DKIM and
   DMARC, a verified sender address, and a real `MAIL_FROM` domain are
   configuration, not code, and account mail will land in spam without them.

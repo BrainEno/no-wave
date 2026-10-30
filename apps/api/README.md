@@ -51,7 +51,9 @@ To actually deliver, point the API at an SMTP **submission** relay — `MAIL_SMT
 | `MAIL_FROM` | envelope sender and `From` header |
 | `MAIL_FROM_NAME` | optional display name (encoded when it is not ASCII) |
 
-A delivery failure is logged as `identity_mail_failed` with the purpose and the error code — never the address — and never fails the request: the token is already stored, so the user can simply ask for a new link.
+A delivery failure is recorded as `api_identity_mail_deliveries_total{…,outcome="failed"}` and logged as `identity_mail_failed` with the purpose and the error code — never the address — and never fails the request: the token is already stored, so the user can simply ask for a new link. Because the request answers `202` either way, that counter is the only thing that can tell an operator recovery is broken; see [alerting on account mail](../docs/operations/api-observability.md#alerting-on-account-mail).
+
+One retry is attempted, and only for a failure that happened **before** the relay could have accepted anything (a refused connection, a DNS miss, a connect timeout). Once the server has opened its mouth — a rejected credential, a rejected recipient, a lost reply to `DATA` — the failure is final: retrying a message the relay may already have queued is how one reset link becomes two mails. The retry shares a total budget with the first attempt (`MAIL_SMTP_DELIVERY_DEADLINE_MS`, default 2000 ms, capped at 10 000), so a relay that hangs for ten seconds is not asked twice.
 
 - `POST /api/v1/auth/register` and `POST /api/v1/auth/login` — create an unverified email/password account or sign in; return access and refresh tokens in JSON.
 - `POST /api/v1/auth/refresh` and `POST /api/v1/auth/logout` — rotate or revoke a refresh-token session. Reuse revokes the whole session family.

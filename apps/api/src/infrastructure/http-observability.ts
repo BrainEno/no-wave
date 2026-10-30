@@ -16,6 +16,17 @@ type LogRecord = {
 type Histogram = { count: number; sum: number; buckets: number[] };
 type RequestMetric = { method: string; route: string; status: string; count: number; duration: Histogram };
 type PersistenceMetric = { operation: string; outcome: string; count: number; duration: Histogram };
+type MailMetric = { purpose: string; outcome: string; count: number; duration: Histogram };
+
+/**
+ * Account-mail purposes, as a closed set.
+ *
+ * A metric label is attacker-influenced the moment it is copied from a request,
+ * so a purpose is only ever one of these two strings — anything else collapses
+ * to `other` rather than becoming an unbounded cardinality.
+ */
+const MAIL_PURPOSES = Object.freeze(["password_reset", "email_verification"]);
+const MAIL_OUTCOMES = Object.freeze(["sent", "failed", "skipped"]);
 
 function newHistogram(): Histogram {
   return { count: 0, sum: 0, buckets: HISTOGRAM_BUCKETS_MS.map(() => 0) };
@@ -98,6 +109,7 @@ export function createHttpObservability({
   const requests = new Map<string, RequestMetric>();
   const authFailures = new Map<string, { method: string; status: string; count: number }>();
   const persistence = new Map<string, PersistenceMetric>();
+  const mail = new Map<string, MailMetric>();
   let activeRequests = 0;
 
   function log(record: Omit<LogRecord, "timestamp" | "component">): void {
@@ -127,6 +139,52 @@ export function createHttpObservability({
     }
     metric.count += 1;
     observe(metric.duration, durationMs);
+  }
+
+  /**
+   * Record the outcome of one account-mail delivery attempt.
+   *
+   * Recovery fails silently without this: the request answers `202` whether or
+   * not the mail went out, because the token is already stored and the user can
+   * simply ask again. That is the right answer for the caller and the wrong
+   * answer for the operator — a relay that has been down since Tuesday is
+   * invisible from the HTTP status code, and users do not report "the mail never
+   * came", they just leave.
+   *
+   * The counter is what an alert rules on; the log line is what a human reads
+   * afterwards. Both come from this one call, so they cannot disagree.
+   */
+  function observeMailDelivery({ purpose, outcome, durationMs, code, message }: {
+    purpose: string;
+    outcome: string;
+    durationMs: number;
+    code?: string;
+    message?: string;
+  }): void {
+    const safePurpose = MAIL_PURPOSES.includes(purpose) ? purpose : "other";
+    const safeOutcome = MAIL_OUTCOMES.includes(outcome) ? outcome : "failed";
+    const key = safePurpose + "\u0000" + safeOutcome;
+    let metric = mail.get(key);
+    if (!metric) {
+      metric = { purpose: safePurpose, outcome: safeOutcome, count: 0, duration: newHistogram() };
+      mail.set(key, metric);
+    }
+    metric.count += 1;
+    observe(metric.duration, durationMs);
+
+    if (safeOutcome === "sent") {
+      log({ level: "info", event: "identity_mail_delivered", purpose: safePurpose, durationMs: Math.round(durationMs) });
+      return;
+    }
+    log({
+      level: safeOutcome === "skipped" ? "info" : "error",
+      event: safeOutcome === "skipped" ? "identity_mail_skipped" : "identity_mail_failed",
+      purpose: safePurpose,
+      // The address is deliberately absent: a mailbox in a failure log is a
+      // mailing list, and this line is the one people grep.
+      code: code && SAFE_OPERATION.test(code) ? code : "MAIL_FAILED",
+      message: typeof message === "string" ? message.slice(0, 240) : "The mail could not be delivered.",
+    });
   }
 
   function beginRequest(request: IncomingMessage, response: ServerResponse) {
@@ -248,8 +306,31 @@ export function createHttpObservability({
       lines.push(`api_persistence_operation_duration_ms_sum{operation="${metric.operation}",outcome="${metric.outcome}"} ${metric.duration.sum.toFixed(3)}`);
       lines.push(`api_persistence_operation_duration_ms_count{operation="${metric.operation}",outcome="${metric.outcome}"} ${metric.duration.count}`);
     }
+
+    lines.push(
+      "# HELP api_identity_mail_deliveries_total Account-mail delivery attempts by purpose and outcome.",
+      "# TYPE api_identity_mail_deliveries_total counter",
+    );
+    for (const metric of [...mail.values()].sort((a, b) =>
+      a.purpose.localeCompare(b.purpose) || a.outcome.localeCompare(b.outcome))) {
+      lines.push(`api_identity_mail_deliveries_total{purpose="${metric.purpose}",outcome="${metric.outcome}"} ${metric.count}`);
+    }
+
+    lines.push(
+      "# HELP api_identity_mail_delivery_duration_ms Account-mail delivery duration in milliseconds.",
+      "# TYPE api_identity_mail_delivery_duration_ms histogram",
+    );
+    for (const metric of [...mail.values()].sort((a, b) =>
+      a.purpose.localeCompare(b.purpose) || a.outcome.localeCompare(b.outcome))) {
+      HISTOGRAM_BUCKETS_MS.forEach((bound, index) => {
+        lines.push(`api_identity_mail_delivery_duration_ms_bucket{purpose="${metric.purpose}",outcome="${metric.outcome}",le="${bound}"} ${metric.duration.buckets[index]}`);
+      });
+      lines.push(`api_identity_mail_delivery_duration_ms_bucket{purpose="${metric.purpose}",outcome="${metric.outcome}",le="+Inf"} ${metric.duration.count}`);
+      lines.push(`api_identity_mail_delivery_duration_ms_sum{purpose="${metric.purpose}",outcome="${metric.outcome}"} ${metric.duration.sum.toFixed(3)}`);
+      lines.push(`api_identity_mail_delivery_duration_ms_count{purpose="${metric.purpose}",outcome="${metric.outcome}"} ${metric.duration.count}`);
+    }
     return lines.join("\n") + "\n";
   }
 
-  return Object.freeze({ beginRequest, observePersistenceOperation, renderMetrics });
+  return Object.freeze({ beginRequest, observePersistenceOperation, observeMailDelivery, renderMetrics });
 }
