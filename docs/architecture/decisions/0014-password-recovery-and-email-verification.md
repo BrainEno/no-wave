@@ -81,6 +81,53 @@ provider driver exists yet, by ADR 0012.
 - Still open, unchanged by this decision: MFA, account disablement, signing-key rotation, audit and
   alerting, and the provider adapter itself.
 
+## Web surface
+
+The API is only half of a recovery: the mail has to land somewhere a person can
+use. Three pages close the loop, at the paths `identityLink()` already emits.
+
+| Page | What it does |
+|---|---|
+| `/forgot-password` | asks for a link. Says the same thing whatever the address is, because the API does. |
+| `/reset-password?token=…` | sets a new password, then tells the visitor they have been signed out everywhere |
+| `/verify-email?token=…` | redeems the link once, on arrival |
+
+- **The token comes out of the query string and goes back in a request body.**
+  Mail can only carry a URL, so the query string is forced on us; the path the
+  browser then posts to is not, and paths are what proxies and browsers log.
+- **Redeeming is a POST, never a page render.** A verification link that worked
+  because someone merely loaded a page would also work for a mail scanner, a
+  link previewer and a corporate proxy that fetches links "for safety".
+- **The writing desk is where a verification link is requested**, because it is
+  the only signed-in surface this app has: `/account` is still a deliberate
+  redirect stub pending server-side session verification. The desk already
+  fetched `GET /api/authoring/session` and threw the answer away, so the account
+  line reads the email and its verification stamp from a call that was already
+  being made. Moving it to a real account page later changes no server contract.
+- **The proxy shuttles these through the shared `web-http` seam**, so the React
+  Router prototype's one-line `api.auth.ts` supports them without being touched.
+  Recovery and verification are deliberately *not* put through the token
+  machinery: they answer `{ data: { ok: true } }`, not a token envelope, and the
+  envelope check would turn every one of them into a 502. The one cookie rule
+  they do have is that a **successful** reset clears the session cookies — the
+  API just revoked those sessions, and leaving them behind turns a recovery into
+  "still signed in as whoever refetched first". A *rejected* reset clears
+  nothing, because nothing was revoked.
+- **Not yet in the prototype, therefore not yet in `e2e`.** The e2e spec runs
+  one file against both frameworks and only uses routes both serve, so a browser
+  test for this journey waits for the pages to exist in `apps/web-rr` — a
+  separate decision, since the prototype exists to de-risk the public SSR
+  migration and these are noindex account pages. Until then the journey is
+  covered by the proxy contract tests, the route smoke checks (each page renders,
+  with and without a token) and the manual loop below.
+
+**How to walk the whole loop locally** without a mail provider: start the API
+with `AUTH_IDENTITY_MAIL_LOG_LINK=1` and `AUTH_IDENTITY_BASE_URL` pointing at the
+web app; the log mailer then writes the link itself as a structured `identity_mail`
+line. Copy the token out of the log, open the page, and the rest is the real
+journey — including the parts that only exist once mail is real (single use,
+expiry, superseded links, session revocation).
+
 ## Implementation status
 
 - Migrations `0020_identity_verification.sql` and `sqlite/0012_identity_verification.sql`.
@@ -92,3 +139,6 @@ provider driver exists yet, by ADR 0012.
   `GET /api/v1/me` now returns `{ id, email, emailVerifiedAt }` — additive fields only.
 - Covered by identity service unit tests, adapter-contract tests on SQLite and PostgreSQL, and HTTP
   tests for the enumeration answer, single use, session revocation and the unauthenticated case.
+- Web: `/forgot-password`, `/reset-password`, `/verify-email`, the account line in the writing desk,
+  the widened `/api/auth/[action]` family and `POST /api/authoring/email-verification`, covered by
+  `web-http` proxy contract tests and the route smoke checks.

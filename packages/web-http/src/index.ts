@@ -6,7 +6,16 @@
  * handlers, the React Router resource routes and its own contract tests. No
  * framework import is allowed in this package.
  */
-export { AUTH_ACTIONS, handleAuthRequest, isAuthAction, type AuthAction } from "./auth.ts";
+export {
+  AUTH_ACTIONS,
+  IDENTITY_ACTIONS,
+  handleAuthRequest,
+  isAuthAction,
+  isIdentityAction,
+  type AuthAction,
+  type IdentityAction,
+} from "./auth.ts";
+export { handleAccountEmailVerificationRequest } from "./account.ts";
 export { apiUrl, readPayload, type ApiProxyConfig, type FetchImpl } from "./api.ts";
 export {
   readLimitedBytes,

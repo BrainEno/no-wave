@@ -66,10 +66,10 @@ function forwardMethod(method: string): ForwardMethod {
   return FORWARD_METHODS.has(method as ForwardMethod) ? (method as ForwardMethod) : "GET";
 }
 
-export async function handleAuthPost(
-  request: NextRequest,
-  action: "login" | "register" | "refresh" | "logout",
-): Promise<NextResponse> {
+export async function handleAuthPost(request: NextRequest, action: string): Promise<NextResponse> {
+  // The action is validated by the shared handler (`isAuthAction` /
+  // `isIdentityAction`); this adapter no longer narrows it to a union that has
+  // to be edited every time the API grows one.
   return toNextResponse(await handleAuthRequest(request, action, apiConfig()));
 }
 

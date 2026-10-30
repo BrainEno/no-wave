@@ -101,6 +101,30 @@ try {
   assert.equal(account.headers.get("location"), "/sign-in?next=%2Faccount");
   assert.match(account.headers.get("cache-control") ?? "", /no-store/i, "account redirect must not be publicly cached");
 
+  // Recovery and verification (ADR 0014). These three are the pages a mail
+  // links to, so the property that matters is that they render as forms without
+  // an API configured: the visitor who needs them is by definition mid-recovery,
+  // and a 500 here is a dead end they cannot report.
+  const forgotPassword = await fetch(`${baseUrl}/forgot-password`);
+  assert.equal(forgotPassword.status, 200, "the recovery request page should return 200");
+  assert.match(await forgotPassword.text(), /找回密码/, "the recovery page should serve Simplified Chinese content");
+
+  const resetWithoutToken = await fetch(`${baseUrl}/reset-password`);
+  assert.equal(resetWithoutToken.status, 200, "the reset page should return 200");
+  assert.match(
+    await resetWithoutToken.text(),
+    /链接不完整/,
+    "a reset link that lost its token must say so instead of rendering a form that cannot work",
+  );
+
+  const resetWithToken = await fetch(`${baseUrl}/reset-password?token=${"a".repeat(43)}`);
+  assert.equal(resetWithToken.status, 200, "a reset link with a token should return 200");
+  assert.match(await resetWithToken.text(), /设置新密码/, "a reset link with a token should render the form");
+
+  const verifyWithoutToken = await fetch(`${baseUrl}/verify-email`);
+  assert.equal(verifyWithoutToken.status, 200, "the verification page should return 200");
+  assert.match(await verifyWithoutToken.text(), /链接不完整/, "a verification link without a token must say so");
+
   const events = await fetch(`${baseUrl}/api/spike/events`);
   assert.equal(events.status, 200);
   assert.match(events.headers.get("content-type") ?? "", /text\/event-stream/i);
@@ -146,7 +170,7 @@ try {
   assert.match(sitemapText, /portable-web-foundation/);
   assert.match(sitemapText, /\/en\/articles\//, "sitemap should include English article URLs");
 
-  console.log("Route smoke checks passed: localized home/archive/article routes, search, SEO alternates, 404s, account cache policy, SSE headers, robots and sitemap.");
+  console.log("Route smoke checks passed: localized home/archive/article routes, search, SEO alternates, 404s, account cache policy, recovery and verification pages, SSE headers, robots and sitemap.");
 } finally {
   if (server.exitCode === null && server.signalCode === null) {
     if (process.platform !== "win32" && server.pid !== undefined) {

@@ -65,6 +65,13 @@ is the contract.
 - The token travels in a request body, never in a path: paths are logged by proxies and browsers.
   The mail links to a page, and the page posts the token back.
 - `GET /api/v1/me` returns `{ id, email, emailVerifiedAt }` (additive fields only).
+- The browser surface is three pages in `apps/web` — `/forgot-password`,
+  `/reset-password?token=…`, `/verify-email?token=…` — and an account line in the
+  writing desk that requests a verification link. They reach the API through the
+  shared `web-http` proxy on the same `/api/auth/<action>` family, without the
+  session machinery: these actions carry no token, and the one cookie rule they
+  have is that a **successful** reset clears the cookies, because every session of
+  the account has just been revoked.
 - Outbound mail goes through the `IdentityMailer` port. The shipped implementation is a structured
   log line, and it does not write the link unless `AUTH_IDENTITY_MAIL_LOG_LINK=1`. No provider
   adapter exists, by ADR 0012, so **recovery is not production-usable until one is added**;

@@ -36,6 +36,28 @@ function isArticle(value: unknown): value is AuthoringArticle {
     (item.status === "draft" || item.status === "published");
 }
 
+/**
+ * The account line the desk can show: who is signed in, and whether the address
+ * on the account has ever been proven reachable.
+ *
+ * `GET /api/v1/me` grew these two fields additively (ADR 0014), so an older API
+ * simply yields `null` here and the strip stays hidden rather than guessing.
+ */
+type Account = { email: string; emailVerifiedAt: string | null };
+
+function isAccount(value: unknown): value is Account {
+  if (typeof value !== "object" || value === null) return false;
+  const item = value as Partial<Account>;
+  return typeof item.email === "string" &&
+    (item.emailVerifiedAt === null || typeof item.emailVerifiedAt === "string");
+}
+
+function dataOf(payload: unknown): unknown {
+  return typeof payload === "object" && payload !== null && "data" in payload
+    ? (payload as { data?: unknown }).data
+    : null;
+}
+
 function messageOf(payload: unknown): string {
   if (typeof payload === "object" && payload !== null && "error" in payload) {
     const error = (payload as { error?: { message?: unknown } }).error;
@@ -64,6 +86,12 @@ export function AuthoringWorkspace() {
   // it, so the tombstones are part of the desk rather than a separate screen.
   const [deleted, setDeleted] = useState<DeletedArticle[]>([]);
   const [trashError, setTrashError] = useState("");
+  // Who is signed in, read from the session call the desk already makes: the
+  // response used to be discarded, and the writing desk is the only signed-in
+  // surface this app has — the `/account` page is still a deliberate redirect.
+  const [account, setAccount] = useState<Account | null>(null);
+  const [verificationBusy, setVerificationBusy] = useState(false);
+  const [verificationStatus, setVerificationStatus] = useState("");
 
   async function reloadArticles() {
     const response = await fetch("/api/authoring/articles", { credentials: "same-origin", cache: "no-store" });
@@ -100,6 +128,10 @@ export function AuthoringWorkspace() {
         if (!active) return;
         if (response.status === 401) { setState("unauthenticated"); return; }
         if (!response.ok) throw new Error("无法验证登录状态。");
+        // Best effort in both directions: the desk works without the account
+        // line, and an unreadable session body is not a reason to lose the desk.
+        const session: unknown = await response.json().catch(() => null);
+        if (active) setAccount(isAccount(dataOf(session)) ? (dataOf(session) as Account) : null);
         await reloadArticles();
         // Best effort: the desk is usable without the recycle bin.
         await reloadDeletedArticles().catch(() => { if (active) setTrashError("回收站暂时无法载入。"); });
@@ -194,6 +226,38 @@ export function AuthoringWorkspace() {
     }
   }
 
+  /**
+   * Ask for a verification link for the signed-in account's own address.
+   *
+   * No address is sent: the API mails whatever address the session belongs to,
+   * so this can never be aimed at somebody else's mailbox.
+   */
+  async function requestVerification() {
+    if (verificationBusy) return;
+    setVerificationBusy(true);
+    setVerificationStatus("");
+    try {
+      const response = await fetch("/api/authoring/email-verification", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "same-origin",
+        cache: "no-store",
+        body: "{}",
+      });
+      const payload: unknown = await response.json().catch(() => null);
+      if (response.status === 401) { setState("unauthenticated"); return; }
+      if (!response.ok) throw new Error(messageOf(payload));
+      const data = dataOf(payload);
+      const already = typeof data === "object" && data !== null &&
+        (data as { alreadyVerified?: unknown }).alreadyVerified === true;
+      setVerificationStatus(already ? "这个邮箱已经验证过了。" : "验证邮件已发送，请查收（链接 24 小时内有效）。");
+    } catch (caught) {
+      setVerificationStatus(caught instanceof Error ? caught.message : "暂时无法发送验证邮件，请稍后重试。");
+    } finally {
+      setVerificationBusy(false);
+    }
+  }
+
   if (state === "loading") return <p role="status">正在验证登录状态并载入草稿……</p>;
   if (state === "unauthenticated") {
     return <section className="nw-auth-panel"><h1><span className="nw-zh">先登录</span> <i>Sign in</i></h1><p>写作、保存草稿与发布功能需要有效的登录会话。</p><Link className="nw-btn nw-pri" href="/sign-in?next=%2Fwrite">登录或创建账户</Link></section>;
@@ -207,6 +271,19 @@ export function AuthoringWorkspace() {
         <button className="nw-btn" type="button" onClick={() => void signOut()}>退出登录</button>
       </div>
       <p className="nw-ep" style={{ marginTop: 18 }}>草稿与发布状态由 API 持久化；关闭页面后，可从作品列表继续编辑。</p>
+      {account ? (
+        <p className="nw-auth-status" role="status">
+          已登录：{account.email} · 邮箱{account.emailVerifiedAt ? "已验证" : "未验证"}
+          {/* Verification gates nothing, so the button is an offer, not a
+              blocked state: an unverified author can still write and publish. */}
+          {account.emailVerifiedAt ? null : (
+            <>{" "}<button className="nw-btn" type="button" disabled={verificationBusy} onClick={() => void requestVerification()}>
+              {verificationBusy ? "发送中…" : "发送验证邮件"}
+            </button></>
+          )}
+          {verificationStatus ? <span> {verificationStatus}</span> : null}
+        </p>
+      ) : null}
       {error ? <p className="nw-auth-error" role="alert">{error}</p> : null}
       {notice ? <p className="nw-auth-status" role="status">{notice}</p> : null}
       {/* The inbox sits above the editor because what it says is about someone
