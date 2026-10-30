@@ -445,6 +445,51 @@ test("deleting a work takes it out of the desk and off the site", async ({ page,
   await expect(publicHeading, `the deleted work must not be readable at /articles/${slug}`).toHaveCount(0);
 });
 
+test("a deleted work can be restored from the recycle bin, as a draft", async ({ page, request }) => {
+  page.on("dialog", (dialog) => void dialog.accept());
+
+  await registerWriter(page, request);
+  const title = `浏览器验证还原 ${Date.now().toString(36)}`;
+  const slug = await writeAndSave(page, title, true);
+
+  await page.goto("/write");
+  await waitForEditor(page);
+  const entry = page.getByRole("button", { name: new RegExp(title) });
+  await expect(entry).toBeVisible({ timeout: 45_000 });
+  await entry.click();
+  await waitForEditor(page);
+  await page.getByRole("button", { name: "删除作品" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "已删除" })).toContainText(title, { timeout: 45_000 });
+
+  // The deletion is not the end of the story: the work is in the recycle bin,
+  // with a deadline the author can read, and it can be brought back.
+  const trash = page.getByRole("region", { name: "回收站" });
+  const row = trash.getByRole("button", { name: new RegExp(`还原《${title}》`) });
+  await expect(row).toBeVisible({ timeout: 45_000 });
+  await expect(trash).toContainText(/将在 \d+ 天后自动清除|即将自动清除/);
+
+  await row.click();
+  await expect(page.getByRole("status").filter({ hasText: "已还原" })).toContainText(title, { timeout: 45_000 });
+
+  // Back in the desk, as a draft, with its body intact: a restore is an undo,
+  // not a fresh document.
+  await expect(async () => {
+    const saved = await savedArticles(page);
+    expect(saved.find((article) => article.title === title)?.status, JSON.stringify(saved)).toBe("draft");
+  }).toPass({ timeout: 45_000, intervals: [500, 1_000, 2_000] });
+  await page.getByRole("button", { name: new RegExp(title) }).click();
+  await waitForEditor(page);
+  await expect(page.getByLabel("作品正文")).toContainText("第一段用来验证保存链路。", { timeout: 45_000 });
+
+  // Restoring must not republish: the address stays dark until the author says
+  // otherwise, which is the whole difference between a restore and an archive.
+  await page.goto(`/articles/${slug}`);
+  await expect(
+    page.getByRole("heading", { level: 1, name: title }),
+    `a restored draft must not be readable at /articles/${slug}`,
+  ).toHaveCount(0);
+});
+
 test("text committed by an IME reaches the editor state and is saved", async ({ page, request }) => {
   await registerWriter(page, request);
   await waitForEditor(page);

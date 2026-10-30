@@ -17,8 +17,11 @@ export function createApiServer({
   mediaAssets = null,
 } = {}) {
   const observability = suppliedObservability ?? createHttpObservability({ logger });
+  // The environment reaches the service facade too: the retention window for
+  // deleted works is read there, and a test (or an embedded host) that supplies
+  // its own `env` must see its own value, not the process's.
   const services = applicationServices ?? (store
-    ? createApplicationServices({ persistence: store, onPersistenceOperation: observability.observePersistenceOperation })
+    ? createApplicationServices({ persistence: store, onPersistenceOperation: observability.observePersistenceOperation, env })
     : null);
   const handleRest = createRestHandler({ services, env, mediaAssets });
 

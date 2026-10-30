@@ -46,6 +46,11 @@ export const REST_ROUTES: readonly RestRoute[] = Object.freeze([
   { id: "me.session", methods: ["DELETE"], segments: [literal("me"), literal("session")] },
   { id: "me.liked-articles", methods: ["GET"], segments: [literal("me"), literal("liked-articles")] },
   { id: "me.articles", methods: ["GET"], segments: [literal("me"), literal("articles")] },
+  {
+    id: "me.deleted-articles",
+    methods: ["GET"],
+    segments: [literal("me"), literal("articles"), literal("deleted")],
+  },
   { id: "me.media", methods: ["POST"], segments: [literal("me"), literal("media")] },
   { id: "me.notifications", methods: ["GET"], segments: [literal("me"), literal("notifications")] },
   {
@@ -74,6 +79,11 @@ export const REST_ROUTES: readonly RestRoute[] = Object.freeze([
 
   { id: "articles", methods: ["GET", "POST"], segments: [literal("articles")] },
   { id: "articles.item", methods: ["GET", "PUT", "DELETE"], segments: [literal("articles"), param("slug")] },
+  {
+    id: "articles.restore",
+    methods: ["POST"],
+    segments: [literal("articles"), param("id"), literal("restore")],
+  },
   { id: "articles.like", methods: ["GET", "PUT"], segments: [literal("articles"), param("slug"), literal("like")] },
   {
     id: "articles.comments",

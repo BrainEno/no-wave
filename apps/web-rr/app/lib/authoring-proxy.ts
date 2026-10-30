@@ -1,6 +1,8 @@
 import {
   handleAuthoringArticleRequest,
   handleAuthoringArticlesRequest,
+  handleAuthoringDeletedArticlesRequest,
+  handleAuthoringRestoreRequest,
   handleAuthoringSessionRequest,
 } from "@bot-thk/web-http";
 import { optionalApiBaseUrl } from "./runtime.ts";
@@ -23,4 +25,10 @@ export function handleAuthoringArticles(request: Request): Promise<Response> {
 
 export function handleAuthoringArticle(request: Request, id: string | undefined): Promise<Response> {
   return handleAuthoringArticleRequest(request, { id: id ?? "" }, { apiBaseUrl: optionalApiBaseUrl() });
+}
+export function handleAuthoringDeletedArticles(request: Request): Promise<Response> {
+  return handleAuthoringDeletedArticlesRequest(request, { apiBaseUrl: optionalApiBaseUrl() });
+}
+export function handleAuthoringRestoreArticle(request: Request, id: string | undefined): Promise<Response> {
+  return handleAuthoringRestoreRequest(request, { id: id ?? "" }, { apiBaseUrl: optionalApiBaseUrl() });
 }

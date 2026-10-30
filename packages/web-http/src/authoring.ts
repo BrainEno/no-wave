@@ -8,10 +8,11 @@ import { isSameOriginMutation } from "./policy.ts";
  * The writing desk's browser-facing proxy (ADR 0012, Phase 4b).
  *
  * `AuthoringWorkspace` is a shared client component: it asks for the session,
- * lists the author's articles, creates one and updates one. Those four calls are
- * what make the desk interactive, and until this module existed they were only
- * served by the App Router — the same failure the comment section had in Phase
- * 4a, where a page rendered correctly and had nothing to talk to.
+ * lists the author's articles, creates one, updates one, deletes one, lists the
+ * deleted ones and restores one. Those calls are what make the desk
+ * interactive, and until this module existed they were only served by the App
+ * Router — the same failure the comment section had in Phase 4a, where a page
+ * rendered correctly and had nothing to talk to.
  *
  * The behaviour is shared rather than re-implemented per framework: the
  * exact-Origin check on mutations, the article-id shape check, the bounded body,
@@ -52,6 +53,18 @@ export function authoringArticlesPath(
 
 export function authoringArticlePath(id: string): string {
   return `api/v1/articles/${encodeURIComponent(id)}`;
+}
+
+/** The desk's recycle bin: the author's own tombstones. */
+export function authoringDeletedArticlesPath(
+  locale: string = AUTHORING_DEFAULT_LOCALE,
+  limit: number = AUTHORING_ARTICLES_LIMIT,
+): string {
+  return `api/v1/me/articles/deleted?locale=${encodeURIComponent(locale)}&limit=${encodeURIComponent(String(limit))}`;
+}
+
+export function authoringRestoreArticlePath(id: string): string {
+  return `api/v1/articles/${encodeURIComponent(id)}/restore`;
 }
 
 function methodOf(request: Request, allowed: readonly string[]): string | null {
@@ -139,4 +152,49 @@ export async function handleAuthoringArticleRequest(
   const body = await readLimitedJson(request, AUTHORING_BODY_MAX_BYTES);
   if (!body.ok) return body.response;
   return forwardAuthoringRequest(request, authoringArticlePath(params.id), "PUT", config, body.text);
+}
+
+/**
+ * `GET /api/authoring/deleted-articles` — the author's own deleted works.
+ *
+ * The list that makes a soft delete recoverable: without it, a deleted work is
+ * invisible, which is the one thing an author cannot tell apart from a bug. It
+ * is a read, so it needs no Origin check; the API still answers 401 without a
+ * session, which is how the workspace decides to show the sign-in panel.
+ */
+export async function handleAuthoringDeletedArticlesRequest(
+  request: Request,
+  config: ApiProxyConfig = {},
+): Promise<Response> {
+  const method = methodOf(request, ["GET"]);
+  if (method === null) {
+    return errorResponse("METHOD_NOT_ALLOWED", "Only GET is supported for deleted articles.", 405);
+  }
+  return forwardAuthoringRequest(request, authoringDeletedArticlesPath(), "GET", config);
+}
+
+/**
+ * `POST /api/authoring/articles/:id/restore` — bring a deleted work back.
+ *
+ * The same order as a save and a delete: the method first, then the Origin, then
+ * the id, so a cross-origin caller cannot use the status code to probe which ids
+ * exist. Restoring carries no body — it addresses a work the author already has
+ * — so it is forwarded without the body ceiling a save is subject to.
+ */
+export async function handleAuthoringRestoreRequest(
+  request: Request,
+  params: { id: string },
+  config: ApiProxyConfig = {},
+): Promise<Response> {
+  const method = methodOf(request, ["POST"]);
+  if (method === null) {
+    return errorResponse("METHOD_NOT_ALLOWED", "Only POST is supported for restoring an article.", 405);
+  }
+  if (rejectCrossOrigin(request)) {
+    return errorResponse("ORIGIN_REJECTED", "The request origin was rejected.", 403);
+  }
+  if (!AUTHORING_ARTICLE_ID_PATTERN.test(params.id)) {
+    return errorResponse("BAD_USER_INPUT", "Invalid article ID.", 400);
+  }
+  return forwardAuthoringRequest(request, authoringRestoreArticlePath(params.id), "POST", config);
 }

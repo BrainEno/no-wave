@@ -195,8 +195,9 @@ or deleting `apps/api/data/` (SQLite) is the documented reset.
 
 Environment knobs: `HOST`, `PORT`, `WEB_HOST`, `WEB_PORT`, `DATABASE_PROVIDER`,
 `DATABASE_URL`, `DATABASE_PATH`, `DATABASE_AUTO_MIGRATE`, `AUTH_JWT_*`,
-`API_BASE_URL`, `WEB_DEV_ALLOWED_ORIGINS`, `TEST_DATABASE_URL`,
-`POSTGRES_PORT` (compose host port). Every one is documented in `.env.example`.
+`ARTICLE_TOMBSTONE_RETENTION_DAYS`, `API_BASE_URL`, `WEB_DEV_ALLOWED_ORIGINS`,
+`TEST_DATABASE_URL`, `POSTGRES_PORT` (compose host port). Every one is documented
+in `.env.example`.
 
 ## 6. What the probe asserts
 

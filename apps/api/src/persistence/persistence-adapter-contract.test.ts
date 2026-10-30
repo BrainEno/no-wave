@@ -61,6 +61,8 @@ async function sqliteFixture() {
         // A deleted work keeps its row under a released slug (`...-deleted-<id>`),
         // so match the whole family the deletion test can leave behind.
         db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`contract-delete-${suffix}%`);
+        // Restore and sweep leave reclaimed and released addresses behind.
+        db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`contract-restore-${suffix}%`);
         db.prepare("DELETE FROM taxonomies WHERE slug = ?").run(`contract-category-${suffix}`);
       }
       db.close();
@@ -103,6 +105,8 @@ async function postgresFixture() {
         await postgresSql.unsafe("DELETE FROM articles WHERE slug = ANY($1::text[])", [[`contract-draft-${suffix}`, `contract-published-${suffix}`, `contract-liked-${suffix}`, `contract-comment-${suffix}`, `contract-comment-notifications-${suffix}`]]);
         // A deleted work keeps its row under a released slug (`...-deleted-<id>`).
         await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`contract-delete-${suffix}%`]);
+        // Restore and sweep leave reclaimed and released addresses behind.
+        await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`contract-restore-${suffix}%`]);
         await postgresSql.unsafe("DELETE FROM taxonomies WHERE slug = $1", [`contract-category-${suffix}`]);
       }
     },
@@ -703,6 +707,66 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       });
       assert.equal(rewritten.slug, slug);
       assert.ok((await runtime.store.listPublishedArticles({ locale: "zh-CN", query: "Written again" })).some((article) => article.id === rewritten.id));
+    } finally { await runtime.cleanup(undefined, suffix); }
+  });
+
+  test(`${adapterName}: a deleted work can be restored, and a tombstone past its window is swept`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const slug = `contract-restore-${suffix}`;
+    const authorId = `author-${suffix}`;
+    const contentBlocks = [{ id: "p1", type: "paragraph", text: "Restored on purpose." }];
+    try {
+      const created = await runtime.store.createArticle({
+        authorId, slug, title: "Soon restored", locale: "zh-CN", contentBlocks, publish: true,
+      });
+      await runtime.store.deleteArticle({ articleId: created.id, actorId: authorId });
+
+      // The recycle bin is the author's own tombstones, each one timestamped.
+      const tombstones = await runtime.store.listMyDeletedArticles({ actorId: authorId, locale: "zh-CN" });
+      assert.ok(tombstones.some((article) => article.id === created.id), "a deleted work is still the author's to find");
+      assert.ok(tombstones.every((article) => typeof article.deletedAt === "string" && article.deletedAt.length > 0));
+      // One author's recycle bin is not another author's.
+      assert.equal((await runtime.store.listMyDeletedArticles({ actorId: `other-${suffix}`, locale: "zh-CN" })).filter((article) => article.id === created.id).length, 0);
+
+      // Restoring is owner-scoped, and an unknown id is the same 404 as a live work.
+      await assert.rejects(Promise.resolve().then(() => runtime.store.restoreArticle({
+        articleId: created.id, actorId: `not-author-${suffix}`,
+      })), ArticleAuthorizationError);
+      await assert.rejects(Promise.resolve().then(() => runtime.store.restoreArticle({
+        articleId: randomUUID(), actorId: authorId,
+      })), ArticleNotFoundError);
+
+      const restored = await runtime.store.restoreArticle({ articleId: created.id, actorId: authorId, locale: "zh-CN" });
+      assert.equal(restored.id, created.id);
+      // A restored work is a draft: deleting withdrew it, and putting a public
+      // address back is the author's decision to make again, not a side effect
+      // of undoing a mistake.
+      assert.equal(restored.status, "draft");
+      assert.equal(restored.slug, slug, "the address the tombstone released comes back with it");
+      assert.ok((await runtime.store.listMyArticles({ actorId: authorId, locale: "zh-CN" })).some((article) => article.id === created.id));
+      assert.equal((await runtime.store.listMyDeletedArticles({ actorId: authorId, locale: "zh-CN" })).filter((article) => article.id === created.id).length, 0);
+      assert.equal((await runtime.store.listPublishedArticles({ locale: "zh-CN", query: "Soon restored" })).length, 0, "restoring must not republish");
+      // A second restore is a 404, exactly like a second delete.
+      await assert.rejects(Promise.resolve().then(() => runtime.store.restoreArticle({
+        articleId: created.id, actorId: authorId,
+      })), ArticleNotFoundError);
+
+      // The sweep is bounded by the window, not by how long ago the row was
+      // written: inside it the work is still recoverable, past it, it is gone.
+      const swept = await runtime.store.createArticle({ authorId, slug: `${slug}-swept`, title: "Soon swept", locale: "zh-CN", contentBlocks });
+      await runtime.store.deleteArticle({ articleId: swept.id, actorId: authorId });
+      const kept = await runtime.store.createArticle({ authorId, slug: `${slug}-kept`, title: "Not yet swept", locale: "zh-CN", contentBlocks });
+      await runtime.store.deleteArticle({ articleId: kept.id, actorId: authorId });
+      const deletedAt = new Date();
+      assert.equal((await runtime.store.purgeExpiredArticles({ retentionDays: 30, now: deletedAt })).purged, 0);
+      const past = await runtime.store.purgeExpiredArticles({ retentionDays: 30, now: new Date(deletedAt.getTime() + 31 * 86_400_000), limit: 10 });
+      assert.equal(past.purged, 2, "both tombstones are past the window");
+      assert.equal((await runtime.store.listMyDeletedArticles({ actorId: authorId, locale: "zh-CN" })).length, 0);
+      // Purged means gone, not hidden: there is nothing left to restore.
+      await assert.rejects(Promise.resolve().then(() => runtime.store.restoreArticle({
+        articleId: swept.id, actorId: authorId,
+      })), ArticleNotFoundError);
     } finally { await runtime.cleanup(undefined, suffix); }
   });
 
