@@ -83,6 +83,21 @@ export function createSqliteArticleStore(db) {
   }
 
 
+  /**
+   * Capture only the `articles` row into the provider-migration journal.
+   *
+   * Deletion changes no translation and no taxonomy link, so this is the whole
+   * change set — and capturing the row is what keeps a replica that is replaying
+   * this journal from keeping a work the author just deleted.
+   */
+  function captureArticleRow(transactionId, articleId) {
+    const article = statement("SELECT * FROM articles WHERE id = ?").get(articleId);
+    if (!article) return;
+    migrationCapture.captureInTransaction(db, transactionId, [
+      { entityType: "articles", entityId: articleId, operation: "upsert", payload: article },
+    ]);
+  }
+
   function captureArticleState(transactionId, articleId, locale, previousLinks = []) {
     const article = statement("SELECT * FROM articles WHERE id = ?").get(articleId);
     const translation = statement("SELECT * FROM article_translations WHERE article_id = ? AND locale = ?").get(articleId, locale);
@@ -124,7 +139,9 @@ export function createSqliteArticleStore(db) {
       requiredText("actorId", actorId, 300);
       validateArticleLocale(locale);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
-      return statement(articleSelect + " WHERE a.author_id = ? AND t.locale = ? ORDER BY a.updated_at DESC, a.id LIMIT ?")
+      // A deleted work is a tombstone the author cannot act on any more, so the
+      // desk must not list it — deletion would otherwise be invisible.
+      return statement(articleSelect + " WHERE a.author_id = ? AND t.locale = ? AND a.deleted_at IS NULL ORDER BY a.updated_at DESC, a.id LIMIT ?")
         .all(actorId, locale, limit).map(mapArticle);
     },
 
@@ -186,8 +203,8 @@ export function createSqliteArticleStore(db) {
       const tags = normalizeTaxonomyIds("tagIds", tagIds, 100);
       try {
         return transaction((transactionId) => {
-          const existing = statement("SELECT id, author_id, created_at FROM articles WHERE id = ?").get(articleId);
-          if (!existing) throw new ArticleNotFoundError("The article was not found.");
+          const existing = statement("SELECT id, author_id, created_at, deleted_at FROM articles WHERE id = ?").get(articleId);
+          if (!existing || existing.deleted_at) throw new ArticleNotFoundError("The article was not found.");
           if (existing.author_id !== actorId) throw new ArticleAuthorizationError("Only the article author can update it.");
           const previousLinks = statement("SELECT taxonomy_id FROM article_taxonomies WHERE article_id = ?").all(articleId);
           const now = new Date().toISOString();
@@ -207,6 +224,38 @@ export function createSqliteArticleStore(db) {
         if (/UNIQUE constraint failed: articles\.slug/i.test(error.message)) throw new ArticleSlugConflictError();
         throw error;
       }
+    },
+
+    /**
+     * Delete one of the author's own works.
+     *
+     * The row stays: comments, likes, taxonomy links and the provider-migration
+     * journal all refer to it, and a tombstone is recoverable by hand in a way a
+     * cascading delete is not. Concretely — the status goes back to 'draft', so
+     * every `status = 'published'` read (public page, search, feeds, related,
+     * liked lists) already hides the work, and `deleted_at` hides it from the
+     * author's own desk.
+     *
+     * The slug is released, because it is the one thing an author would notice:
+     * without this, rewriting the same title after deleting it would collide with
+     * the tombstone forever and fail with a 409 the author cannot resolve.
+     */
+    deleteArticle({ articleId, actorId }) {
+      if (!isUuid(articleId)) throw new ArticleInputError("articleId must be a valid article ID.");
+      requiredText("actorId", actorId, 300);
+      return transaction((transactionId) => {
+        const existing = statement("SELECT id, author_id, slug, deleted_at FROM articles WHERE id = ?").get(articleId);
+        // A tombstone is not in the author's desk, so a second delete is a 404
+        // rather than a silent second tombstone over the first.
+        if (!existing || existing.deleted_at) throw new ArticleNotFoundError("The article was not found.");
+        if (existing.author_id !== actorId) throw new ArticleAuthorizationError("Only the article author can delete it.");
+        const now = new Date().toISOString();
+        const releasedSlug = `${existing.slug}-deleted-${articleId.slice(0, 8)}`;
+        db.prepare("UPDATE articles SET status = 'draft', deleted_at = ?, slug = ?, updated_at = ? WHERE id = ?")
+          .run(now, releasedSlug, now, articleId);
+        captureArticleRow(transactionId, articleId);
+        return { id: articleId, deletedAt: now };
+      });
     },
   });
 }

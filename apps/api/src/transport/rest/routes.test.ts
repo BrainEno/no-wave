@@ -79,7 +79,7 @@ test("a known path with an unsupported method reports the exact allow-list", () 
     ["/api/v1/me/profile", "DELETE", "GET, PUT"],
     ["/api/v1/me/session", "GET", "DELETE"],
     ["/api/v1/articles", "PUT", "GET, POST"],
-    ["/api/v1/articles/some-slug", "DELETE", "GET, PUT"],
+    ["/api/v1/articles/some-slug", "PATCH", "GET, PUT, DELETE"],
     ["/api/v1/articles/some-slug/like", "POST", "GET, PUT"],
     ["/api/v1/articles/some-slug/comments", "PUT", "GET, POST"],
     ["/api/v1/comments/some-id", "GET", "DELETE"],

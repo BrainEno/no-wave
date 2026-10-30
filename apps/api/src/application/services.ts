@@ -54,6 +54,9 @@ export function createApplicationServices<A extends import("./persistence-ports.
     ports.content.createArticle({ ...input, authorId, contentBlocks: parseContentBlocks(input.contentBlocks) });
   services.updateArticle = async ({ actorId, ...input }) =>
     ports.content.updateArticle({ ...input, actorId, contentBlocks: parseContentBlocks(input.contentBlocks) });
+  // Deletion carries no body: it addresses a work the author already has.
+  services.deleteArticle = async ({ actorId, articleId }) =>
+    ports.content.deleteArticle({ articleId, actorId });
 
   return Object.freeze(services) as ApplicationServices<A>;
 }

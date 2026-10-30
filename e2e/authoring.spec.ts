@@ -409,6 +409,42 @@ test("returning a published work to draft withdraws it from the public site", as
   await expect(page.getByRole("button", { name: new RegExp(title) })).toContainText("草稿", { timeout: 45_000 });
 });
 
+test("deleting a work takes it out of the desk and off the site", async ({ page, request }) => {
+  // Deleting has no undo from the desk, so the product asks first; the suite
+  // answers rather than muting the dialog, which keeps "no confirmation" a
+  // failure instead of a silent delete.
+  page.on("dialog", (dialog) => void dialog.accept());
+
+  await registerWriter(page, request);
+  const title = `浏览器验证删除 ${Date.now().toString(36)}`;
+  const slug = await writeAndSave(page, title, true);
+
+  const publicHeading = page.getByRole("heading", { level: 1, name: title });
+  await page.goto(`/articles/${slug}`);
+  await expect(publicHeading).toBeVisible({ timeout: 45_000 });
+
+  await page.goto("/write");
+  await waitForEditor(page);
+  const entry = page.getByRole("button", { name: new RegExp(title) });
+  await expect(entry).toBeVisible({ timeout: 45_000 });
+  await entry.click();
+  await waitForEditor(page);
+  await page.getByRole("button", { name: "删除作品" }).click();
+
+  // The notice belongs to the desk, not to the editor: the editor is reset to a
+  // new document, so a message that only the editor could show would vanish with
+  // the work it is about.
+  await expect(page.getByRole("status").filter({ hasText: "已删除" })).toContainText(title, { timeout: 45_000 });
+  await expect(async () => {
+    const saved = await savedArticles(page);
+    expect(saved.find((article) => article.title === title), JSON.stringify(saved)).toBeUndefined();
+  }).toPass({ timeout: 45_000, intervals: [500, 1_000, 2_000] });
+
+  // The durable outcome a reader can see: the address stops serving the work.
+  await page.goto(`/articles/${slug}`);
+  await expect(publicHeading, `the deleted work must not be readable at /articles/${slug}`).toHaveCount(0);
+});
+
 test("text committed by an IME reaches the editor state and is saved", async ({ page, request }) => {
   await registerWriter(page, request);
   await waitForEditor(page);

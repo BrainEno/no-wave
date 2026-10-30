@@ -967,7 +967,7 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
                 t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version
          FROM articles AS a
          JOIN article_translations AS t ON t.article_id = a.id
-         WHERE a.author_id = $1 AND t.locale = $2
+         WHERE a.author_id = $1 AND t.locale = $2 AND a.deleted_at IS NULL
          ORDER BY a.updated_at DESC, a.id DESC
          LIMIT $3`,
         [actorId, locale, limit],
@@ -1020,8 +1020,8 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
       try {
         return await sql.begin(async (tx) => {
           const transactionId = createMigrationTransactionId();
-          const ownership = await tx.unsafe("SELECT author_id FROM articles WHERE id = $1 FOR UPDATE", [articleId]);
-          if (!ownership[0]) throw new ArticleNotFoundError();
+          const ownership = await tx.unsafe("SELECT author_id, deleted_at FROM articles WHERE id = $1 FOR UPDATE", [articleId]);
+          if (!ownership[0] || ownership[0].deleted_at) throw new ArticleNotFoundError();
           if (ownership[0].author_id !== actorId) throw new ArticleAuthorizationError();
           const previousLinks = await tx.unsafe("SELECT * FROM article_taxonomies WHERE article_id = $1", [articleId]);
           const rows = await tx.unsafe(
@@ -1053,6 +1053,33 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
         if (error?.code === "23505") throw new ArticleSlugConflictError();
         throw error;
       }
+    },
+    /**
+     * Delete one of the author's own works (see the SQLite slice for the
+     * reasoning): the row becomes a tombstone, the status returns to 'draft' so
+     * every published read hides it, and the slug is released so rewriting the
+     * same title cannot collide with the tombstone.
+     */
+    async deleteArticle({ articleId, actorId }) {
+      if (!isUuid(articleId)) throw new ArticleInputError("articleId must be a valid article ID.");
+      requiredText("actorId", actorId, 300);
+      return await sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const existing = await tx.unsafe("SELECT author_id, slug, deleted_at FROM articles WHERE id = $1 FOR UPDATE", [articleId]);
+        if (!existing[0] || existing[0].deleted_at) throw new ArticleNotFoundError("The article was not found.");
+        if (existing[0].author_id !== actorId) throw new ArticleAuthorizationError("Only the article author can delete it.");
+        const releasedSlug = `${existing[0].slug}-deleted-${articleId.slice(0, 8)}`;
+        const rows = await tx.unsafe(
+          "UPDATE articles SET status = 'draft', deleted_at = now(), slug = $2, updated_at = now() WHERE id = $1 RETURNING id, deleted_at",
+          [articleId, releasedSlug],
+        );
+        if (!rows[0]) throw new ArticleNotFoundError("The article was not found.");
+        const snapshot = await tx.unsafe("SELECT * FROM articles WHERE id = $1", [articleId]);
+        await captureChanges(tx, transactionId, [
+          { entityType: "articles", entityId: articleId, operation: "upsert", payload: snapshot[0] },
+        ]);
+        return { id: articleId, deletedAt: isoDate(rows[0].deleted_at) };
+      });
     },
     async createConversation({ actorId, participantIds }) {
       requiredText("actorId", actorId, 300);

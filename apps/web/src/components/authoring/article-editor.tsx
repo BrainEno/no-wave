@@ -33,6 +33,7 @@ export type AuthoringArticle = {
 type ArticleEditorProps = {
   article: AuthoringArticle | null;
   onSaved(article: AuthoringArticle): void;
+  onDeleted(article: AuthoringArticle): void;
 };
 
 const extensionDependencies = [
@@ -174,12 +175,13 @@ function Toolbar({ onStatus, onError }: { onStatus(message: string): void; onErr
   );
 }
 
-function apiError(payload: unknown): string {
+/** @param fallback — the message shown when the API did not say why it failed. */
+function apiError(payload: unknown, fallback = "保存失败，请检查网络后重试。"): string {
   if (typeof payload === "object" && payload !== null && "error" in payload) {
     const error = (payload as { error?: { message?: unknown } }).error;
     if (error && typeof error.message === "string") return error.message;
   }
-  return "保存失败，请检查网络后重试。";
+  return fallback;
 }
 
 function isSavedArticle(value: unknown): value is AuthoringArticle {
@@ -214,7 +216,7 @@ function collectPlainText(value: unknown): string {
   return result;
 }
 
-export function ArticleEditor({ article, onSaved }: ArticleEditorProps) {
+export function ArticleEditor({ article, onSaved, onDeleted }: ArticleEditorProps) {
   const [initialState] = useState<LexicalEditorStateJson | null>(() => {
     try { return articleBlocksToLexicalEditorState(article?.contentBlocks); }
     catch { return null; }
@@ -292,6 +294,37 @@ export function ArticleEditor({ article, onSaved }: ArticleEditorProps) {
     }
   }
 
+  /**
+   * Delete the open work.
+   *
+   * The API soft-deletes it (the row stays, the work leaves every list), but from
+   * the author's side there is no undo button: the confirmation names the work
+   * and says so. A published work disappears from its public address too, which
+   * is why this asks even when the work is only a draft.
+   */
+  async function destroy() {
+    if (!article) return;
+    if (!window.confirm(`删除《${article.title}》？删除后无法恢复：作品会从写作台移除，已发布的页面也会立即不可访问。`)) return;
+    setBusy(true);
+    setError("");
+    setStatus("");
+    try {
+      const response = await fetch(`/api/authoring/articles/${encodeURIComponent(article.id)}`, {
+        method: "DELETE",
+        headers: { accept: "application/json" },
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+      const payload: unknown = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(apiError(payload, "删除失败，请检查网络后重试。"));
+      onDeleted(article);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "删除失败，请重试。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (!initialState || !extension) {
     return <p className="nw-auth-error" role="alert">此作品含有当前编辑器尚不支持的内容块（例如带署名的引用）。没有修改任何内容；请先返回作品列表。</p>;
   }
@@ -323,6 +356,7 @@ export function ArticleEditor({ article, onSaved }: ArticleEditorProps) {
       {error ? <p className="nw-auth-error" role="alert">{error}</p> : null}
       {status ? <p className="nw-auth-status" role="status">{status}</p> : null}
       <div className="nw-authoring-actions">
+        {article ? <button className="nw-btn" type="button" disabled={busy} onClick={() => void destroy()}>删除作品</button> : null}
         <button className="nw-btn" type="button" disabled={busy} onClick={() => void save(article?.status === "published" ? "publish" : "draft")}>{busy ? "保存中…" : article?.status === "published" ? "保存更新" : "保存草稿"}</button>
         <button className="nw-btn nw-pri" type="button" disabled={busy} onClick={() => void save("publish")}>{busy ? "正在保存…" : article?.status === "published" ? "保存并发布" : "发布作品"}</button>
         {article && article.status === "published" ? (
