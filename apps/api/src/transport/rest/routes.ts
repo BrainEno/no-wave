@@ -125,7 +125,7 @@ export const REST_ROUTES: readonly RestRoute[] = Object.freeze([
     methods: ["PUT"],
     segments: [literal("conversations"), param("id"), literal("read")],
   },
-  { id: "conversations.item", methods: ["DELETE"], segments: [literal("conversations"), param("id")] },
+  { id: "conversations.item", methods: ["GET", "DELETE"], segments: [literal("conversations"), param("id")] },
 ]);
 
 export type RouteResolution =

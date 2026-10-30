@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
 import { randomUUID } from "node:crypto";
-import { IdempotencyConflictError, ConversationAccessError, ArticleAuthorizationError, ArticleNotFoundError, ProfileInputError, ProfileNotFoundError } from "../domain/errors.ts";
+import { ArticleSlugConflictError, ConversationInputError, IdempotencyConflictError, ConversationAccessError, ArticleAuthorizationError, ArticleNotFoundError, ProfileInputError, ProfileNotFoundError } from "../domain/errors.ts";
 import { createPostgresClient, createPostgresStore } from "./postgres.ts";
 import { runMigrations } from "./migrate.ts";
 import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
@@ -57,7 +57,7 @@ async function sqliteFixture() {
         db.prepare(`DELETE FROM user_profile_translations WHERE user_id IN (${userIds.map(() => "?").join(",")})`).run(...userIds);
         db.prepare(`DELETE FROM user_profiles WHERE user_id IN (${userIds.map(() => "?").join(",")})`).run(...userIds);
         db.prepare("DELETE FROM revoked_sessions WHERE session_id = ?").run(`contract-session-${suffix}`);
-        for (const slug of [`contract-draft-${suffix}`, `contract-published-${suffix}`, `contract-liked-${suffix}`, `contract-comment-${suffix}`, `contract-comment-notifications-${suffix}`]) db.prepare("DELETE FROM articles WHERE slug = ?").run(slug);
+        for (const slug of [`contract-draft-${suffix}`, `contract-published-${suffix}`, `contract-liked-${suffix}`, `contract-comment-${suffix}`, `contract-comment-notifications-${suffix}`, `contract-create-once-${suffix}`, `contract-create-once-b-${suffix}`, `contract-create-twice-${suffix}`]) db.prepare("DELETE FROM articles WHERE slug = ?").run(slug);
         // A deleted work keeps its row under a released slug (`...-deleted-<id>`),
         // so match the whole family the deletion test can leave behind.
         db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`contract-delete-${suffix}%`);
@@ -103,7 +103,7 @@ async function postgresFixture() {
         await postgresSql.unsafe("DELETE FROM user_profile_translations WHERE user_id = ANY($1::text[])", [userIds]);
         await postgresSql.unsafe("DELETE FROM user_profiles WHERE user_id = ANY($1::text[])", [userIds]);
         await postgresSql.unsafe("DELETE FROM revoked_sessions WHERE session_id = ANY($1::text[])", [[`contract-session-${suffix}`, `contract-expired-session-${suffix}`]]);
-        await postgresSql.unsafe("DELETE FROM articles WHERE slug = ANY($1::text[])", [[`contract-draft-${suffix}`, `contract-published-${suffix}`, `contract-liked-${suffix}`, `contract-comment-${suffix}`, `contract-comment-notifications-${suffix}`]]);
+        await postgresSql.unsafe("DELETE FROM articles WHERE slug = ANY($1::text[])", [[`contract-draft-${suffix}`, `contract-published-${suffix}`, `contract-liked-${suffix}`, `contract-comment-${suffix}`, `contract-comment-notifications-${suffix}`, `contract-create-once-${suffix}`, `contract-create-once-b-${suffix}`, `contract-create-twice-${suffix}`]]);
         // A deleted work keeps its row under a released slug (`...-deleted-<id>`).
         await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`contract-delete-${suffix}%`]);
         // Restore and sweep leave reclaimed and released addresses behind.
@@ -207,6 +207,54 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       assert.equal((await runtime.store.claimOutboxEvents({ limit: 10 })).length, 0);
     } finally {
       await runtime.cleanup(conversationId);
+    }
+  });
+
+  test(`${adapterName}: opening a conversation is idempotent per caller and rejects a reused key with different participants`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const creator = `contract-user-a-${suffix}`;
+    const invited = `contract-user-b-${suffix}`;
+    const third = `contract-user-c-${suffix}`;
+    let conversationId = null;
+    try {
+      const input = { actorId: creator, participantIds: [invited], idempotencyKey: `open-once-${suffix}` };
+      const [first, retried] = await Promise.all([
+        runtime.store.createConversation(input),
+        runtime.store.createConversation(input),
+      ]);
+      conversationId = first.id;
+      assert.equal(retried.id, first.id, "a retry must return the conversation the first attempt opened, not a second one beside it");
+      assert.equal(
+        (await runtime.store.listConversations({ actorId: creator, limit: 100 })).filter((item) => item.id === first.id).length,
+        1,
+      );
+
+      await assert.rejects(
+        Promise.resolve().then(() => runtime.store.createConversation({ ...input, participantIds: [third] })),
+        IdempotencyConflictError,
+        "the same key with a different body is a conflicting request, not a replay",
+      );
+
+      // The key is scoped to the caller: another user may reuse the same string.
+      const theirs = await runtime.store.createConversation({ actorId: invited, participantIds: [creator], idempotencyKey: `open-once-${suffix}` });
+      assert.notEqual(theirs.id, first.id);
+
+      await assert.rejects(
+        Promise.resolve().then(() => runtime.store.createConversation({ actorId: creator, participantIds: [invited], idempotencyKey: " not trimmed " })),
+        ConversationInputError,
+      );
+
+      // A replay answers with what the conversation is now, not with a frozen
+      // copy of the 201 the first attempt would have returned.
+      await runtime.store.updateConversationParticipants({ conversationId: first.id, actorId: creator, addUserIds: [third], removeUserIds: [] });
+      const replay = await runtime.store.createConversation(input);
+      assert.equal(replay.id, first.id);
+      assert.deepEqual(replay.participantIds, [creator, invited, third].sort());
+
+      await runtime.store.deleteConversation({ conversationId: theirs.id, actorId: invited });
+    } finally {
+      await runtime.cleanup(conversationId, suffix);
     }
   });
 
@@ -950,6 +998,53 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       await runtime.cleanup(undefined, suffix);
     }
   });
+  test(`${adapterName}: publishing a work is idempotent per author and does not leave a second copy behind`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const author = `article-author-${suffix}`;
+    const other = `article-author-b-${suffix}`;
+    const blocks = [{ id: "p1", type: "paragraph", text: "Shared persistence contract content." }];
+    const input = {
+      authorId: author, slug: `contract-create-once-${suffix}`, title: "Create once", summary: "",
+      locale: "zh-CN", contentBlocks: blocks, publish: true, idempotencyKey: `publish-once-${suffix}`,
+    };
+    try {
+      const [first, retried] = await Promise.all([
+        runtime.store.createArticle(input),
+        runtime.store.createArticle(input),
+      ]);
+      assert.equal(retried.id, first.id, "a retry must return the work the first attempt published");
+      assert.equal(retried.slug, first.slug, "and must not have been handed a uniquified second address");
+      assert.equal(
+        (await runtime.store.listMyArticles({ actorId: author, locale: "zh-CN", limit: 100 })).filter((item) => item.id === first.id).length,
+        1,
+      );
+
+      await assert.rejects(
+        Promise.resolve().then(() => runtime.store.createArticle({ ...input, title: "A different work" })),
+        IdempotencyConflictError,
+        "the same key with a different work is a conflicting request, not a replay",
+      );
+
+      // Without a key the same address is simply taken: turning a genuinely
+      // different work into a new address is the route's uniquifier, not the
+      // store's, and a replay must not lean on it.
+      const unkeyed = { ...input, idempotencyKey: null, slug: `contract-create-twice-${suffix}` };
+      await runtime.store.createArticle(unkeyed);
+      await assert.rejects(
+        Promise.resolve().then(() => runtime.store.createArticle(unkeyed)),
+        ArticleSlugConflictError,
+      );
+
+      // The key is scoped to the author: someone else may reuse the same string
+      // for their own work.
+      const theirs = await runtime.store.createArticle({ ...input, authorId: other, slug: `contract-create-once-b-${suffix}` });
+      assert.notEqual(theirs.id, first.id);
+    } finally {
+      await runtime.cleanup(undefined, suffix);
+    }
+  });
+
   test(`${adapterName}: article comment deletion is owner-only and idempotent after deletion`, options, async () => {
     const runtime = await fixture();
     const suffix = randomUUID();

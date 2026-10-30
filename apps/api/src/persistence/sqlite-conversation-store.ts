@@ -55,15 +55,50 @@ export function createSqliteConversationStore(db) {
     if (row.request_hash !== requestHash) throw new IdempotencyConflictError("The idempotency key was already used for a different message request.");
     return mapMessage(row, true);
   }
+  /**
+   * The conversation as one of its active members sees it.
+   *
+   * Shared by the read endpoint and by the replay path of `createConversation`:
+   * a replayed create returns what the conversation *is now* (participants may
+   * have been added since), not a frozen copy of the 201 it would have returned.
+   */
+  function conversationForMember(conversationId, memberId) {
+    const row = get(`SELECT c.id,c.created_by,c.created_at,
+        COALESCE(latest.created_at,c.created_at) AS last_activity_at,
+        (SELECT json_group_array(user_id) FROM (SELECT user_id FROM conversation_participants cp WHERE cp.conversation_id=c.id AND cp.left_at IS NULL ORDER BY user_id)) AS participant_ids,
+        latest.id AS latest_message_id,latest.conversation_id AS latest_message_conversation_id,
+        latest.sender_id AS latest_message_sender_id,latest.body AS latest_message_body,latest.created_at AS latest_message_created_at,
+        (SELECT count(*) FROM messages m WHERE m.conversation_id=c.id AND m.sender_id <> ? AND (membership.last_read_at IS NULL OR m.created_at > membership.last_read_at)) AS unread_count
+        FROM conversation_participants membership JOIN conversations c ON c.id=membership.conversation_id
+        LEFT JOIN messages latest ON latest.id=(SELECT id FROM messages m2 WHERE m2.conversation_id=c.id ORDER BY created_at DESC,id DESC LIMIT 1)
+        WHERE membership.user_id=? AND membership.conversation_id=? AND membership.left_at IS NULL
+        LIMIT 1`, memberId, memberId, conversationId);
+    return row ? mapConversation(row) : null;
+  }
   return Object.freeze({
-    async createConversation({ actorId, participantIds }) {
+    async createConversation({ actorId, participantIds, idempotencyKey = null }) {
       requiredText("actorId", actorId, 300);
       const supplied = normalizeParticipantIds("participantIds", participantIds, 20);
       const others = supplied.filter((id) => id !== actorId);
       if (!others.length) throw new ConversationInputError("A conversation requires at least one other participant.");
+      if (idempotencyKey !== null && (typeof idempotencyKey !== "string" || idempotencyKey.length === 0 ||
+          idempotencyKey.length > 300 || idempotencyKey.trim() !== idempotencyKey)) {
+        throw new ConversationInputError("Idempotency-Key must be a non-empty trimmed string no longer than 300 characters.");
+      }
       const ids = [actorId, ...others], id = randomUUID();
+      const keyHash = idempotencyKey === null ? null : hash({ method: "POST", route: "/api/v1/conversations", actorId, key: idempotencyKey });
+      const fingerprint = hash({ actorId, participantIds: [...ids].sort() });
       return transaction((transactionId) => {
-        run("INSERT INTO conversations (id, created_by) VALUES (?, ?)", id, actorId);
+        if (keyHash !== null) {
+          const existing = get("SELECT id, request_hash FROM conversations WHERE created_by = ? AND idempotency_key_hash = ?", actorId, keyHash);
+          if (existing) {
+            if (existing.request_hash !== fingerprint) {
+              throw new IdempotencyConflictError("The idempotency key was already used for a different conversation request.");
+            }
+            return conversationForMember(existing.id, actorId);
+          }
+        }
+        run("INSERT INTO conversations (id, created_by, idempotency_key_hash, request_hash) VALUES (?, ?, ?, ?)", id, actorId, keyHash, keyHash === null ? null : fingerprint);
         const insert = db.prepare("INSERT INTO conversation_participants (conversation_id, user_id, last_read_at) VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))");
         for (const userId of ids) insert.run(id, userId);
         const row = get("SELECT * FROM conversations WHERE id = ?", id);
@@ -152,17 +187,7 @@ export function createSqliteConversationStore(db) {
     async getConversation({ conversationId, actorId }) {
       requiredText("conversationId", conversationId, 300);
       requiredText("actorId", actorId, 300);
-      const row = get(`SELECT c.id,c.created_by,c.created_at,
-        COALESCE(latest.created_at,c.created_at) AS last_activity_at,
-        (SELECT json_group_array(user_id) FROM (SELECT user_id FROM conversation_participants cp WHERE cp.conversation_id=c.id AND cp.left_at IS NULL ORDER BY user_id)) AS participant_ids,
-        latest.id AS latest_message_id,latest.conversation_id AS latest_message_conversation_id,
-        latest.sender_id AS latest_message_sender_id,latest.body AS latest_message_body,latest.created_at AS latest_message_created_at,
-        (SELECT count(*) FROM messages m WHERE m.conversation_id=c.id AND m.sender_id <> ? AND (membership.last_read_at IS NULL OR m.created_at > membership.last_read_at)) AS unread_count
-        FROM conversation_participants membership JOIN conversations c ON c.id=membership.conversation_id
-        LEFT JOIN messages latest ON latest.id=(SELECT id FROM messages m2 WHERE m2.conversation_id=c.id ORDER BY created_at DESC,id DESC LIMIT 1)
-        WHERE membership.user_id=? AND membership.conversation_id=? AND membership.left_at IS NULL
-        LIMIT 1`, actorId, actorId, conversationId);
-      return row ? mapConversation(row) : null;
+      return conversationForMember(conversationId, actorId);
     },
     async listConversations({ actorId, limit = 50 }) {
       requiredText("actorId", actorId, 300);
