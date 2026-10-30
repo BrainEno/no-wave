@@ -1000,6 +1000,67 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       await runtime.cleanup(undefined, suffix);
     }
   });
+  test(`${adapterName}: recovery and verification tokens are single-use, purpose-scoped and expire`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const userId = `identity-user-${suffix}`;
+    const email = `identity-${suffix}@example.test`;
+    const hour = new Date(Date.now() + 3_600_000).toISOString();
+    const session = {
+      sessionId: randomUUID(), userId, accessTokenId: randomUUID(),
+      refreshHash: "a".repeat(64), expiresAt: hour,
+      accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+    };
+    assert.equal(await runtime.store.createIdentityAccount({ userId, email, passwordHash: "hash-before", session }), true);
+
+    const resetHash = "b".repeat(64);
+    await runtime.store.issueIdentityToken({ userId, purpose: "password_reset", email, tokenHash: resetHash, expiresAt: hour });
+    assert.equal(await runtime.store.consumeIdentityToken({ tokenHash: resetHash, purpose: "email_verification" }), null,
+      "a reset link must not be redeemable as a verification link");
+    assert.deepEqual(await runtime.store.consumeIdentityToken({ tokenHash: resetHash, purpose: "password_reset" }), { userId, email });
+    assert.equal(await runtime.store.consumeIdentityToken({ tokenHash: resetHash, purpose: "password_reset" }), null,
+      "the link works exactly once");
+
+    const expiredHash = "c".repeat(64);
+    await runtime.store.issueIdentityToken({ userId, purpose: "password_reset", email, tokenHash: expiredHash, expiresAt: new Date(Date.now() - 1000).toISOString() });
+    assert.equal(await runtime.store.consumeIdentityToken({ tokenHash: expiredHash, purpose: "password_reset" }), null);
+
+    // Issuing again supersedes the link that is already out: two live recovery
+    // links is a support problem and doubles what a phished mailbox exposes.
+    const superseded = "d".repeat(64);
+    const replacement = "e".repeat(64);
+    await runtime.store.issueIdentityToken({ userId, purpose: "email_verification", email, tokenHash: superseded, expiresAt: hour });
+    await runtime.store.issueIdentityToken({ userId, purpose: "email_verification", email, tokenHash: replacement, expiresAt: hour });
+    assert.equal(await runtime.store.consumeIdentityToken({ tokenHash: superseded, purpose: "email_verification" }), null);
+    assert.ok(await runtime.store.consumeIdentityToken({ tokenHash: replacement, purpose: "email_verification" }));
+
+    await runtime.store.setIdentityPassword({ userId, passwordHash: "hash-after" });
+    assert.equal((await runtime.store.findIdentityAccount({ email })).passwordHash, "hash-after");
+
+    // The security property: changing the password ends the sessions that were
+    // already signed in, so a stolen refresh credential does not outlive it.
+    const rotated = await runtime.store.rotateIdentityRefresh({
+      refreshHash: "a".repeat(64), nextRefreshHash: "f".repeat(64),
+      accessTokenId: randomUUID(), issuedAt: new Date().toISOString(),
+      accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+    });
+    assert.equal(rotated.status, "rotated");
+    assert.equal(await runtime.store.revokeIdentitySessions({ userId }), 1);
+    assert.equal(await runtime.store.revokeIdentitySessions({ userId }), 0, "a second sweep finds nothing left to revoke");
+    const afterRevocation = await runtime.store.rotateIdentityRefresh({
+      refreshHash: "f".repeat(64), nextRefreshHash: "1".repeat(64),
+      accessTokenId: randomUUID(), issuedAt: new Date().toISOString(),
+      accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+    });
+    assert.equal(afterRevocation.status, "invalid", "a revoked session must not rotate");
+
+    await runtime.store.markIdentityEmailVerified({ userId, verifiedAt: new Date().toISOString() });
+    const account = await runtime.store.findIdentityAccountByUserId({ userId });
+    assert.equal(account.email, email);
+    assert.ok(account.emailVerifiedAt, "verification is stamped on the account");
+    assert.equal(await runtime.store.findIdentityAccountByUserId({ userId: `nobody-${suffix}` }), null);
+  });
+
   test(`${adapterName}: publishing a work is idempotent per author and does not leave a second copy behind`, options, async () => {
     const runtime = await fixture();
     const suffix = randomUUID();

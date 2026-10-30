@@ -25,7 +25,7 @@ The previous project provides the reference for user-visible capabilities and kn
 
 ## Accounts and profiles
 
-- Users can register, sign in/out, refresh sessions and recover/reset passwords, subject to the verified product inventory. The selected self-hosted API implements the first four; recovery and email verification remain open ([ADR 0008](../architecture/decisions/0008-self-hosted-api-identity.md)).
+- Users can register, sign in/out, refresh sessions and recover/reset passwords, subject to the verified product inventory. The selected self-hosted API implements the first four; recovery and email verification are now implemented server-side but are **not yet deliverable** — outbound mail goes through a port whose only implementation writes a log line, because provider code waits on the hosting gate ([ADR 0008](../architecture/decisions/0008-self-hosted-api-identity.md), [ADR 0014](../architecture/decisions/0014-password-recovery-and-email-verification.md)). Verification gates nothing: an unverified address still signs in and publishes.
 - Users can view/edit permitted profile fields; public profile data is separate from private account data.
 - Client-supplied user IDs cannot impersonate another user.
 

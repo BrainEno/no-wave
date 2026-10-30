@@ -121,6 +121,75 @@ export function createSqliteIdentityStore(db) {
         return true;
       });
     },
+    async issueIdentityToken({ userId, purpose, email, tokenHash, expiresAt }) {
+      if (typeof tokenHash !== "string" || tokenHash.length !== 64) throw new TypeError("tokenHash must be a 64-character hex digest.");
+      if (purpose !== "password_reset" && purpose !== "email_verification") throw new TypeError("purpose must be a supported identity token purpose.");
+      return transaction((transactionId) => {
+        // Only one live token per purpose: two outstanding reset links is a
+        // support problem and doubles the surface a phished mailbox exposes.
+        run("DELETE FROM auth_identity_tokens WHERE user_id = ? AND purpose = ?", userId, purpose);
+        run("INSERT INTO auth_identity_tokens (token_hash, user_id, purpose, email, expires_at) VALUES (?, ?, ?, ?, ?)",
+          tokenHash, userId, purpose, email, new Date(expiresAt).toISOString());
+        migrationCapture.captureInTransaction(db, transactionId, [
+          { entityType: "auth_identity_tokens", entityId: tokenHash, operation: "upsert", payload: get("SELECT * FROM auth_identity_tokens WHERE token_hash = ?", tokenHash) },
+        ]);
+        return true;
+      });
+    },
+    async consumeIdentityToken({ tokenHash, purpose }) {
+      // Single use, and decided by the UPDATE rather than by the SELECT that
+      // preceded it: two redemptions racing on one link must not both win.
+      return transaction((transactionId) => {
+        const row = get("SELECT user_id, email, expires_at, consumed_at FROM auth_identity_tokens WHERE token_hash = ? AND purpose = ?", tokenHash, purpose);
+        if (!row || row.consumed_at) return null;
+        if (new Date(row.expires_at).getTime() <= Date.now()) return null;
+        const result = run("UPDATE auth_identity_tokens SET consumed_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE token_hash = ? AND consumed_at IS NULL", tokenHash);
+        if (Number(result.changes) === 0) return null;
+        migrationCapture.captureInTransaction(db, transactionId, [
+          { entityType: "auth_identity_tokens", entityId: tokenHash, operation: "upsert", payload: get("SELECT * FROM auth_identity_tokens WHERE token_hash = ?", tokenHash) },
+        ]);
+        return { userId: row.user_id, email: row.email };
+      });
+    },
+    async setIdentityPassword({ userId, passwordHash }) {
+      return transaction((transactionId) => {
+        const result = run("UPDATE auth_accounts SET password_hash = ? WHERE user_id = ?", passwordHash, userId);
+        migrationCapture.captureInTransaction(db, transactionId, [
+          { entityType: "auth_accounts", entityId: userId, operation: "upsert", payload: get("SELECT * FROM auth_accounts WHERE user_id = ?", userId) },
+        ]);
+        return Number(result.changes) > 0;
+      });
+    },
+    /**
+     * Sign every session of one user out.
+     *
+     * A password reset has to answer "what about the device that stole it" —
+     * without this, changing the password leaves the thief signed in for the
+     * rest of the refresh lifetime.
+     */
+    async revokeIdentitySessions({ userId }) {
+      return transaction((transactionId) => {
+        const sessionIds = all("SELECT id FROM auth_sessions WHERE user_id = ? AND revoked_at IS NULL", userId).map((row) => row.id);
+        for (const sessionId of sessionIds) {
+          revokeSessionFamily(sessionId);
+          captureSessionSnapshot(transactionId, sessionId);
+        }
+        return sessionIds.length;
+      });
+    },
+    async markIdentityEmailVerified({ userId, verifiedAt }) {
+      return transaction((transactionId) => {
+        const result = run("UPDATE auth_accounts SET email_verified_at = COALESCE(email_verified_at, ?) WHERE user_id = ?", new Date(verifiedAt).toISOString(), userId);
+        migrationCapture.captureInTransaction(db, transactionId, [
+          { entityType: "auth_accounts", entityId: userId, operation: "upsert", payload: get("SELECT * FROM auth_accounts WHERE user_id = ?", userId) },
+        ]);
+        return Number(result.changes) > 0;
+      });
+    },
+    async findIdentityAccountByUserId({ userId }) {
+      const row = get("SELECT user_id, email, email_verified_at FROM auth_accounts WHERE user_id = ?", userId);
+      return row ? { userId: row.user_id, email: row.email, emailVerifiedAt: row.email_verified_at ? new Date(row.email_verified_at).toISOString() : null } : null;
+    },
     async pruneExpiredIdentityState() {
       return transaction((transactionId) => {
         const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -130,6 +199,7 @@ export function createSqliteIdentityStore(db) {
           ORDER BY s.expires_at LIMIT 100`, cutoff, now).map((row) => row.id);
         const expiredLimits = all("SELECT * FROM auth_rate_limits WHERE reset_at < ? ORDER BY reset_at LIMIT 512", now);
         const expiredRevocations = all("SELECT * FROM revoked_sessions WHERE expires_at <= ? ORDER BY expires_at LIMIT 512", now);
+        const expiredTokens = all("SELECT * FROM auth_identity_tokens WHERE expires_at <= ? ORDER BY expires_at LIMIT 512", now);
         const changes: CapturedChange[] = [];
         for (const sessionId of expiredSessionIds) {
           changes.push({ entityType: "auth_sessions", entityId: sessionId, operation: "delete", payload: null });
@@ -142,6 +212,7 @@ export function createSqliteIdentityStore(db) {
         }
         for (const row of expiredLimits) changes.push({ entityType: "auth_rate_limits", entityId: row.key, operation: "delete", payload: null });
         for (const row of expiredRevocations) changes.push({ entityType: "revoked_sessions", entityId: row.session_id, operation: "delete", payload: null });
+        for (const row of expiredTokens) changes.push({ entityType: "auth_identity_tokens", entityId: row.token_hash, operation: "delete", payload: null });
         const sessions = run(`DELETE FROM auth_sessions WHERE id IN (
           SELECT s.id FROM auth_sessions s WHERE s.expires_at < ?
           AND NOT EXISTS (SELECT 1 FROM auth_access_tokens a WHERE a.session_id = s.id AND a.expires_at > ?)
@@ -151,10 +222,12 @@ export function createSqliteIdentityStore(db) {
         // BEGIN IMMEDIATE serializes this bounded cleanup with concurrent writers.
         const revokedSessions = run("DELETE FROM revoked_sessions WHERE session_id IN (SELECT session_id FROM revoked_sessions WHERE expires_at <= ? ORDER BY expires_at LIMIT 512)", now);
         migrationCapture.captureInTransaction(db, transactionId, changes);
+        const tokens = run("DELETE FROM auth_identity_tokens WHERE token_hash IN (SELECT token_hash FROM auth_identity_tokens WHERE expires_at <= ? ORDER BY expires_at LIMIT 512)", now);
         return {
           sessions: Number(sessions.changes),
           rateLimits: Number(limits.changes),
           revokedSessions: Number(revokedSessions.changes),
+          identityTokens: Number(tokens.changes),
         };
       });
     },

@@ -45,10 +45,40 @@ The existing verifier contract is unchanged; a pre-existing independently issued
 
 This private type and custom endpoint are **not** a claim of RFC 9068 or OAuth/OIDC authorization-server conformance. Do not change the type to `at+jwt` without implementing that profile. Key rotation/JWKS and independent issuer integration require a separate design.
 
+## Recovery and verification
+
+See [ADR 0014](decisions/0014-password-recovery-and-email-verification.md) for the reasoning; this
+is the contract.
+
+| Route | Body | Answer |
+|---|---|---|
+| `POST /api/v1/auth/forgot-password` | `{ email }` | `202 { data: { ok: true } }` — the same answer whether or not the address has an account |
+| `POST /api/v1/auth/reset-password` | `{ token, password }` | `200 { data: { ok: true } }`; `401` for a token that was never issued, is spent or is expired; `400` for a malformed token or a password under 12 characters |
+| `POST /api/v1/auth/verify-email` | `{ token }` | `200 { data: { ok: true } }`; `401` for a spent or unknown token |
+| `POST /api/v1/me/email-verification` | – (authenticated) | `202 { data: { ok: true, alreadyVerified } }`; `401` unauthenticated |
+
+- Only the SHA-256 digest of a token is stored, with its purpose, the address it was issued for, an
+  expiry and a consumed stamp. A reset link lives 30 minutes, a verification link 24 hours, and each
+  works exactly once. Issuing again supersedes the link already out.
+- A successful password reset revokes **every** session of that account. Users are signed out
+  everywhere, and the confirmation page should say so.
+- The token travels in a request body, never in a path: paths are logged by proxies and browsers.
+  The mail links to a page, and the page posts the token back.
+- `GET /api/v1/me` returns `{ id, email, emailVerifiedAt }` (additive fields only).
+- Outbound mail goes through the `IdentityMailer` port. The shipped implementation is a structured
+  log line, and it does not write the link unless `AUTH_IDENTITY_MAIL_LOG_LINK=1`. No provider
+  adapter exists, by ADR 0012, so **recovery is not production-usable until one is added**;
+  configure `AUTH_IDENTITY_BASE_URL` for the public origin the links point at.
+- Throttling reuses the keyed-digest limiter: 20 per socket peer and 5 per email per hour for
+  recovery requests, 20 per peer and 5 per token per 15 minutes for resets, 30 per peer per 15
+  minutes for verification redemptions, and 5 per account per hour for re-sending a verification.
+
 ## Abuse controls and deployment limitations
 
 Fixed-window counters are shared through the database and keyed by a domain-separated HMAC, not raw email/IP. Validated registration is limited to 20 attempts per socket peer and five per email per hour; login to 60 per peer and five per email per 15 minutes; refresh and logout each to 120 per peer per 15 minutes. Both successful and failed attempts consume quota. The peer comes only from the socket; **client-supplied `X-Forwarded-For` is ignored**. Behind a reverse proxy, many users may share one bucket. Provide a reviewed trusted-proxy/edge rate-limit design and account for distributed abuse before public deployment; the present controls do not cover all registration abuse, per-session rotation volume or volumetric DoS. Synchronize API and database clocks.
 
-Email is **unverified** and is only a login identifier, as in the historical registration flow. Do not use it as proof of ownership or for recovery. There is no email verification, password reset/change, breach-password screening, MFA, account disable/delete, global session management, audit/alerting, signing-key rotation, or legacy account/data import. The API does not implement a browser token-storage strategy, trusted cross-origin CORS policy or CSRF protection for a future cookie design. Because refresh credentials are returned to the caller and sent in JSON, a browser client that exposes them to JavaScript is vulnerable to token theft via XSS; use a separately reviewed browser/BFF design. Require TLS for all non-local traffic and never log passwords, bearer/refresh tokens, cookies, authorization headers or secrets.
+Email is a login identifier, as in the historical registration flow, and it can now be **verified** — see [ADR 0014](decisions/0014-password-recovery-and-email-verification.md). Verification records that an address was reachable; it **gates nothing**, so an unverified address still signs in, publishes and comments. Do not read `emailVerifiedAt` as an authorization signal.
+
+There is no breach-password screening, MFA, account disable/delete, global session management, audit/alerting, signing-key rotation, or legacy account/data import. The API does not implement a browser token-storage strategy, trusted cross-origin CORS policy or CSRF protection for a future cookie design. Because refresh credentials are returned to the caller and sent in JSON, a browser client that exposes them to JavaScript is vulnerable to token theft via XSS; use a separately reviewed browser/BFF design. Require TLS for all non-local traffic and never log passwords, bearer/refresh tokens, cookies, authorization headers or secrets.
 
 Before any release, stop/drain old API instances and old notification workers, apply the additive migrations under an approved backup/release plan, then start only upgraded API instances and workers. **Do not mix old and new API instances while issuing self-hosted sessions**: an older logout implementation revokes only the presented `jti`, not its refresh family. Old notification workers also lack the new delivery serialization. Rollback must first stop all components and account for the loss of these guarantees. No deployment is implied by this implementation.

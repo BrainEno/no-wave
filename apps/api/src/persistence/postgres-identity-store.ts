@@ -174,6 +174,96 @@ export function createPostgresIdentityStore(sql) {
         return true;
       });
     },
+    async issueIdentityToken({ userId, purpose, email, tokenHash, expiresAt }) {
+      if (typeof tokenHash !== "string" || tokenHash.length !== 64) throw new TypeError("tokenHash must be a 64-character hex digest.");
+      if (purpose !== "password_reset" && purpose !== "email_verification") throw new TypeError("purpose must be a supported identity token purpose.");
+      return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        // Only one live token per purpose: two outstanding reset links is a
+        // support problem and doubles the surface a phished mailbox exposes.
+        await tx.unsafe("DELETE FROM auth_identity_tokens WHERE user_id = $1 AND purpose = $2", [userId, purpose]);
+        await tx.unsafe(
+          "INSERT INTO auth_identity_tokens (token_hash, user_id, purpose, email, expires_at) VALUES ($1, $2, $3, $4, $5)",
+          [tokenHash, userId, purpose, email, new Date(expiresAt).toISOString()],
+        );
+        const rows = await tx.unsafe("SELECT * FROM auth_identity_tokens WHERE token_hash = $1", [tokenHash]);
+        await captureChanges(tx, transactionId, [
+          { entityType: "auth_identity_tokens", entityId: tokenHash, operation: "upsert", payload: rows[0] },
+        ]);
+        return true;
+      });
+    },
+    async consumeIdentityToken({ tokenHash, purpose }) {
+      // Single use, decided by the UPDATE: two redemptions racing on one link
+      // must not both win, and the row lock is what makes that true here.
+      return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const rows = await tx.unsafe(
+          "UPDATE auth_identity_tokens SET consumed_at = clock_timestamp() " +
+          "WHERE token_hash = $1 AND purpose = $2 AND consumed_at IS NULL AND expires_at > clock_timestamp() " +
+          "RETURNING user_id, email",
+          [tokenHash, purpose],
+        );
+        if (!rows[0]) return null;
+        const updated = await tx.unsafe("SELECT * FROM auth_identity_tokens WHERE token_hash = $1", [tokenHash]);
+        await captureChanges(tx, transactionId, [
+          { entityType: "auth_identity_tokens", entityId: tokenHash, operation: "upsert", payload: updated[0] },
+        ]);
+        return { userId: rows[0].user_id, email: rows[0].email };
+      });
+    },
+    async setIdentityPassword({ userId, passwordHash }) {
+      return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const rows = await tx.unsafe("UPDATE auth_accounts SET password_hash = $1 WHERE user_id = $2 RETURNING *", [passwordHash, userId]);
+        if (!rows[0]) return false;
+        await captureChanges(tx, transactionId, [
+          { entityType: "auth_accounts", entityId: userId, operation: "upsert", payload: rows[0] },
+        ]);
+        return true;
+      });
+    },
+    /**
+     * Sign every session of one user out.
+     *
+     * A password reset has to answer "what about the device that stole it" —
+     * without this, changing the password leaves the thief signed in for the
+     * rest of the refresh lifetime.
+     */
+    async revokeIdentitySessions({ userId }) {
+      return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const sessionRows = await tx.unsafe(
+          "SELECT id FROM auth_sessions WHERE user_id = $1 AND revoked_at IS NULL ORDER BY created_at FOR UPDATE",
+          [userId],
+        );
+        for (const row of sessionRows) {
+          await revokeLockedSession(tx, row.id);
+          await captureSessionSnapshot(tx, transactionId, row.id);
+        }
+        return sessionRows.length;
+      });
+    },
+    async markIdentityEmailVerified({ userId, verifiedAt }) {
+      return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const rows = await tx.unsafe(
+          "UPDATE auth_accounts SET email_verified_at = COALESCE(email_verified_at, $1) WHERE user_id = $2 RETURNING *",
+          [new Date(verifiedAt).toISOString(), userId],
+        );
+        if (!rows[0]) return false;
+        await captureChanges(tx, transactionId, [
+          { entityType: "auth_accounts", entityId: userId, operation: "upsert", payload: rows[0] },
+        ]);
+        return true;
+      });
+    },
+    async findIdentityAccountByUserId({ userId }) {
+      const rows = await sql.unsafe("SELECT user_id, email, email_verified_at FROM auth_accounts WHERE user_id = $1", [userId]);
+      return rows[0]
+        ? { userId: rows[0].user_id, email: rows[0].email, emailVerifiedAt: rows[0].email_verified_at ? new Date(rows[0].email_verified_at).toISOString() : null }
+        : null;
+    },
     async pruneExpiredIdentityState() {
       return sql.begin(async (tx) => {
         const transactionId = createMigrationTransactionId();
@@ -199,15 +289,21 @@ export function createPostgresIdentityStore(sql) {
           ORDER BY expires_at LIMIT 512 FOR UPDATE SKIP LOCKED
         ) DELETE FROM revoked_sessions WHERE session_id IN (SELECT session_id FROM expired)
           AND expires_at <= clock_timestamp() RETURNING session_id`);
+        const tokens = await tx.unsafe(`WITH expired AS (
+          SELECT token_hash FROM auth_identity_tokens WHERE expires_at <= clock_timestamp()
+          ORDER BY expires_at LIMIT 512 FOR UPDATE SKIP LOCKED
+        ) DELETE FROM auth_identity_tokens WHERE token_hash IN (SELECT token_hash FROM expired)
+          AND expires_at <= clock_timestamp() RETURNING token_hash`);
         const changes: CapturedChange[] = [
           ...sessions.map((row) => ({ entityType: "auth_sessions", entityId: row.id, operation: "delete" as const, payload: null })),
           ...accessTokens.map((row) => ({ entityType: "auth_access_tokens", entityId: row.token_id, operation: "delete" as const, payload: null })),
           ...refreshTokens.map((row) => ({ entityType: "auth_refresh_tokens", entityId: row.token_hash, operation: "delete" as const, payload: null })),
           ...limits.map((row) => ({ entityType: "auth_rate_limits", entityId: row.key, operation: "delete" as const, payload: null })),
           ...revokedSessions.map((row) => ({ entityType: "revoked_sessions", entityId: row.session_id, operation: "delete" as const, payload: null })),
+          ...tokens.map((row) => ({ entityType: "auth_identity_tokens", entityId: row.token_hash, operation: "delete" as const, payload: null })),
         ];
         await captureChanges(tx, transactionId, changes);
-        return { sessions: sessions.length, rateLimits: limits.length, revokedSessions: revokedSessions.length };
+        return { sessions: sessions.length, rateLimits: limits.length, revokedSessions: revokedSessions.length, identityTokens: tokens.length };
       });
     },
     async consumeRateLimit({ key, limit, windowSeconds }) {

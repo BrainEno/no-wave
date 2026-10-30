@@ -6,7 +6,7 @@ import { normalizeProfileWriteBody } from "../bodies.ts";
  * (`me`, `me.profile`, `me.session`, `users*`). */
 const IDENTITY_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Object.freeze({
   "me": async (ctx: RestRouteContext): Promise<void> => {
-    const { request, response, services, env } = ctx;
+    const { request, response, services, env, identity } = ctx;
     if (!services) {
       sendUnavailable(response);
       return;
@@ -17,7 +17,35 @@ const IDENTITY_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Obje
         sendUnauthenticated(response);
         return;
       }
-      sendJson(response, 200, { data: { id: actorId } });
+      const data = identity
+        ? await identity.describeAccount(actorId)
+        : { id: actorId, email: null, emailVerifiedAt: null };
+      sendJson(response, 200, { data });
+    } catch (error: unknown) {
+      sendServiceError(response, error);
+    }
+  },
+  /**
+   * Ask for the verification mail to be sent (or sent again).
+   *
+   * Authenticated and addressed to the account's own address: an unauthenticated
+   * version would let anyone aim mail at any address in the database.
+   */
+  "me.email-verification": async (ctx: RestRouteContext): Promise<void> => {
+    const { request, response, services, env, identity } = ctx;
+    if (!services || !identity) {
+      sendUnavailable(response);
+      return;
+    }
+    try {
+      const actorId = await authenticatedActorId(request, services, env);
+      if (!actorId) {
+        sendUnauthenticated(response);
+        return;
+      }
+      const ip = request.socket.remoteAddress ?? "unknown";
+      const data = await identity.requestEmailVerification(actorId, ip);
+      sendJson(response, 202, { data });
     } catch (error: unknown) {
       sendServiceError(response, error);
     }
