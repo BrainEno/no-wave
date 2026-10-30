@@ -77,7 +77,7 @@ test("a rejected refresh clears the session instead of looping", async () => {
   assert.equal(response.status, 401);
   assert.equal(stub.calls.filter((call) => call.url.includes("/auth/refresh")).length, 1);
   const cleared = setCookies(response);
-  assert.equal(cleared.length, 2);
+  assert.equal(cleared.length, 3);
   assert.ok(cleared.every((cookie) => /Max-Age=0/.test(cookie)));
 });
 

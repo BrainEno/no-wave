@@ -35,6 +35,7 @@ export default [
   route("robots.txt", "routes/robots.txt.ts"),
   route("api/auth/:action", "routes/api.auth.ts"),
   route("api/authoring/session", "routes/api.authoring.session.ts"),
+  route("api/authoring/email-verification", "routes/api.authoring.email-verification.ts"),
 route("api/authoring/notifications", "routes/api.authoring.notifications.ts"),
 route("api/authoring/notifications/unread-count", "routes/api.authoring.notifications.unread-count.ts"),
 route("api/authoring/notifications/read-all", "routes/api.authoring.notifications.read-all.ts"),

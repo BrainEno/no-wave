@@ -139,7 +139,7 @@ test("a missing API origin is reported explicitly and still clears a logout", as
     {},
   );
   assert.equal(logout.status, 503);
-  assert.equal(setCookies(logout).length, 2, "logout must clear cookies even when the API is not configured");
+  assert.equal(setCookies(logout).length, 3, "logout must clear cookies even when the API is not configured");
 });
 
 test("an unreachable API is a 502 and a crashing logout still clears cookies", async () => {
@@ -159,7 +159,7 @@ test("an unreachable API is a 502 and a crashing logout still clears cookies", a
     { apiBaseUrl: API_BASE, fetchImpl: failing },
   );
   assert.equal(logout.status, 502);
-  assert.equal(setCookies(logout).length, 2);
+  assert.equal(setCookies(logout).length, 3);
 });
 
 test("upstream errors are passed through with a sanitized body", async () => {
@@ -233,7 +233,7 @@ test("logout is idempotent and clears cookies with or without a session", async 
   assert.equal(withoutSession.status, 200);
   assert.equal(stub.calls.length, 0, "a session-less logout must not call the API");
   const cleared = setCookies(withoutSession);
-  assert.equal(cleared.length, 2);
+  assert.equal(cleared.length, 3);
   assert.ok(cleared.every((cookie) => /Max-Age=0/.test(cookie)));
 
   // A rejected refresh token during logout is still a successful logout.
@@ -243,7 +243,7 @@ test("logout is idempotent and clears cookies with or without a session", async 
     { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
   );
   assert.equal(rejected.status, 200);
-  assert.equal(setCookies(rejected).length, 2);
+  assert.equal(setCookies(rejected).length, 3);
   assert.deepEqual(JSON.parse(String(stub.calls[0]?.init?.body)), { refreshToken: TOKENS.refreshToken });
 });
 

@@ -100,12 +100,17 @@ use. Three pages close the loop, at the paths `identityLink()` already emits.
 - **Redeeming is a POST, never a page render.** A verification link that worked
   because someone merely loaded a page would also work for a mail scanner, a
   link previewer and a corporate proxy that fetches links "for safety".
-- **The writing desk is where a verification link is requested**, because it is
-  the only signed-in surface this app has: `/account` is still a deliberate
-  redirect stub pending server-side session verification. The desk already
-  fetched `GET /api/authoring/session` and threw the answer away, so the account
-  line reads the email and its verification stamp from a call that was already
-  being made. Moving it to a real account page later changes no server contract.
+- **`/account` is the account's own page, and the desk keeps its account line.**
+  It used to deny every request on the correct grounds that a client-supplied
+  header is not proof of identity; what was missing was anything that *is*. The
+  token cookies are scoped below `/`, so a page render cannot read them, and the
+  page now gates on `nw_session` — an `HttpOnly` cookie scoped to `/` that
+  carries the moment the session can no longer be renewed and no credential at
+  all. It decides only between "redirect to sign-in" and "render the shell"; the
+  account itself is read from `GET /api/authoring/session` by the shared
+  `AccountPanel`, which is the request that can actually present the token to the
+  API. Both frameworks render the same component, so the verification state and
+  its "send the mail again" action exist in one place.
 - **The proxy shuttles these through the shared `web-http` seam**, so the React
   Router prototype's one-line `api.auth.ts` supports them without being touched.
   Recovery and verification are deliberately *not* put through the token
@@ -141,9 +146,13 @@ expiry, superseded links, session revocation).
   `GET /api/v1/me` now returns `{ id, email, emailVerifiedAt }` — additive fields only.
 - Covered by identity service unit tests, adapter-contract tests on SQLite and PostgreSQL, and HTTP
   tests for the enumeration answer, single use, session revocation and the unauthenticated case.
-- Web: `/forgot-password`, `/reset-password`, `/verify-email`, the account line in the writing desk,
+- Web: `/forgot-password`, `/reset-password`, `/verify-email`, `/account` (shared `AccountPanel`:
+  email, verification state, resend, sign-out), the account line in the writing desk,
   the widened `/api/auth/[action]` family and `POST /api/authoring/email-verification`, covered by
-  `web-http` proxy contract tests and the route smoke checks.
+  `web-http` proxy contract tests, the prototype's account tests and the route smoke checks.
+- Session marker: `nw_session` (`packages/web-http/src/cookies.ts`) — `Path=/`, `HttpOnly`,
+  `SameSite=Lax`, value = the refresh expiry in unix seconds, set and cleared with the token
+  cookies. Covered by `packages/web-http/test/cookies.test.ts`.
 - Delivery: `apps/api/src/infrastructure/smtp-client.ts` (submission client) and
   `createSmtpMailer`/`resolveSmtpMailerConfig` in `application/identity-mailer.ts`, covered by unit
   tests over a scripted peer and by an end-to-end test against a loopback relay that decodes the

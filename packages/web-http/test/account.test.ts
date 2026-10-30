@@ -85,7 +85,7 @@ test("a signed-out visitor gets a 401 to render, and a rejected session is clear
     fetchImpl: expired.fetchImpl,
   });
   assert.equal(rejected.status, 401);
-  assert.equal(setCookies(rejected).length, 2, "both cookies must be cleared when the refresh is refused");
+  assert.equal(setCookies(rejected).length, 3, "every session cookie — including the marker — must be cleared when the refresh is refused");
 });
 
 test("an expired access token is refreshed once and the call is retried with the new one", async () => {
