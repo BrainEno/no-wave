@@ -8,6 +8,30 @@ import { hashPassword, verifyPassword } from "../security/passwords.ts";
 
 const REFRESH_LIFETIME_SECONDS = 30 * 24 * 60 * 60;
 const WINDOW_SECONDS = 15 * 60;
+/** Registration is throttled over a longer window than login: it creates rows. */
+const REGISTER_WINDOW_SECONDS = 60 * 60;
+
+/**
+ * How many accounts one address may create in that window.
+ *
+ * Registration is the only unauthenticated write that creates rows, and behind
+ * the Web proxy every browser shares an address, so the default is deliberately
+ * tight. It is configurable because the right number belongs to whoever runs
+ * the instance: readers behind one NAT legitimately share an address, and a
+ * browser suite that registers one account per journey must not run at one
+ * hundred per cent of a budget it cannot see — which is exactly what happened
+ * when a journey needed two accounts in it. Only the operator can widen the
+ * limit, and a value that does not parse, or that would switch the throttle
+ * off, falls back to the default rather than leaving registration open.
+ */
+const DEFAULT_REGISTER_IP_LIMIT = 20;
+
+function registerIpLimit(env: NodeJS.ProcessEnv): number {
+  const raw = env.AUTH_REGISTER_IP_LIMIT;
+  if (typeof raw !== "string" || raw.trim() === "") return DEFAULT_REGISTER_IP_LIMIT;
+  const parsed = Number.parseInt(raw.trim(), 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_REGISTER_IP_LIMIT;
+}
 
 type IdentitySession = {
   sessionId: string; userId: string; accessTokenId: string; refreshHash: string;
@@ -89,8 +113,8 @@ export function createIdentityService({ store, env }: { store: IdentityStore; en
     }
   }
   async function limitPasswordRequest(action: "register" | "login", email: string, ip: string, secret: string): Promise<void> {
-    const window = action === "register" ? 60 * 60 : WINDOW_SECONDS;
-    await consume(`${action}:ip`, ip, action === "register" ? 20 : 60, window, secret);
+    const window = action === "register" ? REGISTER_WINDOW_SECONDS : WINDOW_SECONDS;
+    await consume(`${action}:ip`, ip, action === "register" ? registerIpLimit(env) : 60, window, secret);
     await consume(`${action}:email`, email, 5, window, secret);
   }
   async function limitTokenRequest(action: "refresh" | "logout", ip: string, secret: string): Promise<void> {

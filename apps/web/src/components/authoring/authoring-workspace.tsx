@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArticleEditor, type AuthoringArticle } from "./article-editor.tsx";
+import { NotificationInbox } from "./notification-inbox.tsx";
 
 type WorkspaceState = "loading" | "unauthenticated" | "ready" | "error";
 
@@ -208,6 +209,10 @@ export function AuthoringWorkspace() {
       <p className="nw-ep" style={{ marginTop: 18 }}>草稿与发布状态由 API 持久化；关闭页面后，可从作品列表继续编辑。</p>
       {error ? <p className="nw-auth-error" role="alert">{error}</p> : null}
       {notice ? <p className="nw-auth-status" role="status">{notice}</p> : null}
+      {/* The inbox sits above the editor because what it says is about someone
+          else's work: the notice a commenter gets when a work they commented on
+          is deleted is the only way they hear about it at all. */}
+      <NotificationInbox />
       <div className="nw-authoring-grid">
         <aside className="nw-authoring-sidebar" aria-label="我的作品">
           <h2>我的作品（{articles.length}）</h2>

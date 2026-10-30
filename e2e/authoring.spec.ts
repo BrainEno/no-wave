@@ -115,6 +115,40 @@ function sessionCookies(headers: { name: string; value: string }[]): SessionCook
 }
 
 /**
+ * Hand the browser the session of an account that already exists.
+ *
+ * `registerWriter` uses this for the account it has just created; the
+ * notification journey uses it a second time to change who the browser is,
+ * because the reader who is told about a deletion is not the author who made it.
+ */
+async function signIn(page: Page, email: string): Promise<void> {
+  // Through the same-origin proxy the application uses. The proxy rejects
+  // mutations without an exact same-origin Origin header, which a plain HTTP
+  // client does not send.
+  const origin = currentOrigin();
+  const login = await page.request.post("/api/auth/login", {
+    data: { email, password: PASSWORD },
+    headers: { origin },
+  });
+  expect(login.status(), `signing the browser in as ${email}: ${await login.text()}`).toBe(200);
+  const cookies = sessionCookies(await login.headersArray());
+  expect(cookies.length, `the login response must set session cookies; headers: ${JSON.stringify(await login.headersArray())}`).toBeGreaterThan(0);
+  // `domain` + `path` (not `url`): Playwright derives the path from a url's
+  // directory, and the access cookie is deliberately scoped to /api/authoring
+  // so it is never sent to page routes.
+  await page.context().addCookies(cookies.map((cookie) => ({
+    name: cookie.name,
+    value: cookie.value,
+    domain: new URL(origin).hostname,
+    path: cookie.path,
+    expires: Math.floor(Date.now() / 1000) + cookie.maxAge,
+    httpOnly: cookie.httpOnly,
+    secure: cookie.secure,
+    sameSite: cookie.sameSite,
+  })));
+}
+
+/**
  * Create an account with a profile and hand the browser its session.
  *
  * The profile is not decoration: the public reader drops articles whose author
@@ -134,31 +168,7 @@ async function registerWriter(page: Page, request: APIRequestContext): Promise<s
   });
   expect(profile.status(), `creating the author profile: ${await profile.text()}`).toBe(200);
 
-  // Sign in through the same-origin proxy the application uses. The proxy
-  // rejects mutations without an exact same-origin Origin header, which a
-  // plain HTTP client does not send.
-  const origin = currentOrigin();
-  const login = await page.request.post("/api/auth/login", {
-    data: { email, password: PASSWORD },
-    headers: { origin },
-  });
-  expect(login.status(), `signing the browser in: ${await login.text()}`).toBe(200);
-  const cookies = sessionCookies(await login.headersArray());
-  expect(cookies.length, `the login response must set session cookies; headers: ${JSON.stringify(await login.headersArray())}`).toBeGreaterThan(0);
-  // `domain` + `path` (not `url`): Playwright derives the path from a url's
-  // directory, and the access cookie is deliberately scoped to /api/authoring
-  // so it is never sent to page routes.
-  await page.context().addCookies(cookies.map((cookie) => ({
-    name: cookie.name,
-    value: cookie.value,
-    domain: new URL(origin).hostname,
-    path: cookie.path,
-    expires: Math.floor(Date.now() / 1000) + cookie.maxAge,
-    httpOnly: cookie.httpOnly,
-    secure: cookie.secure,
-    sameSite: cookie.sameSite,
-  })));
-
+  await signIn(page, email);
   await page.goto("/write");
   try {
     await expect(page.getByRole("heading", { name: /写作台/ })).toBeVisible({ timeout: 45_000 });
@@ -499,6 +509,86 @@ test("a deleted work can be restored from the recycle bin, as a draft", async ({
     page.getByRole("heading", { level: 1, name: title }),
     `a restored draft must not be readable at /articles/${slug}`,
   ).toHaveCount(0);
+});
+
+/**
+ * The deletion closes its loop on the other side.
+ *
+ * Everything before this test was about the author: the work, the trash, the
+ * undo. The other half of a deletion is somebody else's — the sweep takes the
+ * comments under the work with it, and those are other people's words. The API
+ * writes each commenter a notice; this is the assertion that a reader can
+ * actually read it, in a browser, in both frameworks.
+ */
+test("a reader who commented on a deleted work is told so in their own desk", async ({ page, request }) => {
+  // The product asks before deleting, so the suite answers rather than muting
+  // the dialog: that keeps "no confirmation" a failure instead of a silent
+  // delete.
+  page.on("dialog", (dialog) => void dialog.accept());
+
+  // Two accounts, one browser: the author who deletes, and the reader whose
+  // comment goes with the work.
+  await registerWriter(page, request);
+  const title = `浏览器验证通知 ${Date.now().toString(36)}`;
+  const slug = await writeAndSave(page, title, true);
+
+  const readerEmail = uniqueEmail("reader");
+  const registered = await request.post(`${API_BASE_URL}/api/v1/auth/register`, {
+    data: { email: readerEmail, password: PASSWORD },
+  });
+  expect(registered.status(), `registering ${readerEmail}: ${await registered.text()}`).toBe(201);
+  const { accessToken } = (await registered.json()).data as { accessToken: string };
+
+  // The reader's words, posted through the API because the journey is about the
+  // inbox rather than the comment form: every click that is not what the test
+  // asserts is a way for it to fail for the wrong reason.
+  const comment = await request.post(`${API_BASE_URL}/api/v1/articles/${slug}/comments`, {
+    data: { content: "这一段我想再读一遍。" },
+    headers: { authorization: `Bearer ${accessToken}`, origin: API_BASE_URL },
+  });
+  expect(comment.status(), `commenting on ${slug}: ${await comment.text()}`).toBe(201);
+
+  await page.goto("/write");
+  await waitForEditor(page);
+  const entry = page.getByRole("button", { name: new RegExp(title) });
+  await expect(entry).toBeVisible({ timeout: 45_000 });
+  await entry.click();
+  await waitForEditor(page);
+  await page.getByRole("button", { name: "删除作品" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "已删除" })).toContainText(title, { timeout: 45_000 });
+
+  // The author is not notified of their own deletion: the notice exists for the
+  // other side of that event, and a desk that congratulated the author for it
+  // would be noise.
+  const authorInbox = page.getByRole("region", { name: "通知" });
+  await expect(authorInbox).toContainText("还没有通知。", { timeout: 45_000 });
+
+  // The same screen, the other account.
+  await page.context().clearCookies();
+  await signIn(page, readerEmail);
+  await page.goto("/write");
+  await waitForEditor(page);
+
+  const inbox = page.getByRole("region", { name: "通知" });
+  await expect(inbox, `the reader's desk must carry the notice:\n${await pageDigest(page)}`)
+    .toContainText("1 未读", { timeout: 45_000 });
+  await expect(inbox).toContainText(/你评论过的一篇作品已被作者删除/);
+  // The date is the point of the notice: it is the difference between "this is
+  // happening" and "this will happen, and here is when".
+  await expect(inbox).toContainText(/你的评论会在 \d{4}-\d{2}-\d{2}/);
+
+  // Marking it read is the reader's answer to it, and the badge follows: an
+  // inbox that kept saying "1 未读" after being read would be the one part of
+  // this screen a reader comes back to.
+  // `exact`: the inbox's own "全部标为已读" also contains these characters.
+  await inbox.getByRole("button", { name: "标记已读", exact: true }).click();
+  await expect(
+    inbox.getByRole("button", { name: "标记已读", exact: true }),
+    `the notice must stop asking to be read:\n${await pageDigest(page)}`,
+  ).toHaveCount(0, { timeout: 45_000 });
+  await expect(inbox).not.toContainText("未读");
+  // Read, not erased: the notice stays until the API's own retention takes it.
+  await expect(inbox).toContainText(/你评论过的一篇作品已被作者删除/);
 });
 
 test("text committed by an IME reaches the editor state and is saved", async ({ page, request }) => {

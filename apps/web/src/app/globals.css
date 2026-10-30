@@ -310,6 +310,14 @@ mark { background: var(--or); color: #0f0d0c; }
 .nw-authoring-article { display: grid; gap: 4px; text-align: left; padding: 12px; border: 1px solid var(--ink); background: transparent; overflow-wrap: anywhere; }
 .nw-authoring-article[aria-current="true"] { border-color: var(--or); box-shadow: inset 4px 0 var(--or); }
 .nw-authoring-article small { color: var(--t2); }
+.nw-authoring-inbox { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--ink); display: grid; gap: 10px; justify-items: start; }
+.nw-authoring-inbox h2 { margin: 0; font-size: 18px; }
+.nw-authoring-inbox-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; width: 100%; }
+.nw-authoring-inbox-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 12px; border: 1px solid var(--t2); overflow-wrap: anywhere; }
+.nw-authoring-inbox-text { flex: 1 1 240px; margin: 0; }
+/* An unread notice is the only reason the inbox exists, so it carries a mark
+   that survives the reader's colour preferences. */
+.nw-authoring-inbox-text.nw-unread { font-weight: 700; box-shadow: inset 4px 0 var(--or); padding-left: 12px; }
 .nw-authoring-trash { margin-top: clamp(32px, 5vw, 72px); padding-top: 24px; border-top: 1px solid var(--ink); display: grid; gap: 10px; }
 .nw-authoring-trash h2 { margin: 0; font-size: 18px; }
 .nw-authoring-trash-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 12px; border: 1px solid var(--t2); overflow-wrap: anywhere; }

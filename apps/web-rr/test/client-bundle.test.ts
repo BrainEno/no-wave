@@ -40,6 +40,10 @@ const CLIENT_COMPONENTS: readonly ClientComponent[] = [
   // editor behind a session — so "it renders" says the least about it here.
   { component: "AuthoringWorkspace", sentinel: "正在验证登录状态并载入草稿", page: "write" },
   { component: "ArticleEditor", sentinel: "作品地址（slug）由系统根据标题自动生成", page: "write" },
+  // The desk's inbox. It is the only screen that can show a reader the notice a
+  // deletion wrote them, and it renders nothing until it has fetched — so if it
+  // is missing from the bundle, the desk still looks complete.
+  { component: "NotificationInbox", sentinel: "/api/authoring/notifications/read-all", page: "write" },
 ];
 
 function clientBundle(): string {
