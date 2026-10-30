@@ -129,6 +129,7 @@ test("a new work is only accepted from our own origin", async () => {
     fetchImpl: allowed.fetchImpl,
   });
   assert.equal(same.status, 201);
+  assertNoStore(same);
   assert.equal(allowed.calls[0]?.url, `${API_BASE}/api/v1/articles`);
   assert.equal(allowed.calls[0]?.init?.method, "POST");
   assert.equal(allowed.calls[0]?.init?.body, body, "the body is relayed unchanged");
