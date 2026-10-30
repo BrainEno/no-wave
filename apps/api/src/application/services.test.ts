@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createApplicationServices } from "./services.ts";
+import { TOMBSTONE_NOTIFICATION_LIMIT, createApplicationServices } from "./services.ts";
 import { assertPersistenceAdapter, persistencePortMethods, createPersistencePorts } from "./persistence-ports.ts";
 
 function completeFakeAdapter() {
@@ -49,6 +49,64 @@ test("application service facade exposes domain operations without requiring a d
   assert.deepEqual(session, { method: "isSessionRevoked", args: ["session-123"] });
 });
 
+
+test("deleting a work tells the readers who commented on it when their words go", async () => {
+  const notified: Array<{ userId: string; eventKey: string; payload: unknown }> = [];
+  let requestedLimit;
+  const persistence = completeFakeAdapter();
+  persistence.deleteArticle = async () => ({ id: "article-1", deletedAt: "2026-01-02T03:04:05.678Z" });
+  persistence.listArticleCommentAuthorIds = async (args) => {
+    requestedLimit = args.limit;
+    return ["reader-1", "reader-2", "author-1"];
+  };
+  persistence.createNotification = async (input) => {
+    notified.push(input);
+    return { id: `notification-${notified.length}`, duplicate: false };
+  };
+  const services = createApplicationServices({ persistence, env: { ARTICLE_TOMBSTONE_RETENTION_DAYS: "30" } });
+  await services.deleteArticle({ actorId: "author-1", articleId: "article-1" });
+
+  // Every commenter is told once; the author who deleted their own work is not.
+  assert.deepEqual(notified.map((input) => input.userId), ["reader-1", "reader-2"]);
+  // The notice names the date the sweep runs, not the deletion: that is the
+  // date the reader's own words disappear.
+  assert.deepEqual(notified[0].payload, {
+    type: "article.deleted",
+    articleId: "article-1",
+    purgesAt: "2026-02-01T03:04:05.678Z",
+  });
+  assert.equal(notified[0].eventKey, "article.deleted:article-1:reader-1");
+  // Bounded inside the request rather than paginated across many.
+  assert.equal(requestedLimit, TOMBSTONE_NOTIFICATION_LIMIT);
+});
+
+test("a reader who cannot be told does not stop the deletion", async () => {
+  const notified: string[] = [];
+  const persistence = completeFakeAdapter();
+  persistence.deleteArticle = async () => ({ id: "article-1", deletedAt: "2026-01-02T03:04:05.678Z" });
+  persistence.listArticleCommentAuthorIds = async () => ["reader-1", "reader-2"];
+  persistence.createNotification = async ({ userId }) => {
+    if (userId === "reader-1") throw new Error("the inbox row could not be written");
+    notified.push(userId);
+    return { id: `notification-${userId}`, duplicate: false };
+  };
+  const services = createApplicationServices({ persistence });
+  // The deletion stands on its own: an inbox is not part of its transaction.
+  assert.deepEqual(await services.deleteArticle({ actorId: "author-1", articleId: "article-1" }), {
+    id: "article-1",
+    deletedAt: "2026-01-02T03:04:05.678Z",
+  });
+  assert.deepEqual(notified, ["reader-2"], "one undeliverable notice must not silence the rest");
+
+  const broken = completeFakeAdapter();
+  broken.deleteArticle = async () => ({ id: "article-1", deletedAt: "2026-01-02T03:04:05.678Z" });
+  broken.listArticleCommentAuthorIds = async () => { throw new Error("the comment index is down"); };
+  const servicesWithoutInbox = createApplicationServices({ persistence: broken });
+  assert.deepEqual(await servicesWithoutInbox.deleteArticle({ actorId: "author-1", articleId: "article-1" }), {
+    id: "article-1",
+    deletedAt: "2026-01-02T03:04:05.678Z",
+  });
+});
 
 test("application article use cases parse serialized content blocks before persistence", async () => {
   const persistence = completeFakeAdapter();
