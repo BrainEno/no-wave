@@ -266,7 +266,7 @@ jobs:
           set -eu
           if ! docker build -f apps/api/Dockerfile.vercel -t bot-thk-api:ci . > /tmp/api-build.log 2>&1; then
             tail -n 60 /tmp/api-build.log
-            MESSAGE=$(tail -n 25 /tmp/api-build.log | sed -e 's/%/%25/g' | awk 'BEGIN{ORS="%0A"}{print}')
+            MESSAGE=$(grep -i -E "error|cannot|failed|not found|missing|panic|ERR_" /tmp/api-build.log | head -20 | sed -e 's/%/%25/g' | awk 'BEGIN{ORS="%0A"}{print}')
             echo "::error title=docker build (apps/api/Dockerfile.vercel)::${MESSAGE}"
             exit 1
           fi
@@ -276,7 +276,7 @@ jobs:
           set -eu
           if ! docker build -f apps/web-rr/Dockerfile -t bot-thk-web-rr:ci . > /tmp/web-rr-build.log 2>&1; then
             tail -n 60 /tmp/web-rr-build.log
-            MESSAGE=$(tail -n 25 /tmp/web-rr-build.log | sed -e 's/%/%25/g' | awk 'BEGIN{ORS="%0A"}{print}')
+            MESSAGE=$(grep -i -E "error|cannot|failed|not found|missing|panic|ERR_" /tmp/web-rr-build.log | head -20 | sed -e 's/%/%25/g' | awk 'BEGIN{ORS="%0A"}{print}')
             echo "::error title=docker build (apps/web-rr/Dockerfile)::${MESSAGE}"
             exit 1
           fi

@@ -8,9 +8,14 @@
 # There is nothing platform-specific here: `node server.ts` is the same command
 # ADR 0012 asks for, the base image is upstream Node, and every input is an
 # environment variable. Any host that can run a container can run this.
+#
+# The base image is `node:24-slim` (glibc) rather than `-alpine` (musl) on
+# purpose: the lockfile records esbuild's glibc build, and pnpm selects optional
+# platform packages by the running libc, so a musl image installs esbuild without
+# a binary and `react-router build` dies a second into the build.
 
 # ---- Build -------------------------------------------------------------------
-FROM node:24-alpine AS build
+FROM node:24-slim AS build
 
 WORKDIR /app
 RUN corepack enable
@@ -34,7 +39,7 @@ ENV NODE_ENV=production
 RUN pnpm --filter @bot-thk/web-rr build
 
 # ---- Runtime -----------------------------------------------------------------
-FROM node:24-alpine AS runtime
+FROM node:24-slim AS runtime
 
 # Documented inputs only. PORT and HOST are the server's own knobs with defaults
 # (3100, 0.0.0.0); API_BASE_URL is how this tier finds the API. No Vercel or
