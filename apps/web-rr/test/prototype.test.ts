@@ -470,6 +470,88 @@ async function upstreamCalls(pathname: string): Promise<string[]> {
   return mockApi.requests().filter((entry) => entry.includes("/api/v1/"));
 }
 
+/**
+ * Recovery and verification (ADR 0014), in both positions of the switch.
+ *
+ * The pages exist either way, because "this site cannot send mail" is an answer
+ * a visitor is owed, not an error page. What changes is whether they offer a
+ * form: with mail off there is no point collecting an address for a link that
+ * cannot be sent, and the API would answer `409 MAIL_DISABLED` anyway.
+ *
+ * The switched-on half runs against the **same production build** on a second
+ * port, so these assertions also pin the property that matters operationally:
+ * the switch is read per request and needs no rebuild.
+ */
+test("with mail off the three recovery pages say so instead of collecting an address", async () => {
+  for (const path of ["/forgot-password", "/reset-password", "/verify-email"]) {
+    const result = await get(path);
+    assert.equal(result.status, 200, `${path} must render, not 500 or 404`);
+    assert.match(result.body, /未启用邮件功能/, `${path} must name the reason`);
+    assert.match(
+      result.headers.get("cache-control") ?? "",
+      /no-store/,
+      `${path} must never be held by a shared cache`,
+    );
+  }
+  // The one that would otherwise collect an address for a mail that cannot be
+  // sent. The other two collect a password and a token respectively; they are
+  // rendered by the same notice, so this assertion covers the shape.
+  const forgot = await get("/forgot-password");
+  assert.doesNotMatch(forgot.body, /name="email"/);
+  assert.doesNotMatch(forgot.body, /发送重设链接/);
+});
+
+test("with mail on the three recovery pages offer the forms, and the switch needs no rebuild", async () => {
+  await withMailEnabledServer(async (url) => {
+    // `get()` is bound to the shared server; this one has its own origin.
+    const page = async (path: string): Promise<{ status: number; body: string }> => {
+      const response = await fetch(`${url}${path}`, { redirect: "manual" });
+      return { status: response.status, body: await response.text() };
+    };
+
+    const forgot = await page("/forgot-password");
+    assert.equal(forgot.status, 200);
+    assert.match(forgot.body, /发送重设链接/, "the recovery form is offered");
+    assert.match(forgot.body, /name="email"/);
+    assert.doesNotMatch(forgot.body, /未启用邮件功能/);
+
+    // A link carries a token in the query string; the page renders the form
+    // that will spend it, server-side, instead of a notice about mail.
+    const reset = await page(`/reset-password?token=${"a".repeat(43)}`);
+    assert.equal(reset.status, 200);
+    assert.match(reset.body, /确认新密码/);
+    assert.doesNotMatch(reset.body, /未启用邮件功能/);
+
+    // A verification link without a token says so, and still no notice: mail is
+    // on, the link is simply incomplete.
+    const verify = await page("/verify-email");
+    assert.equal(verify.status, 200);
+    assert.match(verify.body, /链接不完整/);
+    assert.doesNotMatch(verify.body, /未启用邮件功能/);
+  });
+});
+
+test("the recovery endpoints are served by this app's auth resource route", async () => {
+  // The handler behind `/api/auth/:action` is shared with the App Router
+  // (`handleIdentityAction` in `@bot-thk/web-http`, covered by its own contract
+  // tests). What is asserted here is the wiring: this app's route table reaches
+  // it, and the action name becomes the upstream path.
+  const sent = await post("/api/auth/forgot-password", JSON.stringify({ email: "writer@example.test" }));
+  assert.equal(sent.status, 202, "the upstream status is preserved, not flattened to 200");
+  assert.match(sent.body, /"ok":true/);
+  assert.equal(sent.headers.get("set-cookie"), null, "these actions carry no session");
+
+  const redeemed = await post("/api/auth/reset-password", JSON.stringify({ token: "a".repeat(43), password: "a-long-enough-password" }));
+  assert.equal(redeemed.status, 200);
+  assert.match(redeemed.body, /"ok":true/);
+
+  // A cross-origin mutation is refused before the API is called, exactly as it
+  // is for login: this is the endpoint anyone would automate.
+  const crossOrigin = await post("/api/auth/forgot-password", JSON.stringify({ email: "writer@example.test" }), { origin: "https://evil.test" });
+  assert.equal(crossOrigin.status, 403);
+  assert.match(crossOrigin.body, /ORIGIN_REJECTED/);
+});
+
 test("archive is server-rendered, localized and shared-cacheable", async () => {
   const result = await get("/articles");
   assert.equal(result.status, 200);

@@ -50,6 +50,13 @@ const CLIENT_COMPONENTS: readonly ClientComponent[] = [
   // so every other check in this file and in `pnpm check:ssr-parity` passes on a
   // page the visitor cannot navigate away from.
   { component: "SiteChrome", sentinel: "nw-smooth", page: "/" },
+  // Recovery and verification. Each of these renders a form or a panel that
+  // does its work in the browser — the verification panel spends the token from
+  // an effect, so a page that renders it and never hydrates would sit on
+  // "正在确认" forever while every HTTP assertion stayed green.
+  { component: "ForgotPasswordForm", sentinel: "发送重设链接", page: "forgot-password" },
+  { component: "ResetPasswordForm", sentinel: "确认新密码", page: "reset-password" },
+  { component: "VerifyEmailPanel", sentinel: "邮箱已验证", page: "verify-email" },
 ];
 
 function clientBundle(): string {

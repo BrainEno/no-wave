@@ -157,12 +157,14 @@ and one more reason a cutover cannot be judged by HTML equality alone.
 
 - No production route, dependency, DNS, deployment or data change. `apps/web`
   builds and passes its own tests unchanged.
-- Every production route is ported except three pages and one spike endpoint:
-  `/forgot-password`, `/reset-password` and `/verify-email` (password recovery and
-  email verification, shipped switched off behind `MAIL_ENABLED`), and
-  `/api/spike/events`. The writing desk, comments, the reader toolbar, media,
-  notifications, search, sitemap/robots and the site shell are here; the
-  notification worker is a process in `apps/api` and was never a Web route.
+- Every production route is ported except the spike: `/api/spike/events` and
+  `/spike-form`. The writing desk, comments, the reader toolbar, media,
+  notifications, search, sitemap/robots, the site shell and the three recovery
+  pages are here; the notification worker is a process in `apps/api` and was
+  never a Web route. The recovery pages keep the switch's semantics: read per
+  request by the loader, `未启用邮件功能` instead of a form while mail is off,
+  private (`no-store`) in both applications — the token in a reset URL *is* the
+  credential until it is spent.
 - The hosting qualification gate is untouched: no provider has been verified, so
   no provider-specific code exists.
 - No browser-based hydration test. The tests assert server behavior over HTTP;

@@ -543,6 +543,35 @@ function handle(request: IncomingMessage, response: ServerResponse, body: Record
     return;
   }
 
+  /**
+   * Recovery and verification. The real API answers `202` for "a link is on its
+   * way" and never says whether the address exists, so the mock does the same —
+   * a prototype that echoed "no such account" would be testing a behaviour the
+   * product deliberately does not have.
+   */
+  if (method === "POST" && path === "/api/v1/auth/forgot-password") {
+    send(response, 202, { data: { ok: true } });
+    return;
+  }
+
+  if (method === "POST" && path === "/api/v1/auth/reset-password") {
+    if (typeof body.token !== "string" || body.token.length === 0 || typeof body.password !== "string" || body.password.length < 12) {
+      send(response, 400, { error: { code: "BAD_USER_INPUT", message: "The token or password is not acceptable." } });
+      return;
+    }
+    send(response, 200, { data: { ok: true } });
+    return;
+  }
+
+  if (method === "POST" && path === "/api/v1/auth/verify-email") {
+    if (typeof body.token !== "string" || body.token.length === 0) {
+      send(response, 400, { error: { code: "BAD_USER_INPUT", message: "The token is not acceptable." } });
+      return;
+    }
+    send(response, 200, { data: { ok: true, alreadyVerified: false } });
+    return;
+  }
+
   const mediaDetail = /^\/api\/v1\/media\/([^/]+)$/.exec(path);
   if (method === "GET" && mediaDetail) {
     const id = decodeURIComponent(mediaDetail[1] ?? "");
