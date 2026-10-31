@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { handleAccountEmailVerificationRequest, handleAccountPasswordChangeRequest } from "../src/account.ts";
+import {
+  handleAccountEmailChangeRequest,
+  handleAccountEmailVerificationRequest,
+  handleAccountPasswordChangeRequest,
+} from "../src/account.ts";
 import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE } from "../src/policy.ts";
 import { API_BASE, ROTATED, TOKENS, assertNoStore, json, request, setCookies, stubFetch, tokenEnvelope } from "./helpers.ts";
 
@@ -130,19 +134,28 @@ test("no configured API is a 503 the desk can explain, not a framework error", a
  * rule and the API's alone — a copy of it here would drift the first time it
  * changed.
  */
-function passwordRequest(method = "PUT", headers: Record<string, string> = {}, body = "{}"): Request {
+function accountRequest(
+  pathname: string,
+  method = "PUT",
+  headers: Record<string, string> = {},
+  body = "{}",
+): Request {
   // A GET has no body to carry, and the constructor refuses one.
-  return request("/api/authoring/password", {
+  return request(pathname, {
     method,
     ...(method === "GET" ? {} : { body }),
     headers: { host: "no-wave.test", origin: "https://no-wave.test", ...headers },
   });
 }
 
+function passwordRequest(method = "PUT", headers: Record<string, string> = {}, body = "{}"): Request {
+  return accountRequest("/api/authoring/password", method, headers, body);
+}
+
 test("a password change is forwarded as PUT with the cookie's token and the body untouched", async () => {
   const body = JSON.stringify({ currentPassword: "the-old-one", newPassword: "a-brand-new-password" });
   const stub = stubFetch({ "api/v1/me/password": () => json({ data: { ok: true, revokedSessions: 2 } }, 200) });
-  const response = await handleAccountPasswordChangeRequest(passwordRequest("PUT", signedIn(), body), {
+  const response = await handleAccountPasswordChangeRequest(accountRequest("/api/authoring/email", "PUT", signedIn(), body), {
     apiBaseUrl: API_BASE,
     fetchImpl: stub.fetchImpl,
   });
@@ -249,4 +262,72 @@ test("no configured API is a 503 the account page can explain", async () => {
   assert.equal(response.status, 503);
   assert.match(await response.text(), /SERVICE_UNAVAILABLE/);
   assert.equal(stub.calls.length, 0);
+});
+
+/**
+ * `PUT /api/authoring/email`.
+ *
+ * Same shape as the password change, and for a sharper reason: the address is
+ * where recovery lands, so what travels with it is the current password. The
+ * proxy still only carries it — whether the address is well formed, and whether
+ * it is already somebody else's, is the API's to answer.
+ */
+test("an address change is forwarded as PUT with the cookie's token and the body untouched", async () => {
+  const body = JSON.stringify({ password: "the-current-password", email: "moved@example.test" });
+  const stub = stubFetch({
+    "api/v1/me/email": () => json({ data: { ok: true, email: "moved@example.test", emailVerifiedAt: null } }, 200),
+  });
+  const response = await handleAccountEmailChangeRequest(accountRequest("/api/authoring/email", "PUT", signedIn(), body), {
+    apiBaseUrl: API_BASE,
+    fetchImpl: stub.fetchImpl,
+  });
+
+  assert.equal(response.status, 200);
+  assertNoStore(response);
+  assert.deepEqual(await response.json(), { data: { ok: true, email: "moved@example.test", emailVerifiedAt: null } });
+  assert.equal(stub.calls.length, 1);
+  assert.equal(stub.calls[0]?.url, `${API_BASE}/api/v1/me/email`);
+  assert.equal(stub.calls[0]?.init?.method, "PUT");
+  const headers = stub.calls[0]?.init?.headers as Headers;
+  assert.equal(headers.get("authorization"), `Bearer ${TOKENS.accessToken}`);
+  assert.equal(stub.calls[0]?.init?.body, body);
+});
+
+test("only a same-origin PUT reaches the API with an address change", async () => {
+  const stub = stubFetch({ "api/v1/": () => json({ data: {} }, 200) });
+  const body = JSON.stringify({ password: "the-current-password", email: "moved@example.test" });
+
+  const posted = await handleAccountEmailChangeRequest(accountRequest("/api/authoring/email", "POST", signedIn(), body), {
+    apiBaseUrl: API_BASE,
+    fetchImpl: stub.fetchImpl,
+  });
+  assert.equal(posted.status, 405);
+
+  const foreign = await handleAccountEmailChangeRequest(
+    new Request("https://no-wave.test/api/authoring/email", {
+      method: "PUT",
+      headers: { host: "no-wave.test", origin: "https://evil.test", "content-type": "application/json", ...signedIn() },
+      body,
+    }),
+    { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+  );
+  assert.equal(foreign.status, 403);
+  assert.equal(stub.calls.length, 0);
+});
+
+test("a refused address change is an answer the page can render, not a framework error", async () => {
+  const taken = stubFetch({ "api/v1/me/email": () => json({ error: { code: "CONFLICT", message: "…" } }, 409) });
+  const response = await handleAccountEmailChangeRequest(
+    accountRequest("/api/authoring/email", "PUT", signedIn(), JSON.stringify({ password: "the-current-password", email: "taken@example.test" })),
+    { apiBaseUrl: API_BASE, fetchImpl: taken.fetchImpl },
+  );
+  assert.equal(response.status, 409);
+
+  const unconfigured = stubFetch({ "api/v1/": () => json({ data: {} }, 200) });
+  const unavailable = await handleAccountEmailChangeRequest(
+    accountRequest("/api/authoring/email", "PUT", signedIn(), JSON.stringify({ password: "p", email: "moved@example.test" })),
+    { fetchImpl: unconfigured.fetchImpl },
+  );
+  assert.equal(unavailable.status, 503);
+  assert.match(await unavailable.text(), /SERVICE_UNAVAILABLE/);
 });

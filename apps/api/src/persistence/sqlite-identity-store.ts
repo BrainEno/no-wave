@@ -196,6 +196,26 @@ export function createSqliteIdentityStore(db) {
       return row ? { userId: row.user_id, email: row.email, emailVerifiedAt: row.email_verified_at ? new Date(row.email_verified_at).toISOString() : null } : null;
     },
     /**
+     * Move an account to another address, and drop the proof of the old one.
+     *
+     * `OR IGNORE` is the whole point: the unique index on `email` decides
+     * whether the update happened, so two callers racing for one address get
+     * one winner and one `false` instead of a constraint error nobody mapped.
+     * `false` therefore means "that address belongs to somebody else" — the
+     * caller has already established that this account exists and has already
+     * normalised the address, so there is no second meaning left.
+     */
+    async setIdentityEmail({ userId, email }) {
+      return transaction((transactionId) => {
+        const result = run("UPDATE OR IGNORE auth_accounts SET email = ?, email_verified_at = NULL WHERE user_id = ?", email, userId);
+        if (Number(result.changes) === 0) return false;
+        migrationCapture.captureInTransaction(db, transactionId, [
+          { entityType: "auth_accounts", entityId: userId, operation: "upsert", payload: get("SELECT * FROM auth_accounts WHERE user_id = ?", userId) },
+        ]);
+        return true;
+      });
+    },
+    /**
      * The password hash of one account, on its own.
      *
      * A separate accessor from `findIdentityAccountByUserId` on purpose: the

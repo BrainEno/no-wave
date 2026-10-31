@@ -88,6 +88,15 @@ export type IdentityStore = {
   issueIdentityToken(input: { userId: string; purpose: IdentityTokenPurpose; email: string; tokenHash: string; expiresAt: string }): Promise<unknown>;
   consumeIdentityToken(input: { tokenHash: string; purpose: IdentityTokenPurpose }): Promise<{ userId: string; email: string } | null>;
   setIdentityPassword(input: { userId: string; passwordHash: string }): Promise<boolean>;
+  /**
+   * Move an account to another address, and drop its proof of the old one.
+   *
+   * `false` means the address belongs to somebody else — the unique index is
+   * the arbiter, so two callers racing for one address cannot both win. The
+   * address is normalised and the account is known to exist before this is
+   * called, so `false` has only that one meaning.
+   */
+  setIdentityEmail(input: { userId: string; email: string }): Promise<boolean>;
   /** The credential of one account, and nothing else about it. */
   findIdentityCredentials(input: { userId: string }): Promise<{ userId: string; passwordHash: string } | null>;
   /**
@@ -377,6 +386,45 @@ export function createIdentityService({ store, env, mailer = null, onMailDeliver
       if (!updated) throw new IdentityAuthenticationError();
       const revokedSessions = await store.revokeIdentitySessions({ userId, exceptSessionId: sessionId });
       return { ok: true, revokedSessions };
+    },
+    /**
+     * Move the signed-in account to another address.
+     *
+     * The current password is required for the same reason it is required to
+     * change the password, and the reason is sharper here: whoever controls an
+     * account's address controls its recovery, so a stolen session that could
+     * move the address could then take the account over through the mailbox.
+     *
+     * The address is marked unverified, because the proof on file is proof of
+     * the *old* one. Verification itself gates nothing (an unverified account
+     * still signs in and publishes), and no mail is sent: on an instance where
+     * mail is switched off, forcing a round trip through an inbox nobody can
+     * reach would make changing an address impossible rather than merely slow.
+     *
+     * No session is revoked. Changing an address is not replacing a credential:
+     * the devices already signed in are still the owner's devices, and signing
+     * them out would only punish the person who just proved who they are.
+     */
+    async changeEmail({ userId, body, ip }: { userId: string; body: Record<string, unknown>; ip: string }) {
+      requireOnly(body, ["password", "email"]);
+      const password = passwordInput(body.password, false);
+      const email = normalizeEmail(body.email);
+      const config = configuration(env);
+      await consume("change-email:user", userId, 5, REGISTER_WINDOW_SECONDS, config.secret);
+      await consume("change-email:ip", ip, 20, REGISTER_WINDOW_SECONDS, config.secret);
+      const credentials = await store.findIdentityCredentials({ userId });
+      const valid = await verifyPassword(password, credentials?.passwordHash ?? null);
+      if (!credentials || !valid) throw new IdentityAuthenticationError();
+      const account = await store.findIdentityAccountByUserId({ userId });
+      if (!account) throw new IdentityAuthenticationError();
+      // Asking for the address the account already has is not a change, and
+      // must not cost it a proof it has already earned.
+      if (account.email === email) {
+        return { ok: true, email: account.email, emailVerifiedAt: account.emailVerifiedAt };
+      }
+      const changed = await store.setIdentityEmail({ userId, email });
+      if (!changed) throw new IdentityConflictError();
+      return { ok: true, email, emailVerifiedAt: null };
     },
     /**
      * Send (or re-send) the verification link for the signed-in user's address.

@@ -269,6 +269,42 @@ export function createPostgresIdentityStore(sql) {
         : null;
     },
     /**
+     * Move an account to another address, and drop the proof of the old one.
+     *
+     * The `NOT EXISTS` guard and the unique index are the two halves of the
+     * same guarantee: the guard rejects the ordinary case in one statement,
+     * and the index settles the race the guard cannot see — two callers asking
+     * for one address get one winner and one `false`, decided by the database
+     * rather than by a check-then-write that a concurrent insert can slip
+     * through. `false` means "that address belongs to somebody else": the
+     * caller has already established that this account exists.
+     */
+    async setIdentityEmail({ userId, email }) {
+      try {
+        return await sql.begin(async (tx) => {
+          const transactionId = createMigrationTransactionId();
+          const rows = await tx.unsafe(
+            `UPDATE auth_accounts SET email = $1, email_verified_at = NULL
+             WHERE user_id = $2
+               AND NOT EXISTS (SELECT 1 FROM auth_accounts a WHERE a.email = $1 AND a.user_id <> $2)
+             RETURNING *`,
+            [email, userId],
+          );
+          if (!rows[0]) return false;
+          await captureChanges(tx, transactionId, [
+            { entityType: "auth_accounts", entityId: userId, operation: "upsert", payload: rows[0] },
+          ]);
+          return true;
+        });
+      } catch (error: unknown) {
+        // Unique violation: the concurrent case the guard cannot see. The
+        // transaction is already aborted, so this only decides what the caller
+        // is told — the same answer the non-racing path gives.
+        if ((error as { code?: unknown })?.code === "23505") return false;
+        throw error;
+      }
+    },
+    /**
      * The password hash of one account, on its own.
      *
      * A separate accessor from `findIdentityAccountByUserId` on purpose: the

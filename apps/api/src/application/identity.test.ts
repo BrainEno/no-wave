@@ -4,7 +4,7 @@ import test from "node:test";
 import { createIdentityService } from "./identity.ts";
 import { createLogMailer, resolveIdentityMailer } from "./identity-mailer.ts";
 import { SmtpError } from "../infrastructure/smtp-client.ts";
-import { IdentityAuthenticationError, IdentityInputError, MailDisabledError } from "../domain/errors.ts";
+import { IdentityAuthenticationError, IdentityConflictError, IdentityInputError, MailDisabledError } from "../domain/errors.ts";
 import { hashPassword, verifyPassword } from "../security/passwords.ts";
 
 test("identity maintenance is periodically invoked without exposing throttle subjects", async () => {
@@ -138,6 +138,15 @@ function fakeIdentityStore({ accounts = [] as Array<{ userId: string; email: str
     async findIdentityCredentials({ userId }) {
       if (!passwords.has(userId)) return null;
       return { userId, passwordHash: passwords.get(userId) };
+    },
+    async setIdentityEmail({ userId, email }) {
+      if (!passwords.has(userId)) return false;
+      // Same rule as the real adapters: the address is unique, so a second
+      // account cannot be moved onto one that is already taken.
+      if (accounts.some((entry) => entry.userId !== userId && entry.email === email)) return false;
+      accounts.find((entry) => entry.userId === userId).email = email;
+      verifiedAt.delete(userId);
+      return true;
     },
     async setIdentityPassword({ userId, passwordHash }) {
       if (!passwords.has(userId)) return false;
@@ -312,6 +321,103 @@ test("a signed-in password change is throttled per account, then per address", a
     ip: "192.0.2.10",
   });
   assert.deepEqual(limits, [5, 20], "five per quarter hour for one account, twenty for one address");
+});
+
+/**
+ * Changing the address while signed in.
+ *
+ * The address is where recovery lands, so this is the one account change that
+ * needs the current password even more than changing the password does: a
+ * stolen session that could move the address could then take the account over
+ * through the mailbox. What it must *not* do is gate on verification or send a
+ * mail — on an instance where mail is off, that would make the change
+ * impossible rather than merely unverified.
+ */
+async function changeEmailFixture(secondEmail = "second-owner@example.test") {
+  const currentPassword = "the-current-password";
+  const store = fakeIdentityStore({
+    accounts: [
+      { userId: "user-1", email: "owner@example.test", passwordHash: await hashPassword(currentPassword) },
+      ...(secondEmail ? [{ userId: "user-2", email: secondEmail, passwordHash: "hash-2" }] : []),
+    ],
+  });
+  const service = createIdentityService({ env: identityEnv, store, mailer: capturingMailer().mailer });
+  return { store, service, currentPassword, secondEmail };
+}
+
+test("changing the address needs the current password, and leaves the account unverified", async () => {
+  const { store, service, currentPassword } = await changeEmailFixture();
+  // The account has a proof on file — for the address it is about to leave.
+  await store.markIdentityEmailVerified({ userId: "user-1", verifiedAt: new Date().toISOString() });
+  assert.ok((await service.describeAccount("user-1")).emailVerifiedAt);
+
+  assert.deepEqual(await service.changeEmail({
+    userId: "user-1",
+    body: { password: currentPassword, email: "New.Owner@Example.test" },
+    ip: "192.0.2.10",
+  }), { ok: true, email: "new.owner@example.test", emailVerifiedAt: null });
+
+  const account = await service.describeAccount("user-1");
+  assert.equal(account.email, "new.owner@example.test", "the address is normalised and stored");
+  assert.equal(account.emailVerifiedAt, null, "proof of the old address is not proof of the new one");
+  assert.deepEqual(store.revocations, [], "changing an address is not replacing a credential");
+});
+
+test("a wrong password leaves the address alone, and an address that is taken is a conflict", async () => {
+  const { store, service, currentPassword, secondEmail } = await changeEmailFixture();
+  await assert.rejects(service.changeEmail({
+    userId: "user-1",
+    body: { password: "not-the-password", email: "moved@example.test" },
+    ip: "192.0.2.10",
+  }), IdentityAuthenticationError);
+  assert.equal((await service.describeAccount("user-1")).email, "owner@example.test");
+
+  await assert.rejects(service.changeEmail({
+    userId: "user-1",
+    body: { password: currentPassword, email: secondEmail },
+    ip: "192.0.2.10",
+  }), IdentityConflictError, "one address cannot belong to two accounts");
+  assert.equal((await service.describeAccount("user-1")).email, "owner@example.test");
+
+  // The body is exactly two fields: nothing else travels with the address.
+  await assert.rejects(service.changeEmail({
+    userId: "user-1",
+    body: { password: currentPassword, email: "moved@example.test", userId: "user-2" },
+    ip: "192.0.2.10",
+  }), IdentityInputError);
+  await assert.rejects(service.changeEmail({
+    userId: "user-1",
+    body: { password: currentPassword, email: "not-an-address" },
+    ip: "192.0.2.10",
+  }), IdentityInputError);
+  assert.deepEqual(store.revocations, []);
+});
+
+test("asking for the address the account already has is not a change, and keeps its proof", async () => {
+  const { store, service, currentPassword } = await changeEmailFixture();
+  const verifiedAt = new Date().toISOString();
+  await store.markIdentityEmailVerified({ userId: "user-1", verifiedAt });
+  assert.deepEqual(await service.changeEmail({
+    userId: "user-1",
+    body: { password: currentPassword, email: "Owner@Example.test" },
+    ip: "192.0.2.10",
+  }), { ok: true, email: "owner@example.test", emailVerifiedAt: verifiedAt });
+});
+
+test("changing the address is throttled per account, then per address", async () => {
+  const currentPassword = "the-current-password";
+  const limits: number[] = [];
+  const store = fakeIdentityStore({
+    accounts: [{ userId: "user-1", email: "owner@example.test", passwordHash: await hashPassword(currentPassword) }],
+    limits,
+  });
+  const service = createIdentityService({ env: identityEnv, store, mailer: capturingMailer().mailer });
+  await service.changeEmail({
+    userId: "user-1",
+    body: { password: currentPassword, email: "moved@example.test" },
+    ip: "192.0.2.10",
+  });
+  assert.deepEqual(limits, [5, 20], "five per hour for one account, twenty for one peer address");
 });
 
 test("verification is sent to the signed-in account's own address and stamped once", async () => {

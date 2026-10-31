@@ -1220,3 +1220,37 @@ test("a password change reaches the API with the cookie's token, and only as a s
   const read = await get("/api/authoring/password", session);
   assert.ok(read.status >= 400 && read.status < 500, "a GET must never reach the API");
 });
+
+/**
+ * `PUT /api/authoring/email`.
+ *
+ * The adapter's job is the same one the password route has: wire the path, keep
+ * the shared handler's method and Origin rules, and pass the answer through.
+ * The one extra thing worth proving end to end is that a *conflict* survives
+ * the proxy as a 409 and not as a generic failure — the account page says
+ * something different for "that address is taken" than for "try again".
+ */
+test("an address change reaches the API with the cookie's token, and a taken address is a conflict", async () => {
+  const session = { cookie: `nw_access=${MOCK_TOKENS.accessToken}; nw_refresh=${MOCK_TOKENS.refreshToken}` };
+  const move = (email: string) => JSON.stringify({ password: MOCK_CREDENTIALS.password, email });
+
+  const signedOut = await put("/api/authoring/email", move("moved@example.test"));
+  assert.equal(signedOut.status, 401, "without a session the address cannot be moved");
+
+  const changed = await put("/api/authoring/email", move("moved@example.test"), session);
+  assert.equal(changed.status, 200);
+  assert.match(changed.headers.get("cache-control") ?? "", /no-store/);
+  assert.match(changed.body, /"email":"moved@example.test"/);
+  assert.match(changed.body, /"emailVerifiedAt":null/, "the new address carries no proof of its own yet");
+
+  const taken = await put("/api/authoring/email", move("taken@example.test"), session);
+  assert.equal(taken.status, 409);
+  assert.match(taken.body, /CONFLICT/);
+
+  const foreign = await put("/api/authoring/email", move("moved@example.test"), {
+    ...session,
+    origin: "https://attacker.example",
+  });
+  assert.equal(foreign.status, 403);
+  assert.match(foreign.body, /ORIGIN_REJECTED/);
+});

@@ -56,6 +56,7 @@ is the contract.
 | `POST /api/v1/auth/reset-password` | `{ token, password }` | `200 { data: { ok: true } }`; `401` for a token that was never issued, is spent or is expired; `400` for a malformed token or a password under 12 characters |
 | `POST /api/v1/auth/verify-email` | `{ token }` | `200 { data: { ok: true } }`; `401` for a spent or unknown token |
 | `POST /api/v1/me/email-verification` | – (authenticated) | `202 { data: { ok: true, alreadyVerified } }`; `401` unauthenticated |
+| `PUT /api/v1/me/email` | `{ password, email }` (authenticated) | `200 { data: { ok: true, email, emailVerifiedAt } }`; `409` when the address belongs to another account; `400` for a malformed address or a body that is not exactly these two fields; `401` for a wrong password or no session |
 | `PUT /api/v1/me/password` | `{ currentPassword, newPassword }` (authenticated) | `200 { data: { ok: true, revokedSessions } }`; `401` for a wrong current password or no session; `400` for a new password under 12 characters or a body that is not exactly these two fields |
 
 - Only the SHA-256 digest of a token is stored, with its purpose, the address it was issued for, an
@@ -71,6 +72,13 @@ is the contract.
   the only working way to replace a credential on an instance where mail is switched off.
 - The token travels in a request body, never in a path: paths are logged by proxies and browsers.
   The mail links to a page, and the page posts the token back.
+- `PUT /api/v1/me/email` moves an account to another address and marks it **unverified**: the proof
+  on file was proof of the old one. Verification gates nothing, and the change sends no mail, so it
+  works on an instance where mail is switched off — a forced round trip through an inbox nobody can
+  reach would make changing an address impossible rather than merely unverified. Asking for the
+  address the account already has answers `200` with the current verification state and rewrites
+  nothing. No session is revoked: the address is not a credential, and the devices already signed in
+  are still the owner's.
 - `GET /api/v1/me` returns `{ id, email, emailVerifiedAt }` (additive fields only).
 - The browser surface is three pages in `apps/web` — `/forgot-password`,
   `/reset-password?token=…`, `/verify-email?token=…` — and an account line in the
@@ -85,8 +93,9 @@ is the contract.
   configure `AUTH_IDENTITY_BASE_URL` for the public origin the links point at.
 - Throttling reuses the keyed-digest limiter: 20 per socket peer and 5 per email per hour for
   recovery requests, 20 per peer and 5 per token per 15 minutes for resets, 30 per peer per 15
-  minutes for verification redemptions, 5 per account per hour for re-sending a verification, and
-  5 per account plus 20 per peer per 15 minutes for `PUT /api/v1/me/password`.
+  minutes for verification redemptions, 5 per account per hour for re-sending a verification,
+  5 per account plus 20 per peer per 15 minutes for `PUT /api/v1/me/password`, and 5 per account
+  plus 20 per peer per hour for `PUT /api/v1/me/email`.
 
 ## Abuse controls and deployment limitations
 
