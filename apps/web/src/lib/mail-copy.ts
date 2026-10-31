@@ -20,3 +20,13 @@ export const MAIL_DISABLED_NOTICE = {
   action: "前往登录",
   actionEn: "Sign in",
 } as const;
+
+/**
+ * What the recovery form says when the API answers `409 MAIL_DISABLED`.
+ *
+ * The two switches are read by two processes and can disagree while somebody is
+ * editing an env file: the page thinks mail is on and offers the form, the API
+ * knows better and refuses. The API's own message is in English, so the form
+ * answers in the visitor's language instead of echoing it.
+ */
+export const MAIL_DISABLED_FORM_ERROR = "这个站点没有启用邮件功能，无法发送找回密码的链接。";

@@ -166,7 +166,9 @@ expiry, superseded links, session revocation).
   (mail off and, on a second server, mail on) and the prototype's switch tests.
   `/forgot-password`, `/reset-password` and `/verify-email` are `force-dynamic`: as static
   prerenders they baked the build's answer into the HTML, so flipping the switch changed
-  nothing until a rebuild — the F4 trap (`NEXT_PUBLIC_SITE_URL`) again, one layer down.
+  nothing until a rebuild — the F4 trap (`NEXT_PUBLIC_SITE_URL`) again, one layer down. Off is the default and the
+  shipped state: the code is complete, and sending mail stays an operator's decision, taken in
+  `.env.local` — see [Account mail: off until you switch it on](../../operations/mail-setup.md).
 - Web: `/forgot-password`, `/reset-password`, `/verify-email`, `/account` (shared `AccountPanel`:
   email, verification state, resend, sign-out), the account line in the writing desk,
   the widened `/api/auth/[action]` family and `POST /api/authoring/email-verification`, covered by

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
+import { MAIL_DISABLED_FORM_ERROR } from "@/lib/mail-copy.ts";
 
 type ApiErrorPayload = { error?: { message?: unknown } };
 
@@ -30,6 +31,11 @@ export function ForgotPasswordForm() {
         body: JSON.stringify({ email }),
       });
       const payload: unknown = await response.json().catch(() => null);
+      if (response.status === 409) {
+        // The Web switch says on, the API's says off: answer in the visitor's
+        // language rather than echoing the API's English message.
+        throw new Error(MAIL_DISABLED_FORM_ERROR);
+      }
       if (!response.ok) throw new Error(errorMessage(payload));
       // `202` is the only answer the API gives, and it means the same thing in
       // both cases: nothing here may suggest whether the address is known.

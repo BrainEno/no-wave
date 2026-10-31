@@ -236,7 +236,7 @@ export function isMailEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
  * The disabled mailer throws rather than dropping the message on the floor:
  * reaching it means some path tried to deliver without checking the switch, and
  * the one thing a switched-off instance must never do is look like it sent
- * something. Callers check {@link isMailEnabled} first and answer 503.
+ * something. Callers check {@link isMailEnabled} first and answer 409.
  */
 export function resolveIdentityMailer(env: NodeJS.ProcessEnv = process.env): IdentityMailer {
   if (isMailEnabled(env) === false) {

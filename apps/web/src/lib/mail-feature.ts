@@ -2,7 +2,7 @@
  * Whether this deployment has switched account mail on.
  *
  * One switch, two readers: the API refuses the endpoints that would put a link
- * in somebody's inbox (503 `MAIL_DISABLED`), and the Web tier stops showing the
+ * in somebody's inbox (409 `MAIL_DISABLED`), and the Web tier stops showing the
  * interface for them. Both read `MAIL_ENABLED` from the same environment — the
  * repository-root `.env.local` configures both processes — so one value keeps
  * the server and the pages from disagreeing.

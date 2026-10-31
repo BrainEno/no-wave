@@ -150,7 +150,8 @@ Vercel project for the environments that should connect to this Neon branch:
 - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_ENDPOINT_URL_S3`, `AWS_REGION`
 - `MAIL_ENABLED` — set it to `true` on **both** the API and the Web service to switch account mail
   on. Everything below does nothing until you do: while it is off, recovery and verification answer
-  `409 MAIL_DISABLED` and the Web app hides the pages that lead to them.
+  `409 MAIL_DISABLED` and the Web app hides the pages that lead to them. Off by default, and the
+  full procedure lives in [Account mail: off until you switch it on](mail-setup.md).
 - `MAIL_SMTP_HOST`, `MAIL_SMTP_PORT`, `MAIL_SMTP_SECURITY`, `MAIL_SMTP_USER`, `MAIL_SMTP_PASSWORD`,
   `MAIL_FROM`, `MAIL_FROM_NAME` — optional, but until `MAIL_ENABLED` is on **and** `MAIL_SMTP_HOST`
   and `MAIL_FROM` are set, the API logs account mail instead of delivering it, so password recovery

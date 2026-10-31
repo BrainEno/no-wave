@@ -45,7 +45,10 @@ spent, and the answer is the same for every address, so switching mail off
 cannot turn recovery into an enumeration oracle. The Web app reads the same
 variable and stops showing the pages and buttons that lead here, so the two
 tiers cannot disagree about what this deployment can do. Unset, empty and
-unrecognised values all mean off.
+unrecognised values all mean off. See
+[Account mail: off until you switch it on](../docs/operations/mail-setup.md) for
+the whole procedure: what off does, how to switch it on once a relay exists, and
+which log line tells you which state you are in.
 
 Outbound mail goes through the `IdentityMailer` port (`apps/api/src/application/identity-mailer.ts`). Its default implementation writes a structured log line and, by default, **not the link** — a log line that can reset a password is a password reset waiting to be read; set `AUTH_IDENTITY_MAIL_LOG_LINK=1` to include it during local development, and `AUTH_IDENTITY_BASE_URL` for the public origin the links point at.
 
