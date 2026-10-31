@@ -188,6 +188,61 @@ jobs:
       - name: Build and behavior-test the prototype
         run: pnpm test:prototype
 
+  # Phase 6, item 1: the whole stack has to come up on plain Node.js with only
+  # the variables documented in `.env.example`. `pnpm stack:check` builds the
+  # React Router app, migrates the database, starts the API and the Web server
+  # as child processes that inherit the OS minimum plus their documented role
+  # variables — and nothing else — probes the chain over HTTP, stops both
+  # children and exits non-zero on the first failure.
+  #
+  # No platform variable is set in this job, and the children could not read one
+  # if it were: `API_SERVICE_URL`, `API_GRAPHQL_URL` and the `VERCEL*` set are
+  # deleted from every child environment. On the PostgreSQL leg the probe also
+  # runs the notification outbox drain, which SQLite has no durable table for.
+  portable-stack:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        provider: [sqlite, postgres]
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: bot_thk_dev
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d bot_thk_dev"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      DATABASE_PROVIDER: ${{ matrix.provider }}
+      DATABASE_URL: ${{ matrix.provider == 'postgres' && 'postgres://postgres:postgres@127.0.0.1:5432/bot_thk_dev' || '' }}
+      # A disposable file: the probe registers accounts and publishes an
+      # article, and `/tmp` is discarded with the runner.
+      DATABASE_PATH: /tmp/no-wave-portable.sqlite
+      AUTH_JWT_SECRET: portable-stack-ci-secret-0123456789abcdef
+      AUTH_JWT_ISSUER: http://127.0.0.1:4000
+      AUTH_JWT_AUDIENCE: no-wave
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10.20.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The command builds the Web app itself, so no separate build step: the
+      # point is that a clean checkout needs exactly one command.
+      - name: Bring the whole stack up and probe it (${{ matrix.provider }})
+        run: pnpm stack:check
+
   # `pnpm check:ssr-parity` (the Phase 3 exit gate) lives in its own nightly
   # workflow — see .github/workflows/ssr-parity.yml — because it builds both
   # applications and is too slow to sit on the path of every commit.
@@ -199,6 +254,7 @@ jobs:
       - postgres-integration
       - local-dev-chain
       - react-router-prototype
+      - portable-stack
     runs-on: ubuntu-latest
     steps:
       - name: Require every validation job to succeed
@@ -207,11 +263,12 @@ jobs:
           POSTGRES_RESULT: ${{ needs.postgres-integration.result }}
           LOCAL_CHAIN_RESULT: ${{ needs.local-dev-chain.result }}
           PROTOTYPE_RESULT: ${{ needs.react-router-prototype.result }}
+          PORTABLE_STACK_RESULT: ${{ needs.portable-stack.result }}
         run: |
-          printf 'verify: %s\npostgres-integration: %s\nlocal-dev-chain: %s\nreact-router-prototype: %s\n' \
-            "$VERIFY_RESULT" "$POSTGRES_RESULT" "$LOCAL_CHAIN_RESULT" "$PROTOTYPE_RESULT"
-          if [ "$VERIFY_RESULT" != "success" ] || [ "$POSTGRES_RESULT" != "success" ] || [ "$LOCAL_CHAIN_RESULT" != "success" ] || [ "$PROTOTYPE_RESULT" != "success" ]; then
-            echo "::error::verify, postgres-integration, local-dev-chain and react-router-prototype must all succeed."
+          printf 'verify: %s\npostgres-integration: %s\nlocal-dev-chain: %s\nreact-router-prototype: %s\nportable-stack: %s\n' \
+            "$VERIFY_RESULT" "$POSTGRES_RESULT" "$LOCAL_CHAIN_RESULT" "$PROTOTYPE_RESULT" "$PORTABLE_STACK_RESULT"
+          if [ "$VERIFY_RESULT" != "success" ] || [ "$POSTGRES_RESULT" != "success" ] || [ "$LOCAL_CHAIN_RESULT" != "success" ] || [ "$PROTOTYPE_RESULT" != "success" ] || [ "$PORTABLE_STACK_RESULT" != "success" ]; then
+            echo "::error::verify, postgres-integration, local-dev-chain, react-router-prototype and portable-stack must all succeed."
             exit 1
           fi
           echo "All required validation jobs succeeded."

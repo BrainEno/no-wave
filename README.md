@@ -72,6 +72,22 @@ See [Local development and local verification](docs/development/local-developmen
 for the environment contract, the full command reference, the probe's assertions
 and a troubleshooting table.
 
+### One portable command (no platform binding)
+
+```sh
+pnpm stack:start     # build, migrate, start the API and the React Router app, keep running
+pnpm stack:check     # the same, plus a ten-step probe, then stop and report
+```
+
+`pnpm stack:check` starts the whole stack on plain Node.js using only the
+variables documented in `.env.example`, probes it over HTTP — health, readiness,
+server rendering, registration, login cookies, publishing, comments, the
+notification outbox — and exits non-zero on the first failure. No Vercel, no
+Next.js, no platform service binding: the `VERCEL*` variables and
+`API_SERVICE_URL` are deleted from every child process the command starts, so
+the stack cannot be depending on them. See [One portable command: the whole
+stack on plain Node.js](docs/operations/portable-stack.md).
+
 ## Commands
 
 ```sh
