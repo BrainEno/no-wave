@@ -451,6 +451,8 @@ export async function probePortableStack(stack: PortableStack): Promise<CheckRes
   }, results);
 
   let authorCookies = "";
+  let authorId = "";
+  let readerToken = "";
   let readerCookies = "";
 
   await step("identity.register", "Registration against the API", async () => {
@@ -478,6 +480,19 @@ export async function probePortableStack(stack: PortableStack): Promise<CheckRes
       body: JSON.stringify(reader),
     });
     if (second.status !== 201) return { status: "fail", detail: `the second account → ${second.status}` };
+    const readerData = dataOf(await readJson(second));
+    readerToken = typeof readerData?.accessToken === "string" ? readerData.accessToken : "";
+    if (readerToken.length === 0) return { status: "fail", detail: "the second account registered without an access token" };
+
+    // The author's user id is what a direct message is addressed to; the outbox
+    // carries conversation messages, not comments.
+    const me = await request(`${apiBaseUrl}/api/v1/me`, { headers: { authorization: `Bearer ${accessToken}` } });
+    const meData = dataOf(await readJson(me));
+    const id = typeof meData?.id === "string" ? meData.id : "";
+    if (me.status !== 200 || id.length === 0) {
+      return { status: "fail", detail: `GET /api/v1/me → ${me.status} (no user id)` };
+    }
+    authorId = id;
     return { status: "pass", detail: "two accounts registered and the author's profile was created" };
   }, results);
 
@@ -567,6 +582,14 @@ export async function probePortableStack(stack: PortableStack): Promise<CheckRes
     return { status: "pass", detail: "comment created and read back through the same-origin proxy" };
   }, results);
 
+  /** The author's inbox, read through the Web tier's same-origin proxy. */
+  const inboxCount = async (): Promise<number> => {
+    const response = await request(`${webBaseUrl}/api/authoring/notifications`, { headers: { cookie: authorCookies } });
+    if (response.status !== 200) return -1;
+    const data = dataOf(await readJson(response));
+    return Array.isArray(data?.notifications) ? data.notifications.length : -1;
+  };
+
   await step("outbox.drain", "Notification outbox drains outside the Web server", async () => {
     if (!postgres) {
       return {
@@ -574,6 +597,33 @@ export async function probePortableStack(stack: PortableStack): Promise<CheckRes
         detail: "the durable outbox is a PostgreSQL table; set DATABASE_URL to include this path",
       };
     }
+    if (authorId.length === 0 || readerToken.length === 0) {
+      return { status: "fail", detail: "the registration step did not record both accounts" };
+    }
+    // The durable outbox carries `message.created` events — direct messages, not
+    // comments — so the reader opens a conversation with the author and writes
+    // into it. Both writes require an Idempotency-Key: opening a conversation is
+    // not idempotent.
+    const opened = await request(`${apiBaseUrl}/api/v1/conversations`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${readerToken}`, "idempotency-key": "portable-stack-conversation" },
+      body: JSON.stringify({ participantIds: [authorId] }),
+    });
+    const openedData = dataOf(await readJson(opened));
+    const conversationId = typeof openedData?.id === "string" ? openedData.id : "";
+    if (opened.status !== 201 || conversationId.length === 0) {
+      return { status: "fail", detail: `POST /api/v1/conversations → ${opened.status} ${openedData ? JSON.stringify(openedData).slice(0, 200) : ""}` };
+    }
+    const message = await request(`${apiBaseUrl}/api/v1/conversations/${encodeURIComponent(conversationId)}/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${readerToken}`, "idempotency-key": "portable-stack-message" },
+      body: JSON.stringify({ body: "这条私信用来验证通知外箱：它必须由 Web 之外的进程投递。" }),
+    });
+    if (message.status !== 201) {
+      return { status: "fail", detail: `POST /api/v1/conversations/:id/messages → ${message.status}`, remedy: "The outbox is written inside the message transaction; check the PostgreSQL insert." };
+    }
+
+    const inboxBefore = await inboxCount();
     const drain = await runOnce(
       "drain",
       [process.execPath, "src/persistence/notification-drain.ts"],
@@ -582,17 +632,18 @@ export async function probePortableStack(stack: PortableStack): Promise<CheckRes
       60_000,
     );
     if (drain.code !== 0) return { status: "fail", detail: `the drain exited ${drain.code}:\n${drain.output}` };
-    const response = await request(`${webBaseUrl}/api/authoring/notifications`, { headers: { cookie: authorCookies } });
-    const data = dataOf(await readJson(response));
-    const items = Array.isArray(data?.notifications) ? data.notifications : [];
-    if (items.length === 0) {
+    const inboxAfter = await inboxCount();
+    if (inboxAfter === 0) {
       return {
         status: "fail",
-        detail: "the drain ran but the author's inbox is empty",
-        remedy: "The comment writes a notification in the same transaction; check OUTBOX_* bounds and the lease.",
+        detail: `the drain ran but the author's inbox is empty (before: ${inboxBefore})`,
+        remedy: "The outbox only carries message.created events; check OUTBOX_* bounds, the lease and the drain deadline.",
       };
     }
-    return { status: "pass", detail: `the author's inbox has ${items.length} notice(s) after one drain` };
+    return {
+      status: "pass",
+      detail: `one drain delivered the direct message: the author's inbox went from ${inboxBefore} to ${inboxAfter} notice(s), outside the Web server`,
+    };
   }, results);
 
   await step("no-platform", "No platform binding is present", async () => {
@@ -635,6 +686,8 @@ export function formatReport(results: CheckResult[], stack: PortableStack): stri
 export type StackArguments = {
   keep: boolean;
   json: boolean;
+  /** Start the long-lived notification worker instead of relying on the drain. */
+  worker: boolean;
   databaseUrl: string | null;
   databasePath: string | null;
 };
@@ -642,16 +695,18 @@ export type StackArguments = {
 export function parseArguments(argv: readonly string[]): { args: StackArguments } | { error: string } {
   let keep = false;
   let json = false;
+  let worker = false;
   let databaseUrl: string | null = null;
   let databasePath: string | null = null;
   for (const argument of argv) {
     if (argument === "--keep") keep = true;
     else if (argument === "--json") json = true;
+    else if (argument === "--worker") worker = true;
     else if (argument.startsWith("--database-url=")) databaseUrl = argument.slice("--database-url=".length);
     else if (argument.startsWith("--database-path=")) databasePath = argument.slice("--database-path=".length);
-    else return { error: `Unknown argument: ${argument}\nUsage: pnpm stack:check [--keep] [--json] [--database-url=DSN] [--database-path=FILE]` };
+    else return { error: `Unknown argument: ${argument}\nUsage: pnpm stack:check [--keep] [--json] [--worker] [--database-url=DSN] [--database-path=FILE]` };
   }
-  return { args: { keep, json, databaseUrl, databasePath } };
+  return { args: { keep, json, worker, databaseUrl, databasePath } };
 }
 
 /**
@@ -748,7 +803,10 @@ async function main(): Promise<void> {
   const options = await defaultOptions({
     ...(args.databaseUrl !== null ? { databaseUrl: args.databaseUrl } : {}),
     ...(args.databasePath !== null ? { databasePath: args.databasePath } : {}),
-    worker: true,
+    // The cardless path is a scheduler-invoked one-shot drain, so that — not a
+    // long-lived worker — is what the default run proves. `--worker` starts the
+    // worker a self-hosted deployment would run.
+    worker: args.worker,
   });
   options.siteUrl = `http://127.0.0.1:${options.webPort}`;
 

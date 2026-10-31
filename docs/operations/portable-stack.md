@@ -31,9 +31,11 @@ What the command does, in order:
 3. `node apps/api/src/server.ts` — the API.
 4. `node apps/web-rr/server.ts` — the React Router Web server, **not** the
    Next.js app. That is the point: the command proves the migration target.
-5. `node apps/api/src/persistence/notification-worker.ts` — only when
-   `DATABASE_URL` is set (PostgreSQL). The durable outbox is a PostgreSQL table;
-   SQLite has no worker to start.
+5. `node apps/api/src/persistence/notification-worker.ts` — only with
+   `--worker`, and only when `DATABASE_URL` is set. The default is the cardless
+   path instead: the probe writes a direct message, the outbox holds it, and a
+   one-shot `notification-drain.ts` delivers it — the shape a free host
+   schedules. The long-lived worker is what a self-hosted deployment runs.
 
 Ports are reserved on ephemeral ports, so several stacks — yours, a CI job, a
 second branch — can run at once without colliding.
@@ -44,6 +46,7 @@ second branch — can run at once without colliding.
 | `--json` | Print the report as JSON instead of a table. |
 | `--database-url=<dsn>` | Use this PostgreSQL DSN instead of SQLite. |
 | `--database-path=<file>` | Use this SQLite file instead of a throwaway one. |
+| `--worker` | Start the long-lived notification worker (PostgreSQL only) instead of relying on the one-shot drain. |
 | `--help` | Print usage. |
 
 Any other argument is a usage error (exit `2`), not a silent default.
@@ -129,7 +132,7 @@ the report prints a remedy for each failure.
 | `web.authoring` | the writing desk publishes an article through the same-origin proxy |
 | `web.article` | the published page is server-rendered HTML containing the title |
 | `web.comments` | a second reader comments and reads the comment back |
-| `outbox.drain` | the notification outbox drains outside the Web server (PostgreSQL only) |
+| `outbox.drain` | a reader's direct message is delivered by a one-shot drain outside the Web server (PostgreSQL only) |
 | `no-platform` | none of the seven platform variables is present in a live child |
 
 Each step reports `pass`, `FAIL` or `skip`. `outbox.drain` skips on SQLite —
@@ -146,8 +149,13 @@ DATABASE_URL='postgres://postgres:postgres@127.0.0.1:5432/bot_thk_dev' pnpm stac
 ```
 
 When `DATABASE_URL` is set the provider flips to `postgres`, `DATABASE_PATH` is
-dropped from the child environment, the notification worker starts alongside the
-API, and the probe runs the outbox drain. Nothing else changes.
+dropped from the child environment, and the probe gains its tenth step: a reader
+opens a conversation with the author and writes into it, the message sits in the
+outbox, one `notification-drain.ts` run delivers it, and the author's inbox —
+read through the Web tier's same-origin proxy — goes from 0 to 1. Nothing in the
+Web server delivered it; that is what makes the free-host model (a scheduler
+invoking the drain) something CI proves rather than assumes. Pass `--worker` to
+run the long-lived worker instead.
 
 ## Continuous integration
 
@@ -165,5 +173,8 @@ covers the outbox drain, which no local SQLite run can.
   in this repository's sandbox — `docker` is not installed there.
 - It does not start the Next.js app. `pnpm dev` still does that, and still
   serves the migration's baseline on :3000.
+- It does not send mail. The outbox check is an in-app notification; account mail
+  stays switched off until an operator sets `MAIL_ENABLED` — see [Account
+  mail](mail-setup.md).
 - It does not touch a deployment, DNS entry or production database. Running it
   needs no account anywhere.

@@ -142,8 +142,8 @@ function parseError(argv: readonly string[]): string {
 }
 
 test("the command line is parsed strictly", () => {
-  assert.deepEqual(parsed([]), { keep: false, json: false, databaseUrl: null, databasePath: null });
-  assert.deepEqual(parsed(["--keep", "--json"]), { keep: true, json: true, databaseUrl: null, databasePath: null });
+  assert.deepEqual(parsed([]), { keep: false, json: false, worker: false, databaseUrl: null, databasePath: null });
+  assert.deepEqual(parsed(["--keep", "--json", "--worker"]), { keep: true, json: true, worker: true, databaseUrl: null, databasePath: null });
   assert.equal(parsed(["--database-url=postgres://x"]).databaseUrl, "postgres://x");
   assert.equal(parsed(["--database-path=/tmp/x.sqlite"]).databasePath, "/tmp/x.sqlite");
   assert.match(parseError(["--nope"]), /Unknown argument/);
