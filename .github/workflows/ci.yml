@@ -386,6 +386,9 @@ jobs:
           echo "Start again from stopped: 200 with the same server-rendered title (${WAKE_MS} ms; SIGTERM was handled by the server)."
 
           echo "Both images build and serve: API health/ready and the React Router home page, 404 and site shell."
+          # The two numbers are the point of this job, so they go on the pull
+          # request as well as into the log.
+          echo "::notice title=container-image timing::Web container cold start ${WEB_COLD_MS} ms (docker run -> first 200); start again from stopped ${WAKE_MS} ms."
       - name: Stop the containers
         if: ${{ !cancelled() }}
         run: |
