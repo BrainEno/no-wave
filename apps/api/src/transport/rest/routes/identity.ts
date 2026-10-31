@@ -131,6 +131,48 @@ const IDENTITY_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Obje
       sendServiceError(response, error);
     }
   },
+  /**
+   * `PUT /api/v1/me/password` — change the password of the signed-in account.
+   *
+   * Two credentials travel in the body and only one of them is new: the
+   * current password is the proof that the session changing it is the owner's,
+   * so a stolen session alone cannot take the account over or lock the owner
+   * out. The session that made the request survives (the identity service
+   * spares it); every other session of the account is signed out.
+   *
+   * The body ceiling is the identity one rather than the general JSON limit:
+   * two passwords are a few hundred bytes, and there is no reason to accept
+   * more before authentication has been established.
+   */
+  "me.password": async (ctx: RestRouteContext): Promise<void> => {
+    const { request, response, services, env, identity } = ctx;
+    if (!services || !identity) {
+      sendUnavailable(response);
+      return;
+    }
+    const bodyResult = await readJsonObject(request, 4096);
+    if (bodyResult.ok === false) {
+      sendJsonBodyError(response, request, bodyResult);
+      return;
+    }
+    try {
+      const user = await authenticatedUser(request, services, env);
+      if (!user) {
+        sendUnauthenticated(response);
+        return;
+      }
+      const ip = request.socket.remoteAddress ?? "unknown";
+      const data = await identity.changePassword({
+        userId: user.id,
+        sessionId: user.sessionId,
+        body: bodyResult.value,
+        ip,
+      });
+      sendJson(response, 200, { data });
+    } catch (error: unknown) {
+      sendServiceError(response, error);
+    }
+  },
   "users": async (ctx: RestRouteContext): Promise<void> => {
     const { request, response, url, services, env } = ctx;
     if (!services) {

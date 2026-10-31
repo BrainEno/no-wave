@@ -775,6 +775,33 @@ function handle(request: IncomingMessage, response: ServerResponse, body: Record
   }
 
   /**
+   * `PUT /api/v1/me/password` — changing the password from inside a session.
+   *
+   * The mock keeps the two rules the real contract has: the current password
+   * must be the mock credential (a session alone is not enough), and the new one
+   * must be a credential worth storing. It also answers with the number of other
+   * devices it signed out, which is the one field the account page shows.
+   */
+  if (path === "/api/v1/me/password") {
+    if (method !== "PUT") {
+      send(response, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed." } });
+      return;
+    }
+    if (request.headers.authorization !== `Bearer ${MOCK_TOKENS.accessToken}`) {
+      send(response, 401, { error: { code: "UNAUTHENTICATED", message: "Please sign in again." } });
+      return;
+    }
+    const current = typeof body.currentPassword === "string" ? body.currentPassword : "";
+    const next = typeof body.newPassword === "string" ? body.newPassword : "";
+    if (Object.keys(body).length !== 2 || current !== MOCK_CREDENTIALS.password || next.length < 12) {
+      send(response, 400, { error: { code: "BAD_USER_INPUT", message: "The request input is invalid." } });
+      return;
+    }
+    send(response, 200, { data: { ok: true, revokedSessions: 2 } });
+    return;
+  }
+
+  /**
    * The inbox endpoints. Reads and writes both need a session: the access token
    * travels in an HttpOnly cookie, so it is the proxy — never the browser —
    * that presents it.

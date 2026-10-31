@@ -43,6 +43,7 @@ export const persistencePortMethods = Object.freeze({
   sessions: Object.freeze(["revokeSession", "isSessionRevoked"] as const),
   identity: Object.freeze([
     "createIdentityAccount", "findIdentityAccount", "findIdentityAccountByUserId",
+    "findIdentityCredentials",
     "createIdentitySession",
     "rotateIdentityRefresh", "revokeIdentityRefresh", "revokeIdentitySessions",
     "setIdentityPassword", "markIdentityEmailVerified",

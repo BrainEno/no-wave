@@ -15,7 +15,7 @@ export {
   type AuthAction,
   type IdentityAction,
 } from "./auth.ts";
-export { handleAccountEmailVerificationRequest } from "./account.ts";
+export { handleAccountEmailVerificationRequest, handleAccountPasswordChangeRequest } from "./account.ts";
 export { apiUrl, readPayload, type ApiProxyConfig, type FetchImpl } from "./api.ts";
 export {
   readLimitedBytes,

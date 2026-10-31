@@ -1177,3 +1177,46 @@ test("the inbox's writes are origin-checked, and a malformed id never reaches th
   const anonymous = await put(`/api/authoring/notifications/${MOCK_NOTIFICATION.id}/read`, "{}");
   assert.equal(anonymous.status, 401);
 });
+
+/**
+ * `PUT /api/authoring/password`.
+ *
+ * The route is a thin adapter over the shared `web-http` handler, so what these
+ * assertions prove is the adapter: the path is wired, the method and the
+ * exact-Origin check are the shared one's, the cookie's token reaches the API,
+ * and the answer is passed through with the private cache policy intact. The
+ * rules themselves live in the API and are tested there.
+ */
+test("a password change reaches the API with the cookie's token, and only as a same-origin PUT", async () => {
+  const session = { cookie: `nw_access=${MOCK_TOKENS.accessToken}; nw_refresh=${MOCK_TOKENS.refreshToken}` };
+
+  const signedOut = await put(
+    "/api/authoring/password",
+    JSON.stringify({ currentPassword: MOCK_CREDENTIALS.password, newPassword: "a-brand-new-password" }),
+  );
+  assert.equal(signedOut.status, 401, "without a session there is nothing to change");
+
+  const changed = await put(
+    "/api/authoring/password",
+    JSON.stringify({ currentPassword: MOCK_CREDENTIALS.password, newPassword: "a-brand-new-password" }),
+    session,
+  );
+  assert.equal(changed.status, 200);
+  assert.match(changed.headers.get("cache-control") ?? "", /no-store/);
+  assert.match(changed.body, /"revokedSessions":2/, "the answer says how many other devices were signed out");
+
+  const foreign = await put(
+    "/api/authoring/password",
+    JSON.stringify({ currentPassword: MOCK_CREDENTIALS.password, newPassword: "a-brand-new-password" }),
+    { ...session, origin: "https://attacker.example" },
+  );
+  assert.equal(foreign.status, 403);
+  assert.match(foreign.body, /ORIGIN_REJECTED/);
+
+  // A password is never readable. React Router answers a resource route that
+  // exports only an action, so the refusal happens before the shared handler is
+  // reached; that handler's own method contract — 405 for anything that is not
+  // a PUT — is asserted in `web-http`.
+  const read = await get("/api/authoring/password", session);
+  assert.ok(read.status >= 400 && read.status < 500, "a GET must never reach the API");
+});

@@ -1,4 +1,5 @@
 import type { ApiProxyConfig } from "./api.ts";
+import { readLimitedJson } from "./body.ts";
 import { forwardAuthoringRequest } from "./forward.ts";
 import { errorResponse } from "./http.ts";
 import { isSameOriginMutation } from "./policy.ts";
@@ -49,4 +50,41 @@ export async function handleAccountEmailVerificationRequest(
   // the session cookie upstream, so accepting a body here would only be an
   // input for a caller to get wrong. Not reading it is also the bounded choice.
   return forwardAuthoringRequest(request, "api/v1/me/email-verification", "POST", config, "{}");
+}
+
+/**
+ * Two passwords and nothing else: the current one is the proof, the new one is
+ * the credential. Bounded like the other identity bodies, because a proxy has
+ * no reason to buffer megabytes in front of an endpoint that answers 401.
+ */
+const PASSWORD_BODY_MAX_BYTES = 4096;
+
+/**
+ * `PUT /api/authoring/password` — change the signed-in account's password.
+ *
+ * Both credentials go upstream exactly as the browser typed them: the proxy
+ * cannot check the old one and must not keep the new one, so the body is read
+ * once, bounded, and forwarded without being parsed. The rules — that the old
+ * password must match, and how long the new one must be — belong to the API,
+ * which is the only place that can enforce them against the stored hash.
+ *
+ * No token is issued here either: a change keeps the session that made it and
+ * ends the others, and which session that is, is the API's to decide. The
+ * refresh-and-retry in the forwarder still applies, so an expired access token
+ * is renewed rather than answered as a failure.
+ */
+export async function handleAccountPasswordChangeRequest(
+  request: Request,
+  config: ApiProxyConfig = {},
+): Promise<Response> {
+  const method = methodOf(request, ["PUT"]);
+  if (method === null) {
+    return errorResponse("METHOD_NOT_ALLOWED", "Only PUT is supported for a password change.", 405);
+  }
+  if (rejectCrossOrigin(request)) {
+    return errorResponse("ORIGIN_REJECTED", "The request origin was rejected.", 403);
+  }
+  const body = await readLimitedJson(request, PASSWORD_BODY_MAX_BYTES);
+  if (!body.ok) return body.response;
+  return forwardAuthoringRequest(request, "api/v1/me/password", "PUT", config, body.text);
 }

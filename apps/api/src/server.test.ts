@@ -6,6 +6,7 @@ import { createApiServer } from "./server.ts";
 import { persistencePortMethods } from "./application/persistence-ports.ts";
 import { ArticleAuthorizationError, ArticleInputError, ArticleNotFoundError, ArticleSlugConflictError, DomainError, IdempotencyConflictError } from "./domain/errors.ts";
 import { isUuid } from "./domain/validation.ts";
+import { hashPassword, verifyPassword } from "./security/passwords.ts";
 
 /**
  * Mail is enabled for this suite: the recovery and verification tests below are
@@ -1251,6 +1252,93 @@ test("REST current-session logout persists jti revocation through the token expi
     store: {
       async isSessionRevoked() { return false; },
       async revokeSession(args) { received = args; return true; },
+    },
+  });
+});
+
+/**
+ * `PUT /api/v1/me/password`.
+ *
+ * The HTTP-level assertions are about the shape of the contract, not the rules:
+ * the endpoint is authenticated and single-method, the session that makes the
+ * request is the one the identity service is told to spare, and a wrong current
+ * password is a 401 that changes nothing. What "spare" and "12 characters"
+ * mean is decided once, in the identity service, and tested there.
+ */
+test("REST password change is authenticated, spares its own session and stores only the new hash", async () => {
+  const seen: { set: Record<string, unknown> | null; revoked: Record<string, unknown> | null } = { set: null, revoked: null };
+  await withServer(async (baseUrl) => {
+    const response = await fetch(baseUrl + "/api/v1/me/password", {
+      method: "PUT",
+      headers: {
+        authorization: "Bearer " + signedToken("password-user"),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ currentPassword: "the-current-password", newPassword: "a-brand-new-password" }),
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { data: { ok: true, revokedSessions: 1 } });
+    assert.equal(seen.set?.userId, "password-user");
+    assert.ok(await verifyPassword("a-brand-new-password", String(seen.set?.passwordHash)));
+    // The jti of the presented token is the session that must survive its own request.
+    assert.deepEqual(seen.revoked, { userId: "password-user", exceptSessionId: "session-password-user" });
+  }, {
+    env: authEnv,
+    store: {
+      async isSessionRevoked() { return false; },
+      async findIdentityCredentials({ userId }) {
+        return { userId, passwordHash: await hashPassword("the-current-password") };
+      },
+      async setIdentityPassword(args) { seen.set = args; return true; },
+      async revokeIdentitySessions(args) { seen.revoked = args; return 1; },
+    },
+  });
+});
+
+test("REST password change answers 401 for a wrong current password and stores nothing", async () => {
+  let stored = 0;
+  await withServer(async (baseUrl) => {
+    const response = await fetch(baseUrl + "/api/v1/me/password", {
+      method: "PUT",
+      headers: {
+        authorization: "Bearer " + signedToken("password-user"),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ currentPassword: "not-the-password", newPassword: "a-brand-new-password" }),
+    });
+    assert.equal(response.status, 401);
+    assert.equal((await response.json()).error.code, "UNAUTHENTICATED");
+    assert.equal(stored, 0, "a refused change must not write a credential");
+  }, {
+    env: authEnv,
+    store: {
+      async isSessionRevoked() { return false; },
+      async findIdentityCredentials({ userId }) {
+        return { userId, passwordHash: await hashPassword("the-current-password") };
+      },
+      async setIdentityPassword() { stored += 1; return true; },
+      async revokeIdentitySessions() { throw new Error("must not be called"); },
+    },
+  });
+});
+
+test("REST password change is refused without a session, and only accepts PUT", async () => {
+  await withServer(async (baseUrl) => {
+    const anonymous = await fetch(baseUrl + "/api/v1/me/password", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ currentPassword: "the-current-password", newPassword: "a-brand-new-password" }),
+    });
+    assert.equal(anonymous.status, 401);
+
+    const read = await fetch(baseUrl + "/api/v1/me/password", { headers: { authorization: "Bearer " + signedToken("password-user") } });
+    assert.equal(read.status, 405);
+    assert.equal(read.headers.get("allow"), "PUT", "a password is never readable");
+  }, {
+    env: authEnv,
+    store: {
+      async isSessionRevoked() { return false; },
+      async findIdentityCredentials() { throw new Error("must not be called"); },
     },
   });
 });
