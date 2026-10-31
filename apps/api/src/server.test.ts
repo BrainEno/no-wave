@@ -2374,3 +2374,91 @@ test("the application-relative media address a stored asset carries is served by
     assert.equal(requested.length, 2, "the rejected write never reached the media service");
   }, { mediaAssets });
 });
+
+/**
+ * `PUT /api/v1/me/email`.
+ *
+ * The address is where account recovery lands, so this is the one account
+ * change that needs the current password even more sharply than changing the
+ * password does. What it must *not* do is gate on verification or send a mail —
+ * on an instance where mail is off, that would make the change impossible
+ * rather than merely unverified.
+ */
+test("REST email change stores the new address, unproven, and signs nobody out", async () => {
+  const seen: { email: Record<string, unknown> | null } = { email: null };
+  await withServer(async (baseUrl) => {
+    const response = await fetch(baseUrl + "/api/v1/me/email", {
+      method: "PUT",
+      headers: {
+        authorization: "Bearer " + signedToken("email-user"),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ password: "the-current-password", email: "New.Owner@Example.test" }),
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      data: { ok: true, email: "new.owner@example.test", emailVerifiedAt: null },
+    });
+    assert.deepEqual(seen.email, { userId: "email-user", email: "new.owner@example.test" });
+  }, {
+    env: authEnv,
+    store: {
+      async isSessionRevoked() { return false; },
+      async findIdentityCredentials({ userId }) {
+        return { userId, passwordHash: await hashPassword("the-current-password") };
+      },
+      async findIdentityAccountByUserId({ userId }) {
+        return { userId, email: "owner@example.test", emailVerifiedAt: "2026-01-01T00:00:00.000Z" };
+      },
+      async setIdentityEmail(args) { seen.email = args; return true; },
+      async revokeIdentitySessions() { throw new Error("must not be called"); },
+    },
+  });
+});
+
+test("REST email change refuses a wrong password, reports a taken address, and is authenticated", async () => {
+  let stored = 0;
+  await withServer(async (baseUrl) => {
+    const session = { authorization: "Bearer " + signedToken("email-user"), "content-type": "application/json" };
+
+    const wrongPassword = await fetch(baseUrl + "/api/v1/me/email", {
+      method: "PUT",
+      headers: session,
+      body: JSON.stringify({ password: "not-the-password", email: "moved@example.test" }),
+    });
+    assert.equal(wrongPassword.status, 401);
+    assert.equal((await wrongPassword.json()).error.code, "UNAUTHENTICATED");
+
+    const taken = await fetch(baseUrl + "/api/v1/me/email", {
+      method: "PUT",
+      headers: session,
+      body: JSON.stringify({ password: "the-current-password", email: "taken@example.test" }),
+    });
+    assert.equal(taken.status, 409);
+    assert.equal((await taken.json()).error.code, "CONFLICT");
+
+    const anonymous = await fetch(baseUrl + "/api/v1/me/email", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ password: "the-current-password", email: "moved@example.test" }),
+    });
+    assert.equal(anonymous.status, 401);
+
+    const read = await fetch(baseUrl + "/api/v1/me/email", { headers: { authorization: "Bearer " + signedToken("email-user") } });
+    assert.equal(read.status, 405);
+    assert.equal(read.headers.get("allow"), "PUT");
+  }, {
+    env: authEnv,
+    store: {
+      async isSessionRevoked() { return false; },
+      async findIdentityCredentials({ userId }) {
+        return { userId, passwordHash: await hashPassword("the-current-password") };
+      },
+      async findIdentityAccountByUserId({ userId }) {
+        return { userId, email: "owner@example.test", emailVerifiedAt: null };
+      },
+      async setIdentityEmail({ email }) { stored += 1; return email !== "taken@example.test"; },
+    },
+  });
+  assert.equal(stored, 1, "only the accepted-password attempt reaches the store");
+});

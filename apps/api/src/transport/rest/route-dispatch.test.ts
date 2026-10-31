@@ -68,7 +68,7 @@ test("route ids are grouped where a reader would look for them", () => {
     ["health", ["health"]],
     ["auth", ["auth"]],
     ["media", ["media.item", "me.media"]],
-    ["identity", ["me", "me.email-verification", "me.password", "me.profile", "me.session", "users", "users.relationships", "users.follow"]],
+    ["identity", ["me", "me.email", "me.email-verification", "me.password", "me.profile", "me.session", "users", "users.relationships", "users.follow"]],
     ["notifications", ["me.notifications", "me.notifications.unread-count", "me.notifications.read", "me.notifications.read-all"]],
     ["authors", ["authors.item", "authors.articles"]],
     ["taxonomies", ["categories", "categories.item", "categories.articles", "tags", "tags.item", "tags.articles", "taxonomies", "taxonomies.item"]],

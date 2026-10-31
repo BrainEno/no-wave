@@ -1095,6 +1095,37 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
     // caller may forward to a response never carries the hash with it.
     assert.deepEqual(await runtime.store.findIdentityCredentials({ userId }), { userId, passwordHash: "hash-after" });
     assert.equal(await runtime.store.findIdentityCredentials({ userId: `nobody-${suffix}` }), null);
+
+    /**
+     * Moving an account to another address.
+     *
+     * Two properties, and the second is the one that has to be settled by the
+     * database: the proof on file was for the *old* address, so it goes; and one
+     * address cannot end up on two accounts, however close together two callers
+     * ask for it.
+     */
+    const movedEmail = `identity-moved-${suffix}@example.test`;
+    assert.equal(await runtime.store.setIdentityEmail({ userId, email: movedEmail }), true);
+    const moved = await runtime.store.findIdentityAccountByUserId({ userId });
+    assert.equal(moved.email, movedEmail);
+    assert.equal(moved.emailVerifiedAt, null, "proof of the old address is not proof of the new one");
+
+    const otherUserId = `identity-other-${suffix}`;
+    const otherEmail = `identity-other-${suffix}@example.test`;
+    const otherSession = {
+      sessionId: randomUUID(), userId: otherUserId, accessTokenId: randomUUID(),
+      refreshHash: "5".repeat(64), expiresAt: hour,
+      accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+    };
+    assert.equal(await runtime.store.createIdentityAccount({
+      userId: otherUserId, email: otherEmail, passwordHash: "hash-other", session: otherSession,
+    }), true);
+    assert.equal(await runtime.store.setIdentityEmail({ userId, email: otherEmail }), false,
+      "one address cannot belong to two accounts");
+    assert.equal((await runtime.store.findIdentityAccountByUserId({ userId })).email, movedEmail,
+      "a refused move must leave the account where it was");
+    assert.equal(await runtime.store.setIdentityEmail({ userId: `nobody-${suffix}`, email: `nowhere-${suffix}@example.test` }), false,
+      "an account that does not exist cannot be moved either");
   });
 
   test(`${adapterName}: publishing a work is idempotent per author and does not leave a second copy behind`, options, async () => {

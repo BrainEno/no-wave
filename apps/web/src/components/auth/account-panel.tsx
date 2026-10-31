@@ -49,6 +49,16 @@ function localDate(value: string): string {
   return Number.isFinite(parsed) ? new Date(parsed).toLocaleDateString() : "未知时间";
 }
 
+/** The address and its verification state, as the API answers them. */
+function changedAddress(payload: unknown): { email: string; emailVerifiedAt: string | null } | null {
+  const data = dataOf(payload);
+  if (typeof data !== "object" || data === null) return null;
+  const email = (data as { email?: unknown }).email;
+  if (typeof email !== "string") return null;
+  const emailVerifiedAt = (data as { emailVerifiedAt?: unknown }).emailVerifiedAt;
+  return { email, emailVerifiedAt: typeof emailVerifiedAt === "string" ? emailVerifiedAt : null };
+}
+
 /** How many other devices were signed out, when the API says. */
 function revokedCount(payload: unknown): number {
   const data = typeof payload === "object" && payload !== null && "data" in payload
@@ -66,9 +76,11 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
   const [account, setAccount] = useState<Account | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [busy, setBusy] = useState<null | "verification" | "logout" | "password">(null);
+  const [busy, setBusy] = useState<null | "verification" | "logout" | "password" | "email">(null);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [emailPassword, setEmailPassword] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -138,6 +150,58 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
       // A 202 says the request was accepted, not that the mail arrived: the
       // relay is configured by the operator and may not be configured at all.
       setNotice("验证邮件已发出，请查收邮箱并按其中的链接完成验证。");
+    } catch {
+      setError("暂时无法连接服务器，请稍后重试。");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /**
+   * Move the account to another address.
+   *
+   * The current password is asked for because the API asks for it, and the API
+   * asks for it because whoever controls the address controls the account's
+   * recovery: a session on its own must not be able to move it. The answer
+   * carries the address and its verification state, so the panel can show the
+   * new one without asking again.
+   */
+  async function changeEmail(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy("email");
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/authoring/email", {
+        method: "PUT",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        credentials: "same-origin",
+        cache: "no-store",
+        body: JSON.stringify({ password: emailPassword, email: newEmail }),
+      });
+      const payload: unknown = await response.json().catch(() => null);
+      if (response.status === 401) {
+        setState("signed-out");
+        router.replace("/sign-in?next=%2Faccount");
+        return;
+      }
+      if (response.status === 409) {
+        setError("这个邮箱已经被其他账号使用，请换一个。");
+        return;
+      }
+      if (response.status === 400) {
+        setError("邮箱格式不正确，当前密码也不能为空。");
+        return;
+      }
+      if (!response.ok) {
+        setError(errorMessage(payload, "修改邮箱失败，请稍后重试。"));
+        return;
+      }
+      const changed = changedAddress(payload);
+      if (changed) setAccount((current) => current && { ...current, email: changed.email, emailVerifiedAt: changed.emailVerifiedAt });
+      setNewEmail("");
+      setEmailPassword("");
+      setNotice(`邮箱已更新为 ${changed?.email ?? "新地址"}。这个地址还没有验证标记——验证只是留一个「曾经可达」的记录，不影响登录、写作和发布。`);
     } catch {
       setError("暂时无法连接服务器，请稍后重试。");
     } finally {
@@ -276,6 +340,38 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
           未验证的账号同样可以登录、写作和发布：验证只是给这个邮箱留一个「曾经可达」的标记，用于在需要时确认你仍能收到邮件。
         </p>
       )}
+      <form className="nw-auth-form" onSubmit={changeEmail} aria-labelledby="nw-account-email-title" data-account-email-form>
+        <h2 id="nw-account-email-title"><span className="nw-zh">修改邮箱</span> <i>Change address</i></h2>
+        <p className="nw-ep">
+          这个邮箱是账号找回密码时唯一的去处，所以修改它需要输入当前密码：只有会话、没有密码的话，谁都不能把账号的找回途径搬走。
+          改完之后这个地址会变成「未验证」——验证只是留一个「曾经可达」的标记，不影响登录、写作和发布。
+        </p>
+        <label>新邮箱
+          <input
+            type="email"
+            name="email"
+            autoComplete="email"
+            value={newEmail}
+            onChange={(event) => setNewEmail(event.target.value)}
+            required
+            maxLength={254}
+          />
+        </label>
+        <label>当前密码
+          <input
+            type="password"
+            name="password"
+            autoComplete="current-password"
+            value={emailPassword}
+            onChange={(event) => setEmailPassword(event.target.value)}
+            required
+            maxLength={128}
+          />
+        </label>
+        <button className="nw-btn nw-pri" type="submit" disabled={busy !== null} data-account-email-submit>
+          {busy === "email" ? "正在修改……" : "修改邮箱"}
+        </button>
+      </form>
       {/*
         Changing the password needs no mail. That is the point of it: the
         recovery flow is the only other way to replace a credential, and on an

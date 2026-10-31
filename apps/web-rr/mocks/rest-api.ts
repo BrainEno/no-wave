@@ -775,6 +775,38 @@ function handle(request: IncomingMessage, response: ServerResponse, body: Record
   }
 
   /**
+   * `PUT /api/v1/me/email` — moving the account to another address.
+   *
+   * The mock keeps the rules the real contract has: the current password must
+   * match, the address must be one the mock is willing to hand out, and a
+   * different one standing in for "already taken" is a conflict. The answer
+   * carries the address and its verification state, which is what the account
+   * page shows without asking again.
+   */
+  if (path === "/api/v1/me/email") {
+    if (method !== "PUT") {
+      send(response, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed." } });
+      return;
+    }
+    if (request.headers.authorization !== `Bearer ${MOCK_TOKENS.accessToken}`) {
+      send(response, 401, { error: { code: "UNAUTHENTICATED", message: "Please sign in again." } });
+      return;
+    }
+    const password = typeof body.password === "string" ? body.password : "";
+    const email = typeof body.email === "string" ? body.email : "";
+    if (Object.keys(body).length !== 2 || password !== MOCK_CREDENTIALS.password || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      send(response, 400, { error: { code: "BAD_USER_INPUT", message: "The request input is invalid." } });
+      return;
+    }
+    if (email === "taken@example.test") {
+      send(response, 409, { error: { code: "CONFLICT", message: "The request conflicts with the current resource state." } });
+      return;
+    }
+    send(response, 200, { data: { ok: true, email, emailVerifiedAt: null } });
+    return;
+  }
+
+  /**
    * `PUT /api/v1/me/password` — changing the password from inside a session.
    *
    * The mock keeps the two rules the real contract has: the current password

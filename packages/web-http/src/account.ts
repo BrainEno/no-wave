@@ -53,11 +53,11 @@ export async function handleAccountEmailVerificationRequest(
 }
 
 /**
- * Two passwords and nothing else: the current one is the proof, the new one is
- * the credential. Bounded like the other identity bodies, because a proxy has
- * no reason to buffer megabytes in front of an endpoint that answers 401.
+ * An identity change is two short fields — what you have, and what you want it
+ * to become. Bounded like the other identity bodies, because a proxy has no
+ * reason to buffer megabytes in front of an endpoint that answers 401.
  */
-const PASSWORD_BODY_MAX_BYTES = 4096;
+const ACCOUNT_BODY_MAX_BYTES = 4096;
 
 /**
  * `PUT /api/authoring/password` — change the signed-in account's password.
@@ -84,7 +84,36 @@ export async function handleAccountPasswordChangeRequest(
   if (rejectCrossOrigin(request)) {
     return errorResponse("ORIGIN_REJECTED", "The request origin was rejected.", 403);
   }
-  const body = await readLimitedJson(request, PASSWORD_BODY_MAX_BYTES);
+  const body = await readLimitedJson(request, ACCOUNT_BODY_MAX_BYTES);
   if (!body.ok) return body.response;
   return forwardAuthoringRequest(request, "api/v1/me/password", "PUT", config, body.text);
+}
+
+/**
+ * `PUT /api/authoring/email` — move the signed-in account to another address.
+ *
+ * The current password travels with the new address, for the same reason it
+ * travels with a new password and then some: whoever controls the address
+ * controls the account's recovery. The proxy cannot check either field, so it
+ * reads the body once, bounded, and forwards it without parsing — what counts
+ * as an address, and whether it is taken, is the API's to decide.
+ *
+ * Nothing is refreshed or re-issued here: the account keeps its session, and
+ * the answer carries the address and its verification state so the page can
+ * show them without asking again.
+ */
+export async function handleAccountEmailChangeRequest(
+  request: Request,
+  config: ApiProxyConfig = {},
+): Promise<Response> {
+  const method = methodOf(request, ["PUT"]);
+  if (method === null) {
+    return errorResponse("METHOD_NOT_ALLOWED", "Only PUT is supported for changing the address.", 405);
+  }
+  if (rejectCrossOrigin(request)) {
+    return errorResponse("ORIGIN_REJECTED", "The request origin was rejected.", 403);
+  }
+  const body = await readLimitedJson(request, ACCOUNT_BODY_MAX_BYTES);
+  if (!body.ok) return body.response;
+  return forwardAuthoringRequest(request, "api/v1/me/email", "PUT", config, body.text);
 }

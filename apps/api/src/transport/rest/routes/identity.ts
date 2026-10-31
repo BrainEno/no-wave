@@ -173,6 +173,39 @@ const IDENTITY_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Obje
       sendServiceError(response, error);
     }
   },
+  /**
+   * `PUT /api/v1/me/email` — move the signed-in account to another address.
+   *
+   * The current password travels with it: whoever controls the address controls
+   * the account's recovery, so this must not be possible with a session alone.
+   * The address is then unverified, because what is on file is proof of the old
+   * one — but nothing is gated on verification and no mail is sent, so this
+   * works on an instance where mail is switched off.
+   */
+  "me.email": async (ctx: RestRouteContext): Promise<void> => {
+    const { request, response, services, env, identity } = ctx;
+    if (!services || !identity) {
+      sendUnavailable(response);
+      return;
+    }
+    const bodyResult = await readJsonObject(request, 4096);
+    if (bodyResult.ok === false) {
+      sendJsonBodyError(response, request, bodyResult);
+      return;
+    }
+    try {
+      const actorId = await authenticatedActorId(request, services, env);
+      if (!actorId) {
+        sendUnauthenticated(response);
+        return;
+      }
+      const ip = request.socket.remoteAddress ?? "unknown";
+      const data = await identity.changeEmail({ userId: actorId, body: bodyResult.value, ip });
+      sendJson(response, 200, { data });
+    } catch (error: unknown) {
+      sendServiceError(response, error);
+    }
+  },
   "users": async (ctx: RestRouteContext): Promise<void> => {
     const { request, response, url, services, env } = ctx;
     if (!services) {

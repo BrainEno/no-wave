@@ -1,4 +1,8 @@
-import { handleAccountEmailVerificationRequest, handleAccountPasswordChangeRequest } from "@bot-thk/web-http";
+import {
+  handleAccountEmailChangeRequest,
+  handleAccountEmailVerificationRequest,
+  handleAccountPasswordChangeRequest,
+} from "@bot-thk/web-http";
 import { apiBaseUrl } from "./runtime.ts";
 
 /**
@@ -23,4 +27,14 @@ export async function handleAccountEmailVerification(request: Request): Promise<
  */
 export async function handleAccountPasswordChange(request: Request): Promise<Response> {
   return handleAccountPasswordChangeRequest(request, { apiBaseUrl: apiBaseUrl() });
+}
+
+/**
+ * React Router binding for `PUT /api/authoring/email`.
+ *
+ * Everything that decides anything is the shared handler's, so the App Router
+ * route and this one cannot drift apart. The only thing here is the API origin.
+ */
+export async function handleAccountEmailChange(request: Request): Promise<Response> {
+  return handleAccountEmailChangeRequest(request, { apiBaseUrl: apiBaseUrl() });
 }
