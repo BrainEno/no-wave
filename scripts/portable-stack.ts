@@ -702,6 +702,41 @@ export async function defaultOptions(overrides: Partial<StackOptions> = {}): Pro
   };
 }
 
+/**
+ * Escape a value for a GitHub Actions workflow command.
+ *
+ * Newlines and carriage returns have to be encoded or the annotation would be
+ * cut at the first line break, which is exactly where the useful detail lives.
+ */
+function escapeAnnotationData(value: string): string {
+  return value.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A").slice(0, 900);
+}
+
+/**
+ * Surface every non-passing check in the GitHub UI.
+ *
+ * A red CI job whose reason is only in the log is a job nobody reads; an
+ * annotation puts the failing step and its remedy on the pull request itself.
+ */
+export function annotationLines(results: CheckResult[], message = ""): string[] {
+  if (process.env.GITHUB_ACTIONS !== "true") return [];
+  const lines: string[] = [];
+  if (message.length > 0) {
+    lines.push(`::error title=portable-stack::${escapeAnnotationData(message)}`);
+  }
+  for (const result of results) {
+    if (result.status === "pass") continue;
+    const detail = `${result.detail}${result.remedy ? ` Remedy: ${result.remedy}` : ""}`;
+    const level = result.status === "fail" ? "error" : "notice";
+    lines.push(`::${level} title=portable-stack/${result.id}::${escapeAnnotationData(detail)}`);
+  }
+  return lines;
+}
+
+export function annotateResults(results: CheckResult[], message?: string): void {
+  for (const line of annotationLines(results, message ?? "")) process.stdout.write(`${line}\n`);
+}
+
 async function main(): Promise<void> {
   const parsed = parseArguments(process.argv.slice(2));
   if ("error" in parsed) {
@@ -730,6 +765,7 @@ async function main(): Promise<void> {
     }
     const results = await probePortableStack(stack);
     const failed = results.filter((result) => result.status === "fail").length;
+    annotateResults(results);
     if (args.json) {
       process.stdout.write(`${JSON.stringify({ apiBaseUrl: stack.apiBaseUrl, webBaseUrl: stack.webBaseUrl, results }, null, 2)}\n`);
     } else {
@@ -746,7 +782,9 @@ async function main(): Promise<void> {
 
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
   main().catch((error: unknown) => {
-    process.stderr.write(`The portable stack failed: ${error instanceof Error ? error.message : String(error)}\n`);
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`The portable stack failed: ${message}\n`);
+    annotateResults([], `the stack did not come up: ${message}`);
     process.exitCode = 1;
   });
 }

@@ -12,6 +12,7 @@ import {
   parseArguments,
   portableStackEnvironment,
   resolveJwtSecret,
+  annotationLines,
   type StackArguments,
   type StackOptions,
 } from "./portable-stack.ts";
@@ -155,6 +156,35 @@ test("a missing AUTH_JWT_SECRET is replaced, not fatal, and the stack still star
   assert.equal(messages.length, 1, "the operator is told the secret is not durable");
   assert.match(messages[0] ?? "", /AUTH_JWT_SECRET/);
   assert.notEqual(resolveJwtSecret({}, () => {}), secret, "a second run gets its own secret");
+});
+
+function check(id: string, status: "pass" | "fail" | "skip", detail: string, remedy?: string) {
+  return { id, title: id, status, detail, ...(remedy === undefined ? {} : { remedy }), durationMs: 1 };
+}
+
+test("CI annotations escape newlines and stay silent outside GitHub Actions", () => {
+  const saved = process.env.GITHUB_ACTIONS;
+  try {
+    delete process.env.GITHUB_ACTIONS;
+    assert.deepEqual(annotationLines([check("web.home", "fail", "down")], "boom"), []);
+
+    process.env.GITHUB_ACTIONS = "true";
+    const lines = annotationLines(
+      [check("web.home", "fail", "first line\nsecond line", "rebuild the app"), check("outbox.drain", "skip", "no table")],
+      "boom: 100% sure",
+    );
+    assert.equal(lines.length, 3);
+    assert.equal(lines[0], "::error title=portable-stack::boom: 100%25 sure");
+    assert.equal(lines[1], "::error title=portable-stack/web.home::first line%0Asecond line Remedy: rebuild the app");
+    // A skip is a notice, not an error: CI must stay green when a provider has
+    // no durable outbox to drain.
+    assert.equal(lines[2], "::notice title=portable-stack/outbox.drain::no table");
+    // Passing checks produce nothing, so a green run adds no noise.
+    assert.deepEqual(annotationLines([check("api.health", "pass", "ok")]), []);
+  } finally {
+    if (saved === undefined) delete process.env.GITHUB_ACTIONS;
+    else process.env.GITHUB_ACTIONS = saved;
+  }
 });
 
 test("a supplied AUTH_JWT_SECRET is used as given", () => {
