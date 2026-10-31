@@ -299,7 +299,7 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
         sendUnavailable(response);
         return;
       }
-      const articleId = decodeUserId(routeParams.slug);
+      const articleId = decodeUserId(routeParams.article);
       if (!articleId) {
         sendBadInput(response, "Invalid article ID.");
         return;
@@ -333,7 +333,7 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
         sendBadInput(response, normalized.error ?? "Invalid article input.");
         return;
       }
-      const articleId = decodeUserId(routeParams.slug);
+      const articleId = decodeUserId(routeParams.article);
       if (!articleId) {
         sendBadInput(response, "Invalid article ID.");
         return;
@@ -355,7 +355,7 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
       sendUnavailable(response);
       return;
     }
-    const slug = decodeSlug(routeParams.slug);
+    const slug = decodeSlug(routeParams.article);
     const locale = parseLocale(url);
     if (!slug || !locale) {
       sendBadInput(response, "Invalid article slug or locale.");

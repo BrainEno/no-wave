@@ -72,15 +72,15 @@ export const REST_ROUTES: readonly RestRoute[] = Object.freeze([
   },
 
   { id: "users", methods: ["GET"], segments: [literal("users")] },
-  { id: "users.follow", methods: ["POST", "DELETE"], segments: [literal("users"), param("username"), literal("follow")] },
+  { id: "users.follow", methods: ["POST", "DELETE"], segments: [literal("users"), param("userId"), literal("follow")] },
   {
     id: "users.relationships",
     methods: ["GET"],
-    segments: [literal("users"), param("username"), param("relation", RELATIONS)],
+    segments: [literal("users"), param("userId"), param("relation", RELATIONS)],
   },
 
   { id: "articles", methods: ["GET", "POST"], segments: [literal("articles")] },
-  { id: "articles.item", methods: ["GET", "PUT", "DELETE"], segments: [literal("articles"), param("slug")] },
+  { id: "articles.item", methods: ["GET", "PUT", "DELETE"], segments: [literal("articles"), param("article")] },
   {
     id: "articles.restore",
     methods: ["POST"],
@@ -107,8 +107,8 @@ export const REST_ROUTES: readonly RestRoute[] = Object.freeze([
     methods: ["GET"],
     segments: [literal("categories"), param("slug"), literal("articles")],
   },
-  { id: "authors.item", methods: ["GET"], segments: [literal("authors"), param("username")] },
-  { id: "authors.articles", methods: ["GET"], segments: [literal("authors"), param("username"), literal("articles")] },
+  { id: "authors.item", methods: ["GET"], segments: [literal("authors"), param("userId")] },
+  { id: "authors.articles", methods: ["GET"], segments: [literal("authors"), param("userId"), literal("articles")] },
   { id: "media.item", methods: ["GET"], segments: [literal("media"), param("id")] },
 
   { id: "conversations", methods: ["GET", "POST"], segments: [literal("conversations")] },

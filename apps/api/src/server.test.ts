@@ -7,6 +7,7 @@ import { persistencePortMethods } from "./application/persistence-ports.ts";
 import { ArticleAuthorizationError, ArticleInputError, ArticleNotFoundError, ArticleSlugConflictError, DomainError, IdempotencyConflictError } from "./domain/errors.ts";
 import { isUuid } from "./domain/validation.ts";
 import { hashPassword, verifyPassword } from "./security/passwords.ts";
+import { MediaAssetNotFoundError } from "./application/media-assets.ts";
 
 /**
  * Mail is enabled for this suite: the recovery and verification tests below are
@@ -2328,4 +2329,48 @@ test("the same endpoints work the moment the switch is on", async () => {
     assert.deepEqual(await reset.json(), { data: { ok: true } });
     assert.ok(store.calls.some((call) => call.method === "issueIdentityToken"));
   }, { env: authEnv, store });
+});
+
+/**
+ * The address a stored asset carries.
+ *
+ * `POST /me/media` answers with `src: /api/media/<id>` — the *application*
+ * path, not the versioned one — because that is the address a content body
+ * keeps, and the Web app serves it from its own origin. The stored `src` is not
+ * changed (it would break every body already saved, and the editor that only
+ * accepts it), so the API answers that path too: one address, both
+ * deployments, and a client that talks to the API directly no longer has to
+ * rewrite the address it was just handed.
+ */
+test("the application-relative media address a stored asset carries is served by the API too", async () => {
+  const assetId = "11111111-1111-4111-8111-111111111111";
+  const bytes = Buffer.from("RIFF-alias-webp");
+  const sha256 = "b".repeat(64);
+  const requested: string[] = [];
+  const mediaAssets = {
+    async upload() { throw new Error("unused"); },
+    async getPublic({ id }: { id: string }) {
+      requested.push(id);
+      if (id !== assetId) throw new MediaAssetNotFoundError();
+      return { id, bytes, byteSize: bytes.byteLength, width: 10, height: 8, sha256, contentType: "image/webp" as const };
+    },
+  };
+  await withServer(async (baseUrl) => {
+    const alias = await fetch(baseUrl + "/api/media/" + assetId);
+    assert.equal(alias.status, 200);
+    assert.equal(alias.headers.get("content-type"), "image/webp");
+    assert.match(alias.headers.get("cache-control") ?? "", /immutable/);
+    assert.equal(alias.headers.get("etag"), '"' + sha256 + '"');
+    assert.deepEqual(Buffer.from(await alias.arrayBuffer()), bytes);
+    assert.deepEqual(requested, [assetId], "the alias resolves through the same handler, not a second one");
+
+    // An unknown asset on the alias is still a 404, and the alias is not a way
+    // in for a write: one path, and the same rules the versioned one has.
+    const missing = await fetch(baseUrl + "/api/media/22222222-2222-4222-8222-222222222222");
+    assert.equal(missing.status, 404);
+    const write = await fetch(baseUrl + "/api/media/" + assetId, { method: "POST" });
+    assert.equal(write.status, 405);
+    assert.equal(write.headers.get("allow"), "GET");
+    assert.equal(requested.length, 2, "the rejected write never reached the media service");
+  }, { mediaAssets });
 });

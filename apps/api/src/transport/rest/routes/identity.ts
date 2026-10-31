@@ -200,7 +200,7 @@ const IDENTITY_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Obje
       sendUnavailable(response);
       return;
     }
-    const userId = decodeUserId(routeParams.username);
+    const userId = decodeUserId(routeParams.userId);
     const relation = routeParams.relation;
     const locale = parseLocale(url);
     const limit = parseInteger(url.searchParams, "limit", 50, 1, 100);
@@ -224,7 +224,7 @@ const IDENTITY_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Obje
       sendUnavailable(response);
       return;
     }
-    const targetUserId = decodeUserId(routeParams.username);
+    const targetUserId = decodeUserId(routeParams.userId);
     const locale = parseLocale(url);
     if (!targetUserId || !locale) {
       sendBadInput(response, "Invalid target user ID or locale.");

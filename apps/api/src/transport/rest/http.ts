@@ -89,6 +89,16 @@ export function decodeSlug(encodedSlug: string): string | null {
   return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) ? slug : null;
 }
 
+/**
+ * Decode an opaque identifier from a path segment.
+ *
+ * Deliberately **not** a UUID check: this API's identifiers are opaque strings,
+ * and a shape check here would reject an identifier that a future issuer is
+ * entitled to mint. What is checked is what makes the value safe to hand to a
+ * parameterised query and to a log line — decodable, non-empty, bounded and
+ * free of surrounding whitespace. Anything the value names is resolved by the
+ * store, which answers "not found" for an identifier that exists in no row.
+ */
 export function decodeUserId(encodedUserId: string): string | null {
   let userId: string;
   try {
