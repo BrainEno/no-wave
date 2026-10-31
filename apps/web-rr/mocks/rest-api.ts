@@ -29,6 +29,14 @@ export const MOCK_TOKENS = {
 
 export const MOCK_DISPLAY_NAME = "林可行";
 
+/**
+ * `GET /api/v1/me` — the account, exactly as the real API answers it.
+ *
+ * `null` while unverified, which is the state the account page has to render
+ * its "send the verification mail" action for.
+ */
+export const MOCK_EMAIL_VERIFIED_AT: string | null = null;
+
 export const MOCK_AUTHOR = { username: "writer", bio: "在无浪潮写作。" } as const;
 
 /**
@@ -729,8 +737,10 @@ function handle(request: IncomingMessage, response: ServerResponse, body: Record
       send(response, 401, { error: { code: "UNAUTHENTICATED", message: "Please sign in again." } });
       return;
     }
+    // Exactly the real API's shape: `GET /api/v1/me` answers the account, and
+    // the author's display name is not part of it (that lives in the profile).
     send(response, 200, {
-      data: { userId: "writer", displayName: MOCK_DISPLAY_NAME, email: MOCK_CREDENTIALS.email },
+      data: { id: "writer", email: MOCK_CREDENTIALS.email, emailVerifiedAt: MOCK_EMAIL_VERIFIED_AT },
     });
     return;
   }

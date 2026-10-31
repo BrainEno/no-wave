@@ -26,7 +26,8 @@ instead of copying it, and it never imports Next.js.
 | `app/routes/article.tsx` | public article, both locales | loader owns data so the component stays synchronous (see finding F1) |
 | `app/routes/home.tsx` | public list | renders the **unmodified** shared `WorkRow`/`SectionHeading` |
 | `app/routes/sign-in.tsx` | shared interactive form | unchanged shared `SignInForm` (client state, pending, error, success) |
-| `app/routes/account.tsx` | private route | redirect when signed out, `no-store` when signed in |
+| `app/routes/account.tsx` | private route | redirect when signed out, `no-store` shell when a session exists; the account itself is resolved in the browser by the shared `AccountPanel` |
+| `app/routes/api.authoring.email-verification.ts` | resource route | three-line adapter, same handler as the App Router route |
 | `app/routes/api.auth.ts` | resource route | three-line adapter over a framework-neutral handler |
 | `app/lib/auth-proxy.ts` | auth boundary | standard `Request`/`Response`; no React Router or Next types |
 | `app/lib/meta.ts` | SEO adapter | converts the shared metadata objects into React Router `meta` descriptors |
@@ -59,8 +60,8 @@ deleted from the shared component in one small commit instead of during a rewrit
 | Metadata: title, description, canonical, hreflang, Open Graph | emitted from the shared `articleMetadata` | same test |
 | Hard 404 for an unknown slug | `404` status, not a soft 404 page | `an unknown article is a hard 404…` |
 | Locale behavior preserved | `/en/articles/:slug` renders `lang="en"` with localized canonical | `the English article route…` |
-| Private route does not leak user data or enter shared caches | `Cache-Control: no-store`, display name only, token absent from HTML | `a signed-in account request is private…` |
-| Signed-out access redirects instead of rendering an empty shell | `302` to `/sign-in?next=%2Faccount`; expired token behaves the same | two tests |
+| Private route does not leak user data or enter shared caches | `Cache-Control: no-store`; the HTML is a shell with no address, no token and no account data — all three are resolved by the browser from `/api/authoring/session` | `a live session marker opens a private, no-store, data-free account shell` |
+| Signed-out access redirects instead of rendering an empty shell | `302` to `/sign-in?next=%2Faccount`; an expired or unparseable marker behaves the same | three tests |
 | Client-interactive form with pending/success/error | shared `SignInForm` posts to a real resource route: success sets cookies, 401 surfaces the API message, 415/403 are rejected before the API | `a successful sign-in…`, `rejected credentials…`, `a cross-origin mutation…`, `a non-JSON body…` |
 | Mocked REST API errors are handled | the mock returns real 401/404/400 responses over HTTP | as above |
 
@@ -68,8 +69,8 @@ Security assertions kept from the Next.js implementation: exact-Origin check on
 mutations, JSON-only bodies with a 4 KiB ceiling, tokens only in `HttpOnly`
 `SameSite=Lax` cookies on the documented paths, no token value in any
 browser-visible JSON, `Secure` derived from the browser-facing scheme
-(`x-forwarded-proto` on TLS-terminating proxies), and clearing both cookies on
-logout.
+(`x-forwarded-proto` on TLS-terminating proxies), and clearing every session
+cookie on logout.
 
 ## 4. Findings that change the plan
 
@@ -110,6 +111,24 @@ clean `--frozen-lockfile` install works in CI.
 reuses `isSameOriginMutation`, which compares against the `Host` header. A Node
 adapter happens to give the real URL, but relying on that would reintroduce the
 `403 ORIGIN_REJECTED` defect fixed in #81 for reverse-proxied deployments.
+
+**F7 — a private page render cannot read the session cookies.** The token cookies
+are scoped to `/api/authoring` and `/api`, so the browser never sends them to
+`/account`. The first account route read `nw_access` out of the request anyway
+and passed its tests, because the tests were the ones setting the cookie — in a
+browser the route could only ever redirect, which is why signing in with
+`next=/account` (this app's default) bounced straight back to the form.
+
+The fix keeps that scoping and adds the missing piece: `nw_session`, an
+`HttpOnly` cookie scoped to `/` whose value is the moment the session can no
+longer be renewed. It carries no credential and grants nothing; it only decides
+between "redirect" and "render the shell". Who the visitor is still comes from
+`/api/authoring/session`, which is the request that can present the access token.
+
+Widening the token cookies to `/` was the alternative and was rejected: the API
+rotates the refresh token on every use, so a page render must never be the thing
+that refreshes it — two concurrent renders would invalidate each other's
+session.
 
 ## 5. What this does not do
 

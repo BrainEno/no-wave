@@ -28,12 +28,15 @@ export {
 export {
   ACCESS_COOKIE_PATH,
   REFRESH_COOKIE_PATH,
+  SESSION_COOKIE_PATH,
   accessTokenFrom,
   clearedTokenCookieHeaders,
+  hasUsableSession,
   isSecureRequest,
   readCookie,
   refreshTokenFrom,
   serializeCookie,
+  sessionMarkerFrom,
   tokenCookieHeaders,
 } from "./cookies.ts";
 export { forwardAuthoringRequest, type ForwardMethod } from "./forward.ts";
@@ -88,6 +91,7 @@ export {
 export {
   ACCESS_TOKEN_COOKIE,
   REFRESH_TOKEN_COOKIE,
+  SESSION_MARKER_COOKIE,
   isSameOriginMutation,
   isTokenEnvelope,
   safeRedirectPath,
