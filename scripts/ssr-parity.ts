@@ -76,6 +76,14 @@ const ROUTES: readonly Expectation[] = [
   { path: "/articles/does-not-exist", private: true, hard404: true },
   { path: "/authors/nobody", private: true, hard404: true },
   { path: "/categories/does-not-exist", private: true, hard404: true },
+  // Recovery and verification, in the switch's default position: mail is off in
+  // both servers, so both render the same notice. Comparing them with mail on
+  // would need a third and fourth process; the prototype's own suite covers that
+  // position against the same production build, and `pnpm test:routes` covers it
+  // for the App Router.
+  { path: "/forgot-password", markers: [/未启用邮件功能/], private: true },
+  { path: `/reset-password?token=${"a".repeat(43)}`, markers: [/未启用邮件功能/], private: true },
+  { path: `/verify-email?token=${"a".repeat(43)}`, markers: [/未启用邮件功能/], private: true },
 ];
 
 /**

@@ -66,11 +66,23 @@ which is how a `User-agent` / `User-Agent` case difference was caught.
 | `routes/categories.tsx` | `/categories`, `/en/categories` | `app/categories/page.tsx`, `app/en/categories/page.tsx` |
 | `routes/category.tsx` | `/categories/:slug`, `/en/categories/:slug` | `app/categories/[slug]/page.tsx`, `app/en/categories/[slug]/page.tsx` |
 | `routes/search.tsx` | `/search`, `/en/search` | `app/search/page.tsx`, `app/en/search/page.tsx` |
+| `routes/sign-in.tsx` | `/sign-in` | `app/sign-in/page.tsx` |
+| `routes/account.tsx` | `/account` | `app/account/page.tsx` |
+| `routes/write.tsx` | `/write` | `app/write/page.tsx` |
+| `routes/forgot-password.tsx` | `/forgot-password` | `app/forgot-password/page.tsx` |
+| `routes/reset-password.tsx` | `/reset-password` | `app/reset-password/page.tsx` |
+| `routes/verify-email.tsx` | `/verify-email` | `app/verify-email/page.tsx` |
 | `routes/sitemap.xml.ts` | `/sitemap.xml` | `app/sitemap.ts` (same builder) |
 | `routes/robots.txt.ts` | `/robots.txt` | `app/robots.ts` (same builder) |
 
 Locale comes from the request path (`app/lib/locale.ts`), which is the same
 information the App Router encoded in a differently-named directory.
+
+The three recovery pages read `MAIL_ENABLED` in their **loader**, which is where
+the App Router reads it too (`isMailEnabled` on a `force-dynamic` page): an
+operator's switch, resolved per request, never folded into the build. With mail
+off all three render `未启用邮件功能` instead of a form — in both applications,
+which is what `pnpm check:ssr-parity` compares.
 
 ## 3. Instance shape: 0.1 CPU, cold start, ephemeral disk
 
@@ -147,7 +159,7 @@ Output of the last local run:
 ```
 ssr-parity: building both applications with NEXT_PUBLIC_SITE_URL=https://no-wave.example
 ssr-parity: comparing
-SSR parity: 168 comparisons over 17 routes plus sitemap/robots; 0 unexpected difference(s), 13 known divergence(s).
+SSR parity: 198 comparisons over 20 routes plus sitemap/robots; 0 unexpected difference(s), 13 known divergence(s).
 Both implementations agree on status, title, canonical, hreflang and content presence.
 ```
 
@@ -162,7 +174,7 @@ Three implementation details matter for trusting that output:
   green, because a comparative marker check asks "do the two differ?" and two
   pages that agree on having no way to reach the rest of the site do not differ.
   `class="nw-pill"` and `class="nw-footer"` must now be present in **both**
-  responses (56 of the 168 comparisons). Hard 404s are excluded: the App Router
+  responses (56 of the 198 comparisons). Hard 404s are excluded: the App Router
   answers them with an empty body and an RSC payload that only becomes markup in
   a browser, so there is nothing symmetric to compare — see F8 in the
   [prototype report](react-router-prototype.md).
@@ -287,7 +299,9 @@ and the repo has no DOM test stack. §7 records them.
 | ≤ 2 API calls per page (home included) | same suite (mock API request counter) |
 | `<title>` uses the App Router's template, including the root-page exception | same suite |
 | `sitemap.xml` / `robots.txt` are well-formed, bounded and localized | `apps/web/src/lib/site-metadata.test.ts` (5 tests) + the prototype suite |
-| **Both implementations agree on status, title, canonical, hreflang targets and content** | `pnpm check:ssr-parity` (168 comparisons, 0 unexpected differences — output above) |
+| **Both implementations agree on status, title, canonical, hreflang targets and content** | `pnpm check:ssr-parity` (198 comparisons over 20 routes, 0 unexpected differences — output above) |
+| The three recovery pages agree in both applications: status, title, `no-store`, and `未启用邮件功能` instead of a form while mail is off | `pnpm check:ssr-parity` (three routes) + `pnpm test:prototype` (both switch positions, one build) |
+| The recovery forms' client code ships, so the verification panel can spend its token | `apps/web-rr/test/client-bundle.test.ts` (`ForgotPasswordForm` / `ResetPasswordForm` / `VerifyEmailPanel`) |
 | Every migrated page carries the site shell, in both implementations | `pnpm check:ssr-parity` (absolute `nw-pill` / `nw-footer` markers) + `pnpm test:prototype` (navigation, account entry, language switch and footer on `/`, `/en` and a hard 404) |
 | The shell's client code ships, so it hydrates rather than only rendering | `apps/web-rr/test/client-bundle.test.ts` (`SiteChrome` sentinel `nw-smooth`) |
 | The article page ships its interactive parts (reader bar, TOC, comment section) | `pnpm test:prototype`: server-rendered mount points + `client-bundle.test.ts` (the code that hydrates them) |

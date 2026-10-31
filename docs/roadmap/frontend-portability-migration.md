@@ -154,9 +154,10 @@ so the phase is not complete and no provider-specific code exists.
 **Exit gate:** public routes pass side-by-side behavior assertions with no known SEO, locale or hard-404 regression.
 
 **Status 2026-10-31:** the site shell is ported too, and `pnpm check:ssr-parity` now
-compares **168** observations (was 112): the 56 new ones are absolute shell checks. The only
-production surfaces still missing from the prototype are `/forgot-password`,
-`/reset-password`, `/verify-email` and the SSE spike route `/api/spike/events`.
+compares **198** observations over **20** routes (was 112 over 17): the new ones are absolute
+shell checks plus the three recovery pages. The only production surfaces still missing from
+the prototype are the spike — `/api/spike/events` and `/spike-form` — which the roadmap
+itself says must not be treated as a durable transport.
 
 **Status 2026-10-29:** every public route — home included — plus sitemap and
 robots is ported, and the exit gate is executable and scheduled:

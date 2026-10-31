@@ -29,6 +29,12 @@ export default [
   route("articles/:slug", "routes/article.tsx"),
   route("en/articles/:slug", "routes/article.tsx", { id: "en-article" }),
   route("sign-in", "routes/sign-in.tsx"),
+  // Password recovery and email verification (ADR 0014). They are in the table
+  // whether or not mail is switched on: they render a notice when it is off,
+  // which is the whole point of having the pages here at all.
+  route("forgot-password", "routes/forgot-password.tsx"),
+  route("reset-password", "routes/reset-password.tsx"),
+  route("verify-email", "routes/verify-email.tsx"),
   route("write", "routes/write.tsx"),
   route("account", "routes/account.tsx"),
   route("sitemap.xml", "routes/sitemap.xml.ts"),
