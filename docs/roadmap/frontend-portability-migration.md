@@ -142,14 +142,26 @@ so the phase is not complete and no provider-specific code exists.
 - [x] Preserve URLs, `zh-CN` defaults, English routes, canonical/Open Graph metadata and status codes. → asserted by `pnpm test:prototype` (28 tests) over real HTTP, including the App Router's title template and the root-page exception.
 - [x] Port sitemap and robots output; avoid using fake fallback content when a configured API fails. → one shared builder (`apps/web/src/lib/site-metadata.ts`) with a thin adapter per framework; the scan is bounded and a failing API yields an empty, non-fixture entry set.
 - [x] Reuse React presentation components and neutral content helpers where appropriate; avoid a styling redesign within this migration. → the load/render split in `apps/web/src/lib/public-pages.ts` + `apps/web/src/components/public/*` is shared by both apps, so the App Router renders the same view; see [public SSR migration](public-ssr-migration.md).
-- [x] Update route-smoke checks to start the migrated Node server and keep asserting observable output/status/cache semantics. → the prototype suite starts `apps/web-rr/server.ts` and asserts status, cache policy, hard 404s and a ≤2 API-call-per-page budget; `pnpm test:routes` still covers the App Router.
+- [x] Update route-smoke checks to start the migrated Node server and keep asserting observable output/status/cache semantics.
+- [x] Port the **site shell** — navigation, language switch, notification panel, smooth-scroll
+  wrapper and footer — by rendering the shared `SiteChrome` from `root.tsx` (and from the error
+  boundary, so a dead link still arrives with a way out). The gate's shell markers are absolute
+  (`nw-pill` / `nw-footer` must be present in **both** responses), because a comparative marker
+  check was satisfied by two pages that agreed on having no navigation at all. Hard 404s are
+  excluded: the App Router answers them with an empty body and an RSC payload, so there is no
+  markup to compare — see F8 in the [prototype report](react-router-prototype.md). → the prototype suite starts `apps/web-rr/server.ts` and asserts status, cache policy, hard 404s and a ≤2 API-call-per-page budget; `pnpm test:routes` still covers the App Router.
 
 **Exit gate:** public routes pass side-by-side behavior assertions with no known SEO, locale or hard-404 regression.
+
+**Status 2026-10-31:** the site shell is ported too, and `pnpm check:ssr-parity` now
+compares **168** observations (was 112): the 56 new ones are absolute shell checks. The only
+production surfaces still missing from the prototype are `/forgot-password`,
+`/reset-password`, `/verify-email` and the SSE spike route `/api/spike/events`.
 
 **Status 2026-10-29:** every public route — home included — plus sitemap and
 robots is ported, and the exit gate is executable and scheduled:
 `pnpm check:ssr-parity` builds both applications, points them at one mock API
-and compares 105 observations over 17 routes with **0 unexpected differences**
+and compares 168 observations over 17 routes (105 of them page-level, 56 of them absolute shell markers) with **0 unexpected differences**
 (the 13 remaining divergences are the public-page caching policy, reasoned in
 [public SSR migration §5](public-ssr-migration.md#5-the-one-divergence-the-gate-accepts-and-the-decision-it-forced)).
 It runs nightly in `.github/workflows/ssr-parity.yml` and on demand, not per

@@ -44,6 +44,12 @@ type Expectation = {
   markers?: RegExp[];
   /** When true, both implementations must answer with a private (no-store) response. */
   private?: boolean;
+  /**
+   * The route is a hard 404. The App Router answers those with an empty body and
+   * an RSC payload the browser renders, so its HTML carries no shell markup to
+   * compare — see the comment on {@link SHELL_MARKERS}.
+   */
+  hard404?: boolean;
 };
 
 const ROUTES: readonly Expectation[] = [
@@ -67,10 +73,31 @@ const ROUTES: readonly Expectation[] = [
   { path: "/search?q=抵抗", markers: [/作为抵抗的阅读/], private: true },
   // Hard 404s are private responses in both implementations; only the `no-store`
   // class is compared, because the exact header spelling is framework-specific.
-  { path: "/articles/does-not-exist", private: true },
-  { path: "/authors/nobody", private: true },
-  { path: "/categories/does-not-exist", private: true },
+  { path: "/articles/does-not-exist", private: true, hard404: true },
+  { path: "/authors/nobody", private: true, hard404: true },
+  { path: "/categories/does-not-exist", private: true, hard404: true },
 ];
+
+/**
+ * Markers for the site shell — navigation and footer — checked **absolutely**
+ * rather than by comparison.
+ *
+ * Every other marker here answers "do the two implementations differ?" The
+ * prototype had no shell at all before this check existed, and a relative
+ * comparison is perfectly satisfied by two pages that agree on having no way to
+ * reach the rest of the site. These must be present in both, so an absence is a
+ * failure no matter how much the two implementations agree.
+ *
+ * Hard 404s are excluded, because the comparison would not be symmetric: the App
+ * Router answers `notFound()` with an empty body plus an RSC payload that only
+ * becomes markup in a browser (verified against a running App Router build: its
+ * 404 response contains `找不到这个页面` once, inside the flight data), while the
+ * prototype server-renders the whole page. That is a real difference in the
+ * prototype's favour and it is recorded in the roadmap, but it is not something
+ * this gate can compare byte-for-byte. `pnpm test:prototype` asserts the
+ * prototype's own 404 carries the shell.
+ */
+const SHELL_MARKERS: readonly RegExp[] = [/class="nw-pill"/, /class="nw-footer"/];
 
 function runBuild(name: string, command: string[], env: NodeJS.ProcessEnv): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -286,6 +313,14 @@ async function main(): Promise<number> {
       for (const marker of route.markers ?? []) {
         compareScalar(route.path, `marker ${marker.source}`, marker.test(next.body), marker.test(rr.body), differences);
       }
+      for (const marker of route.hard404 === true ? [] : SHELL_MARKERS) {
+        if (!marker.test(next.body)) {
+          differences.push({ path: route.path, check: `shell ${marker.source} absent`, next: "absent", rr: "present" });
+        }
+        if (!marker.test(rr.body)) {
+          differences.push({ path: route.path, check: `shell ${marker.source} absent`, next: "present", rr: "absent" });
+        }
+      }
     }
 
     // sitemap.xml and robots.txt are contracts, so they are compared exactly.
@@ -318,7 +353,8 @@ async function main(): Promise<number> {
   }
 
   const unexpected = differences.filter((diff) => !diff.known);
-  const checked = ROUTES.length * 5 + ROUTES.reduce((sum, route) => sum + (route.markers?.length ?? 0), 0) + 3;
+  const shellChecked = ROUTES.filter((route) => route.hard404 !== true).length * SHELL_MARKERS.length * 2;
+  const checked = ROUTES.length * 5 + ROUTES.reduce((sum, route) => sum + (route.markers?.length ?? 0), 0) + 3 + shellChecked;
   process.stdout.write(
     `\nSSR parity: ${checked} comparisons over ${ROUTES.length} routes plus sitemap/robots; ` +
     `${unexpected.length} unexpected difference(s), ${differences.length - unexpected.length} known divergence(s).\n`,

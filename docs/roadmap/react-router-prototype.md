@@ -130,13 +130,39 @@ rotates the refresh token on every use, so a page render must never be the thing
 that refreshes it — two concurrent renders would invalidate each other's
 session.
 
+**F8 — the site shell is not part of any page, and no page-level check can see it
+missing.** `apps/web/src/app/layout.tsx` renders `<SiteChrome>` — navigation,
+language switch, notification panel, smooth-scroll wrapper, footer — around every
+route. `root.tsx` here rendered a bare `<Outlet />`. Every gate that existed still
+passed: the pages had their status, their title, their canonical URL and their
+content, and `pnpm check:ssr-parity` compares the two implementations to each
+other, which two pages that agree on having no navigation do perfectly.
+
+The prototype now renders the shared `SiteChrome` from `root.tsx` (and from its
+error boundary), and the gate's shell markers are **absolute** rather than
+comparative: `class="nw-pill"` and `class="nw-footer"` must appear in *both*
+responses, so an omission fails even when the two implementations agree on it.
+`test/client-bundle.test.ts` asserts the shell's client code is in the emitted
+assets, because a shell that renders and never hydrates looks identical over HTTP.
+
+Hard 404s are excluded from that comparison, and the reason is itself a finding:
+**the App Router's 404 is client-rendered.** Its response body is an empty
+`<body>` plus an RSC payload — `找不到这个页面` occurs exactly once in the bytes,
+inside the flight data — so the markup only exists once a browser has run the
+scripts. The prototype server-renders the same route, dead link included, so it
+carries the navigation in HTML. That is a difference in the prototype's favour,
+and one more reason a cutover cannot be judged by HTML equality alone.
+
 ## 5. What this does not do
 
 - No production route, dependency, DNS, deployment or data change. `apps/web`
   builds and passes its own tests unchanged.
-- Comments, reader toolbar, related works, media proxy, the writing desk, search,
-  sitemap/robots, SSE and the notification worker are **not** ported. They are
-  Phase 3–5 work; the article page states this in the page itself.
+- Every production route is ported except three pages and one spike endpoint:
+  `/forgot-password`, `/reset-password` and `/verify-email` (password recovery and
+  email verification, shipped switched off behind `MAIL_ENABLED`), and
+  `/api/spike/events`. The writing desk, comments, the reader toolbar, media,
+  notifications, search, sitemap/robots and the site shell are here; the
+  notification worker is a process in `apps/api` and was never a Web route.
 - The hosting qualification gate is untouched: no provider has been verified, so
   no provider-specific code exists.
 - No browser-based hydration test. The tests assert server behavior over HTTP;
