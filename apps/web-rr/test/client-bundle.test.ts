@@ -44,6 +44,12 @@ const CLIENT_COMPONENTS: readonly ClientComponent[] = [
   // deletion wrote them, and it renders nothing until it has fetched — so if it
   // is missing from the bundle, the desk still looks complete.
   { component: "NotificationInbox", sentinel: "/api/authoring/notifications/read-all", page: "write" },
+  // The site shell, rendered by root.tsx on **every** page. It is the last
+  // piece of the App Router's root layout to arrive here, and the easiest to
+  // lose: with no shell a page still has a title, a status and a canonical URL,
+  // so every other check in this file and in `pnpm check:ssr-parity` passes on a
+  // page the visitor cannot navigate away from.
+  { component: "SiteChrome", sentinel: "nw-smooth", page: "/" },
 ];
 
 function clientBundle(): string {

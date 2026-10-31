@@ -163,6 +163,45 @@ test("home renders API-backed articles on the server", async () => {
   assert.match(result.body, /href="\/articles\/portable-web-foundation"/);
 });
 
+/**
+ * The site shell — navigation, language switch, notification panel, footer —
+ * used to be absent here: `root.tsx` rendered `<Outlet />` and nothing else,
+ * while the App Router renders the shared `SiteChrome` from its root layout.
+ *
+ * Nothing else in this file could see that. A page with no navigation still has
+ * a status, a title, a canonical URL and its content, so every one of those
+ * assertions passes on a page the visitor cannot leave. `pnpm check:ssr-parity`
+ * could not see it either until its shell markers became absolute: comparing
+ * the two implementations only proves they agree, and they agreed on the
+ * omission.
+ */
+test("every page carries the site shell, including a dead link", async () => {
+  const home = await get("/");
+  assert.equal(home.status, 200);
+  assert.match(home.body, /class="nw-pill"/, "the top navigation is part of the page");
+  assert.match(home.body, /class="nw-footer"/, "so is the footer");
+  assert.match(home.body, /href="\/account"/, "the account entry lives in the shell, not in a page");
+  assert.match(home.body, /href="\/write"/);
+  assert.match(home.body, /href="\/search"/);
+  // The language switch is the shell's own logic: on a Chinese page the EN link
+  // leads to the English route, and the pair is rendered in both directions.
+  assert.match(home.body, /href="\/en"/);
+
+  const english = await get("/en");
+  assert.equal(english.status, 200);
+  assert.match(english.body, /class="nw-pill"/);
+  assert.match(english.body, /class="nw-footer"/);
+  // 简 on an English page leads back to the Chinese route, not to a dead end.
+  assert.match(english.body, /href="\/"/);
+
+  // The page a visitor most needs a way out of. The App Router renders its
+  // not-found page inside the root layout, so this one has to as well.
+  const missing = await get("/articles/does-not-exist");
+  assert.equal(missing.status, 404);
+  assert.match(missing.body, /class="nw-pill"/, "a 404 must still offer the navigation");
+  assert.match(missing.body, /class="nw-footer"/);
+});
+
 test("article route server-renders content, canonical alternates and Open Graph metadata", async () => {
   const result = await get("/articles/portable-web-foundation");
   assert.equal(result.status, 200);
