@@ -6,7 +6,8 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
-    "./policy": "./src/policy.ts"
+    "./policy": "./src/policy.ts",
+    "./log": "./src/log.ts"
   },
   "scripts": {
     "test": "node --test test/*.test.ts",

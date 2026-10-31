@@ -1,5 +1,10 @@
 # One portable command: the whole stack on plain Node.js
 
+> The host-side half of deployment qualification — sleep/wake, cold starts on a
+> real instance, log drains, the platform's shutdown signal — is in
+> [Host qualification](host-qualification.md). Nothing there has been run
+> against a host yet.
+
 `pnpm stack:start` and `pnpm stack:check` bring up the entire application —
 database migration, API, React Router Web server — on a standard Node.js
 runtime, using only the environment variables documented in `.env.example`.
@@ -174,6 +179,8 @@ covers the outbox drain, which no local SQLite run can.
 - It does not send mail. The outbox check is an in-app notification; account mail
   stays switched off until an operator sets `MAIL_ENABLED` — see [Account
   mail](mail-setup.md).
+- It does not deploy anything. Cold-start numbers in the report are a laptop's;
+  the host-side procedure is [Host qualification](host-qualification.md).
 - It does not touch a deployment, DNS entry or production database. Running it
   needs no account anywhere.
 
@@ -225,3 +232,9 @@ home page (200, server-rendered title, site shell) plus a 404 on an unknown
 route from the Web container. No image is built inside this repository's
 sandbox, so those assertions are the only evidence that the images work, and
 they run on every pull request.
+
+The same job also measures the Web container's cold start (`docker run` to the
+first answered request) and starts it again after `docker stop`, which is the
+closest available analogue of a free instance waking up — and, because
+`docker stop` sends SIGTERM, it exercises the server's graceful shutdown on the
+way.

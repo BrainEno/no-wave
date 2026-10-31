@@ -254,7 +254,19 @@ environment, and comparison against a real host (Phase 6).
   not have started outside a dev checkout. It is a `dependency` now. Documented
   in [One portable command](../operations/portable-stack.md#container-images).
 - [ ] Run full `pnpm test`, `pnpm typecheck`, `pnpm build`, `pnpm test:routes` and PostgreSQL integration jobs.
-- [ ] Validate API connectivity, DB readiness, media storage, free-instance sleep/wake, cold starts, logs and graceful shutdown in a non-production environment.
+- [ ] Validate API connectivity, DB readiness, media storage, free-instance
+  sleep/wake, cold starts, logs and graceful shutdown in a non-production
+  environment. → **the half that does not need a host is done and asserted**:
+  `GET /healthz` (200, `no-store`, `noindex`, not logged); one structured JSON
+  line per event from `@bot-thk/web-http/log` with query strings — and therefore
+  reset tokens — dropped; `SIGTERM` that stops accepting (503 during the drain),
+  lets accepted requests finish and exits 0 within an 8 s grace window; cold
+  start measured on every `pnpm stack:check` run (`api ready in … ms` /
+  `web ready in … ms`) and in the container job; `docker stop` then
+  `docker start` serving again in CI. The half that needs an account — a real
+  free instance's sleep/wake, log drain and platform SIGTERM gap — **is not
+  run**, and [Host qualification](../operations/host-qualification.md) is the
+  procedure an operator runs against a deployed origin to close it.
 - [ ] Document exact DNS/route mapping, environment variables, database/media backup, worker uniqueness, health checks and rollback sequence.
 - [ ] Require explicit owner approval before production deployment, DNS/traffic change or production data migration.
 

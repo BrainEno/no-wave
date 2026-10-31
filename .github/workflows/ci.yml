@@ -297,6 +297,11 @@ jobs:
           # Migrations stay an explicit step inside the container too: the image
           # never mutates a schema on boot.
           docker exec api node apps/api/src/persistence/migrate.ts
+          # Cold start, measured the way a host measures it: from `docker run` to
+          # the first request the container answers. The number is reported and
+          # the bound is generous on purpose -- it catches a server that never
+          # comes up, it does not police a few hundred milliseconds.
+          WEB_START=$(date +%s%3N)
           docker run -d --network nw-ci --name web \
             -e HOST=0.0.0.0 -e PORT=3100 \
             -e API_BASE_URL=http://api:80 \
@@ -353,7 +358,37 @@ jobs:
             echo "::error title=container probe::the server-rendered home page is missing the site shell"
             exit 1
           fi
+          WEB_COLD_MS=$(( $(date +%s%3N) - WEB_START ))
+          echo "Web container cold start: ${WEB_COLD_MS} ms (docker run -> first 200)"
+          if [ "$WEB_COLD_MS" -gt 60000 ]; then
+            echo "::error title=container probe::cold start took ${WEB_COLD_MS} ms, past the 60 s bound"
+            exit 1
+          fi
+
+          # A free host puts an idle instance to sleep and starts it again on the
+          # next request. `docker stop` + `docker start` is the closest thing
+          # available here: same filesystem, fresh process, no manual step -- and
+          # because `docker stop` sends SIGTERM, it is also the graceful-shutdown
+          # path, so a container that refuses to stop shows up as a timeout here.
+          WAKE_START=$(date +%s%3N)
+          docker stop web > /dev/null
+          docker start web > /dev/null
+          for i in $(seq 1 60); do
+            if [ "$(curl -s -o /tmp/web-home-again.html -w '%{http_code}' http://127.0.0.1:3100/ || true)" = "200" ]; then break; fi
+            sleep 1
+          done
+          WAKE_MS=$(( $(date +%s%3N) - WAKE_START ))
+          if ! grep -q '<title>' /tmp/web-home-again.html; then
+            docker logs web | tail -n 60 || true
+            echo "::error title=container probe::the container did not serve after being started again"
+            exit 1
+          fi
+          echo "Start again from stopped: 200 with the same server-rendered title (${WAKE_MS} ms; SIGTERM was handled by the server)."
+
           echo "Both images build and serve: API health/ready and the React Router home page, 404 and site shell."
+          # The two numbers are the point of this job, so they go on the pull
+          # request as well as into the log.
+          echo "::notice title=container-image timing::Web container cold start ${WEB_COLD_MS} ms (docker run -> first 200); start again from stopped ${WAKE_MS} ms."
       - name: Stop the containers
         if: ${{ !cancelled() }}
         run: |

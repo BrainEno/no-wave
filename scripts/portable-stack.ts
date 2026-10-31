@@ -190,6 +190,8 @@ export type PortableStack = {
   apiBaseUrl: string;
   webBaseUrl: string;
   processes: ManagedProcess[];
+  /** Process spawn to first answered request, in milliseconds, per role. */
+  startupMs: { api: number; web: number };
 };
 
 function repositoryRoot(): string {
@@ -303,6 +305,9 @@ export async function startPortableStack(options: StackOptions): Promise<Portabl
   );
   if (migrate.code !== 0) throw new Error(`The database migration failed:\n${migrate.output}`);
 
+  // Cold start is measured from the spawn, because that is what a host does to
+  // a sleeping instance: start the process and wait for it to answer.
+  const apiSpawnedAt = Date.now();
   const processes: ManagedProcess[] = [
     spawnManaged(
       "api",
@@ -310,13 +315,16 @@ export async function startPortableStack(options: StackOptions): Promise<Portabl
       join(root, "apps/api"),
       childEnvironment(portableStackEnvironment(options, "api")),
     ),
+  ];
+  const webSpawnedAt = Date.now();
+  processes.push(
     spawnManaged(
       "web",
       [process.execPath, "server.ts"],
       join(root, "apps/web-rr"),
       childEnvironment(portableStackEnvironment(options, "web")),
     ),
-  ];
+  );
 
   const postgres = typeof options.databaseUrl === "string" && options.databaseUrl.length > 0;
   if (options.worker === true && postgres) {
@@ -333,8 +341,16 @@ export async function startPortableStack(options: StackOptions): Promise<Portabl
   const apiBaseUrl = `http://127.0.0.1:${options.apiPort}`;
   const webBaseUrl = `http://127.0.0.1:${options.webPort}`;
   await waitForHttp(`${apiBaseUrl}/health`, 60_000, processes);
+  const apiStartupMs = Date.now() - apiSpawnedAt;
   await waitForHttp(`${webBaseUrl}/`, 60_000, processes);
-  return { options, apiBaseUrl, webBaseUrl, processes };
+  const webStartupMs = Date.now() - webSpawnedAt;
+  return {
+    options,
+    apiBaseUrl,
+    webBaseUrl,
+    processes,
+    startupMs: { api: apiStartupMs, web: webStartupMs },
+  };
 }
 
 export async function stopPortableStack(stack: PortableStack): Promise<void> {
@@ -667,7 +683,14 @@ export function formatReport(results: CheckResult[], stack: PortableStack): stri
   const passed = results.filter((result) => result.status === "pass").length;
   const failed = results.filter((result) => result.status === "fail").length;
   const skipped = results.filter((result) => result.status === "skip").length;
-  const lines = ["", "Portable stack report", "=====================", `api  ${stack.apiBaseUrl}`, `web  ${stack.webBaseUrl}`, ""];
+  const lines = [
+    "",
+    "Portable stack report",
+    "=====================",
+    `api  ${stack.apiBaseUrl}  ready in ${stack.startupMs.api} ms`,
+    `web  ${stack.webBaseUrl}  ready in ${stack.startupMs.web} ms`,
+    "",
+  ];
   for (const result of results) {
     const marker = result.status === "pass" ? "[pass]" : result.status === "fail" ? "[FAIL]" : "[skip]";
     const timing = result.status === "skip" ? "" : ` (${result.durationMs} ms)`;
@@ -814,7 +837,10 @@ async function main(): Promise<void> {
   try {
     stack = await startPortableStack(options);
     if (args.keep) {
-      process.stdout.write(`\napi  ${stack.apiBaseUrl}\nweb  ${stack.webBaseUrl}\nCtrl+C stops both processes.\n`);
+      process.stdout.write(
+        `\napi  ${stack.apiBaseUrl}  ready in ${stack.startupMs.api} ms\n` +
+          `web  ${stack.webBaseUrl}  ready in ${stack.startupMs.web} ms\nCtrl+C stops both processes.\n`,
+      );
       await new Promise<void>((resolve) => {
         process.once("SIGINT", () => resolve());
         process.once("SIGTERM", () => resolve());
