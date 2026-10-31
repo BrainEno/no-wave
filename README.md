@@ -92,7 +92,10 @@ The same stack also ships as container images — `apps/web-rr/Dockerfile` for t
 React Router app and `apps/api/Dockerfile.vercel` for the API, both plain
 `node:24-alpine` with production dependencies only at runtime. CI builds both
 and runs them: the Web container reaches the API through `API_BASE_URL` alone.
-See [Container images](docs/operations/portable-stack.md#container-images).
+See [Container images](docs/operations/portable-stack.md#container-images). The React Router server logs one JSON line
+per event, exposes `GET /healthz` for a host health check, and drains in-flight
+requests on `SIGTERM` — see [Host qualification](docs/operations/host-qualification.md)
+for what that proves, and for what still needs a real host to verify.
 
 ## Commands
 
