@@ -153,6 +153,13 @@ so the phase is not complete and no provider-specific code exists.
 
 **Exit gate:** public routes pass side-by-side behavior assertions with no known SEO, locale or hard-404 regression.
 
+**Status 2026-10-31 (Phase 6, item 1):** one portable command brings the whole
+stack up on plain Node.js with only the documented variables — `pnpm stack:start`
+keeps it running, `pnpm stack:check` probes it and reports. Children inherit the
+OS minimum plus eleven documented variables; the `VERCEL*` set and
+`API_SERVICE_URL` are deleted, so the platform binding is not merely unused but
+unreachable. See [One portable command](../operations/portable-stack.md).
+
 **Status 2026-10-31:** the site shell is ported too, and `pnpm check:ssr-parity` now
 compares **198** observations over **20** routes (was 112 over 17): the new ones are absolute
 shell checks plus the three recovery pages. The only production surfaces still missing from
@@ -224,7 +231,21 @@ environment, and comparison against a real host (Phase 6).
 
 ### Phase 6 — Deployment qualification, regression and rollback
 
-- [ ] Build the final Web image/package from a clean checkout and start it with only documented environment variables.
+- [x] **Start the whole stack from a clean checkout with only documented
+  environment variables.** → `pnpm stack:start` / `pnpm stack:check`
+  (`scripts/portable-stack.ts`) build the React Router app, migrate, start the
+  API and the React Router Web server as child processes that inherit the OS
+  minimum plus eleven documented variables — and nothing else — then probe the
+  chain over HTTP (`9 passed, 0 failed, 1 skipped` on SQLite; ten passes and the
+  outbox drain on PostgreSQL). The `VERCEL*` set and `API_SERVICE_URL` are
+  deleted from every child environment, so "关掉 `API_SERVICE_URL` 一切照常" is
+  demonstrated rather than claimed: a run that exports them pointing at a closed
+  port still passes. CI proves it on both providers in the `portable-stack` job.
+  Documented in [One portable command](../operations/portable-stack.md).
+- [ ] Package the React Router app as a container image and build it in CI (the
+  API image, `apps/api/Dockerfile.vercel`, is a plain `node:24-alpine` image
+  despite its filename; the React Router app has no image yet, and no image can
+  be built inside this repository's sandbox).
 - [ ] Run full `pnpm test`, `pnpm typecheck`, `pnpm build`, `pnpm test:routes` and PostgreSQL integration jobs.
 - [ ] Validate API connectivity, DB readiness, media storage, free-instance sleep/wake, cold starts, logs and graceful shutdown in a non-production environment.
 - [ ] Document exact DNS/route mapping, environment variables, database/media backup, worker uniqueness, health checks and rollback sequence.
