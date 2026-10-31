@@ -242,10 +242,17 @@ environment, and comparison against a real host (Phase 6).
   demonstrated rather than claimed: a run that exports them pointing at a closed
   port still passes. CI proves it on both providers in the `portable-stack` job.
   Documented in [One portable command](../operations/portable-stack.md).
-- [ ] Package the React Router app as a container image and build it in CI (the
-  API image, `apps/api/Dockerfile.vercel`, is a plain `node:24-alpine` image
-  despite its filename; the React Router app has no image yet, and no image can
-  be built inside this repository's sandbox).
+- [x] **Package the React Router app as a container image and build it in CI.**
+  → `apps/web-rr/Dockerfile` is a two-stage `node:24-alpine` image: build the
+  app with devDependencies, then install production dependencies only and run
+  `node server.ts`. The CI `container-image` job builds it *and the API image*,
+  starts both on one network and probes them over HTTP (API `/health` and
+  `/ready`; Web home page 200 with a server-rendered title and the site shell,
+  plus a 404 on an unknown route). The runtime stage's production-only install
+  caught a real defect: `@react-router/node` was a devDependency although the
+  production server imports `createRequestListener` from it, so the image could
+  not have started outside a dev checkout. It is a `dependency` now. Documented
+  in [One portable command](../operations/portable-stack.md#container-images).
 - [ ] Run full `pnpm test`, `pnpm typecheck`, `pnpm build`, `pnpm test:routes` and PostgreSQL integration jobs.
 - [ ] Validate API connectivity, DB readiness, media storage, free-instance sleep/wake, cold starts, logs and graceful shutdown in a non-production environment.
 - [ ] Document exact DNS/route mapping, environment variables, database/media backup, worker uniqueness, health checks and rollback sequence.

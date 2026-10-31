@@ -109,6 +109,9 @@ importers:
       '@bot-thk/web-http':
         specifier: workspace:*
         version: link:../../packages/web-http
+      '@react-router/node':
+        specifier: 7.18.5
+        version: 7.18.5(react-router@7.18.5(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(typescript@5.9.3)
       gsap:
         specifier: 3.13.0
         version: 3.13.0
@@ -125,9 +128,6 @@ importers:
       '@react-router/dev':
         specifier: 7.18.5
         version: 7.18.5(@types/node@24.10.0)(react-router@7.18.5(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(typescript@5.9.3)(vite@7.1.12(@types/node@24.10.0))
-      '@react-router/node':
-        specifier: 7.18.5
-        version: 7.18.5(react-router@7.18.5(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(typescript@5.9.3)
       '@types/node':
         specifier: 24.10.0
         version: 24.10.0
@@ -1131,6 +1131,7 @@ packages:
   '@smithy/core@3.37.0':
     resolution: {integrity: sha512-97imTcCyiPd8k0e9+ts/Sp0W65Dn9Ti357J7M09Ov4tI8Q1JDJVFSoAJtjEVKqfHEr3Pdo2jfolqKCaaiszH0g==}
     engines: {node: '>=18.0.0'}
+    deprecated: Deprecated due to a bug in custom logger data redaction. See https://github.com/aws/aws-sdk-js-v3/issues/8393.
 
   '@smithy/credential-provider-imds@4.5.2':
     resolution: {integrity: sha512-A9uSdn72ozbRUSit0eib0TW7nXuNPlaeM0zcGkJ+nE6tFcSDbnmtwoxbTCFBukVQcszDAyvsd7+rTduPTXpygg==}

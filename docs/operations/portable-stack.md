@@ -166,11 +166,9 @@ covers the outbox drain, which no local SQLite run can.
 
 ## What this command does *not* do
 
-- It does not build a container image. `apps/web-rr/server.ts` is a plain
-  `node:http` entrypoint and `apps/api/Dockerfile.vercel` is a plain
-  `node:24-alpine` image despite the filename, but packaging the React Router
-  app is a separate slice (see the roadmap), and no image has been built or run
-  in this repository's sandbox — `docker` is not installed there.
+- It does not build a container image — [the images](#container-images) are
+  built by CI, not by this command. Running one needs `docker`, which the
+  command deliberately does not require.
 - It does not start the Next.js app. `pnpm dev` still does that, and still
   serves the migration's baseline on :3000.
 - It does not send mail. The outbox check is an in-app notification; account mail
@@ -178,3 +176,50 @@ covers the outbox drain, which no local SQLite run can.
   mail](mail-setup.md).
 - It does not touch a deployment, DNS entry or production database. Running it
   needs no account anywhere.
+
+## Container images
+
+Two images, both built from the repository's single lockfile, both plain
+`node:24-alpine`:
+
+| Image | File | Build | Serves |
+| --- | --- | --- | --- |
+| API | `apps/api/Dockerfile.vercel` | production dependencies only | `node apps/api/src/server.ts` |
+| Web | `apps/web-rr/Dockerfile` | two stages: build, then production dependencies only | `node server.ts` |
+
+The filename of the API image is a leftover from the Vercel era; the file itself
+contains nothing Vercel-specific (it is referenced by `vercel.json`, so renaming
+it belongs to Phase 7, not to a cleanup nobody asked for).
+
+**Why the Web image has two stages.** The build needs `vite` and
+`@react-router/dev`; the runtime does not. Installing production dependencies
+only in the runtime stage is also a test of the dependency graph: anything
+`server.ts` imports at boot has to be a real dependency. That test caught a real
+defect — `@react-router/node` was a devDependency even though the production
+server imports `createRequestListener` from it, so a `--prod` install produced
+an image that could not start. It is a `dependency` now.
+
+**Running it.** The container's entrypoint needs no platform variable:
+
+```sh
+docker build -f apps/web-rr/Dockerfile -t bot-thk-web-rr .
+docker run --rm -p 3100:3100 \
+  -e API_BASE_URL=https://api.example.example \
+  -e NEXT_PUBLIC_SITE_URL=https://www.example.example \
+  bot-thk-web-rr
+```
+
+`PORT` defaults to 3100 and `HOST` to `0.0.0.0`. The server starts from
+`/app/apps/web-rr` because `server.ts` resolves `RR_BUILD_DIR` and
+`RR_SERVER_BUILD_DIR` relative to the working directory — the same reason
+`pnpm --filter @bot-thk/web-rr start` runs from the application directory.
+Migrations are never run by the image; they are an explicit step, inside a
+container as much as on a host.
+
+**How it is verified.** The CI `container-image` job builds both images, starts
+them on one network — the Web container reaching the API through `API_BASE_URL`
+alone — and probes them from outside: `/health` and `/ready` on the API, and the
+home page (200, server-rendered title, site shell) plus a 404 on an unknown
+route from the Web container. No image is built inside this repository's
+sandbox, so those assertions are the only evidence that the images work, and
+they run on every pull request.

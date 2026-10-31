@@ -88,6 +88,12 @@ Next.js, no platform service binding: the `VERCEL*` variables and
 the stack cannot be depending on them. See [One portable command: the whole
 stack on plain Node.js](docs/operations/portable-stack.md).
 
+The same stack also ships as container images — `apps/web-rr/Dockerfile` for the
+React Router app and `apps/api/Dockerfile.vercel` for the API, both plain
+`node:24-alpine` with production dependencies only at runtime. CI builds both
+and runs them: the Web container reaches the API through `API_BASE_URL` alone.
+See [Container images](docs/operations/portable-stack.md#container-images).
+
 ## Commands
 
 ```sh

@@ -243,6 +243,119 @@ jobs:
       - name: Bring the whole stack up and probe it (${{ matrix.provider }})
         run: pnpm stack:check
 
+  # Phase 6, item 2: the deployment artifacts. The React Router app ships as a
+  # container image, and "it builds" is not the claim — the image is started
+  # next to the API image and probed over HTTP, so a broken runtime dependency
+  # (a package that is only present because devDependencies were installed)
+  # fails here instead of on a host. Both images are built from the repository's
+  # single lockfile with production dependencies only in the runtime stage.
+  container-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10.20.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build the API image
+        run: |
+          set -eu
+          if ! docker build -f apps/api/Dockerfile.vercel -t bot-thk-api:ci . > /tmp/api-build.log 2>&1; then
+            tail -n 60 /tmp/api-build.log
+            MESSAGE=$(tail -n 25 /tmp/api-build.log | sed -e 's/%/%25/g' | awk 'BEGIN{ORS="%0A"}{print}')
+            echo "::error title=docker build (apps/api/Dockerfile.vercel)::${MESSAGE}"
+            exit 1
+          fi
+          tail -n 3 /tmp/api-build.log
+      - name: Build the React Router image
+        run: |
+          set -eu
+          if ! docker build -f apps/web-rr/Dockerfile -t bot-thk-web-rr:ci . > /tmp/web-rr-build.log 2>&1; then
+            tail -n 60 /tmp/web-rr-build.log
+            MESSAGE=$(tail -n 25 /tmp/web-rr-build.log | sed -e 's/%/%25/g' | awk 'BEGIN{ORS="%0A"}{print}')
+            echo "::error title=docker build (apps/web-rr/Dockerfile)::${MESSAGE}"
+            exit 1
+          fi
+          tail -n 3 /tmp/web-rr-build.log
+      # The image is worth as much as what it serves: start both containers on
+      # one network — the Web tier reaching the API by `API_BASE_URL` alone, no
+      # platform binding and no localhost shortcut — and probe them from
+      # outside like any other HTTP client would.
+      - name: Run both images and probe them over HTTP
+        run: |
+          set -eu
+          docker network create nw-ci
+          docker run -d --network nw-ci --name api \
+            -e HOST=0.0.0.0 -e PORT=80 \
+            -e DATABASE_PROVIDER=sqlite -e DATABASE_PATH=/tmp/api.sqlite \
+            -e AUTH_JWT_SECRET=container-image-ci-secret-0123456789abcdef \
+            -p 4000:80 bot-thk-api:ci
+          # Migrations stay an explicit step inside the container too: the image
+          # never mutates a schema on boot.
+          docker exec api node apps/api/src/persistence/migrate.ts
+          docker run -d --network nw-ci --name web \
+            -e HOST=0.0.0.0 -e PORT=3100 \
+            -e API_BASE_URL=http://api:80 \
+            -e NEXT_PUBLIC_SITE_URL=http://127.0.0.1:3100 \
+            -p 3100:3100 bot-thk-web-rr:ci
+
+          for i in $(seq 1 30); do
+            if [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4000/health || true)" = "200" ]; then break; fi
+            sleep 1
+          done
+          for i in $(seq 1 30); do
+            if [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3100/ || true)" = "200" ]; then break; fi
+            sleep 1
+          done
+
+          set +e
+          {
+            echo "API  /health  -> $(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4000/health)"
+            echo "API  /ready   -> $(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4000/ready)"
+            echo "Web  /        -> $(curl -s -o /tmp/web-home.html -w '%{http_code}' http://127.0.0.1:3100/)"
+            echo "Web  404      -> $(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3100/definitely-missing)"
+            echo "title: $(grep -oE '<title>[^<]*</title>' /tmp/web-home.html | head -1)"
+            echo "shell: $(grep -c 'nw-smooth' /tmp/web-home.html || true) site-chrome marker(s)"
+          } | tee /tmp/probe.log
+          set -e
+
+          docker logs api > /tmp/api.log 2>&1 || true
+          docker logs web > /tmp/web.log 2>&1 || true
+
+          if ! grep -q "API  /health  -> 200" /tmp/probe.log; then
+            cat /tmp/api.log
+            echo "::error title=container probe::the API container did not answer /health"
+            exit 1
+          fi
+          if ! grep -q "API  /ready   -> 200" /tmp/probe.log; then
+            cat /tmp/api.log
+            echo "::error title=container probe::the API container did not reach its database"
+            exit 1
+          fi
+          if ! grep -q "Web  /        -> 200" /tmp/probe.log; then
+            cat /tmp/web.log
+            echo "::error title=container probe::the React Router container did not render the home page"
+            exit 1
+          fi
+          if ! grep -q "Web  404      -> 404" /tmp/probe.log; then
+            echo "::error title=container probe::an unknown route did not return 404"
+            exit 1
+          fi
+          if ! grep -q "shell: [1-9]" /tmp/probe.log; then
+            echo "::error title=container probe::the server-rendered home page is missing the site shell"
+            exit 1
+          fi
+          echo "Both images build and serve: API health/ready and the React Router home page, 404 and site shell."
+      - name: Stop the containers
+        if: ${{ !cancelled() }}
+        run: |
+          docker rm -f api web > /dev/null 2>&1 || true
+          docker network rm nw-ci > /dev/null 2>&1 || true
+
   # `pnpm check:ssr-parity` (the Phase 3 exit gate) lives in its own nightly
   # workflow — see .github/workflows/ssr-parity.yml — because it builds both
   # applications and is too slow to sit on the path of every commit.
@@ -255,6 +368,7 @@ jobs:
       - local-dev-chain
       - react-router-prototype
       - portable-stack
+      - container-image
     runs-on: ubuntu-latest
     steps:
       - name: Require every validation job to succeed
@@ -264,11 +378,14 @@ jobs:
           LOCAL_CHAIN_RESULT: ${{ needs.local-dev-chain.result }}
           PROTOTYPE_RESULT: ${{ needs.react-router-prototype.result }}
           PORTABLE_STACK_RESULT: ${{ needs.portable-stack.result }}
+          CONTAINER_RESULT: ${{ needs.container-image.result }}
         run: |
-          printf 'verify: %s\npostgres-integration: %s\nlocal-dev-chain: %s\nreact-router-prototype: %s\nportable-stack: %s\n' \
-            "$VERIFY_RESULT" "$POSTGRES_RESULT" "$LOCAL_CHAIN_RESULT" "$PROTOTYPE_RESULT" "$PORTABLE_STACK_RESULT"
-          if [ "$VERIFY_RESULT" != "success" ] || [ "$POSTGRES_RESULT" != "success" ] || [ "$LOCAL_CHAIN_RESULT" != "success" ] || [ "$PROTOTYPE_RESULT" != "success" ] || [ "$PORTABLE_STACK_RESULT" != "success" ]; then
-            echo "::error::verify, postgres-integration, local-dev-chain, react-router-prototype and portable-stack must all succeed."
-            exit 1
-          fi
+          printf 'verify: %s\npostgres-integration: %s\nlocal-dev-chain: %s\nreact-router-prototype: %s\nportable-stack: %s\ncontainer-image: %s\n' \
+            "$VERIFY_RESULT" "$POSTGRES_RESULT" "$LOCAL_CHAIN_RESULT" "$PROTOTYPE_RESULT" "$PORTABLE_STACK_RESULT" "$CONTAINER_RESULT"
+          for result in "$VERIFY_RESULT" "$POSTGRES_RESULT" "$LOCAL_CHAIN_RESULT" "$PROTOTYPE_RESULT" "$PORTABLE_STACK_RESULT" "$CONTAINER_RESULT"; do
+            if [ "$result" != "success" ]; then
+              echo "::error::verify, postgres-integration, local-dev-chain, react-router-prototype, portable-stack and container-image must all succeed."
+              exit 1
+            fi
+          done
           echo "All required validation jobs succeeded."
