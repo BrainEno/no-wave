@@ -185,14 +185,16 @@ Two images, both built from the repository's single lockfile, both plain
 | Image | File | Build | Serves |
 | --- | --- | --- | --- |
 | API | `apps/api/Dockerfile.vercel` | production dependencies only | `node apps/api/src/server.ts` |
-| Web | `apps/web-rr/Dockerfile` | two stages: build, then production dependencies only | `node server.ts` |
+| Web | `apps/web-rr/Dockerfile` | two stages: build with devDependencies, then production dependencies only | `node server.ts` |
 
 The filename of the API image is a leftover from the Vercel era; the file itself
 contains nothing Vercel-specific (it is referenced by `vercel.json`, so renaming
 it belongs to Phase 7, not to a cleanup nobody asked for).
 
-**Why the Web image has two stages.** The build needs `vite` and
-`@react-router/dev`; the runtime does not. Installing production dependencies
+**Why the Web image has two stages.** The build needs `vite`, `@react-router/dev`
+and — because the prototype compiles the shared source tree in `apps/web/src`
+through the `@/*` alias — that tree's own dependencies (Lexical, gsap); the
+runtime needs none of them. Installing production dependencies
 only in the runtime stage is also a test of the dependency graph: anything
 `server.ts` imports at boot has to be a real dependency. That test caught a real
 defect — `@react-router/node` was a devDependency even though the production

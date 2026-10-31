@@ -30,9 +30,17 @@ COPY packages/web-http/package.json ./packages/web-http/package.json
 
 # The build needs devDependencies (vite, @react-router/dev), so NODE_ENV is set
 # only after this step: pnpm reads NODE_ENV=production as `--prod`.
-RUN pnpm install --frozen-lockfile --filter @bot-thk/web-rr...
+#
+# `@bot-thk/web` is installed alongside the prototype because the prototype
+# builds from the shared source tree in `apps/web/src` through the `@/*` alias
+# (see apps/web-rr/vite.config.ts): reusing those components in place is the
+# migration strategy, and they resolve their own imports — Lexical, gsap —
+# against `apps/web/node_modules`. The runtime stage needs none of it: the build
+# inlines what it used.
+RUN pnpm install --frozen-lockfile --filter @bot-thk/web-rr... --filter @bot-thk/web...
 
 COPY packages/web-http ./packages/web-http
+COPY apps/web/src ./apps/web/src
 COPY apps/web-rr ./apps/web-rr
 
 ENV NODE_ENV=production
