@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 
 /**
  * The signed-in account page.
@@ -49,13 +49,26 @@ function localDate(value: string): string {
   return Number.isFinite(parsed) ? new Date(parsed).toLocaleDateString() : "未知时间";
 }
 
+/** How many other devices were signed out, when the API says. */
+function revokedCount(payload: unknown): number {
+  const data = typeof payload === "object" && payload !== null && "data" in payload
+    ? (payload as { data: unknown }).data
+    : null;
+  const count = typeof data === "object" && data !== null && "revokedSessions" in data
+    ? (data as { revokedSessions: unknown }).revokedSessions
+    : null;
+  return typeof count === "number" && Number.isFinite(count) ? count : 0;
+}
+
 export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
   const router = useRouter();
   const [state, setState] = useState<State>("checking");
   const [account, setAccount] = useState<Account | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [busy, setBusy] = useState<null | "verification" | "logout">(null);
+  const [busy, setBusy] = useState<null | "verification" | "logout" | "password">(null);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -125,6 +138,55 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
       // A 202 says the request was accepted, not that the mail arrived: the
       // relay is configured by the operator and may not be configured at all.
       setNotice("验证邮件已发出，请查收邮箱并按其中的链接完成验证。");
+    } catch {
+      setError("暂时无法连接服务器，请稍后重试。");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /**
+   * Change the password of the account that is already signed in.
+   *
+   * The current password is asked for here because the API asks for it: a
+   * session alone must not be enough to move the credential. What comes back is
+   * how many *other* devices were signed out, and that number is worth showing
+   * — it is the answer to "what happened to my phone".
+   */
+  async function changePassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy("password");
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/authoring/password", {
+        method: "PUT",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        credentials: "same-origin",
+        cache: "no-store",
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const payload: unknown = await response.json().catch(() => null);
+      if (response.status === 401) {
+        setState("signed-out");
+        router.replace("/sign-in?next=%2Faccount");
+        return;
+      }
+      if (response.status === 400) {
+        // The API's own message is deliberately generic, so say what the rule is.
+        setError("新密码需要至少 12 个字符，旧密码也不能为空。");
+        return;
+      }
+      if (!response.ok) {
+        setError(errorMessage(payload, "修改密码失败，请稍后重试。"));
+        return;
+      }
+      setCurrentPassword("");
+      setNewPassword("");
+      const revoked = revokedCount(payload);
+      setNotice(revoked > 0
+        ? `密码已更新，其他 ${revoked} 台设备已退出登录；这个会话保持登录。`
+        : "密码已更新；没有其他设备处于登录状态。");
     } catch {
       setError("暂时无法连接服务器，请稍后重试。");
     } finally {
@@ -214,6 +276,44 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
           未验证的账号同样可以登录、写作和发布：验证只是给这个邮箱留一个「曾经可达」的标记，用于在需要时确认你仍能收到邮件。
         </p>
       )}
+      {/*
+        Changing the password needs no mail. That is the point of it: the
+        recovery flow is the only other way to replace a credential, and on an
+        instance where mail is switched off it cannot run at all.
+      */}
+      <form className="nw-auth-form" onSubmit={changePassword} aria-labelledby="nw-account-password-title" data-account-password>
+        <h2 id="nw-account-password-title"><span className="nw-zh">修改密码</span> <i>Change password</i></h2>
+        <p className="nw-ep">
+          需要输入当前密码：只有会话、没有密码的话，谁都不能改掉这个账号——包括把你锁在门外。改完之后，
+          除了这台设备之外的登录都会退出，而这个会话继续保持登录状态。
+        </p>
+        <label>当前密码
+          <input
+            type="password"
+            name="currentPassword"
+            autoComplete="current-password"
+            value={currentPassword}
+            onChange={(event) => setCurrentPassword(event.target.value)}
+            required
+            maxLength={128}
+          />
+        </label>
+        <label>新密码（至少 12 个字符）
+          <input
+            type="password"
+            name="newPassword"
+            autoComplete="new-password"
+            value={newPassword}
+            onChange={(event) => setNewPassword(event.target.value)}
+            required
+            minLength={12}
+            maxLength={128}
+          />
+        </label>
+        <button className="nw-btn nw-pri" type="submit" disabled={busy !== null} data-account-password-submit>
+          {busy === "password" ? "正在修改……" : "修改密码"}
+        </button>
+      </form>
       {error ? <p className="nw-auth-error" role="alert">{error}</p> : null}
       {notice ? <p className="nw-auth-status" role="status">{notice}</p> : null}
       <div className="nw-auth-switch">

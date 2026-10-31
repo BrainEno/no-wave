@@ -18,6 +18,7 @@ test("every documented collection route matches with the expected methods", () =
     ["/api/v1/me/profile", "GET", "me.profile"],
     ["/api/v1/me/profile", "PUT", "me.profile"],
     ["/api/v1/me/session", "DELETE", "me.session"],
+    ["/api/v1/me/password", "PUT", "me.password"],
     ["/api/v1/me/liked-articles", "GET", "me.liked-articles"],
     ["/api/v1/me/articles", "GET", "me.articles"],
     ["/api/v1/me/media", "POST", "me.media"],
@@ -81,6 +82,10 @@ test("a known path with an unsupported method reports the exact allow-list", () 
     ["/api/v1/me", "POST", "GET"],
     ["/api/v1/me/profile", "DELETE", "GET, PUT"],
     ["/api/v1/me/session", "GET", "DELETE"],
+    // Only a change is accepted: a password is never readable, and there is
+    // nothing to delete.
+    ["/api/v1/me/password", "GET", "PUT"],
+    ["/api/v1/me/password", "POST", "PUT"],
     ["/api/v1/articles", "PUT", "GET, POST"],
     ["/api/v1/articles/some-slug", "PATCH", "GET, PUT, DELETE"],
     ["/api/v1/articles/some-slug/like", "POST", "GET, PUT"],

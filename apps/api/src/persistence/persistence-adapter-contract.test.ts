@@ -1012,6 +1012,13 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
     };
     assert.equal(await runtime.store.createIdentityAccount({ userId, email, passwordHash: "hash-before", session }), true);
+    // A second device, so a revocation can be asked to spare one of two.
+    const secondSession = {
+      sessionId: randomUUID(), userId, accessTokenId: randomUUID(),
+      refreshHash: "0".repeat(64), expiresAt: hour,
+      accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+    };
+    await runtime.store.createIdentitySession(secondSession);
 
     const resetHash = "b".repeat(64);
     await runtime.store.issueIdentityToken({ userId, purpose: "password_reset", email, tokenHash: resetHash, expiresAt: hour });
@@ -1045,10 +1052,35 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
     });
     assert.equal(rotated.status, "rotated");
+    // The second device is live as well, so "spare one" has something to spare.
+    const secondRotated = await runtime.store.rotateIdentityRefresh({
+      refreshHash: "0".repeat(64), nextRefreshHash: "1".repeat(64),
+      accessTokenId: randomUUID(), issuedAt: new Date().toISOString(),
+      accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+    });
+    assert.equal(secondRotated.status, "rotated");
+
+    // A password *change* is made from inside a session and spares it: two
+    // live sessions, one named, so exactly the other one ends.
+    assert.equal(await runtime.store.revokeIdentitySessions({ userId, exceptSessionId: session.sessionId }), 1);
+    const spared = await runtime.store.rotateIdentityRefresh({
+      refreshHash: "f".repeat(64), nextRefreshHash: "2".repeat(64),
+      accessTokenId: randomUUID(), issuedAt: new Date().toISOString(),
+      accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+    });
+    assert.equal(spared.status, "rotated", "the spared device keeps its refresh family");
+    const signedOut = await runtime.store.rotateIdentityRefresh({
+      refreshHash: "1".repeat(64), nextRefreshHash: "3".repeat(64),
+      accessTokenId: randomUUID(), issuedAt: new Date().toISOString(),
+      accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+    });
+    assert.equal(signedOut.status, "invalid", "every other device is signed out");
+
+    // A reset has no device that proved anything, so it spares nothing.
     assert.equal(await runtime.store.revokeIdentitySessions({ userId }), 1);
     assert.equal(await runtime.store.revokeIdentitySessions({ userId }), 0, "a second sweep finds nothing left to revoke");
     const afterRevocation = await runtime.store.rotateIdentityRefresh({
-      refreshHash: "f".repeat(64), nextRefreshHash: "1".repeat(64),
+      refreshHash: "2".repeat(64), nextRefreshHash: "4".repeat(64),
       accessTokenId: randomUUID(), issuedAt: new Date().toISOString(),
       accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
     });
@@ -1059,6 +1091,10 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
     assert.equal(account.email, email);
     assert.ok(account.emailVerifiedAt, "verification is stamped on the account");
     assert.equal(await runtime.store.findIdentityAccountByUserId({ userId: `nobody-${suffix}` }), null);
+    // The credential has an accessor of its own, so the account record a
+    // caller may forward to a response never carries the hash with it.
+    assert.deepEqual(await runtime.store.findIdentityCredentials({ userId }), { userId, passwordHash: "hash-after" });
+    assert.equal(await runtime.store.findIdentityCredentials({ userId: `nobody-${suffix}` }), null);
   });
 
   test(`${adapterName}: publishing a work is idempotent per author and does not leave a second copy behind`, options, async () => {

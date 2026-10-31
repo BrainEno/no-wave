@@ -224,19 +224,23 @@ export function createPostgresIdentityStore(sql) {
       });
     },
     /**
-     * Sign every session of one user out.
+     * Sign every session of one user out, optionally sparing one.
      *
      * A password reset has to answer "what about the device that stole it" —
      * without this, changing the password leaves the thief signed in for the
-     * rest of the refresh lifetime.
+     * rest of the refresh lifetime. A password *change* made from inside a
+     * session spares that session (`exceptSessionId`): it is the device that
+     * proved it knew the old password, so it must not be signed out by the
+     * very request it just made.
      */
-    async revokeIdentitySessions({ userId }) {
+    async revokeIdentitySessions({ userId, exceptSessionId = null }) {
       return sql.begin(async (tx) => {
         const transactionId = createMigrationTransactionId();
-        const sessionRows = await tx.unsafe(
+        const rows = await tx.unsafe(
           "SELECT id FROM auth_sessions WHERE user_id = $1 AND revoked_at IS NULL ORDER BY created_at FOR UPDATE",
           [userId],
         );
+        const sessionRows = rows.filter((row) => row.id !== exceptSessionId);
         for (const row of sessionRows) {
           await revokeLockedSession(tx, row.id);
           await captureSessionSnapshot(tx, transactionId, row.id);
@@ -263,6 +267,19 @@ export function createPostgresIdentityStore(sql) {
       return rows[0]
         ? { userId: rows[0].user_id, email: rows[0].email, emailVerifiedAt: rows[0].email_verified_at ? new Date(rows[0].email_verified_at).toISOString() : null }
         : null;
+    },
+    /**
+     * The password hash of one account, on its own.
+     *
+     * A separate accessor from `findIdentityAccountByUserId` on purpose: the
+     * account record is what the application shows the owner, and the
+     * credential is what it verifies against. Keeping them apart means a
+     * future caller that forwards "the account" to a response cannot forward
+     * the hash with it.
+     */
+    async findIdentityCredentials({ userId }) {
+      const rows = await sql.unsafe("SELECT user_id, password_hash FROM auth_accounts WHERE user_id = $1", [userId]);
+      return rows[0] ? { userId: rows[0].user_id, passwordHash: rows[0].password_hash } : null;
     },
     async pruneExpiredIdentityState() {
       return sql.begin(async (tx) => {

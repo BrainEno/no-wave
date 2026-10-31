@@ -214,6 +214,12 @@ try {
     body: Buffer.from("not-an-image"),
   });
   assert.equal(anonymousMediaUpload.status, 403, "media upload proxy must reject cross-origin or origin-less mutations");
+  const anonymousPasswordChange = await fetch(`${baseUrl}/api/authoring/password`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ currentPassword: "not-a-real-password", newPassword: "also-not-a-real-password" }),
+  });
+  assert.equal(anonymousPasswordChange.status, 403, "password change proxy must reject cross-origin or origin-less mutations");
   const unavailableMedia = await fetch(`${baseUrl}/api/media/11111111-1111-4111-8111-111111111111`);
   assert.equal(unavailableMedia.status, 503, "public media proxy should report missing API configuration explicitly");
   const commentList = await fetch(`${baseUrl}/api/articles/portable-web-foundation/comments?locale=zh-CN`);

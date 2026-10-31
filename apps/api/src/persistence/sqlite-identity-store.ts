@@ -161,15 +161,20 @@ export function createSqliteIdentityStore(db) {
       });
     },
     /**
-     * Sign every session of one user out.
+     * Sign every session of one user out, optionally sparing one.
      *
      * A password reset has to answer "what about the device that stole it" —
      * without this, changing the password leaves the thief signed in for the
-     * rest of the refresh lifetime.
+     * rest of the refresh lifetime. A password *change* made from inside a
+     * session spares that session (`exceptSessionId`): it is the device that
+     * proved it knew the old password, so it must not be signed out by the
+     * very request it just made.
      */
-    async revokeIdentitySessions({ userId }) {
+    async revokeIdentitySessions({ userId, exceptSessionId = null }) {
       return transaction((transactionId) => {
-        const sessionIds = all("SELECT id FROM auth_sessions WHERE user_id = ? AND revoked_at IS NULL", userId).map((row) => row.id);
+        const sessionIds = all("SELECT id FROM auth_sessions WHERE user_id = ? AND revoked_at IS NULL", userId)
+          .map((row) => row.id)
+          .filter((id) => id !== exceptSessionId);
         for (const sessionId of sessionIds) {
           revokeSessionFamily(sessionId);
           captureSessionSnapshot(transactionId, sessionId);
@@ -189,6 +194,19 @@ export function createSqliteIdentityStore(db) {
     async findIdentityAccountByUserId({ userId }) {
       const row = get("SELECT user_id, email, email_verified_at FROM auth_accounts WHERE user_id = ?", userId);
       return row ? { userId: row.user_id, email: row.email, emailVerifiedAt: row.email_verified_at ? new Date(row.email_verified_at).toISOString() : null } : null;
+    },
+    /**
+     * The password hash of one account, on its own.
+     *
+     * A separate accessor from `findIdentityAccountByUserId` on purpose: the
+     * account record is what the application shows the owner, and the
+     * credential is what it verifies against. Keeping them apart means a
+     * future caller that forwards "the account" to a response cannot forward
+     * the hash with it.
+     */
+    async findIdentityCredentials({ userId }) {
+      const row = get("SELECT user_id, password_hash FROM auth_accounts WHERE user_id = ?", userId);
+      return row ? { userId: row.user_id, passwordHash: row.password_hash } : null;
     },
     async pruneExpiredIdentityState() {
       return transaction((transactionId) => {

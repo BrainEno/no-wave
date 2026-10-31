@@ -4,7 +4,8 @@ import test from "node:test";
 import { createIdentityService } from "./identity.ts";
 import { createLogMailer, resolveIdentityMailer } from "./identity-mailer.ts";
 import { SmtpError } from "../infrastructure/smtp-client.ts";
-import { IdentityAuthenticationError, MailDisabledError } from "../domain/errors.ts";
+import { IdentityAuthenticationError, IdentityInputError, MailDisabledError } from "../domain/errors.ts";
+import { hashPassword, verifyPassword } from "../security/passwords.ts";
 
 test("identity maintenance is periodically invoked without exposing throttle subjects", async () => {
   const keys = [];
@@ -94,17 +95,24 @@ const identityEnv = {
   MAIL_ENABLED: "true",
 };
 
-function fakeIdentityStore({ accounts = [] as Array<{ userId: string; email: string; passwordHash: string }> } = {}) {
+function fakeIdentityStore({ accounts = [] as Array<{ userId: string; email: string; passwordHash: string }>, limits = null as number[] | null } = {}) {
   const tokens = new Map<string, { userId: string; purpose: string; email: string; expiresAt: string; consumedAt: string | null }>();
+  /** Two devices are signed in per account, so a revocation can spare one. */
+  const sessions = new Map<string, string[]>();
   const revoked: string[] = [];
+  const revocations: Array<{ userId: string; exceptSessionId: string | null }> = [];
   const passwords = new Map<string, string>();
   const verifiedAt = new Map<string, string>();
   const sent: Array<{ to: string; purpose: string; subject: string; link: string }> = [];
-  for (const account of accounts) passwords.set(account.userId, account.passwordHash);
+  for (const account of accounts) {
+    passwords.set(account.userId, account.passwordHash);
+    sessions.set(account.userId, ["session-1", "session-2"]);
+  }
   const store = {
     sent,
     tokens,
     revoked,
+    revocations,
     passwords,
     verifiedAt,
     async findIdentityAccount({ email }) {
@@ -127,18 +135,29 @@ function fakeIdentityStore({ accounts = [] as Array<{ userId: string; email: str
       token.consumedAt = new Date().toISOString();
       return { userId: token.userId, email: token.email };
     },
+    async findIdentityCredentials({ userId }) {
+      if (!passwords.has(userId)) return null;
+      return { userId, passwordHash: passwords.get(userId) };
+    },
     async setIdentityPassword({ userId, passwordHash }) {
       if (!passwords.has(userId)) return false;
       passwords.set(userId, passwordHash);
       return true;
     },
-    async revokeIdentitySessions({ userId }) { revoked.push(userId); return 1; },
+    async revokeIdentitySessions({ userId, exceptSessionId = null }) {
+      revoked.push(userId);
+      revocations.push({ userId, exceptSessionId });
+      return 1;
+    },
     async markIdentityEmailVerified({ userId, verifiedAt: at }) {
       if (!passwords.has(userId)) return false;
       verifiedAt.set(userId, at);
       return true;
     },
-    async consumeRateLimit() { return { allowed: true, resetAt: new Date(Date.now() + 60_000).toISOString() }; },
+    async consumeRateLimit({ limit }) {
+      limits?.push(limit);
+      return { allowed: true, resetAt: new Date(Date.now() + 60_000).toISOString() };
+    },
     async pruneExpiredIdentityState() { return true; },
   };
   return store;
@@ -198,6 +217,101 @@ test("an expired or wrong-purpose recovery token is not a password change", asyn
     IdentityAuthenticationError,
   );
   assert.equal(store.passwords.get("user-1"), "hash-1");
+});
+
+/**
+ * Changing the password from inside a session.
+ *
+ * This is the one password transition that does not arrive by mail, so it is
+ * the only one that works while mail is switched off — and the only one where
+ * somebody has already proved who they are. Two properties follow and are what
+ * these tests pin down: the old credential is still required, so a stolen
+ * session alone is worth nothing here, and the session that proved it stays
+ * signed in instead of being thrown out by its own request.
+ */
+async function changePasswordFixture() {
+  const currentPassword = "the-current-password";
+  const passwordHash = await hashPassword(currentPassword);
+  const store = fakeIdentityStore({ accounts: [{ userId: "user-1", email: "owner@example.test", passwordHash }] });
+  const service = createIdentityService({ env: identityEnv, store, mailer: capturingMailer().mailer });
+  return { store, service, currentPassword, passwordHash };
+}
+
+test("a signed-in password change needs the old password and spares the session that made it", async () => {
+  const { store, service, currentPassword, passwordHash } = await changePasswordFixture();
+  assert.deepEqual(await service.changePassword({
+    userId: "user-1",
+    sessionId: "session-1",
+    body: { currentPassword, newPassword: "a-brand-new-password" },
+    ip: "192.0.2.10",
+  }), { ok: true, revokedSessions: 1 });
+
+  const stored = store.passwords.get("user-1") ?? null;
+  assert.notEqual(stored, passwordHash, "the stored credential is replaced");
+  assert.ok(await verifyPassword("a-brand-new-password", stored));
+  assert.equal(await verifyPassword(currentPassword, stored), false, "the old password no longer opens the account");
+  // A reset signs out everything; a change spares the device that proved it.
+  assert.deepEqual(store.revocations, [{ userId: "user-1", exceptSessionId: "session-1" }]);
+});
+
+test("a wrong current password changes nothing and signs nobody out", async () => {
+  const { store, service, currentPassword, passwordHash } = await changePasswordFixture();
+  await assert.rejects(service.changePassword({
+    userId: "user-1",
+    sessionId: "session-1",
+    body: { currentPassword: "not-the-password", newPassword: "a-brand-new-password" },
+    ip: "192.0.2.10",
+  }), IdentityAuthenticationError);
+  assert.equal(store.passwords.get("user-1"), passwordHash);
+  assert.deepEqual(store.revocations, [], "a failed change must not end a session");
+
+  // A session for an account that no longer exists fails identically: the
+  // answer is the same, and so is the work done to produce it.
+  await assert.rejects(service.changePassword({
+    userId: "nobody",
+    sessionId: "session-x",
+    body: { currentPassword, newPassword: "a-brand-new-password" },
+    ip: "192.0.2.10",
+  }), IdentityAuthenticationError);
+});
+
+test("the new password is held to the rules a new credential is held to, and the body is exactly two fields", async () => {
+  const { store, service, currentPassword, passwordHash } = await changePasswordFixture();
+  // Eleven characters is enough to log in and not enough to become the
+  // credential the account is protected by.
+  await assert.rejects(service.changePassword({
+    userId: "user-1",
+    sessionId: "session-1",
+    body: { currentPassword, newPassword: "short-one-1" },
+    ip: "192.0.2.10",
+  }), IdentityInputError);
+  // An extra field is refused outright rather than ignored: this body names
+  // the account by session, so anything else in it is a caller's mistake.
+  await assert.rejects(service.changePassword({
+    userId: "user-1",
+    sessionId: "session-1",
+    body: { currentPassword, newPassword: "a-brand-new-password", email: "attacker@example.test" },
+    ip: "192.0.2.10",
+  }), IdentityInputError);
+  assert.equal(store.passwords.get("user-1"), passwordHash);
+  assert.deepEqual(store.revocations, []);
+});
+
+test("a signed-in password change is throttled per account, then per address", async () => {
+  const currentPassword = "the-current-password";
+  const limits: number[] = [];
+  const store = fakeIdentityStore({
+    accounts: [{ userId: "user-1", email: "owner@example.test", passwordHash: await hashPassword(currentPassword) }],
+    limits,
+  });
+  const service = createIdentityService({ env: identityEnv, store, mailer: capturingMailer().mailer });
+  await service.changePassword({
+    userId: "user-1",
+    sessionId: "session-1",
+    body: { currentPassword, newPassword: "a-brand-new-password" },
+    ip: "192.0.2.10",
+  });
+  assert.deepEqual(limits, [5, 20], "five per quarter hour for one account, twenty for one address");
 });
 
 test("verification is sent to the signed-in account's own address and stamped once", async () => {

@@ -56,12 +56,19 @@ is the contract.
 | `POST /api/v1/auth/reset-password` | `{ token, password }` | `200 { data: { ok: true } }`; `401` for a token that was never issued, is spent or is expired; `400` for a malformed token or a password under 12 characters |
 | `POST /api/v1/auth/verify-email` | `{ token }` | `200 { data: { ok: true } }`; `401` for a spent or unknown token |
 | `POST /api/v1/me/email-verification` | – (authenticated) | `202 { data: { ok: true, alreadyVerified } }`; `401` unauthenticated |
+| `PUT /api/v1/me/password` | `{ currentPassword, newPassword }` (authenticated) | `200 { data: { ok: true, revokedSessions } }`; `401` for a wrong current password or no session; `400` for a new password under 12 characters or a body that is not exactly these two fields |
 
 - Only the SHA-256 digest of a token is stored, with its purpose, the address it was issued for, an
   expiry and a consumed stamp. A reset link lives 30 minutes, a verification link 24 hours, and each
   works exactly once. Issuing again supersedes the link already out.
 - A successful password reset revokes **every** session of that account. Users are signed out
   everywhere, and the confirmation page should say so.
+- `PUT /api/v1/me/password` is the same credential replacement from inside a session, and it
+  differs in exactly two ways: the current password is required as well, so a stolen session on
+  its own can neither take the account over nor lock the owner out, and the session that made the
+  request is **spared** — every other session of the account is revoked, that one is not. `revokedSessions`
+  in the answer counts the devices that were signed out. It needs no mail, which is what makes it
+  the only working way to replace a credential on an instance where mail is switched off.
 - The token travels in a request body, never in a path: paths are logged by proxies and browsers.
   The mail links to a page, and the page posts the token back.
 - `GET /api/v1/me` returns `{ id, email, emailVerifiedAt }` (additive fields only).
@@ -78,7 +85,8 @@ is the contract.
   configure `AUTH_IDENTITY_BASE_URL` for the public origin the links point at.
 - Throttling reuses the keyed-digest limiter: 20 per socket peer and 5 per email per hour for
   recovery requests, 20 per peer and 5 per token per 15 minutes for resets, 30 per peer per 15
-  minutes for verification redemptions, and 5 per account per hour for re-sending a verification.
+  minutes for verification redemptions, 5 per account per hour for re-sending a verification, and
+  5 per account plus 20 per peer per 15 minutes for `PUT /api/v1/me/password`.
 
 ## Abuse controls and deployment limitations
 

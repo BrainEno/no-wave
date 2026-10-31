@@ -88,7 +88,16 @@ export type IdentityStore = {
   issueIdentityToken(input: { userId: string; purpose: IdentityTokenPurpose; email: string; tokenHash: string; expiresAt: string }): Promise<unknown>;
   consumeIdentityToken(input: { tokenHash: string; purpose: IdentityTokenPurpose }): Promise<{ userId: string; email: string } | null>;
   setIdentityPassword(input: { userId: string; passwordHash: string }): Promise<boolean>;
-  revokeIdentitySessions(input: { userId: string }): Promise<number>;
+  /** The credential of one account, and nothing else about it. */
+  findIdentityCredentials(input: { userId: string }): Promise<{ userId: string; passwordHash: string } | null>;
+  /**
+   * Revoke every live session of one user, optionally sparing one.
+   *
+   * `exceptSessionId` exists because "the password changed" has two shapes: a
+   * reset has no device that proved anything, so all of them go; a change made
+   * from inside a session keeps the one that proved it knew the old password.
+   */
+  revokeIdentitySessions(input: { userId: string; exceptSessionId?: string }): Promise<number>;
   markIdentityEmailVerified(input: { userId: string; verifiedAt: string }): Promise<boolean>;
   findIdentityAccountByUserId(input: { userId: string }): Promise<{ userId: string; email: string; emailVerifiedAt: string | null } | null>;
   pruneExpiredIdentityState(): Promise<unknown>;
@@ -333,6 +342,41 @@ export function createIdentityService({ store, env, mailer = null, onMailDeliver
       // otherwise outlive the credential it was issued against.
       await store.revokeIdentitySessions({ userId: consumed.userId });
       return { ok: true };
+    },
+    /**
+     * Change the password of an account that is already signed in.
+     *
+     * The old credential is required first, so a stolen session on its own
+     * gains nothing: it cannot take the account over, and it cannot lock the
+     * owner out by pointing the password somewhere they do not know. The new
+     * password is held to the registration rules rather than the laxer login
+     * check, because it is a new credential — exactly as after a reset.
+     *
+     * Every *other* session of the account is signed out and this one is kept:
+     * the device that just proved it knew the old password stays signed in, so
+     * changing a password does not throw the visitor out of the page they are
+     * using. A reset has no device that proved anything, which is why it signs
+     * out everything instead.
+     */
+    async changePassword({ userId, sessionId, body, ip }: {
+      userId: string; sessionId: string; body: Record<string, unknown>; ip: string;
+    }) {
+      requireOnly(body, ["currentPassword", "newPassword"]);
+      const current = passwordInput(body.currentPassword, false);
+      const next = passwordInput(body.newPassword, true);
+      const config = configuration(env);
+      await consume("change-password:user", userId, 5, WINDOW_SECONDS, config.secret);
+      await consume("change-password:ip", ip, 20, WINDOW_SECONDS, config.secret);
+      const account = await store.findIdentityCredentials({ userId });
+      // A missing account costs the same KDF work as a wrong password, so the
+      // response time does not say which one it was.
+      const valid = await verifyPassword(current, account?.passwordHash ?? null);
+      if (!account || !valid) throw new IdentityAuthenticationError();
+      const passwordHash = await hashPassword(next);
+      const updated = await store.setIdentityPassword({ userId, passwordHash });
+      if (!updated) throw new IdentityAuthenticationError();
+      const revokedSessions = await store.revokeIdentitySessions({ userId, exceptSessionId: sessionId });
+      return { ok: true, revokedSessions };
     },
     /**
      * Send (or re-send) the verification link for the signed-in user's address.
