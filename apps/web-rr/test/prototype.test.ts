@@ -330,6 +330,85 @@ test("sign-in sets the session marker the account page reads", async () => {
   assert.match(value, /^\d+$/, "the marker carries an expiry, never a credential");
 });
 
+/**
+ * Boot the same build on another port with `MAIL_ENABLED=true`.
+ *
+ * The switch is read at request time, so flipping it must not require a rebuild
+ * — and this is the assertion that says so, over HTTP, against the production
+ * build. The suite's own server runs without the variable, which is the default.
+ */
+async function withMailEnabledServer(run: (url: string) => Promise<void>): Promise<void> {
+  const port = await freePort();
+  const url = `http://127.0.0.1:${port}`;
+  const child = spawn(process.execPath, ["server.ts"], {
+    cwd: packageDir,
+    env: {
+      ...process.env,
+      NODE_ENV: "production",
+      PORT: String(port),
+      HOST: "127.0.0.1",
+      API_BASE_URL: mockApi.url,
+      API_SERVICE_URL: "",
+      NEXT_PUBLIC_SITE_URL: "https://no-wave.example",
+      MAIL_ENABLED: "true",
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  try {
+    await waitForServer(`${url}/`);
+    await run(url);
+  } finally {
+    await new Promise<void>((resolve) => {
+      if (child.exitCode !== null) { resolve(); return; }
+      child.once("exit", () => resolve());
+      child.kill("SIGTERM");
+    });
+  }
+}
+
+test("the sign-in form offers recovery only while mail is switched on", async () => {
+  // The suite's server runs with mail off, which is the product default.
+  const off = await get("/sign-in");
+  assert.equal(off.status, 200);
+  assert.equal(off.body.includes("/forgot-password"), false, "no recovery link when no recovery mail can be sent");
+  assert.match(off.body, /name="password"/, "the form itself is unchanged");
+
+  await withMailEnabledServer(async (url) => {
+    const response = await fetch(`${url}/sign-in`);
+    assert.equal(response.status, 200);
+    const body = await response.text();
+    assert.match(body, /\/forgot-password/, "the same build offers the link once the switch is on");
+  });
+});
+
+/**
+ * The account page with the switch in both positions.
+ *
+ * The panel resolves in the browser, so what the switch changes there is a
+ * client-side decision — the honest HTTP-level assertions are that the shell is
+ * private and mail-free either way, and that turning mail on does not change who
+ * can open the page. The server-rendered half of the switch is asserted on the
+ * sign-in page above.
+ */
+test("the account shell is private and mail-free whichever way the switch sits", async () => {
+  const marker = `nw_session=${Math.floor((Date.now() + 3_600_000) / 1000)}`;
+
+  const off = await get("/account", { cookie: marker });
+  assert.equal(off.status, 200);
+  assert.match(off.headers.get("cache-control") ?? "", /no-store/);
+  assert.equal(off.body.includes("发送验证邮件"), false, "no mail action is rendered before the session resolves");
+  assert.equal(off.body.includes(MOCK_CREDENTIALS.email), false);
+
+  await withMailEnabledServer(async (url) => {
+    const response = await fetch(`${url}/account`, { headers: { cookie: marker } });
+    assert.equal(response.status, 200);
+    const body = await response.text();
+    assert.match(body, /我的账户/);
+    assert.equal(body.includes("发送验证邮件"), false);
+    assert.equal(body.includes(MOCK_CREDENTIALS.email), false);
+  });
+});
+
 /* ------------------------------------------------------------------ Phase 3 */
 
 /**

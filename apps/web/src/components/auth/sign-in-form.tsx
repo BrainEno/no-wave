@@ -4,7 +4,18 @@ import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 
-type SignInFormProps = { nextPath: string };
+type SignInFormProps = {
+  nextPath: string;
+  /**
+   * Whether this deployment can mail anybody.
+   *
+   * Read on the server and handed down: a "forgot your password?" link that
+   * leads to a page which cannot send anything is a promise the site cannot
+   * keep, so it is not rendered. The API would refuse the request anyway with
+   * 503 `MAIL_DISABLED`; this just stops offering it.
+   */
+  mailEnabled: boolean;
+};
 type ApiErrorPayload = { error?: { message?: unknown } };
 
 function errorMessage(payload: unknown): string {
@@ -13,7 +24,7 @@ function errorMessage(payload: unknown): string {
   return error && typeof error.message === "string" ? error.message : "请求失败，请稍后重试。";
 }
 
-export function SignInForm({ nextPath }: SignInFormProps) {
+export function SignInForm({ nextPath, mailEnabled }: SignInFormProps) {
   const router = useRouter();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
@@ -68,7 +79,7 @@ export function SignInForm({ nextPath }: SignInFormProps) {
         <button className="nw-btn" type="button" disabled={busy} onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); setStatus(""); }}>
           {mode === "login" ? "没有账户？创建账户" : "已有账户？登录"}
         </button>
-        <Link className="nw-btn" href="/forgot-password">忘记密码？</Link>
+        {mailEnabled ? <Link className="nw-btn" href="/forgot-password">忘记密码？</Link> : null}
         <a className="nw-btn" href="/">返回首页</a>
       </div>
     </section>

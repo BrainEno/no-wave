@@ -90,3 +90,10 @@ dependency.**
 - **A real delivery has still not been observed.** The gate passed on published
   terms; no account was created and no credential ever enters the repository. The
   first real send is a deployment step, not a code step.
+
+## Operations
+
+Whether mail is sent at all is `MAIL_ENABLED`, not this ADR's configuration: see
+[Account mail: off until you switch it on](../../operations/mail-setup.md) for the switch
+contract, the procedure for turning delivery on once a relay account exists, and the log lines
+that distinguish "off" from "broken".

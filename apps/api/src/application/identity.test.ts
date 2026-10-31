@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import test from "node:test";
 import { createIdentityService } from "./identity.ts";
-import { createLogMailer } from "./identity-mailer.ts";
+import { createLogMailer, resolveIdentityMailer } from "./identity-mailer.ts";
 import { SmtpError } from "../infrastructure/smtp-client.ts";
-import { IdentityAuthenticationError } from "../domain/errors.ts";
+import { IdentityAuthenticationError, MailDisabledError } from "../domain/errors.ts";
 
 test("identity maintenance is periodically invoked without exposing throttle subjects", async () => {
   const keys = [];
@@ -79,11 +79,19 @@ test("the registration throttle keeps its default, and only the operator can wid
  * must sign out every device, and the link that can reset an account must not be
  * written to a log by default.
  */
+/**
+ * Mail is **on** for this fixture.
+ *
+ * These tests are about what the recovery and verification flows do, so the
+ * switch is enabled and the log mailer carries the message. The switch's own
+ * behaviour — off by default, and what it refuses — has tests of its own below.
+ */
 const identityEnv = {
   AUTH_JWT_SECRET: "fixture-secret-not-a-real-key-32-bytes",
   AUTH_JWT_ISSUER: "test",
   AUTH_JWT_AUDIENCE: "test",
   AUTH_IDENTITY_BASE_URL: "https://example.test",
+  MAIL_ENABLED: "true",
 };
 
 function fakeIdentityStore({ accounts = [] as Array<{ userId: string; email: string; passwordHash: string }> } = {}) {
@@ -274,4 +282,85 @@ test("a delivered mail is recorded as sent", async () => {
   await service.requestEmailVerification("user-1", "192.0.2.10");
   assert.deepEqual(observations, [{ purpose: "email_verification", outcome: "sent", durationMs: observations[0]?.durationMs }]);
   assert.ok(typeof observations[0]?.durationMs === "number");
+});
+
+/**
+ * The mail switch.
+ *
+ * Off by default, because a site that has not chosen a relay should not behave
+ * as though it can reach its readers' inboxes. What matters here is what "off"
+ * does **not** do: it does not issue a token nobody can redeem, and it does not
+ * answer 202 as though a mail were on its way.
+ */
+test("a recovery request while mail is off is refused, and no token is issued", async () => {
+  const store = fakeIdentityStore({ accounts: [{ userId: "user-1", email: "owner@example.test", passwordHash: "hash-1" }] });
+  const observations: Array<{ purpose: string; outcome: string }> = [];
+  const service = createIdentityService({
+    env: { ...identityEnv, MAIL_ENABLED: "false" },
+    store,
+    mailer: capturingMailer().mailer,
+    onMailDelivery: (sample) => { observations.push(sample); },
+  });
+
+  await assert.rejects(
+    service.requestPasswordReset({ email: "owner@example.test" }, "192.0.2.10"),
+    (error: unknown) => error instanceof MailDisabledError && error.code === "MAIL_DISABLED",
+    "a recovery that cannot be delivered must not look accepted",
+  );
+  assert.equal(store.tokens.size, 0, "no token is issued for a mail that cannot be sent");
+  assert.deepEqual(observations, [{ purpose: "password_reset", outcome: "skipped", durationMs: 0, code: "MAIL_DISABLED" }]);
+});
+
+test("a verification request while mail is off is refused the same way", async () => {
+  const store = fakeIdentityStore({ accounts: [{ userId: "user-1", email: "owner@example.test", passwordHash: "hash-1" }] });
+  const service = createIdentityService({
+    env: { ...identityEnv, MAIL_ENABLED: "false" },
+    store,
+    mailer: capturingMailer().mailer,
+  });
+  await assert.rejects(service.requestEmailVerification("user-1", "192.0.2.10"), MailDisabledError);
+  assert.equal(store.tokens.size, 0);
+});
+
+test("mail stays off unless the operator says otherwise", async () => {
+  const store = fakeIdentityStore({ accounts: [{ userId: "user-1", email: "owner@example.test", passwordHash: "hash-1" }] });
+  // Unset, empty and unrecognised all mean off: a typo must not switch mail on.
+  for (const value of [undefined, "", "  ", "false", "0", "no", "off", "TRUEish", "yes please"]) {
+    const env = { ...identityEnv };
+    if (value === undefined) delete env.MAIL_ENABLED; else env.MAIL_ENABLED = value;
+    const service = createIdentityService({ env, store, mailer: capturingMailer().mailer });
+    await assert.rejects(
+      service.requestEmailVerification("user-1", "192.0.2.10"),
+      MailDisabledError,
+      `MAIL_ENABLED=${JSON.stringify(value)} must leave mail off`,
+    );
+  }
+  for (const value of ["true", "TRUE", " true ", "1", "yes", "on"]) {
+    const service = createIdentityService({
+      env: { ...identityEnv, MAIL_ENABLED: value },
+      store,
+      mailer: capturingMailer().mailer,
+    });
+    const answer = await service.requestEmailVerification("user-1", "192.0.2.10");
+    assert.equal(answer.ok, true, `MAIL_ENABLED=${JSON.stringify(value)} must switch mail on`);
+  }
+});
+
+test("a configured relay does not switch mail on by itself", async () => {
+  const store = fakeIdentityStore({ accounts: [{ userId: "user-1", email: "owner@example.test", passwordHash: "hash-1" }] });
+  const configured = {
+    ...identityEnv,
+    MAIL_ENABLED: undefined,
+    MAIL_SMTP_HOST: "relay.example.test",
+    MAIL_FROM: "no-reply@example.test",
+  };
+  const service = createIdentityService({ env: configured, store });
+  await assert.rejects(
+    service.requestPasswordReset({ email: "owner@example.test" }, "192.0.2.10"),
+    MailDisabledError,
+    "credentials in the environment are not consent",
+  );
+  const mail = resolveIdentityMailer(configured);
+  await assert.rejects(mail.send({ to: "owner@example.test", purpose: "password_reset", subject: "s", text: "t", link: "https://example.test" }),
+    MailDisabledError, "the mailer refuses too, so an unchecked path cannot quietly send");
 });

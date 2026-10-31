@@ -1,11 +1,14 @@
 import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import {
   IdentityAuthenticationError, IdentityConflictError, IdentityInputError,
-  IdentityRateLimitError, IdentityUnavailableError,
+  IdentityRateLimitError, IdentityUnavailableError, MailDisabledError,
 } from "../domain/errors.ts";
 import { accessIssuerConfiguration, signAccessToken } from "../security/authentication.ts";
 import { hashPassword, verifyPassword } from "../security/passwords.ts";
-import { identityLink, resolveIdentityMailer, type IdentityMailer, type IdentityTokenPurpose } from "./identity-mailer.ts";
+import {
+  identityLink, isMailEnabled, resolveIdentityMailer,
+  type IdentityMailer, type IdentityTokenPurpose,
+} from "./identity-mailer.ts";
 
 const REFRESH_LIFETIME_SECONDS = 30 * 24 * 60 * 60;
 const WINDOW_SECONDS = 15 * 60;
@@ -37,6 +40,29 @@ const VERIFICATION_TOKEN_LIFETIME_SECONDS = 24 * 60 * 60;
  * off, falls back to the default rather than leaving registration open.
  */
 const DEFAULT_REGISTER_IP_LIMIT = 20;
+
+/**
+ * Refuse a request whose whole purpose is to put mail in an inbox, while mail is
+ * switched off.
+ *
+ * Before any rate limit is spent and before any token is issued: issuing a
+ * reset token nobody can receive would be worse than refusing, because the
+ * account would look recoverable. The observation is recorded as `skipped`, not
+ * `failed` — nothing failed, the feature simply is not on — so an operator can
+ * see that visitors are asking for something this instance cannot do.
+ *
+ * The refusal is a 409 `MAIL_DISABLED`: not an outage, and not something
+ * retrying will fix.
+ */
+function requireMail(env: NodeJS.ProcessEnv, purpose: IdentityTokenPurpose, onMailDelivery: MailDeliveryObserver | null): void {
+  if (isMailEnabled(env)) return;
+  onMailDelivery?.({ purpose, outcome: "skipped", durationMs: 0, code: "MAIL_DISABLED" });
+  throw new MailDisabledError();
+}
+
+/** One mail delivery, sent or skipped, as the observability layer sees it. */
+type MailDeliverySample = { purpose: string; outcome: string; durationMs: number; code?: string; message?: string };
+type MailDeliveryObserver = (sample: MailDeliverySample) => void;
 
 function registerIpLimit(env: NodeJS.ProcessEnv): number {
   const raw = env.AUTH_REGISTER_IP_LIMIT;
@@ -122,7 +148,7 @@ export function createIdentityService({ store, env, mailer = null, onMailDeliver
   store: IdentityStore;
   env: NodeJS.ProcessEnv;
   mailer?: IdentityMailer | null;
-  onMailDelivery?: ((sample: { purpose: string; outcome: string; durationMs: number; code?: string; message?: string }) => void) | null;
+  onMailDelivery?: MailDeliveryObserver | null;
 }) {
   const delivery: IdentityMailer | null = mailer ?? resolveIdentityMailer(env);
   let rateOperations = 0;
@@ -269,6 +295,7 @@ export function createIdentityService({ store, env, mailer = null, onMailDeliver
       requireOnly(body, ["email"]);
       const email = normalizeEmail(body.email);
       const config = configuration(env);
+      requireMail(env, "password_reset", onMailDelivery);
       await consume("password-reset:ip", ip, 20, REGISTER_WINDOW_SECONDS, config.secret);
       await consume("password-reset:email", email, 5, REGISTER_WINDOW_SECONDS, config.secret);
       const account = await store.findIdentityAccount({ email });
@@ -316,6 +343,7 @@ export function createIdentityService({ store, env, mailer = null, onMailDeliver
      */
     async requestEmailVerification(userId: string, ip: string) {
       const config = configuration(env);
+      requireMail(env, "email_verification", onMailDelivery);
       await consume("email-verification:user", userId, 5, REGISTER_WINDOW_SECONDS, config.secret);
       await consume("email-verification:ip", ip, 20, REGISTER_WINDOW_SECONDS, config.secret);
       const account = await store.findIdentityAccountByUserId({ userId });

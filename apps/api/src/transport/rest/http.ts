@@ -108,6 +108,11 @@ export const DOMAIN_ERROR_RESPONSES: Record<string, RestErrorResponse> = {
   UNAUTHENTICATED: { status: 401, code: "UNAUTHENTICATED", message: "The credentials are invalid." },
   RATE_LIMITED: { status: 429, code: "RATE_LIMITED", message: "Too many requests. Try again later." },
   SERVICE_UNAVAILABLE: { status: 503, code: "SERVICE_UNAVAILABLE", message: "Identity is not configured." },
+  // 409, deliberately not 503: a switched-off feature is not an outage, and
+  // "try again later" is the wrong advice when nothing changes until an
+  // operator flips a switch. Being a 4xx also means the Web proxy passes the
+  // code and message through instead of replacing a 5xx body wholesale.
+  MAIL_DISABLED: { status: 409, code: "MAIL_DISABLED", message: "Account mail is not enabled on this instance." },
   NOT_FOUND: { status: 404, code: "NOT_FOUND", message: "The requested resource was not found." },
   CONFLICT: { status: 409, code: "CONFLICT", message: "The request conflicts with the current resource state." },
   IDEMPOTENCY_CONFLICT: {

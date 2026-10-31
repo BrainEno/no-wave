@@ -5,7 +5,7 @@ export type UiCopy = ReturnType<typeof zh>;
 function zh() {
   return {
     brand: "无浪潮", brandLatin: "No Wave", homeAria: "无浪潮 No Wave 首页", rail: "无浪潮 · No Wave — 独立文学出版",
-    nav: { selected: "精选", latest: "最新", works: "作品", topics: "分类", search: "搜索", menu: "选单", close: "关闭", primary: "主导航", footer: "页尾导航", home: "首页", language: "切换语言" },
+    nav: { selected: "精选", latest: "最新", works: "作品", topics: "分类", search: "搜索", menu: "选单", close: "关闭", primary: "主导航", footer: "页尾导航", home: "首页", language: "切换语言", account: "账户", accountAria: "我的账户" },
     bell: { label: "通知", empty: "暂无通知", hint: "登录后，你关注的作者与讨论提醒会出现在这里。", signIn: "登录" },
     home: {
       eyebrow: "独立文学出版 · 阅读 · 交流", tagline: "为值得认真阅读的作品，留出位置。", start: "开始阅读", selected: "精选", selectedEn: "Selected",
@@ -45,7 +45,7 @@ function zh() {
 function en(): UiCopy {
   return {
     brand: "No Wave", brandLatin: "No Wave", homeAria: "No Wave home", rail: "NO WAVE — INDEPENDENT LITERARY PUBLISHING",
-    nav: { selected: "Selected", latest: "Latest", works: "Works", topics: "Topics", search: "Search", menu: "Menu", close: "Close", primary: "Primary navigation", footer: "Footer navigation", home: "Home", language: "Switch language" },
+    nav: { selected: "Selected", latest: "Latest", works: "Works", topics: "Topics", search: "Search", menu: "Menu", close: "Close", primary: "Primary navigation", footer: "Footer navigation", home: "Home", language: "Switch language", account: "Account", accountAria: "My account" },
     bell: { label: "Notifications", empty: "No notifications", hint: "Sign in to see reminders from the authors and discussions you follow.", signIn: "Sign in" },
     home: {
       eyebrow: "INDEPENDENT LITERARY PUBLISHING", tagline: "Independent publishing for writing worth reading slowly.", start: "Start reading", selected: "Selected", selectedEn: "Selected",

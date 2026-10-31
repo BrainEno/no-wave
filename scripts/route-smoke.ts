@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { createServer } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
 
 const port = Number(process.env.SMOKE_PORT ?? 3187);
@@ -42,6 +43,59 @@ async function waitForServer() {
     await delay(500);
   }
   throw new Error(`Next.js server did not become ready.\n${serverOutput}`);
+}
+
+/**
+ * Boot the same build on a second port with mail switched on, run `check`, and
+ * stop it again.
+ *
+ * A separate process rather than an env juggle on the first one: the switch is
+ * read at request time, so the only way to show the build behaving differently
+ * is to serve it twice.
+ */
+async function withMailEnabledServer(check: (url: string) => Promise<void>): Promise<void> {
+  const probe = createServer();
+  const port = await new Promise<number>((resolve, reject) => {
+    probe.once("error", reject);
+    probe.listen(0, "127.0.0.1", () => {
+      const address = probe.address();
+      if (address === null || typeof address === "string") { reject(new Error("Could not reserve a port.")); return; }
+      resolve(address.port);
+    });
+  });
+  await new Promise<void>((resolve) => probe.close(() => resolve()));
+
+  const mailServer = spawn("pnpm", ["--filter", "@bot-thk/web", "start"], {
+    env: { ...process.env, HOSTNAME: "127.0.0.1", PORT: String(port), MAIL_ENABLED: "true", API_BASE_URL: "" },
+    stdio: ["ignore", "pipe", "pipe"],
+    detached: process.platform !== "win32",
+  });
+  let output = "";
+  mailServer.stdout.on("data", (chunk: Buffer) => { output += chunk.toString(); });
+  mailServer.stderr.on("data", (chunk: Buffer) => { output += chunk.toString(); });
+  try {
+    const url = `http://127.0.0.1:${port}`;
+    let ready = false;
+    for (let attempt = 0; attempt < 40 && !ready; attempt += 1) {
+      try {
+        const response = await fetch(`${url}/forgot-password`);
+        if (response.status === 200) ready = true;
+      } catch { /* still starting */ }
+      if (!ready) await delay(500);
+    }
+    if (!ready) throw new Error(`The mail-enabled server did not become ready.\n${output}`);
+    await check(url);
+  } finally {
+    if (mailServer.exitCode === null && mailServer.signalCode === null) {
+      if (process.platform !== "win32" && mailServer.pid !== undefined) {
+        try { process.kill(-mailServer.pid, "SIGTERM"); } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+        }
+      } else {
+        mailServer.kill("SIGTERM");
+      }
+    }
+  }
 }
 
 try {
@@ -101,29 +155,34 @@ try {
   assert.equal(account.headers.get("location"), "/sign-in?next=%2Faccount");
   assert.match(account.headers.get("cache-control") ?? "", /no-store/i, "account redirect must not be publicly cached");
 
-  // Recovery and verification (ADR 0014). These three are the pages a mail
-  // links to, so the property that matters is that they render as forms without
-  // an API configured: the visitor who needs them is by definition mid-recovery,
-  // and a 500 here is a dead end they cannot report.
+  /**
+   * Recovery and verification (ADR 0014) with **mail switched off**, which is
+   * this script's configuration and the product default: these pages are reached
+   * from a mail, so the property that matters is that they never 500 and never
+   * collect an address for a link that cannot be sent. The switched-on forms are
+   * asserted against a second server below.
+   */
   const forgotPassword = await fetch(`${baseUrl}/forgot-password`);
   assert.equal(forgotPassword.status, 200, "the recovery request page should return 200");
-  assert.match(await forgotPassword.text(), /找回密码/, "the recovery page should serve Simplified Chinese content");
+  const forgotPasswordHtml = await forgotPassword.text();
+  assert.match(forgotPasswordHtml, /未启用邮件功能/, "with mail off the page says so instead of offering a form");
+  assert.doesNotMatch(forgotPasswordHtml, /name="email"/, "no address is collected for a mail that cannot be sent");
 
   const resetWithoutToken = await fetch(`${baseUrl}/reset-password`);
   assert.equal(resetWithoutToken.status, 200, "the reset page should return 200");
-  assert.match(
-    await resetWithoutToken.text(),
-    /链接不完整/,
-    "a reset link that lost its token must say so instead of rendering a form that cannot work",
-  );
-
-  const resetWithToken = await fetch(`${baseUrl}/reset-password?token=${"a".repeat(43)}`);
-  assert.equal(resetWithToken.status, 200, "a reset link with a token should return 200");
-  assert.match(await resetWithToken.text(), /设置新密码/, "a reset link with a token should render the form");
+  assert.match(await resetWithoutToken.text(), /未启用邮件功能/, "a reset link can only have arrived by mail");
 
   const verifyWithoutToken = await fetch(`${baseUrl}/verify-email`);
   assert.equal(verifyWithoutToken.status, 200, "the verification page should return 200");
-  assert.match(await verifyWithoutToken.text(), /链接不完整/, "a verification link without a token must say so");
+  assert.match(await verifyWithoutToken.text(), /未启用邮件功能/, "same for a verification link");
+
+  const signIn = await fetch(`${baseUrl}/sign-in`);
+  assert.equal(signIn.status, 200, "the sign-in page should return 200");
+  assert.doesNotMatch(
+    await signIn.text(),
+    /\/forgot-password/,
+    "the recovery link is not offered while the site cannot send a recovery mail",
+  );
 
   const events = await fetch(`${baseUrl}/api/spike/events`);
   assert.equal(events.status, 200);
@@ -170,7 +229,34 @@ try {
   assert.match(sitemapText, /portable-web-foundation/);
   assert.match(sitemapText, /\/en\/articles\//, "sitemap should include English article URLs");
 
-  console.log("Route smoke checks passed: localized home/archive/article routes, search, SEO alternates, 404s, account cache policy, recovery and verification pages, SSE headers, robots and sitemap.");
+  /**
+   * The same build with `MAIL_ENABLED=true`.
+   *
+   * This is the whole point of reading the switch on the server at request time
+   * rather than inlining it at build time: one deployment artefact, two
+   * behaviours, no rebuild.
+   */
+  await withMailEnabledServer(async (mailUrl) => {
+    const forgotPassword = await fetch(`${mailUrl}/forgot-password`);
+    assert.equal(forgotPassword.status, 200);
+    const forgotPasswordHtml = await forgotPassword.text();
+    assert.match(forgotPasswordHtml, /发送重设链接/, "with mail on the recovery form is offered");
+    assert.match(forgotPasswordHtml, /name="email"/);
+    assert.doesNotMatch(forgotPasswordHtml, /未启用邮件功能/, "one artefact, two behaviours: the switch is read per request");
+
+    const resetWithToken = await fetch(`${mailUrl}/reset-password?token=${"a".repeat(43)}`);
+    assert.equal(resetWithToken.status, 200);
+    assert.match(await resetWithToken.text(), /设置新密码/, "a reset link with a token renders the form");
+
+    const verifyWithoutToken = await fetch(`${mailUrl}/verify-email`);
+    assert.equal(verifyWithoutToken.status, 200);
+    assert.match(await verifyWithoutToken.text(), /链接不完整/, "a verification link without a token must say so");
+
+    const signIn = await fetch(`${mailUrl}/sign-in`);
+    assert.match(await signIn.text(), /\/forgot-password/, "the recovery link comes back with the switch");
+  });
+
+  console.log("Route smoke checks passed: localized home/archive/article routes, search, SEO alternates, 404s, account cache policy, recovery and verification pages (mail off and on), SSE headers, robots and sitemap.");
 } finally {
   if (server.exitCode === null && server.signalCode === null) {
     if (process.platform !== "win32" && server.pid !== undefined) {

@@ -7,10 +7,16 @@ import { persistencePortMethods } from "./application/persistence-ports.ts";
 import { ArticleAuthorizationError, ArticleInputError, ArticleNotFoundError, ArticleSlugConflictError, DomainError, IdempotencyConflictError } from "./domain/errors.ts";
 import { isUuid } from "./domain/validation.ts";
 
+/**
+ * Mail is enabled for this suite: the recovery and verification tests below are
+ * about what those endpoints do when they work. The switch itself — off unless
+ * an operator turns it on, and 503 while it is off — has its own test.
+ */
 const authEnv = {
   AUTH_JWT_SECRET: "test-only-secret-that-is-at-least-32-bytes",
   AUTH_JWT_ISSUER: "https://auth.example.test",
   AUTH_JWT_AUDIENCE: "bot-thk-api",
+  MAIL_ENABLED: "true",
 };
 
 function signedToken(sub) {
@@ -2188,5 +2194,50 @@ test("REST email verification stamps the account and only the account holder may
     // Unauthenticated: no way to aim mail at an address.
     const anonymous = await fetch(baseUrl + "/api/v1/me/email-verification", { method: "POST" });
     assert.equal(anonymous.status, 401);
+  }, { env: authEnv, store });
+});
+
+/**
+ * The mail switch, over HTTP.
+ *
+ * Both endpoints that would put a link in somebody's inbox answer 409 with
+ * `MAIL_DISABLED` while the switch is off — 409 rather than 503 because nothing
+ * is temporarily unavailable; the site simply cannot mail anybody. What they
+ * must **not** do is answer 202: a page that says "check your mail" when no mail
+ * exists is worse than one that says the site cannot do this.
+ */
+test("recovery and verification answer 503 while mail is switched off", async () => {
+  const store = recoveryStore();
+  const disabled = { ...authEnv, MAIL_ENABLED: "false" };
+  await withServer(async (baseUrl) => {
+    const post = (path: string, body: unknown, headers: Record<string, string> = {}) => fetch(baseUrl + path, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body: JSON.stringify(body),
+    });
+
+    const reset = await post("/api/v1/auth/forgot-password", { email: "owner@example.test" });
+    assert.equal(reset.status, 409, "a recovery link that cannot be delivered is not an accepted request");
+    assert.equal((await reset.json()).error.code, "MAIL_DISABLED");
+    assert.ok(!store.calls.some((call) => call.method === "issueIdentityToken"), "no token is issued for a mail that cannot be sent");
+
+    const authorization = "Bearer " + signedToken("owner-user");
+    const verification = await post("/api/v1/me/email-verification", {}, { authorization });
+    assert.equal(verification.status, 409);
+    assert.equal((await verification.json()).error.code, "MAIL_DISABLED");
+  }, { env: disabled, store });
+});
+
+test("the same endpoints work the moment the switch is on", async () => {
+  const store = recoveryStore();
+  await withServer(async (baseUrl) => {
+    const reset = await fetch(baseUrl + "/api/v1/auth/forgot-password", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "owner@example.test" }),
+    });
+    assert.equal(reset.status, 202);
+    assert.deepEqual(await reset.json(), { data: { ok: true } });
+    assert.ok(store.calls.some((call) => call.method === "issueIdentityToken"));
   }, { env: authEnv, store });
 });

@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { AccountPanel } from "@/components/auth/account-panel.tsx";
+import { isMailEnabled } from "@/lib/mail-feature.ts";
 import { SESSION_MARKER_COOKIE, hasUsableSession } from "@bot-thk/web-http";
 
 export const dynamic = "force-dynamic";
@@ -32,7 +33,7 @@ export default async function AccountPage() {
   }
   return (
     <main className="nw-w nw-head">
-      <AccountPanel />
+      <AccountPanel mailEnabled={isMailEnabled()} />
     </main>
   );
 }

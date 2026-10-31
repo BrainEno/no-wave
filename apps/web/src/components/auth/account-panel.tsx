@@ -49,7 +49,7 @@ function localDate(value: string): string {
   return Number.isFinite(parsed) ? new Date(parsed).toLocaleDateString() : "未知时间";
 }
 
-export function AccountPanel() {
+export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
   const router = useRouter();
   const [state, setState] = useState<State>("checking");
   const [account, setAccount] = useState<Account | null>(null);
@@ -110,6 +110,12 @@ export function AccountPanel() {
       if (response.status === 401) {
         setState("signed-out");
         router.replace("/sign-in?next=%2Faccount");
+        return;
+      }
+      if (response.status === 409) {
+        // The switch is off on this deployment: not a failure to retry, and not
+        // something the visitor can fix. Say what it is.
+        setError("这个站点没有启用邮件功能，无法发送验证邮件。");
         return;
       }
       if (!response.ok) {
@@ -188,17 +194,22 @@ export function AccountPanel() {
       <p className="nw-ep" style={{ marginTop: 24 }}>
         这里是这个账号的身份信息。令牌只存在于 HttpOnly cookie 中，页面拿不到，也不会出现在这里。
       </p>
+      {mailEnabled ? null : (
+        <p className="nw-ep" data-mail-state="disabled">
+          找回密码与邮箱验证需要邮件功能，而这个站点没有启用它；除此之外账号的一切照常。
+        </p>
+      )}
       <dl className="nw-account-fields">
         <dt>邮箱</dt>
         <dd data-account-email>{account?.email ?? "（这个账号没有绑定邮箱）"}</dd>
         <dt>验证状态</dt>
         <dd data-account-verification>
-          {verified ? `已验证（${localDate(String(account?.emailVerifiedAt))}）` : "未验证"}
+          {verified ? `已验证（${localDate(String(account?.emailVerifiedAt))}）` : mailEnabled ? "未验证" : "本站未启用邮件功能"}
         </dd>
         <dt>账号 ID</dt>
         <dd data-account-id>{account?.id}</dd>
       </dl>
-      {verified ? null : (
+      {mailEnabled === false || verified ? null : (
         <p className="nw-ep">
           未验证的账号同样可以登录、写作和发布：验证只是给这个邮箱留一个「曾经可达」的标记，用于在需要时确认你仍能收到邮件。
         </p>
@@ -206,7 +217,7 @@ export function AccountPanel() {
       {error ? <p className="nw-auth-error" role="alert">{error}</p> : null}
       {notice ? <p className="nw-auth-status" role="status">{notice}</p> : null}
       <div className="nw-auth-switch">
-        {verified ? null : (
+        {mailEnabled === false || verified ? null : (
           <button className="nw-btn nw-pri" type="button" disabled={busy !== null} onClick={() => void requestVerification()}>
             {busy === "verification" ? "正在发送……" : "发送验证邮件"}
           </button>
