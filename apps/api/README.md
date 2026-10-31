@@ -228,6 +228,28 @@ All routes below require a valid, non-revoked bearer JWT, except for public comm
 - `POST /api/v1/articles/:slug/comments?locale=zh-CN` — create a comment or reply with `{"content": "...", "parentCommentId": null}`; replies must reference a comment on the same article. Supplying an optional `Idempotency-Key` (1–300 trimmed characters) makes a retry with the same normalized request return the same persisted comment and avoids duplicate comment notifications; reusing the key with a different request returns `409 IDEMPOTENCY_CONFLICT`. Only a SHA-256 key digest is stored, not the raw header. The full contract — which routes require a key, how digests and fingerprints are computed, and what a replay returns — is in [docs/architecture/rest-idempotency.md](../../docs/architecture/rest-idempotency.md).
 - `DELETE /api/v1/comments/:commentId` — delete the current user's own comment. Returns `{"data":{"deleted":true}}` when deleted; the domain layer enforces ownership.
 
+### Media addresses and the application-relative `src`
+
+- `POST /api/v1/me/media` answers with `src: /api/media/<id>` — the **application** path, not this API's versioned one. It is deliberately the address a content body keeps: the Web app serves `/api/media/<id>` from its own origin and relays to `/api/v1/media/<id>`.
+- The API therefore answers `GET /api/media/<id>` as well. It is an alias, not a second implementation: the request is rewritten to `/api/v1/media/<id>` before route resolution, so it goes through the same handler, the same `405` allow-list and the same immutable cache headers. A client that talks to the API directly can use the address in a content body as it stands.
+- **Do not change the shape of `src`.** The authoring editor only accepts `/api/media/<uuid>`, and every body already saved carries that form.
+- Uploaded assets are immutable (ETag plus a one-year immutable cache policy), there is no delete or replace endpoint, and each upload is a new id. An upload that no body ever references is an orphan; reclaiming those is an operational follow-up, not an endpoint.
+
+### Path parameters: which identifier each method takes
+
+One path slot can carry different identifiers per method, and the parameter names in the route table say which:
+
+| Path | Methods | The slot is |
+| --- | --- | --- |
+| `/api/v1/articles/:article` | `GET` | the slug (`[a-z0-9]+(-[a-z0-9]+)*`) |
+| `/api/v1/articles/:article` | `PUT`, `DELETE` | the article id |
+| `/api/v1/articles/:id/restore` | `POST` | the article id |
+| `/api/v1/articles/:slug/like`, `/comments`, `/related` | `GET` | the slug |
+| `/api/v1/authors/:userId`, `/api/v1/users/:userId/follow`, `/followers`, `/following` | all | the user id |
+| `/api/v1/tags/:slug`, `/api/v1/categories/:slug` | `GET` | the taxonomy slug |
+
+Identifiers are opaque strings. A path segment is only decoded and bounded — decodable, non-empty, at most 300 characters and free of surrounding whitespace — and its **shape is not validated**: an identifier that names nothing is a `404` from the store, which is the only place that can tell.
+
 ### Validation and error behavior
 
 Repeated query parameter names are rejected with `400 BAD_USER_INPUT` because all current REST query parameters are scalar; rejected requests close the connection when a write body may remain unread. The versioned REST API accepts locales `zh-CN`, `zh-TW`, and `en`; unsupported locales return `400 BAD_USER_INPUT` instead of silently falling back. Article responses include the complete documented article data contract, enriched with `author`, `categories`, and `tags` from the shared services. REST `contentBlocks` is a JSON array. Search terms are limited to 200 characters. Pagination limits are integers from 1 to 100 with bounded non-negative offsets. Domain validation, ownership rules, transactions and notification-outbox behavior remain in the existing application and persistence layers. Errors are mapped to stable HTTP codes and sanitized messages.

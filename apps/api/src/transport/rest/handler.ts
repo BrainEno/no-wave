@@ -7,6 +7,21 @@ import type { RestRouteContext } from "./routes/context.ts";
 import { hasDuplicateQueryParameters, NO_ROUTE_PARAMS, sendBadInput, sendJson, type MediaAssetsPort, type RestServices } from "./http.ts";
 
 /**
+ * The address a stored media asset carries.
+ *
+ * `POST /api/v1/me/media` answers with `src: /api/media/<id>` — the
+ * *application* path, not this API's versioned one — because that is the
+ * address a content body keeps. The Web app serves `/api/media/<id>` itself and
+ * relays to `/api/v1/media/<id>`; a client that talks to the API directly used
+ * to have to rewrite the address it had just been handed.
+ *
+ * The stored `src` is not changed (it would break every body already saved, and
+ * the editor that only accepts it), so the API answers the application path
+ * too: one address, both deployments.
+ */
+const MEDIA_APPLICATION_PATH = /^\/api\/media\/([^/]+)\/?$/;
+
+/**
  * The REST entry point.
  *
  * This file owns only the request-level concerns that must run exactly once,
@@ -32,7 +47,13 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
   const writeRateLimiter = rateLimitStore ? createRateLimitService({ store: rateLimitStore, env }) : null;
 
   return async function handleRest(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
-    const url = new URL(request.url ?? "/", "http://localhost");
+    let url = new URL(request.url ?? "/", "http://localhost");
+    // Rewritten before anything else reads it, so the alias resolves through
+    // the same route table, the same handler and the same 405 allow-list as the
+    // versioned path. Only the path is rewritten: the query string is kept, so
+    // the duplicate-parameter check below still applies.
+    const mediaAlias = MEDIA_APPLICATION_PATH.exec(url.pathname);
+    if (mediaAlias) url = new URL(`/api/v1/media/${mediaAlias[1]}${url.search}`, url.origin);
     if (url.pathname !== "/api/v1" && !url.pathname.startsWith("/api/v1/")) return false;
 
     // Every current REST query parameter is scalar. Reject duplicates rather

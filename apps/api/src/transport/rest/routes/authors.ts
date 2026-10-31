@@ -10,7 +10,7 @@ const AUTHOR_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Object
       sendUnavailable(response);
       return;
     }
-    const userId = decodeUserId(routeParams.username);
+    const userId = decodeUserId(routeParams.userId);
     const locale = parseLocale(url);
     const query = parseQuery(url);
     const pagination = parsePagination(url, 20, MAX_ARTICLE_OFFSET);
@@ -37,7 +37,7 @@ const AUTHOR_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Object
       sendUnavailable(response);
       return;
     }
-    const userId = decodeUserId(routeParams.username);
+    const userId = decodeUserId(routeParams.userId);
     const locale = parseLocale(url);
     if (!userId || !locale) {
       sendBadInput(response, "Invalid author user ID or locale.");
