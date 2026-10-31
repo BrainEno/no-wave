@@ -319,7 +319,11 @@ jobs:
             echo "Web  /        -> $(curl -s -o /tmp/web-home.html -w '%{http_code}' http://127.0.0.1:3100/)"
             echo "Web  404      -> $(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3100/definitely-missing)"
             echo "title: $(grep -oE '<title>[^<]*</title>' /tmp/web-home.html | head -1)"
-            echo "shell: $(grep -c 'nw-smooth' /tmp/web-home.html || true) site-chrome marker(s)"
+            # The same server-rendered shell markers `pnpm check:ssr-parity`
+            # compares (SHELL_MARKERS in scripts/ssr-parity.ts). `nw-smooth` is
+            # *not* one of them: it is added by the client after hydration, so
+            # it never appears in HTML.
+            echo "shell: $(grep -c 'class="nw-pill"' /tmp/web-home.html || true) nw-pill, $(grep -c 'class="nw-footer"' /tmp/web-home.html || true) nw-footer"
           } | tee /tmp/probe.log
           set -e
 
@@ -345,7 +349,7 @@ jobs:
             echo "::error title=container probe::an unknown route did not return 404"
             exit 1
           fi
-          if ! grep -q "shell: [1-9]" /tmp/probe.log; then
+          if ! grep -q 'class="nw-pill"' /tmp/web-home.html || ! grep -q 'class="nw-footer"' /tmp/web-home.html; then
             echo "::error title=container probe::the server-rendered home page is missing the site shell"
             exit 1
           fi
