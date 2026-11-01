@@ -6,6 +6,7 @@ import { dateLabel, initial } from "@/lib/format.ts";
 import { lengthLabel, minutesLabel, readingMinutes, textLength } from "@/lib/reading.ts";
 import type { ArticleDetailPageData } from "@/lib/public-pages.ts";
 import { ReaderBar, ReaderToc, ReadingProgress } from "@/components/reader/reader-tools.tsx";
+import { ReadAloud } from "@/components/reader/read-aloud.tsx";
 import { ArticleComments } from "@/components/comments/article-comments.tsx";
 import { SectionHeading, TypeChip, WorkRow } from "@/components/ui/parts.tsx";
 
@@ -30,19 +31,31 @@ function headingId(block: Extract<ArticleContentBlock, { type: "heading" }>): st
   return block.anchor || `h-${block.id}`;
 }
 
+/**
+ * Every block carries its own id into the markup.
+ *
+ * The reader tools need it: 朗读 highlights the paragraph it is speaking, so
+ * the element and the content block have to be findable from each other. The
+ * id comes from the content itself, so it is the same on the server and after
+ * hydration — unlike an index, which would move if a block were inserted.
+ */
 function renderBlock(block: ArticleContentBlock): ReactNode {
   switch (block.type) {
-    case "paragraph": return <p key={block.id}>{block.text}</p>;
+    case "paragraph": return <p key={block.id} data-block={block.id}>{block.text}</p>;
     case "heading": {
       const id = headingId(block);
-      return block.level === 2 ? <h2 key={block.id} id={id}>{block.text}</h2> : block.level === 3 ? <h3 key={block.id} id={id}>{block.text}</h3> : <h4 key={block.id} id={id}>{block.text}</h4>;
+      return block.level === 2
+        ? <h2 key={block.id} id={id} data-block={block.id}>{block.text}</h2>
+        : block.level === 3
+          ? <h3 key={block.id} id={id} data-block={block.id}>{block.text}</h3>
+          : <h4 key={block.id} id={id} data-block={block.id}>{block.text}</h4>;
     }
-    case "quote": return <blockquote key={block.id}><p>{block.text}</p>{block.attribution ? <cite>— {block.attribution}</cite> : null}</blockquote>;
+    case "quote": return <blockquote key={block.id} data-block={block.id}><p>{block.text}</p>{block.attribution ? <cite>— {block.attribution}</cite> : null}</blockquote>;
     case "list": return block.ordered
-      ? <ol key={block.id}>{block.items.map((item, index) => <li key={index}>{item}</li>)}</ol>
-      : <ul key={block.id}>{block.items.map((item, index) => <li key={index}>{item}</li>)}</ul>;
-    case "image": return <figure key={block.id}><img src={block.src} alt={block.alt} loading="lazy" />{block.caption ? <figcaption>{block.caption}</figcaption> : null}</figure>;
-    case "code": return <pre key={block.id}><code>{block.code}</code></pre>;
+      ? <ol key={block.id} data-block={block.id}>{block.items.map((item, index) => <li key={index}>{item}</li>)}</ol>
+      : <ul key={block.id} data-block={block.id}>{block.items.map((item, index) => <li key={index}>{item}</li>)}</ul>;
+    case "image": return <figure key={block.id} data-block={block.id}><img src={block.src} alt={block.alt} loading="lazy" />{block.caption ? <figcaption>{block.caption}</figcaption> : null}</figure>;
+    case "code": return <pre key={block.id} data-block={block.id}><code>{block.code}</code></pre>;
   }
 }
 
@@ -57,6 +70,9 @@ export function ArticlePageView({ article, newer, older, related }: ArticleDetai
     smaller: ui.reader.fontSmaller, larger: ui.reader.fontLarger, theme: ui.reader.theme, dark: ui.reader.dark, light: ui.reader.light,
     copy: ui.reader.copyLink, copied: ui.reader.copied, sizeLabel: ui.reader.fontSize(0).replace("0", "{n}"),
   };
+  // 朗读只用一个浏览器能力：页上已经有了作品的每一个字，说出来的是读者自己的设备。
+  const aloud = { listen: ui.reader.listen, pause: ui.reader.pause, resume: ui.reader.resume, stop: ui.reader.stop,
+    done: ui.reader.done, position: ui.reader.position, unavailable: ui.reader.unavailable };
 
   return (
     <main lang={locale} className="nw-w">
@@ -72,6 +88,7 @@ export function ArticlePageView({ article, newer, older, related }: ArticleDetai
             <div><Link className="nw-zh" href={authorPath(article.author.username, locale)} style={{ fontSize: 20 }}>{article.author.displayName}</Link><div className="nw-m">{ui.reader.by} · {messages.publishedOn} {dateLabel(article.publishedAt, locale)}</div></div>
           </div>
           <ReaderBar labels={labels} />
+          <ReadAloud blocks={article.contentBlocks} locale={locale} labels={aloud} />
         </div>
       </header>
 

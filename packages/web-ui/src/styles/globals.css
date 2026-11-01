@@ -214,6 +214,8 @@ mark { background: var(--or); color: #0f0d0c; }
 .nw-toc a { display: block; padding: 10px 0 10px 16px; border-left: 1px solid #8a847a; font: 400 14px/1.5 var(--f-body); color: var(--t2); }
 .nw-toc a[aria-current="true"] { border-left: 3px solid var(--or); color: var(--ink); font-weight: 700; }
 .nw-rd { font-size: var(--fs); }
+/* 朗读正在读的那一块（ADR 0020）：只标出位置，不动字号、不加动画。 */
+.nw-rd [data-block].nw-speaking { background: rgba(216, 84, 31, .10); box-shadow: inset 3px 0 0 var(--or); border-radius: 2px; }
 .nw-rd > * { margin: 0 0 1.4em; }
 .nw-rd p { font: 400 var(--fs)/2 var(--f-zh); text-indent: 2em; }
 .nw-rd h2, .nw-rd h3, .nw-rd h4 { margin: 2em 0 .8em; font: 700 28px/1.4 var(--f-zh); text-indent: 0; text-wrap: balance; scroll-margin-top: 120px; }
