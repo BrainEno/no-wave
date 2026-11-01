@@ -1,4 +1,5 @@
-import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+import { publishWork } from "./support/works.ts";
 
 /**
  * 朗读 — the reading-aloud control, end to end in a real browser.
@@ -22,59 +23,17 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
  * change, and the suite spends one account on it instead of three.
  */
 
-const PASSWORD = "e2e-read-aloud-password";
-/** The API the Web application proxies to; both share one database. */
-const API_BASE_URL = process.env.E2E_API_BASE_URL ?? "http://127.0.0.1:4000";
 const FIRST_PARAGRAPH = "第一段用来朗读，句子不长，足够看出顺序。";
 const SECOND_PARAGRAPH = "第二段接在后面，它证明标记跟着段落走。";
 const TITLE_PREFIX = "朗读验证";
 
-function uniqueEmail(prefix: string): string {
-  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}@example.test`;
-}
-
-/** A Lexical document with the given paragraphs, in the shape the API accepts. */
-function editorState(paragraphs: readonly string[]) {
-  return {
-    root: {
-      children: paragraphs.map((text) => ({
-        children: [{ detail: 0, format: 0, mode: "normal", style: "", text, type: "text", version: 1 }],
-        direction: null, format: "", indent: 0, type: "paragraph", version: 1,
-      })),
-      direction: null, format: "", indent: 0, type: "root", version: 1,
-    },
-  };
-}
-
 let slug = "";
 let title = "";
 
-/** One account with a profile and one published work, made over HTTP. */
 test.beforeAll(async ({ request }) => {
-  const email = uniqueEmail("aloud");
   title = `${TITLE_PREFIX} ${Date.now().toString(36)}`;
-  const registered = await request.post(`${API_BASE_URL}/api/v1/auth/register`, {
-    data: { email, password: PASSWORD },
-  });
-  expect(registered.status(), `registering ${email}: ${await registered.text()}`).toBe(201);
-  const { accessToken } = (await registered.json()).data as { accessToken: string };
-  const headers = { authorization: `Bearer ${accessToken}`, origin: API_BASE_URL };
-
-  // The public reader drops works whose author has no profile, so without this
-  // the article would exist and still be unreachable.
-  const profile = await request.put(`${API_BASE_URL}/api/v1/me/profile`, {
-    data: { displayName: "无浪作者", bio: "朗读验证账户。", locale: "zh-CN" },
-    headers,
-  });
-  expect(profile.status(), `creating the author profile: ${await profile.text()}`).toBe(200);
-
-  const created = await request.post(`${API_BASE_URL}/api/v1/articles`, {
-    data: { title, editorState: editorState([FIRST_PARAGRAPH, SECOND_PARAGRAPH]), contentBlocksVersion: 1, publish: true },
-    headers,
-  });
-  expect(created.status(), `publishing ${title}: ${await created.text()}`).toBe(201);
-  slug = (await created.json()).data.slug as string;
-  expect(slug.length).toBeGreaterThan(0);
+  const work = await publishWork(request, title, [FIRST_PARAGRAPH, SECOND_PARAGRAPH]);
+  slug = work.slug;
 });
 
 /**

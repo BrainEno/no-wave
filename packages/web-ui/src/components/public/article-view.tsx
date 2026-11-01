@@ -7,6 +7,7 @@ import { lengthLabel, minutesLabel, readingMinutes, textLength } from "@/lib/rea
 import type { ArticleDetailPageData } from "@/lib/public-pages.ts";
 import { ReaderBar, ReaderToc, ReadingProgress } from "@/components/reader/reader-tools.tsx";
 import { ReadAloud } from "@/components/reader/read-aloud.tsx";
+import { PassageAnnotations } from "@/components/reader/passage-annotations.tsx";
 import { ArticleComments } from "@/components/comments/article-comments.tsx";
 import { SectionHeading, TypeChip, WorkRow } from "@/components/ui/parts.tsx";
 
@@ -103,6 +104,9 @@ export function ArticlePageView({ article, newer, older, related }: ArticleDetai
         </article>
         <aside className="nw-ra" aria-label={ui.reader.toc}>{toc.length >= 2 ? <ReaderToc items={toc} title={ui.reader.toc} /> : null}</aside>
       </div>
+
+      {/* 划线：段落靠文字与上下文定位，标注只存在读者自己的浏览器里（ADR 0021）。 */}
+      <PassageAnnotations slug={article.slug} labels={ui.reader.passages} />
 
       <ArticleComments slug={article.slug} locale={locale} />
 
