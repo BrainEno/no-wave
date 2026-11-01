@@ -27,24 +27,29 @@ function allowedDevHosts(): string[] | true {
  * already exist in `apps/web/src`. Two alias groups make that possible without
  * copying or editing them:
  *
- *   `@/*`            -> the existing Web source tree (components, lib, copy)
- *   `next/*`         -> `app/shims/*`, small adapters with the same surface
+ *   `@/lib/framework/*` -> `app/framework/*`  the navigation seam
+ *   `@/*`               -> the existing Web source tree (components, lib, copy)
  *
- * The `next/*` aliases are the migration seam, not a permanent fixture: they are
- * the complete list of framework coupling left in the reused code, so the count
- * is measurable (`grep -rn 'from "next' apps/web/src`) and each one can be
- * deleted from the shared component instead of being re-implemented here.
+ * The first group is the whole of the framework coupling left in the reused
+ * code — and it is no longer coupling to a *framework* but to a contract the
+ * shared UI owns: `apps/web/src/lib/framework/` names what a component needs
+ * (`Link`, `usePathname`, `useRouter`) and each application supplies it. Next.js
+ * answers from `next/link`; this app answers from `react-router`. Nothing in
+ * `apps/web/src/components` names either one, which is what makes the count
+ * measurably zero rather than merely redirected.
+ *
+ * The seam alias is listed first because Vite matches in order and the general
+ * `@/*` rule would otherwise swallow it.
  */
 export default defineConfig({
   plugins: [reactRouter()],
   resolve: {
     alias: [
-      { find: /^@\/(.*)$/, replacement: fileURLToPath(new URL("../web/src/$1", import.meta.url)) },
-      { find: /^next\/link$/, replacement: fileURLToPath(new URL("./app/shims/next-link.tsx", import.meta.url)) },
       {
-        find: /^next\/navigation$/,
-        replacement: fileURLToPath(new URL("./app/shims/next-navigation.ts", import.meta.url)),
+        find: /^@\/lib\/framework\/(link\.tsx|navigation\.ts)$/,
+        replacement: fileURLToPath(new URL("./app/framework/$1", import.meta.url)),
       },
+      { find: /^@\/(.*)$/, replacement: fileURLToPath(new URL("../web/src/$1", import.meta.url)) },
     ],
   },
   // Deliberately no `define` for `process.env.*`: server-rendered metadata must

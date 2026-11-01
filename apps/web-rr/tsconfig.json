@@ -16,9 +16,8 @@
     "rootDirs": [".", "./.react-router/types"],
     "types": ["node", "vite/client"],
     "paths": {
-      "@/*": ["../web/src/*"],
-      "next/link": ["./app/shims/next-link.tsx"],
-      "next/navigation": ["./app/shims/next-navigation.ts"]
+      "@/lib/framework/*": ["./app/framework/*"],
+      "@/*": ["../web/src/*"]
     }
   },
   "include": [

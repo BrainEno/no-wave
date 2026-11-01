@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { Link } from "@/lib/framework/link.tsx";
 import { useEffect, useRef, useState } from "react";
 
 type VerifyEmailPanelProps = { token: string };

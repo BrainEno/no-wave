@@ -1,7 +1,7 @@
 import { useLoaderData } from "react-router";
 import type { HeadersFunction, MetaFunction } from "react-router";
-// Unmodified shared components: they import `next/link`, which resolves to
-// `app/shims/next-link.tsx` under this app.
+// Unmodified shared components: they import the navigation seam, which this
+// app answers from `app/framework/link.tsx`.
 import { ForgotPasswordForm } from "@/components/auth/forgot-password-form.tsx";
 import { MailDisabledNotice } from "@/components/auth/mail-disabled-notice.tsx";
 import { isMailEnabled } from "@/lib/mail-feature.ts";

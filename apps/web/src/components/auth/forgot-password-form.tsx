@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { Link } from "@/lib/framework/link.tsx";
 import { useState, type FormEvent } from "react";
 import { MAIL_DISABLED_FORM_ERROR } from "@/lib/mail-copy.ts";
 

@@ -24,7 +24,7 @@ states or metadata. Instead each page is now split in two:
 | Concern | Where it lives | Framework coupling |
 | --- | --- | --- |
 | Data (what a page needs, how many calls it costs) | `apps/web/src/lib/public-pages.ts` — `loadArchivePage`, `loadAuthorPage`, `loadSearchPage`, `loadCategoryIndexPage`, `loadCategoryDetailPage` | none (plain functions, plain data) |
-| Rendering (what a visitor sees) | `apps/web/src/components/public/{archive,author,search}-view.tsx` — `ArchivePageView`, `AuthorPageView`, `SearchPageView`; plus the already-synchronous `CategoryIndexContent` / `CategoryDetailContent` | `next/link` only, which the prototype aliases to a shim |
+| Rendering (what a visitor sees) | `apps/web/src/components/public/{archive,author,search}-view.tsx` — `ArchivePageView`, `AuthorPageView`, `SearchPageView`; plus the already-synchronous `CategoryIndexContent` / `CategoryDetailContent` | none — navigation comes from `@/lib/framework/*` (ADR 0012), which each application implements |
 
 The App Router components became three-line wrappers (`await load…` →
 `<…PageView {...data} />`), so the Next.js application renders the *same* view
@@ -40,8 +40,8 @@ Home closed the batch with the same split — `loadHomePage()` in
 read degrading to `[]` so a broken taxonomy falls back to the work-type topics)
 and `HomePageView` in `components/public/home-view.tsx`, markup moved verbatim.
 Its three client components (`PageLoader` intro, `HeroCanvas` WebGL,
-`HomeLatest` hover switch) are framework-neutral apart from `next/link`, so they
-hydrate in the prototype exactly as they do in Next.js; only their *behaviour*
+`HomeLatest` hover switch) are framework-neutral apart from the navigation seam,
+so they hydrate in the prototype exactly as they do in Next.js; only their *behaviour*
 is Phase 4, and it is not asserted here. Porting home also surfaced a real
 dependency bug: `apps/web-rr` reached `gsap` through the source alias to
 `apps/web/src/components/motion/*` without declaring it, which only worked by

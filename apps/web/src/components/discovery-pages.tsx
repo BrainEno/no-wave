@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "@/lib/framework/link.tsx";
 import { archivePath } from "@/lib/content.ts";
 import type { ArticleView, Locale } from "@/lib/content.ts";
 import type { CategoryView } from "@/lib/api-content.ts";

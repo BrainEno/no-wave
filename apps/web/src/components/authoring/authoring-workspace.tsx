@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
+import { Link } from "@/lib/framework/link.tsx";
 import { ArticleEditor, type AuthoringArticle } from "./article-editor.tsx";
 import { NotificationInbox } from "./notification-inbox.tsx";
 
