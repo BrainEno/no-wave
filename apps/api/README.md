@@ -72,7 +72,7 @@ One retry is attempted, and only for a failure that happened **before** the rela
 - `POST /api/v1/auth/register` and `POST /api/v1/auth/login` — create an unverified email/password account or sign in; return access and refresh tokens in JSON.
 - `POST /api/v1/auth/refresh` and `POST /api/v1/auth/logout` — rotate or revoke a refresh-token session. Reuse revokes the whole session family.
 - `GET /api/v1/health` — liveness probe.
-- `GET /api/v1/articles?locale=zh-CN&query=&limit=20&offset=0` — published article search and pagination.
+- `GET /api/v1/articles?locale=zh-CN&query=&sort=latest&limit=20&offset=0` — published article search and pagination; `sort` is `latest` (publication date) or `popular` (likes inside the last 30 days).
 - `GET /api/v1/articles/:slug?locale=zh-CN` — one published article.
 - `GET /api/v1/me/articles?locale=zh-CN&limit=50` — the authenticated actor's own drafts and published articles.
 - `GET /api/v1/me/feed?locale=zh-CN&limit=20&offset=0` — the following feed: published work by the accounts the actor follows, newest first, merged across authors before pagination.
@@ -190,12 +190,13 @@ The API exposes a versioned REST business contract under `/api/v1`. REST handler
 - `GET /api/v1/users?query=&locale=zh-CN&limit=20` — user search; accepts an optional valid JWT for viewer-specific follow state.
 - `GET /api/v1/users/:userId/followers?locale=zh-CN&limit=50` and `GET /api/v1/users/:userId/following?locale=zh-CN&limit=50` — relationship lists with complete AuthorProfile records.
 - `GET /api/v1/me/liked-articles?locale=zh-CN&limit=50` — authenticated liked-article list.
-- `GET /api/v1/articles?locale=zh-CN&query=&limit=20&offset=0` — published article search and pagination.
+- `GET /api/v1/articles?locale=zh-CN&query=&sort=latest&limit=20&offset=0` — published article search and pagination.
+  `sort=popular` ranks by like count, but only inside the last 30 days (`POPULAR_WINDOW_DAYS` in `domain/article.ts`): an all-time chart freezes the tab, so the same few old works would hold the top forever and new work could never reach it. Ties fall back to publication date, and the window composes with `query` and the author filter instead of replacing them. An unknown `sort` is a `400 BAD_INPUT`.
 - `GET /api/v1/articles/:slug?locale=zh-CN` — one published article, or `404 NOT_FOUND`.
 - `GET /api/v1/articles/:slug/related?locale=zh-CN&limit=6` — related published articles.
 - `GET /api/v1/articles/:slug/like?locale=zh-CN` — like count and optional viewer liked state.
 - `GET /api/v1/authors/:userId?locale=zh-CN` — public author profile addressed by stable `userId`.
-- `GET /api/v1/authors/:userId/articles?locale=zh-CN&query=&limit=20&offset=0` — published articles by that author, filtered before pagination.
+- `GET /api/v1/authors/:userId/articles?locale=zh-CN&query=&sort=latest&limit=20&offset=0` — published articles by that author, filtered before pagination and ordered with the same `sort` choices.
 - `GET /api/v1/categories?locale=zh-CN&query=&limit=100&offset=0` and `GET /api/v1/categories/:slug?locale=zh-CN` — category discovery and detail.
 - `GET /api/v1/categories/:slug/articles?locale=zh-CN&limit=20&offset=0` — published articles in a category.
 - `GET /api/v1/tags?locale=zh-CN&query=&limit=100&offset=0` and `GET /api/v1/tags/:slug?locale=zh-CN` — hashtag discovery and detail.

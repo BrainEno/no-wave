@@ -479,7 +479,7 @@ test("REST author article listing forwards userId to persistence before paginati
     const response = await fetch(`${baseUrl}/api/v1/authors/user-123/articles?query=hello&limit=10&offset=20`);
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { data: articles });
-    assert.deepEqual(received, { authorId: "user-123", locale: "zh-CN", query: "hello", limit: 10, offset: 20 });
+    assert.deepEqual(received, { authorId: "user-123", locale: "zh-CN", query: "hello", sort: "latest", limit: 10, offset: 20 });
   }, {
     store: {
       async getAuthorProfile(args) {
@@ -504,7 +504,7 @@ test("REST public article list calls the shared application service with validat
     const response = await fetch(`${baseUrl}/api/v1/articles?locale=zh-CN&query=poetry&limit=10&offset=20`);
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { data: articles });
-    assert.deepEqual(received, { locale: "zh-CN", query: "poetry", limit: 10, offset: 20 });
+    assert.deepEqual(received, { locale: "zh-CN", query: "poetry", sort: "latest", limit: 10, offset: 20 });
   }, {
     store: {
       async listPublishedArticles(args) { received = args; return articles; },
@@ -1249,6 +1249,43 @@ test("REST following feed requires a session and reads only what the viewer foll
       async getAuthorProfile() { return writerProfile; },
       async listArticleTaxonomies() { return []; },
       async getArticleLikeInfo() { return { articleId: "article-1", slug: "followed-work", likeCount: 3, likedByViewer: false }; },
+    },
+  });
+});
+
+test("REST article discovery accepts sort=popular and rejects an unknown sort", async () => {
+  const calls = [];
+  const profile = {
+    userId: "some-author", displayName: "作者", bio: "", avatarUrl: null, websiteUrl: null,
+    locale: "zh-CN", createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z",
+    followerCount: 0, followingCount: 0, isFollowing: false,
+  };
+  await withServer(async (baseUrl) => {
+    const popular = await fetch(baseUrl + "/api/v1/articles?sort=popular&limit=7&offset=2");
+    assert.equal(popular.status, 200);
+    assert.deepEqual(await popular.json(), { data: [] });
+    assert.deepEqual(calls[0], { locale: "zh-CN", query: "", sort: "popular", limit: 7, offset: 2 });
+
+    // Omitted, the historical order is unchanged: newest first.
+    const latest = await fetch(baseUrl + "/api/v1/articles");
+    assert.equal(latest.status, 200);
+    assert.deepEqual(calls[1], { locale: "zh-CN", query: "", sort: "latest", limit: 20, offset: 0 });
+
+    const bogus = await fetch(baseUrl + "/api/v1/articles?sort=hottest");
+    assert.equal(bogus.status, 400);
+
+    // The author listing shares the same parameter.
+    const byAuthor = await fetch(baseUrl + "/api/v1/authors/some-author/articles?sort=popular&limit=3");
+    assert.equal(byAuthor.status, 200);
+    assert.deepEqual(calls[2], { authorId: "some-author", locale: "zh-CN", query: "", sort: "popular", limit: 3, offset: 0 });
+    const authorBogus = await fetch(baseUrl + "/api/v1/authors/some-author/articles?sort=hottest");
+    assert.equal(authorBogus.status, 400);
+    assert.equal(calls.length, 3);
+  }, {
+    env: authEnv,
+    store: {
+      async listPublishedArticles(args) { calls.push(args); return []; },
+      async getAuthorProfile() { return profile; },
     },
   });
 });

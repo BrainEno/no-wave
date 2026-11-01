@@ -68,6 +68,15 @@ export function parseLocale(url: URL): string | null {
   return SUPPORTED_LOCALES.has(locale) ? locale : null;
 }
 
+/**
+ * Article discovery order: `latest` (publication date, the historical default)
+ * or `popular` (likes inside a recent window — see `popularWindowSince`).
+ */
+export function parseSort(url: URL): string | null {
+  const sort = url.searchParams.get("sort") ?? "latest";
+  return sort === "latest" || sort === "popular" ? sort : null;
+}
+
 export function parseQuery(url: URL): string | null {
   const query = url.searchParams.get("query") ?? "";
   return query.length <= MAX_QUERY_LENGTH ? query : null;
