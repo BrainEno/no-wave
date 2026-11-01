@@ -14,7 +14,7 @@ test("SQLite taxonomy store creates localized categories and tags", async () => 
   const { db, store } = await fixture();
   try {
     const category = store.createTaxonomy({
-      actorId: "author-1", kind: "category", slug: "essays",
+      actorId: "author-1", actorIsEditor: true, kind: "category", slug: "essays",
       name: "Essays", description: "Literary essays", locale: "en",
     });
     assert.equal(category.kind, "category");
@@ -34,15 +34,26 @@ test("SQLite taxonomy store protects ownership and validates list inputs", async
   const { db, store } = await fixture();
   try {
     const taxonomy = store.createTaxonomy({
-      actorId: "author-1", kind: "category", slug: "notes", name: "Notes", locale: "en",
+      actorId: "author-1", actorIsEditor: true, kind: "category", slug: "notes", name: "Notes", locale: "en",
     });
+    // A category is editorial: without the editor role there is no category at all.
     assert.throws(() => store.createTaxonomy({
-      actorId: "intruder", kind: "category", slug: "notes", name: "Notes translated", locale: "zh-CN",
+      actorId: "intruder", kind: "category", slug: "intruded", name: "Intruded", locale: "en",
+    }), ArticleAuthorizationError);
+    // …and with it, a second editor may add a translation to a category they did
+    // not create, because the public taxonomy is maintained as a group.
+    assert.equal(store.createTaxonomy({
+      actorId: "intruder", actorIsEditor: true, kind: "category", slug: "notes", name: "Notes translated", locale: "zh-CN",
+    }).id, taxonomy.id);
+    // A tag is the author's own words: a stranger may not rewrite it, editor or not.
+    const tag = store.createTag({ actorId: "author-1", name: "#Notes", locale: "en" });
+    assert.throws(() => store.createTaxonomy({
+      actorId: "intruder", actorIsEditor: true, kind: "tag", slug: tag.slug, name: "Hijacked tag", locale: "zh-CN",
     }), ArticleAuthorizationError);
     assert.throws(() => store.listTaxonomies({ kind: "invalid" }), ArticleInputError);
     assert.throws(() => store.listTaxonomies({ kind: "tag", limit: 101 }), ArticleInputError);
     assert.throws(() => store.deleteTaxonomy({ taxonomyId: taxonomy.id, actorId: "intruder" }), ArticleAuthorizationError);
-    assert.equal(store.deleteTaxonomy({ taxonomyId: taxonomy.id, actorId: "author-1" }), true);
-    assert.equal(store.deleteTaxonomy({ taxonomyId: taxonomy.id, actorId: "author-1" }), false);
+    assert.equal(store.deleteTaxonomy({ taxonomyId: taxonomy.id, actorId: "author-1", actorIsEditor: true }), true);
+    assert.equal(store.deleteTaxonomy({ taxonomyId: taxonomy.id, actorId: "author-1", actorIsEditor: true }), false);
   } finally { db.close(); }
 });

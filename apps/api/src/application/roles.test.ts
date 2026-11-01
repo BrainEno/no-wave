@@ -106,3 +106,24 @@ test("an editor can promote and demote others, and the assignment still refuses 
   );
   assert.deepEqual([...roles.entries()], [["writer", "member"]]);
 });
+
+test("the editor question is answered once in the application layer and handed to persistence as a fact", async () => {
+  const calls = [];
+  const { adapter } = fakePersistence({
+    async createTaxonomy(args) { calls.push(["create", args]); return { id: "taxonomy-1", ...args }; },
+    async deleteTaxonomy(args) { calls.push(["delete", args]); return true; },
+  });
+  const services = createApplicationServices({
+    persistence: adapter,
+    env: { EDITOR_USER_IDS: "bootstrap-editor" },
+  });
+  await services.createTaxonomy({ actorId: "bootstrap-editor", kind: "category", slug: "poetry", name: "诗", locale: "zh-CN" });
+  // A hashtag needs no role: the author is speaking about their own work.
+  await services.createTaxonomy({ actorId: "a-member", kind: "tag", slug: "nowave", name: "NoWave", locale: "zh-CN" });
+  await services.deleteTaxonomy({ actorId: "a-member", taxonomyId: "taxonomy-1" });
+  assert.deepEqual(calls, [
+    ["create", { kind: "category", slug: "poetry", name: "诗", locale: "zh-CN", actorId: "bootstrap-editor", actorIsEditor: true }],
+    ["create", { kind: "tag", slug: "nowave", name: "NoWave", locale: "zh-CN", actorId: "a-member", actorIsEditor: false }],
+    ["delete", { taxonomyId: "taxonomy-1", actorId: "a-member", actorIsEditor: false }],
+  ]);
+});

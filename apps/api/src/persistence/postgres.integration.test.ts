@@ -727,10 +727,10 @@ test("taxonomy registry supports localized labels, article associations and crea
   let article;
   try {
     category = await store.createTaxonomy({
-      actorId: creatorId, kind: "category", slug, name: "工程", description: "繁體中文分類", locale: "zh-TW",
+      actorId: creatorId, actorIsEditor: true, kind: "category", slug, name: "工程", description: "繁體中文分類", locale: "zh-TW",
     });
     const englishCategory = await store.createTaxonomy({
-      actorId: creatorId, kind: "category", slug, name: "Engineering", description: "English category", locale: "en",
+      actorId: creatorId, actorIsEditor: true, kind: "category", slug, name: "Engineering", description: "English category", locale: "en",
     });
     tag = await store.createTaxonomy({
       actorId: creatorId, kind: "tag", slug, name: "Web", locale: "en",
@@ -738,8 +738,17 @@ test("taxonomy registry supports localized labels, article associations and crea
     assert.equal(category.id, englishCategory.id);
     assert.equal(englishCategory.name, "Engineering");
     assert.equal((await store.listTaxonomies({ kind: "category", locale: "zh-TW" })).some((item) => item.id === category.id && item.name === "工程"), true);
+    // A category is maintained by the editors as a group, so another editor may
+    // add a translation to one they did not create; what keeps an outsider out
+    // of a category is the role, not the creator stamp.
     await assert.rejects(
       store.createTaxonomy({ actorId: outsiderId, kind: "category", slug, name: "Hijack", locale: "en" }),
+      { code: "FORBIDDEN" },
+    );
+    // A tag is the author's own words: there the creator stamp is what counts,
+    // and being an editor does not let you rewrite somebody else's.
+    await assert.rejects(
+      store.createTaxonomy({ actorId: outsiderId, actorIsEditor: true, kind: "tag", slug, name: "Hijack", locale: "en" }),
       { code: "FORBIDDEN" },
     );
     article = await store.createArticle({
@@ -782,7 +791,7 @@ test("liked article list is private and related articles rank shared taxonomy in
   const articles = [];
   try {
     category = await store.createTaxonomy({
-      actorId: ownerId, kind: "category", slug: `${slugBase}-category`, name: "Discovery", locale: "en",
+      actorId: ownerId, actorIsEditor: true, kind: "category", slug: `${slugBase}-category`, name: "Discovery", locale: "en",
     });
     const target = await store.createArticle({
       authorId: ownerId, slug: `${slugBase}-target`, title: "Target article", locale: "en",

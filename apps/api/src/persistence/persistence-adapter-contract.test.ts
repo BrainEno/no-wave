@@ -83,6 +83,7 @@ async function sqliteFixture() {
         db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`contract-restore-${suffix}%`);
         db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`contract-commenters-${suffix}%`);
         db.prepare("DELETE FROM taxonomies WHERE slug = ?").run(`contract-category-${suffix}`);
+        db.prepare("DELETE FROM taxonomies WHERE slug LIKE ?").run(`%-${suffix}`);
       }
       db.close();
     },
@@ -144,6 +145,7 @@ async function postgresFixture() {
         await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`contract-restore-${suffix}%`]);
         await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`contract-commenters-${suffix}%`]);
         await postgresSql.unsafe("DELETE FROM taxonomies WHERE slug = $1", [`contract-category-${suffix}`]);
+        await postgresSql.unsafe("DELETE FROM taxonomies WHERE slug LIKE $1", [`%-${suffix}`]);
         await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`feed-%-${suffix}`]);
         await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`sort-%-${suffix}`]);
       }
@@ -907,7 +909,7 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
     const slug = `contract-published-${suffix}`;
     try {
       const taxonomy = await runtime.store.createTaxonomy({
-        actorId: `taxonomy-owner-${suffix}`, kind: "category", slug: `contract-category-${suffix}`,
+        actorId: `taxonomy-owner-${suffix}`, actorIsEditor: true, kind: "category", slug: `contract-category-${suffix}`,
         name: "Contract category", description: "Shared persistence contract", locale: "zh-CN",
       });
       const article = await runtime.store.createArticle({
@@ -939,7 +941,7 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
     try {
       for (const label of ["A", "B", "C"]) {
         await runtime.store.createTaxonomy({
-          actorId: `taxonomy-owner-${suffix}`, kind: "category",
+          actorId: `taxonomy-owner-${suffix}`, actorIsEditor: true, kind: "category",
           slug: `pagination-${label.toLowerCase()}-${suffix}`,
           name: `${query} ${label}`, description: "",
           locale: "zh-CN",
@@ -960,6 +962,54 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
         { code: "BAD_USER_INPUT" },
       );
     } finally { await runtime.cleanup(undefined, suffix); }
+  });
+
+  test(`${adapterName}: categories are editor-controlled while hashtags stay open`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const editorId = `taxonomy-editor-${suffix}`;
+    const memberId = `taxonomy-member-${suffix}`;
+    const categorySlug = `editor-category-${suffix}`;
+    try {
+      // ADR 0016, decision 1. A hashtag is the author's own words: no role asked.
+      const tag = await runtime.store.createTaxonomy({
+        actorId: memberId, kind: "tag", slug: `open-tag-${suffix}`, name: "Open tag", locale: "zh-CN",
+      });
+      assert.equal(tag.kind, "tag");
+
+      // A category is the platform speaking: the same account may not mint one
+      // without the role, and a caller that never asks gets no benefit of the
+      // doubt (`actorIsEditor` defaults to false).
+      await assert.rejects(Promise.resolve().then(() => runtime.store.createTaxonomy({
+        actorId: memberId, kind: "category", slug: `member-category-${suffix}`, name: "Member category", locale: "zh-CN",
+      })), ArticleAuthorizationError);
+      await assert.rejects(Promise.resolve().then(() => runtime.store.createTaxonomy({
+        actorId: memberId, actorIsEditor: false, kind: "category", slug: `member-category-${suffix}`, name: "Member category", locale: "zh-CN",
+      })), ArticleAuthorizationError);
+
+      const category = await runtime.store.createTaxonomy({
+        actorId: editorId, actorIsEditor: true, kind: "category", slug: categorySlug, name: "Editor category", locale: "zh-CN",
+      });
+      // The public taxonomy is maintained by the editors as a group: another
+      // editor may add a translation to a category they did not create.
+      const translated = await runtime.store.createTaxonomy({
+        actorId: memberId, actorIsEditor: true, kind: "category", slug: categorySlug, name: "编辑分类", locale: "zh-TW",
+      });
+      assert.equal(translated.id, category.id);
+
+      // Deleting draws the same line: a category needs the role even from the
+      // account that created it, while a tag stays its creator's to retract.
+      await assert.rejects(Promise.resolve().then(() => runtime.store.deleteTaxonomy({
+        taxonomyId: category.id, actorId: editorId,
+      })), ArticleAuthorizationError);
+      await assert.rejects(Promise.resolve().then(() => runtime.store.deleteTaxonomy({
+        taxonomyId: tag.id, actorId: editorId, actorIsEditor: true,
+      })), ArticleAuthorizationError);
+      assert.equal(await runtime.store.deleteTaxonomy({ taxonomyId: tag.id, actorId: memberId }), true);
+      assert.equal(await runtime.store.deleteTaxonomy({ taxonomyId: category.id, actorId: memberId, actorIsEditor: true }), true);
+    } finally {
+      await runtime.cleanup(undefined, suffix);
+    }
   });
 
   test(`${adapterName}: setting article likes is idempotent and liked lists are user-scoped`, options, async () => {
