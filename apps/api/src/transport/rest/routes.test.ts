@@ -18,6 +18,8 @@ test("every documented collection route matches with the expected methods", () =
     ["/api/v1/me/profile", "GET", "me.profile"],
     ["/api/v1/me/profile", "PUT", "me.profile"],
     ["/api/v1/me/session", "DELETE", "me.session"],
+    ["/api/v1/me/sessions", "GET", "me.sessions"],
+    ["/api/v1/me/sessions", "DELETE", "me.sessions"],
     ["/api/v1/me/password", "PUT", "me.password"],
     ["/api/v1/me/email", "PUT", "me.email"],
     ["/api/v1/me/liked-articles", "GET", "me.liked-articles"],
@@ -55,6 +57,7 @@ test("parameterised routes capture their parameters", () => {
     ["/api/v1/articles/portable-web-foundation/related", "GET", { slug: "portable-web-foundation" }],
     ["/api/v1/articles/11111111-1111-4111-8111-111111111111/restore", "POST", { id: "11111111-1111-4111-8111-111111111111" }],
     ["/api/v1/comments/11111111-1111-4111-8111-111111111111", "DELETE", { id: "11111111-1111-4111-8111-111111111111" }],
+    ["/api/v1/me/sessions/11111111-1111-4111-8111-111111111111", "DELETE", { sessionId: "11111111-1111-4111-8111-111111111111" }],
     ["/api/v1/users/writer/follow", "POST", { userId: "writer" }],
     ["/api/v1/users/writer/followers", "GET", { userId: "writer", relation: "followers" }],
     ["/api/v1/users/writer/following", "GET", { userId: "writer", relation: "following" }],
@@ -85,6 +88,11 @@ test("a known path with an unsupported method reports the exact allow-list", () 
     ["/api/v1/me", "POST", "GET"],
     ["/api/v1/me/profile", "DELETE", "GET, PUT"],
     ["/api/v1/me/session", "GET", "DELETE"],
+    ["/api/v1/me/sessions", "POST", "GET, DELETE"],
+    // One device is ended with a DELETE and nothing else: the list is a read on
+    // the collection, not on the item, and a device cannot be edited.
+    ["/api/v1/me/sessions/some-session", "GET", "DELETE"],
+    ["/api/v1/me/sessions/some-session", "PUT", "DELETE"],
     // Only a change is accepted: a password is never readable, and there is
     // nothing to delete.
     ["/api/v1/me/password", "GET", "PUT"],

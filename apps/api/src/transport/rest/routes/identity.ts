@@ -198,6 +198,71 @@ const IDENTITY_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Obje
    * two passwords are a few hundred bytes, and there is no reason to accept
    * more before authentication has been established.
    */
+  /**
+   * `GET /api/v1/me/sessions` — the devices this account is signed in on.
+   *
+   * Authenticated, and nothing but the account's own sessions: no user id, no
+   * other account's devices, and no device metadata, because none is stored.
+   *
+   * `DELETE` on the same path ends every *other* device: the lost-phone answer
+   * that does not require changing the password, sparing the session that asks.
+   */
+  "me.sessions": async (ctx: RestRouteContext): Promise<void> => {
+    const { request, response, services, env, identity } = ctx;
+    if (!services || !identity) {
+      sendUnavailable(response);
+      return;
+    }
+    try {
+      const user = await authenticatedUser(request, services, env);
+      if (!user) {
+        sendUnauthenticated(response);
+        return;
+      }
+      const ip = request.socket.remoteAddress ?? "unknown";
+      const data = request.method === "DELETE"
+        ? await identity.endOtherSessions({ userId: user.id, sessionId: user.sessionId, ip })
+        : await identity.listSessions({ userId: user.id, sessionId: user.sessionId, ip });
+      sendJson(response, 200, { data });
+    } catch (error: unknown) {
+      sendServiceError(response, error);
+    }
+  },
+  /**
+   * `DELETE /api/v1/me/sessions/:sessionId` — end one device.
+   *
+   * No body: the session is named by the path, and a body would only be
+   * another place to disagree with it. A session that is not one of this
+   * account's live ones answers 404 — the same answer for "belongs to somebody
+   * else", so the endpoint cannot be used to find out which ids exist.
+   */
+  "me.sessions.item": async (ctx: RestRouteContext): Promise<void> => {
+    const { request, response, services, env, identity, routeParams } = ctx;
+    if (!services || !identity) {
+      sendUnavailable(response);
+      return;
+    }
+    if (request.headers["content-length"] || request.headers["transfer-encoding"]) {
+      sendBadInput(response, "This endpoint takes no request body.");
+      return;
+    }
+    try {
+      const user = await authenticatedUser(request, services, env);
+      if (!user) {
+        sendUnauthenticated(response);
+        return;
+      }
+      const ip = request.socket.remoteAddress ?? "unknown";
+      const data = await identity.endSession({
+        userId: user.id,
+        sessionId: String(routeParams.sessionId ?? ""),
+        ip,
+      });
+      sendJson(response, 200, { data });
+    } catch (error: unknown) {
+      sendServiceError(response, error);
+    }
+  },
   "me.password": async (ctx: RestRouteContext): Promise<void> => {
     const { request, response, services, env, identity } = ctx;
     if (!services || !identity) {

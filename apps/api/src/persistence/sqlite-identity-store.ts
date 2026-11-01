@@ -183,6 +183,71 @@ export function createSqliteIdentityStore(db) {
         return { updated: Number(result.changes) > 0, revokedSessions: sessionIds.length };
       });
     },
+    /**
+     * The devices this account is signed in on, newest first.
+     *
+     * Only sessions that are still live: a revoked one cannot be used and an
+     * expired one is not a device, so neither belongs in a list somebody is
+     * asked to choose from. `lastUsedAt` is the last time the session refreshed
+     * — the closest thing to "in use" that a store holding no device
+     * fingerprints can honestly claim — and is null until the first refresh.
+     */
+    async listIdentitySessions({ userId, limit }) {
+      const rows = all(
+        `SELECT s.id AS session_id, s.created_at, s.expires_at,
+                (SELECT MAX(t.used_at) FROM auth_refresh_tokens t WHERE t.session_id = s.id) AS last_used_at
+           FROM auth_sessions s
+          WHERE s.user_id = ? AND s.revoked_at IS NULL AND s.expires_at > ?
+          -- The subquery is repeated rather than aliased: PostgreSQL resolves a
+          -- bare alias in ORDER BY but not one wrapped in an expression, and
+          -- both providers have to answer the same question.
+          ORDER BY COALESCE((SELECT MAX(t.used_at) FROM auth_refresh_tokens t WHERE t.session_id = s.id), s.created_at) DESC
+          LIMIT ?`,
+        userId, new Date().toISOString(), Math.max(1, Math.min(limit, 200)),
+      );
+      return rows.map((row) => ({
+        sessionId: row.session_id,
+        createdAt: new Date(row.created_at).toISOString(),
+        lastUsedAt: row.last_used_at ? new Date(row.last_used_at).toISOString() : null,
+        expiresAt: new Date(row.expires_at).toISOString(),
+      }));
+    },
+    /**
+     * End one device.
+     *
+     * Scoped to the account that asks: a session id belonging to somebody else
+     * answers `false` rather than being ended, so guessing ids reveals nothing
+     * and harms nobody. `false` also covers "already ended" and "expired" —
+     * from the owner's point of view the device is gone either way.
+     */
+    async revokeIdentitySession({ userId, sessionId }) {
+      return transaction((transactionId) => {
+        const session = get(
+          "SELECT id FROM auth_sessions WHERE id = ? AND user_id = ? AND revoked_at IS NULL AND expires_at > ?",
+          sessionId, userId, new Date().toISOString(),
+        );
+        if (!session) return false;
+        revokeSessionFamily(sessionId);
+        captureSessionSnapshot(transactionId, sessionId);
+        return true;
+      });
+    },
+    /** End every other device of this account, and say how many that was. */
+    async revokeIdentitySessions({ userId, exceptSessionId = null }) {
+      return transaction((transactionId) => {
+        const sessionIds = all(
+          "SELECT id FROM auth_sessions WHERE user_id = ? AND revoked_at IS NULL AND expires_at > ?",
+          userId, new Date().toISOString(),
+        )
+          .map((row) => row.id)
+          .filter((id) => id !== exceptSessionId);
+        for (const sessionId of sessionIds) {
+          revokeSessionFamily(sessionId);
+          captureSessionSnapshot(transactionId, sessionId);
+        }
+        return sessionIds.length;
+      });
+    },
     async markIdentityEmailVerified({ userId, verifiedAt }) {
       return transaction((transactionId) => {
         const result = run("UPDATE auth_accounts SET email_verified_at = COALESCE(email_verified_at, ?) WHERE user_id = ?", new Date(verifiedAt).toISOString(), userId);

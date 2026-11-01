@@ -1294,6 +1294,92 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
     assert.equal(foreignSession.status, "rotated", "and the other account is untouched by it");
   });
 
+  test(`${adapterName}: a device can be listed, ended on its own, and ended along with the others`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const userId = `identity-user-${suffix}`;
+    const email = `identity-${suffix}@example.test`;
+    const hour = new Date(Date.now() + 3_600_000).toISOString();
+    const hash = () => randomBytes(32).toString("hex");
+    const makeSession = () => ({
+      sessionId: randomUUID(), userId, accessTokenId: randomUUID(),
+      refreshHash: hash(), expiresAt: hour,
+      accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+    });
+    const phone = makeSession();
+    const laptop = makeSession();
+    assert.equal(await runtime.store.createIdentityAccount({ userId, email, passwordHash: "hash-before", session: phone }), true);
+    await runtime.store.createIdentitySession(laptop);
+    // A session that already expired is not a device anybody can be asked about.
+    await runtime.store.createIdentitySession({ ...makeSession(), expiresAt: new Date(Date.now() - 1000).toISOString() });
+
+    const listed = await runtime.store.listIdentitySessions({ userId, limit: 50 });
+    assert.deepEqual(listed.map((session) => session.sessionId).sort(), [phone.sessionId, laptop.sessionId].sort(),
+      "only live sessions are devices; the expired one is not offered as a choice");
+    for (const session of listed) {
+      assert.equal(session.lastUsedAt, null, "nothing has refreshed yet");
+      assert.ok(new Date(session.expiresAt).getTime() > Date.now());
+      assert.ok(new Date(session.createdAt).getTime() <= Date.now());
+    }
+
+    // Refreshing is the only activity the store can honestly report.
+    const rotated = await runtime.store.rotateIdentityRefresh({
+      refreshHash: phone.refreshHash, nextRefreshHash: hash(),
+      accessTokenId: randomUUID(), issuedAt: new Date().toISOString(),
+      accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+    });
+    assert.equal(rotated.status, "rotated");
+    const afterUse = await runtime.store.listIdentitySessions({ userId, limit: 50 });
+    const used = afterUse.find((session) => session.sessionId === phone.sessionId);
+    assert.ok(used?.lastUsedAt, "the device that refreshed shows when");
+    assert.equal(afterUse.length, 2, "and it is still the same two devices");
+    assert.equal(afterUse[0]?.sessionId, phone.sessionId, "newest activity first");
+
+    // Ending one device: exactly that one stops working.
+    assert.equal(await runtime.store.revokeIdentitySession({ userId, sessionId: laptop.sessionId }), true);
+    assert.equal(await runtime.store.revokeIdentitySession({ userId, sessionId: laptop.sessionId }), false,
+      "ending it twice is not a second device");
+    assert.equal(await runtime.store.revokeIdentitySession({ userId, sessionId: randomUUID() }), false,
+      "an id that is not a session of this account is not ended");
+    const laptopAfter = await runtime.store.rotateIdentityRefresh({
+      refreshHash: laptop.refreshHash, nextRefreshHash: hash(),
+      accessTokenId: randomUUID(), issuedAt: new Date().toISOString(),
+      accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+    });
+    assert.equal(laptopAfter.status, "invalid", "the ended device cannot refresh");
+    const listedAfter = await runtime.store.listIdentitySessions({ userId, limit: 50 });
+    assert.deepEqual(listedAfter.map((session) => session.sessionId), [phone.sessionId]);
+
+    // Ending every other device keeps the one that asked.
+    const third = makeSession();
+    await runtime.store.createIdentitySession(third);
+    assert.equal(await runtime.store.revokeIdentitySessions({ userId, exceptSessionId: phone.sessionId }), 1,
+      "the new device goes, the one that asked stays");
+    const thirdAfter = await runtime.store.rotateIdentityRefresh({
+      refreshHash: third.refreshHash, nextRefreshHash: hash(),
+      accessTokenId: randomUUID(), issuedAt: new Date().toISOString(),
+      accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+    });
+    assert.equal(thirdAfter.status, "invalid");
+    assert.equal(await runtime.store.revokeIdentitySessions({ userId, exceptSessionId: phone.sessionId }), 0,
+      "a second sweep finds nothing left to end");
+
+    // Sparing nothing ends the device that asked too.
+    assert.equal(await runtime.store.revokeIdentitySessions({ userId, exceptSessionId: null }), 1);
+    assert.deepEqual(await runtime.store.listIdentitySessions({ userId, limit: 50 }), []);
+
+    // The list is bounded, because it is rendered as a choice.
+    for (let index = 0; index < 3; index += 1) await runtime.store.createIdentitySession(makeSession());
+    assert.equal((await runtime.store.listIdentitySessions({ userId, limit: 2 })).length, 2);
+    // ...and another account's devices are never in it.
+    const otherUserId = `identity-other-${suffix}`;
+    assert.equal(await runtime.store.createIdentityAccount({
+      userId: otherUserId, email: `identity-other-${suffix}@example.test`, passwordHash: "hash-other", session: makeSession(),
+    }), true);
+    assert.equal(await runtime.store.revokeIdentitySession({ userId, sessionId: phone.sessionId }), false,
+      "an ended session is not a device of this account any more");
+  });
+
   test(`${adapterName}: publishing a work is idempotent per author and does not leave a second copy behind`, options, async () => {
     const runtime = await fixture();
     const suffix = randomUUID();

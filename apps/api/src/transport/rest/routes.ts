@@ -44,6 +44,10 @@ export const REST_ROUTES: readonly RestRoute[] = Object.freeze([
   { id: "me", methods: ["GET"], segments: [literal("me")] },
   { id: "me.profile", methods: ["GET", "PUT"], segments: [literal("me"), literal("profile")] },
   { id: "me.session", methods: ["DELETE"], segments: [literal("me"), literal("session")] },
+  // Devices: the list is a read, `DELETE` on the collection ends every *other*
+  // one, and `DELETE` on one id ends exactly that one.
+  { id: "me.sessions", methods: ["GET", "DELETE"], segments: [literal("me"), literal("sessions")] },
+  { id: "me.sessions.item", methods: ["DELETE"], segments: [literal("me"), literal("sessions"), param("sessionId")] },
   { id: "me.password", methods: ["PUT"], segments: [literal("me"), literal("password")] },
   { id: "me.email", methods: ["PUT"], segments: [literal("me"), literal("email")] },
   { id: "me.liked-articles", methods: ["GET"], segments: [literal("me"), literal("liked-articles")] },

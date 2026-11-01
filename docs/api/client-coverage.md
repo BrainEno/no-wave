@@ -71,6 +71,8 @@
 
 两个前端只通过 `packages/web-http` 访问 9 个接口族：`me`、`me/email-verification`、`me/media`、`me/notifications*`、`articles*`、`articles/:slug/comments`、`auth/*`。全部已实现，**没有缺口**。唯一的共同注意事项是 P3。
 
+`me/sessions*`（多设备管理：列出设备、结束某一台、结束其他全部）在 API 侧已实现并通过双 provider 测试，但**两个前端都还没有接入**——它不属于上面 9 个族。要接入时应在 `packages/web-http` 加行为、两个框架各加一个薄适配，而不是在页面里直接 fetch。
+
 ## 缺口清单
 
 ### P1 登录状态下修改密码 —— 已实现（本轮）

@@ -58,6 +58,9 @@ is the contract.
 | `POST /api/v1/me/email-verification` | – (authenticated) | `202 { data: { ok: true, alreadyVerified } }`; `401` unauthenticated |
 | `PUT /api/v1/me/email` | `{ password, email }` (authenticated) | `200 { data: { ok: true, email, emailVerifiedAt } }`; `409` when the address belongs to another account; `400` for a malformed address or a body that is not exactly these two fields; `401` for a wrong password or no session |
 | `PUT /api/v1/me/password` | `{ currentPassword, newPassword }` (authenticated) | `200 { data: { ok: true, revokedSessions } }`; `401` for a wrong current password or no session; `400` for a new password under 12 characters or a body that is not exactly these two fields |
+| `GET /api/v1/me/sessions` | – (authenticated) | `200 { data: { sessions: [{ sessionId, createdAt, lastUsedAt, expiresAt, current }] } }`, live sessions only, newest first, at most 50; `401` unauthenticated |
+| `DELETE /api/v1/me/sessions` | – (authenticated, no body) | `200 { data: { ok: true, revokedSessions } }` — ends every *other* device and spares the one that asks |
+| `DELETE /api/v1/me/sessions/:sessionId` | – (authenticated, no body) | `200 { data: { ok: true } }`; `404` when the id is not one of this account's live sessions; `400` when a body is sent |
 
 - Only the SHA-256 digest of a token is stored, with its purpose, the address it was issued for, an
   expiry and a consumed stamp. A reset link lives 30 minutes, a verification link 24 hours, and each
@@ -85,6 +88,14 @@ is the contract.
   address the account already has answers `200` with the current verification state and rewrites
   nothing. No session is revoked: the address is not a credential, and the devices already signed in
   are still the owner's.
+- Multi-device management lives on `GET|DELETE /api/v1/me/sessions`. The list is deliberately
+  thin — no user agent, no address, no geolocation is stored anywhere in this project, and a
+  device list is not a reason to start: `lastUsedAt` is the last refresh, which the rotation
+  bookkeeping already records. "End every other device" spares the session that asks, the same
+  sparing ADR 0018 gives a password change, and an id that is not one of the account's live
+  sessions is a `404` rather than a `403`, so the endpoint cannot be used to discover which
+  session ids exist. Throttled at 30 per account and 120 per peer per 15 minutes. See
+  [ADR 0019](decisions/0019-device-list-without-device-fingerprints.md).
 - `GET /api/v1/me` returns `{ id, email, emailVerifiedAt }` (additive fields only).
 - The browser surface is three pages in the Web application — `/forgot-password`,
   `/reset-password?token=…`, `/verify-email?token=…` — and an account line in the

@@ -40,6 +40,16 @@ export class WriteRateLimitError extends RateLimitError {
     super("WriteRateLimitError", "Too many requests. Try again later.", retryAfterSeconds);
   }
 }
+/**
+ * A session that is not one of the account's live devices.
+ *
+ * Deliberately the same answer for "never existed", "already ended" and
+ * "belongs to somebody else": telling them apart would let a caller use the
+ * endpoint to find out which session ids exist.
+ */
+export class IdentitySessionNotFoundError extends DomainError {
+  constructor() { super("IdentitySessionNotFoundError", "NOT_FOUND", "The session was not found."); }
+}
 export class IdentityUnavailableError extends DomainError {
   constructor() { super("IdentityUnavailableError", "SERVICE_UNAVAILABLE", "Identity is not configured."); }
 }

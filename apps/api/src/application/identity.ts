@@ -1,7 +1,8 @@
 import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import {
   IdentityAuthenticationError, IdentityConflictError, IdentityInputError,
-  IdentityRateLimitError, IdentityUnavailableError, MailDisabledError,
+  IdentityRateLimitError, IdentitySessionNotFoundError, IdentityUnavailableError,
+  MailDisabledError,
 } from "../domain/errors.ts";
 import { accessIssuerConfiguration, signAccessToken } from "../security/authentication.ts";
 import { hashPassword, verifyPassword } from "../security/passwords.ts";
@@ -14,6 +15,16 @@ const REFRESH_LIFETIME_SECONDS = 30 * 24 * 60 * 60;
 const WINDOW_SECONDS = 15 * 60;
 /** Registration is throttled over a longer window than login: it creates rows. */
 const REGISTER_WINDOW_SECONDS = 60 * 60;
+/**
+ * How many devices one account may look at in one answer.
+ *
+ * Bounded because the list is assembled inside a request and rendered as a
+ * choice: an account with a hundred sessions is not a hundred decisions, and
+ * the newest ones are the ones an owner can actually recognise.
+ */
+const SESSION_LIST_LIMIT = 50;
+/** Reading and ending devices is cheap, but neither is free. */
+const SESSION_REQUESTS_PER_WINDOW = 30;
 /**
  * How long a recovery or verification token stays usable.
  *
@@ -113,6 +124,14 @@ export type IdentityStore = {
   setIdentityEmail(input: { userId: string; email: string }): Promise<boolean>;
   /** The credential of one account, and nothing else about it. */
   findIdentityCredentials(input: { userId: string }): Promise<{ userId: string; passwordHash: string } | null>;
+  /** Live sessions of one account, newest first, bounded by `limit`. */
+  listIdentitySessions(input: { userId: string; limit: number }): Promise<Array<{
+    sessionId: string; createdAt: string; lastUsedAt: string | null; expiresAt: string;
+  }>>;
+  /** End one session of one account. `false` when it is not one of its live ones. */
+  revokeIdentitySession(input: { userId: string; sessionId: string }): Promise<boolean>;
+  /** End every live session of one account except `exceptSessionId`; returns how many. */
+  revokeIdentitySessions(input: { userId: string; exceptSessionId?: string | null }): Promise<number>;
   markIdentityEmailVerified(input: { userId: string; verifiedAt: string }): Promise<boolean>;
   findIdentityAccountByUserId(input: { userId: string }): Promise<{ userId: string; email: string; emailVerifiedAt: string | null } | null>;
   pruneExpiredIdentityState(): Promise<unknown>;
@@ -399,6 +418,73 @@ export function createIdentityService({ store, env, mailer = null, onMailDeliver
       const replaced = await store.replaceIdentityPassword({ userId, passwordHash, exceptSessionId: sessionId });
       if (!replaced.updated) throw new IdentityAuthenticationError();
       return { ok: true, revokedSessions: replaced.revokedSessions };
+    },
+    /**
+     * The devices this account is signed in on.
+     *
+     * The answer names no device, no address and no user agent, because the
+     * store holds none of them: a session is an id, a birthday, a last refresh
+     * and an expiry. That is a deliberate limit rather than an unfinished
+     * feature — fingerprinting every visitor's browser to label a list is a
+     * worse bargain than asking them to recognise one timestamp.
+     *
+     * One row is marked `current`: the session that asked. It is the device the
+     * owner is holding, and it is the one "end every other device" spares.
+     */
+    async listSessions({ userId, sessionId, ip }: {
+      userId: string; sessionId: string | null; ip: string;
+    }) {
+      const config = configuration(env);
+      await consume("sessions:user", userId, SESSION_REQUESTS_PER_WINDOW, WINDOW_SECONDS, config.secret);
+      await consume("sessions:ip", ip, 120, WINDOW_SECONDS, config.secret);
+      const sessions = await store.listIdentitySessions({ userId, limit: SESSION_LIST_LIMIT });
+      return {
+        sessions: sessions.map((session) => ({
+          sessionId: session.sessionId,
+          createdAt: session.createdAt,
+          lastUsedAt: session.lastUsedAt,
+          expiresAt: session.expiresAt,
+          current: sessionId !== null && session.sessionId === sessionId,
+        })),
+      };
+    },
+    /**
+     * End one device.
+     *
+     * Ending the device you are holding is allowed — it is the same thing the
+     * logout endpoint does, and a visitor who taps "end" on the row marked
+     * "this device" should not be told no. What is not allowed is ending a
+     * session that is not this account's: an id belonging to somebody else is
+     * simply not found, so the endpoint cannot be used to probe for one.
+     */
+    async endSession({ userId, sessionId, ip }: {
+      userId: string; sessionId: string; ip: string;
+    }) {
+      const config = configuration(env);
+      await consume("sessions:user", userId, SESSION_REQUESTS_PER_WINDOW, WINDOW_SECONDS, config.secret);
+      await consume("sessions:ip", ip, 120, WINDOW_SECONDS, config.secret);
+      if (!sessionId || sessionId.trim() !== sessionId) throw new IdentitySessionNotFoundError();
+      const ended = await store.revokeIdentitySession({ userId, sessionId });
+      if (!ended) throw new IdentitySessionNotFoundError();
+      return { ok: true };
+    },
+    /**
+     * End every other device: the "I left my phone on the train" answer that
+     * does not require changing the password.
+     *
+     * The session that asks is spared, for the same reason a password change
+     * spares it — it is the device that just proved who it is. A token that
+     * cannot name its session spares nothing: the safe direction, and bounded
+     * by the token's own lifetime.
+     */
+    async endOtherSessions({ userId, sessionId, ip }: {
+      userId: string; sessionId: string | null; ip: string;
+    }) {
+      const config = configuration(env);
+      await consume("sessions:user", userId, SESSION_REQUESTS_PER_WINDOW, WINDOW_SECONDS, config.secret);
+      await consume("sessions:ip", ip, 120, WINDOW_SECONDS, config.secret);
+      const revokedSessions = await store.revokeIdentitySessions({ userId, exceptSessionId: sessionId });
+      return { ok: true, revokedSessions };
     },
     /**
      * Move the signed-in account to another address.

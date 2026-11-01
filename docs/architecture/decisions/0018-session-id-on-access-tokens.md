@@ -58,9 +58,9 @@ inconvenience, and a safe one. The reverse order is the defect.
 `revokeIdentitySessions` is gone rather than left behind unused. A primitive whose only callers were
 these two would invite the two-step dance straight back, and the primitive is the wrong shape: it
 cannot express "the credential and the sign-out happen together". Multi-device management — list my
-sessions, sign out that one — remains unbuilt (see
-[`docs/api/platform-capability-backlog.md`](../../api/platform-capability-backlog.md)) and will need
-a port method of its own.
+sessions, sign out that one — is a different
+guarantee (end a device now, write no credential) and got port methods of its own in
+[ADR 0019](0019-device-list-without-device-fingerprints.md).
 
 ## Consequences
 

@@ -248,6 +248,72 @@ export function createPostgresIdentityStore(sql) {
         return { updated: Boolean(updated[0]), revokedSessions: sessionRows.length };
       });
     },
+    /**
+     * The devices this account is signed in on, newest first.
+     *
+     * Only sessions that are still live: a revoked one cannot be used and an
+     * expired one is not a device, so neither belongs in a list somebody is
+     * asked to choose from. `lastUsedAt` is the last time the session refreshed
+     * — the closest thing to "in use" that a store holding no device
+     * fingerprints can honestly claim — and is null until the first refresh.
+     */
+    async listIdentitySessions({ userId, limit }) {
+      const rows = await sql.unsafe(
+        `SELECT s.id AS session_id, s.created_at, s.expires_at,
+                (SELECT MAX(t.used_at) FROM auth_refresh_tokens t WHERE t.session_id = s.id) AS last_used_at
+           FROM auth_sessions s
+          WHERE s.user_id = $1 AND s.revoked_at IS NULL AND s.expires_at > now()
+          -- The subquery is repeated rather than aliased: PostgreSQL resolves a
+          -- bare alias in ORDER BY but not one wrapped in an expression, and
+          -- both providers have to answer the same question.
+          ORDER BY COALESCE((SELECT MAX(t.used_at) FROM auth_refresh_tokens t WHERE t.session_id = s.id), s.created_at) DESC
+          LIMIT $2`,
+        [userId, Math.max(1, Math.min(limit, 200))],
+      );
+      return rows.map((row) => ({
+        sessionId: row.session_id,
+        createdAt: new Date(row.created_at).toISOString(),
+        lastUsedAt: row.last_used_at ? new Date(row.last_used_at).toISOString() : null,
+        expiresAt: new Date(row.expires_at).toISOString(),
+      }));
+    },
+    /**
+     * End one device.
+     *
+     * Scoped to the account that asks: a session id belonging to somebody else
+     * answers `false` rather than being ended, so guessing ids reveals nothing
+     * and harms nobody. `false` also covers "already ended" and "expired" —
+     * from the owner's point of view the device is gone either way.
+     */
+    async revokeIdentitySession({ userId, sessionId }) {
+      return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const rows = await tx.unsafe(
+          "SELECT id FROM auth_sessions WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL AND expires_at > now() FOR UPDATE",
+          [sessionId, userId],
+        );
+        if (!rows[0]) return false;
+        await revokeLockedSession(tx, rows[0].id);
+        await captureSessionSnapshot(tx, transactionId, rows[0].id);
+        return true;
+      });
+    },
+    /** End every other device of this account, and say how many that was. */
+    async revokeIdentitySessions({ userId, exceptSessionId = null }) {
+      return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const rows = await tx.unsafe(
+          "SELECT id FROM auth_sessions WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > now() ORDER BY created_at FOR UPDATE",
+          [userId],
+        );
+        const sessionRows = rows.filter((row) => row.id !== exceptSessionId);
+        for (const row of sessionRows) {
+          await revokeLockedSession(tx, row.id);
+          await captureSessionSnapshot(tx, transactionId, row.id);
+        }
+        return sessionRows.length;
+      });
+    },
     async markIdentityEmailVerified({ userId, verifiedAt }) {
       return sql.begin(async (tx) => {
         const transactionId = createMigrationTransactionId();
