@@ -198,6 +198,93 @@ function registerIdentityContracts(provider, options = {}) {
     } finally { await f.close(); }
   });
 
+  /**
+   * Multi-device management, end to end: the owner can see the devices that are
+   * signed in, end one of them, and end all the others without changing the
+   * password. The proof is always the other device's own next request, not a
+   * field in the response.
+   */
+  test(`${provider}: a device can be listed and ended without touching the others`, options, async () => {
+    const f = await fixture(provider);
+    try {
+      const phone = (await (await f.post("/api/v1/auth/register", { email: f.email, password })).json()).data;
+      const laptop = (await (await f.post("/api/v1/auth/login", { email: f.email, password })).json()).data;
+      const headers = { authorization: `Bearer ${phone.accessToken}` };
+
+      const list = await fetch(f.base + "/api/v1/me/sessions", { headers });
+      assert.equal(list.status, 200);
+      assert.equal(list.headers.get("cache-control"), "no-store");
+      const listed = (await list.json()).data.sessions;
+      assert.equal(listed.length, 2, "both signed-in devices are listed");
+      assert.equal(listed.filter((session) => session.current).length, 1, "exactly one of them is the device asking");
+      for (const session of listed) {
+        assert.equal(typeof session.sessionId, "string");
+        assert.ok(session.sessionId.length > 0);
+        assert.ok(!Number.isNaN(Date.parse(session.createdAt)) && !Number.isNaN(Date.parse(session.expiresAt)));
+        // No device metadata is stored, so none is handed out.
+        assert.deepEqual(Object.keys(session).sort(), ["createdAt", "current", "expiresAt", "lastUsedAt", "sessionId"]);
+      }
+      const current = listed.find((session) => session.current);
+      const other = listed.find((session) => !session.current);
+
+      // Ending one device: that one dies, and the device that asked does not.
+      const ended = await fetch(f.base + `/api/v1/me/sessions/${other.sessionId}`, { method: "DELETE", headers });
+      assert.equal(ended.status, 200);
+      assert.deepEqual(await ended.json(), { data: { ok: true } });
+      assert.equal((await f.me(laptop.accessToken)).status, 401, "the ended device is signed out");
+      assert.equal((await f.post("/api/v1/auth/refresh", { refreshToken: laptop.refreshToken })).status, 401,
+        "and its refresh credential is dead too");
+      assert.equal((await f.me(phone.accessToken)).status, 200, "the device that ended it is untouched");
+
+      const again = await fetch(f.base + `/api/v1/me/sessions/${other.sessionId}`, { method: "DELETE", headers });
+      assert.equal(again.status, 404, "ending an ended device is not a second ending");
+      const unknown = await fetch(f.base + `/api/v1/me/sessions/${randomUUID()}`, { method: "DELETE", headers });
+      assert.equal(unknown.status, 404, "and an id that is not a device is not found either");
+
+      // Ending every other device: the lost-phone answer, sparing this one.
+      const tablet = (await (await f.post("/api/v1/auth/login", { email: f.email, password })).json()).data;
+      assert.equal((await f.me(tablet.accessToken)).status, 200);
+      const endedOthers = await fetch(f.base + "/api/v1/me/sessions", { method: "DELETE", headers });
+      assert.equal(endedOthers.status, 200);
+      assert.deepEqual(await endedOthers.json(), { data: { ok: true, revokedSessions: 1 } });
+      assert.equal((await f.me(tablet.accessToken)).status, 401, "the other device is signed out");
+      assert.equal((await f.me(phone.accessToken)).status, 200, "the one that asked is spared");
+
+      const stillListed = (await (await fetch(f.base + "/api/v1/me/sessions", { headers })).json()).data.sessions;
+      assert.equal(stillListed.length, 1);
+      assert.equal(stillListed[0].current, true);
+    } finally { await f.close(); }
+  });
+
+  test(`${provider}: device management is authenticated and single-method`, options, async () => {
+    const f = await fixture(provider);
+    try {
+      const registered = (await (await f.post("/api/v1/auth/register", { email: f.email, password })).json()).data;
+      const headers = { authorization: `Bearer ${registered.accessToken}` };
+      const anonymous = await fetch(f.base + "/api/v1/me/sessions");
+      assert.equal(anonymous.status, 401);
+      assert.equal(anonymous.headers.get("cache-control"), "no-store");
+      const anonymousEnd = await fetch(f.base + `/api/v1/me/sessions/${randomUUID()}`, { method: "DELETE" });
+      assert.equal(anonymousEnd.status, 401);
+
+      const readOnly = await fetch(f.base + "/api/v1/me/sessions/some-session", { method: "GET", headers });
+      assert.equal(readOnly.status, 405);
+      assert.equal(readOnly.headers.get("allow"), "DELETE", "a device is not readable");
+      const posted = await fetch(f.base + "/api/v1/me/sessions", { method: "POST", headers });
+      assert.equal(posted.status, 405);
+      assert.equal(posted.headers.get("allow"), "GET, DELETE");
+
+      // A body would only be somewhere else to name the session.
+      const withBody = await fetch(f.base + "/api/v1/me/sessions/some-session", {
+        method: "DELETE",
+        headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify({ sessionId: "another" }),
+      });
+      assert.equal(withBody.status, 400);
+      assert.equal((await withBody.json()).error.code, "BAD_USER_INPUT");
+    } finally { await f.close(); }
+  });
+
   test(`${provider}: concurrent refresh reuse revokes the entire token family`, options, async () => {
     const f = await fixture(provider);
     try {

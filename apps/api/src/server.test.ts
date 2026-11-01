@@ -1536,6 +1536,101 @@ test("REST public author profile reflects the optional viewer follow state", asy
   });
 });
 
+/**
+ * `GET /api/v1/me/sessions` and its two `DELETE` shapes.
+ *
+ * The HTTP-level assertions are about who may ask and what the transport hands
+ * to the identity service: both are authenticated, the device that asks is the
+ * one that gets spared, an id that is not a device of this account answers 404,
+ * and — the detail the last slice settled — the spared device is named by the
+ * token's `sid`, not by its `jti`.
+ */
+test("REST device management is authenticated, spares the session that asks and refuses a body", async () => {
+  const seen: { list: Record<string, unknown> | null; ended: Record<string, unknown> | null; others: Record<string, unknown> | null } = { list: null, ended: null, others: null };
+  const device = {
+    sessionId: "session-sessions-user",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    lastUsedAt: null,
+    expiresAt: "2026-01-08T00:00:00.000Z",
+  };
+  await withServer(async (baseUrl) => {
+    const headers = { authorization: "Bearer " + signedToken("sessions-user") };
+
+    const list = await fetch(baseUrl + "/api/v1/me/sessions", { headers });
+    assert.equal(list.status, 200);
+    assert.equal(list.headers.get("cache-control"), "no-store");
+    assert.deepEqual(await list.json(), { data: { sessions: [{ ...device, current: true }] } });
+    assert.deepEqual(seen.list, { userId: "sessions-user", limit: 50 });
+
+    const endedOthers = await fetch(baseUrl + "/api/v1/me/sessions", { method: "DELETE", headers });
+    assert.deepEqual(await endedOthers.json(), { data: { ok: true, revokedSessions: 1 } });
+    assert.deepEqual(seen.others, { userId: "sessions-user", exceptSessionId: "session-sessions-user" });
+    assert.notEqual(seen.others?.exceptSessionId, "token-sessions-user",
+      "the access token is not a device, and sparing it would spare nothing");
+
+    const endedOne = await fetch(baseUrl + "/api/v1/me/sessions/a-device", { method: "DELETE", headers });
+    assert.deepEqual(await endedOne.json(), { data: { ok: true } });
+    assert.deepEqual(seen.ended, { userId: "sessions-user", sessionId: "a-device" });
+
+    // A body would only be a second place to name the device.
+    const withBody = await fetch(baseUrl + "/api/v1/me/sessions/a-device", {
+      method: "DELETE", headers: { ...headers, "content-type": "application/json" },
+      body: JSON.stringify({ sessionId: "another-device" }),
+    });
+    assert.equal(withBody.status, 400);
+    assert.equal((await withBody.json()).error.code, "BAD_USER_INPUT");
+
+    for (const path of ["/api/v1/me/sessions", "/api/v1/me/sessions/a-device"]) {
+      const anonymous = await fetch(baseUrl + path, { method: path.endsWith("a-device") ? "DELETE" : "GET" });
+      assert.equal(anonymous.status, 401);
+      assert.equal(anonymous.headers.get("cache-control"), "no-store");
+      assert.equal((await anonymous.json()).error.code, "UNAUTHENTICATED");
+    }
+  }, {
+    env: authEnv,
+    store: {
+      async isSessionRevoked() { return false; },
+      async listIdentitySessions(args) { seen.list = args; return [device]; },
+      async revokeIdentitySession(args) { seen.ended = args; return true; },
+      async revokeIdentitySessions(args) { seen.others = args; return 1; },
+    },
+  });
+});
+
+test("REST ending a device that is not this account's is a 404, and a session that cannot be checked is a 401", async () => {
+  let asked = 0;
+  await withServer(async (baseUrl) => {
+    const response = await fetch(baseUrl + "/api/v1/me/sessions/not-a-device", {
+      method: "DELETE",
+      headers: { authorization: "Bearer " + signedToken("sessions-user") },
+    });
+    assert.equal(response.status, 404);
+    assert.equal((await response.json()).error.code, "NOT_FOUND");
+    assert.equal(asked, 1, "the store was asked once and answered no");
+  }, {
+    env: authEnv,
+    store: {
+      async isSessionRevoked() { return false; },
+      async revokeIdentitySession() { asked += 1; return false; },
+    },
+  });
+
+  // Fail closed: a revocation check that cannot be answered is not a session.
+  await withServer(async (baseUrl) => {
+    const response = await fetch(baseUrl + "/api/v1/me/sessions", {
+      headers: { authorization: "Bearer " + signedToken("sessions-user") },
+    });
+    assert.equal(response.status, 401);
+    assert.equal((await response.json()).error.code, "UNAUTHENTICATED");
+  }, {
+    env: authEnv,
+    store: {
+      async isSessionRevoked() { throw new Error("the revocation store is down"); },
+      async listIdentitySessions() { throw new Error("must not be called"); },
+    },
+  });
+});
+
 test("REST current-session logout revokes the access token that was presented, through the token expiry", async () => {
   let received;
   await withServer(async (baseUrl) => {

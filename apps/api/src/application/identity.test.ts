@@ -4,7 +4,10 @@ import test from "node:test";
 import { createIdentityService } from "./identity.ts";
 import { createLogMailer, resolveIdentityMailer } from "./identity-mailer.ts";
 import { SmtpError } from "../infrastructure/smtp-client.ts";
-import { IdentityAuthenticationError, IdentityConflictError, IdentityInputError, MailDisabledError } from "../domain/errors.ts";
+import {
+  IdentityAuthenticationError, IdentityConflictError, IdentityInputError,
+  IdentitySessionNotFoundError, MailDisabledError,
+} from "../domain/errors.ts";
 import { hashPassword, verifyPassword } from "../security/passwords.ts";
 
 test("identity maintenance is periodically invoked without exposing throttle subjects", async () => {
@@ -106,6 +109,8 @@ function fakeIdentityStore({ accounts = [] as Array<{ userId: string; email: str
   const verifiedAt = new Map<string, string>();
   /** Set to make the store refuse the replacement, the way a failed write does. */
   let refuseReplacement = false;
+  const ended: string[] = [];
+  const used = new Map<string, string>();
   const sent: Array<{ to: string; purpose: string; subject: string; link: string }> = [];
   for (const account of accounts) {
     passwords.set(account.userId, account.passwordHash);
@@ -117,6 +122,8 @@ function fakeIdentityStore({ accounts = [] as Array<{ userId: string; email: str
     revoked,
     revocations,
     replacements,
+    ended,
+    used,
     passwords,
     verifiedAt,
     set refuseReplacement(value: boolean) { refuseReplacement = value; },
@@ -152,6 +159,30 @@ function fakeIdentityStore({ accounts = [] as Array<{ userId: string; email: str
       accounts.find((entry) => entry.userId === userId).email = email;
       verifiedAt.delete(userId);
       return true;
+    },
+    async listIdentitySessions({ userId, limit }) {
+      const live = sessions.get(userId) ?? [];
+      return live.slice(0, limit).map((sessionId) => ({
+        sessionId,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        lastUsedAt: used.get(sessionId) ?? null,
+        expiresAt: "2026-01-08T00:00:00.000Z",
+      }));
+    },
+    async revokeIdentitySession({ userId, sessionId }) {
+      const live = sessions.get(userId) ?? [];
+      const index = live.indexOf(sessionId);
+      if (index === -1) return false;
+      live.splice(index, 1);
+      ended.push(sessionId);
+      return true;
+    },
+    async revokeIdentitySessions({ userId, exceptSessionId = null }) {
+      const live = sessions.get(userId) ?? [];
+      const doomed = live.filter((id) => id !== exceptSessionId);
+      for (const sessionId of doomed) live.splice(live.indexOf(sessionId), 1);
+      ended.push(...doomed);
+      return doomed.length;
     },
     /**
      * One call, in the order the real adapters use: the sessions go first, so a
@@ -274,6 +305,62 @@ test("a signed-in password change needs the old password and spares the session 
   assert.equal(await verifyPassword(currentPassword, stored), false, "the old password no longer opens the account");
   // A reset signs out everything; a change spares the device that proved it.
   assert.deepEqual(store.revocations, [{ userId: "user-1", exceptSessionId: "session-1" }]);
+});
+
+/**
+ * Multi-device management.
+ *
+ * The properties the transport cannot check for itself: the device list marks
+ * the session that asked and nothing else, a device that is not this account's
+ * is not found (so the endpoint cannot be used to probe for one), and "end the
+ * others" spares the one that asked — or, when the token cannot name its
+ * session, spares nothing and says so.
+ */
+test("the device list marks the session that asked, and only that one", async () => {
+  const store = fakeIdentityStore({ accounts: [{ userId: "user-1", email: "owner@example.test", passwordHash: "hash-1" }] });
+  const service = createIdentityService({ env: identityEnv, store, mailer: capturingMailer().mailer });
+  const listed = await service.listSessions({ userId: "user-1", sessionId: "session-2", ip: "192.0.2.10" });
+  assert.deepEqual(listed.sessions.map((session) => session.sessionId), ["session-1", "session-2"]);
+  assert.deepEqual(listed.sessions.map((session) => session.current), [false, true]);
+
+  // A token too old to carry a session id spares nothing rather than guessing.
+  const anonymous = await service.listSessions({ userId: "user-1", sessionId: null, ip: "192.0.2.10" });
+  assert.deepEqual(anonymous.sessions.map((session) => session.current), [false, false],
+    "an unknown session is not claimed to be the device in the reader's hands");
+});
+
+test("ending a device that is not this account's is not found, and no device is ended", async () => {
+  const store = fakeIdentityStore({ accounts: [{ userId: "user-1", email: "owner@example.test", passwordHash: "hash-1" }] });
+  const service = createIdentityService({ env: identityEnv, store, mailer: capturingMailer().mailer });
+  await assert.rejects(service.endSession({ userId: "user-1", sessionId: "session-9", ip: "192.0.2.10" }),
+    IdentitySessionNotFoundError);
+  assert.deepEqual(store.ended, [], "a session that is not this account's ends nothing");
+  await assert.rejects(service.endSession({ userId: "user-1", sessionId: "   ", ip: "192.0.2.10" }),
+    IdentitySessionNotFoundError, "and an empty id is never a session");
+
+  assert.deepEqual(await service.endSession({ userId: "user-1", sessionId: "session-1", ip: "192.0.2.10" }), { ok: true });
+  assert.deepEqual(store.ended, ["session-1"]);
+});
+
+test("ending every other device spares the one that asked", async () => {
+  const store = fakeIdentityStore({ accounts: [{ userId: "user-1", email: "owner@example.test", passwordHash: "hash-1" }] });
+  const service = createIdentityService({ env: identityEnv, store, mailer: capturingMailer().mailer });
+  assert.deepEqual(await service.endOtherSessions({ userId: "user-1", sessionId: "session-1", ip: "192.0.2.10" }),
+    { ok: true, revokedSessions: 1 });
+  assert.deepEqual(store.ended, ["session-2"]);
+
+  // A token that cannot name its session spares nothing: the safe direction.
+  assert.deepEqual(await service.endOtherSessions({ userId: "user-1", sessionId: null, ip: "192.0.2.10" }),
+    { ok: true, revokedSessions: 1 });
+  assert.deepEqual(store.ended, ["session-2", "session-1"]);
+});
+
+test("looking at devices is throttled per account, then per address", async () => {
+  const limits: number[] = [];
+  const store = fakeIdentityStore({ accounts: [{ userId: "user-1", email: "owner@example.test", passwordHash: "hash-1" }], limits });
+  const service = createIdentityService({ env: identityEnv, store, mailer: capturingMailer().mailer });
+  await service.listSessions({ userId: "user-1", sessionId: "session-1", ip: "192.0.2.10" });
+  assert.deepEqual(limits, [30, 120], "thirty per quarter hour for one account, a hundred and twenty for one address");
 });
 
 test("a password change that the store cannot carry out is reported, not half applied", async () => {
