@@ -1,10 +1,21 @@
 # Vercel deployment
 
+> **Blocked 2026-11-01 — read before deploying.** The Web application is now a
+> React Router app in `apps/web-rr` and the Next.js application has been deleted
+> ([ADR 0017](../architecture/decisions/0017-nextjs-retired-one-web-application.md)),
+> but `vercel.json` still declares a `nextjs` framework preset rooted at
+> `apps/web`. That file is deployment configuration, and **no deployment has been
+> changed as part of that slice**: pointing `web` at `apps/web-rr` (and choosing
+> the right preset) is an owner decision, not a cleanup. Until it is made, a
+> Vercel deploy would fail at the build root. Everything else on this page — the
+> API container, the rewrites, the environment variables and the notification
+> daemon — is unaffected.
+
 This repository is configured for a single Vercel Services deployment containing the Next.js web app, the HTTP API container, and the notification outbox daemon.
 
 ## Service layout and public routing
 
-- `web` builds from `apps/web` and receives the catch-all public route `/(.*)`.
+- `web` builds from `apps/web` (deleted; see the notice above) and receives the catch-all public route `/(.*)`.
 - `api` is built from the repository root so its container can use the shared `pnpm-lock.yaml`. Its runtime image contains only the API workspace dependencies and source.
 - Only the documented REST prefix `/api/v1/*` is routed publicly to `api`. The Next.js route `/api/spike/events` therefore remains with `web`.
 - The `/graphql` endpoint no longer exists. `/health` and `/ready` are not exposed by public rewrites. The Web content client reaches versioned REST endpoints through the private `API_SERVICE_URL` binding; only the documented `/api/v1/*` prefix is routed publicly to the API.

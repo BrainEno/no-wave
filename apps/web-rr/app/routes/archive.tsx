@@ -15,7 +15,7 @@ import { siteUrl } from "../lib/runtime.ts";
  *
  * The route is deliberately thin: `loadArchivePage` performs the (at most two)
  * API calls and `ArchivePageView` renders the result. Both are shared with the
- * Next.js application, so the two frameworks cannot drift in either direction —
+ * shared package, so no route can drift from another —
  * they would have to drift in the shared module.
  */
 export async function loader({ request }: LoaderFunctionArgs) {

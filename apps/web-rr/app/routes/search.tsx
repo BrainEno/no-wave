@@ -12,7 +12,7 @@ import { titleWithSite } from "../lib/meta.ts";
 /**
  * Site search (`/search`, `/en/search`).
  *
- * Like the App Router version it is `no-store` and `robots: noindex, follow`:
+ * It is `no-store` and `robots: noindex, follow`:
  * results depend on an arbitrary query string, so a shared cache would only
  * collect low-hit-rate entries.
  */

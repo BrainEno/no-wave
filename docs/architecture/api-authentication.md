@@ -80,7 +80,7 @@ is the contract.
   nothing. No session is revoked: the address is not a credential, and the devices already signed in
   are still the owner's.
 - `GET /api/v1/me` returns `{ id, email, emailVerifiedAt }` (additive fields only).
-- The browser surface is three pages in `apps/web` — `/forgot-password`,
+- The browser surface is three pages in the Web application — `/forgot-password`,
   `/reset-password?token=…`, `/verify-email?token=…` — and an account line in the
   writing desk that requests a verification link. They reach the API through the
   shared `web-http` proxy on the same `/api/auth/<action>` family, without the

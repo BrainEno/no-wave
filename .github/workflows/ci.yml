@@ -151,12 +151,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Apply migrations
         run: pnpm db:migrate
-      # The suite drives the production builds, so they have to exist first:
-      # both frameworks, because the same journey runs against each.
+      # The suite drives the production build, so it has to exist first.
       - name: Build the Web application
         run: pnpm build
-      - name: Build the React Router prototype
-        run: pnpm --filter @bot-thk/web-rr build
       - name: Install the Chromium build Playwright drives
         run: pnpm exec playwright install --with-deps chromium
       - name: Run the browser-level suite
@@ -169,10 +166,10 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
-  # Phase 1 of the Web framework migration: the isolated React Router prototype
-  # must build and pass its behavior tests on plain Node.js. The job starts the
-  # production build with `node server.ts` and NO Vercel-specific variables, so a
-  # platform dependency cannot sneak in unnoticed.
+  # The Web application must build and pass its behavior tests on plain Node.js.
+  # The job starts the production build with `node server.ts` and no
+  # platform-specific variables, so a platform dependency cannot sneak in
+  # unnoticed.
   react-router-prototype:
     runs-on: ubuntu-latest
     steps:
@@ -185,8 +182,8 @@ jobs:
           node-version: "24"
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Build and behavior-test the prototype
-        run: pnpm test:prototype
+      - name: Build and behavior-test the Web application
+        run: pnpm test:web
 
   # Phase 6, item 1: the whole stack has to come up on plain Node.js with only
   # the variables documented in `.env.example`. `pnpm stack:check` builds the
@@ -324,10 +321,10 @@ jobs:
             echo "Web  /        -> $(curl -s -o /tmp/web-home.html -w '%{http_code}' http://127.0.0.1:3100/)"
             echo "Web  404      -> $(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3100/definitely-missing)"
             echo "title: $(grep -oE '<title>[^<]*</title>' /tmp/web-home.html | head -1)"
-            # The same server-rendered shell markers `pnpm check:ssr-parity`
-            # compares (SHELL_MARKERS in scripts/ssr-parity.ts). `nw-smooth` is
-            # *not* one of them: it is added by the client after hydration, so
-            # it never appears in HTML.
+            # The same server-rendered shell markers the Web application's own
+            # tests assert (`apps/web-rr/test/prototype.test.ts`). `nw-smooth`
+            # is *not* one of them: it is added by the client after hydration,
+            # so it never appears in HTML.
             echo "shell: $(grep -c 'class="nw-pill"' /tmp/web-home.html || true) nw-pill, $(grep -c 'class="nw-footer"' /tmp/web-home.html || true) nw-footer"
           } | tee /tmp/probe.log
           set -e
@@ -395,9 +392,9 @@ jobs:
           docker rm -f api web > /dev/null 2>&1 || true
           docker network rm nw-ci > /dev/null 2>&1 || true
 
-  # `pnpm check:ssr-parity` (the Phase 3 exit gate) lives in its own nightly
-  # workflow — see .github/workflows/ssr-parity.yml — because it builds both
-  # applications and is too slow to sit on the path of every commit.
+  # One gate, so a branch cannot be merged on a partial signal: every job above
+  # has to have succeeded, and a skipped job reports as a failure rather than
+  # passing by absence.
   required-checks:
     name: required-checks
     if: ${{ always() }}

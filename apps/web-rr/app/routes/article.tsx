@@ -19,8 +19,8 @@ import { siteUrl } from "../lib/runtime.ts";
  * which any HTML comparison can see, because the markup was never rendered.
  *
  * The load/render split removes the reason for the shortcut: the loader calls
- * the shared `loadArticleDetailPage`, and `ArticlePageView` is the same
- * component the App Router renders, interactive parts included.
+ * the shared `loadArticleDetailPage`, and `ArticlePageView` is the shared view,
+ * interactive parts included.
  */
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const locale = localeFor(request);

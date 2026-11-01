@@ -43,7 +43,7 @@ Each row was reproduced on the commit this document was written against
 | --- | --- | --- | --- |
 | G1 | No local PostgreSQL orchestration. The README asked for a hand-written `docker run`, a manual `pg_isready` loop and a hand-typed `TEST_DATABASE_URL`. | Every developer invented their own container, port and database name. | `compose.yaml` + `pnpm db:up/db:down/db:reset`; the volume also creates `bot_thk_test`. |
 | G2 | `.env.example` set `DATABASE_PROVIDER=postgres` with an empty `DATABASE_URL`, contradicting the SQLite-first default (ADR 0010). | Copying the template made the API exit at startup with `DATABASE_URL is required when DATABASE_PROVIDER=postgres.` | Template is SQLite-first, PostgreSQL is a documented switch, and `pnpm setup:local` writes a valid file. |
-| G3 | A repository-root `.env.local` was read by the API but ignored by the Web app (Next.js only reads `.env*` from `apps/web`). | `API_BASE_URL` set "in the project env" had no effect on the Web app, which silently kept rendering fixtures. | `apps/web/next.config.ts` loads the same root file via `process.loadEnvFile`, with the same precedence rules as the API. |
+| G3 | A repository-root `.env.local` was read by the API but ignored by the Web app (Next.js only read `.env*` from `apps/web`). | `API_BASE_URL` set "in the project env" had no effect on the Web app, which silently kept rendering fixtures. | `apps/web-rr/vite.config.ts` loads the same root file via `process.loadEnvFile`, with the same precedence rules as the API. |
 | G4 | No single command for the API. Root `pnpm dev` started only the Web app. | Two terminals, two working directories, and an easy way to forget the API entirely. | `pnpm dev` starts both with readiness gates; `dev:api` / `dev:web` start one. |
 | G5 | `AUTH_JWT_SECRET` shorter than 32 bytes or absent was only reported as `503 SERVICE_UNAVAILABLE` / "Identity is not configured." on auth routes. | Sign-in looked like an outage on a fresh clone; the message names neither the variable nor the length. | `evaluateAuthSecret` blocks `pnpm dev` before any process starts, with the exact remedy. |
 | G6 | No way to test the chain. `pnpm test:routes` covers the Web app in fixture mode only. | "It works" was a manual browser opinion. | `pnpm check:local` (10 probes) and `pnpm dev --check`. |
@@ -56,8 +56,8 @@ Each row was reproduced on the commit this document was written against
 ## 3. Defect found while verifying the chain
 
 The new probe failed its Web auth step with `403 ORIGIN_REJECTED` even though the
-request was same-origin. Root cause: Next.js builds `request.url` from the
-hostname the server was started with, so `next dev --hostname 0.0.0.0` (and the
+request was same-origin. Root cause: the dev server builds `request.url` from the
+hostname it was started with, so `--host 0.0.0.0` (and the
 Web image's `HOSTNAME=0.0.0.0`) produces `http://0.0.0.0:3000/...`, while the
 browser sends `Origin: http://127.0.0.1:3000`. `isSameOriginMutation` compared
 against the first value and therefore rejected every legitimate sign-in,
@@ -69,7 +69,7 @@ authority the browser actually addressed), falling back to `request.url` when th
 header is missing or malformed. The comparison remains exact origin equality —
 scheme, host and port — so a foreign origin, a different port or a scheme
 downgrade is still rejected. See
-`apps/web/src/lib/authoring-proxy-policy.ts` and its regression test.
+`packages/web-ui/src/lib/authoring-proxy-policy.ts` and its regression test.
 
 ## 4. How the pieces are organised, and why
 
@@ -91,8 +91,8 @@ configuration differently. The contract is:
 
 1. A variable exported in the shell always wins.
 2. `<repo>/.env.local` is the local file for both processes.
-3. `apps/web/.env.local` still works (Next.js loads it) but is not required; the
-   root file is what the docs and scripts use.
+3. The root file is what the docs and scripts use; the Web app reads it once, at
+   dev-server start, through `apps/web-rr/vite.config.ts`.
 4. Defaults live in code (`apps/api` and `scripts/lib/local-dev-config.ts`).
 
 `node --env-file-if-exists` (API) and `process.loadEnvFile` (Web) both refuse to
@@ -106,7 +106,7 @@ The API and Web app run as native Node processes:
 - hot reload, real file paths in stack traces, normal debugger attachment;
 - no image rebuild per edit, so the inner loop stays in seconds;
 - `pnpm check:local` probes exactly what a developer runs, including the
-  `next dev` specifics that a container would hide (route compilation, dev
+  dev-server specifics that a container would hide (route compilation, dev
   assets, hostname handling).
 
 The dependency that is genuinely easier to run in a container — a PostgreSQL
@@ -121,7 +121,7 @@ the integration-test database.
 
 ### 4.3 The tooling talks over HTTP, never by importing app code
 
-`scripts/*` never imports `apps/api` or `apps/web` modules. Consequences:
+`scripts/*` never imports `apps/api` or `apps/web-rr` modules. Consequences:
 
 - the same probe verifies a SQLite file, a Docker PostgreSQL, a containerised API
   on another port, or staging (`--api-url`, `--web-url`);
@@ -259,7 +259,7 @@ The CI `local-dev-chain` job runs exactly the documented commands —
 
 `pnpm test` runs the tooling's own unit tests
 (`scripts/lib/local-dev-config.test.ts`, `scripts/local-dev-check.test.ts`,
-`apps/web/src/lib/dev-origins.test.ts`) on every run, so the environment rules and
+`packages/web-ui/src/lib/dev-origins.test.ts`) on every run, so the environment rules and
 the probe's skip semantics cannot silently regress.
 
 ## 9. Troubleshooting
@@ -271,9 +271,9 @@ the probe's skip semantics cannot silently regress.
 | `DATABASE_URL is required when DATABASE_PROVIDER=postgres.` | PostgreSQL selected without a URL. | `pnpm db:up` and set `DATABASE_URL`, or switch to SQLite. |
 | `SQLite schema is not current` | Never migrated after checkout. | `pnpm db:migrate`. |
 | `Port 4000 is already in use` | A previous API/Web process is still running. | Stop it, or change `PORT` / `WEB_PORT`. |
-| `Another next dev server is already running` | Next.js allows one dev server per app directory. | Stop the other one; do not run two `pnpm dev`s. |
+| The dev server refuses a second start | One dev server per app directory. | Stop the other one; do not run two `pnpm dev`s. |
 | `web-render` fails, API steps pass | The Web app is serving fixtures (`API_BASE_URL` unset) or cannot reach the API. | Set `API_BASE_URL=http://127.0.0.1:4000` in the root `.env.local`, restart `pnpm dev`. |
-| Page loads unstyled from another device | Next.js dev origin allowlist. | Add the hostname to `WEB_DEV_ALLOWED_ORIGINS`. |
+| Page loads unstyled from another device | The dev server's host allowlist. | Add the hostname to `WEB_DEV_ALLOWED_ORIGINS`. |
 | `fetch failed` against `localhost` | `localhost` resolved to `::1` while the API listens on IPv4. | Use `127.0.0.1` in `API_BASE_URL`. |
 | Web page 404 for an article you just created | Created without `publish: true`, or no author profile. | Update the profile, publish the article (the probe shows the full sequence). |
 | `429 RATE_LIMITED` in the probe | 20 registrations per IP per hour. | Wait, or use `--read-only`. |

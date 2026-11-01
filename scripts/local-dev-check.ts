@@ -51,7 +51,7 @@ export type CheckOptions = {
 type StepOutcome = { status?: CheckStatus; detail: string; remedy?: string };
 
 const DEFAULT_STEP_TIMEOUT_MS = 15_000;
-/** A cold `next dev` compiles routes on first request; allow for that once. */
+/** A cold dev server compiles routes on first request; allow for that once. */
 const WEB_ROUTE_TIMEOUT_MS = 120_000;
 
 function trimBaseUrl(value: string): string {
@@ -303,7 +303,7 @@ export async function runLocalChecks(options: CheckOptions): Promise<{ results: 
         return {
           status: "fail",
           detail: "The login response did not set a refresh cookie.",
-          remedy: "Check the HttpOnly cookie boundary in apps/web/src/lib/authoring-proxy.ts.",
+          remedy: "Check the HttpOnly cookie boundary in apps/web-rr/app/lib/authoring-proxy.ts.",
         };
       }
       return { detail: "200 OK; tokens were stored in HttpOnly cookies by the Web proxy" };

@@ -5,8 +5,9 @@ import { siteUrl } from "../lib/runtime.ts";
 /**
  * `GET /sitemap.xml` — resource route.
  *
- * The entry list and the XML come from the shared builder the App Router uses,
- * so both applications publish the same URLs. Crawled repeatedly by search
+ * The entry list and the XML come from the shared builder in
+ * `@bot-thk/web-ui`, so every route that serves them publishes the same URLs.
+ * Crawled repeatedly by search
  * engines, so it is shared-cacheable and its article scan is bounded
  * (`SITEMAP_MAX_PAGES`).
  */

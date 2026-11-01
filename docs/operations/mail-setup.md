@@ -15,12 +15,12 @@ how to turn it on once a relay exists, and how to tell from the logs which state
 | Variable | `MAIL_ENABLED` |
 | Off (default) | unset, empty, or anything that is not one of `true`, `1`, `yes`, `on` |
 | On | `true`, `1`, `yes`, `on` — trimmed, case-insensitive, so a hand-edited `TRUE ` works |
-| Where | repository-root `.env.local`. Both processes read that one file: the API through `node --env-file-if-exists`, the Web server through `apps/web/next.config.ts`. A shell export wins over the file. |
+| Where | repository-root `.env.local`. Both processes read that one file: the API through `node --env-file-if-exists`, the Web server through `apps/web-rr/vite.config.ts`. A shell export wins over the file. |
 | Read | per request, by both processes. Flipping it needs a restart of the two processes, **not** a rebuild. |
 | Unknown values | mean off. A typo must not switch mail on. |
 
 Two tiers read it, and each has its own copy of the predicate: `isMailEnabled` in
-`apps/api/src/application/identity-mailer.ts` and in `apps/web/src/lib/mail-feature.ts`. The
+`apps/api/src/application/identity-mailer.ts` and in `packages/web-ui/src/lib/mail-feature.ts`. The
 API must not import a Web package, so the two are written against the same contract and each
 is pinned by its own test rather than sharing an import. `.env.example` is the operator's
 version of that contract.

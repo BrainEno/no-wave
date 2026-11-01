@@ -6,12 +6,12 @@ import { optionalApiBaseUrl } from "../lib/runtime.ts";
  * `GET`/`POST /api/articles/:slug/comments` — resource route, no component.
  *
  * This is the endpoint `ArticleComments` calls after it hydrates. The component
- * is shared with the App Router and renders in both frameworks, so the comment
- * section *looked* right in the prototype while having no backend to talk to at
- * all — a page can be perfectly server-rendered and still be dead on arrival.
+ * is shared UI, so the comment section *looked* right while having no backend to
+ * talk to at all — a page can be perfectly server-rendered and still be dead on
+ * arrival.
  *
  * The implementation is the shared `@bot-thk/web-http` handler, the same one the
- * Next.js route handler calls: slug/locale validation, the exact-Origin check on
+ * every other route that serves it: slug/locale validation, the exact-Origin check on
  * mutations, the bounded body and cookie-attached forwarding exist once, so the
  * two frameworks cannot disagree about a comment request.
  */

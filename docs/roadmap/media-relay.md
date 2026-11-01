@@ -1,8 +1,9 @@
 # Media relay adapter (Phase 5a)
 
 Status 2026-10-29: **landed and shared.** `packages/web-http/src/media.ts` is now
-the only implementation of both media paths; `apps/web` and `apps/web-rr` call it,
-and `packages/web-http/test/media.test.ts` is the contract.
+the only implementation of both media paths; the Web application (`apps/web-rr`)
+calls it, and `packages/web-http/test/media.test.ts` is the contract. (It was
+shared by both applications until 2026-11-01, when the Next.js app was deleted.)
 
 ## Why media goes through the app at all
 
@@ -29,10 +30,9 @@ inline (`app/api/media/[id]/route.ts` was ~110 lines of streaming and header
 logic). They now live in the framework-neutral package, and the adapters are
 three lines each:
 
-- Next.js: `@/lib/authoring-proxy.ts` → `fetchPublicMedia` / `handleMediaPost`
-  (resolves `API_BASE_URL`, converts the standard `Response`).
 - React Router: `app/routes/api.media.ts` (loader) and
-  `app/routes/api.authoring.media.ts` (action), both resource routes.
+  `app/routes/api.authoring.media.ts` (action), both resource routes. (The
+  Next.js adapter, `@/lib/authoring-proxy.ts`, existed until 2026-11-01.)
 
 One more thing became shared by accident of good structure: `readLimitedStream`
 extracts the bounded reader from `readLimitedBytes`, because a proxied *response*
@@ -45,7 +45,7 @@ unusable upstream object while the request path still answers 400/413.
 | Claim | How it was checked |
 | --- | --- |
 | Immutable caching, ETag, 304, content-type lockdown, 8 MiB ceiling, error collapsing, upload origin/type/auth rules | `packages/web-http/test/media.test.ts` (8 tests, injected `fetchImpl`, no network) |
-| Both frameworks behave identically in a real process | `pnpm test:prototype` (24 tests) for React Router; the Next.js handlers were exercised over HTTP against a stub API (200 + headers, 304, 404, 403, 415, 201) |
-| The Next.js app still serves its other routes | `pnpm build` + `pnpm test:routes` |
+| The media routes behave correctly in a real process | `pnpm test:web` (61 tests over real HTTP); the Next.js handlers were separately exercised over HTTP against a stub API (200 + headers, 304, 404, 403, 415, 201) before that app was deleted |
+| The Web application still serves its other routes | `pnpm build` + `pnpm test:routes` |
 | Real Neon Object Storage round trip | **not run** — no live bucket; the API-side adapter is covered by `media-storage.test.ts` (8 tests, fake S3 client) |
 | Multipart upload (> 5 GiB) and presigned URLs | **not needed** — uploads are capped at 8 MiB and normalized before storage |

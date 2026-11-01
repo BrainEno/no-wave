@@ -6,7 +6,7 @@ import { AuthoringWorkspace } from "@/components/authoring/authoring-workspace.t
 /**
  * The writing desk (Phase 4b).
  *
- * Private and unindexed, like the App Router's page. There is no loader: the desk
+ * Private and unindexed. There is no loader: the desk
  * is a client component that brings its own data, so the server render is the
  * shell and everything else happens in the browser — which is exactly why the
  * endpoints above had to be ported with it.
@@ -18,9 +18,7 @@ export const meta: MetaFunction = () => [
 
 /**
  * The desk is private: a shared cache must not be able to keep it, exactly like
- * `/account`. The App Router page gets the same policy from Next's own defaults
- * for a dynamic, cookie-dependent route, so this is the prototype catching up
- * rather than a divergence.
+ * `/account`.
  */
 export const headers: HeadersFunction = () => ({ "Cache-Control": "no-store, max-age=0" });
 

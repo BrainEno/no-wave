@@ -11,7 +11,7 @@ test("authoring mutations require an exact same-origin browser origin", () => {
 });
 
 // Regression: Next.js derives request.url from the hostname the server was
-// started with, so `next dev --hostname 0.0.0.0` (and the container image's
+// started with, so `react-router dev --host 0.0.0.0` (and the container image's
 // HOSTNAME) produced `http://0.0.0.0:3000/...`. Comparing it with the browser's
 // Origin rejected every legitimate sign-in and authoring write with 403.
 test("authoring mutations compare the browser Host header, not the listen hostname", () => {

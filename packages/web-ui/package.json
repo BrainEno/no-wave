@@ -1,0 +1,32 @@
+{
+  "name": "@bot-thk/web-ui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@bot-thk/web-http": "workspace:*",
+    "@lexical/clipboard": "0.52.0",
+    "@lexical/code": "0.52.0",
+    "@lexical/extension": "0.52.0",
+    "@lexical/history": "0.52.0",
+    "@lexical/link": "0.52.0",
+    "@lexical/list": "0.52.0",
+    "@lexical/plain-text": "0.52.0",
+    "@lexical/react": "0.52.0",
+    "@lexical/rich-text": "0.52.0",
+    "@lexical/selection": "0.52.0",
+    "gsap": "3.13.0",
+    "lexical": "0.52.0",
+    "react": "19.2.0",
+    "react-router": "7.18.5"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.0",
+    "@types/react": "19.2.2",
+    "typescript": "5.9.3"
+  }
+}

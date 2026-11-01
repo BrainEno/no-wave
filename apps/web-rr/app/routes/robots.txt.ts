@@ -1,7 +1,7 @@
 import { renderRobotsTxt } from "@/lib/site-metadata.ts";
 import { siteUrl } from "../lib/runtime.ts";
 
-/** `GET /robots.txt` — resource route, same text the App Router serves. */
+/** `GET /robots.txt` — resource route, built from the shared sitemap/robots builder. */
 export async function loader() {
   return new Response(renderRobotsTxt(siteUrl()), {
     status: 200,

@@ -3,9 +3,9 @@ import { createApiContentClient, resolveApiBaseUrl } from "@/lib/api-content.ts"
 /**
  * Server-only runtime wiring.
  *
- * `resolveApiBaseUrl` is the same function the Next.js application uses, so the
- * prototype inherits the documented precedence (`API_BASE_URL`, then the
- * transitional Vercel `API_SERVICE_URL`) and the same URL validation. Nothing
+ * `resolveApiBaseUrl` comes from `@bot-thk/web-http`, so the documented
+ * precedence (`API_BASE_URL`, then the transitional Vercel `API_SERVICE_URL`)
+ * and the same URL validation hold here. Nothing
  * here reads a Vercel-specific binding unless that variable is explicitly set.
  */
 export function apiBaseUrl(): string | undefined {

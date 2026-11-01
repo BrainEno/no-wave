@@ -10,8 +10,8 @@ import { apiBaseUrl } from "./runtime.ts";
  *
  * The handler — method, exact-Origin check, cookie-attached forwarding, the
  * decision not to read a request body at all — lives in `@bot-thk/web-http` so
- * the App Router route and this one cannot drift apart. The only thing left
- * here is the API origin.
+ * every caller of it behaves identically. The only thing left here is the API
+ * origin.
  */
 export async function handleAccountEmailVerification(request: Request): Promise<Response> {
   return handleAccountEmailVerificationRequest(request, { apiBaseUrl: apiBaseUrl() });
@@ -22,8 +22,7 @@ export async function handleAccountEmailVerification(request: Request): Promise<
  *
  * Everything that decides anything — the method, the exact-Origin check, the
  * bounded body, the cookie-attached forwarding — is the shared handler's, so
- * the App Router route and this one cannot drift apart. The only thing here is
- * the API origin.
+ * there is one place for it to be right. The only thing here is the API origin.
  */
 export async function handleAccountPasswordChange(request: Request): Promise<Response> {
   return handleAccountPasswordChangeRequest(request, { apiBaseUrl: apiBaseUrl() });
@@ -32,8 +31,8 @@ export async function handleAccountPasswordChange(request: Request): Promise<Res
 /**
  * React Router binding for `PUT /api/authoring/email`.
  *
- * Everything that decides anything is the shared handler's, so the App Router
- * route and this one cannot drift apart. The only thing here is the API origin.
+ * Everything that decides anything is the shared handler's; the only thing
+ * here is the API origin.
  */
 export async function handleAccountEmailChange(request: Request): Promise<Response> {
   return handleAccountEmailChangeRequest(request, { apiBaseUrl: apiBaseUrl() });

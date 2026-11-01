@@ -108,3 +108,10 @@ no route is replaced, no dependency is removed, no deployment is changed, and th
 remaining Next.js coupling (11 `next/link` imports, 2 `next/navigation` imports,
 the cookie helper in `authoring-proxy.ts`) is deliberately still there — measured,
 not hidden.
+
+**Status 2026-11-01: the migration this decision started has finished.** The
+application that was the prototype is the Web application, `apps/web` is deleted
+and `next` is out of the tree — see
+[ADR 0017](../architecture/decisions/0017-nextjs-retired-one-web-application.md).
+Still not a cutover: no production deployment, DNS change or traffic move has
+happened, and the Vercel configuration has not been touched.

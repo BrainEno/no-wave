@@ -9,9 +9,9 @@ import { optionalApiBaseUrl } from "./runtime.ts";
 /**
  * React Router binding for the notification inbox.
  *
- * The reads and writes are one implementation in `@bot-thk/web-http`, shared
- * with the App Router's route handlers; the only framework-specific step left
- * is resolving the server-only API origin, exactly like the authoring, comments
+ * The reads and writes are one implementation in `@bot-thk/web-http`, shared by
+ * every route that serves them; the only step left here is resolving the
+ * server-only API origin, exactly like the authoring, comments
  * and media adapters.
  */
 export function handleNotifications(request: Request): Promise<Response> {

@@ -16,11 +16,11 @@ This repository is the independent implementation of BOT THK's Web and API produ
 - `apps/api` exposes a standalone versioned REST API under `/api/v1`, with SQLite-first persistence and PostgreSQL support, self-hosted registration/login/refresh/logout, article CRUD, author profiles, tags, categories, likes/comments, follows, conversations, message history, a notification inbox and an outbox worker. REST is the sole business HTTP transport; the GraphQL runtime and `/graphql` endpoint have been removed.
 - The API has PostgreSQL integration tests for persistence, authorization, retries, taxonomy and article workflows.
 - Business write routes use shared SQLite/PostgreSQL-backed rate limits by endpoint, verified user, and socket peer IP; `429` responses include `Retry-After`. Proxy deployments must apply throttling at the trusted edge and must not trust client-supplied `X-Forwarded-For`.
-- `apps/web` provides localized home, article archive/detail and author pages. Its public-content client uses versioned REST routes under `/api/v1`. Configure `API_BASE_URL` for a direct API origin or use the Vercel-injected `API_SERVICE_URL` binding. The old `API_GRAPHQL_URL` value is accepted for one transition release only and emits a deprecation warning; replace it with `API_BASE_URL`. When no API URL is configured, the local fixture registry remains available for isolated design/build work. If a configured API request fails, the Web app surfaces the failure rather than silently replacing live content with fixtures. The Web writing desk at `/write` uses same-origin server routes to keep access/refresh tokens in HttpOnly cookies, refresh access tokens when needed, and call authenticated article REST routes. Email verification and account recovery remain pending. Image upload requires the server-only `MEDIA_S3_*` configuration described in [Web authoring operations](docs/operations/web-authoring.md).
+- `apps/web-rr` is the Web application: localized home, article archive/detail, author, category and search pages, the writing desk at `/write`, the account and notification screens, and the same-origin proxy routes those screens call. It is a React Router 7 Framework Mode app served by `node server.ts` on plain Node.js, and it renders the shared UI in `packages/web-ui`. Its public-content client uses versioned REST routes under `/api/v1`. Configure `API_BASE_URL` for a direct API origin or use the Vercel-injected `API_SERVICE_URL` binding. The old `API_GRAPHQL_URL` value is accepted for one transition release only and emits a deprecation warning; replace it with `API_BASE_URL`. When no API URL is configured, the local fixture registry remains available for isolated design/build work. If a configured API request fails, the Web app surfaces the failure rather than silently replacing live content with fixtures. The Web writing desk at `/write` uses same-origin server routes to keep access/refresh tokens in HttpOnly cookies, refresh access tokens when needed, and call authenticated article REST routes. Email verification and account recovery remain pending. Image upload requires the server-only `MEDIA_S3_*` configuration described in [Web authoring operations](docs/operations/web-authoring.md).
 - Backend identity is an initial lifecycle, not production-ready: email verification, account recovery and other security/operational gates remain open. The article authoring and limited rich-comment flows are integrated with REST. Email verification, account recovery, moderation tools, real-time clients and external push providers remain incomplete. See [the authentication contract](docs/architecture/api-authentication.md).
-- `apps/web-rr` is the isolated React Router 7 Framework Mode prototype from Phase 1 of the Web migration. It reuses the shared React components and content helpers from `apps/web`, serves public article/list pages with server-rendered metadata and hard 404s, keeps a private route `no-store`, and starts with `node server.ts` on plain Node.js. It is **not** a production application and replaces no route: `apps/web` remains authoritative. See [the Phase 1 report](docs/roadmap/react-router-prototype.md) and [the next-step decision](docs/roadmap/next-step-decision.md).
+- `packages/web-ui` holds everything both the pages and the routes are built from: the React components, the content and metadata helpers, the Lexical article state and the navigation seam (`lib/framework/`) that is the only place the UI names a router. The application in `apps/web-rr` is the thin adapter around it — routes, loaders, resource routes and headers — which is why the portability work ended with one framework instead of two. See [ADR 0012](docs/architecture/decisions/0012-portable-web-framework-migration.md) and [ADR 0017](docs/architecture/decisions/0017-nextjs-retired-one-web-application.md).
 - The REST transport is split by route domain under `apps/api/src/transport/rest/` (`handler.ts` = prelude + dispatch, `routes/*.ts` = one file per domain, `http.ts`/`bodies.ts`/`serializers.ts` = plumbing). See [the transport layout note](docs/roadmap/rest-transport-split.md).
-- Public pages load their data through framework-neutral loaders (`apps/web/src/lib/public-pages.ts`) and render it with shared synchronous views (`apps/web/src/components/public/*`), which is how the React Router prototype can serve the same archive/author/category/search pages as the Next.js app. Media is relayed — not linked — through the same `@bot-thk/web-http` adapter in both apps, so private storage credentials never reach the browser. See [the public SSR migration note](docs/roadmap/public-ssr-migration.md) and [the media relay note](docs/roadmap/media-relay.md).
+- Public pages load their data through framework-neutral loaders (`packages/web-ui/src/lib/public-pages.ts`) and render it with shared synchronous views (`packages/web-ui/src/components/public/*`), so the same archive/author/category/search pages are served from one implementation. Media is relayed — not linked — through `@bot-thk/web-http`, so private storage credentials never reach the browser. See [the public SSR migration note](docs/roadmap/public-ssr-migration.md) and [the media relay note](docs/roadmap/media-relay.md).
 - No production deployment, historical data migration, traffic cutover or modification of the old project's repository is performed as part of this branch.
 
 See [phase gates](docs/roadmap/phase-gates.md), [feature traceability](docs/audit/feature-traceability.md), [the behavior baseline](docs/requirements/behavior-baseline.md), and [Persistence-provider and online data-migration plan](docs/architecture/postgres-migration-plan.md). The approved Web framework and hosting-portability work is tracked in [the frontend portability migration roadmap](docs/roadmap/frontend-portability-migration.md) and [ADR 0012](docs/architecture/decisions/0012-portable-web-framework-migration.md).
@@ -66,7 +66,7 @@ pnpm db:migrate && pnpm dev
 `compose.yaml` contains only the database: the API and Web app run as native Node
 processes so hot reload, stack traces and debugging behave normally. The root
 `.env.local` is read by both the API (`node --env-file-if-exists`) and the Web app
-(`apps/web/next.config.ts`), and a shell export always takes precedence.
+(`apps/web-rr/vite.config.ts`), and a shell export always takes precedence.
 
 See [Local development and local verification](docs/development/local-development.md)
 for the environment contract, the full command reference, the probe's assertions
@@ -75,7 +75,7 @@ and a troubleshooting table.
 ### One portable command (no platform binding)
 
 ```sh
-pnpm stack:start     # build, migrate, start the API and the React Router app, keep running
+pnpm stack:start     # build, migrate, start the API and the Web app, keep running
 pnpm stack:check     # the same, plus a ten-step probe, then stop and report
 ```
 
@@ -89,7 +89,7 @@ the stack cannot be depending on them. See [One portable command: the whole
 stack on plain Node.js](docs/operations/portable-stack.md).
 
 The same stack also ships as container images — `apps/web-rr/Dockerfile` for the
-React Router app and `apps/api/Dockerfile.vercel` for the API, both plain
+Web app and `apps/api/Dockerfile.vercel` for the API, both plain
 `node:24-alpine` with production dependencies only at runtime. CI builds both
 and runs them: the Web container reaches the API through `API_BASE_URL` alone.
 See [Container images](docs/operations/portable-stack.md#container-images). The React Router server logs one JSON line
@@ -105,8 +105,7 @@ pnpm test
 pnpm typecheck
 pnpm build
 pnpm test:routes
-pnpm test:prototype   # React Router migration prototype: build + behavior tests
-pnpm check:ssr-parity # compare the prototype and the App Router side by side
+pnpm test:web         # the Web application: production build + behavior tests over HTTP
 ```
 
 ## PostgreSQL integration tests

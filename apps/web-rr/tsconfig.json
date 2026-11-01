@@ -16,8 +16,7 @@
     "rootDirs": [".", "./.react-router/types"],
     "types": ["node", "vite/client"],
     "paths": {
-      "@/lib/framework/*": ["./app/framework/*"],
-      "@/*": ["../web/src/*"]
+      "@/*": ["../../packages/web-ui/src/*"]
     }
   },
   "include": [

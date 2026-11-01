@@ -3,7 +3,13 @@
 - Phase: 1 of [the portability roadmap](frontend-portability-migration.md)
 - Target: React Router 7.18.5 Framework Mode (`apps/web-rr`)
 - Status: prototype builds, serves on plain Node.js and passes its behavior tests
-- Not a cutover: `apps/web` (Next.js 16) remains the production Web application
+- **Status 2026-11-01: this is no longer a prototype.** `apps/web` (Next.js 16) has
+  been deleted and this application is the Web application; the shared code it used
+  to borrow from `apps/web` now lives in `packages/web-ui`. See
+  [ADR 0017](../architecture/decisions/0017-nextjs-retired-one-web-application.md).
+  The sections below are the Phase 1 report as it was written, kept because the
+  findings and the gates are still the reasoning the migration rests on; where a
+  path or a command no longer exists, the current one is named in passing.
 
 ## 1. Why this exists
 
@@ -16,8 +22,9 @@ route is touched. That is what this prototype demonstrates.
 
 ## 2. What it is
 
-`apps/web-rr` is a separate workspace package. It shares code with `apps/web`
-instead of copying it, and it never imports Next.js.
+`apps/web-rr` is a separate workspace package. It shared code with `apps/web`
+instead of copying it, and it never imported Next.js. Since 2026-11-01 that shared
+code is the `packages/web-ui` package, and `apps/web` no longer exists.
 
 | Path | Purpose | Why it lives there |
 | --- | --- | --- |
@@ -31,25 +38,30 @@ instead of copying it, and it never imports Next.js.
 | `app/routes/api.auth.ts` | resource route | three-line adapter over a framework-neutral handler |
 | `app/lib/auth-proxy.ts` | auth boundary | standard `Request`/`Response`; no React Router or Next types |
 | `app/lib/meta.ts` | SEO adapter | converts the shared metadata objects into React Router `meta` descriptors |
-| `app/lib/runtime.ts` | `API_BASE_URL` resolution | reuses `resolveApiBaseUrl` so precedence and validation are identical to `apps/web` |
-| `app/shims/next-link.tsx`, `app/shims/next-navigation.ts` | framework adapters | the complete list of unused-API differences the shared components need |
+| `app/lib/runtime.ts` | `API_BASE_URL` resolution | reuses `resolveApiBaseUrl` from `@bot-thk/web-http`, so precedence and validation have one implementation |
+| `app/shims/next-link.tsx`, `app/shims/next-navigation.ts` | framework adapters (later `app/framework/`, now `packages/web-ui/src/lib/framework/`) | the complete list of unused-API differences the shared components need |
 | `server.ts` | production server | `node:http` + `@react-router/node`; no Express, no platform adapter |
 | `mocks/rest-api.ts` | deterministic REST API | the tests talk HTTP to a real server instead of stubbing `fetch` |
-| `test/prototype.test.ts` | behavior tests | 14 assertions over HTTP against the production build |
+| `test/web.test.ts` (was `test/prototype.test.ts`) | behavior tests | 61 assertions over HTTP against the production build |
 
 Reuse is expressed with two Vite alias groups rather than edits:
 
 ```ts
-"@/*"            -> ../web/src/*        // shared components, copy, content helpers
-"next/link"      -> app/shims/next-link.tsx
-"next/navigation"-> app/shims/next-navigation.ts
+"@/*"            -> packages/web-ui/src/*   // shared components, copy, content helpers
 ```
+
+(The 2026-10-29 report listed two more groups here: `next/link` and
+`next/navigation` were rewritten to per-application shims. Those shims were
+replaced by a navigation contract the shared UI owns — `@/lib/framework/link.tsx`
+and `@/lib/framework/navigation.ts` — which is what let 21 components stop naming
+a framework at all, and which now lives in the package that owns them.)
 
 That choice is deliberate. Copying the components would create a fork that drifts
 while the Next.js app is still live; aliasing keeps one implementation and makes
 the remaining framework coupling **countable** (`grep -rn 'from "next' apps/web/src`
-→ 11 `next/link`, 2 `next/navigation`, 1 `next/server`). Each shim can later be
-deleted from the shared component in one small commit instead of during a rewrite.
+→ 11 `next/link`, 2 `next/navigation`, 1 `next/server`). Each shim could later be
+deleted from the shared component in one small commit instead of during a rewrite —
+which is what happened, and the count is zero now.
 
 ## 3. Phase 1 gates and the evidence
 
@@ -157,8 +169,8 @@ and one more reason a cutover cannot be judged by HTML equality alone.
 
 - No production route, dependency, DNS, deployment or data change. `apps/web`
   builds and passes its own tests unchanged.
-- Every production route is ported except the spike: `/api/spike/events` and
-  `/spike-form`. The writing desk, comments, the reader toolbar, media,
+- Every production route is ported, the spike included since 2026-11-01
+  (`/api/spike/events` and `/spike-form`). The writing desk, comments, the reader toolbar, media,
   notifications, search, sitemap/robots, the site shell and the three recovery
   pages are here; the notification worker is a process in `apps/api` and was
   never a Web route. The recovery pages keep the switch's semantics: read per
@@ -169,8 +181,8 @@ and one more reason a cutover cannot be judged by HTML equality alone.
   no provider-specific code exists.
 - No browser-based hydration test. The tests assert server behavior over HTTP;
   a Playwright-class check is still needed before cutover.
-- `pnpm dev` (probe-driven local chain) still starts the Next.js app; the
-  prototype has its own `pnpm dev:rr`.
+- `pnpm dev` (probe-driven local chain) started the Next.js app and the prototype
+  had its own `pnpm dev:rr`. Since 2026-11-01 `pnpm dev` starts this application.
 
 ## 6. How to run it
 
@@ -182,14 +194,14 @@ pnpm --filter @bot-thk/web-rr build      # or: pnpm rr:build
 API_BASE_URL=http://127.0.0.1:4000 pnpm rr:start
 
 # behavior tests (builds first, then boots the server + a mock REST API)
-pnpm test:prototype
+pnpm test:web
 
 # dev server with HMR
 pnpm dev:rr
 ```
 
-With no `API_BASE_URL`, public content falls back to the same in-repo fixtures the
-Next.js app uses — the same rule, inherited from `apps/web/src/lib/api-content.ts`.
+With no `API_BASE_URL`, public content falls back to the same in-repo fixtures —
+the same rule, inherited from `packages/web-ui/src/lib/api-content.ts`.
 
 ## 7. Next step
 

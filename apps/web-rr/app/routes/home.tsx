@@ -12,12 +12,12 @@ import { siteUrl } from "../lib/runtime.ts";
 /**
  * Home (`/`, `/en`) — the last public page of Phase 3.
  *
- * It replaces the Phase 2 placeholder and renders the **shared** `HomePageView`,
- * the same component the App Router renders through `HomeContent`. The three
+ * It renders the **shared** `HomePageView` from `@bot-thk/web-ui`. The three
  * client components it composes (intro loader, WebGL hero, hover-switched latest
- * list) are framework-neutral apart from `next/link`, so they hydrate here
- * exactly as they do in Next.js; only their *behavior* belongs to Phase 4, which
- * is why the tests below assert server-rendered structure and not animation.
+ * list) reach the router only through the package's navigation seam, so they
+ * hydrate here as they would anywhere; only their *behavior* belongs to Phase 4,
+ * which is why the tests below assert server-rendered structure and not
+ * animation.
  */
 export async function loader({ request }: LoaderFunctionArgs) {
   const locale = localeFor(request);
@@ -32,8 +32,8 @@ export const headers: HeadersFunction = () => PUBLIC_PAGE_HEADERS;
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   const locale: Locale = data?.locale ?? "zh-CN";
-  // `/` is the root segment, where the App Router's title template does not
-  // apply; `/en` is a segment deeper and does carry the suffix. Mirror both.
+  // `/` is the root segment, where the site title is used bare; `/en` is a
+  // segment deeper and does carry the suffix. Mirror both.
   return metaDescriptors(homeMetadata(locale, siteUrl()), { absoluteTitle: locale === "zh-CN" });
 };
 

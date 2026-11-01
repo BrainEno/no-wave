@@ -34,8 +34,8 @@ What the command does, in order:
 2. `node apps/api/src/persistence/migrate.ts` — the explicit migration step.
    Migrations are never automatic, and this command does not make them so.
 3. `node apps/api/src/server.ts` — the API.
-4. `node apps/web-rr/server.ts` — the React Router Web server, **not** the
-   Next.js app. That is the point: the command proves the migration target.
+4. `node apps/web-rr/server.ts` — the Web server: a plain Node.js process with no
+   platform adapter. That is the point: the command proves portability.
 5. `node apps/api/src/persistence/notification-worker.ts` — only with
    `--worker`, and only when `DATABASE_URL` is set. The default is the cardless
    path instead: the probe writes a direct message, the outbox holds it, and a
@@ -95,8 +95,8 @@ not a promise.
 
 ### Why deletion rather than an empty value
 
-`API_SERVICE_URL` is Vercel's private service binding: the Next.js app falls
-back to it when `API_BASE_URL` is unset. A deployment that needs it cannot run
+`API_SERVICE_URL` is Vercel's private service binding: the Web app used to fall
+back to it when `API_BASE_URL` was unset. A deployment that needs it cannot run
 anywhere else, so "关掉 `API_SERVICE_URL` 一切照常" has to be demonstrated, not
 asserted. Deleting the variable is stronger than emptying it: an empty string
 still proves a code path was taken to ignore it, while absence proves no code
@@ -174,8 +174,8 @@ covers the outbox drain, which no local SQLite run can.
 - It does not build a container image — [the images](#container-images) are
   built by CI, not by this command. Running one needs `docker`, which the
   command deliberately does not require.
-- It does not start the Next.js app. `pnpm dev` still does that, and still
-  serves the migration's baseline on :3000.
+- It is not a deployment. `pnpm dev` is still the developer path; this command is
+  the proof that nothing in the stack needs a platform to run.
 - It does not send mail. The outbox check is an in-app notification; account mail
   stays switched off until an operator sets `MAIL_ENABLED` — see [Account
   mail](mail-setup.md).
@@ -199,9 +199,9 @@ contains nothing Vercel-specific (it is referenced by `vercel.json`, so renaming
 it belongs to Phase 7, not to a cleanup nobody asked for).
 
 **Why the Web image has two stages.** The build needs `vite`, `@react-router/dev`
-and — because the prototype compiles the shared source tree in `apps/web/src`
-through the `@/*` alias — that tree's own dependencies (Lexical, gsap); the
-runtime needs none of them. Installing production dependencies
+and — because the application compiles the shared source tree in
+`packages/web-ui/src` through the `@/*` alias — that tree's own dependencies
+(Lexical, gsap); the runtime needs none of them. Installing production dependencies
 only in the runtime stage is also a test of the dependency graph: anything
 `server.ts` imports at boot has to be a real dependency. That test caught a real
 defect — `@react-router/node` was a devDependency even though the production

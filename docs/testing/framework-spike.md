@@ -4,6 +4,14 @@ Status: Minimal source scaffold committed. GitLab CI has passed unit tests, type
 
 ## Baseline versions
 
+> **Note 2026-11-01:** this checklist records the spike that chose Next.js. The
+> framework has since been migrated to React Router 7 Framework Mode
+> ([ADR 0012](../architecture/decisions/0012-portable-web-framework-migration.md))
+> and the Next.js application deleted
+> ([ADR 0017](../architecture/decisions/0017-nextjs-retired-one-web-application.md)).
+> The steps below remain a useful list of what "portable" has to mean; the version
+> pins are history.
+
 - Framework target: Next.js App Router.
 - Next.js stable version selected for the spike: 16.4.2, checked against release listings on 2026-10-23. Re-check security advisories before production release.
 - Next.js documentation requires Node.js 20.9 or newer; use Node.js 24 LTS for this spike and pin the exact CI/container runtime.

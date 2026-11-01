@@ -160,7 +160,7 @@ expiry, superseded links, session revocation).
 - Covered by identity service unit tests, adapter-contract tests on SQLite and PostgreSQL, and HTTP
   tests for the enumeration answer, single use, session revocation and the unauthenticated case.
 - Switch: `MAIL_ENABLED` — `isMailEnabled` in `apps/api/src/application/identity-mailer.ts` and
-  `apps/web/src/lib/mail-feature.ts` (two copies on purpose: the API must not depend on a Web
+  `packages/web-ui/src/lib/mail-feature.ts` (two copies on purpose: the API must not depend on a Web
   package; both are tested against the same contract). Covered by identity unit tests, HTTP tests
   over `/api/v1/auth/forgot-password` and `/api/v1/me/email-verification`, the route smoke checks
   (mail off and, on a second server, mail on) and the prototype's switch tests.

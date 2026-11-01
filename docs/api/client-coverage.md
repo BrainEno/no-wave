@@ -3,7 +3,7 @@
 > 范围提示：本文只回答"客户端要的接口服务端有没有"。范围更大的审视——作为一个文学/长文发布平台，服务端还缺哪些能力——见 [`platform-capability-backlog.md`](./platform-capability-backlog.md)，其中第一项「关注流 `GET /api/v1/me/feed`」已落地。
 
 **目的**：回答两个问题——服务端 `/api/v1` 是否已经覆盖 Flutter 移动客户端
-([BrainEno/flutter-blog](https://github.com/BrainEno/flutter-blog)) 的全部接口需求，以及它是否同时满足当前两个前端（Next.js `apps/web`、React Router `apps/web-rr`）的需求。
+([BrainEno/flutter-blog](https://github.com/BrainEno/flutter-blog)) 的全部接口需求，以及它是否满足当前前端（React Router `apps/web-rr`，共享 UI 在 `packages/web-ui`）的需求。
 
 **结论（摘要）**：
 
@@ -67,7 +67,7 @@
 
 以下都不是缺口，只是客户端尚未消费：通知（`me/notifications*`）、会话与私信（`conversations*`）、分类（`categories*`）、标签/分类的写与删（`taxonomies`、`taxonomies.item`）、`GET /users` 与 `users/:id/followers|following`、`GET /me/articles`、`POST /me/email-verification`，以及 `auth` 的 `forgot-password` / `reset-password` / `verify-email`。
 
-## 当前前端（apps/web、apps/web-rr）的需求覆盖
+## 当前前端（apps/web-rr + packages/web-ui）的需求覆盖
 
 两个前端只通过 `packages/web-http` 访问 9 个接口族：`me`、`me/email-verification`、`me/media`、`me/notifications*`、`articles*`、`articles/:slug/comments`、`auth/*`。全部已实现，**没有缺口**。唯一的共同注意事项是 P3。
 
@@ -98,7 +98,7 @@
 
 ### P3 媒体 `src` 是应用相对路径 —— 不是缺陷，是语义
 
-上传返回的 `src` 是 `/api/media/<id>`（`apps/api/src/application/media-assets.ts`），因为两个前端各自提供 `GET /api/media/:id` 转发到 API 的 `/api/v1/media/<id>`。所以 Web 用 `src` 是对的；直接访问 API 的 Flutter 需要自己拼 `/api/v1/media/<id>`，它也正是这么做的。**建议不要改 `src`**：`apps/web/src/components/authoring/article-editor.tsx` 的正则只接受 `/api/media/<uuid>`，改动会破坏它以及已存内容。
+上传返回的 `src` 是 `/api/media/<id>`（`apps/api/src/application/media-assets.ts`），因为前端提供 `GET /api/media/:id` 转发到 API 的 `/api/v1/media/<id>`。所以 Web 用 `src` 是对的；直接访问 API 的 Flutter 需要自己拼 `/api/v1/media/<id>`，它也正是这么做的。**建议不要改 `src`**：`packages/web-ui/src/components/authoring/article-editor.tsx` 的正则只接受 `/api/media/<uuid>`，改动会破坏它以及已存内容。
 
 **已在本轮解决**：API 现在直接应答 `GET /api/media/<id>`——它在路由解析之前被重写成 `/api/v1/media/<id>`，因此走的是同一个 handler、同一套方法限制（`405 allow: GET`）与同一套缓存头，不是第二份实现。这样直连 API 的客户端可以直接使用正文里的地址，而 `src` 的形状保持不变。语义本身写在 `apps/api/README.md` 的「Media addresses and the application-relative `src`」一节。
 

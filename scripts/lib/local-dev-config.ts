@@ -20,7 +20,7 @@ export const repositoryRoot = resolve(thisDirectory, "../..");
 export const localEnvFile = resolve(repositoryRoot, ".env.local");
 export const envTemplateFile = resolve(repositoryRoot, ".env.example");
 export const apiPackageDirectory = resolve(repositoryRoot, "apps/api");
-export const webPackageDirectory = resolve(repositoryRoot, "apps/web");
+export const webPackageDirectory = resolve(repositoryRoot, "apps/web-rr");
 
 /** The runtime range pinned by `package.json#engines` and CI. */
 export const MIN_SUPPORTED_NODE_MAJOR = 24;
@@ -65,7 +65,7 @@ export type LocalDevConfig = {
  *
  * `process.loadEnvFile` never overwrites a variable that is already set, so an
  * explicit shell export keeps precedence over the file. That matches the API's
- * `node --env-file-if-exists` behaviour and the Next.js environment loader.
+ * `node --env-file-if-exists` behaviour and the Web app's environment loader.
  */
 export function loadLocalEnvFile(path = localEnvFile): boolean {
   if (typeof process.loadEnvFile !== "function") return false;
@@ -293,7 +293,7 @@ export function buildLocalEnvFile(options: LocalEnvFileOptions): string {
     "AUTH_JWT_MAX_TTL_SECONDS=900",
     "",
     "# --- Web dev server --------------------------------------------------------",
-    "# Read by apps/web/next.config.ts, so one root file configures both processes.",
+    "# Read by apps/web-rr/vite.config.ts, so one root file configures both processes.",
     `API_BASE_URL=${loopbackBaseUrl(apiPort)}`,
     `WEB_PORT=${webPort}`,
     "",

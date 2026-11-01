@@ -3,6 +3,7 @@ import type { HeadersFunction, MetaFunction } from "react-router";
 import { AccountPanel } from "@/components/auth/account-panel.tsx";
 import { SESSION_MARKER_COOKIE, hasUsableSession, sessionMarkerFrom } from "@bot-thk/web-http";
 import { isMailEnabled } from "@/lib/mail-feature.ts";
+import { PRIVATE_PAGE_HEADERS } from "../lib/http-policy.ts";
 
 /**
  * Private route.
@@ -18,13 +19,20 @@ import { isMailEnabled } from "@/lib/mail-feature.ts";
  * token to the API. Everything the visitor sees therefore comes from a response
  * the API verified, and nothing here has to trust the browser.
  */
+/** Private: no shared cache may keep a copy, and the page is never indexed. */
+const PRIVATE_HEADERS = PRIVATE_PAGE_HEADERS;
+
 export async function loader({ request }: LoaderFunctionArgs) {
-  if (!hasUsableSession(sessionMarkerFrom(request))) throw redirect("/sign-in?next=%2Faccount");
+  // The redirect is decided by a cookie, so it is per-visitor too: a shared
+  // cache that held it would send a signed-in reader to the sign-in page. That
+  // is why the headers travel with the redirect and not only with the page.
+  if (!hasUsableSession(sessionMarkerFrom(request))) {
+    throw redirect("/sign-in?next=%2Faccount", { headers: PRIVATE_HEADERS });
+  }
   return { mailEnabled: isMailEnabled() };
 }
 
-/** Private: no shared cache may keep a copy, and the page is never indexed. */
-export const headers: HeadersFunction = () => ({ "Cache-Control": "no-store, max-age=0" });
+export const headers: HeadersFunction = () => PRIVATE_HEADERS;
 
 export const meta: MetaFunction = () => [
   { title: "我的账户 | 无浪潮" },

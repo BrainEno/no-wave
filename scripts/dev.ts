@@ -242,10 +242,21 @@ async function main(): Promise<void> {
   if (startWeb) {
     const webChild = spawn(
       process.execPath,
-      [join(webPackageDirectory, "node_modules/next/dist/bin/next"), "dev", "--port", String(config.web.port), "--hostname", config.web.host],
+      [
+        join(webPackageDirectory, "node_modules/@react-router/dev/bin.js"),
+        "dev",
+        "--port",
+        String(config.web.port),
+        "--host",
+        config.web.host || DEFAULT_LISTEN_HOST,
+      ],
       {
         cwd: webPackageDirectory,
-        env: { ...process.env, API_BASE_URL: process.env.API_BASE_URL ?? config.api.listenBaseUrl },
+        env: {
+          ...process.env,
+          PORT: String(config.web.port),
+          API_BASE_URL: process.env.API_BASE_URL ?? config.api.listenBaseUrl,
+        },
         stdio: ["ignore", "pipe", "pipe"],
       },
     );

@@ -13,8 +13,8 @@ import { optionalApiBaseUrl } from "./runtime.ts";
  * React Router binding for the writing desk's API (ADR 0012, Phase 4b).
  *
  * The session, list, create and update calls are one implementation in
- * `@bot-thk/web-http`, shared with the App Router's route handlers; the only
- * framework-specific step left is resolving the server-only API origin, exactly
+ * `@bot-thk/web-http`, shared by every route that serves them; the only step
+ * left here is resolving the server-only API origin, exactly
  * like `auth-proxy.ts` and the media and comments adapters.
  */
 export function handleAuthoringSession(request: Request): Promise<Response> {

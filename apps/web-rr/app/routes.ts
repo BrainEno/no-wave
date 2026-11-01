@@ -7,7 +7,7 @@ import { index, route } from "@react-router/dev/routes";
  * The same module can serve two paths (the English article route reuses the
  * Chinese one) as long as the duplicate gets its own `id`; the locale is derived
  * from the request path inside the module, which is exactly the information the
- * Next.js version got from a differently-named directory.
+ * Locale used to be carried by a differently-named directory, and still is.
  *
  * Phase 3 adds the public SSR routes: archive, author, category index/detail and
  * search. Every one of them is a thin loader + a shared presentational
@@ -36,6 +36,7 @@ export default [
   route("reset-password", "routes/reset-password.tsx"),
   route("verify-email", "routes/verify-email.tsx"),
   route("write", "routes/write.tsx"),
+  route("spike-form", "routes/spike-form.tsx"),
   route("account", "routes/account.tsx"),
   route("admin/featured", "routes/admin.featured.tsx"),
   route("sitemap.xml", "routes/sitemap.xml.ts"),
@@ -57,5 +58,6 @@ route("api/authoring/notifications/:id/read", "routes/api.authoring.notification
   route("api/authoring/deleted-articles", "routes/api.authoring.deleted-articles.ts"),
   route("api/articles/:slug/comments", "routes/api.articles.comments.ts"),
   route("api/media/:id", "routes/api.media.ts"),
+  route("api/spike/events", "routes/api.spike.events.ts"),
   route("api/authoring/media", "routes/api.authoring.media.ts"),
 ] satisfies RouteConfig;
