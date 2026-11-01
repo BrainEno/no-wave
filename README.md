@@ -129,7 +129,8 @@ suites skip themselves and report their skipped count.
 
 CI runs the database-independent verification, the PostgreSQL integration suite
 and the local-chain job separately (the latter boots both providers through the
-scripts above). The `CI / required-checks` aggregate fails unless every job
+scripts above), plus the container smoke test and the browser-level Playwright
+suite. The `CI / required-checks` aggregate fails unless every job
 succeeds, including when a job is skipped or cancelled. Configure
 `CI / required-checks` as a required status check for `main` in repository branch
 protection/rulesets; that setting is managed by GitHub repository settings and is

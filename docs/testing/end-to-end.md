@@ -22,7 +22,6 @@ that can be asserted more cheaply must be asserted more cheaply.
 | `e2e/passages.spec.ts` | Select a passage → 划线 → it is painted, listed and still there after a reload; write a note beside it and change it; 朗读这段 reads just that passage and takes the voice from a reading of the whole work; 删除 takes it off the page and out of the browser |
 | `e2e/support/works.ts` | Not a spec: publishes a work over HTTP for the journeys that need one, and drags a selection across part of the page |
 | `e2e/support/speech.ts` | Not a spec: replaces the browser's speech engine with one that can be driven, because a headless browser has no voices installed |
-| `e2e/read-aloud.spec.ts` | Read a published work aloud paragraph by paragraph → the mark follows the spoken paragraph → 停止 takes it off; a browser that cannot speak is given no control |
 
 Conventions:
 
@@ -77,11 +76,31 @@ Set `E2E_WEB_URL` (default `http://127.0.0.1:3000`) or `E2E_API_BASE_URL`
 ## CI
 
 `.github/workflows/ci.yml` has an `e2e` job that migrates a **disposable**
-SQLite database (`runner.temp`), builds the Web application, installs Chromium and
-runs `pnpm test:e2e`, uploading `playwright-report/` as an artifact (traces and
-screenshots on failure, 7-day retention).
+SQLite database (`/tmp/no-wave-e2e.sqlite`, discarded with the runner), builds the
+Web application, installs Chromium and runs `pnpm test:e2e`, uploading
+`playwright-report/` as an artifact (traces and screenshots on failure, 7-day
+retention).
 
-It is **not** in `required-checks` yet. Browser suites are the flakiest layer by
-construction; the job runs on every push and pull request so its stability can be
-observed before it is allowed to block merges. Promote it once it has a clean
-run history, and keep `retries: 1` as the buffer against dev-server cold starts.
+**It is part of `required-checks`** (2026-11-01), so a red browser journey blocks
+a merge. That is the point: this is the only layer that can see the authoring
+round trip, and a signal nobody has to act on is a signal that decays. It ran
+outside the gate first for exactly the reason promotion was deferred — browser
+suites are the flakiest layer by construction — and it was promoted on its record:
+seven consecutive green runs across PRs 140 to 143.
+
+What that buys, and what it costs:
+
+- `retries: 1` in `playwright.config.ts` absorbs a single flake — a cold server, a
+  download, an animation that runs a beat longer on a busy runner. One retry, not
+  three: a genuinely broken journey fails twice and still blocks, and the failed
+  attempt stays in the report with its trace.
+- The job has `timeout-minutes: 25`, roughly five times its observed cold cost. A
+  hang would otherwise hold the gate for the six hours GitHub's default allows.
+- A failure here is worth reading before it is worth re-running. Open the
+  `playwright-report` artifact on the run: it carries the trace of the failed
+  attempt. If it reproduces locally (`pnpm test:e2e` against a migrated
+  `/tmp/no-wave-e2e.sqlite`), it is a real regression.
+
+Whether `required-checks` actually blocks a merge is a branch-protection setting
+managed in GitHub, not in this workflow file — see the README. If a merge goes
+through with this check red, that setting is the thing to look at first.
