@@ -174,13 +174,20 @@ export function createSqliteArticleStore(db) {
       // ago is still one of the most-saved works on the site. Keeping a window
       // here would make two tabs that only differ in how slowly they change.
       const popular = sort === "popular";
+      // The body is searched too, one block at a time rather than as the JSON it
+      // is stored as: matching the raw text would let a reader find every work by
+      // searching "paragraph", which is a word no reader ever typed on purpose.
       const rows = statement((popular ? articleSelectWithLikeCount : articleSelect) + `
         WHERE a.status = 'published' AND t.locale = ?
-          AND (? = '' OR instr(lower(t.title), lower(?)) > 0 OR instr(lower(t.summary), lower(?)) > 0)
+          AND (? = '' OR instr(lower(t.title), lower(?)) > 0 OR instr(lower(t.summary), lower(?)) > 0
+            OR EXISTS (
+              SELECT 1 FROM json_each(t.content_blocks) AS block
+              WHERE instr(lower(COALESCE(json_extract(block.value, '$.text'), '')), lower(?)) > 0
+            ))
           AND (? IS NULL OR a.author_id = ?)
         ORDER BY ${popular ? "like_count DESC, a.published_at DESC, a.id DESC" : "a.published_at DESC, a.id DESC"}
         LIMIT ? OFFSET ?
-      `).all(locale, needle, needle, needle, authorId, authorId, limit, offset);
+      `).all(locale, needle, needle, needle, needle, authorId, authorId, limit, offset);
       return rows.map(mapArticle);
     },
 

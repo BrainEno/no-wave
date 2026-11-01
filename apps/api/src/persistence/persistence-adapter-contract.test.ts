@@ -56,6 +56,7 @@ async function sqliteFixture() {
           `feed-reader-${suffix}`, `feed-author-a-${suffix}`, `feed-author-b-${suffix}`, `feed-stranger-${suffix}`,
           `sort-author-${suffix}`, `sort-other-author-${suffix}`,
           `role-editor-${suffix}`, `role-target-${suffix}`, `featured-editor-${suffix}`, `featured-member-${suffix}`,
+          `search-author-${suffix}`,
           `sort-liker-${suffix}-1`,
           `sort-liker-${suffix}-2`,
           `sort-liker-${suffix}-3`,
@@ -76,6 +77,7 @@ async function sqliteFixture() {
         for (const slug of [`contract-draft-${suffix}`, `contract-published-${suffix}`, `contract-liked-${suffix}`, `contract-comment-${suffix}`, `contract-comment-notifications-${suffix}`, `contract-create-once-${suffix}`, `contract-create-once-b-${suffix}`, `contract-create-twice-${suffix}`]) db.prepare("DELETE FROM articles WHERE slug = ?").run(slug);
         db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`feed-%-${suffix}`);
         db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`sort-%-${suffix}`);
+        db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`search-%-${suffix}`);
         // A deleted work keeps its row under a released slug (`...-deleted-<id>`),
         // so match the whole family the deletion test can leave behind.
         db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`contract-delete-${suffix}%`);
@@ -122,6 +124,7 @@ async function postgresFixture() {
           `feed-reader-${suffix}`, `feed-author-a-${suffix}`, `feed-author-b-${suffix}`, `feed-stranger-${suffix}`,
           `sort-author-${suffix}`, `sort-other-author-${suffix}`,
           `role-editor-${suffix}`, `role-target-${suffix}`, `featured-editor-${suffix}`, `featured-member-${suffix}`,
+          `search-author-${suffix}`,
           `sort-liker-${suffix}-1`,
           `sort-liker-${suffix}-2`,
           `sort-liker-${suffix}-3`,
@@ -148,6 +151,7 @@ async function postgresFixture() {
         await postgresSql.unsafe("DELETE FROM taxonomies WHERE slug LIKE $1", [`%-${suffix}`]);
         await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`feed-%-${suffix}`]);
         await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`sort-%-${suffix}`]);
+        await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`search-%-${suffix}`]);
       }
     },
   };
@@ -1399,6 +1403,46 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       assert.deepEqual(slugs(firstTwo).concat(slugs(nextTwo), slugs(lastTwo)), slugs(popular));
 
       await assert.rejects(Promise.resolve().then(() => runtime.store.listPublishedArticles({ locale: "zh-CN", query: suffix, sort: "hottest" })), ArticleInputError);
+    } finally {
+      await runtime.cleanup(undefined, suffix);
+    }
+  });
+
+  /**
+   * A reader who remembers one line of a story has no title to search for. The
+   * body is therefore searched too — block by block, and never as the JSON it is
+   * stored as, because matching the raw text would make "paragraph" the most
+   * successful query on the site.
+   */
+  test(`${adapterName}: a search finds a work by a word that appears only in its body`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const authorId = `search-author-${suffix}`;
+    const blocks = (text) => [{ id: "p1", type: "paragraph", text }];
+    const publish = async (slug, title, summary, text) => {
+      await runtime.store.createArticle({ authorId, slug, title, summary, locale: "zh-CN", contentBlocks: blocks(text), publish: true });
+    };
+    try {
+      await runtime.store.upsertAuthorProfile({ userId: authorId, displayName: "Search Author", locale: "zh-CN" });
+      await publish(`search-in-title-${suffix}`, `雨-${suffix}`, `雨的摘要-${suffix}`, "正文里没有那个字。");
+      await publish(`search-in-body-${suffix}`, `无题-${suffix}`, `平淡的摘要-${suffix}`, "她把书翻到第七十页，窗外正下着雨。");
+      await publish(`search-absent-${suffix}`, `别的-${suffix}`, `别的摘要-${suffix}`, "完全无关的一段正文。");
+
+      const slugs = (articles) => articles.map((article) => article.slug).sort();
+      const byWord = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: "雨", limit: 50 });
+      assert.deepEqual(slugs(byWord), [`search-in-body-${suffix}`, `search-in-title-${suffix}`].sort());
+
+      // The body adds hits; it does not replace the fields that were already
+      // searched, and it is not searched at the cost of them.
+      const bySummary = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: `雨的摘要-${suffix}`, limit: 50 });
+      assert.deepEqual(slugs(bySummary), [`search-in-title-${suffix}`]);
+
+      // Storage is not content: a block's own vocabulary is not findable.
+      assert.deepEqual(await runtime.store.listPublishedArticles({ locale: "zh-CN", query: "paragraph", limit: 50 }), []);
+
+      // The body search composes with what surrounds it.
+      const scoped = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: "雨", authorId, sort: "popular", limit: 50 });
+      assert.deepEqual(slugs(scoped), [`search-in-body-${suffix}`, `search-in-title-${suffix}`].sort());
     } finally {
       await runtime.cleanup(undefined, suffix);
     }
