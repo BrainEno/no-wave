@@ -62,7 +62,7 @@ export const PORTABLE_VARIABLES = [
   "AUTH_JWT_ISSUER",
   "AUTH_JWT_AUDIENCE",
   "API_BASE_URL",
-  "NEXT_PUBLIC_SITE_URL",
+  "SITE_URL",
   "PORT",
   "HOST",
 ] as const;
@@ -164,7 +164,7 @@ export function portableStackEnvironment(
     PORT: String(options.webPort),
     HOST: "127.0.0.1",
     API_BASE_URL: `http://127.0.0.1:${options.apiPort}`,
-    NEXT_PUBLIC_SITE_URL: options.siteUrl,
+    SITE_URL: options.siteUrl,
   };
 }
 

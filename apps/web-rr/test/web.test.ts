@@ -85,7 +85,7 @@ before(async () => {
       API_BASE_URL: mockApi.url,
       // Prove the Vercel-only binding is not required for a working deployment.
       API_SERVICE_URL: "",
-      NEXT_PUBLIC_SITE_URL: "https://no-wave.example",
+      SITE_URL: "https://no-wave.example",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -389,7 +389,7 @@ async function withMailEnabledServer(run: (url: string) => Promise<void>): Promi
       HOST: "127.0.0.1",
       API_BASE_URL: mockApi.url,
       API_SERVICE_URL: "",
-      NEXT_PUBLIC_SITE_URL: "https://no-wave.example",
+      SITE_URL: "https://no-wave.example",
       MAIL_ENABLED: "true",
     },
     stdio: ["ignore", "pipe", "pipe"],

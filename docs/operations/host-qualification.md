@@ -101,7 +101,7 @@ tokens live. Bounded paths, no headers, no bodies.
 few seconds and it would otherwise be the loudest line in the drain.
 
 **Environment.** `PORT` (default 3100), `HOST` (default `0.0.0.0`),
-`API_BASE_URL`, `NEXT_PUBLIC_SITE_URL` — all documented in `.env.example`. A
+`API_BASE_URL`, `SITE_URL` — all documented in `.env.example`. A
 host supplies `PORT`; nothing else is required to boot.
 
 **Statelessness.** The process writes nothing to disk and keeps nothing in

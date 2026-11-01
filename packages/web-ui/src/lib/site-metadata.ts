@@ -52,11 +52,17 @@ export function siteOrigin(siteUrl: string | undefined): string {
  *   home and archive pages came to canonicalise against the fixture origin
  *   while the article and author pages used the configured one.
  *
- * `NEXT_PUBLIC_*` is inlined by Next.js at **build** time, so changing the
- * variable requires a rebuild, not a restart.
+ * `SITE_URL` is the name this project uses. `NEXT_PUBLIC_SITE_URL` is the
+ * Next.js-era one and is still read as a fallback: deployments hold the value in
+ * a dashboard this repository cannot edit, and a rename that silently emptied
+ * every canonical URL and sitemap entry would be worse than a name carrying a
+ * dead framework's prefix (ADR 0017 retired Next.js). New environments should
+ * set `SITE_URL`; when both are set, `SITE_URL` wins.
+ *
+ * Nothing is inlined at build time here, so changing either one needs a restart.
  */
 export function configuredSiteUrl(): string {
-  return siteOrigin(process.env.NEXT_PUBLIC_SITE_URL);
+  return siteOrigin(process.env.SITE_URL ?? process.env.NEXT_PUBLIC_SITE_URL);
 }
 
 /**

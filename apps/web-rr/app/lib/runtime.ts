@@ -32,7 +32,19 @@ export function requireContentClient() {
   return createApiContentClient({ endpoint });
 }
 
-/** Absolute site origin for canonical links and Open Graph URLs. */
+/**
+ * Absolute site origin for canonical links and Open Graph URLs.
+ *
+ * `SITE_URL` is the name; `NEXT_PUBLIC_SITE_URL` is the one the App Router
+ * needed, and it is still read because deployments hold it in a dashboard this
+ * repository cannot edit — a rename that silently emptied every canonical URL
+ * would be worse than a name that carries a dead framework's prefix. New
+ * deployments should use `SITE_URL` (ADR 0017 retired Next.js).
+ *
+ * Neither is inlined at build time here: the value is read per request, so
+ * changing it needs a restart, not a rebuild.
+ */
 export function siteUrl(): string {
-  return process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://example.invalid";
+  const configured = process.env.SITE_URL ?? process.env.NEXT_PUBLIC_SITE_URL;
+  return configured?.trim() || "https://example.invalid";
 }

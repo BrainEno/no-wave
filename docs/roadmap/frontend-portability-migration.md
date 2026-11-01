@@ -200,8 +200,9 @@ in [public SSR migration §6](public-ssr-migration.md#6-phase-4a-the-page-after-
 decision, which is now landed: canonical and hreflang URLs resolve through a
 single `configuredSiteUrl()` instead of the `content.ts` fixture origin (§5 of
 the same document, including the production effect and the revert path). Still
-open: Phase 4 interaction behavior, configuring `NEXT_PUBLIC_SITE_URL` in every
-environment, and comparison against a real host (Phase 6).
+open: Phase 4 interaction behavior, configuring `SITE_URL` in every environment
+(the Next.js-era `NEXT_PUBLIC_SITE_URL` still works as a fallback), and
+comparison against a real host (Phase 6).
 
 ### Phase 4 — Migrate authentication and writing desk
 
