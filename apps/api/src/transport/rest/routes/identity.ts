@@ -1,6 +1,6 @@
 import type { RestRouteContext, RestRouteHandler } from "./context.ts";
 import { MAX_QUERY_LENGTH, authenticatedActorId, authenticatedUser, decodeUserId, optionalViewerId, parseInteger, parseLocale, readJsonObject, sendBadInput, sendJson, sendJsonBodyError, sendServiceError, sendUnauthenticated, sendUnavailable } from "../http.ts";
-import { normalizeProfileWriteBody } from "../bodies.ts";
+import { normalizeProfileWriteBody, normalizeRoleWriteBody } from "../bodies.ts";
 
 /** Current-user, profile, session and follow-graph endpoints
  * (`me`, `me.profile`, `me.session`, `users*`). */
@@ -31,6 +31,53 @@ const IDENTITY_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Obje
    * Authenticated and addressed to the account's own address: an unauthenticated
    * version would let anyone aim mail at any address in the database.
    */
+  /**
+   * Hand the editor role to another account, or take it back.
+   *
+   * ADR 0016: the public taxonomy and the featured shelf are editorial, so "who is
+   * an editor" is the platform's first permission question. The caller must already
+   * be one, and nobody may edit their own role — a single-editor instance whose
+   * editor demotes itself has no way back in.
+   */
+  "users.role": async (ctx: RestRouteContext): Promise<void> => {
+    const { request, response, url, services, env, routeParams } = ctx;
+    if (!services) {
+      sendUnavailable(response);
+      return;
+    }
+    const userId = decodeUserId(routeParams.userId);
+    const locale = parseLocale(url);
+    if (!userId || !locale) {
+      sendBadInput(response, "Invalid user ID or locale query parameter.");
+      return;
+    }
+    const bodyResult = await readJsonObject(request);
+    if (bodyResult.ok === false) {
+      sendJsonBodyError(response, request, bodyResult);
+      return;
+    }
+    const normalized = normalizeRoleWriteBody(bodyResult.value);
+    if (!normalized.input) {
+      sendBadInput(response, normalized.error ?? "Invalid role input.");
+      return;
+    }
+    try {
+      const actorId = await authenticatedActorId(request, services, env);
+      if (!actorId) {
+        sendUnauthenticated(response);
+        return;
+      }
+      await services.assignUserRole({ actorId, userId, role: normalized.input.role });
+      const profile = await services.getAuthorProfile({ userId, locale, viewerId: actorId });
+      if (!profile) {
+        sendJson(response, 404, { error: { code: "NOT_FOUND", message: "The author profile was not found." } });
+        return;
+      }
+      sendJson(response, 200, { data: profile });
+    } catch (error: unknown) {
+      sendServiceError(response, error);
+    }
+  },
   "me.email-verification": async (ctx: RestRouteContext): Promise<void> => {
     const { request, response, services, env, identity } = ctx;
     if (!services || !identity) {

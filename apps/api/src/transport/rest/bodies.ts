@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { USER_ROLES, type UserRole } from "../../domain/profile.ts";
 import { lexicalEditorStateToArticleDocument } from "../../domain/lexical-document-adapter.ts";
 import { ARTICLE_SUMMARY_MAX_LENGTH, summarizeArticleBlocks } from "../../domain/article-summary.ts";
 import { ArticleInputError } from "../../domain/errors.ts";
@@ -262,4 +263,22 @@ export function normalizeMessageWriteBody(
     return { body: null, error: "body must be non-empty, trimmed text no longer than 20000 characters." };
   }
   return { body: body.body, error: null };
+}
+
+/**
+ * Role assignment body: exactly one field, and only the values the schema accepts.
+ *
+ * The whitelist lives here and not only in the persistence layer so an unsupported
+ * role is a 400 about the request rather than a 500 from a CHECK constraint.
+ */
+export function normalizeRoleWriteBody(
+  body: Record<string, unknown>,
+): { input: { role: UserRole } | null; error: string | null } {
+  if (Object.keys(body).some((key) => key !== "role")) {
+    return { input: null, error: "The request contains unsupported fields." };
+  }
+  if (typeof body.role !== "string" || !USER_ROLES.includes(body.role as UserRole)) {
+    return { input: null, error: `role must be one of: ${USER_ROLES.join(", ")}.` };
+  }
+  return { input: { role: body.role as UserRole }, error: null };
 }

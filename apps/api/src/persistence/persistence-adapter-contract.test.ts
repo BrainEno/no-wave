@@ -55,6 +55,7 @@ async function sqliteFixture() {
           `commenter-a-${suffix}`, `commenter-b-${suffix}`,
           `feed-reader-${suffix}`, `feed-author-a-${suffix}`, `feed-author-b-${suffix}`, `feed-stranger-${suffix}`,
           `sort-author-${suffix}`, `sort-other-author-${suffix}`,
+          `role-editor-${suffix}`, `role-target-${suffix}`,
           `sort-liker-${suffix}-1`,
           `sort-liker-${suffix}-2`,
           `sort-liker-${suffix}-3`,
@@ -119,6 +120,7 @@ async function postgresFixture() {
           `profile-follower-${suffix}`, `profile-target-${suffix}`, `profile-other-${suffix}`,
           `feed-reader-${suffix}`, `feed-author-a-${suffix}`, `feed-author-b-${suffix}`, `feed-stranger-${suffix}`,
           `sort-author-${suffix}`, `sort-other-author-${suffix}`,
+          `role-editor-${suffix}`, `role-target-${suffix}`,
           `sort-liker-${suffix}-1`,
           `sort-liker-${suffix}-2`,
           `sort-liker-${suffix}-3`,
@@ -1341,6 +1343,51 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       assert.deepEqual(slugs(firstTwo).concat(slugs(nextTwo)), slugs(popular));
 
       await assert.rejects(Promise.resolve().then(() => runtime.store.listPublishedArticles({ locale: "zh-CN", query: suffix, sort: "hottest", now })), ArticleInputError);
+    } finally {
+      await runtime.cleanup(undefined, suffix);
+    }
+  });
+
+  test(`${adapterName}: account roles default to member, ride on the profile, and cannot be self-assigned`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const editorId = `role-editor-${suffix}`;
+    const targetId = `role-target-${suffix}`;
+    const missingId = `role-missing-${suffix}`;
+    try {
+      // Absence of a record is absence of privilege, not an error: a brand-new
+      // instance must not fail open just because the column is empty.
+      assert.equal(await runtime.store.getUserRole({ userId: missingId }), "member");
+      await runtime.store.upsertAuthorProfile({ userId: editorId, displayName: "Editor", locale: "zh-CN" });
+      await runtime.store.upsertAuthorProfile({ userId: targetId, displayName: "Target", locale: "zh-CN" });
+      assert.equal(await runtime.store.getUserRole({ userId: targetId }), "member");
+      assert.equal((await runtime.store.getAuthorProfile({ userId: targetId, locale: "zh-CN" })).role, "member");
+
+      assert.equal(await runtime.store.setUserRole({ actorId: editorId, userId: targetId, role: "editor" }), "editor");
+      assert.equal(await runtime.store.getUserRole({ userId: targetId }), "editor");
+      // The role rides along on the profile the client already fetches, so no
+      // endpoint has to be added just to ask "may I show editorial controls?".
+      assert.equal((await runtime.store.getAuthorProfile({ userId: targetId, locale: "zh-CN" })).role, "editor");
+
+      // Assigning the same role again is a no-op, and promoting someone does not
+      // quietly promote the actor.
+      assert.equal(await runtime.store.setUserRole({ actorId: editorId, userId: targetId, role: "editor" }), "editor");
+      assert.equal(await runtime.store.getUserRole({ userId: editorId }), "member");
+      assert.equal(await runtime.store.setUserRole({ actorId: editorId, userId: targetId, role: "member" }), "member");
+      assert.equal(await runtime.store.getUserRole({ userId: targetId }), "member");
+
+      // ADR 0016, decision 3: nobody edits their own role, in either direction.
+      await assert.rejects(Promise.resolve().then(() => runtime.store.setUserRole({ actorId: editorId, userId: editorId, role: "editor" })), ProfileInputError);
+      await assert.rejects(Promise.resolve().then(() => runtime.store.setUserRole({ actorId: editorId, userId: editorId, role: "member" })), ProfileInputError);
+      assert.equal(await runtime.store.getUserRole({ userId: editorId }), "member");
+
+      // An unknown role is refused before it can reach the CHECK constraint, and
+      // so is a role for an account that has no profile.
+      await assert.rejects(Promise.resolve().then(() => runtime.store.setUserRole({ actorId: editorId, userId: targetId, role: "admin" })), ProfileInputError);
+      await assert.rejects(Promise.resolve().then(() => runtime.store.setUserRole({ actorId: editorId, userId: targetId, role: "EDITOR" })), ProfileInputError);
+      await assert.rejects(Promise.resolve().then(() => runtime.store.setUserRole({ actorId: editorId, userId: missingId, role: "editor" })), ProfileNotFoundError);
+      await assert.rejects(Promise.resolve().then(() => runtime.store.setUserRole({ actorId: "  ", userId: targetId, role: "editor" })), ArticleInputError);
+      await assert.rejects(Promise.resolve().then(() => runtime.store.setUserRole({ actorId: editorId, userId: "  ", role: "editor" })), ArticleInputError);
     } finally {
       await runtime.cleanup(undefined, suffix);
     }

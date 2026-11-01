@@ -4,7 +4,7 @@ import test from "node:test";
 import { request as httpRequest } from "node:http";
 import { createApiServer } from "./server.ts";
 import { persistencePortMethods } from "./application/persistence-ports.ts";
-import { ArticleAuthorizationError, ArticleInputError, ArticleNotFoundError, ArticleSlugConflictError, DomainError, IdempotencyConflictError } from "./domain/errors.ts";
+import { ArticleAuthorizationError, ArticleInputError, ArticleNotFoundError, ArticleSlugConflictError, DomainError, IdempotencyConflictError, ProfileInputError, ProfileNotFoundError } from "./domain/errors.ts";
 import { isUuid } from "./domain/validation.ts";
 import { hashPassword, verifyPassword } from "./security/passwords.ts";
 import { MediaAssetNotFoundError } from "./application/media-assets.ts";
@@ -1286,6 +1286,73 @@ test("REST article discovery accepts sort=popular and rejects an unknown sort", 
     store: {
       async listPublishedArticles(args) { calls.push(args); return []; },
       async getAuthorProfile() { return profile; },
+    },
+  });
+});
+
+test("REST role assignment is editor-only, refuses self-service and returns the updated profile", async () => {
+  const calls = [];
+  let roleOfWriter = "member";
+  const profileFor = (userId) => ({
+    userId, role: userId === "writer-user" ? roleOfWriter : "member",
+    displayName: "作者", bio: "", avatarUrl: null, websiteUrl: null, locale: "zh-CN",
+    createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z",
+    followerCount: 0, followingCount: 0, isFollowing: false,
+  });
+  const put = (baseUrl, userId, token, body) => fetch(baseUrl + "/api/v1/users/" + userId + "/role", {
+    method: "PUT",
+    headers: token
+      ? { authorization: "Bearer " + signedToken(token), "content-type": "application/json" }
+      : { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  await withServer(async (baseUrl) => {
+    // A role is personal state: without a session there is nothing to assign.
+    assert.equal((await put(baseUrl, "writer-user", null, { role: "editor" })).status, 401);
+
+    // A member is authenticated and still refused — 403, not 404: the resource
+    // exists, the caller simply may not touch it.
+    const member = await put(baseUrl, "writer-user", "member-user", { role: "editor" });
+    assert.equal(member.status, 403);
+    assert.deepEqual(await member.json(), { error: { code: "FORBIDDEN", message: "You are not allowed to access this resource." } });
+    assert.deepEqual(calls, []);
+
+    const editor = (userId, body) => put(baseUrl, userId, "editor-user", body);
+    const bogusRole = await editor("writer-user", { role: "admin" });
+    assert.equal(bogusRole.status, 400);
+    const extraField = await editor("writer-user", { role: "editor", admin: true });
+    assert.equal(extraField.status, 400);
+    const missing = await editor("missing-user", { role: "editor" });
+    assert.equal(missing.status, 404);
+    // ADR 0016, decision 3: even an editor cannot change their own role.
+    const self = await editor("editor-user", { role: "member" });
+    assert.equal(self.status, 400);
+    assert.deepEqual(calls, []);
+
+    const promoted = await editor("writer-user", { role: "editor" });
+    assert.equal(promoted.status, 200);
+    assert.deepEqual(await promoted.json(), { data: profileFor("writer-user") });
+    assert.deepEqual(calls, [{ actorId: "editor-user", userId: "writer-user", role: "editor" }]);
+
+    const wrongMethod = await fetch(baseUrl + "/api/v1/users/writer-user/role");
+    assert.equal(wrongMethod.status, 405);
+    assert.equal(wrongMethod.headers.get("allow"), "PUT");
+  }, {
+    // The editor here comes from the environment list, which is how an empty
+    // database gets its first one.
+    env: { ...authEnv, EDITOR_USER_IDS: "editor-user" },
+    store: {
+      async isSessionRevoked() { return false; },
+      async getUserRole() { return "member"; },
+      async setUserRole(args) {
+        if (args.actorId === args.userId) throw new ProfileInputError("You cannot change your own role.");
+        if (args.userId === "missing-user") throw new ProfileNotFoundError();
+        // Only a successful assignment is recorded: a refused one wrote nothing.
+        calls.push(args);
+        roleOfWriter = args.role;
+        return args.role;
+      },
+      async getAuthorProfile(args) { return profileFor(args.userId); },
     },
   });
 });
