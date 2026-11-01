@@ -738,8 +738,17 @@ test("taxonomy registry supports localized labels, article associations and crea
     assert.equal(category.id, englishCategory.id);
     assert.equal(englishCategory.name, "Engineering");
     assert.equal((await store.listTaxonomies({ kind: "category", locale: "zh-TW" })).some((item) => item.id === category.id && item.name === "工程"), true);
+    // A category is maintained by the editors as a group, so another editor may
+    // add a translation to one they did not create; what keeps an outsider out
+    // of a category is the role, not the creator stamp.
     await assert.rejects(
-      store.createTaxonomy({ actorId: outsiderId, actorIsEditor: true, kind: "category", slug, name: "Hijack", locale: "en" }),
+      store.createTaxonomy({ actorId: outsiderId, kind: "category", slug, name: "Hijack", locale: "en" }),
+      { code: "FORBIDDEN" },
+    );
+    // A tag is the author's own words: there the creator stamp is what counts,
+    // and being an editor does not let you rewrite somebody else's.
+    await assert.rejects(
+      store.createTaxonomy({ actorId: outsiderId, actorIsEditor: true, kind: "tag", slug, name: "Hijack", locale: "en" }),
       { code: "FORBIDDEN" },
     );
     article = await store.createArticle({
