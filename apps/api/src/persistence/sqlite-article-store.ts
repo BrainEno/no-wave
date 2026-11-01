@@ -13,7 +13,7 @@ import {
   validateArticleSlug,
   normalizeArticleInput,
   normalizeTaxonomyIds,
-  MAX_FEATURED_ARTICLES,
+  MAX_FEATURED_ARTICLES, resolveArticleCursor,
 } from "../domain/article.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
 
@@ -161,7 +161,7 @@ export function createSqliteArticleStore(db) {
   }
 
   return Object.freeze({
-    listPublishedArticles({ locale = "zh-CN", query = "", authorId = null, sort = "latest", limit = 20, offset = 0 } = {}) {
+    listPublishedArticles({ locale = "zh-CN", query = "", authorId = null, sort = "latest", limit = 20, offset = 0, cursor = null } = {}) {
       validateArticleLocale(locale);
       if (typeof query !== "string" || query.length > 200) throw new ArticleInputError("query must be a string no longer than 200 characters.");
       if (authorId !== null) requiredText("authorId", authorId, 300);
@@ -177,6 +177,11 @@ export function createSqliteArticleStore(db) {
       // The body is searched too, one block at a time rather than as the JSON it
       // is stored as: matching the raw text would let a reader find every work by
       // searching "paragraph", which is a word no reader ever typed on purpose.
+      // A cursor is only meaningful against the newest-first order. "Most saved"
+      // is ranked by a count that changes while you read it, so a page boundary
+      // drawn through it would move under the reader: they would meet a work
+      // again after it was liked, and never meet one that was liked past them.
+      const keyset = resolveArticleCursor({ cursor, sort, offset });
       const rows = statement((popular ? articleSelectWithLikeCount : articleSelect) + `
         WHERE a.status = 'published' AND t.locale = ?
           AND (? = '' OR instr(lower(t.title), lower(?)) > 0 OR instr(lower(t.summary), lower(?)) > 0
@@ -185,9 +190,11 @@ export function createSqliteArticleStore(db) {
               WHERE instr(lower(COALESCE(json_extract(block.value, '$.text'), '')), lower(?)) > 0
             ))
           AND (? IS NULL OR a.author_id = ?)
+          ${keyset ? "AND (a.published_at < ? OR (a.published_at = ? AND a.id < ?))" : ""}
         ORDER BY ${popular ? "like_count DESC, a.published_at DESC, a.id DESC" : "a.published_at DESC, a.id DESC"}
         LIMIT ? OFFSET ?
-      `).all(locale, needle, needle, needle, needle, authorId, authorId, limit, offset);
+      `).all(locale, needle, needle, needle, needle, authorId, authorId,
+        ...(keyset ? [keyset.publishedAt, keyset.publishedAt, keyset.id] : []), limit, offset);
       return rows.map(mapArticle);
     },
 

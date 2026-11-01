@@ -19,7 +19,7 @@ import {
 } from "../domain/errors.ts";
 import type { PersistenceAdapterContract } from "../application/persistence-ports.ts";
 import { normalizeHashtag, validateTaxonomyKind } from "../domain/taxonomy.ts";
-import { validateArticleLocale, validateArticleSlug, normalizeArticleInput, normalizeTaxonomyIds, MAX_FEATURED_ARTICLES } from "../domain/article.ts";
+import { validateArticleLocale, validateArticleSlug, normalizeArticleInput, normalizeTaxonomyIds, MAX_FEATURED_ARTICLES, resolveArticleCursor } from "../domain/article.ts";
 import { normalizeStoredRole, validateUserRole } from "../domain/profile.ts";
 import { validateStoredCommentContent } from "../domain/comment-content.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
@@ -1075,7 +1075,7 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
       );
       return rows.map(mapArticle);
     },
-    async listPublishedArticles({ locale = "zh-CN", query = "", authorId = null, sort = "latest", limit = 20, offset = 0 } = {}) {
+    async listPublishedArticles({ locale = "zh-CN", query = "", authorId = null, sort = "latest", limit = 20, offset = 0, cursor = null } = {}) {
       validateArticleLocale(locale);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
       if (!Number.isInteger(offset) || offset < 0 || offset > 100000) {
@@ -1093,6 +1093,16 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
       // `popular` counts every save the work has ever had — see the SQLite
       // counterpart, which must answer the same question the same way.
       const popular = sort === "popular";
+      // See the SQLite counterpart for why a cursor only walks the newest-first
+      // order. The placeholders are numbered as the parameters are pushed, so
+      // adding the keyset cannot leave `LIMIT`/`OFFSET` pointing at the wrong one.
+      const keyset = resolveArticleCursor({ cursor, sort, offset });
+      const params: unknown[] = [locale, searchPattern, authorId];
+      const keysetClause = keyset
+        ? `AND (a.published_at < $${params.push(keyset.publishedAt)}::timestamptz
+              OR (a.published_at = $${params.length}::timestamptz AND a.id < $${params.push(keyset.id)}::uuid))`
+        : "";
+      params.push(limit, offset);
       const rows = await sql.unsafe(
         `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at,
                 t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version,
@@ -1106,9 +1116,10 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
                WHERE jsonb_typeof(block.value) = 'object' AND (block.value->>'text') ILIKE $2 ESCAPE E'\\\\'
              ))
            AND ($3::text IS NULL OR a.author_id = $3)
+           ${keysetClause}
          ORDER BY ${popular ? "like_count DESC, a.published_at DESC, a.id DESC" : "a.published_at DESC, a.id DESC"}
-         LIMIT $4 OFFSET $5`,
-        [locale, searchPattern, authorId, limit, offset],
+         LIMIT $${params.length - 1} OFFSET $${params.length}`,
+        params,
       );
       return rows.map(mapArticle);
     },

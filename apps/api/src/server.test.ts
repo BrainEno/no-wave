@@ -2758,3 +2758,35 @@ test("REST email change refuses a wrong password, reports a taken address, and i
   });
   assert.equal(stored, 1, "only the accepted-password attempt reaches the store");
 });
+
+/**
+ * A cursor and an offset are two different answers to "where does this page
+ * start", so the transport refuses to be asked both at once. What the cursor
+ * *means* is the store's business: this layer passes it through bounded and
+ * untrimmed, and the store decides whether it names a place.
+ */
+test("REST article discovery takes a cursor instead of an offset, never both", async () => {
+  const calls = [];
+  await withServer(async (baseUrl) => {
+    const cursor = Buffer.from("2026-10-01T09:00:00.000Z|3f7c1d90-8a2b-4c1e-9f3a-6c5b2e8d1a44", "utf8").toString("base64url");
+    const paged = await fetch(baseUrl + `/api/v1/articles?cursor=${cursor}&limit=5`);
+    assert.equal(paged.status, 200);
+    assert.deepEqual(await paged.json(), { data: [] });
+    assert.deepEqual(calls[0], { locale: "zh-CN", query: "", sort: "latest", limit: 5, cursor });
+
+    // Two answers to one question.
+    const both = await fetch(baseUrl + `/api/v1/articles?cursor=${cursor}&offset=2`);
+    assert.equal(both.status, 400);
+
+    for (const bad of ["", "%20%20", "x".repeat(513)]) {
+      const rejected = await fetch(baseUrl + `/api/v1/articles?cursor=${bad}`);
+      assert.equal(rejected.status, 400, `cursor=${bad.slice(0, 12)} must be refused`);
+    }
+    assert.equal(calls.length, 1);
+  }, {
+    env: authEnv,
+    store: {
+      async listPublishedArticles(args) { calls.push(args); return []; },
+    },
+  });
+});

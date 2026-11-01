@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
 import { randomUUID } from "node:crypto";
+import { encodeArticleCursor } from "../domain/article.ts";
 import { ArticleInputError, ArticleSlugConflictError, ConversationInputError, IdempotencyConflictError, ConversationAccessError, ArticleAuthorizationError, ArticleNotFoundError, ProfileInputError, ProfileNotFoundError } from "../domain/errors.ts";
 import { createPostgresClient, createPostgresStore } from "./postgres.ts";
 import { runMigrations } from "./migrate.ts";
@@ -56,7 +57,7 @@ async function sqliteFixture() {
           `feed-reader-${suffix}`, `feed-author-a-${suffix}`, `feed-author-b-${suffix}`, `feed-stranger-${suffix}`,
           `sort-author-${suffix}`, `sort-other-author-${suffix}`,
           `role-editor-${suffix}`, `role-target-${suffix}`, `featured-editor-${suffix}`, `featured-member-${suffix}`,
-          `search-author-${suffix}`,
+          `search-author-${suffix}`, `cursor-author-${suffix}`,
           `sort-liker-${suffix}-1`,
           `sort-liker-${suffix}-2`,
           `sort-liker-${suffix}-3`,
@@ -78,6 +79,7 @@ async function sqliteFixture() {
         db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`feed-%-${suffix}`);
         db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`sort-%-${suffix}`);
         db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`search-%-${suffix}`);
+        db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`cursor-%-${suffix}`);
         // A deleted work keeps its row under a released slug (`...-deleted-<id>`),
         // so match the whole family the deletion test can leave behind.
         db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`contract-delete-${suffix}%`);
@@ -124,7 +126,7 @@ async function postgresFixture() {
           `feed-reader-${suffix}`, `feed-author-a-${suffix}`, `feed-author-b-${suffix}`, `feed-stranger-${suffix}`,
           `sort-author-${suffix}`, `sort-other-author-${suffix}`,
           `role-editor-${suffix}`, `role-target-${suffix}`, `featured-editor-${suffix}`, `featured-member-${suffix}`,
-          `search-author-${suffix}`,
+          `search-author-${suffix}`, `cursor-author-${suffix}`,
           `sort-liker-${suffix}-1`,
           `sort-liker-${suffix}-2`,
           `sort-liker-${suffix}-3`,
@@ -152,6 +154,7 @@ async function postgresFixture() {
         await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`feed-%-${suffix}`]);
         await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`sort-%-${suffix}`]);
         await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`search-%-${suffix}`]);
+        await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`cursor-%-${suffix}`]);
       }
     },
   };
@@ -1443,6 +1446,60 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       // The body search composes with what surrounds it.
       const scoped = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: "雨", authorId, sort: "popular", limit: 50 });
       assert.deepEqual(slugs(scoped), [`search-in-body-${suffix}`, `search-in-title-${suffix}`].sort());
+    } finally {
+      await runtime.cleanup(undefined, suffix);
+    }
+  });
+
+  /**
+   * Why a cursor exists: an offset counts rows, so a work published while the
+   * reader is scrolling pushes everything down and they meet one twice. A
+   * cursor names the last work they saw instead, so the answer does not depend
+   * on what happened above it.
+   *
+   * The test publishes a new work between the two reads, which is the whole
+   * point — and then asks the same question by offset to show the difference.
+   */
+  test(`${adapterName}: a cursor walks the newest works once, even if one is published mid-scroll`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const authorId = `cursor-author-${suffix}`;
+    const blocks = [{ id: "p1", type: "paragraph", text: "Cursor contract body." }];
+    const now = new Date("2026-06-01T00:00:00.000Z");
+    const daysAgo = (days) => new Date(now.getTime() - days * 86400000).toISOString();
+    const publish = async (slug, days) => {
+      await runtime.store.createArticle({ authorId, slug, title: `${slug}`, summary: "", locale: "zh-CN", contentBlocks: blocks, publish: true });
+      await runtime.setArticlePublishedAt(slug, daysAgo(days));
+    };
+    const list = (extra) => runtime.store.listPublishedArticles({ locale: "zh-CN", query: suffix, ...extra });
+    const slugs = (rows) => rows.map((article) => article.slug);
+    const cursorAfter = (rows) => encodeArticleCursor(rows[rows.length - 1].publishedAt, rows[rows.length - 1].id);
+    try {
+      await runtime.store.upsertAuthorProfile({ userId: authorId, displayName: "Cursor Author", locale: "zh-CN" });
+      for (let index = 1; index <= 5; index += 1) await publish(`cursor-work-${index}-${suffix}`, index);
+
+      const first = await list({ limit: 2 });
+      assert.deepEqual(slugs(first), [`cursor-work-1-${suffix}`, `cursor-work-2-${suffix}`]);
+
+      // Mid-scroll: the newest work on the site appears above where the reader is.
+      await publish(`cursor-intruder-${suffix}`, 0);
+
+      const second = await list({ limit: 2, cursor: cursorAfter(first) });
+      assert.deepEqual(slugs(second), [`cursor-work-3-${suffix}`, `cursor-work-4-${suffix}`], "no repeat, nothing skipped");
+      const third = await list({ limit: 2, cursor: cursorAfter(second) });
+      assert.deepEqual(slugs(third), [`cursor-work-5-${suffix}`]);
+      // The end of a list is an empty page, not a special field to parse.
+      assert.deepEqual(slugs(await list({ limit: 2, cursor: cursorAfter(third) })), []);
+
+      // The same two rows by offset: the intruder has pushed work 2 into them.
+      assert.deepEqual(slugs(await list({ limit: 2, offset: 2 })), [`cursor-work-2-${suffix}`, `cursor-work-3-${suffix}`]);
+
+      // A cursor is a place in a particular order, not a token to wave around.
+      const cursor = cursorAfter(first);
+      await assert.rejects(Promise.resolve().then(() => list({ limit: 2, cursor, sort: "popular" })), ArticleInputError);
+      await assert.rejects(Promise.resolve().then(() => list({ limit: 2, cursor, offset: 2 })), ArticleInputError);
+      await assert.rejects(Promise.resolve().then(() => list({ limit: 2, cursor: "not-a-cursor" })), ArticleInputError);
+      await assert.rejects(Promise.resolve().then(() => list({ limit: 2, cursor: "" })), ArticleInputError);
     } finally {
       await runtime.cleanup(undefined, suffix);
     }

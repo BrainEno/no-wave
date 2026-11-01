@@ -1,5 +1,5 @@
 import type { RestRouteContext, RestRouteHandler } from "./context.ts";
-import { MAX_ARTICLE_OFFSET, authenticatedActorId, decodeSlug, decodeUserId, optionalViewerId, parseInteger, parseLocale, parsePagination, parseQuery, parseSort, readJsonObject, sendBadInput, sendJson, sendJsonBodyError, sendServiceError, sendUnauthenticated, sendUnavailable } from "../http.ts";
+import { MAX_ARTICLE_OFFSET, authenticatedActorId, decodeSlug, decodeUserId, optionalViewerId, parseInteger, parseLocale, parseArticlePagination, parsePagination, parseQuery, parseSort, readJsonObject, sendBadInput, sendJson, sendJsonBodyError, sendServiceError, sendUnauthenticated, sendUnavailable } from "../http.ts";
 import { normalizeArticleWriteBody, normalizeCommentWriteBody, normalizeFeaturedWriteBody, normalizeLikeWriteBody } from "../bodies.ts";
 import { serializeRestArticle, serializeRestArticles, serializeRestComment, serializeRestComments } from "../serializers.ts";
 import { slugifyArticleTitle, uniquifyArticleSlug } from "../../../domain/article-slug.ts";
@@ -221,14 +221,17 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
     const locale = parseLocale(url);
     const query = parseQuery(url);
     const sort = parseSort(url);
-    const pagination = parsePagination(url, 20, MAX_ARTICLE_OFFSET);
+    const pagination = parseArticlePagination(url, 20, MAX_ARTICLE_OFFSET);
     if (!locale || query === null || sort === null || !pagination) {
-      sendBadInput(response, "Invalid locale, query, sort, limit, or offset query parameter.");
+      sendBadInput(response, "Invalid locale, query, sort, limit, offset, or cursor query parameter.");
       return;
     }
     try {
       const viewerId = await optionalViewerId(request, services, env);
-      const articles = await services.listPublishedArticles({ locale, query, sort, ...pagination });
+      const page = pagination.kind === "cursor"
+        ? { limit: pagination.limit, cursor: pagination.cursor }
+        : { limit: pagination.limit, offset: pagination.offset };
+      const articles = await services.listPublishedArticles({ locale, query, sort, ...page });
       sendJson(response, 200, { data: await serializeRestArticles(services, articles, viewerId) });
     } catch (error: unknown) {
       sendServiceError(response, error);
