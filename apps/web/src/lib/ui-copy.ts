@@ -10,6 +10,10 @@ function zh() {
     home: {
       eyebrow: "独立文学出版 · 阅读 · 交流", tagline: "为值得认真阅读的作品，留出位置。", start: "开始阅读", selected: "精选", selectedEn: "Selected",
       latest: "最新", latestEn: "Latest", topics: "主题", topicsEn: "Topics", allWorks: "全部作品", allTopics: "探索全部分类", empty: "还没有发表的作品。",
+      // The shelf is picked by an editor, and says so — otherwise a reader cannot
+      // tell the difference between "chosen" and "just the newest three".
+      selectedNote: "由编辑挑选并排序", selectedFallback: "编辑还没有安排精选，下面是最近发表的作品。",
+      popular: "最多收藏", popularEn: "Most saved", saves: (n: number) => `${n} 次收藏`,
       marquee: ["No Wave", "无浪潮", "Archive", "档案"], issue: "VOL. 01", scroll: "向下阅读",
     },
     archive: {
@@ -50,6 +54,8 @@ function en(): UiCopy {
     home: {
       eyebrow: "INDEPENDENT LITERARY PUBLISHING", tagline: "Independent publishing for writing worth reading slowly.", start: "Start reading", selected: "Selected", selectedEn: "Selected",
       latest: "Latest", latestEn: "Latest", topics: "Topics", topicsEn: "Topics", allWorks: "All works", allTopics: "Explore all topics", empty: "Nothing has been published yet.",
+      selectedNote: "Chosen and ordered by the editors", selectedFallback: "The editors have not arranged a selection yet — these are the most recent works.",
+      popular: "Most saved", popularEn: "Most saved", saves: (n: number) => `${n} ${n === 1 ? "save" : "saves"}`,
       marquee: ["No Wave", "Archive", "Index", "Read slowly"], issue: "VOL. 01", scroll: "Scroll to read",
     },
     archive: {

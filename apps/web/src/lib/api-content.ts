@@ -1,4 +1,4 @@
-import type { ArticleContentBlock, ArticleView, AuthorView, Locale, WorkType } from "./content.ts";
+import type { ArticleContentBlock, ArticleSort, ArticleView, AuthorView, Locale, WorkType } from "./content.ts";
 import {
   defaultLocale,
   getArticleBySlug,
@@ -7,7 +7,7 @@ import {
 } from "./content.ts";
 
 export type CategoryView = { slug: string; name: string; description: string; locale: string; articleCount: number };
-export type ArticleListOptions = { locale?: Locale; query?: string; authorUsername?: string | null; limit?: number; offset?: number };
+export type ArticleListOptions = { locale?: Locale; query?: string; authorUsername?: string | null; sort?: ArticleSort; limit?: number; offset?: number };
 type CategoryListOptions = { locale?: Locale; query?: string; limit?: number; offset?: number };
 type ApiObject = Record<string, unknown>;
 type ApiPayload = { data?: unknown; error?: unknown };
@@ -17,6 +17,7 @@ type QueryValues = Record<string, string | number>;
 
 type ApiContentClient = {
   listArticles(options?: ArticleListOptions): Promise<ArticleView[]>;
+  listFeaturedArticles(options?: { locale?: Locale; limit?: number }): Promise<ArticleView[]>;
   getArticleBySlug(slug: string, locale?: Locale): Promise<ArticleView | null>;
   getAuthorByUsername(username: string, locale?: Locale): Promise<AuthorView | null>;
   listCategories(options?: CategoryListOptions): Promise<CategoryView[]>;
@@ -162,6 +163,7 @@ function mapArticle(article: unknown, locale: Locale): ArticleView | null {
     author,
     categories: mapNames(article.categories),
     tags: mapNames(article.tags),
+    likeCount: typeof article.likeCount === "number" && Number.isFinite(article.likeCount) ? article.likeCount : 0,
     locale,
     availableLocales: [locale],
   };
@@ -203,11 +205,22 @@ export function createApiContentClient({ endpoint, fetchImpl = fetch }: { endpoi
   }
 
   return Object.freeze({
-    async listArticles({ locale = defaultLocale, query = "", authorUsername = null, limit = 100, offset = 0 }: ArticleListOptions = {}): Promise<ArticleView[]> {
+    async listArticles({ locale = defaultLocale, query = "", authorUsername = null, sort, limit = 100, offset = 0 }: ArticleListOptions = {}): Promise<ArticleView[]> {
       const path = authorUsername
         ? `api/v1/authors/${encodeURIComponent(authorUsername)}/articles`
         : "api/v1/articles";
-      const data = await request(path, { locale, query, limit, offset });
+      const data = await request(path, { locale, query, limit, offset, ...(sort ? { sort } : {}) });
+      if (!Array.isArray(data)) return [];
+      return data.map((article) => mapArticle(article, locale)).filter((article): article is ArticleView => article !== null);
+    },
+    /**
+     * The editorial shelf. There is no fixture equivalent — a hand-picked order
+     * is exactly the thing a static registry cannot have — so this one has no
+     * fallback to fall back to, and the home page treats an empty shelf as its
+     * own answer rather than a failure.
+     */
+    async listFeaturedArticles({ locale = defaultLocale, limit = 20 }: { locale?: Locale; limit?: number } = {}): Promise<ArticleView[]> {
+      const data = await request("api/v1/featured", { locale, limit });
       if (!Array.isArray(data)) return [];
       return data.map((article) => mapArticle(article, locale)).filter((article): article is ArticleView => article !== null);
     },
@@ -249,6 +262,18 @@ function configuredClient(): ApiContentClient | null {
 export async function listPublicArticles(options: ArticleListOptions = {}): Promise<ArticleView[]> {
   const client = configuredClient();
   return client ? client.listArticles(options) : listFixtureArticles(options);
+}
+
+/**
+ * The editorial shelf, in the order an editor put it in.
+ *
+ * With no API configured there is no shelf rather than a fake one: an empty
+ * array is the honest answer, and the home page says so instead of quietly
+ * presenting the newest works as if somebody had chosen them.
+ */
+export async function listPublicFeatured(options: { locale?: Locale; limit?: number } = {}): Promise<ArticleView[]> {
+  const client = configuredClient();
+  return client ? client.listFeaturedArticles(options) : [];
 }
 
 export async function getPublicArticle(slug: string, locale: Locale = defaultLocale): Promise<ArticleView | null> {

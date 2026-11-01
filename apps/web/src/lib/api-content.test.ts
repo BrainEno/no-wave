@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createApiContentClient, resolveApiBaseUrl } from "./api-content.ts";
+import { createApiContentClient, listPublicFeatured, resolveApiBaseUrl } from "./api-content.ts";
 
 type CapturedRequest = { url: string; init: RequestInit | undefined };
 
@@ -220,4 +220,42 @@ test("REST request rejects payloads without a data field", async () => {
     fetchImpl: captureFetch({ unexpected: true }),
   });
   await assert.rejects(client.listArticles(), /missing its data field/);
+});
+
+/**
+ * The three shelves need three things the plain article list never had: a
+ * `sort` the page can ask for, a save count it can show, and a shelf endpoint
+ * whose order comes from an editor rather than from a timestamp.
+ */
+test("the editorial shelf and the popular sort are read from their own endpoints", async () => {
+  const calls: CapturedRequest[] = [];
+  // The shelf answer carries a count the plain list answer does not, which is
+  // what makes the "missing means zero" mapping observable at all.
+  const routed = async (input: string, init?: RequestInit) => {
+    calls.push({ url: input, init });
+    return response(new URL(input).pathname === "/api/v1/featured"
+      ? { data: [{ ...article, likeCount: 7 }] }
+      : { data: [article] });
+  };
+  const client = createApiContentClient({ endpoint: "https://api.example.test", fetchImpl: routed });
+
+  const featured = await client.listFeaturedArticles({ locale: "zh-CN", limit: 6 });
+  assert.equal(new URL(calls[0].url).pathname, "/api/v1/featured");
+  assert.deepEqual(Object.fromEntries(new URL(calls[0].url).searchParams), { locale: "zh-CN", limit: "6" });
+  assert.equal(featured.length, 1);
+  assert.equal(featured[0].likeCount, 7, "the save count survives the mapping");
+
+  // `sort` is only sent when asked for, so every existing list request keeps
+  // the exact query string it had.
+  await client.listArticles({ locale: "zh-CN", sort: "popular", limit: 6 });
+  assert.deepEqual(Object.fromEntries(new URL(calls[1].url).searchParams), {
+    locale: "zh-CN", query: "", limit: "6", offset: "0", sort: "popular",
+  });
+  const plain = await client.listArticles({ locale: "zh-CN", limit: 6 });
+  assert.equal(new URL(calls[2].url).searchParams.has("sort"), false);
+  assert.equal(plain[0].likeCount, 0, "a work with no count is zero, never undefined");
+});
+
+test("an unconfigured API offers no shelf rather than a fake one", async () => {
+  assert.deepEqual(await listPublicFeatured({ locale: "zh-CN" }), []);
 });
