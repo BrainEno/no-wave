@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "@/lib/framework/link.tsx";
 import { archivePath, articlePath, getMessages, type ArticleView, type Locale } from "@/lib/content.ts";
 import type { CategoryView } from "@/lib/api-content.ts";
 import { dateLabel, pad } from "@/lib/format.ts";

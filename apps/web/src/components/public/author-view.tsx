@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "@/lib/framework/link.tsx";
 import { archivePath, articlePath, authorPath, getMessages, type AuthorView, type Locale, type WorkType } from "@/lib/content.ts";
 import { dateLabel, pad } from "@/lib/format.ts";
 import { pickDefaultCover } from "@/lib/covers.ts";

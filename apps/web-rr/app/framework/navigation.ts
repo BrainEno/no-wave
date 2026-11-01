@@ -1,12 +1,12 @@
-import { useLocation, useNavigate, useRevalidator, useSearchParams as useRouterSearchParams } from "react-router";
+import { useLocation, useNavigate, useRevalidator } from "react-router";
 
 /**
- * `next/navigation` adapter.
+ * The React Router half of the navigation hooks (`@/lib/framework/navigation.ts`).
  *
- * Only the hooks the shared components actually use are provided:
- * `usePathname` (language switching and active-nav state) and `useRouter`
- * (`replace`/`push`/`refresh` after a successful sign-in). `refresh` maps to a
- * React Router revalidation, which is the equivalent operation for loader data.
+ * `usePathname` drives the language switch and the active-nav state; `useRouter`
+ * carries the `replace`/`push`/`refresh` a form performs once it succeeds.
+ * `refresh` maps to a React Router revalidation, which is the equivalent
+ * operation for loader data.
  */
 export function usePathname(): string {
   return useLocation().pathname;
@@ -34,8 +34,4 @@ export function useRouter(): AppRouter {
     // rather than pretending this does something.
     prefetch: () => {},
   };
-}
-
-export function useSearchParams(): [URLSearchParams, (next: URLSearchParams | Record<string, string>) => void] {
-  return useRouterSearchParams();
 }

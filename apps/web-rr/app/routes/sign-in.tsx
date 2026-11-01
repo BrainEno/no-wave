@@ -1,7 +1,7 @@
 import { useLoaderData } from "react-router";
 import type { LoaderFunctionArgs, MetaFunction } from "react-router";
-// Unmodified shared component. It imports `next/navigation` for `useRouter`,
-// which resolves to `app/shims/next-navigation.ts` under this app.
+// Unmodified shared component: its `useRouter` comes from the navigation seam,
+// which this app answers from `app/framework/navigation.ts`.
 import { SignInForm } from "@/components/auth/sign-in-form.tsx";
 import { safeRedirectPath } from "@/lib/authoring-proxy-policy.ts";
 import { isMailEnabled } from "@/lib/mail-feature.ts";

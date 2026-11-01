@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "@/lib/framework/link.tsx";
 import type { ReactNode } from "react";
 import { archivePath, articlePath, authorPath, getMessages, type ArticleContentBlock, type ArticleView, type AuthorView, type Locale, type WorkType } from "@/lib/content.ts";
 import { dateLabel, initial } from "@/lib/format.ts";

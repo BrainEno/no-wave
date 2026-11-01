@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "@/lib/framework/link.tsx";
 import { MAIL_DISABLED_NOTICE } from "@/lib/mail-copy.ts";
 
 /**

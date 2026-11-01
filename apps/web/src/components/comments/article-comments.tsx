@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import { Link } from "@/lib/framework/link.tsx";
 import type { ReactNode } from "react";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalExtensionComposer } from "@lexical/react/LexicalExtensionComposer";

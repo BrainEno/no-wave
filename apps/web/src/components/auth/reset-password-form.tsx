@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { Link } from "@/lib/framework/link.tsx";
 import { useState, type FormEvent } from "react";
 
 type ResetPasswordFormProps = { token: string };

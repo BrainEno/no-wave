@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { Link } from "@/lib/framework/link.tsx";
 import { useState } from "react";
 
 export type LatestItem = { href: string; title: string; meta: string; number: string; coverSrc: string; coverWidth: number; coverHeight: number };
