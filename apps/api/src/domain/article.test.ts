@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { normalizeArticleInput, normalizeTaxonomyIds, popularWindowSince, POPULAR_WINDOW_DAYS, validateArticleLocale, validateArticleSlug, validateArticleWorkType } from "./article.ts";
+import { normalizeArticleInput, normalizeTaxonomyIds, validateArticleLocale, validateArticleSlug, validateArticleWorkType } from "./article.ts";
 
 const blocks = [{ id: "paragraph-1", type: "paragraph", text: "A complete paragraph." }];
 
@@ -117,11 +117,3 @@ test("article content validator bounds serialized document size and rejects unsu
   }), { code: "BAD_USER_INPUT" });
 });
 
-test("the popularity window is a fixed number of days and accepts a string clock", () => {
-  const now = new Date("2026-06-01T00:00:00.000Z");
-  const expected = new Date(now.getTime() - POPULAR_WINDOW_DAYS * 86_400_000).toISOString();
-  assert.equal(popularWindowSince(now), expected);
-  // The clock reaches the adapters as an ISO string from the transport layer too.
-  assert.equal(popularWindowSince(now.toISOString()), expected);
-  assert.equal(popularWindowSince(), popularWindowSince(new Date()));
-});

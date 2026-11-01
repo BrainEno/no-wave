@@ -70,7 +70,7 @@ export function parseLocale(url: URL): string | null {
 
 /**
  * Article discovery order: `latest` (publication date, the historical default)
- * or `popular` (likes inside a recent window — see `popularWindowSince`).
+ * or `popular` (how many times the work was ever saved, most first).
  */
 export function parseSort(url: URL): string | null {
   const sort = url.searchParams.get("sort") ?? "latest";

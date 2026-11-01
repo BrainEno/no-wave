@@ -193,7 +193,7 @@ The API exposes a versioned REST business contract under `/api/v1`. REST handler
 - `GET /api/v1/featured` — the editorial shelf (read).
 - `GET /api/v1/me/liked-articles?locale=zh-CN&limit=50` — authenticated liked-article list.
 - `GET /api/v1/articles?locale=zh-CN&query=&sort=latest&limit=20&offset=0` — published article search and pagination.
-  `sort=popular` ranks by like count, but only inside the last 30 days (`POPULAR_WINDOW_DAYS` in `domain/article.ts`): an all-time chart freezes the tab, so the same few old works would hold the top forever and new work could never reach it. Ties fall back to publication date, and the window composes with `query` and the author filter instead of replacing them. An unknown `sort` is a `400 BAD_INPUT`.
+  `sort=popular` ranks by like count over the work's whole life — the tab is "most saved", not "trending this month", so a work that collected its saves two years ago still outranks one published yesterday (ADR 0016, decision 5). Ties fall back to publication date, and the ordering composes with `query` and the author filter instead of replacing them. An unknown `sort` is a `400 BAD_INPUT`.
 - `GET /api/v1/articles/:slug?locale=zh-CN` — one published article, or `404 NOT_FOUND`.
 - `GET /api/v1/articles/:slug/related?locale=zh-CN&limit=6` — related published articles.
 - `GET /api/v1/articles/:slug/like?locale=zh-CN` — like count and optional viewer liked state.

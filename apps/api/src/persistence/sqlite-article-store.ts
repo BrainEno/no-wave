@@ -13,7 +13,7 @@ import {
   validateArticleSlug,
   normalizeArticleInput,
   normalizeTaxonomyIds,
-  popularWindowSince, MAX_FEATURED_ARTICLES,
+  MAX_FEATURED_ARTICLES,
 } from "../domain/article.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
 
@@ -161,7 +161,7 @@ export function createSqliteArticleStore(db) {
   }
 
   return Object.freeze({
-    listPublishedArticles({ locale = "zh-CN", query = "", authorId = null, sort = "latest", limit = 20, offset = 0, now = new Date() } = {}) {
+    listPublishedArticles({ locale = "zh-CN", query = "", authorId = null, sort = "latest", limit = 20, offset = 0 } = {}) {
       validateArticleLocale(locale);
       if (typeof query !== "string" || query.length > 200) throw new ArticleInputError("query must be a string no longer than 200 characters.");
       if (authorId !== null) requiredText("authorId", authorId, 300);
@@ -169,19 +169,18 @@ export function createSqliteArticleStore(db) {
       if (!Number.isInteger(offset) || offset < 0 || offset > 100000) throw new ArticleInputError("offset must be an integer between 0 and 100000.");
       if (sort !== "latest" && sort !== "popular") throw new ArticleInputError("sort must be 'latest' or 'popular'.");
       const needle = query.trim().toLocaleLowerCase(locale);
-      // The window is compared against the ISO `published_at` text the schema
-      // already stores, so the ordering is a plain string comparison and the two
-      // adapters cannot disagree about what "the last 30 days" means.
+      // `popular` counts every save the work has ever had: the tab is "most
+      // saved", not "trending", and a work that collected its likes two years
+      // ago is still one of the most-saved works on the site. Keeping a window
+      // here would make two tabs that only differ in how slowly they change.
       const popular = sort === "popular";
-      const since = popular ? popularWindowSince(now) : null;
       const rows = statement((popular ? articleSelectWithLikeCount : articleSelect) + `
         WHERE a.status = 'published' AND t.locale = ?
           AND (? = '' OR instr(lower(t.title), lower(?)) > 0 OR instr(lower(t.summary), lower(?)) > 0)
           AND (? IS NULL OR a.author_id = ?)
-          AND (? IS NULL OR a.published_at >= ?)
         ORDER BY ${popular ? "like_count DESC, a.published_at DESC, a.id DESC" : "a.published_at DESC, a.id DESC"}
         LIMIT ? OFFSET ?
-      `).all(locale, needle, needle, needle, authorId, authorId, since, since, limit, offset);
+      `).all(locale, needle, needle, needle, authorId, authorId, limit, offset);
       return rows.map(mapArticle);
     },
 

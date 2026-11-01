@@ -190,19 +190,7 @@ export function normalizeArticleInput({ slug, title, summary, locale, contentBlo
 }
 
 /**
- * How far back `sort=popular` looks.
- *
- * "Popular" is a signal about now, not an all-time chart: a work that collected
- * its likes two years ago is a classic, not a trend. An all-time ranking freezes
- * the tab — the same few works hold the top forever and a new author's first good
- * piece can never reach it — which would make `popular` just `latest` in a
- * slower-changing order. The window is what keeps the two tabs different, and
- * both adapters derive it from this one constant so their answers cannot drift.
- */
-export const POPULAR_WINDOW_DAYS = 30;
-
-/**
- * How many works the featured shelf holds.
+ * How many works the featured shelf holds. * How many works the featured shelf holds.
  *
  * A shelf of a hundred is a list of everything, and the whole point of a curated
  * shelf is that somebody chose. Twenty is enough for a real front page and small
@@ -210,12 +198,6 @@ export const POPULAR_WINDOW_DAYS = 30;
  * write replaces the whole shelf, it also bounds one request.
  */
 export const MAX_FEATURED_ARTICLES = 20;
-
-/** The `published_at` floor for `sort=popular`, as an ISO timestamp. */
-export function popularWindowSince(now = new Date()) {
-  const at = now instanceof Date ? now : new Date(now);
-  return new Date(at.getTime() - POPULAR_WINDOW_DAYS * 86400000).toISOString();
-}
 
 export function normalizeTaxonomyIds(name, ids, max) {
   if (ids === undefined || ids === null) return undefined;
