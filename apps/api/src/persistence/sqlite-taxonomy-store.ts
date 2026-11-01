@@ -111,8 +111,19 @@ export function createSqliteTaxonomyStore(db) {
         return taxonomyForLocale("tax.id = ? AND requested.locale = ? LIMIT 1", [tax.id, locale], locale);
       });
     },
-    createTaxonomy({ actorId, kind, slug, name, description = "", locale = "zh-CN" }) {
+    /**
+     * `actorIsEditor` is answered by the application layer, which is the only
+     * layer that can see `EDITOR_USER_IDS`; persistence treats it as a fact.
+     * It defaults to false, so a caller that forgets to ask gets no privilege.
+     */
+    createTaxonomy({ actorId, actorIsEditor = false, kind, slug, name, description = "", locale = "zh-CN" }) {
       requiredText("actorId", actorId, 300); validateTaxonomyKind(kind);
+      // ADR 0016, decision 1: a category is an editorial structure — it only means
+      // something if somebody read the work before filing it under that heading.
+      // A hashtag is the author's own words about their own work, and stays open.
+      if (kind === "category" && actorIsEditor !== true) {
+        throw new ArticleAuthorizationError("Only an editor can create a category.");
+      }
       const normalizedSlug = validateArticleSlug(slug);
       requiredText("name", name, 120);
       if (typeof description !== "string" || description.length > 2000) throw new ArticleInputError("description must be a string no longer than 2000 characters.");
@@ -121,7 +132,15 @@ export function createSqliteTaxonomyStore(db) {
         run("INSERT INTO taxonomies (id, kind, slug, created_by) VALUES (?, ?, ?, ?) ON CONFLICT(kind, slug) DO NOTHING", randomUUID(), kind, normalizedSlug, actorId);
         const tax = get("SELECT id, created_by FROM taxonomies WHERE kind = ? AND slug = ?", kind, normalizedSlug);
         if (!tax) throw new TaxonomyConflictError();
-        if (tax.created_by !== actorId) throw new ArticleAuthorizationError("Only the taxonomy creator can add another translation.");
+        // A category is maintained by the editors as a group, not by whoever
+        // created it; a tag stays the creator's own words.
+        if (tax.created_by !== actorId && !(kind === "category" && actorIsEditor === true)) {
+          throw new ArticleAuthorizationError(
+            kind === "category"
+              ? "Only an editor can add a translation to a category."
+              : "Only the taxonomy creator can add another translation.",
+          );
+        }
         run("INSERT INTO taxonomy_translations (taxonomy_id, locale, name, description) VALUES (?, ?, ?, ?) ON CONFLICT(taxonomy_id, locale) DO UPDATE SET name = excluded.name, description = excluded.description, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')", tax.id, locale, name, description);
         migrationCapture.captureInTransaction(db, transactionId, [
           { entityType: "taxonomies", entityId: tax.id, operation: "upsert", payload: get("SELECT * FROM taxonomies WHERE id = ?", tax.id) },
@@ -130,13 +149,19 @@ export function createSqliteTaxonomyStore(db) {
         return taxonomyForLocale("tax.id = ? LIMIT 1", [tax.id], locale);
       });
     },
-    deleteTaxonomy({ taxonomyId, actorId }) {
+    deleteTaxonomy({ taxonomyId, actorId, actorIsEditor = false }) {
       if (!isUuid(taxonomyId)) throw new ArticleInputError("taxonomyId must be a valid UUID.");
       requiredText("actorId", actorId, 300);
       return transaction((transactionId) => {
-        const tax = get("SELECT created_by FROM taxonomies WHERE id = ?", taxonomyId);
+        const tax = get("SELECT kind, created_by FROM taxonomies WHERE id = ?", taxonomyId);
         if (!tax) return false;
-        if (tax.created_by !== actorId) throw new ArticleAuthorizationError("Only the taxonomy creator can delete it.");
+        if (tax.kind === "category" ? actorIsEditor !== true : tax.created_by !== actorId) {
+          throw new ArticleAuthorizationError(
+            tax.kind === "category"
+              ? "Only an editor can delete a category."
+              : "Only the taxonomy creator can delete it.",
+          );
+        }
         const translations = all("SELECT taxonomy_id, locale FROM taxonomy_translations WHERE taxonomy_id = ?", taxonomyId);
         const links = all("SELECT article_id, taxonomy_id FROM article_taxonomies WHERE taxonomy_id = ?", taxonomyId);
         run("DELETE FROM taxonomies WHERE id = ?", taxonomyId);

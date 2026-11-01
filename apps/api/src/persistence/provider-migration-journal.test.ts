@@ -143,7 +143,7 @@ test("SQLite domain writes atomically capture article, engagement, profile, conv
     const notifications = createSqliteNotificationStore(db);
     const identities = createSqliteIdentityStore(db);
     const outbox = createSqliteOutboxStore(db);
-    taxonomies.createTaxonomy({ actorId: "author-1", kind: "category", slug: "capture-category", name: "Capture Category", locale: "en" });
+    taxonomies.createTaxonomy({ actorId: "author-1", actorIsEditor: true, kind: "category", slug: "capture-category", name: "Capture Category", locale: "en" });
     await identities.createIdentityAccount({
       userId: "identity-capture-user", email: "identity-capture@example.test", passwordHash: "test-password-hash",
       session: {

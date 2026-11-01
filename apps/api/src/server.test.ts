@@ -1357,6 +1357,62 @@ test("REST role assignment is editor-only, refuses self-service and returns the 
   });
 });
 
+test("REST taxonomy writes keep hashtags open and reserve categories for editors", async () => {
+  const calls = [];
+  const taxonomy = (kind, slug) => ({ id: `taxonomy-${slug}`, kind, slug, name: slug, description: "", locale: "zh-CN", articleCount: 0, createdBy: "author-user" });
+  const post = (baseUrl, token, body) => fetch(baseUrl + "/api/v1/taxonomies", {
+    method: "POST",
+    headers: { authorization: "Bearer " + signedToken(token), "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  await withServer(async (baseUrl) => {
+    // A hashtag is the author's own words: a plain member may still mint one.
+    const tag = await post(baseUrl, "member-user", { kind: "tag", slug: "nowave", name: "NoWave" });
+    assert.equal(tag.status, 201);
+    assert.deepEqual(calls[0], { kind: "tag", slug: "nowave", name: "NoWave", locale: "zh-CN", description: "", actorId: "member-user", actorIsEditor: false });
+
+    // A category is the platform speaking: the same account is refused.
+    const category = await post(baseUrl, "member-user", { kind: "category", slug: "poetry", name: "诗歌" });
+    assert.equal(category.status, 403);
+    assert.deepEqual(await category.json(), { error: { code: "FORBIDDEN", message: "You are not allowed to access this resource." } });
+
+    // The refused attempt still reached persistence with an honest answer about
+    // the caller, so the adapter — not the transport — is what says no.
+    assert.deepEqual(calls[1], { kind: "category", slug: "poetry", name: "诗歌", locale: "zh-CN", description: "", actorId: "member-user", actorIsEditor: false });
+
+    const created = await post(baseUrl, "editor-user", { kind: "category", slug: "poetry", name: "诗歌" });
+    assert.equal(created.status, 201);
+    assert.deepEqual(calls[2], { kind: "category", slug: "poetry", name: "诗歌", locale: "zh-CN", description: "", actorId: "editor-user", actorIsEditor: true });
+
+    // Deleting a category needs the role even from the account that created it.
+    const removed = await fetch(baseUrl + "/api/v1/taxonomies/11111111-1111-4111-8111-111111111111", {
+      method: "DELETE",
+      headers: { authorization: "Bearer " + signedToken("member-user") },
+    });
+    assert.equal(removed.status, 403);
+    assert.deepEqual(calls[3], { taxonomyId: "11111111-1111-4111-8111-111111111111", actorId: "member-user", actorIsEditor: false });
+    assert.equal(calls.length, 4);
+  }, {
+    env: { ...authEnv, EDITOR_USER_IDS: "editor-user" },
+    store: {
+      async isSessionRevoked() { return false; },
+      async getUserRole() { return "member"; },
+      // The fake enforces the same rule the persistence contract asserts, so the
+      // HTTP layer is tested against the refusal a real adapter would produce.
+      async createTaxonomy(args) {
+        calls.push(args);
+        if (args.kind === "category" && args.actorIsEditor !== true) throw new ArticleAuthorizationError("Only an editor can create a category.");
+        return taxonomy(args.kind, args.slug);
+      },
+      async deleteTaxonomy(args) {
+        calls.push(args);
+        if (args.actorIsEditor !== true) throw new ArticleAuthorizationError("Only an editor can delete a category.");
+        return true;
+      },
+    },
+  });
+});
+
 test("REST public author profile reflects the optional viewer follow state", async () => {
   let received;
   await withServer(async (baseUrl) => {
@@ -1952,6 +2008,9 @@ test("REST taxonomy mutations preserve normalization inputs, creator identity, a
   }, {
     env: authEnv,
     store: {
+      // The writer is an editor, so this test keeps exercising creator identity
+      // and normalization rather than the editorial permission itself.
+      async getUserRole() { return "editor"; },
       async createTag(args) { calls.push({ method: "createTag", args }); return tag; },
       async createTaxonomy(args) { calls.push({ method: "createTaxonomy", args }); return category; },
       async deleteTaxonomy(args) { calls.push({ method: "deleteTaxonomy", args }); return true; },
@@ -1959,8 +2018,8 @@ test("REST taxonomy mutations preserve normalization inputs, creator identity, a
   });
   assert.deepEqual(calls, [
     { method: "createTag", args: { actorId: "writer-user", name: "人工智能", locale: "zh-CN" } },
-    { method: "createTaxonomy", args: { kind: "category", slug: "poetry", name: "诗歌", description: "诗歌分类", locale: "zh-CN", actorId: "writer-user" } },
-    { method: "deleteTaxonomy", args: { taxonomyId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", actorId: "writer-user" } },
+    { method: "createTaxonomy", args: { kind: "category", slug: "poetry", name: "诗歌", description: "诗歌分类", locale: "zh-CN", actorId: "writer-user", actorIsEditor: true } },
+    { method: "deleteTaxonomy", args: { taxonomyId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", actorId: "writer-user", actorIsEditor: true } },
   ]);
 });
 

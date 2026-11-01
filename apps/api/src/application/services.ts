@@ -125,6 +125,24 @@ export function createApplicationServices<A extends import("./persistence-ports.
     return ports.profiles.setUserRole({ actorId, userId, role });
   };
 
+  /**
+   * ADR 0016, decision 1: a category is an editorial structure, a hashtag is the
+   * author's own words.
+   *
+   * The editor question is answered here — the only layer that can see
+   * `EDITOR_USER_IDS` — and handed to persistence as a plain fact, so both
+   * adapters enforce the same rule under the same contract test rather than each
+   * growing its own idea of who counts.
+   */
+  services.createTaxonomy = async ({ actorId, ...input }) => {
+    const actorIsEditor = await services.isEditor({ actorId });
+    return ports.taxonomy.createTaxonomy({ ...input, actorId, actorIsEditor });
+  };
+  services.deleteTaxonomy = async ({ actorId, ...input }) => {
+    const actorIsEditor = await services.isEditor({ actorId });
+    return ports.taxonomy.deleteTaxonomy({ ...input, actorId, actorIsEditor });
+  };
+
   services.createArticle = async ({ authorId, ...input }) =>
     ports.content.createArticle({ ...input, authorId, contentBlocks: parseContentBlocks(input.contentBlocks) });
   services.updateArticle = async ({ actorId, ...input }) =>
