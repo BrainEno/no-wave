@@ -134,6 +134,14 @@ export function createApplicationServices<A extends import("./persistence-ports.
    * adapters enforce the same rule under the same contract test rather than each
    * growing its own idea of who counts.
    */
+  /**
+   * ADR 0016, decision 4: the featured shelf is editorial in both directions —
+   * anyone may read it, only an editor may arrange it.
+   */
+  services.setFeaturedArticles = async ({ actorId, ...input }) => {
+    const actorIsEditor = await services.isEditor({ actorId });
+    return ports.content.setFeaturedArticles({ ...input, actorId, actorIsEditor });
+  };
   services.createTaxonomy = async ({ actorId, ...input }) => {
     const actorIsEditor = await services.isEditor({ actorId });
     return ports.taxonomy.createTaxonomy({ ...input, actorId, actorIsEditor });

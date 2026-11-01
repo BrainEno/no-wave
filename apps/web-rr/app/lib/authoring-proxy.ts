@@ -2,6 +2,8 @@ import {
   handleAuthoringArticleRequest,
   handleAuthoringArticlesRequest,
   handleAuthoringDeletedArticlesRequest,
+  handleAuthoringFeaturedCandidatesRequest,
+  handleAuthoringFeaturedRequest,
   handleAuthoringRestoreRequest,
   handleAuthoringSessionRequest,
 } from "@bot-thk/web-http";
@@ -28,6 +30,12 @@ export function handleAuthoringArticle(request: Request, id: string | undefined)
 }
 export function handleAuthoringDeletedArticles(request: Request): Promise<Response> {
   return handleAuthoringDeletedArticlesRequest(request, { apiBaseUrl: optionalApiBaseUrl() });
+}
+export function handleAuthoringFeatured(request: Request): Promise<Response> {
+  return handleAuthoringFeaturedRequest(request, { apiBaseUrl: optionalApiBaseUrl() });
+}
+export function handleAuthoringFeaturedCandidates(request: Request): Promise<Response> {
+  return handleAuthoringFeaturedCandidatesRequest(request, { apiBaseUrl: optionalApiBaseUrl() });
 }
 export function handleAuthoringRestoreArticle(request: Request, id: string | undefined): Promise<Response> {
   return handleAuthoringRestoreRequest(request, { id: id ?? "" }, { apiBaseUrl: optionalApiBaseUrl() });

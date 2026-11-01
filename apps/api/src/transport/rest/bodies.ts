@@ -282,3 +282,21 @@ export function normalizeRoleWriteBody(
   }
   return { input: { role: body.role as UserRole }, error: null };
 }
+
+/**
+ * Featured-shelf body: exactly one field, the whole ordered list.
+ *
+ * Shape only — bounds and publishability are the persistence layer's job, because
+ * it is the layer that can see whether a work is actually published.
+ */
+export function normalizeFeaturedWriteBody(
+  body: Record<string, unknown>,
+): { input: { articleIds: string[] } | null; error: string | null } {
+  if (Object.keys(body).some((key) => key !== "articleIds")) {
+    return { input: null, error: "The request contains unsupported fields." };
+  }
+  if (!Array.isArray(body.articleIds) || !body.articleIds.every((id) => typeof id === "string")) {
+    return { input: null, error: "articleIds must be an array of article identifiers." };
+  }
+  return { input: { articleIds: body.articleIds as string[] }, error: null };
+}

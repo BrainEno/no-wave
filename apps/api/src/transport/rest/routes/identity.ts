@@ -20,7 +20,12 @@ const IDENTITY_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Obje
       const data = identity
         ? await identity.describeAccount(actorId)
         : { id: actorId, email: null, emailVerifiedAt: null };
-      sendJson(response, 200, { data });
+      // `isEditor` rides along because the front desk needs it before it renders
+      // a single editorial control: a screen that shows the buttons and then
+      // answers 403 on click is a worse answer than one that never offered them.
+      // It is the assembled fact (role column plus the bootstrap list), not the
+      // raw role, so the browser never has to know how editors are minted.
+      sendJson(response, 200, { data: { ...data, isEditor: await services.isEditor({ actorId }) } });
     } catch (error: unknown) {
       sendServiceError(response, error);
     }

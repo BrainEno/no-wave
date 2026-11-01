@@ -19,7 +19,7 @@ import {
 } from "../domain/errors.ts";
 import type { PersistenceAdapterContract } from "../application/persistence-ports.ts";
 import { normalizeHashtag, validateTaxonomyKind } from "../domain/taxonomy.ts";
-import { validateArticleLocale, validateArticleSlug, normalizeArticleInput, normalizeTaxonomyIds, popularWindowSince } from "../domain/article.ts";
+import { validateArticleLocale, validateArticleSlug, normalizeArticleInput, normalizeTaxonomyIds, popularWindowSince, MAX_FEATURED_ARTICLES } from "../domain/article.ts";
 import { normalizeStoredRole, validateUserRole } from "../domain/profile.ts";
 import { validateStoredCommentContent } from "../domain/comment-content.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
@@ -254,6 +254,30 @@ function mapAuthorProfile(row) {
     updatedAt: iso(row.updated_at),
   };
 }
+/**
+ * The featured shelf, in the order the editors put it in. Defined outside the
+ * returned object so the writer can re-read it after its transaction commits
+ * without re-entering the transaction — a read inside the open transaction would
+ * either take a second connection or see its own uncommitted rows only.
+ */
+async function readFeaturedArticles(executor, { locale = "zh-CN", limit = 20, offset = 0 } = {}) {
+  validateArticleLocale(locale);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
+  if (!Number.isInteger(offset) || offset < 0 || offset > 100000) throw new ArticleInputError("offset must be an integer between 0 and 100000.");
+  const rows = await executor.unsafe(
+    `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at,
+            t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version
+     FROM articles AS a
+     JOIN article_translations AS t ON t.article_id = a.id
+     JOIN featured_articles AS f ON f.article_id = a.id
+     WHERE a.status = 'published' AND t.locale = $1
+     ORDER BY f.position ASC, f.created_at ASC
+     LIMIT $2 OFFSET $3`,
+    [locale, limit, offset],
+  );
+  return rows.map(mapArticle);
+}
+
 async function findAuthorProfile(executor, { userId, locale = "zh-CN", viewerId = null }) {
   requiredText("userId", userId, 300);
   validateArticleLocale(locale);
@@ -1103,6 +1127,59 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
         [locale, actorId, limit, offset],
       );
       return rows.map(mapArticle);
+    },
+    async listFeaturedArticles(args) {
+      return readFeaturedArticles(sql, args);
+    },
+    /**
+     * Replace the whole shelf.
+     *
+     * The write carries the entire ordered list rather than individual adds and
+     * moves, because "move this one up" is indistinguishable from "reorder these
+     * three" once two editors are working at once: a whole-list write is
+     * idempotent, leaves no position gaps to reconcile, and cannot end in a state
+     * neither editor asked for. The cost is one request carrying a dozen ids.
+     */
+    async setFeaturedArticles({ actorId, actorIsEditor = false, articleIds, locale = "zh-CN" }) {
+      requiredText("actorId", actorId, 300);
+      if (actorIsEditor !== true) throw new ArticleAuthorizationError("Only an editor can change the featured shelf.");
+      if (!Array.isArray(articleIds)) throw new ArticleInputError("articleIds must be an array of article identifiers.");
+      if (articleIds.length > MAX_FEATURED_ARTICLES) {
+        throw new ArticleInputError(`The featured shelf holds at most ${MAX_FEATURED_ARTICLES} works.`);
+      }
+      if (!articleIds.every((id) => typeof id === "string" && isUuid(id))) {
+        throw new ArticleInputError("articleIds must contain valid article identifiers.");
+      }
+      if (new Set(articleIds).size !== articleIds.length) {
+        throw new ArticleInputError("The featured shelf cannot list the same work twice.");
+      }
+      await sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        // A draft or a deleted work on the public shelf is a promise the reader
+        // cannot collect, so the whole write is refused rather than half applied:
+        // a shelf that silently dropped two of the editor's picks is worse than
+        // one that said no.
+        for (const id of articleIds) {
+          const rows = await tx.unsafe("SELECT status FROM articles WHERE id = $1 LIMIT 1", [id]);
+          if (!rows[0] || rows[0].status !== "published") {
+            throw new ArticleInputError("The featured shelf can only contain published articles.");
+          }
+        }
+        const previous = await tx.unsafe("SELECT article_id FROM featured_articles");
+        await tx.unsafe("DELETE FROM featured_articles");
+        for (const [index, id] of articleIds.entries()) {
+          await tx.unsafe(
+            "INSERT INTO featured_articles (article_id, position, created_by) VALUES ($1, $2, $3)",
+            [id, index, actorId],
+          );
+        }
+        const rows = await tx.unsafe("SELECT * FROM featured_articles");
+        await captureChanges(tx, transactionId, [
+          ...previous.map((row) => ({ entityType: "featured_articles", entityId: row.article_id, operation: "delete", payload: null })),
+          ...rows.map((row) => ({ entityType: "featured_articles", entityId: row.article_id, operation: "upsert", payload: row })),
+        ]);
+      });
+      return readFeaturedArticles(sql, { locale, limit: MAX_FEATURED_ARTICLES, offset: 0 });
     },
     async getPublishedArticle({ slug, locale = "zh-CN" }) {
       const normalizedSlug = validateArticleSlug(slug);
