@@ -1093,7 +1093,17 @@ test("REST current user and profile reads require JWT and preserve all AuthorPro
       headers: { authorization: "Bearer " + signedToken("me-user") },
     });
     assert.equal(me.status, 200);
-    assert.deepEqual(await me.json(), { data: { id: "me-user", email: "me-user@example.test", emailVerifiedAt: null } });
+    // `isEditor` is the assembled fact: the role column for a plain account, and
+    // the bootstrap list for the account that has to mint the first editor.
+    assert.deepEqual(await me.json(), {
+      data: { id: "me-user", email: "me-user@example.test", emailVerifiedAt: null, isEditor: false },
+    });
+    const curator = await fetch(baseUrl + "/api/v1/me", {
+      headers: { authorization: "Bearer " + signedToken("curator-user") },
+    });
+    assert.deepEqual(await curator.json(), {
+      data: { id: "curator-user", email: "curator-user@example.test", emailVerifiedAt: null, isEditor: true },
+    });
 
     const profileResponse = await fetch(baseUrl + "/api/v1/me/profile?locale=zh-CN", {
       headers: { authorization: "Bearer " + signedToken("me-user") },
@@ -1101,12 +1111,13 @@ test("REST current user and profile reads require JWT and preserve all AuthorPro
     assert.equal(profileResponse.status, 200);
     assert.deepEqual(await profileResponse.json(), { data: profile });
   }, {
-    env: authEnv,
+    env: { ...authEnv, EDITOR_USER_IDS: "curator-user" },
     store: {
       async isSessionRevoked() { return false; },
       async findIdentityAccountByUserId({ userId }) {
         return { userId, email: `${userId}@example.test`, emailVerifiedAt: null };
       },
+      async getUserRole() { return "member"; },
       async getAuthorProfile(args) {
         assert.deepEqual(args, { userId: "me-user", locale: "zh-CN", viewerId: "me-user" });
         return profile;
@@ -1408,6 +1419,78 @@ test("REST taxonomy writes keep hashtags open and reserve categories for editors
         calls.push(args);
         if (args.actorIsEditor !== true) throw new ArticleAuthorizationError("Only an editor can delete a category.");
         return true;
+      },
+    },
+  });
+});
+
+test("REST featured shelf is public to read and editorial to arrange", async () => {
+  const calls = [];
+  const article = (slug) => ({
+    id: `article-${slug}`, authorId: "writer-user", slug, workType: "other", status: "published",
+    locale: "zh-CN", title: slug, summary: "", contentBlocks: [{ id: "p1", type: "paragraph", text: "正文" }],
+    createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-02T00:00:00.000Z", publishedAt: "2026-01-02T00:00:00.000Z",
+    author: null, categories: [], tags: [], likeCount: 0, likedByViewer: false,
+  });
+  await withServer(async (baseUrl) => {
+    // Anyone may read the shelf, signed in or not.
+    const read = await fetch(baseUrl + "/api/v1/featured?limit=5");
+    assert.equal(read.status, 200);
+    assert.deepEqual(await read.json(), { data: [article("picked")] });
+    assert.deepEqual(calls[0], ["list", { locale: "zh-CN", limit: 5, offset: 0 }]);
+
+    // Arranging it needs a session first, then the role.
+    const anonymous = await fetch(baseUrl + "/api/v1/featured", {
+      method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ articleIds: [] }),
+    });
+    assert.equal(anonymous.status, 401);
+
+    const member = await fetch(baseUrl + "/api/v1/featured", {
+      method: "PUT",
+      headers: { authorization: "Bearer " + signedToken("member-user"), "content-type": "application/json" },
+      body: JSON.stringify({ articleIds: [] }),
+    });
+    assert.equal(member.status, 403);
+
+    // The member reaches the store carrying the assembled fact, which is what
+    // turns the request down — not a second question asked at the wrong depth.
+    assert.deepEqual(calls[1], ["set", {
+      actorId: "member-user", actorIsEditor: false, locale: "zh-CN", articleIds: [],
+    }]);
+
+    const editor = await fetch(baseUrl + "/api/v1/featured", {
+      method: "PUT",
+      headers: { authorization: "Bearer " + signedToken("editor-user"), "content-type": "application/json" },
+      body: JSON.stringify({ articleIds: ["11111111-1111-4111-8111-111111111111"] }),
+    });
+    assert.equal(editor.status, 200);
+    assert.deepEqual(calls[2], ["set", {
+      actorId: "editor-user", actorIsEditor: true, locale: "zh-CN",
+      articleIds: ["11111111-1111-4111-8111-111111111111"],
+    }]);
+
+    // The body carries the whole shelf and nothing else.
+    const malformed = await fetch(baseUrl + "/api/v1/featured", {
+      method: "PUT",
+      headers: { authorization: "Bearer " + signedToken("editor-user"), "content-type": "application/json" },
+      body: JSON.stringify({ articleIds: ["11111111-1111-4111-8111-111111111111"], position: 0 }),
+    });
+    assert.equal(malformed.status, 400);
+    assert.equal(calls.length, 3);
+
+    const wrongMethod = await fetch(baseUrl + "/api/v1/featured", { method: "POST" });
+    assert.equal(wrongMethod.status, 405);
+    assert.equal(wrongMethod.headers.get("allow"), "GET, PUT");
+  }, {
+    env: { ...authEnv, EDITOR_USER_IDS: "editor-user" },
+    store: {
+      async isSessionRevoked() { return false; },
+      async getUserRole() { return "member"; },
+      async listFeaturedArticles(args) { calls.push(["list", args]); return [article("picked")]; },
+      async setFeaturedArticles(args) {
+        calls.push(["set", args]);
+        if (args.actorIsEditor !== true) throw new ArticleAuthorizationError("Only an editor can change the featured shelf.");
+        return args.articleIds.map((id) => article(id));
       },
     },
   });

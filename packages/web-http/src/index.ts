@@ -63,6 +63,13 @@ export {
   isAuthoringLocale,
 } from "./authoring.ts";
 export {
+  FEATURED_CANDIDATES_LIMIT,
+  authoringFeaturedCandidatesPath,
+  authoringFeaturedPath,
+  handleAuthoringFeaturedCandidatesRequest,
+  handleAuthoringFeaturedRequest,
+} from "./curate.ts";
+export {
   COMMENT_BODY_MAX_BYTES,
   COMMENT_DEFAULT_LOCALE,
   COMMENT_LOCALES,

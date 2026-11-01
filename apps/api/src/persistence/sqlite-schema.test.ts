@@ -11,7 +11,7 @@ test("SQLite domain migration creates the complete set of domain tables", async 
   const db = createSqliteClient({ filename: ":memory:", enableWal: false });
   try {
     const applied = await runSqliteMigrations(db);
-    assert.deepEqual(applied, ["0001_domain_schema", "0002_outbox_lease_tokens", "0003_self_hosted_identity", "0004_article_content_versions", "0005_comment_content_versions", "0006_provider_migration_journal", "0007_media_assets", "0008_article_comment_idempotency", "0009_article_soft_delete", "0010_conversation_idempotency", "0011_article_idempotency", "0012_identity_verification", "0013_user_roles"]);
+    assert.deepEqual(applied, ["0001_domain_schema", "0002_outbox_lease_tokens", "0003_self_hosted_identity", "0004_article_content_versions", "0005_comment_content_versions", "0006_provider_migration_journal", "0007_media_assets", "0008_article_comment_idempotency", "0009_article_soft_delete", "0010_conversation_idempotency", "0011_article_idempotency", "0012_identity_verification", "0013_user_roles", "0014_featured_articles"]);
     const tables = db.prepare(
       "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
     ).all().map((row) => row.name);
@@ -19,7 +19,7 @@ test("SQLite domain migration creates the complete set of domain tables", async 
       "api_schema_migrations", "article_comments", "article_likes", "article_taxonomies",
       "article_translations", "articles", "auth_access_tokens", "auth_accounts", "auth_identity_tokens",
       "auth_rate_limits", "auth_refresh_tokens", "auth_sessions", "conversation_participants", "conversations",
-      "media_assets", "messages", "notifications", "outbox_events",
+      "featured_articles", "media_assets", "messages", "notifications", "outbox_events",
       "provider_migration_applied_changes", "provider_migration_changes",
       "provider_migration_checkpoints", "provider_migration_sessions", "revoked_sessions", "taxonomies",
       "taxonomy_translations", "user_follows", "user_profile_translations", "user_profiles",
@@ -35,6 +35,7 @@ test("SQLite domain migration creates the complete set of domain tables", async 
       "media_assets_owner_created_idx", "article_comments_author_idempotency_key_idx",
       "conversations_creator_idempotency_key_idx", "articles_author_idempotency_key_idx",
       "auth_identity_tokens_user_purpose_idx", "auth_identity_tokens_expiry_idx",
+      "featured_articles_position_idx",
     ]) assert.ok(indexes.includes(required), `missing SQLite index: ${required}`);
   } finally {
     db.close();
@@ -100,7 +101,7 @@ test("SQLite lease migration preserves pending, leased, and delivered legacy eve
     insert.run(deliveredId, "delivered", "message.created", "c", "{}", 1, "2000-01-01T00:00:00.000Z", "2020-01-01T00:00:00.000Z");
     db.prepare("INSERT INTO revoked_sessions (session_id, expires_at) VALUES (?, ?)").run("legacy-token", "2099-01-01T00:00:00.000Z");
 
-    assert.deepEqual(await runSqliteMigrations(db), ["0002_outbox_lease_tokens", "0003_self_hosted_identity", "0004_article_content_versions", "0005_comment_content_versions", "0006_provider_migration_journal", "0007_media_assets", "0008_article_comment_idempotency", "0009_article_soft_delete", "0010_conversation_idempotency", "0011_article_idempotency", "0012_identity_verification", "0013_user_roles"]);
+    assert.deepEqual(await runSqliteMigrations(db), ["0002_outbox_lease_tokens", "0003_self_hosted_identity", "0004_article_content_versions", "0005_comment_content_versions", "0006_provider_migration_journal", "0007_media_assets", "0008_article_comment_idempotency", "0009_article_soft_delete", "0010_conversation_idempotency", "0011_article_idempotency", "0012_identity_verification", "0013_user_roles", "0014_featured_articles"]);
     assert.equal(db.prepare("SELECT expires_at FROM revoked_sessions WHERE session_id = ?").get("legacy-token").expires_at, "2099-01-01T00:00:00.000Z");
     const legacyComment = db.prepare("SELECT content, idempotency_key_hash, request_hash FROM article_comments WHERE id = ?").get("legacy-idempotency-comment");
     assert.equal(legacyComment.content, "Legacy comment before migration");

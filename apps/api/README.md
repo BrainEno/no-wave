@@ -190,6 +190,7 @@ The API exposes a versioned REST business contract under `/api/v1`. REST handler
 - `GET /api/v1/users?query=&locale=zh-CN&limit=20` — user search; accepts an optional valid JWT for viewer-specific follow state.
 - `GET /api/v1/users/:userId/followers?locale=zh-CN&limit=50` and `GET /api/v1/users/:userId/following?locale=zh-CN&limit=50` — relationship lists with complete AuthorProfile records.
 - `PUT /api/v1/users/:userId/role` — assign the `editor` or `member` role to another account. Editor-only; see "Editorial roles" below.
+- `GET /api/v1/featured` — the editorial shelf (read).
 - `GET /api/v1/me/liked-articles?locale=zh-CN&limit=50` — authenticated liked-article list.
 - `GET /api/v1/articles?locale=zh-CN&query=&sort=latest&limit=20&offset=0` — published article search and pagination.
   `sort=popular` ranks by like count, but only inside the last 30 days (`POPULAR_WINDOW_DAYS` in `domain/article.ts`): an all-time chart freezes the tab, so the same few old works would hold the top forever and new work could never reach it. Ties fall back to publication date, and the window composes with `query` and the author filter instead of replacing them. An unknown `sort` is a `400 BAD_INPUT`.
@@ -218,6 +219,8 @@ All routes below require a valid, non-revoked bearer JWT, except for public comm
 - `PUT /api/v1/articles/:articleId` — update an article; the actor is derived from JWT and ownership is enforced in the application/persistence layer. Uses the same fields as create, and requires boolean `publish`.
 - `PUT /api/v1/me/profile` — update the current user's profile using `displayName`, optional `bio`, `avatarUrl`, `websiteUrl` and optional `locale`. The profile owner is derived from JWT identity.
 - `POST /api/v1/users/:userId/follow` and `DELETE /api/v1/users/:userId/follow` — idempotently follow or unfollow the target stable user ID. The returned profile includes the complete AuthorProfile data contract, including counts, timestamps, avatar/website, locale and viewer-specific follow state.
+- `GET /api/v1/featured?locale=zh-CN&limit=20&offset=0` — the editorial shelf: published works in the order the editors chose. Public; `limit` is 1–100 and defaults to 20.
+- `PUT /api/v1/featured` — replace the whole shelf. The body is exactly `{ "articleIds": ["<uuid>", ...] }`, in the order they should appear, at most 20 ids, no duplicates. It must be sent by an editor (`401` anonymous, `403` otherwise); every id must be a published work (`400` if any is not, and nothing changes). An empty array clears the shelf and is a legitimate answer, not an error. The response is the shelf as it is now stored.
 - `PUT /api/v1/users/:userId/role` — assign a role to another account. The body is exactly `{ "role": "editor" | "member" }`; unsupported fields or values are a `400 BAD_INPUT`. The caller must already be an editor (`403 FORBIDDEN` otherwise), and **nobody may change their own role** (`400 BAD_INPUT`) — a single-editor instance whose editor demotes itself has no way back in. A user ID with no profile is a `404 NOT_FOUND`. The response is the updated AuthorProfile, whose `role` field is how a client learns whether to show editorial controls; no separate endpoint asks.
 - `PUT /api/v1/me/email` — move the signed-in account to another address with `{"password": "...", "email": "..."}`. The current password is required: whoever controls the address controls the account's recovery, so a session on its own must not be able to move it. The address is trimmed and lowercased, must be unique, and is then **unverified** — what was on file was proof of the old one. Nothing is gated on verification and no mail is sent, so this works while mail is off; ask for a verification mail separately with `POST /api/v1/me/email-verification`. No session is revoked: the devices already signed in are still the owner's. `200 {"data":{"ok":true,"email":"...","emailVerifiedAt":null}}`; `409` when the address belongs to another account; `400` for a malformed address or a body that is not exactly these two fields; `401` for a wrong password or a missing session. Asking for the address the account already has is not a change: it answers `200` with the current verification state and rewrites nothing.
 - `PUT /api/v1/me/password` — change the password of the signed-in account with `{"currentPassword": "...", "newPassword": "..."}`. The current password is required as well, so a stolen session on its own can neither take the account over nor lock the owner out, and the new one is held to registration rules (12–128 characters). Every **other** session of the account is revoked and the one making the request is spared, so the answer `{"data":{"ok":true,"revokedSessions":N}}` says how many devices were signed out and this one was not. `400` for a weak new password or a body that is not exactly these two fields; `401` for a wrong current password or a missing session. Unlike recovery through the mail, this path needs no mail at all.
@@ -281,6 +284,30 @@ in if the last editor account is ever lost. Changing it needs a redeploy; changi
 
 There is deliberately no `admin`. Moderation and reporting are issue #72 and get their own design —
 this column is too small to grow into one, on purpose.
+
+
+## The featured shelf (ADR 0016)
+
+The shelf is a table (`featured_articles`), not a column on the article and not a category. A category
+is a set — an article is in one or it is not — while the shelf is an **ordered list**, and order is
+the whole point: 20 works in the sequence an editor chose.
+
+Its primary key is `article_id`, so a work can hold at most one slot and a double click cannot
+produce two rows that later need reconciling. It cascades on a hard delete. A soft-deleted work keeps
+its row but stops being listed, because the reader-facing query joins `published`; when its author
+publishes it again it returns to the slot the editor gave it. Restoring puts a work back in the
+drafts, not back on the front page, so a restored work stays off the shelf until it is published.
+
+The write replaces the list whole rather than moving one item: two editors rearranging different
+works are indistinguishable from one editor rearranging three, and a whole-list `PUT` is idempotent,
+leaves no gaps in the positions, and cannot leave the shelf half-applied. The cost is a request that
+carries the ids, which is why the ceiling is 20 and why the check runs shape-first (array, UUIDs, no
+duplicates, at most 20) and then published-first (any unpublished id refuses the whole batch instead
+of quietly dropping it).
+
+Editors arrange it from `/admin/featured` in both web apps. The page asks `GET /api/authoring/session`
+whether the account may curate and renders no controls at all when the answer is no, so an account
+without the role never sees buttons that would only answer `403`.
 
 
 ## Cross-provider live-migration boundary

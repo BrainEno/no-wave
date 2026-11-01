@@ -201,6 +201,16 @@ export function normalizeArticleInput({ slug, title, summary, locale, contentBlo
  */
 export const POPULAR_WINDOW_DAYS = 30;
 
+/**
+ * How many works the featured shelf holds.
+ *
+ * A shelf of a hundred is a list of everything, and the whole point of a curated
+ * shelf is that somebody chose. Twenty is enough for a real front page and small
+ * enough that "the editors picked these" still means something — and because the
+ * write replaces the whole shelf, it also bounds one request.
+ */
+export const MAX_FEATURED_ARTICLES = 20;
+
 /** The `published_at` floor for `sort=popular`, as an ISO timestamp. */
 export function popularWindowSince(now = new Date()) {
   const at = now instanceof Date ? now : new Date(now);

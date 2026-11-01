@@ -127,3 +127,20 @@ test("the editor question is answered once in the application layer and handed t
     ["delete", { taxonomyId: "taxonomy-1", actorId: "a-member", actorIsEditor: false }],
   ]);
 });
+
+test("the featured shelf is arranged only after the editor question is answered", async () => {
+  const calls = [];
+  const { adapter } = fakePersistence({
+    async setFeaturedArticles(args) { calls.push(args); return []; },
+  });
+  const services = createApplicationServices({
+    persistence: adapter,
+    env: { EDITOR_USER_IDS: "bootstrap-editor" },
+  });
+  await services.setFeaturedArticles({ actorId: "bootstrap-editor", articleIds: ["11111111-1111-4111-8111-111111111111"] });
+  await services.setFeaturedArticles({ actorId: "a-member", articleIds: [] });
+  assert.deepEqual(calls, [
+    { articleIds: ["11111111-1111-4111-8111-111111111111"], actorId: "bootstrap-editor", actorIsEditor: true },
+    { articleIds: [], actorId: "a-member", actorIsEditor: false },
+  ]);
+});

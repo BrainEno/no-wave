@@ -55,7 +55,7 @@ async function sqliteFixture() {
           `commenter-a-${suffix}`, `commenter-b-${suffix}`,
           `feed-reader-${suffix}`, `feed-author-a-${suffix}`, `feed-author-b-${suffix}`, `feed-stranger-${suffix}`,
           `sort-author-${suffix}`, `sort-other-author-${suffix}`,
-          `role-editor-${suffix}`, `role-target-${suffix}`,
+          `role-editor-${suffix}`, `role-target-${suffix}`, `featured-editor-${suffix}`, `featured-member-${suffix}`,
           `sort-liker-${suffix}-1`,
           `sort-liker-${suffix}-2`,
           `sort-liker-${suffix}-3`,
@@ -121,7 +121,7 @@ async function postgresFixture() {
           `profile-follower-${suffix}`, `profile-target-${suffix}`, `profile-other-${suffix}`,
           `feed-reader-${suffix}`, `feed-author-a-${suffix}`, `feed-author-b-${suffix}`, `feed-stranger-${suffix}`,
           `sort-author-${suffix}`, `sort-other-author-${suffix}`,
-          `role-editor-${suffix}`, `role-target-${suffix}`,
+          `role-editor-${suffix}`, `role-target-${suffix}`, `featured-editor-${suffix}`, `featured-member-${suffix}`,
           `sort-liker-${suffix}-1`,
           `sort-liker-${suffix}-2`,
           `sort-liker-${suffix}-3`,
@@ -1438,6 +1438,78 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       await assert.rejects(Promise.resolve().then(() => runtime.store.setUserRole({ actorId: editorId, userId: missingId, role: "editor" })), ProfileNotFoundError);
       await assert.rejects(Promise.resolve().then(() => runtime.store.setUserRole({ actorId: "  ", userId: targetId, role: "editor" })), ArticleInputError);
       await assert.rejects(Promise.resolve().then(() => runtime.store.setUserRole({ actorId: editorId, userId: "  ", role: "editor" })), ArticleInputError);
+    } finally {
+      await runtime.cleanup(undefined, suffix);
+    }
+  });
+
+  test(`${adapterName}: the featured shelf is ordered, published-only, and editor-arranged`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const editorId = `featured-editor-${suffix}`;
+    const memberId = `featured-member-${suffix}`;
+    const blocks = [{ id: "p1", type: "paragraph", text: "Featured body." }];
+    const publish = (slug, title) => runtime.store.createArticle({
+      authorId: editorId, slug, title, summary: "", locale: "zh-CN", contentBlocks: blocks, publish: true,
+    });
+    const slugs = (articles) => articles.map((article) => article.slug);
+    const shelf = () => runtime.store.listFeaturedArticles({ locale: "zh-CN" });
+    const arrange = (actorId, articleIds) => runtime.store.setFeaturedArticles({ actorId, actorIsEditor: true, articleIds });
+    try {
+      await runtime.store.upsertAuthorProfile({ userId: editorId, displayName: "Editor", locale: "zh-CN" });
+      const first = await publish(`featured-first-${suffix}`, "第一篇");
+      const second = await publish(`featured-second-${suffix}`, "第二篇");
+      const draft = await runtime.store.createArticle({
+        authorId: editorId, slug: `featured-draft-${suffix}`, title: "草稿", summary: "",
+        locale: "zh-CN", contentBlocks: blocks, publish: false,
+      });
+
+      // An empty shelf is an empty list, not an error.
+      assert.deepEqual(await shelf(), []);
+
+      // Only an editor arranges it, and only published work goes on it: a draft
+      // on the public shelf is a promise the reader cannot collect.
+      await assert.rejects(Promise.resolve().then(() => runtime.store.setFeaturedArticles({ actorId: memberId, articleIds: [first.id] })), ArticleAuthorizationError);
+      await assert.rejects(Promise.resolve().then(() => arrange(editorId, [draft.id])), ArticleInputError);
+      await assert.rejects(Promise.resolve().then(() => arrange(editorId, [first.id, first.id])), ArticleInputError);
+      await assert.rejects(Promise.resolve().then(() => arrange(editorId, ["not-an-article"])), ArticleInputError);
+      assert.deepEqual(await shelf(), []);
+
+      // The order is the order the editor sent.
+      await arrange(editorId, [first.id, second.id]);
+      assert.deepEqual(slugs(await shelf()), [`featured-first-${suffix}`, `featured-second-${suffix}`]);
+      // …and a later write replaces the whole shelf, so reordering, dropping one
+      // and emptying it are all the same operation.
+      await arrange(editorId, [second.id, first.id]);
+      assert.deepEqual(slugs(await shelf()), [`featured-second-${suffix}`, `featured-first-${suffix}`]);
+      await arrange(editorId, [first.id]);
+      assert.deepEqual(slugs(await shelf()), [`featured-first-${suffix}`]);
+      await arrange(editorId, []);
+      assert.deepEqual(await shelf(), []);
+
+      // A soft-deleted work stops being offered. The featured row survives, so
+      // the work comes back to the place the editors gave it — but restoring puts
+      // it in the drafts, not back on the front page, so it stays off the shelf
+      // until its author publishes it again.
+      await arrange(editorId, [first.id, second.id]);
+      await runtime.store.deleteArticle({ articleId: first.id, actorId: editorId });
+      assert.deepEqual(slugs(await shelf()), [`featured-second-${suffix}`]);
+      const restored = await runtime.store.restoreArticle({ articleId: first.id, actorId: editorId });
+      assert.equal(restored.status, "draft");
+      assert.deepEqual(slugs(await shelf()), [`featured-second-${suffix}`]);
+      await runtime.store.updateArticle({
+        articleId: first.id, actorId: editorId, slug: restored.slug, title: "第一篇",
+        locale: "zh-CN", contentBlocks: blocks, publish: true,
+      });
+      assert.deepEqual(slugs(await shelf()), [`featured-first-${suffix}`, `featured-second-${suffix}`]);
+
+      // Pagination walks the shelf in the arranged order.
+      const firstPage = await runtime.store.listFeaturedArticles({ locale: "zh-CN", limit: 1, offset: 0 });
+      const secondPage = await runtime.store.listFeaturedArticles({ locale: "zh-CN", limit: 1, offset: 1 });
+      assert.deepEqual(slugs(firstPage), [`featured-first-${suffix}`]);
+      assert.deepEqual(slugs(secondPage), [`featured-second-${suffix}`]);
+      // A locale with no translation has nothing to show.
+      assert.deepEqual(await runtime.store.listFeaturedArticles({ locale: "en" }), []);
     } finally {
       await runtime.cleanup(undefined, suffix);
     }

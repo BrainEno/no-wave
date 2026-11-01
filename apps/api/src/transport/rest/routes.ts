@@ -49,6 +49,7 @@ export const REST_ROUTES: readonly RestRoute[] = Object.freeze([
   { id: "me.liked-articles", methods: ["GET"], segments: [literal("me"), literal("liked-articles")] },
   { id: "me.articles", methods: ["GET"], segments: [literal("me"), literal("articles")] },
   { id: "me.feed", methods: ["GET"], segments: [literal("me"), literal("feed")] },
+  { id: "featured", methods: ["GET", "PUT"], segments: [literal("featured")] },
   {
     id: "me.deleted-articles",
     methods: ["GET"],

@@ -18,7 +18,8 @@ import { useEffect, useState, type FormEvent } from "react";
  * only `next/link` and `next/navigation`, both of which the prototype shims.
  */
 
-type Account = { id: string; email: string | null; emailVerifiedAt: string | null };
+/** `isEditor` is the assembled fact, so the panel never has to know how it is minted. */
+type Account = { id: string; email: string | null; emailVerifiedAt: string | null; isEditor: boolean };
 type ApiErrorPayload = { error?: { message?: unknown } };
 
 type State = "checking" | "ready" | "signed-out" | "error";
@@ -27,6 +28,7 @@ function isAccount(value: unknown): value is Account {
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as Partial<Account>;
   return typeof candidate.id === "string" && candidate.id.length > 0 &&
+    typeof candidate.isEditor === "boolean" &&
     (candidate.email === null || typeof candidate.email === "string") &&
     (candidate.emailVerifiedAt === null || typeof candidate.emailVerifiedAt === "string");
 }
@@ -334,7 +336,14 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
         </dd>
         <dt>账号 ID</dt>
         <dd data-account-id>{account?.id}</dd>
+        <dt>权限</dt>
+        <dd data-account-role>{account?.isEditor ? "编辑" : "作者"}</dd>
       </dl>
+      {account?.isEditor ? (
+        <p className="nw-ep">
+          这个账号是编辑，可以挑选首页的「精选」：<Link href="/admin/featured" data-account-curate-link>编辑精选</Link>。
+        </p>
+      ) : null}
       {mailEnabled === false || verified ? null : (
         <p className="nw-ep">
           未验证的账号同样可以登录、写作和发布：验证只是给这个邮箱留一个「曾经可达」的标记，用于在需要时确认你仍能收到邮件。

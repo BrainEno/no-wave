@@ -1,8 +1,9 @@
 import type { RestRouteContext, RestRouteHandler } from "./context.ts";
 import { MAX_ARTICLE_OFFSET, authenticatedActorId, decodeSlug, decodeUserId, optionalViewerId, parseInteger, parseLocale, parsePagination, parseQuery, parseSort, readJsonObject, sendBadInput, sendJson, sendJsonBodyError, sendServiceError, sendUnauthenticated, sendUnavailable } from "../http.ts";
-import { normalizeArticleWriteBody, normalizeCommentWriteBody, normalizeLikeWriteBody } from "../bodies.ts";
+import { normalizeArticleWriteBody, normalizeCommentWriteBody, normalizeFeaturedWriteBody, normalizeLikeWriteBody } from "../bodies.ts";
 import { serializeRestArticle, serializeRestArticles, serializeRestComment, serializeRestComments } from "../serializers.ts";
 import { slugifyArticleTitle, uniquifyArticleSlug } from "../../../domain/article-slug.ts";
+import { MAX_FEATURED_ARTICLES } from "../../../domain/article.ts";
 import { ArticleSlugConflictError } from "../../../domain/errors.ts";
 
 const MAX_AUTO_SLUG_ATTEMPTS = 25;
@@ -120,6 +121,61 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
         return;
       }
       const articles = await services.listFollowingArticles({ actorId, locale, ...pagination });
+      sendJson(response, 200, { data: await serializeRestArticles(services, articles, actorId) });
+    } catch (error: unknown) {
+      sendServiceError(response, error);
+    }
+  },
+  /**
+   * The featured shelf: public to read, editorial to arrange.
+   *
+   * The whole list arrives in one write rather than as individual adds and moves,
+   * so "editor A moved one thing up" and "editor B reordered three" cannot
+   * interleave into a shelf neither of them asked for.
+   */
+  "featured": async (ctx: RestRouteContext): Promise<void> => {
+    const { request, response, url, services, env } = ctx;
+    if (!services) {
+      sendUnavailable(response);
+      return;
+    }
+    const locale = parseLocale(url);
+    if (!locale) {
+      sendBadInput(response, "Invalid locale query parameter.");
+      return;
+    }
+    if (request.method === "GET") {
+      const pagination = parsePagination(url, 20, MAX_FEATURED_ARTICLES);
+      if (!pagination) {
+        sendBadInput(response, "Invalid limit, or offset query parameter.");
+        return;
+      }
+      try {
+        const viewerId = await optionalViewerId(request, services, env);
+        const articles = await services.listFeaturedArticles({ locale, ...pagination });
+        sendJson(response, 200, { data: await serializeRestArticles(services, articles, viewerId) });
+      } catch (error: unknown) {
+        sendServiceError(response, error);
+      }
+      return;
+    }
+    const bodyResult = await readJsonObject(request);
+    if (bodyResult.ok === false) {
+      sendJsonBodyError(response, request, bodyResult);
+      return;
+    }
+    const normalized = normalizeFeaturedWriteBody(bodyResult.value);
+    if (!normalized.input) {
+      sendBadInput(response, normalized.error ?? "Invalid featured input.");
+      return;
+    }
+    try {
+      const actorId = await authenticatedActorId(request, services, env);
+      if (!actorId) {
+        sendUnauthenticated(response);
+        return;
+      }
+      const articles = await services.setFeaturedArticles({ actorId, articleIds: normalized.input.articleIds, locale });
       sendJson(response, 200, { data: await serializeRestArticles(services, articles, actorId) });
     } catch (error: unknown) {
       sendServiceError(response, error);
