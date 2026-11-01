@@ -90,7 +90,7 @@ export function createSqliteIdentityStore(db) {
           { entityType: "auth_refresh_tokens", entityId: nextRefreshHash, operation: "upsert", payload: get("SELECT * FROM auth_refresh_tokens WHERE token_hash = ?", nextRefreshHash) },
           { entityType: "auth_access_tokens", entityId: accessTokenId, operation: "upsert", payload: get("SELECT * FROM auth_access_tokens WHERE token_id = ?", accessTokenId) },
         ]);
-        return { status: "rotated", userId: session.user_id, accessExpiresAt: cappedExpiry.toISOString(), refreshExpiresAt: new Date(session.expires_at).toISOString() };
+        return { status: "rotated", userId: session.user_id, sessionId: session.id, accessExpiresAt: cappedExpiry.toISOString(), refreshExpiresAt: new Date(session.expires_at).toISOString() };
       });
     },
     async revokeIdentityRefresh({ refreshHash }) {
@@ -151,26 +151,23 @@ export function createSqliteIdentityStore(db) {
         return { userId: row.user_id, email: row.email };
       });
     },
-    async setIdentityPassword({ userId, passwordHash }) {
-      return transaction((transactionId) => {
-        const result = run("UPDATE auth_accounts SET password_hash = ? WHERE user_id = ?", passwordHash, userId);
-        migrationCapture.captureInTransaction(db, transactionId, [
-          { entityType: "auth_accounts", entityId: userId, operation: "upsert", payload: get("SELECT * FROM auth_accounts WHERE user_id = ?", userId) },
-        ]);
-        return Number(result.changes) > 0;
-      });
-    },
     /**
-     * Sign every session of one user out, optionally sparing one.
+     * Replace a password and end the sessions that did not ask for it, in one
+     * transaction.
      *
      * A password reset has to answer "what about the device that stole it" —
-     * without this, changing the password leaves the thief signed in for the
-     * rest of the refresh lifetime. A password *change* made from inside a
-     * session spares that session (`exceptSessionId`): it is the device that
-     * proved it knew the old password, so it must not be signed out by the
-     * very request it just made.
+     * without this, the thief stays signed in for the rest of the refresh
+     * lifetime. A password *change* made from inside a session spares that one
+     * (`exceptSessionId`): it is the device that proved it knew the old
+     * password, and it must not be signed out by the very request it made.
+     *
+     * The order inside the transaction matters as much as the transaction. The
+     * sessions go first, so a failure leaves the old credential in place with
+     * the other devices already out — an inconvenience. The reverse order would
+     * leave a new credential behind with the old sessions still live, which is
+     * the one state a password change exists to prevent.
      */
-    async revokeIdentitySessions({ userId, exceptSessionId = null }) {
+    async replaceIdentityPassword({ userId, passwordHash, exceptSessionId = null }) {
       return transaction((transactionId) => {
         const sessionIds = all("SELECT id FROM auth_sessions WHERE user_id = ? AND revoked_at IS NULL", userId)
           .map((row) => row.id)
@@ -179,7 +176,11 @@ export function createSqliteIdentityStore(db) {
           revokeSessionFamily(sessionId);
           captureSessionSnapshot(transactionId, sessionId);
         }
-        return sessionIds.length;
+        const result = run("UPDATE auth_accounts SET password_hash = ? WHERE user_id = ?", passwordHash, userId);
+        migrationCapture.captureInTransaction(db, transactionId, [
+          { entityType: "auth_accounts", entityId: userId, operation: "upsert", payload: get("SELECT * FROM auth_accounts WHERE user_id = ?", userId) },
+        ]);
+        return { updated: Number(result.changes) > 0, revokedSessions: sessionIds.length };
       });
     },
     async markIdentityEmailVerified({ userId, verifiedAt }) {

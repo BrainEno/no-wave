@@ -152,7 +152,8 @@ expiry, superseded links, session revocation).
 
 - Migrations `0020_identity_verification.sql` and `sqlite/0012_identity_verification.sql`.
 - Store port methods: `issueIdentityToken`, `consumeIdentityToken` (atomic single use),
-  `setIdentityPassword`, `revokeIdentitySessions`, `markIdentityEmailVerified`,
+  `replaceIdentityPassword` (**one transaction: end the sessions, then write the credential** —
+  [ADR 0018](0018-session-id-on-access-tokens.md)), `markIdentityEmailVerified`,
   `findIdentityAccountByUserId`; expired tokens are swept by `pruneExpiredIdentityState`.
 - Routes: `POST /api/v1/auth/forgot-password` (202), `POST /api/v1/auth/reset-password`,
   `POST /api/v1/auth/verify-email`, `POST /api/v1/me/email-verification` (202).

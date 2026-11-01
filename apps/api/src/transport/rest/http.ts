@@ -318,14 +318,16 @@ export async function authenticatedUser(
   request: IncomingMessage,
   services: RestServices,
   env: NodeJS.ProcessEnv,
-): Promise<{ id: string; sessionId: string; sessionExpiresAt: number } | null> {
+): Promise<{ id: string; sessionId: string | null; accessTokenId: string; sessionExpiresAt: number } | null> {
   const authorization = request.headers.authorization;
   if (typeof authorization !== "string") return null;
   const authRequest = new Request("http://localhost/", { headers: { authorization } });
   const { user } = createAuthContext(authRequest, env);
   if (!user || typeof services.isSessionRevoked !== "function") return null;
   try {
-    if (await services.isSessionRevoked(user.sessionId)) return null;
+    // Revocation is recorded against the access-token id, not the session: one
+    // row per token, so signing out ends the token that was presented.
+    if (await services.isSessionRevoked(user.accessTokenId)) return null;
   } catch {
     // Session status cannot be established. Fail closed rather than accepting the JWT.
     return null;

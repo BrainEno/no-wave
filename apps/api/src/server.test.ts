@@ -21,6 +21,11 @@ const authEnv = {
   MAIL_ENABLED: "true",
 };
 
+/**
+ * A token with two *different* identifiers, the way the API issues them: `sid`
+ * is the session the token was minted from, `jti` is this individual token.
+ * A test that mixes them up then fails instead of passing by coincidence.
+ */
 function signedToken(sub) {
   const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
   const header = encode({ alg: "HS256", typ: "application/vnd.bot-thk.access+jwt" });
@@ -30,7 +35,8 @@ function signedToken(sub) {
     aud: authEnv.AUTH_JWT_AUDIENCE,
     iat: Math.floor(Date.now() / 1000),
     exp: Math.floor(Date.now() / 1000) + 60,
-    jti: `session-${sub}`,
+    sid: `session-${sub}`,
+    jti: `token-${sub}`,
   });
   const unsigned = `${header}.${payload}`;
   return `${unsigned}.${createHmac("sha256", authEnv.AUTH_JWT_SECRET).update(unsigned).digest("base64url")}`;
@@ -433,7 +439,8 @@ test("REST article writes require verified non-revoked authentication and a supp
   }, {
     env: authEnv,
     store: {
-      async isSessionRevoked(sessionId) { return sessionId === "session-revoked-writer"; },
+      // Revocation is recorded against the access token, not the session.
+      async isSessionRevoked(tokenId) { return tokenId === "token-revoked-writer"; },
       async createArticle() { writes += 1; return {}; },
       async listMyArticles() { writes += 1; return []; },
     },
@@ -1529,7 +1536,7 @@ test("REST public author profile reflects the optional viewer follow state", asy
   });
 });
 
-test("REST current-session logout persists jti revocation through the token expiry", async () => {
+test("REST current-session logout revokes the access token that was presented, through the token expiry", async () => {
   let received;
   await withServer(async (baseUrl) => {
     const response = await fetch(baseUrl + "/api/v1/me/session", {
@@ -1538,7 +1545,9 @@ test("REST current-session logout persists jti revocation through the token expi
     });
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { data: true });
-    assert.equal(received.sessionId, "session-logout-user");
+    // The token id, not the session id: signing out ends the credential that
+    // was presented, and leaves the visitor's other devices alone.
+    assert.equal(received.sessionId, "token-logout-user");
     assert.ok(received.expiresAt instanceof Date);
     assert.ok(received.expiresAt.getTime() > Date.now());
   }, {
@@ -1560,7 +1569,7 @@ test("REST current-session logout persists jti revocation through the token expi
  * mean is decided once, in the identity service, and tested there.
  */
 test("REST password change is authenticated, spares its own session and stores only the new hash", async () => {
-  const seen: { set: Record<string, unknown> | null; revoked: Record<string, unknown> | null } = { set: null, revoked: null };
+  const seen: { replaced: Record<string, unknown> | null } = { replaced: null };
   await withServer(async (baseUrl) => {
     const response = await fetch(baseUrl + "/api/v1/me/password", {
       method: "PUT",
@@ -1572,10 +1581,16 @@ test("REST password change is authenticated, spares its own session and stores o
     });
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { data: { ok: true, revokedSessions: 1 } });
-    assert.equal(seen.set?.userId, "password-user");
-    assert.ok(await verifyPassword("a-brand-new-password", String(seen.set?.passwordHash)));
-    // The jti of the presented token is the session that must survive its own request.
-    assert.deepEqual(seen.revoked, { userId: "password-user", exceptSessionId: "session-password-user" });
+    // One call carries both halves, so no response can be produced with the
+    // new credential saved and the old sessions still signed in.
+    assert.equal(seen.replaced?.userId, "password-user");
+    assert.ok(await verifyPassword("a-brand-new-password", String(seen.replaced?.passwordHash)));
+    // The session to spare is `sid`, not `jti`: a token is minted afresh on
+    // every refresh, so sparing the token id would spare nothing and sign the
+    // visitor out with their own request.
+    assert.equal(seen.replaced?.exceptSessionId, "session-password-user");
+    assert.notEqual(seen.replaced?.exceptSessionId, "token-password-user",
+      "the access token is not a session, and must not be treated as one");
   }, {
     env: authEnv,
     store: {
@@ -1583,8 +1598,7 @@ test("REST password change is authenticated, spares its own session and stores o
       async findIdentityCredentials({ userId }) {
         return { userId, passwordHash: await hashPassword("the-current-password") };
       },
-      async setIdentityPassword(args) { seen.set = args; return true; },
-      async revokeIdentitySessions(args) { seen.revoked = args; return 1; },
+      async replaceIdentityPassword(args) { seen.replaced = args; return { updated: true, revokedSessions: 1 }; },
     },
   });
 });
@@ -1610,8 +1624,7 @@ test("REST password change answers 401 for a wrong current password and stores n
       async findIdentityCredentials({ userId }) {
         return { userId, passwordHash: await hashPassword("the-current-password") };
       },
-      async setIdentityPassword() { stored += 1; return true; },
-      async revokeIdentitySessions() { throw new Error("must not be called"); },
+      async replaceIdentityPassword() { stored += 1; return { updated: true, revokedSessions: 0 }; },
     },
   });
 });
@@ -1664,7 +1677,8 @@ test("REST optional viewer authentication does not grant viewer state to revoked
   }, {
     env: authEnv,
     store: {
-      async isSessionRevoked(sessionId) { return sessionId === "session-revoked-viewer"; },
+      // Revocation is recorded against the access token, not the session.
+      async isSessionRevoked(tokenId) { return tokenId === "token-revoked-viewer"; },
       async getArticleLikeInfo(args) { received = args; return null; },
     },
   });
@@ -2481,8 +2495,7 @@ function recoveryStore(overrides: Record<string, unknown> = {}) {
       calls.push({ method: "consumeIdentityToken", args: { tokenHash, purpose } });
       return tokenHash === RESET_TOKEN_HASH ? { userId: "owner-user", email: "owner@example.test" } : null;
     },
-    async setIdentityPassword(args) { calls.push({ method: "setIdentityPassword", args }); return true; },
-    async revokeIdentitySessions(args) { calls.push({ method: "revokeIdentitySessions", args }); return 2; },
+    async replaceIdentityPassword(args) { calls.push({ method: "replaceIdentityPassword", args }); return { updated: true, revokedSessions: 2 }; },
     async markIdentityEmailVerified(args) { calls.push({ method: "markIdentityEmailVerified", args }); return true; },
     async findIdentityAccountByUserId({ userId }) {
       calls.push({ method: "findIdentityAccountByUserId", args: { userId } });
@@ -2544,10 +2557,14 @@ test("REST password reset spends the token once, replaces the credential and end
     assert.equal(accepted.status, 200);
     assert.deepEqual(await accepted.json(), { data: { ok: true } });
 
-    assert.ok(store.calls.some((call) => call.method === "setIdentityPassword"));
-    assert.deepEqual(store.calls.find((call) => call.method === "revokeIdentitySessions"), {
-      method: "revokeIdentitySessions", args: { userId: "owner-user" },
-    });
+    // A reset spares nothing, and it does that in the same call that carries
+    // the new credential: the one failure mode worth designing out is a new
+    // password with the session that was stolen still signed in.
+    const replacement = store.calls.find((call) => call.method === "replaceIdentityPassword");
+    assert.equal(replacement?.method, "replaceIdentityPassword");
+    assert.equal(replacement?.args.userId, "owner-user");
+    assert.equal(replacement?.args.exceptSessionId, null, "a reset has no session that proved anything");
+    assert.match(String(replacement?.args.passwordHash), /^scrypt\$/, "and the new credential rides in the same call");
 
     // Well-formed but never issued: 401, not 400 — the shape is fine, the
     // credential is not. (A malformed one is rejected as bad input instead.)
@@ -2707,7 +2724,7 @@ test("REST email change stores the new address, unproven, and signs nobody out",
         return { userId, email: "owner@example.test", emailVerifiedAt: "2026-01-01T00:00:00.000Z" };
       },
       async setIdentityEmail(args) { seen.email = args; return true; },
-      async revokeIdentitySessions() { throw new Error("must not be called"); },
+      async replaceIdentityPassword() { throw new Error("must not be called"); },
     },
   });
 });

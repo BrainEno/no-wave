@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { encodeArticleCursor } from "../domain/article.ts";
 import { ArticleInputError, ArticleSlugConflictError, ConversationInputError, IdempotencyConflictError, ConversationAccessError, ArticleAuthorizationError, ArticleNotFoundError, ProfileInputError, ProfileNotFoundError } from "../domain/errors.ts";
 import { createPostgresClient, createPostgresStore } from "./postgres.ts";
@@ -1134,46 +1134,39 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
     assert.equal(await runtime.store.consumeIdentityToken({ tokenHash: superseded, purpose: "email_verification" }), null);
     assert.ok(await runtime.store.consumeIdentityToken({ tokenHash: replacement, purpose: "email_verification" }));
 
-    await runtime.store.setIdentityPassword({ userId, passwordHash: "hash-after" });
+    // The credential and the sign-out are one operation, so there is no
+    // observable moment with the new credential and the old sessions alive.
+    const changed = await runtime.store.replaceIdentityPassword({
+      userId, passwordHash: "hash-after", exceptSessionId: session.sessionId,
+    });
+    assert.equal(changed.updated, true);
+    // A password *change* is made from inside a session and spares it: two
+    // live sessions, one named, so exactly the other one ends.
+    assert.equal(changed.revokedSessions, 1, "the session that made the change keeps its own");
     assert.equal((await runtime.store.findIdentityAccount({ email })).passwordHash, "hash-after");
 
-    // The security property: changing the password ends the sessions that were
-    // already signed in, so a stolen refresh credential does not outlive it.
     const rotated = await runtime.store.rotateIdentityRefresh({
       refreshHash: "a".repeat(64), nextRefreshHash: "f".repeat(64),
       accessTokenId: randomUUID(), issuedAt: new Date().toISOString(),
       accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
     });
-    assert.equal(rotated.status, "rotated");
-    // The second device is live as well, so "spare one" has something to spare.
-    const secondRotated = await runtime.store.rotateIdentityRefresh({
-      refreshHash: "0".repeat(64), nextRefreshHash: "1".repeat(64),
-      accessTokenId: randomUUID(), issuedAt: new Date().toISOString(),
-      accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
-    });
-    assert.equal(secondRotated.status, "rotated");
-
-    // A password *change* is made from inside a session and spares it: two
-    // live sessions, one named, so exactly the other one ends.
-    assert.equal(await runtime.store.revokeIdentitySessions({ userId, exceptSessionId: session.sessionId }), 1);
-    const spared = await runtime.store.rotateIdentityRefresh({
-      refreshHash: "f".repeat(64), nextRefreshHash: "2".repeat(64),
-      accessTokenId: randomUUID(), issuedAt: new Date().toISOString(),
-      accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
-    });
-    assert.equal(spared.status, "rotated", "the spared device keeps its refresh family");
+    assert.equal(rotated.status, "rotated", "the spared device keeps its refresh family");
+    // The second device was live too — it was signed out, not already dead.
     const signedOut = await runtime.store.rotateIdentityRefresh({
-      refreshHash: "1".repeat(64), nextRefreshHash: "3".repeat(64),
+      refreshHash: "0".repeat(64), nextRefreshHash: "1".repeat(64),
       accessTokenId: randomUUID(), issuedAt: new Date().toISOString(),
       accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
     });
     assert.equal(signedOut.status, "invalid", "every other device is signed out");
 
     // A reset has no device that proved anything, so it spares nothing.
-    assert.equal(await runtime.store.revokeIdentitySessions({ userId }), 1);
-    assert.equal(await runtime.store.revokeIdentitySessions({ userId }), 0, "a second sweep finds nothing left to revoke");
+    const reset = await runtime.store.replaceIdentityPassword({ userId, passwordHash: "hash-final", exceptSessionId: null });
+    assert.equal(reset.updated, true);
+    assert.equal(reset.revokedSessions, 1, "a reset ends the session the owner was using too");
+    assert.equal(await runtime.store.replaceIdentityPassword({ userId, passwordHash: "hash-final-2", exceptSessionId: null }).then((r) => r.revokedSessions), 0,
+      "a second sweep finds nothing left to revoke");
     const afterRevocation = await runtime.store.rotateIdentityRefresh({
-      refreshHash: "2".repeat(64), nextRefreshHash: "4".repeat(64),
+      refreshHash: "f".repeat(64), nextRefreshHash: "2".repeat(64),
       accessTokenId: randomUUID(), issuedAt: new Date().toISOString(),
       accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
     });
@@ -1186,7 +1179,7 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
     assert.equal(await runtime.store.findIdentityAccountByUserId({ userId: `nobody-${suffix}` }), null);
     // The credential has an accessor of its own, so the account record a
     // caller may forward to a response never carries the hash with it.
-    assert.deepEqual(await runtime.store.findIdentityCredentials({ userId }), { userId, passwordHash: "hash-after" });
+    assert.deepEqual(await runtime.store.findIdentityCredentials({ userId }), { userId, passwordHash: "hash-final-2" });
     assert.equal(await runtime.store.findIdentityCredentials({ userId: `nobody-${suffix}` }), null);
 
     /**
@@ -1219,6 +1212,86 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       "a refused move must leave the account where it was");
     assert.equal(await runtime.store.setIdentityEmail({ userId: `nobody-${suffix}`, email: `nowhere-${suffix}@example.test` }), false,
       "an account that does not exist cannot be moved either");
+  });
+
+  test(`${adapterName}: a password replacement that cannot be written leaves every session as it was`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const userId = `identity-user-${suffix}`;
+    const email = `identity-${suffix}@example.test`;
+    const hour = new Date(Date.now() + 3_600_000).toISOString();
+    // Random, not spelled out: the PostgreSQL half of this file runs against one
+    // shared database, and a refresh hash is a primary key.
+    const hash = () => randomBytes(32).toString("hex");
+    const thisRefresh = hash();
+    const otherRefresh = hash();
+    const session = {
+      sessionId: randomUUID(), userId, accessTokenId: randomUUID(),
+      refreshHash: thisRefresh, expiresAt: hour,
+      accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+    };
+    assert.equal(await runtime.store.createIdentityAccount({ userId, email, passwordHash: "hash-before", session }), true);
+    const secondSession = {
+      sessionId: randomUUID(), userId, accessTokenId: randomUUID(),
+      refreshHash: otherRefresh, expiresAt: hour,
+      accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+    };
+    await runtime.store.createIdentitySession(secondSession);
+
+    /**
+     * The point of the whole method: the sessions and the credential are two
+     * statements that must never be observable apart. If the write cannot
+     * happen, everything the call did has to come back — otherwise the failure
+     * looks like "the password did not change" while quietly having signed the
+     * owner's other devices out.
+     *
+     * `password_hash` is NOT NULL in both providers, so this is the one way a
+     * test can make the write fail the same way on both.
+     */
+    await assert.rejects(() => runtime.store.replaceIdentityPassword({
+      userId, passwordHash: null as unknown as string, exceptSessionId: session.sessionId,
+    }));
+
+    assert.equal((await runtime.store.findIdentityAccount({ email })).passwordHash, "hash-before",
+      "a failed replacement leaves the old credential in place");
+    const otherDevice = await runtime.store.rotateIdentityRefresh({
+      refreshHash: otherRefresh, nextRefreshHash: hash(),
+      accessTokenId: randomUUID(), issuedAt: new Date().toISOString(),
+      accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+    });
+    assert.equal(otherDevice.status, "rotated", "and the sessions it would have revoked are still signed in");
+    const thisDevice = await runtime.store.rotateIdentityRefresh({
+      refreshHash: thisRefresh, nextRefreshHash: hash(),
+      accessTokenId: randomUUID(), issuedAt: new Date().toISOString(),
+      accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+    });
+    assert.equal(thisDevice.status, "rotated", "the session that would have been spared never notices");
+
+    /**
+     * Naming a session that is not this account's spares nothing. The sparing is
+     * a filter on the account's own sessions, so a session id taken from
+     * somewhere else cannot keep this account's thief signed in.
+     */
+    const otherUserId = `identity-other-${suffix}`;
+    const foreignRefresh = hash();
+    const otherSession = {
+      sessionId: randomUUID(), userId: otherUserId, accessTokenId: randomUUID(),
+      refreshHash: foreignRefresh, expiresAt: hour,
+      accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+    };
+    assert.equal(await runtime.store.createIdentityAccount({
+      userId: otherUserId, email: `identity-other-${suffix}@example.test`, passwordHash: "hash-other", session: otherSession,
+    }), true);
+    const foreign = await runtime.store.replaceIdentityPassword({
+      userId, passwordHash: "hash-after", exceptSessionId: otherSession.sessionId,
+    });
+    assert.equal(foreign.revokedSessions, 2, "a session that is not this account's spares none of its sessions");
+    const foreignSession = await runtime.store.rotateIdentityRefresh({
+      refreshHash: foreignRefresh, nextRefreshHash: hash(),
+      accessTokenId: randomUUID(), issuedAt: new Date().toISOString(),
+      accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+    });
+    assert.equal(foreignSession.status, "rotated", "and the other account is untouched by it");
   });
 
   test(`${adapterName}: publishing a work is idempotent per author and does not leave a second copy behind`, options, async () => {

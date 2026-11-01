@@ -76,7 +76,7 @@ type IdentitySession = {
   expiresAt: string; accessExpiresAt: string;
 };
 type Rotation = { status: "invalid" | "reused" } | {
-  status: "rotated"; userId: string; accessExpiresAt: string; refreshExpiresAt: string;
+  status: "rotated"; userId: string; sessionId: string; accessExpiresAt: string; refreshExpiresAt: string;
 };
 export type IdentityStore = {
   createIdentityAccount(input: { userId: string; email: string; passwordHash: string; session: IdentitySession }): Promise<boolean>;
@@ -87,7 +87,21 @@ export type IdentityStore = {
   consumeRateLimit(input: { key: string; limit: number; windowSeconds: number }): Promise<{ allowed: boolean; resetAt: string }>;
   issueIdentityToken(input: { userId: string; purpose: IdentityTokenPurpose; email: string; tokenHash: string; expiresAt: string }): Promise<unknown>;
   consumeIdentityToken(input: { tokenHash: string; purpose: IdentityTokenPurpose }): Promise<{ userId: string; email: string } | null>;
-  setIdentityPassword(input: { userId: string; passwordHash: string }): Promise<boolean>;
+  /**
+   * Replace a password and end the sessions that did not ask for it, as one
+   * atomic operation.
+   *
+   * `exceptSessionId` names the session making the change — the one that proved
+   * it knew the old password. `null` (a reset) spares nothing.
+   *
+   * Two separate calls could not express this: the second one failing left a
+   * new password behind with the old sessions still live, which is exactly the
+   * state a password change exists to end. `revokedSessions` is how many were
+   * signed out, so the response can say so.
+   */
+  replaceIdentityPassword(input: {
+    userId: string; passwordHash: string; exceptSessionId?: string | null;
+  }): Promise<{ updated: boolean; revokedSessions: number }>;
   /**
    * Move an account to another address, and drop its proof of the old one.
    *
@@ -99,14 +113,6 @@ export type IdentityStore = {
   setIdentityEmail(input: { userId: string; email: string }): Promise<boolean>;
   /** The credential of one account, and nothing else about it. */
   findIdentityCredentials(input: { userId: string }): Promise<{ userId: string; passwordHash: string } | null>;
-  /**
-   * Revoke every live session of one user, optionally sparing one.
-   *
-   * `exceptSessionId` exists because "the password changed" has two shapes: a
-   * reset has no device that proved anything, so all of them go; a change made
-   * from inside a session keeps the one that proved it knew the old password.
-   */
-  revokeIdentitySessions(input: { userId: string; exceptSessionId?: string }): Promise<number>;
   markIdentityEmailVerified(input: { userId: string; verifiedAt: string }): Promise<boolean>;
   findIdentityAccountByUserId(input: { userId: string }): Promise<{ userId: string; email: string; emailVerifiedAt: string | null } | null>;
   pruneExpiredIdentityState(): Promise<unknown>;
@@ -235,12 +241,12 @@ export function createIdentityService({ store, env, mailer = null, onMailDeliver
       },
     };
   }
-  function tokens({ userId, accessTokenId, issuedAt, accessExpiresAt, refreshExpiresAt, refreshToken }: {
-    userId: string; accessTokenId: string; issuedAt: number; accessExpiresAt: string; refreshExpiresAt: string; refreshToken: string;
+  function tokens({ userId, sessionId, accessTokenId, issuedAt, accessExpiresAt, refreshExpiresAt, refreshToken }: {
+    userId: string; sessionId: string; accessTokenId: string; issuedAt: number; accessExpiresAt: string; refreshExpiresAt: string; refreshToken: string;
   }) {
     const expiresAt = Math.floor(new Date(accessExpiresAt).getTime() / 1000);
     return {
-      accessToken: signAccessToken({ subject: userId, tokenId: accessTokenId, issuedAt, expiresAt, env }),
+      accessToken: signAccessToken({ subject: userId, tokenId: accessTokenId, sessionId, issuedAt, expiresAt, env }),
       tokenType: "Bearer",
       accessExpiresAt: timestamp(expiresAt),
       refreshToken,
@@ -257,7 +263,7 @@ export function createIdentityService({ store, env, mailer = null, onMailDeliver
       const passwordHash = await hashPassword(password);
       const userId = randomUUID();
       const prepared = prepareSession(userId, config);
-      const response = tokens({ userId, accessTokenId: prepared.session.accessTokenId, issuedAt: prepared.issuedAt,
+      const response = tokens({ userId, sessionId: prepared.session.sessionId, accessTokenId: prepared.session.accessTokenId, issuedAt: prepared.issuedAt,
         accessExpiresAt: prepared.session.accessExpiresAt, refreshExpiresAt: prepared.session.expiresAt, refreshToken: prepared.refreshToken });
       const created = await store.createIdentityAccount({ userId, email, passwordHash, session: prepared.session });
       if (!created) throw new IdentityConflictError();
@@ -273,7 +279,7 @@ export function createIdentityService({ store, env, mailer = null, onMailDeliver
       const valid = await verifyPassword(password, account?.passwordHash ?? null);
       if (!account || !valid) throw new IdentityAuthenticationError();
       const prepared = prepareSession(account.userId, config);
-      const response = tokens({ userId: account.userId, accessTokenId: prepared.session.accessTokenId, issuedAt: prepared.issuedAt,
+      const response = tokens({ userId: account.userId, sessionId: prepared.session.sessionId, accessTokenId: prepared.session.accessTokenId, issuedAt: prepared.issuedAt,
         accessExpiresAt: prepared.session.accessExpiresAt, refreshExpiresAt: prepared.session.expiresAt, refreshToken: prepared.refreshToken });
       await store.createIdentitySession(prepared.session);
       return response;
@@ -289,7 +295,7 @@ export function createIdentityService({ store, env, mailer = null, onMailDeliver
       const result = await store.rotateIdentityRefresh({ refreshHash: refreshHash(token), nextRefreshHash: refreshHash(nextRefresh),
         accessTokenId, issuedAt: timestamp(issuedAt), accessExpiresAt: timestamp(issuedAt + config.ttlSeconds) });
       if (result.status !== "rotated") throw new IdentityAuthenticationError();
-      return tokens({ userId: result.userId, accessTokenId, issuedAt, accessExpiresAt: result.accessExpiresAt,
+      return tokens({ userId: result.userId, sessionId: result.sessionId, accessTokenId, issuedAt, accessExpiresAt: result.accessExpiresAt,
         refreshExpiresAt: result.refreshExpiresAt, refreshToken: nextRefresh });
     },
     async logout(body: Record<string, unknown>, ip: string) {
@@ -345,11 +351,10 @@ export function createIdentityService({ store, env, mailer = null, onMailDeliver
       const consumed = await store.consumeIdentityToken({ tokenHash: tokenHash(token), purpose: "password_reset" });
       if (!consumed) throw new IdentityAuthenticationError();
       const passwordHash = await hashPassword(password);
-      await store.setIdentityPassword({ userId: consumed.userId, passwordHash });
-      // Every device signs out. Changing the password has to answer "what about
-      // the session that was already stolen", and the refresh family would
-      // otherwise outlive the credential it was issued against.
-      await store.revokeIdentitySessions({ userId: consumed.userId });
+      // Every device signs out, and it happens in the same transaction as the
+      // new credential: a reset that wrote the hash and then failed to revoke
+      // would leave the stolen session holding a working refresh token.
+      await store.replaceIdentityPassword({ userId: consumed.userId, passwordHash, exceptSessionId: null });
       return { ok: true };
     },
     /**
@@ -366,9 +371,16 @@ export function createIdentityService({ store, env, mailer = null, onMailDeliver
      * changing a password does not throw the visitor out of the page they are
      * using. A reset has no device that proved anything, which is why it signs
      * out everything instead.
+     *
+     * `sessionId` is the session, not the access token: a token is minted afresh
+     * on every refresh, so naming one would spare nothing and sign the visitor
+     * out with their own request. `null` means the session could not be
+     * established (a token issued before tokens carried one) — nothing is
+     * spared, which is the safe direction and is bounded by the access token's
+     * own lifetime.
      */
     async changePassword({ userId, sessionId, body, ip }: {
-      userId: string; sessionId: string; body: Record<string, unknown>; ip: string;
+      userId: string; sessionId: string | null; body: Record<string, unknown>; ip: string;
     }) {
       requireOnly(body, ["currentPassword", "newPassword"]);
       const current = passwordInput(body.currentPassword, false);
@@ -382,10 +394,11 @@ export function createIdentityService({ store, env, mailer = null, onMailDeliver
       const valid = await verifyPassword(current, account?.passwordHash ?? null);
       if (!account || !valid) throw new IdentityAuthenticationError();
       const passwordHash = await hashPassword(next);
-      const updated = await store.setIdentityPassword({ userId, passwordHash });
-      if (!updated) throw new IdentityAuthenticationError();
-      const revokedSessions = await store.revokeIdentitySessions({ userId, exceptSessionId: sessionId });
-      return { ok: true, revokedSessions };
+      // One call, one transaction: the new credential and the end of the other
+      // sessions have to be observable together or not at all.
+      const replaced = await store.replaceIdentityPassword({ userId, passwordHash, exceptSessionId: sessionId });
+      if (!replaced.updated) throw new IdentityAuthenticationError();
+      return { ok: true, revokedSessions: replaced.revokedSessions };
     },
     /**
      * Move the signed-in account to another address.

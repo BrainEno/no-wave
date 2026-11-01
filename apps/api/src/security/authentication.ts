@@ -44,19 +44,35 @@ export function accessIssuerConfiguration(env: NodeJS.ProcessEnv): { secret: str
   return { secret, issuer, audience, ttlSeconds: Math.min(DEFAULT_MAX_ACCESS_TOKEN_TTL_SECONDS, configuredMaxTokenTtl(env)) };
 }
 
-/** Sign a bounded access token in the existing verifier's exact JWT format. */
+/**
+ * Sign a bounded access token in the existing verifier's exact JWT format.
+ *
+ * The token carries two identifiers, and keeping them apart is the point:
+ *
+ *   - `jti` is the **access-token id**. It is what revocation is recorded
+ *     against — one row per token, so signing out ends one token rather than a
+ *     device — and it changes on every refresh.
+ *   - `sid` is the **session id**: the `auth_sessions` row this token was minted
+ *     from, stable across refreshes. It is what "spare the session that made
+ *     this request" needs, because a session is the thing that proved it knew
+ *     the old password.
+ *
+ * They were once the same field, which is how a password change ended up
+ * sparing the token's own id and therefore sparing nothing.
+ */
 export function signAccessToken({
-  subject, tokenId, issuedAt, expiresAt, env,
-}: { subject: string; tokenId: string; issuedAt: number; expiresAt: number; env: NodeJS.ProcessEnv }): string {
+  subject, tokenId, sessionId, issuedAt, expiresAt, env,
+}: { subject: string; tokenId: string; sessionId: string; issuedAt: number; expiresAt: number; env: NodeJS.ProcessEnv }): string {
   const config = accessIssuerConfiguration(env);
   if (!subject || subject.trim() !== subject || !tokenId || tokenId.trim() !== tokenId ||
+      !sessionId || sessionId.trim() !== sessionId ||
       !Number.isSafeInteger(issuedAt) || !Number.isSafeInteger(expiresAt) || expiresAt <= issuedAt ||
       expiresAt - issuedAt > config.ttlSeconds) {
     throw new TypeError("Invalid access token claims.");
   }
   const encode = (value: unknown) => Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
   const header = encode({ alg: "HS256", typ: DEFAULT_ACCESS_TOKEN_TYPE });
-  const claims = encode({ iss: config.issuer, aud: config.audience, sub: subject, jti: tokenId, iat: issuedAt, exp: expiresAt });
+  const claims = encode({ iss: config.issuer, aud: config.audience, sub: subject, sid: sessionId, jti: tokenId, iat: issuedAt, exp: expiresAt });
   const signature = createHmac("sha256", config.secret).update(`${header}.${claims}`).digest("base64url");
   return `${header}.${claims}.${signature}`;
 }
@@ -66,12 +82,16 @@ export function signAccessToken({
  * Tokens require the access-token type, issuer, audience, iat, exp, sub and jti.
  * Access-token lifetime is bounded even if the trusted issuer accidentally
  * emits an excessively long expiry. Revocation is checked by the caller.
+ *
+ * `sessionId` is null for a token issued before `sid` existed. Callers that use
+ * it to identify a session must treat that as "unknown" — never as a value that
+ * happens to look like one.
  */
 export function verifyBearerToken(
   request: Request,
   env: NodeJS.ProcessEnv = process.env,
   nowSeconds = Math.floor(Date.now() / 1000),
-): { id: string; sessionId: string; sessionExpiresAt: number } | null {
+): { id: string; sessionId: string | null; accessTokenId: string; sessionExpiresAt: number } | null {
   const authorization = request.headers.get("authorization");
   const match = typeof authorization === "string" ? BEARER_PREFIX.exec(authorization) : null;
   if (!match || match[1].length > MAX_BEARER_TOKEN_LENGTH) return null;
@@ -135,12 +155,16 @@ export function verifyBearerToken(
   if (typeof claims.sub !== "string" || claims.sub.length === 0 || claims.sub.trim() !== claims.sub) return null;
   if (typeof claims.jti !== "string" || claims.jti.length === 0 || claims.jti.trim() !== claims.jti) return null;
 
-  return { id: claims.sub, sessionId: claims.jti, sessionExpiresAt: claims.exp };
+  // Identity and revocable session IDs are opaque: never silently normalize them.
+  const sessionId = typeof claims.sid === "string" && claims.sid.length > 0 && claims.sid.trim() === claims.sid
+    ? claims.sid
+    : null;
+  return { id: claims.sub, sessionId, accessTokenId: claims.jti, sessionExpiresAt: claims.exp };
 }
 
 export function createAuthContext(
   request: Request,
   env: NodeJS.ProcessEnv = process.env,
-): { user: { id: string; sessionId: string; sessionExpiresAt: number } | null } {
+): { user: { id: string; sessionId: string | null; accessTokenId: string; sessionExpiresAt: number } | null } {
   return { user: verifyBearerToken(request, env) };
 }

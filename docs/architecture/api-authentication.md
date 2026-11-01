@@ -62,14 +62,20 @@ is the contract.
 - Only the SHA-256 digest of a token is stored, with its purpose, the address it was issued for, an
   expiry and a consumed stamp. A reset link lives 30 minutes, a verification link 24 hours, and each
   works exactly once. Issuing again supersedes the link already out.
-- A successful password reset revokes **every** session of that account. Users are signed out
-  everywhere, and the confirmation page should say so.
+- A successful password reset revokes **every** session of that account, in the same transaction
+  that writes the new credential: there is no observable moment with the new password in place and
+  the old sessions still signed in. Users are signed out everywhere, and the confirmation page
+  should say so.
 - `PUT /api/v1/me/password` is the same credential replacement from inside a session, and it
   differs in exactly two ways: the current password is required as well, so a stolen session on
   its own can neither take the account over nor lock the owner out, and the session that made the
   request is **spared** — every other session of the account is revoked, that one is not. `revokedSessions`
   in the answer counts the devices that were signed out. It needs no mail, which is what makes it
   the only working way to replace a credential on an instance where mail is switched off.
+- The spared session is the one named by the access token's `sid` claim, not its `jti`: a token is
+  minted afresh on every refresh, so an access-token id would never match a session and the visitor
+  would be signed out by their own request. `jti` is what **revocation** is recorded against, so
+  `DELETE /api/v1/me/session` ends the one credential that was presented. See [ADR 0018](decisions/0018-session-id-on-access-tokens.md).
 - The token travels in a request body, never in a path: paths are logged by proxies and browsers.
   The mail links to a page, and the page posts the token back.
 - `PUT /api/v1/me/email` moves an account to another address and marks it **unverified**: the proof
