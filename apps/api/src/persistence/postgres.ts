@@ -1100,7 +1100,11 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
          FROM articles AS a
          JOIN article_translations AS t ON t.article_id = a.id
          WHERE a.status = 'published' AND t.locale = $1
-           AND ($2::text IS NULL OR t.title ILIKE $2 ESCAPE E'\\\\' OR t.summary ILIKE $2 ESCAPE E'\\\\')
+           AND ($2::text IS NULL OR t.title ILIKE $2 ESCAPE E'\\\\' OR t.summary ILIKE $2 ESCAPE E'\\\\'
+             OR EXISTS (
+               SELECT 1 FROM jsonb_array_elements(t.content_blocks) AS block(value)
+               WHERE jsonb_typeof(block.value) = 'object' AND (block.value->>'text') ILIKE $2 ESCAPE E'\\\\'
+             ))
            AND ($3::text IS NULL OR a.author_id = $3)
          ORDER BY ${popular ? "like_count DESC, a.published_at DESC, a.id DESC" : "a.published_at DESC, a.id DESC"}
          LIMIT $4 OFFSET $5`,
