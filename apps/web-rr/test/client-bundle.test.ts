@@ -30,6 +30,11 @@ type ClientComponent = {
 const CLIENT_COMPONENTS: readonly ClientComponent[] = [
   { component: "ArticleComments", sentinel: "/comments?locale=", page: "articles/:slug" },
   { component: "ReaderBar", sentinel: "nw-fs", page: "articles/:slug" },
+  // Read-aloud renders nothing until an effect has asked the browser whether it
+  // can speak at all, so an HTML check can never see it; without this the
+  // article page could lose 朗读 and every server-side assertion would stay
+  // green. The sentinel is the platform API the component itself detects.
+  { component: "ReadAloud", sentinel: "speechSynthesis", page: "articles/:slug" },
   { component: "ReaderToc", sentinel: "nw-toc", page: "articles/:slug" },
   { component: "ReadingProgress", sentinel: "nw-progress", page: "articles/:slug" },
   { component: "PageLoader", sentinel: "nw-load", page: "/" },
