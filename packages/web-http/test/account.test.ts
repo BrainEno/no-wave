@@ -5,6 +5,9 @@ import {
   handleAccountEmailChangeRequest,
   handleAccountEmailVerificationRequest,
   handleAccountPasswordChangeRequest,
+  handleAccountSessionEndRequest,
+  handleAccountSessionsRequest,
+  handleAccountOtherSessionsEndRequest,
 } from "../src/account.ts";
 import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE } from "../src/policy.ts";
 import { API_BASE, ROTATED, TOKENS, assertNoStore, json, request, setCookies, stubFetch, tokenEnvelope } from "./helpers.ts";
@@ -330,4 +333,117 @@ test("a refused address change is an answer the page can render, not a framework
   );
   assert.equal(unavailable.status, 503);
   assert.match(await unavailable.text(), /SERVICE_UNAVAILABLE/);
+});
+
+/**
+ * Device management (`GET|DELETE /api/authoring/sessions`).
+ *
+ * The proxy carries no policy of its own here beyond the three things every
+ * account action shares: the cookie's token, the exact-Origin check on writes,
+ * and the method. The list is forwarded untouched — what a device is, and how
+ * many were signed out, are the API's answers — and the session id is
+ * shape-checked after the Origin check so a cross-origin caller cannot use the
+ * status code to find out which ids exist.
+ */
+const SESSION_ID = "11111111-1111-4111-8111-111111111111";
+
+function sessionsRequest(method = "GET", headers: Record<string, string> = {}): Request {
+  return accountRequest("/api/authoring/sessions", method, headers, "");
+}
+
+test("listing devices is a same-origin-free read forwarded with the cookie's token", async () => {
+  const device = {
+    sessionId: SESSION_ID,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    lastUsedAt: null,
+    expiresAt: "2026-01-08T00:00:00.000Z",
+    current: true,
+  };
+  const stub = stubFetch({ "api/v1/me/sessions": () => json({ data: { sessions: [device] } }, 200) });
+  const response = await handleAccountSessionsRequest(sessionsRequest("GET", signedIn()), {
+    apiBaseUrl: API_BASE,
+    fetchImpl: stub.fetchImpl,
+  });
+
+  assert.equal(response.status, 200);
+  assertNoStore(response);
+  assert.deepEqual(await response.json(), { data: { sessions: [device] } });
+  assert.equal(stub.calls[0]?.url, `${API_BASE}/api/v1/me/sessions`);
+  assert.equal((stub.calls[0]?.init?.headers as Headers).get("authorization"), `Bearer ${TOKENS.accessToken}`);
+  assert.equal(stub.calls[0]?.init?.method, "GET");
+});
+
+test("ending the other devices is a same-origin DELETE, and its count is forwarded as it came", async () => {
+  const stub = stubFetch({ "api/v1/me/sessions": () => json({ data: { ok: true, revokedSessions: 2 } }, 200) });
+  const response = await handleAccountOtherSessionsEndRequest(
+    sessionsRequest("DELETE", { ...signedIn(), origin: "https://no-wave.test" }),
+    { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { data: { ok: true, revokedSessions: 2 } });
+  assert.equal(stub.calls[0]?.init?.method, "DELETE");
+  assert.equal(stub.calls[0]?.url, `${API_BASE}/api/v1/me/sessions`,
+    "which device is spared is the API's to decide, not the proxy's");
+
+  const foreign = await handleAccountOtherSessionsEndRequest(
+    sessionsRequest("DELETE", { ...signedIn(), origin: "https://evil.test" }),
+    { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+  );
+  assert.equal(foreign.status, 403);
+  assert.equal(stub.calls.length, 1, "and the cross-origin one never reached it");
+});
+
+test("ending one device checks the method, the origin and then the id, in that order", async () => {
+  const stub = stubFetch({ "api/v1/me/sessions/": () => json({ data: { ok: true } }, 200) });
+  const config = { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl };
+
+  const ended = await handleAccountSessionEndRequest(
+    accountRequest(`/api/authoring/sessions/${SESSION_ID}`, "DELETE", { ...signedIn(), origin: "https://no-wave.test" }, ""),
+    { sessionId: SESSION_ID },
+    config,
+  );
+  assert.equal(ended.status, 200);
+  assert.deepEqual(await ended.json(), { data: { ok: true } });
+  assert.equal(stub.calls[0]?.url, `${API_BASE}/api/v1/me/sessions/${SESSION_ID}`);
+
+  // The shape check is after the Origin check: a hostile page learns nothing.
+  const foreignId = await handleAccountSessionEndRequest(
+    accountRequest("/api/authoring/sessions/not-a-uuid", "DELETE", { ...signedIn(), origin: "https://evil.test" }, ""),
+    { sessionId: "not-a-uuid" },
+    config,
+  );
+  assert.equal(foreignId.status, 403);
+
+  const malformed = await handleAccountSessionEndRequest(
+    accountRequest("/api/authoring/sessions/not-a-uuid", "DELETE", { ...signedIn(), origin: "https://no-wave.test" }, ""),
+    { sessionId: "not-a-uuid" },
+    config,
+  );
+  assert.equal(malformed.status, 400);
+  assert.equal((await malformed.json()).error.code, "BAD_USER_INPUT");
+
+  const read = await handleAccountSessionEndRequest(
+    accountRequest(`/api/authoring/sessions/${SESSION_ID}`, "GET", { ...signedIn(), origin: "https://no-wave.test" }, ""),
+    { sessionId: SESSION_ID },
+    config,
+  );
+  assert.equal(read.status, 405, "a device is not readable");
+  assert.equal(stub.calls.length, 1, "only the first one reached the API");
+});
+
+test("listing devices takes no other method, and ending them takes no GET", async () => {
+  const stub = stubFetch({ "api/v1/": () => json({ data: {} }, 200) });
+  const config = { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl };
+
+  for (const method of ["POST", "PUT", "DELETE", "PATCH"]) {
+    const refused = await handleAccountSessionsRequest(sessionsRequest(method, signedIn()), config);
+    assert.equal(refused.status, 405, `${method} /api/authoring/sessions is refused`);
+  }
+  const readEnd = await handleAccountOtherSessionsEndRequest(
+    sessionsRequest("GET", { ...signedIn(), origin: "https://no-wave.test" }),
+    config,
+  );
+  assert.equal(readEnd.status, 405);
+  assert.equal(stub.calls.length, 0);
 });

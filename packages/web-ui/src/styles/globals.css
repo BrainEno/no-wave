@@ -320,6 +320,14 @@ mark { background: var(--or); color: #0f0d0c; }
 .nw-auth-error, .nw-auth-status { margin: 16px 0; padding: 12px 0; border-top: 1px solid var(--ink); }
 .nw-auth-error { color: var(--red); }
 .nw-account-fields { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 10px 20px; max-width: 720px; margin-top: 32px; font-size: 15px; }
+/* The device list: one row per signed-in session, newest activity first (ADR 0019). */
+.nw-device-list { list-style: none; margin: 0; padding: 0; max-width: 720px; border-bottom: 1px solid var(--ink); }
+.nw-device-row { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 12px 0; border-top: 1px solid var(--ink); }
+.nw-device-row[data-device-current="true"] { box-shadow: inset 4px 0 var(--or); }
+.nw-device-meta { display: grid; gap: 4px; flex: 1 1 16em; }
+.nw-device-meta small { color: var(--t2); font-variant-numeric: tabular-nums; }
+.nw-device-actions { display: flex; gap: 8px; }
+.nw-device-actions .nw-btn { min-height: 40px; padding: 0 14px; font-size: 13px; }
 .nw-account-fields dt { color: var(--t2); }
 .nw-account-fields dd { margin: 0; overflow-wrap: anywhere; }
 .nw-authoring-grid { display: grid; grid-template-columns: minmax(180px, .32fr) minmax(0, 1fr); align-items: start; gap: clamp(24px, 4vw, 64px); margin-top: 40px; }

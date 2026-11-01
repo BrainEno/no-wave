@@ -69,9 +69,9 @@
 
 ## 当前前端（apps/web-rr + packages/web-ui）的需求覆盖
 
-两个前端只通过 `packages/web-http` 访问 9 个接口族：`me`、`me/email-verification`、`me/media`、`me/notifications*`、`articles*`、`articles/:slug/comments`、`auth/*`。全部已实现，**没有缺口**。唯一的共同注意事项是 P3。
+两个前端只通过 `packages/web-http` 访问 10 个接口族：`me`、`me/email-verification`、`me/media`、`me/notifications*`、`me/sessions*`、`articles*`、`articles/:slug/comments`、`auth/*`。全部已实现，**没有缺口**。唯一的共同注意事项是 P3。
 
-`me/sessions*`（多设备管理：列出设备、结束某一台、结束其他全部）在 API 侧已实现并通过双 provider 测试，但**两个前端都还没有接入**——它不属于上面 9 个族。要接入时应在 `packages/web-http` 加行为、两个框架各加一个薄适配，而不是在页面里直接 fetch。
+**`me/sessions*`（多设备管理）已接入**：共享行为在 `packages/web-http/src/account.ts`（`handleAccountSessionsRequest` / `handleAccountSessionEndRequest` / `handleAccountOtherSessionsEndRequest`：方法、写请求的 exact-Origin 检查、id 形状校验、cookie 令牌转发），`apps/web-rr` 侧只有 `app/lib/account-proxy.ts` 里三个薄绑定和两个资源路由；界面在共享的 `AccountPanel`（`packages/web-ui`）里新增「登录的设备」一节：列出在线会话、标记「这台设备」、可逐台结束或一次结束其他全部。
 
 ## 缺口清单
 

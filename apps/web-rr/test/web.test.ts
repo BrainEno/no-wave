@@ -8,10 +8,12 @@ import {
   MOCK_COMMENT_ID,
   MOCK_CREDENTIALS,
   MOCK_DELETED_ARTICLE_ID,
+  MOCK_DEVICE_IDS,
   MOCK_DISPLAY_NAME,
   MOCK_MEDIA,
   MOCK_NOTIFICATION,
   MOCK_TOKENS,
+  resetMockDevices,
   resetMockNotifications,
   startMockRestApi,
 } from "../mocks/rest-api.ts";
@@ -1220,6 +1222,65 @@ test("the inbox's writes are origin-checked, and a malformed id never reaches th
 
   const anonymous = await put(`/api/authoring/notifications/${MOCK_NOTIFICATION.id}/read`, "{}");
   assert.equal(anonymous.status, 401);
+});
+
+/**
+ * `GET|DELETE /api/authoring/sessions` and `DELETE /api/authoring/sessions/:id`.
+ *
+ * The interesting part is not that a list comes back — it is that the proxy
+ * carries no policy of its own beyond the method, the exact-Origin check on
+ * writes and the cookie's token, and that the *sparing* stays upstream: which
+ * device "end the others" keeps is the API's decision, made from the token, and
+ * a proxy that tried to decide it would have to guess. So the assertions are
+ * about the wiring and the pass-through, and the rules themselves stay API
+ * tests.
+ */
+test("the device list reaches the API with the cookie's token, and only as a GET", async () => {
+  resetMockDevices();
+  const session = { cookie: `nw_access=${MOCK_TOKENS.accessToken}; nw_refresh=${MOCK_TOKENS.refreshToken}` };
+
+  const signedOut = await get("/api/authoring/sessions");
+  assert.equal(signedOut.status, 401, "without a session there are no devices to list");
+
+  const listed = await get("/api/authoring/sessions", session);
+  assert.equal(listed.status, 200);
+  assert.match(listed.headers.get("cache-control") ?? "", /no-store/, "a device list is private");
+  assert.match(listed.body, new RegExp(MOCK_DEVICE_IDS.current));
+  assert.match(listed.body, /"current":true/, "one of them is the device asking");
+  assert.match(listed.body, /"current":false/, "and one is not");
+
+  const write = await post("/api/authoring/sessions", "{}", session);
+  assert.ok([404, 405].includes(write.status), "the collection is not a POST target");
+});
+
+test("ending one device, and ending the others, are same-origin DELETEs whose answers pass through", async () => {
+  resetMockDevices();
+  const session = { cookie: `nw_access=${MOCK_TOKENS.accessToken}; nw_refresh=${MOCK_TOKENS.refreshToken}` };
+
+  const foreign = await del(`/api/authoring/sessions/${MOCK_DEVICE_IDS.other}`, { ...session, origin: "https://attacker.example" });
+  assert.equal(foreign.status, 403);
+  assert.match(foreign.body, /ORIGIN_REJECTED/);
+
+  const ended = await del(`/api/authoring/sessions/${MOCK_DEVICE_IDS.other}`, session);
+  assert.equal(ended.status, 200);
+  assert.match(ended.body, /"ok":true/);
+
+  const again = await del(`/api/authoring/sessions/${MOCK_DEVICE_IDS.other}`, session);
+  assert.equal(again.status, 404, "ending an ended device is not a second ending");
+
+  // The list proves it: one device, the one that asked.
+  const listed = await get("/api/authoring/sessions", session);
+  assert.match(listed.body, /"current":true/);
+  assert.doesNotMatch(listed.body, /"current":false/);
+
+  resetMockDevices();
+  const endedOthers = await del("/api/authoring/sessions", session);
+  assert.equal(endedOthers.status, 200);
+  assert.match(endedOthers.body, /"revokedSessions":1/, "the answer says how many devices were signed out");
+  const after = await get("/api/authoring/sessions", session);
+  assert.doesNotMatch(after.body, new RegExp(MOCK_DEVICE_IDS.other), "the other device is gone");
+  assert.match(after.body, new RegExp(MOCK_DEVICE_IDS.current), "the one that asked is spared");
+  resetMockDevices();
 });
 
 /**

@@ -51,6 +51,15 @@ function localDate(value: string): string {
   return Number.isFinite(parsed) ? new Date(parsed).toLocaleDateString() : "未知时间";
 }
 
+/**
+ * A date *and* a time, because a device list is compared in hours: "signed in
+ * at 09:40" is the difference between the laptop and the phone left on a train.
+ */
+function localDateTime(value: string): string {
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? new Date(parsed).toLocaleString() : "未知时间";
+}
+
 /** The address and its verification state, as the API answers them. */
 function changedAddress(payload: unknown): { email: string; emailVerifiedAt: string | null } | null {
   const data = dataOf(payload);
@@ -59,6 +68,43 @@ function changedAddress(payload: unknown): { email: string; emailVerifiedAt: str
   if (typeof email !== "string") return null;
   const emailVerifiedAt = (data as { emailVerifiedAt?: unknown }).emailVerifiedAt;
   return { email, emailVerifiedAt: typeof emailVerifiedAt === "string" ? emailVerifiedAt : null };
+}
+
+/**
+ * A device, as the API describes one.
+ *
+ * Deliberately thin: an id, when it was signed in, when it last refreshed, when
+ * it lapses, and whether it is the one doing the looking. No user agent, no
+ * address, no geolocation — the API stores none of them (ADR 0019), so this
+ * list asks the visitor to recognise a timestamp rather than to trust a
+ * fingerprint the site had to collect to produce it.
+ */
+type Device = {
+  sessionId: string; createdAt: string; lastUsedAt: string | null; expiresAt: string; current: boolean;
+};
+
+/** The device list, or `null` when the answer is not one. */
+function deviceListOf(payload: unknown): Device[] | null {
+  const data = dataOf(payload);
+  const sessions = typeof data === "object" && data !== null && "sessions" in data
+    ? (data as { sessions: unknown }).sessions
+    : null;
+  if (!Array.isArray(sessions)) return null;
+  const devices: Device[] = [];
+  for (const entry of sessions) {
+    if (typeof entry !== "object" || entry === null) return null;
+    const candidate = entry as Partial<Device>;
+    if (typeof candidate.sessionId !== "string" || candidate.sessionId.length === 0) return null;
+    if (typeof candidate.createdAt !== "string" || typeof candidate.expiresAt !== "string") return null;
+    devices.push({
+      sessionId: candidate.sessionId,
+      createdAt: candidate.createdAt,
+      lastUsedAt: typeof candidate.lastUsedAt === "string" ? candidate.lastUsedAt : null,
+      expiresAt: candidate.expiresAt,
+      current: candidate.current === true,
+    });
+  }
+  return devices;
 }
 
 /** How many other devices were signed out, when the API says. */
@@ -83,6 +129,11 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
   const [newPassword, setNewPassword] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [emailPassword, setEmailPassword] = useState("");
+  const [devices, setDevices] = useState<Device[] | null>(null);
+  const [devicesError, setDevicesError] = useState("");
+  /** The device being ended, and whether "end the others" is in flight. */
+  const [ending, setEnding] = useState<string | null>(null);
+  const [endingOthers, setEndingOthers] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -120,6 +171,15 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
     })();
     return () => { active = false; };
   }, [router]);
+
+  // Devices are asked for only once the account is known: a list fetched
+  // before then would be a list for nobody.
+  useEffect(() => {
+    if (state !== "ready") return;
+    let active = true;
+    void refreshDevices(() => active);
+    return () => { active = false; };
+  }, [state]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function requestVerification() {
     setBusy("verification");
@@ -260,6 +320,115 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
     }
   }
 
+  /** The session is over: the honest answer is a sign-in page, not an error. */
+  function goToSignIn() {
+    setState("signed-out");
+    router.replace("/sign-in?next=%2Faccount");
+  }
+
+  async function refreshDevices(active = () => true) {
+    try {
+      const response = await fetch("/api/authoring/sessions", { credentials: "same-origin", cache: "no-store" });
+      const payload: unknown = await response.json().catch(() => null);
+      if (!active()) return;
+      if (response.status === 401) {
+        goToSignIn();
+        return;
+      }
+      if (!response.ok) {
+        setDevicesError("暂时无法载入设备列表，请稍后重试。");
+        return;
+      }
+      const list = deviceListOf(payload);
+      if (!list) {
+        setDevicesError("设备列表响应格式不正确。");
+        return;
+      }
+      setDevices(list);
+      setDevicesError("");
+    } catch {
+      if (active()) setDevicesError("暂时无法连接服务器，请稍后重试。");
+    }
+  }
+
+  /**
+   * End one device.
+   *
+   * Ending the device you are holding is allowed — it is what the logout button
+   * does — and the redirect afterwards falls out of the next request answering
+   * 401, so there is no special case to get wrong here.
+   */
+  async function endDevice(sessionId: string) {
+    setEnding(sessionId);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch(`/api/authoring/sessions/${encodeURIComponent(sessionId)}`, {
+        method: "DELETE",
+        headers: { accept: "application/json" },
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+      if (response.status === 401) {
+        goToSignIn();
+        return;
+      }
+      if (response.status === 404) {
+        // Already gone — from the visitor's side the device is off either way.
+        setNotice("这台设备已经不在线了。");
+        await refreshDevices();
+        return;
+      }
+      if (!response.ok) {
+        setError(errorMessage(await response.json().catch(() => null), "结束这台设备失败，请稍后重试。"));
+        return;
+      }
+      await refreshDevices();
+      setNotice("这台设备已退出登录，它手里的令牌即刻失效。");
+    } catch {
+      setError("暂时无法连接服务器，请稍后重试。");
+    } finally {
+      setEnding(null);
+    }
+  }
+
+  /**
+   * End every other device: the lost-phone answer that does not require
+   * changing the password. The one that asks is spared, which is the API's
+   * decision and not this page's.
+   */
+  async function endOtherDevices() {
+    setEndingOthers(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/authoring/sessions", {
+        method: "DELETE",
+        headers: { accept: "application/json" },
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+      const payload: unknown = await response.json().catch(() => null);
+      if (response.status === 401) {
+        goToSignIn();
+        return;
+      }
+      if (!response.ok) {
+        setError(errorMessage(payload, "结束其他设备失败，请稍后重试。"));
+        return;
+      }
+      const revoked = revokedCount(payload);
+      await refreshDevices();
+      setNotice(revoked > 0
+        ? `已让其他 ${revoked} 台设备退出登录；这台设备保持登录。`
+        : "没有其他设备处于登录状态。");
+    } catch {
+      setError("暂时无法连接服务器，请稍后重试。");
+    } finally {
+      setEndingOthers(false);
+    }
+  }
+
   async function signOut() {
     setBusy("logout");
     setError("");
@@ -349,6 +518,70 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
           未验证的账号同样可以登录、写作和发布：验证只是给这个邮箱留一个「曾经可达」的标记，用于在需要时确认你仍能收到邮件。
         </p>
       )}
+      {/*
+        Devices.
+
+        The list answers the question nobody could ask before: what is signed in
+        as me, and how do I stop the one I lost? It says nothing about what a
+        device *is* beyond when it appeared and when it last refreshed, because
+        the server collected nothing else about it — that is the bargain ADR
+        0019 strikes, and the copy says so rather than pretending the labels are
+        coming.
+      */}
+      <div className="nw-auth-form" aria-labelledby="nw-account-devices-title" data-account-devices>
+        <h2 id="nw-account-devices-title"><span className="nw-zh">登录的设备</span> <i>Devices</i></h2>
+        <p className="nw-ep">
+          这些是正在以这个账号登录的会话。服务端只记录会话的创建时间、最近一次续期时间和失效时间——没有设备型号、浏览器和地址，
+          因为项目里任何地方都不存这些；所以这里只能靠时间认出是哪一台。
+        </p>
+        {devices === null && devicesError === "" ? (
+          <p className="nw-auth-status" role="status" data-devices-loading>正在载入设备列表……</p>
+        ) : null}
+        {devicesError !== "" ? (
+          <p className="nw-auth-error" role="alert" data-devices-error>{devicesError}</p>
+        ) : null}
+        {devices && devices.length === 0 ? (
+          <p className="nw-auth-status" role="status" data-devices-empty>除了这台设备，没有其他登录。</p>
+        ) : null}
+        {devices && devices.length > 0 ? (
+          <ul className="nw-device-list" data-device-list>
+            {devices.map((device) => (
+              <li className="nw-device-row" key={device.sessionId} data-device={device.sessionId} data-device-current={device.current}>
+                <span className="nw-device-meta">
+                  <strong>{device.current ? "这台设备" : "另一台设备"}</strong>
+                  <small>
+                    登录于 {localDateTime(device.createdAt)}；最近活动 {device.lastUsedAt ? localDateTime(device.lastUsedAt) : "就是登录时"}
+                  </small>
+                </span>
+                <span className="nw-device-actions">
+                  <button
+                    className="nw-btn"
+                    type="button"
+                    disabled={ending !== null || endingOthers}
+                    onClick={() => void endDevice(device.sessionId)}
+                    data-device-end={device.sessionId}
+                  >
+                    {ending === device.sessionId ? "正在结束……" : "结束这台"}
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {devices && devices.length > 1 ? (
+          <div className="nw-auth-switch">
+            <button
+              className="nw-btn nw-pri"
+              type="button"
+              disabled={ending !== null || endingOthers}
+              onClick={() => void endOtherDevices()}
+              data-devices-end-others
+            >
+              {endingOthers ? "正在结束……" : "结束其他全部设备"}
+            </button>
+          </div>
+        ) : null}
+      </div>
       <form className="nw-auth-form" onSubmit={changeEmail} aria-labelledby="nw-account-email-title" data-account-email-form>
         <h2 id="nw-account-email-title"><span className="nw-zh">修改邮箱</span> <i>Change address</i></h2>
         <p className="nw-ep">

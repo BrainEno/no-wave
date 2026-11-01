@@ -64,6 +64,11 @@ Decisions inside that shape:
 - The list is only as informative as a timestamp, so a future "this was me on my phone" label
   cannot be added without a decision to start collecting device data — which is a new ADR, not a
   tweak.
-- No client consumes this yet. The API is complete and tested on both providers; a screen in the
-  account panel is the next slice, and it should expect to render `{ createdAt, lastUsedAt,
-  current }` and nothing richer.
+- The Web tier reached it in the same migration: `packages/web-http` owns the three handlers
+  (the method, the exact-Origin check on the two writes, the session-id shape check after it,
+  cookie-attached forwarding), the application contributes two resource routes and three one-line
+  bindings, and the shared `AccountPanel` renders the list — newest first, one row per session,
+  "this device" marked, end-one and end-the-others buttons. The list is fetched after the account
+  resolves, so the server-rendered page shows only the panel's shell: it is the client bundle that
+  carries the section, which is why the build's assets are asserted rather than the HTML, and why
+  the row-level behaviour needs a browser to be exercised.
