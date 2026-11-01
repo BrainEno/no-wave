@@ -54,8 +54,9 @@ Reading marks are **the reader's own, kept in their own browser, and never sent 
 - **Copy watermarking and blocking near-whole-article copies.** `red-room-archive` does both. They are
   a copyright posture, not a reading feature, and this project's position on reuse and on automated
   collection is a decision for the owner (see ADR 0011). They are not smuggled in behind 划线.
-- **Reading the marked passage aloud, and sharing it.** Both exist in `red-room-archive` and both are
-  possible now that passages have anchors; neither is part of this slice.
+- **Sharing a passage.** `red-room-archive` builds a share card for one; it is possible now that
+  passages have anchors, and it is not part of this work. Reading a marked passage aloud *is*, and it
+  shares the single voice described in ADR 0020 with the control that reads the whole work.
 
 ## Consequences
 

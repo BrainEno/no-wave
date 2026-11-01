@@ -34,6 +34,7 @@ function zh() {
       passages: {
         shelf: "我的划线", empty: "还没有划线。选中正文里的一段，它就会留在这台设备上。",
         mark: "划线", note: "加注", edit: "修改", locate: "定位", remove: "删除", cancel: "取消", save: "保存",
+        read: "朗读这段", readStop: "停止",
         placeholder: "写下你对这一段的想法……", count: (n: number, total: number) => `${n}/${total}`,
         saved: "已保存在这台设备上。", removed: "这条划线已删除。",
         full: "这篇作品的划线已经满了；先删掉一条，再加新的。", tooLong: "这一段太长了，一次划线的上限是 240 字。",
@@ -87,6 +88,7 @@ function en(): UiCopy {
       passages: {
         shelf: "My marks", empty: "Nothing marked yet. Select a passage in the text and it stays on this device.",
         mark: "Mark", note: "Add a note", edit: "Edit", locate: "Find", remove: "Remove", cancel: "Cancel", save: "Save",
+        read: "Read it", readStop: "Stop",
         placeholder: "What do you make of this passage?…", count: (n: number, total: number) => `${n}/${total}`,
         saved: "Saved on this device.", removed: "Mark removed.",
         full: "This work is full of marks; remove one before adding another.", tooLong: "That passage is too long — a mark holds up to 240 characters.",

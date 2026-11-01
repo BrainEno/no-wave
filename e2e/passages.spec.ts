@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { publishWork, selectPartOf } from "./support/works.ts";
+import { cancellations, installEngine, spokenTexts } from "./support/speech.ts";
 
 /**
  * 划线 — marking a passage, in a real browser.
@@ -21,6 +22,10 @@ import { publishWork, selectPartOf } from "./support/works.ts";
  * What a passage *is* — how it is found again after the work is edited, how
  * long it may be, what happens when the shelf is full — is decided in
  * `lib/passages.ts` and covered there, without a browser (ADR 0021).
+ *
+ * The last two journeys borrow the fake speech engine from `support/speech.ts`,
+ * for the same reason `read-aloud.spec.ts` does: a headless browser has no
+ * voices, and what is being asserted is which words reached the engine.
  */
 
 const FIRST_PARAGRAPH = "那年冬天，渡口的船停了，第一句留给划线。";
@@ -107,4 +112,57 @@ test("removing a mark takes it off the page and out of the browser", async ({ pa
   await expect(page.locator("[data-passage-shelf] li"), "the shelf is empty again").toHaveCount(0, { timeout: 60_000 });
   expect(await highlights(page), "and nothing is painted any more").not.toContain(MARK);
   expect(await stored(page, `nw-passages-v1:${slug}`), "and the browser is not left holding it").toEqual([]);
+});
+
+test("a marked passage can be read on its own, and 停止 ends it", async ({ page }) => {
+  await installEngine(page, 900);
+  await page.goto(`/articles/${slug}`);
+  await expect(page.locator("[data-passage-shelf]")).toBeVisible({ timeout: 60_000 });
+
+  await selectPartOf(page, page.locator("#nw-article p[data-block]").first());
+  await page.locator("[data-passage-mark]").click();
+  const item = page.locator("[data-passage-shelf] li").first();
+  await expect(item).toHaveCount(1, { timeout: 60_000 });
+  const quote = (await item.locator(".nw-passage-quote").textContent())?.trim() ?? "";
+  expect(quote.length).toBeGreaterThan(0);
+
+  const read = item.getByRole("button", { name: "朗读这段" });
+  await expect(read).toBeVisible();
+  await read.click();
+
+  // The words the reader marked, and only those, are what gets said.
+  await expect(async () => {
+    expect(await spokenTexts(page)).toEqual([quote]);
+  }).toPass({ timeout: 60_000 });
+  await expect(item.getByRole("button", { name: "停止" }), "the same button ends it").toBeVisible();
+
+  await item.getByRole("button", { name: "停止" }).click();
+  expect(await cancellations(page), "停止 reaches the engine").toBeGreaterThan(0);
+  await expect(item.getByRole("button", { name: "朗读这段" })).toBeVisible();
+});
+
+test("reading one passage takes the voice from a reading of the whole work", async ({ page }) => {
+  await installEngine(page, 900);
+  await page.goto(`/articles/${slug}`);
+  await expect(page.locator("[data-passage-shelf]")).toBeVisible({ timeout: 60_000 });
+
+  await selectPartOf(page, page.locator("#nw-article p[data-block]").first());
+  await page.locator("[data-passage-mark]").click();
+  const item = page.locator("[data-passage-shelf] li").first();
+  await expect(item).toHaveCount(1, { timeout: 60_000 });
+  const quote = (await item.locator(".nw-passage-quote").textContent())?.trim() ?? "";
+
+  // The whole work is being read...
+  await page.locator("[data-read-aloud]").getByRole("button", { name: "朗读" }).click();
+  await expect(page.locator("[data-read-aloud]").getByRole("button", { name: "暂停" })).toBeVisible({ timeout: 60_000 });
+
+  // ...and then the reader asks for one passage.
+  await item.getByRole("button", { name: "朗读这段" }).click();
+
+  // A browser has one voice: the article's reading is over, and its control
+  // says so instead of sitting on 暂停 for something nobody can hear.
+  await expect(page.locator("[data-read-aloud]").getByRole("button", { name: "朗读" }), "the article's control is back at rest")
+    .toBeVisible({ timeout: 60_000 });
+  await expect(item.getByRole("button", { name: "停止" })).toBeVisible();
+  expect(await spokenTexts(page)).toContain(quote);
 });

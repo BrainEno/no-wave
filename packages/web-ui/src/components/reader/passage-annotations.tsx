@@ -1,6 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { Locale } from "@/lib/content.ts";
+import { speechLang } from "@/lib/read-aloud.ts";
+import { speakSequence, speechSupported, type Speaker } from "@/lib/speech.ts";
 import {
   PASSAGE_LIMIT,
   PASSAGES_PER_WORK,
@@ -43,6 +46,9 @@ export type PassageLabels = {
   edit: string;
   locate: string;
   remove: string;
+  /** Reading one passage aloud: the button on the shelf, and its pressed state. */
+  read: string;
+  readStop: string;
   cancel: string;
   save: string;
   placeholder: string;
@@ -78,18 +84,23 @@ function highlightApi(window: HighlightWindow): { registry: HighlightRegistry; H
   return registry && Highlight ? { registry, Highlight } : null;
 }
 
-type PassageAnnotationsProps = { slug: string; labels: PassageLabels };
+type PassageAnnotationsProps = { slug: string; locale: Locale; labels: PassageLabels };
 
-export function PassageAnnotations({ slug, labels }: PassageAnnotationsProps) {
+export function PassageAnnotations({ slug, locale, labels }: PassageAnnotationsProps) {
   const key = useMemo(() => passageStorageKey(slug), [slug]);
   const [supported, setSupported] = useState(false);
   const [passages, setPassages] = useState<Passage[]>([]);
   const [toolbar, setToolbar] = useState<{ top: number; left: number; anchor: PassageAnchor } | null>(null);
   const [draft, setDraft] = useState<{ anchor: PassageAnchor; id: string | null; note: string } | null>(null);
   const [status, setStatus] = useState("");
+  const [reading, setReading] = useState<string | null>(null);
+  const [canSpeak, setCanSpeak] = useState(false);
   const points = useRef<TextPoint[]>([]);
   const source = useRef("");
   const dialog = useRef<HTMLDialogElement>(null);
+  const speaker = useRef<Speaker | null>(null);
+
+  useEffect(() => { setCanSpeak(speechSupported()); }, []);
 
   useEffect(() => {
     const api = highlightApi(window as HighlightWindow);
@@ -256,6 +267,31 @@ export function PassageAnnotations({ slug, labels }: PassageAnnotationsProps) {
     }
   }, [labels.gone, rangeFor]);
 
+  /** Read one marked passage: the same voice, the same rules, one paragraph. */
+  const readPassage = useCallback((passage: Passage) => {
+    if (reading === passage.id) {
+      speaker.current?.stop();
+      speaker.current = null;
+      setReading(null);
+      return;
+    }
+    if (relocate(passage, source.current) === null) {
+      setStatus(labels.gone);
+      return;
+    }
+    speaker.current?.stop();
+    setReading(passage.id);
+    speaker.current = speakSequence([passage.text], speechLang(locale), {
+      onDone: () => { speaker.current = null; setReading(null); },
+      onError: () => { speaker.current = null; setReading(null); },
+      // The article's own 朗读 can take the voice back; the shelf must not keep
+      // showing 停止 for a passage that is no longer being read.
+      onTakeover: () => { speaker.current = null; setReading(null); },
+    });
+  }, [labels.gone, locale, reading]);
+
+  useEffect(() => () => { speaker.current?.stop(); }, []);
+
   useEffect(() => {
     const node = dialog.current;
     if (!node) return;
@@ -298,6 +334,11 @@ export function PassageAnnotations({ slug, labels }: PassageAnnotationsProps) {
                 <span className="nw-passage-actions">
                   <button type="button" onClick={() => setDraft({ anchor: passage, id: passage.id, note: passage.note })}>{passage.note ? labels.edit : labels.note}</button>
                   <button type="button" onClick={() => jumpTo(passage)}>{labels.locate}</button>
+                  {canSpeak ? (
+                    <button type="button" aria-pressed={reading === passage.id} onClick={() => readPassage(passage)}>
+                      {reading === passage.id ? labels.readStop : labels.read}
+                    </button>
+                  ) : null}
                   <button type="button" onClick={() => forget(passage.id)}>{labels.remove}</button>
                 </span>
               </li>

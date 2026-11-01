@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ArticleContentBlock, Locale } from "@/lib/content.ts";
 import { blockPosition, speakChunks, speechLang } from "@/lib/read-aloud.ts";
+import { speakSequence, speechSupported, type Speaker } from "@/lib/speech.ts";
 
 /**
  * 朗读 — reading the work aloud with the browser's own speech engine.
@@ -15,8 +16,9 @@ import { blockPosition, speakChunks, speechLang } from "@/lib/read-aloud.ts";
  *
  * What is said is decided by `read-aloud.ts`, in units the reader counts: one
  * paragraph at a time, split only when a sentence is longer than a mouthful.
- * What is left here is the part that needs a browser — asking for one chunk at
- * a time, and following along.
+ * How it is said is `speech.ts`, which also makes sure only one thing speaks at
+ * a time — the shelf can read one marked passage out loud too, and the two must
+ * not talk over each other.
  */
 
 export type ReadAloudLabels = {
@@ -43,18 +45,12 @@ export function ReadAloud({ blocks, locale, labels }: ReadAloudProps) {
   const [index, setIndex] = useState(-1);
   const [status, setStatus] = useState("");
   const chunks = useMemo(() => speakChunks(blocks), [blocks]);
-  /** Whether a sequence is still ours: `cancel()` fires `onerror` on the utterance it kills. */
-  const running = useRef(false);
+  const speaker = useRef<Speaker | null>(null);
 
   // The server cannot know whether the reader's browser can speak, and guessing
   // would put a control on the page that never works. So the first render — on
   // both sides — is nothing, and the answer is asked after hydration.
-  useEffect(() => {
-    // Both halves are needed: an engine to speak, and a constructor for what it
-    // says. Asking for one without the other is how a reader gets a button that
-    // throws instead of speaking.
-    setSupported(typeof window.speechSynthesis !== "undefined" && typeof window.SpeechSynthesisUtterance === "function");
-  }, []);
+  useEffect(() => { setSupported(speechSupported()); }, []);
 
   /** Mark the block being spoken, and keep it on screen while it is. */
   useEffect(() => {
@@ -70,8 +66,8 @@ export function ReadAloud({ blocks, locale, labels }: ReadAloudProps) {
     return () => { node.classList.remove(SPEAKING); };
   }, [chunks, index]);
 
-  const finish = useCallback((message: string) => {
-    running.current = false;
+  const rest = useCallback((message: string) => {
+    speaker.current = null;
     setPlaying(false);
     setPaused(false);
     setIndex(-1);
@@ -79,59 +75,34 @@ export function ReadAloud({ blocks, locale, labels }: ReadAloudProps) {
   }, []);
 
   const stop = useCallback(() => {
-    running.current = false;
-    window.speechSynthesis.cancel();
-    setPlaying(false);
-    setPaused(false);
-    setIndex(-1);
-    setStatus("");
-  }, []);
-
-  /**
-   * Speak from `position` to the end, one chunk at a time.
-   *
-   * One utterance at a time rather than a queued batch: the highlight follows
-   * what is being said, and a queue cannot be paused mid-utterance without
-   * losing the reader's place.
-   */
-  const speakFrom = useCallback((position: number) => {
-    const step = (at: number): void => {
-      const chunk = chunks[at];
-      if (!chunk) {
-        finish(labels.done);
-        return;
-      }
-      const utterance = new SpeechSynthesisUtterance(chunk.text);
-      utterance.lang = speechLang(locale);
-      utterance.onend = () => {
-        if (!running.current) return;
-        const where = blockPosition(chunks, at + 1);
-        setIndex(at + 1);
-        setStatus(where ? labels.position(where.position, where.total) : labels.done);
-        step(at + 1);
-      };
-      utterance.onerror = () => {
-        // `cancel()` reports this too, so only a sequence that is still ours
-        // counts as a failure; otherwise stopping would look like an error.
-        // A failure on the very first chunk is the reader's engine having no
-        // voice to say it with, which is worth a sentence rather than silence.
-        if (running.current) finish(at === 0 ? labels.unavailable : "");
-      };
-      window.speechSynthesis.speak(utterance);
-    };
-    step(position);
-  }, [chunks, finish, labels, locale]);
+    speaker.current?.stop();
+    rest("");
+  }, [rest]);
 
   const start = useCallback(() => {
-    window.speechSynthesis.cancel();
-    running.current = true;
-    const where = blockPosition(chunks, 0);
+    const at = (position: number): string => {
+      const where = blockPosition(chunks, position);
+      return where ? labels.position(where.position, where.total) : "";
+    };
     setPlaying(true);
     setPaused(false);
     setIndex(0);
-    setStatus(where ? labels.position(where.position, where.total) : "");
-    speakFrom(0);
-  }, [chunks, labels, speakFrom]);
+    setStatus(at(0));
+    speaker.current = speakSequence(chunks.map((chunk) => chunk.text), speechLang(locale), {
+      onChunk: (position) => {
+        setIndex(position);
+        setStatus(at(position));
+      },
+      onDone: () => rest(labels.done),
+      // A refusal on the very first chunk is the reader's engine having no
+      // voice to say it with, which is worth a sentence rather than silence.
+      onError: (position) => rest(position === 0 ? labels.unavailable : ""),
+      // The shelf can read one marked passage; when it does, this reading is
+      // over and the control must say so, because `cancel()` is indistinguish-
+      // able from a chunk that ended.
+      onTakeover: () => rest(""),
+    });
+  }, [chunks, labels, locale, rest]);
 
   const toggle = useCallback(() => {
     if (!playing) {
@@ -149,10 +120,7 @@ export function ReadAloud({ blocks, locale, labels }: ReadAloudProps) {
 
   // Leaving the page is leaving the reading: an utterance that outlives its
   // article keeps talking over whatever the reader went to next.
-  useEffect(() => () => {
-    running.current = false;
-    if (typeof window.speechSynthesis !== "undefined") window.speechSynthesis.cancel();
-  }, []);
+  useEffect(() => () => { speaker.current?.stop(); }, []);
 
   if (!supported || chunks.length === 0) return null;
 
