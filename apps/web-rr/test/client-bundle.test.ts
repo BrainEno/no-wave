@@ -48,6 +48,10 @@ const CLIENT_COMPONENTS: readonly ClientComponent[] = [
   // so every HTTP-level check passes on a page the visitor cannot navigate away
   // from.
   { component: "SiteChrome", sentinel: "nw-smooth", page: "/" },
+  // The device list on the account page renders only after it has fetched, so
+  // an HTML check on `/account` can never see it: without this the panel could
+  // ship without its devices and every server-side assertion would stay green.
+  { component: "AccountPanel (devices)", sentinel: "/api/authoring/sessions", page: "account" },
   // Recovery and verification. Each of these renders a form or a panel that
   // does its work in the browser — the verification panel spends the token from
   // an effect, so a page that renders it and never hydrates would sit on

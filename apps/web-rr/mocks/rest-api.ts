@@ -157,6 +157,48 @@ export const MOCK_NOTIFICATION: MockNotification = Object.freeze({
   readAt: null,
 });
 
+/**
+ * The mock's devices.
+ *
+ * Two of them, one marked `current`, because the interesting question — which
+ * one does "end the others" spare — cannot be asked of a list with one row.
+ * Ending them mutates this array, so tests reset it.
+ */
+export const MOCK_DEVICE_IDS = Object.freeze({
+  current: "11111111-1111-4111-8111-111111111111",
+  other: "22222222-2222-4222-8222-222222222222",
+});
+
+export type MockDevice = {
+  sessionId: string; createdAt: string; lastUsedAt: string | null; expiresAt: string; current: boolean;
+};
+
+function mockDevices(): MockDevice[] {
+  return [
+    {
+      sessionId: MOCK_DEVICE_IDS.current,
+      createdAt: new Date(Date.now() - 86_400_000).toISOString(),
+      lastUsedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+      current: true,
+    },
+    {
+      sessionId: MOCK_DEVICE_IDS.other,
+      createdAt: new Date(Date.now() - 3 * 3_600_000).toISOString(),
+      lastUsedAt: null,
+      expiresAt: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+      current: false,
+    },
+  ];
+}
+
+let MOCK_DEVICES: MockDevice[] = mockDevices();
+
+/** Put both devices back, so a test that ends one does not depend on order. */
+export function resetMockDevices(): void {
+  MOCK_DEVICES = mockDevices();
+}
+
 /** Newest first, and mutable: marking a notice read is the point of the inbox. */
 const MOCK_NOTIFICATIONS: MockNotification[] = [{ ...MOCK_NOTIFICATION }];
 
@@ -856,6 +898,54 @@ function handle(request: IncomingMessage, response: ServerResponse, body: Record
       return;
     }
     send(response, 200, { data: { ok: true, revokedSessions: 2 } });
+    return;
+  }
+
+  /**
+   * `GET|DELETE /api/v1/me/sessions` and `DELETE /api/v1/me/sessions/:id`.
+   *
+   * The mock keeps the two rules the real contract has: only a session may ask,
+   * and an id that is not one of the account's live devices is a 404 rather than
+   * an error, so neither can be used to find out which ids exist. Ending the
+   * device that asks is allowed — that is what the real endpoint does — and it
+   * simply ends up with nothing left to list.
+   */
+  if (path === "/api/v1/me/sessions") {
+    if (method !== "GET" && method !== "DELETE") {
+      send(response, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed." } });
+      return;
+    }
+    if (request.headers.authorization !== `Bearer ${MOCK_TOKENS.accessToken}`) {
+      send(response, 401, { error: { code: "UNAUTHENTICATED", message: "Please sign in again." } });
+      return;
+    }
+    if (method === "DELETE") {
+      const ended = MOCK_DEVICES.filter((device) => !device.current).length;
+      MOCK_DEVICES = MOCK_DEVICES.filter((device) => device.current);
+      send(response, 200, { data: { ok: true, revokedSessions: ended } });
+      return;
+    }
+    send(response, 200, { data: { sessions: MOCK_DEVICES } });
+    return;
+  }
+
+  if (path.startsWith("/api/v1/me/sessions/")) {
+    const sessionId = decodeURIComponent(path.slice("/api/v1/me/sessions/".length));
+    if (method !== "DELETE") {
+      send(response, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed." } });
+      return;
+    }
+    if (request.headers.authorization !== `Bearer ${MOCK_TOKENS.accessToken}`) {
+      send(response, 401, { error: { code: "UNAUTHENTICATED", message: "Please sign in again." } });
+      return;
+    }
+    const device = MOCK_DEVICES.find((entry) => entry.sessionId === sessionId);
+    if (!device) {
+      send(response, 404, { error: { code: "NOT_FOUND", message: "The session was not found." } });
+      return;
+    }
+    MOCK_DEVICES = MOCK_DEVICES.filter((entry) => entry.sessionId !== sessionId);
+    send(response, 200, { data: { ok: true } });
     return;
   }
 

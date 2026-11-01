@@ -117,3 +117,91 @@ export async function handleAccountEmailChangeRequest(
   if (!body.ok) return body.response;
   return forwardAuthoringRequest(request, "api/v1/me/email", "PUT", config, body.text);
 }
+
+/**
+ * The signed-in account's devices.
+ *
+ * `GET` lists them, `DELETE` on the collection ends every *other* one, and
+ * `DELETE` on one id ends exactly that one. None of the three takes a body:
+ * which account is asking comes from the cookie `forwardAuthoringRequest`
+ * attaches, and which device is named by the path. A body would only be a
+ * second place for a caller to disagree with both.
+ *
+ * What the list contains is the API's decision, and it is a deliberately thin
+ * one — no user agent, no address, no geolocation, because this project stores
+ * none of them (ADR 0019). The proxy forwards the answer unchanged rather than
+ * decorating it.
+ */
+
+/**
+ * Session ids are UUIDs; the shape is checked before proxying, after the Origin
+ * check, so a cross-origin caller cannot use the status code to learn which
+ * session ids exist.
+ */
+export const SESSION_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
+ * `GET /api/authoring/sessions` — the devices signed in as this account.
+ *
+ * A read, so the Origin check that guards writes does not apply: a page that
+ * cannot list its own devices is not safer, and a cross-origin script cannot
+ * read the answer anyway. The identity is still the session cookie, so an
+ * anonymous caller gets the API's 401 rather than an empty list.
+ */
+export async function handleAccountSessionsRequest(
+  request: Request,
+  config: ApiProxyConfig = {},
+): Promise<Response> {
+  const method = methodOf(request, ["GET"]);
+  if (method === null) {
+    return errorResponse("METHOD_NOT_ALLOWED", "Only GET is supported for listing devices.", 405);
+  }
+  return forwardAuthoringRequest(request, "api/v1/me/sessions", "GET", config);
+}
+
+/**
+ * `DELETE /api/authoring/sessions` — end every other device.
+ *
+ * The one that asks is spared by the API, which knows which one that is from
+ * the token; the proxy cannot and must not guess. The answer carries how many
+ * devices were signed out, and it is forwarded as it came so the page can say.
+ */
+export async function handleAccountOtherSessionsEndRequest(
+  request: Request,
+  config: ApiProxyConfig = {},
+): Promise<Response> {
+  const method = methodOf(request, ["DELETE"]);
+  if (method === null) {
+    return errorResponse("METHOD_NOT_ALLOWED", "Only DELETE is supported for ending the other devices.", 405);
+  }
+  if (rejectCrossOrigin(request)) {
+    return errorResponse("ORIGIN_REJECTED", "The request origin was rejected.", 403);
+  }
+  return forwardAuthoringRequest(request, "api/v1/me/sessions", "DELETE", config);
+}
+
+/**
+ * `DELETE /api/authoring/sessions/:sessionId` — end one device.
+ *
+ * Method, then Origin, then the id, in the order every other mutation here
+ * uses. Ending the device the visitor is holding is allowed — it is what the
+ * logout endpoint does — so this handler does not try to protect them from it.
+ */
+export async function handleAccountSessionEndRequest(
+  request: Request,
+  params: { sessionId: string },
+  config: ApiProxyConfig = {},
+): Promise<Response> {
+  const method = methodOf(request, ["DELETE"]);
+  if (method === null) {
+    return errorResponse("METHOD_NOT_ALLOWED", "Only DELETE is supported for ending a device.", 405);
+  }
+  if (rejectCrossOrigin(request)) {
+    return errorResponse("ORIGIN_REJECTED", "The request origin was rejected.", 403);
+  }
+  if (!SESSION_ID_PATTERN.test(params.sessionId)) {
+    return errorResponse("BAD_USER_INPUT", "Invalid session ID.", 400);
+  }
+  return forwardAuthoringRequest(request, `api/v1/me/sessions/${params.sessionId}`, "DELETE", config);
+}

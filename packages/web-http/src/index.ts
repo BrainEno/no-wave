@@ -19,6 +19,9 @@ export {
   handleAccountEmailChangeRequest,
   handleAccountEmailVerificationRequest,
   handleAccountPasswordChangeRequest,
+  handleAccountSessionsRequest,
+  handleAccountSessionEndRequest,
+  handleAccountOtherSessionsEndRequest,
 } from "./account.ts";
 export { apiUrl, readPayload, type ApiProxyConfig, type FetchImpl } from "./api.ts";
 export {
