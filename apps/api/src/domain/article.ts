@@ -199,6 +199,81 @@ export function normalizeArticleInput({ slug, title, summary, locale, contentBlo
  */
 export const MAX_FEATURED_ARTICLES = 20;
 
+/**
+ * A cursor is where the reader got to — the sort key of the last work they saw.
+ *
+ * It is deliberately **not** opaque. A client that has just read a page can
+ * build the next cursor from the last row it received (`publishedAt` and `id`),
+ * which is what lets a paginated list stay a plain array in the response body:
+ * no envelope, no `nextCursor` field, and therefore no change to the shape every
+ * existing reader already parses. A page that comes back empty is the end.
+ *
+ * The cost of being readable is that it has to be validated, because a stranger
+ * can hand us anything. Decoding therefore answers `null` for anything it does
+ * not recognise rather than throwing: the caller turns that into a `400`.
+ */
+const CURSOR_SEPARATOR = "|";
+const CURSOR_MAX_LENGTH = 512;
+
+/** The cursor pointing *past* `publishedAt`/`id` in the newest-first order. */
+export function encodeArticleCursor(publishedAt: string, id: string): string {
+  return Buffer.from(`${publishedAt}${CURSOR_SEPARATOR}${id}`, "utf8").toString("base64url");
+}
+
+/**
+ * The place a cursor names, or `null` if it names nothing we recognise.
+ *
+ * The timestamp is checked for shape rather than merely parsed, because
+ * `Date.parse` accepts a great deal that no ISO timestamp ever looks like.
+ *
+ * The id is checked as a UUID, which is stricter than this API's usual rule that
+ * identifiers are opaque strings — and deliberately so. Elsewhere an identifier
+ * is *resolved*: the store answers "not found" for anything it does not hold,
+ * and a shape check would only be a second, disagreeing definition. Here the id
+ * is *compared*, as half of a sort key against a `uuid` column, so a value that
+ * is not one cannot be ordered — it can only fail, in the database, as a `500`.
+ * Refusing it here turns that into a `400`.
+ */
+export function decodeArticleCursor(cursor: string): { publishedAt: string; id: string } | null {
+  if (typeof cursor !== "string" || cursor.length === 0 || cursor.length > CURSOR_MAX_LENGTH) return null;
+  let decoded: string;
+  try {
+    decoded = Buffer.from(cursor, "base64url").toString("utf8");
+  } catch {
+    return null;
+  }
+  const at = decoded.indexOf(CURSOR_SEPARATOR);
+  if (at <= 0) return null;
+  const publishedAt = decoded.slice(0, at);
+  const id = decoded.slice(at + 1);
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(publishedAt)) return null;
+  return isUuid(id) ? { publishedAt, id } : null;
+}
+
+/**
+ * What a cursor means for one list read, shared by both adapters.
+ *
+ * It lives here rather than in each store because the rules are rules, not SQL:
+ * a cursor walks the newest-first order only, and it is not to be combined with
+ * an offset. Two copies of "only with sort=latest" would eventually disagree.
+ */
+export function resolveArticleCursor(args: { cursor: unknown; sort: string; offset: number }): { publishedAt: string; id: string } | null {
+  const { cursor, sort, offset } = args;
+  if (cursor === null || cursor === undefined) return null;
+  if (typeof cursor !== "string" || cursor.trim().length === 0 || cursor !== cursor.trim()) {
+    throw new ArticleInputError("cursor must be a non-empty, trimmed string.");
+  }
+  if (sort !== "latest") {
+    throw new ArticleInputError("A cursor is only supported with sort=latest; the most-saved order is re-ranked while it is being read.");
+  }
+  // Two different answers to "where does this page start" — accepting both would
+  // mean silently deciding which one wins.
+  if (offset > 0) throw new ArticleInputError("Pass either offset or cursor, not both.");
+  const decoded = decodeArticleCursor(cursor);
+  if (!decoded) throw new ArticleInputError("Invalid cursor.");
+  return decoded;
+}
+
 export function normalizeTaxonomyIds(name, ids, max) {
   if (ids === undefined || ids === null) return undefined;
   if (!Array.isArray(ids) || ids.length > max || !ids.every(isUuid)) {

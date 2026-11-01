@@ -88,6 +88,35 @@ export function parsePagination(url: URL, defaultLimit: number, maxOffset: numbe
   return limit === null || offset === null ? null : { limit, offset };
 }
 
+/**
+ * Where a page of article discovery starts.
+ *
+ * Two answers, and they are not allowed at the same time: an offset counts rows
+ * from the top, a cursor names the last work the reader already saw. Taking both
+ * would mean silently deciding which one wins, so the request is a `400` instead.
+ *
+ * A cursor is passed through without being decoded: what it means is the store's
+ * business, and this layer's only job is to keep it bounded and untrimmed on its
+ * way there.
+ */
+export type ArticlePagination =
+  | { kind: "offset"; limit: number; offset: number }
+  | { kind: "cursor"; limit: number; cursor: string };
+
+export function parseArticlePagination(url: URL, defaultLimit: number, maxOffset: number): ArticlePagination | null {
+  const limit = parseInteger(url.searchParams, "limit", defaultLimit, 1, 100);
+  if (limit === null) return null;
+  const rawCursor = url.searchParams.get("cursor");
+  const rawOffset = url.searchParams.get("offset");
+  if (rawCursor !== null) {
+    if (rawOffset !== null) return null;
+    if (rawCursor.length === 0 || rawCursor.length > 512 || rawCursor !== rawCursor.trim()) return null;
+    return { kind: "cursor", limit, cursor: rawCursor };
+  }
+  const offset = parseInteger(url.searchParams, "offset", 0, 0, maxOffset);
+  return offset === null ? null : { kind: "offset", limit, offset };
+}
+
 export function decodeSlug(encodedSlug: string): string | null {
   let slug: string;
   try {
