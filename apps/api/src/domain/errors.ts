@@ -102,6 +102,15 @@ export class ProfileInputError extends DomainError {
     super("ProfileInputError", "BAD_USER_INPUT", message);
   }
 }
+/**
+ * ADR 0016: the caller is authenticated but is not allowed to curate. Maps to 403
+ * through the shared FORBIDDEN response, like every other authorization refusal.
+ */
+export class ProfileAuthorizationError extends DomainError {
+  constructor(message = "Only an editor can change account roles.") {
+    super("ProfileAuthorizationError", "FORBIDDEN", message);
+  }
+}
 export class ProfileNotFoundError extends DomainError {
   constructor(message = "The user profile was not found.") {
     super("ProfileNotFoundError", "NOT_FOUND", message);

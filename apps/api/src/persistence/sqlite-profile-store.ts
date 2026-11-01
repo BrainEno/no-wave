@@ -7,7 +7,7 @@ import {
 } from "../domain/errors.ts";
 import { validateArticleLocale } from "../domain/article.ts";
 import { requiredText } from "../domain/validation.ts";
-import { validateProfileUrl } from "../domain/profile.ts";
+import { normalizeStoredRole, validateProfileUrl, validateUserRole } from "../domain/profile.ts";
 
 /**
  * SQLite implementation of the author-profile and follow persistence slice.
@@ -36,7 +36,7 @@ export function createSqliteProfileStore(db) {
   };
   const requestHash = (value) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
   const profileSelect = `
-    SELECT p.user_id, p.avatar_url, p.website_url, p.created_at,
+    SELECT p.user_id, p.role, p.avatar_url, p.website_url, p.created_at,
       MAX(p.updated_at, translated.updated_at) AS updated_at,
       translated.display_name, translated.bio, translated.locale,
       (SELECT count(*) FROM user_follows f WHERE f.followed_id = p.user_id) AS follower_count,
@@ -56,6 +56,7 @@ export function createSqliteProfileStore(db) {
     const iso = (value) => value instanceof Date ? value.toISOString() : new Date(value).toISOString();
     return {
       userId: row.user_id,
+      role: normalizeStoredRole(row.role),
       displayName: row.display_name,
       bio: row.bio,
       avatarUrl: row.avatar_url,
@@ -104,6 +105,36 @@ export function createSqliteProfileStore(db) {
       validateViewer(viewerId);
       const row = profileById(userId, locale, viewerId);
       return row ? mapProfile(row) : null;
+    },
+    /**
+     * The one permission question the platform asks: may this account curate?
+     * A profile that does not exist answers `member` — absence of a record is
+     * absence of privilege, never a reason to fail open.
+     */
+    getUserRole({ userId }) {
+      requiredText("userId", userId, 300);
+      const row = get("SELECT role FROM user_profiles WHERE user_id = ?", userId);
+      return normalizeStoredRole(row?.role);
+    },
+    setUserRole({ actorId, userId, role }) {
+      requiredText("actorId", actorId, 300);
+      requiredText("userId", userId, 300);
+      const validatedRole = validateUserRole(role);
+      // ADR 0016, decision 3: nobody edits their own role. A single-editor
+      // instance whose editor demotes themselves has no way back in.
+      if (actorId === userId) throw new ProfileInputError("You cannot change your own role.");
+      return transaction((transactionId) => {
+        if (!get("SELECT user_id FROM user_profiles WHERE user_id = ?", userId)) throw new ProfileNotFoundError();
+        run(
+          "UPDATE user_profiles SET role = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE user_id = ?",
+          validatedRole, userId,
+        );
+        const row = get("SELECT * FROM user_profiles WHERE user_id = ?", userId);
+        migrationCapture.captureInTransaction(db, transactionId, [
+          { entityType: "user_profiles", entityId: userId, operation: "upsert", payload: row },
+        ]);
+        return normalizeStoredRole(row.role);
+      });
     },
     searchUsers({ query, locale = "zh-CN", viewerId = null, limit = 20 }) {
       validateArticleLocale(locale);
@@ -201,7 +232,7 @@ export function createSqliteProfileStore(db) {
           userId, locale, displayName, bio,
         );
         const row = get(
-          `SELECT p.user_id, p.avatar_url, p.website_url, p.created_at,
+          `SELECT p.user_id, p.role, p.avatar_url, p.website_url, p.created_at,
             MAX(p.updated_at, t.updated_at) AS updated_at,
             t.display_name, t.bio, t.locale,
             (SELECT count(*) FROM user_follows f WHERE f.followed_id = p.user_id) AS follower_count,

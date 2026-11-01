@@ -189,6 +189,7 @@ The API exposes a versioned REST business contract under `/api/v1`. REST handler
 - `GET /api/v1/me/profile?locale=zh-CN` — current user profile; requires authentication.
 - `GET /api/v1/users?query=&locale=zh-CN&limit=20` — user search; accepts an optional valid JWT for viewer-specific follow state.
 - `GET /api/v1/users/:userId/followers?locale=zh-CN&limit=50` and `GET /api/v1/users/:userId/following?locale=zh-CN&limit=50` — relationship lists with complete AuthorProfile records.
+- `PUT /api/v1/users/:userId/role` — assign the `editor` or `member` role to another account. Editor-only; see "Editorial roles" below.
 - `GET /api/v1/me/liked-articles?locale=zh-CN&limit=50` — authenticated liked-article list.
 - `GET /api/v1/articles?locale=zh-CN&query=&sort=latest&limit=20&offset=0` — published article search and pagination.
   `sort=popular` ranks by like count, but only inside the last 30 days (`POPULAR_WINDOW_DAYS` in `domain/article.ts`): an all-time chart freezes the tab, so the same few old works would hold the top forever and new work could never reach it. Ties fall back to publication date, and the window composes with `query` and the author filter instead of replacing them. An unknown `sort` is a `400 BAD_INPUT`.
@@ -217,6 +218,7 @@ All routes below require a valid, non-revoked bearer JWT, except for public comm
 - `PUT /api/v1/articles/:articleId` — update an article; the actor is derived from JWT and ownership is enforced in the application/persistence layer. Uses the same fields as create, and requires boolean `publish`.
 - `PUT /api/v1/me/profile` — update the current user's profile using `displayName`, optional `bio`, `avatarUrl`, `websiteUrl` and optional `locale`. The profile owner is derived from JWT identity.
 - `POST /api/v1/users/:userId/follow` and `DELETE /api/v1/users/:userId/follow` — idempotently follow or unfollow the target stable user ID. The returned profile includes the complete AuthorProfile data contract, including counts, timestamps, avatar/website, locale and viewer-specific follow state.
+- `PUT /api/v1/users/:userId/role` — assign a role to another account. The body is exactly `{ "role": "editor" | "member" }`; unsupported fields or values are a `400 BAD_INPUT`. The caller must already be an editor (`403 FORBIDDEN` otherwise), and **nobody may change their own role** (`400 BAD_INPUT`) — a single-editor instance whose editor demotes itself has no way back in. A user ID with no profile is a `404 NOT_FOUND`. The response is the updated AuthorProfile, whose `role` field is how a client learns whether to show editorial controls; no separate endpoint asks.
 - `PUT /api/v1/me/email` — move the signed-in account to another address with `{"password": "...", "email": "..."}`. The current password is required: whoever controls the address controls the account's recovery, so a session on its own must not be able to move it. The address is trimmed and lowercased, must be unique, and is then **unverified** — what was on file was proof of the old one. Nothing is gated on verification and no mail is sent, so this works while mail is off; ask for a verification mail separately with `POST /api/v1/me/email-verification`. No session is revoked: the devices already signed in are still the owner's. `200 {"data":{"ok":true,"email":"...","emailVerifiedAt":null}}`; `409` when the address belongs to another account; `400` for a malformed address or a body that is not exactly these two fields; `401` for a wrong password or a missing session. Asking for the address the account already has is not a change: it answers `200` with the current verification state and rewrites nothing.
 - `PUT /api/v1/me/password` — change the password of the signed-in account with `{"currentPassword": "...", "newPassword": "..."}`. The current password is required as well, so a stolen session on its own can neither take the account over nor lock the owner out, and the new one is held to registration rules (12–128 characters). Every **other** session of the account is revoked and the one making the request is spared, so the answer `{"data":{"ok":true,"revokedSessions":N}}` says how many devices were signed out and this one was not. `400` for a weak new password or a body that is not exactly these two fields; `401` for a wrong current password or a missing session. Unlike recovery through the mail, this path needs no mail at all.
 - `DELETE /api/v1/me/session` — revoke the self-hosted session family associated with the verified access token; for external JWTs revoke only the presented `jti`.
@@ -250,6 +252,7 @@ One path slot can carry different identifiers per method, and the parameter name
 | `/api/v1/articles/:id/restore` | `POST` | the article id |
 | `/api/v1/articles/:slug/like`, `/comments`, `/related` | `GET` | the slug |
 | `/api/v1/authors/:userId`, `/api/v1/users/:userId/follow`, `/followers`, `/following` | all | the user id |
+| `/api/v1/users/:userId/role` | PUT | the user id |
 | `/api/v1/tags/:slug`, `/api/v1/categories/:slug` | `GET` | the taxonomy slug |
 
 Identifiers are opaque strings. A path segment is only decoded and bounded — decodable, non-empty, at most 300 characters and free of surrounding whitespace — and its **shape is not validated**: an identifier that names nothing is a `404` from the store, which is the only place that can tell.
@@ -259,6 +262,25 @@ Identifiers are opaque strings. A path segment is only decoded and bounded — d
 Repeated query parameter names are rejected with `400 BAD_USER_INPUT` because all current REST query parameters are scalar; rejected requests close the connection when a write body may remain unread. The versioned REST API accepts locales `zh-CN`, `zh-TW`, and `en`; unsupported locales return `400 BAD_USER_INPUT` instead of silently falling back. Article responses include the complete documented article data contract, enriched with `author`, `categories`, and `tags` from the shared services. REST `contentBlocks` is a JSON array. Search terms are limited to 200 characters. Pagination limits are integers from 1 to 100 with bounded non-negative offsets. Domain validation, ownership rules, transactions and notification-outbox behavior remain in the existing application and persistence layers. Errors are mapped to stable HTTP codes and sanitized messages.
 
 This remains a staged migration. The article rich-text contract is application-owned and versioned; Lexical JSON and client-supplied HTML are not accepted as canonical content. The current version-1 scope includes inline marks and hyperlinks inside existing block types. A pure serialized-Lexical adapter supports paragraphs, h2–h4 headings, quotes without attribution, ordered/unordered lists, inline text/link/marks, and code. It rejects custom image nodes, quote attribution, nested lists, unsupported CSS/alignment/direction metadata, and other payload features that the application contract cannot preserve; comment rich text and approved media upload integration remain open tasks. The REST-only migration is complete. The historical parity audit records the previous GraphQL operation inventory and the intentional move from a non-idempotent like toggle to explicit `PUT liked` state-setting semantics. Taxonomy, conversation/message and notification routes reuse the existing persistence authorization, cursor, idempotency and outbox behavior. Request-level REST tests and the full CI gate now validate the supported contract.
+
+
+
+## Editorial roles (ADR 0016)
+
+Categories and the featured shelf are editorial: only an editor may shape them. Two values exist,
+stored in `user_profiles.role`: `member` (the default for every account, including every account
+created before the column existed) and `editor`.
+
+The column is the source of truth, because a role is account state — it has to survive a redeploy, be
+visible to the client through the profile it already fetches, and be auditable.
+
+`EDITOR_USER_IDS` (comma-separated user IDs) is honoured **in addition to** the column. It exists for
+bootstrapping: an empty database has no editor, and only an editor may write the column, so without an
+outside way in the role system would be a lock with the key on the wrong side. It is also the way back
+in if the last editor account is ever lost. Changing it needs a redeploy; changing the column does not.
+
+There is deliberately no `admin`. Moderation and reporting are issue #72 and get their own design —
+this column is too small to grow into one, on purpose.
 
 
 ## Cross-provider live-migration boundary

@@ -24,7 +24,7 @@
 | 发布 / 软删 / 回收站 / 恢复 | ✅ | 软删后保留 30 天（`ARTICLE_TOMBSTONE_RETENTION_DAYS`），`sweepTombstones` 回收。 |
 | 体裁（`workType`） | ✅ | 散文 / 诗歌 / 其他等。 |
 | 标签 | ✅ | create-or-reuse，重命名保留 slug，Unicode。 |
-| 分类 | ⚠️ | 读写接口齐全（`categories*` + `POST /taxonomies`），但**谁可以建分类、分类是否受控**这个策略未确认（feature-traceability 记为待确认）。 |
+| 分类 | ⚠️ **策略已定，收紧待做** | ADR 0016：分类由编辑维护，标签保持作者自由添加。编辑角色已经落地（`user_profiles.role` + `PUT /api/v1/users/:userId/role` + `EDITOR_USER_IDS` 引导），下一步是把 `POST /taxonomies` 里的 `kind=category` 收紧为编辑专属。 |
 | ~~系列 / 合集 / 连载~~ | **不做** | 2026-11-01 决定：**本平台专注中短篇小说，不做长篇连载。** 单篇即完整作品，不需要作品集表、上下篇或连载目录。保留这一行是为了让后来者知道这是决定过的不做，而不是没想到。 |
 | **定时发布** | ❌ | 只能立即发布。 |
 | **版本历史 / 修订记录** | ❌ | 更新是覆盖式的。文学作品反复修订是常态，读者也常想看"这一版改了什么"。 |
@@ -127,6 +127,7 @@
 | 改邮箱 | ✅ | `PUT /api/v1/me/email`，清 `email_verified_at`，不吊销会话。 |
 | 找回密码 / 重置 | ✅ | `auth/forgot-password` + `auth/reset-password`，单次有效令牌。 |
 | 邮箱验证 / 重发 | ✅ | `me/email-verification`、`auth/verify-email`；本实例邮件默认关闭，验证不门禁任何功能。 |
+| **编辑角色** | ✅ **本次新增** | `user_profiles.role`（`member` / `editor`）+ `PUT /api/v1/users/:userId/role`（仅编辑可调、不能改自己）+ `EDITOR_USER_IDS` 冷启动。见 ADR 0016。 |
 | **列出并吊销指定会话** | ❌ | 底层有 `revokeIdentitySessions`，但没有接口。多设备管理、"我把手机弄丢了"都依赖它。 |
 | **注销账号** | ❌ | — |
 

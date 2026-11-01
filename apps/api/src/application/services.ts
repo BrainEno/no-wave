@@ -1,5 +1,5 @@
 import { createPersistencePorts, type PersistencePorts } from "./persistence-ports.ts";
-import { ArticleInputError } from "../domain/errors.ts";
+import { ArticleInputError, ProfileAuthorizationError } from "../domain/errors.ts";
 
 type UnionToIntersection<U> = (U extends unknown ? (k: U) => void : never) extends (k: infer I) => void ? I : never;
 
@@ -21,6 +21,9 @@ export type ApplicationServices<A extends import("./persistence-ports.ts").Persi
   FlatPorts<PersistencePorts<A>> & {
     createArticle(input: { authorId: string; contentBlocks: unknown; [key: string]: unknown }): Promise<unknown>;
     updateArticle(input: { actorId: string; contentBlocks: unknown; [key: string]: unknown }): Promise<unknown>;
+    /** ADR 0016: may this account curate? Consulted before every editorial write. */
+    isEditor(input: { actorId: string }): Promise<boolean>;
+    assignUserRole(input: { actorId: string; userId: string; role: string }): Promise<unknown>;
   };
 
 /**
@@ -71,6 +74,15 @@ export function createApplicationServices<A extends import("./persistence-ports.
   onPersistenceOperation?: ((sample: { operation: string; success: boolean; durationMs: number }) => void) | null;
   env?: NodeJS.ProcessEnv;
 }): ApplicationServices<A> {
+  // ADR 0016, decision 2: the `role` column is the source of truth, but an empty
+  // database can never mint its first editor through it — only an editor may write
+  // it. `EDITOR_USER_IDS` is the way in, and the way back if the last editor is lost.
+  const bootstrapEditors = new Set(
+    String(env?.EDITOR_USER_IDS ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0),
+  );
   const ports = createPersistencePorts(persistence, { onOperation: onPersistenceOperation ?? undefined });
   const serviceMethods = Object.values(ports).flatMap((group) => Object.entries(group));
   const services = Object.fromEntries(serviceMethods);
@@ -87,6 +99,30 @@ export function createApplicationServices<A extends import("./persistence-ports.
       throw new ArticleInputError("contentBlocks must be a valid JSON array.");
     }
     return blocks;
+  };
+
+  /**
+   * The one permission question the platform asks today: may this account curate?
+   *
+   * A missing or empty actor is a plain `member`, never a reason to fail open; the
+   * environment list is consulted before the column so bootstrapping works on a
+   * database that has no roles yet.
+   */
+  services.isEditor = async ({ actorId }: { actorId: string }) => {
+    if (typeof actorId !== "string" || actorId.trim().length === 0) return false;
+    if (bootstrapEditors.has(actorId)) return true;
+    return await ports.profiles.getUserRole({ userId: actorId }) === "editor";
+  };
+
+  /**
+   * ADR 0016, decision 3: the caller must be an editor to hand out the role at
+   * all. Refusing to change your own is enforced one layer down, in persistence,
+   * so both adapters answer it identically under the same contract test.
+   */
+  services.assignUserRole = async ({ actorId, userId, role }: { actorId: string; userId: string; role: string }) => {
+    const isEditor = await services.isEditor({ actorId });
+    if (!isEditor) throw new ProfileAuthorizationError();
+    return ports.profiles.setUserRole({ actorId, userId, role });
   };
 
   services.createArticle = async ({ authorId, ...input }) =>

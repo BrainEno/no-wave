@@ -20,6 +20,7 @@ import {
 import type { PersistenceAdapterContract } from "../application/persistence-ports.ts";
 import { normalizeHashtag, validateTaxonomyKind } from "../domain/taxonomy.ts";
 import { validateArticleLocale, validateArticleSlug, normalizeArticleInput, normalizeTaxonomyIds, popularWindowSince } from "../domain/article.ts";
+import { normalizeStoredRole, validateUserRole } from "../domain/profile.ts";
 import { validateStoredCommentContent } from "../domain/comment-content.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
 import { normalizeParticipantIds } from "../domain/conversation.ts";
@@ -240,6 +241,7 @@ function mapAuthorProfile(row) {
   const iso = (value) => value instanceof Date ? value.toISOString() : new Date(value).toISOString();
   return {
     userId: row.user_id,
+    role: normalizeStoredRole(row.role),
     displayName: row.display_name,
     bio: row.bio,
     avatarUrl: row.avatar_url,
@@ -257,7 +259,7 @@ async function findAuthorProfile(executor, { userId, locale = "zh-CN", viewerId 
   validateArticleLocale(locale);
   if (viewerId !== null) requiredText("viewerId", viewerId, 300);
   const rows = await executor.unsafe(
-    `SELECT p.user_id, p.avatar_url, p.website_url, p.created_at,
+    `SELECT p.user_id, p.role, p.avatar_url, p.website_url, p.created_at,
             GREATEST(p.updated_at, translated.updated_at) AS updated_at,
             translated.display_name, translated.bio, translated.locale,
             (SELECT count(*)::int FROM user_follows f WHERE f.followed_id = p.user_id) AS follower_count,
@@ -288,7 +290,7 @@ async function listRelatedProfiles(executor, { relationship, userId, locale = "z
     ? "relation.follower_id = $1 AND relation.followed_id = p.user_id"
     : "relation.followed_id = $1 AND relation.follower_id = p.user_id";
   const rows = await executor.unsafe(
-    `SELECT p.user_id, p.avatar_url, p.website_url, p.created_at,
+    `SELECT p.user_id, p.role, p.avatar_url, p.website_url, p.created_at,
             GREATEST(p.updated_at, translated.updated_at) AS updated_at,
             translated.display_name, translated.bio, translated.locale,
             (SELECT count(*)::int FROM user_follows f WHERE f.followed_id = p.user_id) AS follower_count,
@@ -821,6 +823,35 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
     async getAuthorProfile({ userId, locale = "zh-CN", viewerId = null }) {
       return findAuthorProfile(sql, { userId, locale, viewerId });
     },
+    /**
+     * The one permission question the platform asks: may this account curate?
+     * A profile that does not exist answers `member` — absence of a record is
+     * absence of privilege, never a reason to fail open.
+     */
+    async getUserRole({ userId }) {
+      requiredText("userId", userId, 300);
+      const rows = await sql.unsafe("SELECT role FROM user_profiles WHERE user_id = $1 LIMIT 1", [userId]);
+      return normalizeStoredRole(rows[0]?.role);
+    },
+    async setUserRole({ actorId, userId, role }) {
+      requiredText("actorId", actorId, 300);
+      requiredText("userId", userId, 300);
+      const validatedRole = validateUserRole(role);
+      // ADR 0016, decision 3: nobody edits their own role. A single-editor
+      // instance whose editor demotes themselves has no way back in.
+      if (actorId === userId) throw new ProfileInputError("You cannot change your own role.");
+      return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const existing = await tx.unsafe("SELECT user_id FROM user_profiles WHERE user_id = $1 LIMIT 1", [userId]);
+        if (!existing[0]) throw new ProfileNotFoundError();
+        await tx.unsafe("UPDATE user_profiles SET role = $2, updated_at = now() WHERE user_id = $1", [userId, validatedRole]);
+        const rows = await tx.unsafe("SELECT * FROM user_profiles WHERE user_id = $1", [userId]);
+        await captureChanges(tx, transactionId, [
+          { entityType: "user_profiles", entityId: userId, operation: "upsert", payload: rows[0] },
+        ]);
+        return normalizeStoredRole(rows[0]?.role);
+      });
+    },
     async searchUsers({ query, locale = "zh-CN", viewerId = null, limit = 20 }) {
       validateArticleLocale(locale);
       if (typeof query !== "string" || query.trim().length === 0 || query.length > 100) {
@@ -830,7 +861,7 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
       if (viewerId !== null) requiredText("viewerId", viewerId, 300);
       const term = query.trim().toLocaleLowerCase(locale);
       const rows = await sql.unsafe(
-        `SELECT p.user_id, p.avatar_url, p.website_url, p.created_at,
+        `SELECT p.user_id, p.role, p.avatar_url, p.website_url, p.created_at,
                 GREATEST(p.updated_at, translated.updated_at) AS updated_at,
                 translated.display_name, translated.bio, translated.locale,
                 (SELECT count(*)::int FROM user_follows f WHERE f.followed_id = p.user_id) AS follower_count,
@@ -925,7 +956,7 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
           [userId, locale, displayName, bio],
         );
         const rows = await tx.unsafe(
-          "SELECT p.user_id, p.avatar_url, p.website_url, p.created_at, GREATEST(p.updated_at, t.updated_at) AS updated_at, t.display_name, t.bio, t.locale FROM user_profiles AS p JOIN user_profile_translations AS t ON t.user_id = p.user_id WHERE p.user_id = $1 AND t.locale = $2 LIMIT 1",
+          "SELECT p.user_id, p.role, p.avatar_url, p.website_url, p.created_at, GREATEST(p.updated_at, t.updated_at) AS updated_at, t.display_name, t.bio, t.locale FROM user_profiles AS p JOIN user_profile_translations AS t ON t.user_id = p.user_id WHERE p.user_id = $1 AND t.locale = $2 LIMIT 1",
           [userId, locale],
         );
         if (!rows[0]) throw new Error("Profile row was not available after upsert.");
