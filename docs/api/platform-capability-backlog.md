@@ -128,7 +128,7 @@
 | 找回密码 / 重置 | ✅ | `auth/forgot-password` + `auth/reset-password`，单次有效令牌。 |
 | 邮箱验证 / 重发 | ✅ | `me/email-verification`、`auth/verify-email`；本实例邮件默认关闭，验证不门禁任何功能。 |
 | **编辑角色** | ✅ **本次新增** | `user_profiles.role`（`member` / `editor`）+ `PUT /api/v1/users/:userId/role`（仅编辑可调、不能改自己）+ `EDITOR_USER_IDS` 冷启动。见 ADR 0016。 |
-| **列出并吊销指定会话** | ❌ | 底层有 `revokeIdentitySessions`，但没有接口。多设备管理、"我把手机弄丢了"都依赖它。 |
+| **列出并吊销指定会话** | ❌ | 改密/重置时吊销会话已并入 `replaceIdentityPassword`（同一事务内先吊销其他会话再写哈希，见 ADR 0018），但"列出会话 / 单独吊销某一个"没有接口，也没有端口方法。多设备管理、"我把手机弄丢了"都依赖它。 |
 | **注销账号** | ❌ | — |
 
 ## 八、契约与运维

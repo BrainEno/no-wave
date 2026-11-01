@@ -75,10 +75,10 @@
 
 ### P1 登录状态下修改密码 —— 已实现（本轮）
 
-`AUTH_ACTIONS` 原本只有 register/login/refresh/logout/forgot-password/reset-password/verify-email，缺少「已登录用户改密码」。数据层其实已经就绪：`setIdentityPassword` 与 `revokeIdentitySessions` 都在 identity 端口上。本轮补的是用例、路由与两端接线：
+`AUTH_ACTIONS` 原本只有 register/login/refresh/logout/forgot-password/reset-password/verify-email，缺少「已登录用户改密码」。数据层其实已经就绪：`setIdentityPassword` 与 `revokeIdentitySessions` 都在 identity 端口上。本轮补的是用例、路由与两端接线。（两者后来合并成一个端口方法 `replaceIdentityPassword`：改密与吊销必须在同一事务内完成，见 ADR 0018。）
 
 - `PUT /api/v1/me/password`，body 恰为 `{currentPassword, newPassword}`；新密码按注册规则（≥12 字符），旧密码错误返回 `401`，body 多一个字段直接 `400`。
-- **语义：改密码保留发起请求的那个会话，吊销账号的其他全部会话**，响应 `revokedSessions` 是被登出的设备数。重置密码（`auth/reset-password`）相反，吊销全部——因为它没有任何设备证明过什么。
+- **语义：改密码保留发起请求的那个会话，吊销账号的其他全部会话**，响应 `revokedSessions` 是被登出的设备数。重置密码（`auth/reset-password`）相反，吊销全部——因为它没有任何设备证明过什么。保留的那个会话由访问令牌的 `sid` 声明指认（`jti` 是令牌 id，每次刷新都会换，见 ADR 0018）。
 - 限流：每账号 5 次 / 15 分钟，每来源地址 20 次 / 15 分钟。
 - 新增端口方法 `findIdentityCredentials`：凭据单独取，账号记录（`findIdentityAccountByUserId`）里永远不带密码哈希。
 - 前端：共享行为在 `packages/web-http/src/account.ts`（`handleAccountPasswordChangeRequest`：仅接受同源 PUT、4 KiB 有界 body、转发到 `api/v1/me/password`），两个框架各一个薄适配；「我的账户」页面新增修改密码表单，两个前端共用同一个 `AccountPanel`。这也是**邮件关闭时唯一能改密码的路径**——找回密码依赖邮件，而邮件默认关闭。

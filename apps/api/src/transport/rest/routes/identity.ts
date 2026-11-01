@@ -174,8 +174,10 @@ const IDENTITY_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Obje
         sendUnauthenticated(response);
         return;
       }
+      // The token id, not the session: logout ends the credential that was
+      // presented and leaves the visitor's other devices signed in.
       await services.revokeSession({
-        sessionId: user.sessionId,
+        sessionId: user.accessTokenId,
         expiresAt: new Date(user.sessionExpiresAt * 1000),
       });
       sendJson(response, 200, { data: true });

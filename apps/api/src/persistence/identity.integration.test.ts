@@ -159,6 +159,45 @@ function registerIdentityContracts(provider, options = {}) {
     } finally { await f.close(); }
   });
 
+  /**
+   * The end of #129 and #132, over real HTTP against a real store.
+   *
+   * Two devices are signed in and one of them changes the password. The device
+   * that proved it knew the old password keeps working; the other one does not;
+   * and `revokedSessions` counts only the device that was signed out.
+   */
+  test(`${provider}: changing the password keeps the device that changed it and signs out the other one`, options, async () => {
+    const f = await fixture(provider);
+    const changed = `${password} and then some`;
+    try {
+      const first = (await (await f.post("/api/v1/auth/register", { email: f.email, password })).json()).data;
+      const second = (await (await f.post("/api/v1/auth/login", { email: f.email, password })).json()).data;
+      assert.equal((await f.me(first.accessToken)).status, 200);
+      assert.equal((await f.me(second.accessToken)).status, 200);
+
+      const response = await fetch(f.base + "/api/v1/me/password", {
+        method: "PUT",
+        headers: { "content-type": "application/json", authorization: `Bearer ${first.accessToken}` },
+        body: JSON.stringify({ currentPassword: password, newPassword: changed }),
+      });
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { data: { ok: true, revokedSessions: 1 } },
+        "one device was signed out, and the one that asked was not counted");
+
+      assert.equal((await f.me(first.accessToken)).status, 200, "the session that changed the password stays signed in");
+      assert.equal((await f.post("/api/v1/auth/refresh", { refreshToken: first.refreshToken })).status, 200, "and can still refresh");
+
+      assert.equal((await f.me(second.accessToken)).status, 401, "every other device is signed out");
+      assert.equal((await f.post("/api/v1/auth/refresh", { refreshToken: second.refreshToken })).status, 401,
+        "including the refresh credential it was holding");
+
+      assert.equal((await f.post("/api/v1/auth/login", { email: f.email, password })).status, 401, "the old credential no longer opens the account");
+      const reopened = await f.post("/api/v1/auth/login", { email: f.email, password: changed });
+      assert.equal(reopened.status, 200);
+      assert.equal((await f.me((await reopened.json()).data.accessToken)).status, 200);
+    } finally { await f.close(); }
+  });
+
   test(`${provider}: concurrent refresh reuse revokes the entire token family`, options, async () => {
     const f = await fixture(provider);
     try {

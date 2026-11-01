@@ -17,14 +17,18 @@ function token(claims = {}, header = { alg: "HS256", typ: "application/vnd.bot-t
   return `${unsigned}.${signature}`;
 }
 
+// Two identifiers on purpose, so a test that confuses them cannot pass: `sid`
+// is the session the token was minted from, `jti` is this individual token.
 const validClaims = {
   sub: "user-123",
   iss: env.AUTH_JWT_ISSUER,
   aud: env.AUTH_JWT_AUDIENCE,
   iat: now - 60,
   exp: now + 60,
-  jti: "session-123",
+  sid: "session-123",
+  jti: "token-123",
 };
+const verifiedClaims = { id: "user-123", sessionId: "session-123", accessTokenId: "token-123", sessionExpiresAt: now + 60 };
 
 function requestWithToken(value) {
   return new Request("http://localhost/graphql", {
@@ -33,12 +37,12 @@ function requestWithToken(value) {
 }
 
 test("accepts a correctly signed JWT with issuer, audience, expiry, and subject", () => {
-  assert.deepEqual(verifyBearerToken(requestWithToken(token(validClaims)), env, now), { id: "user-123", sessionId: "session-123", sessionExpiresAt: now + 60 });
+  assert.deepEqual(verifyBearerToken(requestWithToken(token(validClaims)), env, now), verifiedClaims);
 });
 
 test("accepts an audience array containing the configured API audience", () => {
   const claims = { ...validClaims, aud: ["another-api", env.AUTH_JWT_AUDIENCE] };
-  assert.deepEqual(verifyBearerToken(requestWithToken(token(claims)), env, now), { id: "user-123", sessionId: "session-123", sessionExpiresAt: now + 60 });
+  assert.deepEqual(verifyBearerToken(requestWithToken(token(claims)), env, now), verifiedClaims);
 });
 
 test("rejects missing bearer token and does not trust client identity headers", () => {
@@ -109,12 +113,36 @@ test("fails clearly when configured secret is too short or issuer/audience are m
 
 test("issued access tokens satisfy the existing verifier and respect the configured TTL", () => {
   const shortEnv = { ...env, AUTH_JWT_MAX_TTL_SECONDS: "60" };
-  const issued = signAccessToken({ subject: "new-user", tokenId: "unique-token-id", issuedAt: now, expiresAt: now + 60, env: shortEnv });
+  const issued = signAccessToken({ subject: "new-user", sessionId: "session-9", tokenId: "unique-token-id", issuedAt: now, expiresAt: now + 60, env: shortEnv });
   assert.deepEqual(verifyBearerToken(requestWithToken(issued), shortEnv, now), {
-    id: "new-user", sessionId: "unique-token-id", sessionExpiresAt: now + 60,
+    id: "new-user", sessionId: "session-9", accessTokenId: "unique-token-id", sessionExpiresAt: now + 60,
   });
   assert.equal(accessIssuerConfiguration(shortEnv).ttlSeconds, 60);
-  assert.throws(() => signAccessToken({ subject: "new-user", tokenId: "unique-token-id", issuedAt: now, expiresAt: now + 61, env: shortEnv }), /claims/);
-  assert.throws(() => signAccessToken({ subject: " new-user ", tokenId: "unique-token-id", issuedAt: now, expiresAt: now + 60, env: shortEnv }), /claims/);
+  assert.throws(() => signAccessToken({ subject: "new-user", sessionId: "session-9", tokenId: "unique-token-id", issuedAt: now, expiresAt: now + 61, env: shortEnv }), /claims/);
+  assert.throws(() => signAccessToken({ subject: " new-user ", sessionId: "session-9", tokenId: "unique-token-id", issuedAt: now, expiresAt: now + 60, env: shortEnv }), /claims/);
+  assert.throws(() => signAccessToken({ subject: "new-user", sessionId: " session-9 ", tokenId: "unique-token-id", issuedAt: now, expiresAt: now + 60, env: shortEnv }), /claims/);
+  assert.throws(() => signAccessToken({ subject: "new-user", sessionId: "", tokenId: "unique-token-id", issuedAt: now, expiresAt: now + 60, env: shortEnv }), /claims/);
   assert.throws(() => accessIssuerConfiguration({ ...env, AUTH_JWT_SECRET: "short" }), /at least 32 bytes/);
+});
+
+/**
+ * A token minted before tokens carried a session id is still accepted — it is
+ * only its own lifetime that is at stake — but it must not be able to name a
+ * session it cannot prove: `sessionId` is null, and a caller that spares "the
+ * session that made this request" has to see that as unknown rather than as a
+ * value that might match something.
+ */
+test("a token without a session id is accepted, and says it has no session", () => {
+  const legacy = { ...validClaims };
+  delete legacy.sid;
+  const verified = verifyBearerToken(requestWithToken(token(legacy)), env, now);
+  assert.equal(verified?.id, "user-123", "the token itself is still good");
+  assert.equal(verified?.sessionId, null, "a session that cannot be named is not guessed at");
+  assert.equal(verified?.accessTokenId, "token-123", "and revocation still knows which token this is");
+
+  for (const malformed of ["", "  ", " session-123 ", 42, null, {}]) {
+    const claims = { ...validClaims, sid: malformed };
+    assert.equal(verifyBearerToken(requestWithToken(token(claims)), env, now)?.sessionId, null,
+      `a session id of ${JSON.stringify(malformed)} is not a session id`);
+  }
 });

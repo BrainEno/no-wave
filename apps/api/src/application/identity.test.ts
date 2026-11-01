@@ -101,8 +101,11 @@ function fakeIdentityStore({ accounts = [] as Array<{ userId: string; email: str
   const sessions = new Map<string, string[]>();
   const revoked: string[] = [];
   const revocations: Array<{ userId: string; exceptSessionId: string | null }> = [];
+  const replacements: Array<{ userId: string; exceptSessionId: string | null }> = [];
   const passwords = new Map<string, string>();
   const verifiedAt = new Map<string, string>();
+  /** Set to make the store refuse the replacement, the way a failed write does. */
+  let refuseReplacement = false;
   const sent: Array<{ to: string; purpose: string; subject: string; link: string }> = [];
   for (const account of accounts) {
     passwords.set(account.userId, account.passwordHash);
@@ -113,8 +116,10 @@ function fakeIdentityStore({ accounts = [] as Array<{ userId: string; email: str
     tokens,
     revoked,
     revocations,
+    replacements,
     passwords,
     verifiedAt,
+    set refuseReplacement(value: boolean) { refuseReplacement = value; },
     async findIdentityAccount({ email }) {
       const account = accounts.find((entry) => entry.email === email);
       return account ? { userId: account.userId, passwordHash: passwords.get(account.userId) } : null;
@@ -148,15 +153,23 @@ function fakeIdentityStore({ accounts = [] as Array<{ userId: string; email: str
       verifiedAt.delete(userId);
       return true;
     },
-    async setIdentityPassword({ userId, passwordHash }) {
-      if (!passwords.has(userId)) return false;
-      passwords.set(userId, passwordHash);
-      return true;
-    },
-    async revokeIdentitySessions({ userId, exceptSessionId = null }) {
+    /**
+     * One call, in the order the real adapters use: the sessions go first, so a
+     * failure anywhere leaves the old credential in place. There is no separate
+     * setter to fall back on, which is the whole reason the service cannot be
+     * left half-done by this call failing.
+     */
+    async replaceIdentityPassword({ userId, passwordHash, exceptSessionId = null }) {
+      replacements.push({ userId, exceptSessionId });
+      if (refuseReplacement) throw new Error("the store refused the replacement");
+      if (!passwords.has(userId)) return { updated: false, revokedSessions: 0 };
+      const live = sessions.get(userId) ?? [];
+      const doomed = live.filter((id) => id !== exceptSessionId);
+      for (const sessionId of doomed) live.splice(live.indexOf(sessionId), 1);
       revoked.push(userId);
       revocations.push({ userId, exceptSessionId });
-      return 1;
+      passwords.set(userId, passwordHash);
+      return { updated: true, revokedSessions: doomed.length };
     },
     async markIdentityEmailVerified({ userId, verifiedAt: at }) {
       if (!passwords.has(userId)) return false;
@@ -261,6 +274,24 @@ test("a signed-in password change needs the old password and spares the session 
   assert.equal(await verifyPassword(currentPassword, stored), false, "the old password no longer opens the account");
   // A reset signs out everything; a change spares the device that proved it.
   assert.deepEqual(store.revocations, [{ userId: "user-1", exceptSessionId: "session-1" }]);
+});
+
+test("a password change that the store cannot carry out is reported, not half applied", async () => {
+  const { store, service, currentPassword, passwordHash } = await changePasswordFixture();
+  store.refuseReplacement = true;
+  await assert.rejects(service.changePassword({
+    userId: "user-1",
+    sessionId: "session-1",
+    body: { currentPassword, newPassword: "a-brand-new-password" },
+    ip: "192.0.2.10",
+  }), /the store refused the replacement/);
+
+  // The service gets one chance and no fallback: the credential and the
+  // revocation travel in the same call, so a failure cannot leave the account
+  // with the new password and the old sessions still signed in.
+  assert.deepEqual(store.replacements, [{ userId: "user-1", exceptSessionId: "session-1" }],
+    "the session to spare is named in the same call that replaces the credential");
+  assert.equal(store.passwords.get("user-1"), passwordHash, "and the old credential is what is still on file");
 });
 
 test("a wrong current password changes nothing and signs nobody out", async () => {
