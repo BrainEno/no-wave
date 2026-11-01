@@ -93,6 +93,38 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
       sendServiceError(response, error);
     }
   },
+  /**
+   * The following feed: newest published work from every account the viewer
+   * follows.
+   *
+   * It is the reason `users.follow` exists. Without it, following an author only
+   * lets a reader walk into that profile and look — the update never comes to
+   * them, so the graph is write-only.
+   */
+  "me.feed": async (ctx: RestRouteContext): Promise<void> => {
+    const { request, response, url, services, env } = ctx;
+    if (!services) {
+      sendUnavailable(response);
+      return;
+    }
+    const locale = parseLocale(url);
+    const pagination = parsePagination(url, 20, MAX_ARTICLE_OFFSET);
+    if (!locale || !pagination) {
+      sendBadInput(response, "Invalid locale, limit, or offset query parameter.");
+      return;
+    }
+    try {
+      const actorId = await authenticatedActorId(request, services, env);
+      if (!actorId) {
+        sendUnauthenticated(response);
+        return;
+      }
+      const articles = await services.listFollowingArticles({ actorId, locale, ...pagination });
+      sendJson(response, 200, { data: await serializeRestArticles(services, articles, actorId) });
+    } catch (error: unknown) {
+      sendServiceError(response, error);
+    }
+  },
   "articles": async (ctx: RestRouteContext): Promise<void> => {
     const { request, response, url, services, env } = ctx;
     if (!services) {

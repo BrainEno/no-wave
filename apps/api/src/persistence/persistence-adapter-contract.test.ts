@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
 import { randomUUID } from "node:crypto";
-import { ArticleSlugConflictError, ConversationInputError, IdempotencyConflictError, ConversationAccessError, ArticleAuthorizationError, ArticleNotFoundError, ProfileInputError, ProfileNotFoundError } from "../domain/errors.ts";
+import { ArticleInputError, ArticleSlugConflictError, ConversationInputError, IdempotencyConflictError, ConversationAccessError, ArticleAuthorizationError, ArticleNotFoundError, ProfileInputError, ProfileNotFoundError } from "../domain/errors.ts";
 import { createPostgresClient, createPostgresStore } from "./postgres.ts";
 import { runMigrations } from "./migrate.ts";
 import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
@@ -35,6 +35,9 @@ async function sqliteFixture() {
     async outboxAvailableAt(eventId) {
       return new Date(db.prepare("SELECT available_at FROM outbox_events WHERE id = ?").get(eventId).available_at).toISOString();
     },
+    async setArticlePublishedAt(slug, publishedAt) {
+      db.prepare("UPDATE articles SET published_at = ? WHERE slug = ?").run(publishedAt, slug);
+    },
     async cleanup(conversationId, suffix) {
       if (conversationId) {
         const messages = db.prepare("SELECT id FROM messages WHERE conversation_id = ?").all(conversationId);
@@ -50,6 +53,7 @@ async function sqliteFixture() {
           `profile-follower-${suffix}`, `profile-target-${suffix}`, `profile-other-${suffix}`,
           `article-author-${suffix}`, `liker-a-${suffix}`, `liker-b-${suffix}`,
           `commenter-a-${suffix}`, `commenter-b-${suffix}`,
+          `feed-reader-${suffix}`, `feed-author-a-${suffix}`, `feed-author-b-${suffix}`, `feed-stranger-${suffix}`,
         ];
         for (const userId of userIds) db.prepare("DELETE FROM notifications WHERE user_id = ?").run(userId);
         db.prepare(`DELETE FROM user_follows WHERE follower_id IN (${userIds.map(() => "?").join(",")}) OR followed_id IN (${userIds.map(() => "?").join(",")})`)
@@ -58,6 +62,7 @@ async function sqliteFixture() {
         db.prepare(`DELETE FROM user_profiles WHERE user_id IN (${userIds.map(() => "?").join(",")})`).run(...userIds);
         db.prepare("DELETE FROM revoked_sessions WHERE session_id = ?").run(`contract-session-${suffix}`);
         for (const slug of [`contract-draft-${suffix}`, `contract-published-${suffix}`, `contract-liked-${suffix}`, `contract-comment-${suffix}`, `contract-comment-notifications-${suffix}`, `contract-create-once-${suffix}`, `contract-create-once-b-${suffix}`, `contract-create-twice-${suffix}`]) db.prepare("DELETE FROM articles WHERE slug = ?").run(slug);
+        db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`feed-%-${suffix}`);
         // A deleted work keeps its row under a released slug (`...-deleted-<id>`),
         // so match the whole family the deletion test can leave behind.
         db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`contract-delete-${suffix}%`);
@@ -81,6 +86,9 @@ async function postgresFixture() {
       const [row] = await postgresSql.unsafe("SELECT available_at FROM outbox_events WHERE id = $1", [eventId]);
       return new Date(row.available_at).toISOString();
     },
+    async setArticlePublishedAt(slug, publishedAt) {
+      await postgresSql.unsafe("UPDATE articles SET published_at = $1 WHERE slug = $2", [publishedAt, slug]);
+    },
     async cleanup(conversationId, suffix) {
       if (conversationId) {
         const messages = await postgresSql.unsafe(
@@ -97,6 +105,7 @@ async function postgresFixture() {
         const userIds = [
           `contract-user-a-${suffix}`, `contract-user-b-${suffix}`,
           `profile-follower-${suffix}`, `profile-target-${suffix}`, `profile-other-${suffix}`,
+          `feed-reader-${suffix}`, `feed-author-a-${suffix}`, `feed-author-b-${suffix}`, `feed-stranger-${suffix}`,
         ];
         await postgresSql.unsafe("DELETE FROM notifications WHERE user_id = ANY($1::text[])", [userIds]);
         await postgresSql.unsafe("DELETE FROM user_follows WHERE follower_id = ANY($1::text[]) OR followed_id = ANY($1::text[])", [userIds]);
@@ -110,6 +119,7 @@ async function postgresFixture() {
         await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`contract-restore-${suffix}%`]);
         await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`contract-commenters-${suffix}%`]);
         await postgresSql.unsafe("DELETE FROM taxonomies WHERE slug = $1", [`contract-category-${suffix}`]);
+        await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`feed-%-${suffix}`]);
       }
     },
   };
@@ -1176,6 +1186,68 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       // for their own work.
       const theirs = await runtime.store.createArticle({ ...input, authorId: other, slug: `contract-create-once-b-${suffix}` });
       assert.notEqual(theirs.id, first.id);
+    } finally {
+      await runtime.cleanup(undefined, suffix);
+    }
+  });
+
+  test(`${adapterName}: the following feed lists published work from followed authors, newest first`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const readerId = `feed-reader-${suffix}`;
+    const authorA = `feed-author-a-${suffix}`;
+    const authorB = `feed-author-b-${suffix}`;
+    const strangerId = `feed-stranger-${suffix}`;
+    const blocks = [{ id: "p1", type: "paragraph", text: "Feed contract body." }];
+    try {
+      for (const [userId, displayName] of [[authorA, "Feed A"], [authorB, "Feed B"], [strangerId, "Stranger"]]) {
+        await runtime.store.upsertAuthorProfile({ userId, displayName, locale: "zh-CN" });
+      }
+      await runtime.store.createArticle({ authorId: authorA, slug: `feed-older-${suffix}`, title: "A 的旧作", summary: "", locale: "zh-CN", contentBlocks: blocks, publish: true });
+      await runtime.store.createArticle({ authorId: authorA, slug: `feed-draft-${suffix}`, title: "A 的草稿", summary: "", locale: "zh-CN", contentBlocks: blocks, publish: false });
+      await runtime.store.createArticle({ authorId: authorB, slug: `feed-newer-${suffix}`, title: "B 的新作", summary: "", locale: "zh-CN", contentBlocks: blocks, publish: true });
+      await runtime.store.createArticle({ authorId: strangerId, slug: `feed-unfollowed-${suffix}`, title: "陌生人的作品", summary: "", locale: "zh-CN", contentBlocks: blocks, publish: true });
+      await runtime.setArticlePublishedAt(`feed-older-${suffix}`, "2024-01-01T00:00:00.000Z");
+      await runtime.setArticlePublishedAt(`feed-newer-${suffix}`, "2024-06-01T00:00:00.000Z");
+
+      // Following nobody is an empty feed, not an error and not the global feed.
+      assert.deepEqual(await runtime.store.listFollowingArticles({ actorId: readerId, locale: "zh-CN" }), []);
+
+      assert.equal(await runtime.store.followUser({ actorId: readerId, targetUserId: authorA }), true);
+      assert.equal(await runtime.store.followUser({ actorId: readerId, targetUserId: authorB }), true);
+
+      const feed = await runtime.store.listFollowingArticles({ actorId: readerId, locale: "zh-CN" });
+      assert.deepEqual(feed.map((article) => article.slug), [`feed-newer-${suffix}`, `feed-older-${suffix}`]);
+      // A draft the followed author has not published is not an update yet.
+      assert.ok(!feed.some((article) => article.slug === `feed-draft-${suffix}`));
+      assert.ok(!feed.some((article) => article.authorId === strangerId));
+
+      // Locale is a property of the translation the reader asked for, not of the author.
+      assert.deepEqual(await runtime.store.listFollowingArticles({ actorId: readerId, locale: "en" }), []);
+
+      // Offset pagination walks the same set once, without repeats or gaps.
+      const firstPage = await runtime.store.listFollowingArticles({ actorId: readerId, locale: "zh-CN", limit: 1, offset: 0 });
+      const secondPage = await runtime.store.listFollowingArticles({ actorId: readerId, locale: "zh-CN", limit: 1, offset: 1 });
+      const thirdPage = await runtime.store.listFollowingArticles({ actorId: readerId, locale: "zh-CN", limit: 1, offset: 2 });
+      assert.deepEqual(firstPage.map((article) => article.slug), [`feed-newer-${suffix}`]);
+      assert.deepEqual(secondPage.map((article) => article.slug), [`feed-older-${suffix}`]);
+      assert.deepEqual(thirdPage, []);
+
+      // Unfollowing removes the author's work from the feed immediately.
+      await runtime.store.unfollowUser({ actorId: readerId, targetUserId: authorA });
+      assert.deepEqual(
+        (await runtime.store.listFollowingArticles({ actorId: readerId, locale: "zh-CN" })).map((article) => article.slug),
+        [`feed-newer-${suffix}`],
+      );
+
+      // The same bounds as every other article list, so a client page size cannot
+      // become an unbounded scan.
+      await assert.rejects(Promise.resolve().then(() => runtime.store.listFollowingArticles({ actorId: readerId, locale: "zh-CN", limit: 0 })), ArticleInputError);
+      await assert.rejects(Promise.resolve().then(() => runtime.store.listFollowingArticles({ actorId: readerId, locale: "zh-CN", limit: 101 })), ArticleInputError);
+      await assert.rejects(Promise.resolve().then(() => runtime.store.listFollowingArticles({ actorId: readerId, locale: "zh-CN", offset: -1 })), ArticleInputError);
+      await assert.rejects(Promise.resolve().then(() => runtime.store.listFollowingArticles({ actorId: readerId, locale: "zh-CN", offset: 100001 })), ArticleInputError);
+      await assert.rejects(Promise.resolve().then(() => runtime.store.listFollowingArticles({ actorId: "  ", locale: "zh-CN" })), ArticleInputError);
+      await assert.rejects(Promise.resolve().then(() => runtime.store.listFollowingArticles({ actorId: readerId, locale: "klingon" })), ArticleInputError);
     } finally {
       await runtime.cleanup(undefined, suffix);
     }

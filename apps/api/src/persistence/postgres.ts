@@ -1023,6 +1023,26 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
       );
       return rows.map(mapArticle);
     },
+    async listFollowingArticles({ actorId, locale = "zh-CN", limit = 20, offset = 0 }) {
+      requiredText("actorId", actorId, 300);
+      validateArticleLocale(locale);
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
+      if (!Number.isInteger(offset) || offset < 0 || offset > 100000) {
+        throw new ArticleInputError("offset must be an integer between 0 and 100000.");
+      }
+      const rows = await sql.unsafe(
+        `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at,
+                t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version
+         FROM articles AS a
+         JOIN article_translations AS t ON t.article_id = a.id
+         JOIN user_follows AS f ON f.followed_id = a.author_id
+         WHERE a.status = 'published' AND t.locale = $1 AND f.follower_id = $2
+         ORDER BY a.published_at DESC, a.id DESC
+         LIMIT $3 OFFSET $4`,
+        [locale, actorId, limit, offset],
+      );
+      return rows.map(mapArticle);
+    },
     async getPublishedArticle({ slug, locale = "zh-CN" }) {
       const normalizedSlug = validateArticleSlug(slug);
       validateArticleLocale(locale);

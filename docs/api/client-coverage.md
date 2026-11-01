@@ -1,5 +1,7 @@
 # 客户端接口覆盖度检查
 
+> 范围提示：本文只回答"客户端要的接口服务端有没有"。范围更大的审视——作为一个文学/长文发布平台，服务端还缺哪些能力——见 [`platform-capability-backlog.md`](./platform-capability-backlog.md)，其中第一项「关注流 `GET /api/v1/me/feed`」已落地。
+
 **目的**：回答两个问题——服务端 `/api/v1` 是否已经覆盖 Flutter 移动客户端
 ([BrainEno/flutter-blog](https://github.com/BrainEno/flutter-blog)) 的全部接口需求，以及它是否同时满足当前两个前端（Next.js `apps/web`、React Router `apps/web-rr`）的需求。
 
