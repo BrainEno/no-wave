@@ -30,6 +30,15 @@ function zh() {
       listen: "朗读", pause: "暂停", resume: "继续", stop: "停止", done: "朗读结束",
       unavailable: "这台浏览器没有可用的语音，朗读没能开始。",
       position: (n: number, total: number) => `正在朗读第 ${n} 段，共 ${total} 段`,
+      // 划线：段落靠文字与上下文重新定位，标注只存在读者自己的浏览器里。
+      passages: {
+        shelf: "我的划线", empty: "还没有划线。选中正文里的一段，它就会留在这台设备上。",
+        mark: "划线", note: "加注", edit: "修改", locate: "定位", remove: "删除", cancel: "取消", save: "保存",
+        placeholder: "写下你对这一段的想法……", count: (n: number, total: number) => `${n}/${total}`,
+        saved: "已保存在这台设备上。", removed: "这条划线已删除。",
+        full: "这篇作品的划线已经满了；先删掉一条，再加新的。", tooLong: "这一段太长了，一次划线的上限是 240 字。",
+        storageError: "这台浏览器不允许保存，划线只留在这个页面上。", gone: "这段文字已经不在作品里了；划线还留着，等它回来。",
+      },
     },
     author: { profile: "作者", works: "作品目录", worksEn: "Catalogue", recent: "近期作品", none: "这位作者还没有公开发表的作品。", count: (n: number) => `${n} 篇作品`, limitNote: "目录取自最新的 100 篇作品。" },
     categories: {
@@ -75,6 +84,14 @@ function en(): UiCopy {
       listen: "Listen", pause: "Pause", resume: "Resume", stop: "Stop", done: "Finished reading",
       unavailable: "This browser has no voice available, so nothing was read.",
       position: (n: number, total: number) => `Reading paragraph ${n} of ${total}`,
+      passages: {
+        shelf: "My marks", empty: "Nothing marked yet. Select a passage in the text and it stays on this device.",
+        mark: "Mark", note: "Add a note", edit: "Edit", locate: "Find", remove: "Remove", cancel: "Cancel", save: "Save",
+        placeholder: "What do you make of this passage?…", count: (n: number, total: number) => `${n}/${total}`,
+        saved: "Saved on this device.", removed: "Mark removed.",
+        full: "This work is full of marks; remove one before adding another.", tooLong: "That passage is too long — a mark holds up to 240 characters.",
+        storageError: "This browser will not let the page store anything, so marks stay only on this page.", gone: "Those words are no longer in the work; the mark is kept until they come back.",
+      },
     },
     author: { profile: "Author", works: "Catalogue", worksEn: "Catalogue", recent: "Recent work", none: "This author has no published work yet.", count: (n: number) => `${n} ${n === 1 ? "work" : "works"}`, limitNote: "Catalogue drawn from the latest 100 works." },
     categories: {

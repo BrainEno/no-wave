@@ -35,6 +35,9 @@ const CLIENT_COMPONENTS: readonly ClientComponent[] = [
   // article page could lose 朗读 and every server-side assertion would stay
   // green. The sentinel is the platform API the component itself detects.
   { component: "ReadAloud", sentinel: "speechSynthesis", page: "articles/:slug" },
+  // Reading marks likewise render nothing until an effect has asked whether the
+  // browser can paint them at all, and the paint itself leaves no markup to compare.
+  { component: "PassageAnnotations", sentinel: "nw-passages-v1:", page: "articles/:slug" },
   { component: "ReaderToc", sentinel: "nw-toc", page: "articles/:slug" },
   { component: "ReadingProgress", sentinel: "nw-progress", page: "articles/:slug" },
   { component: "PageLoader", sentinel: "nw-load", page: "/" },
