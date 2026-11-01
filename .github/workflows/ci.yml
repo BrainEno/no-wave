@@ -117,6 +117,12 @@ jobs:
   # part of `pnpm test`.
   e2e:
     runs-on: ubuntu-latest
+    # The job is part of `required-checks` (2026-11-01), so a hang would block
+    # merges for the six hours GitHub's default allows. Cold, the job is about
+    # five minutes — install, build, Chromium download and a two-minute suite —
+    # so this bound is roughly five times the observed cost and only a runaway
+    # process can reach it.
+    timeout-minutes: 25
     env:
       DATABASE_PROVIDER: sqlite
       DATABASE_URL: ""
@@ -395,6 +401,15 @@ jobs:
   # One gate, so a branch cannot be merged on a partial signal: every job above
   # has to have succeeded, and a skipped job reports as a failure rather than
   # passing by absence.
+  #
+  # `e2e` joined the gate on 2026-11-01. It is the only job here that can fail
+  # for a reason unrelated to the change under review — a browser download, a
+  # cold server, an animation that runs a beat longer on a busy runner — which is
+  # exactly why it ran outside the gate first: promotion was made conditional on
+  # a clean run history, and it has one (seven consecutive green runs, PRs 140 to
+  # 143). The retry in `playwright.config.ts` is one, deliberately: it absorbs a
+  # single flake without letting a genuinely broken journey pass, and the failed
+  # attempt is still in the uploaded report.
   required-checks:
     name: required-checks
     if: ${{ always() }}
@@ -405,6 +420,7 @@ jobs:
       - react-router-prototype
       - portable-stack
       - container-image
+      - e2e
     runs-on: ubuntu-latest
     steps:
       - name: Require every validation job to succeed
@@ -415,12 +431,13 @@ jobs:
           PROTOTYPE_RESULT: ${{ needs.react-router-prototype.result }}
           PORTABLE_STACK_RESULT: ${{ needs.portable-stack.result }}
           CONTAINER_RESULT: ${{ needs.container-image.result }}
+          E2E_RESULT: ${{ needs.e2e.result }}
         run: |
-          printf 'verify: %s\npostgres-integration: %s\nlocal-dev-chain: %s\nreact-router-prototype: %s\nportable-stack: %s\ncontainer-image: %s\n' \
-            "$VERIFY_RESULT" "$POSTGRES_RESULT" "$LOCAL_CHAIN_RESULT" "$PROTOTYPE_RESULT" "$PORTABLE_STACK_RESULT" "$CONTAINER_RESULT"
-          for result in "$VERIFY_RESULT" "$POSTGRES_RESULT" "$LOCAL_CHAIN_RESULT" "$PROTOTYPE_RESULT" "$PORTABLE_STACK_RESULT" "$CONTAINER_RESULT"; do
+          printf 'verify: %s\npostgres-integration: %s\nlocal-dev-chain: %s\nreact-router-prototype: %s\nportable-stack: %s\ncontainer-image: %s\ne2e: %s\n' \
+            "$VERIFY_RESULT" "$POSTGRES_RESULT" "$LOCAL_CHAIN_RESULT" "$PROTOTYPE_RESULT" "$PORTABLE_STACK_RESULT" "$CONTAINER_RESULT" "$E2E_RESULT"
+          for result in "$VERIFY_RESULT" "$POSTGRES_RESULT" "$LOCAL_CHAIN_RESULT" "$PROTOTYPE_RESULT" "$PORTABLE_STACK_RESULT" "$CONTAINER_RESULT" "$E2E_RESULT"; do
             if [ "$result" != "success" ]; then
-              echo "::error::verify, postgres-integration, local-dev-chain, react-router-prototype, portable-stack and container-image must all succeed."
+              echo "::error::verify, postgres-integration, local-dev-chain, react-router-prototype, portable-stack, container-image and e2e must all succeed."
               exit 1
             fi
           done
