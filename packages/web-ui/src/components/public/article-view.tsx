@@ -106,7 +106,7 @@ export function ArticlePageView({ article, newer, older, related }: ArticleDetai
       </div>
 
       {/* 划线：段落靠文字与上下文定位，标注只存在读者自己的浏览器里（ADR 0021）。 */}
-      <PassageAnnotations slug={article.slug} labels={ui.reader.passages} />
+      <PassageAnnotations slug={article.slug} locale={locale} labels={ui.reader.passages} />
 
       <ArticleComments slug={article.slug} locale={locale} />
 

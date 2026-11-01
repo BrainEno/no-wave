@@ -1,5 +1,6 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { publishWork } from "./support/works.ts";
+import { cancellations, installEngine, removeEngine, spokenTexts } from "./support/speech.ts";
 
 /**
  * 朗读 — the reading-aloud control, end to end in a real browser.
@@ -35,55 +36,6 @@ test.beforeAll(async ({ request }) => {
   const work = await publishWork(request, title, [FIRST_PARAGRAPH, SECOND_PARAGRAPH]);
   slug = work.slug;
 });
-
-/**
- * Replace the browser's speech engine with one that answers immediately.
- *
- * Installed before the page's own scripts, so the component finds it in the
- * effect where it asks whether the browser can speak at all.
- *
- * `endAfterMs` is how long each chunk is "spoken". It is long enough for the
- * states between chunks to be observable: the point of the assertions is the
- * order of things, and a state that ends before the next poll cannot be seen.
- */
-async function installEngine(page: Page, endAfterMs = 1_200): Promise<void> {
-  await page.addInitScript((delay) => {
-    const spoken: string[] = [];
-    const state = { spoken, cancelled: 0, paused: false };
-    (window as unknown as { __engine: typeof state }).__engine = state;
-    class FakeUtterance {
-      text: string;
-      lang = "";
-      onend: (() => void) | null = null;
-      onerror: (() => void) | null = null;
-      constructor(text: string) { this.text = text; }
-    }
-    (window as unknown as { SpeechSynthesisUtterance: unknown }).SpeechSynthesisUtterance = FakeUtterance;
-    Object.defineProperty(window, "speechSynthesis", {
-      configurable: true,
-      value: {
-        speak(utterance: FakeUtterance): void {
-          spoken.push(utterance.text);
-          setTimeout(() => utterance.onend?.(), delay);
-        },
-        cancel(): void { state.cancelled += 1; },
-        pause(): void { state.paused = true; },
-        resume(): void { state.paused = false; },
-      },
-    });
-  }, endAfterMs);
-}
-
-/** Take the engine away, the way a browser that cannot speak would. */
-async function removeEngine(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    Object.defineProperty(window, "speechSynthesis", { configurable: true, value: undefined });
-    Object.defineProperty(window, "SpeechSynthesisUtterance", { configurable: true, value: undefined });
-  });
-}
-
-const spokenTexts = (page: Page): Promise<string[]> =>
-  page.evaluate(() => (window as unknown as { __engine: { spoken: string[] } }).__engine.spoken);
 
 test("the control reads the work paragraph by paragraph and marks the one being spoken", async ({ page }) => {
   await installEngine(page);
@@ -125,7 +77,7 @@ test("stopping ends the reading, takes the mark off the page and leaves the engi
 
   await expect(page.locator("#nw-article [data-block].nw-speaking")).toHaveCount(0);
   await expect(aloud.getByRole("button", { name: "朗读" }), "the control is back at rest, not stuck on 暂停").toBeVisible();
-  const cancelled = await page.evaluate(() => (window as unknown as { __engine: { cancelled: number } }).__engine.cancelled);
+  const cancelled = await cancellations(page);
   expect(cancelled, "the engine was told to stop, not merely ignored").toBeGreaterThan(0);
   // The second paragraph never reaches the engine: stopping is immediate.
   expect(await spokenTexts(page)).toEqual([FIRST_PARAGRAPH]);

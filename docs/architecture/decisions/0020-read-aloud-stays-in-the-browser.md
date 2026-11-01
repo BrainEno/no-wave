@@ -49,6 +49,10 @@ Reading aloud is a **browser capability and nothing else**.
 - **One utterance at a time.** A queue cannot be paused mid-utterance without losing the reader's
   place, and stopping has to feel immediate — `cancel()` cannot interrupt what has already been
   handed over, so the wait after 停止 is at most one chunk.
+- **One voice at a time.** The shelf of reading marks can read a single passage (ADR 0021), so both
+  callers go through `lib/speech.ts`, which gives the voice to whoever asked last and tells the
+  reading it displaced. `cancel()` is indistinguishable from a chunk that ended, so without that
+  hand-over the page would sit on 暂停 for a reading nobody can hear any more.
 - **Leaving the page ends the reading.** Navigating away unmounts the component and cancels: an
   utterance that outlives its article talks over whatever the reader went to next.
 - The block being spoken is marked with `.nw-speaking` and scrolled into view **only when it is off
