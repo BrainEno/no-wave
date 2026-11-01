@@ -1,23 +1,22 @@
 # Vercel deployment
 
-> **Blocked 2026-11-01 — read before deploying.** The Web application is now a
-> React Router app in `apps/web-rr` and the Next.js application has been deleted
-> ([ADR 0017](../architecture/decisions/0017-nextjs-retired-one-web-application.md)),
-> but `vercel.json` still declares a `nextjs` framework preset rooted at
-> `apps/web`. That file is deployment configuration, and **no deployment has been
-> changed as part of that slice**: pointing `web` at `apps/web-rr` (and choosing
-> the right preset) is an owner decision, not a cleanup. Until it is made, a
-> Vercel deploy would fail at the build root. Everything else on this page — the
-> API container, the rewrites, the environment variables and the notification
-> daemon — is unaffected.
+> **Unverified against a real deploy — read before trusting it.** Since
+> [ADR 0017](../architecture/decisions/0017-nextjs-retired-one-web-application.md)
+> deleted the Next.js application, `web` is declared as a **container** service
+> built from `apps/web-rr/Dockerfile`: the same image CI's smoke test and the
+> portable stack run, so what deploys is what is tested locally. No Vercel
+> deployment has been run from this repository to confirm Vercel builds that
+> image the way `docker build` does, so treat the first deploy as the verification
+> step — the app inside it is already exercised by `pnpm test` and the container
+> smoke test, and the failure mode is a build-root error, not a runtime one.
 
-This repository is configured for a single Vercel Services deployment containing the Next.js web app, the HTTP API container, and the notification outbox daemon.
+This repository is configured for a single Vercel Services deployment containing the React Router web app in `apps/web-rr` (built from its own Dockerfile), the HTTP API container, and the notification outbox daemon.
 
 ## Service layout and public routing
 
-- `web` builds from `apps/web` (deleted; see the notice above) and receives the catch-all public route `/(.*)`.
+- `web` is built from `apps/web-rr/Dockerfile` — no framework preset, the same image `docker build -f apps/web-rr/Dockerfile` produces locally — and receives the catch-all public route `/(.*)`.
 - `api` is built from the repository root so its container can use the shared `pnpm-lock.yaml`. Its runtime image contains only the API workspace dependencies and source.
-- Only the documented REST prefix `/api/v1/*` is routed publicly to `api`. The Next.js route `/api/spike/events` therefore remains with `web`.
+- Only the documented REST prefix `/api/v1/*` is routed publicly to `api`. The spike route `/api/spike/events` therefore remains with `web`.
 - The `/graphql` endpoint no longer exists. `/health` and `/ready` are not exposed by public rewrites. The Web content client reaches versioned REST endpoints through the private `API_SERVICE_URL` binding; only the documented `/api/v1/*` prefix is routed publicly to the API.
 - `notifications` runs `apps/api/src/persistence/notification-worker.ts` as a Vercel Daemon. It uses PostgreSQL directly and does not need a service binding.
 
@@ -31,7 +30,8 @@ Configure these in Vercel's environment-variable settings for the environments w
 - `DATABASE_URL`: connection URL for the PostgreSQL database. Configure it for the API and notification worker. Vercel's current runtime uses PostgreSQL explicitly; do not rely on a local SQLite file for durable state on serverless/container instances without a confirmed persistent-volume guarantee.
 - `AUTH_JWT_SECRET`, `AUTH_JWT_ISSUER`, `AUTH_JWT_AUDIENCE`: JWT verification settings that must match the trusted token issuer. The issuer must use the application-specific `typ: application/vnd.bot-thk.access+jwt` and the required `iat`, `exp`, `sub`, and `jti` claims.
 - `AUTH_JWT_MAX_TTL_SECONDS` (optional): maximum accepted access-token lifetime in seconds; defaults to `900` (15 minutes) and accepts `60`–`86400`. Keep it as low as the trusted issuance/session design allows.
-- `NEXT_PUBLIC_SITE_URL`: the canonical public website URL for metadata — used by every page's `canonical` and `hreflang` links, by `sitemap.xml` and by `robots.txt`, all resolved through `configuredSiteUrl()`. Next.js inlines `NEXT_PUBLIC_*` at **build** time, so changing it requires a redeploy, not a restart. When it is unset every canonical URL falls back to the `https://example.invalid` placeholder, which is a signal that the variable is missing rather than a valid configuration.
+- `SITE_URL`: the canonical public website URL for metadata — used by every page's `canonical` and `hreflang` links, by `sitemap.xml` and by `robots.txt`, all resolved through `configuredSiteUrl()`. It is read per request, so changing it needs a restart, not a rebuild. When it is unset every canonical URL falls back to the `https://example.invalid` placeholder, which is a signal that the variable is missing rather than a valid configuration.
+- `NEXT_PUBLIC_SITE_URL` (legacy): still read when `SITE_URL` is unset, because deployments hold it in a dashboard this repository cannot edit. `SITE_URL` wins when both are set, so the two can be set in any order. Remove it once an environment has been migrated.
 
 Do not manually set `API_SERVICE_URL`; Vercel injects it from the service binding. For non-Vercel deployments, set `API_BASE_URL` to the REST API origin. `API_BASE_URL` takes precedence over the binding. `API_GRAPHQL_URL` is accepted only as a one-release compatibility alias when no `API_BASE_URL` is configured; the Web client strips the terminal `/graphql` path, logs a deprecation warning, and sends REST requests only. Remove that legacy variable after deployment configuration has been migrated.
 

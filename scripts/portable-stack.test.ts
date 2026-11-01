@@ -117,7 +117,7 @@ test("a process inherits the operating-system minimum and nothing else", () => {
 test("the Web role resolves the API through API_BASE_URL, not through a binding", () => {
   const web = portableStackEnvironment(baseOptions({ apiPort: 4321 }), "web");
   assert.equal(web.API_BASE_URL, "http://127.0.0.1:4321");
-  assert.equal(web.NEXT_PUBLIC_SITE_URL, "https://no-wave.example");
+  assert.equal(web.SITE_URL, "https://no-wave.example");
 });
 
 test("a configured PostgreSQL URL switches the provider and enables the outbox", async () => {

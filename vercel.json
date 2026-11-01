@@ -7,8 +7,9 @@
       "entrypoint": "apps/api/Dockerfile.vercel"
     },
     "web": {
-      "root": "apps/web",
-      "framework": "nextjs",
+      "root": ".",
+      "runtime": "container",
+      "entrypoint": "apps/web-rr/Dockerfile",
       "bindings": [
         {
           "type": "service",

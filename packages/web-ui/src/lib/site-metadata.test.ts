@@ -116,17 +116,41 @@ test("the site origin is resolved once and the configured value always wins", ()
   // origin. Before it existed, the home and archive pages canonicalised against
   // the fixture constant while the article and author pages used the
   // configured one — the same page set disagreeing about its own origin.
-  const previous = process.env.NEXT_PUBLIC_SITE_URL;
+  const previous = process.env.SITE_URL;
   try {
-    delete process.env.NEXT_PUBLIC_SITE_URL;
+    delete process.env.SITE_URL;
     assert.equal(configuredSiteUrl(), "https://example.invalid");
-    process.env.NEXT_PUBLIC_SITE_URL = "https://no-wave.example/";
+    process.env.SITE_URL = "https://no-wave.example/";
     assert.equal(configuredSiteUrl(), "https://no-wave.example/");
     // Blank configuration must fall back rather than produce `undefined` URLs.
-    process.env.NEXT_PUBLIC_SITE_URL = "   ";
+    process.env.SITE_URL = "   ";
     assert.equal(configuredSiteUrl(), "https://example.invalid");
   } finally {
-    if (previous === undefined) delete process.env.NEXT_PUBLIC_SITE_URL;
-    else process.env.NEXT_PUBLIC_SITE_URL = previous;
+    if (previous === undefined) delete process.env.SITE_URL;
+    else process.env.SITE_URL = previous;
+  }
+});
+
+test("the retired NEXT_PUBLIC_SITE_URL still configures the origin, and SITE_URL wins", () => {
+  // Deployments set the Next.js-era name in a dashboard this repository cannot
+  // edit, so a hard rename would empty every canonical URL on the next deploy.
+  // The new name takes precedence, which is what makes migration order
+  // irrelevant: add `SITE_URL` whenever convenient, the old one keeps working
+  // until then.
+  const names = ["SITE_URL", "NEXT_PUBLIC_SITE_URL"] as const;
+  const previous = new Map(names.map((name) => [name, process.env[name]]));
+  try {
+    delete process.env.SITE_URL;
+    process.env.NEXT_PUBLIC_SITE_URL = "https://legacy.example/";
+    assert.equal(configuredSiteUrl(), "https://legacy.example/");
+
+    process.env.SITE_URL = "https://current.example/";
+    assert.equal(configuredSiteUrl(), "https://current.example/");
+  } finally {
+    for (const name of names) {
+      const value = previous.get(name);
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
   }
 });

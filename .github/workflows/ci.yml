@@ -302,7 +302,7 @@ jobs:
           docker run -d --network nw-ci --name web \
             -e HOST=0.0.0.0 -e PORT=3100 \
             -e API_BASE_URL=http://api:80 \
-            -e NEXT_PUBLIC_SITE_URL=http://127.0.0.1:3100 \
+            -e SITE_URL=http://127.0.0.1:3100 \
             -p 3100:3100 bot-thk-web-rr:ci
 
           for i in $(seq 1 30); do

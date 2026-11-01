@@ -81,7 +81,7 @@ is not allowed to be the reason it works.
 | `PORT` | API, Web | the reserved port for that role |
 | `HOST` | API, Web | `127.0.0.1` |
 | `API_BASE_URL` | Web | `http://127.0.0.1:<api port>` |
-| `NEXT_PUBLIC_SITE_URL` | Web | `http://127.0.0.1:<web port>` |
+| `SITE_URL` | Web | `http://127.0.0.1:<web port>` |
 
 `DATABASE_URL`, `DATABASE_PATH` and `AUTH_JWT_SECRET` are read from your
 environment first; the rest are derived. Because every name above must appear in
@@ -214,7 +214,7 @@ an image that could not start. It is a `dependency` now.
 docker build -f apps/web-rr/Dockerfile -t bot-thk-web-rr .
 docker run --rm -p 3100:3100 \
   -e API_BASE_URL=https://api.example.example \
-  -e NEXT_PUBLIC_SITE_URL=https://www.example.example \
+  -e SITE_URL=https://www.example.example \
   bot-thk-web-rr
 ```
 

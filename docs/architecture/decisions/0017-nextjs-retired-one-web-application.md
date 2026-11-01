@@ -82,13 +82,18 @@ proxy and the writing desk.
 
 **Deferred, deliberately:**
 
-- The canonical site URL is still read from `NEXT_PUBLIC_SITE_URL`. The name is a
-  Next.js convention and is now the last Next-branded surface in the tree, but
-  renaming it changes what a deployment must set, so it waits for the owner's
-  decision rather than riding along with a dependency removal.
-- `vercel.json` still declares a `nextjs` framework preset rooted at the deleted
-  directory. That file is deployment configuration, and no deployment has been
-  changed as part of this slice.
+These were still Next-branded at the time; both have since been settled, and in
+both cases the migration is additive rather than a cutover:
+
+- The canonical site URL is `SITE_URL`. The Next.js-convention name
+  `NEXT_PUBLIC_SITE_URL` is still read as a fallback, because deployments hold
+  the value in a dashboard this repository cannot edit — a rename that emptied
+  every canonical URL on the next deploy would be worse than the name it
+  replaced. `SITE_URL` wins when both are set.
+- `vercel.json` declares `web` as a container service built from
+  `apps/web-rr/Dockerfile` instead of a `nextjs` preset rooted at the deleted
+  directory. No Vercel deployment has been run to verify it builds there the way
+  `docker build` does locally.
 - The application's own default port (3100) and the dev chain's (3000) are
   unchanged; every orchestrated path sets `PORT` explicitly.
 
