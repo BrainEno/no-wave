@@ -1329,7 +1329,7 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
     }
   });
 
-  test(`${adapterName}: discovery sorts by newest, or by likes inside the recent window`, options, async () => {
+  test(`${adapterName}: discovery sorts by newest, or by how many times a work was ever saved`, options, async () => {
     const runtime = await fixture();
     const suffix = randomUUID();
     const authorId = `sort-author-${suffix}`;
@@ -1359,40 +1359,46 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       await publish(authorId, `sort-edge-out-${suffix}`, "刚好在窗口外", 31);
       await publish(authorId, `sort-old-${suffix}`, "两年前的旧作", 60);
       await publish(otherAuthorId, `sort-other-work-${suffix}`, "别人的作品", 2);
-      // The all-time leader sits outside the window: `popular` is a signal about now.
+      // Nothing is excluded for being old: the tab is "most saved", so a work
+      // that collected its likes two years ago outranks one published yesterday.
       await like(`sort-edge-out-${suffix}`, 10);
       await like(`sort-old-${suffix}`, 5);
       await like(`sort-popular-${suffix}`, 3);
 
       const slugs = (articles) => articles.map((article) => article.slug);
-      const latest = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: suffix, now, limit: 20 });
+      const latest = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: suffix, limit: 20 });
       assert.deepEqual(slugs(latest), [
         `sort-quiet-${suffix}`, `sort-other-work-${suffix}`, `sort-popular-${suffix}`,
         `sort-edge-in-${suffix}`, `sort-edge-out-${suffix}`, `sort-old-${suffix}`,
       ]);
 
-      // Window first (the last 30 days), then likes, then newest again for ties.
-      const popular = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: suffix, sort: "popular", now, limit: 20 });
-      assert.deepEqual(slugs(popular), [`sort-popular-${suffix}`, `sort-quiet-${suffix}`, `sort-other-work-${suffix}`, `sort-edge-in-${suffix}`]);
-      assert.ok(!slugs(popular).includes(`sort-edge-out-${suffix}`));
-      assert.ok(!slugs(popular).includes(`sort-old-${suffix}`));
+      // Every save the work ever had, then newest first to break a tie. The
+      // two-year-old piece with 5 saves sits above yesterday's quiet new work.
+      const popular = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: suffix, sort: "popular", limit: 20 });
+      assert.deepEqual(slugs(popular), [
+        `sort-edge-out-${suffix}`, `sort-old-${suffix}`, `sort-popular-${suffix}`,
+        `sort-quiet-${suffix}`, `sort-other-work-${suffix}`, `sort-edge-in-${suffix}`,
+      ]);
 
-      // The window edge is inclusive: exactly 30 days ago is still "now".
-      const edge = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: suffix, sort: "popular", now, limit: 20, offset: 3 });
-      assert.deepEqual(slugs(edge), [`sort-edge-in-${suffix}`]);
+      const tail = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: suffix, sort: "popular", limit: 20, offset: 3 });
+      assert.deepEqual(slugs(tail), [`sort-quiet-${suffix}`, `sort-other-work-${suffix}`, `sort-edge-in-${suffix}`]);
 
       // Sort composes with the existing filters instead of replacing them.
-      const searched = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: `春天-${suffix}`, sort: "popular", now, limit: 20 });
+      const searched = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: `春天-${suffix}`, sort: "popular", limit: 20 });
       assert.deepEqual(slugs(searched), [`sort-popular-${suffix}`]);
-      const byAuthor = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: suffix, authorId, sort: "popular", now, limit: 20 });
-      assert.deepEqual(slugs(byAuthor), [`sort-popular-${suffix}`, `sort-quiet-${suffix}`, `sort-edge-in-${suffix}`]);
+      const byAuthor = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: suffix, authorId, sort: "popular", limit: 20 });
+      assert.deepEqual(slugs(byAuthor), [
+        `sort-edge-out-${suffix}`, `sort-old-${suffix}`, `sort-popular-${suffix}`,
+        `sort-quiet-${suffix}`, `sort-edge-in-${suffix}`,
+      ]);
 
       // Pagination walks the sorted set once.
-      const firstTwo = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: suffix, sort: "popular", now, limit: 2, offset: 0 });
-      const nextTwo = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: suffix, sort: "popular", now, limit: 2, offset: 2 });
-      assert.deepEqual(slugs(firstTwo).concat(slugs(nextTwo)), slugs(popular));
+      const firstTwo = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: suffix, sort: "popular", limit: 2, offset: 0 });
+      const nextTwo = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: suffix, sort: "popular", limit: 2, offset: 2 });
+      const lastTwo = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: suffix, sort: "popular", limit: 2, offset: 4 });
+      assert.deepEqual(slugs(firstTwo).concat(slugs(nextTwo), slugs(lastTwo)), slugs(popular));
 
-      await assert.rejects(Promise.resolve().then(() => runtime.store.listPublishedArticles({ locale: "zh-CN", query: suffix, sort: "hottest", now })), ArticleInputError);
+      await assert.rejects(Promise.resolve().then(() => runtime.store.listPublishedArticles({ locale: "zh-CN", query: suffix, sort: "hottest" })), ArticleInputError);
     } finally {
       await runtime.cleanup(undefined, suffix);
     }
