@@ -1203,6 +1203,56 @@ test("REST liked articles, related articles, and article like info are available
   });
 });
 
+test("REST following feed requires a session and reads only what the viewer follows", async () => {
+  const calls = [];
+  const writerProfile = {
+    userId: "writer-user", displayName: "作者", bio: "简介", avatarUrl: null,
+    websiteUrl: null, locale: "zh-CN",
+    createdAt: "2025-12-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z",
+    followerCount: 4, followingCount: 3, isFollowing: true,
+  };
+  const article = {
+    id: "article-1", authorId: "writer-user", slug: "followed-work", workType: "other",
+    status: "published", locale: "zh-CN", title: "关注的新作", summary: "摘要",
+    contentBlocks: [{ id: "p1", type: "paragraph", text: "正文" }],
+    createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-02T00:00:00.000Z",
+    publishedAt: "2026-01-02T00:00:00.000Z", author: writerProfile, categories: [], tags: [],
+    likeCount: 3, likedByViewer: false,
+  };
+  await withServer(async (baseUrl) => {
+    // A feed is personal: without a session there is nothing to render, not the public one.
+    const anonymous = await fetch(baseUrl + "/api/v1/me/feed");
+    assert.equal(anonymous.status, 401);
+
+    const headers = { authorization: "Bearer " + signedToken("reader-user") };
+    const badLocale = await fetch(baseUrl + "/api/v1/me/feed?locale=nope", { headers });
+    assert.equal(badLocale.status, 400);
+    const badLimit = await fetch(baseUrl + "/api/v1/me/feed?limit=0", { headers });
+    assert.equal(badLimit.status, 400);
+    const badOffset = await fetch(baseUrl + "/api/v1/me/feed?offset=100001", { headers });
+    assert.equal(badOffset.status, 400);
+    assert.deepEqual(calls, []);
+
+    const feed = await fetch(baseUrl + "/api/v1/me/feed?limit=5&offset=10", { headers });
+    assert.equal(feed.status, 200);
+    assert.deepEqual(await feed.json(), { data: [article] });
+    assert.deepEqual(calls, [{ actorId: "reader-user", locale: "zh-CN", limit: 5, offset: 10 }]);
+
+    const wrongMethod = await fetch(baseUrl + "/api/v1/me/feed", { method: "DELETE" });
+    assert.equal(wrongMethod.status, 405);
+    assert.equal(wrongMethod.headers.get("allow"), "GET");
+  }, {
+    env: authEnv,
+    store: {
+      async isSessionRevoked() { return false; },
+      async listFollowingArticles(args) { calls.push(args); return [article]; },
+      async getAuthorProfile() { return writerProfile; },
+      async listArticleTaxonomies() { return []; },
+      async getArticleLikeInfo() { return { articleId: "article-1", slug: "followed-work", likeCount: 3, likedByViewer: false }; },
+    },
+  });
+});
+
 test("REST public author profile reflects the optional viewer follow state", async () => {
   let received;
   await withServer(async (baseUrl) => {

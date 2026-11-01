@@ -160,6 +160,29 @@ export function createSqliteArticleStore(db) {
       return rows.map(mapArticle);
     },
 
+    /**
+     * The reading feed: what the accounts `actorId` follows have published,
+     * newest first, across all followed authors.
+     *
+     * One join against `user_follows` instead of a per-author query followed by
+     * an in-memory merge, because the merge is where offset pagination quietly
+     * breaks: a page boundary computed over merged per-author pages repeats and
+     * drops rows as soon as authors publish at different rates.
+     */
+    listFollowingArticles({ actorId, locale = "zh-CN", limit = 20, offset = 0 }) {
+      requiredText("actorId", actorId, 300);
+      validateArticleLocale(locale);
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
+      if (!Number.isInteger(offset) || offset < 0 || offset > 100000) throw new ArticleInputError("offset must be an integer between 0 and 100000.");
+      const rows = statement(articleSelect + `
+        JOIN user_follows AS f ON f.followed_id = a.author_id
+        WHERE a.status = 'published' AND t.locale = ? AND f.follower_id = ?
+        ORDER BY a.published_at DESC, a.id DESC
+        LIMIT ? OFFSET ?
+      `).all(locale, actorId, limit, offset);
+      return rows.map(mapArticle);
+    },
+
     getPublishedArticle({ slug, locale = "zh-CN" }) {
       validateArticleSlug(slug);
       validateArticleLocale(locale);
