@@ -2,8 +2,9 @@ import type { MetaDescriptor } from "react-router";
 
 /**
  * Adapter from the project's framework-neutral metadata objects
- * (`articleMetadata`, `archiveMetadata`, `homeMetadata` in `apps/web/src/lib/content.ts`)
- * to React Router's `meta` descriptor array.
+ * (`articleMetadata`, `archiveMetadata`, `homeMetadata` in
+ * `@bot-thk/web-ui`'s `lib/content.ts`) to React Router's `meta` descriptor
+ * array.
  *
  * Keeping the conversion here means the SEO contract — canonical URL, hreflang
  * alternates, Open Graph fields — stays in one shared, framework-free place
@@ -12,9 +13,9 @@ import type { MetaDescriptor } from "react-router";
 /**
  * The site title template.
  *
- * Mirrors `apps/web/src/app/layout.tsx` (`title.template: "%s | 无浪潮"`), so a
- * page that is rendered by either application carries the same `<title>` — this
- * is part of the SEO parity the migration is required to preserve.
+ * The title template the whole site is rendered with, so a page carries the
+ * same `<title>` wherever it is served from — part of the SEO contract the
+ * migration set out to preserve.
  */
 export const SITE_TITLE_SUFFIX = " | 无浪潮";
 export const DEFAULT_TITLE = "无浪潮 · No Wave";
@@ -33,12 +34,13 @@ export type SharedMetadata = {
 };
 
 /**
- * A URL as the App Router emits it.
+ * A URL as the site publishes it.
  *
- * `new URL("/", origin).toString()` ends in a slash, while Next resolves the
- * site root to the bare origin (`https://site.example`). Both identify the same
- * resource, so this is cosmetic — but the parity gate compares bytes, and one
- * spelling in one adapter is cheaper than a permanent exception.
+ * `new URL("/", origin).toString()` ends in a slash, while the site root is
+ * published as the bare origin (`https://site.example`). Both identify the same
+ * resource, so this is cosmetic — but canonical URLs are compared byte for byte
+ * in the tests, and one spelling in one adapter is cheaper than a permanent
+ * exception.
  */
 function routerUrl(href: string): string {
   if (!href.endsWith("/")) return href;
@@ -52,9 +54,10 @@ function routerUrl(href: string): string {
 /**
  * @param absoluteTitle — render the page title without the site suffix.
  *
- * The App Router applies its root layout's `title.template` to descendant
- * segments only, so `/` is served with the bare home title while `/en` (one
- * segment deeper) carries " | 无浪潮". The prototype mirrors both exactly.
+ * The site's title template applies to descendant segments only, so `/` is
+ * served with the bare home title while `/en` (one segment deeper) carries
+ * " | 无浪潮". `metaDescriptors` mirrors both, and the home route passes
+ * `absoluteTitle` for the root.
  */
 export function metaDescriptors(
   metadata: SharedMetadata,

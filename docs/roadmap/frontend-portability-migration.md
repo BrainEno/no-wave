@@ -4,8 +4,14 @@
 - Target: React Router 7 Framework Mode
 - Current implementation: Next.js App Router, preserved until staged migration passes
 - Baseline audited: `main@d9515c6d66881a7599d35581f38640b0ebb74a78`
-- Status: Architecture/route inventory recorded; **Phase 1 prototype delivered** in `apps/web-rr`
-  ([report](react-router-prototype.md)); no production framework code has been replaced yet
+- Status: **the migration is complete and the Next.js application is gone.** Phases 0–5
+  are delivered, the React Router application in `apps/web-rr` is the only Web
+  application, and the shared UI it renders lives in `packages/web-ui`
+  ([report](react-router-prototype.md), [ADR 0017](../architecture/decisions/0017-nextjs-retired-one-web-application.md)).
+  Section 2 below is the 2026-10-29 baseline and is kept as the record of what had
+  to be ported. What remains open is Phase 6's half that needs a real host and
+  Phase 7's cutover, neither of which is a code change.
+  **No production deployment, DNS change or traffic cutover has been performed.**
 
 ## 1. Approved outcome
 
@@ -24,7 +30,7 @@ See [ADR 0012](../architecture/decisions/0012-portable-web-framework-migration.m
 
 ## 2. Baseline inventory
 
-The inventory below was checked against `main@d9515c6d66881a7599d35581f38640b0ebb74a78` on 2026-10-29. Re-check it against the current main head before each implementation stage; do not assume the repository remains unchanged after this audit.
+The inventory below was checked against `main@d9515c6d66881a7599d35581f38640b0ebb74a78` on 2026-10-29. It is a record of the starting point, not of the current tree: every item in it has since been ported, and the Next.js application it describes was deleted on 2026-11-01 ([ADR 0017](../architecture/decisions/0017-nextjs-retired-one-web-application.md)).
 
 ### Framework and package configuration
 
@@ -32,7 +38,7 @@ The inventory below was checked against `main@d9515c6d66881a7599d35581f38640b0eb
 - `apps/web/next.config.ts`: standalone output and monorepo tracing root. React UI, CSS, assets and most content helpers are reusable; App Router route semantics and framework-only helpers are not.
 - `apps/web/src/app`: current App Router routes. Pages depend on Next metadata, route params and `notFound()`.
 - `apps/web/src/app/sitemap.ts` and `robots.ts`: Next MetadataRoute implementations. They must be ported to standard route responses or equivalent React Router route modules.
-- `scripts/route-smoke.ts`: starts `pnpm --filter @bot-thk/web start`, currently backed by `next start`. Its assertions form a useful behavior baseline, but the server launch and any Next-specific assumptions must be changed during the framework switch.
+- `scripts/route-smoke.ts`: started `pnpm --filter @bot-thk/web start`, backed by `next start`. Its assertions formed the behavior baseline and were kept; the server launch is now `pnpm --filter @bot-thk/web-rr start` (2026-11-01).
 
 ### Framework-specific HTTP entry points
 
@@ -49,7 +55,7 @@ There are eight current App Router `route.ts` handlers:
 | `apps/web/src/app/api/articles/[slug]/comments/route.ts` | Comment read/write proxy | Preserve origin protection, the comment content contract and private cache policy. |
 | `apps/web/src/app/api/spike/events/route.ts` | Test-only SSE route | Preserve the route smoke contract while the spike remains; do not treat it as a durable real-time transport. |
 
-There is one additional Next Server Action module: `apps/web/src/app/spike-form/actions.ts`. It is part of the framework spike, not the durable business API. Preserve its observed behavior through a route action/resource route or explicitly retire it only under an approved scope decision.
+There is one additional Next Server Action module: `apps/web/src/app/spike-form/actions.ts`. It was part of the framework spike, not the durable business API, and its observed behavior was preserved through a React Router route action plus its SSE resource route rather than retired (2026-11-01).
 
 ### Authentication and private request boundary
 
@@ -59,12 +65,12 @@ There is one additional Next Server Action module: `apps/web/src/app/spike-form/
 - On a protected API 401, the proxy can rotate the refresh token and retry once; invalid refresh state clears cookies. Browser JSON must never expose access/refresh token secrets.
 - The current API base resolver supports `API_BASE_URL` and the Vercel service binding `API_SERVICE_URL`. A standard server-only API origin must be sufficient for the migrated app; the binding cannot be a required dependency.
 
-These behaviors have tests in `apps/web/src/lib/authoring-proxy-policy.test.ts` and related Web/API contract tests. Before moving code, identify which tests validate shared behavior and which only exercise the current Next adapter. Preserve behavior tests and replace adapter-specific assertions deliberately.
+These behaviors had tests in `apps/web/src/lib/authoring-proxy-policy.test.ts` (now `packages/web-ui/src/lib/authoring-proxy-policy.test.ts`) and related Web/API contract tests. Before moving code, identify which tests validate shared behavior and which only exercise the current Next adapter. Preserve behavior tests and replace adapter-specific assertions deliberately.
 
 ### Vercel-only deployment assumptions
 
 Current `vercel.json` defines:
-- A Web service rooted at `apps/web`, preset to `nextjs`.
+- A Web service rooted at `apps/web`, preset to `nextjs` — still the case in `vercel.json`, which no deployment has changed (see ADR 0017, deferred items).
 - A private API service binding injected as `API_SERVICE_URL`.
 - A rewrite of `/api/v1/*` to the API service and a catch-all rewrite to Web.
 - A single `notifications` Daemon instance in region `hkg1`, running `apps/api/src/persistence/notification-worker.ts`.
@@ -118,7 +124,7 @@ The owner accepts cold starts and free-instance sleep but does not accept card-r
 - [x] Prove a client-interactive form handles valid input, validation errors, API failures and explicit pending/success states.
 - [x] Prove a private route/response does not expose user data in SSR HTML or shared caches.
 - [x] Build and start via standard Node.js in a container or equivalent neutral environment, without Vercel bindings. → `apps/web-rr/server.ts`
-- [x] Add the minimum deterministic test/build workflow for the prototype and record platform-specific assumptions. → `pnpm test:prototype` + CI job `react-router-prototype`
+- [x] Add the minimum deterministic test/build workflow for the prototype and record platform-specific assumptions. → `pnpm test:web` + CI job `react-router-prototype`
 
 **Exit gate:** framework SSR/client behavior and standard-runtime startup are demonstrated; host feasibility is established independently of marketing claims.
 
@@ -136,12 +142,12 @@ so the phase is not complete and no provider-specific code exists.
 
 **Exit gate:** the critical auth/media/REST behavior is tested without requiring Next.js request objects or Vercel's service-binding injection.
 
-### Phase 3 — Migrate public SSR routes first (current stage)
+### Phase 3 — Migrate public SSR routes first (complete)
 
 - [x] Port localized home, article archive/detail, author, category and search routes in small reviewed batches. → archive/author/category index/category detail/search landed in `apps/web-rr` (2026-10-29); **home** followed on 2026-10-29 with `loadHomePage` + `HomePageView`. Its three client components (`PageLoader`, `HeroCanvas`, `HomeLatest`) hydrate in both frameworks; their *behaviour* stays Phase 4.
-- [x] Preserve URLs, `zh-CN` defaults, English routes, canonical/Open Graph metadata and status codes. → asserted by `pnpm test:prototype` (28 tests) over real HTTP, including the App Router's title template and the root-page exception.
-- [x] Port sitemap and robots output; avoid using fake fallback content when a configured API fails. → one shared builder (`apps/web/src/lib/site-metadata.ts`) with a thin adapter per framework; the scan is bounded and a failing API yields an empty, non-fixture entry set.
-- [x] Reuse React presentation components and neutral content helpers where appropriate; avoid a styling redesign within this migration. → the load/render split in `apps/web/src/lib/public-pages.ts` + `apps/web/src/components/public/*` is shared by both apps, so the App Router renders the same view; see [public SSR migration](public-ssr-migration.md).
+- [x] Preserve URLs, `zh-CN` defaults, English routes, canonical/Open Graph metadata and status codes. → asserted by `pnpm test:web` (28 tests) over real HTTP, including the App Router's title template and the root-page exception.
+- [x] Port sitemap and robots output; avoid using fake fallback content when a configured API fails. → one shared builder (`packages/web-ui/src/lib/site-metadata.ts`) with a thin adapter per framework; the scan is bounded and a failing API yields an empty, non-fixture entry set.
+- [x] Reuse React presentation components and neutral content helpers where appropriate; avoid a styling redesign within this migration. → the load/render split in `packages/web-ui/src/lib/public-pages.ts` + `packages/web-ui/src/components/public/*` is shared by every route, so both frameworks rendered the same view; see [public SSR migration](public-ssr-migration.md).
 - [x] Update route-smoke checks to start the migrated Node server and keep asserting observable output/status/cache semantics.
 - [x] Port the **site shell** — navigation, language switch, notification panel, smooth-scroll
   wrapper and footer — by rendering the shared `SiteChrome` from `root.tsx` (and from the error
@@ -160,13 +166,21 @@ OS minimum plus eleven documented variables; the `VERCEL*` set and
 `API_SERVICE_URL` are deleted, so the platform binding is not merely unused but
 unreachable. See [One portable command](../operations/portable-stack.md).
 
-**Status 2026-10-31:** the site shell is ported too, and `pnpm check:ssr-parity` now
+**Status 2026-11-01:** the parity gate is retired. `pnpm check:ssr-parity` and its
+nightly workflow compared two implementations of the same routes; with the Next.js
+application deleted there is one implementation and nothing to compare, so the
+script and workflow are gone and the assertions live where they run on every
+commit — `pnpm test:web` (61 tests over real HTTP against the production build)
+and `pnpm test:routes`. The spike the paragraph below mentions is ported too:
+`/spike-form` and `/api/spike/events` are a route action and a resource route.
+
+**Status 2026-10-31 (superseded):** the site shell is ported too, and `pnpm check:ssr-parity` now
 compares **198** observations over **20** routes (was 112 over 17): the new ones are absolute
 shell checks plus the three recovery pages. The only production surfaces still missing from
 the prototype are the spike — `/api/spike/events` and `/spike-form` — which the roadmap
 itself says must not be treated as a durable transport.
 
-**Status 2026-10-29:** every public route — home included — plus sitemap and
+**Status 2026-10-29 (superseded):** every public route — home included — plus sitemap and
 robots is ported, and the exit gate is executable and scheduled:
 `pnpm check:ssr-parity` builds both applications, points them at one mock API
 and compares 168 observations over 17 routes (105 of them page-level, 56 of them absolute shell markers) with **0 unexpected differences**
@@ -196,7 +210,7 @@ environment, and comparison against a real host (Phase 6).
 - [x] Port sign-in/account redirects. → `/sign-in`, `/account` and
   `/api/auth/:action` are resource-route adapters over `handleAuthRequest`
   (`@bot-thk/web-http`), with the redirect, `no-store` and token-free-HTML
-  properties asserted by `pnpm test:prototype`.
+  properties asserted by `pnpm test:web`.
 - [x] Port the writing desk route **and the API it calls**. → Phase 4b moved the
   four calls the desk makes — session, list, create, update — into
   `handleAuthoring{Session,Articles,Article}Request`
@@ -216,7 +230,7 @@ environment, and comparison against a real host (Phase 6).
 - [x] Keep the Lexical editor client-interactive; test Chinese IME, keyboard accessibility, save/publish and error recovery without changing the article contract. → the editor is the same shared client component in both frameworks (`apps/web-rr` reuses it through the `@/*` alias) and the client-bundle guard covers `AuthoringWorkspace` + `ArticleEditor`. Four browser journeys in `e2e/authoring.spec.ts`, each run against **both** Playwright projects: save draft → publish → read the public page; an empty body is refused with a readable message; **IME** — "text committed by an IME reaches the editor state and is saved" types with `keyboard.insertText`, the `input`-without-keydown shape an IME commit has, and asserts it survives the API round trip; **keyboard** — "formatting applied without a mouse survives the save round trip" selects with Ctrl+A and bolds with Ctrl+B, then asserts the mark comes back after a reload. The article contract is unchanged: `lexical-document-adapter.ts` still produces blocks with `text` and optional `inlines`, asserted in `lexical-document-adapter.test.ts`.
 - [x] Migrate auth, session and **article authoring** routes to framework-neutral handler adapters (Phase 4a: comments; 4b: authoring). Media was already shared (Phase 5).
 - [x] Preserve cookie attributes, token refresh rotation, origin checks, request limits, API authorization and no-store policy. → each property has an assertion, in the layer that both frameworks depend on: **cookie attributes** — `packages/web-http/test/auth.test.ts` (HttpOnly, `SameSite=Lax`, `Secure` follows the browser-facing scheme rather than the internal hop, logout clears both cookies) plus the prototype's HTTP test that the sign-in response never returns a token in JSON; **refresh rotation** — `auth.test.ts` "refresh … rotates both tokens", `forward.test.ts` (refresh-and-retry once, a rejected refresh clears the session instead of looping) and `identity.integration.test.ts` (rotation, absolute expiry is not extended, logout revokes the family, concurrent reuse revokes the whole family — SQLite **and** Postgres); **origin checks** — `ORIGIN_REJECTED` asserted for auth, authoring, comments and media, and the prototype asserts the check runs *before* the article id is validated; **request limits** — 413 `PAYLOAD_TOO_LARGE` for a lying `content-length` and for an oversized body (auth, authoring at 2 MB, comments); **API authorization** — `sqlite-article-store.test.ts` (a non-author cannot update), `persistence-adapter-contract.test.ts` "drafts stay private to the published feed and article updates require ownership" (both providers), 403 over HTTP in `server.test.ts`; **no-store** — `assertNoStore` on session, list, create and update in `packages/web-http/test/authoring.test.ts`, on the forwarding paths, and over real HTTP in the prototype's tests.
-- [x] Re-run auth and writing end-to-end journeys against a disposable API/database. → `playwright.config.ts` now defines two projects — `app-router` (:3000) and `prototype` (:3100) — that run the same `e2e/authoring.spec.ts` (10 journeys × 2 frameworks = 20 tests, executed in CI) against **one** API and **one** disposable SQLite file (`DATABASE_PATH` = `/tmp/no-wave-e2e.sqlite`); the spec names no framework, taking its origin from the project's `baseURL`. The newest journey is the one that closes a deletion from the reader's side — a second account comments, the author deletes, and the reader's own desk has to show the notice with the date the sweep runs — so it needs two accounts in one browser, and it proves the shared inbox in both frameworks at once. `pnpm test:prototype` still covers the prototype's desk API over real HTTP against the mock.
+- [x] Re-run auth and writing end-to-end journeys against a disposable API/database. → `playwright.config.ts` defines one project — `web`, taking its origin from `E2E_WEB_URL` — that runs `e2e/authoring.spec.ts` (10 journeys, executed in CI) against **one** API and **one** disposable SQLite file (`DATABASE_PATH` = `/tmp/no-wave-e2e.sqlite`); the spec names no framework, taking its origin from the project's `baseURL`. It drove two projects until 2026-11-01, when the App Router stopped existing; the journeys are unchanged. The newest journey is the one that closes a deletion from the reader's side — a second account comments, the author deletes, and the reader's own desk has to show the notice with the date the sweep runs — so it needs two accounts in one browser, and it proves the shared inbox in both frameworks at once. `pnpm test:web` covers the desk API over real HTTP against the mock.
 
 **Exit gate:** no token leaks; user-specific content remains private; create/edit/save/publish and logout flows are regression-tested.
 
@@ -274,7 +288,14 @@ environment, and comparison against a real host (Phase 6).
 
 ### Phase 7 — Cutover and remove legacy Web hosting assumptions
 
-- [ ] After approved cutover and a stable validation window, remove the Next.js dependency/configuration and dead App Router routes.
+- [x] Remove the Next.js dependency/configuration and dead App Router routes. → done
+  2026-11-01 on the owner's instruction ([ADR 0017](../architecture/decisions/0017-nextjs-retired-one-web-application.md)):
+  `apps/web` is deleted, `next` is out of the dependency tree, the shared UI moved to
+  `packages/web-ui`, and the parity job that compared the two applications is retired.
+  **This is not a cutover**: nothing was deployed and no traffic moved. The item is
+  closed ahead of the validation window because keeping the retired application cost
+  more than it protected — the replacement had already passed every gate that could
+  be run without a host.
 - [ ] Remove the Vercel-specific Web framework/service-binding/Daemon assumptions only after the replacement's deployment and worker paths are verified.
 - [ ] Keep the standalone API, REST contract, database adapters, private media boundary and outbox semantics independent of the selected host.
 - [ ] Re-run the complete CI suite after cleanup and update README/operations guides to reflect only tested deployment instructions.
@@ -284,7 +305,7 @@ environment, and comparison against a real host (Phase 6).
 ## 5. Change management and non-goals
 
 - One phase or small cohesive slice per PR. Do not perform a wholesale rewrite.
-- The existing Next.js app remains the working fallback until the replacement passes acceptance gates.
+- ~~The existing Next.js app remains the working fallback until the replacement passes acceptance gates.~~ Retired 2026-11-01: the replacement passed the gates that do not need a host, and the owner approved removing the old application rather than keeping it as a fallback that no deployment used.
 - Do not change API behavior, REST fields, auth security, editorial product behavior, database migration protocol or visual direction unless a separate decision explicitly authorizes it.
 - Do not automatically provision Neon, select a paid plan, deploy public previews requiring a payment method, run production migrations, change DNS, or cut over traffic.
 - The first technical change after this audit is the isolated prototype, not a direct rewrite of every route.

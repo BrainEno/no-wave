@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-10-29
 - Supersedes: ADR 0002 for the target Web framework; the existing Next.js application remains the working implementation until migration and cutover gates pass.
+- Amendment 2026-11-01: the gates have passed and the Next.js application has been deleted. See [ADR 0017](0017-nextjs-retired-one-web-application.md), which supersedes the "do not delete" clause below and nothing else in this record.
 
 ## Context
 
@@ -18,7 +19,7 @@ The existing Web application uses Next.js App Router. Its core React components 
 
 ## Decision
 
-1. **Target React Router 7 Framework Mode** for `apps/web`. It supports server rendering with route modules while retaining React components and client-side interaction. Do not introduce a separate Remix v2 application; the selected target is React Router 7 Framework Mode.
+1. **Target React Router 7 Framework Mode** for the Web application (delivered as `apps/web-rr`; the shared UI it renders lives in `packages/web-ui`). It supports server rendering with route modules while retaining React components and client-side interaction. Do not introduce a separate Remix v2 application; the selected target is React Router 7 Framework Mode.
 2. **Render public content on the server.** Home, archive, article, author, category and search routes must render meaningful HTML and metadata without relying on client-only data loading. Preserve current URLs and locale behavior unless a separately approved product decision changes them.
 3. **Keep the writing desk interactive and private.** The `/write` page can hydrate a client-side Lexical editor. Its SSR output must not embed private user data, and authenticated/user-specific responses must not enter shared public caches.
 4. **Use standard Node.js as the portable runtime baseline.** The app must build and start without Vercel service bindings. A host-specific adapter may be added only outside business logic and only after the zero-cost/no-card qualification gate passes.
@@ -31,13 +32,15 @@ The existing Web application uses Next.js App Router. Its core React components 
 
 Audited against `main@d9515c6d66881a7599d35581f38640b0ebb74a78` on 2026-10-29. The complete route and deployment inventory lives in [the frontend portability migration roadmap](../../roadmap/frontend-portability-migration.md).
 
-- `apps/web/package.json` pins Next.js 16.4.2 and React 19.2.0.
-- `apps/web/next.config.ts` enables standalone output and monorepo file tracing.
-- App Router pages use `generateMetadata`, `notFound()`, Next Metadata types, `sitemap.ts` and `robots.ts`.
-- Eight `route.ts` handlers implement auth, writing, comments, media and a test SSE endpoint; `apps/web/src/app/spike-form/actions.ts` uses a Next Server Action.
-- `apps/web/src/lib/authoring-proxy.ts` uses `NextRequest`/`NextResponse` and Next cookie helpers. It implements an important security boundary and must be ported by behavior, not mechanically translated.
+Recorded on 2026-10-29, when the Next.js application was the working implementation. Every item below has since been ported and the coupling removed — see [ADR 0017](0017-nextjs-retired-one-web-application.md).
+
+- `apps/web/package.json` pinned Next.js 16.4.2 and React 19.2.0.
+- `apps/web/next.config.ts` enabled standalone output and monorepo file tracing.
+- App Router pages used `generateMetadata`, `notFound()`, Next Metadata types, `sitemap.ts` and `robots.ts`.
+- Eight `route.ts` handlers implemented auth, writing, comments, media and a test SSE endpoint; `apps/web/src/app/spike-form/actions.ts` used a Next Server Action.
+- `apps/web/src/lib/authoring-proxy.ts` used `NextRequest`/`NextResponse` and Next cookie helpers. It implemented an important security boundary and was ported by behavior, not mechanically translated.
 - `vercel.json` declares the Web framework preset, the private API service binding (`API_SERVICE_URL`), public rewrites and a one-instance notification Daemon in `hkg1`.
-- `scripts/route-smoke.ts` starts the Web app using the current `next start` command and verifies localized SSR, metadata, hard 404s, private cache policy, SSE and media/comment route behavior.
+- `scripts/route-smoke.ts` started the Web app using the then-current `next start` command and verifies localized SSR, metadata, hard 404s, private cache policy, SSE and media/comment route behavior.
 
 ## Required migration rules
 
@@ -49,7 +52,7 @@ Audited against `main@d9515c6d66881a7599d35581f38640b0ebb74a78` on 2026-10-29. T
 - Keep media objects private and served through the authorized API path. Never make a framework migration change the object bucket's access policy.
 - Keep the outbox durable in the database. The Web deployment must not own notification delivery state.
 - Keep GraphQL removed. The migration uses the existing REST contract only; obsolete GraphQL requirements in earlier framework notes are historical and do not authorize reintroduction.
-- Do not delete the existing Next.js app, remove its dependencies, switch DNS, deploy production, provision paid resources, or run data migrations until the replacement passes its gates and the owner explicitly approves the operation.
+- ~~Do not delete the existing Next.js app, remove its dependencies, switch DNS, deploy production, provision paid resources, or run data migrations until the replacement passes its gates and the owner explicitly approves the operation.~~ **Done 2026-11-01 for the deletion and its dependencies** — the gates passed and the owner approved; see [ADR 0017](0017-nextjs-retired-one-web-application.md). Deployment, DNS, cutover and migrations remain separately approved operations and have not happened.
 
 ## Alternatives considered
 

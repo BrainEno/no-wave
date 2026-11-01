@@ -5,14 +5,14 @@ import type { IncomingMessage, Server, ServerResponse } from "node:http";
 /**
  * Deterministic stand-in for the versioned REST API.
  *
- * The prototype talks to a real HTTP server rather than an injected fake, so the
- * tests exercise the same `fetch` path, cookie handling and status mapping that a
- * live API would produce. Payload shapes mirror the documented REST contract that
- * `apps/web/src/lib/api-content.ts` already parses:
+ * The tests talk to a real HTTP server rather than an injected fake, so they
+ * exercise the same `fetch` path, cookie handling and status mapping that a live
+ * API would produce. Payload shapes mirror the documented REST contract that
+ * `@bot-thk/web-ui`'s `lib/api-content.ts` already parses:
  * `{ data: ... }` envelopes, `{ error: { code, message } }` failures.
  *
  * Deliberately not a general-purpose mock: it serves the two articles and the
- * three auth endpoints the prototype needs, and nothing else.
+ * three auth endpoints the tests need, and nothing else.
  */
 
 export const MOCK_CREDENTIALS = {
@@ -129,7 +129,7 @@ const MOCK_COMMENT_COUNTS = new Map<string, number>();
  * author is never notified of their own deletion. So this notice is a fixture,
  * standing in for a message another author's deletion would have sent. The
  * *rule* is tested against the real API (and, end to end, in `e2e/`); what the
- * prototype needs from it is the screen, and the endpoints below are real —
+ * tests need from it is the screen, and the endpoints below are real —
  * they count, mark and clear notices exactly as the API does.
  *
  * The purge date is computed from the mock's own retention window, so the date
@@ -572,7 +572,7 @@ function handle(request: IncomingMessage, response: ServerResponse, body: Record
   /**
    * Recovery and verification. The real API answers `202` for "a link is on its
    * way" and never says whether the address exists, so the mock does the same —
-   * a prototype that echoed "no such account" would be testing a behaviour the
+   * a mock that echoed "no such account" would be testing a behaviour the
    * product deliberately does not have.
    */
   if (method === "POST" && path === "/api/v1/auth/forgot-password") {

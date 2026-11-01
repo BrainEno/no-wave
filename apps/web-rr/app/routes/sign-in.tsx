@@ -16,7 +16,7 @@ import { isMailEnabled } from "@/lib/mail-feature.ts";
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   // Read at request time, not build time: switching mail on must not require a
-  // rebuild, and the App Router page reads the same variable the same way.
+  // rebuild.
   return { nextPath: safeRedirectPath(url.searchParams.get("next") ?? "/account"), mailEnabled: isMailEnabled() };
 }
 

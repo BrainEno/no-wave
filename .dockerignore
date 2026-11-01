@@ -2,6 +2,8 @@ node_modules
 **/node_modules
 .next
 **/.next
+.react-router
+**/.react-router
 .git
 .gitlab
 coverage

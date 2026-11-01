@@ -24,23 +24,23 @@ RUN corepack enable
 # against the single lockfile even when only one package is installed.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY apps/api/package.json ./apps/api/package.json
-COPY apps/web/package.json ./apps/web/package.json
+COPY packages/web-ui/package.json ./packages/web-ui/package.json
 COPY apps/web-rr/package.json ./apps/web-rr/package.json
 COPY packages/web-http/package.json ./packages/web-http/package.json
 
 # The build needs devDependencies (vite, @react-router/dev), so NODE_ENV is set
 # only after this step: pnpm reads NODE_ENV=production as `--prod`.
 #
-# `@bot-thk/web` is installed alongside the prototype because the prototype
-# builds from the shared source tree in `apps/web/src` through the `@/*` alias
-# (see apps/web-rr/vite.config.ts): reusing those components in place is the
-# migration strategy, and they resolve their own imports — Lexical, gsap —
-# against `apps/web/node_modules`. The runtime stage needs none of it: the build
-# inlines what it used.
-RUN pnpm install --frozen-lockfile --filter @bot-thk/web-rr... --filter @bot-thk/web...
+# `@bot-thk/web-ui` is installed with the application because the build compiles
+# the shared UI from its source through the `@/*` alias (see
+# apps/web-rr/vite.config.ts): those components resolve their own imports —
+# Lexical, gsap, react-router — against that package's dependencies, so the
+# workspace dependency has to be installed even though the runtime stage needs
+# none of it. The build inlines what it used.
+RUN pnpm install --frozen-lockfile --filter @bot-thk/web-rr...
 
 COPY packages/web-http ./packages/web-http
-COPY apps/web/src ./apps/web/src
+COPY packages/web-ui ./packages/web-ui
 COPY apps/web-rr ./apps/web-rr
 
 ENV NODE_ENV=production
@@ -61,7 +61,7 @@ RUN corepack enable
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY apps/api/package.json ./apps/api/package.json
-COPY apps/web/package.json ./apps/web/package.json
+COPY packages/web-ui/package.json ./packages/web-ui/package.json
 COPY apps/web-rr/package.json ./apps/web-rr/package.json
 COPY packages/web-http/package.json ./packages/web-http/package.json
 

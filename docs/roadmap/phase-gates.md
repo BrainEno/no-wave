@@ -25,7 +25,7 @@ Security fixes and implementation details that fulfill already-approved behavior
 
 ## Approved architecture change — REST-only API
 
-The product owner has confirmed that GraphQL must be completely removed and REST is the sole business HTTP API. Do not add GraphQL operations. Complete the remaining Web caller migration in a separate Web-focused change, then remove the transitional GraphQL/Yoga runtime and packages. This backend-only provider change does not edit `apps/web/` to avoid conflict with the active UI work.
+The product owner has confirmed that GraphQL must be completely removed and REST is the sole business HTTP API. Do not add GraphQL operations. Complete the remaining Web caller migration in a separate Web-focused change, then remove the transitional GraphQL/Yoga runtime and packages. This backend-only provider change does not edit the Web application to avoid conflict with the active UI work.
 
 - [x] Record the REST-only decision and require stable `userId` for author identity.
 - [x] Constrain the versioned REST public-content contract to `zh-CN`.
@@ -72,7 +72,7 @@ See [ADR 0007](../architecture/decisions/0007-lexical-rich-text-editors.md) for 
 - [ ] Complete cross-provider contract parity for all domain operations and provider-specific failure behavior.
 - [ ] Implement online change capture, target replay/checkpoints, reconciliation and fenced provider cutover; a configuration-only switch is not a live migration.
 - [ ] Eliminate remaining config/runtime gaps and add API/Web contract checks.
-- [ ] Migrate remaining Web API callers from GraphQL/fixtures to versioned REST, then remove the transitional GraphQL runtime. Do not change `apps/web/` as part of backend-only provider work.
+- [ ] Migrate remaining Web API callers from GraphQL/fixtures to versioned REST, then remove the transitional GraphQL runtime. Do not change the Web application as part of backend-only provider work.
 
 Exit gate: clean install, typecheck, tests, production build and container smoke are green; Web/API contracts are explicit.
 
@@ -112,7 +112,7 @@ On 2026-10-29, the owner approved public-page SSR, a client-interactive writing 
 - [x] Record the React Router 7 target and the staged migration decision.
 - [x] Audit the current Next.js/Vercel coupling against main commit `d9515c6d66881a7599d35581f38640b0ebb74a78`.
 - [ ] Qualify at least one actual hosting candidate for zero cost, no credit card, public access, supported Node SSR and persistent-data/worker requirements before selecting a final host.
-- [ ] Build and test an isolated React Router 7 Framework Mode portability proof of concept without replacing the live Next.js app.
+- [x] Build and test an isolated React Router 7 Framework Mode portability proof of concept without replacing the live Next.js app. → `apps/web-rr`; the proof of concept became the Web application and the Next.js app was deleted on 2026-11-01 ([ADR 0017](../architecture/decisions/0017-nextjs-retired-one-web-application.md)).
 - [ ] Prove public SSR, route metadata, hard 404 behavior, private-response cache isolation and standard Node/Docker startup.
 - [ ] Move public read-only routes first, preserving URLs, locale behavior, metadata, sitemap and robots output.
 - [ ] Migrate auth, writing, comment and media route handlers while preserving the existing HttpOnly cookie, CSRF/origin, token refresh and authorization contracts.

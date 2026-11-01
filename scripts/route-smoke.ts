@@ -7,11 +7,11 @@ const port = Number(process.env.SMOKE_PORT ?? 3187);
 const baseUrl = `http://127.0.0.1:${port}`;
 let serverOutput = "";
 // The smoke checks assert the local fixture registry, so the API origin is
-// cleared explicitly: `apps/web/next.config.ts` loads the repository-root
+// cleared explicitly: `apps/web-rr/vite.config.ts` loads the repository-root
 // .env.local, and a developer machine that configured API_BASE_URL there would
 // otherwise render API data (or fail) instead of fixtures. An empty value is
 // already present in the child environment, so the env file cannot fill it in.
-const server = spawn("pnpm", ["--filter", "@bot-thk/web", "start"], {
+const server = spawn("pnpm", ["--filter", "@bot-thk/web-rr", "start"], {
   env: {
     ...process.env,
     HOSTNAME: "127.0.0.1",
@@ -21,7 +21,7 @@ const server = spawn("pnpm", ["--filter", "@bot-thk/web", "start"], {
     API_GRAPHQL_URL: "",
   },
   stdio: ["ignore", "pipe", "pipe"],
-  // Keep the package manager and its Next.js child in one process group so cleanup
+  // Keep the package manager and its server child in one process group so cleanup
   // below does not leave the server running after the smoke checks finish.
   detached: process.platform !== "win32",
 });
@@ -32,7 +32,7 @@ server.stderr.on("data", (chunk) => { serverOutput += chunk.toString(); });
 async function waitForServer() {
   for (let attempt = 0; attempt < 40; attempt += 1) {
     if (server.exitCode !== null) {
-      throw new Error(`Next.js server exited early (code ${server.exitCode}).\n${serverOutput}`);
+      throw new Error(`Web server exited early (code ${server.exitCode}).\n${serverOutput}`);
     }
     try {
       const response = await fetch(baseUrl, { redirect: "manual" });
@@ -42,7 +42,7 @@ async function waitForServer() {
     }
     await delay(500);
   }
-  throw new Error(`Next.js server did not become ready.\n${serverOutput}`);
+  throw new Error(`Web server did not become ready.\n${serverOutput}`);
 }
 
 /**
@@ -65,7 +65,7 @@ async function withMailEnabledServer(check: (url: string) => Promise<void>): Pro
   });
   await new Promise<void>((resolve) => probe.close(() => resolve()));
 
-  const mailServer = spawn("pnpm", ["--filter", "@bot-thk/web", "start"], {
+  const mailServer = spawn("pnpm", ["--filter", "@bot-thk/web-rr", "start"], {
     env: { ...process.env, HOSTNAME: "127.0.0.1", PORT: String(port), MAIL_ENABLED: "true", API_BASE_URL: "" },
     stdio: ["ignore", "pipe", "pipe"],
     detached: process.platform !== "win32",
@@ -151,7 +151,14 @@ try {
   assert.equal(missingAuthor.status, 404, "unknown author should return 404");
 
   const account = await fetch(`${baseUrl}/account`, { redirect: "manual" });
-  assert.equal(account.status, 307, "anonymous account request should redirect");
+  // The App Router's `redirect()` answered 307; React Router's answers 302. For
+  // an unauthenticated GET both are the same instruction to a browser, so what
+  // is asserted is the contract — where the visitor is sent, and that no shared
+  // cache may keep the answer — rather than the framework's spelling of it.
+  assert.ok(
+    account.status === 302 || account.status === 307,
+    `anonymous account request should redirect (got ${account.status})`,
+  );
   assert.equal(account.headers.get("location"), "/sign-in?next=%2Faccount");
   assert.match(account.headers.get("cache-control") ?? "", /no-store/i, "account redirect must not be publicly cached");
 

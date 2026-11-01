@@ -13,7 +13,13 @@ The owner prioritizes retaining product capability while keeping deployment port
 
 ## Decision
 
-Use **Next.js App Router** for `apps/web` as the current target. Keep `apps/api` independently deployable and treat the API—not Next.js route handlers—as the source of truth for domain rules, identity, authorization, messages and notifications.
+Use **Next.js App Router** for `apps/web` as the current target.
+
+> **Superseded 2026-11-01.** The target framework is React Router 7 Framework Mode
+> ([ADR 0012](0012-portable-web-framework-migration.md)) and the Next.js
+> application has been deleted ([ADR 0017](0017-nextjs-retired-one-web-application.md)).
+> This record is kept as the decision that was in force when the Web application
+> was built, not as current guidance. Keep `apps/api` independently deployable and treat the API—not Next.js route handlers—as the source of truth for domain rules, identity, authorization, messages and notifications.
 
 This is a framework decision, not permission to immediately generate the whole application. First build a small portability proof of concept and validate the behaviors below before establishing the production workspace baseline.
 

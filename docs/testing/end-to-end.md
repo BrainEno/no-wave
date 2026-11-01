@@ -15,8 +15,8 @@ that can be asserted more cheaply must be asserted more cheaply.
 
 | Path | Purpose |
 | --- | --- |
-| `playwright.config.ts` | Two chromium projects — `app-router` and `prototype` — one worker; `webServer` starts the API (`node scripts/dev.ts --api-only`) and the **production** builds of both frameworks (`pnpm --filter @bot-thk/web start`, `pnpm --filter @bot-thk/web-rr start`) |
-| `e2e/authoring.spec.ts` | Register → write → save draft → publish → read the public page → withdraw it → delete it → restore it from the recycle bin, run once per framework |
+| `playwright.config.ts` | One chromium project — `web` — one worker; `webServer` starts the API (`node scripts/dev.ts --api-only`) and the **production** build of the Web application (`pnpm --filter @bot-thk/web-rr start`). Until 2026-11-01 there were two projects, `app-router` and `prototype`, running the same spec against both frameworks; the App Router is gone, so the suite runs once. |
+| `e2e/authoring.spec.ts` | Register → write → save draft → publish → read the public page → withdraw it → delete it → restore it from the recycle bin |
 
 Conventions:
 
@@ -27,30 +27,28 @@ Conventions:
 - One worker, `fullyParallel: false`: both projects share one real SQLite-backed
   stack, which has a single writer.
 - Tests must not need `waitForTimeout`. Wait on a role, a text or a URL.
-- **The spec never names its framework.** Both projects run the same file against
-  the same API and the same database, so a hardcoded port or origin would make
-  one of them a lie. The origin comes from the project's `baseURL`
-  (`currentOrigin()`), and every route the spec uses is one both frameworks
-  serve.
+- **The spec never names its framework.** The origin comes from the project's
+  `baseURL` (`currentOrigin()`), so the suite can be pointed at any stack —
+  which is what let the same file run against two frameworks while there were
+  two, and lets it run against a different port now.
 
 ## Running it
 
 ```sh
 pnpm test:e2e:install                     # once per machine: downloads the Chromium build
-pnpm build                                # production App Router build
-pnpm --filter @bot-thk/web-rr build       # production prototype build
+pnpm build                                # production build of the Web application
 pnpm test:e2e                             # starts whatever is not already running
-pnpm test:e2e --project=app-router        # or one framework at a time
+pnpm test:e2e --project=web               # the only project
 ```
 
-The suite runs against the **production** builds rather than the dev servers: on
-a cold CI runner `next dev` needs longer to compile the editor than a test should
-wait, and the production servers are what readers actually use. Both builds are
+The suite runs against the **production** build rather than the dev server: on a
+cold CI runner a dev server needs longer to compile the editor than a test should
+wait, and the production server is what readers actually use. The build is
 therefore required before a local run.
 
 `reuseExistingServer` is on outside CI, so a developer who already has
-`pnpm dev` running keeps the API and the App Router and only the prototype is
-started. In CI the job builds both and starts its own stack.
+`pnpm dev` running keeps the API and the Web app. In CI the job builds and starts
+its own stack.
 
 `DATABASE_PATH` decides where the SQLite file lives. CI points it at
 `/tmp/no-wave-e2e.sqlite`, so every run starts from an empty database — the journeys create real accounts and real articles, and nothing they
@@ -67,14 +65,13 @@ from the npm registry and not into the repository. A machine with no access to
 that host can install and typecheck the suite but cannot execute it; run it in CI
 (`pnpm exec playwright install --with-deps chromium && pnpm test:e2e`).
 
-Set `E2E_APP_ROUTER_URL` (default `http://127.0.0.1:3000`),
-`E2E_PROTOTYPE_URL` (default `http://127.0.0.1:3100`) or `E2E_API_BASE_URL`
+Set `E2E_WEB_URL` (default `http://127.0.0.1:3000`) or `E2E_API_BASE_URL`
 (default `http://127.0.0.1:4000`) to point the suite at a stack on other ports.
 
 ## CI
 
 `.github/workflows/ci.yml` has an `e2e` job that migrates a **disposable**
-SQLite database (`runner.temp`), builds both frameworks, installs Chromium and
+SQLite database (`runner.temp`), builds the Web application, installs Chromium and
 runs `pnpm test:e2e`, uploading `playwright-report/` as an artifact (traces and
 screenshots on failure, 7-day retention).
 

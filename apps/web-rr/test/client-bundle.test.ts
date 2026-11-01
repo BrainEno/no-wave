@@ -5,11 +5,10 @@ import test from "node:test";
 /**
  * The migrated pages must ship their interactive halves.
  *
- * A page can be server-rendered perfectly and still be dead: if a `"use client"`
+ * A page can be server-rendered perfectly and still be dead: if a client
  * component is not in the client bundle, its markup arrives, nothing hydrates,
- * and every assertion that compares HTML — including `pnpm check:ssr-parity` —
- * stays green. React Router and the App Router build their client graphs
- * differently, so "it hydrates in Next.js" does not prove it hydrates here.
+ * and every assertion that compares HTML stays green. The check therefore looks
+ * at the emitted assets rather than at the response.
  *
  * The check is deliberately crude — a string that only exists in a component's
  * client-side code must appear in the emitted client assets. It cannot prove that
@@ -44,11 +43,10 @@ const CLIENT_COMPONENTS: readonly ClientComponent[] = [
   // deletion wrote them, and it renders nothing until it has fetched — so if it
   // is missing from the bundle, the desk still looks complete.
   { component: "NotificationInbox", sentinel: "/api/authoring/notifications/read-all", page: "write" },
-  // The site shell, rendered by root.tsx on **every** page. It is the last
-  // piece of the App Router's root layout to arrive here, and the easiest to
+  // The site shell, rendered by root.tsx on **every** page, and the easiest to
   // lose: with no shell a page still has a title, a status and a canonical URL,
-  // so every other check in this file and in `pnpm check:ssr-parity` passes on a
-  // page the visitor cannot navigate away from.
+  // so every HTTP-level check passes on a page the visitor cannot navigate away
+  // from.
   { component: "SiteChrome", sentinel: "nw-smooth", page: "/" },
   // Recovery and verification. Each of these renders a form or a panel that
   // does its work in the browser — the verification panel spends the token from
@@ -62,7 +60,7 @@ const CLIENT_COMPONENTS: readonly ClientComponent[] = [
 function clientBundle(): string {
   assert.ok(
     existsSync(assetsDir),
-    "The prototype must be built before its tests run: pnpm --filter @bot-thk/web-rr build",
+    "The Web application must be built before its tests run: pnpm --filter @bot-thk/web-rr build",
   );
   const files = readdirSync(assetsDir).filter((name) => name.endsWith(".js"));
   assert.ok(files.length > 0, "the build emitted no client assets at all");

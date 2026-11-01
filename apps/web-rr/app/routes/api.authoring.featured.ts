@@ -6,7 +6,8 @@ import { handleAuthoringFeatured } from "../lib/authoring-proxy.ts";
  *
  * The read is a loader and the write is an action, which is the framework's
  * distinction and not the contract's; the shared handler owns both the method
- * list and the origin check, so the prototype cannot drift from the App Router.
+ * list and the origin check, so this route cannot drift from the other routes
+ * that serve the same contract.
  */
 export async function loader({ request }: LoaderFunctionArgs) {
   return handleAuthoringFeatured(request);

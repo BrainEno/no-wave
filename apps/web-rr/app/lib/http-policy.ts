@@ -13,8 +13,8 @@
  *     browsers revalidating, so a stale copy can never be pinned in one client.
  *
  *   - `PRIVATE_PAGE_HEADERS` — anything rendered per user or per query
- *     (`/account`, `/search`). These stay `no-store` exactly as the App Router
- *     serves its dynamic pages; a shared cache must never hold them.
+ *     (`/account`, `/search`). These stay `no-store`: a shared cache must never
+ *     hold them.
  *
  * Nothing is written to disk: the instance filesystem is ephemeral and the app
  * may be duplicated at any time, so there is no local page cache to rely on.

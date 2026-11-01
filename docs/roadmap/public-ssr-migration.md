@@ -2,16 +2,23 @@
 
 Status 2026-10-29: **the public surface is migrated** — home (`/`, `/en`),
 archive, article, author, category index, category detail, search, `sitemap.xml`
-and `robots.txt` all render in the React Router prototype (`apps/web-rr`), and a
-scripted parity gate (`pnpm check:ssr-parity`) compares them side by side with
-the App Router over the same mock API. The App Router app is still authoritative
-for production traffic; ADR 0012 forbids switching that before the cutover.
+and `robots.txt` all render in the React Router application (`apps/web-rr`), and a
+scripted parity gate (`pnpm check:ssr-parity`) compared them side by side with
+the App Router over the same mock API.
+
+**Status 2026-11-01: the App Router is gone and so is the gate.** `apps/web` was
+deleted ([ADR 0017](../architecture/decisions/0017-nextjs-retired-one-web-application.md)),
+so §4 below describes a script that no longer exists. Everything the gate compared
+is asserted by `pnpm test:web` (61 tests over real HTTP against the production
+build) and `pnpm test:routes`, both of which run on every commit rather than
+nightly. Paths below that begin `apps/web/src/` now mean `packages/web-ui/src/`.
+This is not a cutover: no production traffic has moved.
 
 What is still missing is *interaction*, not markup: see §6.
 
 ## 1. Why the migration is a load/render split, not a copy
 
-The shared page components in `apps/web/src/components` were written as App
+The shared page components in `packages/web-ui/src/components` were written as App
 Router **async server components**: `ArticleArchiveContent`,
 `AuthorProfileContent` and `SearchContent` each `await` their own data. React
 Router server-renders with plain React — no async components, no RSC payload —
@@ -23,8 +30,8 @@ states or metadata. Instead each page is now split in two:
 
 | Concern | Where it lives | Framework coupling |
 | --- | --- | --- |
-| Data (what a page needs, how many calls it costs) | `apps/web/src/lib/public-pages.ts` — `loadArchivePage`, `loadAuthorPage`, `loadSearchPage`, `loadCategoryIndexPage`, `loadCategoryDetailPage` | none (plain functions, plain data) |
-| Rendering (what a visitor sees) | `apps/web/src/components/public/{archive,author,search}-view.tsx` — `ArchivePageView`, `AuthorPageView`, `SearchPageView`; plus the already-synchronous `CategoryIndexContent` / `CategoryDetailContent` | none — navigation comes from `@/lib/framework/*` (ADR 0012), which each application implements |
+| Data (what a page needs, how many calls it costs) | `packages/web-ui/src/lib/public-pages.ts` — `loadArchivePage`, `loadAuthorPage`, `loadSearchPage`, `loadCategoryIndexPage`, `loadCategoryDetailPage` | none (plain functions, plain data) |
+| Rendering (what a visitor sees) | `packages/web-ui/src/components/public/{archive,author,search}-view.tsx` — `ArchivePageView`, `AuthorPageView`, `SearchPageView`; plus the already-synchronous `CategoryIndexContent` / `CategoryDetailContent` | none — navigation comes from `@/lib/framework/*` (ADR 0012), which the shared UI implements in one directory |
 
 The App Router components became three-line wrappers (`await load…` →
 `<…PageView {...data} />`), so the Next.js application renders the *same* view
@@ -44,11 +51,11 @@ Its three client components (`PageLoader` intro, `HeroCanvas` WebGL,
 so they hydrate in the prototype exactly as they do in Next.js; only their *behaviour*
 is Phase 4, and it is not asserted here. Porting home also surfaced a real
 dependency bug: `apps/web-rr` reached `gsap` through the source alias to
-`apps/web/src/components/motion/*` without declaring it, which only worked by
+`packages/web-ui/src/components/motion/*` without declaring it, which only worked by
 accident of pnpm's layout. It is now a declared dependency.
 
 Sitemap and robots are the same idea without a view: one builder
-(`apps/web/src/lib/site-metadata.ts`) produces the URL set and the robots text,
+(`packages/web-ui/src/lib/site-metadata.ts`) produces the URL set and the robots text,
 and each framework contributes a ~15-line adapter — `app/sitemap.ts` /
 `app/robots.ts` for the App Router (through Next's `sitemap` / `robots`
 conventions), `app/routes/sitemap.xml.ts` / `app/routes/robots.txt.ts` for the
@@ -78,11 +85,9 @@ which is how a `User-agent` / `User-Agent` case difference was caught.
 Locale comes from the request path (`app/lib/locale.ts`), which is the same
 information the App Router encoded in a differently-named directory.
 
-The three recovery pages read `MAIL_ENABLED` in their **loader**, which is where
-the App Router reads it too (`isMailEnabled` on a `force-dynamic` page): an
-operator's switch, resolved per request, never folded into the build. With mail
-off all three render `未启用邮件功能` instead of a form — in both applications,
-which is what `pnpm check:ssr-parity` compares.
+The three recovery pages read `MAIL_ENABLED` in their **loader** (`isMailEnabled`):
+an operator's switch, resolved per request, never folded into the build. With mail
+off all three render `未启用邮件功能` instead of a form.
 
 ## 3. Instance shape: 0.1 CPU, cold start, ephemeral disk
 
@@ -93,7 +98,7 @@ restart. The migration is shaped around that, in concrete terms:
 **Bounded API fan-out.** Every loader issues at most **two** API calls, and
 independent calls run together (`Promise.all`). A test asserts this against the
 mock API by counting upstream requests per page
-(`apps/web-rr/test/prototype.test.ts` → "every migrated public page spends at
+(`apps/web-rr/test/web.test.ts` → "every migrated public page spends at
 most two API calls"). This is the guard that stops a page from silently growing
 a third and fourth call once nobody is watching.
 
@@ -134,7 +139,13 @@ currently raises a 500 in the same situation; this is a deliberate, documented
 difference, because "the page exists but the upstream is down" is exactly what
 503 means to a crawler.
 
-## 4. The parity gate: `pnpm check:ssr-parity`
+## 4. The parity gate: `pnpm check:ssr-parity` (retired 2026-11-01)
+
+> The script (`scripts/ssr-parity.ts`) and its nightly workflow were removed when
+> the App Router was deleted. With one implementation there is nothing to compare,
+> and a gate that cannot fail is not a gate; the assertions live on in
+> `pnpm test:web` and `pnpm test:routes`. The description is kept because it is
+> the evidence behind "the migration preserved behaviour".
 
 Phase 3's exit criterion is that the two implementations pass the same
 behavioural assertions side by side. Until this round that was checked by hand;
@@ -227,7 +238,7 @@ It is now fixed, on these grounds:
   contradicting the project's own configuration contract — a defect, not a
   deliberate choice.
 - The origin is resolved in **one** function, `configuredSiteUrl()`
-  (`apps/web/src/lib/site-metadata.ts`), used by every page, by the sitemap, by
+  (`packages/web-ui/src/lib/site-metadata.ts`), used by every page, by the sitemap, by
   robots and by `metadataBase`. Six copies of the
   `?? "https://example.invalid"` fallback became one.
 - **Where the variable is unset, behaviour is byte-identical to today** — the
@@ -291,28 +302,27 @@ and the repo has no DOM test stack. §7 records them.
 
 | Claim | How it was checked |
 | --- | --- |
-| Every migrated public page renders server-side with API data | `pnpm test:prototype` (33 tests, real HTTP against the production build) |
+| Every migrated public page renders server-side with API data | `pnpm test:web` (33 tests, real HTTP against the production build) |
 | English paths render English content and localized canonical URLs | same suite |
 | Unknown article / author / category → hard, titled, `no-store` 404 | same suite |
 | Query and work-type filtering still scope the archive | same suite |
 | Public pages are shared-cacheable; search/account are `no-store` | same suite |
 | ≤ 2 API calls per page (home included) | same suite (mock API request counter) |
-| `<title>` uses the App Router's template, including the root-page exception | same suite |
-| `sitemap.xml` / `robots.txt` are well-formed, bounded and localized | `apps/web/src/lib/site-metadata.test.ts` (5 tests) + the prototype suite |
-| **Both implementations agree on status, title, canonical, hreflang targets and content** | `pnpm check:ssr-parity` (198 comparisons over 20 routes, 0 unexpected differences — output above) |
-| The three recovery pages agree in both applications: status, title, `no-store`, and `未启用邮件功能` instead of a form while mail is off | `pnpm check:ssr-parity` (three routes) + `pnpm test:prototype` (both switch positions, one build) |
+| `<title>` uses the site template, including the root-page exception | same suite |
+| `sitemap.xml` / `robots.txt` are well-formed, bounded and localized | `packages/web-ui/src/lib/site-metadata.test.ts` (5 tests) + `pnpm test:web` |
+| **Status, title, canonical, hreflang targets and content** | ~~`pnpm check:ssr-parity` (198 comparisons over 20 routes, 0 unexpected differences)~~ retired 2026-11-01; now `pnpm test:web` over real HTTP |
+| The three recovery pages: status, title, `no-store`, and `未启用邮件功能` instead of a form while mail is off | `pnpm test:web` (both switch positions, one build) |
 | The recovery forms' client code ships, so the verification panel can spend its token | `apps/web-rr/test/client-bundle.test.ts` (`ForgotPasswordForm` / `ResetPasswordForm` / `VerifyEmailPanel`) |
-| Every migrated page carries the site shell, in both implementations | `pnpm check:ssr-parity` (absolute `nw-pill` / `nw-footer` markers) + `pnpm test:prototype` (navigation, account entry, language switch and footer on `/`, `/en` and a hard 404) |
+| Every migrated page carries the site shell | `pnpm test:web` (absolute `nw-pill` / `nw-footer` markers; navigation, account entry, language switch and footer on `/`, `/en` and a hard 404) |
 | The shell's client code ships, so it hydrates rather than only rendering | `apps/web-rr/test/client-bundle.test.ts` (`SiteChrome` sentinel `nw-smooth`) |
-| The article page ships its interactive parts (reader bar, TOC, comment section) | `pnpm test:prototype`: server-rendered mount points + `client-bundle.test.ts` (the code that hydrates them) |
+| The article page ships its interactive parts (reader bar, TOC, comment section) | `pnpm test:web`: server-rendered mount points + `client-bundle.test.ts` (the code that hydrates them) |
 | Comments are proxied with the origin check, the bounded body and the API's own auth | `packages/web-http/test/comments.test.ts` (9 contract tests) + the prototype suite (3 end-to-end tests against the mock API) |
-| The App Router's comment route still works against a live API | `pnpm dev --check --exit` (the local chain probes it: 10/0) — this caught the adapter that forgot to pass the API origin |
-| Every page's canonical origin comes from one function, with the same fallback when it is unset | `apps/web/src/lib/site-metadata.test.ts` (5 tests) |
-| The Next.js app still renders every page, and its canonical origin is resolved once | `pnpm build` + `pnpm test:routes` (route smoke, fixtures only) + `pnpm check:ssr-parity` (the behaviour change is scoped in §5) |
+| The comment route works against a live API | `pnpm dev --check --exit` (the local chain probes it: 10/0) — this caught the adapter that forgot to pass the API origin |
+| Every page's canonical origin comes from one function, with the same fallback when it is unset | `packages/web-ui/src/lib/site-metadata.test.ts` (5 tests) |
+| The Web application renders every page, and its canonical origin is resolved once | `pnpm build` + `pnpm test:routes` (route smoke, fixtures only) + `pnpm test:web` |
 | No provider-specific code was introduced | grep: new modules import no host SDK; `MEDIA_S3_*` / `API_BASE_URL` remain the only configuration surface |
 | Real hosting behavior (cold start duration, wake latency, memory ceiling) | **not run** — requires a Render deployment, which ADR 0012 forbids before the cutover phase |
-| `pnpm check:ssr-parity` in CI | the nightly workflow was **dispatched by hand against this branch** after the push — see the run linked in the PR. The scheduled (nightly) trigger has not fired yet, because it only exists from the moment the workflow lands on `main`. |
-| `pnpm check:ssr-parity` as a per-PR gate | **no** — nightly only, by design (§4) |
+| ~~`pnpm check:ssr-parity` in CI~~ | retired 2026-11-01 with the App Router; the assertions it made are now part of `pnpm test:web` and `pnpm test:routes`, which run per commit |
 
 ## 8. Known gaps
 

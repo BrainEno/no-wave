@@ -62,7 +62,7 @@ const HOST_AUTHORITY_PATTERN = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9]
  * request was addressed to.
  *
  * `request.url` is not a trustworthy authority: Next.js builds it from the
- * hostname the server was started with, so `next dev --hostname 0.0.0.0` (and the
+ * hostname the server was started with, so `react-router dev --host 0.0.0.0` (and the
  * container `HOSTNAME=0.0.0.0` used by the Web image) produce
  * `http://0.0.0.0:3000/...` even though the browser used `localhost`,
  * `127.0.0.1` or a LAN address. Comparing against that value rejected every

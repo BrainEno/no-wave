@@ -4,7 +4,6 @@ stages:
 
 variables:
   COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
-  NEXT_TELEMETRY_DISABLED: "1"
 
 verify:
   image: node:24-alpine
@@ -34,7 +33,7 @@ container-smoke:
     DOCKER_CERT_PATH: "/certs/client"
   script:
     - docker info
-    - docker build -f apps/web/Dockerfile -t bot-thk:ci .
+    - docker build -f apps/web-rr/Dockerfile -t bot-thk:ci .
     - docker run --detach --name bot-thk-smoke --publish 3000:3000 bot-thk:ci
     - |
       for attempt in $(seq 1 30); do
