@@ -8,10 +8,19 @@ export type ArticleContentBlock =
   | { id: string; type: "list"; ordered: boolean; items: string[] }
   | { id: string; type: "image"; src: string; alt: string; caption?: string }
   | { id: string; type: "code"; language: string; code: string };
+/** How a public list is ordered; `popular` is all-time saves, most first. */
+export type ArticleSort = "latest" | "popular";
+
 export type ArticleView = {
   slug: string; title: string; description: string; workType: WorkType;
   contentBlocks: ArticleContentBlock[]; publishedAt: string; author: AuthorView;
   categories: string[]; tags: string[]; locale: Locale; availableLocales: Locale[];
+  /**
+   * How many times the work has been saved, ever — the number behind the
+   * "most saved" shelf. The fixture registry has no saves to count, so it is
+   * always zero there and only the API ever makes it mean something.
+   */
+  likeCount: number;
 };
 export type SiteMessages = {
   primaryNavigation: string; homeTitle: string; homeDescription: string;
@@ -28,7 +37,11 @@ type ArticleRecord = {
   slug: string; publishedAt: string; authorUsername: string; workType: WorkType;
   categories: string[]; tags: string[]; translations: Record<Locale, ArticleTranslation>;
 };
-type ArticleListOptions = { locale?: Locale; query?: string; authorUsername?: string | null; limit?: number; offset?: number };
+/**
+ * `sort` is accepted for shape compatibility with the API and ignored here: the
+ * fixture registry has no saves, so "most saved" is just the newest order.
+ */
+type ArticleListOptions = { locale?: Locale; query?: string; authorUsername?: string | null; sort?: ArticleSort; limit?: number; offset?: number };
 
 export const siteUrl = "https://example.invalid";
 export const defaultLocale: Locale = "zh-CN";
@@ -218,6 +231,7 @@ function localizeArticle(record: ArticleRecord, locale: Locale): ArticleView | n
     categories: record.categories,
     tags: record.tags,
     workType: record.workType ?? "other",
+    likeCount: 0,
     locale: normalized,
     availableLocales: Object.keys(record.translations).filter((locale): locale is Locale => (supportedLocales as readonly string[]).includes(locale))
   };

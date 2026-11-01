@@ -214,6 +214,8 @@ type MockArticle = {
   slug: string;
   workType: string;
   publishedAt: string;
+  /** How many times the work was saved; drives `sort=popular`. */
+  likeCount: number;
   title: Record<"zh-CN" | "en", string>;
   summary: Record<"zh-CN" | "en", string>;
   blocks: Record<"zh-CN" | "en", unknown[]>;
@@ -224,6 +226,7 @@ const ARTICLES: MockArticle[] = [
     slug: "portable-web-foundation",
     workType: "essay",
     publishedAt: "2026-10-01T09:00:00.000Z",
+    likeCount: 12,
     title: { "zh-CN": "可移植的文学基础设施", en: "A Portable Literary Foundation" },
     summary: { "zh-CN": "从框架依赖中取回叙事自主权的实践记录。", en: "Notes on taking narrative sovereignty back from framework lock-in." },
     blocks: {
@@ -249,6 +252,7 @@ const ARTICLES: MockArticle[] = [
     slug: "reading-as-resistance",
     workType: "short_story",
     publishedAt: "2026-09-20T12:30:00.000Z",
+    likeCount: 30,
     title: { "zh-CN": "作为抵抗的阅读", en: "Reading as Resistance" },
     summary: { "zh-CN": "关于慢下来的短篇。", en: "A short story about slowing down." },
     blocks: {
@@ -257,6 +261,13 @@ const ARTICLES: MockArticle[] = [
     },
   },
 ];
+
+/**
+ * The editorial shelf, in the order an editor chose — deliberately the reverse
+ * of the publication order, so a home page that renders it proves it read the
+ * shelf rather than sorting the newest works and calling them "selected".
+ */
+const FEATURED_SLUGS = ["reading-as-resistance", "portable-web-foundation"];
 
 type MockCategory = {
   slug: string;
@@ -323,6 +334,7 @@ function articlePayload(article: MockArticle, locale: "zh-CN" | "en") {
     contentBlocks: article.blocks[locale],
     publishedAt: article.publishedAt,
     updatedAt: article.publishedAt,
+    likeCount: article.likeCount,
     author: { userId: "writer", displayName: MOCK_DISPLAY_NAME, bio: "在无浪潮写作。" },
     categories: [{ name: "随笔" }],
     tags: [{ name: locale === "en" ? "portability" : "可移植性" }],
@@ -391,7 +403,21 @@ function handle(request: IncomingMessage, response: ServerResponse, body: Record
 
   if (method === "GET" && path === "/api/v1/articles") {
     const query = url.searchParams.get("query") ?? "";
-    const page = paginated(ARTICLES.filter((article) => matchesQuery(article, locale, query)), url);
+    const sort = url.searchParams.get("sort") ?? "latest";
+    const matched = ARTICLES.filter((article) => matchesQuery(article, locale, query));
+    const ordered = sort === "popular"
+      ? [...matched].sort((left, right) => right.likeCount - left.likeCount || right.publishedAt.localeCompare(left.publishedAt))
+      : [...matched].sort((left, right) => right.publishedAt.localeCompare(left.publishedAt));
+    const page = paginated(ordered, url);
+    send(response, 200, { data: page.map((article) => articlePayload(article, locale)) });
+    return;
+  }
+
+  if (method === "GET" && path === "/api/v1/featured") {
+    const picked = FEATURED_SLUGS
+      .map((slug) => ARTICLES.find((article) => article.slug === slug))
+      .filter((article): article is MockArticle => Boolean(article));
+    const page = paginated(picked, url);
     send(response, 200, { data: page.map((article) => articlePayload(article, locale)) });
     return;
   }

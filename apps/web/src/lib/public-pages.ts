@@ -4,6 +4,7 @@ import {
   getPublicCategory,
   listPublicArticles,
   listPublicCategories,
+  listPublicFeatured,
   listPublicCategoryArticles,
   type CategoryView,
 } from "./api-content.ts";
@@ -194,28 +195,40 @@ export async function loadCategoryDetailPage(
   };
 }
 
-export const HOME_LATEST_LIMIT = 10;
+export const HOME_FEATURED_LIMIT = 6;
+/** Nine, not six: three are held back so the featured shelf can fall back to
+ *  the newest works without repeating them in the "latest" row below. */
+export const HOME_LATEST_LIMIT = 9;
+export const HOME_POPULAR_LIMIT = 6;
 export const HOME_CATEGORY_LIMIT = 8;
 
 export type HomePageData = {
   locale: Locale;
-  articles: ArticleView[];
+  /** The editorial shelf, in the order an editor put it in (ADR 0016). */
+  featured: ArticleView[];
+  latest: ArticleView[];
+  popular: ArticleView[];
   categories: CategoryView[];
 };
 
 /**
- * Home page data: the newest articles plus the category chips.
+ * Home page data: three shelves and the category chips.
  *
- * Two calls, run together. The category read is failure-isolated — a broken
- * taxonomy endpoint must degrade the topics row to the work-type fallback, not
- * take the home page down with it.
+ * Four calls, run together, and failure-isolated on purpose — but not uniformly.
+ * The newest works are the page: if that read fails the home page has nothing to
+ * say, so it throws and the framework's error boundary answers. The other three
+ * are additions, and an addition that cannot be fetched must disappear rather
+ * than take the page with it: an empty editorial shelf falls back to the newest
+ * works, an empty "most saved" row is simply not rendered.
  */
 export async function loadHomePage(options: { locale: Locale }): Promise<HomePageData> {
-  const [articles, categories] = await Promise.all([
-    listPublicArticles({ locale: options.locale, limit: HOME_LATEST_LIMIT }),
+  const [featured, latest, popular, categories] = await Promise.all([
+    listPublicFeatured({ locale: options.locale, limit: HOME_FEATURED_LIMIT }).catch((): ArticleView[] => []),
+    listPublicArticles({ locale: options.locale, sort: "latest", limit: HOME_LATEST_LIMIT }),
+    listPublicArticles({ locale: options.locale, sort: "popular", limit: HOME_POPULAR_LIMIT }).catch((): ArticleView[] => []),
     listPublicCategories({ locale: options.locale, limit: HOME_CATEGORY_LIMIT }).catch((): CategoryView[] => []),
   ]);
-  return { locale: options.locale, articles, categories };
+  return { locale: options.locale, featured, latest, popular, categories };
 }
 
 /* ------------------------------------------------------------------ 阅读页 */

@@ -636,13 +636,58 @@ test("search is server-rendered, no-store and excluded from indexing", async () 
   assert.match(empty.body, /按类型浏览/);
 });
 
-test("every migrated public page spends at most two API calls", async () => {
-  const pages = ["/", "/articles", "/articles?q=抵抗", "/authors/writer", "/categories", "/categories/essays", "/search?q=portable"];
-  for (const pathname of pages) {
+/**
+ * The home page is the one page allowed four calls, and it is worth saying why:
+ * three shelves (the editor's pick, the newest, the most saved) plus the topic
+ * chips are four different upstream queries that cannot be folded into each
+ * other — "most saved" is a server-side ordering over every work ever saved, not
+ * something the page can derive from the nine newest. They are issued together,
+ * so the page pays the slowest of them, not the sum. Every other page is two.
+ */
+const API_CALL_BUDGET: ReadonlyArray<readonly [string, number]> = [
+  ["/", 4],
+  ["/articles", 2],
+  ["/articles?q=抵抗", 2],
+  ["/authors/writer", 2],
+  ["/categories", 2],
+  ["/categories/essays", 2],
+  ["/search?q=portable", 2],
+];
+
+test("every migrated public page spends at most its API call budget", async () => {
+  for (const [pathname, budget] of API_CALL_BUDGET) {
     const calls = await upstreamCalls(pathname);
     assert.ok(calls.length >= 1, `${pathname} must read content from the API, not fixtures`);
-    assert.ok(calls.length <= 2, `${pathname} exceeded the two-call budget: ${calls.join(", ")}`);
+    assert.ok(calls.length <= budget, `${pathname} exceeded its ${budget}-call budget: ${calls.join(", ")}`);
   }
+});
+
+/**
+ * The three shelves (ADR 0016).
+ *
+ * What makes this worth asserting is that the mock's featured shelf is in the
+ * *reverse* of the publication order: a home page that shows "作为抵抗的阅读"
+ * first has read the shelf, while one that shows "可移植的文学基础设施" first has
+ * quietly sorted the newest works and labelled them 精选. The fallback copy is
+ * asserted absent for the same reason — it must appear only when the shelf is
+ * empty, never as a permanent caption.
+ */
+test("the home page renders the editorial shelf, the newest works and the most saved", async () => {
+  const home = await get("/");
+  assert.equal(home.status, 200);
+
+  // The shelf wins over chronology.
+  const picked = home.body.indexOf("作为抵抗的阅读");
+  const newest = home.body.indexOf("可移植的文学基础设施");
+  assert.ok(picked >= 0 && newest >= 0, "both works are on the page");
+  assert.ok(picked < newest, "the editor's order beats the publication order");
+  assert.doesNotMatch(home.body, /data-featured-fallback/, "the shelf is not empty, so no fallback copy");
+
+  // "Most saved" is its own section, and the count that ordered it is visible.
+  assert.match(home.body, /id="popular"/);
+  assert.match(home.body, /30 次收藏/);
+  const popularAt = home.body.indexOf('id="popular"');
+  assert.ok(home.body.indexOf("作为抵抗的阅读", popularAt) > popularAt, "the most-saved work leads the section");
 });
 
 /* --------------------------------------------------- Phase 5a: media adapter */

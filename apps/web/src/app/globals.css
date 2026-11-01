@@ -154,6 +154,14 @@ mark { background: var(--or); color: #0f0d0c; }
 .nw-pic img[data-on] { opacity: 1; }
 .nw-list { flex: 1; min-width: min(420px, 100%); }
 .nw-list .nw-h2 { margin-bottom: 48px; }
+/* The most-saved shelf: same band rhythm as "latest", but a plain ranked list
+   rather than the hover-switched gallery, so the two rows read as different
+   reasons for a work being here. */
+.nw-pop { padding: 140px 80px; }
+/* Compact ranked rows, reused by the featured shelf's tail and "most saved". */
+.nw-shelf { margin-top: 64px; }
+.nw-shelf .nw-row { grid-template-columns: 56px 1fr auto; }
+.nw-shelf .nw-row .nw-t { font-size: 24px; }
 .nw-top { background: var(--ink); color: var(--paper); padding: 140px 80px; overflow: hidden; }
 .nw-top .nw-m { color: var(--ti); }
 .nw-tp { display: inline-block; font: 500 clamp(70px, 11.7vw, 168px)/1.02 var(--f-zh); letter-spacing: -.01em; margin-right: .1em; }

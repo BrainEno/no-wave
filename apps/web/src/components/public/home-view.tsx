@@ -17,6 +17,29 @@ const triptych = [
 ] as const;
 
 /**
+ * One compact row: a running number, the title, its author, and — when the
+ * shelf is ordered by saves — the count that put it there.
+ *
+ * The same three-column grid `HomeLatest` uses (`56px 1fr auto`), so the two
+ * rows the reader scrolls past belong to the same page; the third column is
+ * where the number lives, which is what makes "most saved" legible as a
+ * ranking rather than another list of titles.
+ */
+function ShelfRow({ article, locale, index, count }: { article: ArticleView; locale: Locale; index: number; count?: string }) {
+  const messages = getMessages(locale);
+  return (
+    <Link className="nw-row" href={articlePath(article.slug, locale)} data-reveal="row">
+      <span className="nw-m nw-rn">{pad(index + 1)}</span>
+      <span className="nw-rb">
+        <span className="nw-t">{article.title}</span>
+        <span className="nw-m">{messages.workTypeLabels[article.workType]} · {article.author.displayName} · {dateLabel(article.publishedAt, locale)}</span>
+      </span>
+      {count ? <span className="nw-m">{count}</span> : null}
+    </Link>
+  );
+}
+
+/**
  * Presentational home page.
  *
  * Synchronous and data-in/props-out, so the App Router (`HomeContent`) and the
@@ -26,21 +49,28 @@ const triptych = [
  * `next/link`, which the prototype aliases to a shim; hydration is what makes
  * them interactive, and that is exactly what Phase 4 covers.
  *
- * Every derived list (selected triptych, latest rows, topic chips) is computed
+ * Every derived list (the triptych, the shelf rows, the topic chips) is computed
  * here from the loaded articles and categories, so the loader stays I/O only.
  */
-export function HomePageView({ locale, articles, categories }: HomePageData) {
+export function HomePageView({ locale, featured, latest, popular, categories }: HomePageData) {
   const ui = getUi(locale);
   const messages = getMessages(locale);
-  const sorted = [...articles].sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
-  const selected = sorted.slice(0, 3);
-  const latest = sorted.slice(3, 9);
+  // Three shelves, three different reasons a work is on the page: an editor
+  // chose it, it is new, or readers kept it. Only the first can be empty, and
+  // when it is, the newest works stand in — but the page says so, because a
+  // shelf that says "selected" while showing whatever is newest is a lie the
+  // reader cannot detect.
+  const curated = featured;
+  const fallback = curated.length === 0;
+  const selected = fallback ? latest.slice(0, 3) : curated.slice(0, 3);
+  const selectedRest = fallback ? [] : curated.slice(3, 6);
+  const latestRest = fallback ? latest.slice(3) : latest.slice(0, 6);
   const base = locale === "en" ? "/en" : "";
   const topics: { key: string; label: string; href: string }[] = categories.length
     ? categories.map((category) => ({ key: category.slug, label: category.name, href: `${base}/categories/${category.slug}` }))
     : (["novel", "short_story", "poetry", "essay", "criticism", "nonfiction"] as const).map((type) => ({ key: type, label: messages.workTypeLabels[type], href: `${archivePath(locale)}?type=${type}` }));
   const unit = ui.home.marquee;
-  const latestItems: LatestItem[] = latest.map((article: ArticleView, index) => {
+  const latestItems: LatestItem[] = latestRest.map((article: ArticleView, index) => {
     const cover = pickDefaultCover(article.slug);
     return { href: articlePath(article.slug, locale), title: article.title, number: pad(index + 4), meta: `${messages.workTypeLabels[article.workType]} · ${article.author.displayName} · ${dateLabel(article.publishedAt, locale)}`, coverSrc: cover.src, coverWidth: cover.width, coverHeight: cover.height };
   });
@@ -62,7 +92,8 @@ export function HomePageView({ locale, articles, categories }: HomePageData) {
 
       <section className="nw-sel" id="selected" aria-label={ui.home.selected}>
         <div className="nw-wrap" style={{ maxWidth: 1280, margin: "0 auto" }}>
-          <SectionHeading zh={ui.home.selected} latin={ui.home.selectedEn} aside={selected.length ? <span className="nw-m">01 — {pad(selected.length)}</span> : undefined} />
+          <SectionHeading zh={ui.home.selected} latin={ui.home.selectedEn} aside={selected.length ? <span className="nw-m">{fallback ? "" : ui.home.selectedNote}</span> : undefined} />
+          {fallback ? <p className="nw-m" data-featured-fallback>{ui.home.selectedFallback}</p> : null}
           {selected.length ? (
             <div className="nw-tri">
               {selected.map((article, index) => {
@@ -83,6 +114,18 @@ export function HomePageView({ locale, articles, categories }: HomePageData) {
               })}
             </div>
           ) : <div style={{ marginTop: 48 }}><EmptyState title={ui.home.empty} body="" /></div>}
+          {/*
+            Works four to six of the shelf. They are rows rather than images
+            because the triptych is a stage and a stage holds three; the order
+            the editor chose still runs straight through both halves.
+          */}
+          {selectedRest.length ? (
+            <div className="nw-shelf" data-reveal="row">
+              {selectedRest.map((article, index) => (
+                <ShelfRow key={article.slug} article={article} locale={locale} index={index + 3} />
+              ))}
+            </div>
+          ) : null}
         </div>
       </section>
 
@@ -97,6 +140,25 @@ export function HomePageView({ locale, articles, categories }: HomePageData) {
       {latestItems.length ? (
         <section className="nw-lat" id="latest" aria-label={ui.home.latest}>
           <HomeLatest items={latestItems} allLabel={ui.home.allWorks} allHref={archivePath(locale)} heading={<SectionHeading zh={ui.home.latest} latin={ui.home.latestEn} />} />
+        </section>
+      ) : null}
+
+      {popular.length ? (
+        <section className="nw-pop" id="popular" aria-label={ui.home.popular}>
+          <div style={{ maxWidth: 1280, margin: "0 auto" }}>
+            <SectionHeading zh={ui.home.popular} latin={ui.home.popularEn} aside={<span className="nw-m">{ui.home.popularEn}</span>} />
+            <div className="nw-shelf" data-reveal="row">
+              {popular.map((article, index) => (
+                <ShelfRow
+                  key={article.slug}
+                  article={article}
+                  locale={locale}
+                  index={index}
+                  count={article.likeCount > 0 ? ui.home.saves(article.likeCount) : undefined}
+                />
+              ))}
+            </div>
+          </div>
         </section>
       ) : null}
 
