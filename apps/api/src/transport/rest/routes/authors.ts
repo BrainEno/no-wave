@@ -1,5 +1,5 @@
 import type { RestRouteContext, RestRouteHandler } from "./context.ts";
-import { MAX_ARTICLE_OFFSET, decodeUserId, optionalViewerId, parseLocale, parsePagination, parseQuery, sendBadInput, sendJson, sendServiceError, sendUnavailable } from "../http.ts";
+import { MAX_ARTICLE_OFFSET, decodeUserId, optionalViewerId, parseLocale, parsePagination, parseQuery, parseSort, sendBadInput, sendJson, sendServiceError, sendUnavailable } from "../http.ts";
 import { serializeRestArticles } from "../serializers.ts";
 
 /** Public author profile and author-article routes. */
@@ -13,9 +13,10 @@ const AUTHOR_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Object
     const userId = decodeUserId(routeParams.userId);
     const locale = parseLocale(url);
     const query = parseQuery(url);
+    const sort = parseSort(url);
     const pagination = parsePagination(url, 20, MAX_ARTICLE_OFFSET);
-    if (!userId || !locale || query === null || !pagination) {
-      sendBadInput(response, "Invalid author user ID, locale, query, limit, or offset query parameter.");
+    if (!userId || !locale || query === null || sort === null || !pagination) {
+      sendBadInput(response, "Invalid author user ID, locale, query, sort, limit, or offset query parameter.");
       return;
     }
     try {
@@ -25,7 +26,7 @@ const AUTHOR_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Object
         sendJson(response, 404, { error: { code: "NOT_FOUND", message: "The author was not found." } });
         return;
       }
-      const articles = await services.listPublishedArticles({ authorId: userId, locale, query, ...pagination });
+      const articles = await services.listPublishedArticles({ authorId: userId, locale, query, sort, ...pagination });
       sendJson(response, 200, { data: await serializeRestArticles(services, articles, viewerId) });
     } catch (error: unknown) {
       sendServiceError(response, error);

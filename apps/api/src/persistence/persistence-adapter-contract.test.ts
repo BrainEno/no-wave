@@ -54,6 +54,17 @@ async function sqliteFixture() {
           `article-author-${suffix}`, `liker-a-${suffix}`, `liker-b-${suffix}`,
           `commenter-a-${suffix}`, `commenter-b-${suffix}`,
           `feed-reader-${suffix}`, `feed-author-a-${suffix}`, `feed-author-b-${suffix}`, `feed-stranger-${suffix}`,
+          `sort-author-${suffix}`, `sort-other-author-${suffix}`,
+          `sort-liker-${suffix}-1`,
+          `sort-liker-${suffix}-2`,
+          `sort-liker-${suffix}-3`,
+          `sort-liker-${suffix}-4`,
+          `sort-liker-${suffix}-5`,
+          `sort-liker-${suffix}-6`,
+          `sort-liker-${suffix}-7`,
+          `sort-liker-${suffix}-8`,
+          `sort-liker-${suffix}-9`,
+          `sort-liker-${suffix}-10`,
         ];
         for (const userId of userIds) db.prepare("DELETE FROM notifications WHERE user_id = ?").run(userId);
         db.prepare(`DELETE FROM user_follows WHERE follower_id IN (${userIds.map(() => "?").join(",")}) OR followed_id IN (${userIds.map(() => "?").join(",")})`)
@@ -63,6 +74,7 @@ async function sqliteFixture() {
         db.prepare("DELETE FROM revoked_sessions WHERE session_id = ?").run(`contract-session-${suffix}`);
         for (const slug of [`contract-draft-${suffix}`, `contract-published-${suffix}`, `contract-liked-${suffix}`, `contract-comment-${suffix}`, `contract-comment-notifications-${suffix}`, `contract-create-once-${suffix}`, `contract-create-once-b-${suffix}`, `contract-create-twice-${suffix}`]) db.prepare("DELETE FROM articles WHERE slug = ?").run(slug);
         db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`feed-%-${suffix}`);
+        db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`sort-%-${suffix}`);
         // A deleted work keeps its row under a released slug (`...-deleted-<id>`),
         // so match the whole family the deletion test can leave behind.
         db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`contract-delete-${suffix}%`);
@@ -106,6 +118,17 @@ async function postgresFixture() {
           `contract-user-a-${suffix}`, `contract-user-b-${suffix}`,
           `profile-follower-${suffix}`, `profile-target-${suffix}`, `profile-other-${suffix}`,
           `feed-reader-${suffix}`, `feed-author-a-${suffix}`, `feed-author-b-${suffix}`, `feed-stranger-${suffix}`,
+          `sort-author-${suffix}`, `sort-other-author-${suffix}`,
+          `sort-liker-${suffix}-1`,
+          `sort-liker-${suffix}-2`,
+          `sort-liker-${suffix}-3`,
+          `sort-liker-${suffix}-4`,
+          `sort-liker-${suffix}-5`,
+          `sort-liker-${suffix}-6`,
+          `sort-liker-${suffix}-7`,
+          `sort-liker-${suffix}-8`,
+          `sort-liker-${suffix}-9`,
+          `sort-liker-${suffix}-10`,
         ];
         await postgresSql.unsafe("DELETE FROM notifications WHERE user_id = ANY($1::text[])", [userIds]);
         await postgresSql.unsafe("DELETE FROM user_follows WHERE follower_id = ANY($1::text[]) OR followed_id = ANY($1::text[])", [userIds]);
@@ -120,6 +143,7 @@ async function postgresFixture() {
         await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`contract-commenters-${suffix}%`]);
         await postgresSql.unsafe("DELETE FROM taxonomies WHERE slug = $1", [`contract-category-${suffix}`]);
         await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`feed-%-${suffix}`]);
+        await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`sort-%-${suffix}`]);
       }
     },
   };
@@ -1248,6 +1272,75 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       await assert.rejects(Promise.resolve().then(() => runtime.store.listFollowingArticles({ actorId: readerId, locale: "zh-CN", offset: 100001 })), ArticleInputError);
       await assert.rejects(Promise.resolve().then(() => runtime.store.listFollowingArticles({ actorId: "  ", locale: "zh-CN" })), ArticleInputError);
       await assert.rejects(Promise.resolve().then(() => runtime.store.listFollowingArticles({ actorId: readerId, locale: "klingon" })), ArticleInputError);
+    } finally {
+      await runtime.cleanup(undefined, suffix);
+    }
+  });
+
+  test(`${adapterName}: discovery sorts by newest, or by likes inside the recent window`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const authorId = `sort-author-${suffix}`;
+    const otherAuthorId = `sort-other-author-${suffix}`;
+    const now = new Date("2026-06-01T00:00:00.000Z");
+    const daysAgo = (days) => new Date(now.getTime() - days * 86400000).toISOString();
+    const blocks = [{ id: "p1", type: "paragraph", text: "Sort contract body." }];
+    const publish = async (author, slug, title, days) => {
+      // The title carries the suffix so every query below can scope itself to the
+      // rows this test owns: the PostgreSQL fixture is one shared database, unlike
+      // SQLite's per-test `:memory:` file, so an unscoped list assertion would read
+      // whatever another contract left behind.
+      await runtime.store.createArticle({ authorId: author, slug, title: `${title}-${suffix}`, summary: "", locale: "zh-CN", contentBlocks: blocks, publish: true });
+      await runtime.setArticlePublishedAt(slug, daysAgo(days));
+    };
+    const like = async (slug, howMany) => {
+      for (let index = 1; index <= howMany; index += 1) {
+        await runtime.store.setArticleLike({ slug, locale: "zh-CN", actorId: `sort-liker-${suffix}-${index}`, liked: true });
+      }
+    };
+    try {
+      await runtime.store.upsertAuthorProfile({ userId: authorId, displayName: "Sort Author", locale: "zh-CN" });
+      await runtime.store.upsertAuthorProfile({ userId: otherAuthorId, displayName: "Other Author", locale: "zh-CN" });
+      await publish(authorId, `sort-quiet-${suffix}`, "安静的新作", 1);
+      await publish(authorId, `sort-popular-${suffix}`, "寻找春天", 3);
+      await publish(authorId, `sort-edge-in-${suffix}`, "刚好在窗口内", 30);
+      await publish(authorId, `sort-edge-out-${suffix}`, "刚好在窗口外", 31);
+      await publish(authorId, `sort-old-${suffix}`, "两年前的旧作", 60);
+      await publish(otherAuthorId, `sort-other-work-${suffix}`, "别人的作品", 2);
+      // The all-time leader sits outside the window: `popular` is a signal about now.
+      await like(`sort-edge-out-${suffix}`, 10);
+      await like(`sort-old-${suffix}`, 5);
+      await like(`sort-popular-${suffix}`, 3);
+
+      const slugs = (articles) => articles.map((article) => article.slug);
+      const latest = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: suffix, now, limit: 20 });
+      assert.deepEqual(slugs(latest), [
+        `sort-quiet-${suffix}`, `sort-other-work-${suffix}`, `sort-popular-${suffix}`,
+        `sort-edge-in-${suffix}`, `sort-edge-out-${suffix}`, `sort-old-${suffix}`,
+      ]);
+
+      // Window first (the last 30 days), then likes, then newest again for ties.
+      const popular = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: suffix, sort: "popular", now, limit: 20 });
+      assert.deepEqual(slugs(popular), [`sort-popular-${suffix}`, `sort-quiet-${suffix}`, `sort-other-work-${suffix}`, `sort-edge-in-${suffix}`]);
+      assert.ok(!slugs(popular).includes(`sort-edge-out-${suffix}`));
+      assert.ok(!slugs(popular).includes(`sort-old-${suffix}`));
+
+      // The window edge is inclusive: exactly 30 days ago is still "now".
+      const edge = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: suffix, sort: "popular", now, limit: 20, offset: 3 });
+      assert.deepEqual(slugs(edge), [`sort-edge-in-${suffix}`]);
+
+      // Sort composes with the existing filters instead of replacing them.
+      const searched = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: `春天-${suffix}`, sort: "popular", now, limit: 20 });
+      assert.deepEqual(slugs(searched), [`sort-popular-${suffix}`]);
+      const byAuthor = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: suffix, authorId, sort: "popular", now, limit: 20 });
+      assert.deepEqual(slugs(byAuthor), [`sort-popular-${suffix}`, `sort-quiet-${suffix}`, `sort-edge-in-${suffix}`]);
+
+      // Pagination walks the sorted set once.
+      const firstTwo = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: suffix, sort: "popular", now, limit: 2, offset: 0 });
+      const nextTwo = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: suffix, sort: "popular", now, limit: 2, offset: 2 });
+      assert.deepEqual(slugs(firstTwo).concat(slugs(nextTwo)), slugs(popular));
+
+      await assert.rejects(Promise.resolve().then(() => runtime.store.listPublishedArticles({ locale: "zh-CN", query: suffix, sort: "hottest", now })), ArticleInputError);
     } finally {
       await runtime.cleanup(undefined, suffix);
     }

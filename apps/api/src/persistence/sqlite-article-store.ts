@@ -13,6 +13,7 @@ import {
   validateArticleSlug,
   normalizeArticleInput,
   normalizeTaxonomyIds,
+  popularWindowSince,
 } from "../domain/article.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
 
@@ -30,9 +31,17 @@ export function createSqliteArticleStore(db) {
 
   const migrationCapture = createSqliteProviderMigrationCapture(db);
 
+  const articleColumns = `a.id, a.author_id, a.slug, a.work_type, a.status, t.locale,
+           t.title, t.summary, t.content_blocks, t.content_blocks_version, a.created_at, a.updated_at, a.published_at`;
   const articleSelect = `
-    SELECT a.id, a.author_id, a.slug, a.work_type, a.status, t.locale,
-           t.title, t.summary, t.content_blocks, t.content_blocks_version, a.created_at, a.updated_at, a.published_at
+    SELECT ${articleColumns}
+    FROM articles a
+    JOIN article_translations t ON t.article_id = a.id
+  `;
+  /** `sort=popular` is the only reader that needs a per-row like count. */
+  const articleSelectWithLikeCount = `
+    SELECT ${articleColumns},
+           (SELECT count(*) FROM article_likes l WHERE l.article_id = a.id) AS like_count
     FROM articles a
     JOIN article_translations t ON t.article_id = a.id
   `;
@@ -143,20 +152,27 @@ export function createSqliteArticleStore(db) {
   }
 
   return Object.freeze({
-    listPublishedArticles({ locale = "zh-CN", query = "", authorId = null, limit = 20, offset = 0 } = {}) {
+    listPublishedArticles({ locale = "zh-CN", query = "", authorId = null, sort = "latest", limit = 20, offset = 0, now = new Date() } = {}) {
       validateArticleLocale(locale);
       if (typeof query !== "string" || query.length > 200) throw new ArticleInputError("query must be a string no longer than 200 characters.");
       if (authorId !== null) requiredText("authorId", authorId, 300);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
       if (!Number.isInteger(offset) || offset < 0 || offset > 100000) throw new ArticleInputError("offset must be an integer between 0 and 100000.");
+      if (sort !== "latest" && sort !== "popular") throw new ArticleInputError("sort must be 'latest' or 'popular'.");
       const needle = query.trim().toLocaleLowerCase(locale);
-      const rows = statement(articleSelect + `
+      // The window is compared against the ISO `published_at` text the schema
+      // already stores, so the ordering is a plain string comparison and the two
+      // adapters cannot disagree about what "the last 30 days" means.
+      const popular = sort === "popular";
+      const since = popular ? popularWindowSince(now) : null;
+      const rows = statement((popular ? articleSelectWithLikeCount : articleSelect) + `
         WHERE a.status = 'published' AND t.locale = ?
           AND (? = '' OR instr(lower(t.title), lower(?)) > 0 OR instr(lower(t.summary), lower(?)) > 0)
           AND (? IS NULL OR a.author_id = ?)
-        ORDER BY a.published_at DESC, a.id DESC
+          AND (? IS NULL OR a.published_at >= ?)
+        ORDER BY ${popular ? "like_count DESC, a.published_at DESC, a.id DESC" : "a.published_at DESC, a.id DESC"}
         LIMIT ? OFFSET ?
-      `).all(locale, needle, needle, needle, authorId, authorId, limit, offset);
+      `).all(locale, needle, needle, needle, authorId, authorId, since, since, limit, offset);
       return rows.map(mapArticle);
     },
 

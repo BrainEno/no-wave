@@ -19,7 +19,7 @@ import {
 } from "../domain/errors.ts";
 import type { PersistenceAdapterContract } from "../application/persistence-ports.ts";
 import { normalizeHashtag, validateTaxonomyKind } from "../domain/taxonomy.ts";
-import { validateArticleLocale, validateArticleSlug, normalizeArticleInput, normalizeTaxonomyIds } from "../domain/article.ts";
+import { validateArticleLocale, validateArticleSlug, normalizeArticleInput, normalizeTaxonomyIds, popularWindowSince } from "../domain/article.ts";
 import { validateStoredCommentContent } from "../domain/comment-content.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
 import { normalizeParticipantIds } from "../domain/conversation.ts";
@@ -995,7 +995,7 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
       );
       return rows.map(mapArticle);
     },
-    async listPublishedArticles({ locale = "zh-CN", query = "", authorId = null, limit = 20, offset = 0 } = {}) {
+    async listPublishedArticles({ locale = "zh-CN", query = "", authorId = null, sort = "latest", limit = 20, offset = 0, now = new Date() } = {}) {
       validateArticleLocale(locale);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
       if (!Number.isInteger(offset) || offset < 0 || offset > 100000) {
@@ -1003,23 +1003,28 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
       }
       if (typeof query !== "string" || query.length > 200) throw new ArticleInputError("query must be a string no longer than 200 characters.");
       if (authorId !== null) requiredText("authorId", authorId, 300);
+      if (sort !== "latest" && sort !== "popular") throw new ArticleInputError("sort must be 'latest' or 'popular'.");
       const search = query.trim() ? query.trim() : null;
       // Escape LIKE metacharacters to preserve literal substring semantics.
       // The pg_trgm GIN indexes make non-empty title/summary searches indexable.
       const searchPattern = search === null
         ? null
         : "%" + search.replace(/[\\%_]/g, "\\$&") + "%";
+      const popular = sort === "popular";
+      const since = popular ? popularWindowSince(now) : null;
       const rows = await sql.unsafe(
         `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at,
-                t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version
+                t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version,
+                ${popular ? "(SELECT count(*)::int FROM article_likes l WHERE l.article_id = a.id)" : "0"} AS like_count
          FROM articles AS a
          JOIN article_translations AS t ON t.article_id = a.id
          WHERE a.status = 'published' AND t.locale = $1
            AND ($2::text IS NULL OR t.title ILIKE $2 ESCAPE E'\\\\' OR t.summary ILIKE $2 ESCAPE E'\\\\')
            AND ($3::text IS NULL OR a.author_id = $3)
-         ORDER BY a.published_at DESC, a.id DESC
-         LIMIT $4 OFFSET $5`,
-        [locale, searchPattern, authorId, limit, offset],
+           AND ($4::timestamptz IS NULL OR a.published_at >= $4)
+         ORDER BY ${popular ? "like_count DESC, a.published_at DESC, a.id DESC" : "a.published_at DESC, a.id DESC"}
+         LIMIT $5 OFFSET $6`,
+        [locale, searchPattern, authorId, since, limit, offset],
       );
       return rows.map(mapArticle);
     },

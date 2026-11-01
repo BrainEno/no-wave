@@ -1,5 +1,5 @@
 import type { RestRouteContext, RestRouteHandler } from "./context.ts";
-import { MAX_ARTICLE_OFFSET, authenticatedActorId, decodeSlug, decodeUserId, optionalViewerId, parseInteger, parseLocale, parsePagination, parseQuery, readJsonObject, sendBadInput, sendJson, sendJsonBodyError, sendServiceError, sendUnauthenticated, sendUnavailable } from "../http.ts";
+import { MAX_ARTICLE_OFFSET, authenticatedActorId, decodeSlug, decodeUserId, optionalViewerId, parseInteger, parseLocale, parsePagination, parseQuery, parseSort, readJsonObject, sendBadInput, sendJson, sendJsonBodyError, sendServiceError, sendUnauthenticated, sendUnavailable } from "../http.ts";
 import { normalizeArticleWriteBody, normalizeCommentWriteBody, normalizeLikeWriteBody } from "../bodies.ts";
 import { serializeRestArticle, serializeRestArticles, serializeRestComment, serializeRestComments } from "../serializers.ts";
 import { slugifyArticleTitle, uniquifyArticleSlug } from "../../../domain/article-slug.ts";
@@ -164,14 +164,15 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
     }
     const locale = parseLocale(url);
     const query = parseQuery(url);
+    const sort = parseSort(url);
     const pagination = parsePagination(url, 20, MAX_ARTICLE_OFFSET);
-    if (!locale || query === null || !pagination) {
-      sendBadInput(response, "Invalid locale, query, limit, or offset query parameter.");
+    if (!locale || query === null || sort === null || !pagination) {
+      sendBadInput(response, "Invalid locale, query, sort, limit, or offset query parameter.");
       return;
     }
     try {
       const viewerId = await optionalViewerId(request, services, env);
-      const articles = await services.listPublishedArticles({ locale, query, ...pagination });
+      const articles = await services.listPublishedArticles({ locale, query, sort, ...pagination });
       sendJson(response, 200, { data: await serializeRestArticles(services, articles, viewerId) });
     } catch (error: unknown) {
       sendServiceError(response, error);
