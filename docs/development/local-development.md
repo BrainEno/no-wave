@@ -196,6 +196,9 @@ or deleting `apps/api/data/` (SQLite) is the documented reset.
 | `pnpm dev --check` | Run the connectivity probe once both are ready. |
 | `pnpm dev --check --exit` | Probe, then stop both processes and exit with the probe result (CI, scripts). |
 | `pnpm check:local` | Probe an already running chain. |
+| `pnpm verify:publish` | One-shot publishing-visibility check on a disposable stack; no mail service. |
+| `pnpm verify:publish --keep` | Keep the stack and article links open until Ctrl+C. |
+| `pnpm verify:publish --api-url <url> --web-url <url>` | Verify an already running chain. |
 | `pnpm check:local --api-only` | Skip every Web layer, including the Web auth proxy (useful in CI or against a container). |
 | `pnpm check:local --read-only` | Skip the write probes. |
 | `pnpm check:local --api-url <url> --web-url <url>` | Probe another origin. |
@@ -224,6 +227,43 @@ port). Every one is documented in `.env.example`.
 The numbering is the debugging order: fix the lowest failing layer first. A 503
 on `auth-register` while `api-ready` passes is almost always the JWT secret; a
 `web-render` failure while the API steps pass is almost always `API_BASE_URL`.
+
+### 6.1 Publishing visibility without mail
+
+Email verification does **not** gate publishing: `authoring-workspace.tsx`
+offers the verification button, but an unverified account can still write and
+publish. A work that the writing desk reports as published is usually invisible
+for one of these reasons instead:
+
+1. **No author profile.** `PUT /api/v1/me/profile` was never called, so the API
+   returns `author: null`; `mapArticle()` in `packages/web-ui/src/lib/api-content.ts`
+   filters that article out of every public list and page.
+2. **The Web app is reading fixtures.** Without `API_BASE_URL`, the Web process
+   renders its static fixture registry rather than the API that stored the work.
+3. **Locale mismatch.** The writing desk currently hard-codes `locale: "zh-CN"`,
+   so a newly published work appears at `/articles/...`, not `/en/articles/...`.
+4. **Home is curated.** The home shelf is editor-selected; the archive
+   (`/articles`) is the reliable "all published works" view.
+
+`pnpm verify:publish` proves all four boundaries without a mail service. It
+starts a disposable SQLite stack on free loopback ports with a random JWT secret,
+assembles only the documented portable-stack environment (no `MAIL_*`), then:
+
+- registers a disposable, unverified account;
+- writes the author profile first;
+- publishes through the same `/api/authoring/articles` proxy the desk uses;
+- reads the article anonymously from the API detail and list endpoints;
+- asserts the server-rendered article page and archive contain the title/body;
+- prints the API, article and archive URLs.
+
+By default it stops the processes and removes the temporary database. Use
+`--keep` to leave the stack up and open the printed links,
+`pnpm --silent verify:publish --json` for pure machine-readable output,
+`--timeout <ms>` to widen cold-start budgets, or `--database-path <file>` to
+keep the SQLite file. To verify an existing chain instead of starting one, pass
+`--api-url` and `--web-url` together. The command never calls
+`/api/v1/auth/verify-email`, `/api/v1/auth/forgot-password` or
+`/api/v1/me/email-verification`.
 
 ## 7. PostgreSQL locally
 
@@ -262,11 +302,14 @@ connection), not for the local development loop. Leave it unset locally.
 | Route smoke (Web, fixtures) | `pnpm test:routes` | ~1 min | no |
 | Persistence integration | `TEST_DATABASE_URL=... pnpm --filter @bot-thk/api test:integration` | ~1 min | PostgreSQL |
 | Local chain | `pnpm check:local` | seconds | only for the PostgreSQL profile |
+| Publish visibility (mail-free) | `pnpm verify:publish` | ~1 min | no |
 | CI | `.github/workflows/ci.yml` | ~30 s per chain leg | GitHub service container |
 
 The CI `local-dev-chain` job runs exactly the documented commands —
 `pnpm dev --check --exit` (SQLite) and `pnpm dev --api-only --check --exit`
-(PostgreSQL) — so the developer path and the CI path cannot drift apart.
+(PostgreSQL) — so the developer path and the CI path cannot drift apart. The
+`verify` job also runs `pnpm --silent verify:publish --json`, so the mail-free
+publish path is part of the required-checks gate.
 
 `pnpm test` runs the tooling's own unit tests
 (`scripts/lib/local-dev-config.test.ts`, `scripts/local-dev-check.test.ts`,
@@ -288,6 +331,7 @@ the probe's skip semantics cannot silently regress.
 | `fetch failed` against `localhost` | `localhost` resolved to `::1` while the API listens on IPv4. | Use `127.0.0.1` in `API_BASE_URL`. |
 | `pnpm dev` warns about an external database | A Neon/shared `DATABASE_URL` or `DATABASE_URL_UNPOOLED` is exported in the shell or left in `.env.local`. | Unset both variables and run `pnpm setup:local --force` (or `--force --postgres`). |
 | Web page 404 for an article you just created | Created without `publish: true`, or no author profile. | Update the profile, publish the article (the probe shows the full sequence). |
+| Writing desk says published, but public pages are empty | Missing author profile, Web fell back to fixtures, or `/en/articles` was opened. | Run `pnpm verify:publish`; set `API_BASE_URL`, write the profile, and open `/articles`. |
 | `429 RATE_LIMITED` in the probe | 20 registrations per IP per hour. | Wait, or use `--read-only`. |
 | `image upload returns 503` | `MEDIA_S3_*` is not configured. | Expected; see [Web authoring operations](../operations/web-authoring.md). |
 
@@ -296,9 +340,10 @@ the probe's skip semantics cannot silently regress.
 - `pnpm check:local` asserts the *chain*, not the UI: layout, motion, WebGL and
   accessibility still need a human or a browser test.
 - Mail-dependent email verification and account recovery are implemented but
-  switched off until `MAIL_ENABLED` is set; the probe does not cover them. The
-  notification worker can be started manually with
-  `pnpm --filter @bot-thk/api worker:notifications`.
+  switched off until `MAIL_ENABLED` is set; `pnpm verify:publish` deliberately
+  proves that publishing works with mail off, while the recovery flows themselves
+  remain uncovered by that probe. The notification worker can be started manually
+  with `pnpm --filter @bot-thk/api worker:notifications`.
 - The GitLab pipeline mirrors the GitHub verification stages but does not run the
   PostgreSQL chain job; the GitHub workflow is authoritative.
 - Windows is supported by the scripts (no shell operators in `package.json`, no
