@@ -55,7 +55,7 @@ export const persistencePortMethods = Object.freeze({
   ] as const),
   rateLimits: Object.freeze(["consumeRateLimit"] as const),
   outbox: Object.freeze([
-    "claimOutboxEvents", "markOutboxDelivered", "rescheduleOutboxEvent",
+    "claimOutboxEvents", "markOutboxDelivered", "rescheduleOutboxEvent", "outboxBacklog",
   ] as const),
   operations: Object.freeze(["health"] as const),
 });

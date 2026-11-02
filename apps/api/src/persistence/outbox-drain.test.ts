@@ -5,6 +5,7 @@ import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
 import { createSqliteStore } from "./sqlite-store.ts";
 import { dispatchOutboxBatch } from "./outbox-worker.ts";
 import { runOutboxDrain } from "./outbox-drain.ts";
+import { createMessageNotificationDelivery } from "./message-notification-delivery.ts";
 
 /**
  * Bounded-drain behavior.
@@ -195,4 +196,47 @@ test("the composed SQLite adapter drains real outbox rows in bounded batches", a
   assert.equal(delivered.length, 3);
   assert.equal(new Set(delivered).size, 3, "each persisted event is delivered exactly once");
   assert.ok(delivered.every((key) => key.startsWith("message:")), `unexpected event keys: ${delivered.join(", ")}`);
+});
+
+/**
+ * The regression this pins: both drain entry points once hard-required
+ * `DATABASE_URL`, so on the default SQLite provider `persistMessage` queued
+ * `message.created` rows that nothing could ever deliver — messages were stored
+ * and no notification was ever written.
+ */
+test("a SQLite deployment turns a persisted message into a real notification", async () => {
+  const db = createSqliteClient({ filename: ":memory:", enableWal: false });
+  await runSqliteMigrations(db);
+  const store = createSqliteStore(db);
+  const conversation = await store.createConversation({ actorId: "alice", participantIds: ["bob"] });
+  const message = await store.persistMessage({
+    conversationId: conversation.id,
+    senderId: "alice",
+    body: "A message that must reach bob's inbox.",
+    idempotencyKey: "sqlite-delivery-key",
+  });
+
+  // The outbox holds it: the API already committed, nothing has delivered it yet.
+  const backlog = await store.outboxBacklog();
+  assert.equal(backlog.pendingEvents, 1);
+  assert.equal(backlog.oldestPendingAgeMs >= 0, true);
+  assert.deepEqual(await store.listNotifications({ actorId: "bob", limit: 10 }), []);
+
+  const result = await runOutboxDrain({
+    store,
+    deliver: createMessageNotificationDelivery({ store }),
+    batchLimit: 10,
+  });
+
+  assert.deepEqual(
+    { claimed: result.claimed, delivered: result.delivered, failed: result.failed },
+    { claimed: 1, delivered: 1, failed: 0 },
+  );
+  const notifications = await store.listNotifications({ actorId: "bob", limit: 10 });
+  assert.equal(notifications.length, 1);
+  assert.equal(notifications[0].eventKey, `message:${message.id}`);
+  assert.equal(notifications[0].payload.type, "message.created");
+  assert.equal(notifications[0].readAt, null);
+  // Drained: a second run has nothing left to do.
+  assert.equal((await store.outboxBacklog()).pendingEvents, 0);
 });

@@ -64,5 +64,23 @@ export function createSqliteOutboxStore(db) {
         return result.changes === 1;
       } catch (error) { try { db.exec("ROLLBACK"); } catch {} throw error; }
     },
+    /**
+     * How much undelivered work the outbox is holding, in one row.
+     *
+     * The worker's backlog gauges are the only thing that says "delivery has
+     * been broken since Tuesday", so they must work on every provider the drain
+     * can run against — which is why this is a port method rather than a
+     * PostgreSQL-only query inside the worker.
+     */
+    async outboxBacklog() {
+      const row = get(
+        "SELECT count(*) AS pending_events, MIN(created_at) AS oldest_created_at FROM outbox_events WHERE delivered_at IS NULL",
+      );
+      const oldest = row?.oldest_created_at ? new Date(row.oldest_created_at).getTime() : NaN;
+      return {
+        pendingEvents: Number.isFinite(Number(row?.pending_events)) ? Number(row.pending_events) : 0,
+        oldestPendingAgeMs: Number.isFinite(oldest) ? Math.max(0, Date.now() - oldest) : 0,
+      };
+    },
   });
 }

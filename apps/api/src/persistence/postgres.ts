@@ -1857,6 +1857,27 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
         return rows.length === 1;
       });
     },
+    /**
+     * How much undelivered work the outbox is holding, in one row.
+     *
+     * The worker's backlog gauges are the only thing that says "delivery has
+     * been broken since Tuesday", so they must work on every provider the drain
+     * can run against — which is why this is a port method rather than a
+     * PostgreSQL-only query inside the worker.
+     */
+    async outboxBacklog() {
+      const rows = await sql.unsafe(
+        "SELECT count(*)::bigint AS pending_events, MIN(created_at) AS oldest_created_at " +
+        "FROM outbox_events WHERE delivered_at IS NULL",
+        [],
+      );
+      const row = rows[0] ?? {};
+      const oldest = row.oldest_created_at ? new Date(row.oldest_created_at).getTime() : NaN;
+      return {
+        pendingEvents: Number.isFinite(Number(row.pending_events)) ? Number(row.pending_events) : 0,
+        oldestPendingAgeMs: Number.isFinite(oldest) ? Math.max(0, Date.now() - oldest) : 0,
+      };
+    },
     async listConversationParticipantIds({ conversationId }) {
       if (typeof conversationId !== "string" || conversationId.trim().length === 0 || conversationId !== conversationId.trim()) {
         throw new TypeError("conversationId must be a non-empty, trimmed string.");

@@ -1,4 +1,4 @@
-import { createPostgresClient, createPostgresStore } from "./postgres.ts";
+import { createPersistenceRuntime } from "../infrastructure/persistence-runtime.ts";
 import { runOutboxDrain } from "./outbox-drain.ts";
 import { createMessageNotificationDelivery } from "./message-notification-delivery.ts";
 
@@ -53,14 +53,18 @@ function writeDrainLog(level, event, fields = {}) {
 }
 
 async function runDrain() {
-  if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required for the notification drain.");
-  const sql = await createPostgresClient({ connectionString: process.env.DATABASE_URL });
+  // Runs against whatever provider the API writes with, not PostgreSQL
+  // specifically: the outbox is written by both adapters and SQLite is the
+  // default, so requiring DATABASE_URL here meant a default deployment queued
+  // message notifications that no scheduled drain could ever deliver.
+  const runtime = await createPersistenceRuntime({ env: process.env });
+  const store = runtime.adapter;
   try {
-    const store = createPostgresStore(sql);
     await store.health();
     const deliver = createMessageNotificationDelivery({ store });
 
     writeDrainLog("info", "outbox_drain_started", {
+      provider: runtime.provider,
       batchLimit, leaseSeconds, retryDelaySeconds, deadlineMs, maxBatches,
     });
     const result = await runOutboxDrain({
@@ -85,7 +89,7 @@ async function runDrain() {
     }
     return result.errorName === null;
   } finally {
-    await sql.end({ timeout: 5 });
+    await runtime.close();
   }
 }
 

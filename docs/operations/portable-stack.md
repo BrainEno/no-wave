@@ -37,10 +37,11 @@ What the command does, in order:
 4. `node apps/web-rr/server.ts` — the Web server: a plain Node.js process with no
    platform adapter. That is the point: the command proves portability.
 5. `node apps/api/src/persistence/notification-worker.ts` — only with
-   `--worker`, and only when `DATABASE_URL` is set. The default is the cardless
-   path instead: the probe writes a direct message, the outbox holds it, and a
-   one-shot `notification-drain.ts` delivers it — the shape a free host
-   schedules. The long-lived worker is what a self-hosted deployment runs.
+   `--worker`. The default is the cardless path instead: the probe writes a
+   direct message, the outbox holds it, and a one-shot `notification-drain.ts`
+   delivers it — the shape a free host schedules. The long-lived worker is what a
+   self-hosted deployment runs. Both resolve the configured provider the same way
+   the API does, so this works against SQLite as well as PostgreSQL.
 
 Ports are reserved on ephemeral ports, so several stacks — yours, a CI job, a
 second branch — can run at once without colliding.
