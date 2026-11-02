@@ -91,3 +91,35 @@ test("every client component of a migrated page is present in the client bundle"
     );
   }
 });
+
+/**
+ * `meta` is not a server-only export.
+ *
+ * React Router's `<Meta />` calls the route module's `meta` in the browser too
+ * — on hydration and on every client-side navigation — so anything `meta` reads
+ * has to exist there. Reading `SITE_URL` out of `process.env` inside `meta`
+ * threw `ReferenceError: process is not defined` in development, and in the
+ * production build, where Vite substitutes `{}` for an unresolvable
+ * `process.env`, it quietly emitted `https://example.invalid` canonical and
+ * Open Graph URLs instead. The site origin now travels through the root
+ * loader's data, so the browser never has to touch `process`.
+ *
+ * The assertion is on the emitted bundle rather than on the source because the
+ * mistake is only visible there: a route module can import a server-only helper
+ * and every server-side assertion stays green.
+ */
+test("no client asset reads the site origin from the environment", () => {
+  const bundle = clientBundle();
+  // `NEXT_PUBLIC_SITE_URL` is the sentinel that matters, not `process.env`:
+  // Vite substitutes `{}` for an unresolvable `process.env` in the production
+  // build, so the original mistake shipped as `(void 0).NEXT_PUBLIC_SITE_URL`
+  // rather than as a literal `process.env` — a check for the literal would
+  // have stayed green while canonical and Open Graph URLs went to
+  // `https://example.invalid`.
+  for (const name of ["NEXT_PUBLIC_SITE_URL", "process.env"]) {
+    assert.ok(
+      !bundle.includes(name),
+      `${name} reached the client bundle. Route \`meta\` runs in the browser, so the site origin has to arrive through the root loader's data, not be read from the environment.`,
+    );
+  }
+});
