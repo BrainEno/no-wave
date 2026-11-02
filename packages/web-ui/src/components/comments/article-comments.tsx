@@ -12,6 +12,7 @@ import { LinkExtension, TOGGLE_LINK_COMMAND } from "@lexical/link";
 import { PlainTextExtension } from "@lexical/plain-text";
 import { defineExtension, FORMAT_TEXT_COMMAND, REDO_COMMAND, UNDO_COMMAND } from "lexical";
 import type { Locale } from "@/lib/content.ts";
+import { sanitizeEditorHref } from "@/lib/editor-href.ts";
 import { articleBlocksToLexicalEditorState, type LexicalEditorStateJson } from "@/lib/lexical-article-state.ts";
 
 type CommentRun = { text: string; marks?: string[]; href?: string };
@@ -40,17 +41,8 @@ function isComment(value: unknown): value is CommentView {
     typeof value.createdAt === "string";
 }
 
-function safeCommentHref(value: string): string | null {
-  if (!value || value.startsWith("//") || /[\u0000-\u0020\u007f\\]/.test(value)) return null;
-  if (value.startsWith("/")) return value;
-  try {
-    const url = new URL(value);
-    if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password) return null;
-    return value;
-  } catch {
-    return null;
-  }
-}
+/** Read-side and write-side comment links answer the same shared sanity rule. */
+const safeCommentHref = sanitizeEditorHref;
 
 function renderInline(run: CommentRun, key: string): ReactNode {
   let child: ReactNode = run.text;
@@ -123,19 +115,10 @@ function CommentToolbar({ onLinkError }: { onLinkError(message: string): void })
   function addLink() {
     const raw = window.prompt("输入 HTTPS 链接或站内绝对路径");
     if (raw === null) return;
-    const href = raw.trim();
-    if (!href || href.startsWith("//") || /[\u0000-\u0020\u007f\\]/.test(href)) {
-      onLinkError("链接格式不安全。");
+    const href = sanitizeEditorHref(raw);
+    if (!href) {
+      onLinkError("只允许 HTTP(S) 链接或站内绝对路径。");
       return;
-    }
-    if (!href.startsWith("/")) {
-      try {
-        const url = new URL(href);
-        if ((url.protocol !== "https:" && url.protocol !== "http:") || url.username || url.password) throw new Error("unsafe");
-      } catch {
-        onLinkError("只允许 HTTP(S) 链接或站内绝对路径。");
-        return;
-      }
     }
     onLinkError("");
     editor.dispatchCommand(TOGGLE_LINK_COMMAND, href);

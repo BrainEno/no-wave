@@ -62,6 +62,18 @@ about state the client can already see.
 A key reused with a different body is a client bug, not a replay — hence `409` rather than a
 silently wrong answer.
 
+`POST /api/v1/articles` has one extra rule. The route passes `requestedSlug`: the slug the caller
+actually supplied, or `null` when the server derived one from the title. The fingerprint uses
+`requestedSlug`, **not** the candidate slug the auto-uniquifier is currently trying. A first write
+that had to land on `title-2` therefore replays when the retry starts again at `title` (issues
+#137 / #157). An explicit slug remains part of the fingerprint, so reusing a key with a different
+explicit slug is still `409`.
+
+Rows written before this rule existed stay replayable without a data migration: for an
+auto-generated address only, the store also accepts a legacy fingerprint computed from the current
+candidate slug or from the stored article's slug. New rows store the stable `requestedSlug`
+fingerprint. Direct store callers that omit `requestedSlug` keep the old explicit-slug behaviour.
+
 ## Operation table
 
 | Operation | Class | Key | State |

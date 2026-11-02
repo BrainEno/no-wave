@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
+import { unlink, writeFile } from "node:fs/promises";
 import { createServer as createHttpServer } from "node:http";
 import { createServer } from "node:net";
 import { after, before, test } from "node:test";
@@ -144,6 +145,35 @@ test("a cheap health-check target answers without rendering a page", async () =>
   // A health check is not a page, and must not become a search result.
   assert.equal(response.headers.get("x-robots-tag"), "noindex");
   assert.deepEqual((await response.json()) as { status: string }, { status: "ok" });
+});
+
+test("a production static asset is streamed through pipeline without changing its response", async () => {
+  const response = await fetch(`${server.baseUrl}/favicon.ico`);
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type") ?? "", /image\/x-icon/);
+  assert.ok((await response.arrayBuffer()).byteLength > 0);
+});
+
+test("malformed percent-encoded asset URLs answer 400, not 500, and the process stays healthy", async () => {
+  for (const path of ["/%E0%A4%A.js", "/assets/%c0%af.js"]) {
+    const response = await fetch(`${server.baseUrl}${path}`);
+    assert.equal(response.status, 400, `${path} should be a bad request`);
+    await response.text();
+  }
+  const health = await fetch(`${server.baseUrl}/healthz`);
+  assert.equal(health.status, 200, "a malformed URL must not take the server down");
+});
+
+test("source maps in the client build are not served as public static files", async () => {
+  const mapPath = `${packageDir}build/client/leak.js.map`;
+  await writeFile(mapPath, '{"version":3,"sources":[]}', "utf8");
+  try {
+    const response = await fetch(`${server.baseUrl}/leak.js.map`);
+    await response.text();
+    assert.equal(response.status, 404, "a .map file must fall through to the framework's 404");
+  } finally {
+    await unlink(mapPath).catch(() => {});
+  }
 });
 
 test("every request is logged once, with its path and status", async () => {

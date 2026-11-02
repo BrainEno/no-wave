@@ -1,4 +1,9 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
+import {
+  articleIdempotencyFingerprint,
+  articleIdempotencyKeyHash,
+  articleIdempotencyReplayMatches,
+} from "../application/article-idempotency.ts";
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import { createSqliteProviderMigrationCapture, migrationEntityKey } from "./sqlite-provider-migration-capture.ts";
 import {
@@ -16,9 +21,6 @@ import {
   MAX_FEATURED_ARTICLES, resolveArticleCursor,
 } from "../domain/article.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
-
-/** Digests used to recognise a retried write; the raw caller key is never stored. */
-const fingerprintHash = (value) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
 /**
  * SQLite implementation of the article/content persistence slice.
@@ -355,7 +357,7 @@ export function createSqliteArticleStore(db) {
       `).all(current.id, current.id, locale, current.author_id, limit).map(mapArticle);
     },
 
-    createArticle({ authorId, slug, title, summary = "", locale = "zh-CN", contentBlocks, contentBlocksVersion = 0, publish = false, workType = "other", categoryIds = [], tagIds = [], idempotencyKey = null }) {
+    createArticle({ authorId, slug, title, summary = "", locale = "zh-CN", contentBlocks, contentBlocksVersion = 0, publish = false, workType = "other", categoryIds = [], tagIds = [], idempotencyKey = null, requestedSlug }) {
       requiredText("authorId", authorId, 300);
       const input = normalizeArticleInput({ slug, title, summary, locale, contentBlocks, contentBlocksVersion, publish, workType });
       const categories = normalizeTaxonomyIds("categoryIds", categoryIds, 20) ?? [];
@@ -365,22 +367,34 @@ export function createSqliteArticleStore(db) {
         throw new ArticleInputError("Idempotency-Key must be a non-empty trimmed string no longer than 300 characters.");
       }
       const id = randomUUID();
-      const keyHash = idempotencyKey === null ? null : fingerprintHash({ method: "POST", route: "/api/v1/articles", actorId: authorId, key: idempotencyKey });
-      const fingerprint = fingerprintHash({
-        authorId, slug: input.slug, title: input.title, summary: input.summary, locale: input.locale,
+      const keyHash = idempotencyKey === null ? null : articleIdempotencyKeyHash(authorId, idempotencyKey);
+      // `requestedSlug` is undefined only for direct store callers that predate
+      // the route contract; treat their explicit slug as client-supplied.
+      const fingerprintSlug = requestedSlug === undefined ? input.slug : (requestedSlug ?? null);
+      const fingerprintBase = {
+        authorId, title: input.title, summary: input.summary, locale: input.locale,
         contentBlocks: input.contentBlocks, contentBlocksVersion: input.contentBlocksVersion,
         publish: input.publish, workType: input.workType ?? "other",
         categoryIds: [...categories].sort(), tagIds: [...tags].sort(),
-      });
+      };
+      const fingerprintForSlug = (value: string | null) => articleIdempotencyFingerprint({ ...fingerprintBase, slug: value });
+      const fingerprint = fingerprintForSlug(fingerprintSlug);
+      const replayMatches = (row) => articleIdempotencyReplayMatches(
+        row.request_hash,
+        fingerprint,
+        fingerprintSlug === null
+          ? [fingerprintForSlug(input.slug), fingerprintForSlug(row.slug)]
+          : [],
+      );
       try {
         return transaction((transactionId) => {
           // A retried publish is a replay, not a second work: without this the
           // slug uniquifier in the route would hand the retry a new address and
           // the author would end up with two copies of the same text.
           if (keyHash !== null) {
-            const existing = db.prepare("SELECT id, request_hash FROM articles WHERE author_id = ? AND idempotency_key_hash = ?").get(authorId, keyHash);
+            const existing = db.prepare("SELECT id, slug, request_hash FROM articles WHERE author_id = ? AND idempotency_key_hash = ?").get(authorId, keyHash);
             if (existing) {
-              if (existing.request_hash !== fingerprint) throw new IdempotencyConflictError();
+              if (!replayMatches(existing)) throw new IdempotencyConflictError();
               return readCreatedArticle(existing.id, input.locale);
             }
           }
@@ -400,9 +414,9 @@ export function createSqliteArticleStore(db) {
         // Another writer took the same key between the replay check and the
         // insert: the work exists now, so answer with it rather than a 500.
         if (keyHash !== null && /articles_author_idempotency_key_idx|articles\.idempotency_key_hash/i.test(error.message)) {
-          const existing = db.prepare("SELECT id, request_hash FROM articles WHERE author_id = ? AND idempotency_key_hash = ?").get(authorId, keyHash);
+          const existing = db.prepare("SELECT id, slug, request_hash FROM articles WHERE author_id = ? AND idempotency_key_hash = ?").get(authorId, keyHash);
           if (existing) {
-            if (existing.request_hash !== fingerprint) throw new IdempotencyConflictError();
+            if (!replayMatches(existing)) throw new IdempotencyConflictError();
             return readCreatedArticle(existing.id, input.locale);
           }
         }

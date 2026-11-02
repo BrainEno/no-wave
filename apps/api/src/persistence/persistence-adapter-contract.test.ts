@@ -80,6 +80,7 @@ async function sqliteFixture() {
         db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`sort-%-${suffix}`);
         db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`search-%-${suffix}`);
         db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`cursor-%-${suffix}`);
+        db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`auto-slug-%-${suffix}`);
         // A deleted work keeps its row under a released slug (`...-deleted-<id>`),
         // so match the whole family the deletion test can leave behind.
         db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`contract-delete-${suffix}%`);
@@ -155,6 +156,7 @@ async function postgresFixture() {
         await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`sort-%-${suffix}`]);
         await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`search-%-${suffix}`]);
         await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`cursor-%-${suffix}`]);
+        await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`auto-slug-%-${suffix}`]);
       }
     },
   };
@@ -1632,8 +1634,9 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
     const author = `article-author-${suffix}`;
     const other = `article-author-b-${suffix}`;
     const blocks = [{ id: "p1", type: "paragraph", text: "Shared persistence contract content." }];
+    const slug = `contract-create-once-${suffix}`;
     const input = {
-      authorId: author, slug: `contract-create-once-${suffix}`, title: "Create once", summary: "",
+      authorId: author, slug, requestedSlug: slug, title: "Create once", summary: "",
       locale: "zh-CN", contentBlocks: blocks, publish: true, idempotencyKey: `publish-once-${suffix}`,
     };
     try {
@@ -1663,7 +1666,12 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       // Without a key the same address is simply taken: turning a genuinely
       // different work into a new address is the route's uniquifier, not the
       // store's, and a replay must not lean on it.
-      const unkeyed = { ...input, idempotencyKey: null, slug: `contract-create-twice-${suffix}` };
+      const unkeyed = {
+        ...input,
+        idempotencyKey: null,
+        slug: `contract-create-twice-${suffix}`,
+        requestedSlug: `contract-create-twice-${suffix}`,
+      };
       await runtime.store.createArticle(unkeyed);
       await assert.rejects(
         Promise.resolve().then(() => runtime.store.createArticle(unkeyed)),
@@ -1672,8 +1680,66 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
 
       // The key is scoped to the author: someone else may reuse the same string
       // for their own work.
-      const theirs = await runtime.store.createArticle({ ...input, authorId: other, slug: `contract-create-once-b-${suffix}` });
+      const theirs = await runtime.store.createArticle({
+        ...input,
+        authorId: other,
+        slug: `contract-create-once-b-${suffix}`,
+        requestedSlug: `contract-create-once-b-${suffix}`,
+      });
       assert.notEqual(theirs.id, first.id);
+    } finally {
+      await runtime.cleanup(undefined, suffix);
+    }
+  });
+
+  test(`${adapterName}: an auto-generated slug replay survives suffix uniquification`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const author = `article-author-${suffix}`;
+    const blocks = [{ id: "p1", type: "paragraph", text: "Auto slug replay contract content." }];
+    try {
+      // Draft and published writes must answer the same way: the bug was in the
+      // request fingerprint, not in the status the article ended up with.
+      for (const publish of [false, true]) {
+        const base = `auto-slug-${publish ? "published" : "draft"}-${suffix}`;
+        const key = `auto-slug-${publish ? "published" : "draft"}-key-${suffix}`;
+        const common = {
+          authorId: author, title: "Auto slug replay", summary: "", locale: "zh-CN",
+          contentBlocks: blocks, publish, idempotencyKey: key, requestedSlug: null,
+        };
+
+        // The route's first attempt would hit a taken base slug; this call
+        // stands in for the successful `-2` attempt.
+        const first = await runtime.store.createArticle({ ...common, slug: `${base}-2` });
+        assert.equal(first.slug, `${base}-2`);
+
+        // A sequential replay starts again at the base candidate. It must still
+        // return the one work that was actually stored.
+        const replay = await runtime.store.createArticle({ ...common, slug: base });
+        assert.equal(replay.id, first.id, "a sequential replay must return the first work");
+        assert.equal(replay.slug, first.slug, "and must keep the suffix the first write committed");
+
+        // Concurrent replays may arrive at different candidate slugs.
+        const attempts = await Promise.all([
+          runtime.store.createArticle({ ...common, slug: base }),
+          runtime.store.createArticle({ ...common, slug: `${base}-2` }),
+          runtime.store.createArticle({ ...common, slug: `${base}-3` }),
+        ]);
+        assert.equal(new Set(attempts.map((article) => article.id)).size, 1);
+        assert.equal(attempts[0].slug, first.slug);
+
+        // A client-supplied slug is part of the fingerprint: reusing the key
+        // with a different explicit address is still a conflict.
+        await assert.rejects(
+          Promise.resolve().then(() => runtime.store.createArticle({
+            ...common,
+            slug: `${base}-explicit`,
+            requestedSlug: `${base}-explicit`,
+          })),
+          IdempotencyConflictError,
+          "an explicit slug change must not be accepted as a replay",
+        );
+      }
     } finally {
       await runtime.cleanup(undefined, suffix);
     }

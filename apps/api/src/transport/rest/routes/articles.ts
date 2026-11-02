@@ -20,9 +20,10 @@ const MAX_AUTO_SLUG_ATTEMPTS = 25;
 /**
  * Create a work, uniquifying the slug while the address is taken.
  *
- * `idempotencyKey` is forwarded on every attempt: the store replays the work a
- * retried request already created, and without it the uniquifier would hand a
- * retry a new address and quietly publish a second copy.
+ * `idempotencyKey` and `requestedSlug` are forwarded on every attempt: the
+ * store replays the work a retried request already created, and the fingerprint
+ * must describe the client's original request rather than whichever suffixed
+ * slug this particular attempt happened to try.
  */
 async function createArticleWithSlug(
   services: NonNullable<RestRouteContext["services"]>,
@@ -35,7 +36,7 @@ async function createArticleWithSlug(
   for (let attempt = 1; ; attempt += 1) {
     const slug = attempt === 1 ? baseSlug : uniquifyArticleSlug(baseSlug, attempt);
     try {
-      return await services.createArticle({ ...input, slug, authorId, idempotencyKey });
+      return await services.createArticle({ ...input, slug, authorId, idempotencyKey, requestedSlug });
     } catch (error: unknown) {
       const retryable = requestedSlug === null && error instanceof ArticleSlugConflictError && attempt < MAX_AUTO_SLUG_ATTEMPTS;
       if (!retryable) throw error;

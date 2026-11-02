@@ -14,6 +14,7 @@ import { $setBlocksType } from "@lexical/selection";
 import { $createParagraphNode, $getSelection, $insertNodes, $isRangeSelection, defineExtension, FORMAT_TEXT_COMMAND, REDO_COMMAND, UNDO_COMMAND, type ElementNode } from "lexical";
 import { ArticleImageNode, $createArticleImageNode } from "./article-image-node.tsx";
 import type { WorkType } from "@/lib/content.ts";
+import { sanitizeEditorHref } from "@/lib/editor-href.ts";
 import { articleBlocksToLexicalEditorState, type LexicalEditorStateJson } from "@/lib/lexical-article-state.ts";
 
 export type AuthoringArticle = {
@@ -76,21 +77,12 @@ function Toolbar({ onStatus, onError }: { onStatus(message: string): void; onErr
   function addLink() {
     const url = window.prompt("输入链接（https:// 或站内绝对路径）");
     if (url === null) return;
-    const candidate = url.trim();
-    if (!candidate || candidate.startsWith("//") || /[\\u0000-\\u0020\\u007f\\\\]/.test(candidate)) {
+    const href = sanitizeEditorHref(url);
+    if (!href) {
       window.alert("请输入有效的 HTTP(S) 链接或站内绝对路径。");
       return;
     }
-    if (!candidate.startsWith("/")) {
-      try {
-        const parsed = new URL(candidate);
-        if ((parsed.protocol !== "http:" && parsed.protocol !== "https:") || parsed.username || parsed.password) throw new Error("unsafe");
-      } catch {
-        window.alert("链接仅支持有效的 HTTP(S) URL 或站内绝对路径。");
-        return;
-      }
-    }
-    editor.dispatchCommand(TOGGLE_LINK_COMMAND, candidate);
+    editor.dispatchCommand(TOGGLE_LINK_COMMAND, href);
   }
 
   async function uploadImage(file: File | undefined) {
