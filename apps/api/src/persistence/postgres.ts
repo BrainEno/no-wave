@@ -1161,9 +1161,13 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
       // adding the keyset cannot leave `LIMIT`/`OFFSET` pointing at the wrong one.
       const keyset = resolveArticleCursor({ cursor, sort, offset });
       const params: unknown[] = [locale, searchPattern, authorId];
+      // A cursor is a millisecond ISO string. Truncating the *parameter* keeps
+      // the raw indexed column on the left of the comparison, so the existing
+      // articles_published_idx still answers the keyset without a function index.
+      const cursorAtParam = keyset ? params.push(keyset.publishedAt) : 0;
       const keysetClause = keyset
-        ? `AND (a.published_at < $${params.push(keyset.publishedAt)}::timestamptz
-              OR (a.published_at = $${params.length}::timestamptz AND a.id < $${params.push(keyset.id)}::uuid))`
+        ? `AND (a.published_at < date_trunc('milliseconds', $${cursorAtParam}::timestamptz)
+              OR (a.published_at = date_trunc('milliseconds', $${cursorAtParam}::timestamptz) AND a.id < $${params.push(keyset.id)}::uuid))`
         : "";
       params.push(limit, offset);
       const rows = await sql.unsafe(
@@ -1366,7 +1370,7 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
           }
           const rows = await tx.unsafe(
             "INSERT INTO articles (id, author_id, slug, work_type, status, idempotency_key_hash, request_hash, published_at) " +
-            "VALUES ($1, $2, $3, $4, $5, $6, $7, CASE WHEN $8 THEN now() ELSE NULL END) " +
+            "VALUES ($1, $2, $3, $4, $5, $6, $7, CASE WHEN $8 THEN date_trunc('milliseconds', now()) ELSE NULL END) " +
             "ON CONFLICT (author_id, idempotency_key_hash) WHERE idempotency_key_hash IS NOT NULL DO NOTHING " +
             "RETURNING id, author_id, slug, work_type, status, created_at, updated_at, published_at",
             [randomUUID(), authorId, input.slug, input.workType ?? "other", input.publish ? "published" : "draft",
@@ -1437,7 +1441,7 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
           if (ownership[0].author_id !== actorId) throw new ArticleAuthorizationError();
           const previousLinks = await tx.unsafe("SELECT * FROM article_taxonomies WHERE article_id = $1", [articleId]);
           const rows = await tx.unsafe(
-            "UPDATE articles SET slug = $2, work_type = COALESCE($6, work_type), status = $3, published_at = CASE WHEN $4 THEN COALESCE(published_at, now()) ELSE NULL END, updated_at = now() WHERE id = $1 AND author_id = $5 RETURNING id, author_id, slug, work_type, status, created_at, updated_at, published_at",
+            "UPDATE articles SET slug = $2, work_type = COALESCE($6, work_type), status = $3, published_at = CASE WHEN $4 THEN date_trunc('milliseconds', COALESCE(published_at, now())) ELSE NULL END, updated_at = now() WHERE id = $1 AND author_id = $5 RETURNING id, author_id, slug, work_type, status, created_at, updated_at, published_at",
             [articleId, input.slug, input.publish ? "published" : "draft", input.publish, actorId, input.workType ?? null],
           );
           if (!rows[0]) throw new ArticleNotFoundError();
@@ -2115,7 +2119,9 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
       return sql.begin(async (tx) => {
         const transactionId = createMigrationTransactionId();
         const inserted = await tx.unsafe(
-          "INSERT INTO media_assets (id, owner_id, storage_key, content_type, byte_size, width, height, sha256) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *",
+          // The migration normalizes the column default too; writing it here
+          // keeps this adapter independent of that default.
+          "INSERT INTO media_assets (id, owner_id, storage_key, content_type, byte_size, width, height, sha256, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, date_trunc('milliseconds', now())) RETURNING *",
           [asset.id, asset.ownerId, asset.storageKey, asset.contentType, asset.byteSize, asset.width, asset.height, asset.sha256],
         );
         const row = inserted[0];
@@ -2182,7 +2188,9 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
       const rows = await sql.unsafe(
         cursor === null
           ? "SELECT * FROM media_assets WHERE owner_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2"
-          : "SELECT * FROM media_assets WHERE owner_id = $1 AND (created_at < $2 OR (created_at = $2 AND id < $3)) ORDER BY created_at DESC, id DESC LIMIT $4",
+          // The cursor is a millisecond ISO string; normalizing the parameter
+          // keeps media_assets_owner_created_idx usable and compares like with like.
+          : "SELECT * FROM media_assets WHERE owner_id = $1 AND (created_at < date_trunc('milliseconds', $2::timestamptz) OR (created_at = date_trunc('milliseconds', $2::timestamptz) AND id < $3)) ORDER BY created_at DESC, id DESC LIMIT $4",
         cursor === null ? [ownerId, safeLimit + 1] : [ownerId, cursor.at, cursor.id, safeLimit + 1],
       );
       return rows.map((row) => ({
