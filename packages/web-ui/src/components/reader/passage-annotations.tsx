@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Locale } from "@/lib/content.ts";
 import { speechLang } from "@/lib/read-aloud.ts";
 import { speakSequence, speechSupported, type Speaker } from "@/lib/speech.ts";
+import { decodeSharedPassage, passageShareUrl, searchablePassage, type SharedPassage } from "@/lib/passage-share.ts";
 import {
   PASSAGE_LIMIT,
   PASSAGES_PER_WORK,
@@ -60,6 +61,21 @@ export type PassageLabels = {
   tooLong: string;
   /** Shown when the passage cannot be found in the work any more. */
   gone: string;
+  /** Sharing one passage: the button on the shelf, and the dialog around it. */
+  share: string;
+  shareTitle: string;
+  /** What travels in the link, said to the reader before they copy it. */
+  shareHint: string;
+  copy: string;
+  copied: string;
+  copyFailed: string;
+  /** A passage someone else shared: the card, and what it offers. */
+  shared: string;
+  sharedSave: string;
+  sharedDismiss: string;
+  sharedSaved: string;
+  /** The words in the link are not in the work any more. */
+  sharedGone: string;
   /** Shown when the browser refuses to store anything. */
   storageError: string;
 };
@@ -67,6 +83,8 @@ export type PassageLabels = {
 /** The two highlight registries: a plain mark, and one with a note beside it. */
 const MARK = "nw-passage";
 const MARK_NOTE = "nw-passage-note";
+/** A passage that arrived in a link: painted, but not the reader's yet. */
+const MARK_SHARED = "nw-passage-shared";
 /** Text that is part of a work, not of the page furniture around it. */
 const SKIP = "script, style, [aria-hidden='true']";
 
@@ -95,9 +113,19 @@ export function PassageAnnotations({ slug, locale, labels }: PassageAnnotationsP
   const [status, setStatus] = useState("");
   const [reading, setReading] = useState<string | null>(null);
   const [canSpeak, setCanSpeak] = useState(false);
+  /** The passage being shared, and the link it was written into. */
+  const [share, setShare] = useState<{ passage: Passage; url: string } | null>(null);
+  /**
+   * A passage that arrived in a link, and where it was found in *this* copy of
+   * the work. `at: null` means the words are no longer here: the card says so,
+   * and nothing is painted — a link must not draw a mark over words it cannot
+   * find.
+   */
+  const [incoming, setIncoming] = useState<{ shared: SharedPassage; at: { start: number; end: number } | null } | null>(null);
   const points = useRef<TextPoint[]>([]);
   const source = useRef("");
   const dialog = useRef<HTMLDialogElement>(null);
+  const shareDialog = useRef<HTMLDialogElement>(null);
   const speaker = useRef<Speaker | null>(null);
 
   useEffect(() => { setCanSpeak(speechSupported()); }, []);
@@ -166,6 +194,57 @@ export function PassageAnnotations({ slug, locale, labels }: PassageAnnotationsP
     }
   }, [key, labels.storageError]);
 
+  /**
+   * A passage that arrived in a link.
+   *
+   * It is painted under a name of its own, because it is not the reader's mark
+   * yet — it is someone else's, offered. Nothing is written to the shelf until
+   * the reader asks: a link that saved itself into the reader's browser would
+   * be a page editing their notes on the strength of an address.
+   */
+  const receive = useCallback((shared: SharedPassage | null) => {
+    const api = highlightApi(window as HighlightWindow);
+    if (!api) return;
+    if (!shared) {
+      api.registry.delete(MARK_SHARED);
+      setIncoming(null);
+      return;
+    }
+    const at = relocate(searchablePassage(shared), source.current);
+    const range = at ? rangeFor(at.start, at.end) : null;
+    if (range) api.registry.set(MARK_SHARED, new api.Highlight(range));
+    else api.registry.delete(MARK_SHARED);
+    setIncoming({ shared, at: range ? at : null });
+    if (!range) return;
+    const box = range.getBoundingClientRect();
+    if (box.top < 72 || box.bottom > window.innerHeight - 72) {
+      window.scrollTo({ top: Math.max(0, window.scrollY + box.top - window.innerHeight * 0.38) });
+    }
+  }, [rangeFor]);
+
+  /** The card is dismissed, and the address along with it: a link that has been
+   * answered should not keep asking every time the page is reloaded. */
+  const dismissShared = useCallback(() => {
+    receive(null);
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+  }, [receive]);
+
+  /** Write a passage into a link, and show it so it can be copied either way. */
+  const openShare = useCallback((passage: Passage) => {
+    setShare({ passage, url: passageShareUrl(window.location.href, passage) });
+  }, []);
+
+  const copyShareLink = useCallback(async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setStatus(labels.copied);
+    } catch {
+      // The link is on the screen in front of them, selected; that is the
+      // fallback, and it is why the dialog shows it at all.
+      setStatus(labels.copyFailed);
+    }
+  }, [labels.copied, labels.copyFailed]);
+
   // Read the marks, index the work and paint. The index is built after mount
   // because it is the rendered article's own text, which only exists then.
   useEffect(() => {
@@ -174,6 +253,11 @@ export function PassageAnnotations({ slug, locale, labels }: PassageAnnotationsP
     const stored = (() => { try { return parsePassages(window.localStorage.getItem(key)); } catch { return []; } })();
     setPassages(stored);
     paint(stored);
+    // A passage shared in a link, read from the fragment: the server is never
+    // told about it, because a fragment is not part of a request.
+    receive(decodeSharedPassage(window.location.hash));
+    const onHashChange = (): void => receive(decodeSharedPassage(window.location.hash));
+    window.addEventListener("hashchange", onHashChange);
     // Another tab of the same work is the same reader: what they mark there
     // should be here without a reload.
     const onStorage = (event: StorageEvent): void => {
@@ -185,11 +269,13 @@ export function PassageAnnotations({ slug, locale, labels }: PassageAnnotationsP
     window.addEventListener("storage", onStorage);
     return () => {
       window.removeEventListener("storage", onStorage);
+      window.removeEventListener("hashchange", onHashChange);
       const api = highlightApi(window as HighlightWindow);
       api?.registry.delete(MARK);
       api?.registry.delete(MARK_NOTE);
+      api?.registry.delete(MARK_SHARED);
     };
-  }, [index, key, paint, supported]);
+  }, [index, key, paint, receive, supported]);
 
   useEffect(() => {
     if (!supported) return;
@@ -249,6 +335,17 @@ export function PassageAnnotations({ slug, locale, labels }: PassageAnnotationsP
     return passage;
   }, [labels.full, labels.saved, paint, passages, persist]);
 
+  /** Take the shared passage onto the shelf, as a mark made here. */
+  const keepShared = useCallback(() => {
+    if (!incoming?.at) return;
+    // Rebuilt from the text on *this* page, with its own context on both sides,
+    // so from this moment it is indistinguishable from a passage marked by hand.
+    const saved = save(anchorIn(source.current, incoming.at.start, incoming.at.end), "");
+    if (!saved) return;
+    setStatus(labels.sharedSaved);
+    dismissShared();
+  }, [dismissShared, incoming, labels.sharedSaved, save]);
+
   const forget = useCallback((id: string) => {
     const next = removePassage(passages, id);
     setPassages(next);
@@ -299,12 +396,34 @@ export function PassageAnnotations({ slug, locale, labels }: PassageAnnotationsP
     if (!draft && node.open) node.close();
   }, [draft]);
 
+  useEffect(() => {
+    const node = shareDialog.current;
+    if (!node) return;
+    if (share && !node.open) node.showModal();
+    if (!share && node.open) node.close();
+  }, [share]);
+
   if (!supported) return null;
 
   const draftLength = draft ? characterCount(draft.note) : 0;
 
   return (
     <div className="nw-passages" data-passages>
+      {incoming ? (
+        <div className="nw-passage-card" role="status" data-passage-shared>
+          <p className="nw-passage-card-title">{labels.shared}</p>
+          <p className="nw-passage-quote-static">{passageExcerpt(incoming.shared.text, 120)}</p>
+          <div className="nw-passage-actions">
+            {incoming.at ? (
+              <button type="button" className="nw-btn nw-pri" onClick={keepShared} data-passage-shared-keep>{labels.sharedSave}</button>
+            ) : (
+              <span className="nw-m">{labels.sharedGone}</span>
+            )}
+            <button type="button" className="nw-btn" onClick={dismissShared} data-passage-shared-dismiss>{labels.sharedDismiss}</button>
+          </div>
+        </div>
+      ) : null}
+
       {toolbar ? (
         <div
           className="nw-passage-tools"
@@ -339,6 +458,7 @@ export function PassageAnnotations({ slug, locale, labels }: PassageAnnotationsP
                       {reading === passage.id ? labels.readStop : labels.read}
                     </button>
                   ) : null}
+                  <button type="button" onClick={() => openShare(passage)} data-passage-share>{labels.share}</button>
                   <button type="button" onClick={() => forget(passage.id)}>{labels.remove}</button>
                 </span>
               </li>
@@ -347,7 +467,7 @@ export function PassageAnnotations({ slug, locale, labels }: PassageAnnotationsP
         )}
       </details>
 
-      <dialog className="nw-passage-dialog" ref={dialog} onClose={() => setDraft(null)} aria-label={labels.note}>
+      <dialog className="nw-passage-dialog" ref={dialog} onClose={() => setDraft(null)} aria-label={labels.note} data-passage-dialog="note">
         {draft ? (
           <form method="dialog" onSubmit={() => {
             if (draft.id) {
@@ -378,6 +498,29 @@ export function PassageAnnotations({ slug, locale, labels }: PassageAnnotationsP
               <button type="button" className="nw-btn" onClick={() => setDraft(null)}>{labels.cancel}</button>
             </div>
           </form>
+        ) : null}
+      </dialog>
+
+      <dialog className="nw-passage-dialog" ref={shareDialog} onClose={() => setShare(null)} aria-label={labels.shareTitle} data-passage-dialog="share">
+        {share ? (
+          <div>
+            <p className="nw-passage-quote-static">{passageExcerpt(share.passage.text, 120)}</p>
+            {/* The link is on the screen whether or not this browser will let
+                the page copy it, and it is selected the moment it appears. */}
+            <input
+              className="nw-passage-input"
+              readOnly
+              value={share.url}
+              aria-label={labels.shareTitle}
+              data-passage-share-url
+              ref={(node) => node?.select()}
+            />
+            <p className="nw-m">{labels.shareHint}</p>
+            <div className="nw-passage-actions">
+              <button type="button" className="nw-btn nw-pri" onClick={() => void copyShareLink(share.url)} data-passage-share-copy>{labels.copy}</button>
+              <button type="button" className="nw-btn" onClick={() => setShare(null)}>{labels.cancel}</button>
+            </div>
+          </div>
         ) : null}
       </dialog>
 
