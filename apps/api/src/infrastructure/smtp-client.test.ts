@@ -262,7 +262,20 @@ test("the reply reader refuses an unbounded response", () => {
 test("encoded headers only encode what needs it", () => {
   assert.equal(encodeHeaderValue("Password reset"), "Password reset");
   assert.match(encodeHeaderValue("重置密码"), /^=\?UTF-8\?B\?/);
-  assert.equal(smtpDate(new Date("2026-10-30T08:00:00Z")).endsWith("+0000"), true);
+  assert.equal(smtpDate(new Date("2026-10-30T08:00:00Z")), "Fri, 30 Oct 2026 08:00:00 +0000");
+});
+
+test("the SMTP Date header stays UTC in a non-UTC process time zone", () => {
+  const originalTimeZone = process.env.TZ;
+  try {
+    process.env.TZ = "Asia/Hong_Kong";
+    // 23:30 UTC is already the next calendar day in UTC+8; local getters would
+    // render Sat 07:30 +0800 instead of the UTC instant the mail was sent at.
+    assert.equal(smtpDate(new Date("2026-10-30T23:30:00Z")), "Fri, 30 Oct 2026 23:30:00 +0000");
+  } finally {
+    if (originalTimeZone === undefined) delete process.env.TZ;
+    else process.env.TZ = originalTimeZone;
+  }
 });
 
 /** A real loopback server: proves the socket plumbing, not just the state machine. */

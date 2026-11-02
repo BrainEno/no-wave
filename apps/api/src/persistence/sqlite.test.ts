@@ -52,8 +52,8 @@ test("SQLite binding and row types stay explicit across null, number, text, and 
     assert.equal(row.blob_type, "blob");
     assert.deepEqual([...row.blob_value], [0, 127, 255]);
 
-    // Pin Node 24's current boolean binding behavior as SQLite INTEGER 0/1.
-    // This is a runtime compatibility contract, not an assumption to leave untested.
+    // Node 24 minors disagree on raw boolean bindings; the client normalizes
+    // them to INTEGER 0/1 so this contract holds on every supported minor.
     const booleanStorage = db.prepare(`
       SELECT
         typeof(?1) AS true_type, ?1 AS true_value,
@@ -64,6 +64,34 @@ test("SQLite binding and row types stay explicit across null, number, text, and 
       true_value: 1,
       false_type: "integer",
       false_value: 0,
+    });
+  } finally {
+    db.close();
+  }
+});
+
+test("SQLite boolean bindings are normalized for writes and named parameters", () => {
+  const db = createSqliteClient({ filename: ":memory:", enableWal: false });
+  try {
+    db.exec("CREATE TABLE boolean_flags (id TEXT PRIMARY KEY, enabled INTEGER NOT NULL)");
+    const insert = db.prepare("INSERT INTO boolean_flags (id, enabled) VALUES (?, ?)");
+    insert.run("on", true);
+    insert.run("off", false);
+    assert.deepEqual(
+      db.prepare("SELECT id, enabled FROM boolean_flags ORDER BY id").all().map((row) => ({ ...row })),
+      [{ id: "off", enabled: 0 }, { id: "on", enabled: 1 }],
+    );
+
+    const named = db.prepare(`
+      SELECT
+        typeof(:yes) AS yes_type, :yes AS yes_value,
+        typeof(:no) AS no_type, :no AS no_value
+    `).get({ ":yes": true, ":no": false });
+    assert.deepEqual({ ...named }, {
+      yes_type: "integer",
+      yes_value: 1,
+      no_type: "integer",
+      no_value: 0,
     });
   } finally {
     db.close();

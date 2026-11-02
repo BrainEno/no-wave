@@ -7,6 +7,50 @@ const here = dirname(fileURLToPath(import.meta.url));
 const defaultDirectory = join(here, "migrations", "sqlite");
 const migrationPattern = /^\d{4}_[a-z0-9_]+\.sql$/;
 
+type SqliteStatement = ReturnType<DatabaseSync["prepare"]>;
+type UnknownFunction = (...args: unknown[]) => unknown;
+
+/**
+ * Named-parameter objects are plain records; binary blobs and arrays must stay
+ * untouched. Node 24 minors disagree on whether a JavaScript boolean may be
+ * bound at all, and a newer minor would coerce it to a REAL/INTEGER depending
+ * on its implementation. Normalize at this boundary instead: booleans become
+ * SQLite INTEGER 0/1 (bigint bindings keep INTEGER, not REAL, storage).
+ */
+function isNamedParameterObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== "object") return false;
+  if (Array.isArray(value) || ArrayBuffer.isView(value)) return false;
+  const prototype = Object.getPrototypeOf(value) as object | null;
+  return prototype === Object.prototype || prototype === null;
+}
+
+function normalizeSqliteBinding(value: unknown): unknown {
+  if (typeof value === "boolean") return value ? 1n : 0n;
+  if (isNamedParameterObject(value)) {
+    const normalized: Record<string, unknown> = {};
+    for (const [key, nested] of Object.entries(value)) normalized[key] = normalizeSqliteBinding(nested);
+    return normalized;
+  }
+  return value;
+}
+
+function normalizeSqliteBindings(args: readonly unknown[]): unknown[] {
+  return args.map(normalizeSqliteBinding);
+}
+
+function wrapSqliteStatement(statement: SqliteStatement): SqliteStatement {
+  for (const method of ["get", "all", "run", "iterate"] as const) {
+    const original = statement[method] as unknown as UnknownFunction;
+    Object.defineProperty(statement, method, {
+      configurable: true,
+      writable: true,
+      value: (...args: unknown[]): unknown =>
+        Reflect.apply(original, statement, normalizeSqliteBindings(args)) as unknown,
+    });
+  }
+  return statement;
+}
+
 /**
  * Open a local SQLite database with API safety defaults. The full adapter is
  * composed by sqlite-store.ts and registered in persistence-runtime.ts.
@@ -31,6 +75,12 @@ export function createSqliteClient({
       db.exec("PRAGMA journal_mode = WAL");
       db.exec("PRAGMA synchronous = NORMAL");
     }
+    const originalPrepare = db.prepare.bind(db) as (sql: string) => SqliteStatement;
+    Object.defineProperty(db, "prepare", {
+      configurable: true,
+      writable: true,
+      value: (sql: string): SqliteStatement => wrapSqliteStatement(originalPrepare(sql)),
+    });
     return db;
   } catch (error) {
     db.close();
