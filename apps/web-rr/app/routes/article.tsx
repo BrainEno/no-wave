@@ -5,9 +5,8 @@ import { loadArticleDetailPage } from "@/lib/public-pages.ts";
 import { ArticlePageView } from "@/components/public/article-view.tsx";
 import { PUBLIC_PAGE_HEADERS } from "../lib/http-policy.ts";
 import { entityNotFound, upstreamUnavailable } from "../lib/loader-errors.ts";
-import { metaDescriptors, titleWithSite } from "../lib/meta.ts";
+import { metaDescriptors, siteUrlFromMatches, titleWithSite } from "../lib/meta.ts";
 import { localeFor } from "../lib/locale.ts";
-import { siteUrl } from "../lib/runtime.ts";
 
 /**
  * Public article route, served for both `/articles/:slug` and `/en/articles/:slug`.
@@ -38,9 +37,9 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
 export const headers: HeadersFunction = () => PUBLIC_PAGE_HEADERS;
 
-export const meta: MetaFunction<typeof loader> = ({ data: loaded }) => {
+export const meta: MetaFunction<typeof loader> = ({ data: loaded, matches }) => {
   if (!loaded) return [{ title: titleWithSite(undefined) }];
-  return metaDescriptors(articleMetadata(loaded.article, siteUrl()));
+  return metaDescriptors(articleMetadata(loaded.article, siteUrlFromMatches(matches)));
 };
 
 export default function ArticleRoute() {

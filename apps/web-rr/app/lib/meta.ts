@@ -52,6 +52,26 @@ function routerUrl(href: string): string {
 }
 
 /**
+ * The site origin published by the root loader, read back inside `meta`.
+ *
+ * `meta` runs in the browser as well as on the server, so it must not touch
+ * `process.env`; the root loader is what reads the environment. See the comment
+ * on `loader()` in `app/root.tsx` for what went wrong when it did.
+ *
+ * Returns `undefined` rather than a guess when the root loader has not run — an
+ * error boundary render, for instance — and the metadata helpers then fall back
+ * to their own default. A canonical URL that is wrong is worse than the
+ * documented placeholder, because the placeholder is at least recognisable.
+ */
+export function siteUrlFromMatches(
+  matches: readonly { id: string; loaderData?: unknown }[] | undefined,
+): string | undefined {
+  const root = matches?.find((match) => match.id === "root");
+  const data = root?.loaderData as { siteUrl?: unknown } | undefined;
+  return typeof data?.siteUrl === "string" && data.siteUrl.trim() ? data.siteUrl.trim() : undefined;
+}
+
+/**
  * @param absoluteTitle — render the page title without the site suffix.
  *
  * The site's title template applies to descendant segments only, so `/` is

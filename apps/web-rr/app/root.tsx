@@ -12,6 +12,7 @@ import {
 import type { HeadersFunction, LinksFunction } from "react-router";
 import { PRIVATE_PAGE_HEADERS } from "./lib/http-policy.ts";
 import { titleWithSite } from "./lib/meta.ts";
+import { siteUrl } from "./lib/runtime.ts";
 /**
  * The site shell — top navigation, language switch, notification panel, the
  * smooth-scroll wrapper and the footer — is the shared client component
@@ -43,6 +44,30 @@ export const links: LinksFunction = () => [
   },
   { rel: "stylesheet", href: globalStyles },
 ];
+
+/**
+ * Publish the site origin to every route's `meta`.
+ *
+ * `meta` does not only run on the server: React Router's `<Meta />` calls the
+ * route module's `meta` again in the browser — on hydration and on every
+ * client-side navigation — so anything `meta` reads has to survive there.
+ * `process.env` does not, which is why reading `SITE_URL` inside `meta`
+ * threw `ReferenceError: process is not defined` in development. The
+ * production build hid the same mistake instead of surfacing it: Vite replaces
+ * an unresolvable `process.env` with `{}` in browser bundles, so the client
+ * silently produced `https://example.invalid` canonical and Open Graph URLs
+ * while the server-rendered HTML stayed correct.
+ *
+ * The root loader is the one place that genuinely runs on the server, so it
+ * reads the environment once per request and hands the value down. Route
+ * `meta` reads it back with `siteUrlFromMatches()`. The value is still read per
+ * request, never at build time, so changing `SITE_URL` needs a restart and not
+ * a rebuild — which is what the "no `define` for `process.env.*`" note in
+ * `vite.config.ts` exists to protect.
+ */
+export function loader() {
+  return { siteUrl: siteUrl() };
+}
 
 function Document({
   children,
