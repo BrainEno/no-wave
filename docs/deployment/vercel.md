@@ -16,7 +16,7 @@ This repository is configured for a single Vercel Services deployment containing
 
 - `web` is built from `apps/web-rr/Dockerfile` — no framework preset, the same image `docker build -f apps/web-rr/Dockerfile` produces locally — and receives the catch-all public route `/(.*)`.
 - `api` is built from the repository root so its container can use the shared `pnpm-lock.yaml`. Its runtime image contains only the API workspace dependencies and source.
-- Only the documented REST prefix `/api/v1/*` is routed publicly to `api`. The spike route `/api/spike/events` therefore remains with `web`.
+- Only the documented REST prefix `/api/v1/*` is routed publicly to `api`. Retired framework-spike endpoints are not routed at all and answer 404 from the Web application.
 - The `/graphql` endpoint no longer exists. `/health` and `/ready` are not exposed by public rewrites. The Web content client reaches versioned REST endpoints through the private `API_SERVICE_URL` binding; only the documented `/api/v1/*` prefix is routed publicly to the API.
 - `notifications` runs `apps/api/src/persistence/notification-worker.ts` as a Vercel Daemon. It resolves its store through the same persistence configuration as the API (`DATABASE_PROVIDER=postgres` here), and does not need a service binding.
 

@@ -33,14 +33,10 @@ export default defineConfig({
     actionTimeout: 20_000,
     trace: "on-first-retry",
     screenshot: "only-on-failure",
-    // The site smooth-scrolls its content behind a transform (GSAP
-    // ScrollSmoother, loaded only when the reader has not asked for reduced
-    // motion). While that animation runs, content moves under the pointer:
-    // mousedown and mouseup land on different elements, the browser dispatches
-    // the resulting click on their common ancestor and the button's own handler
-    // never runs — a click that silently does nothing. The suite asserts
-    // behaviour, not animation, and the site already skips the smoother under
-    // reduced motion, so that is how the browser is driven.
+    // Form and account routes now keep native scrolling even with animation
+    // enabled, so a click after scrolling cannot be swallowed by GSAP
+    // ScrollSmoother. The suite still drives reduced motion for deterministic
+    // behaviour; e2e/chrome-motion.spec.ts covers the normal-motion case.
     reducedMotion: "reduce",
     baseURL: webUrl,
   },

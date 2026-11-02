@@ -46,7 +46,9 @@ being lost.
    action and a resource route with the same three observable behaviours (too-short
    title, the deterministic failure state, the accepted draft) and the same
    `noindex`. ADR 0012 only allowed retiring them under an approved scope decision;
-   none was sought, so none was taken.
+   none was sought, so none was taken. On 2026-11-02, after the framework decision
+   was complete, those transitional spike routes were retired from the production
+   route table at baseline `040e65e`; see `docs/testing/framework-spike.md`.
 5. **The parity gate is retired, not weakened.** `scripts/ssr-parity.ts` and its
    nightly workflow compared two implementations of the same routes. With one
    implementation there is nothing to compare, and a gate that cannot fail is not

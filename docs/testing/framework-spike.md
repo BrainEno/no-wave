@@ -11,6 +11,11 @@ Status: Minimal source scaffold committed. GitLab CI has passed unit tests, type
 > ([ADR 0017](../architecture/decisions/0017-nextjs-retired-one-web-application.md)).
 > The steps below remain a useful list of what "portable" has to mean; the version
 > pins are history.
+>
+> **Archive 2026-11-02:** the transitional `/spike-form` screen and
+> `/api/spike/events` mock stream were removed from the production route table
+> at baseline `040e65e`; use Git history at that commit to recover the spike
+> files. Both paths now return 404 in `pnpm test:routes`.
 
 - Framework target: Next.js App Router.
 - Next.js stable version selected for the spike: 16.4.2, checked against release listings on 2026-10-23. Re-check security advisories before production release.

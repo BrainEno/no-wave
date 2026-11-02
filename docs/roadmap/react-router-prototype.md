@@ -169,8 +169,9 @@ and one more reason a cutover cannot be judged by HTML equality alone.
 
 - No production route, dependency, DNS, deployment or data change. `apps/web`
   builds and passes its own tests unchanged.
-- Every production route is ported, the spike included since 2026-11-01
-  (`/api/spike/events` and `/spike-form`). The writing desk, comments, the reader toolbar, media,
+- Every production route is ported; the spike was included on 2026-11-01
+  (`/api/spike/events` and `/spike-form`) and later retired from the production
+  route table at baseline `040e65e`. The writing desk, comments, the reader toolbar, media,
   notifications, search, sitemap/robots, the site shell and the three recovery
   pages are here; the notification worker is a process in `apps/api` and was
   never a Web route. The recovery pages keep the switch's semantics: read per
