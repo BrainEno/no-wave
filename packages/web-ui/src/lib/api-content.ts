@@ -7,8 +7,18 @@ import {
 } from "./content.ts";
 
 export type CategoryView = { slug: string; name: string; description: string; locale: string; articleCount: number };
+/**
+ * An author in the public directory (ADR 0024).
+ *
+ * Everything an `AuthorView` carries — and the two numbers that make a directory
+ * worth reading: how many readers follow this author, and how many works of
+ * theirs are published here. Both come from the API rather than being counted
+ * client-side, because counting client-side would mean loading every work first.
+ */
+export type AuthorSummary = AuthorView & { followerCount: number; workCount: number };
 export type ArticleListOptions = { locale?: Locale; query?: string; authorUsername?: string | null; sort?: ArticleSort; limit?: number; offset?: number };
 type CategoryListOptions = { locale?: Locale; query?: string; limit?: number; offset?: number };
+type AuthorListOptions = { locale?: Locale; query?: string; limit?: number; offset?: number };
 type ApiObject = Record<string, unknown>;
 type ApiPayload = { data?: unknown; error?: unknown };
 type JsonResponse = { ok: boolean; status: number; json(): Promise<unknown> };
@@ -20,6 +30,7 @@ type ApiContentClient = {
   listFeaturedArticles(options?: { locale?: Locale; limit?: number }): Promise<ArticleView[]>;
   getArticleBySlug(slug: string, locale?: Locale): Promise<ArticleView | null>;
   getAuthorByUsername(username: string, locale?: Locale): Promise<AuthorView | null>;
+  listAuthors(options?: AuthorListOptions): Promise<AuthorSummary[]>;
   listCategories(options?: CategoryListOptions): Promise<CategoryView[]>;
   getCategoryBySlug(slug: string, locale?: Locale): Promise<CategoryView | null>;
   listCategoryArticles(slug: string, locale?: Locale, limit?: number, offset?: number): Promise<ArticleView[]>;
@@ -146,6 +157,18 @@ function mapAuthor(author: unknown, locale: Locale): AuthorView | null {
   };
 }
 
+/** The directory's shape: an author plus the two counts the page shows. */
+function mapAuthorSummary(author: unknown, locale: Locale): AuthorSummary | null {
+  const view = mapAuthor(author, locale);
+  if (!view) return null;
+  const record = isRecord(author) ? author : {};
+  return {
+    ...view,
+    followerCount: typeof record.followerCount === "number" ? record.followerCount : 0,
+    workCount: typeof record.workCount === "number" ? record.workCount : 0,
+  };
+}
+
 function mapArticle(article: unknown, locale: Locale): ArticleView | null {
   if (!isRecord(article) || typeof article.slug !== "string" || typeof article.title !== "string") return null;
   const author = mapAuthor(article.author, locale);
@@ -232,6 +255,15 @@ export function createApiContentClient({ endpoint, fetchImpl = fetch }: { endpoi
       const data = await request(`api/v1/authors/${encodeURIComponent(username)}`, { locale }, true);
       return mapAuthor(data, locale);
     },
+    /**
+     * The author directory (ADR 0024): everybody who has published in this
+     * locale, and — with a `query` — the ones whose name matches it.
+     */
+    async listAuthors({ locale = defaultLocale, query = "", limit = 20, offset = 0 }: AuthorListOptions = {}): Promise<AuthorSummary[]> {
+      const data = await request("api/v1/authors", { locale, query, limit, offset });
+      if (!Array.isArray(data)) return [];
+      return data.map((author) => mapAuthorSummary(author, locale)).filter((author): author is AuthorSummary => author !== null);
+    },
     async listCategories({ locale = defaultLocale, query = "", limit = 100, offset = 0 }: CategoryListOptions = {}): Promise<CategoryView[]> {
       const data = await request("api/v1/categories", { locale, query, limit, offset });
       if (!Array.isArray(data)) return [];
@@ -284,6 +316,18 @@ export async function getPublicArticle(slug: string, locale: Locale = defaultLoc
 export async function getPublicAuthor(username: string, locale: Locale = defaultLocale): Promise<AuthorView | null> {
   const client = configuredClient();
   return client ? client.getAuthorByUsername(username, locale) : getAuthorByUsername(username, locale);
+}
+
+/**
+ * The public author directory.
+ *
+ * There is no fixture equivalent, and there should not be: a directory of
+ * authors is a property of the instance running the site, so with no API
+ * configured the honest answer is an empty one — the page says so.
+ */
+export async function listPublicAuthors(options: AuthorListOptions = {}): Promise<AuthorSummary[]> {
+  const client = configuredClient();
+  return client ? client.listAuthors(options) : [];
 }
 
 export async function listPublicCategories(options: CategoryListOptions = {}): Promise<CategoryView[]> {

@@ -118,6 +118,9 @@ export const REST_ROUTES: readonly RestRoute[] = Object.freeze([
     methods: ["GET"],
     segments: [literal("categories"), param("slug"), literal("articles")],
   },
+  // The collection first: `/authors` is the public directory (ADR 0024), and it
+  // must not be swallowed by the `/authors/:userId` pattern below it.
+  { id: "authors", methods: ["GET"], segments: [literal("authors")] },
   { id: "authors.item", methods: ["GET"], segments: [literal("authors"), param("userId")] },
   { id: "authors.articles", methods: ["GET"], segments: [literal("authors"), param("userId"), literal("articles")] },
   { id: "media.item", methods: ["GET"], segments: [literal("media"), param("id")] },

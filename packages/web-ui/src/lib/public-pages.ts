@@ -3,9 +3,11 @@ import {
   getPublicArticle,
   getPublicCategory,
   listPublicArticles,
+  listPublicAuthors,
   listPublicCategories,
   listPublicFeatured,
   listPublicCategoryArticles,
+  type AuthorSummary,
   type CategoryView,
 } from "./api-content.ts";
 import { PAGE_SIZE, paginate } from "./work-types.ts";
@@ -44,7 +46,10 @@ export const ARCHIVE_TYPE_SCAN_LIMIT = 100;
 export const AUTHOR_WORKS_LIMIT = 100;
 export const SEARCH_WORKS_LIMIT = 100;
 export const SEARCH_CATEGORY_LIMIT = 20;
+/** The author tab is a directory, not a list of everything: one bounded page. */
+export const SEARCH_AUTHOR_LIMIT = 20;
 export const CATEGORY_PAGE_SIZE = 20;
+export const AUTHOR_PAGE_SIZE = 20;
 
 export type ArchivePageData = {
   locale: Locale;
@@ -114,15 +119,23 @@ export type SearchPageData = {
   tab: SearchTab;
   type: WorkType | null;
   works: ArticleView[];
+  authors: AuthorSummary[];
   categories: CategoryView[];
 };
 
 /**
- * 搜索：只使用现有 API——作品列表（query）与分类列表（query）。
- * “作者”结果由匹配作品的作者汇总得出，没有单独的作者检索接口。
+ * Site search: works, authors and categories, each from the endpoint that owns
+ * it (ADR 0024).
  *
- * The category call is failure-isolated on purpose: a broken taxonomy endpoint
- * must degrade the page to "works only", not turn search into a 500.
+ * Authors used to be aggregated from the matching works, which meant an author
+ * could only be found through a work that matched — a writer whose name matched
+ * but whose titles did not was invisible on the tab that promises to find
+ * writers. They now come from the author directory, like the other two tabs come
+ * from theirs.
+ *
+ * The author and category calls are failure-isolated on purpose: a broken
+ * endpoint degrades the page to "works only" rather than turning search into a
+ * 500.
  */
 export async function loadSearchPage(
   options: { locale: Locale; query: string; tab?: SearchTab; type?: WorkType | null },
@@ -132,13 +145,40 @@ export async function loadSearchPage(
   const tab = options.tab ?? "works";
   const type = options.type ?? null;
   const q = query.trim();
-  const [works, categories] = q
+  const [works, authors, categories] = q
     ? await Promise.all([
       listPublicArticles({ locale, query: q, limit: SEARCH_WORKS_LIMIT }),
+      listPublicAuthors({ locale, query: q, limit: SEARCH_AUTHOR_LIMIT }).catch((): AuthorSummary[] => []),
       listPublicCategories({ locale, query: q, limit: SEARCH_CATEGORY_LIMIT }).catch((): CategoryView[] => []),
     ])
-    : [[] as ArticleView[], [] as CategoryView[]];
-  return { locale, query, tab, type, works, categories };
+    : [[] as ArticleView[], [] as AuthorSummary[], [] as CategoryView[]];
+  return { locale, query, tab, type, works, authors, categories };
+}
+
+export type AuthorIndexData = {
+  locale: Locale;
+  query: string;
+  page: number;
+  authors: AuthorSummary[];
+  hasNextPage: boolean;
+};
+
+/**
+ * The author directory (`/authors`, ADR 0024).
+ *
+ * Same shape as the category index: one bounded page, one extra row read to know
+ * whether there is another, and the query kept in the URL so a filtered
+ * directory is a link somebody can send.
+ */
+export async function loadAuthorIndexPage(
+  options: { locale: Locale; query?: string; page?: number },
+): Promise<AuthorIndexData> {
+  const locale = options.locale;
+  const query = options.query ?? "";
+  const page = options.page ?? 1;
+  const offset = (page - 1) * AUTHOR_PAGE_SIZE;
+  const results = await listPublicAuthors({ locale, query, limit: AUTHOR_PAGE_SIZE + 1, offset });
+  return { locale, query, page, authors: results.slice(0, AUTHOR_PAGE_SIZE), hasNextPage: results.length > AUTHOR_PAGE_SIZE };
 }
 
 export type CategoryIndexData = {

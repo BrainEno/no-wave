@@ -1865,6 +1865,116 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
    * The test publishes a new work between the two reads, which is the whole
    * point — and then asks the same question by offset to show the difference.
    */
+  /**
+   * The public author directory (ADR 0024).
+   *
+   * The assertions that matter are the ones a reader can see and the ones a
+   * directory has to get right to be worth publishing:
+   *
+   * - **only authors a reader can go and read** — somebody who has published in
+   *   this locale. An account with no work is not an author here, and listing
+   *   one would turn the directory into a member list;
+   * - **works counted in the requested locale only** — a draft, a tombstone and
+   *   another locale's work are all published-elsewhere, not published-here;
+   * - **relevance before reach** — searching a name puts the name that *starts*
+   *   with the term above the name that merely contains it, even when the second
+   *   author has more followers; with no term at all, reach is the order, because
+   *   the point of a directory is discovery.
+   */
+  test(`${adapterName}: the author directory lists published authors of this locale, relevance first`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID().slice(0, 8);
+    const prefixId = `dir-prefix-${suffix}`;
+    const containsId = `dir-contains-${suffix}`;
+    const englishId = `dir-english-${suffix}`;
+    const silentId = `dir-silent-${suffix}`;
+    const followerId = `dir-follower-${suffix}`;
+    const blocks = [{ id: "p1", type: "paragraph", text: "A published body." }];
+    const publish = (authorId, slug, locale = "zh-CN") =>
+      runtime.store.createArticle({ authorId, slug, title: slug, summary: "", locale, contentBlocks: blocks, publish: true });
+    const names = (rows) => rows.map((row) => row.displayName);
+    const byId = (rows, userId) => rows.find((row) => row.userId === userId);
+    try {
+      await runtime.store.upsertAuthorProfile({ userId: prefixId, displayName: `林晚 ${suffix}`, bio: "写小说", locale: "zh-CN" });
+      await runtime.store.upsertAuthorProfile({ userId: containsId, displayName: `苏林 ${suffix}`, bio: "写诗", locale: "zh-CN" });
+      await runtime.store.upsertAuthorProfile({ userId: englishId, displayName: `English Only ${suffix}`, locale: "en" });
+      await runtime.store.upsertAuthorProfile({ userId: silentId, displayName: `没有作品 ${suffix}`, locale: "zh-CN" });
+      await runtime.store.upsertAuthorProfile({ userId: followerId, displayName: `Follower ${suffix}`, locale: "zh-CN" });
+
+      // 林晚: two published Chinese works, plus a draft and a tombstone that must
+      // not be counted, and an English work that belongs to the other locale.
+      await publish(prefixId, `dir-prefix-1-${suffix}`);
+      await publish(prefixId, `dir-prefix-2-${suffix}`);
+      await runtime.store.createArticle({ authorId: prefixId, slug: `dir-prefix-draft-${suffix}`, title: "草稿", summary: "", locale: "zh-CN", contentBlocks: blocks, publish: false });
+      const doomed = await runtime.store.createArticle({ authorId: prefixId, slug: `dir-prefix-gone-${suffix}`, title: "回收站", summary: "", locale: "zh-CN", contentBlocks: blocks, publish: true });
+      await runtime.store.deleteArticle({ articleId: doomed.id, actorId: prefixId });
+      await publish(prefixId, `dir-prefix-en-${suffix}`, "en");
+      await publish(containsId, `dir-contains-1-${suffix}`);
+      await publish(englishId, `dir-english-1-${suffix}`, "en");
+      // 苏林 is the more-followed of the two: the ordering test only means
+      // something if reach and relevance disagree.
+      await runtime.store.followUser({ actorId: followerId, targetUserId: containsId });
+
+      const directory = await runtime.store.searchAuthors({ locale: "zh-CN", limit: 50 });
+      const ids = directory.map((row) => row.userId);
+      assert.ok(ids.includes(prefixId), "an author with published work in this locale is listed");
+      assert.ok(ids.includes(containsId));
+      assert.equal(ids.includes(silentId), false, "an account that has published nothing is not an author here");
+      assert.equal(ids.includes(englishId), false, "and neither is somebody who published only in another locale");
+      assert.equal(byId(directory, prefixId).workCount, 2, "the draft, the tombstone and the English work are not counted");
+      assert.equal(byId(directory, containsId).workCount, 1);
+      assert.equal(byId(directory, prefixId).followerCount, 0);
+      assert.equal(byId(directory, containsId).followerCount, 1);
+
+      // No term: reach is the order.
+      assert.equal(names(directory)[0], `苏林 ${suffix}`, "the author with more followers comes first");
+
+      // With a term: relevance is the order, and it outranks reach.
+      const searched = await runtime.store.searchAuthors({ locale: "zh-CN", query: "林", limit: 50 });
+      assert.deepEqual(names(searched), [`林晚 ${suffix}`, `苏林 ${suffix}`], "a name that starts with the term beats one that only contains it");
+
+      // The directory is locale-scoped, like every other public list: it is the
+      // *works* that decide membership, not the language of the profile. 林晚 also
+      // published in English, so 林晚 is in the English directory — under the only
+      // name they have, which is the Chinese one. 苏林 did not, so 苏林 is not.
+      const english = await runtime.store.searchAuthors({ locale: "en", limit: 50 });
+      const englishIds = english.map((row) => row.userId);
+      assert.ok(englishIds.includes(englishId), "the English author is in the English directory");
+      assert.ok(englishIds.includes(prefixId), "and so is the Chinese author who published there too");
+      assert.equal(englishIds.includes(containsId), false, "an author who published only in Chinese is not");
+
+      // Paging is offset-based, like the category index it sits beside.
+      assert.deepEqual(names(await runtime.store.searchAuthors({ locale: "zh-CN", limit: 1, offset: 0 })), [`苏林 ${suffix}`]);
+      assert.deepEqual(names(await runtime.store.searchAuthors({ locale: "zh-CN", limit: 1, offset: 1 })), [`林晚 ${suffix}`]);
+      assert.deepEqual(names(await runtime.store.searchAuthors({ locale: "zh-CN", limit: 1, offset: 2 })), [], "past the end is an empty page");
+
+      // A name nobody has: empty, not everything.
+      assert.deepEqual(await runtime.store.searchAuthors({ locale: "zh-CN", query: `no-such-author-${suffix}` }), []);
+    } finally {
+      await runtime.cleanup(undefined, suffix);
+    }
+  });
+
+  test(`${adapterName}: the author directory refuses unbounded queries and pages`, options, async () => {
+    const runtime = await fixture();
+    const bad = [
+      { query: "x".repeat(201) },
+      { limit: 0 },
+      { limit: 101 },
+      { offset: -1 },
+      { offset: 100_001 },
+    ];
+    for (const input of bad) {
+      await assert.rejects(
+        Promise.resolve().then(() => runtime.store.searchAuthors({ locale: "zh-CN", ...input })),
+        ProfileInputError,
+        `rejects ${JSON.stringify(input)}`,
+      );
+    }
+    // An empty query is not an invalid one: it is the whole directory.
+    assert.ok(Array.isArray(await runtime.store.searchAuthors({ locale: "zh-CN", query: "", limit: 1 })));
+  });
+
   test(`${adapterName}: a cursor walks the newest works once, even if one is published mid-scroll`, options, async () => {
     const runtime = await fixture();
     const suffix = randomUUID();

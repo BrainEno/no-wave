@@ -1,5 +1,5 @@
 import { Link } from "@/lib/framework/link.tsx";
-import { archivePath, authorPath, getMessages, type AuthorView, type Locale, type WorkType } from "@/lib/content.ts";
+import { archivePath, authorPath, getMessages, type Locale, type WorkType } from "@/lib/content.ts";
 import type { CategoryView } from "@/lib/api-content.ts";
 import { initial } from "@/lib/format.ts";
 import { getUi } from "@/lib/ui-copy.ts";
@@ -9,27 +9,23 @@ import type { SearchPageData, SearchTab } from "@/lib/public-pages.ts";
 /**
  * Presentational search results.
  *
- * Author results are aggregated from matching works because the API has no
- * author search endpoint; that aggregation is a pure function of `works`, so it
- * belongs in the view.
+ * Every tab is fed by the endpoint that owns it: works by the article list,
+ * authors by the author directory (ADR 0024), categories by the taxonomy list.
+ * Authors used to be aggregated here from the matching works, which meant a
+ * writer could only be found through one of their titles — the tab that promises
+ * to find writers could not find a writer by name.
  */
-export function SearchPageView({ locale, query, tab, type, works, categories }: SearchPageData) {
+export function SearchPageView({ locale, query, tab, type, works, authors, categories }: SearchPageData) {
   const ui = getUi(locale);
   const messages = getMessages(locale);
   const base = locale === "en" ? "/en/search" : "/search";
   const q = query.trim();
-  const authors = new Map<string, { author: AuthorView; count: number }>();
-  for (const work of works) {
-    const entry = authors.get(work.author.username);
-    if (entry) entry.count += 1; else authors.set(work.author.username, { author: work.author, count: 1 });
-  }
-  const authorList = [...authors.values()].sort((a, b) => b.count - a.count);
   const shown = type ? works.filter((work) => work.workType === type) : works;
   const presentTypes = tabTypes.filter((candidate) => works.some((work) => work.workType === candidate));
-  const total = works.length + authorList.length + categories.length;
+  const total = works.length + authors.length + categories.length;
   const tabs: { key: SearchTab; label: string; count: number }[] = [
     { key: "works", label: ui.search.works, count: works.length },
-    { key: "authors", label: ui.search.authors, count: authorList.length },
+    { key: "authors", label: ui.search.authors, count: authors.length },
     { key: "categories", label: ui.search.categories, count: categories.length },
   ];
 
@@ -72,13 +68,19 @@ export function SearchPageView({ locale, query, tab, type, works, categories }: 
           ) : null}
           {tab === "authors" ? (
             <section style={{ marginTop: 24 }}>
-              {authorList.length ? authorList.map(({ author, count }) => (
+              {authors.length ? authors.map((author) => (
                 <Link key={author.username} className="nw-ar" href={authorPath(author.username, locale)}>
                   <span className="nw-avatar" aria-hidden="true">{initial(author.displayName)}</span>
-                  <span><span className="nw-zh"><Highlight text={author.displayName} query={q} /></span><span className="nw-m" style={{ display: "block" }}>{ui.search.authorWorks(count)}</span></span>
+                  <span><span className="nw-zh"><Highlight text={author.displayName} query={q} /></span><span className="nw-m" style={{ display: "block" }}>{ui.authors.works(author.workCount)}</span></span>
                   <span className="nw-m" aria-hidden="true">→</span>
                 </Link>
               )) : <EmptyState title={ui.search.none(q)} body={ui.search.hint} />}
+              {/* The tab is a window onto the directory, not the whole of it. */}
+              {authors.length ? (
+                <p className="nw-m" style={{ marginTop: 24 }}>
+                  <Link href={locale === "en" ? "/en/authors" : "/authors"}>{ui.authors.all} →</Link>
+                </p>
+              ) : null}
             </section>
           ) : null}
           {tab === "categories" ? (

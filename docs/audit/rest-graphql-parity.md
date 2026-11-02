@@ -45,6 +45,7 @@ Message fields are `id`, `conversationId`, `senderId`, `body`, `createdAt`. Conv
 | Query `viewerProfile(locale)` | `GET /api/v1/me/profile?locale=` | Complete; JWT-derived owner |
 | Query `authorProfile(userId, locale)` | `GET /api/v1/authors/:userId?locale=` | Complete; optional viewer state preserved |
 | Query `searchUsers(query, locale, limit)` | `GET /api/v1/users?query=&locale=&limit=` | Complete; required query and complete profile fields |
+| — (no GraphQL ancestor) | `GET /api/v1/authors?query=&locale=&limit=&offset=` | New REST capability (ADR 0024), not a parity item: the public author directory. Published-in-locale authors only, no per-reader fields, so `searchUsers` is still the messaging address book and this is still a catalogue. |
 | Query `followers(userId, locale, limit)` | `GET /api/v1/users/:userId/followers?locale=&limit=` | Complete; viewer-aware profiles |
 | Query `following(userId, locale, limit)` | `GET /api/v1/users/:userId/following?locale=&limit=` | Complete; viewer-aware profiles |
 | Query `articles(locale, query, limit, offset)` | `GET /api/v1/articles` | Complete; enriched Article fields |

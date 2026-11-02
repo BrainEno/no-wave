@@ -7,7 +7,7 @@ import {
 } from "../domain/errors.ts";
 import { validateArticleLocale } from "../domain/article.ts";
 import { requiredText } from "../domain/validation.ts";
-import { normalizeStoredRole, validateProfileUrl, validateUserRole } from "../domain/profile.ts";
+import { AUTHOR_OFFSET_MAX, AUTHOR_QUERY_MAX_LENGTH, normalizeStoredRole, validateProfileUrl, validateUserRole } from "../domain/profile.ts";
 
 /**
  * SQLite implementation of the author-profile and follow persistence slice.
@@ -78,6 +78,40 @@ export function createSqliteProfileStore(db) {
   function validateViewer(viewerId) {
     if (viewerId !== null) requiredText("viewerId", viewerId, 300);
   }
+
+  /**
+   * The public author directory: one row per author, in the shape a reader sees.
+   *
+   * No `role`, no `isFollowing`, no email — a directory is the same answer for
+   * everybody, and a response that depends on the reader cannot be cached or
+   * reasoned about. The follow state belongs to the author's own page, which
+   * already carries it.
+   */
+  const authorSearchSelect = `
+    SELECT p.user_id, translated.display_name, translated.bio, translated.locale,
+      (SELECT count(*) FROM user_follows f WHERE f.followed_id = p.user_id) AS follower_count,
+      (SELECT count(*) FROM article_translations t JOIN articles a ON a.id = t.article_id
+        WHERE a.author_id = p.user_id AND a.status = 'published' AND t.locale = ?) AS work_count
+    FROM user_profiles p
+    JOIN user_profile_translations translated ON translated.user_id = p.user_id
+      AND translated.locale = (
+        SELECT t.locale FROM user_profile_translations t
+        WHERE t.user_id = p.user_id
+        ORDER BY CASE WHEN t.locale = ? THEN 0 WHEN t.locale = 'zh-TW' THEN 1 ELSE 2 END, t.locale
+        LIMIT 1
+      )
+    WHERE EXISTS (
+      SELECT 1 FROM articles a JOIN article_translations t ON t.article_id = a.id
+      WHERE a.author_id = p.user_id AND a.status = 'published' AND t.locale = ?
+    )`;
+  const mapAuthorSearch = (row) => ({
+    userId: row.user_id,
+    displayName: row.display_name,
+    bio: row.bio ?? "",
+    locale: row.locale,
+    followerCount: Number(row.follower_count ?? 0),
+    workCount: Number(row.work_count ?? 0),
+  });
   function listRelatedProfiles({ relationship, userId, locale = "zh-CN", viewerId = null, limit = 50 }) {
     requiredText("userId", userId, 300);
     validateArticleLocale(locale);
@@ -135,6 +169,49 @@ export function createSqliteProfileStore(db) {
         ]);
         return normalizeStoredRole(row.role);
       });
+    },
+    /**
+     * The public author directory and its search (ADR 0024).
+     *
+     * Two answers, one method: `query` empty is the directory — everybody who
+     * has published in this locale, most-followed first — and a non-empty one
+     * filters by display name (and by user id, which is the username the public
+     * author page is addressed by).
+     *
+     * Only authors with a published work in the requested locale are listed. A
+     * public directory is not a member list: it is a list of people a reader can
+     * go and read, and the accounts that have not published are none of the
+     * site's business — including to whoever would rather enumerate them.
+     */
+    searchAuthors({ query = "", locale = "zh-CN", limit = 20, offset = 0 }) {
+      validateArticleLocale(locale);
+      if (typeof query !== "string" || query.length > AUTHOR_QUERY_MAX_LENGTH) {
+        throw new ProfileInputError(`query must be a string no longer than ${AUTHOR_QUERY_MAX_LENGTH} characters.`);
+      }
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+        throw new ProfileInputError("limit must be an integer between 1 and 100.");
+      }
+      if (!Number.isInteger(offset) || offset < 0 || offset > AUTHOR_OFFSET_MAX) {
+        throw new ProfileInputError(`offset must be an integer between 0 and ${AUTHOR_OFFSET_MAX}.`);
+      }
+      const term = query.trim().toLocaleLowerCase(locale);
+      // Relevance, then reach: an exact name is the answer, a name that starts
+      // with the term is probably the answer, and after that the author more
+      // readers already follow is the better guess. With no term at all the
+      // directory is pure reach — the point of it is discovery.
+      const params: (string | number)[] = [locale, locale, locale];
+      let sql = authorSearchSelect;
+      if (term) {
+        sql += " AND (instr(lower(translated.display_name), ?) > 0 OR instr(lower(p.user_id), ?) > 0)";
+        params.push(term, term);
+      }
+      const order = term
+        ? "ORDER BY (lower(translated.display_name) = ?) DESC, (instr(lower(translated.display_name), ?) = 1) DESC, follower_count DESC, lower(translated.display_name), p.user_id"
+        : "ORDER BY follower_count DESC, lower(translated.display_name), p.user_id";
+      if (term) params.push(term, term);
+      sql += ` ${order} LIMIT ? OFFSET ?`;
+      params.push(limit, offset);
+      return all(sql, ...params).map(mapAuthorSearch);
     },
     searchUsers({ query, locale = "zh-CN", viewerId = null, limit = 20 }) {
       validateArticleLocale(locale);

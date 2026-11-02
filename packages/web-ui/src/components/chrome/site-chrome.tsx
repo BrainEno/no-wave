@@ -69,6 +69,7 @@ function SiteFooter({ locale }: { locale: Locale }) {
   const home = homePath(locale);
   const topicsHref = locale === "en" ? "/en/categories" : "/categories";
   const searchHref = locale === "en" ? "/en/search" : "/search";
+  const authorsHref = locale === "en" ? "/en/authors" : "/authors";
   return (
     <footer className="nw-footer">
       <div className="nw-fim">
@@ -81,6 +82,9 @@ function SiteFooter({ locale }: { locale: Locale }) {
           <Link href={home}>{ui.nav.home}</Link>
           <Link href={onHome ? "#latest" : `${home}#latest`}>{ui.nav.latest}</Link>
           <Link href={onHome ? "#topics" : topicsHref}>{ui.nav.topics}</Link>
+          {/* A directory with no way in is a page nobody visits: the footer is
+              where the reading index lives, so this is where the authors go. */}
+          <Link href={authorsHref}>{ui.nav.authors}</Link>
           <Link href={searchHref}>{ui.nav.search}</Link>
         </nav>
         <span>© {new Date().getFullYear()} {ui.footer.rights} · 简 / EN</span>

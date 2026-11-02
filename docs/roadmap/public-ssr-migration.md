@@ -69,6 +69,7 @@ which is how a `User-agent` / `User-Agent` case difference was caught.
 | `routes/home.tsx` | `/`, `/en` | `app/page.tsx`, `app/en/page.tsx` |
 | `routes/archive.tsx` | `/articles`, `/en/articles` | `app/articles/page.tsx`, `app/en/articles/page.tsx` |
 | `routes/article.tsx` | `/articles/:slug`, `/en/articles/:slug` | `app/articles/[slug]/page.tsx`, `app/en/articles/[slug]/page.tsx` — both render the shared `ArticlePageView` (Phase 4a) |
+| `routes/authors.tsx` | `/authors`, `/en/authors` | `app/authors/page.tsx`, `app/en/authors/page.tsx` — the author directory (ADR 0024) |
 | `routes/author.tsx` | `/authors/:username`, `/en/authors/:username` | `app/authors/[username]/page.tsx`, `app/en/authors/[username]/page.tsx` |
 | `routes/categories.tsx` | `/categories`, `/en/categories` | `app/categories/page.tsx`, `app/en/categories/page.tsx` |
 | `routes/category.tsx` | `/categories/:slug`, `/en/categories/:slug` | `app/categories/[slug]/page.tsx`, `app/en/categories/[slug]/page.tsx` |
@@ -120,7 +121,7 @@ copies. What replaces it is HTTP caching (`app/lib/http-policy.ts`):
 
 | Pages | `Cache-Control` | Why |
 | --- | --- | --- |
-| home, article, archive, author, categories | `public, max-age=0, s-maxage=60, stale-while-revalidate=300` | HTML depends only on public data, so a shared cache may hold it and may serve a stale copy while a cold instance wakes. `max-age=0` keeps browsers revalidating. |
+| home, article, archive, author, authors, categories | `public, max-age=0, s-maxage=60, stale-while-revalidate=300` | HTML depends only on public data, so a shared cache may hold it and may serve a stale copy while a cold instance wakes. `max-age=0` keeps browsers revalidating. |
 | search, account | `no-store, max-age=0` | per-query or per-user output; a shared cache must never hold it. Matches what the App Router sends for dynamic pages today. |
 
 **Hard 404s before HTML.** Unknown articles, authors and categories throw from
