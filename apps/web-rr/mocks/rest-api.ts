@@ -40,6 +40,16 @@ export const MOCK_EMAIL_VERIFIED_AT: string | null = null;
 export const MOCK_AUTHOR = { username: "writer", bio: "在无浪潮写作。" } as const;
 
 /**
+ * The author directory, as the real API answers it (ADR 0024).
+ *
+ * One author, because the mock has one writer — and with the counts the page
+ * shows, so the assertions can see them rather than take them on trust.
+ */
+const AUTHORS = [
+  { userId: MOCK_AUTHOR.username, displayName: MOCK_DISPLAY_NAME, bio: MOCK_AUTHOR.bio, locale: "zh-CN", followerCount: 12, workCount: 2 },
+];
+
+/**
  * One seeded comment per article.
  *
  * Comments are the only interactive, state-changing surface on a migrated public
@@ -461,6 +471,17 @@ function handle(request: IncomingMessage, response: ServerResponse, body: Record
       .filter((article): article is MockArticle => Boolean(article));
     const page = paginated(picked, url);
     send(response, 200, { data: page.map((article) => articlePayload(article, locale)) });
+    return;
+  }
+
+  // The collection before the item, exactly as the real route table orders them:
+  // `/api/v1/authors` is the directory (ADR 0024), not an author named "authors".
+  if (method === "GET" && path === "/api/v1/authors") {
+    const query = (url.searchParams.get("query") ?? "").trim().toLocaleLowerCase();
+    const matched = AUTHORS.filter((author) => !query ||
+      author.displayName.toLocaleLowerCase().includes(query) ||
+      author.userId.toLocaleLowerCase().includes(query));
+    send(response, 200, { data: paginated(matched, url) });
     return;
   }
 

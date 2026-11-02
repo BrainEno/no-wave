@@ -24,7 +24,7 @@ export const persistencePortMethods = Object.freeze({
     "listArticleTaxonomies", "createTag", "createTaxonomy", "deleteTaxonomy",
   ] as const),
   profiles: Object.freeze([
-    "getAuthorProfile", "searchUsers", "listFollowing", "listFollowers",
+    "getAuthorProfile", "searchUsers", "searchAuthors", "listFollowing", "listFollowers",
     "followUser", "unfollowUser", "upsertAuthorProfile",
     "getUserRole", "setUserRole",
   ] as const),

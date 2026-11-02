@@ -562,6 +562,54 @@ test("REST category index uses the shared taxonomy service and forwards bounded 
   });
 });
 
+/**
+ * The author directory, at the transport boundary (ADR 0024).
+ *
+ * What a client can observe: the collection is a plain read with no session,
+ * every filter is forwarded to the service rather than re-implemented here, the
+ * defaults are the directory's own, and a bad parameter is a 400 rather than an
+ * empty page — a reader who mistypes `limmit` should be told, not shown nothing.
+ */
+test("REST author directory is a public read that forwards bounded pagination", async () => {
+  let received;
+  const authors = [{
+    userId: "11111111-1111-4111-8111-111111111111",
+    displayName: "林晚", bio: "写小说", locale: "zh-CN", followerCount: 3, workCount: 2,
+  }];
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/v1/authors?locale=zh-CN&query=林&limit=10&offset=20`);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { data: authors });
+    assert.deepEqual(received, { locale: "zh-CN", query: "林", limit: 10, offset: 20 });
+
+    // No query is the directory itself, with the service's own defaults.
+    const directory = await fetch(`${baseUrl}/api/v1/authors`);
+    assert.equal(directory.status, 200);
+    assert.deepEqual(received, { locale: "zh-CN", query: "", limit: 20, offset: 0 });
+    assert.deepEqual(await directory.json(), { data: authors });
+
+    // Nothing here is per-reader: the response is the same for everybody, so it
+    // can be cached by whoever sits in front of it.
+    const anonymous = await fetch(`${baseUrl}/api/v1/authors?locale=zh-CN`);
+    assert.equal(anonymous.status, 200);
+
+    for (const params of ["locale=xx", "limit=0", "limit=101", "offset=-1", "offset=100001", "limit=abc"]) {
+      const bad = await fetch(`${baseUrl}/api/v1/authors?${params}`);
+      assert.equal(bad.status, 400, `${params} is a bad request, not an empty page`);
+      assert.match((await bad.json()).error.message, /Invalid locale, query, limit, or offset/);
+    }
+
+    // A directory is a read: writing to it is not a thing.
+    const wrongMethod = await fetch(`${baseUrl}/api/v1/authors`, { method: "POST" });
+    assert.equal(wrongMethod.status, 405);
+    assert.equal(wrongMethod.headers.get("allow"), "GET");
+  }, {
+    store: {
+      async searchAuthors(args) { received = args; return authors; },
+    },
+  });
+});
+
 test("REST category detail is localized and returns a stable 404 when absent", async () => {
   let received;
   await withServer(async (baseUrl) => {

@@ -18,6 +18,10 @@ export default [
   route("en", "routes/home.tsx", { id: "en-home" }),
   route("articles", "routes/archive.tsx"),
   route("en/articles", "routes/archive.tsx", { id: "en-archive" }),
+  // The directory first: `/authors` is a collection (ADR 0024), and a reader who
+  // asks for the index must not be routed into `/authors/:username`.
+  route("authors", "routes/authors.tsx"),
+  route("en/authors", "routes/authors.tsx", { id: "en-authors" }),
   route("authors/:username", "routes/author.tsx"),
   route("en/authors/:username", "routes/author.tsx", { id: "en-author" }),
   route("categories", "routes/categories.tsx"),

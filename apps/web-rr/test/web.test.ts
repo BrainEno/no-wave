@@ -599,6 +599,35 @@ test("author pages render the profile and its catalogue, unknown authors are 404
   assert.match(missing.body, /这一页不存在/);
 });
 
+/**
+ * The author directory (ADR 0024).
+ *
+ * Server-rendered like the category index it sits beside, with the two numbers a
+ * row promises — how much of the author is here and how many readers follow them
+ * — read from the endpoint rather than counted by the page. A name that matches
+ * nobody is an empty directory, not an error.
+ */
+test("the author directory is server-rendered and searched by name", async () => {
+  const index = await get("/authors");
+  assert.equal(index.status, 200);
+  assert.match(index.body, /林可行/);
+  assert.match(index.body, /href="\/authors\/writer"/);
+  assert.match(index.body, /2 篇作品/);
+  assert.match(index.body, /12 人关注/);
+
+  const english = await get("/en/authors");
+  assert.equal(english.status, 200);
+  assert.match(english.body, /林可行/);
+
+  const searched = await get("/authors?q=" + encodeURIComponent("林可行"));
+  assert.equal(searched.status, 200);
+  assert.match(searched.body, /href="\/authors\/writer"/);
+
+  const nobody = await get("/authors?q=zzz-nobody");
+  assert.equal(nobody.status, 200, "a name with no author is an empty directory, not an error");
+  assert.match(nobody.body, /没有符合搜索条件的作者/);
+});
+
 test("category index and detail are server-rendered with hard 404s", async () => {
   const index = await get("/categories");
   assert.equal(index.status, 200);
@@ -643,16 +672,26 @@ test("search is server-rendered, no-store and excluded from indexing", async () 
  * chips are four different upstream queries that cannot be folded into each
  * other — "most saved" is a server-side ordering over every work ever saved, not
  * something the page can derive from the nine newest. They are issued together,
- * so the page pays the slowest of them, not the sum. Every other page is two.
+ * so the page pays the slowest of them, not the sum.
+ *
+ * Search is allowed three, for the same reason in miniature: it is three tabs,
+ * each fed by the endpoint that owns its domain — works, authors, categories —
+ * and none of them can be derived from another. That used to be two because the
+ * author tab was a by-product of the works; finding a writer by name costs the
+ * call it always should have.
+ *
+ * Every other page is two, and the directory is one.
  */
 const API_CALL_BUDGET: ReadonlyArray<readonly [string, number]> = [
   ["/", 4],
   ["/articles", 2],
   ["/articles?q=抵抗", 2],
+  ["/authors", 1],
+  ["/authors?q=林可行", 1],
   ["/authors/writer", 2],
   ["/categories", 2],
   ["/categories/essays", 2],
-  ["/search?q=portable", 2],
+  ["/search?q=portable", 3],
 ];
 
 test("every migrated public page spends at most its API call budget", async () => {

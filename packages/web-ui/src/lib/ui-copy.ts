@@ -5,7 +5,7 @@ export type UiCopy = ReturnType<typeof zh>;
 function zh() {
   return {
     brand: "无浪潮", brandLatin: "No Wave", homeAria: "无浪潮 No Wave 首页", rail: "无浪潮 · No Wave — 独立文学出版",
-    nav: { selected: "精选", latest: "最新", works: "作品", topics: "分类", search: "搜索", menu: "选单", close: "关闭", primary: "主导航", footer: "页尾导航", home: "首页", language: "切换语言", account: "账户", accountAria: "我的账户" },
+    nav: { selected: "精选", latest: "最新", works: "作品", topics: "分类", authors: "作者", search: "搜索", menu: "选单", close: "关闭", primary: "主导航", footer: "页尾导航", home: "首页", language: "切换语言", account: "账户", accountAria: "我的账户" },
     bell: { label: "通知", empty: "暂无通知", hint: "登录后，你关注的作者与讨论提醒会出现在这里。", signIn: "登录" },
     home: {
       eyebrow: "独立文学出版 · 阅读 · 交流", tagline: "为值得认真阅读的作品，留出位置。", start: "开始阅读", selected: "精选", selectedEn: "Selected",
@@ -49,6 +49,10 @@ function zh() {
       },
     },
     author: { profile: "作者", works: "作品目录", worksEn: "Catalogue", recent: "近期作品", none: "这位作者还没有公开发表的作品。", count: (n: number) => `${n} 篇作品`, limitNote: "目录取自最新的 100 篇作品。" },
+    authors: {
+      eyebrow: "阅读索引 / 作者", title: "按作者发现作品", intro: "这里是在本站发表过作品的作者。搜一个名字，就能走到他写的东西。", search: "搜索作者", placeholder: "输入作者名", button: "搜索", clear: "清除",
+      works: (n: number) => `${n} 篇作品`, followers: (n: number) => `${n} 人关注`, none: "还没有作者在本站发表作品。", noMatch: "没有符合搜索条件的作者。", noMore: "此页没有更多作者。", all: "全部作者",
+    },
     categories: {
       eyebrow: "阅读索引 / 分类", title: "按分类发现作品", intro: "分类来自平台实际维护的出版数据，而不是写死在界面里的标签。", search: "搜索分类", placeholder: "输入分类名称", button: "搜索", clear: "清除",
       works: (n: number) => `${n} 篇作品`, none: "目前尚无可浏览的作品分类。", noMatch: "没有符合搜索条件的分类。", noMore: "此页没有更多分类。", all: "全部分类", published: (n: number) => `${n} 篇已发表作品`,
@@ -70,7 +74,7 @@ function zh() {
 function en(): UiCopy {
   return {
     brand: "No Wave", brandLatin: "No Wave", homeAria: "No Wave home", rail: "NO WAVE — INDEPENDENT LITERARY PUBLISHING",
-    nav: { selected: "Selected", latest: "Latest", works: "Works", topics: "Topics", search: "Search", menu: "Menu", close: "Close", primary: "Primary navigation", footer: "Footer navigation", home: "Home", language: "Switch language", account: "Account", accountAria: "My account" },
+    nav: { selected: "Selected", latest: "Latest", works: "Works", topics: "Topics", authors: "Authors", search: "Search", menu: "Menu", close: "Close", primary: "Primary navigation", footer: "Footer navigation", home: "Home", language: "Switch language", account: "Account", accountAria: "My account" },
     bell: { label: "Notifications", empty: "No notifications", hint: "Sign in to see reminders from the authors and discussions you follow.", signIn: "Sign in" },
     home: {
       eyebrow: "INDEPENDENT LITERARY PUBLISHING", tagline: "Independent publishing for writing worth reading slowly.", start: "Start reading", selected: "Selected", selectedEn: "Selected",
@@ -109,6 +113,10 @@ function en(): UiCopy {
       },
     },
     author: { profile: "Author", works: "Catalogue", worksEn: "Catalogue", recent: "Recent work", none: "This author has no published work yet.", count: (n: number) => `${n} ${n === 1 ? "work" : "works"}`, limitNote: "Catalogue drawn from the latest 100 works." },
+    authors: {
+      eyebrow: "THE READING INDEX / AUTHORS", title: "Explore by author", intro: "Every writer who has published here. Search a name and go straight to what they wrote.", search: "Search authors", placeholder: "Enter an author name", button: "Search", clear: "Clear",
+      works: (n: number) => `${n} ${n === 1 ? "work" : "works"}`, followers: (n: number) => `${n} ${n === 1 ? "follower" : "followers"}`, none: "No author has published here yet.", noMatch: "No authors match your search.", noMore: "No more authors on this page.", all: "All authors",
+    },
     categories: {
       eyebrow: "THE READING INDEX / CATEGORIES", title: "Explore by category", intro: "Categories are maintained as real publication data, not a fixed list in the interface.", search: "Search categories", placeholder: "Enter a category name", button: "Search", clear: "Clear",
       works: (n: number) => `${n} ${n === 1 ? "work" : "works"}`, none: "No categories have been published yet.", noMatch: "No categories match your search.", noMore: "No more categories on this page.", all: "All categories", published: (n: number) => `${n} published ${n === 1 ? "work" : "works"}`,

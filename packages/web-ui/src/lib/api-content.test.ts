@@ -214,6 +214,42 @@ test("REST content client lists and retrieves localized categories and articles"
   });
 });
 
+/**
+ * The author directory (ADR 0024).
+ *
+ * The client's job here is small and worth pinning: ask the collection endpoint
+ * with the filters the page chose, and turn an author into the shape a directory
+ * row can render — including the two counts, which must survive an answer that
+ * omits them rather than becoming `undefined` in the middle of a list.
+ */
+test("the author directory is read from its own endpoint and keeps both counts", async () => {
+  const calls: CapturedRequest[] = [];
+  const routed = async (input: string, init?: RequestInit) => {
+    calls.push({ url: input, init });
+    return response({
+      data: [
+        { userId: "user-1", displayName: "林晚", bio: "写小说", locale: "zh-CN", followerCount: 3, workCount: 2 },
+        { userId: "user-2", displayName: "苏林", bio: "", locale: "zh-CN" },
+        { displayName: "没有用户名的作者" },
+      ],
+    });
+  };
+  const client = createApiContentClient({ endpoint: "https://api.example.test", fetchImpl: routed });
+
+  const authors = await client.listAuthors({ locale: "zh-CN", query: "林", limit: 21, offset: 0 });
+  assert.deepEqual(authors.map((author) => author.displayName), ["林晚", "苏林"], "a row without a user id is not a row");
+  assert.deepEqual(authors[0], {
+    username: "user-1", displayName: "林晚", bio: "写小说", locale: "zh-CN", availableLocales: ["zh-CN"],
+    followerCount: 3, workCount: 2,
+  });
+  assert.equal(authors[1].followerCount, 0, "an answer without counts is zero, not undefined");
+  assert.equal(authors[1].workCount, 0);
+  assert.deepEqual(Object.fromEntries(new URL(calls[0].url).searchParams), {
+    locale: "zh-CN", query: "林", limit: "21", offset: "0",
+  });
+  assert.equal(new URL(calls[0].url).pathname, "/api/v1/authors");
+});
+
 test("REST request rejects payloads without a data field", async () => {
   const client = createApiContentClient({
     endpoint: "https://api.example.test",

@@ -36,6 +36,17 @@ export function validateUserRole(value: unknown): UserRole {
   return value as UserRole;
 }
 
+/**
+ * The public author directory's bounds (ADR 0024).
+ *
+ * A name is short, so the query is bounded — an unbounded `LIKE` over every
+ * profile is a request somebody could use to make the database do work for them.
+ * The offset is bounded for the same reason deep offsets always are: page ten
+ * thousand of a directory is not a page anybody reads.
+ */
+export const AUTHOR_QUERY_MAX_LENGTH = 200;
+export const AUTHOR_OFFSET_MAX = 100_000;
+
 /** A row that predates the column, or a profile that has none yet, is a member. */
 export function normalizeStoredRole(value: unknown): UserRole {
   return USER_ROLES.includes(value as UserRole) ? (value as UserRole) : DEFAULT_USER_ROLE;

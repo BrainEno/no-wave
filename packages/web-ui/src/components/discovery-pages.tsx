@@ -1,10 +1,10 @@
 import { Link } from "@/lib/framework/link.tsx";
-import { archivePath } from "@/lib/content.ts";
+import { archivePath, authorPath } from "@/lib/content.ts";
 import type { ArticleView, Locale } from "@/lib/content.ts";
-import type { CategoryView } from "@/lib/api-content.ts";
-import { pad } from "@/lib/format.ts";
+import type { AuthorSummary, CategoryView } from "@/lib/api-content.ts";
+import { initial, pad } from "@/lib/format.ts";
 import { getUi } from "@/lib/ui-copy.ts";
-import { EmptyState, hrefWith, Pager, WorkRow } from "@/components/ui/parts.tsx";
+import { EmptyState, Highlight, hrefWith, Pager, WorkRow } from "@/components/ui/parts.tsx";
 
 const PAGE_SIZE = 20;
 
@@ -36,6 +36,57 @@ export function CategoryIndexContent({ locale, categories, query = "", page = 1,
             <Pager locale={locale} page={page} hasNextPage={hasNextPage} hrefFor={(next) => hrefWith(base, { q: query, page: next })} />
           </>
         ) : <EmptyState title={page > 1 ? ui.categories.noMore : query ? ui.categories.noMatch : ui.categories.none} body="" href={query || page > 1 ? base : archivePath(locale)} action={query || page > 1 ? ui.categories.all : ui.nav.works} />}
+      </div>
+      <div style={{ height: 140 }} />
+    </main>
+  );
+}
+
+/**
+ * The author directory (ADR 0024).
+ *
+ * Deliberately the same shape as the category index — a search form, a numbered
+ * list, a pager — because a reader who has learned one index should not have to
+ * learn another. What is different is what a row says: an author is a person, so
+ * the row carries their initial, and the two numbers a reader can act on are how
+ * much of their work is here and how many people already follow them.
+ *
+ * The order comes from the API, not from the page: relevance when there is a
+ * query, reach when there is not.
+ */
+export function AuthorIndexContent({ locale, authors, query = "", page = 1, hasNextPage = false }: { locale: Locale; authors: AuthorSummary[]; query?: string; page?: number; hasNextPage?: boolean }) {
+  const ui = getUi(locale);
+  const base = locale === "en" ? "/en/authors" : "/authors";
+  return (
+    <main lang={locale} className="nw-w">
+      <header className="nw-head">
+        <div className="nw-m" style={{ marginBottom: 12 }}>{ui.authors.eyebrow}</div>
+        <h1><span className="nw-zh">{ui.authors.title}</span> <i>Authors</i></h1>
+        <p className="nw-ep" style={{ marginTop: 20 }}>{ui.authors.intro}</p>
+        <form className="nw-sf-form" action={base} method="get" role="search" aria-label={ui.authors.search}>
+          <div className="nw-fgrow"><label className="nw-lab" htmlFor="author-q">{ui.authors.search}</label><input id="author-q" className="nw-fld" type="search" name="q" defaultValue={query} placeholder={ui.authors.placeholder} /></div>
+          <button className="nw-btn nw-sec" type="submit">{ui.authors.button}</button>
+          {query ? <Link className="nw-btn" href={base}>{ui.authors.clear}</Link> : null}
+        </form>
+      </header>
+      <div className="nw-bodygrid" style={{ marginTop: 48 }}>
+        {authors.length ? (
+          <>
+            {authors.map((author, index) => (
+              <Link key={author.username} className="nw-ar nw-ar-list" href={authorPath(author.username, locale)} data-reveal="row">
+                <span className="nw-m">{pad(index + 1 + (page - 1) * PAGE_SIZE)}</span>
+                <span className="nw-avatar" aria-hidden="true">{initial(author.displayName)}</span>
+                <span>
+                  <span className="nw-zh"><Highlight text={author.displayName} query={query} /></span>
+                  {author.bio ? <p className="nw-m">{author.bio}</p> : null}
+                </span>
+                <span className="nw-m">{ui.authors.works(author.workCount)}<br />{ui.authors.followers(author.followerCount)}</span>
+                <span className="nw-m" aria-hidden="true">→</span>
+              </Link>
+            ))}
+            <Pager locale={locale} page={page} hasNextPage={hasNextPage} hrefFor={(next) => hrefWith(base, { q: query, page: next })} />
+          </>
+        ) : <EmptyState title={page > 1 ? ui.authors.noMore : query ? ui.authors.noMatch : ui.authors.none} body="" href={query || page > 1 ? base : archivePath(locale)} action={query || page > 1 ? ui.authors.all : ui.nav.works} />}
       </div>
       <div style={{ height: 140 }} />
     </main>

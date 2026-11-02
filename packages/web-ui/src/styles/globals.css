@@ -263,6 +263,11 @@ mark { background: var(--or); color: #0f0d0c; }
 .nw-ar { display: grid; grid-template-columns: 72px 1fr auto; gap: 24px; align-items: center; padding: 28px 0; border-top: 1px solid var(--ink); }
 .nw-ar .nw-avatar { width: 72px; height: 72px; font-size: 28px; }
 .nw-ar .nw-zh { font-size: 30px; line-height: 1.3; }
+/* The author directory: the same row, with a position and two counts in it. */
+.nw-ar-list { grid-template-columns: 56px 56px 1fr auto auto; gap: 8px 20px; }
+.nw-ar-list .nw-avatar { width: 56px; height: 56px; font-size: 22px; }
+.nw-ar-list .nw-zh { font-size: 24px; }
+.nw-ar-list p { margin: 4px 0 0; }
 .nw-gr { display: grid; grid-template-columns: 1fr auto; gap: 8px 24px; align-items: baseline; padding: 28px 0; border-top: 1px solid var(--ink); }
 .nw-gr .nw-zh { font-size: 40px; line-height: 1.2; }
 .nw-gr:hover .nw-zh { color: var(--or); }
