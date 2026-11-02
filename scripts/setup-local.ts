@@ -17,7 +17,7 @@ import { relative } from "node:path";
 import {
   buildLocalEnvFile,
   DEFAULT_API_PORT,
-  DEFAULT_POSTGRES_URL,
+  isLocalDatabaseUrl,
   localEnvFile,
   repositoryRoot,
 } from "./lib/local-dev-config.ts";
@@ -56,16 +56,22 @@ function main(): void {
     return;
   }
   const { postgres, force, print } = parsed.args;
+  const requestedDatabaseUrl = process.env.DATABASE_URL;
+  const databaseUrl = isLocalDatabaseUrl(requestedDatabaseUrl) ? requestedDatabaseUrl : undefined;
+  const ignoredExternalDatabaseUrl = Boolean(requestedDatabaseUrl?.trim()) && databaseUrl === undefined;
 
   const content = buildLocalEnvFile({
     jwtSecret: generateAuthSecret(),
     provider: postgres ? "postgres" : "sqlite",
-    databaseUrl: process.env.DATABASE_URL ?? DEFAULT_POSTGRES_URL,
+    databaseUrl,
     testDatabaseUrl: process.env.TEST_DATABASE_URL,
     apiPort: Number(process.env.PORT) || DEFAULT_API_PORT,
   });
 
   if (print) {
+    if (postgres && ignoredExternalDatabaseUrl) {
+      process.stderr.write("note   Ignored an external DATABASE_URL from the shell; local PostgreSQL uses compose.yaml, not Neon.\n");
+    }
     process.stdout.write(content);
     return;
   }
@@ -86,7 +92,7 @@ function main(): void {
   const next = postgres
     ? [
         "Next steps:",
-        "  1. pnpm db:up        # start PostgreSQL 17 in Docker (dev + test databases)",
+        "  1. pnpm db:up        # start the local PostgreSQL 17 container (not Neon)",
         "  2. pnpm db:migrate   # apply the versioned schema migrations",
         "  3. pnpm dev          # start the API (:4000) and the Web dev server (:3000)",
         "  4. pnpm check:local  # verify database -> API -> Web connectivity",
@@ -101,6 +107,9 @@ function main(): void {
   process.stdout.write([
     `Wrote ${relative(repositoryRoot, localEnvFile)} (provider: ${postgres ? "postgres" : "sqlite"}, mode 0600).`,
     "It is git-ignored and contains a randomly generated development JWT secret.",
+    ...(postgres && ignoredExternalDatabaseUrl ? [
+      "note   Ignored an external DATABASE_URL from the shell; local PostgreSQL uses compose.yaml, not Neon.",
+    ] : []),
     "",
     ...next,
     "",

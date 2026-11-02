@@ -1,5 +1,13 @@
 # Neon deployment and operations
 
+> **Do not use this page for routine local development.** The commands below pull
+> production PostgreSQL URLs and storage credentials into `.env.local`, and
+> `pnpm check:local` writes probe rows. Local work should use SQLite or the Docker
+> PostgreSQL in `compose.yaml`; see
+> [Local development and local verification](../development/local-development.md).
+> If `neon env pull` has overwritten `.env.local`, regenerate the local file with
+> `pnpm setup:local --force` before running `pnpm dev`.
+
 This repository uses Neon's PostgreSQL as the durable database, Neon Object Storage
 for private uploaded media, and a small Neon Function as a database connectivity
 probe. The existing product REST API remains the standalone API service in
