@@ -888,7 +888,9 @@ function handle(request: IncomingMessage, response: ServerResponse, body: Record
       return;
     }
     if (email === "taken@example.test") {
-      send(response, 409, { error: { code: "CONFLICT", message: "The request conflicts with the current resource state." } });
+      // Mirrors the real contract: a taken address is a 409 with its own code,
+      // not the generic `CONFLICT` a slug or taxonomy clash returns.
+      send(response, 409, { error: { code: "EMAIL_TAKEN", message: "The email address is already registered." } });
       return;
     }
     send(response, 200, { data: { ok: true, email, emailVerifiedAt: null } });

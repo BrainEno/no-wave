@@ -1389,7 +1389,9 @@ test("an address change reaches the API with the cookie's token, and a taken add
 
   const taken = await put("/api/authoring/email", move("taken@example.test"), session);
   assert.equal(taken.status, 409);
-  assert.match(taken.body, /CONFLICT/);
+  // The code, not just the status: a form says different things for "that
+  // address is taken" and for a conflict with no next step.
+  assert.match(taken.body, /EMAIL_TAKEN/);
 
   const foreign = await put("/api/authoring/email", move("moved@example.test"), {
     ...session,

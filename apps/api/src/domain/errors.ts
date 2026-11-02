@@ -17,8 +17,19 @@ export class IdempotencyConflictError extends DomainError {
 export class IdentityInputError extends DomainError {
   constructor() { super("IdentityInputError", "BAD_USER_INPUT", "The identity request is invalid."); }
 }
+/**
+ * One address cannot belong to two accounts: registering an address somebody
+ * already holds, or moving an account onto an address somebody else holds.
+ *
+ * The code is `EMAIL_TAKEN` and not the generic `CONFLICT` on purpose. Both
+ * reach the client as a 409, but only the specific code lets a client say what
+ * happened — "that address is already registered" is actionable, "the request
+ * conflicts with the current resource state" is not. Registration already
+ * reveals whether an address has an account by refusing it, so naming the
+ * reason leaks nothing that the status code did not leak already.
+ */
 export class IdentityConflictError extends DomainError {
-  constructor() { super("IdentityConflictError", "CONFLICT", "The account cannot be registered."); }
+  constructor() { super("IdentityConflictError", "EMAIL_TAKEN", "The email address is already registered."); }
 }
 export class IdentityAuthenticationError extends DomainError {
   constructor() { super("IdentityAuthenticationError", "UNAUTHENTICATED", "The credentials are invalid."); }
