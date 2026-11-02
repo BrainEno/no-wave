@@ -2044,6 +2044,65 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
         createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : new Date(row.created_at).toISOString(),
       } : null;
     },
+    /**
+     * Every article body, as raw JSON text, for the media reference scan (ADR 0022).
+     *
+     * `content_blocks` is cast to text so both providers hand the application
+     * layer the same thing: SQLite stores the JSON as text, PostgreSQL as
+     * `jsonb`, and one of them would otherwise return an object.
+     *
+     * Drafts and tombstones are included on purpose — a draft gets published and
+     * a tombstone can be restored, and restoring a work into broken images is
+     * worse than keeping a few bytes.
+     */
+    async listArticleContentForMediaScan() {
+      const rows = await sql.unsafe(
+        `SELECT a.id AS article_id, a.slug, a.status, a.deleted_at, t.locale, t.title, t.content_blocks::text AS content_blocks
+         FROM article_translations t
+         JOIN articles a ON a.id = t.article_id`,
+      );
+      return rows.map((row) => ({
+        articleId: row.article_id,
+        slug: row.slug,
+        status: row.status,
+        deletedAt: row.deleted_at ? new Date(row.deleted_at).toISOString() : null,
+        locale: row.locale,
+        title: row.title,
+        contentBlocks: row.content_blocks,
+      }));
+    },
+    /** One owner's assets, newest first. One extra row is read so the caller can see whether there is a next page. */
+    async listMediaAssets({ ownerId, cursor = null, limit = 24 }) {
+      const safeLimit = Math.min(Math.max(Math.trunc(Number(limit)) || 24, 1), 60);
+      const rows = await sql.unsafe(
+        cursor === null
+          ? "SELECT * FROM media_assets WHERE owner_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2"
+          : "SELECT * FROM media_assets WHERE owner_id = $1 AND (created_at < $2 OR (created_at = $2 AND id < $3)) ORDER BY created_at DESC, id DESC LIMIT $4",
+        cursor === null ? [ownerId, safeLimit + 1] : [ownerId, cursor.at, cursor.id, safeLimit + 1],
+      );
+      return rows.map((row) => ({
+        id: row.id, ownerId: row.owner_id, storageKey: row.storage_key, contentType: row.content_type,
+        byteSize: row.byte_size, width: row.width, height: row.height, sha256: row.sha256,
+        createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : new Date(row.created_at).toISOString(),
+      }));
+    },
+    /** Delete one of an owner's assets, or answer `null` — the owner is part of the predicate, not a check before it. */
+    async deleteMediaAsset({ id, ownerId }) {
+      if (typeof id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) return null;
+      return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const existing = await tx.unsafe("SELECT * FROM media_assets WHERE id = $1 AND owner_id = $2", [id, ownerId]);
+        const row = existing[0];
+        if (!row) return null;
+        await tx.unsafe("DELETE FROM media_assets WHERE id = $1 AND owner_id = $2", [id, ownerId]);
+        await captureChanges(tx, transactionId, [{ entityType: "media_assets", entityId: id, operation: "delete", payload: null }]);
+        return {
+          id: row.id, ownerId: row.owner_id, storageKey: row.storage_key, contentType: row.content_type,
+          byteSize: row.byte_size, width: row.width, height: row.height, sha256: row.sha256,
+          createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : new Date(row.created_at).toISOString(),
+        };
+      });
+    },
     async isSessionRevoked(sessionId) {
       const rows = await sql.unsafe("SELECT 1 FROM revoked_sessions WHERE session_id = $1 AND expires_at > now()", [sessionId]);
       return rows.length > 0;

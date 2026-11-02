@@ -4,6 +4,15 @@ import { errorResponse } from "./http.ts";
 import { isSameOriginMutation } from "./policy.ts";
 import { forwardAuthoringRequest } from "./forward.ts";
 
+function methodOf(request: Request, allowed: readonly string[]): string | null {
+  const method = request.method.toUpperCase();
+  return allowed.includes(method) ? method : null;
+}
+
+function rejectCrossOrigin(request: Request): boolean {
+  return isSameOriginMutation(request.url, request.headers.get("origin"), request.headers.get("host")) === false;
+}
+
 /**
  * Media request/response adapter (ADR 0012, Phase 5).
  *
@@ -147,4 +156,80 @@ export async function handleMediaUploadRequest(request: Request, config: ApiProx
   if (body.ok === false) return body.response;
 
   return forwardAuthoringRequest(request, "api/v1/me/media", "POST", config, body.bytes, contentType);
+}
+
+/**
+ * `GET /api/authoring/media` — the signed-in author's own media library (ADR 0022).
+ *
+ * The list is the author's and nobody else's, which is the API's job to enforce;
+ * this handler's job is the part a proxy can get wrong: the method, and the two
+ * query parameters. `limit` is re-validated here rather than passed through
+ * because a value that is not a whole number in range would otherwise be
+ * forwarded and answered as a `400` from somewhere the reader cannot see.
+ *
+ * The cursor is opaque to the browser on purpose: it is passed through as a
+ * string and the API is the only thing that knows what it means.
+ */
+const CURSOR_PATTERN = /^[A-Za-z0-9_-]{1,512}$/;
+
+export async function handleMediaLibraryRequest(
+  request: Request,
+  config: ApiProxyConfig = {},
+): Promise<Response> {
+  const method = methodOf(request, ["GET"]);
+  if (method === null) {
+    return errorResponse("METHOD_NOT_ALLOWED", "Only GET is supported for the media library.", 405);
+  }
+  const params = new URL(request.url).searchParams;
+  const rawCursor = params.get("cursor");
+  if (rawCursor !== null && CURSOR_PATTERN.test(rawCursor) === false) {
+    return errorResponse("BAD_USER_INPUT", "Invalid cursor.", 400);
+  }
+  const rawLimit = params.get("limit");
+  let limit: number | null = null;
+  if (rawLimit !== null) {
+    if (!/^[1-9][0-9]{0,2}$/.test(rawLimit)) {
+      return errorResponse("BAD_USER_INPUT", "limit must be a whole number between 1 and 60.", 400);
+    }
+    limit = Number(rawLimit);
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 60) {
+      return errorResponse("BAD_USER_INPUT", "limit must be a whole number between 1 and 60.", 400);
+    }
+  }
+
+  const query = new URLSearchParams();
+  if (rawCursor !== null) query.set("cursor", rawCursor);
+  if (limit !== null) query.set("limit", String(limit));
+  const suffix = query.toString().length > 0 ? `?${query.toString()}` : "";
+  return forwardAuthoringRequest(request, `api/v1/me/media${suffix}`, "GET", config);
+}
+
+/**
+ * `DELETE /api/authoring/media/:id` — delete one unused asset (ADR 0022).
+ *
+ * Method, then Origin, then the id, in the order every mutation here uses. The
+ * id is shape-checked *before* forwarding so a malformed one is a local 404
+ * instead of an upstream round trip, and so a stranger cannot use this path to
+ * hand the API an arbitrary string.
+ *
+ * The reference check itself is the API's: it is the same rule the library's
+ * orphan badge comes from, and it runs against the content as it is now, not as
+ * it was when the page was rendered.
+ */
+export async function handleMediaDeleteRequest(
+  request: Request,
+  { id }: { id: string },
+  config: ApiProxyConfig = {},
+): Promise<Response> {
+  const method = methodOf(request, ["DELETE"]);
+  if (method === null) {
+    return errorResponse("METHOD_NOT_ALLOWED", "Only DELETE is supported for removing an image.", 405);
+  }
+  if (rejectCrossOrigin(request)) {
+    return errorResponse("ORIGIN_REJECTED", "The request origin was rejected.", 403);
+  }
+  if (typeof id !== "string" || !MEDIA_ID_PATTERN.test(id)) {
+    return errorResponse("NOT_FOUND", "The requested media asset was not found.", 404);
+  }
+  return forwardAuthoringRequest(request, `api/v1/me/media/${encodeURIComponent(id)}`, "DELETE", config);
 }

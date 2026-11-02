@@ -26,6 +26,7 @@ test("every documented collection route matches with the expected methods", () =
     ["/api/v1/me/articles", "GET", "me.articles"],
     ["/api/v1/me/feed", "GET", "me.feed"],
     ["/api/v1/me/media", "POST", "me.media"],
+    ["/api/v1/me/media", "GET", "me.media"],
     ["/api/v1/me/notifications", "GET", "me.notifications"],
     ["/api/v1/me/notifications/unread-count", "GET", "me.notifications.unread-count"],
     ["/api/v1/me/notifications/read-all", "POST", "me.notifications.read-all"],
@@ -58,6 +59,7 @@ test("parameterised routes capture their parameters", () => {
     ["/api/v1/articles/11111111-1111-4111-8111-111111111111/restore", "POST", { id: "11111111-1111-4111-8111-111111111111" }],
     ["/api/v1/comments/11111111-1111-4111-8111-111111111111", "DELETE", { id: "11111111-1111-4111-8111-111111111111" }],
     ["/api/v1/me/sessions/11111111-1111-4111-8111-111111111111", "DELETE", { sessionId: "11111111-1111-4111-8111-111111111111" }],
+    ["/api/v1/me/media/11111111-1111-4111-8111-111111111111", "DELETE", { id: "11111111-1111-4111-8111-111111111111" }],
     ["/api/v1/users/writer/follow", "POST", { userId: "writer" }],
     ["/api/v1/users/writer/followers", "GET", { userId: "writer", relation: "followers" }],
     ["/api/v1/users/writer/following", "GET", { userId: "writer", relation: "following" }],
@@ -93,6 +95,12 @@ test("a known path with an unsupported method reports the exact allow-list", () 
     // the collection, not on the item, and a device cannot be edited.
     ["/api/v1/me/sessions/some-session", "GET", "DELETE"],
     ["/api/v1/me/sessions/some-session", "PUT", "DELETE"],
+    // The media library: the collection is an upload and a list, and the only
+    // thing one asset accepts is being deleted — there is nothing to edit, and
+    // a read of one asset is the public `/api/media/<id>` route's job.
+    ["/api/v1/me/media", "PUT", "GET, POST"],
+    ["/api/v1/me/media/some-asset", "GET", "DELETE"],
+    ["/api/v1/me/media/some-asset", "POST", "DELETE"],
     // Only a change is accepted: a password is never readable, and there is
     // nothing to delete.
     ["/api/v1/me/password", "GET", "PUT"],

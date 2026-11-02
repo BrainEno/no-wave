@@ -99,6 +99,8 @@ export {
   MEDIA_IMMUTABLE_CACHE,
   MEDIA_MAX_BYTES,
   MEDIA_UPLOAD_TYPES,
+  handleMediaDeleteRequest,
+  handleMediaLibraryRequest,
   handleMediaUploadRequest,
   handlePublicMediaRequest,
 } from "./media.ts";

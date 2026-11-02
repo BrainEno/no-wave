@@ -36,6 +36,7 @@ export default [
   route("reset-password", "routes/reset-password.tsx"),
   route("verify-email", "routes/verify-email.tsx"),
   route("write", "routes/write.tsx"),
+  route("write/media", "routes/write.media.tsx"),
   route("spike-form", "routes/spike-form.tsx"),
   route("account", "routes/account.tsx"),
   route("admin/featured", "routes/admin.featured.tsx"),
@@ -64,4 +65,7 @@ route("api/authoring/notifications/:id/read", "routes/api.authoring.notification
   route("api/media/:id", "routes/api.media.ts"),
   route("api/spike/events", "routes/api.spike.events.ts"),
   route("api/authoring/media", "routes/api.authoring.media.ts"),
+  // One asset is deleted by id; the collection is both the upload target and the
+  // author's library (ADR 0022).
+  route("api/authoring/media/:id", "routes/api.authoring.media.$id.ts"),
 ] satisfies RouteConfig;

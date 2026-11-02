@@ -1,4 +1,5 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
+import { BROWSER_PASSWORD as PASSWORD, registerThroughForm, uniqueEmail } from "./support/accounts.ts";
 
 /**
  * The list of signed-in devices, end to end in a real browser.
@@ -20,13 +21,8 @@ import { expect, test, type APIRequestContext, type Locator, type Page } from "@
  *   device's own next request), so a transient state cannot turn them green.
  */
 
-const PASSWORD = "e2e-device-password";
 /** The API the Web application proxies to; both share one database. */
 const API_BASE_URL = process.env.E2E_API_BASE_URL ?? "http://127.0.0.1:4000";
-
-function uniqueEmail(prefix: string): string {
-  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}@example.test`;
-}
 
 async function pageDigest(page: Page): Promise<string> {
   try {
@@ -34,31 +30,6 @@ async function pageDigest(page: Page): Promise<string> {
   } catch {
     return (await page.content()).slice(0, 1200);
   }
-}
-
-/**
- * Create the account in the browser, and land on the account page as it.
- *
- * Registering over HTTP would be one line shorter and one session longer: the
- * registration mints a session of its own, and it stays live, so an account
- * made that way arrives at this screen with a device the test never signed in
- * with. The browser is what is under test here, so it is the browser that
- * opens the account — through the same form a visitor uses.
- */
-async function registerThroughForm(page: Page, email: string): Promise<void> {
-  await page.goto("/sign-in?next=%2Faccount");
-  // A click that lands before React hydrates is silently dropped, so the mode
-  // switch is retried until its effect shows up.
-  await expect(async () => {
-    await page.getByRole("button", { name: /没有账户？创建账户/ }).click();
-    await expect(page.getByRole("button", { name: "创建账户并继续" })).toBeVisible({ timeout: 3_000 });
-  }).toPass({ timeout: 45_000 });
-  await expect(async () => {
-    await page.getByLabel("邮箱").fill(email);
-    await page.getByLabel("密码").fill(PASSWORD);
-    await page.getByRole("button", { name: "创建账户并继续" }).click();
-    await page.waitForURL("**/account", { timeout: 5_000 });
-  }).toPass({ timeout: 60_000, intervals: [500, 1_000, 2_000] });
 }
 
 /**

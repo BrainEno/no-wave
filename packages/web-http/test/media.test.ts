@@ -4,6 +4,8 @@ import test from "node:test";
 import {
   MEDIA_IMMUTABLE_CACHE,
   MEDIA_MAX_BYTES,
+  handleMediaDeleteRequest,
+  handleMediaLibraryRequest,
   handleMediaUploadRequest,
   handlePublicMediaRequest,
 } from "../src/media.ts";
@@ -188,4 +190,120 @@ test("a valid upload is forwarded with the cookie-held bearer token and stays pr
   assert.match(String(stub.calls[0]?.url), /api\/v1\/me\/media$/);
   // The token must never be echoed back to the browser.
   assert.doesNotMatch(body, new RegExp(TOKENS.accessToken));
+});
+
+/**
+ * The media library, across the proxy (ADR 0022).
+ *
+ * The reader of this page is an author looking at their own uploads, so what is
+ * under test is that the proxy adds nothing and removes nothing: the token is
+ * attached here rather than in the browser, the query string is the only part of
+ * the URL the caller controls, and a delete is origin-checked like every other
+ * mutation.
+ */
+test("the library list is forwarded with the cookie-held token and only the parameters it understands", async () => {
+  const stub = stubFetch({ "api/v1/me/media": () => json({ data: { items: [], nextCursor: null } }) });
+  const response = await handleMediaLibraryRequest(
+    new Request("https://no-wave.test/api/authoring/media?limit=24&cursor=abc123", {
+      headers: {
+        cookie: `${ACCESS_TOKEN_COOKIE}=${TOKENS.accessToken}; ${REFRESH_TOKEN_COOKIE}=${TOKENS.refreshToken}`,
+      },
+    }),
+    { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+  );
+
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("cache-control") ?? "", /no-store/);
+  const url = String(stub.calls[0]?.url);
+  assert.match(url, /api\/v1\/me\/media\?cursor=abc123&limit=24$/);
+  const headers = new Headers(stub.calls[0]?.init?.headers);
+  assert.equal(headers.get("authorization"), `Bearer ${TOKENS.accessToken}`);
+  assert.doesNotMatch(await response.text(), new RegExp(TOKENS.accessToken));
+});
+
+test("an unconfigured API is a 503 rather than an empty library", async () => {
+  const response = await handleMediaLibraryRequest(request("/api/authoring/media", { method: "GET" }), {});
+  assert.equal(response.status, 503);
+  assert.match(await response.text(), /SERVICE_UNAVAILABLE/);
+});
+
+test("the library rejects a wrong method and a malformed query before forwarding", async () => {
+  const stub = stubFetch({ "api/v1/me/media": () => json({ data: { items: [], nextCursor: null } }) });
+  const wrongMethod = await handleMediaLibraryRequest(
+    request("/api/authoring/media", { method: "DELETE" }),
+    { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+  );
+  assert.equal(wrongMethod.status, 405);
+
+  for (const query of ["?limit=0", "?limit=61", "?limit=2.5", "?limit=abc", "?cursor=not a cursor"]) {
+    const response = await handleMediaLibraryRequest(
+      request(`/api/authoring/media${query}`, { method: "GET" }),
+      { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+    );
+    assert.equal(response.status, 400, `${query} must be refused`);
+  }
+  assert.equal(stub.calls.length, 0, "nothing is forwarded when the request is refused");
+});
+
+test("deleting an asset is origin-checked, shape-checked and forwarded as a DELETE", async () => {
+  const stub = stubFetch({ "api/v1/me/media/": () => json({ data: { id: MEDIA_ID } }) });
+  const crossOrigin = await handleMediaDeleteRequest(
+    new Request(`https://no-wave.test/api/authoring/media/${MEDIA_ID}`, {
+      method: "DELETE",
+      headers: { origin: "https://attacker.test" },
+    }),
+    { id: MEDIA_ID },
+    { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+  );
+  assert.equal(crossOrigin.status, 403);
+  assert.match(await crossOrigin.text(), /ORIGIN_REJECTED/);
+
+  // A malformed id is a local 404: no round trip, and no way to hand the API an
+  // arbitrary string through this path.
+  const malformed = await handleMediaDeleteRequest(
+    request("/api/authoring/media/not-a-uuid", { method: "DELETE", headers: { origin: "https://no-wave.test" } }),
+    { id: "not-a-uuid" },
+    { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+  );
+  assert.equal(malformed.status, 404);
+
+  const wrongMethod = await handleMediaDeleteRequest(
+    request(`/api/authoring/media/${MEDIA_ID}`, { headers: { origin: "https://no-wave.test" } }),
+    { id: MEDIA_ID },
+    { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+  );
+  assert.equal(wrongMethod.status, 405);
+
+  const response = await handleMediaDeleteRequest(
+    request(`/api/authoring/media/${MEDIA_ID}`, { method: "DELETE", headers: { origin: "https://no-wave.test" } }),
+    { id: MEDIA_ID },
+    { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+  );
+  assert.equal(response.status, 200);
+  assert.equal(String(stub.calls[0]?.init?.method), "DELETE");
+  assert.match(String(stub.calls[0]?.url), new RegExp(`api/v1/me/media/${MEDIA_ID}$`));
+  assert.equal(stub.calls.length, 1, "only the well-formed, same-origin request is forwarded");
+});
+
+test("an asset still used by a work is reported as a conflict with the works that use it", async () => {
+  const stub = stubFetch({
+    "api/v1/me/media/": () => json({
+      error: {
+        code: "MEDIA_IN_USE",
+        message: "This image is still used by a work.",
+        details: { referencedBy: [{ articleId: "a1", slug: "uses-it", title: "用了它", locale: "zh-CN", state: "draft" }] },
+      },
+    }, 409),
+  });
+  const response = await handleMediaDeleteRequest(
+    request(`/api/authoring/media/${MEDIA_ID}`, { method: "DELETE", headers: { origin: "https://no-wave.test" } }),
+    { id: MEDIA_ID },
+    { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+  );
+  // The proxy passes the API's answer through unchanged: the page needs the
+  // reason, and re-serializing it here would only be somewhere to lose it.
+  assert.equal(response.status, 409);
+  const body = await response.text();
+  assert.match(body, /MEDIA_IN_USE/);
+  assert.match(body, /uses-it/);
 });

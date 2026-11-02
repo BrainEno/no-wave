@@ -1,10 +1,33 @@
 import type { RestRouteContext, RestRouteHandler } from "./context.ts";
-import { authenticatedActorId, decodeUserId, readRawImageBody, sendJson, sendRawImageBodyError, sendServiceError, sendUnauthenticated, sendUnavailable } from "../http.ts";
-import { MediaAssetNotFoundError } from "../../../application/media-assets.ts";
+import {
+  authenticatedActorId,
+  decodeUserId,
+  parseInteger,
+  readRawImageBody,
+  sendBadInput,
+  sendJson,
+  sendRawImageBodyError,
+  sendServiceError,
+  sendUnauthenticated,
+  sendUnavailable,
+} from "../http.ts";
+import {
+  MEDIA_PAGE_SIZE,
+  MEDIA_PAGE_SIZE_MAX,
+  MediaAssetInUseError,
+  MediaAssetNotFoundError,
+  MediaInputError,
+} from "../../../application/media-assets.ts";
 import { MediaStorageUnavailableError } from "../../../infrastructure/media-storage.ts";
-import { MediaUploadInputError } from "../../../application/media-assets.ts";
 
-/** Private media reads and uploads (`media.item`, `me.media`). */
+/** The answer when media is not configured: the same one the upload route gives. */
+function sendMediaUnconfigured(response: RestRouteContext["response"]): void {
+  sendJson(response, 503, {
+    error: { code: "MEDIA_STORAGE_UNAVAILABLE", message: "Image uploads are not configured for this deployment." },
+  });
+}
+
+/** Private media reads and uploads (`media.item`, `me.media`, `me.media.item`). */
 const MEDIA_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Object.freeze({
   "media.item": async (ctx: RestRouteContext): Promise<void> => {
     const { request, response, mediaAssets, routeParams } = ctx;
@@ -42,11 +65,39 @@ const MEDIA_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Object.
       }
     }
   },
+  /**
+   * `POST /api/v1/me/media` — upload, and `GET` — the author's own library.
+   *
+   * One path, because they are the same collection seen from two directions, and
+   * splitting them would put the "is media configured at all" answer in two
+   * places that could disagree.
+   */
   "me.media": async (ctx: RestRouteContext): Promise<void> => {
     const { request, response, services, env, mediaAssets } = ctx;
     if (!services) { sendUnavailable(response); return; }
-    if (!mediaAssets) {
-      sendJson(response, 503, { error: { code: "MEDIA_STORAGE_UNAVAILABLE", message: "Image uploads are not configured for this deployment." } });
+    if (!mediaAssets) { sendMediaUnconfigured(response); return; }
+    if (request.method === "GET") {
+      try {
+        const actorId = await authenticatedActorId(request, services, env);
+        if (!actorId) { sendUnauthenticated(response); return; }
+        const limit = parseInteger(ctx.url.searchParams, "limit", MEDIA_PAGE_SIZE, 1, MEDIA_PAGE_SIZE_MAX);
+        if (limit === null) {
+          sendBadInput(response, `limit must be a whole number between 1 and ${MEDIA_PAGE_SIZE_MAX}.`);
+          return;
+        }
+        const data = await mediaAssets.listLibrary({
+          ownerId: actorId,
+          cursor: ctx.url.searchParams.get("cursor"),
+          limit,
+        });
+        sendJson(response, 200, { data });
+      } catch (error: unknown) {
+        if (error instanceof MediaInputError) {
+          sendJson(response, 400, { error: { code: error.code, message: error.message } });
+        } else {
+          sendServiceError(response, error);
+        }
+      }
       return;
     }
     try {
@@ -61,10 +112,55 @@ const MEDIA_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Object.
       const asset = await mediaAssets.upload({ ownerId: actorId, bytes: body.bytes, contentType });
       sendJson(response, 201, { data: asset });
     } catch (error: unknown) {
-      if (error instanceof MediaUploadInputError) {
+      if (error instanceof MediaInputError) {
         sendJson(response, 400, { error: { code: error.code, message: error.message } });
       } else if (error instanceof MediaStorageUnavailableError) {
         sendJson(response, 503, { error: { code: "MEDIA_STORAGE_UNAVAILABLE", message: "The media service is temporarily unavailable." } });
+      } else {
+        sendServiceError(response, error);
+      }
+    }
+  },
+  /**
+   * `DELETE /api/v1/me/media/:id` — delete one unused asset (ADR 0022).
+   *
+   * The reference check happens in the service, against the current content, and
+   * a refusal carries the works that use the image: "no" without the reason is a
+   * support ticket, not an answer.
+   */
+  "me.media.item": async (ctx: RestRouteContext): Promise<void> => {
+    const { request, response, services, env, mediaAssets, routeParams } = ctx;
+    if (!services) { sendUnavailable(response); return; }
+    if (!mediaAssets) { sendMediaUnconfigured(response); return; }
+    if (request.headers["content-length"] || request.headers["transfer-encoding"]) {
+      sendBadInput(response, "This endpoint takes no request body.");
+      return;
+    }
+    const id = decodeUserId(routeParams.id);
+    if (!id) {
+      // The same 404 for "not yours" and "not there", so the endpoint cannot be
+      // used to discover which assets exist.
+      sendJson(response, 404, { error: { code: "NOT_FOUND", message: "The requested media asset was not found." } });
+      return;
+    }
+    try {
+      const actorId = await authenticatedActorId(request, services, env);
+      if (!actorId) { sendUnauthenticated(response); return; }
+      const data = await mediaAssets.deleteAsset({ ownerId: actorId, id });
+      sendJson(response, 200, { data });
+    } catch (error: unknown) {
+      if (error instanceof MediaAssetInUseError) {
+        sendJson(response, 409, {
+          error: {
+            code: error.code,
+            message: error.message,
+            details: { referencedBy: error.referencedBy },
+          },
+        });
+      } else if (error instanceof MediaAssetNotFoundError) {
+        sendJson(response, 404, { error: { code: "NOT_FOUND", message: "The requested media asset was not found." } });
+      } else if (error instanceof MediaStorageUnavailableError) {
+        sendJson(response, 503, { error: { code: "MEDIA_STORAGE_UNAVAILABLE", message: "The stored image could not be deleted." } });
       } else {
         sendServiceError(response, error);
       }
