@@ -8,8 +8,7 @@ import { AuthorPageView } from "@/components/public/author-view.tsx";
 import { PUBLIC_PAGE_HEADERS } from "../lib/http-policy.ts";
 import { entityNotFound, upstreamUnavailable } from "../lib/loader-errors.ts";
 import { localeFor } from "../lib/locale.ts";
-import { metaDescriptors, titleWithSite } from "../lib/meta.ts";
-import { siteUrl } from "../lib/runtime.ts";
+import { metaDescriptors, siteUrlFromMatches, titleWithSite } from "../lib/meta.ts";
 
 /**
  * Public author profile for `/authors/:username` and `/en/authors/:username`.
@@ -47,9 +46,9 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
 export const headers: HeadersFunction = () => PUBLIC_PAGE_HEADERS;
 
-export const meta: MetaFunction<typeof loader> = ({ data }) => {
+export const meta: MetaFunction<typeof loader> = ({ data, matches }) => {
   if (!data) return [{ title: titleWithSite(undefined) }];
-  return metaDescriptors(authorMetadata(data.author, siteUrl()));
+  return metaDescriptors(authorMetadata(data.author, siteUrlFromMatches(matches)));
 };
 
 export default function AuthorRoute() {
