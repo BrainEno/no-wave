@@ -4,6 +4,8 @@ import test from "node:test";
 import { request as httpRequest } from "node:http";
 import { createApiServer } from "./server.ts";
 import { persistencePortMethods } from "./application/persistence-ports.ts";
+import { createSqliteClient, runSqliteMigrations } from "./persistence/sqlite.ts";
+import { createSqliteStore } from "./persistence/sqlite-store.ts";
 import { ArticleAuthorizationError, ArticleInputError, ArticleNotFoundError, ArticleSlugConflictError, DomainError, IdempotencyConflictError, IdentityConflictError, ProfileInputError, ProfileNotFoundError } from "./domain/errors.ts";
 import { isUuid } from "./domain/validation.ts";
 import { hashPassword, verifyPassword } from "./security/passwords.ts";
@@ -197,6 +199,7 @@ test("REST article creation accepts JSON content blocks and never trusts a body 
     assert.deepEqual(received, {
       authorId: "verified-writer", slug: "new-work", title: "新作品", summary: "简介", locale: "zh-CN",
       contentBlocks, publish: true, workType: "poetry", categoryIds: [], tagIds: [], idempotencyKey: null,
+      requestedSlug: "new-work",
     });
 
 
@@ -226,6 +229,7 @@ test("REST article creation accepts JSON content blocks and never trusts a body 
     });
     assert.equal(keyed.status, 201);
     assert.equal(received.idempotencyKey, "publish-once-1");
+    assert.equal(received.requestedSlug, "keyed-work");
 
     const malformed = await fetch(baseUrl + "/api/v1/articles", {
       method: "POST",
@@ -248,6 +252,66 @@ test("REST article creation accepts JSON content blocks and never trusts a body 
       },
     },
   });
+});
+
+/**
+ * Issues #137 / #157: the first keyed create had to use a suffixed auto slug;
+ * replaying the identical request used to compare that suffix against the first
+ * candidate and answer 409 instead of returning the work already published.
+ */
+test("REST replays a keyed create after its auto-generated slug was uniquified", async () => {
+  const db = createSqliteClient({ filename: ":memory:", enableWal: false });
+  await runSqliteMigrations(db);
+  const sqliteStore = createSqliteStore(db);
+  const body = {
+    title: "Synthetic duplicate title",
+    contentBlocks: [{ id: "p1", type: "paragraph", text: "A replayable draft." }],
+    contentBlocksVersion: 1,
+    publish: false,
+  };
+  const post = (payload: Record<string, unknown>, key?: string) => ({
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: "Bearer " + signedToken("verified-writer"),
+      ...(key ? { "idempotency-key": key } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+
+  try {
+    await withServer(async (baseUrl) => {
+      // Occupy the base slug with an unkeyed work so the keyed write lands on -2.
+      const occupying = await fetch(baseUrl + "/api/v1/articles", post(body));
+      assert.equal(occupying.status, 201);
+      const occupied = (await occupying.json()).data;
+      assert.equal(occupied.slug, "synthetic-duplicate-title");
+
+      const created = await fetch(baseUrl + "/api/v1/articles", post(body, "collision-key"));
+      assert.equal(created.status, 201);
+      const first = (await created.json()).data;
+      assert.notEqual(first.slug, occupied.slug, "the uniquifier should have moved past the occupied slug");
+
+      const replay = await fetch(baseUrl + "/api/v1/articles", post(body, "collision-key"));
+      assert.equal(replay.status, 201, "an exact retry must be a replay, not a conflict");
+      const replayed = (await replay.json()).data;
+      assert.equal(replayed.id, first.id);
+      assert.equal(replayed.slug, first.slug);
+
+      const conflict = await fetch(baseUrl + "/api/v1/articles", post({ ...body, slug: "explicit-different" }, "collision-key"));
+      assert.equal(conflict.status, 409);
+      assert.equal((await conflict.json()).error.code, "IDEMPOTENCY_CONFLICT");
+
+      const mine = await sqliteStore.listMyArticles({ actorId: "verified-writer", locale: "zh-CN", limit: 100 });
+      assert.equal(
+        mine.filter((article) => article.slug.startsWith("synthetic-duplicate-title")).length,
+        2,
+        "the replay must not leave a second article behind",
+      );
+    }, { env: authEnv, store: sqliteStore });
+  } finally {
+    db.close();
+  }
 });
 
 test("REST article writes normalize Lexical EditorState into the application-owned v1 content contract", async () => {

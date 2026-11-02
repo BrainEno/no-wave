@@ -3,6 +3,7 @@ import { stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { extname, join, normalize, resolve, sep } from "node:path";
+import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 import { safeLogPath, writeLogLine } from "@bot-thk/web-http/log";
 import { createRequestListener } from "@react-router/node";
@@ -30,7 +31,8 @@ const MIME: Record<string, string> = {
   ".js": "text/javascript; charset=utf-8",
   ".mjs": "text/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
-  ".map": "application/json; charset=utf-8",
+  // Source maps are build artifacts, not a public asset type. Do not add
+  // ".map" here: a production build that emits them must not expose them.
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".jpg": "image/jpeg",
@@ -49,7 +51,24 @@ const MIME: Record<string, string> = {
 async function serveStatic(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
   const method = request.method ?? "GET";
   if (method !== "GET" && method !== "HEAD") return false;
-  const pathname = decodeURIComponent(new URL(request.url ?? "/", "http://localhost").pathname);
+
+  // A scanner or a broken link can send an invalid percent escape. Decoding it
+  // outside the try used to reject this promise and turn a malformed request
+  // into a 500 from the framework catch-all. It is a bad request, not a server
+  // fault, and the framework handler must not see it afterwards.
+  let pathname: string;
+  try {
+    pathname = decodeURIComponent(new URL(request.url ?? "/", "http://localhost").pathname);
+  } catch {
+    response.writeHead(400, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" });
+    response.end("Bad Request");
+    return true;
+  }
+  if (pathname.includes("\0")) {
+    response.writeHead(400, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" });
+    response.end("Bad Request");
+    return true;
+  }
   if (pathname.endsWith("/")) return false;
   const extension = extname(pathname);
   if (!MIME[extension]) return false;
@@ -71,11 +90,23 @@ async function serveStatic(request: IncomingMessage, response: ServerResponse): 
       response.end();
       return true;
     }
-    createReadStream(candidate).pipe(response);
-    return true;
   } catch {
     return false;
   }
+
+  // A raw `.pipe()` left read errors and client aborts unhandled: an EIO could
+  // surface as an uncaught exception and the file descriptor was not cleaned up
+  // when the browser went away. pipeline destroys both sides on either event.
+  try {
+    await pipeline(createReadStream(candidate), response);
+  } catch (error: unknown) {
+    const errorName = error instanceof Error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name)
+      ? error.name
+      : "Error";
+    writeLogLine("static_stream_failed", { errorName });
+    if (!response.destroyed) response.destroy();
+  }
+  return true;
 }
 
 const build = (await import(serverBuildDir)) as unknown as Parameters<typeof createRequestListener>[0]["build"];

@@ -1,4 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
+import {
+  articleIdempotencyFingerprint,
+  articleIdempotencyKeyHash,
+  articleIdempotencyReplayMatches,
+} from "../application/article-idempotency.ts";
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import { createPostgresProviderMigrationCapture, migrationEntityKey } from "./postgres-provider-migration-capture.ts";
 
@@ -1310,7 +1315,7 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
         commentCount: Number(row.comment_count ?? 0),
       }));
     },
-    async createArticle({ authorId, slug, title, summary = "", locale = "zh-CN", contentBlocks, contentBlocksVersion = 0, publish = false, workType = "other", categoryIds = [], tagIds = [], idempotencyKey = null }) {
+    async createArticle({ authorId, slug, title, summary = "", locale = "zh-CN", contentBlocks, contentBlocksVersion = 0, publish = false, workType = "other", categoryIds = [], tagIds = [], idempotencyKey = null, requestedSlug }) {
       requiredText("authorId", authorId, 300);
       const input = normalizeArticleInput({ slug, title, summary, locale, contentBlocks, contentBlocksVersion, publish, workType });
       const selectedCategories = normalizeTaxonomyIds("categoryIds", categoryIds, 20);
@@ -1319,15 +1324,25 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
           idempotencyKey.length > 300 || idempotencyKey.trim() !== idempotencyKey)) {
         throw new ArticleInputError("Idempotency-Key must be a non-empty trimmed string no longer than 300 characters.");
       }
-      const keyHash = idempotencyKey === null ? null : requestHash({
-        method: "POST", route: "/api/v1/articles", actorId: authorId, key: idempotencyKey,
-      });
-      const fingerprint = requestHash({
-        authorId, slug: input.slug, title: input.title, summary: input.summary, locale: input.locale,
+      const keyHash = idempotencyKey === null ? null : articleIdempotencyKeyHash(authorId, idempotencyKey);
+      // `requestedSlug` is undefined only for direct store callers that predate
+      // the route contract; treat their explicit slug as client-supplied.
+      const fingerprintSlug = requestedSlug === undefined ? input.slug : (requestedSlug ?? null);
+      const fingerprintBase = {
+        authorId, title: input.title, summary: input.summary, locale: input.locale,
         contentBlocks: input.contentBlocks, contentBlocksVersion: input.contentBlocksVersion,
         publish: input.publish, workType: input.workType ?? "other",
         categoryIds: [...(selectedCategories ?? [])].sort(), tagIds: [...(selectedTags ?? [])].sort(),
-      });
+      };
+      const fingerprintForSlug = (value: string | null) => articleIdempotencyFingerprint({ ...fingerprintBase, slug: value });
+      const fingerprint = fingerprintForSlug(fingerprintSlug);
+      const replayMatches = (row) => articleIdempotencyReplayMatches(
+        row.request_hash,
+        fingerprint,
+        fingerprintSlug === null
+          ? [fingerprintForSlug(input.slug), fingerprintForSlug(row.slug)]
+          : [],
+      );
       try {
         return await sql.begin(async (tx) => {
           const transactionId = createMigrationTransactionId();
@@ -1339,11 +1354,11 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
           // were sent to the uniquifier to be published a second time.
           if (keyHash !== null) {
             const [existing] = await tx.unsafe(
-              "SELECT id, request_hash FROM articles WHERE author_id = $1 AND idempotency_key_hash = $2",
+              "SELECT id, slug, request_hash FROM articles WHERE author_id = $1 AND idempotency_key_hash = $2",
               [authorId, keyHash],
             );
             if (existing) {
-              if (existing.request_hash !== fingerprint) {
+              if (!replayMatches(existing)) {
                 throw new IdempotencyConflictError("The idempotency key was already used for a different article request.");
               }
               return readArticleForAuthor(tx, { articleId: existing.id, locale: input.locale });
@@ -1359,11 +1374,11 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
           );
           if (rows.length === 0) {
             const [existing] = await tx.unsafe(
-              "SELECT id, request_hash FROM articles WHERE author_id = $1 AND idempotency_key_hash = $2",
+              "SELECT id, slug, request_hash FROM articles WHERE author_id = $1 AND idempotency_key_hash = $2",
               [authorId, keyHash],
             );
             if (!existing) throw new ArticleInputError("The article could not be created; retry the request.");
-            if (existing.request_hash !== fingerprint) {
+            if (!replayMatches(existing)) {
               throw new IdempotencyConflictError("The idempotency key was already used for a different article request.");
             }
             return readArticleForAuthor(tx, { articleId: existing.id, locale: input.locale });
@@ -1394,11 +1409,11 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
         // sending the author back to the slug uniquifier for a second copy.
         if (keyHash !== null) {
           const [existing] = await sql.unsafe(
-            "SELECT id, request_hash FROM articles WHERE author_id = $1 AND idempotency_key_hash = $2",
+            "SELECT id, slug, request_hash FROM articles WHERE author_id = $1 AND idempotency_key_hash = $2",
             [authorId, keyHash],
           );
           if (existing) {
-            if (existing.request_hash !== fingerprint) {
+            if (!replayMatches(existing)) {
               throw new IdempotencyConflictError("The idempotency key was already used for a different article request.");
             }
             return readArticleForAuthor(sql, { articleId: existing.id, locale: input.locale });
