@@ -54,9 +54,13 @@ Reading marks are **the reader's own, kept in their own browser, and never sent 
 - **Copy watermarking and blocking near-whole-article copies.** `red-room-archive` does both. They are
   a copyright posture, not a reading feature, and this project's position on reuse and on automated
   collection is a decision for the owner (see ADR 0011). They are not smuggled in behind 划线.
-- **Sharing a passage.** `red-room-archive` builds a share card for one; it is possible now that
-  passages have anchors, and it is not part of this work. Reading a marked passage aloud *is*, and it
-  shares the single voice described in ADR 0020 with the control that reads the whole work.
+- **Sharing a passage, as a record.** `red-room-archive` builds a share card for one, and any version
+  of sharing that writes the passage somewhere is refused here for the reasons above. Sharing was
+  added later *as a link and nothing else* — the work's own words in a URL fragment, carrying no note
+  and reaching no server — and it is its own decision:
+  [ADR 0023](0023-a-shared-passage-is-a-link-not-a-record.md). Reading a marked passage aloud is part
+  of this work, and it shares the single voice described in ADR 0020 with the control that reads the
+  whole work.
 
 ## Consequences
 
@@ -69,6 +73,8 @@ Reading marks are **the reader's own, kept in their own browser, and never sent 
 - Marks are per browser, and they are the reader's to lose: clearing site data removes them, and
   private browsing refuses them. That is the honest trade for a feature that collects nothing, and
   the shelf says so ("留在这台设备上").
-- A mark cannot be carried to another device, shared, or searched. Anyone who wants that is asking
-  for the server-side feature this decision declines to be — which is a new ADR, not a setting.
+- A mark cannot be carried to another device or searched. It **can** be shared, but only as a link
+  that carries the work's own words and reaches no server (ADR 0023). Anyone who wants a mark synced
+  across devices is asking for the server-side feature this decision declines to be — which is a new
+  ADR, not a setting.
 - `packages/web-ui` gains no dependency and the API gains no surface. Rendering a work is unchanged.
