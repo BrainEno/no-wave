@@ -2641,7 +2641,7 @@ test("deleting an asset is refused while a work uses it, and answers 404 for any
     async deleteAsset(input) {
       calls.push({ ...input });
       throw new MediaAssetInUseError([
-        { articleId: "a1", slug: "uses-it", title: "用了它", locale: "zh-CN", state: "draft" },
+        { kind: "work", articleId: "a1", slug: "uses-it", title: "用了它", locale: "zh-CN", state: "draft", redacted: false },
       ]);
     },
   };
@@ -2659,6 +2659,7 @@ test("deleting an asset is refused while a work uses it, and answers 404 for any
     assert.equal(body.error.code, "MEDIA_IN_USE");
     // The refusal carries the works, so the page can say why instead of just no.
     assert.deepEqual(body.error.details.referencedBy.map((entry) => entry.slug), ["uses-it"]);
+    assert.equal(body.error.details.referencedBy[0].redacted, false, "this one the reader is allowed to see");
   }, { env: authEnv, store: {}, mediaAssets: inUse });
 
   const notFound = {
@@ -2685,6 +2686,87 @@ test("deleting an asset is refused while a work uses it, and answers 404 for any
     assert.equal(wrongMethod.status, 405);
     assert.equal(wrongMethod.headers.get("allow"), "DELETE");
   }, { env: authEnv, store: {}, mediaAssets: notFound });
+});
+
+/**
+ * The refusal has to stay a refusal when the use it names is not the reader's to
+ * read.
+ *
+ * An image can sit in another author's unpublished draft. The delete is blocked —
+ * that is the whole point — but the 409 body is built from the scan, and a body
+ * that named the draft would publish its title to whoever owns the bytes. What
+ * goes out instead is the count and the state: enough to explain the refusal,
+ * nothing of the words.
+ */
+test("a delete refused by another author's draft says so without naming the draft", async () => {
+  const assetId = "11111111-1111-4111-8111-111111111111";
+  const mediaAssets = {
+    async upload() { throw new Error("unused"); },
+    async getPublic() { throw new Error("unused"); },
+    async listLibrary() { return { items: [], nextCursor: null }; },
+    async deleteAsset() {
+      throw new MediaAssetInUseError([
+        { kind: "work", articleId: "", slug: "", title: "", locale: "", state: "draft", redacted: true },
+        { kind: "avatar" },
+      ]);
+    },
+  };
+  await withServer(async (baseUrl) => {
+    const response = await fetch(baseUrl + "/api/v1/me/media/" + assetId, {
+      method: "DELETE",
+      headers: { authorization: "Bearer " + signedToken("media-writer") },
+    });
+    assert.equal(response.status, 409);
+    const body = await response.json();
+    assert.equal(body.error.code, "MEDIA_IN_USE");
+    assert.equal(body.error.details.referencedBy.length, 2, "both uses still count");
+    assert.equal(body.error.details.referencedBy[0].redacted, true);
+    assert.equal(body.error.details.referencedBy[1].kind, "avatar");
+  }, { env: authEnv, store: {}, mediaAssets });
+});
+
+/**
+ * The delete that half-succeeded.
+ *
+ * Once the row is gone nothing can be referencing it, so a bucket that cannot be
+ * reached leaves bytes with no name attached to them — a bill, not a broken work.
+ * The reader asked for one deletion and got it; the leftover is for whoever runs
+ * the bucket, which is what the log line is for.
+ */
+test("a delete whose object cannot be removed still answers 200, and says what is left behind", async () => {
+  const assetId = "11111111-1111-4111-8111-111111111111";
+  const storageKey = "assets/media-writer/left-behind.webp";
+  const mediaAssets = {
+    async upload() { throw new Error("unused"); },
+    async getPublic() { throw new Error("unused"); },
+    async listLibrary() { return { items: [], nextCursor: null }; },
+    async deleteAsset() { return { id: assetId, objectDeleted: false, orphanedStorageKey: storageKey }; },
+  };
+  // The log is the only trace of the leftover, so it is part of the contract.
+  const original = process.stderr.write.bind(process.stderr);
+  let captured = "";
+  (process.stderr as { write: typeof process.stderr.write }).write = ((chunk: string | Uint8Array) => {
+    captured += String(chunk);
+    return true;
+  }) as typeof process.stderr.write;
+  try {
+    await withServer(async (baseUrl) => {
+      const response = await fetch(baseUrl + "/api/v1/me/media/" + assetId, {
+        method: "DELETE",
+        headers: { authorization: "Bearer " + signedToken("media-writer") },
+      });
+      assert.equal(response.status, 200, "the row is gone: the deletion the reader asked for happened");
+      assert.deepEqual(await response.json(), { data: { id: assetId } });
+      const entry = captured.split("\n").filter(Boolean).map((line) => JSON.parse(line))
+        .find((record) => record.event === "media.object_orphaned");
+      assert.ok(entry, "the leftover is logged for whoever pays for the bucket");
+      assert.equal(entry.level, "warn");
+      assert.equal(entry.storageKey, storageKey);
+      assert.equal(entry.mediaId, assetId);
+    }, { env: authEnv, store: {}, mediaAssets });
+  } finally {
+    (process.stderr as { write: typeof process.stderr.write }).write = original;
+  }
 });
 
 test("a deployment without object storage says so instead of showing an empty library", async () => {

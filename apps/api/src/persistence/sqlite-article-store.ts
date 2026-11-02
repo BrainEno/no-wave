@@ -175,22 +175,6 @@ export function createSqliteArticleStore(db) {
    * narrower scan, which would silently decide that some references do not
    * count.
    */
-  async listArticleContentForMediaScan() {
-    return db.prepare(
-      `SELECT a.id AS article_id, a.slug, a.status, a.deleted_at, t.locale, t.title, t.content_blocks
-       FROM article_translations t
-       JOIN articles a ON a.id = t.article_id`,
-    ).all().map((row) => ({
-      articleId: row.article_id,
-      slug: row.slug,
-      status: row.status,
-      deletedAt: row.deleted_at ?? null,
-      locale: row.locale,
-      title: row.title,
-      contentBlocks: row.content_blocks,
-    }));
-  },
-
     listPublishedArticles({ locale = "zh-CN", query = "", authorId = null, sort = "latest", limit = 20, offset = 0, cursor = null } = {}) {
       validateArticleLocale(locale);
       if (typeof query !== "string" || query.length > 200) throw new ArticleInputError("query must be a string no longer than 200 characters.");

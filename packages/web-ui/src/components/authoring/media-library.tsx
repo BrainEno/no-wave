@@ -20,17 +20,51 @@ import { useCallback, useEffect, useState } from "react";
  * Nothing here deletes on a schedule. Reclaiming storage is a decision about
  * somebody's work, and a decision is what a person is for.
  *
+ * A reference is not always described. The image may be used by another author's
+ * unpublished draft, and the owner of the bytes is not the owner of the words:
+ * the API counts that use — it is what keeps the image alive — but sends no
+ * title, and this page says only what it is allowed to say. `DELETE_ENABLED`
+ * below is the switch that holds the delete button back while a fix to the
+ * reference check is being verified; nothing else about the page changes when it
+ * is turned back on.
+ *
  * It is shared UI (`@bot-thk/web-ui`), so it reaches the router only through
  * `@/lib/framework/*` and names no framework of its own.
  */
 
-type MediaReference = {
-  articleId: string;
-  slug: string;
-  title: string;
-  locale: string;
-  state: "draft" | "published" | "deleted";
-};
+/**
+ * Where an image is used, and — when the page is allowed to say — by what.
+ *
+ * `kind` is how the card tells the two homes apart: a body and a profile picture
+ * are different sentences in Chinese, and an avatar has no title to quote.
+ * `redacted` is the answer to "may you name it?": the API counts every use, but
+ * it does not hand one author's draft titles to another, so a use it will not
+ * name arrives with `redacted: true` and empty fields.
+ */
+type MediaReference =
+  | { kind: "avatar" }
+  | {
+    kind: "work";
+    articleId: string;
+    slug: string;
+    title: string;
+    locale: string;
+    state: "draft" | "published" | "deleted";
+    redacted: boolean;
+  };
+
+/**
+ * Whether the delete button is on the page.
+ *
+ * Off, for now. The reference check behind the orphan badge was found to miss
+ * two kinds of use — a cover stored under the API's own `/api/v1/media/…`
+ * address, and a profile picture — which made live images look unused and
+ * offered them for deletion. That check is fixed in the API; while the fix is
+ * being verified the button is the part that stays off, because its mistakes are
+ * the only ones on this page that cannot be undone. Flipping this to `true`
+ * restores the button with no other change.
+ */
+const DELETE_ENABLED = false;
 
 type MediaItem = {
   id: string;
@@ -66,7 +100,12 @@ function pageOf(payload: unknown): MediaPage {
   if (typeof data !== "object" || data === null || !Array.isArray((data as { items?: unknown }).items)) {
     throw new Error("媒体库响应格式不正确。");
   }
-  const items = (data as { items: unknown[] }).items.filter(isItem);
+  const items = (data as { items: unknown[] }).items
+    .filter(isItem)
+    // A reference the page cannot read is dropped rather than rendered as
+    // `《undefined》`: the count behind the badge is the API's, and a missing
+    // sentence costs less than a wrong one.
+    .map((item) => ({ ...item, referencedBy: item.referencedBy.filter(isReference) }));
   const nextCursor = (data as { nextCursor?: unknown }).nextCursor;
   return { items, nextCursor: typeof nextCursor === "string" ? nextCursor : null };
 }
@@ -89,11 +128,38 @@ function localDate(value: string): string {
   return Number.isFinite(parsed) ? new Date(parsed).toLocaleDateString() : "未知时间";
 }
 
-const STATE_LABEL: Record<MediaReference["state"], string> = {
+const STATE_LABEL: Record<"draft" | "published" | "deleted", string> = {
   draft: "草稿",
   published: "已发表",
   deleted: "回收站",
 };
+
+/** What an unnamed use is, in the author's language. Nothing else is known. */
+const REDACTED_LABEL: Record<"draft" | "published" | "deleted", string> = {
+  draft: "其他作者未发布的草稿",
+  published: "其他作者的作品",
+  deleted: "其他作者回收站里的作品",
+};
+
+function isReference(value: unknown): value is MediaReference {
+  if (typeof value !== "object" || value === null) return false;
+  const entry = value as { kind?: unknown };
+  if (entry.kind === "avatar") return true;
+  return entry.kind === "work" && typeof (value as { state?: unknown }).state === "string";
+}
+
+/**
+ * One use, in one phrase.
+ *
+ * An avatar has no title, and a use the API will not name has no title either;
+ * both are still counted, so both are still said — just not as `《》`.
+ */
+function describeReference(entry: MediaReference): string {
+  if (entry.kind === "avatar") return "某位作者的头像";
+  const label = STATE_LABEL[entry.state] ?? entry.state;
+  if (entry.redacted) return REDACTED_LABEL[entry.state] ?? "其他作者的作品";
+  return entry.title ? `《${entry.title}》（${label}）` : `${label}作品`;
+}
 
 export function MediaLibrary() {
   const [state, setState] = useState<State>("loading");
@@ -184,7 +250,7 @@ export function MediaLibrary() {
           ? (payload as { error?: { details?: { referencedBy?: MediaReference[] } } }).error?.details?.referencedBy ?? []
           : [];
         setError(used.length > 0
-          ? `这张图片已被《${used.map((entry) => entry.title).join("》《")}》使用，无法删除。`
+          ? `这张图片正在被使用，无法删除：${used.filter(isReference).map(describeReference).join("、")}。`
           : "这张图片正在被使用，无法删除。");
         setItems((current) => current.map((entry) => (
           entry.id === item.id ? { ...entry, orphan: false, referencedBy: used } : entry
@@ -247,7 +313,8 @@ export function MediaLibrary() {
         <Link className="nw-btn" href="/write">回到写作台</Link>
       </div>
       <p className="nw-ep">
-        这里是你上传过的全部图片。「未被引用」表示没有任何作品（含草稿与回收站里的作品）用到它 —— 只有这类图片可以删除。
+        这里是你上传过的全部图片。「未被引用」表示没有任何作品（含草稿与回收站里的作品）、也没有任何作者头像用到它 ——
+        只有这类图片可以删除{DELETE_ENABLED ? "" : "；删除目前暂时停用，等待引用检查的修复验证完成后恢复"}。
       </p>
       <p className="nw-m" role="status">
         共 {items.length} 张，其中 {orphans} 张未被引用。
@@ -273,19 +340,23 @@ export function MediaLibrary() {
                 {item.orphan ? (
                   <>
                     <p className="nw-media-flag" data-state="orphan">未被引用</p>
-                    <button
-                      className="nw-btn"
-                      type="button"
-                      disabled={removing === item.id}
-                      onClick={() => void remove(item)}
-                    >
-                      {removing === item.id ? "删除中…" : "删除"}
-                    </button>
+                    {DELETE_ENABLED
+                      ? (
+                        <button
+                          className="nw-btn"
+                          type="button"
+                          disabled={removing === item.id}
+                          onClick={() => void remove(item)}
+                        >
+                          {removing === item.id ? "删除中…" : "删除"}
+                        </button>
+                      )
+                      : <p className="nw-media-note">删除暂时停用：等待引用检查的修复验证完成。</p>}
                   </>
                 ) : (
                   <p className="nw-media-flag" data-state="used">
                     正在被使用：{item.referencedBy.length > 0
-                      ? item.referencedBy.map((entry) => `《${entry.title}》（${STATE_LABEL[entry.state] ?? entry.state}）`).join("、")
+                      ? item.referencedBy.map(describeReference).join("、")
                       : "已被引用的图片"}
                   </p>
                 )}

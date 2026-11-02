@@ -25,6 +25,40 @@ export function createSqliteMediaStore(db) {
   const run = (sql, ...args) => db.prepare(sql).run(...args);
   const get = (sql, ...args) => db.prepare(sql).get(...args);
 
+  /** Work bodies and avatars, in the shape the media reference scan reads. */
+  const BODY_SQL = `SELECT a.id AS article_id, a.slug, a.status, a.deleted_at, a.author_id, t.locale, t.title, t.content_blocks
+         FROM article_translations t
+         JOIN articles a ON a.id = t.article_id`;
+  const AVATAR_SQL = "SELECT avatar_url FROM user_profiles WHERE avatar_url IS NOT NULL AND avatar_url <> ''";
+  const mapBody = (row) => ({
+    kind: "work",
+    content: row.content_blocks,
+    work: {
+      articleId: row.article_id,
+      slug: row.slug,
+      status: row.status,
+      deletedAt: row.deleted_at ?? null,
+      locale: row.locale,
+      title: row.title,
+      authorId: row.author_id ?? "",
+    },
+  });
+  const mapAvatar = (row) => ({ kind: "avatar", content: row.avatar_url });
+  /**
+   * The rows whose text holds `<id>` in a media path.
+   *
+   * `lower(...) LIKE` rather than a JSON walk: the id is a UUID, and a UUID
+   * cannot be part of a media path by accident. It is also the safe direction to
+   * be imprecise in — an extra match refuses a delete, a missed one allows one.
+   */
+  const scanRowsUsing = (id) => {
+    const needle = `%/media/${String(id).toLowerCase()}%`;
+    return [
+      ...db.prepare(`${BODY_SQL} WHERE lower(t.content_blocks) LIKE ?`).all(needle).map(mapBody),
+      ...db.prepare(`${AVATAR_SQL} AND lower(avatar_url) LIKE ?`).all(needle).map(mapAvatar),
+    ];
+  };
+
   return Object.freeze({
     async createMediaAsset(asset) {
       const transactionId = createMigrationTransactionId();
@@ -72,14 +106,32 @@ export function createSqliteMediaStore(db) {
       return rows.map(mapMediaAsset);
     },
     /**
-     * Delete one of an owner's assets, or answer `null`.
+     * Every place a media URL can live, for the reference scan: every work body,
+     * in every locale, and every profile picture.
      *
-     * The owner is part of the predicate rather than a check before it: the row
-     * that disappears is the row this owner had, so "not yours" and "not there"
-     * stay the same answer — the endpoint cannot be used to find out which ids
-     * exist.
+     * Bodies are the obvious half. Avatars are the half that costs an image when
+     * it is missed: they are stored as a URL on the profile and appear in no
+     * body at all, so a scan of bodies alone offers a live account's picture as
+     * an orphan to be deleted.
      */
-    async deleteMediaAsset({ id, ownerId }) {
+    async listMediaScanRows() {
+      return [...db.prepare(BODY_SQL).all().map(mapBody), ...db.prepare(AVATAR_SQL).all().map(mapAvatar)];
+    },
+    /**
+     * Delete one of an owner's assets, but only if nothing uses it — and scan
+     * for that inside the same transaction as the delete.
+     *
+     * `null` means the asset is not this owner's, which is the same answer as
+     * "not there": the endpoint cannot be used to find out which ids exist.
+     * Otherwise the rows that were found are returned whether or not the delete
+     * happened, so the caller can name them (as far as it is allowed to).
+     *
+     * The scan and the delete are one transaction because they are one decision.
+     * Doing them as two statements leaves a gap a concurrent save fits through:
+     * the scan sees nothing, a work is saved with the image in it, the delete
+     * removes the row — and the work that was just saved has lost its picture.
+     */
+    async deleteUnusedMediaAsset({ id, ownerId }) {
       if (typeof id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) return null;
       const transactionId = createMigrationTransactionId();
       db.exec("BEGIN IMMEDIATE");
@@ -89,12 +141,17 @@ export function createSqliteMediaStore(db) {
           db.exec("COMMIT");
           return null;
         }
+        const usedBy = scanRowsUsing(id);
+        if (usedBy.length > 0) {
+          db.exec("COMMIT");
+          return { deleted: null, usedBy };
+        }
         run("DELETE FROM media_assets WHERE id = ? AND owner_id = ?", id, ownerId);
         migrationCapture.captureInTransaction(db, transactionId, [
           { entityType: "media_assets", entityId: id, operation: "delete", payload: null },
         ]);
         db.exec("COMMIT");
-        return mapMediaAsset(row);
+        return { deleted: mapMediaAsset(row), usedBy: [] };
       } catch (error) {
         try { db.exec("ROLLBACK"); } catch { /* preserve the original failure */ }
         throw error;

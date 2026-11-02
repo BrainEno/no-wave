@@ -76,6 +76,56 @@ back door. The reference check is what makes a hard delete safe enough to offer.
   need for one and it would be a new kind of access to somebody's files.
 - **Restoring a deleted asset.** It is gone. The way back is to upload it again.
 
+## Revision 2026-11-02: what the scan missed, and what the refusal said
+
+Three things were wrong, all found in production-shaped data rather than in tests, and all in the
+same direction — the check was too willing to call an image unused, and too willing to name the work
+that used it.
+
+### 1. The address of an image is not one string
+
+The original scan looked for `/api/media/<id>`. That is the address the **Web** app writes into a
+body. A client that talks to the API directly — the Flutter app — stores `/api/v1/media/<id>`, and a
+body that was edited or imported elsewhere holds a fully qualified URL. Both resolve. Neither
+matched, so every cover saved by such a client read as an orphan, and the delete button was offered
+for an image a published work was showing.
+
+The pattern is now `\/media\/<uuid>`: a path suffix, not a prefix. It matches both routes and any
+host in front of them, and it errs in the safe direction — a stray match refuses a delete, while a
+miss allows one.
+
+### 2. An avatar is a reference too
+
+A profile picture is a media URL on `user_profiles.avatar_url`, in no article body at all. The scan
+never looked there, so a member's avatar was always an orphan and always deletable. The scan rows are
+now two kinds — `{kind: "work", …}` and `{kind: "avatar"}` — and the avatar is the reason the rows
+are a union rather than a list of works.
+
+### 3. The refusal published another author's draft titles
+
+The 409 carried `referencedBy` entries with `title`, `slug` and `state`. Because the scan reads
+*every* author's content — which is the point — that body handed one author's unpublished draft
+titles to whoever owned the bytes, on demand, from both the library list and the delete error.
+
+A reference is now **described only when it is public or the reader's own**: published works, and
+the reader's own drafts and tombstones, keep their title; anything else arrives as
+`{kind: "work", redacted: true}` with the identifying fields emptied. The count behind the orphan
+badge is unchanged — a redacted reference still blocks the delete — which is the property that
+matters: **you may always know that an image is in use, but not always by what.**
+
+### 4. The two guards are now one operation
+
+Re-running the check in the application layer and deleting afterwards leaves a gap: a work saved
+between the two statements loses its image. The scan and the delete are now a **single guarded
+provider operation** (`deleteUnusedMediaAsset`) that scans and deletes inside one transaction and
+returns `usedBy` instead of deleting when anything references the asset. This is the fix for the race
+the original decision described but could not close from outside the provider.
+
+The order is consequently **row first, object second** — the reverse of the original decision. Once
+the guarded delete commits, nothing can be referencing the row, so a bucket that cannot be reached
+leaves *unreferenced bytes*, logged as `media.object_orphaned` with the storage key so they can be
+reclaimed. The delete still answers `200`, because the deletion the reader asked for did happen.
+
 ## Consequences
 
 - An author can see their uploads and act on the ones nothing uses, at `/write/media`.

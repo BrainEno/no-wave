@@ -427,7 +427,12 @@ export type MediaAssetsPort = {
   upload(input: { ownerId: string; bytes: Buffer; contentType: string }): Promise<{ id: string; src: string; contentType: string; byteSize: number; width: number; height: number }>;
   getPublic(input: { id: string }): Promise<{ id: string; bytes: Buffer; byteSize: number; width: number; height: number; sha256: string; contentType: "image/webp" }>;
   listLibrary(input: { ownerId: string; cursor?: string | null; limit?: number }): Promise<import("../../application/media-assets.ts").MediaLibraryPage>;
-  deleteAsset(input: { ownerId: string; id: string }): Promise<{ id: string }>;
+  /**
+   * Delete an unused asset. `orphanedStorageKey` is set when the row went but the
+   * object could not be reached: the delete the reader asked for happened, and
+   * the bytes left behind are a storage bill rather than a broken work.
+   */
+  deleteAsset(input: { ownerId: string; id: string }): Promise<{ id: string; objectDeleted: boolean; orphanedStorageKey?: string }>;
 };
 
 export function sendJsonBodyError(

@@ -19,6 +19,7 @@ import {
   MediaInputError,
 } from "../../../application/media-assets.ts";
 import { MediaStorageUnavailableError } from "../../../infrastructure/media-storage.ts";
+import { writeStructuredLog } from "../../../infrastructure/http-observability.ts";
 
 /** The answer when media is not configured: the same one the upload route gives. */
 function sendMediaUnconfigured(response: RestRouteContext["response"]): void {
@@ -146,8 +147,21 @@ const MEDIA_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Object.
     try {
       const actorId = await authenticatedActorId(request, services, env);
       if (!actorId) { sendUnauthenticated(response); return; }
-      const data = await mediaAssets.deleteAsset({ ownerId: actorId, id });
-      sendJson(response, 200, { data });
+      const result = await mediaAssets.deleteAsset({ ownerId: actorId, id });
+      // The row is gone either way. When the bucket could not be reached the
+      // bytes are still there with nothing linking to them, which is a bill and
+      // not a broken work — so it is logged for whoever pays it, and the reader
+      // is told the deletion they asked for happened.
+      if (result.orphanedStorageKey) {
+        writeStructuredLog({
+          level: "warn",
+          event: "media.object_orphaned",
+          message: "The media row was deleted but the stored object could not be removed; the bytes can be reclaimed manually.",
+          mediaId: result.id,
+          storageKey: result.orphanedStorageKey,
+        });
+      }
+      sendJson(response, 200, { data: { id: result.id } });
     } catch (error: unknown) {
       if (error instanceof MediaAssetInUseError) {
         sendJson(response, 409, {

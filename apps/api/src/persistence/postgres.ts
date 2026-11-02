@@ -2055,21 +2055,32 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
      * a tombstone can be restored, and restoring a work into broken images is
      * worse than keeping a few bytes.
      */
-    async listArticleContentForMediaScan() {
-      const rows = await sql.unsafe(
-        `SELECT a.id AS article_id, a.slug, a.status, a.deleted_at, t.locale, t.title, t.content_blocks::text AS content_blocks
-         FROM article_translations t
-         JOIN articles a ON a.id = t.article_id`,
-      );
-      return rows.map((row) => ({
-        articleId: row.article_id,
-        slug: row.slug,
-        status: row.status,
-        deletedAt: row.deleted_at ? new Date(row.deleted_at).toISOString() : null,
-        locale: row.locale,
-        title: row.title,
-        contentBlocks: row.content_blocks,
-      }));
+    /** Every place a media URL can live: work bodies in every locale, and profile pictures. */
+    async listMediaScanRows() {
+      const [bodies, avatars] = await Promise.all([
+        sql.unsafe(
+          `SELECT a.id AS article_id, a.slug, a.status, a.deleted_at, a.author_id, t.locale, t.title, t.content_blocks::text AS content_blocks
+           FROM article_translations t
+           JOIN articles a ON a.id = t.article_id`,
+        ),
+        sql.unsafe("SELECT avatar_url FROM user_profiles WHERE avatar_url IS NOT NULL AND avatar_url <> ''"),
+      ]);
+      return [
+        ...bodies.map((row) => ({
+          kind: "work",
+          content: row.content_blocks,
+          work: {
+            articleId: row.article_id,
+            slug: row.slug,
+            status: row.status,
+            deletedAt: row.deleted_at ? new Date(row.deleted_at).toISOString() : null,
+            locale: row.locale,
+            title: row.title,
+            authorId: row.author_id ?? "",
+          },
+        })),
+        ...avatars.map((row) => ({ kind: "avatar", content: row.avatar_url })),
+      ];
     },
     /** One owner's assets, newest first. One extra row is read so the caller can see whether there is a next page. */
     async listMediaAssets({ ownerId, cursor = null, limit = 24 }) {
@@ -2086,20 +2097,60 @@ export function createPostgresStore(sql): PersistenceAdapterContract {
         createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : new Date(row.created_at).toISOString(),
       }));
     },
-    /** Delete one of an owner's assets, or answer `null` — the owner is part of the predicate, not a check before it. */
-    async deleteMediaAsset({ id, ownerId }) {
+    /**
+     * Delete one of an owner's assets, but only if nothing uses it — scanned and
+     * deleted inside one transaction, because a scan and a delete done
+     * separately leave a gap a concurrent save fits through.
+     *
+     * `null` when the asset is not this owner's, which is the same answer as
+     * "not there". `ILIKE` rather than a JSON walk, for the same reason as the
+     * SQLite provider: a UUID inside a `/media/` path is a reference, and being
+     * imprecise this way round only ever refuses a delete.
+     */
+    async deleteUnusedMediaAsset({ id, ownerId }) {
       if (typeof id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) return null;
       return sql.begin(async (tx) => {
         const transactionId = createMigrationTransactionId();
         const existing = await tx.unsafe("SELECT * FROM media_assets WHERE id = $1 AND owner_id = $2", [id, ownerId]);
         const row = existing[0];
         if (!row) return null;
+        const needle = `%/media/${id.toLowerCase()}%`;
+        const [bodies, avatars] = await Promise.all([
+          tx.unsafe(
+            `SELECT a.id AS article_id, a.slug, a.status, a.deleted_at, a.author_id, t.locale, t.title, t.content_blocks::text AS content_blocks
+             FROM article_translations t
+             JOIN articles a ON a.id = t.article_id
+             WHERE t.content_blocks::text ILIKE $1`,
+            [needle],
+          ),
+          tx.unsafe("SELECT avatar_url FROM user_profiles WHERE avatar_url IS NOT NULL AND avatar_url ILIKE $1", [needle]),
+        ]);
+        const usedBy = [
+          ...bodies.map((body) => ({
+            kind: "work",
+            content: body.content_blocks,
+            work: {
+              articleId: body.article_id,
+              slug: body.slug,
+              status: body.status,
+              deletedAt: body.deleted_at ? new Date(body.deleted_at).toISOString() : null,
+              locale: body.locale,
+              title: body.title,
+              authorId: body.author_id ?? "",
+            },
+          })),
+          ...avatars.map((avatar) => ({ kind: "avatar", content: avatar.avatar_url })),
+        ];
+        if (usedBy.length > 0) return { deleted: null, usedBy };
         await tx.unsafe("DELETE FROM media_assets WHERE id = $1 AND owner_id = $2", [id, ownerId]);
         await captureChanges(tx, transactionId, [{ entityType: "media_assets", entityId: id, operation: "delete", payload: null }]);
         return {
-          id: row.id, ownerId: row.owner_id, storageKey: row.storage_key, contentType: row.content_type,
-          byteSize: row.byte_size, width: row.width, height: row.height, sha256: row.sha256,
-          createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : new Date(row.created_at).toISOString(),
+          deleted: {
+            id: row.id, ownerId: row.owner_id, storageKey: row.storage_key, contentType: row.content_type,
+            byteSize: row.byte_size, width: row.width, height: row.height, sha256: row.sha256,
+            createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : new Date(row.created_at).toISOString(),
+          },
+          usedBy: [],
         };
       });
     },

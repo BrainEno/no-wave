@@ -1102,6 +1102,19 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
    * the reference scan hands back raw JSON text on both providers, which is the
    * only reason the application layer can parse it with one code path.
    */
+  /**
+   * The media library's persistence (ADR 0022, hardened after the orphan scan
+   * offered live cover images and avatars as deletable).
+   *
+   * The assertions that matter are the ones the application layer depends on:
+   * the list is one owner's, newest first, and walks with a cursor; **a delete is
+   * guarded by the scan inside the provider**, so a work saved between two
+   * statements cannot lose its images; the scan sees **both** spellings of a
+   * media address and **both** places one can live — a work's body and a
+   * member's avatar — because missing either one marked a live image as an
+   * orphan; and a delete is scoped to its owner so "not yours" and "not there"
+   * are the same answer.
+   */
   test(`${adapterName}: the media library lists one owner's assets and deletes only theirs`, options, async () => {
     const runtime = await fixture();
     const suffix = randomUUID().slice(0, 8);
@@ -1139,12 +1152,13 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       height: 10,
       sha256: "c".repeat(64),
     });
+    const strangerAssetId = `00000009-1111-4111-8111-${suffix.replace(/-/g, "0").padStart(12, "0")}`;
     // The adapter is handed the decoded cursor: decoding is the application
     // layer's job, and the predicate below is the adapter's.
     const cursorFor = (row) => ({ at: new Date(row.createdAt).toISOString(), id: row.id });
     try {
       for (const index of [1, 2, 3]) await runtime.store.createMediaAsset(asset(index));
-      await runtime.store.createMediaAsset({ ...asset(9), id: `00000009-1111-4111-8111-${suffix.replace(/-/g, "0").padStart(12, "0")}`, ownerId: strangerId, storageKey: `assets/${strangerId}/9.webp` });
+      await runtime.store.createMediaAsset({ ...asset(9), id: strangerAssetId, ownerId: strangerId, storageKey: `assets/${strangerId}/9.webp` });
 
       // `limit + 1`: the adapter reads one row past the page so the application
       // layer can tell "exactly a page" from "the end" without a second query.
@@ -1152,33 +1166,117 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       assert.equal(first.length, 2, "a page of one, plus the row that proves there is another");
       assert.ok(first.every((row) => row.ownerId === ownerId), "the stranger's asset is never in this list");
 
-      const cursor = cursorFor(first[0]);
       const second = await runtime.store.listMediaAssets({ ownerId, cursor: cursorFor(first[0]), limit: 1 });
       assert.equal(second.length, 2, "the second page still has one row behind it");
       assert.notEqual(second[0].id, first[0].id, "no row is repeated across pages");
 
-      const third = await runtime.store.listMediaAssets({
-        ownerId, cursor: cursorFor(second[0]), limit: 1,
-      });
+      const third = await runtime.store.listMediaAssets({ ownerId, cursor: cursorFor(second[0]), limit: 1 });
       assert.equal(third.length, 1, "the last page has no row behind it");
       assert.notEqual(third[0].id, first[0].id);
       assert.notEqual(third[0].id, second[0].id);
 
-      const fourth = await runtime.store.listMediaAssets({
-        ownerId, cursor: cursorFor(third[0]), limit: 1,
-      });
+      const fourth = await runtime.store.listMediaAssets({ ownerId, cursor: cursorFor(third[0]), limit: 1 });
       assert.deepEqual(fourth, [], "an empty page is the end of the list");
 
       // Deleting is scoped by owner: another account asking for this asset gets
       // the same `null` they would get for one that does not exist.
-      assert.equal(await runtime.store.deleteMediaAsset({ id: first[0].id, ownerId: strangerId }), null);
-      assert.ok(await runtime.store.deleteMediaAsset({ id: first[0].id, ownerId }));
+      assert.equal(await runtime.store.deleteUnusedMediaAsset({ id: first[0].id, ownerId: strangerId }), null);
+      const gone = await runtime.store.deleteUnusedMediaAsset({ id: first[0].id, ownerId });
+      assert.ok(gone?.deleted, "the owner's unused asset is deleted");
+      assert.deepEqual(gone.usedBy, []);
       const remaining = await runtime.store.listMediaAssets({ ownerId, cursor: null, limit: 10 });
       assert.equal(remaining.some((row) => row.id === first[0].id), false);
-      assert.equal(await runtime.store.deleteMediaAsset({ id: first[0].id, ownerId }), null, "already gone");
+      assert.equal(await runtime.store.deleteUnusedMediaAsset({ id: first[0].id, ownerId }), null, "already gone");
     } finally {
-      for (const index of [1, 2, 3]) await runtime.store.deleteMediaAsset({ id: asset(index).id, ownerId });
-      await runtime.store.deleteMediaAsset({ id: `00000009-1111-4111-8111-${suffix.replace(/-/g, "0").padStart(12, "0")}`, ownerId: strangerId });
+      for (const index of [1, 2, 3]) await runtime.store.deleteUnusedMediaAsset({ id: asset(index).id, ownerId });
+      await runtime.store.deleteUnusedMediaAsset({ id: strangerAssetId, ownerId: strangerId });
+    }
+  });
+
+  /**
+   * The guarded delete: the scan and the delete are one operation.
+   *
+   * This is the whole fix for the race. Two statements in the application layer
+   * leave a gap a concurrent save fits through — the scan sees nothing, a work is
+   * saved with the image in it, the delete removes the row, and the work that
+   * was just saved has lost its picture. Here the provider has to answer "in
+   * use" and delete nothing, in that order, without the caller's help.
+   */
+  test(`${adapterName}: a media delete is refused, inside one operation, when a body or an avatar uses the asset`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID().slice(0, 8);
+    const ownerId = `media-guard-${suffix}`;
+    const authorId = `media-guard-author-${suffix}`;
+    const usedId = `0000000a-1111-4111-8111-${suffix.replace(/-/g, "0").padStart(12, "0")}`;
+    const avatarId = `0000000b-1111-4111-8111-${suffix.replace(/-/g, "0").padStart(12, "0")}`;
+    const freeId = `0000000c-1111-4111-8111-${suffix.replace(/-/g, "0").padStart(12, "0")}`;
+    const asset = (id) => ({
+      id, ownerId, storageKey: `assets/${ownerId}/${id}.webp`, contentType: "image/webp",
+      byteSize: 2048, width: 20, height: 10, sha256: "d".repeat(64),
+    });
+    // An asset and a profile are both foreign keys to the account, so both the
+    // owner and the author have to exist: an avatar is somebody's picture before
+    // it is a media reference.
+    const hour = new Date(Date.now() + 3_600_000).toISOString();
+    const account = (userId, seed) => ({
+      userId,
+      email: `media-${userId}@example.test`,
+      passwordHash: "hash-before",
+      session: {
+        sessionId: randomUUID(), userId, accessTokenId: randomUUID(),
+        refreshHash: (seed + suffix.replace(/-/g, "")).padEnd(64, seed), expiresAt: hour,
+        accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+      },
+    });
+    try {
+      await runtime.store.createIdentityAccount(account(ownerId, "7"));
+      await runtime.store.createIdentityAccount(account(authorId, "8"));
+      for (const id of [usedId, avatarId, freeId]) await runtime.store.createMediaAsset(asset(id));
+
+      // The two addresses a body can hold: the Web app's `/api/media/…` and the
+      // API's own `/api/v1/media/…`, which is what a direct client stored.
+      const created = await runtime.store.createArticle({
+        authorId,
+        slug: `media-guard-${suffix}`,
+        title: "封面与头像",
+        summary: "",
+        locale: "zh-CN",
+        contentBlocks: [
+          { id: "block-1", type: "image", src: `/api/v1/media/${usedId}`, alt: "" },
+          { id: "block-2", type: "paragraph", text: "正文里有两张图。" },
+        ],
+        publish: false,
+      });
+      // An avatar: a media URL that lives on a profile, in no body at all.
+      await runtime.store.upsertAuthorProfile({ userId: authorId, locale: "zh-CN", displayName: "头像作者", bio: "", avatarUrl: `/api/v1/media/${avatarId}` });
+
+      const scan = await runtime.store.listMediaScanRows();
+      assert.ok(scan.some((row) => row.kind === "work"), "bodies are scanned");
+      assert.ok(scan.some((row) => row.kind === "avatar"), "and so are avatars");
+
+      const used = await runtime.store.deleteUnusedMediaAsset({ id: usedId, ownerId });
+      assert.equal(used?.deleted, null, "a body that uses the image blocks the delete");
+      assert.equal(used?.usedBy.length, 1);
+      assert.equal(used?.usedBy[0]?.kind, "work");
+      assert.equal(used?.usedBy[0]?.work?.articleId, created.id);
+      assert.equal(typeof used?.usedBy[0]?.work?.authorId, "string", "who wrote it is part of what the scan knows");
+
+      const avatar = await runtime.store.deleteUnusedMediaAsset({ id: avatarId, ownerId });
+      assert.equal(avatar?.deleted, null, "a profile picture blocks the delete too");
+      assert.ok(avatar?.usedBy.some((row) => row.kind === "avatar"));
+
+      const free = await runtime.store.deleteUnusedMediaAsset({ id: freeId, ownerId });
+      assert.ok(free?.deleted, "an asset nothing uses is deleted");
+    } finally {
+      await runtime.store.deleteUnusedMediaAsset({ id: usedId, ownerId });
+      await runtime.store.deleteUnusedMediaAsset({ id: avatarId, ownerId });
+      await runtime.store.deleteUnusedMediaAsset({ id: freeId, ownerId });
+      const scan = await runtime.store.listMediaScanRows();
+      for (const row of scan) {
+        if (row.kind === "work" && row.work?.slug === `media-guard-${suffix}`) {
+          await runtime.store.deleteArticle({ articleId: row.work.articleId, actorId: authorId });
+        }
+      }
     }
   });
 
@@ -1192,13 +1290,15 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       authorId, slug: `media-scan-${suffix}`, title: "用了这张图", summary: "", locale: "zh-CN", contentBlocks: blocks, publish: false,
     });
     try {
-      const rows = await runtime.store.listArticleContentForMediaScan();
-      const found = rows.filter((row) => row.articleId && String(row.contentBlocks).includes(mediaId));
+      const rows = await runtime.store.listMediaScanRows();
+      const found = rows.filter((row) => row.kind === "work" && String(row.content).includes(mediaId));
       assert.equal(found.length, 1, "the draft that uses the image is in the scan");
-      assert.equal(typeof found[0].contentBlocks, "string", "both providers hand the application layer JSON text");
-      assert.equal(found[0].status, "draft");
-      assert.equal(found[0].deletedAt, null);
-      assert.equal(found[0].locale, "zh-CN");
+      assert.equal(typeof found[0].content, "string", "both providers hand the application layer JSON text");
+      assert.equal(found[0].kind, "work");
+      assert.equal(found[0].work?.status, "draft");
+      assert.equal(found[0].work?.deletedAt, null);
+      assert.equal(found[0].work?.locale, "zh-CN");
+      assert.equal(found[0].work?.authorId, authorId);
     } finally {
       await runtime.store.deleteArticle({ articleId: created.id, actorId: authorId });
     }
