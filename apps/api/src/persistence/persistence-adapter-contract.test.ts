@@ -255,6 +255,41 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
     }
   });
 
+  test(`${adapterName}: the outbox backlog reports undelivered work and clears once delivered`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    let conversationId;
+    try {
+      // Compared as a delta: the shared PostgreSQL database can carry rows from
+      // earlier tests, and this test is about the drain's own event.
+      const before = await runtime.store.outboxBacklog();
+      assert.ok(Number.isInteger(before.pendingEvents) && before.pendingEvents >= 0);
+      assert.ok(before.oldestPendingAgeMs >= 0);
+
+      const conversation = await runtime.store.createConversation({
+        actorId: `sender-${suffix}`,
+        participantIds: [`recipient-${suffix}`],
+      });
+      conversationId = conversation.id;
+      await runtime.store.persistMessage({
+        conversationId, senderId: `sender-${suffix}`, body: "counted in the backlog", idempotencyKey: `key-${suffix}`,
+      });
+
+      const pending = await runtime.store.outboxBacklog();
+      assert.equal(pending.pendingEvents - before.pendingEvents, 1, "one persisted message queues exactly one event");
+
+      const result = await dispatchOutboxBatch({
+        store: runtime.store,
+        deliver: async () => {},
+        limit: 10,
+      });
+      assert.equal(result.delivered, 1);
+      assert.equal((await runtime.store.outboxBacklog()).pendingEvents, before.pendingEvents);
+    } finally {
+      await runtime.cleanup(conversationId);
+    }
+  });
+
   test(`${adapterName}: opening a conversation is idempotent per caller and rejects a reused key with different participants`, options, async () => {
     const runtime = await fixture();
     const suffix = randomUUID();

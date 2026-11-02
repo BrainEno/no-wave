@@ -14,13 +14,17 @@ The worker is a **separate long-running Node process**, not a timer inside the A
 node src/persistence/notification-worker.ts        # pnpm --filter @bot-thk/api worker:notifications
 ```
 
-Requirements: Node.js (same major as the API), `DATABASE_URL` pointing at PostgreSQL. There is no SQLite mode — the durable outbox is a PostgreSQL table. It opens one `postgres.js` connection pool for the whole lifetime of the process, verifies connectivity via `store.health()` **before** entering the loop, and exits non-zero (`worker_failed_to_start`) if that check fails.
+Requirements: Node.js (same major as the API), and the same persistence configuration the API uses. The worker resolves its store through `createPersistenceRuntime`, so `DATABASE_PROVIDER`/`DATABASE_PATH`/`DATABASE_URL` configure it exactly as they configure the API — it is **not** PostgreSQL-only. Both adapters have had a durable `outbox_events` table since the lease-token migration; for a while the two entry points nevertheless rejected any configuration without `DATABASE_URL`, so a default SQLite deployment queued `message.created` events that nothing could deliver. It verifies connectivity via `store.health()` **before** entering the loop, and exits non-zero (`worker_failed_to_start`) if that check fails. The resolved provider is recorded in the `worker_started` log line.
+
+> **SQLite caveat.** `node:sqlite` is synchronous, so a worker polling a SQLite file blocks its own event loop while it queries and competes with the API for the write lock (`BEGIN IMMEDIATE`, `busy_timeout` 5 s). That is acceptable for a single-host deployment draining on a schedule, but the long-lived worker is at its best against PostgreSQL.
 
 ## 2. Configuration
 
 | Variable | Default | Bounds | Meaning |
 | --- | --- | --- | --- |
-| `DATABASE_URL` | — (required) | — | PostgreSQL DSN; the same database the API writes to |
+| `DATABASE_PROVIDER` | `sqlite` | `sqlite` \| `postgres` | Which adapter to drain; defaults follow the API (SQLite with no `DATABASE_URL`) |
+| `DATABASE_URL` | — | — | PostgreSQL DSN; **required when** `DATABASE_PROVIDER=postgres`, and it selects Postgres implicitly when set without `DATABASE_PROVIDER` |
+| `DATABASE_PATH` | `data/no-wave.sqlite` | — | SQLite file; **required when** the provider is SQLite, and it must already be migrated (the runtime refuses to start on a pending schema) |
 | `OUTBOX_POLL_INTERVAL_MS` | `1000` | 100–60000 | Idle sleep between batches; also the back-off after a batch-level error |
 | `OUTBOX_BATCH_LIMIT` | `25` | 1–100 | Maximum events claimed per batch |
 | `OUTBOX_LEASE_SECONDS` | `60` | 1–3600 | Lease granted per claimed event |
@@ -60,9 +64,9 @@ The qualified zero-cost host (Render free web service, see [hosting qualificatio
 
     pnpm --filter @bot-thk/api drain:notifications
 
-A one-shot process: it opens a PostgreSQL connection, checks `store.health()`,
-drains what is due, logs a summary and exits **0** (or **1** on failure, so a
-scheduler records it). Any external scheduler that can start a process — a
+A one-shot process: it opens the configured persistence runtime, checks
+`store.health()`, drains what is due, logs a summary and exits **0** (or **1** on
+failure, so a scheduler records it). Any external scheduler that can start a process — a
 scheduled GitHub Action, cron-job.org, or a cron on any machine that can reach
 the database — is enough.
 
@@ -99,19 +103,25 @@ small. The per-batch settings are the worker's: `OUTBOX_BATCH_LIMIT`,
 `batch-failed`. Driver messages are never logged — only a safe error class — so a
 connection string cannot reach the log stream.
 
-The drain requires PostgreSQL (`DATABASE_URL`), matching the worker; SQLite is a
-single-process store and has no scheduler-driven delivery scenario.
+The drain uses the same provider resolution as the API and the worker, so a
+SQLite deployment is drained by exactly the same scheduled command. Two caveats
+follow from the store, not from the command: the SQLite file must be reachable
+from wherever the scheduler runs (a scheduled GitHub Action cannot open a file on
+your laptop), and a drain and the API contend for the same write lock, which
+`busy_timeout` resolves but does not make free.
 
 ## 7. Verification status
 
 | Claim | Status |
 | --- | --- |
 | Batch dispatch, leasing, retry and dedup semantics | Covered by `apps/api/src/persistence/sqlite-outbox-worker-contract.test.ts`, `outbox-metrics.test.ts`, and the PostgreSQL integration suites |
-| Drain loop: drains until empty, batch cap, deadline, batch failure, delivery failures, invalid settings, real SQLite rows | Covered by `apps/api/src/persistence/outbox-drain.test.ts` (7 tests) |
-| Drain CLI exits 1 and logs only an error class when `DATABASE_URL` is missing or unreachable | Verified by running it (no PostgreSQL available locally): exit code 1, no connection string in the output |
+| Drain loop: drains until empty, batch cap, deadline, batch failure, delivery failures, invalid settings, real SQLite rows | Covered by `apps/api/src/persistence/outbox-drain.test.ts` (8 tests) |
+| A SQLite `message.created` event becomes a real notification through `createMessageNotificationDelivery` (the regression for the `DATABASE_URL`-only entry points) | Covered by `apps/api/src/persistence/outbox-drain.test.ts` |
+| `outboxBacklog` backlog gauges on both adapters | Covered by `apps/api/src/persistence/persistence-adapter-contract.test.ts` |
+| Drain CLI exits 1 and logs only an error class when the database is missing or unreachable | **Not re-verified after the provider change** — the path is unchanged (a thrown error is logged by class and sets exit code 1), but the SQLite path now starts successfully instead of failing this way |
 | A successful drain against PostgreSQL | **Not run** — no local PostgreSQL; the path shares `dispatchOutboxBatch` with the worker, which the PostgreSQL integration suite covers |
 | An external scheduler actually invoking it on the qualified host | **Not run** — no deployment |
-| `SIGTERM` drains the current batch then closes the pool | **Not covered by an automated test**; reviewed from source only |
+| `SIGTERM` drains the current batch then closes the runtime | **Not covered by an automated test**; reviewed from source only |
 | Metrics endpoint behavior | Covered by `outbox-metrics.test.ts` (rendering); live scrape not exercised |
 | Deployed execution model | Long-lived worker for self-hosted use; scheduler-driven one-shot drain for the cardless host. Neither is deployed yet |
 

@@ -31,7 +31,35 @@ const POLICIES: Readonly<Record<string, Omit<WriteRateLimitPolicy, "endpoint">>>
   "profile.update": { windowSeconds: 60 * 60, ipLimit: 60, userLimit: 20 },
   "taxonomy.create": { windowSeconds: 60, ipLimit: 60, userLimit: 30 },
   "taxonomy.delete": { windowSeconds: 60, ipLimit: 60, userLimit: 30 },
+  // Deleting a work is the most expensive write in the API: it also writes one
+  // notification per commenter (bounded, but real work), so it is throttled
+  // like a creation rather than like a click.
+  "article.delete": { windowSeconds: 60, ipLimit: 60, userLimit: 20 },
+  "article.restore": { windowSeconds: 60, ipLimit: 60, userLimit: 20 },
+  // Every media delete re-scans article bodies for references, so it costs far
+  // more than the one row it removes.
+  "media.delete": { windowSeconds: 60, ipLimit: 60, userLimit: 20 },
+  // Editorial writes: few callers, whole-site consequences.
+  "featured.set": { windowSeconds: 60, ipLimit: 30, userLimit: 10 },
+  "user.role.set": { windowSeconds: 60, ipLimit: 30, userLimit: 10 },
 });
+
+/**
+ * Write routes the generic limiter deliberately does not cover.
+ *
+ * These are throttled by the identity service instead, which runs *before* this
+ * one and keeps its own durable per-account and per-address buckets. They are
+ * named here so the coverage test can tell "handled elsewhere" from "forgotten"
+ * — the two look identical from `endpointFor`.
+ */
+export const IDENTITY_THROTTLED_ROUTE_IDS: readonly string[] = Object.freeze([
+  "auth",
+  "me.password",
+  "me.email",
+  "me.email-verification",
+  "me.sessions",
+  "me.sessions.item",
+]);
 
 function endpointFor(method: string, pathname: string): string | null {
   if (method === "POST" && pathname === "/api/v1/articles") return "article.create";
@@ -53,6 +81,11 @@ function endpointFor(method: string, pathname: string): string | null {
   if (method === "PUT" && /^\/api\/v1\/conversations\/[^/]+\/read$/.test(pathname)) return "conversation.read";
   if (method === "PUT" && /^\/api\/v1\/me\/notifications\/[^/]+\/read$/.test(pathname)) return "notification.read";
   if (method === "POST" && pathname === "/api/v1/me/notifications/read-all") return "notification.read-all";
+  if (method === "DELETE" && /^\/api\/v1\/articles\/[^/]+$/.test(pathname)) return "article.delete";
+  if (method === "POST" && /^\/api\/v1\/articles\/[^/]+\/restore$/.test(pathname)) return "article.restore";
+  if (method === "DELETE" && /^\/api\/v1\/me\/media\/[^/]+$/.test(pathname)) return "media.delete";
+  if (method === "PUT" && pathname === "/api/v1/featured") return "featured.set";
+  if (method === "PUT" && /^\/api\/v1\/users\/[^/]+\/role$/.test(pathname)) return "user.role.set";
   return null;
 }
 

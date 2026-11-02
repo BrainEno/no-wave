@@ -368,12 +368,17 @@ export type RawImageBodyResult =
 export function readRawImageBody(request: IncomingMessage, maxBytes = MAX_IMAGE_UPLOAD_BYTES): Promise<RawImageBodyResult> {
   const contentType = request.headers["content-type"];
   const declaredLength = request.headers["content-length"];
+  // These two checks are the same tests `readJsonObject` performs above. They
+  // were once written as `/^\\d+$/`, which matches a literal backslash followed
+  // by letters, not a run of digits — so neither branch ever fired: an oversized
+  // upload was buffered instead of refused, and a 415 answered a request whose
+  // body was never read without closing the connection.
   const hasUnconsumedBody = request.headers["transfer-encoding"] !== undefined ||
-    (typeof declaredLength === "string" && /^\\d+$/.test(declaredLength) && BigInt(declaredLength) > 0n);
+    (typeof declaredLength === "string" && /^\d+$/.test(declaredLength) && BigInt(declaredLength) > 0n);
   if (typeof contentType !== "string" || !["image/jpeg", "image/png", "image/webp"].includes(contentType.toLowerCase())) {
     return Promise.resolve({ ok: false, status: 415, code: "UNSUPPORTED_MEDIA_TYPE", message: "Content-Type must be image/jpeg, image/png or image/webp.", ...(hasUnconsumedBody ? { closeConnection: true } : {}) });
   }
-  if (typeof declaredLength === "string" && /^\\d+$/.test(declaredLength) && BigInt(declaredLength) > BigInt(maxBytes)) {
+  if (typeof declaredLength === "string" && /^\d+$/.test(declaredLength) && BigInt(declaredLength) > BigInt(maxBytes)) {
     return Promise.resolve({ ok: false, status: 413, code: "PAYLOAD_TOO_LARGE", message: "The image request body exceeds 8 MiB.", closeConnection: true });
   }
   return new Promise((resolve) => {

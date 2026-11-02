@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { createPostgresClient, createPostgresStore } from "./postgres.ts";
+import { createPersistenceRuntime } from "../infrastructure/persistence-runtime.ts";
 import { dispatchOutboxBatch } from "./outbox-worker.ts";
 import { createMessageNotificationDelivery } from "./message-notification-delivery.ts";
 import { createOutboxMetrics } from "./outbox-metrics.ts";
@@ -63,18 +63,8 @@ function createWorkerMetricsServer(metrics) {
   });
 }
 
-async function refreshBacklogMetrics(sql, metrics) {
-  const rows = await sql.unsafe(
-    "SELECT count(*)::bigint AS pending_events, " +
-    "COALESCE(EXTRACT(EPOCH FROM (now() - MIN(created_at))) * 1000, 0)::float8 AS oldest_pending_age_ms " +
-    "FROM outbox_events WHERE delivered_at IS NULL",
-    [],
-  );
-  const row = rows[0] ?? {};
-  metrics.recordBacklog({
-    pendingEvents: Number(row.pending_events ?? 0),
-    oldestPendingAgeMs: Number(row.oldest_pending_age_ms ?? 0),
-  });
+async function refreshBacklogMetrics(store, metrics) {
+  metrics.recordBacklog(await store.outboxBacklog());
 }
 
 async function listen(server, port, host) {
@@ -94,8 +84,13 @@ async function listen(server, port, host) {
 }
 
 async function runWorker() {
-  if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required for the notification worker.");
-  const sql = await createPostgresClient({ connectionString: process.env.DATABASE_URL });
+  // The provider, not PostgreSQL specifically: the outbox is written by both
+  // adapters and the SQLite one is the default, so requiring DATABASE_URL here
+  // meant a default deployment queued message notifications forever and nobody
+  // was told. Whatever `DATABASE_PROVIDER`/`DATABASE_URL` select, the drain runs
+  // against the same adapter the API writes with.
+  const runtime = await createPersistenceRuntime({ env: process.env });
+  const store = runtime.adapter;
   const metrics = createOutboxMetrics();
   let metricsServer = null;
   let stopping = false;
@@ -103,7 +98,6 @@ async function runWorker() {
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
   try {
-    const store = createPostgresStore(sql);
     await store.health();
     if (metricsPort > 0) {
       metricsServer = createWorkerMetricsServer(metrics);
@@ -113,7 +107,7 @@ async function runWorker() {
       }));
       writeWorkerLog("info", "outbox_metrics_listening", { host: metricsHost, port: metricsPort });
       try {
-        await refreshBacklogMetrics(sql, metrics);
+        await refreshBacklogMetrics(store, metrics);
       } catch (error) {
         metrics.recordBacklogReadFailure();
         writeWorkerLog("warn", "outbox_metrics_refresh_failed", { errorName: safeErrorName(error) });
@@ -121,6 +115,7 @@ async function runWorker() {
     }
     const deliver = createMessageNotificationDelivery({ store });
     writeWorkerLog("info", "worker_started", {
+      provider: runtime.provider,
       pollIntervalMs, batchLimit, leaseSeconds, retryDelaySeconds,
       metricsEnabled: metricsPort > 0,
     });
@@ -144,7 +139,7 @@ async function runWorker() {
         if (metricsServer && Date.now() - lastMetricsRefreshAt >= metricsRefreshIntervalMs) {
           lastMetricsRefreshAt = Date.now();
           try {
-            await refreshBacklogMetrics(sql, metrics);
+            await refreshBacklogMetrics(store, metrics);
           } catch (error) {
             metrics.recordBacklogReadFailure();
             writeWorkerLog("warn", "outbox_metrics_refresh_failed", { errorName: safeErrorName(error) });
@@ -166,7 +161,7 @@ async function runWorker() {
     if (metricsServer) {
       await new Promise((resolve) => metricsServer.close(() => resolve(undefined)));
     }
-    await sql.end({ timeout: 5 });
+    await runtime.close();
   }
 }
 
