@@ -42,6 +42,17 @@ pnpm dev                           # API :4000 + Web :3000
 pnpm check:local
 ```
 
+如果写作台提示“已发布”，但公开页面看不到，且本机没有邮箱/SMTP 服务，可以直接跑：
+
+```sh
+pnpm verify:publish
+```
+
+它会启动一次性本地栈，补齐公开页面所需的作者资料，通过 Web 写作台代理发布，
+匿名读回文章，并打印文章页与作品目录链接。用
+`pnpm verify:publish --keep` 可以保留栈和链接，用 `--api-url` / `--web-url`
+可以验证已经启动的链。详见[无邮箱服务验证发布可见性](docs/development/local-development.md#61-publishing-visibility-without-mail)。
+
 `pnpm dev` 会打印安全的数据库摘要，例如：
 
 ```text
@@ -219,6 +230,7 @@ pnpm dev
 | `pnpm dev --api-only` / `--web-only` | 只启动一个进程，例如 API 已跑在容器中时。 |
 | `pnpm dev --check --exit` | 探针完成后停止两个进程；CI 使用。 |
 | `pnpm check:local --read-only` | 不写入数据，只验证链路。 |
+| `pnpm verify:publish` | 无邮箱服务验证写作台发布可见性，并打印文章链接。 |
 
 <a id="postgresql-integration-tests"></a>
 ## PostgreSQL 集成测试

@@ -39,6 +39,20 @@ In a second terminal, verify the whole chain:
 pnpm check:local
 ```
 
+To verify that a work published from the writing desk is actually visible — with
+no SMTP service and no `.env.local` — run:
+
+```sh
+pnpm verify:publish
+```
+
+It starts a disposable stack, creates the author profile that public pages
+require, publishes through the Web writing-desk proxy, reads the article
+anonymously, and prints the article and archive links. Use
+`pnpm verify:publish --keep` to leave the stack running, or `--api-url` /
+`--web-url` to check an existing chain. See
+[Publishing visibility without mail](docs/development/local-development.md#61-publishing-visibility-without-mail).
+
 `pnpm dev` prints a safe database summary, for example:
 
 ```text
@@ -209,6 +223,7 @@ pnpm dev
 | `pnpm dev --api-only` / `--web-only` | Start one process, for example when the API runs in a container. |
 | `pnpm dev --check --exit` | Probe, then stop both processes; used by CI. |
 | `pnpm check:local --read-only` | Verify the chain without write probes. |
+| `pnpm verify:publish` | Verify writing-desk publish visibility without mail; prints article links. |
 
 ## PostgreSQL integration tests
 

@@ -26,6 +26,11 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm build
       - run: pnpm test:routes
+      # A clean checkout must also prove the writing desk's publish path without
+      # a mail service: this starts its own disposable stack, so it cannot pass
+      # because of a developer's .env.local or an SMTP relay on the runner.
+      - name: Verify publishing visibility without mail
+        run: pnpm --silent verify:publish --json
 
   postgres-integration:
     runs-on: ubuntu-latest
