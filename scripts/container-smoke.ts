@@ -85,9 +85,14 @@ async function run(): Promise<void> {
 
   const home = await request(`${webUrl}/`, 200);
   assert.match(home, /lang="zh-CN"/, "the default home must declare Simplified Chinese");
-  assert.match(home, /文学作品的数字出版空间/, "the default home must render its current copy");
   assert.match(home, /class="nw-pill"/, "the server-rendered site chrome is missing");
   assert.match(home, /class="nw-footer"/, "the server-rendered footer is missing");
+  // This line is the fixture article's title, not static chrome: the GitHub
+  // Actions image pair serves a freshly migrated, empty API and must not assert
+  // it. GitLab's single Web image uses the local fixture registry instead.
+  if (expectFixtures) {
+    assert.match(home, /文学作品的数字出版空间/, "the fixture-backed home must render the fixture article");
+  }
 
   const english = await request(`${webUrl}/en`, 200);
   assert.match(english, /lang="en"/, "the English home must declare its language");
