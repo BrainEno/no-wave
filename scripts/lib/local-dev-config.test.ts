@@ -9,6 +9,7 @@ import {
   evaluateNodeVersion,
   extractEnvFileKeys,
   extractEnvTemplateKeys,
+  isLocalDatabaseUrl,
   loopbackBaseUrl,
   parseCheckArguments,
   parseDevArguments,
@@ -70,7 +71,8 @@ test("local config derives loopback URLs and the persistence description", () =>
   assert.equal(sqlite.api.baseUrl, loopbackBaseUrl(4100));
   assert.equal(sqlite.api.baseUrl, "http://127.0.0.1:4100");
   assert.equal(sqlite.web.baseUrl, "http://127.0.0.1:3000");
-  assert.match(sqlite.persistence.description, /^SQLite \(\/.*apps\/api\/data\/dev\.sqlite\)$/);
+  assert.match(sqlite.persistence.description, /^SQLite \(.*apps[\\/]api[\\/]data[\\/]dev\.sqlite\)$/);
+  assert.equal(sqlite.persistence.external, false);
   assert.deepEqual(sqlite.issues, []);
   assert.equal(sqlite.auth.configuredBytes, 48);
 
@@ -80,6 +82,7 @@ test("local config derives loopback URLs and the persistence description", () =>
     AUTH_JWT_SECRET: "x".repeat(32),
   });
   assert.equal(postgres.persistence.provider, "postgres");
+  assert.equal(postgres.persistence.external, false);
   assert.match(postgres.persistence.description, /^PostgreSQL \(postgres:\/\/user:\*\*\*@127\.0\.0\.1:5432\/bot_thk_dev\)$/);
   // The description is printed to the console, so credentials must never leak.
   assert.equal(postgres.persistence.description.includes("secret-password"), false);
@@ -89,8 +92,36 @@ test("local config derives loopback URLs and the persistence description", () =>
   const legacy = resolveLocalDevConfig({ DATABASE_URL: "postgres://127.0.0.1:5432/dev", AUTH_JWT_SECRET: "x".repeat(32) });
   assert.equal(legacy.persistence.provider, "postgres");
 
+  const neon = resolveLocalDevConfig({
+    DATABASE_PROVIDER: "postgres",
+    DATABASE_URL: "postgres://app:hunter2@ep-example.us-east-2.aws.neon.tech/no_wave?sslmode=require",
+    AUTH_JWT_SECRET: "x".repeat(32),
+  });
+  assert.equal(neon.persistence.external, true);
+  assert.equal(neon.persistence.description, "PostgreSQL (external DATABASE_URL; host withheld)");
+  assert.equal(neon.persistence.description.includes("neon.tech"), false);
+  assert.equal(neon.persistence.description.includes("hunter2"), false);
+
+  const unpooledOnly = resolveLocalDevConfig({
+    DATABASE_PROVIDER: "postgres",
+    DATABASE_URL: "postgres://postgres:postgres@127.0.0.1:5432/bot_thk_dev",
+    DATABASE_URL_UNPOOLED: "postgres://app:hunter2@ep-example.neon.tech/no_wave",
+    AUTH_JWT_SECRET: "x".repeat(32),
+  });
+  assert.equal(unpooledOnly.persistence.external, true);
+
   const missingSecret = resolveLocalDevConfig({});
   assert.deepEqual(missingSecret.issues.map((issue) => issue.code), ["AUTH_SECRET_MISSING"]);
+});
+
+test("local database URLs are recognised without trusting remote hosts", () => {
+  assert.equal(isLocalDatabaseUrl("postgres://u:p@127.0.0.1:5432/dev"), true);
+  assert.equal(isLocalDatabaseUrl("postgresql://u:p@localhost:5432/dev"), true);
+  assert.equal(isLocalDatabaseUrl("postgres://u:p@[::1]:5432/dev"), true);
+  assert.equal(isLocalDatabaseUrl("postgres:///dev?host=/var/run/postgresql"), true);
+  assert.equal(isLocalDatabaseUrl("postgres://u:p@ep-example.neon.tech/dev"), false);
+  assert.equal(isLocalDatabaseUrl("not a url"), false);
+  assert.equal(isLocalDatabaseUrl(undefined), false);
 });
 
 test("database URLs are redacted without becoming unusable", () => {
@@ -113,6 +144,24 @@ test("generated .env.local documents every key it needs in .env.example", async 
     assert.equal(generated.endsWith("\n"), true);
     assert.equal(generated.includes("AUTH_JWT_SECRET="), true);
   }
+});
+
+test("generated .env.local never persists a remote database URL", () => {
+  const remote = buildLocalEnvFile({
+    jwtSecret: "s".repeat(32),
+    provider: "postgres",
+    databaseUrl: "postgres://app:hunter2@ep-example.neon.tech/no_wave?sslmode=require",
+  });
+  assert.equal(remote.includes("neon.tech"), false);
+  assert.equal(remote.includes("hunter2"), false);
+  assert.match(remote, /^DATABASE_URL=postgres:\/\/postgres:postgres@127\.0\.0\.1:5432\/bot_thk_dev$/m);
+
+  const local = buildLocalEnvFile({
+    jwtSecret: "s".repeat(32),
+    provider: "postgres",
+    databaseUrl: "postgres://dev:dev@127.0.0.1:5433/custom",
+  });
+  assert.match(local, /^DATABASE_URL=postgres:\/\/dev:dev@127\.0\.0\.1:5433\/custom$/m);
 });
 
 test("generated .env.local selects exactly one persistence provider", () => {

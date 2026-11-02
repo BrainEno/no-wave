@@ -10,11 +10,18 @@ Scope: developer machines only. Nothing here is a deployment procedure. See
 [persistence-provider deployment guidance](../deployment/persistence-provider-guidance.md)
 for that.
 
+> **Local database first.** Use SQLite by default, or the Docker PostgreSQL in
+> `compose.yaml`. Do not point `.env.local` at Neon: `pnpm check:local` writes
+> probe rows, and repeating a local loop against a managed branch wastes quota.
+> `neon env pull` is a deployment operation; if it overwrote `.env.local`,
+> regenerate the local file with `pnpm setup:local --force`.
+
 ## 1. The chain, in one screen
 
 ```sh
 # once, after `pnpm install`
 pnpm setup:local          # writes .env.local with a generated 48-byte JWT secret
+                          # and the local SQLite provider (no Neon)
 
 # SQLite (default)
 pnpm db:migrate           # create apps/api/data/no-wave.sqlite
@@ -51,7 +58,7 @@ Each row was reproduced on the commit this document was written against
 | G8 | An empty database and a missing API look identical in the UI (both render an empty site). | Hours lost to "the frontend is not connecting". | The probe asserts the API title appears in the server-rendered HTML. |
 | G9 | Next.js only serves dev assets to trusted hostnames. | Opening the dev server from a phone or a preview proxy produced an unstyled page. | `WEB_DEV_ALLOWED_ORIGINS` -> `allowedDevOrigins`. |
 | G10 | The local chain was not exercised in CI. | Regressions in the wiring were only found by developers. | A `local-dev-chain` CI job boots SQLite *and* PostgreSQL legs through the same scripts. |
-| G11 | `DATABASE_PATH` is resolved against the API's working directory, not the repository root. | `data/no-wave.sqlite` could land in two different places depending on how the API was started. | The dev banner prints the resolved absolute path. |
+| G11 | `DATABASE_PATH` is resolved against the API's working directory, not the repository root. | `data/no-wave.sqlite` could land in two different places depending on how the API was started. | The dev banner prints the resolved repository-relative path, without leaking the developer's home directory. |
 
 ## 3. Defect found while verifying the chain
 
@@ -237,10 +244,14 @@ databases:
   `.env.local` for it.
 
 The credentials are throwaway local values. Never point `.env.local` at a shared,
-staging or production database: the probe writes data.
+staging or production database: the probe writes data. `pnpm setup:local --postgres`
+uses the local compose URL and ignores an external `DATABASE_URL` inherited from
+the shell; `pnpm dev` also warns when `DATABASE_URL` or `DATABASE_URL_UNPOOLED`
+points to an external host. If that happens, unset both variables and regenerate
+`.env.local` with `pnpm setup:local --force --postgres`.
 
-`DATABASE_URL_UNPOOLED` (optional) is preferred by `pnpm db:migrate`, matching the
-Neon direct-connection guidance.
+`DATABASE_URL_UNPOOLED` is for deployment migrations (for example Neon's direct
+connection), not for the local development loop. Leave it unset locally.
 
 ## 8. Verification levels
 
@@ -275,6 +286,7 @@ the probe's skip semantics cannot silently regress.
 | `web-render` fails, API steps pass | The Web app is serving fixtures (`API_BASE_URL` unset) or cannot reach the API. | Set `API_BASE_URL=http://127.0.0.1:4000` in the root `.env.local`, restart `pnpm dev`. |
 | Page loads unstyled from another device | The dev server's host allowlist. | Add the hostname to `WEB_DEV_ALLOWED_ORIGINS`. |
 | `fetch failed` against `localhost` | `localhost` resolved to `::1` while the API listens on IPv4. | Use `127.0.0.1` in `API_BASE_URL`. |
+| `pnpm dev` warns about an external database | A Neon/shared `DATABASE_URL` or `DATABASE_URL_UNPOOLED` is exported in the shell or left in `.env.local`. | Unset both variables and run `pnpm setup:local --force` (or `--force --postgres`). |
 | Web page 404 for an article you just created | Created without `publish: true`, or no author profile. | Update the profile, publish the article (the probe shows the full sequence). |
 | `429 RATE_LIMITED` in the probe | 20 registrations per IP per hour. | Wait, or use `--read-only`. |
 | `image upload returns 503` | `MEDIA_S3_*` is not configured. | Expected; see [Web authoring operations](../operations/web-authoring.md). |
@@ -283,9 +295,10 @@ the probe's skip semantics cannot silently regress.
 
 - `pnpm check:local` asserts the *chain*, not the UI: layout, motion, WebGL and
   accessibility still need a human or a browser test.
-- Email verification, account recovery and the notification worker's external
-  delivery remain unimplemented; the probe does not cover them. The worker can be
-  started manually with `pnpm --filter @bot-thk/api worker:notifications`.
+- Mail-dependent email verification and account recovery are implemented but
+  switched off until `MAIL_ENABLED` is set; the probe does not cover them. The
+  notification worker can be started manually with
+  `pnpm --filter @bot-thk/api worker:notifications`.
 - The GitLab pipeline mirrors the GitHub verification stages but does not run the
   PostgreSQL chain job; the GitHub workflow is authoritative.
 - Windows is supported by the scripts (no shell operators in `package.json`, no

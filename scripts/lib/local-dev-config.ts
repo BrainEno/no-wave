@@ -11,7 +11,7 @@
  * Everything here is pure so it can be unit tested without Docker, a database,
  * a browser or an HTTP server.
  */
-import { dirname, resolve } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const thisDirectory = dirname(fileURLToPath(import.meta.url));
@@ -55,7 +55,7 @@ export type LocalDevConfig = {
    */
   api: { host: string; port: number; listenBaseUrl: string; baseUrl: string };
   web: { host: string; port: number; listenBaseUrl: string; baseUrl: string };
-  persistence: { provider: string; description: string };
+  persistence: { provider: string; description: string; external: boolean };
   auth: { configuredBytes: number };
   issues: LocalDevIssue[];
 };
@@ -172,6 +172,34 @@ function nonEmpty(value: string | undefined): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+const LOCAL_DATABASE_HOSTS = new Set([
+  "localhost", "127.0.0.1", "::1", "0.0.0.0", "postgres", "host.docker.internal",
+]);
+
+/**
+ * True only for connection URLs that resolve to a developer machine or the
+ * local compose service. A Neon/managed host is external even if its password
+ * would be redacted: routine local development must not spend remote quota.
+ */
+export function isLocalDatabaseUrl(value: string | undefined): boolean {
+  if (typeof value !== "string" || value.trim() === "") return false;
+  try {
+    const url = new URL(value);
+    const hostname = url.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+    return hostname === "" || LOCAL_DATABASE_HOSTS.has(hostname);
+  } catch {
+    return false;
+  }
+}
+
+function hasExternalDatabaseUrl(env: NodeJS.ProcessEnv): boolean {
+  for (const name of ["DATABASE_URL", "DATABASE_URL_UNPOOLED"] as const) {
+    const value = nonEmpty(env[name]);
+    if (value && !isLocalDatabaseUrl(value)) return true;
+  }
+  return false;
+}
+
 /**
  * Build the origin used by *this machine* to reach a local process. Loopback is
  * spelled `127.0.0.1` rather than `localhost` on purpose: `localhost` may
@@ -211,14 +239,20 @@ export function resolveLocalDevConfig(env: NodeJS.ProcessEnv = process.env): Loc
   if (auth.issue) issues.push(auth.issue);
 
   const provider = nonEmpty(env.DATABASE_PROVIDER) ?? (nonEmpty(env.DATABASE_URL) ? "postgres" : "sqlite");
+  const external = provider === "postgres" && hasExternalDatabaseUrl(env);
   let description: string;
   if (provider === "sqlite") {
     const configuredPath = nonEmpty(env.DATABASE_PATH) ?? DEFAULT_SQLITE_PATH;
     const absolutePath = configuredPath === ":memory:" ? configuredPath : resolve(apiPackageDirectory, configuredPath);
-    description = `SQLite (${absolutePath})`;
+    // A repository-relative path is enough to find the file and avoids leaking
+    // the developer's home directory into copied terminal output.
+    const label = configuredPath === ":memory:" ? ":memory:" : relative(repositoryRoot, absolutePath).replaceAll("\\", "/");
+    description = `SQLite (${label})`;
   } else if (provider === "postgres") {
     const url = nonEmpty(env.DATABASE_URL);
-    description = url ? `PostgreSQL (${redactDatabaseUrl(url)})` : "PostgreSQL (DATABASE_URL is not set)";
+    if (external) description = "PostgreSQL (external DATABASE_URL; host withheld)";
+    else if (url) description = `PostgreSQL (${redactDatabaseUrl(url)})`;
+    else description = "PostgreSQL (DATABASE_URL is not set)";
   } else {
     description = `${provider} (no adapter is registered for this provider)`;
   }
@@ -236,7 +270,7 @@ export function resolveLocalDevConfig(env: NodeJS.ProcessEnv = process.env): Loc
       listenBaseUrl: loopbackBaseUrl(webPort.port),
       baseUrl: configuredWebBaseUrl ?? loopbackBaseUrl(webPort.port),
     },
-    persistence: { provider, description },
+    persistence: { provider, description, external },
     auth: { configuredBytes: auth.bytes },
     issues,
   };
@@ -258,10 +292,14 @@ export type LocalEnvFileOptions = {
 export function buildLocalEnvFile(options: LocalEnvFileOptions): string {
   const apiPort = options.apiPort ?? DEFAULT_API_PORT;
   const webPort = options.webPort ?? DEFAULT_WEB_PORT;
+  // Never persist a remote/Neon URL inherited from the shell into a local file.
+  const databaseUrl = options.databaseUrl && isLocalDatabaseUrl(options.databaseUrl)
+    ? options.databaseUrl
+    : DEFAULT_POSTGRES_URL;
   const persistence = options.provider === "postgres"
     ? [
         "DATABASE_PROVIDER=postgres",
-        `DATABASE_URL=${options.databaseUrl ?? DEFAULT_POSTGRES_URL}`,
+        `DATABASE_URL=${databaseUrl}`,
         "# `pnpm --filter @bot-thk/api migrate` uses DATABASE_URL_UNPOOLED first when set.",
         "# DATABASE_URL_UNPOOLED=",
         "# Uncomment after `pnpm db:up` if you also want the PostgreSQL integration tests",

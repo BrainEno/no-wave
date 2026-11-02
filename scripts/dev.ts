@@ -105,6 +105,11 @@ async function main(): Promise<void> {
   process.stdout.write("No Wave local development\n=========================\n");
   process.stdout.write(`environment  ${loaded ? ".env.local loaded" : "no .env.local (using process env and defaults)"}\n`);
   process.stdout.write(`persistence  ${config.persistence.description}\n`);
+  if (startApi && config.persistence.external) {
+    process.stdout.write("warn   DATABASE_URL / DATABASE_URL_UNPOOLED points to an external host; local development should use SQLite or Docker PostgreSQL.\n");
+    process.stdout.write("        -> A Neon/remote URL here consumes remote quota and writes probe data into a shared database.\n");
+    process.stdout.write("        -> Unset those variables, or run `pnpm setup:local --force` to regenerate a local .env.local.\n");
+  }
 
   const node = evaluateNodeVersion(process.version);
   if (!node.supported) {
