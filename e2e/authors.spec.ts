@@ -25,7 +25,9 @@ test("a writer who publishes is listed in the author directory, and can be found
   ]);
 
   await page.goto("/authors");
-  await expect(page.getByRole("heading", { name: /作者/ })).toBeVisible();
+  // Level 1, not just the name: the empty state is a heading too, and a locator
+  // that matches both is a strict-mode violation rather than a passing test.
+  await expect(page.getByRole("heading", { level: 1, name: /作者/ })).toBeVisible();
   const row = page.locator("a.nw-ar-list", { hasText: DISPLAY_NAME }).first();
   await expect(row).toBeVisible();
   // The row says how much of their work is here, which is the reason to click it.
@@ -43,7 +45,7 @@ test("a name nobody has is an empty directory, not an error", async ({ page, req
     "这一篇只是为了让目录不是空的。",
   ]);
   await page.goto("/authors?q=zzz-没有这个作者");
-  await expect(page.getByRole("heading", { name: /作者/ })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: /作者/ })).toBeVisible();
   await expect(page.getByText("没有符合搜索条件的作者。")).toBeVisible();
   await expect(page.locator("a.nw-ar-list")).toHaveCount(0);
 });
