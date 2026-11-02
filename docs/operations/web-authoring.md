@@ -23,6 +23,43 @@ Public image URLs use `/api/media/:uuid`; the Web same-origin proxy fetches medi
 
 Before deploying, run the versioned database migrations. SQLite uses `apps/api/src/persistence/migrations/sqlite/0007_media_assets.sql`; PostgreSQL uses `apps/api/src/persistence/migrations/0015_media_assets.sql`. The metadata rows participate in the provider migration change journal like other business entities. Ensure the object bucket is available and backed up separately from the SQL metadata.
 
+## The media library
+
+`GET /api/v1/me/media` lists the signed-in author's own uploads, newest first, 24
+at a time (up to 60 with `?limit=`), walked with the `nextCursor` a response
+carries. The page is `/write/media`, linked from the writing desk, and it answers
+`503 MEDIA_STORAGE_UNAVAILABLE` when the `MEDIA_S3_*` variables are unset — which
+the page reports as "this deployment has no image storage" rather than as an
+empty library.
+
+Each item carries `orphan` and `referencedBy`. An asset is an **orphan** when no
+work points at `/api/media/<id>`: not a draft that will be published later, not a
+tombstone that can be restored, just bytes being paid for and shown to nobody.
+
+`DELETE /api/v1/me/media/:id` deletes an unused asset — object first, then row,
+so a failure leaves an invisible object rather than a work pointing at bytes that
+are gone. It re-runs the reference check against the content as it is *now*, not
+as it was when the page was rendered, and refuses with `409 MEDIA_IN_USE` and the
+works that use it. An asset that is not the caller's answers `404`, the same as
+one that does not exist.
+
+**Nothing reclaims storage on a schedule, and nothing should.** The scan that
+decides "unused" is only as good as the body it reads: an image sitting in a
+draft, in a tombstone someone will restore, or in a block type the scan does not
+know about is one bad regex away from being called an orphan. A cron job is a
+decision about somebody's work taken by a machine that cannot be asked to
+explain itself, and the bytes it frees are worth less than one restored article
+full of broken images. Reclamation is therefore a button, behind the same check,
+pressed by the author who uploaded the image.
+
+The check costs one pass over every work's content per library read — O(all
+content), which is the point: knowing that nothing uses an image means looking at
+everything that could. If that ever matters, the fix is a `media_references`
+table maintained on save, **not** a narrower scan, which would silently decide
+that some references do not count.
+
+See [ADR 0022](../architecture/decisions/0022-media-library-without-scheduled-reclamation.md).
+
 ## Comments
 
 Article comments use a deliberately smaller Lexical configuration: paragraphs, bold, italic, underline, strikethrough and links only. The browser calls same-origin comment routes; create requests require an exact `Origin` match and use the authenticated API. Rich comment blocks are validated by the existing application-owned v1 comment contract. Images, headings, lists and code are not accepted in comments.

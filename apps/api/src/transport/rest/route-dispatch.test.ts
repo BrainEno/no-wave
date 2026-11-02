@@ -67,7 +67,7 @@ test("route ids are grouped where a reader would look for them", () => {
   const expectations: readonly [string, readonly string[]][] = [
     ["health", ["health"]],
     ["auth", ["auth"]],
-    ["media", ["media.item", "me.media"]],
+    ["media", ["media.item", "me.media", "me.media.item"]],
     ["identity", ["me", "me.email", "me.email-verification", "me.password", "me.profile", "me.session", "me.sessions", "me.sessions.item", "users", "users.relationships", "users.follow", "users.role"]],
     ["notifications", ["me.notifications", "me.notifications.unread-count", "me.notifications.read", "me.notifications.read-all"]],
     ["authors", ["authors.item", "authors.articles"]],

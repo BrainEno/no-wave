@@ -270,7 +270,11 @@ export function AuthoringWorkspace() {
     <section className="nw-authoring">
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
         <h1><span className="nw-zh">写作台</span> <i>Authoring</i></h1>
-        <button className="nw-btn" type="button" onClick={() => void signOut()}>退出登录</button>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
+          {/* The images an author has uploaded, and which of them nothing uses. */}
+          <Link className="nw-btn" href="/write/media">媒体库</Link>
+          <button className="nw-btn" type="button" onClick={() => void signOut()}>退出登录</button>
+        </div>
       </div>
       <p className="nw-ep" style={{ marginTop: 18 }}>草稿与发布状态由 API 持久化；关闭页面后，可从作品列表继续编辑。</p>
       {account ? (

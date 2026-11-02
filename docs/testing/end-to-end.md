@@ -22,6 +22,8 @@ that can be asserted more cheaply must be asserted more cheaply.
 | `e2e/passages.spec.ts` | Select a passage → 划线 → it is painted, listed and still there after a reload; write a note beside it and change it; 朗读这段 reads just that passage and takes the voice from a reading of the whole work; 删除 takes it off the page and out of the browser |
 | `e2e/support/works.ts` | Not a spec: publishes a work over HTTP for the journeys that need one, and drags a selection across part of the page |
 | `e2e/support/speech.ts` | Not a spec: replaces the browser's speech engine with one that can be driven, because a headless browser has no voices installed |
+| `e2e/support/accounts.ts` | Not a spec: opens an account through the sign-in form, in the browser, so a private screen is visited with a session the journey made |
+| `e2e/media-library.spec.ts` | An anonymous visit is sent to sign in and pointed back; a signed-in author is told when image storage is unconfigured rather than shown an empty library; the desk links to the library |
 
 Conventions:
 

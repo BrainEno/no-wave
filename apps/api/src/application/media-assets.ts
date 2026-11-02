@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import sharp from "sharp";
+import { decodeCursor, encodeCursor } from "../domain/cursor.ts";
 import { isUuid } from "../domain/validation.ts";
 import { MediaStorageUnavailableError, type MediaObjectStorage } from "../infrastructure/media-storage.ts";
 
@@ -21,15 +22,81 @@ export type MediaAsset = {
   createdAt: string;
 };
 
+/** One page of the media library. */
+export const MEDIA_PAGE_SIZE = 24;
+export const MEDIA_PAGE_SIZE_MAX = 60;
+
+/**
+ * A work that uses an asset, as the library reports it.
+ *
+ * `state` is why a draft and a tombstone count as references: a draft is
+ * published eventually and a tombstone can be restored, and restoring a work
+ * into broken images is worse than keeping a few unreachable bytes.
+ */
+export type MediaReference = {
+  articleId: string;
+  slug: string;
+  title: string;
+  locale: string;
+  state: "draft" | "published" | "deleted";
+};
+
+/** One asset in the library: what the upload returned, plus whether anything uses it. */
+export type MediaLibraryItem = {
+  id: string;
+  src: string;
+  contentType: "image/webp";
+  byteSize: number;
+  width: number;
+  height: number;
+  createdAt: string;
+  /** Nothing in any work points at it — the only asset this library will delete. */
+  orphan: boolean;
+  referencedBy: MediaReference[];
+};
+
+/**
+ * A page of the library.
+ *
+ * The cursor is built here rather than by the reader, which is the one way this
+ * list differs from the public work lists: those existed before cursors did and
+ * their readers build one from the last row, while nothing has ever read this
+ * endpoint, so it can keep the encoding on the server where it belongs.
+ */
+export type MediaLibraryPage = { items: MediaLibraryItem[]; nextCursor: string | null };
+
+/** One article body, as the reference scan reads it. `contentBlocks` is raw JSON text or parsed JSON. */
+export type MediaContentScanRow = {
+  articleId: string;
+  slug: string;
+  status: string;
+  deletedAt: string | null;
+  locale: string;
+  title: string;
+  contentBlocks: unknown;
+};
+
 type MediaMetadataStore = {
   createMediaAsset(asset: Omit<MediaAsset, "createdAt">): Promise<MediaAsset>;
   getMediaAsset(input: { id: string }): Promise<MediaAsset | null>;
+  listMediaAssets(input: {
+    ownerId: string;
+    cursor: { at: string; id: string } | null;
+    limit: number;
+  }): Promise<MediaAsset[]>;
+  /** `null` when the asset is not this owner's — the only answer for "not yours" and "not there". */
+  deleteMediaAsset(input: { id: string; ownerId: string }): Promise<MediaAsset | null>;
+  listArticleContentForMediaScan(): Promise<MediaContentScanRow[]>;
 };
 
-export class MediaUploadInputError extends Error {
+/** The one place the reference scan's idea of "an image in a work" is written down. */
+const MEDIA_SRC_PATTERN =
+  /\/api\/media\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})/gi;
+
+export class MediaInputError extends Error {
   readonly statusCode = 400;
   readonly code = "BAD_USER_INPUT";
-  constructor(message: string) { super(message); this.name = "MediaUploadInputError"; }
+  constructor(message: string) { super(message); this.name = "MediaInputError"; }
 }
 
 export class MediaAssetNotFoundError extends Error {
@@ -38,7 +105,83 @@ export class MediaAssetNotFoundError extends Error {
   constructor() { super("The requested media asset was not found."); this.name = "MediaAssetNotFoundError"; }
 }
 
-function inputError(message: string): never { throw new MediaUploadInputError(message); }
+/**
+ * The asset is still in a work, so it cannot be deleted (409).
+ *
+ * The references travel with the error rather than being looked up again by the
+ * transport: the answer to "why not" is the works that use it, and an error
+ * carrying them cannot disagree with the check that raised it.
+ */
+export class MediaAssetInUseError extends Error {
+  readonly statusCode = 409;
+  readonly code = "MEDIA_IN_USE";
+  readonly referencedBy: readonly MediaReference[];
+  constructor(referencedBy: readonly MediaReference[]) {
+    super("This image is still used by a work.");
+    this.name = "MediaAssetInUseError";
+    this.referencedBy = referencedBy;
+  }
+}
+
+function inputError(message: string): never { throw new MediaInputError(message); }
+
+/** Content blocks arrive as JSON text from SQLite and as a parsed value from PostgreSQL. */
+function scanText(contentBlocks: unknown): string {
+  if (typeof contentBlocks === "string") return contentBlocks;
+  try {
+    return JSON.stringify(contentBlocks) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Which assets each work uses.
+ *
+ * Pure, so the rule "an image is referenced when its URL appears in a body" is
+ * testable without a database — and the same function answers for the library
+ * list and for the delete check, so the badge a reader sees and the decision the
+ * delete makes cannot drift apart.
+ */
+export function extractMediaReferences(rows: readonly MediaContentScanRow[]): Map<string, MediaReference[]> {
+  const references = new Map<string, MediaReference[]>();
+  if (!Array.isArray(rows)) return references;
+  for (const row of rows) {
+    if (!row || typeof row !== "object" || typeof row.articleId !== "string") continue;
+    const text = scanText(row.contentBlocks);
+    if (!text) continue;
+    const state: MediaReference["state"] = row.deletedAt ? "deleted" : row.status === "published" ? "published" : "draft";
+    const seen = new Set<string>();
+    for (const match of text.matchAll(MEDIA_SRC_PATTERN)) {
+      const id = match[1]!.toLowerCase();
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const list = references.get(id) ?? [];
+      list.push({
+        articleId: row.articleId,
+        slug: typeof row.slug === "string" ? row.slug : "",
+        title: typeof row.title === "string" ? row.title : "",
+        locale: typeof row.locale === "string" ? row.locale : "",
+        state,
+      });
+      references.set(id, list);
+    }
+  }
+  return references;
+}
+
+/** An asset as the library shows it, without the reference check. */
+function presentAsset(asset: MediaAsset): Omit<MediaLibraryItem, "orphan" | "referencedBy"> {
+  return {
+    id: asset.id,
+    src: `/api/media/${asset.id}`,
+    contentType: "image/webp",
+    byteSize: asset.byteSize,
+    width: asset.width,
+    height: asset.height,
+    createdAt: asset.createdAt,
+  };
+}
 
 export async function normalizeUploadedImage(input: Buffer, declaredContentType: string): Promise<{
   bytes: Buffer; contentType: "image/webp"; byteSize: number; width: number; height: number; sha256: string;
@@ -93,8 +236,12 @@ export function createMediaAssetService({ store, storage }: {
   store: MediaMetadataStore;
   storage: MediaObjectStorage;
 }) {
-  if (!store || typeof store.createMediaAsset !== "function" || typeof store.getMediaAsset !== "function") {
-    throw new TypeError("Media metadata persistence must support createMediaAsset and getMediaAsset.");
+  const requiredStoreMethods = [
+    "createMediaAsset", "getMediaAsset", "listMediaAssets", "deleteMediaAsset", "listArticleContentForMediaScan",
+  ];
+  const missingStoreMethods = requiredStoreMethods.filter((method) => typeof store?.[method] !== "function");
+  if (missingStoreMethods.length > 0) {
+    throw new TypeError(`Media metadata persistence must support ${missingStoreMethods.join(", ")}.`);
   }
   if (!storage || typeof storage.putObject !== "function" || typeof storage.getObject !== "function" || typeof storage.deleteObject !== "function") {
     throw new TypeError("A configured media object storage adapter is required.");
@@ -139,6 +286,79 @@ export function createMediaAssetService({ store, storage }: {
         throw new MediaStorageUnavailableError("Stored media integrity validation failed.");
       }
       return { id: asset.id, bytes, byteSize: asset.byteSize, width: asset.width, height: asset.height, sha256: asset.sha256, contentType: "image/webp" as const };
+    },
+    /**
+     * `GET /api/v1/me/media` — this author's uploads, newest first.
+     *
+     * Every item carries its own reference check, because "is it an orphan" is
+     * the only reason to open this page: an asset nothing uses is storage being
+     * paid for and shown to nobody.
+     */
+    async listLibrary({ ownerId, cursor = null, limit = MEDIA_PAGE_SIZE }: {
+      ownerId: string;
+      cursor?: string | null;
+      limit?: number;
+    }): Promise<MediaLibraryPage> {
+      if (!isUuid(ownerId)) inputError("The authenticated user identity is invalid.");
+      let page = limit;
+      if (cursor !== null && cursor !== undefined) {
+        if (typeof cursor !== "string") inputError("Invalid cursor.");
+        const decoded = decodeCursor(cursor);
+        if (!decoded) inputError("Invalid cursor.");
+      }
+      // An integer, not merely a number: a fractional page size is a caller that
+      // disagrees with itself, and truncating it would answer a different
+      // question than the one asked.
+      if (typeof page !== "number" || !Number.isInteger(page) || page < 1 || page > MEDIA_PAGE_SIZE_MAX) {
+        inputError(`limit must be a whole number between 1 and ${MEDIA_PAGE_SIZE_MAX}.`);
+      }
+      const requested = page;
+      const rows = await store.listMediaAssets({
+        ownerId,
+        cursor: cursor ? decodeCursor(cursor) : null,
+        limit: requested + 1,
+      });
+      const items = rows.slice(0, requested);
+      const references = extractMediaReferences(await store.listArticleContentForMediaScan());
+      const page1 = items.map((asset) => {
+        const referencedBy = references.get(asset.id.toLowerCase()) ?? [];
+        return { ...presentAsset(asset), orphan: referencedBy.length === 0, referencedBy };
+      });
+      const last = items[items.length - 1];
+      // Normalized rather than passed through: the cursor has to decode to the
+      // same format whichever provider formatted the timestamp.
+      const hasMore = rows.length > requested;
+      const nextCursor = hasMore && last ? encodeCursor(new Date(last.createdAt).toISOString(), last.id) : null;
+      return { items: page1, nextCursor };
+    },
+    /**
+     * `DELETE /api/v1/me/media/:id` — delete an unused asset, object and row.
+     *
+     * The reference check is repeated here rather than trusted from the list:
+     * between the page being rendered and the button being pressed, a work can
+     * have been saved that uses the image. The badge is a hint about the present;
+     * this is the decision, and it is made against the same rule.
+     *
+     * The object goes first and the row second. Failing that way round leaves an
+     * invisible object nobody links to; the other way round leaves a work
+     * pointing at bytes that are gone.
+     */
+    async deleteAsset({ ownerId, id }: { ownerId: string; id: string }): Promise<{ id: string }> {
+      if (!isUuid(ownerId)) inputError("The authenticated user identity is invalid.");
+      if (!isUuid(id)) throw new MediaAssetNotFoundError();
+      const asset = await store.getMediaAsset({ id });
+      if (!asset || asset.ownerId !== ownerId) throw new MediaAssetNotFoundError();
+      const references = extractMediaReferences(await store.listArticleContentForMediaScan());
+      const usedBy = references.get(id.toLowerCase()) ?? [];
+      if (usedBy.length > 0) throw new MediaAssetInUseError(usedBy);
+      try {
+        await storage.deleteObject(asset.storageKey);
+      } catch {
+        throw new MediaStorageUnavailableError("The stored image could not be deleted.");
+      }
+      const deleted = await store.deleteMediaAsset({ id, ownerId });
+      if (!deleted) throw new MediaAssetNotFoundError();
+      return { id };
     },
   });
 }

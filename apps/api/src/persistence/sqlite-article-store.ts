@@ -161,6 +161,36 @@ export function createSqliteArticleStore(db) {
   }
 
   return Object.freeze({
+  /**
+   * Every article body, as raw JSON text, for the media reference scan (ADR 0022).
+   *
+   * This is the one query in the codebase that reads all of the content, and it
+   * is worth saying why it is allowed to: knowing whether an image is still used
+   * means looking at everything that could use it. Drafts are in because a draft
+   * is published eventually; tombstones are in because one can be restored, and
+   * restoring a work into broken images is worse than keeping a few bytes.
+   *
+   * The cost is one pass over the content per library read. If that ever
+   * matters, the answer is a `media_references` table maintained on save — not a
+   * narrower scan, which would silently decide that some references do not
+   * count.
+   */
+  async listArticleContentForMediaScan() {
+    return db.prepare(
+      `SELECT a.id AS article_id, a.slug, a.status, a.deleted_at, t.locale, t.title, t.content_blocks
+       FROM article_translations t
+       JOIN articles a ON a.id = t.article_id`,
+    ).all().map((row) => ({
+      articleId: row.article_id,
+      slug: row.slug,
+      status: row.status,
+      deletedAt: row.deleted_at ?? null,
+      locale: row.locale,
+      title: row.title,
+      contentBlocks: row.content_blocks,
+    }));
+  },
+
     listPublishedArticles({ locale = "zh-CN", query = "", authorId = null, sort = "latest", limit = 20, offset = 0, cursor = null } = {}) {
       validateArticleLocale(locale);
       if (typeof query !== "string" || query.length > 200) throw new ArticleInputError("query must be a string no longer than 200 characters.");

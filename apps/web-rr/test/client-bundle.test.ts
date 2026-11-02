@@ -46,6 +46,9 @@ const CLIENT_COMPONENTS: readonly ClientComponent[] = [
   // Phase 4b: the desk is the most client-heavy page in the product — a Lexical
   // editor behind a session — so "it renders" says the least about it here.
   { component: "AuthoringWorkspace", sentinel: "正在验证登录状态并载入草稿", page: "write" },
+  // The library is a page of its own behind the desk, and everything on it
+  // arrives after hydration — an HTML check would see an empty shell and pass.
+  { component: "MediaLibrary", sentinel: "还没有上传过图片", page: "write/media" },
   { component: "ArticleEditor", sentinel: "作品地址（slug）由系统根据标题自动生成", page: "write" },
   // The desk's inbox. It is the only screen that can show a reader the notice a
   // deletion wrote them, and it renders nothing until it has fetched — so if it

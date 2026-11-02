@@ -1093,6 +1093,117 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       await runtime.cleanup(undefined, suffix);
     }
   });
+  /**
+   * The media library's persistence (ADR 0022).
+   *
+   * The assertions that matter are the ones the application layer depends on:
+   * the list is one owner's, newest first, and walks with a cursor; a delete is
+   * scoped to its owner so "not yours" and "not there" are the same answer; and
+   * the reference scan hands back raw JSON text on both providers, which is the
+   * only reason the application layer can parse it with one code path.
+   */
+  test(`${adapterName}: the media library lists one owner's assets and deletes only theirs`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID().slice(0, 8);
+    const ownerId = `media-owner-${suffix}`;
+    const strangerId = `media-stranger-${suffix}`;
+    const hour = new Date(Date.now() + 3_600_000).toISOString();
+    /**
+     * The refresh hash is unique across the whole table, not just this account,
+     * so it has to carry the run's suffix. A fixed hash ("a".repeat(64)) looks
+     * tidier and fails somewhere else entirely: the PostgreSQL fixture shares
+     * one database across every test in this file, so the collision surfaces in
+     * whichever test runs second — here that was the identity contract.
+     */
+    const hash = (seed) => (seed + suffix.replace(/-/g, "")).padEnd(64, seed);
+    const account = (userId, seed) => ({
+      userId,
+      email: `media-${userId}@example.test`,
+      passwordHash: "hash-before",
+      session: {
+        sessionId: randomUUID(), userId, accessTokenId: randomUUID(),
+        refreshHash: hash(seed), expiresAt: hour,
+        accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+      },
+    });
+    await runtime.store.createIdentityAccount(account(ownerId, "a"));
+    await runtime.store.createIdentityAccount(account(strangerId, "b"));
+
+    const asset = (index) => ({
+      id: `0000000${index}-1111-4111-8111-${suffix.replace(/-/g, "0").padStart(12, "0")}`,
+      ownerId,
+      storageKey: `assets/${ownerId}/${index}.webp`,
+      contentType: "image/webp",
+      byteSize: 2048,
+      width: 20,
+      height: 10,
+      sha256: "c".repeat(64),
+    });
+    // The adapter is handed the decoded cursor: decoding is the application
+    // layer's job, and the predicate below is the adapter's.
+    const cursorFor = (row) => ({ at: new Date(row.createdAt).toISOString(), id: row.id });
+    try {
+      for (const index of [1, 2, 3]) await runtime.store.createMediaAsset(asset(index));
+      await runtime.store.createMediaAsset({ ...asset(9), id: `00000009-1111-4111-8111-${suffix.replace(/-/g, "0").padStart(12, "0")}`, ownerId: strangerId, storageKey: `assets/${strangerId}/9.webp` });
+
+      // `limit + 1`: the adapter reads one row past the page so the application
+      // layer can tell "exactly a page" from "the end" without a second query.
+      const first = await runtime.store.listMediaAssets({ ownerId, cursor: null, limit: 1 });
+      assert.equal(first.length, 2, "a page of one, plus the row that proves there is another");
+      assert.ok(first.every((row) => row.ownerId === ownerId), "the stranger's asset is never in this list");
+
+      const cursor = cursorFor(first[0]);
+      const second = await runtime.store.listMediaAssets({ ownerId, cursor: cursorFor(first[0]), limit: 1 });
+      assert.equal(second.length, 2, "the second page still has one row behind it");
+      assert.notEqual(second[0].id, first[0].id, "no row is repeated across pages");
+
+      const third = await runtime.store.listMediaAssets({
+        ownerId, cursor: cursorFor(second[0]), limit: 1,
+      });
+      assert.equal(third.length, 1, "the last page has no row behind it");
+      assert.notEqual(third[0].id, first[0].id);
+      assert.notEqual(third[0].id, second[0].id);
+
+      const fourth = await runtime.store.listMediaAssets({
+        ownerId, cursor: cursorFor(third[0]), limit: 1,
+      });
+      assert.deepEqual(fourth, [], "an empty page is the end of the list");
+
+      // Deleting is scoped by owner: another account asking for this asset gets
+      // the same `null` they would get for one that does not exist.
+      assert.equal(await runtime.store.deleteMediaAsset({ id: first[0].id, ownerId: strangerId }), null);
+      assert.ok(await runtime.store.deleteMediaAsset({ id: first[0].id, ownerId }));
+      const remaining = await runtime.store.listMediaAssets({ ownerId, cursor: null, limit: 10 });
+      assert.equal(remaining.some((row) => row.id === first[0].id), false);
+      assert.equal(await runtime.store.deleteMediaAsset({ id: first[0].id, ownerId }), null, "already gone");
+    } finally {
+      for (const index of [1, 2, 3]) await runtime.store.deleteMediaAsset({ id: asset(index).id, ownerId });
+      await runtime.store.deleteMediaAsset({ id: `00000009-1111-4111-8111-${suffix.replace(/-/g, "0").padStart(12, "0")}`, ownerId: strangerId });
+    }
+  });
+
+  test(`${adapterName}: the media reference scan returns raw JSON text for every draft and tombstone`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const authorId = `media-scan-author-${suffix}`;
+    const mediaId = "abcdef01-2345-4678-89ab-cdef01234567";
+    const blocks = [{ id: "block-1", type: "image", src: `/api/media/${mediaId}`, alt: "" }];
+    const created = await runtime.store.createArticle({
+      authorId, slug: `media-scan-${suffix}`, title: "用了这张图", summary: "", locale: "zh-CN", contentBlocks: blocks, publish: false,
+    });
+    try {
+      const rows = await runtime.store.listArticleContentForMediaScan();
+      const found = rows.filter((row) => row.articleId && String(row.contentBlocks).includes(mediaId));
+      assert.equal(found.length, 1, "the draft that uses the image is in the scan");
+      assert.equal(typeof found[0].contentBlocks, "string", "both providers hand the application layer JSON text");
+      assert.equal(found[0].status, "draft");
+      assert.equal(found[0].deletedAt, null);
+      assert.equal(found[0].locale, "zh-CN");
+    } finally {
+      await runtime.store.deleteArticle({ articleId: created.id, actorId: authorId });
+    }
+  });
+
   test(`${adapterName}: recovery and verification tokens are single-use, purpose-scoped and expire`, options, async () => {
     const runtime = await fixture();
     const suffix = randomUUID();

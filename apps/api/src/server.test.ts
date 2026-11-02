@@ -7,7 +7,7 @@ import { persistencePortMethods } from "./application/persistence-ports.ts";
 import { ArticleAuthorizationError, ArticleInputError, ArticleNotFoundError, ArticleSlugConflictError, DomainError, IdempotencyConflictError, ProfileInputError, ProfileNotFoundError } from "./domain/errors.ts";
 import { isUuid } from "./domain/validation.ts";
 import { hashPassword, verifyPassword } from "./security/passwords.ts";
-import { MediaAssetNotFoundError } from "./application/media-assets.ts";
+import { MediaAssetInUseError, MediaAssetNotFoundError } from "./application/media-assets.ts";
 
 /**
  * Mail is enabled for this suite: the recovery and verification tests below are
@@ -2565,6 +2565,143 @@ test("public media route emits an immutable WebP response and supports condition
     assert.equal(cached.headers.get("etag"), '"' + sha256 + '"');
   }, { mediaAssets });
   assert.equal(calls, 2);
+});
+
+/**
+ * The media library, at the transport boundary (ADR 0022).
+ *
+ * What a client can observe: the list is the author's own and paginated, an
+ * asset still used by a work is refused with the works that use it, an id that
+ * is not that author's is simply not found, and a deployment without object
+ * storage says so instead of showing an empty library.
+ */
+test("the media library lists one author's uploads, newest first, and only theirs", async () => {
+  const assetId = "11111111-1111-4111-8111-111111111111";
+  const calls: Array<Record<string, unknown>> = [];
+  const mediaAssets = {
+    async upload() { throw new Error("unused"); },
+    async getPublic() { throw new Error("unused"); },
+    async listLibrary(input) {
+      calls.push({ ...input });
+      return {
+        items: [{
+          id: assetId, src: "/api/media/" + assetId, contentType: "image/webp", byteSize: 2048,
+          width: 20, height: 10, createdAt: "2026-10-30T00:00:00.000Z", orphan: true, referencedBy: [],
+        }],
+        nextCursor: null,
+      };
+    },
+    async deleteAsset() { throw new Error("unused"); },
+  };
+  await withServer(async (baseUrl) => {
+    const unauthenticated = await fetch(baseUrl + "/api/v1/me/media");
+    assert.equal(unauthenticated.status, 401);
+    await unauthenticated.text();
+
+    const response = await fetch(baseUrl + "/api/v1/me/media?limit=12", {
+      headers: { authorization: "Bearer " + signedToken("media-writer") },
+    });
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("cache-control") ?? "", /no-store/i);
+    const body = await response.json();
+    assert.equal(body.data.items.length, 1);
+    assert.equal(body.data.items[0].orphan, true);
+    assert.equal(body.data.nextCursor, null);
+
+    // The owner is the token, never the query string.
+    assert.deepEqual(calls, [{ ownerId: "media-writer", cursor: null, limit: 12 }]);
+
+    const fractional = await fetch(baseUrl + "/api/v1/me/media?limit=2.5", {
+      headers: { authorization: "Bearer " + signedToken("media-writer") },
+    });
+    assert.equal(fractional.status, 400);
+    await fractional.text();
+
+    const repeated = await fetch(baseUrl + "/api/v1/me/media?limit=12&limit=13", {
+      headers: { authorization: "Bearer " + signedToken("media-writer") },
+    });
+    assert.equal(repeated.status, 400, "a repeated parameter is rejected, not silently read as the first");
+
+    const wrongMethod = await fetch(baseUrl + "/api/v1/me/media", {
+      method: "PUT",
+      headers: { authorization: "Bearer " + signedToken("media-writer") },
+    });
+    assert.equal(wrongMethod.status, 405);
+    assert.equal(wrongMethod.headers.get("allow"), "GET, POST");
+  }, { env: authEnv, store: {}, mediaAssets });
+});
+
+test("deleting an asset is refused while a work uses it, and answers 404 for anything else", async () => {
+  const assetId = "11111111-1111-4111-8111-111111111111";
+  const calls: Array<Record<string, unknown>> = [];
+  const inUse = {
+    async upload() { throw new Error("unused"); },
+    async getPublic() { throw new Error("unused"); },
+    async listLibrary() { return { items: [], nextCursor: null }; },
+    async deleteAsset(input) {
+      calls.push({ ...input });
+      throw new MediaAssetInUseError([
+        { articleId: "a1", slug: "uses-it", title: "用了它", locale: "zh-CN", state: "draft" },
+      ]);
+    },
+  };
+  await withServer(async (baseUrl) => {
+    const unauthenticated = await fetch(baseUrl + "/api/v1/me/media/" + assetId, { method: "DELETE" });
+    assert.equal(unauthenticated.status, 401);
+    await unauthenticated.text();
+
+    const response = await fetch(baseUrl + "/api/v1/me/media/" + assetId, {
+      method: "DELETE",
+      headers: { authorization: "Bearer " + signedToken("media-writer") },
+    });
+    assert.equal(response.status, 409);
+    const body = await response.json();
+    assert.equal(body.error.code, "MEDIA_IN_USE");
+    // The refusal carries the works, so the page can say why instead of just no.
+    assert.deepEqual(body.error.details.referencedBy.map((entry) => entry.slug), ["uses-it"]);
+  }, { env: authEnv, store: {}, mediaAssets: inUse });
+
+  const notFound = {
+    async upload() { throw new Error("unused"); },
+    async getPublic() { throw new Error("unused"); },
+    async listLibrary() { return { items: [], nextCursor: null }; },
+    async deleteAsset() { throw new MediaAssetNotFoundError(); },
+  };
+  await withServer(async (baseUrl) => {
+    // "Not yours" and "not a media id at all" are the same answer, so the
+    // endpoint cannot be used to find out which assets exist.
+    const response = await fetch(baseUrl + "/api/v1/me/media/not-a-uuid", {
+      method: "DELETE",
+      headers: { authorization: "Bearer " + signedToken("media-writer") },
+    });
+    assert.equal(response.status, 404);
+    assert.deepEqual(await response.json(), {
+      error: { code: "NOT_FOUND", message: "The requested media asset was not found." },
+    });
+
+    const wrongMethod = await fetch(baseUrl + "/api/v1/me/media/" + assetId, {
+      headers: { authorization: "Bearer " + signedToken("media-writer") },
+    });
+    assert.equal(wrongMethod.status, 405);
+    assert.equal(wrongMethod.headers.get("allow"), "DELETE");
+  }, { env: authEnv, store: {}, mediaAssets: notFound });
+});
+
+test("a deployment without object storage says so instead of showing an empty library", async () => {
+  await withServer(async (baseUrl) => {
+    const list = await fetch(baseUrl + "/api/v1/me/media", {
+      headers: { authorization: "Bearer " + signedToken("media-writer") },
+    });
+    assert.equal(list.status, 503);
+    assert.equal((await list.json()).error.code, "MEDIA_STORAGE_UNAVAILABLE");
+
+    const remove = await fetch(baseUrl + "/api/v1/me/media/11111111-1111-4111-8111-111111111111", {
+      method: "DELETE",
+      headers: { authorization: "Bearer " + signedToken("media-writer") },
+    });
+    assert.equal(remove.status, 503);
+    assert.equal((await remove.json()).error.code, "MEDIA_STORAGE_UNAVAILABLE");
+  }, { env: authEnv, store: {} });
 });
 
 /**

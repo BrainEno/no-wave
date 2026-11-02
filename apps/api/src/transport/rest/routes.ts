@@ -60,7 +60,10 @@ export const REST_ROUTES: readonly RestRoute[] = Object.freeze([
     segments: [literal("me"), literal("articles"), literal("deleted")],
   },
   { id: "me.email-verification", methods: ["POST"], segments: [literal("me"), literal("email-verification")] },
-  { id: "me.media", methods: ["POST"], segments: [literal("me"), literal("media")] },
+  // The media library: the collection is both the upload target and the author's
+  // own list, and one asset is deleted by id (ADR 0022).
+  { id: "me.media", methods: ["GET", "POST"], segments: [literal("me"), literal("media")] },
+  { id: "me.media.item", methods: ["DELETE"], segments: [literal("me"), literal("media"), param("id")] },
   { id: "me.notifications", methods: ["GET"], segments: [literal("me"), literal("notifications")] },
   {
     id: "me.notifications.unread-count",
