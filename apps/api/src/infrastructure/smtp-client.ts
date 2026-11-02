@@ -107,16 +107,17 @@ export function encodeHeaderValue(value: string): string {
   return `=?UTF-8?B?${Buffer.from(value, "utf8").toString("base64")}?=`;
 }
 
-/** RFC 2822 date, always ASCII regardless of the process locale. */
+/**
+ * RFC 2822 date in UTC, always ASCII and independent of the process locale or
+ * time zone. A local-time Date header changes with TZ and makes the same mail
+ * render a different timestamp on developer machines versus CI.
+ */
 export function smtpDate(now = new Date()): string {
   const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const pad = (value: number): string => String(value).padStart(2, "0");
-  const offset = -now.getTimezoneOffset();
-  const absolute = Math.abs(offset);
-  return `${days[now.getDay()]}, ${pad(now.getDate())} ${months[now.getMonth()]} ${now.getFullYear()} ` +
-    `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())} ` +
-    `${offset >= 0 ? "+" : "-"}${pad(Math.floor(absolute / 60))}${pad(absolute % 60)}`;
+  return `${days[now.getUTCDay()]}, ${pad(now.getUTCDate())} ${months[now.getUTCMonth()]} ${now.getUTCFullYear()} ` +
+    `${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(now.getUTCSeconds())} +0000`;
 }
 
 /**

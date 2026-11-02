@@ -4,6 +4,39 @@ import { createApiContentClient, listPublicFeatured, resolveApiBaseUrl } from ".
 
 type CapturedRequest = { url: string; init: RequestInit | undefined };
 
+const API_ENVIRONMENT_KEYS = ["API_BASE_URL", "API_SERVICE_URL", "API_GRAPHQL_URL"] as const;
+
+/**
+ * `pnpm test` loads `.env.local`, and `pnpm setup:local` normally puts
+ * API_BASE_URL there. A unit test that claims "no API configured" must remove
+ * that ambient configuration and prove it never reaches the network.
+ */
+async function withUnconfiguredApi(run: () => Promise<void>): Promise<void> {
+  const saved = new Map<string, string | undefined>();
+  for (const key of API_ENVIRONMENT_KEYS) {
+    saved.set(key, process.env[key]);
+    delete process.env[key];
+  }
+  const originalFetch = globalThis.fetch;
+  let networkCalls = 0;
+  globalThis.fetch = (async () => {
+    networkCalls += 1;
+    throw new Error("An unconfigured API must not fetch.");
+  }) as unknown as typeof globalThis.fetch;
+  try {
+    assert.equal(resolveApiBaseUrl({}), undefined);
+    await run();
+    assert.equal(networkCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const key of API_ENVIRONMENT_KEYS) {
+      const value = saved.get(key);
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
 const article = {
   id: "article-1",
   authorId: "user-1",
@@ -293,5 +326,7 @@ test("the editorial shelf and the popular sort are read from their own endpoints
 });
 
 test("an unconfigured API offers no shelf rather than a fake one", async () => {
-  assert.deepEqual(await listPublicFeatured({ locale: "zh-CN" }), []);
+  await withUnconfiguredApi(async () => {
+    assert.deepEqual(await listPublicFeatured({ locale: "zh-CN" }), []);
+  });
 });
