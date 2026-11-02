@@ -3,6 +3,8 @@
 import { Link } from "@/lib/framework/link.tsx";
 import { useState, type FormEvent } from "react";
 import { useRouter } from "@/lib/framework/navigation.ts";
+import { apiErrorCode, apiErrorMessage } from "@/lib/api-error.ts";
+import type { Locale } from "@/lib/content.ts";
 
 type SignInFormProps = {
   nextPath: string;
@@ -15,16 +17,11 @@ type SignInFormProps = {
    * 503 `MAIL_DISABLED`; this just stops offering it.
    */
   mailEnabled: boolean;
+  /** Defaults to Simplified Chinese: the sign-in page is served in it today. */
+  locale?: Locale;
 };
-type ApiErrorPayload = { error?: { message?: unknown } };
 
-function errorMessage(payload: unknown): string {
-  if (typeof payload !== "object" || payload === null || !("error" in payload)) return "请求失败，请稍后重试。";
-  const error = (payload as ApiErrorPayload).error;
-  return error && typeof error.message === "string" ? error.message : "请求失败，请稍后重试。";
-}
-
-export function SignInForm({ nextPath, mailEnabled }: SignInFormProps) {
+export function SignInForm({ nextPath, mailEnabled, locale = "zh-CN" }: SignInFormProps) {
   const router = useRouter();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
@@ -47,7 +44,13 @@ export function SignInForm({ nextPath, mailEnabled }: SignInFormProps) {
         body: JSON.stringify({ email, password }),
       });
       const payload: unknown = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(errorMessage(payload));
+      if (!response.ok) {
+        // A taken address is not a failure to report but a next step: the
+        // account exists, so hand the reader the form that opens it, with the
+        // address and password they just typed still in the fields.
+        if (apiErrorCode(payload) === "EMAIL_TAKEN") setMode("login");
+        throw new Error(apiErrorMessage(payload, locale, "请求失败，请稍后重试。"));
+      }
       setStatus(mode === "register" ? "账户已创建，正在打开写作台……" : "登录成功，正在打开写作台……");
       router.replace(nextPath);
       router.refresh();

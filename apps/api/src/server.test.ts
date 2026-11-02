@@ -4,7 +4,7 @@ import test from "node:test";
 import { request as httpRequest } from "node:http";
 import { createApiServer } from "./server.ts";
 import { persistencePortMethods } from "./application/persistence-ports.ts";
-import { ArticleAuthorizationError, ArticleInputError, ArticleNotFoundError, ArticleSlugConflictError, DomainError, IdempotencyConflictError, ProfileInputError, ProfileNotFoundError } from "./domain/errors.ts";
+import { ArticleAuthorizationError, ArticleInputError, ArticleNotFoundError, ArticleSlugConflictError, DomainError, IdempotencyConflictError, IdentityConflictError, ProfileInputError, ProfileNotFoundError } from "./domain/errors.ts";
 import { isUuid } from "./domain/validation.ts";
 import { hashPassword, verifyPassword } from "./security/passwords.ts";
 import { MediaAssetInUseError, MediaAssetNotFoundError } from "./application/media-assets.ts";
@@ -1094,6 +1094,14 @@ test("REST maps domain errors to stable HTTP statuses and sanitized messages", a
       status: 409,
       code: "CONFLICT",
       message: "The request conflicts with the current resource state.",
+    },
+    {
+      // Still a 409, but the reader has a next step, so the code says which
+      // conflict it is instead of repeating the generic sentence.
+      error: new IdentityConflictError(),
+      status: 409,
+      code: "EMAIL_TAKEN",
+      message: "The email address is already registered.",
     },
     {
       error: new IdempotencyConflictError("raw payload must not leak"),
@@ -3110,7 +3118,9 @@ test("REST email change refuses a wrong password, reports a taken address, and i
       body: JSON.stringify({ password: "the-current-password", email: "taken@example.test" }),
     });
     assert.equal(taken.status, 409);
-    assert.equal((await taken.json()).error.code, "CONFLICT");
+    // Which conflict it is, not just that it is one: the account page says
+    // "that address is taken" and the reader picks another.
+    assert.equal((await taken.json()).error.code, "EMAIL_TAKEN");
 
     const anonymous = await fetch(baseUrl + "/api/v1/me/email", {
       method: "PUT",

@@ -164,6 +164,10 @@ export const DOMAIN_ERROR_RESPONSES: Record<string, RestErrorResponse> = {
   MAIL_DISABLED: { status: 409, code: "MAIL_DISABLED", message: "Account mail is not enabled on this instance." },
   NOT_FOUND: { status: 404, code: "NOT_FOUND", message: "The requested resource was not found." },
   CONFLICT: { status: 409, code: "CONFLICT", message: "The request conflicts with the current resource state." },
+  // Same status as `CONFLICT`, different answer to "what do I do next": the
+  // address belongs to an account already, so the visitor signs in or picks
+  // another one. Kept as its own code so a client can translate it.
+  EMAIL_TAKEN: { status: 409, code: "EMAIL_TAKEN", message: "The email address is already registered." },
   IDEMPOTENCY_CONFLICT: {
     status: 409,
     code: "IDEMPOTENCY_CONFLICT",

@@ -69,6 +69,18 @@ function zh() {
     },
     footer: { rights: "无浪潮 No Wave", language: "简体中文", signIn: "登录" },
     signIn: { title: "登录", body: "身份验证尚未在当前阶段实现。登录、关注与通知将在后端就绪后接入。" },
+    auth: {
+      /**
+       * What a form says instead of the API's own words.
+       *
+       * The API answers with a stable code and a deliberately generic English
+       * sentence — it cannot know what the page around it is doing. The codes a
+       * form can act on get a sentence here; everything else keeps what the
+       * server said. See `lib/api-error.ts`.
+       */
+      emailTaken: "这个邮箱已经注册过了，直接登录即可。",
+      failed: "请求失败，请稍后重试。",
+    },
   };
 }
 function en(): UiCopy {
@@ -133,6 +145,10 @@ function en(): UiCopy {
     },
     footer: { rights: "No Wave", language: "English", signIn: "Sign in" },
     signIn: { title: "Sign in", body: "Authentication is not implemented at this stage. Sign-in, following and notifications will be connected once the backend is ready." },
+    auth: {
+      emailTaken: "That address already has an account. Sign in instead.",
+      failed: "The request failed. Try again in a moment.",
+    },
   };
 }
 export function getUi(locale: Locale): UiCopy { return locale === "en" ? en() : zh(); }
