@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { writeStructuredLog } from "../../infrastructure/http-observability.ts";
 import { DomainError, RateLimitError } from "../../domain/errors.ts";
 import { createAuthContext } from "../../security/authentication.ts";
 import type { ApplicationServices } from "../../application/services.ts";
@@ -170,6 +171,17 @@ export const DOMAIN_ERROR_RESPONSES: Record<string, RestErrorResponse> = {
   },
 };
 
+/**
+ * Reduce a thrown value to something safe to write to a server log: the error
+ * class and message, never the stack and never the response body. A driver
+ * error can carry connection strings or row values, so the message is capped.
+ */
+function describeUnhandledError(error: unknown): { errorName: string; errorMessage: string } {
+  if (!(error instanceof Error)) return { errorName: "NonErrorThrow", errorMessage: String(error).slice(0, 200) };
+  const name = /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name) ? error.name : "Error";
+  return { errorName: name, errorMessage: error.message.slice(0, 200) };
+}
+
 export function sendServiceError(response: ServerResponse, error: unknown): void {
   const mapped = error instanceof DomainError ? DOMAIN_ERROR_RESPONSES[error.code] : undefined;
   if (mapped) {
@@ -177,6 +189,22 @@ export function sendServiceError(response: ServerResponse, error: unknown): void
     sendJson(response, mapped.status, { error: { code: mapped.code, message: mapped.message } });
     return;
   }
+
+  // Anything that is not a mapped domain error becomes an opaque 500, which
+  // used to mean "the access log says 500 and nothing else". Log the cause
+  // server-side so an operator can tell a stale schema (`relation
+  // "featured_articles" does not exist`) from a genuine bug without attaching a
+  // debugger. The client still gets no detail.
+  const { errorName, errorMessage } = describeUnhandledError(error);
+  const requestIdHeader = response.getHeader("x-request-id");
+  const requestId = Array.isArray(requestIdHeader) ? requestIdHeader[0] : requestIdHeader;
+  writeStructuredLog({
+    level: "error",
+    event: "rest_unhandled_error",
+    requestId: typeof requestId === "string" ? requestId : null,
+    errorName,
+    errorMessage,
+  });
 
   // Do not expose raw exception messages, stack traces, or database details.
   sendJson(response, 500, {

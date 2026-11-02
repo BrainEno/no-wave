@@ -8,9 +8,40 @@ import { resolveDatabaseProvider, resolvePostgresMigrationUrl, resolveSqliteData
 const here = dirname(fileURLToPath(import.meta.url));
 const defaultDirectory = join(here, "migrations");
 const advisoryLockId = 87412026;
+const migrationPattern = /^\d{4}_[a-z0-9_]+\.sql$/;
+
+/**
+ * Read the PostgreSQL schema version without applying anything.
+ *
+ * This exists because the SQLite provider refuses to boot against a database
+ * whose `api_schema_migrations` table is behind the checked-in migrations, so a
+ * stale local database fails loudly at startup. PostgreSQL had no such guard:
+ * it booted happily and then answered 500 on whichever endpoint happened to
+ * touch the missing table — a missing `featured_articles` table surfaced as an
+ * unexplained `/api/v1/featured` 500 while every other route kept working,
+ * which is very hard to read from an access log.
+ *
+ * `to_regclass` resolves through the connection's `search_path`, which is the
+ * same resolution `runMigrations` gets when it runs an unqualified
+ * `CREATE TABLE api_schema_migrations`; qualifying the table as
+ * `public.api_schema_migrations` here would disagree with a database that
+ * applies migrations under a different search path.
+ */
+export async function getPostgresMigrationStatus(sql, { directory = defaultDirectory } = {}) {
+  const files = (await readdir(directory)).filter((name) => migrationPattern.test(name)).sort();
+  if (files.length === 0) throw new Error("No versioned SQL migrations were found.");
+  const [table] = await sql.unsafe("SELECT to_regclass('api_schema_migrations') IS NOT NULL AS present");
+  const rows = table?.present ? await sql.unsafe("SELECT version FROM api_schema_migrations") : [];
+  const appliedVersions = new Set(rows.map((row) => row.version));
+  return {
+    discovered: files.length,
+    applied: files.filter((file) => appliedVersions.has(file.slice(0, -".sql".length))),
+    pending: files.filter((file) => !appliedVersions.has(file.slice(0, -".sql".length))),
+  };
+}
 
 export async function runMigrations(sql, { directory = defaultDirectory } = {}) {
-  const files = (await readdir(directory)).filter((name) => /^\d{4}_[a-z0-9_]+\.sql$/.test(name)).sort();
+  const files = (await readdir(directory)).filter((name) => migrationPattern.test(name)).sort();
   if (files.length === 0) throw new Error("No versioned SQL migrations were found.");
   const applied = [];
 

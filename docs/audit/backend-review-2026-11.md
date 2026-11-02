@@ -318,3 +318,82 @@ $ kill -TERM <pid>
 未运行（与审计阶段相同）：`pnpm test:e2e`（Playwright）、Postgres 集成测试、
 `web-rr` 的 `react-router typegen` + 生产构建。CI 需在 Node 24 上复核那条 boolean
 绑定用例。
+
+---
+
+## 7. 补充修复：`pnpm dev` 本地两个报错（2026-11-02 晚）
+
+用户在本机跑 `pnpm dev` 时遇到两个报错，本节记录根因与修复。
+
+### E1. `/api/v1/featured` 静默 500
+
+**现象**：首页加载时 API 先返回一条 500（58.9 ms），随后三条 200（132 / 143 /
+190 ms）。日志只有 `http_request_completed` 一行，没有任何原因。
+
+**根因**：本地数据库缺少 `featured_articles` 表——即库还停在 `0021_user_roles`，
+而代码已经需要 `0022_featured_articles`。
+
+为什么它能启动、又只有这一个接口挂：
+
+| provider | 启动期迁移检查 | 表现 |
+| --- | --- | --- |
+| SQLite | 有（`persistence-runtime.ts`） | 未迁移直接拒绝启动，根本起不来 |
+| PostgreSQL | **无** | 正常启动，只有触到新表的接口 500，其余照常 200 |
+
+所以能够启动 + 只有一个接口 500 + 那个接口还是四个请求里最快的（缺表立即报错，
+其余三个走 N+1 序列化所以慢），三条线索一致指向 PostgreSQL 上的库版本落后。
+
+**修复**：
+
+1. `getPostgresMigrationStatus()`（`persistence/migrate.ts`）——用两条查询读出
+   schema 版本。刻意用不限定 schema 的 `to_regclass('api_schema_migrations')`
+   而不是 `public.api_schema_migrations`：后者与 `runMigrations` 建表时所用的
+   `search_path` 解析不一致，会在 schema 不同的库上误报“未迁移”从而阻止启动。
+2. PostgreSQL provider 现在与 SQLite 对齐：`DATABASE_AUTO_MIGRATE=true` 时先迁移
+   （迁移走 `DATABASE_URL_UNPOOLED`，读走 `DATABASE_URL`），随后校验，有 pending
+   就拒绝启动并列出待迁移版本。
+3. 启动失败不再只打印 `errorName: "Error"`（`server.ts`），带上 message。
+4. 未映射异常产生的 500 在 `sendServiceError` 里落一条
+   `rest_unhandled_error` 结构化日志，带 `errorName` / `errorMessage` 和与访问
+   日志相同的 `requestId`。客户端响应体一字未改。
+
+**关于连接串的两个权衡**（新增日志附带的取舍，需要知道）：
+
+- `api_startup_failed` 与 `rest_unhandled_error` 现在会记录 `error.message`。
+  常见失败（`ECONNREFUSED`、`password authentication failed`、缺表）都不含密钥，
+  但畸形 DSN 的错误可能把它原样回显。日志只写 stdout（运维可见），并分别截断到
+  500 / 200 字符，不写 stack、不进响应体。若部署环境把 stdout 转到低权限日志系统，
+  可以考虑在 `describeUnhandledError` 里再加一层 DSN 脱敏。
+- 启动期校验让 API 从“部分接口 500”变成“起不来”。这是刻意的：与 SQLite 既有行为
+  一致，且 CI / Vercel 部署都在启动前跑 `pnpm db:migrate`（`.github/workflows/ci.yml`
+  第 302 行），不会误伤。
+
+### E2. `No route matches URL "/favicon.ico"`
+
+React Router 把所有路径都交给路由处理，仓库里又从来没有 favicon 资源，于是浏览器
+自动发起的 `/favicon.ico` 请求每次加载都撞一次路由异常。
+
+**修复**：补 `apps/web-rr/public/favicon.ico`（16/32/48 三尺寸）与 `favicon.png`
+（256），并在 `root.tsx` 的 `links` 里显式声明。已验证：dev 下 `/favicon.ico` 返回
+200 `image/x-icon`、`react-router build` 会把两者复制进 `build/client/`、生产
+`server.ts` 的 MIME 表已有 `.ico`。图标是占位设计，可直接替换这两个文件。
+
+### 本次实际执行的检查（E1 / E2）
+
+- 复现：删除 `featured_articles` 表后精确复现“1×500 + 3×200”，且 500 最快。
+- `tsc --noEmit`：`apps/api`（含 `tsconfig.strict.json`）、`packages/web-ui`、
+  `packages/web-http`、`apps/web-rr` 全部通过。
+- 新增 `apps/api/src/persistence/migrate.test.ts`（5 例，用假 `sql` 客户端，
+  不需要真实数据库）：全通过。已同时注册到根 `test` 脚本与 `apps/api` 的
+  `test:unit`（CI 跑的是根脚本）。
+- 全量单测：722 例，633 通过 / 1 失败 / 88 跳过。唯一的失败仍是
+  `apps/api/src/persistence/sqlite.test.ts` 的 boolean 绑定用例——沙箱 Node 22 的
+  环境产物，未修改该测试，CI 的 Node 24 上通过。
+- `apps/web-rr`：先 `react-router build` 再 `node --test test/*.test.ts`，63 例全通过。
+- 端到端：起 web dev server + API，首页 200，日志中不再出现 favicon 路由异常，
+  `/favicon.ico` 与 `/favicon.png` 均为 200。
+
+未运行：`pnpm test:routes`（`scripts/route-smoke.ts` 在沙箱 Node 22 上被引擎门禁
+拦住，CI 为 Node 24）、`pnpm test:e2e`（Playwright）、Postgres 集成测试——沙箱内
+没有可用的 PostgreSQL，`getPostgresMigrationStatus` 因此只有单元测试覆盖，建议在
+有 Postgres 的环境跑一次 `test:integration` 复核。
