@@ -27,6 +27,14 @@ import { SiteChrome } from "@/components/chrome/site-chrome.tsx";
 import globalStyles from "../../../packages/web-ui/src/styles/globals.css?url";
 
 export const links: LinksFunction = () => [
+  // Declared explicitly so the browser fetches the icon we ship instead of
+  // probing /favicon.ico on its own. React Router routes every path through the
+  // router, so an undeclared icon used to arrive as a real request for
+  // "/favicon.ico" and blow up as `No route matches URL "/favicon.ico"` on
+  // every page load. Both files exist in public/ as well, because some clients
+  // still ask for /favicon.ico regardless of what is declared here.
+  { rel: "icon", href: "/favicon.ico", sizes: "any" },
+  { rel: "icon", type: "image/png", href: "/favicon.png", sizes: "256x256" },
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
   { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
   {

@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { assertPersistenceAdapter } from "../application/persistence-ports.ts";
-import { resolveDatabaseProvider, resolveSqliteDatabasePath } from "./database-config.ts";
+import { resolveDatabaseProvider, resolvePostgresMigrationUrl, resolveSqliteDatabasePath } from "./database-config.ts";
 
 const builtInProviders = Object.freeze({
   sqlite: async ({ env }) => {
@@ -29,8 +29,34 @@ const builtInProviders = Object.freeze({
       throw new Error("DATABASE_URL is required when DATABASE_PROVIDER=postgres.");
     }
     const { createPostgresClient, createPostgresStore } = await import("../persistence/postgres.ts");
+    const { getPostgresMigrationStatus, runMigrations } = await import("../persistence/migrate.ts");
     const client = await createPostgresClient({ connectionString: env.DATABASE_URL });
-    return { adapter: createPostgresStore(client), close: () => client.end({ timeout: 5 }) };
+    try {
+      if (env.DATABASE_AUTO_MIGRATE === "true") {
+        // Migrations may need the unpooled/direct URL (`DATABASE_URL_UNPOOLED`)
+        // while the API itself reads through the pooled one; they reach the same
+        // database, so the status check below sees what this applied.
+        const migrationUrl = resolvePostgresMigrationUrl({ env });
+        const migrationClient = migrationUrl === env.DATABASE_URL
+          ? client
+          : await createPostgresClient({ connectionString: migrationUrl });
+        try {
+          await runMigrations(migrationClient);
+        } finally {
+          if (migrationClient !== client) await migrationClient.end({ timeout: 5 });
+        }
+      }
+      const status = await getPostgresMigrationStatus(client);
+      if (status.pending.length > 0) {
+        throw new Error(
+          `PostgreSQL schema is not current. Run "pnpm db:migrate" before starting the API. Pending: ${status.pending.join(", ")}.`,
+        );
+      }
+      return { adapter: createPostgresStore(client), close: () => client.end({ timeout: 5 }) };
+    } catch (error) {
+      await client.end({ timeout: 5 });
+      throw error;
+    }
   },
 });
 

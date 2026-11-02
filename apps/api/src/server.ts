@@ -150,7 +150,17 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
     const errorName = error instanceof Error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name)
       ? error.name
       : "Error";
-    writeStructuredLog({ level: "error", event: "api_startup_failed", errorName });
+    // The message is the whole point of this line: an API that cannot start
+    // otherwise reports only "Error", which sends you to the debugger to find
+    // out that a migration is pending or the database is unreachable. Capped,
+    // and never the stack — but see the note about connection strings in
+    // `docs/audit/backend-review-2026-11.md`.
+    writeStructuredLog({
+      level: "error",
+      event: "api_startup_failed",
+      errorName,
+      ...(error instanceof Error ? { errorMessage: error.message.slice(0, 500) } : {}),
+    });
     process.exitCode = 1;
   });
 }
