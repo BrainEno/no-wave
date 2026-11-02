@@ -39,6 +39,9 @@ async function sqliteFixture() {
     async setArticlePublishedAt(slug, publishedAt) {
       db.prepare("UPDATE articles SET published_at = ? WHERE slug = ?").run(publishedAt, slug);
     },
+    async setMediaAssetCreatedAt(id, createdAt) {
+      db.prepare("UPDATE media_assets SET created_at = ? WHERE id = ?").run(createdAt, id);
+    },
     async cleanup(conversationId, suffix) {
       if (conversationId) {
         const messages = db.prepare("SELECT id FROM messages WHERE conversation_id = ?").all(conversationId);
@@ -58,6 +61,7 @@ async function sqliteFixture() {
           `sort-author-${suffix}`, `sort-other-author-${suffix}`,
           `role-editor-${suffix}`, `role-target-${suffix}`, `featured-editor-${suffix}`, `featured-member-${suffix}`,
           `search-author-${suffix}`, `cursor-author-${suffix}`,
+          `cursor-ms-author-${suffix}`, `cursor-ms-owner-${suffix}`,
           `sort-liker-${suffix}-1`,
           `sort-liker-${suffix}-2`,
           `sort-liker-${suffix}-3`,
@@ -75,6 +79,9 @@ async function sqliteFixture() {
         db.prepare(`DELETE FROM user_profile_translations WHERE user_id IN (${userIds.map(() => "?").join(",")})`).run(...userIds);
         db.prepare(`DELETE FROM user_profiles WHERE user_id IN (${userIds.map(() => "?").join(",")})`).run(...userIds);
         db.prepare("DELETE FROM revoked_sessions WHERE session_id = ?").run(`contract-session-${suffix}`);
+        db.prepare("DELETE FROM media_assets WHERE owner_id = ?").run(`cursor-ms-owner-${suffix}`);
+        db.prepare("DELETE FROM auth_accounts WHERE user_id IN (?, ?)").run(`cursor-ms-author-${suffix}`, `cursor-ms-owner-${suffix}`);
+        db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`cursor-ms-%-${suffix}`);
         for (const slug of [`contract-draft-${suffix}`, `contract-published-${suffix}`, `contract-liked-${suffix}`, `contract-comment-${suffix}`, `contract-comment-notifications-${suffix}`, `contract-create-once-${suffix}`, `contract-create-once-b-${suffix}`, `contract-create-twice-${suffix}`]) db.prepare("DELETE FROM articles WHERE slug = ?").run(slug);
         db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`feed-%-${suffix}`);
         db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`sort-%-${suffix}`);
@@ -108,6 +115,9 @@ async function postgresFixture() {
     async setArticlePublishedAt(slug, publishedAt) {
       await postgresSql.unsafe("UPDATE articles SET published_at = $1 WHERE slug = $2", [publishedAt, slug]);
     },
+    async setMediaAssetCreatedAt(id, createdAt) {
+      await postgresSql.unsafe("UPDATE media_assets SET created_at = $1 WHERE id = $2", [createdAt, id]);
+    },
     async cleanup(conversationId, suffix) {
       if (conversationId) {
         const messages = await postgresSql.unsafe(
@@ -128,6 +138,7 @@ async function postgresFixture() {
           `sort-author-${suffix}`, `sort-other-author-${suffix}`,
           `role-editor-${suffix}`, `role-target-${suffix}`, `featured-editor-${suffix}`, `featured-member-${suffix}`,
           `search-author-${suffix}`, `cursor-author-${suffix}`,
+          `cursor-ms-author-${suffix}`, `cursor-ms-owner-${suffix}`,
           `sort-liker-${suffix}-1`,
           `sort-liker-${suffix}-2`,
           `sort-liker-${suffix}-3`,
@@ -144,6 +155,9 @@ async function postgresFixture() {
         await postgresSql.unsafe("DELETE FROM user_profile_translations WHERE user_id = ANY($1::text[])", [userIds]);
         await postgresSql.unsafe("DELETE FROM user_profiles WHERE user_id = ANY($1::text[])", [userIds]);
         await postgresSql.unsafe("DELETE FROM revoked_sessions WHERE session_id = ANY($1::text[])", [[`contract-session-${suffix}`, `contract-expired-session-${suffix}`]]);
+        await postgresSql.unsafe("DELETE FROM media_assets WHERE owner_id = $1", [`cursor-ms-owner-${suffix}`]);
+        await postgresSql.unsafe("DELETE FROM auth_accounts WHERE user_id = ANY($1::text[])", [[`cursor-ms-author-${suffix}`, `cursor-ms-owner-${suffix}`]]);
+        await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`cursor-ms-%-${suffix}`]);
         await postgresSql.unsafe("DELETE FROM articles WHERE slug = ANY($1::text[])", [[`contract-draft-${suffix}`, `contract-published-${suffix}`, `contract-liked-${suffix}`, `contract-comment-${suffix}`, `contract-comment-notifications-${suffix}`, `contract-create-once-${suffix}`, `contract-create-once-b-${suffix}`, `contract-create-twice-${suffix}`]]);
         // A deleted work keeps its row under a released slug (`...-deleted-<id>`).
         await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`contract-delete-${suffix}%`]);
@@ -2222,6 +2236,125 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       assert.equal(await runtime.store.deleteArticleComment({ commentId: comment.id, actorId: `commenter-a-${suffix}` }), false);
       assert.equal((await runtime.store.listArticleComments({ slug, locale: "zh-CN" })).length, 0);
     } finally { await runtime.cleanup(undefined, suffix); }
+  });
+
+
+  test(`${adapterName}: cursors keep every same-millisecond row, then an empty page`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const authorId = `cursor-ms-author-${suffix}`;
+    const ownerId = `cursor-ms-owner-${suffix}`;
+    const sameMs = "2026-06-01T00:00:00.123Z";
+    const newerMs = "2026-06-01T00:00:00.124Z";
+    const olderMs = "2026-06-01T00:00:00.122Z";
+    const intruderMs = "2026-06-01T00:00:00.125Z";
+    const blocks = [{ id: "p1", type: "paragraph", text: "Cursor contract body." }];
+    const hour = new Date(Date.now() + 3_600_000).toISOString();
+    const account = (userId, seed) => ({
+      userId,
+      email: `cursor-ms-${seed}-${suffix}@example.test`,
+      passwordHash: "hash-before",
+      session: {
+        sessionId: randomUUID(), userId, accessTokenId: randomUUID(),
+        refreshHash: (seed + suffix.replace(/-/g, "")).padEnd(64, seed), expiresAt: hour,
+        accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+      },
+    });
+    const newestFirst = (rows, timeKey) => [...rows].sort((a, b) => {
+      const left = a[timeKey];
+      const right = b[timeKey];
+      if (left !== right) return left < right ? 1 : -1;
+      return a.id < b.id ? 1 : -1;
+    }).map((row) => row.id);
+    await runtime.store.createIdentityAccount(account(ownerId, "a"));
+    try {
+      const articleRows = [];
+      for (let index = 0; index < 5; index += 1) {
+        const slug = `cursor-ms-work-${index}-${suffix}`;
+        const created = await runtime.store.createArticle({
+          authorId, slug, title: slug, summary: "", locale: "zh-CN", contentBlocks: blocks, publish: true,
+        });
+        articleRows.push({ id: created.id, slug, publishedAt: null });
+      }
+      // Assign times in descending-id order: the smallest id is newest and the
+      // largest id is oldest, so UUID order and time order deliberately disagree.
+      const articlesById = [...articleRows].sort((a, b) => a.id < b.id ? -1 : 1);
+      [newerMs, sameMs, sameMs, sameMs, olderMs].forEach((at, index) => { articlesById[index].publishedAt = at; });
+      for (const row of articleRows) await runtime.setArticlePublishedAt(row.slug, row.publishedAt);
+
+      const mediaRows = [];
+      for (let index = 0; index < 5; index += 1) {
+        const id = randomUUID();
+        await runtime.store.createMediaAsset({
+          id, ownerId, storageKey: `assets/${ownerId}/${id}.webp`, contentType: "image/webp",
+          byteSize: 2048, width: 20, height: 10, sha256: "c".repeat(64),
+        });
+        mediaRows.push({ id, createdAt: null });
+      }
+      const assetsById = [...mediaRows].sort((a, b) => a.id < b.id ? -1 : 1);
+      [newerMs, sameMs, sameMs, sameMs, olderMs].forEach((at, index) => { assetsById[index].createdAt = at; });
+      for (const row of mediaRows) await runtime.setMediaAssetCreatedAt(row.id, row.createdAt);
+
+      const expectedArticleIds = newestFirst(articleRows, "publishedAt");
+      const expectedMediaIds = newestFirst(mediaRows, "createdAt");
+      const intruderSlug = `cursor-ms-intruder-${suffix}`;
+      const intruderAssetId = randomUUID();
+      let intruderArticleId = null;
+      const insertIntruderArticle = async () => {
+        const created = await runtime.store.createArticle({
+          authorId, slug: intruderSlug, title: intruderSlug, summary: "", locale: "zh-CN",
+          contentBlocks: blocks, publish: true,
+        });
+        intruderArticleId = created.id;
+        await runtime.setArticlePublishedAt(intruderSlug, intruderMs);
+      };
+      const insertIntruderAsset = async () => {
+        await runtime.store.createMediaAsset({
+          id: intruderAssetId, ownerId, storageKey: `assets/${ownerId}/${intruderAssetId}.webp`,
+          contentType: "image/webp", byteSize: 2048, width: 20, height: 10, sha256: "d".repeat(64),
+        });
+        await runtime.setMediaAssetCreatedAt(intruderAssetId, intruderMs);
+      };
+
+      const walkArticlePages = async () => {
+        const seen = [];
+        let cursor = null;
+        let rows = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: suffix, limit: 1, cursor });
+        for (let index = 0; index < expectedArticleIds.length; index += 1) {
+          const row = rows[0];
+          assert.ok(row, `article page ${index + 1} exists`);
+          seen.push(row.id);
+          cursor = encodeArticleCursor(row.publishedAt, row.id);
+          if (index === 0) await insertIntruderArticle();
+          rows = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: suffix, limit: 1, cursor });
+        }
+        assert.deepEqual(rows, [], "the article tail page is empty");
+        assert.deepEqual([...seen].sort(), [...expectedArticleIds].sort(), "every article is read once");
+        assert.equal(new Set(seen).size, expectedArticleIds.length, "no article is repeated");
+        assert.ok(!seen.includes(intruderArticleId), "a newer insert does not rewind the cursor");
+      };
+      const walkMediaPages = async () => {
+        const seen = [];
+        let cursor = null;
+        let rows = await runtime.store.listMediaAssets({ ownerId, cursor, limit: 1 });
+        for (let index = 0; index < expectedMediaIds.length; index += 1) {
+          const row = rows[0];
+          assert.ok(row, `media page ${index + 1} exists`);
+          seen.push(row.id);
+          cursor = { at: new Date(row.createdAt).toISOString(), id: row.id };
+          if (index === 0) await insertIntruderAsset();
+          rows = await runtime.store.listMediaAssets({ ownerId, cursor, limit: 1 });
+        }
+        assert.deepEqual(rows, [], "the media tail page is empty");
+        assert.deepEqual([...seen].sort(), [...expectedMediaIds].sort(), "every asset is read once");
+        assert.equal(new Set(seen).size, expectedMediaIds.length, "no asset is repeated");
+        assert.ok(!seen.includes(intruderAssetId), "a newer asset does not rewind the cursor");
+      };
+      await walkArticlePages();
+      await walkMediaPages();
+    } finally {
+      await runtime.cleanup(undefined, suffix);
+    }
   });
 
 }
