@@ -32,16 +32,42 @@ carries. The page is `/write/media`, linked from the writing desk, and it answer
 the page reports as "this deployment has no image storage" rather than as an
 empty library.
 
-Each item carries `orphan` and `referencedBy`. An asset is an **orphan** when no
-work points at `/api/media/<id>`: not a draft that will be published later, not a
-tombstone that can be restored, just bytes being paid for and shown to nobody.
+Each item carries `orphan` and `referencedBy`. An asset is an **orphan** when
+nothing points at its media address: not a draft that will be published later, not
+a tombstone that can be restored, just bytes being paid for and shown to nobody.
 
-`DELETE /api/v1/me/media/:id` deletes an unused asset — object first, then row,
-so a failure leaves an invisible object rather than a work pointing at bytes that
-are gone. It re-runs the reference check against the content as it is *now*, not
-as it was when the page was rendered, and refuses with `409 MEDIA_IN_USE` and the
-works that use it. An asset that is not the caller's answers `404`, the same as
-one that does not exist.
+Two kinds of use are counted, and missing either one marked a live image as an
+orphan:
+
+- **A work's content**, whatever address it stores the image under. The scan
+  matches the path suffix `/media/<uuid>`, so it sees the Web app's
+  `/api/media/<id>`, the API's own `/api/v1/media/<id>` — what a client that talks
+  to the API directly stores — and a fully qualified URL. All three resolve to the
+  same object.
+- **A member's avatar** (`user_profiles.avatar_url`), which is a media URL in no
+  article body at all.
+
+`DELETE /api/v1/me/media/:id` deletes an unused asset. The reference check and the
+delete are **one guarded operation inside the provider**, so a work saved between
+the page render and the click is found instead of losing its image. On success the
+row is deleted first and the object second: once the row is gone nothing can be
+referencing it, so an unreachable bucket leaves unreferenced bytes rather than a
+work pointing at bytes that are gone. That case answers `200` and logs
+`media.object_orphaned` with the storage key, so the leftovers can be reclaimed
+from the bucket by hand. A refusal is `409 MEDIA_IN_USE` carrying the works that
+use it. An asset that is not the caller's answers `404`, the same as one that does
+not exist.
+
+**A use is counted even when it is not described.** The scan reads every author's
+content, so naming what it finds would hand one author's unpublished draft titles
+to whoever owns the bytes. References the API will not name arrive as
+`{kind: "work", redacted: true}` with the identifying fields emptied — and they
+still block the delete. The rule is: you may always know that an image is in use,
+but not always by what.
+
+Deletion is currently switched off in the Web UI (`DELETE_ENABLED` in
+`packages/web-ui/src/components/authoring/media-library.tsx`) while this fix is
+verified. The API endpoint is unchanged and covered by tests.
 
 **Nothing reclaims storage on a schedule, and nothing should.** The scan that
 decides "unused" is only as good as the body it reads: an image sitting in a

@@ -439,6 +439,8 @@ mark { background: var(--or); color: #0f0d0c; }
 .nw-media-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--t2); font: 400 12px var(--f-ss); }
 .nw-media-flag { margin: 0; font: 400 13px/1.6 var(--f-zh); color: var(--t2); overflow-wrap: anywhere; }
 .nw-media-flag[data-state="orphan"] { font-weight: 700; color: var(--ink); }
+/* What the card says instead of the delete button while deletion is switched off. */
+.nw-media-note { margin: 0; font: 400 12px/1.6 var(--f-zh); color: var(--t2); }
 .nw-media-card button { justify-self: start; }
 .nw-media-more { margin-top: 24px; }
 @media (max-width: 640px) {

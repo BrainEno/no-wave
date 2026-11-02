@@ -26,20 +26,51 @@ export type MediaAsset = {
 export const MEDIA_PAGE_SIZE = 24;
 export const MEDIA_PAGE_SIZE_MAX = 60;
 
+/** What a work that uses an asset is, as far as the reader is concerned. */
+export type MediaWorkState = "draft" | "published" | "deleted";
+
 /**
- * A work that uses an asset, as the library reports it.
+ * A reference as the scan finds it — including who wrote the work, which is
+ * what lets the library keep somebody else's unpublished draft to itself.
+ *
+ * This shape never leaves the service.
+ */
+export type ScannedMediaReference =
+  | { kind: "avatar" }
+  | {
+    kind: "work";
+    articleId: string;
+    slug: string;
+    title: string;
+    locale: string;
+    state: MediaWorkState;
+    authorId: string;
+  };
+
+/**
+ * A reference as the library reports it.
  *
  * `state` is why a draft and a tombstone count as references: a draft is
  * published eventually and a tombstone can be restored, and restoring a work
  * into broken images is worse than keeping a few unreachable bytes.
+ *
+ * `redacted` is the other half of that: a draft belongs to whoever wrote it, so
+ * a reference from somebody else's unpublished work is still a reference — the
+ * image cannot be deleted — but whose work it is and what it is called are not
+ * the asset owner's to read.
  */
-export type MediaReference = {
-  articleId: string;
-  slug: string;
-  title: string;
-  locale: string;
-  state: "draft" | "published" | "deleted";
-};
+export type MediaReference =
+  | { kind: "avatar" }
+  | {
+    kind: "work";
+    articleId: string;
+    slug: string;
+    title: string;
+    locale: string;
+    state: MediaWorkState;
+    /** Another author's unpublished work: it counts, and it stays nameless. */
+    redacted: boolean;
+  };
 
 /** One asset in the library: what the upload returned, plus whether anything uses it. */
 export type MediaLibraryItem = {
@@ -50,7 +81,7 @@ export type MediaLibraryItem = {
   width: number;
   height: number;
   createdAt: string;
-  /** Nothing in any work points at it — the only asset this library will delete. */
+  /** Nothing — no work's body, no profile picture — points at it. The only asset this library will delete. */
   orphan: boolean;
   referencedBy: MediaReference[];
 };
@@ -65,15 +96,30 @@ export type MediaLibraryItem = {
  */
 export type MediaLibraryPage = { items: MediaLibraryItem[]; nextCursor: string | null };
 
-/** One article body, as the reference scan reads it. `contentBlocks` is raw JSON text or parsed JSON. */
-export type MediaContentScanRow = {
-  articleId: string;
-  slug: string;
-  status: string;
-  deletedAt: string | null;
-  locale: string;
-  title: string;
-  contentBlocks: unknown;
+/**
+ * One place a media URL can live, as the reference scan reads it.
+ *
+ * A work's body is not the only one. A member's profile picture is stored as a
+ * URL on the profile, outside any body, and it is as much in use as a cover
+ * image: a scan that looked only at bodies would offer the avatar of a live
+ * account as an orphan to be deleted.
+ *
+ * `content` is raw JSON text for a body (SQLite) or a parsed value (PostgreSQL),
+ * and the stored URL for an avatar.
+ */
+export type MediaScanRow = {
+  kind: "work" | "avatar";
+  content: unknown;
+  /** Present when `kind` is `work`. */
+  work?: {
+    articleId: string;
+    slug: string;
+    status: string;
+    deletedAt: string | null;
+    locale: string;
+    title: string;
+    authorId: string;
+  };
 };
 
 type MediaMetadataStore = {
@@ -84,14 +130,46 @@ type MediaMetadataStore = {
     cursor: { at: string; id: string } | null;
     limit: number;
   }): Promise<MediaAsset[]>;
-  /** `null` when the asset is not this owner's — the only answer for "not yours" and "not there". */
-  deleteMediaAsset(input: { id: string; ownerId: string }): Promise<MediaAsset | null>;
-  listArticleContentForMediaScan(): Promise<MediaContentScanRow[]>;
+  /**
+   * Every place a media URL can appear, for the reference scan.
+   *
+   * One method, because a reference is a reference wherever it lives: two
+   * methods would be two chances for one of them to be forgotten at the point
+   * where forgetting costs an image.
+   */
+  listMediaScanRows(): Promise<MediaScanRow[]>;
+  /**
+   * Delete one of an owner's assets **only if nothing uses it**, and answer
+   * what was found either way.
+   *
+   * `null` when the asset is not this owner's — the only answer for "not yours"
+   * and "not there". Otherwise the check and the delete have already happened
+   * as one operation: a work saved after the check and before the delete is a
+   * work whose images would otherwise go missing, and no amount of care in the
+   * application layer can close a gap that is really between two statements.
+   */
+  deleteUnusedMediaAsset(input: { id: string; ownerId: string }): Promise<{
+    deleted: MediaAsset | null;
+    usedBy: MediaScanRow[];
+  } | null>;
 };
 
-/** The one place the reference scan's idea of "an image in a work" is written down. */
-const MEDIA_SRC_PATTERN =
-  /\/api\/media\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})/gi;
+/**
+ * The one place the reference scan's idea of "a media URL" is written down.
+ *
+ * Deliberately `/media/<uuid>` and not `/api/media/<uuid>`: the Web app serves
+ * `/api/media/<id>` and relays it, and the API's own route is
+ * `/api/v1/media/<id>` — which is the address a client that talks to the API
+ * directly (the Flutter app) stores in a body. A pattern that matched only one
+ * of them marked live cover images and avatars as orphans.
+ *
+ * Matching the path rather than a full URL also covers an absolute address, and
+ * a stray `/media/<uuid>` in a code block would count as a reference, which is
+ * the direction a mistake should go: it refuses a delete instead of allowing
+ * one.
+ */
+export const MEDIA_SRC_PATTERN =
+  /\/media\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})/gi;
 
 export class MediaInputError extends Error {
   readonly statusCode = 400;
@@ -136,38 +214,81 @@ function scanText(contentBlocks: unknown): string {
 }
 
 /**
- * Which assets each work uses.
+ * Which assets are in use, and where.
  *
- * Pure, so the rule "an image is referenced when its URL appears in a body" is
- * testable without a database — and the same function answers for the library
- * list and for the delete check, so the badge a reader sees and the decision the
+ * Pure, so the rule "an image is referenced when its URL appears in a work's
+ * body or as somebody's avatar" is testable without a database — and the same
+ * function answers for the library list, for the delete check and for the
+ * provider's own guarded delete, so the badge a reader sees and the decision the
  * delete makes cannot drift apart.
  */
-export function extractMediaReferences(rows: readonly MediaContentScanRow[]): Map<string, MediaReference[]> {
-  const references = new Map<string, MediaReference[]>();
+export function extractMediaReferences(rows: readonly MediaScanRow[]): Map<string, ScannedMediaReference[]> {
+  const references = new Map<string, ScannedMediaReference[]>();
   if (!Array.isArray(rows)) return references;
   for (const row of rows) {
-    if (!row || typeof row !== "object" || typeof row.articleId !== "string") continue;
-    const text = scanText(row.contentBlocks);
+    if (!row || typeof row !== "object") continue;
+    // An unrecognised row is skipped rather than assumed: counting it would
+    // refuse a delete that is allowed, and ignoring it refuses nothing.
+    if (row.kind !== "work" && row.kind !== "avatar") continue;
+    const text = scanText(row.content);
     if (!text) continue;
-    const state: MediaReference["state"] = row.deletedAt ? "deleted" : row.status === "published" ? "published" : "draft";
+    const work = row.kind === "work" ? row.work : undefined;
+    if (row.kind === "work" && (!work || typeof work.articleId !== "string")) continue;
+    const state: MediaWorkState = !work ? "draft"
+      : work.deletedAt ? "deleted"
+        : work.status === "published" ? "published"
+          : "draft";
     const seen = new Set<string>();
     for (const match of text.matchAll(MEDIA_SRC_PATTERN)) {
       const id = match[1]!.toLowerCase();
       if (seen.has(id)) continue;
       seen.add(id);
       const list = references.get(id) ?? [];
-      list.push({
-        articleId: row.articleId,
-        slug: typeof row.slug === "string" ? row.slug : "",
-        title: typeof row.title === "string" ? row.title : "",
-        locale: typeof row.locale === "string" ? row.locale : "",
+      list.push(row.kind === "avatar" || !work ? { kind: "avatar" } : {
+        kind: "work",
+        articleId: work.articleId,
+        slug: typeof work.slug === "string" ? work.slug : "",
+        title: typeof work.title === "string" ? work.title : "",
+        locale: typeof work.locale === "string" ? work.locale : "",
         state,
+        authorId: typeof work.authorId === "string" ? work.authorId : "",
       });
       references.set(id, list);
     }
   }
   return references;
+}
+
+/**
+ * What this reader may be told about the works using an asset.
+ *
+ * A published work is public and a reader's own draft is theirs, so both are
+ * named. Somebody else's draft or tombstone is not: the asset owner has to be
+ * told the image is in use — that is what stops them deleting it — but the
+ * title of a work they cannot read is none of their business, and putting it in
+ * a list response would publish it to whoever happens to own the bytes.
+ */
+export function referencesForOwner(
+  references: ReadonlyMap<string, ScannedMediaReference[]>,
+  assetId: string,
+  viewerId: string,
+): MediaReference[] {
+  const found = references.get(String(assetId).toLowerCase()) ?? [];
+  return found.map((reference) => {
+    if (reference.kind === "avatar") return { kind: "avatar" } as MediaReference;
+    const visible = reference.state === "published" || reference.authorId === viewerId;
+    return visible
+      ? {
+        kind: "work",
+        articleId: reference.articleId,
+        slug: reference.slug,
+        title: reference.title,
+        locale: reference.locale,
+        state: reference.state,
+        redacted: false,
+      }
+      : { kind: "work", articleId: "", slug: "", title: "", locale: "", state: reference.state, redacted: true };
+  });
 }
 
 /** An asset as the library shows it, without the reference check. */
@@ -237,7 +358,7 @@ export function createMediaAssetService({ store, storage }: {
   storage: MediaObjectStorage;
 }) {
   const requiredStoreMethods = [
-    "createMediaAsset", "getMediaAsset", "listMediaAssets", "deleteMediaAsset", "listArticleContentForMediaScan",
+    "createMediaAsset", "getMediaAsset", "listMediaAssets", "listMediaScanRows", "deleteUnusedMediaAsset",
   ];
   const missingStoreMethods = requiredStoreMethods.filter((method) => typeof store?.[method] !== "function");
   if (missingStoreMethods.length > 0) {
@@ -319,9 +440,9 @@ export function createMediaAssetService({ store, storage }: {
         limit: requested + 1,
       });
       const items = rows.slice(0, requested);
-      const references = extractMediaReferences(await store.listArticleContentForMediaScan());
+      const references = extractMediaReferences(await store.listMediaScanRows());
       const page1 = items.map((asset) => {
-        const referencedBy = references.get(asset.id.toLowerCase()) ?? [];
+        const referencedBy = referencesForOwner(references, asset.id, ownerId);
         return { ...presentAsset(asset), orphan: referencedBy.length === 0, referencedBy };
       });
       const last = items[items.length - 1];
@@ -332,33 +453,45 @@ export function createMediaAssetService({ store, storage }: {
       return { items: page1, nextCursor };
     },
     /**
-     * `DELETE /api/v1/me/media/:id` — delete an unused asset, object and row.
+     * `DELETE /api/v1/me/media/:id` — delete an unused asset: its row, then its
+     * object.
      *
-     * The reference check is repeated here rather than trusted from the list:
-     * between the page being rendered and the button being pressed, a work can
-     * have been saved that uses the image. The badge is a hint about the present;
-     * this is the decision, and it is made against the same rule.
+     * The reference check is not trusted from the list — a work can have been
+     * saved between the page being rendered and the button being pressed — and
+     * it is not done here either, because a check followed by a delete is two
+     * statements with a gap between them, and a work saved in that gap loses its
+     * images. `deleteUnusedMediaAsset` scans and deletes in one operation, and
+     * answers with whatever it found.
      *
-     * The object goes first and the row second. Failing that way round leaves an
-     * invisible object nobody links to; the other way round leaves a work
-     * pointing at bytes that are gone.
+     * The **row goes first**, which is the other way round from what this used to
+     * do, and the reason is the same race: once the guarded delete has committed,
+     * nothing can be referencing the row, so a failure to reach the bucket
+     * afterwards can only leave invisible bytes — never a work pointing at bytes
+     * that are gone. The caller is told whether the object went as well, so the
+     * leftovers can be reclaimed instead of being quietly forgotten.
      */
-    async deleteAsset({ ownerId, id }: { ownerId: string; id: string }): Promise<{ id: string }> {
+    async deleteAsset({ ownerId, id }: { ownerId: string; id: string }): Promise<{
+      id: string;
+      objectDeleted: boolean;
+      /** Set when the object could not be reached: the bytes are still there and nothing links to them. */
+      orphanedStorageKey?: string;
+    }> {
       if (!isUuid(ownerId)) inputError("The authenticated user identity is invalid.");
       if (!isUuid(id)) throw new MediaAssetNotFoundError();
-      const asset = await store.getMediaAsset({ id });
-      if (!asset || asset.ownerId !== ownerId) throw new MediaAssetNotFoundError();
-      const references = extractMediaReferences(await store.listArticleContentForMediaScan());
-      const usedBy = references.get(id.toLowerCase()) ?? [];
-      if (usedBy.length > 0) throw new MediaAssetInUseError(usedBy);
-      try {
-        await storage.deleteObject(asset.storageKey);
-      } catch {
-        throw new MediaStorageUnavailableError("The stored image could not be deleted.");
+      const result = await store.deleteUnusedMediaAsset({ id, ownerId });
+      if (!result) throw new MediaAssetNotFoundError();
+      if (!result.deleted) {
+        throw new MediaAssetInUseError(referencesForOwner(extractMediaReferences(result.usedBy), id, ownerId));
       }
-      const deleted = await store.deleteMediaAsset({ id, ownerId });
-      if (!deleted) throw new MediaAssetNotFoundError();
-      return { id };
+      const { storageKey } = result.deleted;
+      try {
+        await storage.deleteObject(storageKey);
+        return { id, objectDeleted: true };
+      } catch {
+        // The row is gone and the page will say so; what is left is an object
+        // nothing links to, which is a storage bill and not a broken work.
+        return { id, objectDeleted: false, orphanedStorageKey: storageKey };
+      }
     },
   });
 }
