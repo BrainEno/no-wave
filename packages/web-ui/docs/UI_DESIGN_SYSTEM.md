@@ -181,9 +181,10 @@
 ## 6. 动效与 WebGL 规范
 
 - **库：** GSAP 3.13 + ScrollTrigger + ScrollSmoother（`smooth: 1.2`）。固定元素（竖脊、导航条、面板）必须放在 `#smooth-wrapper` 之外。
+- **工具页例外：** `/write`（含 `/write/media`）、`/account`、`/admin/*`、`/sign-in` 等表单与账户路由不启用 ScrollSmoother，保留原生滚动，避免滚动动画期间 mousedown/mouseup 落在不同元素而吞掉点击（#92 / #164）。
 - **允许的动效：** 载入幕布、字标入场、图片遮罩进入、视差（`data-speed`）、滚动速度驱动跑马灯、区块进入。**每个区块最多两种**。
 - **WebGL：** 只用于**首屏的一张图**（涂抹/位移着色器）。要求：单 canvas、DPR ≤ 2、首屏离开视口后停止渲染、WebGL 不可用时回退为静态 `<img>`。其他页面（`/post`、`/editor`、`/chat`）**不使用 WebGL**，保证阅读与输入的稳定。
-- **Canvas 2D：** 仅用于全局颗粒层（半分辨率、约 8fps、`pointer-events:none`、不超过 7% 不透明度）。
+- **Canvas 2D：** 仅用于全局颗粒层（半分辨率、约 8fps、`pointer-events:none`、不超过 7% 不透明度）。噪点在初始化时生成一张 256×256 静态 tile，之后每帧只平移 repeat pattern 并做一次 `fillRect`，不再逐像素调用 `Math.random()`。
 - **减少动态效果：** `prefers-reduced-motion` 时不启用平滑滚动、不跑马灯、不播放载入幕布、WebGL 只渲染一帧清晰画面。
 - **性能底线：** 首屏 LCP 图 ≤ 800KB；滚动时主线程长任务 < 50ms；移动端关闭鼠标交互着色。
 
@@ -208,7 +209,7 @@
 - 顶部细栏（56px，黑底）：左 `草稿 · 已保存 12:08`（Meta），右 `预览` `发布`（Primary）。保存状态用文字：`保存中…` / `已保存` / `保存失败，重试`。
 - 封面选择：上传 / 从默认封面中选 / 自动（默认）。展示 4 张默认封面的缩略图，选中项有 3px 橙色框 + “已选”文字。
 - 格式工具：选中文字时出现的黑色浮条（直角），按钮 44px。不使用侧边工具栏。
-- 无 WebGL、无跑马灯、无视差；动效只留 `motion.fast`。
+- 无 WebGL、无跑马灯、无视差、无 ScrollSmoother；动效只留 `motion.fast`，滚动保持浏览器原生行为。
 
 ### 7.4 聊天 `/chat`（假设）
 

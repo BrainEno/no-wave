@@ -53,9 +53,9 @@ There are eight current App Router `route.ts` handlers:
 | `apps/web/src/app/api/authoring/media/route.ts` | Upload proxy | Preserve same-origin mutation check and upload restrictions. |
 | `apps/web/src/app/api/media/[id]/route.ts` | Publicly addressable, API-authorized media proxy | Preserve private object storage, validation, cache headers and safe failures. |
 | `apps/web/src/app/api/articles/[slug]/comments/route.ts` | Comment read/write proxy | Preserve origin protection, the comment content contract and private cache policy. |
-| `apps/web/src/app/api/spike/events/route.ts` | Test-only SSE route | Preserve the route smoke contract while the spike remains; do not treat it as a durable real-time transport. |
+| `apps/web/src/app/api/spike/events/route.ts` | Test-only SSE route | Historical spike surface; retired from production at `040e65e`. |
 
-There is one additional Next Server Action module: `apps/web/src/app/spike-form/actions.ts`. It was part of the framework spike, not the durable business API, and its observed behavior was preserved through a React Router route action plus its SSE resource route rather than retired (2026-11-01).
+There is one additional Next Server Action module: `apps/web/src/app/spike-form/actions.ts`. It was part of the framework spike, not the durable business API. Its observed behavior was preserved in the React Router prototype on 2026-11-01; both spike routes were subsequently retired from production at baseline `040e65e`.
 
 ### Authentication and private request boundary
 
@@ -171,14 +171,16 @@ nightly workflow compared two implementations of the same routes; with the Next.
 application deleted there is one implementation and nothing to compare, so the
 script and workflow are gone and the assertions live where they run on every
 commit — `pnpm test:web` (61 tests over real HTTP against the production build)
-and `pnpm test:routes`. The spike the paragraph below mentions is ported too:
-`/spike-form` and `/api/spike/events` are a route action and a resource route.
+and `pnpm test:routes`. The spike the paragraphs below mention was ported to
+the prototype and later retired from the production route table at baseline
+`040e65e`; those two paths are no longer a route action or a resource route.
 
 **Status 2026-10-31 (superseded):** the site shell is ported too, and `pnpm check:ssr-parity` now
 compares **198** observations over **20** routes (was 112 over 17): the new ones are absolute
 shell checks plus the three recovery pages. The only production surfaces still missing from
 the prototype are the spike — `/api/spike/events` and `/spike-form` — which the roadmap
-itself says must not be treated as a durable transport.
+itself says must not be treated as a durable transport. Those routes were retired
+from production at baseline `040e65e`.
 
 **Status 2026-10-29 (superseded):** every public route — home included — plus sitemap and
 robots is ported, and the exit gate is executable and scheduled:

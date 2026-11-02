@@ -2,7 +2,20 @@
 
 import { Link } from "@/lib/framework/link.tsx";
 import { usePathname } from "@/lib/framework/navigation.ts";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { hasUsableSession, SESSION_MARKER_COOKIE } from "@bot-thk/web-http";
+import { dateLabel } from "@/lib/format.ts";
+import {
+  deletionNoticeText,
+  grainOffsets,
+  grainTileData,
+  notificationRows,
+  parseUnreadCount,
+  sessionMarkerFromCookie,
+  shouldUseSmoothScroll,
+  unreadBadge,
+  type NotificationRow,
+} from "@/lib/chrome.ts";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { ScrollSmoother } from "gsap/ScrollSmoother";
@@ -31,28 +44,41 @@ const icon = {
   bell: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8a6 6 0 0112 0c0 7 3 8 3 8H3s3-1 3-8" /><path d="M10.3 20a2 2 0 003.4 0" /></svg>,
 };
 
+const GRAIN_TILE_SIZE = 256;
+
 function GrainCanvas() {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const canvas = ref.current;
     const context = canvas?.getContext("2d");
     if (!canvas || !context || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    let data: ImageData | null = null;
+
+    // One 256×256 tile is generated once. Every frame afterwards is a single
+    // pattern fill shifted by a precomputed offset, not a full-screen pixel loop.
+    const tile = document.createElement("canvas");
+    tile.width = GRAIN_TILE_SIZE;
+    tile.height = GRAIN_TILE_SIZE;
+    const tileContext = tile.getContext("2d");
+    if (!tileContext) return;
+    const image = tileContext.createImageData(GRAIN_TILE_SIZE, GRAIN_TILE_SIZE);
+    image.data.set(grainTileData(GRAIN_TILE_SIZE));
+    tileContext.putImageData(image, 0, 0);
+    const pattern = context.createPattern(tile, "repeat");
+    if (!pattern) return;
+    const offsets = grainOffsets(GRAIN_TILE_SIZE);
+    let offsetIndex = 0;
+    const paint = () => {
+      const [dx, dy] = offsets[offsetIndex++ % offsets.length];
+      context.setTransform(1, 0, 0, 1, 0, 0);
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.translate(-dx, -dy);
+      context.fillStyle = pattern;
+      context.fillRect(0, 0, canvas.width + GRAIN_TILE_SIZE, canvas.height + GRAIN_TILE_SIZE);
+    };
     const resize = () => {
       canvas.width = Math.ceil(window.innerWidth / 2);
       canvas.height = Math.ceil(window.innerHeight / 2);
-      data = context.createImageData(canvas.width, canvas.height);
       paint();
-    };
-    const paint = () => {
-      if (!data) return;
-      const pixels = data.data;
-      for (let index = 0; index < pixels.length; index += 4) {
-        const value = Math.random() * 255;
-        pixels[index] = pixels[index + 1] = pixels[index + 2] = value;
-        pixels[index + 3] = 255;
-      }
-      context.putImageData(data, 0, 0);
     };
     resize();
     const timer = window.setInterval(() => { if (!document.hidden) paint(); }, 125);
@@ -97,16 +123,128 @@ export function SiteChrome({ children }: { children: ReactNode }) {
   const pathname = usePathname() ?? "/";
   const locale = localeOf(pathname);
   const ui = getUi(locale);
+  const smoothEnabled = shouldUseSmoothScroll(pathname);
   const [bellOpen, setBellOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [sessionUsable, setSessionUsable] = useState<boolean | null>(null);
+  const [unread, setUnread] = useState(0);
+  const [bellState, setBellState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [bellError, setBellError] = useState("");
+  const [bellRows, setBellRows] = useState<NotificationRow[]>([]);
+  const [bellPending, setBellPending] = useState(false);
   const smoother = useRef<ScrollSmoother | null>(null);
   const pageMotion = useRef<{ revert(): void } | null>(null);
   const lastKey = useRef("");
-  const unread = 0; // 通知接口尚未接入：没有数据时不显示角标
 
-  // 平滑滚动：整站只创建一次
+  const readOptions: RequestInit = { credentials: "same-origin", cache: "no-store" };
+  const fetchUnread = useCallback(async (): Promise<number | null> => {
+    const response = await fetch("/api/authoring/notifications/unread-count", readOptions);
+    if (response.status === 401) return null;
+    if (!response.ok) throw new Error(ui.bell.error);
+    const payload: unknown = await response.json().catch(() => null);
+    return parseUnreadCount(payload) ?? 0;
+  }, [ui.bell.error]);
+
+  const fetchBell = useCallback(async (): Promise<{ unread: number; rows: NotificationRow[] } | null> => {
+    const [countResponse, listResponse] = await Promise.all([
+      fetch("/api/authoring/notifications/unread-count", readOptions),
+      fetch("/api/authoring/notifications", readOptions),
+    ]);
+    if (countResponse.status === 401 || listResponse.status === 401) return null;
+    if (!countResponse.ok || !listResponse.ok) throw new Error(ui.bell.error);
+    const [countPayload, listPayload]: unknown[] = await Promise.all([
+      countResponse.json().catch(() => null),
+      listResponse.json().catch(() => null),
+    ]);
+    return { unread: parseUnreadCount(countPayload) ?? 0, rows: notificationRows(listPayload) };
+  }, [ui.bell.error]);
+
+  // Public SSR pages stay cacheable: the non-sensitive marker is read only after
+  // hydration, and every byte of inbox data still comes from the API behind the
+  // access-token cookie.
   useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    setSessionUsable(null);
+    const marker = sessionMarkerFromCookie(document.cookie, SESSION_MARKER_COOKIE);
+    setSessionUsable(hasUsableSession(marker));
+  }, [pathname]);
+
+  useEffect(() => {
+    if (sessionUsable !== true) return;
+    let active = true;
+    void (async () => {
+      try {
+        const count = await fetchUnread();
+        if (!active) return;
+        if (count === null) { setSessionUsable(false); setUnread(0); setBellRows([]); return; }
+        setUnread(count);
+      } catch { if (active) setUnread(0); }
+    })();
+    return () => { active = false; };
+  }, [sessionUsable, pathname, fetchUnread]);
+
+  useEffect(() => {
+    if (!bellOpen || sessionUsable !== true) return;
+    let active = true;
+    setBellState("loading");
+    void (async () => {
+      try {
+        const data = await fetchBell();
+        if (!active) return;
+        if (data === null) {
+          setSessionUsable(false); setUnread(0); setBellRows([]); setBellState("idle");
+          return;
+        }
+        setUnread(data.unread);
+        setBellRows(data.rows);
+        setBellError("");
+        setBellState("ready");
+      } catch (caught) {
+        if (active) {
+          setBellError(caught instanceof Error ? caught.message : ui.bell.error);
+          setBellState("error");
+        }
+      }
+    })();
+    return () => { active = false; };
+  }, [bellOpen, sessionUsable, fetchBell, ui.bell.error]);
+
+  async function markBellRead(id?: string) {
+    setBellPending(true);
+    try {
+      const response = await fetch(
+        id === undefined ? "/api/authoring/notifications/read-all" : `/api/authoring/notifications/${encodeURIComponent(id)}/read`,
+        {
+          method: id === undefined ? "POST" : "PUT",
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: { origin: window.location.origin },
+        },
+      );
+      if (response.status === 401) {
+        setSessionUsable(false); setUnread(0); setBellRows([]); setBellState("idle");
+        return;
+      }
+      if (!response.ok) throw new Error(ui.bell.error);
+      const data = await fetchBell();
+      if (data === null) {
+        setSessionUsable(false); setUnread(0); setBellRows([]); setBellState("idle");
+        return;
+      }
+      setUnread(data.unread);
+      setBellRows(data.rows);
+      setBellError("");
+      setBellState("ready");
+    } catch (caught) {
+      setBellError(caught instanceof Error ? caught.message : ui.bell.error);
+      setBellState("error");
+    } finally {
+      setBellPending(false);
+    }
+  }
+
+  // 平滑滚动：阅读页共用一次实例；写作/账户/管理/登录等表单页恢复原生滚动。
+  useEffect(() => {
+    if (!smoothEnabled || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     gsap.registerPlugin(ScrollTrigger, ScrollSmoother);
     const instance = ScrollSmoother.create({ wrapper: "#smooth-wrapper", content: "#smooth-content", smooth: 1.2, effects: true });
     smoother.current = instance;
@@ -123,7 +261,7 @@ export function SiteChrome({ children }: { children: ReactNode }) {
       smoother.current = null;
       document.documentElement.classList.remove("nw-smooth");
     };
-  }, []);
+  }, [smoothEnabled]);
 
   // 页面级动效：路径或查询串变化后重新绑定
   useEffect(() => {
@@ -178,6 +316,7 @@ export function SiteChrome({ children }: { children: ReactNode }) {
   // 平滑容器只允许 transform 位移：任何原生滚动（scrollIntoView、焦点找回、
   // 浏览器锚点跳转）都会钳位内容，立刻归零。
   useEffect(() => {
+    if (!smoothEnabled) return;
     const wrapper = document.getElementById("smooth-wrapper");
     if (!wrapper) return;
     const keepAtZero = () => {
@@ -186,9 +325,15 @@ export function SiteChrome({ children }: { children: ReactNode }) {
     };
     wrapper.addEventListener("scroll", keepAtZero, { passive: true });
     return () => wrapper.removeEventListener("scroll", keepAtZero);
-  }, []);
+  }, [smoothEnabled]);
 
-  useEffect(() => { setBellOpen(false); setMenuOpen(false); }, [pathname]);
+  useEffect(() => {
+    setBellOpen(false); setMenuOpen(false); setBellState("idle");
+    setBellRows([]); setBellError(""); setBellPending(false);
+  }, [pathname]);
+  useEffect(() => {
+    if (sessionUsable === false) setUnread(0);
+  }, [sessionUsable]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { setBellOpen(false); setMenuOpen(false); } };
     window.addEventListener("keydown", onKey);
@@ -206,6 +351,8 @@ export function SiteChrome({ children }: { children: ReactNode }) {
   const topicsHref = locale === "en" ? "/en/categories" : "/categories";
   const navTopics = onHome ? "#topics" : topicsHref;
   const searchHref = locale === "en" ? "/en/search" : "/search";
+  const badge = unreadBadge(unread);
+  const unreadRows = bellRows.some((row) => row.item.readAt === null);
 
   return (
     <>
@@ -214,7 +361,7 @@ export function SiteChrome({ children }: { children: ReactNode }) {
       <nav className="nw-pill" aria-label={ui.nav.primary} lang={locale}>
         <Link className="nw-nv" href={navSelected}>{ui.nav.selected}</Link>
         <Link className="nw-nv" href={navLatest}>{ui.nav.latest}</Link>
-        <Link className="nw-nv" href="/write">写作</Link>
+        <Link className="nw-nv" href="/write">{ui.nav.write}</Link>
         {/*
           The account entry is a plain link, not a session-aware one: the chrome
           is shared by every page, and reading a cookie in the layout would make
@@ -230,21 +377,51 @@ export function SiteChrome({ children }: { children: ReactNode }) {
         <span className="nw-nv" aria-hidden="true">/</span>
         <Link className="nw-nv nw-lang" href={locale === "en" ? pathname : alternatePath(pathname, locale)} lang="en" aria-current={locale === "en" ? "true" : undefined}>EN</Link>
         <Link className="nw-ic" href={searchHref} aria-label={ui.nav.search}>{icon.search}</Link>
-        <button className="nw-ic" type="button" aria-label={unread > 0 ? `${ui.bell.label}（${unread}）` : ui.bell.label} aria-expanded={bellOpen} aria-controls="nw-np" onClick={() => { setBellOpen((value) => !value); setMenuOpen(false); }}>
-          {icon.bell}{unread > 0 ? <span className="nw-bdg" aria-hidden="true">{unread > 99 ? "99+" : unread}</span> : null}
+        <button className="nw-ic" type="button" aria-label={badge ? `${ui.bell.label}，${badge} ${ui.bell.unread}` : ui.bell.label} aria-expanded={bellOpen} aria-controls="nw-np" onClick={() => { setBellOpen((value) => !value); setMenuOpen(false); }}>
+          {icon.bell}{badge ? <span className="nw-bdg" aria-live="polite">{badge}</span> : null}
         </button>
         <button className="nw-mnb" type="button" style={{ fontWeight: 700 }} aria-expanded={menuOpen} aria-controls="nw-menu" onClick={() => { setMenuOpen(true); setBellOpen(false); }}>{ui.nav.menu}</button>
       </nav>
       <div className="nw-np" id="nw-np" hidden={!bellOpen} role="dialog" aria-label={ui.bell.label} lang={locale}>
-        <header><span>{ui.bell.label}</span><button type="button" onClick={() => setBellOpen(false)}>{ui.nav.close}</button></header>
-        <div className="nw-np-body"><p>{ui.bell.empty}。{ui.bell.hint}</p><Link className="nw-btn nw-sec" href="/sign-in">{ui.bell.signIn} →</Link></div>
+        <header>
+          <span>{ui.bell.label}</span>
+          {sessionUsable === true && bellState === "ready" && unreadRows ? (
+            <button className="nw-np-mark-all" type="button" disabled={bellPending} onClick={() => void markBellRead()}>{ui.bell.markAllRead}</button>
+          ) : null}
+          <button type="button" onClick={() => setBellOpen(false)}>{ui.nav.close}</button>
+        </header>
+        <div className="nw-np-body">
+          {sessionUsable === null ? <p>{ui.bell.loading}</p> : null}
+          {sessionUsable === false ? (
+            <>
+              <p>{ui.bell.empty}。{ui.bell.hint}</p>
+              <Link className="nw-btn nw-sec" href="/sign-in">{ui.bell.signIn} →</Link>
+            </>
+          ) : null}
+          {sessionUsable === true && bellState === "loading" ? <p>{ui.bell.loading}</p> : null}
+          {sessionUsable === true && bellState === "error" ? <p role="alert">{bellError}</p> : null}
+          {sessionUsable === true && bellState === "ready" && bellRows.length === 0 ? <p>{ui.bell.empty}。</p> : null}
+          {sessionUsable === true && bellState === "ready" && bellRows.length > 0 ? (
+            <ul className="nw-np-list">
+              {bellRows.map(({ item, notice }) => (
+                <li className="nw-np-row" key={item.id}>
+                  <p className={item.readAt === null ? "nw-np-text nw-np-unread" : "nw-np-text"}>{deletionNoticeText(notice, locale)}</p>
+                  <time className="nw-np-time" dateTime={item.createdAt}>{dateLabel(item.createdAt, locale)}</time>
+                  {item.readAt === null ? (
+                    <button type="button" disabled={bellPending} onClick={() => void markBellRead(item.id)}>{ui.bell.markRead}</button>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
       </div>
       <div className="nw-menu" id="nw-menu" hidden={!menuOpen} role="dialog" aria-label={ui.nav.menu} lang={locale}>
         <button type="button" onClick={() => setMenuOpen(false)}>{ui.nav.close}</button>
         <Link href={homePath(locale)}>{ui.nav.home}</Link>
         <Link href={navSelected}>{ui.nav.selected}</Link>
         <Link href={navLatest}>{ui.nav.latest}</Link>
-        <Link href="/write">写作</Link>
+        <Link href="/write">{ui.nav.write}</Link>
         <Link href="/account">{ui.nav.account}</Link>
         <Link href={navTopics}>{ui.nav.topics}</Link>
         <Link href={searchHref}>{ui.nav.search}</Link>

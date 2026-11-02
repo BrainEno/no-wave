@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motionState } from "@/lib/motion-state.ts";
 
 const VERTEX_SHADER =
@@ -34,36 +34,47 @@ function compileShader(gl: WebGLRenderingContext, type: number, source: string):
  * 滚动越快涂抹越重。任何失败（无 WebGL、着色器/链接错误、纹理异常、驱动把
  * 画面栅格化成纯色）都会移除画布，露出下方静态封面图 —— 首屏绝不允许白屏。
  */
+/**
+ * 首屏涂抹着色器（demo / PR29 管线）：载入后从重度涂抹浮现；鼠标划过推开颜料；
+ * 滚动越快涂抹越重。任何失败（无 WebGL、着色器/链接错误、纹理异常、驱动把
+ * 画面栅格化成纯色）都会由 React 卸载画布，露出下方静态封面图 —— 首屏绝不允许白屏。
+ */
 export function HeroCanvas({ src }: { src: string }) {
   const ref = useRef<HTMLCanvasElement | null>(null);
+  const [fallback, setFallback] = useState(false);
 
   useEffect(() => {
+    if (fallback) return;
     const canvas = ref.current;
     const hero = canvas?.closest<HTMLElement>("[data-hero]") ?? canvas?.parentElement ?? null;
     if (!canvas || !hero) return;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reduce) motionState.reveal = 1;
 
+    let frame = 0;
+    let ready = false;
+    let visible = true;
+    let drawCount = 0;
+    const start = performance.now();
+    const clamp = (value: number) => Math.max(-1.5, Math.min(1.5, value));
+    const useFallback = () => {
+      ready = false;
+      if (frame) cancelAnimationFrame(frame);
+      frame = 0;
+      setFallback(true);
+    };
+
     const gl = canvas.getContext("webgl", { antialias: false, alpha: false });
-    if (!gl) {
-      canvas.remove();
-      return;
-    }
+    if (!gl) { useFallback(); return; }
 
     const vertex = compileShader(gl, gl.VERTEX_SHADER, VERTEX_SHADER);
     const fragment = compileShader(gl, gl.FRAGMENT_SHADER, FRAGMENT_SHADER);
     const program = gl.createProgram();
-    if (!vertex || !fragment || !program) {
-      canvas.remove();
-      return;
-    }
+    if (!vertex || !fragment || !program) { useFallback(); return; }
     gl.attachShader(program, vertex);
     gl.attachShader(program, fragment);
     gl.linkProgram(program);
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      canvas.remove();
-      return;
-    }
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) { useFallback(); return; }
     gl.useProgram(program);
 
     const buffer = gl.createBuffer();
@@ -78,10 +89,7 @@ export function HeroCanvas({ src }: { src: string }) {
       T: uniform("T"), R: uniform("R"), I: uniform("I"), M: uniform("M"),
       MV: uniform("MV"), t: uniform("t"), S: uniform("S"), Rv: uniform("Rv"),
     };
-    if (Object.values(U).some((location) => location === null)) {
-      canvas.remove();
-      return;
-    }
+    if (Object.values(U).some((location) => location === null)) { useFallback(); return; }
 
     const texture = gl.createTexture();
     // 1×1 深色种子纹理：采样永远命中有效数据，避免未初始化纹理。
@@ -95,14 +103,8 @@ export function HeroCanvas({ src }: { src: string }) {
     const mouse = { x: 0.5, y: 0.5, tx: 0.5, ty: 0.5, vx: 0, vy: 0 };
     let imageWidth = 1;
     let imageHeight = 1;
-    let ready = false;
-    let visible = true;
-    let frame = 0;
-    let drawCount = 0;
-    const start = performance.now();
-    const clamp = (value: number) => Math.max(-1.5, Math.min(1.5, value));
 
-    /** 连续两帧栅格化成纯色（部分驱动遇到异常会输出白/黑平面）→ 弃用画布，露出静态封面图。 */
+    /** 连续两帧栅格化成纯色（部分驱动遇到异常会输出白/黑平面）→ 交给 React 回退。 */
     const checkFrame = () => {
       const points: Array<[number, number]> = [
         [Math.floor(canvas.width * 0.2), Math.floor(canvas.height * 0.2)],
@@ -120,11 +122,7 @@ export function HeroCanvas({ src }: { src: string }) {
         if (lum < min) min = lum;
         if (lum > max) max = lum;
       }
-      if (max - min < 6) {
-        ready = false;
-        cancelAnimationFrame(frame);
-        canvas.remove();
-      }
+      if (max - min < 6) useFallback();
     };
 
     const draw = () => {
@@ -158,17 +156,19 @@ export function HeroCanvas({ src }: { src: string }) {
       if (drawCount === 2) checkFrame();
     };
     const loop = () => {
+      frame = 0;
+      if (!ready || !visible) return;
       frame = requestAnimationFrame(loop);
-      if (visible) draw();
+      draw();
+    };
+    const startLoop = () => {
+      if (!reduce && !frame && ready && visible) frame = requestAnimationFrame(loop);
     };
 
     const image = new Image();
     image.decoding = "async";
     image.onload = () => {
-      if (!image.naturalWidth || !image.naturalHeight) {
-        canvas.remove();
-        return;
-      }
+      if (!image.naturalWidth || !image.naturalHeight) { useFallback(); return; }
       imageWidth = image.naturalWidth;
       imageHeight = image.naturalHeight;
       gl.bindTexture(gl.TEXTURE_2D, texture);
@@ -181,10 +181,9 @@ export function HeroCanvas({ src }: { src: string }) {
       ready = true;
       draw();
       canvas.dataset.ready = "1";
+      startLoop();
     };
-    image.onerror = () => {
-      canvas.remove();
-    };
+    image.onerror = () => { useFallback(); };
     image.src = src;
 
     const onMove = (event: PointerEvent) => {
@@ -193,17 +192,24 @@ export function HeroCanvas({ src }: { src: string }) {
       mouse.ty = 1 - (event.clientY - rect.top) / rect.height;
     };
     if (!reduce && window.matchMedia("(pointer: fine)").matches) hero.addEventListener("pointermove", onMove);
-    const observer = new IntersectionObserver(([entry]) => { visible = entry?.isIntersecting ?? true; });
+    const observer = new IntersectionObserver(([entry]) => {
+      visible = entry?.isIntersecting ?? true;
+      if (visible) startLoop();
+      else if (frame) { cancelAnimationFrame(frame); frame = 0; }
+    });
     observer.observe(canvas);
-    if (!reduce) frame = requestAnimationFrame(loop);
+    if (!reduce) startLoop();
 
     return () => {
-      cancelAnimationFrame(frame);
+      if (frame) cancelAnimationFrame(frame);
+      image.onload = null;
+      image.onerror = null;
       observer.disconnect();
       hero.removeEventListener("pointermove", onMove);
       gl.getExtension("WEBGL_lose_context")?.loseContext();
     };
-  }, [src]);
+  }, [src, fallback]);
 
+  if (fallback) return null;
   return <canvas ref={ref} aria-hidden="true" />;
 }

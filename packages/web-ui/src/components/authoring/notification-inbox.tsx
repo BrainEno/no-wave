@@ -1,6 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import {
+  deletionNoticeText,
+  isNotificationItem,
+  parseDeletedArticleNotice,
+  type DeletedArticleNotice,
+  type NotificationItem,
+} from "@/lib/chrome.ts";
+
+export type { NotificationItem, DeletedArticleNotice } from "@/lib/chrome.ts";
+export { deletionNoticeText } from "@/lib/chrome.ts";
 
 /**
  * The notification inbox on the writing desk.
@@ -30,69 +40,6 @@ import { useCallback, useEffect, useState } from "react";
  */
 
 type InboxState = "loading" | "ready" | "error";
-
-/** One notice, as the REST API serializes it. */
-export type NotificationItem = {
-  id: string;
-  eventKey: string;
-  payload: string;
-  createdAt: string;
-  readAt: string | null;
-};
-
-/** The only notice the API writes today: a work's tombstone, and its date. */
-export type DeletedArticleNotice = { type: "article.deleted"; articleId: string; purgesAt: string };
-
-function isNotificationItem(value: unknown): value is NotificationItem {
-  if (typeof value !== "object" || value === null) return false;
-  const item = value as Partial<NotificationItem>;
-  return typeof item.id === "string" && typeof item.eventKey === "string" &&
-    typeof item.payload === "string" && typeof item.createdAt === "string" &&
-    (item.readAt === null || typeof item.readAt === "string");
-}
-
-/**
- * The payload is a JSON string on the wire (the serializer matches the GraphQL
- * notification contract), so it is parsed here — and a notice whose shape this
- * screen does not know is dropped rather than shown as a blank row, which keeps
- * the inbox rendering after the API learns a new kind of notice.
- */
-function parseDeletedArticleNotice(payload: string): DeletedArticleNotice | null {
-  let parsed: unknown;
-  try { parsed = JSON.parse(payload); } catch { return null; }
-  if (typeof parsed !== "object" || parsed === null) return null;
-  const notice = parsed as Partial<DeletedArticleNotice>;
-  if (notice.type !== "article.deleted") return null;
-  if (typeof notice.articleId !== "string" || typeof notice.purgesAt !== "string") return null;
-  return { type: "article.deleted", articleId: notice.articleId, purgesAt: notice.purgesAt };
-}
-
-/** The calendar day a timestamp falls on, for a date the reader can act on. */
-function calendarDay(timestamp: string): string | null {
-  const parsed = new Date(timestamp);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
-}
-
-/** Whole days from now until a timestamp, floored at zero. */
-function daysFromNow(timestamp: string): number | null {
-  const parsed = new Date(timestamp);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return Math.max(0, Math.ceil((parsed.getTime() - Date.now()) / 86_400_000));
-}
-
-/**
- * The sentence a reader gets about a deletion. The title is deliberately
- * absent — see the note at the top of this file — so the id is the only thing
- * that could identify the work, and after the sweep runs there is nothing left
- * to name even if the payload carried one.
- */
-export function deletionNoticeText(notice: DeletedArticleNotice): string {
-  const day = calendarDay(notice.purgesAt);
-  const days = daysFromNow(notice.purgesAt);
-  if (day === null) return "你评论过的一篇作品已被作者删除，你的评论会随作品一起清除。";
-  if (days === null || days === 0) return `你评论过的一篇作品已被作者删除，你的评论会在 ${day} 随作品一起清除。`;
-  return `你评论过的一篇作品已被作者删除，你的评论会在 ${day}（约 ${days} 天后）随作品一起清除。`;
-}
 
 function messageOf(payload: unknown): string {
   if (typeof payload === "object" && payload !== null && "error" in payload) {
@@ -181,7 +128,7 @@ export function NotificationInbox() {
           {notices.map(({ item, notice }) => (
             <li className="nw-authoring-inbox-row" key={item.id}>
               <p className={item.readAt === null ? "nw-authoring-inbox-text nw-unread" : "nw-authoring-inbox-text"}>
-                {deletionNoticeText(notice)}
+                {deletionNoticeText(notice, "zh-CN")}
               </p>
               {item.readAt === null ? (
                 <button className="nw-btn" type="button" disabled={pending} onClick={() => void markRead(item.id)}>

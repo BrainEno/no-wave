@@ -191,25 +191,11 @@ try {
     "the recovery link is not offered while the site cannot send a recovery mail",
   );
 
-  const events = await fetch(`${baseUrl}/api/spike/events`);
-  assert.equal(events.status, 200);
-  assert.match(events.headers.get("content-type") ?? "", /text\/event-stream/i);
-  assert.match(events.headers.get("cache-control") ?? "", /no-store/i);
-  // SSE responses are intentionally long-lived; response.text() waits for EOF and
-  // hangs forever. Read only until the expected event arrives, then cancel the stream.
-  assert.ok(events.body, "the SSE response should include a body stream");
-  const eventsReader = events.body.getReader();
-  const eventsDecoder = new TextDecoder();
-  let eventsText = "";
-  try {
-    for (let attempt = 0; attempt < 10 && !/refreshRequired/.test(eventsText); attempt += 1) {
-      const { value, done } = await eventsReader.read();
-      if (done) break;
-      eventsText += eventsDecoder.decode(value, { stream: true });
-    }
-    assert.match(eventsText, /refreshRequired/, "SSE stream should emit refreshRequired");
-  } finally {
-    await eventsReader.cancel();
+  // The framework-evaluation spike is no longer a production surface: both the
+  // form screen and its mock SSE endpoint must answer 404.
+  for (const path of ["/spike-form", "/api/spike/events"]) {
+    const retired = await fetch(`${baseUrl}${path}`);
+    assert.equal(retired.status, 404, `${path} should no longer be routed in production`);
   }
 
 
@@ -275,7 +261,7 @@ try {
     assert.match(await signIn.text(), /\/forgot-password/, "the recovery link comes back with the switch");
   });
 
-  console.log("Route smoke checks passed: localized home/archive/article routes, search, SEO alternates, 404s, account cache policy, recovery and verification pages (mail off and on), SSE headers, robots and sitemap.");
+  console.log("Route smoke checks passed: localized home/archive/article routes, search, SEO alternates, 404s, account cache policy, recovery and verification pages (mail off and on), retired spike 404s, robots and sitemap.");
 } finally {
   if (server.exitCode === null && server.signalCode === null) {
     if (process.platform !== "win32" && server.pid !== undefined) {

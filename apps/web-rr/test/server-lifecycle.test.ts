@@ -185,8 +185,12 @@ test("every request is logged once, with its path and status", async () => {
   await response.text();
   await sleep(200);
   const created = server.records().slice(before);
-  const completed = created.filter((record) => record.event === "http_request_completed");
-  assert.equal(completed.length, 1, `expected one request record, got ${completed.length}`);
+  // Structured logs are streamed from a child process, so a completed record
+  // from the preceding request can arrive after `before` was taken. Assert the
+  // request this test made, not every record that landed in the meantime.
+  const completed = created.filter((record) =>
+    record.event === "http_request_completed" && record.path === "/definitely-missing");
+  assert.equal(completed.length, 1, `expected one request record for this path, got ${completed.length}`);
   const record = completed[0] as Record<string, unknown>;
   assert.equal(record.method, "GET");
   assert.equal(record.path, "/definitely-missing");
