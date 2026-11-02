@@ -19,7 +19,7 @@ that can be asserted more cheaply must be asserted more cheaply.
 | `e2e/authoring.spec.ts` | Register → write → save draft → publish → read the public page → withdraw it → delete it → restore it from the recycle bin |
 | `e2e/devices.spec.ts` | Sign in → read the list of signed-in devices → end the other one → keep reading on this one; end the device you are holding → land on the sign-in page |
 | `e2e/read-aloud.spec.ts` | Read a published work aloud paragraph by paragraph → the mark follows the spoken paragraph → 停止 takes it off; a browser that cannot speak is given no control |
-| `e2e/passages.spec.ts` | Select a passage → 划线 → it is painted, listed and still there after a reload; write a note beside it and change it; 朗读这段 reads just that passage and takes the voice from a reading of the whole work; 删除 takes it off the page and out of the browser |
+| `e2e/passages.spec.ts` | Select a passage → 划线 → it is painted, listed and still there after a reload; write a note beside it and change it; 朗读这段 reads just that passage and takes the voice from a reading of the whole work; 删除 takes it off the page and out of the browser; 分享 writes it into a link, which a reader in a fresh browser opens and keeps for themselves, and a link whose words are not in the work says so and marks nothing |
 | `e2e/support/works.ts` | Not a spec: publishes a work over HTTP for the journeys that need one, and drags a selection across part of the page |
 | `e2e/support/speech.ts` | Not a spec: replaces the browser's speech engine with one that can be driven, because a headless browser has no voices installed |
 | `e2e/support/accounts.ts` | Not a spec: opens an account through the sign-in form, in the browser, so a private screen is visited with a session the journey made |
