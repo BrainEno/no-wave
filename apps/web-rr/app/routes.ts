@@ -47,6 +47,7 @@ export default [
   route("robots.txt", "routes/robots.txt.ts"),
   route("api/auth/:action", "routes/api.auth.ts"),
   route("api/authoring/session", "routes/api.authoring.session.ts"),
+  route("api/authoring/profile", "routes/api.authoring.profile.ts"),
   // Devices: the collection is a read (list) and a write (end the others);
   // one device is ended by its id (ADR 0019).
   route("api/authoring/sessions", "routes/api.authoring.sessions.ts"),

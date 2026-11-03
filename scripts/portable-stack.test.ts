@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -12,6 +12,7 @@ import {
   parseArguments,
   portableStackEnvironment,
   resolveJwtSecret,
+  resolveWebBuildCli,
   annotationLines,
   type StackArguments,
   type StackOptions,
@@ -53,6 +54,14 @@ function documentedVariables(): Set<string> {
   assert.ok(names.size > 20, "the template must still look like a template");
   return names;
 }
+
+test("the Web build CLI resolves without spawning a global pnpm", () => {
+  const cli = resolveWebBuildCli(repositoryRoot);
+  assert.ok(cli.endsWith("bin.js"), "the resolved CLI must be the React Router entry point");
+  assert.equal(existsSync(cli), true, "the resolved CLI must exist in this checkout");
+  assert.equal(/pnpm(?:\.cmd|\.exe)?$/i.test(cli), false, "the build must not resolve to a bare pnpm executable");
+  assert.equal(cli.includes("pnpm --filter"), false, "the build must not invoke pnpm as a package-manager command");
+});
 
 test("every variable the portable stack sets is documented in .env.example", () => {
   const documented = documentedVariables();

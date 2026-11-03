@@ -4,6 +4,7 @@ import {
   IdentityRateLimitError, IdentitySessionNotFoundError, IdentityUnavailableError,
   MailDisabledError,
 } from "../domain/errors.ts";
+import { DEFAULT_AUTHOR_DISPLAY_NAME } from "../domain/profile.ts";
 import { accessIssuerConfiguration, signAccessToken } from "../security/authentication.ts";
 import { hashPassword, verifyPassword } from "../security/passwords.ts";
 import {
@@ -90,7 +91,7 @@ type Rotation = { status: "invalid" | "reused" } | {
   status: "rotated"; userId: string; sessionId: string; accessExpiresAt: string; refreshExpiresAt: string;
 };
 export type IdentityStore = {
-  createIdentityAccount(input: { userId: string; email: string; passwordHash: string; session: IdentitySession }): Promise<boolean>;
+  createIdentityAccount(input: { userId: string; email: string; passwordHash: string; session: IdentitySession; displayName?: string }): Promise<boolean>;
   findIdentityAccount(input: { email: string }): Promise<{ userId: string; passwordHash: string } | null>;
   createIdentitySession(session: IdentitySession): Promise<unknown>;
   rotateIdentityRefresh(input: { refreshHash: string; nextRefreshHash: string; accessTokenId: string; issuedAt: string; accessExpiresAt: string }): Promise<Rotation>;
@@ -284,7 +285,7 @@ export function createIdentityService({ store, env, mailer = null, onMailDeliver
       const prepared = prepareSession(userId, config);
       const response = tokens({ userId, sessionId: prepared.session.sessionId, accessTokenId: prepared.session.accessTokenId, issuedAt: prepared.issuedAt,
         accessExpiresAt: prepared.session.accessExpiresAt, refreshExpiresAt: prepared.session.expiresAt, refreshToken: prepared.refreshToken });
-      const created = await store.createIdentityAccount({ userId, email, passwordHash, session: prepared.session });
+      const created = await store.createIdentityAccount({ userId, email, passwordHash, session: prepared.session, displayName: DEFAULT_AUTHOR_DISPLAY_NAME });
       if (!created) throw new IdentityConflictError();
       return response;
     },

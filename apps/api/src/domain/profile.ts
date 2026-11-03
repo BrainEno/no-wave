@@ -44,6 +44,14 @@ export function validateUserRole(value: unknown): UserRole {
  * The offset is bounded for the same reason deep offsets always are: page ten
  * thousand of a directory is not a page anybody reads.
  */
+/**
+ * A freshly registered account always has a public author profile. The default
+ * pen name is generic on purpose: it must not echo the email address, which is
+ * a login identifier rather than public byline. The author can change it from
+ * the writing desk.
+ */
+export const DEFAULT_AUTHOR_DISPLAY_NAME = "无浪作者";
+
 export const AUTHOR_QUERY_MAX_LENGTH = 200;
 export const AUTHOR_OFFSET_MAX = 100_000;
 

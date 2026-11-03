@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
 import { randomBytes, randomUUID } from "node:crypto";
 import { encodeArticleCursor } from "../domain/article.ts";
+import { DEFAULT_AUTHOR_DISPLAY_NAME } from "../domain/profile.ts";
 import { ArticleInputError, ArticleSlugConflictError, ConversationInputError, IdempotencyConflictError, ConversationAccessError, ArticleAuthorizationError, ArticleNotFoundError, ProfileInputError, ProfileNotFoundError } from "../domain/errors.ts";
 import { createPostgresClient, createPostgresStore } from "./postgres.ts";
 import { runMigrations } from "./migrate.ts";
@@ -62,6 +63,7 @@ async function sqliteFixture() {
           `role-editor-${suffix}`, `role-target-${suffix}`, `featured-editor-${suffix}`, `featured-member-${suffix}`,
           `search-author-${suffix}`, `cursor-author-${suffix}`,
           `cursor-ms-author-${suffix}`, `cursor-ms-owner-${suffix}`,
+          `identity-default-profile-${suffix}`,
           `sort-liker-${suffix}-1`,
           `sort-liker-${suffix}-2`,
           `sort-liker-${suffix}-3`,
@@ -80,7 +82,7 @@ async function sqliteFixture() {
         db.prepare(`DELETE FROM user_profiles WHERE user_id IN (${userIds.map(() => "?").join(",")})`).run(...userIds);
         db.prepare("DELETE FROM revoked_sessions WHERE session_id = ?").run(`contract-session-${suffix}`);
         db.prepare("DELETE FROM media_assets WHERE owner_id = ?").run(`cursor-ms-owner-${suffix}`);
-        db.prepare("DELETE FROM auth_accounts WHERE user_id IN (?, ?)").run(`cursor-ms-author-${suffix}`, `cursor-ms-owner-${suffix}`);
+        db.prepare("DELETE FROM auth_accounts WHERE user_id IN (?, ?, ?)").run(`cursor-ms-author-${suffix}`, `cursor-ms-owner-${suffix}`, `identity-default-profile-${suffix}`);
         db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`cursor-ms-%-${suffix}`);
         for (const slug of [`contract-draft-${suffix}`, `contract-published-${suffix}`, `contract-liked-${suffix}`, `contract-comment-${suffix}`, `contract-comment-notifications-${suffix}`, `contract-create-once-${suffix}`, `contract-create-once-b-${suffix}`, `contract-create-twice-${suffix}`]) db.prepare("DELETE FROM articles WHERE slug = ?").run(slug);
         db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`feed-%-${suffix}`);
@@ -139,6 +141,7 @@ async function postgresFixture() {
           `role-editor-${suffix}`, `role-target-${suffix}`, `featured-editor-${suffix}`, `featured-member-${suffix}`,
           `search-author-${suffix}`, `cursor-author-${suffix}`,
           `cursor-ms-author-${suffix}`, `cursor-ms-owner-${suffix}`,
+          `identity-default-profile-${suffix}`,
           `sort-liker-${suffix}-1`,
           `sort-liker-${suffix}-2`,
           `sort-liker-${suffix}-3`,
@@ -156,7 +159,7 @@ async function postgresFixture() {
         await postgresSql.unsafe("DELETE FROM user_profiles WHERE user_id = ANY($1::text[])", [userIds]);
         await postgresSql.unsafe("DELETE FROM revoked_sessions WHERE session_id = ANY($1::text[])", [[`contract-session-${suffix}`, `contract-expired-session-${suffix}`]]);
         await postgresSql.unsafe("DELETE FROM media_assets WHERE owner_id = $1", [`cursor-ms-owner-${suffix}`]);
-        await postgresSql.unsafe("DELETE FROM auth_accounts WHERE user_id = ANY($1::text[])", [[`cursor-ms-author-${suffix}`, `cursor-ms-owner-${suffix}`]]);
+        await postgresSql.unsafe("DELETE FROM auth_accounts WHERE user_id = ANY($1::text[])", [[`cursor-ms-author-${suffix}`, `cursor-ms-owner-${suffix}`, `identity-default-profile-${suffix}`]]);
         await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`cursor-ms-%-${suffix}`]);
         await postgresSql.unsafe("DELETE FROM articles WHERE slug = ANY($1::text[])", [[`contract-draft-${suffix}`, `contract-published-${suffix}`, `contract-liked-${suffix}`, `contract-comment-${suffix}`, `contract-comment-notifications-${suffix}`, `contract-create-once-${suffix}`, `contract-create-once-b-${suffix}`, `contract-create-twice-${suffix}`]]);
         // A deleted work keeps its row under a released slug (`...-deleted-<id>`).
@@ -178,6 +181,30 @@ async function postgresFixture() {
 
 /** Run identical behavior assertions against each persistence adapter. */
 function registerAdapterContracts(adapterName, fixture, options = {}) {
+  test(`${adapterName}: createIdentityAccount writes a default author profile in the same transaction`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const userId = `identity-default-profile-${suffix}`;
+    const hour = new Date(Date.now() + 3_600_000).toISOString();
+    try {
+      const created = await runtime.store.createIdentityAccount({
+        userId,
+        email: `default-profile-${suffix}@example.test`,
+        passwordHash: "hash-before",
+        session: {
+          sessionId: randomUUID(), userId, accessTokenId: randomUUID(),
+          refreshHash: (suffix.replace(/-/g, "") + "a").padEnd(64, "a"), expiresAt: hour,
+          accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+        },
+      });
+      assert.equal(created, true);
+      const profile = await runtime.store.getAuthorProfile({ userId, locale: "zh-CN", viewerId: null });
+      assert.equal(profile?.displayName, DEFAULT_AUTHOR_DISPLAY_NAME);
+      assert.equal(profile?.locale, "zh-CN");
+      assert.equal(profile?.role, "member");
+    } finally { await runtime.cleanup(null, suffix); }
+  });
+
   test(`${adapterName}: message persistence is idempotent and rejects payload conflicts`, options, async () => {
     const runtime = await fixture();
     const suffix = randomUUID();

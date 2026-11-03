@@ -6,6 +6,7 @@ import { createPostgresClient, createPostgresStore } from "./postgres.ts";
 import { runMigrations } from "./migrate.ts";
 import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
 import { createSqliteStore } from "./sqlite-store.ts";
+import { DEFAULT_AUTHOR_DISPLAY_NAME } from "../domain/profile.ts";
 
 const testDatabase = process.env.TEST_DATABASE_URL;
 let sql;
@@ -134,6 +135,43 @@ function registerIdentityContracts(provider, options = {}) {
       assert.equal((await f.post("/api/v1/auth/refresh", { refreshToken: first.refreshToken })).status, 401);
       assert.equal((await f.post("/api/v1/auth/logout", { refreshToken: first.refreshToken })).status, 200);
       assert.equal((await f.post("/api/v1/auth/logout", { refreshToken: randomBytes(32).toString("base64url") })).status, 200);
+    } finally { await f.close(); }
+  });
+
+  test(`${provider}: registration creates a default author profile before any profile write`, options, async () => {
+    const f = await fixture(provider);
+    try {
+      const register = await f.post("/api/v1/auth/register", { email: f.email, password });
+      assert.equal(register.status, 201);
+      const { accessToken } = (await register.json()).data;
+
+      // No PUT /api/v1/me/profile: the default profile is part of registering.
+      const profile = await fetch(f.base + "/api/v1/me/profile?locale=zh-CN", {
+        headers: { accept: "application/json", authorization: `Bearer ${accessToken}` },
+      });
+      assert.equal(profile.status, 200);
+      const data = (await profile.json()).data;
+      assert.equal(data.displayName, DEFAULT_AUTHOR_DISPLAY_NAME);
+      assert.equal(data.locale, "zh-CN");
+      assert.equal(data.role, "member");
+
+      const slug = `default-profile-${randomUUID()}`;
+      const created = await fetch(f.base + "/api/v1/articles", {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json", authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({
+          slug,
+          title: "默认资料发布验证",
+          contentBlocksVersion: 0,
+          contentBlocks: [{ id: "p1", type: "paragraph", text: "注册即建作者资料。" }],
+          publish: true,
+        }),
+      });
+      assert.equal(created.status, 201);
+      const detail = await fetch(f.base + `/api/v1/articles/${slug}?locale=zh-CN`);
+      assert.equal(detail.status, 200);
+      const article = (await detail.json()).data;
+      assert.equal(typeof article.author?.displayName, "string", "published work must carry a public author");
     } finally { await f.close(); }
   });
 

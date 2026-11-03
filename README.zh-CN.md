@@ -79,6 +79,7 @@ persistence  SQLite (apps/api/data/no-wave.sqlite)
 
 - 本地 Web/API 链路、REST API 契约测试与设计语言文档均已就位。
 - 身份生命周期、资料编辑、文章/评论发表、通知收件箱、审核角色检查、Web 认证 Cookie 边界均已实现。
+- 注册会在同一事务里创建默认作者资料，新发布的作品因此有公开署名；写作台可查看并修改笔名。
 - 后端身份生命周期仍是初版：邮件验证/找回**默认关闭**，审核工具、实时客户端与外部推送尚未完成；正式上线前仍需一轮安全加固。
 - 当前 Web UI 是唯一的 React Router 实现，功能可用；视觉设计仍是概念阶段，不是已完成的设计系统。
 - API 认证使用 Bearer token。浏览器通过同源 Web 路由认证并取得 HttpOnly Cookie，浏览器代码不会把长期 token 放在 local storage。

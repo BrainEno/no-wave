@@ -66,6 +66,13 @@ export {
   isAuthoringLocale,
 } from "./authoring.ts";
 export {
+  AUTHORING_PROFILE_BODY_MAX_BYTES,
+  AUTHORING_PROFILE_DEFAULT_LOCALE,
+  AUTHORING_PROFILE_PATH,
+  authoringProfilePath,
+  handleAuthoringProfileRequest,
+} from "./profile.ts";
+export {
   FEATURED_CANDIDATES_LIMIT,
   authoringFeaturedCandidatesPath,
   authoringFeaturedPath,

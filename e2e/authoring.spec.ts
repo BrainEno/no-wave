@@ -310,6 +310,31 @@ test("the sign-in form registers an account and opens the authoring desk", async
   await expect(page.getByRole("heading", { name: /写作台/ })).toBeVisible({ timeout: 45_000 });
 });
 
+test("registration creates a default pen name and the writing desk can change it", async ({ page, request }) => {
+  const email = uniqueEmail("penname");
+  const registered = await request.post(`${API_BASE_URL}/api/v1/auth/register`, {
+    data: { email, password: PASSWORD },
+  });
+  expect(registered.status(), `registering ${email}: ${await registered.text()}`).toBe(201);
+  const { accessToken } = (await registered.json()).data as { accessToken: string };
+
+  // No profile PUT: the default byline is part of the registration transaction.
+  const profile = await request.get(`${API_BASE_URL}/api/v1/me/profile?locale=zh-CN`, {
+    headers: { authorization: `Bearer ${accessToken}` },
+  });
+  expect(profile.status(), `reading the default profile: ${await profile.text()}`).toBe(200);
+  expect((await profile.json()).data.displayName).toBe("无浪作者");
+
+  await signIn(page, email);
+  await page.goto("/write");
+  await expect(page.locator("[data-author-profile]")).toBeVisible({ timeout: 45_000 });
+  await expect(page.locator("[data-author-profile-name]")).toHaveText("无浪作者", { timeout: 45_000 });
+
+  await page.getByLabel("笔名").fill("新笔名");
+  await page.getByRole("button", { name: "保存笔名" }).click();
+  await expect(page.locator("[data-author-profile-name]")).toHaveText("新笔名", { timeout: 45_000 });
+});
+
 test("saving a draft creates the article with a generated address, and it survives a reload", async ({ page, request }) => {
   await registerWriter(page, request);
   const title = `浏览器验证草稿 ${Date.now().toString(36)}`;

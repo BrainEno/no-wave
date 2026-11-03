@@ -1,5 +1,6 @@
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
-import { createSqliteProviderMigrationCapture, type CapturedChange } from "./sqlite-provider-migration-capture.ts";
+import { createSqliteProviderMigrationCapture, migrationEntityKey, type CapturedChange } from "./sqlite-provider-migration-capture.ts";
+import { DEFAULT_AUTHOR_DISPLAY_NAME } from "../domain/profile.ts";
 
 /** SQLite identity contract adapter, composed by sqlite-store.ts. */
 export function createSqliteIdentityStore(db) {
@@ -44,13 +45,20 @@ export function createSqliteIdentityStore(db) {
     migrationCapture.captureInTransaction(db, transactionId, changes);
   }
   return Object.freeze({
-    async createIdentityAccount({ userId, email, passwordHash, session }) {
+    async createIdentityAccount({ userId, email, passwordHash, session, displayName = DEFAULT_AUTHOR_DISPLAY_NAME }) {
       return transaction((transactionId) => {
         const result = run("INSERT INTO auth_accounts (user_id,email,password_hash) VALUES (?, ?, ?) ON CONFLICT(email) DO NOTHING", userId, email, passwordHash);
         if (Number(result.changes) === 0) return false;
         insertSession({ ...session, userId });
+        // A profile is part of the account, not a separate request the browser
+        // might forget: without it REST serializes author: null and the public
+        // reader filters the work out. ON CONFLICT keeps legacy profiles intact.
+        run("INSERT INTO user_profiles (user_id) VALUES (?) ON CONFLICT(user_id) DO NOTHING", userId);
+        run("INSERT INTO user_profile_translations (user_id, locale, display_name, bio) VALUES (?, 'zh-CN', ?, '') ON CONFLICT(user_id, locale) DO NOTHING", userId, displayName);
         migrationCapture.captureInTransaction(db, transactionId, [
           { entityType: "auth_accounts", entityId: userId, operation: "upsert", payload: get("SELECT * FROM auth_accounts WHERE user_id = ?", userId) },
+          { entityType: "user_profiles", entityId: userId, operation: "upsert", payload: get("SELECT * FROM user_profiles WHERE user_id = ?", userId) },
+          { entityType: "user_profile_translations", entityId: migrationEntityKey(userId, "zh-CN"), operation: "upsert", payload: get("SELECT * FROM user_profile_translations WHERE user_id = ? AND locale = ?", userId, "zh-CN") },
         ]);
         captureSessionSnapshot(transactionId, session.sessionId);
         return true;

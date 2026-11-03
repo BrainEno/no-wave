@@ -57,11 +57,16 @@ function fakeFetch(router: Router): { fetchImpl: FetchImpl; calls: Call[] } {
 }
 
 function successfulRouter(): Router {
-  return async (url) => {
+  return async (url, init) => {
     const parsed = new URL(url);
     const path = parsed.pathname;
     if (path === "/api/v1/auth/register") return jsonResponse({ data: { accessToken: "test-access-token" } }, 201);
-    if (path === "/api/v1/me/profile") return jsonResponse({ data: { displayName: "发布验证作者" } });
+    if (path === "/api/v1/me/profile") {
+      if (String(init?.method ?? "GET") === "PUT") {
+        return jsonResponse({ data: { displayName: "发布验证作者" } });
+      }
+      return jsonResponse({ data: { displayName: "无浪作者", locale: "zh-CN", role: "member" } });
+    }
     if (path === "/api/auth/login") return loginResponse();
     if (path === "/api/authoring/articles") {
       return jsonResponse({ data: { slug: IDENTITY.slug, title: IDENTITY.title, status: "published" } }, 201);
@@ -130,12 +135,14 @@ test("a mail-free publish is verified through the writing-desk proxy and Web SSR
   );
   for (const result of outcome.results) assert.equal(result.status, "pass", `${result.id}: ${result.detail}`);
 
-  // The profile write is the visibility precondition, so it must happen before
-  // the writing desk publishes. The mail-free claim is also a positive assertion:
-  // no verification/reset endpoint is ever called.
-  const profileIndex = calls.findIndex((call) => call.url.includes("/api/v1/me/profile"));
+  // Registration now supplies the profile, so the probe must only read it before
+  // publishing; writing it here would hide a regression in the root fix.
+  const profileRead = calls.find((call) => call.url.includes("/api/v1/me/profile"));
   const publishIndex = calls.findIndex((call) => call.url.includes("/api/authoring/articles"));
-  assert.ok(profileIndex >= 0 && publishIndex > profileIndex);
+  assert.ok(profileRead);
+  assert.equal(profileRead.method, "GET");
+  assert.ok(publishIndex > calls.indexOf(profileRead));
+  assert.equal(calls.some((call) => call.url.includes("/api/v1/me/profile") && call.method === "PUT"), false);
   assert.equal(calls.some((call) => /verify-email|forgot-password|email-verification/.test(call.url)), false);
   assert.equal(calls.some((call) => call.url.includes("/api/v1/auth/login")), false, "the Web login proxy, not the API login, is the browser path");
 });
