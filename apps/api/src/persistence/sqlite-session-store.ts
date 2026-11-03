@@ -1,3 +1,5 @@
+import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
+
 /**
  * SQLite persistence slice for revoked sessions, composed by sqlite-store.ts.
  */
@@ -34,5 +36,5 @@ export function createSqliteSessionStore(db) {
       const now = new Date().toISOString();
       return Boolean(findRevoked.get(sessionId, now));
     },
-  });
+  }) satisfies Pick<TypedPersistenceAdapterContract, "revokeSession" | "isSessionRevoked">;
 }

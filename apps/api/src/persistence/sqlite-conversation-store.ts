@@ -7,6 +7,7 @@ import {
 } from "../domain/errors.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
 import { normalizeParticipantIds } from "../domain/conversation.ts";
+import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
 
 const iso = (value) => value == null ? null : new Date(value).toISOString();
 const hash = (value) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -227,5 +228,5 @@ export function createSqliteConversationStore(db) {
       requiredText("conversationId", conversationId, 300);
       return all("SELECT user_id FROM conversation_participants WHERE conversation_id = ? AND left_at IS NULL ORDER BY user_id", conversationId).map((row) => row.user_id);
     },
-  });
+  }) satisfies Pick<TypedPersistenceAdapterContract, "createConversation" | "updateConversationParticipants" | "deleteConversation" | "markConversationAsRead" | "listConversationMessages" | "getConversation" | "listConversations" | "persistMessage" | "listConversationParticipantIds">;
 }

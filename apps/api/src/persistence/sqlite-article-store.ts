@@ -21,6 +21,7 @@ import {
   MAX_FEATURED_ARTICLES, resolveArticleCursor,
 } from "../domain/article.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
+import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
 
 /**
  * SQLite implementation of the article/content persistence slice.
@@ -572,5 +573,5 @@ export function createSqliteArticleStore(db) {
         return { purged: expired.length };
       });
     },
-  });
+  }) satisfies Pick<TypedPersistenceAdapterContract, "listPublishedArticles" | "listFeaturedArticles" | "setFeaturedArticles" | "listFollowingArticles" | "getPublishedArticle" | "listMyArticles" | "listMyDeletedArticles" | "listLikedArticles" | "listRelatedArticles" | "createArticle" | "updateArticle" | "deleteArticle" | "restoreArticle" | "purgeExpiredArticles">;
 }

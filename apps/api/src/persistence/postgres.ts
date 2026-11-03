@@ -5,7 +5,7 @@
  * the composition of the domain slices. Every domain operation lives in the
  * matching `postgres-*-store.ts`, aligned with the SQLite slices.
  */
-import { assertPersistenceAdapter, type TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
+import { assertDisjointSlices, assertPersistenceAdapter, type TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
 import { createPostgresIdentityStore } from "./postgres-identity-store.ts";
 import { createPostgresArticleStore } from "./postgres-article-store.ts";
 import { createPostgresTaxonomyStore } from "./postgres-taxonomy-store.ts";
@@ -51,19 +51,19 @@ export function createPostgresStore(sql): TypedPersistenceAdapterContract {
     throw new TypeError("A postgres.js SQL client is required.");
   }
   const ctx = createPostgresStoreContext(sql);
-  // A single object literal (not Object.assign with 10 sources, whose TS
-  // overload collapses to `any`) keeps `satisfies` a real compile-time check.
-  const adapter = {
-    ...createPostgresIdentityStore(sql),
-    ...createPostgresArticleStore(ctx),
-    ...createPostgresTaxonomyStore(ctx),
-    ...createPostgresProfileStore(ctx),
-    ...createPostgresEngagementStore(ctx),
-    ...createPostgresConversationStore(ctx),
-    ...createPostgresNotificationStore(ctx),
-    ...createPostgresOutboxStore(ctx),
-    ...createPostgresMediaStore(ctx),
-    ...createPostgresSessionStore(ctx),
+  const identity = createPostgresIdentityStore(sql);
+  const article = createPostgresArticleStore(ctx);
+  const taxonomy = createPostgresTaxonomyStore(ctx);
+  const profiles = createPostgresProfileStore(ctx);
+  const engagement = createPostgresEngagementStore(ctx);
+  const conversations = createPostgresConversationStore(ctx);
+  const notifications = createPostgresNotificationStore(ctx);
+  const outbox = createPostgresOutboxStore(ctx);
+  const media = createPostgresMediaStore(ctx);
+  const sessions = createPostgresSessionStore(ctx);
+  // `transaction` is PostgreSQL-only; it is optional in the shared contract so
+  // the SQLite provider is not forced to invent a matching helper.
+  const provider = Object.freeze({
     async health() {
       await sql.unsafe("SELECT 1 AS ok");
       return true;
@@ -72,6 +72,30 @@ export function createPostgresStore(sql): TypedPersistenceAdapterContract {
       if (typeof work !== "function") throw new TypeError("Transaction callback is required.");
       return sql.begin(work);
     },
+  });
+
+  const slices = [
+    ["identity", identity], ["article", article], ["taxonomy", taxonomy],
+    ["profiles", profiles], ["engagement", engagement], ["conversations", conversations],
+    ["notifications", notifications], ["outbox", outbox], ["media", media],
+    ["sessions", sessions], ["provider", provider],
+  ] as const;
+  assertDisjointSlices(slices);
+
+  // A single object literal (not Object.assign with 10 sources, whose TS
+  // overload collapses to `any`) keeps `satisfies` a real compile-time check.
+  const adapter = {
+    ...identity,
+    ...article,
+    ...taxonomy,
+    ...profiles,
+    ...engagement,
+    ...conversations,
+    ...notifications,
+    ...outbox,
+    ...media,
+    ...sessions,
+    ...provider,
   } satisfies TypedPersistenceAdapterContract;
   return Object.freeze(assertPersistenceAdapter(adapter));
 }

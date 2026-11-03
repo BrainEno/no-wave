@@ -13,7 +13,7 @@ import { migrationEntityKey } from "./postgres-provider-migration-capture.ts";
 import { listTaxonomiesFrom, mapArticle, mapTaxonomy } from "./postgres-shared.ts";
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import type { PostgresStoreContext } from "./postgres-shared.ts";
-import type { TaxonomyPersistencePort } from "../application/persistence-ports.ts";
+import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
 
 export function createPostgresTaxonomyStore(ctx: PostgresStoreContext) {
   const { sql, captureChanges } = ctx;
@@ -231,5 +231,5 @@ export function createPostgresTaxonomyStore(ctx: PostgresStoreContext) {
       });
     },
 
-  }) satisfies TaxonomyPersistencePort;
+  }) satisfies Pick<TypedPersistenceAdapterContract, "listTaxonomies" | "getTaxonomyBySlug" | "listTaxonomyArticles" | "listArticleTaxonomies" | "createTag" | "createTaxonomy" | "deleteTaxonomy">;
 }

@@ -7,7 +7,7 @@
 import { assertOutboxLease } from "./outbox-lease.ts";
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import type { PostgresStoreContext } from "./postgres-shared.ts";
-import type { OutboxPersistencePort } from "../application/persistence-ports.ts";
+import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
 
 export function createPostgresOutboxStore(ctx: PostgresStoreContext) {
   const { sql, captureChanges } = ctx;
@@ -94,5 +94,5 @@ export function createPostgresOutboxStore(ctx: PostgresStoreContext) {
         oldestPendingAgeMs: Number.isFinite(oldest) ? Math.max(0, Date.now() - oldest) : 0,
       };
     },
-  }) satisfies OutboxPersistencePort;
+  }) satisfies Pick<TypedPersistenceAdapterContract, "claimOutboxEvents" | "markOutboxDelivered" | "rescheduleOutboxEvent" | "outboxBacklog">;
 }

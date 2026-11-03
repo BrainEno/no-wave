@@ -12,7 +12,7 @@ import { migrationEntityKey } from "./postgres-provider-migration-capture.ts";
 import { assertSameRequest, findConversationForMember, findMessage, isoDate, mapConversation, mapMessage, requestHash } from "./postgres-shared.ts";
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import type { PostgresStoreContext } from "./postgres-shared.ts";
-import type { ConversationsPersistencePort } from "../application/persistence-ports.ts";
+import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
 
 export function createPostgresConversationStore(ctx: PostgresStoreContext) {
   const { sql, captureChanges } = ctx;
@@ -328,5 +328,5 @@ export function createPostgresConversationStore(ctx: PostgresStoreContext) {
       return rows.map((row) => row.user_id);
     },
 
-  }) satisfies ConversationsPersistencePort;
+  }) satisfies Pick<TypedPersistenceAdapterContract, "createConversation" | "getConversation" | "updateConversationParticipants" | "deleteConversation" | "markConversationAsRead" | "listConversationMessages" | "listConversations" | "persistMessage" | "listConversationParticipantIds">;
 }

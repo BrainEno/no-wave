@@ -6,7 +6,7 @@
  */
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import type { PostgresStoreContext } from "./postgres-shared.ts";
-import type { MediaPersistencePort } from "../application/persistence-ports.ts";
+import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
 
 export function createPostgresMediaStore(ctx: PostgresStoreContext) {
   const { sql, captureChanges } = ctx;
@@ -157,5 +157,5 @@ export function createPostgresMediaStore(ctx: PostgresStoreContext) {
       });
     },
 
-  }) satisfies MediaPersistencePort;
+  }) satisfies Pick<TypedPersistenceAdapterContract, "createMediaAsset" | "getMediaAsset" | "listMediaScanRows" | "listMediaAssets" | "deleteUnusedMediaAsset">;
 }

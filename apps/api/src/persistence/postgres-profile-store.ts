@@ -13,7 +13,7 @@ import { migrationEntityKey } from "./postgres-provider-migration-capture.ts";
 import { findAuthorProfile, listRelatedProfiles, mapAuthorProfile, requestHash } from "./postgres-shared.ts";
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import type { PostgresStoreContext } from "./postgres-shared.ts";
-import type { ProfilesPersistencePort } from "../application/persistence-ports.ts";
+import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
 
 export function createPostgresProfileStore(ctx: PostgresStoreContext) {
   const { sql, captureChanges } = ctx;
@@ -237,5 +237,5 @@ export function createPostgresProfileStore(ctx: PostgresStoreContext) {
       });
     },
 
-  }) satisfies ProfilesPersistencePort;
+  }) satisfies Pick<TypedPersistenceAdapterContract, "getAuthorProfile" | "getUserRole" | "setUserRole" | "searchAuthors" | "searchUsers" | "listFollowing" | "listFollowers" | "followUser" | "unfollowUser" | "upsertAuthorProfile">;
 }

@@ -13,7 +13,7 @@ import { migrationEntityKey } from "./postgres-provider-migration-capture.ts";
 import { mapArticleComment, readArticleLikeInfo, requestHash } from "./postgres-shared.ts";
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import type { PostgresStoreContext } from "./postgres-shared.ts";
-import type { EngagementPersistencePort } from "../application/persistence-ports.ts";
+import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
 
 export function createPostgresEngagementStore(ctx: PostgresStoreContext) {
   const { sql, captureChanges } = ctx;
@@ -297,5 +297,5 @@ export function createPostgresEngagementStore(ctx: PostgresStoreContext) {
       return rows.map((row) => String(row.author_id));
     },
 
-  }) satisfies EngagementPersistencePort;
+  }) satisfies Pick<TypedPersistenceAdapterContract, "getArticleLikeInfo" | "toggleArticleLike" | "setArticleLike" | "listArticleComments" | "createArticleComment" | "deleteArticleComment" | "listArticleCommentAuthorIds">;
 }

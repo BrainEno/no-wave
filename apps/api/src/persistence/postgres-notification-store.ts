@@ -10,7 +10,7 @@ import { isUuid, requiredText } from "../domain/validation.ts";
 import { parseJsonValue, requestHash } from "./postgres-shared.ts";
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import type { PostgresStoreContext } from "./postgres-shared.ts";
-import type { NotificationsPersistencePort } from "../application/persistence-ports.ts";
+import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
 
 export function createPostgresNotificationStore(ctx: PostgresStoreContext) {
   const { sql, captureChanges } = ctx;
@@ -171,5 +171,5 @@ export function createPostgresNotificationStore(ctx: PostgresStoreContext) {
       });
     },
 
-  }) satisfies NotificationsPersistencePort;
+  }) satisfies Pick<TypedPersistenceAdapterContract, "listNotifications" | "getUnreadNotificationCount" | "markAllNotificationsRead" | "markNotificationRead" | "createNotification" | "deliverMessageNotifications">;
 }

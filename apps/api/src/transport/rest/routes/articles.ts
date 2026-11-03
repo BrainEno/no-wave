@@ -1,6 +1,6 @@
 import type { RestRouteContext, RestRouteHandler } from "./context.ts";
 import { MAX_ARTICLE_OFFSET, authenticatedActorId, decodeSlug, decodeUserId, optionalViewerId, parseInteger, parseLocale, parseArticlePagination, parsePagination, parseQuery, parseSort, readJsonObject, sendBadInput, sendJson, sendJsonBodyError, sendServiceError, sendUnauthenticated, sendUnavailable } from "../http.ts";
-import { normalizeArticleWriteBody, normalizeCommentWriteBody, normalizeFeaturedWriteBody, normalizeLikeWriteBody } from "../bodies.ts";
+import { normalizeArticleWriteBody, normalizeCommentWriteBody, normalizeFeaturedWriteBody, normalizeLikeWriteBody, type ArticleWriteBody } from "../bodies.ts";
 import { serializeRestArticle, serializeRestArticles, serializeRestComment, serializeRestComments } from "../serializers.ts";
 import { slugifyArticleTitle, uniquifyArticleSlug } from "../../../domain/article-slug.ts";
 import { MAX_FEATURED_ARTICLES } from "../../../domain/article.ts";
@@ -27,7 +27,7 @@ const MAX_AUTO_SLUG_ATTEMPTS = 25;
  */
 async function createArticleWithSlug(
   services: NonNullable<RestRouteContext["services"]>,
-  input: Record<string, unknown>,
+  input: ArticleWriteBody,
   authorId: string,
   idempotencyKey: string | null,
 ): Promise<unknown> {
