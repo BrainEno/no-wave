@@ -6,7 +6,7 @@ This is the acceptance contract for every persistence provider in the rebuilt BO
 
 `GraphQL/HTTP → application services → domain-grouped persistence ports → provider adapter`
 
-The current operation lists live in `apps/api/src/application/persistence-ports.ts`. Domain types, validation and policy live under `apps/api/src/domain/`. Driver-specific row mapping, query syntax, index definitions, transactions and connection handling stay inside the provider adapter.
+The current operation lists live in `apps/api/src/application/persistence-ports.ts`. The **signatures** of those operations — what each one accepts and what it answers — live in `apps/api/src/application/persistence-adapter.ts` (`PersistencePortSignatures`) over the shapes in `persistence-port-types.ts`. Both adapters annotate their return value with a `Pick` of that typed contract, so a renamed parameter or a dropped result field is a `pnpm typecheck` failure rather than a provider-specific runtime surprise; `persistence-adapter.typecheck.ts` pins the negative cases. Domain types, validation and policy live under `apps/api/src/domain/`. Driver-specific row mapping, query syntax, index definitions, transactions and connection handling stay inside the provider adapter: the SQLite adapter is composed from `sqlite-*-store.ts`, the PostgreSQL adapter from `postgres-*-store.ts`, and each entry file only owns the connection, the journal capture and the composition.
 
 ## Required adapter contract
 

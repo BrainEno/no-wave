@@ -8,13 +8,14 @@ import {
 import { validateArticleLocale } from "../domain/article.ts";
 import { requiredText } from "../domain/validation.ts";
 import { AUTHOR_OFFSET_MAX, AUTHOR_QUERY_MAX_LENGTH, normalizeStoredRole, validateProfileUrl, validateUserRole } from "../domain/profile.ts";
+import type { TypedPersistenceAdapterContract } from "../application/persistence-adapter.ts";
 
 /**
  * SQLite implementation of the author-profile and follow persistence slice.
  * This is intentionally not a complete persistence adapter and is not wired
  * into runtime until every persistence port has behavioral parity.
  */
-export function createSqliteProfileStore(db) {
+export function createSqliteProfileStore(db): Pick<TypedPersistenceAdapterContract, "getAuthorProfile" | "getUserRole" | "setUserRole" | "searchAuthors" | "searchUsers" | "listFollowing" | "listFollowers" | "followUser" | "unfollowUser" | "upsertAuthorProfile"> {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") {
     throw new TypeError("A node:sqlite DatabaseSync connection is required.");
   }

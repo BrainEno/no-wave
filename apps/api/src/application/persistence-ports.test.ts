@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   assertPersistenceAdapter,
   createPersistencePorts,
+  persistenceAdapterInfrastructureMethods,
   persistencePortMethods,
 } from "./persistence-ports.ts";
 import { createApplicationServices } from "./services.ts";
@@ -112,6 +113,24 @@ test("every required operation can be invoked through its matching domain port",
     }
   }
   assert.equal(calls.length, Object.values(persistencePortMethods).flat().length);
+});
+
+test("the adapter contract is typed, not a record of any", () => {
+  // Issue #167: `PersistenceAdapterContract` must expose real signatures. The
+  // compile-time half lives in `persistence-adapter.typecheck.ts` (@ts-expect-error
+  // cases, checked by `pnpm typecheck`); this asserts the runtime half — the port
+  // table and the adapter infrastructure members are still the single source of
+  // truth the typed contract is built from.
+  const infrastructure = [...persistenceAdapterInfrastructureMethods].sort();
+  assert.deepEqual(infrastructure, ["isSessionRevoked", "transaction"]);
+  // `isSessionRevoked` is named by both the sessions port and the infrastructure
+  // list (it must survive the adapter being split into slices), so the two sets
+  // overlap on exactly that one member; `transaction` belongs to neither port.
+  const portNames = Object.values(persistencePortMethods).flat();
+  assert.ok(!portNames.includes("transaction"));
+  assert.ok(portNames.includes("isSessionRevoked"));
+  const overlap = persistenceAdapterInfrastructureMethods.filter((name) => portNames.includes(name));
+  assert.deepEqual([...overlap], ["isSessionRevoked"]);
 });
 
 test("port wrappers fail explicitly when a required adapter operation is absent", () => {

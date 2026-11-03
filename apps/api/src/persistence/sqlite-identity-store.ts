@@ -1,9 +1,10 @@
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import { createSqliteProviderMigrationCapture, migrationEntityKey, type CapturedChange } from "./sqlite-provider-migration-capture.ts";
 import { DEFAULT_AUTHOR_DISPLAY_NAME } from "../domain/profile.ts";
+import type { TypedPersistenceAdapterContract } from "../application/persistence-adapter.ts";
 
 /** SQLite identity contract adapter, composed by sqlite-store.ts. */
-export function createSqliteIdentityStore(db) {
+export function createSqliteIdentityStore(db): Pick<TypedPersistenceAdapterContract, "createIdentityAccount" | "findIdentityAccount" | "createIdentitySession" | "rotateIdentityRefresh" | "revokeIdentityRefresh" | "revokeSession" | "issueIdentityToken" | "consumeIdentityToken" | "replaceIdentityPassword" | "listIdentitySessions" | "revokeIdentitySession" | "revokeIdentitySessions" | "markIdentityEmailVerified" | "findIdentityAccountByUserId" | "setIdentityEmail" | "findIdentityCredentials" | "pruneExpiredIdentityState" | "consumeRateLimit"> {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") throw new TypeError("A SQLite database connection is required.");
   const run = (sql, ...args) => db.prepare(sql).run(...args);
   const get = (sql, ...args) => db.prepare(sql).get(...args);

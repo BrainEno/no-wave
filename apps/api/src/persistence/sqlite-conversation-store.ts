@@ -7,6 +7,7 @@ import {
 } from "../domain/errors.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
 import { normalizeParticipantIds } from "../domain/conversation.ts";
+import type { TypedPersistenceAdapterContract } from "../application/persistence-adapter.ts";
 
 const iso = (value) => value == null ? null : new Date(value).toISOString();
 const hash = (value) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -28,7 +29,7 @@ function mapConversation(row) {
 }
 
 /** SQLite conversation/message persistence slice, composed by sqlite-store.ts. */
-export function createSqliteConversationStore(db) {
+export function createSqliteConversationStore(db): Pick<TypedPersistenceAdapterContract, "createConversation" | "updateConversationParticipants" | "deleteConversation" | "markConversationAsRead" | "listConversationMessages" | "getConversation" | "listConversations" | "persistMessage" | "listConversationParticipantIds"> {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") {
     throw new TypeError("A node:sqlite DatabaseSync connection is required.");
   }

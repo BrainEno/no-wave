@@ -7,8 +7,9 @@ import {
 import { normalizeHashtag, validateTaxonomyKind } from "../domain/taxonomy.ts";
 import { validateArticleLocale, validateArticleSlug } from "../domain/article.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
+import type { TypedPersistenceAdapterContract } from "../application/persistence-adapter.ts";
 
-export function createSqliteTaxonomyStore(db) {
+export function createSqliteTaxonomyStore(db): Pick<TypedPersistenceAdapterContract, "listTaxonomies" | "getTaxonomyBySlug" | "listTaxonomyArticles" | "listArticleTaxonomies" | "createTag" | "createTaxonomy" | "deleteTaxonomy"> {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") {
     throw new TypeError("A node:sqlite DatabaseSync connection is required.");
   }

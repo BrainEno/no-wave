@@ -5,8 +5,9 @@ import { ArticleAuthorizationError, ArticleInputError, ArticleNotFoundError, Ide
 import { validateArticleLocale, validateArticleSlug } from "../domain/article.ts";
 import { validateStoredCommentContent } from "../domain/comment-content.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
+import type { TypedPersistenceAdapterContract } from "../application/persistence-adapter.ts";
 
-export function createSqliteEngagementStore(db) {
+export function createSqliteEngagementStore(db): Pick<TypedPersistenceAdapterContract, "getArticleLikeInfo" | "toggleArticleLike" | "setArticleLike" | "listArticleComments" | "createArticleComment" | "deleteArticleComment" | "listArticleCommentAuthorIds"> {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") {
     throw new TypeError("A node:sqlite DatabaseSync connection is required.");
   }

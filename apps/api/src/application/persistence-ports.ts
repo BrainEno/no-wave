@@ -60,6 +60,21 @@ export const persistencePortMethods = Object.freeze({
   operations: Object.freeze(["health"] as const),
 });
 
+/**
+ * Adapter members that belong to no domain port.
+ *
+ * They are still part of the shape an adapter must have: `createPostgresStore`
+ * spreads its slices into one object and the last thing it does is freeze that
+ * object, so a slice that forgot `isSessionRevoked` would otherwise be a runtime
+ * 500 on `DELETE /auth/sessions/...` rather than a startup error. Keeping them
+ * out of `persistencePortMethods` is deliberate — no transport calls
+ * `transaction()`, and adding it to a port group would put a connection-level
+ * hook in the application layer's vocabulary.
+ */
+export const persistenceAdapterInfrastructureMethods = Object.freeze([
+  "transaction", "isSessionRevoked",
+] as const);
+
 export type PortGroups = typeof persistencePortMethods;
 export type PortName = keyof PortGroups;
 export type PortMethodName<K extends PortName> = PortGroups[K][number];
@@ -67,13 +82,29 @@ export type PortMethodName<K extends PortName> = PortGroups[K][number];
 /**
  * The persistence adapter, as seen by the application layer.
  *
- * The SQLite and PostgreSQL adapters are still authored without parameter or
- * return annotations, so this alias is the one place where the transport boundary
- * admits `any`. It exists so that typing an adapter method later propagates
- * through `PersistencePorts`/`ApplicationServices` automatically instead of being
- * blocked by a hand-written facade — the remaining work tracked in issue #66.
+ * Open by design (`Record<string, ...>`) so `PersistencePorts` can be derived
+ * from whichever adapter backs the runtime. It is not where the types live: the
+ * parameter and return types of every port method are `PersistencePortSignatures`
+ * in `persistence-adapter.ts`, and `PersistenceAdapterContract` below intersects
+ * the two — so an adapter is checked against the typed signatures (issue #167,
+ * closing #66), while the service facade keeps being derived rather than
+ * hand-written.
  */
 export type PersistenceAdapterMethods = Record<string, (...args: any[]) => any>;
+
+export type PersistenceAdapterInfrastructureMethod = typeof persistenceAdapterInfrastructureMethods[number];
+
+/**
+ * The typed adapter contract: what every port method takes and returns.
+ *
+ * Declared in a separate module and re-exported here so this file stays the one
+ * place that lists *which* methods exist, while the signatures live next to the
+ * domain types they describe (`persistence-port-types.ts`).
+ */
+export type TypedPersistenceAdapterContract = import("./persistence-adapter.ts").TypedPersistenceAdapterContract;
+
+/** The typed connection-level members (`transaction`, the session check). */
+export type PersistenceAdapterInfrastructure = import("./persistence-adapter.ts").PersistenceAdapterInfrastructure;
 
 /**
  * The shape an adapter must actually return.
@@ -83,11 +114,19 @@ export type PersistenceAdapterMethods = Record<string, (...args: any[]) => any>;
  * exactly what lets an adapter forget a method, so adapters annotate their return
  * value with *this* contract: every port method must exist, and a renamed or
  * dropped method becomes a compile error instead of a runtime 500 behind a route.
+ * The infrastructure members (`transaction`, `isSessionRevoked`) are part of the
+ * shape for the same reason even though they are in no application port.
+ *
  * Parameter types stay permissive until the adapters are annotated method by
- * method (the remainder of issue #66).
+ * method with `TypedPersistenceAdapterContract` (see `persistence-adapter.ts`).
  */
 export type PersistenceAdapterContract = {
-  readonly [M in PortMethodName<PortName>]: (...args: any[]) => any;
+  readonly [M in PortMethodName<PortName> | PersistenceAdapterInfrastructureMethod]:
+    M extends keyof TypedPersistenceAdapterContract
+      ? TypedPersistenceAdapterContract[M]
+      : M extends keyof PersistenceAdapterInfrastructure
+        ? PersistenceAdapterInfrastructure[M]
+        : (...args: any[]) => any;
 };
 
 /** Domain-grouped repository ports, typed from the adapter that backs them. */

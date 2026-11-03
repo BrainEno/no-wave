@@ -3,6 +3,7 @@ import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import { createSqliteProviderMigrationCapture } from "./sqlite-provider-migration-capture.ts";
 import { InvalidMessageCursorError, IdempotencyConflictError } from "../domain/errors.ts";
 import { isUuid } from "../domain/validation.ts";
+import type { TypedPersistenceAdapterContract } from "../application/persistence-adapter.ts";
 
 /**
  * SQLite persistence slice for notifications. This remains an opt-in adapter
@@ -30,7 +31,7 @@ function mapNotification(row) {
   };
 }
 
-export function createSqliteNotificationStore(db) {
+export function createSqliteNotificationStore(db): Pick<TypedPersistenceAdapterContract, "deliverMessageNotifications" | "listNotifications" | "getUnreadNotificationCount" | "markAllNotificationsRead" | "markNotificationRead" | "createNotification"> {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") {
     throw new TypeError("A SQLite database connection is required.");
   }

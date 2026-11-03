@@ -14,8 +14,10 @@ type FlatPorts<P> = UnionToIntersection<{ [K in keyof P]: P[K] }[keyof P]>;
  * object, so the facade type must flatten the same groups. Typing an adapter
  * method therefore tightens every transport call site automatically, and a method
  * name that does not exist in the table is a compile error instead of a runtime
- * "not a function". See issue #66 for the remaining work (annotating the adapter
- * implementations themselves).
+ * "not a function". What each method takes and returns is
+ * `PersistencePortSignatures` in `persistence-adapter.ts` (issue #167), which is
+ * also what the transports see through `RestServices` — so a mistyped argument
+ * is a `pnpm typecheck` failure rather than a 500 behind one untested branch.
  */
 export type ApplicationServices<A extends import("./persistence-ports.ts").PersistenceAdapterMethods = import("./persistence-ports.ts").PersistenceAdapterMethods> =
   FlatPorts<PersistencePorts<A>> & {

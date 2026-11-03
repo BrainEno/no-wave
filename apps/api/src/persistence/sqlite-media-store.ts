@@ -1,5 +1,6 @@
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import { createSqliteProviderMigrationCapture } from "./sqlite-provider-migration-capture.ts";
+import type { TypedPersistenceAdapterContract } from "../application/persistence-adapter.ts";
 
 function mapMediaAsset(row) {
   if (!row) return null;
@@ -17,7 +18,7 @@ function mapMediaAsset(row) {
 }
 
 /** SQLite implementation of the portable media metadata port. Object bytes never enter SQLite. */
-export function createSqliteMediaStore(db) {
+export function createSqliteMediaStore(db): Pick<TypedPersistenceAdapterContract, "createMediaAsset" | "getMediaAsset" | "listMediaAssets" | "listMediaScanRows" | "deleteUnusedMediaAsset"> {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") {
     throw new TypeError("A node:sqlite DatabaseSync connection is required.");
   }

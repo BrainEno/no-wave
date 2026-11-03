@@ -21,12 +21,13 @@ import {
   MAX_FEATURED_ARTICLES, resolveArticleCursor,
 } from "../domain/article.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
+import type { TypedPersistenceAdapterContract } from "../application/persistence-adapter.ts";
 
 /**
  * SQLite implementation of the article/content persistence slice.
  * This is a domain slice composed into the SQLite provider by sqlite-store.ts.
  */
-export function createSqliteArticleStore(db) {
+export function createSqliteArticleStore(db): Pick<TypedPersistenceAdapterContract, "listPublishedArticles" | "listFeaturedArticles" | "setFeaturedArticles" | "listFollowingArticles" | "getPublishedArticle" | "listMyArticles" | "listMyDeletedArticles" | "listLikedArticles" | "listRelatedArticles" | "createArticle" | "updateArticle" | "deleteArticle" | "restoreArticle" | "purgeExpiredArticles"> {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") {
     throw new TypeError("A node:sqlite DatabaseSync connection is required.");
   }
@@ -163,6 +164,17 @@ export function createSqliteArticleStore(db) {
   }
 
   return Object.freeze({
+  /**
+   * Run `work` inside one `BEGIN IMMEDIATE` transaction and commit it.
+   *
+   * Exposed because it is the provider's transaction boundary, not a domain
+   * operation: the contract test seeds fixtures through it, and the PostgreSQL
+   * adapter answers the same name with `sql.begin`.
+   */
+  transaction(work) {
+    if (typeof work !== "function") throw new TypeError("Transaction callback is required.");
+    return transaction((transactionId) => work(transactionId));
+  },
   /**
    * Every article body, as raw JSON text, for the media reference scan (ADR 0022).
    *

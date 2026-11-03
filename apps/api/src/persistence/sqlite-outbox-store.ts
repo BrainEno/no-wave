@@ -2,9 +2,10 @@ import { randomUUID } from "node:crypto";
 import { assertOutboxLease } from "./outbox-lease.ts";
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import { createSqliteProviderMigrationCapture } from "./sqlite-provider-migration-capture.ts";
+import type { TypedPersistenceAdapterContract } from "../application/persistence-adapter.ts";
 
 /** SQLite transactional outbox store with lease-based claims and retry scheduling. */
-export function createSqliteOutboxStore(db) {
+export function createSqliteOutboxStore(db): Pick<TypedPersistenceAdapterContract, "claimOutboxEvents" | "markOutboxDelivered" | "rescheduleOutboxEvent" | "outboxBacklog"> {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") throw new TypeError("A SQLite database connection is required.");
   const get = (sql, ...args) => db.prepare(sql).get(...args);
   const all = (sql, ...args) => db.prepare(sql).all(...args);
