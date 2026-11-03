@@ -1,4 +1,4 @@
-import { createPersistencePorts, type PersistencePorts } from "./persistence-ports.ts";
+import { createPersistencePorts, type PersistenceAdapterContract, type PersistencePorts } from "./persistence-ports.ts";
 import { ArticleInputError, ProfileAuthorizationError } from "../domain/errors.ts";
 
 type UnionToIntersection<U> = (U extends unknown ? (k: U) => void : never) extends (k: infer I) => void ? I : never;
@@ -11,16 +11,16 @@ type FlatPorts<P> = UnionToIntersection<{ [K in keyof P]: P[K] }[keyof P]>;
  *
  * The type is *derived* from the persistence port table rather than hand-written
  * again: `createApplicationServices` flattens the domain-grouped ports into one
- * object, so the facade type must flatten the same groups. Typing an adapter
- * method therefore tightens every transport call site automatically, and a method
- * name that does not exist in the table is a compile error instead of a runtime
- * "not a function". See issue #66 for the remaining work (annotating the adapter
- * implementations themselves).
+ * object, so the facade type must flatten the same groups. The default adapter
+ * type is now the fully annotated `PersistenceAdapterContract` (issues #66 and
+ * #167), so both a method name that is not in the table and a misspelled or
+ * wrongly typed argument are compile errors instead of a runtime "not a
+ * function" or a silent `any` pass-through.
  */
-export type ApplicationServices<A extends import("./persistence-ports.ts").PersistenceAdapterMethods = import("./persistence-ports.ts").PersistenceAdapterMethods> =
+export type ApplicationServices<A extends import("./persistence-ports.ts").PersistenceAdapterMethods = import("./persistence-ports.ts").PersistenceAdapterContract> =
   FlatPorts<PersistencePorts<A>> & {
-    createArticle(input: { authorId: string; contentBlocks: unknown; [key: string]: unknown }): Promise<unknown>;
-    updateArticle(input: { actorId: string; contentBlocks: unknown; [key: string]: unknown }): Promise<unknown>;
+    createArticle(input: { authorId: string; contentBlocks?: unknown; [key: string]: unknown }): Promise<unknown>;
+    updateArticle(input: { actorId: string; contentBlocks?: unknown; [key: string]: unknown }): Promise<unknown>;
     /** ADR 0016: may this account curate? Consulted before every editorial write. */
     isEditor(input: { actorId: string }): Promise<boolean>;
     assignUserRole(input: { actorId: string; userId: string; role: string }): Promise<unknown>;
@@ -83,7 +83,11 @@ export function createApplicationServices<A extends import("./persistence-ports.
       .map((value) => value.trim())
       .filter((value) => value.length > 0),
   );
-  const ports = createPersistencePorts(persistence, { onOperation: onPersistenceOperation ?? undefined });
+  // `A` is a generic adapter type, but this facade only ever calls the canonical
+  // port surface. Pin the internal view to the typed contract so every call
+  // below is checked against the declared inputs and outputs; the public
+  // `ApplicationServices<A>` type still reflects the caller's own adapter.
+  const ports = createPersistencePorts(persistence, { onOperation: onPersistenceOperation ?? undefined }) as unknown as PersistencePorts<PersistenceAdapterContract>;
   const serviceMethods = Object.values(ports).flatMap((group) => Object.entries(group));
   const services = Object.fromEntries(serviceMethods);
 

@@ -8,6 +8,14 @@ This is the acceptance contract for every persistence provider in the rebuilt BO
 
 The current operation lists live in `apps/api/src/application/persistence-ports.ts`. Domain types, validation and policy live under `apps/api/src/domain/`. Driver-specific row mapping, query syntax, index definitions, transactions and connection handling stay inside the provider adapter.
 
+## Typed port boundary and provider composition
+
+`persistencePortMethods` remains the single source of truth for method names. Alongside it, `TypedPersistenceAdapterContract` declares one explicit input and output signature per method, grouped into the same eleven domain ports. `PersistenceAdapterContract` is that type, `PersistencePorts` and `ApplicationServices` default to it, and `apps/api/src/application/persistence-ports.contract.ts` holds compile-time `@ts-expect-error` guards proving that a misspelled or wrongly typed argument fails `pnpm typecheck`. Provider adapters end with `satisfies TypedPersistenceAdapterContract`, so a renamed, dropped or retyped method fails the build rather than a live route. Input fields are optional because several REST handlers build them by spreading a validated `Record<string, unknown>` body; excess-property and value-type checks still apply.
+
+Both providers follow the same slice layout. SQLite composes `sqlite-*-store.ts`; PostgreSQL composes `postgres-*-store.ts` from `postgres.ts`, which only owns connection-pool creation, the transaction helper and composition. Shared PostgreSQL row mappers, SQL helpers and the migration-capture context live in `postgres-shared.ts`. `postgres-identity-store.ts` remains the identity slice for both session revocation and rate limiting.
+
+Both `postgres.ts` and `sqlite-store.ts` declare the typed contract as their return type, and `createPersistencePorts` wraps sync-or-async results uniformly. The PostgreSQL slices and their composition are individually checked with `satisfies`; the SQLite slices are still authored without annotations (several answer synchronously), so annotating them against a sync-or-async output convention is follow-up work rather than part of this refactor.
+
 ## Required adapter contract
 
 ### Article content and publication
