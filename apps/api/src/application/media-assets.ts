@@ -157,19 +157,34 @@ type MediaMetadataStore = {
 /**
  * The one place the reference scan's idea of "a media URL" is written down.
  *
- * Deliberately `/media/<uuid>` and not `/api/media/<uuid>`: the Web app serves
- * `/api/media/<id>` and relays it, and the API's own route is
- * `/api/v1/media/<id>` — which is the address a client that talks to the API
- * directly (the Flutter app) stores in a body. A pattern that matched only one
- * of them marked live cover images and avatars as orphans.
- *
- * Matching the path rather than a full URL also covers an absolute address, and
- * a stray `/media/<uuid>` in a code block would count as a reference, which is
- * the direction a mistake should go: it refuses a delete instead of allowing
- * one.
+ * Moved to `../domain/media-references.ts` when the *writers* started needing it
+ * (issue #156): both providers now extract the ids a save mentions so they can
+ * lock those rows before writing, and persistence may import `domain/` but not
+ * `application/`. Re-exported from here so every existing caller — the library
+ * scan, the delete check — keeps importing it from the module that owns the
+ * behaviour.
  */
-export const MEDIA_SRC_PATTERN =
-  /\/media\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})/gi;
+import { MEDIA_SRC_PATTERN } from "../domain/media-references.ts";
+export { MEDIA_SRC_PATTERN };
+
+/**
+ * The operator switch for `DELETE /api/v1/me/media/:id`.
+ *
+ * Off by default, and off means off: configuring object storage does not by
+ * itself permit destroying bytes. The reference check that guards the delete is
+ * correct under SQLite (one writer, `BEGIN IMMEDIATE`) but under PostgreSQL's
+ * default READ COMMITTED a save that commits while the guarded delete is
+ * scanning can add a reference the scan did not see — and the delete that
+ * follows is irreversible for the object. Until the isolation protocol is
+ * settled, the ability to delete is a decision an operator takes deliberately.
+ *
+ * Read at request time, so turning it on needs no rebuild. Unset, empty and
+ * unrecognised values all mean off: a typo must not delete somebody's image.
+ */
+export function isMediaDeleteEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const raw = typeof env.MEDIA_DELETE_ENABLED === "string" ? env.MEDIA_DELETE_ENABLED.trim().toLowerCase() : "";
+  return raw === "true" || raw === "1" || raw === "yes" || raw === "on";
+}
 
 export class MediaInputError extends Error {
   readonly statusCode = 400;

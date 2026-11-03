@@ -65,9 +65,35 @@ to whoever owns the bytes. References the API will not name arrive as
 still block the delete. The rule is: you may always know that an image is in use,
 but not always by what.
 
-Deletion is currently switched off in the Web UI (`DELETE_ENABLED` in
-`packages/web-ui/src/components/authoring/media-library.tsx`) while this fix is
-verified. The API endpoint is unchanged and covered by tests.
+### Deletion is an operator decision
+
+`DELETE /api/v1/me/media/:id` is **off unless the deployment turns it on** with
+`MEDIA_DELETE_ENABLED=true` (issue #156). While it is off the endpoint answers
+`409 MEDIA_DELETE_DISABLED` for every caller — Web, Flutter, curl — before it
+looks anything up, and `GET /api/v1/me/media` reports `deletionEnabled: false` so
+the page stops offering a button whose request would be refused. Unset, empty
+and unrecognised values all mean off: configuring object storage does not by
+itself permit destroying bytes.
+
+The reason is a race the guarded delete cannot close on its own. Scanned-and-
+deleted-in-one-transaction is correct under SQLite (one writer, `BEGIN
+IMMEDIATE`) but not under PostgreSQL's default READ COMMITTED: a save that
+commits between the scan and the `DELETE` adds a reference the scan never saw,
+and the object removed afterwards is gone for good. Both providers now take part
+in a row-level protocol instead:
+
+- a writer that can create a reference (article create/update, profile avatar)
+  extracts the media ids its content mentions and locks those `media_assets`
+  rows `FOR SHARE` until it commits;
+- the delete locks the asset row `FOR UPDATE` *before* it scans.
+
+Whichever arrives second waits, and waits onto a consistent answer: delete
+second sees the committed reference and refuses; save second finds the row gone
+and fails instead of publishing a work with a broken image. SQLite gets the same
+extraction for symmetry — its single writer already serialises the two paths.
+
+Turning the switch on is therefore a deliberate act with a known-good protocol
+behind it, not a side effect of having a bucket.
 
 **Nothing reclaims storage on a schedule, and nothing should.** The scan that
 decides "unused" is only as good as the body it reads: an image sitting in a

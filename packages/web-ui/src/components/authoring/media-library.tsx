@@ -23,10 +23,13 @@ import { useCallback, useEffect, useState } from "react";
  * A reference is not always described. The image may be used by another author's
  * unpublished draft, and the owner of the bytes is not the owner of the words:
  * the API counts that use — it is what keeps the image alive — but sends no
- * title, and this page says only what it is allowed to say. `DELETE_ENABLED`
- * below is the switch that holds the delete button back while a fix to the
- * reference check is being verified; nothing else about the page changes when it
- * is turned back on.
+ * title, and this page says only what it is allowed to say.
+ *
+ * Whether the delete button is on the page is the **API's** answer, not this
+ * file's: each page of the library carries `deletionEnabled`, read server-side
+ * from `MEDIA_DELETE_ENABLED` at request time (issue #156). A constant here would
+ * be a second switch that could disagree with the one the endpoint enforces, and
+ * the disagreement would show up as a button that only ever produces a 409.
  *
  * It is shared UI (`@bot-thk/web-ui`), so it reaches the router only through
  * `@/lib/framework/*` and names no framework of its own.
@@ -53,19 +56,6 @@ type MediaReference =
     redacted: boolean;
   };
 
-/**
- * Whether the delete button is on the page.
- *
- * Off, for now. The reference check behind the orphan badge was found to miss
- * two kinds of use — a cover stored under the API's own `/api/v1/media/…`
- * address, and a profile picture — which made live images look unused and
- * offered them for deletion. That check is fixed in the API; while the fix is
- * being verified the button is the part that stays off, because its mistakes are
- * the only ones on this page that cannot be undone. Flipping this to `true`
- * restores the button with no other change.
- */
-const DELETE_ENABLED = false;
-
 type MediaItem = {
   id: string;
   src: string;
@@ -77,7 +67,18 @@ type MediaItem = {
   referencedBy: MediaReference[];
 };
 
-type MediaPage = { items: MediaItem[]; nextCursor: string | null };
+type MediaPage = {
+  items: MediaItem[];
+  nextCursor: string | null;
+  /**
+   * Whether `DELETE /api/v1/me/media/:id` would work on this deployment.
+   *
+   * `false` when the API does not say — an older deployment, or a proxy that
+   * dropped the field. The default has to be the safe one: this page's only
+   * irreversible action is the one it is asking about.
+   */
+  deletionEnabled: boolean;
+};
 
 type State = "loading" | "ready" | "error" | "unconfigured";
 
@@ -107,7 +108,12 @@ function pageOf(payload: unknown): MediaPage {
     // sentence costs less than a wrong one.
     .map((item) => ({ ...item, referencedBy: item.referencedBy.filter(isReference) }));
   const nextCursor = (data as { nextCursor?: unknown }).nextCursor;
-  return { items, nextCursor: typeof nextCursor === "string" ? nextCursor : null };
+  const deletionEnabled = (data as { deletionEnabled?: unknown }).deletionEnabled;
+  return {
+    items,
+    nextCursor: typeof nextCursor === "string" ? nextCursor : null,
+    deletionEnabled: deletionEnabled === true,
+  };
 }
 
 function errorMessage(payload: unknown, fallback: string): string {
@@ -169,6 +175,9 @@ export function MediaLibrary() {
   const [notice, setNotice] = useState("");
   const [loadingMore, setLoadingMore] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
+  // Server-side switch, learned from the list response. `false` until the API
+  // says otherwise, so the button never appears on a guess.
+  const [deletionEnabled, setDeletionEnabled] = useState(false);
 
   const load = useCallback(async (loadCursor: string | null, append: boolean) => {
     const query = new URLSearchParams({ limit: String(PAGE_SIZE) });
@@ -197,6 +206,7 @@ export function MediaLibrary() {
       const page = pageOf(await response.json());
       setItems((current) => (append ? [...current, ...page.items] : page.items));
       setCursor(page.nextCursor);
+      setDeletionEnabled(page.deletionEnabled);
       setState("ready");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "暂时无法载入媒体库，请稍后重试。");
@@ -314,7 +324,7 @@ export function MediaLibrary() {
       </div>
       <p className="nw-ep">
         这里是你上传过的全部图片。「未被引用」表示没有任何作品（含草稿与回收站里的作品）、也没有任何作者头像用到它 ——
-        只有这类图片可以删除{DELETE_ENABLED ? "" : "；删除目前暂时停用，等待引用检查的修复验证完成后恢复"}。
+        只有这类图片可以删除{deletionEnabled ? "" : "；这个部署目前关闭了删除功能（MEDIA_DELETE_ENABLED）"}。
       </p>
       <p className="nw-m" role="status">
         共 {items.length} 张，其中 {orphans} 张未被引用。
@@ -340,7 +350,7 @@ export function MediaLibrary() {
                 {item.orphan ? (
                   <>
                     <p className="nw-media-flag" data-state="orphan">未被引用</p>
-                    {DELETE_ENABLED
+                    {deletionEnabled
                       ? (
                         <button
                           className="nw-btn"
@@ -351,7 +361,7 @@ export function MediaLibrary() {
                           {removing === item.id ? "删除中…" : "删除"}
                         </button>
                       )
-                      : <p className="nw-media-note">删除暂时停用：等待引用检查的修复验证完成。</p>}
+                      : <p className="nw-media-note">这个部署关闭了删除功能，图片可以继续保留或手动清理。</p>}
                   </>
                 ) : (
                   <p className="nw-media-flag" data-state="used">

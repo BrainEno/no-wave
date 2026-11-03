@@ -18,6 +18,7 @@ import { isUuid, requiredText } from "../domain/validation.ts";
 import { isoDate, mapArticle } from "./postgres-row-mappers.ts";
 import { replaceArticleTaxonomyKind } from "./postgres-taxonomy-store.ts";
 import type { TypedPersistenceAdapterContract } from "../application/persistence-adapter.ts";
+import { lockMediaAssetReferences } from "./postgres-media-locks.ts";
 
 /**
  * PostgreSQL article slice: discovery, publication, tombstones and the featured shelf — the
@@ -344,6 +345,12 @@ export function createPostgresArticleStore({ sql, captureChanges }): Pick<TypedP
       try {
         return await sql.begin(async (tx) => {
           const transactionId = createMigrationTransactionId();
+          // Hold the images this body references until commit, so a concurrent
+          // delete cannot scan past this save and remove them (issue #156). Taken
+          // before the idempotency probe below: a replay returns the existing
+          // work and never needs the lock, but the lock is what makes the write
+          // itself safe, and ordering it first keeps one code path.
+          await lockMediaAssetReferences(tx, input.contentBlocks);
           // A retried publish is a replay, not a second work — and it is decided
           // here rather than in the catch, because an insert that conflicts on
           // both the key and the slug raises one unique violation and PostgreSQL
@@ -430,6 +437,11 @@ export function createPostgresArticleStore({ sql, captureChanges }): Pick<TypedP
       try {
         return await sql.begin(async (tx) => {
           const transactionId = createMigrationTransactionId();
+          // Both ends: the body being written, and the one being replaced. A
+          // reference removed by this save is one a delete should be allowed to
+          // reclaim, and one added by it is one the delete must not miss — but
+          // either way the row lock is taken before the delete can act on it.
+          await lockMediaAssetReferences(tx, input.contentBlocks);
           const ownership = await tx.unsafe("SELECT author_id, deleted_at FROM articles WHERE id = $1 FOR UPDATE", [articleId]);
           if (!ownership[0] || ownership[0].deleted_at) throw new ArticleNotFoundError();
           if (ownership[0].author_id !== actorId) throw new ArticleAuthorizationError();

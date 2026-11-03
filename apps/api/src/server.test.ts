@@ -21,6 +21,14 @@ const authEnv = {
   AUTH_JWT_ISSUER: "https://auth.example.test",
   AUTH_JWT_AUDIENCE: "bot-thk-api",
   MAIL_ENABLED: "true",
+  /**
+   * Media deletion is off by default (issue #156) and the delete tests below are
+   * about what happens *after* the switch: the reference check, the 409 that
+   * names the works, the 200 that admits the object was left behind. The switch
+   * itself — off unless an operator turns it on, and 409 while it is off — has
+   * its own test.
+   */
+  MEDIA_DELETE_ENABLED: "true",
 };
 
 /**
@@ -2904,6 +2912,74 @@ test("a deployment without object storage says so instead of showing an empty li
     assert.equal(remove.status, 503);
     assert.equal((await remove.json()).error.code, "MEDIA_STORAGE_UNAVAILABLE");
   }, { env: authEnv, store: {} });
+});
+
+/**
+ * Media deletion is a decision, not a side effect of configuring storage.
+ *
+ * The guarded delete races a concurrent save under PostgreSQL's READ COMMITTED
+ * (issue #156), and the object it removes is gone for good. So the route answers
+ * 409 while the switch is off — for every caller, including one talking to the
+ * API directly — and both the refusal and the enabled path are asserted here so
+ * "off by default" cannot quietly become "on because MEDIA_S3_BUCKET is set".
+ */
+test("media deletion stays switched off until an operator turns it on", async () => {
+  const assetId = "11111111-1111-4111-8111-111111111111";
+  let deletions = 0;
+  const mediaAssets = {
+    async upload() { throw new Error("unused"); },
+    async getPublic() { throw new Error("unused"); },
+    async listLibrary() { return { items: [], nextCursor: null }; },
+    async deleteAsset() { deletions += 1; return { id: assetId, objectDeleted: true }; },
+  };
+  // No MEDIA_DELETE_ENABLED: the default, which is the state a fresh deployment
+  // and an operator who has not read the release notes are both in.
+  const { MEDIA_DELETE_ENABLED: _omitted, ...withoutSwitch } = authEnv as Record<string, string>;
+  await withServer(async (baseUrl) => {
+    const refused = await fetch(baseUrl + "/api/v1/me/media/" + assetId, {
+      method: "DELETE",
+      headers: { authorization: "Bearer " + signedToken("media-writer") },
+    });
+    assert.equal(refused.status, 409);
+    assert.deepEqual(await refused.json(), {
+      error: { code: "MEDIA_DELETE_DISABLED", message: "Media deletion is not enabled on this instance." },
+    });
+    assert.equal(deletions, 0, "a refused delete must not reach the service");
+
+    // The library still lists, and says whether its button would work — one
+    // switch, read at request time, so the page cannot offer a delete the API
+    // would refuse.
+    const list = await fetch(baseUrl + "/api/v1/me/media", {
+      headers: { authorization: "Bearer " + signedToken("media-writer") },
+    });
+    assert.equal(list.status, 200);
+    assert.equal((await list.json()).data.deletionEnabled, false);
+  }, { env: withoutSwitch, store: {}, mediaAssets });
+
+  // A typo is off, not on: the same rule the mail switch follows.
+  await withServer(async (baseUrl) => {
+    const refused = await fetch(baseUrl + "/api/v1/me/media/" + assetId, {
+      method: "DELETE",
+      headers: { authorization: "Bearer " + signedToken("media-writer") },
+    });
+    assert.equal(refused.status, 409);
+    assert.equal((await refused.json()).error.code, "MEDIA_DELETE_DISABLED");
+  }, { env: { ...authEnv, MEDIA_DELETE_ENABLED: "ture" }, store: {}, mediaAssets });
+
+  await withServer(async (baseUrl) => {
+    const allowed = await fetch(baseUrl + "/api/v1/me/media/" + assetId, {
+      method: "DELETE",
+      headers: { authorization: "Bearer " + signedToken("media-writer") },
+    });
+    assert.equal(allowed.status, 200);
+    assert.deepEqual(await allowed.json(), { data: { id: assetId } });
+    assert.equal(deletions, 1);
+
+    const list = await fetch(baseUrl + "/api/v1/me/media", {
+      headers: { authorization: "Bearer " + signedToken("media-writer") },
+    });
+    assert.equal((await list.json()).data.deletionEnabled, true);
+  }, { env: { ...authEnv, MEDIA_DELETE_ENABLED: "on" }, store: {}, mediaAssets });
 });
 
 /**

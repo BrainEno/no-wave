@@ -110,15 +110,18 @@ export function createPostgresMediaStore({ sql, captureChanges }): Pick<TypedPer
      * deleted inside one transaction, because a scan and a delete done
      * separately leave a gap a concurrent save fits through.
      *
-     * `null` when the asset is not this owner's, which is the same answer as
-     * "not there". `ILIKE` rather than a JSON walk, for the same reason as the
-     * SQLite provider: a UUID inside a `/media/` path is a reference, and being
-     * imprecise this way round only ever refuses a delete.
-     */
-    /**
-     * Delete one of an owner's assets, but only if nothing uses it — scanned and
-     * deleted inside one transaction, because a scan and a delete done
-     * separately leave a gap a concurrent save fits through.
+     * The scan alone is not enough under READ COMMITTED (issue #156): a save that
+     * commits between the scan and the `DELETE` has added a reference the scan
+     * never saw, and the object that follows is unrecoverable. So the asset row
+     * is locked `FOR UPDATE` **first**, and every writer that can create a
+     * reference names its assets and locks them `FOR SHARE` (see
+     * `lockMediaAssetReferences`). The two orders are the protocol:
+     *
+     * - this transaction first: a concurrent save blocks on the row and, once it
+     *   continues, finds the asset gone and fails instead of writing a reference
+     *   to nothing;
+     * - a save first: this transaction blocks, and when it continues the
+     *   committed reference is visible to the scan, which refuses the delete.
      *
      * `null` when the asset is not this owner's, which is the same answer as
      * "not there". `ILIKE` rather than a JSON walk, for the same reason as the
@@ -129,7 +132,9 @@ export function createPostgresMediaStore({ sql, captureChanges }): Pick<TypedPer
       if (typeof id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) return null;
       return sql.begin(async (tx) => {
         const transactionId = createMigrationTransactionId();
-        const existing = await tx.unsafe("SELECT * FROM media_assets WHERE id = $1 AND owner_id = $2", [id, ownerId]);
+        // Locked before the scan, not after: the whole point is that no reference
+        // can be committed between "nothing uses it" and "delete it".
+        const existing = await tx.unsafe("SELECT * FROM media_assets WHERE id = $1 AND owner_id = $2 FOR UPDATE", [id, ownerId]);
         const row = existing[0];
         if (!row) return null;
         const needle = `%/media/${id.toLowerCase()}%`;

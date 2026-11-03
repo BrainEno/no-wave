@@ -2392,3 +2392,101 @@ registerAdapterContracts(
   postgresFixture,
   { skip: !connectionString && "Set TEST_DATABASE_URL to run PostgreSQL persistence contracts." },
 );
+
+/**
+ * The write-skew window, exercised rather than described (issue #156).
+ *
+ * `deleteUnusedMediaAsset` scans and deletes in one transaction, which is enough
+ * under SQLite (one writer) but *not* under PostgreSQL's READ COMMITTED: a save
+ * that commits between the scan and the `DELETE` adds a reference the scan never
+ * saw, and the object removed afterwards is gone for good. The protocol is a row
+ * lock on both sides — writers take `FOR SHARE` on the assets their content names,
+ * the delete takes `FOR UPDATE` on the asset row before scanning — so one of the
+ * two orders below has to happen, and neither ends with a work pointing at bytes
+ * that were deleted.
+ *
+ * PostgreSQL only. SQLite has a single writer, so the interleaving this asserts
+ * cannot be constructed there; the skip is the adapter's design, not a gap in the
+ * test.
+ */
+test(
+  "PostgreSQL: a save racing a media delete either blocks the delete or fails, never orphans the image",
+  { skip: !connectionString && "Set TEST_DATABASE_URL to run the write-skew contract." },
+  async () => {
+    const suffix = randomUUID().slice(0, 8);
+    const ownerId = `media-race-owner-${suffix}`;
+    const assetId = randomUUID();
+    const hour = new Date(Date.now() + 3_600_000).toISOString();
+    const account = (userId, seed) => ({
+      userId,
+      email: `${userId}@example.test`,
+      passwordHash: "hash-before",
+      session: {
+        sessionId: randomUUID(), userId, accessTokenId: randomUUID(),
+        refreshHash: (seed + suffix.replace(/-/g, "")).padEnd(64, seed), expiresAt: hour,
+        accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+      },
+    });
+    await postgresStore.createIdentityAccount(account(ownerId, "9"));
+    await postgresStore.createMediaAsset({
+      id: assetId, ownerId, storageKey: `assets/${ownerId}/${assetId}.webp`, contentType: "image/webp",
+      byteSize: 2048, width: 20, height: 10, sha256: "e".repeat(64),
+    });
+
+    // The deleting transaction, held open at the point *after* it has locked the
+    // asset row and scanned — the exact instant the old code was vulnerable.
+    const deleteTx = await postgresSql.begin(async (tx) => {
+      const locked = await tx.unsafe("SELECT id FROM media_assets WHERE id = $1 AND owner_id = $2 FOR UPDATE", [assetId, ownerId]);
+      assert.equal(locked.length, 1, "the delete owns the row");
+      const scan = await tx.unsafe(
+        "SELECT count(*)::int AS n FROM article_translations t WHERE t.content_blocks::text ILIKE $1",
+        [`%/media/${assetId}%`],
+      );
+      assert.equal(scan[0].n, 0, "nothing references it yet");
+
+      // The save starts now, in its own transaction, and asks for the same row
+      // with a shared lock. It must wait: if this resolves before the delete
+      // commits, the protocol is not holding.
+      let saveSettled: "pending" | "done" | "error" = "pending";
+      const save = postgresSql.begin(async (tx2) => {
+        await tx2.unsafe("SELECT id FROM media_assets WHERE id = ANY($1::uuid[]) ORDER BY id FOR SHARE", [[assetId]]);
+        await tx2.unsafe(
+          "INSERT INTO articles (id, author_id, slug, work_type, status) VALUES ($1, $2, $3, 'other', 'draft')",
+          [randomUUID(), ownerId, `media-race-${suffix}`],
+        );
+        await tx2.unsafe(
+          "INSERT INTO article_translations (article_id, locale, title, summary, content_blocks, content_blocks_version) SELECT id, 'zh-CN', '赛跑', '', $1::jsonb, 0 FROM articles WHERE slug = $2",
+          [JSON.stringify([{ type: "image", src: `/api/v1/media/${assetId}` }]), `media-race-${suffix}`],
+        );
+      }).then(() => { saveSettled = "done"; }, () => { saveSettled = "error"; });
+
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      assert.equal(saveSettled, "pending", "the save waits on the row the delete is holding");
+
+      // The delete finishes first: it removes the row and commits.
+      await tx.unsafe("DELETE FROM media_assets WHERE id = $1", [assetId]);
+      return async () => {
+        await save;
+        return saveSettled;
+      };
+    });
+    const outcome = await deleteTx();
+    // Which way it went depends on the lock the save reached for: `FOR SHARE`
+    // against a row this transaction deleted answers "row vanished", and the
+    // insert then fails. Either settlement is acceptable; a *silent success*
+    // alongside a deleted asset is not, and is asserted against below.
+    assert.ok(outcome === "done" || outcome === "error", "the save settled rather than hanging");
+
+    const remaining = await postgresSql.unsafe("SELECT id FROM media_assets WHERE id = $1", [assetId]);
+    assert.equal(remaining.length, 0, "the delete happened");
+    // The invariant, in the only form that matters: no committed work points at
+    // an asset that no longer exists.
+    const orphaned = await postgresSql.unsafe(
+      "SELECT count(*)::int AS n FROM article_translations t JOIN articles a ON a.id = t.article_id WHERE a.slug = $1 AND t.content_blocks::text ILIKE $2",
+      [`media-race-${suffix}`, `%/media/${assetId}%`],
+    );
+    assert.equal(orphaned[0].n, 0, "no committed work references the deleted image");
+    await postgresSql.unsafe("DELETE FROM articles WHERE slug = $1", [`media-race-${suffix}`]);
+    await postgresSql.unsafe("DELETE FROM auth_accounts WHERE user_id = $1", [ownerId]);
+  },
+);

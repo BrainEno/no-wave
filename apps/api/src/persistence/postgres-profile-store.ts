@@ -7,6 +7,7 @@ import { validateArticleLocale } from "../domain/article.ts";
 import { requiredText } from "../domain/validation.ts";
 import { mapArticle, mapAuthorProfile, requestHash } from "./postgres-row-mappers.ts";
 import type { TypedPersistenceAdapterContract } from "../application/persistence-adapter.ts";
+import { lockMediaAssetReferences } from "./postgres-media-locks.ts";
 
 /**
  * PostgreSQL profile slice: author profiles, the author directory, follows and roles — the
@@ -272,6 +273,10 @@ export function createPostgresProfileStore({ sql, captureChanges }): Pick<TypedP
       const validatedWebsiteUrl = validateProfileUrl("websiteUrl", websiteUrl, false);
       return sql.begin(async (tx) => {
         const transactionId = createMigrationTransactionId();
+        // The avatar is a media reference that lives outside any article body, so
+        // it is what the reference scan would miss while a delete is running
+        // (issue #156). Lock it before writing it, like a body.
+        if (avatarUrl !== undefined) await lockMediaAssetReferences(tx, validatedAvatarUrl);
         await tx.unsafe(
           "INSERT INTO user_profiles (user_id, avatar_url, website_url) VALUES ($1, $2, $3) ON CONFLICT (user_id) DO UPDATE SET avatar_url = CASE WHEN $4 THEN $2 ELSE user_profiles.avatar_url END, website_url = CASE WHEN $5 THEN $3 ELSE user_profiles.website_url END, updated_at = now()",
           [userId, validatedAvatarUrl ?? null, validatedWebsiteUrl ?? null, avatarUrl !== undefined, websiteUrl !== undefined],

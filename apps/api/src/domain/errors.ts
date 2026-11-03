@@ -78,6 +78,23 @@ export class MailDisabledError extends DomainError {
   constructor() { super("MailDisabledError", "MAIL_DISABLED", "Account mail is not enabled on this instance."); }
 }
 
+/**
+ * A media deletion was asked for while deletion is switched off.
+ *
+ * The library's delete is irreversible for the bytes it reclaims — the row is
+ * guarded, the object is not — and the reference scan is only as good as the
+ * content it can read. Until both providers run under an isolation level where a
+ * concurrent save cannot slip a new reference past the guarded delete, the
+ * operation stays behind an operator switch that is off by default, so an
+ * instance cannot lose a live image merely by having object storage configured.
+ *
+ * 409, for the same reason as {@link MailDisabledError}: nothing is broken, and
+ * retrying changes nothing.
+ */
+export class MediaDeleteDisabledError extends DomainError {
+  constructor() { super("MediaDeleteDisabledError", "MEDIA_DELETE_DISABLED", "Media deletion is not enabled on this instance."); }
+}
+
 export class ConversationAccessError extends DomainError {
   constructor(message = "The sender is not a participant in this conversation.") {
     super("ConversationAccessError", "FORBIDDEN", message);

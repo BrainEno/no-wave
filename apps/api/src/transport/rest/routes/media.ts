@@ -19,7 +19,9 @@ import {
   MediaInputError,
 } from "../../../application/media-assets.ts";
 import { MediaStorageUnavailableError } from "../../../infrastructure/media-storage.ts";
+import { MediaDeleteDisabledError } from "../../../domain/errors.ts";
 import { writeStructuredLog } from "../../../infrastructure/http-observability.ts";
+import { isMediaDeleteEnabled } from "../../../application/media-assets.ts";
 
 /** The answer when media is not configured: the same one the upload route gives. */
 function sendMediaUnconfigured(response: RestRouteContext["response"]): void {
@@ -91,7 +93,11 @@ const MEDIA_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Object.
           cursor: ctx.url.searchParams.get("cursor"),
           limit,
         });
-        sendJson(response, 200, { data });
+        // The page has to know whether the button it draws would work. Saying so
+        // in the payload — rather than leaving the Web app to guess from a build
+        // flag — is what keeps one switch authoritative for every client,
+        // including one that talks to the API directly.
+        sendJson(response, 200, { data: { ...data, deletionEnabled: isMediaDeleteEnabled(env) } });
       } catch (error: unknown) {
         if (error instanceof MediaInputError) {
           sendJson(response, 400, { error: { code: error.code, message: error.message } });
@@ -142,6 +148,14 @@ const MEDIA_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Object.
       // The same 404 for "not yours" and "not there", so the endpoint cannot be
       // used to discover which assets exist.
       sendJson(response, 404, { error: { code: "NOT_FOUND", message: "The requested media asset was not found." } });
+      return;
+    }
+    // The delete is irreversible for the bytes, so it is off until an operator
+    // says otherwise — see `isMediaDeleteEnabled`. Refused before authentication:
+    // a switched-off endpoint has nothing to look up, and asking a caller to sign
+    // in first would suggest the operation exists for them.
+    if (!isMediaDeleteEnabled(env)) {
+      sendServiceError(response, new MediaDeleteDisabledError());
       return;
     }
     try {
