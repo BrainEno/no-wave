@@ -19,11 +19,17 @@ import { isoDate, mapArticle } from "./postgres-row-mappers.ts";
 import { replaceArticleTaxonomyKind } from "./postgres-taxonomy-store.ts";
 import type { TypedPersistenceAdapterContract } from "../application/persistence-adapter.ts";
 import { lockMediaAssetReferences } from "./postgres-media-locks.ts";
+import { articleMediaRefStatements } from "./media-reference-sync.ts";
 
 /**
  * PostgreSQL article slice: discovery, publication, tombstones and the featured shelf — the
  * counterpart of `sqlite-article-store.ts`.
  */
+/** Run a reference plan inside a transaction (issue #163). */
+async function applyRefStatements(tx, statements) {
+  for (const entry of statements) await tx.unsafe(entry.statement, entry.params);
+}
+
 export function createPostgresArticleStore({ sql, captureChanges }): Pick<TypedPersistenceAdapterContract, "listLikedArticles" | "listRelatedArticles" | "listPublishedArticles" | "listFollowingArticles" | "listFeaturedArticles" | "setFeaturedArticles" | "getPublishedArticle" | "listMyArticles" | "listMyDeletedArticles" | "createArticle" | "updateArticle" | "deleteArticle" | "restoreArticle" | "purgeExpiredArticles"> {
   async function readArticleForAuthor(executor, { articleId, locale }) {
     const rows = await executor.unsafe(
@@ -395,6 +401,10 @@ export function createPostgresArticleStore({ sql, captureChanges }): Pick<TypedP
           );
           await replaceArticleTaxonomyKind(tx, article.id, "category", selectedCategories);
           await replaceArticleTaxonomyKind(tx, article.id, "tag", selectedTags);
+          // The reference table follows the body, in the same transaction (issue
+          // #163): a save that commits without it leaves an image the library
+          // calls unused while a live work points at it.
+          await applyRefStatements(tx, articleMediaRefStatements({ articleId: article.id, locale: input.locale, content: input.contentBlocks }));
           const [articleSnapshot, translationSnapshot, links] = await Promise.all([
             tx.unsafe("SELECT * FROM articles WHERE id = $1", [article.id]),
             tx.unsafe("SELECT * FROM article_translations WHERE article_id = $1 AND locale = $2", [article.id, input.locale]),
@@ -457,6 +467,7 @@ export function createPostgresArticleStore({ sql, captureChanges }): Pick<TypedP
           );
           await replaceArticleTaxonomyKind(tx, articleId, "category", selectedCategories);
           await replaceArticleTaxonomyKind(tx, articleId, "tag", selectedTags);
+          await applyRefStatements(tx, articleMediaRefStatements({ articleId, locale: input.locale, content: input.contentBlocks }));
           const [articleSnapshot, translationSnapshot, currentLinks] = await Promise.all([
             tx.unsafe("SELECT * FROM articles WHERE id = $1", [articleId]),
             tx.unsafe("SELECT * FROM article_translations WHERE article_id = $1 AND locale = $2", [articleId, input.locale]),

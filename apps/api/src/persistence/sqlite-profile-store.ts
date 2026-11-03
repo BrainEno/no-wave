@@ -9,6 +9,7 @@ import { validateArticleLocale } from "../domain/article.ts";
 import { requiredText } from "../domain/validation.ts";
 import { AUTHOR_OFFSET_MAX, AUTHOR_QUERY_MAX_LENGTH, normalizeStoredRole, validateProfileUrl, validateUserRole } from "../domain/profile.ts";
 import type { TypedPersistenceAdapterContract } from "../application/persistence-adapter.ts";
+import { applyMediaRefStatements, avatarMediaRefStatements } from "./media-reference-sync.ts";
 
 /**
  * SQLite implementation of the author-profile and follow persistence slice.
@@ -23,6 +24,8 @@ export function createSqliteProfileStore(db): Pick<TypedPersistenceAdapterContra
   const get = (sql, ...params) => db.prepare(sql).get(...params);
   const all = (sql, ...params) => db.prepare(sql).all(...params);
   const migrationCapture = createSqliteProviderMigrationCapture(db);
+  /** This connection, as the reference-table helpers see it (issue #163). */
+  const mediaRefs = (statements) => applyMediaRefStatements((statement, params) => db.prepare(statement).run(...params), statements);
   const transaction = (fn) => {
     const transactionId = createMigrationTransactionId();
     db.exec("BEGIN IMMEDIATE");
@@ -302,6 +305,10 @@ export function createSqliteProfileStore(db): Pick<TypedPersistenceAdapterContra
           avatarUrl !== undefined ? 1 : 0,
           websiteUrl !== undefined ? 1 : 0,
         );
+        // The avatar is a media reference in no body, so it is recorded by hand
+        // (issue #163). Only when this call actually sets one: a save that
+        // leaves the photo alone must not clear the reference to it.
+        if (avatarUrl !== undefined) mediaRefs(avatarMediaRefStatements({ userId, avatarUrl: validatedAvatarUrl ?? null }));
         run(
           `INSERT INTO user_profile_translations (user_id, locale, display_name, bio) VALUES (?, ?, ?, ?)
            ON CONFLICT (user_id, locale) DO UPDATE SET

@@ -104,11 +104,20 @@ explain itself, and the bytes it frees are worth less than one restored article
 full of broken images. Reclamation is therefore a button, behind the same check,
 pressed by the author who uploaded the image.
 
-The check costs one pass over every work's content per library read — O(all
-content), which is the point: knowing that nothing uses an image means looking at
-everything that could. If that ever matters, the fix is a `media_references`
-table maintained on save, **not** a narrower scan, which would silently decide
-that some references do not count.
+The check reads a materialized table, not every work's content. `article_media_refs`
+holds one row per (asset, work, locale) a body mentions, and `user_profiles.avatar_media_id`
+holds the one image a profile picture points at; both are written by the same
+transaction that saves the body or the avatar (migration 0024 on PostgreSQL,
+0015 on SQLite). A library page therefore asks about its own twenty-four assets
+and never reads a `content_blocks` value — issue #163.
+
+The full scan has not gone away: `listMediaScanRows` is still what a guarded
+delete falls back on when the table says nothing, and what the contract test
+compares the table against, so a row a writer forgot is a failing test rather
+than a deleted image. The scan exists to keep the table honest, not to answer
+every page. Narrowing the scan would silently decide that some references do not
+count; keeping it as the backstop costs one query on a path that already ends in
+a delete.
 
 See [ADR 0022](../architecture/decisions/0022-media-library-without-scheduled-reclamation.md).
 

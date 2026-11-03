@@ -238,6 +238,7 @@ export type PersistencePortSignatures = {
   getMediaAsset: (input: GetMediaAssetInput) => PersistenceResult<MediaAsset | null>;
   listMediaAssets: (input: ListMediaAssetsInput) => PersistenceResult<MediaAsset[]>;
   listMediaScanRows: () => PersistenceResult<MediaScanRow[]>;
+  listMediaRefs: (input: { assetIds: string[] }) => PersistenceResult<MediaScanRow[]>;
   deleteUnusedMediaAsset: (input: DeleteUnusedMediaAssetInput) => PersistenceResult<DeleteUnusedMediaAssetResult>;
 };
 

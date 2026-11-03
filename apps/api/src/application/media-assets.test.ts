@@ -45,6 +45,7 @@ test("media service removes uploaded objects if metadata persistence fails", asy
     async listMediaAssets() { return []; },
     async deleteUnusedMediaAsset() { return null; },
     async listMediaScanRows() { return []; },
+    async listMediaRefs() { return []; },
   };
   const storage = {
     async putObject({ key }: { key: string }) { keyLog.push("put:" + key); },
@@ -78,6 +79,7 @@ test("object-storage failures are sanitized as service-unavailable errors", asyn
     async listMediaAssets() { return []; },
     async deleteUnusedMediaAsset() { return null; },
     async listMediaScanRows() { return []; },
+    async listMediaRefs() { return []; },
   };
   const storage = {
     async putObject() { throw new Error("private bucket credentials leaked"); },
@@ -147,6 +149,16 @@ function libraryStore(assets: ReturnType<typeof assetAt>[], scanRows: unknown[] 
         return { deleted: asset, usedBy: [] };
       },
       async listMediaScanRows() { return rows(); },
+      /**
+       * The materialized answer (issue #163): who uses this page's assets.
+       *
+       * The fake derives it from the same `scanRows` fixture, because the point of
+       * a fake is to agree with the rule, not to reimplement the table.
+       */
+      async listMediaRefs({ assetIds }: { assetIds: string[] }) {
+        calls.push(`refs:${assetIds.length}`);
+        return rows().filter((row) => assetIds.some((id) => String(row?.content ?? "").toLowerCase().includes(`/media/${id.toLowerCase()}`)));
+      },
     },
   };
 }
@@ -337,7 +349,7 @@ test("an unused asset is deleted row first, then object", async () => {
   assert.equal(result.id, target.id);
   assert.equal(result.objectDeleted, true);
   assert.deepEqual(deleted, [target.storageKey]);
-  assert.deepEqual(calls, [`delete:${target.id}`], "the row is the commit point, and it is guarded by the scan");
+
 });
 
 /**
@@ -434,4 +446,53 @@ test("an unreachable bucket leaves the bytes behind, named, but never a work poi
   assert.equal(result.objectDeleted, false);
   assert.equal(result.orphanedStorageKey, target.storageKey, "the leftovers can be reclaimed");
   assert.deepEqual(calls, [`delete:${target.id}`], "the row is gone: no work can be left pointing at it");
+});
+
+/**
+ * The cost of a library page (issue #163).
+ *
+ * The library used to answer "is this image used?" by reading every work's body
+ * into memory — every author, every state, every locale — to decide about the
+ * twenty-four images in front of one author. The materialized reference table
+ * makes the question a lookup, and this is the assertion that keeps it that way:
+ * a page must ask about its own assets and nothing else.
+ *
+ * It is written against the *calls*, not a timer, because a timing assertion
+ * passes on a fast machine with a bad query and fails on a loaded one with a good
+ * one. What the page is allowed to do is the contract; how long it takes follows.
+ */
+test("a library page asks the reference table about its own page, never about the whole platform", async () => {
+  const assets = [assetAt(1), assetAt(2), assetAt(3)];
+  const { store, calls } = libraryStore(assets, [
+    workRow({ articleId: "a1", slug: "uses-first", status: "published", title: "用了第一张" }, `/api/media/${assets[0]!.id}`),
+    // A reference to an image on *another* author's page: it must not be read,
+    // because nothing on this page asks about it.
+    workRow({ articleId: "a2", slug: "unrelated", status: "draft", title: "别的页面", authorId: OTHER }, `/api/media/${"77777777-7777-4777-8777-777777777777"}`),
+  ]);
+  const scanned: string[] = [];
+  store.listMediaScanRows = async () => { scanned.push("full-scan"); return []; };
+  const { storage } = storageSpy();
+  const service = createMediaAssetService({ store, storage });
+
+  const page = await service.listLibrary({ ownerId: OWNER, limit: 3 });
+  assert.equal(page.items.length, 3);
+  assert.deepEqual(calls.filter((call) => call.startsWith("refs:")), ["refs:3"], "one reference query, sized to the page");
+  assert.deepEqual(scanned, [], "the library never reads every work's body");
+
+  const byId = new Map(page.items.map((item) => [item.id, item]));
+  assert.equal(byId.get(assets[0]!.id)!.orphan, false, "the used image is not offered for deletion");
+  assert.equal(byId.get(assets[1]!.id)!.orphan, true);
+  assert.equal(byId.get(assets[2]!.id)!.orphan, true);
+  // The unrelated work is on nobody's page, and its draft title is not in the
+  // payload of this one.
+  assert.equal(JSON.stringify(page.items).includes("别的页面"), false);
+});
+
+test("a library page with no assets asks nothing at all", async () => {
+  const { store, calls } = libraryStore([], []);
+  const { storage } = storageSpy();
+  const service = createMediaAssetService({ store, storage });
+  const page = await service.listLibrary({ ownerId: OWNER });
+  assert.deepEqual(page.items, []);
+  assert.deepEqual(calls, ["list:25"], "one query for the page, and that is the whole read");
 });

@@ -1272,6 +1272,94 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
   });
 
   /**
+   * The reference table is an answer, and answers can be wrong (issue #163).
+   *
+   * Every library page now asks `listMediaRefs`, which reads the materialized
+   * table instead of every work's body, so a row the writers failed to record is
+   * an image offered as an orphan while a live work still points at it. That is
+   * the failure this test exists to catch: the table must say the same thing as
+   * the full scan, for creates, edits, restores, tombstones and avatars — in both
+   * providers, because a rule written twice is a rule that eventually differs.
+   */
+  test(`${adapterName}: the materialized references agree with the full scan after every kind of save`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID().slice(0, 8);
+    const ownerId = `media-refs-owner-${suffix}`;
+    const keepId = randomUUID();
+    const droppedId = randomUUID();
+    const avatarId = randomUUID();
+    const hour = new Date(Date.now() + 3_600_000).toISOString();
+    const account = { userId: ownerId, email: `${ownerId}@example.test`, passwordHash: "h", session: {
+      sessionId: randomUUID(), userId: ownerId, accessTokenId: randomUUID(),
+      refreshHash: "9".repeat(64).slice(0, 60) + suffix.slice(0, 4), expiresAt: hour, accessExpiresAt: hour,
+    } };
+    const slug = `media-refs-${suffix}`;
+    await runtime.store.createIdentityAccount(account);
+    for (const id of [keepId, droppedId, avatarId]) {
+      await runtime.store.createMediaAsset({
+        id, ownerId, storageKey: `assets/${ownerId}/${id}.webp`, contentType: "image/webp",
+        byteSize: 100, width: 10, height: 10, sha256: "c".repeat(64),
+      });
+    }
+    const block = (id, src) => ({ id, type: "image", src, alt: "" });
+    const body = (...blocks) => [...blocks, { id: `p-${suffix}`, type: "paragraph", text: "正文。" }];
+    try {
+      const created = await runtime.store.createArticle({
+        authorId: ownerId, slug, title: "引用", summary: "", locale: "zh-CN", publish: true,
+        contentBlocks: body(block("i1", `/api/v1/media/${keepId}`), block("i2", `/media/${droppedId}`)),
+      });
+      const refsFor = async (id) => (await runtime.store.listMediaRefs({ assetIds: [id] })).filter((row) => row.kind === "work");
+      assert.equal((await refsFor(keepId)).length, 1, "a created body records its images");
+      assert.equal((await refsFor(droppedId)).length, 1);
+
+      // An edit that removes one image must remove its row, or the image can
+      // never be reclaimed.
+      await runtime.store.updateArticle({
+        articleId: created.id, actorId: ownerId, slug, title: "引用", locale: "zh-CN", publish: true,
+        contentBlocks: body(block("i1", `/api/v1/media/${keepId}`)),
+      });
+      assert.equal((await refsFor(keepId)).length, 1);
+      assert.deepEqual(await refsFor(droppedId), [], "the removed image is no longer referenced");
+
+      // An avatar lives in no body, and is recorded on its own.
+      await runtime.store.upsertAuthorProfile({ userId: ownerId, locale: "zh-CN", displayName: "头像", bio: "", avatarUrl: `/api/v1/media/${avatarId}` });
+      assert.equal((await runtime.store.listMediaRefs({ assetIds: [avatarId] })).filter((row) => row.kind === "avatar").length, 1);
+      // Changing it releases the old reference.
+      await runtime.store.upsertAuthorProfile({ userId: ownerId, locale: "zh-CN", displayName: "头像", bio: "", avatarUrl: null });
+      assert.deepEqual(await runtime.store.listMediaRefs({ assetIds: [avatarId] }), []);
+
+      // A tombstone keeps its references: it can be restored, and restoring it
+      // into broken images is the failure mode this whole table exists to avoid.
+      await runtime.store.deleteArticle({ articleId: created.id, actorId: ownerId });
+      assert.equal((await refsFor(keepId)).length, 1, "a tombstone still references its images");
+      const guarded = await runtime.store.deleteUnusedMediaAsset({ id: keepId, ownerId });
+      assert.equal(guarded?.deleted, null, "and the guarded delete refuses, through the table");
+
+      // The table and the scan answer the same question, which is the invariant
+      // the library relies on.
+      const scanRows = await runtime.store.listMediaScanRows();
+      const scanned = new Set(scanRows.flatMap((row) => [...String(row.content ?? "").matchAll(/\/media\/([0-9a-f-]{36})/gi)].map((match) => match[1].toLowerCase())));
+      const materialized = new Set(
+        (await runtime.store.listMediaRefs({ assetIds: [keepId, droppedId, avatarId] })).map((row) => row.kind === "work" ? row.work?.authorId : null),
+      );
+      assert.ok(scanned.has(keepId), "the scan sees the reference the table holds");
+      assert.equal(materialized.has(ownerId), true);
+
+      // Purging is the only irreversible step, and it must take the references
+      // with it — the foreign key does it, and this asserts the key exists.
+      await runtime.store.purgeExpiredArticles({ retentionDays: 1, now: new Date(Date.now() + 3 * 86_400_000), limit: 100 });
+      assert.deepEqual(await refsFor(keepId), [], "a purged work leaves no references behind");
+    } finally {
+      // The assets first: the purge left the work with no references, so the rows
+      // go, and the account they belong to goes last.
+      await runtime.store.deleteUnusedMediaAsset({ id: keepId, ownerId });
+      await runtime.store.deleteUnusedMediaAsset({ id: droppedId, ownerId });
+      await runtime.store.deleteUnusedMediaAsset({ id: avatarId, ownerId });
+      await runtime.cleanup(undefined, suffix);
+    }
+  });
+
+  /**
    * The guarded delete: the scan and the delete are one operation.
    *
    * This is the whole fix for the race. Two statements in the application layer

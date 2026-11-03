@@ -22,6 +22,7 @@ import {
 } from "../domain/article.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
 import type { TypedPersistenceAdapterContract } from "../application/persistence-adapter.ts";
+import { applyMediaRefStatements, articleMediaRefStatements } from "./media-reference-sync.ts";
 
 /**
  * SQLite implementation of the article/content persistence slice.
@@ -33,6 +34,16 @@ export function createSqliteArticleStore(db): Pick<TypedPersistenceAdapterContra
   }
 
   const migrationCapture = createSqliteProviderMigrationCapture(db);
+  /**
+   * The reference table's view of this connection (issue #163).
+   *
+   * Written against `db` directly and not through `transaction()`: every call
+   * site below is already inside one, and nesting `BEGIN IMMEDIATE` is an error.
+   * The work is therefore in the caller's transaction, which is the point — a
+   * save that commits without updating the table would leave a reference that
+   * outlives the body that made it.
+   */
+  const mediaRefs = (statements) => applyMediaRefStatements((statement, params) => db.prepare(statement).run(...params), statements);
 
   const articleColumns = `a.id, a.author_id, a.slug, a.work_type, a.status, t.locale,
            t.title, t.summary, t.content_blocks, t.content_blocks_version, a.created_at, a.updated_at, a.published_at`;
@@ -418,6 +429,7 @@ export function createSqliteArticleStore(db): Pick<TypedPersistenceAdapterContra
             .run(id, input.locale, input.title, input.summary, JSON.stringify(input.contentBlocks), input.contentBlocksVersion, now, now);
           replaceTaxonomies(id, "category", categories);
           replaceTaxonomies(id, "tag", tags);
+          mediaRefs(articleMediaRefStatements({ articleId: id, locale: input.locale, content: input.contentBlocks }));
           captureArticleState(transactionId, id, input.locale);
           return mapArticle(statement(articleSelect + " WHERE a.id = ? AND t.locale = ?").get(id, input.locale));
         });
@@ -458,6 +470,7 @@ export function createSqliteArticleStore(db): Pick<TypedPersistenceAdapterContra
             .run(articleId, input.locale, input.title, input.summary, JSON.stringify(input.contentBlocks), input.contentBlocksVersion, now, now);
           replaceTaxonomies(articleId, "category", categories);
           replaceTaxonomies(articleId, "tag", tags);
+          mediaRefs(articleMediaRefStatements({ articleId, locale: input.locale, content: input.contentBlocks }));
           captureArticleState(transactionId, articleId, input.locale, previousLinks);
           return mapArticle(statement(articleSelect + " WHERE a.id = ? AND t.locale = ?").get(articleId, input.locale));
         });

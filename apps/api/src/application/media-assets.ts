@@ -136,8 +136,27 @@ type MediaMetadataStore = {
    * One method, because a reference is a reference wherever it lives: two
    * methods would be two chances for one of them to be forgotten at the point
    * where forgetting costs an image.
+   *
+   * Kept after the reference table arrived (issue #163) and **not** used by the
+   * library any more: it is the full platform scan, O(every work's body), and it
+   * remains the backstop the contract test compares the table against. The
+   * library reads `listMediaRefs` for its own page.
    */
   listMediaScanRows(): Promise<MediaScanRow[]>;
+  /**
+   * Who uses these assets — the materialized answer, scoped to one page.
+   *
+   * One query, indexed by `asset_id`, over the `article_media_refs` table (plus
+   * the avatar column) that every save and every avatar change keeps current. It
+   * replaces reading every work's body into Node to answer a question about at
+   * most twenty-four images.
+   *
+   * The rows are the same shape `listMediaScanRows` answers, so the redaction
+   * rule that decides what an author may be told about somebody else's draft is
+   * the same code: materializing the reference must not change what the page
+   * says, only how fast it can say it.
+   */
+  listMediaRefs(input: { assetIds: string[] }): Promise<MediaScanRow[]>;
   /**
    * Delete one of an owner's assets **only if nothing uses it**, and answer
    * what was found either way.
@@ -373,7 +392,7 @@ export function createMediaAssetService({ store, storage }: {
   storage: MediaObjectStorage;
 }) {
   const requiredStoreMethods = [
-    "createMediaAsset", "getMediaAsset", "listMediaAssets", "listMediaScanRows", "deleteUnusedMediaAsset",
+    "createMediaAsset", "getMediaAsset", "listMediaAssets", "listMediaScanRows", "listMediaRefs", "deleteUnusedMediaAsset",
   ];
   const missingStoreMethods = requiredStoreMethods.filter((method) => typeof store?.[method] !== "function");
   if (missingStoreMethods.length > 0) {
@@ -455,7 +474,15 @@ export function createMediaAssetService({ store, storage }: {
         limit: requested + 1,
       });
       const items = rows.slice(0, requested);
-      const references = extractMediaReferences(await store.listMediaScanRows());
+      // Only this page's assets are asked about. `listMediaRefs` is the
+      // materialized reference table (issue #163): an indexed lookup bounded by
+      // the page size, instead of every work's body loaded into memory to answer
+      // a question about twenty-four images.
+      // An empty page asks nothing: there is no asset to look up, and a store
+      // round trip that can only answer "nothing" is a query per empty page view.
+      const references = extractMediaReferences(items.length === 0
+        ? []
+        : await store.listMediaRefs({ assetIds: items.map((asset) => asset.id) }));
       const page1 = items.map((asset) => {
         const referencedBy = referencesForOwner(references, asset.id, ownerId);
         return { ...presentAsset(asset), orphan: referencedBy.length === 0, referencedBy };

@@ -18,7 +18,7 @@ function mapMediaAsset(row) {
 }
 
 /** SQLite implementation of the portable media metadata port. Object bytes never enter SQLite. */
-export function createSqliteMediaStore(db): Pick<TypedPersistenceAdapterContract, "createMediaAsset" | "getMediaAsset" | "listMediaAssets" | "listMediaScanRows" | "deleteUnusedMediaAsset"> {
+export function createSqliteMediaStore(db): Pick<TypedPersistenceAdapterContract, "createMediaAsset" | "getMediaAsset" | "listMediaAssets" | "listMediaScanRows" | "listMediaRefs" | "deleteUnusedMediaAsset"> {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") {
     throw new TypeError("A node:sqlite DatabaseSync connection is required.");
   }
@@ -46,12 +46,38 @@ export function createSqliteMediaStore(db): Pick<TypedPersistenceAdapterContract
   });
   const mapAvatar = (row) => ({ kind: "avatar", content: row.avatar_url });
   /**
+   * The bodies that reference a given asset, by the reference table (issue #163).
+   *
+   * `content` is the *reference*, not the body: the application layer only needs
+   * to know that this work points at this image, and the `work` fields are what
+   * the redaction rule reads. Reading the body back here — which is what the full
+   * scan does — would reintroduce the cost the table exists to remove.
+   */
+  const refBodiesSql = `${BODY_SQL.replace("t.content_blocks", "r.asset_id AS asset_id")}
+         JOIN article_media_refs r ON r.article_id = a.id AND r.locale = t.locale`;
+  const mapRefBody = (row) => ({
+    ...mapBody({ ...row, content_blocks: `/media/${row.asset_id}` }),
+  });
+  /**
    * The rows whose text holds `<id>` in a media path.
    *
    * `lower(...) LIKE` rather than a JSON walk: the id is a UUID, and a UUID
    * cannot be part of a media path by accident. It is also the safe direction to
    * be imprecise in — an extra match refuses a delete, a missed one allows one.
    */
+  /** The same answer, from the reference table (issue #163). */
+  const refRowsUsing = (id) => {
+    const bodies = db.prepare(
+      `SELECT r.asset_id, a.id AS article_id, a.slug, a.status, a.deleted_at, a.author_id, t.locale, t.title
+         FROM article_media_refs r
+         JOIN articles a ON a.id = r.article_id
+         JOIN article_translations t ON t.article_id = a.id AND t.locale = r.locale
+        WHERE r.asset_id = ?`,
+    ).all(id).map((row) => mapBody({ ...row, content_blocks: `/media/${row.asset_id}` }));
+    const avatars = db.prepare("SELECT user_id FROM user_profiles WHERE avatar_media_id = ?").all(id)
+      .map(() => ({ kind: "avatar", content: `/media/${id}` }));
+    return [...bodies, ...avatars];
+  };
   const scanRowsUsing = (id) => {
     const needle = `%/media/${String(id).toLowerCase()}%`;
     return [
@@ -119,6 +145,23 @@ export function createSqliteMediaStore(db): Pick<TypedPersistenceAdapterContract
       return [...db.prepare(BODY_SQL).all().map(mapBody), ...db.prepare(AVATAR_SQL).all().map(mapAvatar)];
     },
     /**
+     * Who uses these assets, from the materialized reference table.
+     *
+     * Bounded by the caller's page, indexed by `asset_id`, and it never reads a
+     * `content_blocks` value (issue #163).
+     */
+    async listMediaRefs({ assetIds }) {
+      if (!Array.isArray(assetIds) || assetIds.length === 0) return [];
+      const ids = assetIds.filter((id) => typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id));
+      if (ids.length === 0) return [];
+      const placeholders = ids.map(() => "?").join(", ");
+      const bodies = db.prepare(`${refBodiesSql} WHERE r.asset_id IN (${placeholders})`).all(...ids).map(mapRefBody);
+      const avatars = db.prepare(
+        `SELECT p.avatar_media_id AS asset_id FROM user_profiles p WHERE p.avatar_media_id IN (${placeholders})`,
+      ).all(...ids).map((row) => ({ kind: "avatar", content: `/media/${row.asset_id}` }));
+      return [...bodies, ...avatars];
+    },
+    /**
      * Delete one of an owner's assets, but only if nothing uses it — and scan
      * for that inside the same transaction as the delete.
      *
@@ -141,6 +184,15 @@ export function createSqliteMediaStore(db): Pick<TypedPersistenceAdapterContract
         if (!row) {
           db.exec("COMMIT");
           return null;
+        }
+        // The materialized answer first (issue #163), then the body scan as the
+        // backstop: the table is what keeps this fast, the scan is what keeps it
+        // honest, and the `media_assets_refuse_referenced_delete` trigger is the
+        // final word if both somehow miss.
+        const refUsedBy = refRowsUsing(id);
+        if (refUsedBy.length > 0) {
+          db.exec("COMMIT");
+          return { deleted: null, usedBy: refUsedBy };
         }
         const usedBy = scanRowsUsing(id);
         if (usedBy.length > 0) {

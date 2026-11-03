@@ -6,7 +6,27 @@ import type { TypedPersistenceAdapterContract } from "../application/persistence
  * PostgreSQL media slice: asset metadata and the reference scan — the counterpart of
  * `sqlite-media-store.ts`. Bytes never enter the database.
  */
-export function createPostgresMediaStore({ sql, captureChanges }): Pick<TypedPersistenceAdapterContract, "createMediaAsset" | "getMediaAsset" | "listMediaScanRows" | "listMediaAssets" | "deleteUnusedMediaAsset"> {
+/** The reference rows in the shape the application's redaction rule reads. */
+function referenceRowsToScan(referenced, avatarsByColumn, assetId) {
+  return [
+    ...referenced.map((row) => ({
+      kind: "work",
+      content: `/media/${assetId}`,
+      work: {
+        articleId: row.article_id,
+        slug: row.slug,
+        status: row.status,
+        deletedAt: row.deleted_at ? new Date(row.deleted_at).toISOString() : null,
+        locale: row.locale,
+        title: row.title,
+        authorId: row.author_id ?? "",
+      },
+    })),
+    ...avatarsByColumn.map(() => ({ kind: "avatar", content: `/media/${assetId}` })),
+  ];
+}
+
+export function createPostgresMediaStore({ sql, captureChanges }): Pick<TypedPersistenceAdapterContract, "createMediaAsset" | "getMediaAsset" | "listMediaScanRows" | "listMediaRefs" | "listMediaAssets" | "deleteUnusedMediaAsset"> {
   return Object.freeze({
     async createMediaAsset(asset) {
       return sql.begin(async (tx) => {
@@ -87,6 +107,45 @@ export function createPostgresMediaStore({ sql, captureChanges }): Pick<TypedPer
         ...avatars.map((row) => ({ kind: "avatar", content: row.avatar_url })),
       ];
     },
+    /**
+     * Who uses these assets, from the materialized reference table (issue #163).
+     *
+     * One indexed query bounded by the page, and no `content_blocks` read: the
+     * reference the row already carries is enough for the redaction rule, which
+     * only needs to know *that* a work points at the image and who wrote it.
+     */
+    async listMediaRefs({ assetIds }) {
+      if (!Array.isArray(assetIds) || assetIds.length === 0) return [];
+      const ids = assetIds.filter((id) => typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id));
+      if (ids.length === 0) return [];
+      const [bodies, avatars] = await Promise.all([
+        sql.unsafe(
+          `SELECT r.asset_id, a.id AS article_id, a.slug, a.status, a.deleted_at, a.author_id, t.locale, t.title
+           FROM article_media_refs r
+           JOIN articles a ON a.id = r.article_id
+           JOIN article_translations t ON t.article_id = a.id AND t.locale = r.locale
+           WHERE r.asset_id = ANY($1::uuid[])`,
+          [ids],
+        ),
+        sql.unsafe("SELECT avatar_media_id FROM user_profiles WHERE avatar_media_id = ANY($1::uuid[])", [ids]),
+      ]);
+      return [
+        ...bodies.map((row) => ({
+          kind: "work",
+          content: `/media/${row.asset_id}`,
+          work: {
+            articleId: row.article_id,
+            slug: row.slug,
+            status: row.status,
+            deletedAt: row.deleted_at ? new Date(row.deleted_at).toISOString() : null,
+            locale: row.locale,
+            title: row.title,
+            authorId: row.author_id ?? "",
+          },
+        })),
+        ...avatars.map((row) => ({ kind: "avatar", content: `/media/${row.avatar_media_id}` })),
+      ];
+    },
     /** One owner's assets, newest first. One extra row is read so the caller can see whether there is a next page. */
     /** One owner's assets, newest first. One extra row is read so the caller can see whether there is a next page. */
     async listMediaAssets({ ownerId, cursor = null, limit = 24 }) {
@@ -137,7 +196,26 @@ export function createPostgresMediaStore({ sql, captureChanges }): Pick<TypedPer
         const existing = await tx.unsafe("SELECT * FROM media_assets WHERE id = $1 AND owner_id = $2 FOR UPDATE", [id, ownerId]);
         const row = existing[0];
         if (!row) return null;
+        // The materialized answer first (issue #163), then the body scan as the
+        // backstop: the table is what keeps this fast and the scan is what keeps
+        // it honest if a row ever went missing from it. Either answer refusing is
+        // enough — and the `ON DELETE RESTRICT` foreign key on the table is the
+        // final word if both somehow miss.
         const needle = `%/media/${id.toLowerCase()}%`;
+        const [referenced, avatarsByColumn] = await Promise.all([
+          tx.unsafe(
+            `SELECT r.asset_id, a.id AS article_id, a.slug, a.status, a.deleted_at, a.author_id, t.locale, t.title
+             FROM article_media_refs r
+             JOIN articles a ON a.id = r.article_id
+             JOIN article_translations t ON t.article_id = a.id AND t.locale = r.locale
+             WHERE r.asset_id = $1`,
+            [id],
+          ),
+          tx.unsafe("SELECT user_id FROM user_profiles WHERE avatar_media_id = $1", [id]),
+        ]);
+        if (referenced.length > 0 || avatarsByColumn.length > 0) {
+          return { deleted: null, usedBy: referenceRowsToScan(referenced, avatarsByColumn, id) };
+        }
         const [bodies, avatars] = await Promise.all([
           tx.unsafe(
             `SELECT a.id AS article_id, a.slug, a.status, a.deleted_at, a.author_id, t.locale, t.title, t.content_blocks::text AS content_blocks

@@ -8,6 +8,7 @@ import { requiredText } from "../domain/validation.ts";
 import { mapArticle, mapAuthorProfile, requestHash } from "./postgres-row-mappers.ts";
 import type { TypedPersistenceAdapterContract } from "../application/persistence-adapter.ts";
 import { lockMediaAssetReferences } from "./postgres-media-locks.ts";
+import { avatarMediaRefStatements } from "./media-reference-sync.ts";
 
 /**
  * PostgreSQL profile slice: author profiles, the author directory, follows and roles — the
@@ -285,6 +286,12 @@ export function createPostgresProfileStore({ sql, captureChanges }): Pick<TypedP
           "INSERT INTO user_profile_translations (user_id, locale, display_name, bio) VALUES ($1, $2, $3, $4) ON CONFLICT (user_id, locale) DO UPDATE SET display_name = EXCLUDED.display_name, bio = EXCLUDED.bio, updated_at = now()",
           [userId, locale, displayName, bio],
         );
+        // The avatar reference lives in a column, not a body (issue #163), and is
+        // written only when this call actually sets one: a save that leaves the
+        // photo alone must not clear the reference to it.
+        if (avatarUrl !== undefined) {
+          for (const entry of avatarMediaRefStatements({ userId, avatarUrl: validatedAvatarUrl ?? null })) await tx.unsafe(entry.statement, entry.params);
+        }
         const rows = await tx.unsafe(
           "SELECT p.user_id, p.role, p.avatar_url, p.website_url, p.created_at, GREATEST(p.updated_at, t.updated_at) AS updated_at, t.display_name, t.bio, t.locale FROM user_profiles AS p JOIN user_profile_translations AS t ON t.user_id = p.user_id WHERE p.user_id = $1 AND t.locale = $2 LIMIT 1",
           [userId, locale],
