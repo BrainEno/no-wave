@@ -64,6 +64,7 @@ async function sqliteFixture() {
           `search-author-${suffix}`, `cursor-author-${suffix}`,
           `cursor-ms-author-${suffix}`, `cursor-ms-owner-${suffix}`,
           `identity-default-profile-${suffix}`,
+          `batch-author-a-${suffix}`, `batch-author-b-${suffix}`, `batch-viewer-${suffix}`,
           `sort-liker-${suffix}-1`,
           `sort-liker-${suffix}-2`,
           `sort-liker-${suffix}-3`,
@@ -96,6 +97,8 @@ async function sqliteFixture() {
         // Restore and sweep leave reclaimed and released addresses behind.
         db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`contract-restore-${suffix}%`);
         db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`contract-commenters-${suffix}%`);
+        db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`batch-%-${suffix}`);
+        db.prepare("DELETE FROM taxonomies WHERE slug LIKE ?").run(`batch-%-${suffix}`);
         db.prepare("DELETE FROM taxonomies WHERE slug = ?").run(`contract-category-${suffix}`);
         db.prepare("DELETE FROM taxonomies WHERE slug LIKE ?").run(`%-${suffix}`);
       }
@@ -142,6 +145,7 @@ async function postgresFixture() {
           `search-author-${suffix}`, `cursor-author-${suffix}`,
           `cursor-ms-author-${suffix}`, `cursor-ms-owner-${suffix}`,
           `identity-default-profile-${suffix}`,
+          `batch-author-a-${suffix}`, `batch-author-b-${suffix}`, `batch-viewer-${suffix}`,
           `sort-liker-${suffix}-1`,
           `sort-liker-${suffix}-2`,
           `sort-liker-${suffix}-3`,
@@ -167,6 +171,8 @@ async function postgresFixture() {
         // Restore and sweep leave reclaimed and released addresses behind.
         await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`contract-restore-${suffix}%`]);
         await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`contract-commenters-${suffix}%`]);
+        await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`batch-%-${suffix}`]);
+        await postgresSql.unsafe("DELETE FROM taxonomies WHERE slug LIKE $1", [`batch-%-${suffix}`]);
         await postgresSql.unsafe("DELETE FROM taxonomies WHERE slug = $1", [`contract-category-${suffix}`]);
         await postgresSql.unsafe("DELETE FROM taxonomies WHERE slug LIKE $1", [`%-${suffix}`]);
         await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`feed-%-${suffix}`]);
@@ -1016,6 +1022,94 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       );
       const assigned = await runtime.store.listArticleTaxonomies({ articleId: article.id, kind: "category", locale: "zh-CN" });
       assert.ok(assigned.some((item) => item.id === taxonomy.id));
+    } finally { await runtime.cleanup(undefined, suffix); }
+  });
+
+  test(`${adapterName}: a page's authors and taxonomies answer in one read each (issue #162)`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const authorA = `batch-author-a-${suffix}`;
+    const authorB = `batch-author-b-${suffix}`;
+    const viewerId = `batch-viewer-${suffix}`;
+    const categorySlug = `batch-category-${suffix}`;
+    try {
+      await runtime.store.upsertAuthorProfile({ userId: authorA, displayName: "批量的甲", bio: "甲", locale: "zh-CN" });
+      await runtime.store.upsertAuthorProfile({ userId: authorB, displayName: "批量的乙", bio: "乙", locale: "zh-CN" });
+      await runtime.store.upsertAuthorProfile({ userId: authorA, displayName: "Batch A", bio: "A", locale: "en" });
+      await runtime.store.followUser({ actorId: viewerId, targetUserId: authorA });
+
+      // The batch answer is the single-read answer, for every id in it: the
+      // transport swaps one for the other, so any drift here is visible to a
+      // reader as a wrong byline or a missing avatar.
+      for (const locale of ["zh-CN", "en"]) {
+        for (const viewer of [null, viewerId]) {
+          const ids = [authorA, authorB];
+          const batch = await runtime.store.getAuthorProfilesByIds({ userIds: ids, locale, viewerId: viewer });
+          assert.equal(batch.size, 2, "one entry per existing author");
+          assert.deepEqual([...batch.keys()].sort(), [...ids].sort());
+          for (const id of ids) {
+            assert.deepEqual(
+              batch.get(id),
+              await runtime.store.getAuthorProfile({ userId: id, locale, viewerId: viewer }),
+              `${locale}/${viewer} profile for ${id} matches the single read`,
+            );
+          }
+          assert.equal(batch.get(authorA).isFollowing, viewer === viewerId, "the viewer's follow state survives the batch");
+        }
+      }
+      assert.equal((await runtime.store.getAuthorProfilesByIds({ userIds: [authorA], locale: "zh-CN", viewerId })).get(authorA).followerCount, 1);
+      // A duplicated id is one entry, not two rows of work.
+      assert.equal((await runtime.store.getAuthorProfilesByIds({ userIds: [authorA, authorA], locale: "zh-CN" })).size, 1);
+      // Missing authors are absent, not fabricated.
+      const partial = await runtime.store.getAuthorProfilesByIds({ userIds: [authorA, `batch-missing-${suffix}`], locale: "zh-CN" });
+      assert.deepEqual([...partial.keys()], [authorA]);
+      // No ids, no query, no error.
+      assert.equal((await runtime.store.getAuthorProfilesByIds({ userIds: [], locale: "zh-CN" })).size, 0);
+
+      // Names chosen so that sorted-by-name order is neither the creation order
+      // nor the id order: an ordering regression cannot pass by luck.
+      const categoryIds = [];
+      for (const name of ["批量 Zebra", "批量 Alpha", "批量 Mike"]) {
+        const created = await runtime.store.createTaxonomy({
+          actorId: `batch-editor-${suffix}`, actorIsEditor: true, kind: "category",
+          slug: `${categorySlug}-${name.split(" ").pop().toLowerCase()}`, name, description: "", locale: "zh-CN",
+        });
+        categoryIds.push(created.id);
+      }
+      const tagIds = [];
+      for (const name of ["#portability", "#batch"]) {
+        const tag = await runtime.store.createTag({ actorId: authorA, name, locale: "zh-CN" });
+        tagIds.push(tag.id);
+      }
+      const first = await runtime.store.createArticle({
+        authorId: authorA, slug: `batch-first-${suffix}`, title: "第一篇", summary: "", locale: "zh-CN",
+        contentBlocks: [{ id: "p1", type: "paragraph", text: "批量读取." }], publish: true, categoryIds, tagIds,
+      });
+      const second = await runtime.store.createArticle({
+        authorId: authorB, slug: `batch-second-${suffix}`, title: "第二篇", summary: "", locale: "zh-CN",
+        contentBlocks: [{ id: "p1", type: "paragraph", text: "批量读取." }], publish: true,
+      });
+      const untagged = randomUUID(); // a real id that no work has
+
+      const grouped = await runtime.store.listArticlesTaxonomies({ articleIds: [first.id, second.id, untagged], locale: "zh-CN" });
+      assert.deepEqual([...grouped.keys()].sort(), [first.id, second.id, untagged].sort(), "every requested id has a bucket");
+      for (const id of [first.id, second.id]) {
+        const single = {
+          categories: await runtime.store.listArticleTaxonomies({ articleId: id, kind: "category", locale: "zh-CN" }),
+          tags: await runtime.store.listArticleTaxonomies({ articleId: id, kind: "tag", locale: "zh-CN" }),
+        };
+        // Same rows, same order: the transport concatenates them into one JSON
+        // array, so a different order would be a different response.
+        assert.deepEqual(grouped.get(id), single, `the batch answer for ${id} matches the single reads`);
+      }
+      assert.deepEqual(grouped.get(second.id), { categories: [], tags: [] }, "a work with no taxonomies still gets empty arrays");
+      assert.deepEqual(grouped.get(untagged), { categories: [], tags: [] }, "an unknown id gets empty arrays, not a throw");
+      assert.deepEqual(grouped.get(first.id).categories.map((item) => item.name), ["批量 Alpha", "批量 Mike", "批量 Zebra"], "the page-level read keeps the single read's ordering");
+      assert.equal(grouped.get(first.id).categories.length, 3);
+      assert.equal(grouped.get(first.id).tags.length, 2);
+      assert.equal((await runtime.store.listArticlesTaxonomies({ articleIds: [], locale: "zh-CN" })).size, 0);
+      // Ids of the wrong shape were never going to match a row; they must not break the query either.
+      assert.equal((await runtime.store.listArticlesTaxonomies({ articleIds: ["not-a-uuid"], locale: "zh-CN" })).size, 0);
     } finally { await runtime.cleanup(undefined, suffix); }
   });
 

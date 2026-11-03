@@ -63,7 +63,40 @@ function completeFakeAdapter(overrides = {}) {
       }
     }
   }
-  return Object.assign(adapter, overrides);
+  Object.assign(adapter, overrides);
+  /**
+   * The two batched reads (issue #162) default to the single reads above.
+   *
+   * A test that supplies `getAuthorProfile` or `listArticleTaxonomies` is
+   * describing an adapter; the page path asks the *batched* method instead, and
+   * without this it would see the generic `null` and render a different page
+   * than the one the test set up. Deriving the batch from the single read keeps
+   * such a test about its subject, and does not hide a missing batch — the real
+   * adapters are the ones under the contract test, and they have both.
+   */
+  if (typeof overrides.getAuthorProfile === "function" && typeof overrides.getAuthorProfilesByIds !== "function") {
+    adapter.getAuthorProfilesByIds = async ({ userIds, locale, viewerId }) => {
+      const profiles = new Map();
+      for (const userId of userIds) {
+        const profile = await overrides.getAuthorProfile({ userId, locale, viewerId });
+        if (profile) profiles.set(userId, profile);
+      }
+      return profiles;
+    };
+  }
+  if (typeof overrides.listArticleTaxonomies === "function" && typeof overrides.listArticlesTaxonomies !== "function") {
+    adapter.listArticlesTaxonomies = async ({ articleIds, locale }) => {
+      const grouped = new Map(articleIds.map((id) => [id, { categories: [], tags: [] }]));
+      for (const articleId of articleIds) {
+        grouped.set(articleId, {
+          categories: (await overrides.listArticleTaxonomies({ articleId, kind: "category", locale })) ?? [],
+          tags: (await overrides.listArticleTaxonomies({ articleId, kind: "tag", locale })) ?? [],
+        });
+      }
+      return grouped;
+    };
+  }
+  return adapter;
 }
 
 async function withServer(run, options = {}) {

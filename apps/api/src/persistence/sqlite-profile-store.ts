@@ -16,7 +16,7 @@ import { applyMediaRefStatements, avatarMediaRefStatements } from "./media-refer
  * This is intentionally not a complete persistence adapter and is not wired
  * into runtime until every persistence port has behavioral parity.
  */
-export function createSqliteProfileStore(db): Pick<TypedPersistenceAdapterContract, "getAuthorProfile" | "getUserRole" | "setUserRole" | "searchAuthors" | "searchUsers" | "listFollowing" | "listFollowers" | "followUser" | "unfollowUser" | "upsertAuthorProfile"> {
+export function createSqliteProfileStore(db): Pick<TypedPersistenceAdapterContract, "getAuthorProfile" | "getAuthorProfilesByIds" | "getUserRole" | "setUserRole" | "searchAuthors" | "searchUsers" | "listFollowing" | "listFollowers" | "followUser" | "unfollowUser" | "upsertAuthorProfile"> {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") {
     throw new TypeError("A node:sqlite DatabaseSync connection is required.");
   }
@@ -79,6 +79,26 @@ export function createSqliteProfileStore(db): Pick<TypedPersistenceAdapterContra
       viewerId, viewerId, locale, userId,
     );
   }
+  /**
+   * The same profile, for a page of authors, in one query (issue #162).
+   *
+   * `IN (?, …)` over the same `profileSelect` the single read uses, so a list and
+   * a detail page cannot disagree about one author. An id with no profile is
+   * absent from the map; the caller decides what a missing author looks like.
+   */
+  function profilesByIds({ userIds, locale = "zh-CN", viewerId = null }) {
+    validateArticleLocale(locale);
+    validateViewer(viewerId);
+    const ids = [...new Set((Array.isArray(userIds) ? userIds : []).filter((id) => typeof id === "string" && id.length > 0))];
+    if (ids.length === 0) return new Map();
+    const placeholders = ids.map(() => "?").join(", ");
+    const rows = all(
+      `${profileSelect} WHERE p.user_id IN (${placeholders})`,
+      viewerId, viewerId, locale, ...ids,
+    );
+    return new Map(rows.map((row) => [row.user_id, mapProfile(row)]));
+  }
+
   function validateViewer(viewerId) {
     if (viewerId !== null) requiredText("viewerId", viewerId, 300);
   }
@@ -143,6 +163,10 @@ export function createSqliteProfileStore(db): Pick<TypedPersistenceAdapterContra
       validateViewer(viewerId);
       const row = profileById(userId, locale, viewerId);
       return row ? mapProfile(row) : null;
+    },
+    /** A page's authors in one query (issue #162). */
+    getAuthorProfilesByIds({ userIds, locale = "zh-CN", viewerId = null }) {
+      return profilesByIds({ userIds, locale, viewerId });
     },
     /**
      * The one permission question the platform asks: may this account curate?

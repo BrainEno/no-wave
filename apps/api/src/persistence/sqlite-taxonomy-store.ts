@@ -9,7 +9,7 @@ import { validateArticleLocale, validateArticleSlug } from "../domain/article.ts
 import { isUuid, requiredText } from "../domain/validation.ts";
 import type { TypedPersistenceAdapterContract } from "../application/persistence-adapter.ts";
 
-export function createSqliteTaxonomyStore(db): Pick<TypedPersistenceAdapterContract, "listTaxonomies" | "getTaxonomyBySlug" | "listTaxonomyArticles" | "listArticleTaxonomies" | "createTag" | "createTaxonomy" | "deleteTaxonomy"> {
+export function createSqliteTaxonomyStore(db): Pick<TypedPersistenceAdapterContract, "listTaxonomies" | "getTaxonomyBySlug" | "listTaxonomyArticles" | "listArticleTaxonomies" | "listArticlesTaxonomies" | "createTag" | "createTaxonomy" | "deleteTaxonomy"> {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") {
     throw new TypeError("A node:sqlite DatabaseSync connection is required.");
   }
@@ -96,6 +96,38 @@ export function createSqliteTaxonomyStore(db): Pick<TypedPersistenceAdapterContr
         WHERE link.article_id = ? AND tax.kind = ? AND COALESCE(requested.name, fallback.name) IS NOT NULL
         ORDER BY lower(COALESCE(requested.name, fallback.name)), tax.id
       `, locale, locale, locale, articleId, kind).map(mapTaxonomy);
+    },
+    /**
+     * A page's categories and tags in two queries instead of two per work
+     * (issue #162).
+     *
+     * The same select as `listArticleTaxonomies`, with the work id as one of
+     * several and the kind fixed per pass: one query per kind answers the whole
+     * page, and the grouping happens in memory, where it costs nothing.
+     */
+    listArticlesTaxonomies({ articleIds, locale = "zh-CN" }) {
+      validateArticleLocale(locale);
+      if (!Array.isArray(articleIds)) throw new ArticleInputError("articleIds must be an array.");
+      const ids = [...new Set(articleIds.filter((id) => typeof id === "string" && isUuid(id)))];
+      const grouped = new Map(ids.map((id) => [id, { categories: [], tags: [] }]));
+      if (ids.length === 0) return grouped;
+      const placeholders = ids.map(() => "?").join(", ");
+      for (const kind of ["category", "tag"]) {
+        validateTaxonomyKind(kind);
+        // `link.article_id` rides along so each row knows which work it belongs
+        // to; the mapper reads only the taxonomy columns.
+        const rows = all(taxonomySelect.replace("SELECT tax.id, tax.kind", "SELECT link.article_id, tax.id, tax.kind") + `
+          JOIN article_taxonomies link ON link.taxonomy_id = tax.id
+          WHERE link.article_id IN (${placeholders}) AND tax.kind = ?
+            AND COALESCE(requested.name, fallback.name) IS NOT NULL
+          ORDER BY lower(COALESCE(requested.name, fallback.name)), tax.id
+        `, locale, locale, locale, ...ids, kind);
+        for (const row of rows) {
+          const bucket = grouped.get(row.article_id);
+          if (bucket) (kind === "category" ? bucket.categories : bucket.tags).push(mapTaxonomy(row));
+        }
+      }
+      return grouped;
     },
     createTag({ actorId, name, locale = "zh-CN" }) {
       requiredText("actorId", actorId, 300); validateArticleLocale(locale);

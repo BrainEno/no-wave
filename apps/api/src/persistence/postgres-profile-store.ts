@@ -14,7 +14,7 @@ import { avatarMediaRefStatements } from "./media-reference-sync.ts";
  * PostgreSQL profile slice: author profiles, the author directory, follows and roles — the
  * counterpart of `sqlite-profile-store.ts`.
  */
-export function createPostgresProfileStore({ sql, captureChanges }): Pick<TypedPersistenceAdapterContract, "getAuthorProfile" | "getUserRole" | "setUserRole" | "searchAuthors" | "searchUsers" | "listFollowing" | "listFollowers" | "followUser" | "unfollowUser" | "upsertAuthorProfile"> {
+export function createPostgresProfileStore({ sql, captureChanges }): Pick<TypedPersistenceAdapterContract, "getAuthorProfile" | "getAuthorProfilesByIds" | "getUserRole" | "setUserRole" | "searchAuthors" | "searchUsers" | "listFollowing" | "listFollowers" | "followUser" | "unfollowUser" | "upsertAuthorProfile"> {
   async function findAuthorProfile(executor, { userId, locale = "zh-CN", viewerId = null }) {
     requiredText("userId", userId, 300);
     validateArticleLocale(locale);
@@ -41,6 +41,45 @@ export function createPostgresProfileStore({ sql, captureChanges }): Pick<TypedP
       [userId, locale, viewerId],
     );
     return rows[0] ? mapAuthorProfile(rows[0]) : null;
+  }
+
+  /**
+   * The same profile, for a page of authors, in one query (issue #162).
+   *
+   * `= ANY($1)` rather than one round trip per id, and the projection is shared
+   * with the single-row read above on purpose: if the two ever answered different
+   * shapes, a list and a detail page would disagree about the same author.
+   *
+   * An id with no profile is simply absent from the map — the caller decides what
+   * a missing author looks like, and the list serializer has always answered
+   * `author: null`.
+   */
+  async function findAuthorProfilesByIds(executor, { userIds, locale = "zh-CN", viewerId = null }) {
+    const ids = [...new Set((Array.isArray(userIds) ? userIds : []).filter((id) => typeof id === "string" && id.length > 0))];
+    if (ids.length === 0) return new Map();
+    if (viewerId !== null) requiredText("viewerId", viewerId, 300);
+    validateArticleLocale(locale);
+    const rows = await executor.unsafe(
+      `SELECT p.user_id, p.role, p.avatar_url, p.website_url, p.created_at,
+              GREATEST(p.updated_at, translated.updated_at) AS updated_at,
+              translated.display_name, translated.bio, translated.locale,
+              (SELECT count(*)::int FROM user_follows f WHERE f.followed_id = p.user_id) AS follower_count,
+              (SELECT count(*)::int FROM user_follows f WHERE f.follower_id = p.user_id) AS following_count,
+              CASE WHEN $3::text IS NULL THEN false ELSE EXISTS(
+                SELECT 1 FROM user_follows f WHERE f.follower_id = $3 AND f.followed_id = p.user_id
+              ) END AS is_following_viewer
+       FROM user_profiles AS p
+       JOIN LATERAL (
+         SELECT t.display_name, t.bio, t.locale, t.updated_at
+         FROM user_profile_translations AS t
+         WHERE t.user_id = p.user_id
+         ORDER BY (t.locale = $2) DESC, (t.locale = 'zh-TW') DESC, t.locale
+         LIMIT 1
+       ) AS translated ON true
+       WHERE p.user_id = ANY($1::text[])`,
+      [ids, locale, viewerId],
+    );
+    return new Map(rows.map((row) => [row.user_id, mapAuthorProfile(row)]));
   }
 
   async function listRelatedProfiles(executor, { relationship, userId, locale = "zh-CN", viewerId = null, limit = 50 }) {
@@ -80,11 +119,10 @@ export function createPostgresProfileStore({ sql, captureChanges }): Pick<TypedP
     async getAuthorProfile({ userId, locale = "zh-CN", viewerId = null }) {
       return findAuthorProfile(sql, { userId, locale, viewerId });
     },
-    /**
-     * The one permission question the platform asks: may this account curate?
-     * A profile that does not exist answers `member` — absence of a record is
-     * absence of privilege, never a reason to fail open.
-     */
+    /** A page's authors in one query (issue #162). */
+    async getAuthorProfilesByIds({ userIds, locale = "zh-CN", viewerId = null }) {
+      return findAuthorProfilesByIds(sql, { userIds, locale, viewerId });
+    },
     /**
      * The one permission question the platform asks: may this account curate?
      * A profile that does not exist answers `member` — absence of a record is

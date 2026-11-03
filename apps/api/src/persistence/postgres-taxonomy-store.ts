@@ -16,6 +16,7 @@ import type {
   Article,
   GetTaxonomyBySlugInput,
   ListArticleTaxonomiesInput,
+  ListArticlesTaxonomiesInput,
   ListTaxonomiesInput,
   ListTaxonomyArticlesInput,
   Taxonomy,
@@ -66,7 +67,7 @@ export async function replaceArticleTaxonomyKind(tx, articleId, kind, ids) {
  * PostgreSQL taxonomy slice: tags, categories, and a work's links to them — the counterpart of
  * `sqlite-taxonomy-store.ts`.
  */
-export function createPostgresTaxonomyStore({ sql, captureChanges }): Pick<TypedPersistenceAdapterContract, "listTaxonomies" | "getTaxonomyBySlug" | "listTaxonomyArticles" | "listArticleTaxonomies" | "createTag" | "createTaxonomy" | "deleteTaxonomy"> {
+export function createPostgresTaxonomyStore({ sql, captureChanges }): Pick<TypedPersistenceAdapterContract, "listTaxonomies" | "getTaxonomyBySlug" | "listTaxonomyArticles" | "listArticleTaxonomies" | "listArticlesTaxonomies" | "createTag" | "createTaxonomy" | "deleteTaxonomy"> {
   async function listTaxonomiesFrom(executor, { kind, locale = "zh-CN", query = "", limit = 100, offset = 0 }) {
     validateTaxonomyKind(kind);
     validateArticleLocale(locale);
@@ -169,6 +170,46 @@ export function createPostgresTaxonomyStore({ sql, captureChanges }): Pick<Typed
         [articleId, kind, locale],
       );
       return rows.map(mapTaxonomy);
+    },
+    /**
+     * A page's categories and tags in two queries instead of two per work
+     * (issue #162).
+     *
+     * The same projection as `listArticleTaxonomies`, over `= ANY($1)`: one pass
+     * per kind answers the whole page, and the grouping happens in memory.
+     */
+    async listArticlesTaxonomies({ articleIds, locale = "zh-CN" }: ListArticlesTaxonomiesInput): Promise<Map<string, { categories: Taxonomy[]; tags: Taxonomy[] }>> {
+      validateArticleLocale(locale);
+      if (!Array.isArray(articleIds)) throw new ArticleInputError("articleIds must be an array.");
+      const ids = [...new Set(articleIds.filter((id) => typeof id === "string" && isUuid(id)))];
+      const grouped = new Map(ids.map((id) => [id, { categories: [] as Taxonomy[], tags: [] as Taxonomy[] }]));
+      if (ids.length === 0) return grouped;
+      for (const kind of ["category", "tag"]) {
+        validateTaxonomyKind(kind);
+        const rows = await sql.unsafe(
+          `SELECT link.article_id AS ref_article_id, tax.id, tax.kind, tax.slug, tax.created_by,
+                  COALESCE(requested.name, fallback.name) AS name,
+                  COALESCE(requested.description, fallback.description, '') AS description,
+                  $3::text AS locale,
+                  (SELECT count(DISTINCT a2.id)::int
+                   FROM article_taxonomies AS links2
+                   JOIN articles AS a2 ON a2.id = links2.article_id AND a2.status = 'published'
+                   JOIN article_translations AS at2 ON at2.article_id = a2.id AND at2.locale = $3
+                   WHERE links2.taxonomy_id = tax.id) AS article_count
+           FROM article_taxonomies AS link
+           JOIN taxonomies AS tax ON tax.id = link.taxonomy_id AND tax.kind = $2
+           LEFT JOIN taxonomy_translations AS requested ON requested.taxonomy_id = tax.id AND requested.locale = $3
+           LEFT JOIN taxonomy_translations AS fallback ON fallback.taxonomy_id = tax.id AND fallback.locale = 'zh-TW'
+           WHERE link.article_id = ANY($1::uuid[]) AND COALESCE(requested.name, fallback.name) IS NOT NULL
+           ORDER BY lower(COALESCE(requested.name, fallback.name)), tax.id`,
+          [ids, kind, locale],
+        );
+        for (const row of rows) {
+          const bucket = grouped.get(row.ref_article_id);
+          if (bucket) (kind === "category" ? bucket.categories : bucket.tags).push(mapTaxonomy(row));
+        }
+      }
+      return grouped;
     },
     async createTag({ actorId, name, locale = "zh-CN" }) {
       requiredText("actorId", actorId, 300);

@@ -339,6 +339,19 @@ export type DeleteTaxonomyInput = { taxonomyId: string; actorId: string; actorIs
 
 export type GetAuthorProfileInput = LocaleArgs & { userId: string; viewerId?: string | null };
 
+/**
+ * A page's authors in one query (issue #162).
+ *
+ * The list serializer used to ask for one profile per work, and each answer ran
+ * four correlated subqueries — the same author counted twenty times on a page of
+ * twenty works. `userIds` is deduplicated by the caller; an empty array answers an
+ * empty map rather than a query.
+ */
+export type GetAuthorProfilesByIdsInput = LocaleArgs & { userIds: string[]; viewerId?: string | null };
+
+/** The taxonomies of a page's works in one query, grouped by work (issue #162). */
+export type ListArticlesTaxonomiesInput = LocaleArgs & { articleIds: string[] };
+
 export type GetUserRoleInput = { userId: string };
 
 export type SetUserRoleInput = { actorId: string; userId: string; role: string };

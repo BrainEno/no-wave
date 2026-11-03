@@ -45,6 +45,7 @@ import type {
   FindIdentityAccountInput,
   FollowUserInput,
   GetAuthorProfileInput,
+  GetAuthorProfilesByIdsInput,
   GetMediaAssetInput,
   GetPublishedArticleInput,
   GetTaxonomyBySlugInput,
@@ -60,6 +61,7 @@ import type {
   ListArticleCommentAuthorIdsInput,
   ListArticleCommentsInput,
   ListArticleTaxonomiesInput,
+  ListArticlesTaxonomiesInput,
   ListByLocaleInput,
   ListConversationMessagesInput,
   ListConversationsInput,
@@ -155,12 +157,16 @@ export type PersistencePortSignatures = {
   getTaxonomyBySlug: (input: GetTaxonomyBySlugInput) => PersistenceResult<Taxonomy | null>;
   listTaxonomyArticles: (input: ListTaxonomyArticlesInput) => PersistenceResult<Article[]>;
   listArticleTaxonomies: (input: ListArticleTaxonomiesInput) => PersistenceResult<Taxonomy[]>;
+  /** A page's categories and tags at once, keyed by article id (issue #162). */
+  listArticlesTaxonomies: (input: ListArticlesTaxonomiesInput) => PersistenceResult<Map<string, { categories: Taxonomy[]; tags: Taxonomy[] }>>;
   createTag: (input: CreateTagInput) => PersistenceResult<Taxonomy>;
   createTaxonomy: (input: CreateTaxonomyInput) => PersistenceResult<Taxonomy>;
   deleteTaxonomy: (input: DeleteTaxonomyInput) => PersistenceResult<boolean>;
 
   // profiles
   getAuthorProfile: (input: GetAuthorProfileInput) => PersistenceResult<AuthorProfile | null>;
+  /** A page's authors at once, keyed by user id (issue #162). */
+  getAuthorProfilesByIds: (input: GetAuthorProfilesByIdsInput) => PersistenceResult<Map<string, AuthorProfile>>;
   searchUsers: (input: SearchUsersInput) => PersistenceResult<AuthorProfile[]>;
   searchAuthors: (input?: Partial<SearchAuthorsInput>) => PersistenceResult<AuthorDirectoryEntry[]>;
   listFollowing: (input: ListProfilesInput) => PersistenceResult<AuthorProfile[]>;
