@@ -15,7 +15,7 @@
  * verification is off; the probe then registers an account whose address is
  * never verified and publishes through the Web writing-desk proxy anyway.
  *
- * Two preconditions are what make a "published" work invisible in practice:
+ * Two conditions were what made a "published" work invisible in practice:
  *
  *   1. `PUT /api/v1/me/profile` was never called. The API answers with
  *      `author: null`, and `mapArticle()` in the Web client filters that article
@@ -86,7 +86,6 @@ type StepOutcome = { status?: CheckResult["status"]; detail: string; remedy?: st
 
 const DEFAULT_TIMEOUT_MS = 20_000;
 const BODY_TEXT = "无邮箱服务发布验证正文";
-const PROFILE_NAME = "发布验证作者";
 
 /** Every mail switch that would let an SMTP configuration reach a child. */
 export function mailVariablesIn(environment: Record<string, string | undefined>): string[] {
@@ -243,22 +242,21 @@ export async function verifyPublish(options: VerifyPublishOptions): Promise<Veri
     return { detail: "201；账号已创建，未发送验证邮件" };
   }));
 
-  results.push(await runStep("api.profile", "写入作者资料（可见性前置条件）", async () => {
+  results.push(await runStep("api.profile", "注册即建作者资料（可见性前置条件）", async () => {
     if (!accessToken) return { status: "skip", detail: "上一步没有拿到 access token。" };
-    const response = await request(`${api}/api/v1/me/profile`, {
-      method: "PUT",
-      headers: { "content-type": "application/json", accept: "application/json", authorization: `Bearer ${accessToken}` },
-      body: JSON.stringify({ displayName: PROFILE_NAME, bio: "用于验证写作台发布可见性。", locale: "zh-CN" }),
+    const response = await request(`${api}/api/v1/me/profile?locale=zh-CN`, {
+      headers: { accept: "application/json", authorization: `Bearer ${accessToken}` },
     });
     const payload = await readJson(response);
-    if (!response.ok) {
+    const data = dataOf(payload);
+    if (response.status !== 200 || typeof data?.displayName !== "string") {
       return {
         status: "fail",
-        detail: `PUT /api/v1/me/profile → ${response.status}${errorCodeOf(payload) ? ` ${errorCodeOf(payload)}` : ""}`,
-        remedy: "发布前必须先创建作者资料；否则 API 返回 author: null，Web 会过滤掉文章。",
+        detail: `GET /api/v1/me/profile → ${response.status}${errorCodeOf(payload) ? ` ${errorCodeOf(payload)}` : ""}`,
+        remedy: "注册事务现在必须创建默认作者资料；否则 API 返回 author: null，Web 会过滤掉文章。",
       };
     }
-    return { detail: "200；作者资料已写入，公开页面不会再收到 author: null" };
+    return { detail: `200；注册已写入默认笔名「${data.displayName}」，公开页面不会再收到 author: null` };
   }));
 
   results.push(await runStep("web.login", "写作台登录代理设置 HttpOnly Cookie", async () => {

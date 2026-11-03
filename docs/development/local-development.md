@@ -54,7 +54,7 @@ Each row was reproduced on the commit this document was written against
 | G4 | No single command for the API. Root `pnpm dev` started only the Web app. | Two terminals, two working directories, and an easy way to forget the API entirely. | `pnpm dev` starts both with readiness gates; `dev:api` / `dev:web` start one. |
 | G5 | `AUTH_JWT_SECRET` shorter than 32 bytes or absent was only reported as `503 SERVICE_UNAVAILABLE` / "Identity is not configured." on auth routes. | Sign-in looked like an outage on a fresh clone; the message names neither the variable nor the length. | `evaluateAuthSecret` blocks `pnpm dev` before any process starts, with the exact remedy. |
 | G6 | No way to test the chain. `pnpm test:routes` covers the Web app in fixture mode only. | "It works" was a manual browser opinion. | `pnpm check:local` (10 probes) and `pnpm dev --check`. |
-| G7 | The publish precondition was undocumented. | Publishing without a profile returns `author: null`, so the public article 404s and the Web page 404s. | The probe writes a profile before publishing, and the doc explains why. |
+| G7 | The publish precondition was hidden. | An account without a profile returned `author: null`, so the public article 404s and the Web page 404s. | Registration now creates a default profile in the same transaction; the probe verifies it and the writing desk can edit the pen name. |
 | G8 | An empty database and a missing API look identical in the UI (both render an empty site). | Hours lost to "the frontend is not connecting". | The probe asserts the API title appears in the server-rendered HTML. |
 | G9 | Next.js only serves dev assets to trusted hostnames. | Opening the dev server from a phone or a preview proxy produced an unstyled page. | `WEB_DEV_ALLOWED_ORIGINS` -> `allowedDevOrigins`. |
 | G10 | The local chain was not exercised in CI. | Regressions in the wiring were only found by developers. | A `local-dev-chain` CI job boots SQLite *and* PostgreSQL legs through the same scripts. |
@@ -156,11 +156,13 @@ API process alive, which is why the log event, not the exit code, is the signal.
 
 ### 4.5 Writes are explicit
 
-`pnpm check:local` creates a disposable account, a profile and a published
-article, then reads them back anonymously and through the Web app. That is the
-only way to prove the identity, authorisation and publish paths of a fresh
-database, and it is what makes "the Web page shows API data" a real assertion
-rather than a screenshot.
+`pnpm check:local` creates a disposable account and a published article, then
+reads them back anonymously and through the Web app. Registration itself now
+creates a default author profile in the same transaction; the probe still
+updates that profile to prove the authenticated write path. This is the only way
+to prove the identity, authorisation and publish paths of a fresh database, and
+it is what makes "the Web page shows API data" a real assertion rather than a
+screenshot.
 
 Use `--read-only` to skip those steps. The probe never deletes anything, so
 probe rows accumulate in a development database; `pnpm db:reset` (PostgreSQL)
@@ -235,9 +237,11 @@ offers the verification button, but an unverified account can still write and
 publish. A work that the writing desk reports as published is usually invisible
 for one of these reasons instead:
 
-1. **No author profile.** `PUT /api/v1/me/profile` was never called, so the API
-   returns `author: null`; `mapArticle()` in `packages/web-ui/src/lib/api-content.ts`
-   filters that article out of every public list and page.
+1. **No author profile (legacy accounts).** Registration now creates a default
+   profile in the same transaction, but an older account can still have none. The
+   API then returns `author: null`, and `mapArticle()` in
+   `packages/web-ui/src/lib/api-content.ts` filters that article out of every
+   public list and page. The writing desk shows "未设置" and can create one.
 2. **The Web app is reading fixtures.** Without `API_BASE_URL`, the Web process
    renders its static fixture registry rather than the API that stored the work.
 3. **Locale mismatch.** The writing desk currently hard-codes `locale: "zh-CN"`,
@@ -250,7 +254,7 @@ starts a disposable SQLite stack on free loopback ports with a random JWT secret
 assembles only the documented portable-stack environment (no `MAIL_*`), then:
 
 - registers a disposable, unverified account;
-- writes the author profile first;
+- reads back the default author profile created by that registration;
 - publishes through the same `/api/authoring/articles` proxy the desk uses;
 - reads the article anonymously from the API detail and list endpoints;
 - asserts the server-rendered article page and archive contain the title/body;

@@ -4,6 +4,7 @@ import {
   handleAuthoringDeletedArticlesRequest,
   handleAuthoringFeaturedCandidatesRequest,
   handleAuthoringFeaturedRequest,
+  handleAuthoringProfileRequest,
   handleAuthoringRestoreRequest,
   handleAuthoringSessionRequest,
 } from "@bot-thk/web-http";
@@ -23,6 +24,10 @@ export function handleAuthoringSession(request: Request): Promise<Response> {
 
 export function handleAuthoringArticles(request: Request): Promise<Response> {
   return handleAuthoringArticlesRequest(request, { apiBaseUrl: optionalApiBaseUrl() });
+}
+
+export function handleAuthoringProfile(request: Request): Promise<Response> {
+  return handleAuthoringProfileRequest(request, { apiBaseUrl: optionalApiBaseUrl() });
 }
 
 export function handleAuthoringArticle(request: Request, id: string | undefined): Promise<Response> {

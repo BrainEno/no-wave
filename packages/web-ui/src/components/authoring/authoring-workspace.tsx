@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "@/lib/framework/link.tsx";
 import { ArticleEditor, type AuthoringArticle } from "./article-editor.tsx";
+import { AuthorProfilePanel } from "./author-profile-panel.tsx";
+import { normalizeDisplayName, parseAuthorProfile, type AuthorProfile } from "@/lib/author-profile.ts";
 import { NotificationInbox } from "./notification-inbox.tsx";
 
 type WorkspaceState = "loading" | "unauthenticated" | "ready" | "error";
@@ -94,6 +96,7 @@ export function AuthoringWorkspace() {
   const [account, setAccount] = useState<Account | null>(null);
   const [verificationBusy, setVerificationBusy] = useState(false);
   const [verificationStatus, setVerificationStatus] = useState("");
+  const [profile, setProfile] = useState<AuthorProfile | null>(null);
 
   async function reloadArticles() {
     const response = await fetch("/api/authoring/articles", { credentials: "same-origin", cache: "no-store" });
@@ -122,6 +125,38 @@ export function AuthoringWorkspace() {
     setTrashError("");
   }
 
+  /**
+   * The byline is a public fact, so the desk reads it from its own API proxy.
+   * A 404 is not an outage: it is the legacy "account without a profile" case,
+   * which the panel lets the author repair by saving a pen name.
+   */
+  async function reloadProfile() {
+    const response = await fetch("/api/authoring/profile", { credentials: "same-origin", cache: "no-store" });
+    const payload: unknown = await response.json().catch(() => null);
+    if (response.status === 401) { setState("unauthenticated"); return; }
+    if (response.status === 404) { setProfile(null); return; }
+    if (!response.ok) throw new Error(messageOf(payload));
+    setProfile(parseAuthorProfile(payload));
+  }
+
+  async function saveProfile(displayName: string) {
+    const name = normalizeDisplayName(displayName);
+    if (!name) throw new Error("笔名不能为空，且不得超过 120 个字符。");
+    const response = await fetch("/api/authoring/profile", {
+      method: "PUT",
+      headers: { "content-type": "application/json", accept: "application/json", origin: window.location.origin },
+      credentials: "same-origin",
+      cache: "no-store",
+      body: JSON.stringify({ displayName: name, locale: "zh-CN" }),
+    });
+    const payload: unknown = await response.json().catch(() => null);
+    if (response.status === 401) { setState("unauthenticated"); throw new Error("登录状态已失效，请重新登录。"); }
+    if (!response.ok) throw new Error(messageOf(payload));
+    const saved = parseAuthorProfile(payload);
+    if (!saved) throw new Error("作者资料响应格式不正确。");
+    setProfile(saved);
+  }
+
   useEffect(() => {
     let active = true;
     async function load() {
@@ -135,6 +170,8 @@ export function AuthoringWorkspace() {
         const session: unknown = await response.json().catch(() => null);
         if (active) setAccount(isAccount(dataOf(session)) ? (dataOf(session) as Account) : null);
         await reloadArticles();
+        // Best effort: a missing profile is actionable, not a reason to lose the desk.
+        await reloadProfile().catch(() => { if (active) setProfile(null); });
         // Best effort: the desk is usable without the recycle bin.
         await reloadDeletedArticles().catch(() => { if (active) setTrashError("回收站暂时无法载入。"); });
       } catch (caught) {
@@ -292,6 +329,7 @@ export function AuthoringWorkspace() {
       ) : null}
       {error ? <p className="nw-auth-error" role="alert">{error}</p> : null}
       {notice ? <p className="nw-auth-status" role="status">{notice}</p> : null}
+      <AuthorProfilePanel profile={profile} onSave={saveProfile} />
       {/* The inbox sits above the editor because what it says is about someone
           else's work: the notice a commenter gets when a work they commented on
           is deleted is the only way they hear about it at all. */}

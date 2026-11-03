@@ -1,5 +1,6 @@
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
-import { createPostgresProviderMigrationCapture, type CapturedChange } from "./postgres-provider-migration-capture.ts";
+import { createPostgresProviderMigrationCapture, migrationEntityKey, type CapturedChange } from "./postgres-provider-migration-capture.ts";
+import { DEFAULT_AUTHOR_DISPLAY_NAME } from "../domain/profile.ts";
 
 /**
  * PostgreSQL identity persistence. Refresh rotation, replay detection, logout
@@ -56,7 +57,7 @@ export function createPostgresIdentityStore(sql) {
   }
 
   return Object.freeze({
-    async createIdentityAccount({ userId, email, passwordHash, session }) {
+    async createIdentityAccount({ userId, email, passwordHash, session, displayName = DEFAULT_AUTHOR_DISPLAY_NAME }) {
       return sql.begin(async (tx) => {
         const transactionId = createMigrationTransactionId();
         const inserted = await tx.unsafe(
@@ -65,9 +66,22 @@ export function createPostgresIdentityStore(sql) {
         );
         if (!inserted[0]) return false;
         await insertSession(tx, { ...session, userId });
-        const accounts = await tx.unsafe("SELECT * FROM auth_accounts WHERE user_id = $1", [userId]);
+        // See the SQLite adapter: the author row is part of the account, and
+        // ON CONFLICT protects a profile an older deployment already created.
+        await tx.unsafe("INSERT INTO user_profiles (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING", [userId]);
+        await tx.unsafe(
+          "INSERT INTO user_profile_translations (user_id, locale, display_name, bio) VALUES ($1, 'zh-CN', $2, '') ON CONFLICT (user_id, locale) DO NOTHING",
+          [userId, displayName],
+        );
+        const [accounts, profiles, translations] = await Promise.all([
+          tx.unsafe("SELECT * FROM auth_accounts WHERE user_id = $1", [userId]),
+          tx.unsafe("SELECT * FROM user_profiles WHERE user_id = $1", [userId]),
+          tx.unsafe("SELECT * FROM user_profile_translations WHERE user_id = $1 AND locale = $2", [userId, "zh-CN"]),
+        ]);
         await captureChanges(tx, transactionId, [
           { entityType: "auth_accounts", entityId: userId, operation: "upsert", payload: accounts[0] },
+          { entityType: "user_profiles", entityId: userId, operation: "upsert", payload: profiles[0] },
+          { entityType: "user_profile_translations", entityId: migrationEntityKey(userId, "zh-CN"), operation: "upsert", payload: translations[0] },
         ]);
         await captureSessionSnapshot(tx, transactionId, session.sessionId);
         return true;
