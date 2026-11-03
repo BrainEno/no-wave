@@ -2,6 +2,7 @@
 
 import { Link } from "@/lib/framework/link.tsx";
 import { useCallback, useEffect, useState } from "react";
+import { InlineConfirm } from "@/components/ui/inline-form.tsx";
 
 /**
  * The author's media library (ADR 0022).
@@ -175,6 +176,8 @@ export function MediaLibrary() {
   const [notice, setNotice] = useState("");
   const [loadingMore, setLoadingMore] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
+  /** The asset the author is being asked about; `null` when nothing is open. */
+  const [confirmingDelete, setConfirmingDelete] = useState<MediaItem | null>(null);
   // Server-side switch, learned from the list response. `false` until the API
   // says otherwise, so the button never appears on a guess.
   const [deletionEnabled, setDeletionEnabled] = useState(false);
@@ -239,7 +242,7 @@ export function MediaLibrary() {
    * the item is refreshed so the button goes away.
    */
   async function remove(item: MediaItem) {
-    if (window.confirm("删除这张图片？图片文件与记录都会移除，且无法复原。") === false) return;
+    setConfirmingDelete(null);
     setRemoving(item.id);
     setError("");
     setNotice("");
@@ -356,7 +359,7 @@ export function MediaLibrary() {
                           className="nw-btn"
                           type="button"
                           disabled={removing === item.id}
-                          onClick={() => void remove(item)}
+                          onClick={() => setConfirmingDelete(item)}
                         >
                           {removing === item.id ? "删除中…" : "删除"}
                         </button>
@@ -381,6 +384,16 @@ export function MediaLibrary() {
             {loadingMore ? "载入中…" : "载入更多"}
           </button>
         </p>
+      ) : null}
+      {confirmingDelete ? (
+        <InlineConfirm
+          title="删除这张图片？"
+          danger
+          confirmLabel="删除图片"
+          body={<p>图片文件与记录都会移除，且无法复原。只有未被任何作品引用的图片才能删除。</p>}
+          onConfirm={() => void remove(confirmingDelete)}
+          onCancel={() => setConfirmingDelete(null)}
+        />
       ) : null}
     </section>
   );

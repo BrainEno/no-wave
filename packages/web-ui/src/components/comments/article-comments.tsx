@@ -13,6 +13,7 @@ import { PlainTextExtension } from "@lexical/plain-text";
 import { defineExtension, FORMAT_TEXT_COMMAND, REDO_COMMAND, UNDO_COMMAND } from "lexical";
 import type { Locale } from "@/lib/content.ts";
 import { sanitizeEditorHref } from "@/lib/editor-href.ts";
+import { InlineForm } from "@/components/ui/inline-form.tsx";
 import { articleBlocksToLexicalEditorState, type LexicalEditorStateJson } from "@/lib/lexical-article-state.ts";
 
 type CommentRun = { text: string; marks?: string[]; href?: string };
@@ -109,20 +110,17 @@ function CommentStatePlugin({ onChange }: { onChange(state: LexicalEditorStateJs
   return null;
 }
 
+/**
+ * The comment toolbar.
+ *
+ * 链接地址以前用 `window.prompt` 收集，错误用本地 error 字符串报——同一页上的
+ * 文章编辑器已经改用了内联浮层表单（issue #168），读者这里却是浏览器原生对话框，
+ * 这不只是样式不一致：移动端 WebView 会静默返回 `null`，读者点了「链接」什么
+ * 也不会发生。现在两处用的是同一个 `InlineForm`。
+ */
 function CommentToolbar({ onLinkError }: { onLinkError(message: string): void }) {
   const [editor] = useLexicalComposerContext();
-
-  function addLink() {
-    const raw = window.prompt("输入 HTTPS 链接或站内绝对路径");
-    if (raw === null) return;
-    const href = sanitizeEditorHref(raw);
-    if (!href) {
-      onLinkError("只允许 HTTP(S) 链接或站内绝对路径。");
-      return;
-    }
-    onLinkError("");
-    editor.dispatchCommand(TOGGLE_LINK_COMMAND, href);
-  }
+  const [linkOpen, setLinkOpen] = useState(false);
 
   return (
     <div className="nw-comment-toolbar" role="toolbar" aria-label="评论格式">
@@ -130,9 +128,26 @@ function CommentToolbar({ onLinkError }: { onLinkError(message: string): void })
       <button type="button" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "italic")}><em>I</em></button>
       <button type="button" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "underline")}><u>U</u></button>
       <button type="button" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "strikethrough")}><s>S</s></button>
-      <button type="button" onClick={addLink}>链接</button>
+      <button type="button" onClick={() => setLinkOpen(true)}>链接</button>
       <button type="button" onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)} aria-label="撤销">撤销</button>
       <button type="button" onClick={() => editor.dispatchCommand(REDO_COMMAND, undefined)} aria-label="重做">重做</button>
+      {linkOpen ? (
+        <InlineForm
+          title="插入链接"
+          description="选中的文字会变成链接。只接受 HTTP(S) 网址或站内绝对路径。"
+          fields={[{ name: "url", label: "链接地址", placeholder: "https://example.com 或 /articles/…", required: true, maxLength: 2048 }]}
+          submitLabel="插入链接"
+          onSubmit={(values) => {
+            const href = sanitizeEditorHref(values.url ?? "");
+            if (!href) return { url: "只允许 HTTP(S) 链接或站内绝对路径。" };
+            onLinkError("");
+            editor.dispatchCommand(TOGGLE_LINK_COMMAND, href);
+            setLinkOpen(false);
+            return null;
+          }}
+          onCancel={() => setLinkOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

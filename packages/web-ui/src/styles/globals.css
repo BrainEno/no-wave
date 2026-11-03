@@ -460,3 +460,49 @@ mark { background: var(--or); color: #0f0d0c; }
 @media (max-width: 640px) {
   .nw-media h1 { font-size: 48px; }
 }
+
+/* --- Inline overlay form (issue #168) ------------------------------------
+   The writing desk collected a link address, an image's alt text and a caption
+   through `window.prompt`, and reported bad input through `window.alert`. Both
+   are styled by the browser, `alert` blocks the page, and a mobile WebView may
+   return `null` from `prompt` without showing anything at all — which made
+   "insert image" fail silently there. This is the replacement: a square 1px
+   panel on a dark scrim, fields in the same shape as every other form (§4.9),
+   and errors attached to the field they belong to via `aria-describedby`. */
+.nw-overlay { position: fixed; inset: 0; z-index: 110; display: grid; place-items: center; padding: 24px; overflow-y: auto; background: rgba(15, 13, 12, .62); }
+.nw-overlay-panel { width: min(520px, 100%); max-height: calc(100vh - 48px); overflow-y: auto; background: var(--paper); color: var(--ink); border: 1px solid var(--ink); border-radius: 0; padding: 28px; box-shadow: 0 24px 60px rgba(0, 0, 0, .28); }
+.nw-overlay-panel form { display: grid; gap: 18px; }
+.nw-overlay-title { margin: 0; font: 600 26px/1.25 var(--f-zh); }
+.nw-overlay-desc { margin: 0; font: 400 14px/1.7 var(--f-ss); color: var(--t2); }
+.nw-overlay-body { font: 400 15px/1.8 var(--f-body); }
+.nw-overlay-body p { margin: 0 0 12px; }
+.nw-overlay-fields { display: grid; gap: 18px; }
+.nw-overlay-field { display: grid; gap: 8px; font: 400 13px var(--f-ss); }
+.nw-overlay-field label { font-size: 13px; letter-spacing: .02em; }
+.nw-overlay-field input, .nw-overlay-field textarea { width: 100%; min-height: 52px; padding: 12px; border: 1px solid var(--ink); border-radius: 0; background: transparent; font: 400 15px/1.6 var(--f-body); }
+.nw-overlay-field textarea { min-height: 96px; resize: vertical; }
+.nw-overlay-field input:focus-visible, .nw-overlay-field textarea:focus-visible { outline: 3px solid var(--or); outline-offset: 2px; }
+.nw-overlay-field input[aria-invalid="true"], .nw-overlay-field textarea[aria-invalid="true"] { border-color: var(--red); }
+.nw-overlay-hint { margin: 0; color: var(--t2); font: 400 12px/1.6 var(--f-ss); }
+.nw-overlay-error { margin: 0; color: var(--red); font: 400 13px/1.6 var(--f-ss); }
+.nw-overlay-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; margin-top: 4px; }
+.nw-overlay-actions .nw-btn { min-height: 44px; padding: 0 22px; }
+.nw-danger { background: var(--red); border-color: var(--red); color: #f2eee6; }
+@media (max-width: 640px) {
+  .nw-overlay { padding: 12px; place-items: end stretch; }
+  .nw-overlay-panel { padding: 20px; max-height: calc(100vh - 24px); }
+  .nw-overlay-actions .nw-btn { flex: 1 1 auto; }
+}
+
+/* --- Reader actions: save a work, follow an author (issue #168) -----------
+   The reading page could be read but not acted on: the API has had likes,
+   follows and a following feed for a while, and the page offered none of them.
+   These are the two that belong at the end of a work and beside an author's
+   name — quiet, square, text-first, and never only a colour change. */
+.nw-reader-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 32px; }
+.nw-author-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 8px; }
+.nw-engage { display: grid; gap: 8px; }
+.nw-engage .nw-btn { min-height: 44px; padding: 0 20px; font-size: 14px; }
+.nw-engage .nw-btn[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.nw-engage-note { margin: 0; font: 400 13px/1.6 var(--f-ss); color: var(--t2); }
+.nw-engage-link { border-bottom: 1px solid currentColor; font-weight: 700; color: var(--ink); }

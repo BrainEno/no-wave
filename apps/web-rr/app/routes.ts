@@ -66,6 +66,11 @@ route("api/authoring/notifications/:id/read", "routes/api.authoring.notification
   route("api/authoring/articles/:id/restore", "routes/api.authoring.articles.$id.restore.ts"),
   route("api/authoring/deleted-articles", "routes/api.authoring.deleted-articles.ts"),
   route("api/articles/:slug/comments", "routes/api.articles.comments.ts"),
+  // Readers' own actions on a work and an author (issue #168). They were the
+  // missing half of a feature the API has had for a while: likes and follows
+  // existed, and the reading page had no button that reached them.
+  route("api/articles/:slug/like", "routes/api.articles.$slug.like.ts"),
+  route("api/users/:userId/follow", "routes/api.users.$userId.follow.ts"),
   route("api/media/:id", "routes/api.media.ts"),
   route("api/authoring/media", "routes/api.authoring.media.ts"),
   // One asset is deleted by id; the collection is both the upload target and the

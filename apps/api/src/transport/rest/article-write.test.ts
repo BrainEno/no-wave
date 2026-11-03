@@ -86,3 +86,25 @@ test("an editor state without any text content reports empty content", () => {
   assert.equal(input, null);
   assert.match(error ?? "", /at least one block with text content/);
 });
+
+test("a work can be written in each supported locale, and only those", () => {
+  // The desk offers 简体中文 and English (issue #168). Until this was fixed the
+  // transport accepted `zh-CN` only, so the English option was a button that
+  // always failed — the limitation lived here, not in persistence, which has
+  // stored translations in all three locales from the beginning.
+  for (const locale of ["zh-CN", "zh-TW", "en"]) {
+    const { input, error } = normalizeArticleWriteBody(createBody({ locale }), false);
+    assert.equal(error, null, `${locale} is writable`);
+    assert.equal(input?.locale, locale, "the requested locale is what reaches persistence");
+  }
+  for (const locale of ["fr", "EN", "zh-cn", "", 42, null]) {
+    const { input, error } = normalizeArticleWriteBody(createBody({ locale }), false);
+    assert.equal(input, null, `${String(locale)} is not a supported locale`);
+    assert.match(error ?? "", /locale must be zh-CN, zh-TW or en/);
+  }
+});
+
+test("an omitted locale still means zh-CN", () => {
+  const { input } = normalizeArticleWriteBody(createBody(), false);
+  assert.equal(input?.locale, "zh-CN");
+});

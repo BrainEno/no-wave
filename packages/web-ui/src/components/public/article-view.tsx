@@ -9,6 +9,7 @@ import { ReaderBar, ReaderToc, ReadingProgress } from "@/components/reader/reade
 import { ReadAloud } from "@/components/reader/read-aloud.tsx";
 import { PassageAnnotations } from "@/components/reader/passage-annotations.tsx";
 import { ArticleComments } from "@/components/comments/article-comments.tsx";
+import { ArticleSaveButton, AuthorFollowButton } from "@/components/public/engagement-buttons.tsx";
 import { SectionHeading, TypeChip, WorkRow } from "@/components/ui/parts.tsx";
 
 /**
@@ -98,6 +99,14 @@ export function ArticlePageView({ article, newer, older, related }: ArticleDetai
         <article className="nw-rd" id="nw-article" data-form={poem ? "poem" : "prose"} aria-label={article.title}>
           {article.contentBlocks.map(renderBlock)}
           <span className="nw-end">{ui.reader.end}</span>
+          {/*
+            收藏：读完的地方就是决定「值不值得留下」的地方（issue #168）。
+            这两个按钮是读者自己的动作，所以它们是客户端组件；页面本身仍是
+            服务端渲染的同一份 HTML。
+          */}
+          <div className="nw-reader-actions">
+            <ArticleSaveButton slug={article.slug} locale={locale} />
+          </div>
           {article.categories.length || article.tags.length ? (
             <p className="nw-m" style={{ textAlign: "center", marginTop: 24, textIndent: 0 }}>{[...article.categories, ...article.tags.map((tag) => `#${tag}`)].join(" · ")}</p>
           ) : null}
@@ -118,7 +127,10 @@ export function ArticlePageView({ article, newer, older, related }: ArticleDetai
             <div className="nw-zh" style={{ fontSize: 28, lineHeight: 1.3 }}>{article.author.displayName}</div>
             {article.author.bio ? <p className="nw-m" style={{ margin: "6px 0 0", maxWidth: "34em", fontSize: 14 }}>{article.author.bio}</p> : null}
           </div>
-          <Link className="nw-btn" href={authorPath(article.author.username, locale)}>{ui.reader.allWorks} →</Link>
+          <div className="nw-author-actions">
+            <AuthorFollowButton authorId={article.author.username} locale={locale} initialFollowing={false} />
+            <Link className="nw-btn" href={authorPath(article.author.username, locale)}>{ui.reader.allWorks} →</Link>
+          </div>
         </div>
       </section>
 

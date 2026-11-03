@@ -6,6 +6,20 @@ import { ArticleInputError } from "../../domain/errors.ts";
 import { normalizeCommentContentInput } from "../../domain/comment-content.ts";
 import { isRecord } from "./http.ts";
 
+/**
+ * The locales a work may be *written* in.
+ *
+ * This used to accept `zh-CN` only, which quietly made the writing desk's
+ * language question meaningless: the desk could offer English and the API would
+ * refuse it (issue #168). Persistence has stored translations in all three
+ * locales all along — the restriction was in the transport, not the schema.
+ *
+ * `zh-TW` is included because a work that already exists in it must be editable;
+ * the desk offers new works in `zh-CN` and `en` only, but the API is not the
+ * place to enforce what a particular screen happens to show.
+ */
+export const ARTICLE_WRITE_LOCALES = new Set(["zh-CN", "zh-TW", "en"]);
+
 export const ARTICLE_WRITE_FIELDS = new Set([
   "slug", "title", "summary", "locale", "contentBlocks", "editorState", "contentBlocksVersion", "publish", "workType", "categoryIds", "tagIds",
 ]);
@@ -17,8 +31,8 @@ export function normalizeArticleWriteBody(
   if (Object.keys(body).some((key) => !ARTICLE_WRITE_FIELDS.has(key))) {
     return { input: null, error: "The request contains unsupported fields." };
   }
-  if (body.locale !== undefined && body.locale !== "zh-CN") {
-    return { input: null, error: "The REST API currently supports only locale zh-CN." };
+  if (body.locale !== undefined && !ARTICLE_WRITE_LOCALES.has(body.locale as string)) {
+    return { input: null, error: "locale must be zh-CN, zh-TW or en." };
   }
   if (typeof body.title !== "string") {
     return { input: null, error: "title must be a string." };
@@ -90,7 +104,7 @@ export function normalizeArticleWriteBody(
 
   const input: Record<string, unknown> = {
     ...body,
-    locale: "zh-CN",
+    locale: typeof body.locale === "string" ? body.locale : "zh-CN",
     contentBlocks: JSON.stringify(contentBlocks),
   };
   delete input.editorState;

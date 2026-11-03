@@ -36,6 +36,14 @@ type ApiContentClient = {
   listCategoryArticles(slug: string, locale?: Locale, limit?: number, offset?: number): Promise<ArticleView[]>;
 };
 
+/**
+ * Every work type the API can *return*.
+ *
+ * `serial` is still here, and must stay: the platform stopped offering it as a
+ * choice (issue #168, ADR 0016), but works that already carry it still exist and
+ * still have to be read. Parsing is about accepting what the API hands back;
+ * offering a choice is a separate list, and that one no longer includes it.
+ */
 const WORK_TYPES = ["novel", "short_story", "poetry", "essay", "criticism", "literary_criticism", "nonfiction", "serial", "other"] as const;
 let legacyGraphqlWarningShown = false;
 

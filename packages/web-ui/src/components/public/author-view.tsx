@@ -7,6 +7,7 @@ import { paginate } from "@/lib/work-types.ts";
 import { getUi } from "@/lib/ui-copy.ts";
 import { EmptyState, hrefWith, Pager, SectionHeading, TypeChip, TypeTabs } from "@/components/ui/parts.tsx";
 import type { AuthorPageData } from "@/lib/public-pages.ts";
+import { AuthorFollowButton } from "@/components/public/engagement-buttons.tsx";
 
 /**
  * Presentational author profile (作者主页).
@@ -32,6 +33,12 @@ export function AuthorPageView({ locale, author, type, page, works }: AuthorPage
           <div className="nw-m">{ui.author.profile} · {ui.author.count(works.length)}</div>
           <h1 data-reveal>{author.displayName}</h1>
           {author.bio ? <p className="nw-bio">{author.bio}</p> : null}
+          {/*
+            关注：读者在这里决定要不要继续读这个人。`initialFollowing` 只有服务端
+            知道；页面不对每个访客读 cookie，所以这里先按「未关注」渲染，水合后
+            按钮第一次点击就会把真实状态写回（关注/取消关注都是幂等的）。
+          */}
+          <AuthorFollowButton authorId={author.username} locale={locale} initialFollowing={false} />
         </aside>
         <div>
           {recent.length ? (
