@@ -19,8 +19,8 @@ type FlatPorts<P> = UnionToIntersection<{ [K in keyof P]: P[K] }[keyof P]>;
  */
 export type ApplicationServices<A extends import("./persistence-ports.ts").PersistenceAdapterMethods = import("./persistence-ports.ts").PersistenceAdapterMethods> =
   FlatPorts<PersistencePorts<A>> & {
-    createArticle(input: { authorId: string; contentBlocks: unknown; [key: string]: unknown }): Promise<unknown>;
-    updateArticle(input: { actorId: string; contentBlocks: unknown; [key: string]: unknown }): Promise<unknown>;
+    createArticle(input: { authorId: string; contentBlocks?: unknown; [key: string]: unknown }): Promise<unknown>;
+    updateArticle(input: { actorId: string; articleId?: string; contentBlocks?: unknown; [key: string]: unknown }): Promise<unknown>;
     /** ADR 0016: may this account curate? Consulted before every editorial write. */
     isEditor(input: { actorId: string }): Promise<boolean>;
     assignUserRole(input: { actorId: string; userId: string; role: string }): Promise<unknown>;
@@ -138,23 +138,23 @@ export function createApplicationServices<A extends import("./persistence-ports.
    * ADR 0016, decision 4: the featured shelf is editorial in both directions —
    * anyone may read it, only an editor may arrange it.
    */
-  services.setFeaturedArticles = async ({ actorId, ...input }) => {
+  services.setFeaturedArticles = async ({ actorId, ...input }: { actorId: string; [key: string]: unknown }) => {
     const actorIsEditor = await services.isEditor({ actorId });
-    return ports.content.setFeaturedArticles({ ...input, actorId, actorIsEditor });
+    return ports.content.setFeaturedArticles({ ...(input as unknown as { articleIds: string[]; locale?: string }), actorId, actorIsEditor });
   };
-  services.createTaxonomy = async ({ actorId, ...input }) => {
+  services.createTaxonomy = async ({ actorId, ...input }: { actorId: string; [key: string]: unknown }) => {
     const actorIsEditor = await services.isEditor({ actorId });
-    return ports.taxonomy.createTaxonomy({ ...input, actorId, actorIsEditor });
+    return ports.taxonomy.createTaxonomy({ ...(input as unknown as { kind: string; slug: string; name: string; description?: string; locale?: string }), actorId, actorIsEditor });
   };
-  services.deleteTaxonomy = async ({ actorId, ...input }) => {
+  services.deleteTaxonomy = async ({ actorId, ...input }: { actorId: string; [key: string]: unknown }) => {
     const actorIsEditor = await services.isEditor({ actorId });
-    return ports.taxonomy.deleteTaxonomy({ ...input, actorId, actorIsEditor });
+    return ports.taxonomy.deleteTaxonomy({ ...(input as unknown as { taxonomyId: string }), actorId, actorIsEditor });
   };
 
-  services.createArticle = async ({ authorId, ...input }) =>
-    ports.content.createArticle({ ...input, authorId, contentBlocks: parseContentBlocks(input.contentBlocks) });
-  services.updateArticle = async ({ actorId, ...input }) =>
-    ports.content.updateArticle({ ...input, actorId, contentBlocks: parseContentBlocks(input.contentBlocks) });
+  services.createArticle = async ({ authorId, ...input }: { authorId: string; [key: string]: unknown }) =>
+    ports.content.createArticle({ ...(input as unknown as { slug?: string; title?: string; summary?: string; locale?: string; contentBlocks?: unknown; contentBlocksVersion?: number; publish?: boolean; workType?: string; categoryIds?: string[]; tagIds?: string[]; idempotencyKey?: string | null; requestedSlug?: string | null }), authorId, contentBlocks: parseContentBlocks(input.contentBlocks as string) });
+  services.updateArticle = async ({ actorId, ...input }: { actorId: string; [key: string]: unknown }) =>
+    ports.content.updateArticle({ ...(input as unknown as { articleId: string; slug?: string; title?: string; summary?: string; locale?: string; contentBlocks?: unknown; contentBlocksVersion?: number; publish?: boolean; workType?: string; categoryIds?: string[]; tagIds?: string[] }), actorId, contentBlocks: parseContentBlocks(input.contentBlocks as string) });
   /**
    * Tell the readers who commented on a work what deleting it means for them.
    *
