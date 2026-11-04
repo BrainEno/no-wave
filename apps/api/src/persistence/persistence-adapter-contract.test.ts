@@ -383,6 +383,26 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
     }
   });
 
+  test(`${adapterName}: a participant update returns the same active member ids as every other provider`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const creator = `participants-creator-${suffix}`;
+    const invited = `participants-invited-${suffix}`;
+    const joined = `participants-joined-${suffix}`;
+    let conversationId;
+    try {
+      const conversation = await runtime.store.createConversation({ actorId: creator, participantIds: [invited] });
+      conversationId = conversation.id;
+      const result = await runtime.store.updateConversationParticipants({
+        conversationId, actorId: creator, addUserIds: [joined], removeUserIds: [invited],
+      });
+      assert.deepEqual(result, [creator, joined].sort());
+      assert.deepEqual((await runtime.store.getConversation({ conversationId, actorId: creator })).participantIds, [creator, joined].sort());
+    } finally {
+      await runtime.cleanup(conversationId, suffix);
+    }
+  });
+
   test(`${adapterName}: expired and superseded outbox leases cannot acknowledge or postpone events`, options, async () => {
     const runtime = await fixture();
     const suffix = randomUUID();

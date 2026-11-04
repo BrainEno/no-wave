@@ -109,6 +109,11 @@ export async function assertTypedPortOutputs(): Promise<void> {
   void outboxEventKey;
   const role: string = await ports.profiles.setUserRole({ actorId: "u", userId: "v", role: "editor" });
   void role;
+  const participantIds: string[] = await ports.conversations.updateConversationParticipants({ conversationId: "c", actorId: "u" });
+  void participantIds;
+  // @ts-expect-error the participant update returns ids in both providers, not a boolean
+  const wrongParticipantIds: boolean = await ports.conversations.updateConversationParticipants({ conversationId: "c", actorId: "u" });
+  void wrongParticipantIds;
 
   // A SQLite slice may answer synchronously; both forms are valid results.
   const syncResult: PersistenceResult<number> = 1;
@@ -129,6 +134,8 @@ export function assertTypedAdapterShape(): void {
   void ({ async getUnreadNotificationCount() { return { count: 0 }; } } satisfies Pick<TypedPersistenceAdapterContract, "getUnreadNotificationCount">);
   // @ts-expect-error `followUser` returns a boolean, not `unknown`-shaped void
   void ({ async followUser() { return { ok: true }; } } satisfies Pick<TypedPersistenceAdapterContract, "followUser">);
+  // @ts-expect-error `updateConversationParticipants` returns active ids, not `true`
+  void ({ async updateConversationParticipants() { return true; } } satisfies Pick<TypedPersistenceAdapterContract, "updateConversationParticipants">);
   // @ts-expect-error a required adapter method cannot be missing from a Pick slice
   void ({ async otherMethod() { return 1; } } satisfies Pick<TypedPersistenceAdapterContract, "getPublishedArticle">);
 }

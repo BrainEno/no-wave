@@ -57,7 +57,7 @@ export function createPostgresNotificationStore(ctx: PostgresStoreContext) {
           "UPDATE notifications SET read_at = now() WHERE user_id = $1 AND read_at IS NULL RETURNING *",
           [actorId],
         );
-        await captureChanges(tx, transactionId, rows.map((row) => ({ entityType: "notifications", entityId: row.id, operation: "upsert", payload: row })));
+        await captureChanges(tx, transactionId, rows.map((row) => ({ entityType: "notifications", entityId: row.id, operation: "upsert" as const, payload: row })));
         return rows.length;
       });
     },

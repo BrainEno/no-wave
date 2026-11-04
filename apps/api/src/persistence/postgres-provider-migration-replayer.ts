@@ -5,9 +5,7 @@ import {
 } from "./provider-migration-journal.ts";
 import { createPostgresProviderMigrationJournal } from "./postgres-provider-migration-journal.ts";
 import { getMigrationEntitySpec, migrationEntityKeyValues, prepareMigrationRowPayload } from "./provider-migration-row-applier.ts";
-
-type PgExecutor = { unsafe(sql: string, parameters?: unknown[]): Promise<Record<string, any>[]> };
-type PgDatabase = PgExecutor & { begin<T>(work: (tx: PgExecutor) => Promise<T>): Promise<T> };
+import type { PgDatabase, PgExecutor } from "./postgres-driver.ts";
 
 /** PostgreSQL target applier; row mutations and apply-ledger/checkpoint writes commit together. */
 export function createPostgresProviderMigrationReplayer(sql: PgDatabase) {

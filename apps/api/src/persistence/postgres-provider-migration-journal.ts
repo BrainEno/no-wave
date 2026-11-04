@@ -4,10 +4,9 @@ import {
   validateMigrationSession, type MigrationChange, type MigrationChangeInput, type MigrationSessionInput,
   type MigrationSessionStatus,
 } from "./provider-migration-journal.ts";
+import type { PgDatabase, PgExecutor, PgRow } from "./postgres-driver.ts";
 
-type Row = Record<string, any>;
-type PgExecutor = any;
-type PgDatabase = any;
+type Row = PgRow;
 
 function fieldText(row: Row, key: string): string {
   if (typeof row[key] !== "string") throw new MigrationJournalError("INVALID_STORED_ROW", "Stored field " + key + " is not text.");

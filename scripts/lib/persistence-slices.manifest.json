@@ -1,0 +1,462 @@
+{
+  "generatedBy": "scripts/generate-persistence-slices.ts",
+  "baseline": {
+    "commit": "74b3a3a91329c2ae4bfc65a05c6b83a4b714d63d",
+    "file": "apps/api/src/persistence/postgres.ts",
+    "inlineMethods": [
+      "health",
+      "transaction",
+      "getArticleLikeInfo",
+      "toggleArticleLike",
+      "setArticleLike",
+      "listArticleComments",
+      "createArticleComment",
+      "deleteArticleComment",
+      "listArticleCommentAuthorIds",
+      "listTaxonomies",
+      "getTaxonomyBySlug",
+      "listTaxonomyArticles",
+      "listArticleTaxonomies",
+      "createTag",
+      "createTaxonomy",
+      "deleteTaxonomy",
+      "getAuthorProfile",
+      "getUserRole",
+      "setUserRole",
+      "searchAuthors",
+      "searchUsers",
+      "listFollowing",
+      "listFollowers",
+      "followUser",
+      "unfollowUser",
+      "upsertAuthorProfile",
+      "listLikedArticles",
+      "listRelatedArticles",
+      "listPublishedArticles",
+      "listFollowingArticles",
+      "listFeaturedArticles",
+      "setFeaturedArticles",
+      "getPublishedArticle",
+      "listMyArticles",
+      "listMyDeletedArticles",
+      "createArticle",
+      "updateArticle",
+      "deleteArticle",
+      "restoreArticle",
+      "purgeExpiredArticles",
+      "createConversation",
+      "updateConversationParticipants",
+      "deleteConversation",
+      "markConversationAsRead",
+      "listConversationMessages",
+      "getConversation",
+      "listConversations",
+      "persistMessage",
+      "outboxBacklog",
+      "listConversationParticipantIds",
+      "deliverMessageNotifications",
+      "listNotifications",
+      "getUnreadNotificationCount",
+      "markAllNotificationsRead",
+      "markNotificationRead",
+      "createNotification",
+      "createMediaAsset",
+      "getMediaAsset",
+      "listMediaScanRows",
+      "listMediaAssets",
+      "deleteUnusedMediaAsset",
+      "isSessionRevoked"
+    ]
+  },
+  "portMethods": [
+    "listPublishedArticles",
+    "getPublishedArticle",
+    "listMyArticles",
+    "createArticle",
+    "updateArticle",
+    "deleteArticle",
+    "restoreArticle",
+    "listMyDeletedArticles",
+    "purgeExpiredArticles",
+    "listLikedArticles",
+    "listRelatedArticles",
+    "listFollowingArticles",
+    "listFeaturedArticles",
+    "setFeaturedArticles",
+    "listTaxonomies",
+    "getTaxonomyBySlug",
+    "listTaxonomyArticles",
+    "listArticleTaxonomies",
+    "createTag",
+    "createTaxonomy",
+    "deleteTaxonomy",
+    "getAuthorProfile",
+    "searchUsers",
+    "searchAuthors",
+    "listFollowing",
+    "listFollowers",
+    "followUser",
+    "unfollowUser",
+    "upsertAuthorProfile",
+    "getUserRole",
+    "setUserRole",
+    "getArticleLikeInfo",
+    "toggleArticleLike",
+    "setArticleLike",
+    "listArticleComments",
+    "createArticleComment",
+    "deleteArticleComment",
+    "listArticleCommentAuthorIds",
+    "createConversation",
+    "getConversation",
+    "updateConversationParticipants",
+    "deleteConversation",
+    "markConversationAsRead",
+    "listConversationMessages",
+    "listConversations",
+    "persistMessage",
+    "listConversationParticipantIds",
+    "listNotifications",
+    "getUnreadNotificationCount",
+    "markAllNotificationsRead",
+    "markNotificationRead",
+    "createNotification",
+    "deliverMessageNotifications",
+    "revokeSession",
+    "isSessionRevoked",
+    "createIdentityAccount",
+    "findIdentityAccount",
+    "findIdentityAccountByUserId",
+    "findIdentityCredentials",
+    "createIdentitySession",
+    "rotateIdentityRefresh",
+    "revokeIdentityRefresh",
+    "replaceIdentityPassword",
+    "setIdentityEmail",
+    "markIdentityEmailVerified",
+    "listIdentitySessions",
+    "revokeIdentitySession",
+    "revokeIdentitySessions",
+    "issueIdentityToken",
+    "consumeIdentityToken",
+    "pruneExpiredIdentityState",
+    "consumeRateLimit",
+    "claimOutboxEvents",
+    "markOutboxDelivered",
+    "rescheduleOutboxEvent",
+    "outboxBacklog",
+    "health"
+  ],
+  "mediaMethods": [
+    "createMediaAsset",
+    "getMediaAsset",
+    "listMediaScanRows",
+    "listMediaAssets",
+    "deleteUnusedMediaAsset"
+  ],
+  "slices": [
+    {
+      "provider": "postgres",
+      "file": "postgres-article-store.ts",
+      "factory": "createPostgresArticleStore",
+      "methods": [
+        "listPublishedArticles",
+        "getPublishedArticle",
+        "listMyArticles",
+        "listMyDeletedArticles",
+        "createArticle",
+        "updateArticle",
+        "deleteArticle",
+        "restoreArticle",
+        "purgeExpiredArticles",
+        "listLikedArticles",
+        "listRelatedArticles",
+        "listFollowingArticles",
+        "listFeaturedArticles",
+        "setFeaturedArticles"
+      ]
+    },
+    {
+      "provider": "postgres",
+      "file": "postgres-conversation-store.ts",
+      "factory": "createPostgresConversationStore",
+      "methods": [
+        "createConversation",
+        "getConversation",
+        "updateConversationParticipants",
+        "deleteConversation",
+        "markConversationAsRead",
+        "listConversationMessages",
+        "listConversations",
+        "persistMessage",
+        "listConversationParticipantIds"
+      ]
+    },
+    {
+      "provider": "postgres",
+      "file": "postgres-engagement-store.ts",
+      "factory": "createPostgresEngagementStore",
+      "methods": [
+        "getArticleLikeInfo",
+        "toggleArticleLike",
+        "setArticleLike",
+        "listArticleComments",
+        "createArticleComment",
+        "deleteArticleComment",
+        "listArticleCommentAuthorIds"
+      ]
+    },
+    {
+      "provider": "postgres",
+      "file": "postgres-identity-store.ts",
+      "factory": "createPostgresIdentityStore",
+      "methods": [
+        "createIdentityAccount",
+        "findIdentityAccount",
+        "createIdentitySession",
+        "rotateIdentityRefresh",
+        "revokeIdentityRefresh",
+        "revokeSession",
+        "issueIdentityToken",
+        "consumeIdentityToken",
+        "replaceIdentityPassword",
+        "listIdentitySessions",
+        "revokeIdentitySession",
+        "revokeIdentitySessions",
+        "markIdentityEmailVerified",
+        "findIdentityAccountByUserId",
+        "setIdentityEmail",
+        "findIdentityCredentials",
+        "pruneExpiredIdentityState",
+        "consumeRateLimit"
+      ]
+    },
+    {
+      "provider": "postgres",
+      "file": "postgres-media-store.ts",
+      "factory": "createPostgresMediaStore",
+      "methods": [
+        "createMediaAsset",
+        "getMediaAsset",
+        "listMediaScanRows",
+        "listMediaAssets",
+        "deleteUnusedMediaAsset"
+      ]
+    },
+    {
+      "provider": "postgres",
+      "file": "postgres-notification-store.ts",
+      "factory": "createPostgresNotificationStore",
+      "methods": [
+        "listNotifications",
+        "getUnreadNotificationCount",
+        "markAllNotificationsRead",
+        "markNotificationRead",
+        "createNotification",
+        "deliverMessageNotifications"
+      ]
+    },
+    {
+      "provider": "postgres",
+      "file": "postgres-outbox-store.ts",
+      "factory": "createPostgresOutboxStore",
+      "methods": [
+        "claimOutboxEvents",
+        "markOutboxDelivered",
+        "rescheduleOutboxEvent",
+        "outboxBacklog"
+      ]
+    },
+    {
+      "provider": "postgres",
+      "file": "postgres-profile-store.ts",
+      "factory": "createPostgresProfileStore",
+      "methods": [
+        "getAuthorProfile",
+        "getUserRole",
+        "setUserRole",
+        "searchAuthors",
+        "searchUsers",
+        "listFollowing",
+        "listFollowers",
+        "followUser",
+        "unfollowUser",
+        "upsertAuthorProfile"
+      ]
+    },
+    {
+      "provider": "postgres",
+      "file": "postgres-session-store.ts",
+      "factory": "createPostgresSessionStore",
+      "methods": [
+        "isSessionRevoked"
+      ]
+    },
+    {
+      "provider": "postgres",
+      "file": "postgres-taxonomy-store.ts",
+      "factory": "createPostgresTaxonomyStore",
+      "methods": [
+        "listTaxonomies",
+        "getTaxonomyBySlug",
+        "listTaxonomyArticles",
+        "listArticleTaxonomies",
+        "createTag",
+        "createTaxonomy",
+        "deleteTaxonomy"
+      ]
+    },
+    {
+      "provider": "sqlite",
+      "file": "sqlite-article-store.ts",
+      "factory": "createSqliteArticleStore",
+      "methods": [
+        "listPublishedArticles",
+        "listFeaturedArticles",
+        "setFeaturedArticles",
+        "listFollowingArticles",
+        "getPublishedArticle",
+        "listMyArticles",
+        "listMyDeletedArticles",
+        "listLikedArticles",
+        "listRelatedArticles",
+        "createArticle",
+        "updateArticle",
+        "deleteArticle",
+        "restoreArticle",
+        "purgeExpiredArticles"
+      ]
+    },
+    {
+      "provider": "sqlite",
+      "file": "sqlite-conversation-store.ts",
+      "factory": "createSqliteConversationStore",
+      "methods": [
+        "createConversation",
+        "updateConversationParticipants",
+        "deleteConversation",
+        "markConversationAsRead",
+        "listConversationMessages",
+        "getConversation",
+        "listConversations",
+        "persistMessage",
+        "listConversationParticipantIds"
+      ]
+    },
+    {
+      "provider": "sqlite",
+      "file": "sqlite-engagement-store.ts",
+      "factory": "createSqliteEngagementStore",
+      "methods": [
+        "getArticleLikeInfo",
+        "toggleArticleLike",
+        "setArticleLike",
+        "listArticleComments",
+        "createArticleComment",
+        "deleteArticleComment",
+        "listArticleCommentAuthorIds"
+      ]
+    },
+    {
+      "provider": "sqlite",
+      "file": "sqlite-identity-store.ts",
+      "factory": "createSqliteIdentityStore",
+      "methods": [
+        "createIdentityAccount",
+        "findIdentityAccount",
+        "createIdentitySession",
+        "rotateIdentityRefresh",
+        "revokeIdentityRefresh",
+        "revokeSession",
+        "issueIdentityToken",
+        "consumeIdentityToken",
+        "replaceIdentityPassword",
+        "listIdentitySessions",
+        "revokeIdentitySession",
+        "revokeIdentitySessions",
+        "markIdentityEmailVerified",
+        "findIdentityAccountByUserId",
+        "setIdentityEmail",
+        "findIdentityCredentials",
+        "pruneExpiredIdentityState",
+        "consumeRateLimit"
+      ]
+    },
+    {
+      "provider": "sqlite",
+      "file": "sqlite-media-store.ts",
+      "factory": "createSqliteMediaStore",
+      "methods": [
+        "createMediaAsset",
+        "getMediaAsset",
+        "listMediaAssets",
+        "listMediaScanRows",
+        "deleteUnusedMediaAsset"
+      ]
+    },
+    {
+      "provider": "sqlite",
+      "file": "sqlite-notification-store.ts",
+      "factory": "createSqliteNotificationStore",
+      "methods": [
+        "deliverMessageNotifications",
+        "listNotifications",
+        "getUnreadNotificationCount",
+        "markAllNotificationsRead",
+        "markNotificationRead",
+        "createNotification"
+      ]
+    },
+    {
+      "provider": "sqlite",
+      "file": "sqlite-outbox-store.ts",
+      "factory": "createSqliteOutboxStore",
+      "methods": [
+        "claimOutboxEvents",
+        "markOutboxDelivered",
+        "rescheduleOutboxEvent",
+        "outboxBacklog"
+      ]
+    },
+    {
+      "provider": "sqlite",
+      "file": "sqlite-profile-store.ts",
+      "factory": "createSqliteProfileStore",
+      "methods": [
+        "getAuthorProfile",
+        "getUserRole",
+        "setUserRole",
+        "searchAuthors",
+        "searchUsers",
+        "listFollowing",
+        "listFollowers",
+        "followUser",
+        "unfollowUser",
+        "upsertAuthorProfile"
+      ]
+    },
+    {
+      "provider": "sqlite",
+      "file": "sqlite-session-store.ts",
+      "factory": "createSqliteSessionStore",
+      "methods": [
+        "revokeSession",
+        "isSessionRevoked"
+      ]
+    },
+    {
+      "provider": "sqlite",
+      "file": "sqlite-taxonomy-store.ts",
+      "factory": "createSqliteTaxonomyStore",
+      "methods": [
+        "listTaxonomies",
+        "getTaxonomyBySlug",
+        "listTaxonomyArticles",
+        "listArticleTaxonomies",
+        "createTag",
+        "createTaxonomy",
+        "deleteTaxonomy"
+      ]
+    }
+  ]
+}
