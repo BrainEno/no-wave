@@ -316,16 +316,16 @@ export type EngagementPersistencePort = {
 /**
  * Conversations, membership and message persistence.
  *
- * `updateConversationParticipants` is the one known provider divergence: the
- * PostgreSQL slice returns `true`, the SQLite slice returns the resulting
- * participant id list. No REST or application caller reads the value (the route
- * re-reads the conversation), but the contract records the union rather than
- * pretending both providers agree. See the second-round residual notes.
+ * `updateConversationParticipants` returns the resulting active participant id
+ * list in both providers. The PostgreSQL slice used to return `true` here; it
+ * now re-reads membership inside the same transaction so the answer is the
+ * same shape as SQLite's. The REST route still re-reads the conversation, so no
+ * caller depends on the old boolean.
  */
 export type ConversationsPersistencePort = {
   createConversation(input: CreateConversationInput): PersistenceResult<StoredConversation | null>;
   getConversation(input: ConversationMemberInput): PersistenceResult<StoredConversation | null>;
-  updateConversationParticipants(input: UpdateConversationParticipantsInput): PersistenceResult<boolean | string[]>;
+  updateConversationParticipants(input: UpdateConversationParticipantsInput): PersistenceResult<string[]>;
   deleteConversation(input: ConversationMemberInput): PersistenceResult<boolean>;
   markConversationAsRead(input: ConversationMemberInput): PersistenceResult<boolean>;
   listConversationMessages(input: ListConversationMessagesInput): PersistenceResult<StoredMessage[]>;

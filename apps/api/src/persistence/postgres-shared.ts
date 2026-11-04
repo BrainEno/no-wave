@@ -11,6 +11,7 @@ import { normalizeStoredRole } from "../domain/profile.ts";
 import { validateTaxonomyKind } from "../domain/taxonomy.ts";
 import { requiredText } from "../domain/validation.ts";
 import { createPostgresProviderMigrationCapture, type CapturedChange } from "./postgres-provider-migration-capture.ts";
+import type { PgDatabase, PgExecutor, PgRow } from "./postgres-driver.ts";
 
 export function requestHash(value) {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -19,14 +20,14 @@ export function parseJsonValue(value) {
   if (typeof value !== "string") return value;
   try { return JSON.parse(value); } catch { return value; }
 }
-export function mapMessage(row, duplicate = false) {
+export function mapMessage(row: PgRow, duplicate = false) {
   const createdAt = row.created_at instanceof Date ? row.created_at.toISOString() : new Date(row.created_at).toISOString();
   return { id: row.id, conversationId: row.conversation_id, senderId: row.sender_id, body: row.body, createdAt, duplicate };
 }
 export function isoDate(value) {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
-export function mapConversation(row) {
+export function mapConversation(row: PgRow) {
   return {
     id: row.id,
     createdBy: row.created_by ?? null,
@@ -84,7 +85,7 @@ export const CONVERSATION_FOR_MEMBER_SQL = `SELECT c.id, c.created_by, c.created
  * One work as its author sees it, used to answer a replayed create with the work
  * it already made rather than with a frozen copy of the first response.
  */
-export async function readArticleForAuthor(executor, { articleId, locale }) {
+export async function readArticleForAuthor(executor: PgExecutor, { articleId, locale }) {
   const rows = await executor.unsafe(
     `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at,
             t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version
@@ -98,12 +99,12 @@ export async function readArticleForAuthor(executor, { articleId, locale }) {
   return rows[0] ? mapArticle(rows[0]) : null;
 }
 
-export async function findConversationForMember(executor, { conversationId, actorId }) {
+export async function findConversationForMember(executor: PgExecutor, { conversationId, actorId }) {
   const rows = await executor.unsafe(CONVERSATION_FOR_MEMBER_SQL, [actorId, conversationId]);
   return rows[0] ? mapConversation(rows[0]) : null;
 }
 
-export function mapArticleComment(row) {
+export function mapArticleComment(row: PgRow) {
   const iso = (value) => value instanceof Date ? value.toISOString() : new Date(value).toISOString();
   return {
     id: row.id,
@@ -120,7 +121,7 @@ export function mapArticleComment(row) {
   };
 }
 
-export function mapTaxonomy(row) {
+export function mapTaxonomy(row: PgRow) {
   return {
     id: row.id,
     kind: row.kind,
@@ -132,7 +133,7 @@ export function mapTaxonomy(row) {
     articleCount: Number(row.article_count ?? 0),
   };
 }
-export function mapArticle(row) {
+export function mapArticle(row: PgRow) {
   const iso = (value) => value == null ? null : (value instanceof Date ? value.toISOString() : new Date(value).toISOString());
   return {
     id: row.id,
@@ -150,7 +151,7 @@ export function mapArticle(row) {
     publishedAt: iso(row.published_at),
   };
 }
-export async function listTaxonomiesFrom(executor, { kind, locale = "zh-CN", query = "", limit = 100, offset = 0 }) {
+export async function listTaxonomiesFrom(executor: PgExecutor, { kind, locale = "zh-CN", query = "", limit = 100, offset = 0 }) {
   validateTaxonomyKind(kind);
   validateArticleLocale(locale);
   if (typeof query !== "string" || query.length > 200) throw new ArticleInputError("query must be a string no longer than 200 characters.");
@@ -178,7 +179,7 @@ export async function listTaxonomiesFrom(executor, { kind, locale = "zh-CN", que
   );
   return rows.map(mapTaxonomy);
 }
-export async function replaceArticleTaxonomyKind(tx, articleId, kind, ids) {
+export async function replaceArticleTaxonomyKind(tx: PgExecutor, articleId, kind, ids) {
   if (ids === undefined) return;
   validateTaxonomyKind(kind);
   if (ids.length > 0) {
@@ -200,7 +201,7 @@ export async function replaceArticleTaxonomyKind(tx, articleId, kind, ids) {
     );
   }
 }
-export function mapAuthorProfile(row) {
+export function mapAuthorProfile(row: PgRow) {
   const iso = (value) => value instanceof Date ? value.toISOString() : new Date(value).toISOString();
   return {
     userId: row.user_id,
@@ -223,7 +224,7 @@ export function mapAuthorProfile(row) {
  * without re-entering the transaction — a read inside the open transaction would
  * either take a second connection or see its own uncommitted rows only.
  */
-export async function readFeaturedArticles(executor, { locale = "zh-CN", limit = 20, offset = 0 } = {}) {
+export async function readFeaturedArticles(executor: PgExecutor, { locale = "zh-CN", limit = 20, offset = 0 } = {}) {
   validateArticleLocale(locale);
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
   if (!Number.isInteger(offset) || offset < 0 || offset > 100000) throw new ArticleInputError("offset must be an integer between 0 and 100000.");
@@ -241,7 +242,7 @@ export async function readFeaturedArticles(executor, { locale = "zh-CN", limit =
   return rows.map(mapArticle);
 }
 
-export async function findAuthorProfile(executor, { userId, locale = "zh-CN", viewerId = null }) {
+export async function findAuthorProfile(executor: PgExecutor, { userId, locale = "zh-CN", viewerId = null }) {
   requiredText("userId", userId, 300);
   validateArticleLocale(locale);
   if (viewerId !== null) requiredText("viewerId", viewerId, 300);
@@ -268,7 +269,7 @@ export async function findAuthorProfile(executor, { userId, locale = "zh-CN", vi
   );
   return rows[0] ? mapAuthorProfile(rows[0]) : null;
 }
-export async function listRelatedProfiles(executor, { relationship, userId, locale = "zh-CN", viewerId = null, limit = 50 }) {
+export async function listRelatedProfiles(executor: PgExecutor, { relationship, userId, locale = "zh-CN", viewerId = null, limit = 50 }) {
   requiredText("userId", userId, 300);
   validateArticleLocale(locale);
   if (viewerId !== null) requiredText("viewerId", viewerId, 300);
@@ -300,18 +301,18 @@ export async function listRelatedProfiles(executor, { relationship, userId, loca
   );
   return rows.map(mapAuthorProfile);
 }
-export async function findMessage(tx, senderId, idempotencyKey) {
+export async function findMessage(tx: PgExecutor, senderId, idempotencyKey) {
   const rows = await tx.unsafe(
     "SELECT id, conversation_id, sender_id, body, request_hash, created_at FROM messages WHERE sender_id = $1 AND idempotency_key = $2",
     [senderId, idempotencyKey],
   );
   return rows[0] ?? null;
 }
-export function assertSameRequest(existing, hash) {
+export function assertSameRequest(existing: PgRow, hash) {
   if (existing.request_hash !== hash) throw new IdempotencyConflictError();
   return mapMessage(existing, true);
 }
-export async function readArticleLikeInfo(executor, { slug, locale = "zh-CN", actorId = null }) {
+export async function readArticleLikeInfo(executor: PgExecutor, { slug, locale = "zh-CN", actorId = null }) {
   validateArticleSlug(slug);
   validateArticleLocale(locale);
   if (actorId !== null) requiredText("actorId", actorId, 300);
@@ -338,21 +339,22 @@ export async function readArticleLikeInfo(executor, { slug, locale = "zh-CN", ac
 
 /**
  * The executor surface a domain slice needs. `sql` is the shared postgres.js
- * pool and `captureChanges` writes row snapshots into the provider-migration
- * journal inside the caller's transaction (a no-op when no session records).
+ * pool (`PgDatabase`) and `captureChanges` writes row snapshots into the
+ * provider-migration journal inside the caller's transaction (`PgExecutor`,
+ * satisfied by both the pool and a `sql.begin` transaction).
  *
- * `any` here is deliberately narrow and driver-shaped: postgres.js returns
- * dynamically typed rows and is loaded through a dynamic import in
- * `createPostgresClient`. Deriving its tagged-template generics would spread
- * driver types through every domain slice; the *port* boundary is fully typed
- * in persistence-ports.ts, which is where callers need the guarantees.
+ * These are the typed driver interfaces from postgres-driver.ts (proved against
+ * the real `postgres.Sql` at `createPostgresStore`), not an `any` escape hatch:
+ * `satisfies Pick<TypedPersistenceAdapterContract, ...>` still checks every
+ * slice's method results. Only column *values* stay dynamic (`postgres.Row`);
+ * mapping them into typed domain records is each slice's job.
  */
 export type PostgresStoreContext = {
-  readonly sql: any;
-  captureChanges(tx: any, transactionId: string, changes: readonly CapturedChange[]): Promise<void>;
+  readonly sql: PgDatabase;
+  captureChanges(tx: PgExecutor, transactionId: string, changes: readonly CapturedChange[]): Promise<void>;
 };
 
-export function createPostgresStoreContext(sql: any): PostgresStoreContext {
+export function createPostgresStoreContext(sql: PgDatabase): PostgresStoreContext {
   const migrationCapture = createPostgresProviderMigrationCapture(sql);
   return {
     sql,

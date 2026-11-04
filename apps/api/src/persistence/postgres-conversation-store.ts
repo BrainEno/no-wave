@@ -68,7 +68,7 @@ export function createPostgresConversationStore(ctx: PostgresStoreContext) {
         ]);
         await captureChanges(tx, transactionId, [
           { entityType: "conversations", entityId: conversationId, operation: "upsert", payload: conversationSnapshot[0] },
-          ...participantSnapshots.map((participant) => ({ entityType: "conversation_participants", entityId: migrationEntityKey(conversationId, participant.user_id), operation: "upsert", payload: participant })),
+          ...participantSnapshots.map((participant) => ({ entityType: "conversation_participants", entityId: migrationEntityKey(conversationId, participant.user_id), operation: "upsert" as const, payload: participant })),
         ]);
         return {
           id: row.id,
@@ -125,9 +125,16 @@ export function createPostgresConversationStore(ctx: PostgresStoreContext) {
         const changedIds = [...new Set([...adds, ...removes])];
         const snapshots = changedIds.length ? await tx.unsafe("SELECT * FROM conversation_participants WHERE conversation_id = $1 AND user_id = ANY($2::text[])", [conversationId, changedIds]) : [];
         await captureChanges(tx, transactionId, snapshots.map((participant) => ({
-          entityType: "conversation_participants", entityId: migrationEntityKey(conversationId, participant.user_id), operation: "upsert", payload: participant,
+          entityType: "conversation_participants", entityId: migrationEntityKey(conversationId, participant.user_id), operation: "upsert" as const, payload: participant,
         })));
-        return true;
+        // Same answer as the SQLite slice: the active members after the update,
+        // sorted by id. Read inside the write transaction so the caller sees
+        // exactly what this transaction committed.
+        const participants = await tx.unsafe<{ user_id: string }>(
+          "SELECT user_id FROM conversation_participants WHERE conversation_id = $1 AND left_at IS NULL ORDER BY user_id",
+          [conversationId],
+        );
+        return participants.map((participant) => participant.user_id);
       });
     },
 
@@ -163,10 +170,10 @@ export function createPostgresConversationStore(ctx: PostgresStoreContext) {
         await tx.unsafe("DELETE FROM conversations WHERE id = $1", [conversationId]);
         await captureChanges(tx, transactionId, [
           { entityType: "conversations", entityId: conversationId, operation: "delete", payload: null },
-          ...participants.map((row) => ({ entityType: "conversation_participants", entityId: migrationEntityKey(conversationId, row.user_id), operation: "delete", payload: null })),
-          ...messages.map((row) => ({ entityType: "messages", entityId: row.id, operation: "delete", payload: null })),
-          ...outbox.map((row) => ({ entityType: "outbox_events", entityId: row.id, operation: "delete", payload: null })),
-          ...notifications.map((row) => ({ entityType: "notifications", entityId: row.id, operation: "delete", payload: null })),
+          ...participants.map((row) => ({ entityType: "conversation_participants", entityId: migrationEntityKey(conversationId, row.user_id), operation: "delete" as const, payload: null })),
+          ...messages.map((row) => ({ entityType: "messages", entityId: row.id, operation: "delete" as const, payload: null })),
+          ...outbox.map((row) => ({ entityType: "outbox_events", entityId: row.id, operation: "delete" as const, payload: null })),
+          ...notifications.map((row) => ({ entityType: "notifications", entityId: row.id, operation: "delete" as const, payload: null })),
         ]);
         return true;
       });

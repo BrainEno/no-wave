@@ -1032,10 +1032,11 @@ test("conversation lifecycle controls participants and unread state without dele
       { code: "FORBIDDEN" },
     );
 
-    await store.updateConversationParticipants({
+    const updatedParticipants = await store.updateConversationParticipants({
       conversationId: conversation.id, actorId: ownerId,
       addUserIds: [addId], removeUserIds: [recipientId],
     });
+    assert.deepEqual(updatedParticipants, [ownerId, addId].sort());
     assert.equal((await store.listConversations({ actorId: recipientId })).length, 0);
     assert.equal(await store.getConversation({ conversationId: conversation.id, actorId: recipientId }), null);
     assert.equal((await store.getConversation({ conversationId: conversation.id, actorId: addId })).lastMessage.id, firstMessage.id);

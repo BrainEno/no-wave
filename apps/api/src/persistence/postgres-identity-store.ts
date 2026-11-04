@@ -2,18 +2,19 @@ import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import { createPostgresProviderMigrationCapture, migrationEntityKey, type CapturedChange } from "./postgres-provider-migration-capture.ts";
 import { DEFAULT_AUTHOR_DISPLAY_NAME } from "../domain/profile.ts";
 import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
+import type { PgDatabase, PgExecutor } from "./postgres-driver.ts";
 
 /**
  * PostgreSQL identity persistence. Refresh rotation, replay detection, logout
  * and access-token revocation all serialize on the same session row.
  */
-export function createPostgresIdentityStore(sql) {
+export function createPostgresIdentityStore(sql: PgDatabase) {
   const migrationCapture = createPostgresProviderMigrationCapture(sql);
-  async function captureChanges(tx, transactionId, changes: readonly CapturedChange[]) {
+  async function captureChanges(tx: PgExecutor, transactionId, changes: readonly CapturedChange[]) {
     await migrationCapture.captureInTransaction(tx, transactionId, changes);
   }
 
-  async function captureSessionSnapshot(tx, transactionId, sessionId) {
+  async function captureSessionSnapshot(tx: PgExecutor, transactionId, sessionId) {
     const [sessions, accessTokens, refreshTokens] = await Promise.all([
       tx.unsafe("SELECT * FROM auth_sessions WHERE id = $1", [sessionId]),
       tx.unsafe("SELECT * FROM auth_access_tokens WHERE session_id = $1", [sessionId]),
@@ -31,7 +32,7 @@ export function createPostgresIdentityStore(sql) {
     await captureChanges(tx, transactionId, changes);
   }
 
-  async function insertSession(tx, session) {
+  async function insertSession(tx: PgExecutor, session) {
     await tx.unsafe(
       "INSERT INTO auth_sessions (id, user_id, expires_at) VALUES ($1, $2, $3)",
       [session.sessionId, session.userId, session.expiresAt],
@@ -46,7 +47,7 @@ export function createPostgresIdentityStore(sql) {
     );
   }
 
-  async function revokeLockedSession(tx, sessionId) {
+  async function revokeLockedSession(tx: PgExecutor, sessionId) {
     await tx.unsafe("UPDATE auth_sessions SET revoked_at = COALESCE(revoked_at, clock_timestamp()) WHERE id = $1", [sessionId]);
     await tx.unsafe(
       `INSERT INTO revoked_sessions (session_id, expires_at)

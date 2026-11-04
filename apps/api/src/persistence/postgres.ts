@@ -17,13 +17,14 @@ import { createPostgresOutboxStore } from "./postgres-outbox-store.ts";
 import { createPostgresMediaStore } from "./postgres-media-store.ts";
 import { createPostgresSessionStore } from "./postgres-session-store.ts";
 import { createPostgresStoreContext } from "./postgres-shared.ts";
+import type { PgDatabase } from "./postgres-driver.ts";
 
 export function createPostgresClient({
   connectionString = process.env.DATABASE_URL,
   max = 10,
   idle_timeout = 20,
   connect_timeout = 10,
-} = {}) {
+} = {}): Promise<PgDatabase> {
   if (typeof connectionString !== "string" || connectionString.length === 0) {
     throw new Error("DATABASE_URL is required to create the PostgreSQL client.");
   }
@@ -46,7 +47,7 @@ export function createPostgresClient({
  * are present before the remaining slices are mixed in; no slice overrides a
  * method owned by another (the runtime assertion below is the guard).
  */
-export function createPostgresStore(sql): TypedPersistenceAdapterContract {
+export function createPostgresStore(sql: PgDatabase): TypedPersistenceAdapterContract {
   if (!sql || typeof sql.unsafe !== "function" || typeof sql.begin !== "function") {
     throw new TypeError("A postgres.js SQL client is required.");
   }

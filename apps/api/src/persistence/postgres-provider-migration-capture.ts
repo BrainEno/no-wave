@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { createPostgresProviderMigrationJournal } from "./postgres-provider-migration-journal.ts";
 import type { MigrationChangeOperation, JsonObject } from "./provider-migration-journal.ts";
+import type { PgDatabase, PgExecutor } from "./postgres-driver.ts";
 
-type PgExecutor = { unsafe(sql: string, parameters?: unknown[]): Promise<Record<string, any>[]> };
 export type CapturedChange = { entityType: string; entityId: string; operation: MigrationChangeOperation; payload: JsonObject | null };
 function stableValue(value: unknown): unknown {
   if (value instanceof Date) return value.toISOString();
@@ -27,7 +27,7 @@ export function migrationEntityKey(...parts: unknown[]): string {
 }
 
 /** Capture row snapshots using the same Postgres transaction executor as the domain write. */
-export function createPostgresProviderMigrationCapture(sql: any) {
+export function createPostgresProviderMigrationCapture(sql: PgDatabase) {
   const journal = createPostgresProviderMigrationJournal(sql);
   async function captureInTransaction(tx: PgExecutor, transactionId: string, changes: readonly CapturedChange[]): Promise<void> {
     if (changes.length === 0) return;

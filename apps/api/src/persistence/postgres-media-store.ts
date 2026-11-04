@@ -65,7 +65,7 @@ export function createPostgresMediaStore(ctx: PostgresStoreContext) {
       ]);
       return [
         ...bodies.map((row) => ({
-          kind: "work",
+          kind: "work" as const,
           content: row.content_blocks,
           work: {
             articleId: row.article_id,
@@ -77,7 +77,7 @@ export function createPostgresMediaStore(ctx: PostgresStoreContext) {
             authorId: row.author_id ?? "",
           },
         })),
-        ...avatars.map((row) => ({ kind: "avatar", content: row.avatar_url })),
+        ...avatars.map((row) => ({ kind: "avatar" as const, content: row.avatar_url })),
       ];
     },
 
@@ -129,7 +129,7 @@ export function createPostgresMediaStore(ctx: PostgresStoreContext) {
         ]);
         const usedBy = [
           ...bodies.map((body) => ({
-            kind: "work",
+            kind: "work" as const,
             content: body.content_blocks,
             work: {
               articleId: body.article_id,
@@ -141,7 +141,7 @@ export function createPostgresMediaStore(ctx: PostgresStoreContext) {
               authorId: body.author_id ?? "",
             },
           })),
-          ...avatars.map((avatar) => ({ kind: "avatar", content: avatar.avatar_url })),
+          ...avatars.map((avatar) => ({ kind: "avatar" as const, content: avatar.avatar_url })),
         ];
         if (usedBy.length > 0) return { deleted: null, usedBy };
         await tx.unsafe("DELETE FROM media_assets WHERE id = $1 AND owner_id = $2", [id, ownerId]);

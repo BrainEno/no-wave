@@ -7,7 +7,7 @@
 import { assertOutboxLease } from "./outbox-lease.ts";
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import type { PostgresStoreContext } from "./postgres-shared.ts";
-import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
+import type { StoredOutboxEvent, TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
 
 export function createPostgresOutboxStore(ctx: PostgresStoreContext) {
   const { sql, captureChanges } = ctx;
@@ -17,7 +17,7 @@ export function createPostgresOutboxStore(ctx: PostgresStoreContext) {
       if (!Number.isInteger(leaseSeconds) || leaseSeconds < 1 || leaseSeconds > 3600) throw new TypeError("leaseSeconds must be an integer between 1 and 3600.");
       return sql.begin(async (tx) => {
         const transactionId = createMigrationTransactionId();
-        const rows = await tx.unsafe(
+        const rows = await tx.unsafe<StoredOutboxEvent>(
           "WITH picked AS ( SELECT id FROM outbox_events WHERE delivered_at IS NULL AND available_at <= now() ORDER BY created_at, id LIMIT $1 FOR UPDATE SKIP LOCKED ) " +
           "UPDATE outbox_events AS event SET attempts = event.attempts + 1, available_at = clock_timestamp() + ($2 * interval '1 second'), lease_token = gen_random_uuid() " +
           "FROM picked WHERE event.id = picked.id " +

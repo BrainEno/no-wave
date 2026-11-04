@@ -213,7 +213,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
           await captureChanges(tx, transactionId, [
             { entityType: "articles", entityId: article.id, operation: "upsert", payload: articleSnapshot[0] },
             { entityType: "article_translations", entityId: migrationEntityKey(article.id, input.locale), operation: "upsert", payload: translationSnapshot[0] },
-            ...links.map((link) => ({ entityType: "article_taxonomies", entityId: migrationEntityKey(link.article_id, link.taxonomy_id), operation: "upsert", payload: link })),
+            ...links.map((link) => ({ entityType: "article_taxonomies", entityId: migrationEntityKey(link.article_id, link.taxonomy_id), operation: "upsert" as const, payload: link })),
           ]);
           return mapArticle({ ...article, ...translations[0] });
         });
@@ -272,8 +272,8 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
           await captureChanges(tx, transactionId, [
             { entityType: "articles", entityId: articleId, operation: "upsert", payload: articleSnapshot[0] },
             { entityType: "article_translations", entityId: migrationEntityKey(articleId, input.locale), operation: "upsert", payload: translationSnapshot[0] },
-            ...currentLinks.map((link) => ({ entityType: "article_taxonomies", entityId: migrationEntityKey(link.article_id, link.taxonomy_id), operation: "upsert", payload: link })),
-            ...previousLinks.filter((link) => !currentIds.has(migrationEntityKey(link.article_id, link.taxonomy_id))).map((link) => ({ entityType: "article_taxonomies", entityId: migrationEntityKey(link.article_id, link.taxonomy_id), operation: "delete", payload: null })),
+            ...currentLinks.map((link) => ({ entityType: "article_taxonomies", entityId: migrationEntityKey(link.article_id, link.taxonomy_id), operation: "upsert" as const, payload: link })),
+            ...previousLinks.filter((link) => !currentIds.has(migrationEntityKey(link.article_id, link.taxonomy_id))).map((link) => ({ entityType: "article_taxonomies", entityId: migrationEntityKey(link.article_id, link.taxonomy_id), operation: "delete" as const, payload: null })),
           ]);
           return mapArticle({ ...rows[0], ...translations[0] });
         });
@@ -390,11 +390,11 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
         ]);
         await tx.unsafe("DELETE FROM articles WHERE id = ANY($1::uuid[])", [expired]);
         await captureChanges(tx, transactionId, [
-          ...expired.map((id) => ({ entityType: "articles", entityId: id, operation: "delete", payload: null })),
-          ...translations.map((row) => ({ entityType: "article_translations", entityId: migrationEntityKey(row.article_id, row.locale), operation: "delete", payload: null })),
-          ...likes.map((row) => ({ entityType: "article_likes", entityId: migrationEntityKey(row.article_id, row.user_id), operation: "delete", payload: null })),
-          ...comments.map((row) => ({ entityType: "article_comments", entityId: row.id, operation: "delete", payload: null })),
-          ...links.map((row) => ({ entityType: "article_taxonomies", entityId: migrationEntityKey(row.article_id, row.taxonomy_id), operation: "delete", payload: null })),
+          ...expired.map((id) => ({ entityType: "articles", entityId: id, operation: "delete" as const, payload: null })),
+          ...translations.map((row) => ({ entityType: "article_translations", entityId: migrationEntityKey(row.article_id, row.locale), operation: "delete" as const, payload: null })),
+          ...likes.map((row) => ({ entityType: "article_likes", entityId: migrationEntityKey(row.article_id, row.user_id), operation: "delete" as const, payload: null })),
+          ...comments.map((row) => ({ entityType: "article_comments", entityId: row.id, operation: "delete" as const, payload: null })),
+          ...links.map((row) => ({ entityType: "article_taxonomies", entityId: migrationEntityKey(row.article_id, row.taxonomy_id), operation: "delete" as const, payload: null })),
         ]);
         return { purged: expired.length };
       });
@@ -526,8 +526,8 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
         }
         const rows = await tx.unsafe("SELECT * FROM featured_articles");
         await captureChanges(tx, transactionId, [
-          ...previous.map((row) => ({ entityType: "featured_articles", entityId: row.article_id, operation: "delete", payload: null })),
-          ...rows.map((row) => ({ entityType: "featured_articles", entityId: row.article_id, operation: "upsert", payload: row })),
+          ...previous.map((row) => ({ entityType: "featured_articles", entityId: row.article_id, operation: "delete" as const, payload: null })),
+          ...rows.map((row) => ({ entityType: "featured_articles", entityId: row.article_id, operation: "upsert" as const, payload: row })),
         ]);
       });
       return readFeaturedArticles(sql, { locale, limit: MAX_FEATURED_ARTICLES, offset: 0 });

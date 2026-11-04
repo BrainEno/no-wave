@@ -272,7 +272,7 @@ export function createPostgresEngagementStore(ctx: PostgresStoreContext) {
           [commentId],
         );
         await tx.unsafe("DELETE FROM article_comments WHERE id = $1", [commentId]);
-        await captureChanges(tx, transactionId, descendants.map((row) => ({ entityType: "article_comments", entityId: row.id, operation: "delete", payload: null })));
+        await captureChanges(tx, transactionId, descendants.map((row) => ({ entityType: "article_comments", entityId: row.id, operation: "delete" as const, payload: null })));
         return true;
       });
     },

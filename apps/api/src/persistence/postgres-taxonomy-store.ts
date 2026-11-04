@@ -224,8 +224,8 @@ export function createPostgresTaxonomyStore(ctx: PostgresStoreContext) {
         await tx.unsafe("DELETE FROM taxonomies WHERE id = $1", [taxonomyId]);
         await captureChanges(tx, transactionId, [
           { entityType: "taxonomies", entityId: taxonomyId, operation: "delete", payload: null },
-          ...translations.map((row) => ({ entityType: "taxonomy_translations", entityId: migrationEntityKey(taxonomyId, row.locale), operation: "delete", payload: null })),
-          ...links.map((row) => ({ entityType: "article_taxonomies", entityId: migrationEntityKey(row.article_id, taxonomyId), operation: "delete", payload: null })),
+          ...translations.map((row) => ({ entityType: "taxonomy_translations", entityId: migrationEntityKey(taxonomyId, row.locale), operation: "delete" as const, payload: null })),
+          ...links.map((row) => ({ entityType: "article_taxonomies", entityId: migrationEntityKey(row.article_id, taxonomyId), operation: "delete" as const, payload: null })),
         ]);
         return true;
       });
