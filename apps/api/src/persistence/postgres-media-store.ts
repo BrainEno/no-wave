@@ -53,6 +53,51 @@ export function createPostgresMediaStore(ctx: PostgresStoreContext) {
      * a tombstone can be restored, and restoring a work into broken images is
      * worse than keeping a few bytes.
      */
+    /**
+     * Who uses these assets, read from `article_media_refs` (#163).
+     *
+     * `= ANY($1::text[])` rather than a built placeholder list: the id set comes
+     * from a page of assets, and binding it as one array keeps the statement text
+     * stable across page sizes so PostgreSQL can reuse the plan.
+     *
+     * Same shape as `listMediaScanRows`, so the pure extraction and redaction in
+     * the application layer is unchanged.
+     */
+    async listReferencesForAssets({ assetIds }) {
+      if (!Array.isArray(assetIds)) throw new TypeError("assetIds must be an array.");
+      const ids = [...new Set(assetIds.filter((id) => typeof id === "string" && id))];
+      if (ids.length === 0) return [];
+      const [workRows, avatarRows] = await Promise.all([
+        sql.unsafe(
+          `SELECT r.asset_id, r.locale, a.id AS article_id, a.slug, a.status, a.deleted_at, a.author_id, t.title
+           FROM article_media_refs r
+           JOIN articles a ON a.id = r.article_id
+           JOIN article_translations t ON t.article_id = r.article_id AND t.locale = r.locale
+           WHERE r.asset_id = ANY($1::text[])`,
+          [ids],
+        ),
+        sql.unsafe(
+          "SELECT avatar_media_id AS asset_id FROM user_profiles WHERE avatar_media_id = ANY($1::text[])",
+          [ids],
+        ),
+      ]);
+      return [
+        ...workRows.map((row) => ({
+          kind: "work" as const,
+          content: `/media/${row.asset_id}`,
+          work: {
+            articleId: row.article_id,
+            slug: row.slug,
+            status: row.status,
+            deletedAt: row.deleted_at ? new Date(row.deleted_at).toISOString() : null,
+            locale: row.locale,
+            title: row.title,
+            authorId: row.author_id ?? "",
+          },
+        })),
+        ...avatarRows.map((row) => ({ kind: "avatar" as const, content: `/media/${row.asset_id}` })),
+      ];
+    },
     /** Every place a media URL can live: work bodies in every locale, and profile pictures. */
     async listMediaScanRows() {
       const [bodies, avatars] = await Promise.all([
@@ -157,5 +202,5 @@ export function createPostgresMediaStore(ctx: PostgresStoreContext) {
       });
     },
 
-  }) satisfies Pick<TypedPersistenceAdapterContract, "createMediaAsset" | "getMediaAsset" | "listMediaScanRows" | "listMediaAssets" | "deleteUnusedMediaAsset">;
+  }) satisfies Pick<TypedPersistenceAdapterContract, "createMediaAsset" | "getMediaAsset" | "listMediaScanRows" | "listReferencesForAssets" | "listMediaAssets" | "deleteUnusedMediaAsset">;
 }

@@ -112,6 +112,28 @@ numbers for it would be worse than stating the gap. To measure one, run the same
 harness with `DATABASE_PROVIDER=postgres` and `DATABASE_URL` set against the target
 instance, then record the ladder it prints.
 
+## The media library is independent of site size
+
+Opening `GET /api/v1/me/media` used to cost O(total site text): it read every
+work body in every locale into memory to decide which of the page's images were
+unused. Measured against the same 24-image page:
+
+| Works on the site | Before #163 | After #163 |
+| --- | --- | --- |
+| ~50 | 0.58 ms | 0.23 ms |
+| ~500 | 3.11 ms | 0.17 ms |
+| ~2,000 | **11.63 ms** | **0.17 ms** |
+
+The old column is linear in site size and the new one is flat — the page now asks
+`article_media_refs` about the 24 ids it is showing, so the cost is the page, not
+the corpus. At the 20k-work scale the original audit projected for this endpoint
+(~77 MiB of JSON per page open), the difference is the endpoint working versus
+the endpoint not working.
+
+The table is kept current by the writer's own transaction, and a migration
+backfills the existing corpus; see `docs/operations/web-authoring.md` for how the
+reference is defined and how redaction is preserved.
+
 ## Known cost centres
 
 These are visible in the baseline and are candidates for a future change, not

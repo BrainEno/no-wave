@@ -2510,6 +2510,136 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
     } finally { await runtime.cleanup(undefined, suffix); }
   });
 
+
+  /**
+   * The materialised media references (#163).
+   *
+   * The library used to answer "is this image an orphan?" by reading every work
+   * body on the site. It now reads a table kept current by the writer's own
+   * transaction. That trade is only sound if the table says exactly what the old
+   * scan said, at every moment the scan could have been asked — so these assert
+   * the *same* answer from `listReferencesForAssets` and from the full scan,
+   * rather than checking that a row exists.
+   */
+  test(`${adapterName}: media references stay in step with the bodies that name them`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const ownerId = `media-ref-owner-${suffix}`;
+    const hour = new Date(Date.now() + 3_600_000).toISOString();
+    let articleId;
+    try {
+      await runtime.store.createIdentityAccount({
+        userId: ownerId,
+        email: `media-ref-${suffix}@example.test`,
+        passwordHash: "hash",
+        session: {
+          sessionId: randomUUID(), userId: ownerId, accessTokenId: randomUUID(),
+          refreshHash: (suffix.replace(/-/g, "") + "b").padEnd(64, "b"), expiresAt: hour,
+          accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+        },
+      });
+      const asset = await runtime.store.createMediaAsset({
+        id: randomUUID(), ownerId, storageKey: `${suffix}/a.webp`, contentType: "image/webp",
+        byteSize: 12, width: 2, height: 2, sha256: "c".repeat(64),
+      });
+      const bodyWithImage = [
+        { id: "p1", type: "paragraph", text: "有图" },
+        { id: "i1", type: "image", src: `/api/media/${asset.id}`, alt: "图" },
+      ];
+
+      const article = await runtime.store.createArticle({
+        authorId: ownerId, slug: `media-ref-${suffix}`, title: "引用作品", summary: "",
+        locale: "zh-CN", publish: true, contentBlocks: bodyWithImage,
+      });
+      articleId = article.id;
+
+      const fromTable = await runtime.store.listReferencesForAssets({ assetIds: [asset.id] });
+      assert.equal(fromTable.length, 1, "the create wrote one reference");
+      const fromScan = (await runtime.store.listMediaScanRows()).filter((row) =>
+        String(row?.content ?? "").toLowerCase().includes(asset.id.toLowerCase()));
+      // Same number of uses, same work, same locale: the table is a substitute for
+      // the scan, not a different opinion.
+      assert.equal(fromTable.length, fromScan.length, "table and scan must agree on how many uses there are");
+      assert.equal(fromTable[0].work.articleId, article.id);
+      assert.equal(fromTable[0].work.locale, "zh-CN");
+      assert.equal(fromTable[0].work.title, "引用作品");
+
+      // Removing the image from the body must remove the reference in the same
+      // transaction — this is the half a backfill cannot do.
+      await runtime.store.updateArticle({
+        articleId: article.id, actorId: ownerId, slug: article.slug, title: "引用作品",
+        summary: "", locale: "zh-CN", publish: true,
+        contentBlocks: [{ id: "p1", type: "paragraph", text: "图没了" }],
+      });
+      assert.deepEqual(await runtime.store.listReferencesForAssets({ assetIds: [asset.id] }), [], "an edit that drops the image drops the reference");
+
+      // And adding a different image adds exactly that one.
+      const second = await runtime.store.createMediaAsset({
+        id: randomUUID(), ownerId, storageKey: `${suffix}/b.webp`, contentType: "image/webp",
+        byteSize: 12, width: 2, height: 2, sha256: "d".repeat(64),
+      });
+      await runtime.store.updateArticle({
+        articleId: article.id, actorId: ownerId, slug: article.slug, title: "引用作品",
+        summary: "", locale: "zh-CN", publish: true,
+        contentBlocks: [{ id: "i2", type: "image", src: `/api/v1/media/${second.id}`, alt: "新图" }],
+      });
+      const afterSecond = await runtime.store.listReferencesForAssets({ assetIds: [asset.id, second.id] });
+      assert.equal(afterSecond.length, 1, "only the current image is referenced");
+      assert.equal(afterSecond[0].work.articleId, article.id);
+
+      // A body may name an id that was never uploaded here; the save must still
+      // succeed and the phantom must not become a row.
+      const phantom = randomUUID();
+      await runtime.store.updateArticle({
+        articleId: article.id, actorId: ownerId, slug: article.slug, title: "引用作品",
+        summary: "", locale: "zh-CN", publish: true,
+        contentBlocks: [{ id: "i3", type: "image", src: `/api/media/${phantom}`, alt: "外部" }],
+      });
+      assert.deepEqual(await runtime.store.listReferencesForAssets({ assetIds: [phantom] }), [], "an unknown id is not a reference row");
+
+      // An empty page asks nothing and gets nothing.
+      assert.deepEqual(await runtime.store.listReferencesForAssets({ assetIds: [] }), []);
+    } finally {
+      if (articleId) await runtime.cleanup(undefined, suffix);
+    }
+  });
+
+  test(`${adapterName}: an avatar is a reference with no article behind it`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const ownerId = `avatar-ref-owner-${suffix}`;
+    const hour = new Date(Date.now() + 3_600_000).toISOString();
+    try {
+      await runtime.store.createIdentityAccount({
+        userId: ownerId,
+        email: `avatar-ref-${suffix}@example.test`,
+        passwordHash: "hash",
+        session: {
+          sessionId: randomUUID(), userId: ownerId, accessTokenId: randomUUID(),
+          refreshHash: (suffix.replace(/-/g, "") + "e").padEnd(64, "e"), expiresAt: hour,
+          accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+        },
+      });
+      const asset = await runtime.store.createMediaAsset({
+        id: randomUUID(), ownerId, storageKey: `${suffix}/face.webp`, contentType: "image/webp",
+        byteSize: 12, width: 2, height: 2, sha256: "f".repeat(64),
+      });
+      // The avatar half is the one a body-only view misses entirely, which is how
+      // a live account's picture used to be offered as an orphan.
+      await runtime.store.upsertAuthorProfile({
+        userId: ownerId, displayName: "头像作者", bio: "", locale: "zh-CN",
+        avatarUrl: `/api/media/${asset.id}`,
+      });
+      const refs = await runtime.store.listReferencesForAssets({ assetIds: [asset.id] });
+      assert.equal(refs.length, 1);
+      assert.equal(refs[0].kind, "avatar", "an avatar is reported as an avatar, not as a work");
+
+      // Clearing the avatar clears the reference.
+      await runtime.store.upsertAuthorProfile({ userId: ownerId, displayName: "头像作者", bio: "", locale: "zh-CN", avatarUrl: null });
+      assert.deepEqual(await runtime.store.listReferencesForAssets({ assetIds: [asset.id] }), []);
+    } finally { await runtime.cleanup(undefined, suffix); }
+  });
+
 }
 
 registerAdapterContracts("SQLite", sqliteFixture);

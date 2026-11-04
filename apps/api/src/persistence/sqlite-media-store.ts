@@ -119,6 +119,54 @@ export function createSqliteMediaStore(db) {
       return [...db.prepare(BODY_SQL).all().map(mapBody), ...db.prepare(AVATAR_SQL).all().map(mapAvatar)];
     },
     /**
+     * Who uses these assets, read from `article_media_refs` (#163).
+     *
+     * One indexed query for a page of at most 60 ids, instead of pulling every
+     * work body on the site into memory. The work's title, slug, status and
+     * author are joined in rather than stored on the reference row, so a retitled
+     * work is described by its current title and a purged work leaves no row
+     * behind.
+     *
+     * The result is shaped exactly like `listMediaScanRows` — one row per
+     * (asset, use) with `content` carrying only the asset's own id — so the pure
+     * extraction and redaction functions stay unchanged.
+     */
+    async listReferencesForAssets({ assetIds }) {
+      if (!Array.isArray(assetIds)) throw new TypeError("assetIds must be an array.");
+      const ids = [...new Set(assetIds.filter((id) => typeof id === "string" && id))];
+      if (ids.length === 0) return [];
+      const placeholders = ids.map(() => "?").join(", ");
+      const workRows = db.prepare(
+        `SELECT r.asset_id, r.locale, a.id AS article_id, a.slug, a.status, a.deleted_at, a.author_id, t.title
+         FROM article_media_refs r
+         JOIN articles a ON a.id = r.article_id
+         JOIN article_translations t ON t.article_id = r.article_id AND t.locale = r.locale
+         WHERE r.asset_id IN (${placeholders})`,
+      ).all(...ids);
+      // The reference row is what counts, not the join: a translation can be
+      // removed by a purge between the two statements only in a torn read, and
+      // the foreign key makes that impossible within one snapshot.
+      const avatarRows = db.prepare(
+        `SELECT avatar_media_id AS asset_id FROM user_profiles WHERE avatar_media_id IN (${placeholders})`,
+      ).all(...ids);
+      return [
+        ...workRows.map((row) => ({
+          kind: "work",
+          content: `/media/${row.asset_id}`,
+          work: {
+            articleId: row.article_id,
+            slug: row.slug,
+            status: row.status,
+            deletedAt: row.deleted_at ?? null,
+            locale: row.locale,
+            title: row.title,
+            authorId: row.author_id ?? "",
+          },
+        })),
+        ...avatarRows.map((row) => ({ kind: "avatar", content: `/media/${row.asset_id}` })),
+      ];
+    },
+    /**
      * Delete one of an owner's assets, but only if nothing uses it — and scan
      * for that inside the same transaction as the delete.
      *
@@ -158,5 +206,5 @@ export function createSqliteMediaStore(db) {
         throw error;
       }
     },
-  }) satisfies Pick<TypedPersistenceAdapterContract, "createMediaAsset" | "getMediaAsset" | "listMediaAssets" | "listMediaScanRows" | "deleteUnusedMediaAsset">;
+  }) satisfies Pick<TypedPersistenceAdapterContract, "createMediaAsset" | "getMediaAsset" | "listMediaAssets" | "listMediaScanRows" | "listReferencesForAssets" | "deleteUnusedMediaAsset">;
 }

@@ -330,6 +330,19 @@ export function createSqliteProfileStore(db) {
           avatarUrl !== undefined ? 1 : 0,
           websiteUrl !== undefined ? 1 : 0,
         );
+        // Keep the materialised avatar reference in step (#163). Deriving it here
+        // from the stored URL rather than from the argument means the column is
+        // always consistent with what a reader will actually see, including the
+        // case where `avatarUrl` was omitted and the old value kept.
+        run(
+          `UPDATE user_profiles SET avatar_media_id = (
+             SELECT m.id FROM media_assets m
+             WHERE user_profiles.avatar_url IS NOT NULL
+               AND lower(user_profiles.avatar_url) LIKE '%/media/' || lower(m.id) || '%'
+             LIMIT 1
+           ) WHERE user_id = ?`,
+          userId,
+        );
         run(
           `INSERT INTO user_profile_translations (user_id, locale, display_name, bio) VALUES (?, ?, ?, ?)
            ON CONFLICT (user_id, locale) DO UPDATE SET

@@ -139,6 +139,12 @@ type MediaMetadataStore = {
    */
   listMediaScanRows(): Promise<MediaScanRow[]>;
   /**
+   * The same answer, asked about a page of assets instead of the whole site
+   * (#163). This is what the library uses; `listMediaScanRows` remains because
+   * the guarded delete still needs the site-wide question.
+   */
+  listReferencesForAssets(input: { assetIds: readonly string[] }): Promise<MediaScanRow[]>;
+  /**
    * Delete one of an owner's assets **only if nothing uses it**, and answer
    * what was found either way.
    *
@@ -383,7 +389,8 @@ export function createMediaAssetService({ store, storage }: {
   storage: MediaObjectStorage;
 }) {
   const requiredStoreMethods = [
-    "createMediaAsset", "getMediaAsset", "listMediaAssets", "listMediaScanRows", "deleteUnusedMediaAsset",
+    "createMediaAsset", "getMediaAsset", "listMediaAssets", "listMediaScanRows",
+    "listReferencesForAssets", "deleteUnusedMediaAsset",
   ];
   const missingStoreMethods = requiredStoreMethods.filter((method) => typeof store?.[method] !== "function");
   if (missingStoreMethods.length > 0) {
@@ -465,7 +472,13 @@ export function createMediaAssetService({ store, storage }: {
         limit: requested + 1,
       });
       const items = rows.slice(0, requested);
-      const references = extractMediaReferences(await store.listMediaScanRows());
+      // The references for *this page only* (#163). This used to read every work
+      // body on the site — ~77 MiB of JSON at 20k works — to answer a question
+      // about at most `requested` images. The id set is what makes the cost
+      // O(page) instead of O(site).
+      const references = extractMediaReferences(
+        items.length === 0 ? [] : await store.listReferencesForAssets({ assetIds: items.map((asset) => asset.id) }),
+      );
       const page1 = items.map((asset) => {
         const referencedBy = referencesForOwner(references, asset.id, ownerId);
         return { ...presentAsset(asset), orphan: referencedBy.length === 0, referencedBy };

@@ -4,6 +4,7 @@ import {
   articleIdempotencyKeyHash,
   articleIdempotencyReplayMatches,
 } from "../application/article-idempotency.ts";
+import { MEDIA_SRC_PATTERN } from "../application/media-assets.ts";
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import { createSqliteProviderMigrationCapture, migrationEntityKey } from "./sqlite-provider-migration-capture.ts";
 import {
@@ -106,6 +107,45 @@ export function createSqliteArticleStore(db) {
       try { db.exec("ROLLBACK"); } catch { /* preserve original failure */ }
       throw error;
     }
+  }
+
+  /**
+   * Which media ids a body's text mentions (#163).
+   *
+   * The same `MEDIA_SRC_PATTERN` the old full-scan used, so the materialised
+   * table and the rule it replaced cannot disagree about what counts as a
+   * reference. Deduplicated because a body may show the same image twice and the
+   * primary key is (asset, article, locale).
+   */
+  function mediaIdsIn(contentBlocks) {
+    const text = typeof contentBlocks === "string" ? contentBlocks : JSON.stringify(contentBlocks ?? []);
+    const ids = new Set();
+    for (const match of text.matchAll(MEDIA_SRC_PATTERN)) ids.add(match[1].toLowerCase());
+    return [...ids];
+  }
+
+  /**
+   * Keep `article_media_refs` equal to what this translation now says.
+   *
+   * Called inside the writer's transaction, which is the whole point: the
+   * reference table and the body it describes commit together or not at all, so
+   * there is no window where a saved image looks unreferenced. Delete-then-insert
+   * for this (article, locale) rather than a diff — an edit can add and remove
+   * images in one go, and the row count per translation is tiny.
+   *
+   * The insert is guarded by the asset still existing: a body may name an id that
+   * was never uploaded here (a hand-written URL, or one deleted before this
+   * migration ran) and a foreign-key failure must not fail the article save.
+   * `ON DELETE CASCADE` on the other side cleans up when an asset does go.
+   */
+  function replaceMediaReferences(articleId, locale, contentBlocks) {
+    statement("DELETE FROM article_media_refs WHERE article_id = ? AND locale = ?").run(articleId, locale);
+    const ids = mediaIdsIn(contentBlocks);
+    if (ids.length === 0) return;
+    const insert = statement(
+      "INSERT INTO article_media_refs (asset_id, article_id, locale) SELECT id, ?, ? FROM media_assets WHERE id = ? ON CONFLICT DO NOTHING",
+    );
+    for (const assetId of ids) insert.run(articleId, locale, assetId);
   }
 
   function replaceTaxonomies(articleId, kind, ids) {
@@ -405,6 +445,7 @@ export function createSqliteArticleStore(db) {
               keyHash, keyHash === null ? null : fingerprint, now, now, input.publish ? now : null);
           db.prepare("INSERT INTO article_translations (article_id, locale, title, summary, content_blocks, content_blocks_version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
             .run(id, input.locale, input.title, input.summary, JSON.stringify(input.contentBlocks), input.contentBlocksVersion, now, now);
+          replaceMediaReferences(id, input.locale, input.contentBlocks);
           replaceTaxonomies(id, "category", categories);
           replaceTaxonomies(id, "tag", tags);
           captureArticleState(transactionId, id, input.locale);
@@ -445,6 +486,7 @@ export function createSqliteArticleStore(db) {
             ON CONFLICT(article_id, locale) DO UPDATE SET title = excluded.title, summary = excluded.summary,
               content_blocks = excluded.content_blocks, content_blocks_version = excluded.content_blocks_version, updated_at = excluded.updated_at`)
             .run(articleId, input.locale, input.title, input.summary, JSON.stringify(input.contentBlocks), input.contentBlocksVersion, now, now);
+          replaceMediaReferences(articleId, input.locale, input.contentBlocks);
           replaceTaxonomies(articleId, "category", categories);
           replaceTaxonomies(articleId, "tag", tags);
           captureArticleState(transactionId, articleId, input.locale, previousLinks);

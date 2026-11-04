@@ -45,6 +45,7 @@ test("media service removes uploaded objects if metadata persistence fails", asy
     async listMediaAssets() { return []; },
     async deleteUnusedMediaAsset() { return null; },
     async listMediaScanRows() { return []; },
+    async listReferencesForAssets() { return []; },
   };
   const storage = {
     async putObject({ key }: { key: string }) { keyLog.push("put:" + key); },
@@ -78,6 +79,7 @@ test("object-storage failures are sanitized as service-unavailable errors", asyn
     async listMediaAssets() { return []; },
     async deleteUnusedMediaAsset() { return null; },
     async listMediaScanRows() { return []; },
+    async listReferencesForAssets() { return []; },
   };
   const storage = {
     async putObject() { throw new Error("private bucket credentials leaked"); },
@@ -136,6 +138,15 @@ function libraryStore(assets: ReturnType<typeof assetAt>[], scanRows: unknown[] 
           ? assets
           : assets.filter((asset) => asset.createdAt < cursor.at || (asset.createdAt === cursor.at && asset.id < cursor.id));
         return after.slice(0, limit);
+      },
+      /**
+       * The reference table, stubbed from the same rows this fake holds for the
+       * delete path. #163 moved the *library* onto this method; the guarded
+       * delete still uses the site-wide scan above, and both must agree.
+       */
+      async listReferencesForAssets({ assetIds }: { assetIds: readonly string[] }) {
+        const wanted = assetIds.map((id) => `/media/${id.toLowerCase()}`);
+        return rows().filter((row) => wanted.some((needle) => String(row?.content ?? "").toLowerCase().includes(needle)));
       },
       async deleteUnusedMediaAsset({ id, ownerId }: { id: string; ownerId: string }) {
         calls.push(`delete:${id}`);
@@ -434,4 +445,59 @@ test("an unreachable bucket leaves the bytes behind, named, but never a work poi
   assert.equal(result.objectDeleted, false);
   assert.equal(result.orphanedStorageKey, target.storageKey, "the leftovers can be reclaimed");
   assert.deepEqual(calls, [`delete:${target.id}`], "the row is gone: no work can be left pointing at it");
+});
+
+/**
+ * The library no longer reads work bodies (#163).
+ *
+ * This is the acceptance criterion stated as an assertion rather than a timing:
+ * "opening the media library does not read `article_translations.content_blocks`".
+ * A timing test would pass on a fast machine even after the scan came back; a
+ * statement audit cannot. It is the same technique the serializer uses to keep
+ * its N+1 from returning.
+ */
+test("opening the library does not read work bodies", async () => {
+  const { createSqliteClient, runSqliteMigrations } = await import("../persistence/sqlite.ts");
+  const { createSqliteStore } = await import("../persistence/sqlite-store.ts");
+  const { randomUUID } = await import("node:crypto");
+  const db = createSqliteClient({ filename: ":memory:", enableWal: false });
+  await runSqliteMigrations(db);
+  const store: any = createSqliteStore(db);
+  const owner = randomUUID();
+  await store.createIdentityAccount({
+    userId: owner, email: `nobody-${randomUUID()}@example.test`, passwordHash: "x",
+    session: {
+      sessionId: randomUUID(), userId: owner, accessTokenId: randomUUID(),
+      refreshHash: "a".repeat(64), expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+    },
+  });
+  await store.createMediaAsset({
+    id: randomUUID(), ownerId: owner, storageKey: "k", contentType: "image/webp",
+    byteSize: 10, width: 1, height: 1, sha256: "b".repeat(64),
+  });
+  // Plenty of unrelated text: if the scan came back, it would have to read all of it.
+  for (let index = 0; index < 20; index += 1) {
+    await store.createArticle({
+      authorId: owner, slug: `nobody-${index}-${randomUUID().slice(0, 8)}`, title: "作品",
+      summary: "", locale: "zh-CN", publish: true,
+      contentBlocks: [{ id: `p-${index}`, type: "paragraph", text: "正".repeat(2000) }],
+    });
+  }
+
+  const statements: string[] = [];
+  const rawPrepare = db.prepare.bind(db);
+  db.prepare = (sql: string) => { statements.push(sql); return rawPrepare(sql); };
+  const service = createMediaAssetService({
+    store,
+    storage: { putObject: async () => {}, deleteObject: async () => {}, getObject: async () => { throw new Error("not used"); } },
+  });
+  const page = await service.listLibrary({ ownerId: owner });
+  db.prepare = rawPrepare;
+
+  assert.equal(page.items.length, 1);
+  const bodyReads = statements.filter((sql) => /content_blocks/i.test(sql) && /article_translations/i.test(sql));
+  assert.deepEqual(bodyReads, [], "the library must not read work bodies at all");
+  assert.ok(statements.some((sql) => /article_media_refs/i.test(sql)), "it reads the reference table instead");
+  db.close();
 });

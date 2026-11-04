@@ -272,6 +272,12 @@ export type ListMediaAssetsInput = {
   ownerId: string; cursor: { at: string; id: string } | null; limit: number;
 };
 export type DeleteUnusedMediaAssetInput = { id: string; ownerId: string };
+/**
+ * The reference question, asked about a page of assets instead of the whole site
+ * (#163). Keys are the assets the caller is about to show; an asset nothing uses
+ * simply has no entry.
+ */
+export type ReferencesForAssetsInput = { assetIds: readonly string[] };
 
 /* -------------------------------------------------------------------------- */
 /* The 11 typed port groups                                                    */
@@ -405,8 +411,8 @@ export type OperationsPersistencePort = {
  * Media metadata is consumed by `createMediaAssetService` through the raw
  * adapter, not through a domain port. It stays out of `persistencePortMethods`
  * (so no REST port table exposes it) but is part of the adapter surface and is
- * typed here so the composed store has no untyped methods left. All five media
- * methods are `async` in both providers, so `Promise<T>` — not the union — is
+ * typed here so the composed store has no untyped methods left. Every media
+ * method is `async` in both providers, so `Promise<T>` — not the union — is
  * the accurate result and keeps `MediaMetadataStore` compatible.
  */
 export type MediaPersistencePort = {
@@ -414,6 +420,17 @@ export type MediaPersistencePort = {
   getMediaAsset(input: { id: string }): Promise<MediaAsset | null>;
   listMediaAssets(input: ListMediaAssetsInput): Promise<MediaAsset[]>;
   listMediaScanRows(): Promise<MediaScanRow[]>;
+  /**
+   * Which works and profiles use these assets, read from `article_media_refs`
+   * rather than by scanning every body (#163).
+   *
+   * The rows come back in the same `MediaScanRow` shape the scan produced, with
+   * `content` holding just the asset's own id. That is deliberate: the pure
+   * `extractMediaReferences` / `referencesForOwner` pair — the redaction rule
+   * included — is then unchanged, so the badge a reader sees cannot drift from
+   * what the old scan said.
+   */
+  listReferencesForAssets(input: ReferencesForAssetsInput): Promise<MediaScanRow[]>;
   deleteUnusedMediaAsset(input: DeleteUnusedMediaAssetInput): Promise<{
     deleted: MediaAsset | null; usedBy: MediaScanRow[];
   } | null>;

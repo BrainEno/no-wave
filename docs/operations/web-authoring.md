@@ -65,6 +65,31 @@ to whoever owns the bytes. References the API will not name arrive as
 still block the delete. The rule is: you may always know that an image is in use,
 but not always by what.
 
+### How a reference is decided
+
+A work referencing an image means the image's id appears in that work's body; an
+account referencing one means it is that account's avatar. Since #163 that answer
+is materialised in `article_media_refs (asset_id, article_id, locale)` plus
+`user_profiles.avatar_media_id`, rather than rediscovered by scanning every body
+each time the library page opens.
+
+Three properties matter:
+
+- **The writer keeps it current.** `createArticle` / `updateArticle` write the
+  reference rows inside the same transaction as the translation, and
+  `upsertAuthorProfile` re-derives the avatar reference from the stored URL.
+  There is no window in which a just-saved image looks unused.
+- **The migration backfills the existing corpus.** It matches on the same rule the
+  scan used (`/media/<id>` in the body, any case, any of the three URL shapes), so
+  works published before the upgrade are not offered as orphans on day one.
+- **Redaction is unchanged.** Only the identity of a reference is stored; title,
+  slug, status and author are joined from `articles` at read time. The rule that a
+  reader is told an image is in use but not always by whom therefore still comes
+  from the same code as before.
+
+The site-wide scan (`listMediaScanRows`) still exists for the guarded delete. The
+two must agree, and a contract test asserts they do.
+
 ### Deletion is off in both tiers by default
 
 Two independent switches, and they do different jobs:

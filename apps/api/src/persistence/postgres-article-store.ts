@@ -10,7 +10,7 @@ import { MAX_FEATURED_ARTICLES, normalizeArticleInput, normalizeTaxonomyIds, res
 import { ArticleAuthorizationError, ArticleInputError, ArticleNotFoundError, ArticleSlugConflictError, IdempotencyConflictError } from "../domain/errors.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
 import { migrationEntityKey } from "./postgres-provider-migration-capture.ts";
-import { isoDate, mapArticle, readArticleForAuthor, readFeaturedArticles, replaceArticleTaxonomyKind } from "./postgres-shared.ts";
+import { isoDate, mapArticle, readArticleForAuthor, readFeaturedArticles, replaceArticleMediaReferences, replaceArticleTaxonomyKind } from "./postgres-shared.ts";
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import type { PostgresStoreContext } from "./postgres-shared.ts";
 import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
@@ -203,6 +203,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
             "INSERT INTO article_translations (article_id, locale, title, summary, content_blocks, content_blocks_version) VALUES ($1, $2, $3, $4, $5::jsonb, $6) RETURNING locale, title, summary, content_blocks, content_blocks_version",
             [article.id, input.locale, input.title, input.summary, input.contentBlocks, input.contentBlocksVersion],
           );
+          await replaceArticleMediaReferences(tx, article.id, input.locale, input.contentBlocks);
           await replaceArticleTaxonomyKind(tx, article.id, "category", selectedCategories);
           await replaceArticleTaxonomyKind(tx, article.id, "tag", selectedTags);
           const [articleSnapshot, translationSnapshot, links] = await Promise.all([
@@ -261,6 +262,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
             "INSERT INTO article_translations (article_id, locale, title, summary, content_blocks, content_blocks_version) VALUES ($1, $2, $3, $4, $5::jsonb, $6) ON CONFLICT (article_id, locale) DO UPDATE SET title = EXCLUDED.title, summary = EXCLUDED.summary, content_blocks = EXCLUDED.content_blocks, content_blocks_version = EXCLUDED.content_blocks_version, updated_at = now() RETURNING locale, title, summary, content_blocks, content_blocks_version",
             [articleId, input.locale, input.title, input.summary, input.contentBlocks, input.contentBlocksVersion],
           );
+          await replaceArticleMediaReferences(tx, articleId, input.locale, input.contentBlocks);
           await replaceArticleTaxonomyKind(tx, articleId, "category", selectedCategories);
           await replaceArticleTaxonomyKind(tx, articleId, "tag", selectedTags);
           const [articleSnapshot, translationSnapshot, currentLinks] = await Promise.all([
