@@ -460,3 +460,33 @@ mark { background: var(--or); color: #0f0d0c; }
 @media (max-width: 640px) {
   .nw-media h1 { font-size: 48px; }
 }
+
+/* Inline form dialog (#195): replaces window.prompt for link and image input.
+   Per UI_DESIGN_SYSTEM §4.9 — 52-high field, 1px square frame, transparent
+   background, 13px meta label above, and an error in red with the "⚠ 错误："
+   prefix tied to the field through aria-describedby. */
+.nw-dialog { max-width: min(560px, 92vw); padding: 0; border: 1px solid var(--ink); background: var(--paper); color: var(--ink); }
+.nw-dialog::backdrop { background: rgba(15, 13, 12, .5); }
+.nw-dialog-form { display: grid; gap: 18px; padding: 28px; }
+.nw-dialog-title { margin: 0; font: 600 22px/1.2 var(--f-zh); }
+.nw-dialog-desc { margin: 0; color: var(--t2); font: 400 13px/1.6 var(--f-zh); }
+.nw-dialog-field { display: grid; gap: 8px; }
+.nw-dialog-field > label { font: 500 13px/1.4 var(--f-ss); color: var(--t2); }
+.nw-dialog-field input,
+.nw-dialog-field textarea {
+  width: 100%; min-height: 52px; padding: 0 12px; border: 1px solid var(--ink);
+  border-radius: 0; background: transparent; font: 400 15px/1.5 var(--f-zh);
+}
+.nw-dialog-field textarea { min-height: 96px; padding: 12px; resize: vertical; line-height: 1.6; }
+.nw-dialog-field input:focus-visible,
+.nw-dialog-field textarea:focus-visible { outline: 3px solid var(--or); outline-offset: 2px; }
+.nw-dialog-field input[aria-invalid="true"],
+.nw-dialog-field textarea[aria-invalid="true"] { border-color: var(--red); }
+.nw-dialog-hint { margin: 0; color: var(--t2); font: 400 12px/1.6 var(--f-zh); }
+.nw-dialog-error { margin: 0; color: var(--red); font: 500 13px/1.5 var(--f-zh); }
+.nw-dialog-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 4px; }
+@media (max-width: 640px) {
+  .nw-dialog-form { padding: 20px; }
+  .nw-dialog-actions { flex-direction: column-reverse; }
+  .nw-dialog-actions .nw-btn { width: 100%; }
+}
