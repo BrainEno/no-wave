@@ -9,6 +9,7 @@ import { validateArticleLocale, validateArticleSlug } from "../domain/article.ts
 import { ArticleInputError, IdempotencyConflictError, ProfileInputError } from "../domain/errors.ts";
 import { normalizeStoredRole } from "../domain/profile.ts";
 import { validateTaxonomyKind } from "../domain/taxonomy.ts";
+import { MEDIA_SRC_PATTERN } from "../application/media-assets.ts";
 import { requiredText } from "../domain/validation.ts";
 import { createPostgresProviderMigrationCapture, type CapturedChange } from "./postgres-provider-migration-capture.ts";
 import type { PgDatabase, PgExecutor, PgRow } from "./postgres-driver.ts";
@@ -178,6 +179,32 @@ export async function listTaxonomiesFrom(executor: PgExecutor, { kind, locale = 
     [kind, locale, normalizedQuery, limit, offset],
   );
   return rows.map(mapTaxonomy);
+}
+/**
+ * Keep `article_media_refs` equal to what this translation now says (#163).
+ *
+ * The PostgreSQL counterpart of the SQLite helper, inside the caller's
+ * transaction for the same reason: the reference table and the body it describes
+ * must commit together, or a saved image looks unreferenced in between.
+ *
+ * The extraction rule is the application layer's `MEDIA_SRC_PATTERN`, not a
+ * second regex — a reference means the same thing on both providers.
+ */
+export async function replaceArticleMediaReferences(tx: PgExecutor, articleId: string, locale: string, contentBlocks: unknown) {
+  await tx.unsafe("DELETE FROM article_media_refs WHERE article_id = $1 AND locale = $2", [articleId, locale]);
+  const text = typeof contentBlocks === "string" ? contentBlocks : JSON.stringify(contentBlocks ?? "");
+  const ids = new Set();
+  for (const match of text.matchAll(MEDIA_SRC_PATTERN)) ids.add(match[1].toLowerCase());
+  if (ids.size === 0) return;
+  // `FROM media_assets` rather than a plain VALUES list: a body may name an id
+  // that was never uploaded here, and a foreign-key failure must not fail the
+  // article save. The join simply drops it.
+  await tx.unsafe(
+    `INSERT INTO article_media_refs (asset_id, article_id, locale)
+     SELECT m.id, $2::uuid, $3 FROM media_assets m WHERE m.id = ANY($1::uuid[])
+     ON CONFLICT DO NOTHING`,
+    [[...ids], articleId, locale],
+  );
 }
 export async function replaceArticleTaxonomyKind(tx: PgExecutor, articleId, kind, ids) {
   if (ids === undefined) return;

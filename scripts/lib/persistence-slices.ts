@@ -76,11 +76,11 @@ export const BASELINE_INLINE_METHODS: readonly string[] = Object.freeze([
   "listConversations", "persistMessage", "outboxBacklog", "listConversationParticipantIds",
   "deliverMessageNotifications", "listNotifications", "getUnreadNotificationCount",
   "markAllNotificationsRead", "markNotificationRead", "createNotification", "createMediaAsset",
-  "getMediaAsset", "listMediaScanRows", "listMediaAssets", "deleteUnusedMediaAsset", "isSessionRevoked",
+  "getMediaAsset", "listMediaScanRows", "listReferencesForAssets", "listMediaAssets", "deleteUnusedMediaAsset", "isSessionRevoked",
 ]);
 /** Media metadata is typed on the full adapter but deliberately outside `persistencePortMethods`. */
 export const MEDIA_METHODS: readonly string[] = Object.freeze([
-  "createMediaAsset", "getMediaAsset", "listMediaScanRows", "listMediaAssets", "deleteUnusedMediaAsset",
+  "createMediaAsset", "getMediaAsset", "listMediaScanRows", "listReferencesForAssets", "listMediaAssets", "deleteUnusedMediaAsset",
 ]);
 /** The one documented overlap: SQLite's identity slice owns `revokeSession`. */
 export const ALLOWED_SQLITE_OVERLAPS: readonly string[] = Object.freeze(["revokeSession"]);

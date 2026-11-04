@@ -222,6 +222,17 @@ export function createPostgresProfileStore(ctx: PostgresStoreContext) {
           "INSERT INTO user_profiles (user_id, avatar_url, website_url) VALUES ($1, $2, $3) ON CONFLICT (user_id) DO UPDATE SET avatar_url = CASE WHEN $4 THEN $2 ELSE user_profiles.avatar_url END, website_url = CASE WHEN $5 THEN $3 ELSE user_profiles.website_url END, updated_at = now()",
           [userId, validatedAvatarUrl ?? null, validatedWebsiteUrl ?? null, avatarUrl !== undefined, websiteUrl !== undefined],
         );
+        // Keep the materialised avatar reference in step (#163), derived from the
+        // stored URL so it always matches what a reader will see.
+        await tx.unsafe(
+          `UPDATE user_profiles SET avatar_media_id = (
+             SELECT m.id FROM media_assets m
+             WHERE user_profiles.avatar_url IS NOT NULL
+               AND lower(user_profiles.avatar_url) LIKE '%/media/' || lower(m.id::text) || '%'
+             LIMIT 1
+           ) WHERE user_id = $1`,
+          [userId],
+        );
         await tx.unsafe(
           "INSERT INTO user_profile_translations (user_id, locale, display_name, bio) VALUES ($1, $2, $3, $4) ON CONFLICT (user_id, locale) DO UPDATE SET display_name = EXCLUDED.display_name, bio = EXCLUDED.bio, updated_at = now()",
           [userId, locale, displayName, bio],

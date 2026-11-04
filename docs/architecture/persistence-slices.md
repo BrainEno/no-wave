@@ -19,7 +19,7 @@ breaks each invariant in turn and asserts the guard reports it, so the checks ar
 rather than merely documented.
 
 Baseline: `74b3a3a91329c2ae4bfc65a05c6b83a4b714d63d` `apps/api/src/persistence/postgres.ts` declared
-62 inline methods (including `health` and `transaction`).
+63 inline methods (including `health` and `transaction`).
 The 60 domain methods must still exist in the current PostgreSQL slices, while `health`
 and `transaction` stay in the small `postgres.ts` entry point. A brace-balanced re-check
 of `searchAuthors` — flagged as non-verbatim in the first round — shows its body is
@@ -29,7 +29,7 @@ from a code change.
 ## Slice ownership
 
 The port table declares 79 methods; each provider's slices own
-78 of them (all but `health`) plus the 5 media
+78 of them (all but `health`) plus the 6 media
 methods. `health` and PostgreSQL's optional `transaction` are composed by the entry point.
 
 | Provider | Slice | Factory | Methods |
@@ -38,7 +38,7 @@ methods. `health` and PostgreSQL's optional `transaction` are composed by the en
 | postgres | `postgres-conversation-store.ts` | `createPostgresConversationStore` | 9 |
 | postgres | `postgres-engagement-store.ts` | `createPostgresEngagementStore` | 7 |
 | postgres | `postgres-identity-store.ts` | `createPostgresIdentityStore` | 18 |
-| postgres | `postgres-media-store.ts` | `createPostgresMediaStore` | 5 |
+| postgres | `postgres-media-store.ts` | `createPostgresMediaStore` | 6 |
 | postgres | `postgres-notification-store.ts` | `createPostgresNotificationStore` | 6 |
 | postgres | `postgres-outbox-store.ts` | `createPostgresOutboxStore` | 4 |
 | postgres | `postgres-profile-store.ts` | `createPostgresProfileStore` | 11 |
@@ -48,7 +48,7 @@ methods. `health` and PostgreSQL's optional `transaction` are composed by the en
 | sqlite | `sqlite-conversation-store.ts` | `createSqliteConversationStore` | 9 |
 | sqlite | `sqlite-engagement-store.ts` | `createSqliteEngagementStore` | 7 |
 | sqlite | `sqlite-identity-store.ts` | `createSqliteIdentityStore` | 18 |
-| sqlite | `sqlite-media-store.ts` | `createSqliteMediaStore` | 5 |
+| sqlite | `sqlite-media-store.ts` | `createSqliteMediaStore` | 6 |
 | sqlite | `sqlite-notification-store.ts` | `createSqliteNotificationStore` | 6 |
 | sqlite | `sqlite-outbox-store.ts` | `createSqliteOutboxStore` | 4 |
 | sqlite | `sqlite-profile-store.ts` | `createSqliteProfileStore` | 11 |
@@ -63,7 +63,7 @@ methods. `health` and PostgreSQL's optional `transaction` are composed by the en
 - `sqlite-conversation-store.ts`: `createConversation`, `updateConversationParticipants`, `deleteConversation`, `markConversationAsRead`, `listConversationMessages`, `getConversation`, `listConversations`, `persistMessage`, `listConversationParticipantIds`
 - `sqlite-engagement-store.ts`: `getArticleLikeInfo`, `toggleArticleLike`, `setArticleLike`, `listArticleComments`, `createArticleComment`, `deleteArticleComment`, `listArticleCommentAuthorIds`
 - `sqlite-identity-store.ts`: `createIdentityAccount`, `findIdentityAccount`, `createIdentitySession`, `rotateIdentityRefresh`, `revokeIdentityRefresh`, `revokeSession`, `issueIdentityToken`, `consumeIdentityToken`, `replaceIdentityPassword`, `listIdentitySessions`, `revokeIdentitySession`, `revokeIdentitySessions`, `markIdentityEmailVerified`, `findIdentityAccountByUserId`, `setIdentityEmail`, `findIdentityCredentials`, `pruneExpiredIdentityState`, `consumeRateLimit`
-- `sqlite-media-store.ts`: `createMediaAsset`, `getMediaAsset`, `listMediaAssets`, `listMediaScanRows`, `deleteUnusedMediaAsset`
+- `sqlite-media-store.ts`: `createMediaAsset`, `getMediaAsset`, `listMediaAssets`, `listMediaScanRows`, `listReferencesForAssets`, `deleteUnusedMediaAsset`
 - `sqlite-notification-store.ts`: `deliverMessageNotifications`, `listNotifications`, `getUnreadNotificationCount`, `markAllNotificationsRead`, `markNotificationRead`, `createNotification`
 - `sqlite-outbox-store.ts`: `claimOutboxEvents`, `markOutboxDelivered`, `rescheduleOutboxEvent`, `outboxBacklog`
 - `sqlite-profile-store.ts`: `getAuthorProfile`, `getAuthorProfilesByIds`, `getUserRole`, `setUserRole`, `searchAuthors`, `searchUsers`, `listFollowing`, `listFollowers`, `followUser`, `unfollowUser`, `upsertAuthorProfile`
@@ -76,7 +76,7 @@ methods. `health` and PostgreSQL's optional `transaction` are composed by the en
 - `postgres-conversation-store.ts`: `createConversation`, `getConversation`, `updateConversationParticipants`, `deleteConversation`, `markConversationAsRead`, `listConversationMessages`, `listConversations`, `persistMessage`, `listConversationParticipantIds`
 - `postgres-engagement-store.ts`: `getArticleLikeInfo`, `toggleArticleLike`, `setArticleLike`, `listArticleComments`, `createArticleComment`, `deleteArticleComment`, `listArticleCommentAuthorIds`
 - `postgres-identity-store.ts`: `createIdentityAccount`, `findIdentityAccount`, `createIdentitySession`, `rotateIdentityRefresh`, `revokeIdentityRefresh`, `revokeSession`, `issueIdentityToken`, `consumeIdentityToken`, `replaceIdentityPassword`, `listIdentitySessions`, `revokeIdentitySession`, `revokeIdentitySessions`, `markIdentityEmailVerified`, `findIdentityAccountByUserId`, `setIdentityEmail`, `findIdentityCredentials`, `pruneExpiredIdentityState`, `consumeRateLimit`
-- `postgres-media-store.ts`: `createMediaAsset`, `getMediaAsset`, `listMediaScanRows`, `listMediaAssets`, `deleteUnusedMediaAsset`
+- `postgres-media-store.ts`: `createMediaAsset`, `getMediaAsset`, `listMediaScanRows`, `listReferencesForAssets`, `listMediaAssets`, `deleteUnusedMediaAsset`
 - `postgres-notification-store.ts`: `listNotifications`, `getUnreadNotificationCount`, `markAllNotificationsRead`, `markNotificationRead`, `createNotification`, `deliverMessageNotifications`
 - `postgres-outbox-store.ts`: `claimOutboxEvents`, `markOutboxDelivered`, `rescheduleOutboxEvent`, `outboxBacklog`
 - `postgres-profile-store.ts`: `getAuthorProfile`, `getAuthorProfilesByIds`, `getUserRole`, `setUserRole`, `searchAuthors`, `searchUsers`, `listFollowing`, `listFollowers`, `followUser`, `unfollowUser`, `upsertAuthorProfile`

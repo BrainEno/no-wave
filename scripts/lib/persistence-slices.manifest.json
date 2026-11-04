@@ -63,6 +63,7 @@
       "createMediaAsset",
       "getMediaAsset",
       "listMediaScanRows",
+      "listReferencesForAssets",
       "listMediaAssets",
       "deleteUnusedMediaAsset",
       "isSessionRevoked"
@@ -153,6 +154,7 @@
     "createMediaAsset",
     "getMediaAsset",
     "listMediaScanRows",
+    "listReferencesForAssets",
     "listMediaAssets",
     "deleteUnusedMediaAsset"
   ],
@@ -241,6 +243,7 @@
         "createMediaAsset",
         "getMediaAsset",
         "listMediaScanRows",
+        "listReferencesForAssets",
         "listMediaAssets",
         "deleteUnusedMediaAsset"
       ]
@@ -395,6 +398,7 @@
         "getMediaAsset",
         "listMediaAssets",
         "listMediaScanRows",
+        "listReferencesForAssets",
         "deleteUnusedMediaAsset"
       ]
     },
