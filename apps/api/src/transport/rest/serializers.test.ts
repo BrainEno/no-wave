@@ -169,3 +169,28 @@ test("non-object entries and an authorless article pass through unchanged", asyn
     assert.deepEqual(await serializeRestArticles(store, null, null), []);
   } finally { db.close(); }
 });
+
+test("the single-article path is the batch path with one item, not a second query path", async () => {
+  const { db, store, counter, articles } = await seededStore();
+  try {
+    const article = articles[0];
+
+    counter.reset();
+    counter.on();
+    const single = await serializeRestArticle(store, article, null);
+    counter.off();
+    const singleCount = counter.prepared;
+
+    counter.reset();
+    counter.on();
+    const [batched] = await serializeRestArticles(store, [article], null);
+    counter.off();
+
+    assert.deepEqual(single, batched, "one item must produce the same JSON either way");
+    // There used to be two implementations and the list one drifted into an N+1.
+    // Identical cost is the observable form of "there is only one path": if the
+    // single path were hand-written again, these two numbers would diverge.
+    assert.equal(singleCount, counter.prepared, "both paths must prepare the same number of statements");
+    assert.equal(singleCount, 3, "and that number must be the batch prefetch, not three per article");
+  } finally { db.close(); }
+});

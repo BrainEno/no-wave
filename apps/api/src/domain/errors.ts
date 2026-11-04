@@ -78,6 +78,24 @@ export class MailDisabledError extends DomainError {
   constructor() { super("MailDisabledError", "MAIL_DISABLED", "Account mail is not enabled on this instance."); }
 }
 
+/**
+ * Media deletion is switched off on this deployment (#156).
+ *
+ * The delete route scans every work's body to decide whether an image is still
+ * referenced, and on PostgreSQL that scan and the delete are not serialised
+ * against a concurrent save — so an image can be deleted in the window between
+ * a work referencing it and that save committing. Until the reference table
+ * (#163) makes that race impossible, the operation is off unless an operator
+ * deliberately turns it on.
+ *
+ * It answers 409 like `MAIL_DISABLED`, and for the same reason: this is not an
+ * outage, so a 503 would promise that retrying later helps. A client can say
+ * "this site cannot do that yet" instead of retrying forever.
+ */
+export class MediaDeleteDisabledError extends DomainError {
+  constructor() { super("MediaDeleteDisabledError", "MEDIA_DELETE_DISABLED", "Deleting images is not enabled on this instance."); }
+}
+
 export class ConversationAccessError extends DomainError {
   constructor(message = "The sender is not a participant in this conversation.") {
     super("ConversationAccessError", "FORBIDDEN", message);

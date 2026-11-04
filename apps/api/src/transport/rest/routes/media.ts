@@ -17,7 +17,9 @@ import {
   MediaAssetInUseError,
   MediaAssetNotFoundError,
   MediaInputError,
+  isMediaDeleteEnabled,
 } from "../../../application/media-assets.ts";
+import { MediaDeleteDisabledError } from "../../../domain/errors.ts";
 import { MediaStorageUnavailableError } from "../../../infrastructure/media-storage.ts";
 import { writeStructuredLog } from "../../../infrastructure/http-observability.ts";
 
@@ -147,6 +149,13 @@ const MEDIA_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Object.
     try {
       const actorId = await authenticatedActorId(request, services, env);
       if (!actorId) { sendUnauthenticated(response); return; }
+      // The deployment switch (#156) is checked *after* authentication and
+      // *before* anything is read or deleted. Order matters twice over: an
+      // unauthenticated caller must still get 401 rather than learn how this
+      // instance is configured, and an authenticated caller must not be able to
+      // trigger the reference scan — the expensive, racy part — on an instance
+      // where the delete could never be allowed to finish.
+      if (!isMediaDeleteEnabled(env)) throw new MediaDeleteDisabledError();
       const result = await mediaAssets.deleteAsset({ ownerId: actorId, id });
       // The row is gone either way. When the bucket could not be reached the
       // bytes are still there with nothing linking to them, which is a bill and
@@ -173,6 +182,10 @@ const MEDIA_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Object.
         });
       } else if (error instanceof MediaAssetNotFoundError) {
         sendJson(response, 404, { error: { code: "NOT_FOUND", message: "The requested media asset was not found." } });
+      } else if (error instanceof MediaDeleteDisabledError) {
+        // 409, not 503: this is a decision, not an outage, so retrying will not
+        // help and a client should stop offering the action.
+        sendJson(response, 409, { error: { code: "MEDIA_DELETE_DISABLED", message: "Deleting images is not enabled on this instance." } });
       } else if (error instanceof MediaStorageUnavailableError) {
         sendJson(response, 503, { error: { code: "MEDIA_STORAGE_UNAVAILABLE", message: "The stored image could not be deleted." } });
       } else {

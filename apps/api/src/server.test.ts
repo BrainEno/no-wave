@@ -21,6 +21,11 @@ const authEnv = {
   AUTH_JWT_ISSUER: "https://auth.example.test",
   AUTH_JWT_AUDIENCE: "bot-thk-api",
   MAIL_ENABLED: "true",
+  // Media deletion is off by default since #156; these tests exercise the delete
+  // path itself, so they opt in. The default and the rejection have their own
+  // test below — opting in everywhere without one would leave the switch
+  // unverified.
+  MEDIA_DELETE_ENABLED: "true",
 };
 
 /**
@@ -2767,6 +2772,114 @@ test("the media library lists one author's uploads, newest first, and only their
     assert.equal(wrongMethod.status, 405);
     assert.equal(wrongMethod.headers.get("allow"), "GET, POST");
   }, { env: authEnv, store: {}, mediaAssets });
+});
+
+/**
+ * The deployment switch (#156).
+ *
+ * Deleting an image is off unless an operator turns it on, because the reference
+ * check and the delete are not serialised against a concurrent save on
+ * PostgreSQL — a work saved in that window loses its images for good. Hiding the
+ * button in the Web app does not help: a Flutter build, or curl, talks to the
+ * same route.
+ *
+ * So the route itself has to refuse, and it has to refuse in the right order:
+ * authentication first (an anonymous caller learns 401, not how the instance is
+ * configured), then the switch, then — only if both pass — the expensive scan.
+ */
+test("media deletion is refused by default, before the reference scan runs", async () => {
+  const assetId = "11111111-1111-4111-8111-111111111111";
+  const calls: Array<Record<string, unknown>> = [];
+  const mediaAssets = {
+    async upload() { throw new Error("unused"); },
+    async getPublic() { throw new Error("unused"); },
+    async listLibrary() { return { items: [], nextCursor: null }; },
+    async deleteAsset(input) { calls.push({ ...input }); return { id: input.id, objectDeleted: true }; },
+  };
+  // authEnv turns the switch on for the other tests; this one removes it, which
+  // is exactly the configuration a stock deployment has.
+  const { MEDIA_DELETE_ENABLED: _omitted, ...offByDefault } = authEnv;
+  await withServer(async (baseUrl) => {
+    // Anonymous first: the refusal must not describe the deployment to someone
+    // who has not proved who they are.
+    const anonymous = await fetch(baseUrl + "/api/v1/me/media/" + assetId, { method: "DELETE" });
+    assert.equal(anonymous.status, 401);
+    await anonymous.text();
+
+    const response = await fetch(baseUrl + "/api/v1/me/media/" + assetId, {
+      method: "DELETE",
+      headers: { authorization: "Bearer " + signedToken("media-writer") },
+    });
+    assert.equal(response.status, 409, "a decision, not an outage: 409, never 503");
+    assert.deepEqual(await response.json(), {
+      error: { code: "MEDIA_DELETE_DISABLED", message: "Deleting images is not enabled on this instance." },
+    });
+    // Nothing was scanned and nothing was deleted. A refused request must also
+    // be an unexpensive one: the scan reads every work's body.
+    assert.deepEqual(calls, [], "the asset service must not be reached at all");
+
+    // Reading the library and an individual asset stays available: the switch
+    // governs deletion, not the whole media feature.
+    const library = await fetch(baseUrl + "/api/v1/me/media", {
+      headers: { authorization: "Bearer " + signedToken("media-writer") },
+    });
+    assert.equal(library.status, 200, "listing is unaffected");
+  }, { env: offByDefault, store: {}, mediaAssets });
+});
+
+test("media deletion runs when the switch is on", async () => {
+  const assetId = "11111111-1111-4111-8111-111111111111";
+  const calls: Array<Record<string, unknown>> = [];
+  const mediaAssets = {
+    async upload() { throw new Error("unused"); },
+    async getPublic() { throw new Error("unused"); },
+    async listLibrary() { return { items: [], nextCursor: null }; },
+    async deleteAsset(input) { calls.push({ ...input }); return { id: input.id, objectDeleted: true }; },
+  };
+  await withServer(async (baseUrl) => {
+    const response = await fetch(baseUrl + "/api/v1/me/media/" + assetId, {
+      method: "DELETE",
+      headers: { authorization: "Bearer " + signedToken("media-writer") },
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { data: { id: assetId } });
+    assert.deepEqual(calls, [{ ownerId: "media-writer", id: assetId }], "the owner is the authenticated caller, never a body field");
+  }, { env: authEnv, store: {}, mediaAssets });
+});
+
+test("only an explicit word switches media deletion on", async () => {
+  const assetId = "11111111-1111-4111-8111-111111111111";
+  const makeMediaAssets = (onDelete) => ({
+    async upload() { throw new Error("unused"); },
+    async getPublic() { throw new Error("unused"); },
+    async listLibrary() { return { items: [], nextCursor: null }; },
+    async deleteAsset(input) { return { id: input.id, objectDeleted: true }; },
+  });
+  const statusFor = async (value) => {
+    const { MEDIA_DELETE_ENABLED: _ignored, ...rest } = authEnv;
+    const env = value === undefined ? rest : { ...rest, MEDIA_DELETE_ENABLED: value };
+    let status;
+    await withServer(async (baseUrl) => {
+      const response = await fetch(baseUrl + "/api/v1/me/media/" + assetId, {
+        method: "DELETE",
+        headers: { authorization: "Bearer " + signedToken("media-writer") },
+      });
+      status = response.status;
+      await response.text();
+    }, { env, store: {}, mediaAssets: makeMediaAssets() });
+    return status;
+  };
+  // Accepting the same affirmative spellings as MAIL_ENABLED keeps one
+  // convention for deployment switches in this codebase.
+  for (const on of ["true", "TRUE", "1", "yes", "on", "  true  "]) {
+    assert.equal(await statusFor(on), 200, `"${on}" must switch deletion on`);
+  }
+  // Everything else is off. A typo must never be able to destroy data, so the
+  // unrecognised case is not "probably fine" — it is refused.
+  for (const off of ["false", "0", "no", "off", "", "   ", "ture", "trueee", "enabled"]) {
+    assert.equal(await statusFor(off), 409, `"${off}" must leave deletion off`);
+  }
+  assert.equal(await statusFor(undefined), 409, "unset means off");
 });
 
 test("deleting an asset is refused while a work uses it, and answers 404 for anything else", async () => {

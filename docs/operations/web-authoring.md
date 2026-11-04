@@ -65,9 +65,36 @@ to whoever owns the bytes. References the API will not name arrive as
 still block the delete. The rule is: you may always know that an image is in use,
 but not always by what.
 
-Deletion is currently switched off in the Web UI (`DELETE_ENABLED` in
-`packages/web-ui/src/components/authoring/media-library.tsx`) while this fix is
-verified. The API endpoint is unchanged and covered by tests.
+### Deletion is off in both tiers by default
+
+Two independent switches, and they do different jobs:
+
+- **`MEDIA_DELETE_ENABLED`** (API, default off). Unset, empty and unrecognised
+  values all mean off. When off, `DELETE /api/v1/me/media/:id` answers
+  `409 MEDIA_DELETE_DISABLED` after authentication and *before* the reference scan
+  runs — a refused request must not cost a full-catalogue read. This is the switch
+  that matters: it is the only one a Flutter build or a `curl` cannot walk around.
+- **`DELETE_ENABLED`** in
+  `packages/web-ui/src/components/authoring/media-library.tsx` (default `false`)
+  decides only whether the button is offered. Turning it on while the API switch
+  is off shows a button whose press is refused.
+
+Why the API refuses by default: the guard above is correct within one transaction,
+but on PostgreSQL that transaction runs at READ COMMITTED and takes no lock on the
+`media_assets` row. A concurrent `createArticle` / `upsertAuthorProfile` that writes
+a reference to the same image can commit *between* the scan and the delete, and both
+transactions then succeed — leaving a work whose images are permanently gone (#156).
+The fix is the materialised reference table in #163, with `ON DELETE RESTRICT`
+enforced by the database rather than by a scan.
+
+**So turning this on re-enables a known data-loss race.** Set it only on an
+instance where you accept that risk — for example SQLite, where the delete is
+synchronous and serialised — and turn it back off when #163 lands and the guard no
+longer depends on a scan.
+
+The Web-side switch is documented here rather than in the Web app's own notes
+because the two have to be read together: one decides what is offered, the other
+decides what is allowed.
 
 **Nothing reclaims storage on a schedule, and nothing should.** The scan that
 decides "unused" is only as good as the body it reads: an image sitting in a
