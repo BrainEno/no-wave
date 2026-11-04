@@ -208,6 +208,16 @@ function isSavedArticle(value: unknown): value is AuthoringArticle {
     Array.isArray(item.contentBlocks);
 }
 
+/**
+ * The types a *new* work can be created as.
+ *
+ * `serial` is deliberately absent: ADR 0016 and `38d087b` settled that the
+ * platform is for short and medium-form work, but the type was still offered
+ * here, so a new work could be born in a shape the product does not support
+ * (#196). It stays in the type union and in the reader's filter tabs, because
+ * works created before that decision still have to be listed and read — this
+ * list is about what can be *chosen*, not about what can exist.
+ */
 const workTypes: { value: WorkType; label: string }[] = [
   { value: "novel", label: "小说" },
   { value: "short_story", label: "短篇小说" },
@@ -216,9 +226,27 @@ const workTypes: { value: WorkType; label: string }[] = [
   { value: "criticism", label: "评论" },
   { value: "literary_criticism", label: "文学批评" },
   { value: "nonfiction", label: "非虚构" },
-  { value: "serial", label: "连载" },
   { value: "other", label: "其他" },
 ];
+
+/** Types that can exist but can no longer be chosen, and how to name them. */
+const retiredWorkTypes: Partial<Record<WorkType, string>> = { serial: "连载" };
+
+/**
+ * The languages a work can be *written* in (#196).
+ *
+ * `zh-TW` is absent on purpose. It is a locale the platform can read and serve —
+ * it is still in the `Locale` union and still shown to readers — but it is not a
+ * choice for a new work: `zh-CN` and `en` are the authored editions. An existing
+ * `zh-TW` work keeps its locale through `retiredLocales` below, so opening one
+ * does not silently migrate it.
+ */
+const authoringLocales: { value: string; label: string }[] = [
+  { value: "zh-CN", label: "简体中文（zh-CN）" },
+  { value: "en", label: "English (en)" },
+];
+
+const retiredLocales: Record<string, string> = { "zh-TW": "繁體中文（zh-TW，已停用创作）" };
 
 /**
  * The two things the editor used to ask for with `window.prompt` (#195). The
@@ -274,6 +302,9 @@ export function ArticleEditor({ article, onSaved, onDeleted }: ArticleEditorProp
   const [title, setTitle] = useState(article?.title ?? "");
   const [summary, setSummary] = useState(article?.summary ?? "");
   const [workType, setWorkType] = useState<WorkType>(article?.workType ?? "other");
+  // An existing work keeps whatever locale it already has; a new one starts in
+  // the interface's language rather than in a constant (#196).
+  const [locale, setLocale] = useState<string>(article?.locale ?? "zh-CN");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
@@ -333,7 +364,7 @@ export function ArticleEditor({ article, onSaved, onDeleted }: ArticleEditorProp
           ...(article ? { slug: article.slug } : {}),
           title: title.trim(),
           summary: summary.trim(),
-          locale: "zh-CN",
+          locale,
           workType,
           editorState,
           contentBlocksVersion: 1,
@@ -408,8 +439,23 @@ export function ArticleEditor({ article, onSaved, onDeleted }: ArticleEditorProp
           <input value={title} onChange={(event) => setTitle(event.target.value)} required maxLength={200} />
         </label>
         <p className="nw-field-note">作品地址（slug）由系统根据标题自动生成，无需填写。</p>
+        <label>作品语言
+          <select value={locale} onChange={(event) => setLocale(event.target.value)}>
+            {/* A stored locale that is no longer authorable stays selectable for
+                this work only, so editing cannot silently change it. */}
+            {retiredLocales[locale] ? <option value={locale}>{retiredLocales[locale]}</option> : null}
+            {authoringLocales.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+          </select>
+        </label>
         <label>作品类型
           <select value={workType} onChange={(event) => setWorkType(event.target.value as WorkType)}>
+            {/* An existing `serial` work keeps its type in the list, or opening
+                it would silently retype it on the next save — the compatibility
+                half of #196. The option is present only because the work already
+                is. */}
+            {retiredWorkTypes[workType] ? (
+              <option value={workType}>{retiredWorkTypes[workType]}（已停用类型，保留原样）</option>
+            ) : null}
             {workTypes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
           </select>
         </label>
