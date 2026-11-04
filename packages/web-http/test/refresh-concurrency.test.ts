@@ -168,3 +168,20 @@ test("the reuse window is bounded: a later stale request performs a new rotation
   assert.equal((await dispatch(stub, sessionCookie, coordinator)).status, 200);
   assert.equal(refreshCalls, 2, "the ledger must not turn a replay into an endless grace window");
 });
+
+test("two isolated Web processes each rotate without a shared coordinator", async () => {
+  // ADR 0025 §3 is a deployment contract, not a best-effort guess. This pins
+  // the boundary a shared coordinator has to replace: two in-memory ledgers are
+  // two processes, and neither can see the other's rotation. A multi-instance
+  // deployment must use sticky routing or inject a shared implementation.
+  const r = race(2, tokenEnvelope(ROTATED));
+  const pending = [
+    dispatch(r.stub, sessionCookie, new InMemoryRefreshCoordinator()),
+    dispatch(r.stub, sessionCookie, new InMemoryRefreshCoordinator()),
+  ];
+  await r.started;
+  r.finishRefresh();
+  const responses = await Promise.all(pending);
+  assert.ok(responses.every((response) => response.status === 200));
+  assert.equal(r.refreshCalls(), 2, "the shipped coordinator is process-scoped by design");
+});

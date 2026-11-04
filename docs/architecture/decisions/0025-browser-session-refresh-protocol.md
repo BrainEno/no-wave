@@ -111,9 +111,13 @@ forwarded; no new retry loop is introduced.
 ### 3. Cross-instance is a deployment contract, not a silent assumption
 
 The shipped coordinator is `InMemoryRefreshCoordinator`, scoped to one Web
-process. `ApiProxyConfig.refreshCoordinator` is an explicit port so a deployment
-can supply a shared implementation (a distributed lock plus a short-TTL result
-value) without touching the request path.
+process. Production requests share that one instance; a caller that injects its
+own `fetchImpl` gets a separate ledger, so rotation results never cross
+transports. `ApiProxyConfig.refreshCoordinator` is an explicit port so a
+deployment can supply a shared implementation (a distributed lock plus a
+short-TTL result value) without touching the request path. A test pins the
+boundary: two in-memory coordinators are two processes and do not share a
+rotation.
 
 **A deployment running more than one Web instance must do one of the following:**
 
