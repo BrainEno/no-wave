@@ -118,6 +118,17 @@ export {
   isFollowTargetId,
 } from "./follows.ts";
 export {
+  FEED_DEFAULT_LIMIT,
+  FEED_DEFAULT_LOCALE,
+  FEED_LOCALES,
+  FEED_MAX_LIMIT,
+  FEED_MAX_OFFSET,
+  feedRequestPath,
+  handleFeedRequest,
+  isFeedLocale,
+  parseFeedInteger,
+} from "./feed.ts";
+export {
   NOTIFICATION_ID_PATTERN,
   NOTIFICATIONS_LIMIT,
   handleNotificationReadRequest,

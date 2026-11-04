@@ -524,3 +524,19 @@ mark { background: var(--or); color: #0f0d0c; }
 .nw-follow-count { font-family: var(--nw-mono); font-size: 12px; letter-spacing: .04em; color: var(--nw-mute); }
 .nw-follow-note { flex-basis: 100%; font-size: 13px; color: var(--nw-mute); }
 .nw-follow-note a { text-decoration: underline; text-underline-offset: 3px; }
+
+/* 关注流（#198）：关注关系的读侧。三种状态（未登录 / 空 / 失败）
+   在视觉上必须彼此不同，否则「你还没关注任何人」和「登录后可见」
+   会长得一样。 */
+.nw-feed-intro { margin: 8px 0 24px; }
+.nw-feed-note { margin: 24px 0; }
+.nw-feed-author { text-decoration: underline; text-underline-offset: 3px; }
+.nw-feed-more { margin: 32px 0 0; }
+.nw-feed-retry {
+  display: inline-flex; align-items: center; gap: 8px; padding: 9px 18px;
+  border: 1px solid var(--nw-rule); border-radius: 999px; background: transparent;
+  color: var(--nw-ink); font: inherit; font-size: 14px; cursor: pointer;
+  transition: border-color .15s ease;
+}
+.nw-feed-retry:hover:not(:disabled) { border-color: var(--nw-ink); }
+.nw-feed-retry:disabled { cursor: default; opacity: .55; }
