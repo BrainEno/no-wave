@@ -177,6 +177,31 @@ export class MediaInputError extends Error {
   constructor(message: string) { super(message); this.name = "MediaInputError"; }
 }
 
+/**
+ * Is media deletion switched on for this deployment? (default: no)
+ *
+ * The delete route decides whether an image is still referenced by scanning
+ * every work's body, then deletes it. Those two steps are not serialised against
+ * a concurrent `createArticle` / `upsertAuthorProfile` on PostgreSQL, which runs
+ * at READ COMMITTED and takes no lock on the `media_assets` row: a work saved in
+ * the window between the scan and the delete loses its images permanently. That
+ * is a data-loss race, not a performance problem, and the fix (#163) is a
+ * materialised reference table with an `ON DELETE RESTRICT` foreign key.
+ *
+ * Until that lands the operation is off. This is the server-side answer, and it
+ * is deliberately at the route rather than in the Web app: hiding a button in
+ * one client leaves every other caller — including a Flutter build against the
+ * same API — able to delete.
+ *
+ * Read at request time, like `isMailEnabled`, so an operator can turn it on
+ * without a rebuild. Unset, empty and unrecognised values all mean "off": a
+ * typo must never be able to switch on the operation that can destroy data.
+ */
+export function isMediaDeleteEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const raw = typeof env.MEDIA_DELETE_ENABLED === "string" ? env.MEDIA_DELETE_ENABLED.trim().toLowerCase() : "";
+  return raw === "true" || raw === "1" || raw === "yes" || raw === "on";
+}
+
 export class MediaAssetNotFoundError extends Error {
   readonly statusCode = 404;
   readonly code = "NOT_FOUND";

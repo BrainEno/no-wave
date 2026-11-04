@@ -63,6 +63,13 @@ type MediaReference =
  * being verified the button is the part that stays off, because its mistakes are
  * the only ones on this page that cannot be undone. Flipping this to `true`
  * restores the button with no other change.
+ *
+ * This is only the page half. The API has its own switch
+ * (`MEDIA_DELETE_ENABLED`, default off since #156) and answers 409
+ * `MEDIA_DELETE_DISABLED` when it is off — hiding a button here does nothing for
+ * a Flutter build or a `curl`, so the server had to be able to refuse on its
+ * own. Turning this on before the deployment switch is on shows a button whose
+ * press is refused; the API decides, this only decides what is offered.
  */
 const DELETE_ENABLED = false;
 

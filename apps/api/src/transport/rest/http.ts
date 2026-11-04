@@ -162,6 +162,7 @@ export const DOMAIN_ERROR_RESPONSES: Record<string, RestErrorResponse> = {
   // operator flips a switch. Being a 4xx also means the Web proxy passes the
   // code and message through instead of replacing a 5xx body wholesale.
   MAIL_DISABLED: { status: 409, code: "MAIL_DISABLED", message: "Account mail is not enabled on this instance." },
+  MEDIA_DELETE_DISABLED: { status: 409, code: "MEDIA_DELETE_DISABLED", message: "Deleting images is not enabled on this instance." },
   NOT_FOUND: { status: 404, code: "NOT_FOUND", message: "The requested resource was not found." },
   CONFLICT: { status: 409, code: "CONFLICT", message: "The request conflicts with the current resource state." },
   // Same status as `CONFLICT`, different answer to "what do I do next": the

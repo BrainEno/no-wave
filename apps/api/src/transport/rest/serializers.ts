@@ -13,32 +13,29 @@ export function serializeRestNotification(notification: any): any {
   };
 }
 
+/**
+ * One article's projection — a detail route: create, update, publish, or a
+ * single work's page.
+ *
+ * Deliberately a one-item call to {@link serializeRestArticles} rather than its
+ * own query path. There used to be two implementations, and the list one was
+ * quietly the slow one: three queries per article, 301 statements for a page of
+ * 100 (#162). Keeping a second, hand-written single path would leave the same
+ * trap for the next person who loops over it in a list route — and nothing in the
+ * type system would object.
+ *
+ * With one code path, a future list route that calls this per item costs the
+ * batch path's three statements *per call*, which the statement-count test sees
+ * immediately instead of a year later.
+ */
 export async function serializeRestArticle(
   services: RestServices,
   article: any,
   viewerId: string | null,
 ): Promise<any> {
   if (!article || typeof article !== "object") return article;
-  const locale = typeof article.locale === "string" ? article.locale : "zh-CN";
-  const [author, categoriesResult, tagsResult] = await Promise.all([
-    article.authorId
-      ? services.getAuthorProfile({ userId: article.authorId, locale, viewerId })
-      : Promise.resolve(null),
-    article.id
-      ? services.listArticleTaxonomies({ articleId: article.id, kind: "category", locale })
-      : Promise.resolve([]),
-    article.id
-      ? services.listArticleTaxonomies({ articleId: article.id, kind: "tag", locale })
-      : Promise.resolve([]),
-  ]);
-  // Match the GraphQL Article contract fields. REST intentionally represents
-  // contentBlocks as a JSON array rather than a JSON-encoded GraphQL string.
-  return {
-    ...article,
-    author: author ?? null,
-    categories: Array.isArray(categoriesResult) ? categoriesResult : [],
-    tags: Array.isArray(tagsResult) ? tagsResult : [],
-  };
+  const [serialized] = await serializeRestArticles(services, [article], viewerId);
+  return serialized;
 }
 
 /**
