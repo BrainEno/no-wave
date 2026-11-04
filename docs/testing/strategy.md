@@ -82,6 +82,75 @@ Do not repeat the same assertion at every layer. Each layer should catch a diffe
 - Do not set a blanket 100% coverage requirement. Establish a baseline after the initial test suite exists and use coverage as a diagnostic, not the goal.
 - CI should run formatting/lint, typecheck, relevant tests, contract generation/checks and production builds. Security/dependency checks should be added with actionable failure policies.
 
+## Performance baseline
+
+A behavior test says "this endpoint returns the right page". It does not say whether
+that page still costs two queries or has quietly grown into one per article. The
+baseline in `scripts/perf-baseline.ts` closes that gap:
+
+```bash
+pnpm perf:baseline          # full run; exits non-zero when a threshold fails
+pnpm perf:baseline:quick    # quarter-size sample, for a local look
+pnpm perf:baseline --json   # also prints machine-readable results
+```
+
+It starts the portable stack (the same launcher `pnpm stack:check` uses), seeds 200
+published works, and measures three paths:
+
+| Path | How it is driven | Why |
+| --- | --- | --- |
+| Public page read | `GET /api/v1/articles?locale=zh-CN&limit=20` over real HTTP | The dominant traffic shape: full HTTP stack, serializer, SQLite reads |
+| Authenticated write | Adapter `createArticle` in-process | One SQLite writer; every write blocks the event loop |
+| Message send | Adapter `persistMessage` with an outbox worker draining in parallel | Heaviest single write: message, conversation and outbox in one transaction |
+
+**Writes are measured in-process, not over HTTP, on purpose.** The write routes are
+rate limited by product policy (`article.create` is 10/hour/user; registration is
+20/hour/IP). Driving those over HTTP measures how fast the limiter refuses, not how
+fast the database writes. The read path goes over real HTTP because that is where
+HTTP-level costs live.
+
+Three properties of the harness matter, and each exists because its absence would
+produce a flattering but wrong number:
+
+- **Connections are reused.** A fresh TCP connection per request measured ~48ms per
+  read on this repository versus ~0.7ms over keep-alive; the 48ms is client-side
+  connect cost, not server latency.
+- **The report is checked for persist, not just for speed.** After each write
+  scenario an independent read-only connection counts the rows. A write path that
+  silently no-ops would otherwise look extremely fast.
+- **The outbox worker must drain.** The worker runs as a real child process for the
+  whole session; if events remain undelivered after a 2s drain window, the run fails.
+  A writer outpacing its worker is the capacity ceiling, not a passing baseline.
+
+### What a run reports
+
+Latency (p50/p95/p99, max) and throughput per path; a concurrency ladder
+(c = 1, 2, 4, 8) for the read path plus the saturation point; and the outbox drain
+result. Thresholds live in `scripts/lib/perf-scenarios.ts` and each carries a
+written rationale — a limit without a reason gets widened the first time it fails.
+
+### Reading the numbers honestly
+
+The measured shape on a single machine is that **read throughput does not scale with
+concurrency**. Adding in-flight requests raises p50 roughly proportionally while
+throughput stays flat: one synchronous SQLite call at a time occupies the process.
+That is a property of the single-process, single-file deployment, not a bug, and it
+is why the deployment guide states a per-instance capacity ceiling instead of
+implying horizontal scaling within a process.
+
+Absolute numbers from a shared CI runner are not production capacity. They are useful
+for two things only: catching regressions, and establishing order of magnitude. See
+`docs/deployment/capacity.md` for the published ceiling and its derivation.
+
+### CI
+
+`performance-baseline` in `.github/workflows/ci.yml` runs `pnpm perf:baseline`. It is
+deliberately **not** in `required-checks`: a shared runner is noisy enough that a
+hard gate would fail for reasons unrelated to the change. It runs where policy
+allows and its output is read; the thresholds are wide enough that only an
+order-of-magnitude regression (an N+1 returning, a scan inside a transaction) trips
+them.
+
 ## Completion report
 
 List each check actually run, result, and relevant command. State which checks were not run and why.
