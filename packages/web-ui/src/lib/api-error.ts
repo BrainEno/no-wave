@@ -24,6 +24,10 @@ const CODE_MESSAGES: Readonly<Record<string, (ui: UiCopy) => string>> = Object.f
   // onto an address somebody else holds. Both are 409; the difference from a
   // generic conflict is that the reader has a next step.
   EMAIL_TAKEN: (ui) => ui.auth.emailTaken,
+  // A 429 must never echo the API's generic English sentence. The form adds a
+  // wait time when the proxy relays a valid Retry-After; every other surface
+  // gets this language-appropriate answer.
+  RATE_LIMITED: (ui) => ui.auth.rateLimited,
 });
 
 /** The code the API answered with, or `""` when the body has none. */

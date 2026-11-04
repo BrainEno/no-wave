@@ -80,6 +80,10 @@ function zh() {
        */
       emailTaken: "这个邮箱已经注册过了，直接登录即可。",
       failed: "请求失败，请稍后重试。",
+      rateLimited: "尝试次数过多，请稍后再试。",
+      rateLimitedWait: (label: string) => `尝试次数过多，请等待 ${label}后重试。`,
+      retrySeconds: (seconds: number) => `${seconds} 秒`,
+      retryMinutes: (minutes: number) => `${minutes} 分钟`,
     },
   };
 }
@@ -148,6 +152,10 @@ function en(): UiCopy {
     auth: {
       emailTaken: "That address already has an account. Sign in instead.",
       failed: "The request failed. Try again in a moment.",
+      rateLimited: "Too many attempts. Please try again later.",
+      rateLimitedWait: (label: string) => `Too many attempts. Try again in ${label}.`,
+      retrySeconds: (seconds: number) => `${seconds} seconds`,
+      retryMinutes: (minutes: number) => `about ${minutes} minutes`,
     },
   };
 }

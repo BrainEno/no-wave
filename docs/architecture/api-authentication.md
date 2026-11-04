@@ -20,7 +20,10 @@ All routes require `Content-Type: application/json`, accept only the named field
 
 A token set is `{ "data": { "accessToken", "tokenType": "Bearer", "accessExpiresAt", "refreshToken", "refreshExpiresAt" } }`; times are UTC ISO 8601 strings. Use `Authorization: Bearer …` for protected REST/GraphQL requests. Registration creates a stable random user ID; a public profile is configured separately. Email is trimmed and lowercased; currently only the documented practical ASCII email subset is accepted (one `@`, no whitespace, conventional local characters and DNS labels). A new password must contain 12–128 Unicode characters and at most 512 UTF-8 bytes; passwords are not trimmed or normalized.
 
-Malformed input returns `400`, incorrect login credentials and invalid/expired/reused refresh credentials return generic `401`, duplicate normalized registration returns `409`, and throttling returns `429` with `Retry-After` seconds. Unsupported media, oversized bodies and methods return `415`, `413` and `405`. Misconfigured issuer or missing persistence returns `503`; unexpected persistence failures are sanitized `500` responses. Login does not distinguish an unknown account from a wrong password and performs a dummy password derivation for unknown accounts. **Registration's `409` does reveal that an identifier is unavailable**; do not claim account-enumeration resistance.
+Malformed input returns `400`, incorrect login credentials and invalid/expired/reused refresh credentials return generic `401`, duplicate normalized registration returns `409`, and throttling returns `429` with `Retry-After` seconds. The
+browser-facing Web proxy relays **only** that header, normalized to bounded
+integer seconds, so a sign-in form can show a localized wait without the API's
+English sentence or any other upstream header reaching the browser (#184). Unsupported media, oversized bodies and methods return `415`, `413` and `405`. Misconfigured issuer or missing persistence returns `503`; unexpected persistence failures are sanitized `500` responses. Login does not distinguish an unknown account from a wrong password and performs a dummy password derivation for unknown accounts. **Registration's `409` does reveal that an identifier is unavailable**; do not claim account-enumeration resistance.
 
 ## Credentials and session lifecycle
 

@@ -47,6 +47,7 @@ export {
   tokenCookieHeaders,
 } from "./cookies.ts";
 export { forwardAuthoringRequest, type ForwardMethod } from "./forward.ts";
+export { parseRetryAfterSeconds } from "./retry-after.ts";
 export {
   InMemoryRefreshCoordinator,
   refreshCoordinatorKey,
