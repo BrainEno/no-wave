@@ -60,31 +60,7 @@ jobs:
           node-version: "24"
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: DEBUG apply migrations one by one
-        run: |
-          set -x
-          for f in apps/api/src/persistence/migrations/*.sql; do
-            echo "### $f"
-            PGPASSWORD=postgres psql -h localhost -U postgres -d bot_thk_test -v ON_ERROR_STOP=1 -f "$f" || { echo "FAILED AT $f"; exit 1; }
-          done
-      - name: DEBUG integration with full failure output
-        run: |
-          set +e
-          PGPASSWORD=postgres psql -h localhost -U postgres -d bot_thk_test -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;' >/dev/null
-          cd apps/api
-          node --env-file-if-exists=../../.env.local --env-file-if-exists=../../.env \
-            --test --test-concurrency=1 --test-reporter=tap --test-reporter-destination=/tmp/integration.tap \
-            src/persistence/postgres.integration.test.ts src/persistence/postgres-cursor-pagination.integration.test.ts \
-            src/persistence/provider-migration-journal.integration.test.ts src/persistence/persistence-adapter-contract.test.ts \
-            src/persistence/identity.integration.test.ts > /tmp/integration.tap 2>&1
-          status=$?
-          echo "exit=$status"
-          grep -A 40 '^not ok' /tmp/integration.tap | head -120 | while IFS= read -r line; do
-            line=$(printf '%s' "$line" | tr -d '\r')
-            [ -z "$line" ] && continue
-            printf '::error::%s\n' "$(printf '%s' "$line" | sed 's/%/%25/g')"
-          done
-          exit $status
+      - run: pnpm --filter @bot-thk/api test:integration
 
   # Proves the documented local chain on both persistence providers:
   # migrate -> start the API -> probe it, then build the Web app and probe the
