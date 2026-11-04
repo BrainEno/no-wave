@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { randomUUID } from "node:crypto";
-import { copyFile, mkdtemp, rm } from "node:fs/promises";
+import { copyFile, mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createSqliteClient, getSqliteMigrationStatus, runSqliteMigrations } from "./sqlite.ts";
@@ -11,7 +11,13 @@ test("SQLite domain migration creates the complete set of domain tables", async 
   const db = createSqliteClient({ filename: ":memory:", enableWal: false });
   try {
     const applied = await runSqliteMigrations(db);
-    assert.deepEqual(applied, ["0001_domain_schema", "0002_outbox_lease_tokens", "0003_self_hosted_identity", "0004_article_content_versions", "0005_comment_content_versions", "0006_provider_migration_journal", "0007_media_assets", "0008_article_comment_idempotency", "0009_article_soft_delete", "0010_conversation_idempotency", "0011_article_idempotency", "0012_identity_verification", "0013_user_roles", "0014_featured_articles", "0015_article_media_refs", "0016_media_refs_restrict"]);
+    // Every migration on disk, in order — discovered rather than transcribed.
+    // The transcription was hand-maintained and twice went stale by one entry;
+    // what this test is about is the table set below, not the numbering.
+    const onDisk = (await readdir(new URL("./migrations/sqlite/", import.meta.url)))
+      .filter((name) => /^\d{4}_.*\.sql$/.test(name))
+      .map((name) => name.slice(0, -".sql".length));
+    assert.deepEqual(applied, onDisk);
     const tables = db.prepare(
       "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
     ).all().map((row) => row.name);
@@ -102,7 +108,14 @@ test("SQLite lease migration preserves pending, leased, and delivered legacy eve
     insert.run(deliveredId, "delivered", "message.created", "c", "{}", 1, "2000-01-01T00:00:00.000Z", "2020-01-01T00:00:00.000Z");
     db.prepare("INSERT INTO revoked_sessions (session_id, expires_at) VALUES (?, ?)").run("legacy-token", "2099-01-01T00:00:00.000Z");
 
-    assert.deepEqual(await runSqliteMigrations(db), ["0002_outbox_lease_tokens", "0003_self_hosted_identity", "0004_article_content_versions", "0005_comment_content_versions", "0006_provider_migration_journal", "0007_media_assets", "0008_article_comment_idempotency", "0009_article_soft_delete", "0010_conversation_idempotency", "0011_article_idempotency", "0012_identity_verification", "0013_user_roles", "0014_featured_articles", "0015_article_media_refs", "0016_media_refs_restrict"]);
+    // Everything after the one already applied, discovered from disk: the point
+    // is that an upgrade fills in the whole remainder, not a fixed count.
+    const remaining = (await readdir(new URL("./migrations/sqlite/", import.meta.url)))
+      .filter((name) => /^\d{4}_.*\.sql$/.test(name))
+      .map((name) => name.slice(0, -".sql".length))
+      .filter((version) => version !== "0001_domain_schema")
+      .sort();
+    assert.deepEqual(await runSqliteMigrations(db), remaining);
     assert.equal(db.prepare("SELECT expires_at FROM revoked_sessions WHERE session_id = ?").get("legacy-token").expires_at, "2099-01-01T00:00:00.000Z");
     const legacyComment = db.prepare("SELECT content, idempotency_key_hash, request_hash FROM article_comments WHERE id = ?").get("legacy-idempotency-comment");
     assert.equal(legacyComment.content, "Legacy comment before migration");

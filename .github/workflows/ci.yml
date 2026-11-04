@@ -60,23 +60,7 @@ jobs:
           node-version: "24"
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: DEBUG integration with full failure output
-        run: |
-          set +e
-          cd apps/api
-          node --env-file-if-exists=../../.env.local --env-file-if-exists=../../.env \
-            --test --test-concurrency=1 --test-reporter=tap > /tmp/integration.tap 2>&1 \
-            src/persistence/postgres.integration.test.ts src/persistence/postgres-cursor-pagination.integration.test.ts \
-            src/persistence/provider-migration-journal.integration.test.ts src/persistence/persistence-adapter-contract.test.ts \
-            src/persistence/identity.integration.test.ts
-          status=$?
-          echo "exit=$status"
-          grep -A 30 '^not ok' /tmp/integration.tap | head -150 | while IFS= read -r line; do
-            line=$(printf '%s' "$line" | tr -d '\r')
-            [ -z "$line" ] && continue
-            printf '::error::%s\n' "$(printf '%s' "$line" | sed 's/%/%25/g')"
-          done
-          exit $status
+      - run: pnpm --filter @bot-thk/api test:integration
 
   # Proves the documented local chain on both persistence providers:
   # migrate -> start the API -> probe it, then build the Web app and probe the
