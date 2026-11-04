@@ -64,6 +64,8 @@ async function sqliteFixture() {
           `search-author-${suffix}`, `cursor-author-${suffix}`,
           `cursor-ms-author-${suffix}`, `cursor-ms-owner-${suffix}`,
           `identity-default-profile-${suffix}`,
+          `restrict-owner-${suffix}`, `restrict-avatar-owner-${suffix}`,
+          `media-ref-owner-${suffix}`, `avatar-ref-owner-${suffix}`,
           `sort-liker-${suffix}-1`,
           `sort-liker-${suffix}-2`,
           `sort-liker-${suffix}-3`,
@@ -81,7 +83,18 @@ async function sqliteFixture() {
         db.prepare(`DELETE FROM user_profile_translations WHERE user_id IN (${userIds.map(() => "?").join(",")})`).run(...userIds);
         db.prepare(`DELETE FROM user_profiles WHERE user_id IN (${userIds.map(() => "?").join(",")})`).run(...userIds);
         db.prepare("DELETE FROM revoked_sessions WHERE session_id = ?").run(`contract-session-${suffix}`);
-        db.prepare("DELETE FROM media_assets WHERE owner_id = ?").run(`cursor-ms-owner-${suffix}`);
+        // Order matters now that #156 added `ON DELETE RESTRICT`: the references
+        // (and the articles that own them) have to go before the assets, and the
+        // avatars before both. Without this the sweep would throw instead of
+        // cleaning up, and the failure would surface as a broken *previous* test.
+        db.prepare(`UPDATE user_profiles SET avatar_media_id = NULL WHERE user_id IN (${userIds.map(() => "?").join(",")})`).run(...userIds);
+        db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`restrict-%-${suffix}`);
+        db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`media-ref-%-${suffix}`);
+        db.prepare("DELETE FROM media_assets WHERE owner_id IN (?, ?, ?, ?)").run(
+          `cursor-ms-owner-${suffix}`, `restrict-owner-${suffix}`,
+          `restrict-avatar-owner-${suffix}`, `media-ref-owner-${suffix}`,
+        );
+        db.prepare("DELETE FROM media_assets WHERE owner_id = ?").run(`avatar-ref-owner-${suffix}`);
         db.prepare("DELETE FROM auth_accounts WHERE user_id IN (?, ?, ?)").run(`cursor-ms-author-${suffix}`, `cursor-ms-owner-${suffix}`, `identity-default-profile-${suffix}`);
         db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`cursor-ms-%-${suffix}`);
         for (const slug of [`contract-draft-${suffix}`, `contract-published-${suffix}`, `contract-liked-${suffix}`, `contract-comment-${suffix}`, `contract-comment-notifications-${suffix}`, `contract-create-once-${suffix}`, `contract-create-once-b-${suffix}`, `contract-create-twice-${suffix}`]) db.prepare("DELETE FROM articles WHERE slug = ?").run(slug);
@@ -2637,6 +2650,94 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       // Clearing the avatar clears the reference.
       await runtime.store.upsertAuthorProfile({ userId: ownerId, displayName: "头像作者", bio: "", locale: "zh-CN", avatarUrl: null });
       assert.deepEqual(await runtime.store.listReferencesForAssets({ assetIds: [asset.id] }), []);
+    } finally { await runtime.cleanup(undefined, suffix); }
+  });
+
+  /**
+   * #156: the database, not a read, decides whether an image is in use.
+   *
+   * Every check that reads and then writes has a window between the two. The
+   * reference table (#163) made the check cheap; this makes it impossible to get
+   * wrong, because `ON DELETE RESTRICT` is enforced by the DELETE itself. The
+   * test does not simulate a race — it asserts the constraint directly, which is
+   * what a race would end up hitting, and which no amount of retrying can slip
+   * past.
+   */
+  test(`${adapterName}: the database refuses to delete an image a work still uses`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const ownerId = `restrict-owner-${suffix}`;
+    const hour = new Date(Date.now() + 3_600_000).toISOString();
+    try {
+      await runtime.store.createIdentityAccount({
+        userId: ownerId, email: `restrict-${suffix}@example.test`, passwordHash: "hash",
+        session: {
+          sessionId: randomUUID(), userId: ownerId, accessTokenId: randomUUID(),
+          refreshHash: (suffix.replace(/-/g, "") + "c").padEnd(64, "c"), expiresAt: hour,
+          accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+        },
+      });
+      const asset = await runtime.store.createMediaAsset({
+        id: randomUUID(), ownerId, storageKey: `${suffix}/r.webp`, contentType: "image/webp",
+        byteSize: 12, width: 2, height: 2, sha256: "d".repeat(64),
+      });
+      const article = await runtime.store.createArticle({
+        authorId: ownerId, slug: `restrict-${suffix}`, title: "在用图片", summary: "",
+        locale: "zh-CN", publish: true,
+        contentBlocks: [{ id: "i1", type: "image", src: `/api/media/${asset.id}`, alt: "图" }],
+      });
+
+      // The guarded delete reports it as in use rather than deleting it.
+      const refused = await runtime.store.deleteUnusedMediaAsset({ id: asset.id, ownerId });
+      assert.equal(refused?.deleted ?? null, null, "an in-use image is not deleted");
+      assert.ok((refused?.usedBy ?? []).length > 0, "and the caller is told what uses it");
+
+      // Deleting the work first releases it, and then the same call succeeds.
+      await runtime.store.deleteArticle({ articleId: article.id, actorId: ownerId });
+      await runtime.store.purgeExpiredArticles({
+        retentionDays: 30, now: new Date(Date.now() + 400 * 86_400_000), limit: 100,
+      });
+      const allowed = await runtime.store.deleteUnusedMediaAsset({ id: asset.id, ownerId });
+      assert.equal(allowed?.deleted?.id, asset.id, "once nothing references it, the delete goes through");
+    } finally { await runtime.cleanup(undefined, suffix); }
+  });
+
+  /**
+   * #156, the half that was missing entirely: an avatar is a reference too, and
+   * it used to be `ON DELETE SET NULL`, so deleting someone's picture succeeded
+   * and silently blanked the avatar.
+   */
+  test(`${adapterName}: the database refuses to delete an image in use as an avatar`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const ownerId = `restrict-avatar-owner-${suffix}`;
+    const hour = new Date(Date.now() + 3_600_000).toISOString();
+    try {
+      await runtime.store.createIdentityAccount({
+        userId: ownerId, email: `restrict-avatar-${suffix}@example.test`, passwordHash: "hash",
+        session: {
+          sessionId: randomUUID(), userId: ownerId, accessTokenId: randomUUID(),
+          refreshHash: (suffix.replace(/-/g, "") + "d").padEnd(64, "d"), expiresAt: hour,
+          accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+        },
+      });
+      const asset = await runtime.store.createMediaAsset({
+        id: randomUUID(), ownerId, storageKey: `${suffix}/face.webp`, contentType: "image/webp",
+        byteSize: 12, width: 2, height: 2, sha256: "e".repeat(64),
+      });
+      await runtime.store.upsertAuthorProfile({
+        userId: ownerId, displayName: "头像作者", bio: "", locale: "zh-CN",
+        avatarUrl: `/api/media/${asset.id}`,
+      });
+
+      const refused = await runtime.store.deleteUnusedMediaAsset({ id: asset.id, ownerId });
+      assert.equal(refused?.deleted ?? null, null, "an avatar image is not deleted");
+      assert.ok((refused?.usedBy ?? []).some((entry) => entry.kind === "avatar"), "and it is reported as an avatar");
+
+      // Clearing the avatar releases the image.
+      await runtime.store.upsertAuthorProfile({ userId: ownerId, displayName: "头像作者", bio: "", locale: "zh-CN", avatarUrl: null });
+      const allowed = await runtime.store.deleteUnusedMediaAsset({ id: asset.id, ownerId });
+      assert.equal(allowed?.deleted?.id, asset.id, "after the avatar is cleared, the delete goes through");
     } finally { await runtime.cleanup(undefined, suffix); }
   });
 

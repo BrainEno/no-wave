@@ -46,18 +46,30 @@ export function createSqliteMediaStore(db) {
   });
   const mapAvatar = (row) => ({ kind: "avatar", content: row.avatar_url });
   /**
-   * The rows whose text holds `<id>` in a media path.
+   * The same two questions answered from the materialised references (#163)
+   * instead of by scanning every body on the site.
    *
-   * `lower(...) LIKE` rather than a JSON walk: the id is a UUID, and a UUID
-   * cannot be part of a media path by accident. It is also the safe direction to
-   * be imprecise in — an extra match refuses a delete, a missed one allows one.
+   * The definition of "in use" has not changed — an asset whose id appears in a
+   * body counts — but the place it is *answered* has: `article_media_refs` holds
+   * that relationship materialised, and #156 made the database enforce it with
+   * `ON DELETE RESTRICT`. That constraint is what makes trusting this query
+   * safe. If it ever misses a reference the raw scan would have found, the
+   * delete it allows is refused by the foreign key instead of committing and
+   * leaving a broken image behind.
    */
-  const scanRowsUsing = (id) => {
-    const needle = `%/media/${String(id).toLowerCase()}%`;
-    return [
-      ...db.prepare(`${BODY_SQL} WHERE lower(t.content_blocks) LIKE ?`).all(needle).map(mapBody),
-      ...db.prepare(`${AVATAR_SQL} AND lower(avatar_url) LIKE ?`).all(needle).map(mapAvatar),
-    ];
+  const referenceRowsUsing = (id) => {
+    const assetId = String(id).toLowerCase();
+    const bodyRows = db.prepare(
+      `SELECT a.id AS article_id, a.slug, a.status, a.deleted_at, a.author_id, t.locale, t.title, t.content_blocks
+       FROM article_media_refs r
+       JOIN article_translations t ON t.article_id = r.article_id AND t.locale = r.locale
+       JOIN articles a ON a.id = r.article_id
+       WHERE r.asset_id = ?`,
+    ).all(assetId);
+    const avatarRows = db.prepare(
+      "SELECT avatar_url FROM user_profiles WHERE avatar_media_id = ? AND avatar_url IS NOT NULL AND avatar_url <> ''",
+    ).all(assetId);
+    return [...bodyRows.map(mapBody), ...avatarRows.map(mapAvatar)];
   };
 
   return Object.freeze({
@@ -190,7 +202,13 @@ export function createSqliteMediaStore(db) {
           db.exec("COMMIT");
           return null;
         }
-        const usedBy = scanRowsUsing(id);
+        // The reference table answers this in O(references), not O(site text).
+        // Because #156 added `ON DELETE RESTRICT`, the delete below cannot
+        // actually lose a reference this check missed — the database refuses it
+        // — so the table can be trusted as the fast path rather than as the
+        // authority. If it ever misses, the constraint turns the miss into a
+        // thrown error instead of a broken image.
+        const usedBy = referenceRowsUsing(id);
         if (usedBy.length > 0) {
           db.exec("COMMIT");
           return { deleted: null, usedBy };
