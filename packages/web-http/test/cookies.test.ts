@@ -25,13 +25,18 @@ test("the session marker is the only cookie a page route can see", async () => {
   const marker = findCookie(response, SESSION_MARKER_COOKIE);
   assert.ok(marker, "the marker must be set alongside the tokens");
   assert.match(marker, /Path=\//, "a page render can only read a cookie scoped to /");
-  assert.match(marker, /HttpOnly/);
+  assert.doesNotMatch(marker, /HttpOnly/, "SiteChrome reads the marker from document.cookie after hydration");
   assert.match(marker, /SameSite=Lax/);
 
   // The tokens stay where they were: widening either of them to `/` would put a
-  // credential on every page request and every static asset fetch.
-  assert.match(findCookie(response, ACCESS_TOKEN_COOKIE) ?? "", /Path=\/api\/authoring/);
-  assert.match(findCookie(response, REFRESH_TOKEN_COOKIE) ?? "", /Path=\/api(;|$)/);
+  // credential on every page request and every static asset fetch, and removing
+  // HttpOnly would hand a bearer token to every script on the page.
+  const access = findCookie(response, ACCESS_TOKEN_COOKIE) ?? "";
+  const refresh = findCookie(response, REFRESH_TOKEN_COOKIE) ?? "";
+  assert.match(access, /Path=\/api\/authoring/);
+  assert.match(refresh, /Path=\/api(;|$)/);
+  assert.match(access, /HttpOnly/);
+  assert.match(refresh, /HttpOnly/);
 });
 
 test("the marker carries an expiry, not a credential", async () => {

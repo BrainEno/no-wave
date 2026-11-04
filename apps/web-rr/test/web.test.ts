@@ -364,8 +364,10 @@ test("sign-in sets the session marker the account page reads", async () => {
   const marker = result.headers.getSetCookie().find((cookie) => cookie.startsWith("nw_session="));
   assert.ok(marker, "the marker must be set with the tokens");
   assert.match(marker, /Path=\//, "a page render can only read a cookie scoped to /");
-  assert.match(marker, /HttpOnly/);
+  assert.doesNotMatch(marker, /HttpOnly/, "SiteChrome reads the marker from document.cookie after hydration");
   assert.match(marker, /SameSite=Lax/);
+  assert.match(result.headers.getSetCookie().find((cookie) => cookie.startsWith("nw_access=")) ?? "", /HttpOnly/);
+  assert.match(result.headers.getSetCookie().find((cookie) => cookie.startsWith("nw_refresh=")) ?? "", /HttpOnly/);
   const value = marker.slice("nw_session=".length, marker.indexOf(";"));
   assert.match(value, /^\d+$/, "the marker carries an expiry, never a credential");
 });
