@@ -53,7 +53,13 @@ function zh() {
         sharedGone: "这一段的文字已经不在作品里了，页面上没有画出来。",
       },
     },
-    author: { profile: "作者", works: "作品目录", worksEn: "Catalogue", recent: "近期作品", none: "这位作者还没有公开发表的作品。", count: (n: number) => `${n} 篇作品`, limitNote: "目录取自最新的 100 篇作品。" },
+    author: {
+      profile: "作者", works: "作品目录", worksEn: "Catalogue", recent: "近期作品", none: "这位作者还没有公开发表的作品。", count: (n: number) => `${n} 篇作品`, limitNote: "目录取自最新的 100 篇作品。",
+      // 关注（follow）：动词、状态与失败文案放在一起，免得按钮和它的提示说法不一致。
+      follow: "关注", following: "已关注", unfollow: "取消关注",
+      followerCount: (n: number) => `${n} 人关注`, followerNone: "还没有人关注",
+      followSignIn: "登录后可以关注作者。", followFailed: "关注状态没能保存，请稍后重试。", followLoading: "正在读取关注状态…",
+    },
     authors: {
       eyebrow: "阅读索引 / 作者", title: "按作者发现作品", intro: "这里是在本站发表过作品的作者。搜一个名字，就能走到他写的东西。", search: "搜索作者", placeholder: "输入作者名", button: "搜索", clear: "清除",
       works: (n: number) => `${n} 篇作品`, followers: (n: number) => `${n} 人关注`, none: "还没有作者在本站发表作品。", noMatch: "没有符合搜索条件的作者。", noMore: "此页没有更多作者。", all: "全部作者",
@@ -140,7 +146,12 @@ function en(): UiCopy {
         sharedGone: "Those words are no longer in the work, so nothing has been marked.",
       },
     },
-    author: { profile: "Author", works: "Catalogue", worksEn: "Catalogue", recent: "Recent work", none: "This author has no published work yet.", count: (n: number) => `${n} ${n === 1 ? "work" : "works"}`, limitNote: "Catalogue drawn from the latest 100 works." },
+    author: {
+      profile: "Author", works: "Catalogue", worksEn: "Catalogue", recent: "Recent work", none: "This author has no published work yet.", count: (n: number) => `${n} ${n === 1 ? "work" : "works"}`, limitNote: "Catalogue drawn from the latest 100 works.",
+      follow: "Follow", following: "Following", unfollow: "Unfollow",
+      followerCount: (n: number) => `${n} ${n === 1 ? "follower" : "followers"}`, followerNone: "No followers yet",
+      followSignIn: "Sign in to follow this author.", followFailed: "That follow did not save. Please try again.", followLoading: "Reading follow state…",
+    },
     authors: {
       eyebrow: "THE READING INDEX / AUTHORS", title: "Explore by author", intro: "Every writer who has published here. Search a name and go straight to what they wrote.", search: "Search authors", placeholder: "Enter an author name", button: "Search", clear: "Clear",
       works: (n: number) => `${n} ${n === 1 ? "work" : "works"}`, followers: (n: number) => `${n} ${n === 1 ? "follower" : "followers"}`, none: "No author has published here yet.", noMatch: "No authors match your search.", noMore: "No more authors on this page.", all: "All authors",

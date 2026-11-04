@@ -66,6 +66,12 @@ route("api/authoring/notifications/:id/read", "routes/api.authoring.notification
   route("api/authoring/articles/:id/restore", "routes/api.authoring.articles.$id.restore.ts"),
   route("api/authoring/deleted-articles", "routes/api.authoring.deleted-articles.ts"),
   route("api/articles/:slug/comments", "routes/api.articles.comments.ts"),
+  // 收藏与关注（#198）。两条都必须在这里登记：路由表是显式的，模块文件放
+  // 在 routes/ 下而没有登记就只是一个不会被调用的普通文件——收藏在 #201 里
+  // 正是这样漏掉的。
+  route("api/articles/:slug/like", "routes/api.articles.$slug.like.ts"),
+  route("api/authors/:userId", "routes/api.authors.$userId.ts"),
+  route("api/users/:userId/follow", "routes/api.users.$userId.follow.ts"),
   route("api/media/:id", "routes/api.media.ts"),
   route("api/authoring/media", "routes/api.authoring.media.ts"),
   // One asset is deleted by id; the collection is both the upload target and the

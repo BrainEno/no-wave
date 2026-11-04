@@ -69,7 +69,13 @@
 
 ## 当前前端（apps/web-rr + packages/web-ui）的需求覆盖
 
-两个前端只通过 `packages/web-http` 访问 11 个接口族：`me`、`me/email-verification`、`me/media`、`me/notifications*`、`me/sessions*`、`articles*`、`articles/:slug/comments`、`articles/:slug/like`、`auth/*`。全部已实现，**没有缺口**。唯一的共同注意事项是 P3。
+两个前端只通过 `packages/web-http` 访问 13 个接口族：`me`、`me/email-verification`、`me/media`、`me/notifications*`、`me/sessions*`、`articles*`、`articles/:slug/comments`、`articles/:slug/like`、`users/:userId/follow`、`authors/:userId`、`auth/*`。全部已实现，**没有缺口**。唯一的共同注意事项是 P3。
+
+**`users/:userId/follow`（关注）已接入**（#198）：共享行为在 `packages/web-http/src/follows.ts`（`handleUserFollowRequest`：只收 POST/DELETE、写请求的 exact-Origin 检查、目标 id/locale 形状校验、无 body 转发；`handleAuthorProfileRequest`：`GET /api/authors/:userId` 的读代理）。`apps/web-rr` 侧是两个资源路由，都必须在 `app/routes.ts` 里登记才生效。界面是 `AuthorFollow`，用在作者页名字下方。
+
+关注与收藏有一处**接口形状不同**，值得记住原因：收藏在 API 里是一个 `PUT {liked}` 布尔状态，关注是一段**关系**（`POST` 建立、`DELETE` 解除）。代理照抄各自的形状，没有把关注改写成布尔接口——`docs/architecture/rest-idempotency.md` 已经记录两者都收敛，包装一层只会在 API 之外多出第二个定义。
+
+作者页有一个容易漏掉的事实：它是服务端渲染的，而 `loadAuthorPage` 调用内容 API 时**不带 cookie**，所以 HTML 里的 `isFollowing` 对所有人都是 `false`——包括正在关注该作者的读者。计数是公开的、两种情况下都正确；布尔值只能由浏览器带着自己的 cookie 去 `GET /api/authors/:userId` 才知道。`AuthorFollow` 因此在拿到答案之前一直禁用按钮。
 
 **`articles/:slug/like`（收藏）已接入**（#198）：共享行为在 `packages/web-http/src/likes.ts`（`handleArticleLikeRequest`：GET/PUT 方法限制、写请求的 exact-Origin 检查、slug/locale 形状校验、1 KiB 有界 body、`liked` 必须是真正的布尔值），`apps/web-rr` 侧只有 `app/routes/api.articles.$slug.like.ts` 一个薄绑定。界面是共享的 `ArticleLike`（`packages/web-ui`），放在正文结束之后、评论之前：乐观更新、失败回滚、未登录时给登录链接而不是报错、同一时刻只允许一个写请求在飞。
 

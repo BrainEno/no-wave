@@ -6,6 +6,7 @@ import { lengthLabel, textLength } from "@/lib/reading.ts";
 import { paginate } from "@/lib/work-types.ts";
 import { getUi } from "@/lib/ui-copy.ts";
 import { EmptyState, hrefWith, Pager, SectionHeading, TypeChip, TypeTabs } from "@/components/ui/parts.tsx";
+import { AuthorFollow } from "@/components/public/author-follow.tsx";
 import type { AuthorPageData } from "@/lib/public-pages.ts";
 
 /**
@@ -31,6 +32,7 @@ export function AuthorPageView({ locale, author, type, page, works }: AuthorPage
           <img className="nw-pt" src={portrait.src} alt="" width={portrait.width} height={portrait.height} />
           <div className="nw-m">{ui.author.profile} · {ui.author.count(works.length)}</div>
           <h1 data-reveal>{author.displayName}</h1>
+          <AuthorFollow userId={author.username} locale={locale} />
           {author.bio ? <p className="nw-bio">{author.bio}</p> : null}
         </aside>
         <div>

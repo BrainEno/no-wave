@@ -108,6 +108,16 @@ export {
   parseLikeBody,
 } from "./likes.ts";
 export {
+  FOLLOW_DEFAULT_LOCALE,
+  FOLLOW_LOCALES,
+  FOLLOW_TARGET_MAX_LENGTH,
+  followRequestPath,
+  handleAuthorProfileRequest,
+  handleUserFollowRequest,
+  isFollowLocale,
+  isFollowTargetId,
+} from "./follows.ts";
+export {
   NOTIFICATION_ID_PATTERN,
   NOTIFICATIONS_LIMIT,
   handleNotificationReadRequest,
