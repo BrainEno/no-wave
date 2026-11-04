@@ -73,9 +73,12 @@ jobs:
           PGPASSWORD=postgres psql -h localhost -U postgres -d bot_thk_test -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;' >/dev/null
           pnpm --filter @bot-thk/api test:integration > /tmp/integration.log 2>&1
           status=$?
-          echo ":::group::integration output"
-          cat /tmp/integration.log
-          echo ":::endgroup::"
+          {
+            echo '## integration failures'
+            echo '```'
+            grep -nE 'not ok|Error|error:|expected|actual|does not exist|column|relation|at ' /tmp/integration.log | head -80
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
           exit $status
 
   # Proves the documented local chain on both persistence providers:
