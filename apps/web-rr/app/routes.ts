@@ -30,6 +30,9 @@ export default [
   route("en/categories/:slug", "routes/category.tsx", { id: "en-category" }),
   route("search", "routes/search.tsx"),
   route("en/search", "routes/search.tsx", { id: "en-search" }),
+  // 关注流（#198）：私有页，loader 只按 session marker 决定是否重定向到登录。
+  route("feed", "routes/feed.tsx"),
+  route("en/feed", "routes/feed.tsx", { id: "en-feed" }),
   route("articles/:slug", "routes/article.tsx"),
   route("en/articles/:slug", "routes/article.tsx", { id: "en-article" }),
   route("sign-in", "routes/sign-in.tsx"),
@@ -72,6 +75,8 @@ route("api/authoring/notifications/:id/read", "routes/api.authoring.notification
   route("api/articles/:slug/like", "routes/api.articles.$slug.like.ts"),
   route("api/authors/:userId", "routes/api.authors.$userId.ts"),
   route("api/users/:userId/follow", "routes/api.users.$userId.follow.ts"),
+  // 关注流：关注关系的读侧。没有它，关注只是走到别人主页看一眼（#198）。
+  route("api/feed", "routes/api.feed.ts"),
   route("api/media/:id", "routes/api.media.ts"),
   route("api/authoring/media", "routes/api.authoring.media.ts"),
   // One asset is deleted by id; the collection is both the upload target and the

@@ -69,7 +69,11 @@
 
 ## 当前前端（apps/web-rr + packages/web-ui）的需求覆盖
 
-两个前端只通过 `packages/web-http` 访问 13 个接口族：`me`、`me/email-verification`、`me/media`、`me/notifications*`、`me/sessions*`、`articles*`、`articles/:slug/comments`、`articles/:slug/like`、`users/:userId/follow`、`authors/:userId`、`auth/*`。全部已实现，**没有缺口**。唯一的共同注意事项是 P3。
+两个前端只通过 `packages/web-http` 访问 14 个接口族：`me`、`me/feed`、`me/email-verification`、`me/media`、`me/notifications*`、`me/sessions*`、`articles*`、`articles/:slug/comments`、`articles/:slug/like`、`users/:userId/follow`、`authors/:userId`、`auth/*`。全部已实现，**没有缺口**。唯一的共同注意事项是 P3。
+
+**`me/feed`（关注流）已接入**（#198）：共享行为在 `packages/web-http/src/feed.ts`（`handleFeedRequest`：只收 GET、locale/limit/offset 在边缘校验、cookie 转 Bearer 转发），`apps/web-rr` 侧是 `api.feed.ts`。页面是 `/feed` 与 `/en/feed`，走和 `/account` 相同的私有页模式——loader 只读 **session marker**（不带凭据、只回答「这个会话还能不能续」）来决定重定向到登录还是渲染外壳，列表本身由浏览器带 cookie 从 `/api/feed` 取。
+
+这里最要紧的一组区分是**三个看起来一样的状态**：`401`（未登录，显示登录链接）、**空数组**（已登录但没关注人、或关注的人没新作品）、**读取失败**（显示重试，绝不能显示成空列表）。空列表是对读者「关注图」的断言，把它当成「读坏了」或反过来，都会让读者据此做错事。契约测试与组件守卫都专门钉住了这条，且 401 分支的断言写在分支体内部——早先一版把 `setState` 的搜索放在了全文范围内，匹配到了注释，于是代码坏掉时测试仍然通过。
 
 **`users/:userId/follow`（关注）已接入**（#198）：共享行为在 `packages/web-http/src/follows.ts`（`handleUserFollowRequest`：只收 POST/DELETE、写请求的 exact-Origin 检查、目标 id/locale 形状校验、无 body 转发；`handleAuthorProfileRequest`：`GET /api/authors/:userId` 的读代理）。`apps/web-rr` 侧是两个资源路由，都必须在 `app/routes.ts` 里登记才生效。界面是 `AuthorFollow`，用在作者页名字下方。
 

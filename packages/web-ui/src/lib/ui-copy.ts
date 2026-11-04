@@ -60,6 +60,14 @@ function zh() {
       followerCount: (n: number) => `${n} 人关注`, followerNone: "还没有人关注",
       followSignIn: "登录后可以关注作者。", followFailed: "关注状态没能保存，请稍后重试。", followLoading: "正在读取关注状态…",
     },
+    feed: {
+      eyebrow: "关注流", title: "你关注的作者", intro: "这里按时间排列你关注的作者新发表的作品。",
+      empty: "你还没有关注任何作者，或者关注的作者还没有新作品。",
+      emptyHint: "去作者主页点「关注」，他们的新作品就会出现在这里。",
+      browse: "找作者", loading: "正在读取关注流…", failed: "关注流没能读取，请稍后重试。",
+      signIn: "登录后可以看到你关注的作品。",
+      count: (n: number) => `${n} 篇作品`, end: "没有更多了。", more: "看更早的作品", retry: "重试",
+    },
     authors: {
       eyebrow: "阅读索引 / 作者", title: "按作者发现作品", intro: "这里是在本站发表过作品的作者。搜一个名字，就能走到他写的东西。", search: "搜索作者", placeholder: "输入作者名", button: "搜索", clear: "清除",
       works: (n: number) => `${n} 篇作品`, followers: (n: number) => `${n} 人关注`, none: "还没有作者在本站发表作品。", noMatch: "没有符合搜索条件的作者。", noMore: "此页没有更多作者。", all: "全部作者",
@@ -151,6 +159,14 @@ function en(): UiCopy {
       follow: "Follow", following: "Following", unfollow: "Unfollow",
       followerCount: (n: number) => `${n} ${n === 1 ? "follower" : "followers"}`, followerNone: "No followers yet",
       followSignIn: "Sign in to follow this author.", followFailed: "That follow did not save. Please try again.", followLoading: "Reading follow state…",
+    },
+    feed: {
+      eyebrow: "FOLLOWING", title: "Authors you follow", intro: "New work from the authors you follow, newest first.",
+      empty: "You are not following anyone yet, or they have not published anything new.",
+      emptyHint: "Follow an author from their profile and their new work will show up here.",
+      browse: "Find authors", loading: "Reading your feed…", failed: "Your feed did not load. Please try again.",
+      signIn: "Sign in to see the work you follow.",
+      count: (n: number) => `${n} ${n === 1 ? "work" : "works"}`, end: "No more works.", more: "Older works", retry: "Try again",
     },
     authors: {
       eyebrow: "THE READING INDEX / AUTHORS", title: "Explore by author", intro: "Every writer who has published here. Search a name and go straight to what they wrote.", search: "Search authors", placeholder: "Enter an author name", button: "Search", clear: "Clear",
