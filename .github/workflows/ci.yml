@@ -71,23 +71,19 @@ jobs:
         run: |
           set +e
           PGPASSWORD=postgres psql -h localhost -U postgres -d bot_thk_test -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;' >/dev/null
-          pnpm --filter @bot-thk/api test:integration > /tmp/integration.log 2>&1
+          cd apps/api
+          node --env-file-if-exists=../../.env.local --env-file-if-exists=../../.env \
+            --test --test-concurrency=1 --test-reporter=tap --test-reporter-destination=/tmp/integration.tap \
+            src/persistence/postgres.integration.test.ts src/persistence/postgres-cursor-pagination.integration.test.ts \
+            src/persistence/provider-migration-journal.integration.test.ts src/persistence/persistence-adapter-contract.test.ts \
+            src/persistence/identity.integration.test.ts > /tmp/integration.tap 2>&1
           status=$?
-          python3 - <<'PYEOF'
-          import re, pathlib
-          log = pathlib.Path('/tmp/integration.log').read_text(errors='replace')
-          # failure blocks: "not ok N - name" ... up to next "ok"/"not ok"
-          blocks = re.split(r'\n(?=(?:not )?ok \d+)', log)
-          for block in blocks:
-              if not block.lstrip().startswith('not ok'):
-                  continue
-              for line in block.splitlines():
-                  line = line.replace('\r', '')
-                  if not line.strip():
-                      continue
-                  safe = line.strip()[:900].replace('%', '%25')
-                  print(f'::error::{safe}')
-          PYEOF
+          echo "exit=$status"
+          grep -A 40 '^not ok' /tmp/integration.tap | head -120 | while IFS= read -r line; do
+            line=$(printf '%s' "$line" | tr -d '\r')
+            [ -z "$line" ] && continue
+            printf '::error::%s\n' "$(printf '%s' "$line" | sed 's/%/%25/g')"
+          done
           exit $status
 
   # Proves the documented local chain on both persistence providers:
