@@ -67,7 +67,16 @@ jobs:
             echo "### $f"
             PGPASSWORD=postgres psql -h localhost -U postgres -d bot_thk_test -v ON_ERROR_STOP=1 -f "$f" || { echo "FAILED AT $f"; exit 1; }
           done
-      - run: pnpm --filter @bot-thk/api test:integration
+      - name: DEBUG integration with full failure output
+        run: |
+          set +e
+          PGPASSWORD=postgres psql -h localhost -U postgres -d bot_thk_test -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;' >/dev/null
+          pnpm --filter @bot-thk/api test:integration > /tmp/integration.log 2>&1
+          status=$?
+          echo ":::group::integration output"
+          cat /tmp/integration.log
+          echo ":::endgroup::"
+          exit $status
 
   # Proves the documented local chain on both persistence providers:
   # migrate -> start the API -> probe it, then build the Web app and probe the
