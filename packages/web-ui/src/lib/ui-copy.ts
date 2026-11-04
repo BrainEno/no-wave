@@ -26,6 +26,11 @@ function zh() {
       back: "返回作品列表", published: "发表于", by: "作者", fontSmaller: "减小字号", fontLarger: "增大字号", theme: "切换纸色或墨色背景", dark: "墨", light: "纸",
       copyLink: "复制链接", copied: "链接已复制", toc: "目录", end: "全文完", aboutAuthor: "关于作者", allWorks: "全部作品", prev: "更早的作品", next: "更新的作品",
       related: "继续阅读", relatedEn: "Related", progress: "阅读进度", fontSize: (n: number) => `正文字号 ${n}px`, share: "分享",
+      // 收藏（like）：动词、状态与失败文案放在一起，免得按钮和它的提示说法不一致。
+      save: "收藏", savedState: "已收藏", saveCount: (n: number) => `${n} 人收藏`, saveNone: "还没有人收藏",
+      saveSignIn: "登录后可以收藏作品。", saveSignInAction: "前往登录",
+      saveFailed: "收藏状态没能保存，请稍后重试。",
+      saveLoading: "正在读取收藏状态…",
       // 朗读：顺序与文案都在 read-aloud.ts 里决定，这里只管界面上的词。
       listen: "朗读", pause: "暂停", resume: "继续", stop: "停止", done: "朗读结束",
       unavailable: "这台浏览器没有可用的语音，朗读没能开始。",
@@ -112,6 +117,10 @@ function en(): UiCopy {
       back: "Back to works", published: "Published", by: "By", fontSmaller: "Decrease text size", fontLarger: "Increase text size", theme: "Toggle paper or ink background", dark: "Ink", light: "Paper",
       copyLink: "Copy link", copied: "Link copied", toc: "Contents", end: "End", aboutAuthor: "About the author", allWorks: "All works", prev: "Earlier work", next: "Later work",
       related: "Keep reading", relatedEn: "Related", progress: "Reading progress", fontSize: (n: number) => `Text size ${n}px`, share: "Share",
+      save: "Save", savedState: "Saved", saveCount: (n: number) => `${n} ${n === 1 ? "save" : "saves"}`, saveNone: "No saves yet",
+      saveSignIn: "Sign in to save this work.", saveSignInAction: "Sign in",
+      saveFailed: "Your save could not be recorded. Please try again.",
+      saveLoading: "Reading save state…",
       listen: "Listen", pause: "Pause", resume: "Resume", stop: "Stop", done: "Finished reading",
       unavailable: "This browser has no voice available, so nothing was read.",
       position: (n: number, total: number) => `Reading paragraph ${n} of ${total}`,

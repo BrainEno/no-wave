@@ -98,6 +98,16 @@ export {
   isCommentLocale,
 } from "./comments.ts";
 export {
+  LIKE_BODY_MAX_BYTES,
+  LIKE_DEFAULT_LOCALE,
+  LIKE_LOCALES,
+  LIKE_SLUG_PATTERN,
+  handleArticleLikeRequest,
+  isLikeLocale,
+  likeRequestPath,
+  parseLikeBody,
+} from "./likes.ts";
+export {
   NOTIFICATION_ID_PATTERN,
   NOTIFICATIONS_LIMIT,
   handleNotificationReadRequest,
