@@ -73,12 +73,21 @@ jobs:
           PGPASSWORD=postgres psql -h localhost -U postgres -d bot_thk_test -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;' >/dev/null
           pnpm --filter @bot-thk/api test:integration > /tmp/integration.log 2>&1
           status=$?
-          {
-            echo '## integration failures'
-            echo '```'
-            grep -nE 'not ok|Error|error:|expected|actual|does not exist|column|relation|at ' /tmp/integration.log | head -80
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          python3 - <<'PYEOF'
+          import re, pathlib
+          log = pathlib.Path('/tmp/integration.log').read_text(errors='replace')
+          # failure blocks: "not ok N - name" ... up to next "ok"/"not ok"
+          blocks = re.split(r'\n(?=(?:not )?ok \d+)', log)
+          for block in blocks:
+              if not block.lstrip().startswith('not ok'):
+                  continue
+              for line in block.splitlines():
+                  line = line.replace('\r', '')
+                  if not line.strip():
+                      continue
+                  safe = line.strip()[:900].replace('%', '%25')
+                  print(f'::error::{safe}')
+          PYEOF
           exit $status
 
   # Proves the documented local chain on both persistence providers:
