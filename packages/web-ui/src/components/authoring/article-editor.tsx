@@ -13,6 +13,7 @@ import { $createHeadingNode, $createQuoteNode, RichTextExtension } from "@lexica
 import { $setBlocksType } from "@lexical/selection";
 import { $createParagraphNode, $getSelection, $insertNodes, $isRangeSelection, defineExtension, FORMAT_TEXT_COMMAND, REDO_COMMAND, UNDO_COMMAND, type ElementNode } from "lexical";
 import { ArticleImageNode, $createArticleImageNode } from "./article-image-node.tsx";
+import { PromptDialog, type PromptDialogField } from "@/components/ui/prompt-dialog.tsx";
 import type { WorkType } from "@/lib/content.ts";
 import { sanitizeEditorHref } from "@/lib/editor-href.ts";
 import { articleBlocksToLexicalEditorState, type LexicalEditorStateJson } from "@/lib/lexical-article-state.ts";
@@ -63,7 +64,21 @@ function EditorStatePlugin({ onChange }: { onChange(state: LexicalEditorStateJso
   return null;
 }
 
-function Toolbar({ onStatus, onError }: { onStatus(message: string): void; onError(message: string): void }) {
+function Toolbar({
+  onStatus,
+  onError,
+  ask,
+}: {
+  onStatus(message: string): void;
+  onError(message: string): void;
+  /**
+   * Collects form values in a dialog instead of `window.prompt` (#195). Resolves
+   * to `null` when the writer cancels, which is the same signal `prompt()`
+   * returned — except that it also works in the WebViews that return `null` from
+   * `prompt()` without ever showing it.
+   */
+  ask(kind: "link" | "image"): Promise<Record<string, string> | null>;
+}) {
   const [editor] = useLexicalComposerContext();
   const fileInput = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -74,14 +89,19 @@ function Toolbar({ onStatus, onError }: { onStatus(message: string): void; onErr
     });
   }, [editor]);
 
-  function addLink() {
-    const url = window.prompt("输入链接（https:// 或站内绝对路径）");
-    if (url === null) return;
-    const href = sanitizeEditorHref(url);
+  async function addLink() {
+    const values = await ask("link");
+    if (values === null) return;
+    const href = sanitizeEditorHref(values.url ?? "");
     if (!href) {
-      window.alert("请输入有效的 HTTP(S) 链接或站内绝对路径。");
+      // The dialog validates its own fields; a URL that survives the dialog but
+      // fails `sanitizeEditorHref` is a protocol the form cannot know about yet,
+      // so it is reported in the same place the toolbar reports everything else
+      // rather than in a modal the writer has to dismiss.
+      onError("请输入有效的 HTTP(S) 链接或站内绝对路径。");
       return;
     }
+    onError("");
     editor.dispatchCommand(TOGGLE_LINK_COMMAND, href);
   }
 
@@ -95,13 +115,17 @@ function Toolbar({ onStatus, onError }: { onStatus(message: string): void; onErr
       onError("单张图片大小必须大于 0 且不超过 8 MiB。");
       return;
     }
-    const alt = window.prompt("请填写图片替代文本（用于屏幕阅读器与无障碍访问）");
-    if (alt === null) return;
+    // Alt text and caption are asked for together, in one dialog, instead of in
+    // two sequential `prompt()` calls — the second of which used to be the one
+    // that could silently never appear.
+    const values = await ask("image");
+    if (values === null) return;
+    const alt = values.alt ?? "";
+    const caption = values.caption ?? "";
     if (!alt.trim() || alt.trim().length > 500) {
       onError("图片替代文本不能为空，且不得超过 500 字符。");
       return;
     }
-    const caption = window.prompt("图片说明（可留空）") ?? "";
     if (caption.length > 1000) {
       onError("图片说明不得超过 1000 字符。");
       return;
@@ -196,6 +220,39 @@ const workTypes: { value: WorkType; label: string }[] = [
   { value: "other", label: "其他" },
 ];
 
+/**
+ * The two things the editor used to ask for with `window.prompt` (#195). The
+ * limits are the ones the API enforces — stated here so the writer is stopped
+ * before the upload rather than after it.
+ */
+const LINK_FIELDS: readonly PromptDialogField[] = [
+  {
+    name: "url",
+    label: "链接地址",
+    maxLength: 2048,
+    required: true,
+    requiredMessage: "请填写链接地址。",
+    placeholder: "https://…",
+  },
+];
+
+const IMAGE_FIELDS: readonly PromptDialogField[] = [
+  {
+    name: "alt",
+    label: "替代文本",
+    maxLength: 500,
+    required: true,
+    requiredMessage: "图片替代文本不能为空。",
+    hint: "描述图片内容，会读给使用屏幕阅读器的人。",
+  },
+  {
+    name: "caption",
+    label: "图片说明",
+    maxLength: 1000,
+    placeholder: "可留空",
+  },
+];
+
 function collectPlainText(value: unknown): string {
   let result = "";
   function visit(node: unknown): void {
@@ -220,6 +277,21 @@ export function ArticleEditor({ article, onSaved, onDeleted }: ArticleEditorProp
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
+  // One dialog, whichever the toolbar asked for. The resolver is held in a ref
+  // rather than state: it is not rendered, and recreating it would drop the
+  // pending promise.
+  const [askKind, setAskKind] = useState<"link" | "image" | null>(null);
+  const askResolver = useRef<((values: Record<string, string> | null) => void) | null>(null);
+  const ask = useCallback((kind: "link" | "image") => new Promise<Record<string, string> | null>((resolve) => {
+    askResolver.current = resolve;
+    setAskKind(kind);
+  }), []);
+  const settleAsk = useCallback((values: Record<string, string> | null) => {
+    const resolve = askResolver.current;
+    askResolver.current = null;
+    setAskKind(null);
+    resolve?.(values);
+  }, []);
 
   const extension = useMemo(() => initialState ? defineExtension({
     name: "@no-wave/article-authoring",
@@ -346,12 +418,23 @@ export function ArticleEditor({ article, onSaved, onDeleted }: ArticleEditorProp
         </label>
       </div>
       <LexicalExtensionComposer extension={extension} contentEditable={null}>
-        <Toolbar onStatus={setStatus} onError={setError} />
+        <Toolbar onStatus={setStatus} onError={setError} ask={ask} />
         <div className="nw-lexical-shell">
           <ContentEditable className="nw-lexical-input" aria-label="作品正文" aria-placeholder="从这里开始写作" placeholder={<p className="nw-lexical-placeholder">从这里开始写作……</p>} />
         </div>
         <EditorStatePlugin onChange={onEditorChange} />
       </LexicalExtensionComposer>
+      <PromptDialog
+        open={askKind !== null}
+        title={askKind === "link" ? "插入链接" : "插入图片"}
+        description={askKind === "link"
+          ? "可以填写完整的 https:// 地址，或站内以 / 开头的绝对路径。"
+          : "替代文本会被屏幕阅读器读出，也是图片无法显示时唯一能看到的内容。"}
+        fields={askKind === "link" ? LINK_FIELDS : IMAGE_FIELDS}
+        submitLabel={askKind === "link" ? "插入" : "上传并插入"}
+        onCancel={() => settleAsk(null)}
+        onSubmit={(values) => settleAsk(values)}
+      />
       <p className="nw-lexical-empty-note">支持段落、二至四级标题、引用、列表、文本格式、链接、代码块及经服务端安全处理的图片。每张图片都会被重编码为 WebP；图片上传需配置 S3 兼容存储。</p>
       {error ? <p className="nw-auth-error" role="alert">{error}</p> : null}
       {status ? <p className="nw-auth-status" role="status">{status}</p> : null}

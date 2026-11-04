@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@/lib/framework/link.tsx";
 import type { ReactNode } from "react";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
@@ -13,7 +13,19 @@ import { PlainTextExtension } from "@lexical/plain-text";
 import { defineExtension, FORMAT_TEXT_COMMAND, REDO_COMMAND, UNDO_COMMAND } from "lexical";
 import type { Locale } from "@/lib/content.ts";
 import { sanitizeEditorHref } from "@/lib/editor-href.ts";
+import { PromptDialog, type PromptDialogField } from "@/components/ui/prompt-dialog.tsx";
 import { articleBlocksToLexicalEditorState, type LexicalEditorStateJson } from "@/lib/lexical-article-state.ts";
+
+const COMMENT_LINK_FIELDS: readonly PromptDialogField[] = [
+  {
+    name: "url",
+    label: "链接地址",
+    maxLength: 2048,
+    required: true,
+    requiredMessage: "请填写链接地址。",
+    placeholder: "https://…",
+  },
+];
 
 type CommentRun = { text: string; marks?: string[]; href?: string };
 type CommentBlock = { id: string; type: "paragraph"; text: string; inlines?: CommentRun[] };
@@ -109,13 +121,20 @@ function CommentStatePlugin({ onChange }: { onChange(state: LexicalEditorStateJs
   return null;
 }
 
-function CommentToolbar({ onLinkError }: { onLinkError(message: string): void }) {
+function CommentToolbar({
+  onLinkError,
+  ask,
+}: {
+  onLinkError(message: string): void;
+  /** Collects the URL in a dialog instead of `window.prompt` (#195). */
+  ask(): Promise<Record<string, string> | null>;
+}) {
   const [editor] = useLexicalComposerContext();
 
-  function addLink() {
-    const raw = window.prompt("输入 HTTPS 链接或站内绝对路径");
-    if (raw === null) return;
-    const href = sanitizeEditorHref(raw);
+  async function addLink() {
+    const values = await ask();
+    if (values === null) return;
+    const href = sanitizeEditorHref(values.url ?? "");
     if (!href) {
       onLinkError("只允许 HTTP(S) 链接或站内绝对路径。");
       return;
@@ -158,6 +177,18 @@ function CommentComposer({ resetKey, onSubmit, busy }: {
   }), [initialState, resetKey]);
   const onChange = useCallback((state: LexicalEditorStateJson) => setEditorState(state), []);
   const [formError, setFormError] = useState("");
+  const [askingLink, setAskingLink] = useState(false);
+  const askResolver = useRef<((values: Record<string, string> | null) => void) | null>(null);
+  const askForLink = useCallback(() => new Promise<Record<string, string> | null>((resolve) => {
+    askResolver.current = resolve;
+    setAskingLink(true);
+  }), []);
+  const settleLink = useCallback((values: Record<string, string> | null) => {
+    const resolve = askResolver.current;
+    askResolver.current = null;
+    setAskingLink(false);
+    resolve?.(values);
+  }, []);
 
   return (
     <form className="nw-comment-form" onSubmit={(event) => {
@@ -173,10 +204,19 @@ function CommentComposer({ resetKey, onSubmit, busy }: {
       void onSubmit(editorState);
     }}>
       <LexicalExtensionComposer extension={extension} contentEditable={null}>
-        <CommentToolbar onLinkError={setFormError} />
+        <CommentToolbar onLinkError={setFormError} ask={askForLink} />
         <ContentEditable className="nw-comment-editor" aria-label="评论内容" aria-placeholder="写下你的回应……" placeholder={<p>写下你的回应……</p>} />
         <CommentStatePlugin onChange={onChange} />
       </LexicalExtensionComposer>
+      <PromptDialog
+        open={askingLink}
+        title="插入链接"
+        description="可以填写完整的 https:// 地址，或站内以 / 开头的绝对路径。"
+        fields={COMMENT_LINK_FIELDS}
+        submitLabel="插入"
+        onCancel={() => settleLink(null)}
+        onSubmit={(values) => settleLink(values)}
+      />
       {formError ? <p className="nw-auth-error" role="alert">{formError}</p> : null}
       <div className="nw-authoring-actions">
         <button className="nw-btn nw-pri" type="submit" disabled={busy}>{busy ? "正在提交…" : "提交评论"}</button>
