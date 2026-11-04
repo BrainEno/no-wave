@@ -56,7 +56,7 @@ export function createPostgresMediaStore(ctx: PostgresStoreContext) {
     /**
      * Who uses these assets, read from `article_media_refs` (#163).
      *
-     * `= ANY($1::uuid[])` rather than a built placeholder list: the id set comes
+     * `= ANY($1::text[])` rather than a built placeholder list: the id set comes
      * from a page of assets, and binding it as one array keeps the statement text
      * stable across page sizes so PostgreSQL can reuse the plan.
      *

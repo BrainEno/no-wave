@@ -201,7 +201,7 @@ export async function replaceArticleMediaReferences(tx: PgExecutor, articleId: s
   // article save. The join simply drops it.
   await tx.unsafe(
     `INSERT INTO article_media_refs (asset_id, article_id, locale)
-     SELECT m.id, $2::uuid, $3 FROM media_assets m WHERE m.id = ANY($1::uuid[])
+     SELECT m.id, $2::uuid, $3 FROM media_assets m WHERE m.id = ANY($1::text[])
      ON CONFLICT DO NOTHING`,
     [[...ids], articleId, locale],
   );
