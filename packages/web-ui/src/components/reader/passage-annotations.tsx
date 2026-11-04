@@ -5,6 +5,7 @@ import type { Locale } from "@/lib/content.ts";
 import { speechLang } from "@/lib/read-aloud.ts";
 import { speakSequence, speechSupported, type Speaker } from "@/lib/speech.ts";
 import { decodeSharedPassage, passageShareUrl, searchablePassage, type SharedPassage } from "@/lib/passage-share.ts";
+import { passageAnchorFor, type SelectedPiece } from "@/lib/passage-selection.ts";
 import {
   PASSAGE_LIMIT,
   PASSAGES_PER_WORK,
@@ -277,44 +278,46 @@ export function PassageAnnotations({ slug, locale, labels }: PassageAnnotationsP
     };
   }, [index, key, paint, receive, supported]);
 
+  /**
+   * Read whatever is selected right now and decide whether to offer 划线.
+   *
+   * A reader can finish a drag while React is still flushing passive effects
+   * on a cold load: the shelf is already in the DOM, but this listener and the
+   * article's text index are attached a beat later. The selection survives its
+   * `mouseup`, so the effect below also calls this once when it goes live —
+   * an existing selection is then treated exactly like a fresh one.
+   */
+  const syncSelection = useCallback((): void => {
+    const selection = window.getSelection();
+    const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+    const article = document.getElementById("nw-article");
+    if (!selection || !range || range.collapsed || !article) { setToolbar(null); return; }
+    if (!article.contains(range.commonAncestorContainer)) { setToolbar(null); return; }
+
+    const pieces: SelectedPiece[] = [];
+    for (const point of points.current) {
+      if (!range.intersectsNode(point.node)) continue;
+      const from = range.startContainer === point.node ? range.startOffset : 0;
+      const to = range.endContainer === point.node ? range.endOffset : point.node.data.length;
+      pieces.push({ start: point.start, from, to, text: point.node.data.slice(from, to) });
+    }
+    const verdict = passageAnchorFor(pieces, source.current, PASSAGE_LIMIT);
+    if (verdict.kind === "hidden") { setToolbar(null); return; }
+    if (verdict.kind === "tooLong") { setStatus(labels.tooLong); setToolbar(null); return; }
+    const box = range.getBoundingClientRect();
+    setToolbar({ top: box.top, left: box.left + box.width / 2, anchor: verdict.anchor });
+  }, [labels.tooLong]);
+
   useEffect(() => {
     if (!supported) return;
-    const onPointerUp = (): void => {
-      const selection = window.getSelection();
-      const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
-      const article = document.getElementById("nw-article");
-      if (!selection || !range || range.collapsed || !article) { setToolbar(null); return; }
-      if (!article.contains(range.commonAncestorContainer)) { setToolbar(null); return; }
-
-      let start = -1;
-      let end = -1;
-      let text = "";
-      for (const point of points.current) {
-        if (!range.intersectsNode(point.node)) continue;
-        const from = range.startContainer === point.node ? range.startOffset : 0;
-        const to = range.endContainer === point.node ? range.endOffset : point.node.data.length;
-        if (to <= from) continue;
-        const piece = point.node.data.slice(from, to);
-        if (start < 0) start = point.start + from;
-        end = point.start + to;
-        text += piece;
-      }
-      const trimmed = text.trim();
-      if (start < 0 || trimmed.length === 0) { setToolbar(null); return; }
-      // Leading and trailing space are not part of what the reader meant.
-      start += text.length - text.trimStart().length;
-      const anchor = anchorIn(source.current, start, start + trimmed.length);
-      if (characterCount(anchor.text) > PASSAGE_LIMIT) { setStatus(labels.tooLong); setToolbar(null); return; }
-      const box = range.getBoundingClientRect();
-      setToolbar({ top: box.top, left: box.left + box.width / 2, anchor });
-    };
-    document.addEventListener("mouseup", onPointerUp);
-    document.addEventListener("touchend", onPointerUp);
+    syncSelection();
+    document.addEventListener("mouseup", syncSelection);
+    document.addEventListener("touchend", syncSelection);
     return () => {
-      document.removeEventListener("mouseup", onPointerUp);
-      document.removeEventListener("touchend", onPointerUp);
+      document.removeEventListener("mouseup", syncSelection);
+      document.removeEventListener("touchend", syncSelection);
     };
-  }, [labels.tooLong, supported]);
+  }, [supported, syncSelection]);
 
   /** Save a mark, or rewrite the note on one that is already there. */
   const save = useCallback((anchor: PassageAnchor, note: string): Passage | undefined => {
