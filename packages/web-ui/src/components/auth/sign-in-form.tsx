@@ -5,6 +5,7 @@ import { useState, type FormEvent } from "react";
 import { useRouter } from "@/lib/framework/navigation.ts";
 import { apiErrorCode } from "@/lib/api-error.ts";
 import { signInFailureMessage } from "@/lib/rate-limit.ts";
+import { signInSuccessMessage } from "@/lib/auth-navigation.ts";
 import { getUi } from "@/lib/ui-copy.ts";
 import type { Locale } from "@/lib/content.ts";
 
@@ -54,7 +55,7 @@ export function SignInForm({ nextPath, mailEnabled, locale = "zh-CN" }: SignInFo
         if (apiErrorCode(payload) === "EMAIL_TAKEN") setMode("login");
         throw new Error(signInFailureMessage(payload, locale, response.headers.get("retry-after")));
       }
-      setStatus(mode === "register" ? "账户已创建，正在打开写作台……" : "登录成功，正在打开写作台……");
+      setStatus(signInSuccessMessage(nextPath, mode, locale));
       router.replace(nextPath);
       router.refresh();
     } catch (caught) {

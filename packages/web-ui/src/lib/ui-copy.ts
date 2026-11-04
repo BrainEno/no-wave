@@ -84,6 +84,9 @@ function zh() {
       rateLimitedWait: (label: string) => `尝试次数过多，请等待 ${label}后重试。`,
       retrySeconds: (seconds: number) => `${seconds} 秒`,
       retryMinutes: (minutes: number) => `${minutes} 分钟`,
+      destination: { account: "账户页", write: "写作台", home: "首页", fallback: "目标页面" },
+      loginSuccess: (place: string) => `登录成功，正在打开${place}……`,
+      registerSuccess: (place: string) => `账户已创建，正在打开${place}……`,
     },
   };
 }
@@ -156,6 +159,9 @@ function en(): UiCopy {
       rateLimitedWait: (label: string) => `Too many attempts. Try again in ${label}.`,
       retrySeconds: (seconds: number) => `${seconds} seconds`,
       retryMinutes: (minutes: number) => `about ${minutes} minutes`,
+      destination: { account: "your account", write: "the writing desk", home: "the home page", fallback: "your destination" },
+      loginSuccess: (place: string) => `Signed in. Opening ${place}…`,
+      registerSuccess: (place: string) => `Account created. Opening ${place}…`,
     },
   };
 }
