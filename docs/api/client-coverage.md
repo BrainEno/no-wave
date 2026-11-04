@@ -69,7 +69,24 @@
 
 ## 当前前端（apps/web-rr + packages/web-ui）的需求覆盖
 
-两个前端只通过 `packages/web-http` 访问 14 个接口族：`me`、`me/feed`、`me/email-verification`、`me/media`、`me/notifications*`、`me/sessions*`、`articles*`、`articles/:slug/comments`、`articles/:slug/like`、`users/:userId/follow`、`authors/:userId`、`auth/*`。全部已实现，**没有缺口**。唯一的共同注意事项是 P3。
+两个前端只通过 `packages/web-http` 访问 15 个接口族：`me`、`me/feed`、`me/email-verification`、`me/media`、`me/notifications*`、`me/sessions*`、`articles*`、`articles/:slug/comments`、`articles/:slug/like`、`users/:userId/follow`、`authors/:userId`、`conversations*`（读侧）、`auth/*`。全部已实现，**没有缺口**。唯一的共同注意事项是 P3。
+
+**`conversations*` 读侧（私信）已接入**（#198，仅读）：共享行为在 `packages/web-http/src/messages.ts`（`handleInboxRequest` / `handleConversationRequest` / `handleConversationMessagesRequest`：只收 GET、会话 id 必须是 UUID、limit 与 cursor 在边缘校验），`apps/web-rr` 侧是三个资源路由。页面是 `/messages` 与 `/messages/:id`，与 `/feed` 同一套私有页模式。
+
+**发送（`POST /conversations`、`POST /conversations/:id/messages`）尚未接入**，并且刻意不在本批里：按 `docs/architecture/rest-idempotency.md`，这两个都是 non-idempotent create 且**要求 `Idempotency-Key`**，API 缺键会直接 400。发送端的键怎么生成、失败重试复用同一个键、以及「答复之后清空」的时机，需要单独一次改动，混进读侧会让两件事都更难看清。
+
+### 私信的一处 API 不对称，单独记下来
+
+同一个「你不是这段会话的成员」的情况，两个端点给不同答案：
+
+| 端点 | 非成员时 |
+| --- | --- |
+| `GET /conversations/:id` | `404 NOT_FOUND`（与「不存在」不可区分） |
+| `GET /conversations/:id/messages` | `403 FORBIDDEN` |
+
+404 那条是对的：会话 id 可被猜测时，成员身份不该可被探测出来。403 那条等于确认了「这个 id 确实是一段会话」——对一个已经拿到 id 的非成员透露了一比特本可以不给的信息。
+
+代理**原样转发**这两者，不做归一。把 403 改写成 404 会让这个差异从任何读代码的人眼前消失，而真正该修它的地方是 API，不是代理。界面把两者都呈现为「找不到这段对话，或者你不在其中」，因为对读者来说这就是同一件事；但它不谎称 API 回了 404。
 
 **`me/feed`（关注流）已接入**（#198）：共享行为在 `packages/web-http/src/feed.ts`（`handleFeedRequest`：只收 GET、locale/limit/offset 在边缘校验、cookie 转 Bearer 转发），`apps/web-rr` 侧是 `api.feed.ts`。页面是 `/feed` 与 `/en/feed`，走和 `/account` 相同的私有页模式——loader 只读 **session marker**（不带凭据、只回答「这个会话还能不能续」）来决定重定向到登录还是渲染外壳，列表本身由浏览器带 cookie 从 `/api/feed` 取。
 

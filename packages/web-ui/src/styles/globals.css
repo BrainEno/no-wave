@@ -540,3 +540,26 @@ mark { background: var(--or); color: #0f0d0c; }
 }
 .nw-feed-retry:hover:not(:disabled) { border-color: var(--nw-ink); }
 .nw-feed-retry:disabled { cursor: default; opacity: .55; }
+
+/* 私信（#198 读侧）：收件箱与线程。未读是读者用它做决定的信息，
+   所以它必须比预览文字更显眼；「你自己的消息」与对方的也必须一眼分开。 */
+.nw-thread-intro { margin: 8px 0 24px; }
+.nw-thread-note { margin: 24px 0; }
+.nw-thread-back { display: inline-block; margin: 0 0 24px; text-decoration: underline; text-underline-offset: 3px; }
+.nw-thread-unread { color: var(--nw-ink); font-weight: 600; }
+.nw-thread-preview { color: var(--nw-mute); }
+.nw-thread { display: flex; flex-direction: column; gap: 24px; margin: 8px 0 0; }
+.nw-thread-more { display: flex; justify-content: center; }
+.nw-thread-end { text-align: center; margin: 0 0 8px; }
+.nw-thread-btn {
+  display: inline-flex; align-items: center; gap: 8px; padding: 9px 18px;
+  border: 1px solid var(--nw-rule); border-radius: 999px; background: transparent;
+  color: var(--nw-ink); font: inherit; font-size: 14px; cursor: pointer;
+  transition: border-color .15s ease;
+}
+.nw-thread-btn:hover:not(:disabled) { border-color: var(--nw-ink); }
+.nw-thread-btn:disabled { cursor: default; opacity: .55; }
+.nw-msg { border-left: 2px solid transparent; padding-left: 16px; }
+.nw-msg-mine { border-left-color: var(--nw-rule); }
+.nw-msg-meta { margin: 0 0 6px; }
+.nw-msg-body { margin: 0; white-space: pre-wrap; word-break: break-word; }
