@@ -117,9 +117,10 @@ use. Three pages close the loop, at the paths `identityLink()` already emits.
   It used to deny every request on the correct grounds that a client-supplied
   header is not proof of identity; what was missing was anything that *is*. The
   token cookies are scoped below `/`, so a page render cannot read them, and the
-  page now gates on `nw_session` — an `HttpOnly` cookie scoped to `/` that
-  carries the moment the session can no longer be renewed and no credential at
-  all. It decides only between "redirect to sign-in" and "render the shell"; the
+  page now gates on `nw_session` — a non-secret, script-readable cookie scoped
+  to `/` that carries the moment the session can no longer be renewed and no
+  credential at all (the top bar reads the same value; see
+  [ADR 0025](0025-browser-session-refresh-protocol.md)). It decides only between "redirect to sign-in" and "render the shell"; the
   account itself is read from `GET /api/authoring/session` by the shared
   `AccountPanel`, which is the request that can actually present the token to the
   API. Both frameworks render the same component, so the verification state and
@@ -174,9 +175,10 @@ expiry, superseded links, session revocation).
   email, verification state, resend, sign-out), the account line in the writing desk,
   the widened `/api/auth/[action]` family and `POST /api/authoring/email-verification`, covered by
   `web-http` proxy contract tests, the prototype's account tests and the route smoke checks.
-- Session marker: `nw_session` (`packages/web-http/src/cookies.ts`) — `Path=/`, `HttpOnly`,
-  `SameSite=Lax`, value = the refresh expiry in unix seconds, set and cleared with the token
-  cookies. Covered by `packages/web-http/test/cookies.test.ts`.
+- Session marker: `nw_session` (`packages/web-http/src/cookies.ts`) — `Path=/`, **not**
+  `HttpOnly` (page scripts read it), `SameSite=Lax`, value = the refresh expiry in unix
+  seconds, set and cleared with the token cookies — which *are* `HttpOnly`. Covered by
+  `packages/web-http/test/cookies.test.ts` and `packages/web-ui/src/lib/chrome.test.ts`.
 - Delivery: `apps/api/src/infrastructure/smtp-client.ts` (submission client) and
   `createSmtpMailer`/`resolveSmtpMailerConfig` in `application/identity-mailer.ts`, covered by unit
   tests over a scripted peer and by an end-to-end test against a loopback relay that decodes the

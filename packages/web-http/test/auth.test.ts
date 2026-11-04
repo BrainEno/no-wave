@@ -389,3 +389,83 @@ test("a recovery answer without a data object is a proxy error, not a half-succe
   assert.equal(response.status, 502);
   assert.match(await response.text(), /INVALID_AUTH_RESPONSE/);
 });
+
+/**
+ * #184: the API answers throttling with `Retry-After`, but reconstructing the
+ * error response must not drop it — and must not relay any other upstream
+ * header. Only this one allowlisted, validated value crosses the boundary.
+ */
+test("a throttled upstream keeps a valid Retry-After and nothing else", async () => {
+  const stub = stubFetch({
+    "api/v1/auth/login": () => json(
+      { error: { code: "RATE_LIMITED", message: "Too many authentication attempts." } },
+      429,
+      { "retry-after": "12", "x-upstream-only": "must-not-leak", "set-cookie": "nw_evil=1" },
+    ),
+  });
+  const response = await handleAuthRequest(request("/api/auth/login", { body: LOGIN_BODY }), "login", {
+    apiBaseUrl: API_BASE,
+    fetchImpl: stub.fetchImpl,
+  });
+  assert.equal(response.status, 429);
+  assert.equal(response.headers.get("retry-after"), "12");
+  assert.equal(response.headers.get("x-upstream-only"), null);
+  assert.equal(response.headers.get("set-cookie"), null);
+  assertNoStore(response);
+});
+
+test("only a usable Retry-After is relayed: malformed values are dropped", async () => {
+  const cases: { header: string; expected: string | null }[] = [
+    { header: "45", expected: "45" },
+    { header: new Date(Date.now() + 90_000).toISOString(), expected: "90" },
+    { header: "0", expected: null },
+    { header: "-5", expected: null },
+    { header: "soon", expected: null },
+    { header: "12\r\nx-evil: 1", expected: null },
+  ];
+  for (const { header, expected } of cases) {
+    const stub = stubFetch({
+      "api/v1/auth/login": () => json({ error: { code: "RATE_LIMITED", message: "Too many authentication attempts." } }, 429, {
+        "retry-after": header,
+      }),
+    });
+    const response = await handleAuthRequest(request("/api/auth/login", { body: LOGIN_BODY }), "login", {
+      apiBaseUrl: API_BASE,
+      fetchImpl: stub.fetchImpl,
+    });
+    assert.equal(response.headers.get("retry-after"), expected, JSON.stringify(header));
+    assert.equal(response.headers.get("x-evil"), null);
+  }
+});
+
+test("recovery and logout errors relay the same single header", async () => {
+  const recovery = stubFetch({
+    "api/v1/auth/forgot-password": () => json({ error: { code: "RATE_LIMITED", message: "slow down" } }, 429, {
+      "retry-after": "20", "x-upstream-only": "no",
+    }),
+  });
+  const limited = await handleAuthRequest(
+    identityRequest("forgot-password", JSON.stringify({ email: "writer@example.test" })),
+    "forgot-password",
+    { apiBaseUrl: API_BASE, fetchImpl: recovery.fetchImpl },
+  );
+  assert.equal(limited.status, 429);
+  assert.equal(limited.headers.get("retry-after"), "20");
+  assert.equal(limited.headers.get("x-upstream-only"), null);
+  assert.equal(setCookies(limited).length, 0, "recovery failure must not change cookies");
+
+  const leaving = stubFetch({
+    "api/v1/auth/logout": () => json({ error: { code: "SERVICE_UNAVAILABLE", message: "down" } }, 503, {
+      "retry-after": "8", "x-upstream-only": "no",
+    }),
+  });
+  const logout = await handleAuthRequest(
+    request("/api/auth/logout", { headers: { cookie: `nw_refresh=${TOKENS.refreshToken}` } }),
+    "logout",
+    { apiBaseUrl: API_BASE, fetchImpl: leaving.fetchImpl },
+  );
+  assert.equal(logout.status, 503);
+  assert.equal(logout.headers.get("retry-after"), "8");
+  assert.equal(logout.headers.get("x-upstream-only"), null);
+  assert.ok(setCookies(logout).every((cookie) => /Max-Age=0/.test(cookie)), "logout still clears cookies");
+});

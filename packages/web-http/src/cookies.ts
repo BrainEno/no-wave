@@ -18,14 +18,23 @@ export type { TokenSet };
  * a TLS-terminating proxy does not silently drop the cookie.
  *
  * The third cookie carries no token at all — see `SESSION_MARKER_COOKIE`. It is
- * scoped to `/` because its only job is to be visible to a page render, which is
- * precisely what the token cookies must not be.
+ * scoped to `/` and is deliberately **not** `HttpOnly`: `SiteChrome` reads it
+ * from `document.cookie` after hydration to decide whether to request the
+ * inbox (ADR 0025). It grants no access; a forged marker earns its forger a
+ * data-free shell and one 401. `HttpOnly` remains the default for every cookie
+ * this module serializes, so only this one value opts out.
  */
 export const ACCESS_COOKIE_PATH = "/api/authoring";
 export const REFRESH_COOKIE_PATH = "/api";
 export const SESSION_COOKIE_PATH = "/";
 
-export type CookieOptions = { path: string; maxAgeSeconds: number; secure: boolean };
+export type CookieOptions = {
+  path: string;
+  maxAgeSeconds: number;
+  secure: boolean;
+  /** Defaults to true. Only the non-secret session marker opts out (ADR 0025). */
+  httpOnly?: boolean;
+};
 
 /**
  * `secure` must describe the browser's connection, not this hop. Behind a TLS
@@ -51,7 +60,7 @@ export function serializeCookie(name: string, value: string, options: CookieOpti
     `${name}=${value}`,
     `Path=${options.path}`,
     `Max-Age=${Math.max(0, Math.floor(options.maxAgeSeconds))}`,
-    "HttpOnly",
+    ...(options.httpOnly === false ? [] : ["HttpOnly"]),
     "SameSite=Lax",
   ];
   if (options.secure) attributes.push("Secure");
@@ -93,6 +102,7 @@ export function tokenCookieHeaders(request: Request, tokens: TokenSet, now = Dat
       path: SESSION_COOKIE_PATH,
       maxAgeSeconds: refreshMaxAge,
       secure,
+      httpOnly: false,
     }),
   ];
 }
@@ -105,7 +115,9 @@ export function clearedTokenCookieHeaders(request: Request): string[] {
     // The marker goes with them: leaving it behind would keep private pages
     // rendering their shell for a session the API has already refused, which is
     // the one thing a visitor can read as "I am still signed in".
-    serializeCookie(SESSION_MARKER_COOKIE, "", { path: SESSION_COOKIE_PATH, maxAgeSeconds: 0, secure }),
+    // Clearing must use the same attributes the browser sees, or it would not
+    // replace the readable marker at all.
+    serializeCookie(SESSION_MARKER_COOKIE, "", { path: SESSION_COOKIE_PATH, maxAgeSeconds: 0, secure, httpOnly: false }),
   ];
 }
 

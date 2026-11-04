@@ -9,10 +9,11 @@ import { PRIVATE_PAGE_HEADERS } from "../lib/http-policy.ts";
  * Private route.
  *
  * The token cookies are scoped below `/`, so this loader cannot read them and
- * must not try. What it *can* read is the session marker: an `HttpOnly` cookie
+ * must not try. What it *can* read is the session marker: a non-secret cookie
  * scoped to `/` whose value is the moment the session can no longer be renewed.
- * It carries no credential and grants nothing — it decides only between
- * "redirect to sign-in" and "render the shell".
+ * It is readable by page JavaScript (the top bar needs it) but carries no
+ * credential and grants nothing — it decides only between "redirect to sign-in"
+ * and "render the shell" (ADR 0025).
  *
  * The account itself is resolved by `AccountPanel` from
  * `/api/authoring/session`, which is the request that can present the access

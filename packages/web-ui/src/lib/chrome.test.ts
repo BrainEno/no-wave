@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { getUi } from "./ui-copy.ts";
+import { SESSION_MARKER_COOKIE, hasUsableSession, tokenCookieHeaders } from "@bot-thk/web-http";
 import {
   deletionNoticeText,
   grainOffsets,
@@ -74,6 +75,34 @@ test("session markers are read from a cookie string without credentials", () => 
   assert.equal(sessionMarkerFromCookie("foo=1; nw_session=1893456000; bar=2", "nw_session"), "1893456000");
   assert.equal(sessionMarkerFromCookie("foo=1", "nw_session"), undefined);
   assert.equal(sessionMarkerFromCookie("nw_session=%ZZ", "nw_session"), undefined);
+});
+
+test("the marker the proxy sets is the cookie the top bar can actually read", () => {
+  // A browser's document.cookie contains every cookie except the HttpOnly ones.
+  // Feed the proxy's own Set-Cookie output through that rule, then through the
+  // two helpers SiteChrome uses. This is the #161 regression: when marker was
+  // HttpOnly the bell could never see a signed-in session.
+  const request = new Request("https://no-wave.test/api/auth/login", {
+    headers: { origin: "https://no-wave.test" },
+  });
+  const now = Date.now();
+  const emitted = tokenCookieHeaders(request, {
+    accessToken: `access-token-${"a".repeat(32)}`,
+    refreshToken: "r".repeat(43),
+    tokenType: "Bearer",
+    accessExpiresAt: new Date(now + 60 * 60 * 1000).toISOString(),
+    refreshExpiresAt: new Date(now + 7 * 24 * 60 * 60 * 1000).toISOString(),
+  }, now);
+  const visible = emitted
+    .filter((cookie) => !/HttpOnly/.test(cookie))
+    .map((cookie) => cookie.split(";")[0] ?? "")
+    .join("; ");
+
+  assert.match(visible, new RegExp(`${SESSION_MARKER_COOKIE}=`));
+  assert.equal(visible.includes("nw_access="), false, "the access token stays off the page");
+  assert.equal(visible.includes("nw_refresh="), false, "the refresh token stays off the page");
+  assert.equal(hasUsableSession(sessionMarkerFromCookie(visible, SESSION_MARKER_COOKIE), now), true);
+  assert.equal(hasUsableSession(sessionMarkerFromCookie(`foo=1; ${visible}; bar=2`, SESSION_MARKER_COOKIE), now), true);
 });
 
 test("grain tile and offsets are generated once, deterministically", () => {

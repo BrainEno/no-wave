@@ -3,7 +3,9 @@
 import { Link } from "@/lib/framework/link.tsx";
 import { useState, type FormEvent } from "react";
 import { useRouter } from "@/lib/framework/navigation.ts";
-import { apiErrorCode, apiErrorMessage } from "@/lib/api-error.ts";
+import { apiErrorCode } from "@/lib/api-error.ts";
+import { signInFailureMessage } from "@/lib/rate-limit.ts";
+import { getUi } from "@/lib/ui-copy.ts";
 import type { Locale } from "@/lib/content.ts";
 
 type SignInFormProps = {
@@ -23,6 +25,7 @@ type SignInFormProps = {
 
 export function SignInForm({ nextPath, mailEnabled, locale = "zh-CN" }: SignInFormProps) {
   const router = useRouter();
+  const ui = getUi(locale);
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -49,13 +52,13 @@ export function SignInForm({ nextPath, mailEnabled, locale = "zh-CN" }: SignInFo
         // account exists, so hand the reader the form that opens it, with the
         // address and password they just typed still in the fields.
         if (apiErrorCode(payload) === "EMAIL_TAKEN") setMode("login");
-        throw new Error(apiErrorMessage(payload, locale, "请求失败，请稍后重试。"));
+        throw new Error(signInFailureMessage(payload, locale, response.headers.get("retry-after")));
       }
       setStatus(mode === "register" ? "账户已创建，正在打开写作台……" : "登录成功，正在打开写作台……");
       router.replace(nextPath);
       router.refresh();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "请求失败，请稍后重试。");
+      setError(caught instanceof Error ? caught.message : ui.auth.failed);
     } finally {
       setBusy(false);
     }

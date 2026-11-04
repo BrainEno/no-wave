@@ -614,6 +614,19 @@ function handle(request: IncomingMessage, response: ServerResponse, body: Record
   if (method === "POST" && (path === "/api/v1/auth/login" || path === "/api/v1/auth/register")) {
     const email = typeof body.email === "string" ? body.email : "";
     const password = typeof body.password === "string" ? body.password : "";
+    // A deterministic throttle for the browser-level contract (#184): the real
+    // API answers 429 with Retry-After, and the proxy may relay only that one
+    // header. This address never creates an account.
+    if (email === "rate-limited@example.test") {
+      response.writeHead(429, {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store",
+        "retry-after": "12",
+        "x-upstream-only": "must-not-leak",
+      });
+      response.end(JSON.stringify({ error: { code: "RATE_LIMITED", message: "Too many authentication attempts." } }));
+      return;
+    }
     if (path === "/api/v1/auth/register" && password.length < 12) {
       send(response, 400, { error: { code: "BAD_USER_INPUT", message: "密码至少需要 12 个字符。" } });
       return;

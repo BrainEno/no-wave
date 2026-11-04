@@ -3,6 +3,7 @@ import { readLimitedJson } from "./body.ts";
 import { clearedTokenCookieHeaders, refreshTokenFrom, tokenCookieHeaders } from "./cookies.ts";
 import { errorResponse, isRecord, jsonResponse, safeApiError } from "./http.ts";
 import { isSameOriginMutation, isTokenEnvelope } from "./policy.ts";
+import { parseRetryAfterSeconds } from "./retry-after.ts";
 
 /**
  * Sign-in / register / refresh / logout proxy, framework-neutral.
@@ -34,6 +35,21 @@ export const IDENTITY_ACTIONS = ["forgot-password", "reset-password", "verify-em
 export type IdentityAction = (typeof IDENTITY_ACTIONS)[number];
 
 const LOGIN_BODY_LIMIT_BYTES = 4096;
+
+/**
+ * Rebuild an upstream error for the browser.
+ *
+ * `safeApiError` keeps only a well-formed code and a short message; the one
+ * header worth keeping is `Retry-After`, so a throttled reader can be told when
+ * to try again. It is parsed and normalized to bounded integer seconds — no
+ * other upstream header crosses this boundary, and no raw value is copied.
+ */
+function relayedError(upstream: Response, payload: unknown, cookies: readonly string[] = []): Response {
+  const response = jsonResponse(safeApiError(payload, upstream.status), upstream.status, cookies);
+  const seconds = parseRetryAfterSeconds(upstream.headers.get("retry-after"));
+  if (seconds !== null) response.headers.set("retry-after", String(seconds));
+  return response;
+}
 
 export function isAuthAction(value: string | undefined): value is AuthAction {
   return typeof value === "string" && (AUTH_ACTIONS as readonly string[]).includes(value);
@@ -111,11 +127,11 @@ export async function handleAuthRequest(
     if (upstream.status === 401 || upstream.ok) {
       return jsonResponse({ data: { ok: true } }, 200, clearedTokenCookieHeaders(request));
     }
-    return jsonResponse(safeApiError(payload, upstream.status), upstream.status, clearedTokenCookieHeaders(request));
+    return relayedError(upstream, payload, clearedTokenCookieHeaders(request));
   }
 
   if (!upstream.ok) {
-    return jsonResponse(safeApiError(payload, upstream.status), upstream.status);
+    return relayedError(upstream, payload);
   }
   if (!isTokenEnvelope(payload)) {
     return errorResponse("INVALID_AUTH_RESPONSE", "The API returned an invalid authentication response.", 502);
@@ -162,7 +178,7 @@ async function handleIdentityAction(
   }
 
   const payload = await readPayload(upstream);
-  if (!upstream.ok) return jsonResponse(safeApiError(payload, upstream.status), upstream.status);
+  if (!upstream.ok) return relayedError(upstream, payload);
 
   // Only a successful reset ends sessions; a rejected one changes nothing, so
   // it must not clear cookies the visitor may still be using.

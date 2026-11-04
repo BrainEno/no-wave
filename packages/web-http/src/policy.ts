@@ -11,10 +11,12 @@ export const REFRESH_TOKEN_COOKIE = "nw_refresh";
  * from a signed-out one, and would have to redirect everyone.
  *
  * The marker closes exactly that gap and nothing more: it is scoped to `/`, is
- * `HttpOnly`, and its value is the refresh expiry as unix seconds. It grants no
- * access — every byte of account data still comes from the API behind the access
- * token — and a forged or stale marker earns the forger an empty shell that
- * immediately redirects once the browser asks `/api/authoring/session`.
+ * readable by page JavaScript (it is *not* `HttpOnly`, so `SiteChrome` can read
+ * it from `document.cookie`), and its value is the refresh expiry as unix
+ * seconds. It grants no access — every byte of account data still comes from the
+ * API behind the access token — and a forged or stale marker earns the forger an
+ * empty shell that immediately redirects once the browser asks
+ * `/api/authoring/session`. See ADR 0025.
  */
 export const SESSION_MARKER_COOKIE = "nw_session";
 
