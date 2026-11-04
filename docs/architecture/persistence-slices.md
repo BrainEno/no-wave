@@ -28,8 +28,8 @@ from a code change.
 
 ## Slice ownership
 
-The port table declares 77 methods; each provider's slices own
-76 of them (all but `health`) plus the 5 media
+The port table declares 79 methods; each provider's slices own
+78 of them (all but `health`) plus the 5 media
 methods. `health` and PostgreSQL's optional `transaction` are composed by the entry point.
 
 | Provider | Slice | Factory | Methods |
@@ -41,9 +41,9 @@ methods. `health` and PostgreSQL's optional `transaction` are composed by the en
 | postgres | `postgres-media-store.ts` | `createPostgresMediaStore` | 5 |
 | postgres | `postgres-notification-store.ts` | `createPostgresNotificationStore` | 6 |
 | postgres | `postgres-outbox-store.ts` | `createPostgresOutboxStore` | 4 |
-| postgres | `postgres-profile-store.ts` | `createPostgresProfileStore` | 10 |
+| postgres | `postgres-profile-store.ts` | `createPostgresProfileStore` | 11 |
 | postgres | `postgres-session-store.ts` | `createPostgresSessionStore` | 1 |
-| postgres | `postgres-taxonomy-store.ts` | `createPostgresTaxonomyStore` | 7 |
+| postgres | `postgres-taxonomy-store.ts` | `createPostgresTaxonomyStore` | 8 |
 | sqlite | `sqlite-article-store.ts` | `createSqliteArticleStore` | 14 |
 | sqlite | `sqlite-conversation-store.ts` | `createSqliteConversationStore` | 9 |
 | sqlite | `sqlite-engagement-store.ts` | `createSqliteEngagementStore` | 7 |
@@ -51,9 +51,9 @@ methods. `health` and PostgreSQL's optional `transaction` are composed by the en
 | sqlite | `sqlite-media-store.ts` | `createSqliteMediaStore` | 5 |
 | sqlite | `sqlite-notification-store.ts` | `createSqliteNotificationStore` | 6 |
 | sqlite | `sqlite-outbox-store.ts` | `createSqliteOutboxStore` | 4 |
-| sqlite | `sqlite-profile-store.ts` | `createSqliteProfileStore` | 10 |
+| sqlite | `sqlite-profile-store.ts` | `createSqliteProfileStore` | 11 |
 | sqlite | `sqlite-session-store.ts` | `createSqliteSessionStore` | 2 |
-| sqlite | `sqlite-taxonomy-store.ts` | `createSqliteTaxonomyStore` | 7 |
+| sqlite | `sqlite-taxonomy-store.ts` | `createSqliteTaxonomyStore` | 8 |
 
 ### Method lists
 
@@ -66,9 +66,9 @@ methods. `health` and PostgreSQL's optional `transaction` are composed by the en
 - `sqlite-media-store.ts`: `createMediaAsset`, `getMediaAsset`, `listMediaAssets`, `listMediaScanRows`, `deleteUnusedMediaAsset`
 - `sqlite-notification-store.ts`: `deliverMessageNotifications`, `listNotifications`, `getUnreadNotificationCount`, `markAllNotificationsRead`, `markNotificationRead`, `createNotification`
 - `sqlite-outbox-store.ts`: `claimOutboxEvents`, `markOutboxDelivered`, `rescheduleOutboxEvent`, `outboxBacklog`
-- `sqlite-profile-store.ts`: `getAuthorProfile`, `getUserRole`, `setUserRole`, `searchAuthors`, `searchUsers`, `listFollowing`, `listFollowers`, `followUser`, `unfollowUser`, `upsertAuthorProfile`
+- `sqlite-profile-store.ts`: `getAuthorProfile`, `getAuthorProfilesByIds`, `getUserRole`, `setUserRole`, `searchAuthors`, `searchUsers`, `listFollowing`, `listFollowers`, `followUser`, `unfollowUser`, `upsertAuthorProfile`
 - `sqlite-session-store.ts`: `revokeSession`, `isSessionRevoked`
-- `sqlite-taxonomy-store.ts`: `listTaxonomies`, `getTaxonomyBySlug`, `listTaxonomyArticles`, `listArticleTaxonomies`, `createTag`, `createTaxonomy`, `deleteTaxonomy`
+- `sqlite-taxonomy-store.ts`: `listTaxonomies`, `getTaxonomyBySlug`, `listTaxonomyArticles`, `listArticleTaxonomies`, `listArticlesTaxonomies`, `createTag`, `createTaxonomy`, `deleteTaxonomy`
 
 #### postgres
 
@@ -79,9 +79,9 @@ methods. `health` and PostgreSQL's optional `transaction` are composed by the en
 - `postgres-media-store.ts`: `createMediaAsset`, `getMediaAsset`, `listMediaScanRows`, `listMediaAssets`, `deleteUnusedMediaAsset`
 - `postgres-notification-store.ts`: `listNotifications`, `getUnreadNotificationCount`, `markAllNotificationsRead`, `markNotificationRead`, `createNotification`, `deliverMessageNotifications`
 - `postgres-outbox-store.ts`: `claimOutboxEvents`, `markOutboxDelivered`, `rescheduleOutboxEvent`, `outboxBacklog`
-- `postgres-profile-store.ts`: `getAuthorProfile`, `getUserRole`, `setUserRole`, `searchAuthors`, `searchUsers`, `listFollowing`, `listFollowers`, `followUser`, `unfollowUser`, `upsertAuthorProfile`
+- `postgres-profile-store.ts`: `getAuthorProfile`, `getAuthorProfilesByIds`, `getUserRole`, `setUserRole`, `searchAuthors`, `searchUsers`, `listFollowing`, `listFollowers`, `followUser`, `unfollowUser`, `upsertAuthorProfile`
 - `postgres-session-store.ts`: `isSessionRevoked`
-- `postgres-taxonomy-store.ts`: `listTaxonomies`, `getTaxonomyBySlug`, `listTaxonomyArticles`, `listArticleTaxonomies`, `createTag`, `createTaxonomy`, `deleteTaxonomy`
+- `postgres-taxonomy-store.ts`: `listTaxonomies`, `getTaxonomyBySlug`, `listTaxonomyArticles`, `listArticleTaxonomies`, `listArticlesTaxonomies`, `createTag`, `createTaxonomy`, `deleteTaxonomy`
 
 ## Invariants
 

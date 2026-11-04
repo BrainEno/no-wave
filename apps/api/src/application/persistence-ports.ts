@@ -33,10 +33,10 @@ export const persistencePortMethods = Object.freeze({
   ] as const),
   taxonomy: Object.freeze([
     "listTaxonomies", "getTaxonomyBySlug", "listTaxonomyArticles",
-    "listArticleTaxonomies", "createTag", "createTaxonomy", "deleteTaxonomy",
+    "listArticleTaxonomies", "listArticlesTaxonomies", "createTag", "createTaxonomy", "deleteTaxonomy",
   ] as const),
   profiles: Object.freeze([
-    "getAuthorProfile", "searchUsers", "searchAuthors", "listFollowing", "listFollowers",
+    "getAuthorProfile", "getAuthorProfilesByIds", "searchUsers", "searchAuthors", "listFollowing", "listFollowers",
     "followUser", "unfollowUser", "upsertAuthorProfile",
     "getUserRole", "setUserRole",
   ] as const),
@@ -197,6 +197,14 @@ export type TaxonomyListInput = {
 export type TaxonomyBySlugInput = { kind: string; slug: string; locale?: string };
 export type TaxonomyArticlesInput = TaxonomyBySlugInput & { limit?: number; offset?: number };
 export type ArticleTaxonomiesInput = { articleId: string; kind: string; locale?: string };
+/**
+ * A page's worth of taxonomies in one round trip (#162).
+ *
+ * `articleIds` is deduplicated by the caller; the answer is keyed by article so
+ * the serializer can attach each list without another read. Articles with no
+ * taxonomies of that kind are simply absent from the record.
+ */
+export type ArticlesTaxonomiesInput = { articleIds: readonly string[]; kind: string; locale?: string };
 export type CreateTagInput = { actorId: string; name: string; locale?: string };
 export type CreateTaxonomyInput = {
   actorId: string; kind: string; slug: string; name: string;
@@ -204,6 +212,14 @@ export type CreateTaxonomyInput = {
 };
 export type DeleteTaxonomyInput = { taxonomyId: string; actorId: string; actorIsEditor?: boolean };
 export type AuthorProfileInput = { userId: string; locale?: string; viewerId?: string | null };
+/**
+ * A page's worth of author profiles in one round trip (#162).
+ *
+ * One list appears in the same page many times over (a site with three authors
+ * repeats each of them); asking per article would recompute each author's
+ * follower counts and the viewer's follow state once per appearance.
+ */
+export type AuthorProfilesInput = { userIds: readonly string[]; locale?: string; viewerId?: string | null };
 export type UserRoleInput = { actorId: string; userId: string; role: string };
 export type SearchAuthorsInput = { query?: string; locale?: string; limit?: number; offset?: number };
 export type SearchUsersInput = {
@@ -285,6 +301,8 @@ export type TaxonomyPersistencePort = {
   getTaxonomyBySlug(input: TaxonomyBySlugInput): PersistenceResult<StoredTaxonomy | null>;
   listTaxonomyArticles(input: TaxonomyArticlesInput): PersistenceResult<StoredArticle[]>;
   listArticleTaxonomies(input: ArticleTaxonomiesInput): PersistenceResult<StoredTaxonomy[]>;
+  /** The same rows for many articles at once, keyed by article id. */
+  listArticlesTaxonomies(input: ArticlesTaxonomiesInput): PersistenceResult<Record<string, StoredTaxonomy[]>>;
   createTag(input: CreateTagInput): PersistenceResult<StoredTaxonomy>;
   createTaxonomy(input: CreateTaxonomyInput): PersistenceResult<StoredTaxonomy>;
   deleteTaxonomy(input: DeleteTaxonomyInput): PersistenceResult<boolean>;
@@ -293,6 +311,8 @@ export type TaxonomyPersistencePort = {
 /** Author profiles, roles, search and follow relationships. */
 export type ProfilesPersistencePort = {
   getAuthorProfile(input: AuthorProfileInput): PersistenceResult<StoredAuthorProfile | null>;
+  /** The same profiles for many users at once, keyed by user id. */
+  getAuthorProfilesByIds(input: AuthorProfilesInput): PersistenceResult<Record<string, StoredAuthorProfile>>;
   searchUsers(input: SearchUsersInput): PersistenceResult<StoredAuthorProfile[]>;
   searchAuthors(input: SearchAuthorsInput): PersistenceResult<StoredAuthorDirectoryEntry[]>;
   listFollowing(input: RelatedUsersInput): PersistenceResult<StoredAuthorProfile[]>;

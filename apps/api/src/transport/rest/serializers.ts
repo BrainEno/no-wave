@@ -41,13 +41,76 @@ export async function serializeRestArticle(
   };
 }
 
+/**
+ * Attach author and taxonomy projections to a page of articles (#162).
+ *
+ * The old shape called `serializeRestArticle` per item, and that function asks
+ * three questions per article: who wrote it, what categories it has, what tags
+ * it has. A page of 100 therefore issued 301 statements — and because the SQLite
+ * driver is synchronous, every one of them blocked the event loop. Worse, the
+ * questions are not independent per article: a site with three authors names
+ * each of them dozens of times per page, so the same follower counts were
+ * recomputed dozens of times.
+ *
+ * This prefetches instead: one statement for the distinct authors, one for the
+ * category links across the page, one for the tags. The total is three
+ * statements at any page size, and the per-article assembly below is pure
+ * in-memory work.
+ *
+ * Output is unchanged, deliberately: the same keys, the same `null` author for
+ * an article whose author profile is missing, the same empty arrays, and the
+ * same ordering inside each taxonomy list (`listArticlesTaxonomies` orders by
+ * name then id, exactly as the per-article call did).
+ */
 export async function serializeRestArticles(
   services: RestServices,
   articles: unknown,
   viewerId: string | null,
 ): Promise<unknown[]> {
-  if (!Array.isArray(articles)) return [];
-  return Promise.all(articles.map((article) => serializeRestArticle(services, article, viewerId)));
+  if (!Array.isArray(articles) || articles.length === 0) return [];
+  // Non-objects are passed through untouched, as the per-article path did.
+  const objects = articles.filter((article) => article && typeof article === "object");
+  if (objects.length === 0) return articles.map((article) => article);
+
+  const locales = new Map(objects.map((article: any) => [article, typeof article.locale === "string" ? article.locale : "zh-CN"]));
+  // One author-locale pair per distinct (author, locale): the profile carries the
+  // locale it was rendered in, so an author appearing in two locale lists needs
+  // two answers.
+  const authorIds = [...new Set(objects.map((article: any) => article.authorId).filter(Boolean))];
+  const articleIds = [...new Set(objects.map((article: any) => article.id).filter(Boolean))];
+  const localesUsed = [...new Set(locales.values())];
+
+  const [profilesByLocale, categoriesByLocale, tagsByLocale] = await Promise.all([
+    Promise.all(localesUsed.map((locale) =>
+      authorIds.length === 0
+        ? Promise.resolve({} as Record<string, any>)
+        : Promise.resolve(services.getAuthorProfilesByIds({ userIds: authorIds, locale, viewerId })))),
+    Promise.all(localesUsed.map((locale) =>
+      articleIds.length === 0
+        ? Promise.resolve({} as Record<string, any[]>)
+        : Promise.resolve(services.listArticlesTaxonomies({ articleIds, kind: "category", locale })))),
+    Promise.all(localesUsed.map((locale) =>
+      articleIds.length === 0
+        ? Promise.resolve({} as Record<string, any[]>)
+        : Promise.resolve(services.listArticlesTaxonomies({ articleIds, kind: "tag", locale })))),
+  ]);
+  const byLocale = <T>(results: T[]) => new Map(localesUsed.map((locale, index) => [locale, results[index]]));
+  const profiles = byLocale(profilesByLocale);
+  const categories = byLocale(categoriesByLocale);
+  const tags = byLocale(tagsByLocale);
+
+  const assembled = new Map<unknown, any>();
+  for (const article of objects as any[]) {
+    const locale = locales.get(article)!;
+    const author = article.authorId ? profiles.get(locale)?.[article.authorId] ?? null : null;
+    assembled.set(article, {
+      ...article,
+      author,
+      categories: article.id ? categories.get(locale)?.[article.id] ?? [] : [],
+      tags: article.id ? tags.get(locale)?.[article.id] ?? [] : [],
+    });
+  }
+  return articles.map((article) => assembled.get(article) ?? article);
 }
 
 export async function serializeRestComment(

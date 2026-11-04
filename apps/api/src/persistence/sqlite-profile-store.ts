@@ -142,6 +142,34 @@ export function createSqliteProfileStore(db) {
       return row ? mapProfile(row) : null;
     },
     /**
+     * A page's author profiles in one statement (#162).
+     *
+     * A list of twenty articles on a three-author site names each author seven
+     * times; the per-article path recomputed each author's follower counts and
+     * the viewer's follow state seven times each. The same `profileSelect` runs
+     * once over the deduplicated id set, so the cost is the number of distinct
+     * authors — not the number of articles.
+     *
+     * Ids are deduplicated here as well as by the caller: a caller that forgets
+     * must not be able to turn one page back into a per-appearance scan.
+     */
+    getAuthorProfilesByIds({ userIds, locale = "zh-CN", viewerId = null }) {
+      validateArticleLocale(locale);
+      validateViewer(viewerId);
+      if (!Array.isArray(userIds)) throw new ProfileInputError("userIds must be an array.");
+      const distinct = [...new Set(userIds)];
+      for (const userId of distinct) requiredText("userId", userId, 300);
+      if (distinct.length === 0) return {};
+      const placeholders = distinct.map(() => "?").join(", ");
+      const rows = all(
+        `${profileSelect} WHERE p.user_id IN (${placeholders})`,
+        viewerId, viewerId, locale, ...distinct,
+      );
+      const profiles = {};
+      for (const row of rows) profiles[row.user_id] = mapProfile(row);
+      return profiles;
+    },
+    /**
      * The one permission question the platform asks: may this account curate?
      * A profile that does not exist answers `member` — absence of a record is
      * absence of privilege, never a reason to fail open.
@@ -328,5 +356,5 @@ export function createSqliteProfileStore(db) {
         return mapProfile(row);
       });
     },
-  }) satisfies Pick<TypedPersistenceAdapterContract, "getAuthorProfile" | "getUserRole" | "setUserRole" | "searchAuthors" | "searchUsers" | "listFollowing" | "listFollowers" | "followUser" | "unfollowUser" | "upsertAuthorProfile">;
+  }) satisfies Pick<TypedPersistenceAdapterContract, "getAuthorProfile" | "getAuthorProfilesByIds" | "getUserRole" | "setUserRole" | "searchAuthors" | "searchUsers" | "listFollowing" | "listFollowers" | "followUser" | "unfollowUser" | "upsertAuthorProfile">;
 }

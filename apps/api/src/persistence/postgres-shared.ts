@@ -269,6 +269,43 @@ export async function findAuthorProfile(executor: PgExecutor, { userId, locale =
   );
   return rows[0] ? mapAuthorProfile(rows[0]) : null;
 }
+/**
+ * A page's author profiles in one statement (#162).
+ *
+ * The same `LATERAL` translation pick as `findAuthorProfile`, widened from one
+ * id to the distinct id set. A list of twenty articles on a three-author site
+ * names each author seven times; this answers each of them once.
+ */
+export async function findAuthorProfilesByIds(executor: PgExecutor, { userIds, locale = "zh-CN", viewerId = null }) {
+  validateArticleLocale(locale);
+  if (viewerId !== null) requiredText("viewerId", viewerId, 300);
+  const distinct = [...new Set(userIds)];
+  for (const userId of distinct) requiredText("userId", userId, 300);
+  if (distinct.length === 0) return {};
+  const rows = await executor.unsafe(
+    `SELECT p.user_id, p.role, p.avatar_url, p.website_url, p.created_at,
+            GREATEST(p.updated_at, translated.updated_at) AS updated_at,
+            translated.display_name, translated.bio, translated.locale,
+            (SELECT count(*)::int FROM user_follows f WHERE f.followed_id = p.user_id) AS follower_count,
+            (SELECT count(*)::int FROM user_follows f WHERE f.follower_id = p.user_id) AS following_count,
+            CASE WHEN $3::text IS NULL THEN false ELSE EXISTS(
+              SELECT 1 FROM user_follows f WHERE f.follower_id = $3 AND f.followed_id = p.user_id
+            ) END AS is_following_viewer
+     FROM user_profiles AS p
+     JOIN LATERAL (
+       SELECT t.display_name, t.bio, t.locale, t.updated_at
+       FROM user_profile_translations AS t
+       WHERE t.user_id = p.user_id
+       ORDER BY (t.locale = $2) DESC, (t.locale = 'zh-TW') DESC, t.locale
+       LIMIT 1
+     ) AS translated ON true
+     WHERE p.user_id = ANY($1::text[])`,
+    [distinct, locale, viewerId],
+  );
+  const profiles = {};
+  for (const row of rows) profiles[row.user_id] = mapAuthorProfile(row);
+  return profiles;
+}
 export async function listRelatedProfiles(executor: PgExecutor, { relationship, userId, locale = "zh-CN", viewerId = null, limit = 50 }) {
   requiredText("userId", userId, 300);
   validateArticleLocale(locale);

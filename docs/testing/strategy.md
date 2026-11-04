@@ -147,9 +147,22 @@ for two things only: catching regressions, and establishing order of magnitude. 
 `performance-baseline` in `.github/workflows/ci.yml` runs `pnpm perf:baseline`. It is
 deliberately **not** in `required-checks`: a shared runner is noisy enough that a
 hard gate would fail for reasons unrelated to the change. It runs where policy
-allows and its output is read; the thresholds are wide enough that only an
-order-of-magnitude regression (an N+1 returning, a scan inside a transaction) trips
-them.
+allows and its output is read.
+
+The thresholds are re-derived when a change moves performance, not left at whatever
+they were. #162 made the read path roughly four times faster; leaving the old
+400 ms / 20 req/s limits in place would have meant the guard no longer guarded
+anything, since the fix's whole value is re-earnable by a regression. The current
+read limits (p95 ≤ 150 ms, throughput ≥ 150 req/s) sit several times below the
+pre-#162 numbers, so a returning `1 + 3N` serializer trips them while a slow runner
+does not. Each limit states its rationale next to it in
+`scripts/lib/perf-scenarios.ts`.
+
+A statement count is a better guard than a stopwatch where it applies, and the
+serializer now has one:
+`apps/api/src/transport/rest/serializers.test.ts` counts prepared statements and
+asserts the page cost is constant at three, so the amplification cannot return even
+if a future machine is fast enough to hide it in a timing test.
 
 ## Completion report
 

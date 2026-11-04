@@ -10,7 +10,7 @@ import { ProfileInputError, ProfileNotFoundError } from "../domain/errors.ts";
 import { AUTHOR_OFFSET_MAX, AUTHOR_QUERY_MAX_LENGTH, normalizeStoredRole, validateProfileUrl, validateUserRole } from "../domain/profile.ts";
 import { requiredText } from "../domain/validation.ts";
 import { migrationEntityKey } from "./postgres-provider-migration-capture.ts";
-import { findAuthorProfile, listRelatedProfiles, mapAuthorProfile, requestHash } from "./postgres-shared.ts";
+import { findAuthorProfile, findAuthorProfilesByIds, listRelatedProfiles, mapAuthorProfile, requestHash } from "./postgres-shared.ts";
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import type { PostgresStoreContext } from "./postgres-shared.ts";
 import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
@@ -20,6 +20,12 @@ export function createPostgresProfileStore(ctx: PostgresStoreContext) {
   return Object.freeze({
     async getAuthorProfile({ userId, locale = "zh-CN", viewerId = null }) {
       return findAuthorProfile(sql, { userId, locale, viewerId });
+    },
+
+    /** A page's author profiles in one statement; see the SQLite slice for why. */
+    async getAuthorProfilesByIds({ userIds, locale = "zh-CN", viewerId = null }) {
+      if (!Array.isArray(userIds)) throw new ProfileInputError("userIds must be an array.");
+      return findAuthorProfilesByIds(sql, { userIds, locale, viewerId });
     },
 
     /**
@@ -237,5 +243,5 @@ export function createPostgresProfileStore(ctx: PostgresStoreContext) {
       });
     },
 
-  }) satisfies Pick<TypedPersistenceAdapterContract, "getAuthorProfile" | "getUserRole" | "setUserRole" | "searchAuthors" | "searchUsers" | "listFollowing" | "listFollowers" | "followUser" | "unfollowUser" | "upsertAuthorProfile">;
+  }) satisfies Pick<TypedPersistenceAdapterContract, "getAuthorProfile" | "getAuthorProfilesByIds" | "getUserRole" | "setUserRole" | "searchAuthors" | "searchUsers" | "listFollowing" | "listFollowers" | "followUser" | "unfollowUser" | "upsertAuthorProfile">;
 }

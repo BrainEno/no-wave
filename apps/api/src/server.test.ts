@@ -556,6 +556,11 @@ test("REST author article listing forwards userId to persistence before paginati
       async getAuthorProfile(args) {
         return { ...authorProfile, locale: args.locale };
       },
+      // The page serializer asks for the distinct author set once (#162); the
+      // per-article accessor above stays because other routes still use it.
+      async getAuthorProfilesByIds({ userIds, locale }) {
+        return Object.fromEntries(userIds.map((userId) => [userId, { ...authorProfile, locale }]));
+      },
       async listPublishedArticles(args) {
         received = args;
         return articles;
@@ -1335,7 +1340,14 @@ test("REST liked articles, related articles, and article like info are available
       async listLikedArticles(args) { calls.push(["liked", args]); return [article]; },
       async listRelatedArticles(args) { calls.push(["related", args]); return [article]; },
       async getAuthorProfile(args) { return { ...writerProfile, isFollowing: args.viewerId === "reader-user" }; },
+      async getAuthorProfilesByIds({ userIds, locale, viewerId }) {
+        return Object.fromEntries(userIds.map((userId) => [userId, { ...writerProfile, locale, isFollowing: viewerId === "reader-user" }]));
+      },
       async listArticleTaxonomies(args) { return args.kind === "category" ? [category] : [tag]; },
+      async listArticlesTaxonomies({ articleIds, kind }) {
+        const rows = kind === "category" ? [category] : [tag];
+        return Object.fromEntries(articleIds.map((articleId) => [articleId, rows]));
+      },
       async getArticleLikeInfo(args) { calls.push(["like", args]); return likeInfo; },
     },
   });
@@ -1385,7 +1397,13 @@ test("REST following feed requires a session and reads only what the viewer foll
       async isSessionRevoked() { return false; },
       async listFollowingArticles(args) { calls.push(args); return [article]; },
       async getAuthorProfile() { return writerProfile; },
+      async getAuthorProfilesByIds({ userIds }) {
+        return Object.fromEntries(userIds.map((userId) => [userId, writerProfile]));
+      },
       async listArticleTaxonomies() { return []; },
+      async listArticlesTaxonomies({ articleIds }) {
+        return Object.fromEntries(articleIds.map((articleId) => [articleId, []]));
+      },
       async getArticleLikeInfo() { return { articleId: "article-1", slug: "followed-work", likeCount: 3, likedByViewer: false }; },
     },
   });

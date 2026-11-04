@@ -16,48 +16,65 @@ pnpm perf:baseline --json
 
 | Workload | Throughput on one instance | p50 | p95 |
 | --- | --- | --- | --- |
-| Public list read, page of 20 | **~150–185 req/s** | 38–45 ms | 80–102 ms |
-| Authenticated write (create work) | **~1,600–1,900 writes/s** | 0.3–0.4 ms | 1.1 ms |
-| Message send (incl. outbox, worker running) | **~4,100–4,500 messages/s** | 0.2 ms | 0.3 ms |
+| Public list read, page of 20 | **~510–600 req/s** | 11–12 ms | 24–29 ms |
+| Authenticated write (create work) | **~2,200 writes/s** | 0.3 ms | 0.6 ms |
+| Message send (incl. outbox, worker running) | **~4,400 messages/s** | 0.2 ms | 0.3 ms |
 
 Measured on the SQLite provider, one process, one database file on local disk, over
 three consecutive runs of the same commit. The repository's CI runner is slower; do
 not copy these numbers into a capacity plan without re-running on the hardware you
 will actually deploy.
 
-## The finding that matters: read throughput does not scale with concurrency
+## How read capacity moved when the serializer stopped amplifying
 
-The concurrency ladder is the point of this document. On one process with a
-synchronous SQLite driver, throughput is flat from a single request in flight:
+The first version of this baseline (before #162) found read throughput **flat** in
+concurrency: c=1 already produced ~172 req/s and c=8 produced ~186, while p50 grew
+from 6 ms to 43 ms. Adding readers bought only waiting, because each read performed
+`1 + 3N` synchronous statements — the serializer asked three questions per article
+(author, categories, tags), so a page of 20 blocked the event loop 61 times.
+
+#162 replaced that with a prefetch: one statement for the page's distinct authors,
+one for its category links, one for its tags — three prepares at any page size. The
+measured effect:
+
+| | Before #162 | After #162 |
+| --- | --- | --- |
+| Statements for a page of 20 | 61 | 4 (1 list + 3 prefetch) |
+| Statements for a page of 100 | 301 | 4 |
+| p50 at c=8 | 44.9 ms | 11.0 ms |
+| p95 at c=8 | 102.8 ms | 23.6 ms |
+| Throughput at c=8 | 143 req/s | 600 req/s |
+| Ladder | flat from c=1 | rises to c=2, then flat |
+
+The ladder is the interesting part:
 
 ```
-c= 1    172 req/s
-c= 2    176 req/s
-c= 4    187 req/s
-c= 8    186 req/s
+c= 1    511 req/s     <- used to be the ceiling
+c= 2    649 req/s
+c= 4    653 req/s
+c= 8    633 req/s
 ```
 
-Doubling in-flight requests does not produce more completed reads — it produces more
-waiting. p50 rises roughly proportionally to concurrency (about 6 ms at c=1, about
-43 ms at c=8) while completed requests per second stays where it started.
+Saturation moved from "a single request in flight" to `c=2`. Concurrency now buys
+capacity up to that point instead of only queueing. It still flattens afterwards, so
+the structural statement from the first version holds: one process is still a bounded
+lane, and capacity beyond it needs more instances on PostgreSQL, not a bigger
+process.
 
-Two consequences:
+**Latency under load is still predictable.** With FIFO queueing and stable service
+time, p50 ≈ concurrency × 5.5 ms for the list endpoint. An operator seeing p50 of
+200 ms at peak is looking at roughly 35 concurrent readers, not at a regression.
 
-1. **One instance is a single lane.** Adding concurrent users to one process buys
-   latency, not capacity. Capacity beyond the ceiling above requires more instances
-   with a shared PostgreSQL provider — not a bigger process.
-2. **Latency under load is predictable.** Since the queue is FIFO and the service
-   time is stable, p50 ≈ concurrency × 6 ms for the list endpoint. An operator who
-   sees p50 of 200 ms at peak is looking at ~30 concurrent readers, not at a
-   regression.
+### Two cost centres that remain
 
-That 6 ms per read breaks down as ~1.1 ms of fixed request overhead plus ~0.24 ms per
-article in the page. The per-article part is real work, not an N+1 across the
-catalogue: read cost is flat in the **total** number of works (200 vs 800 published
-works measured within noise) and linear in **page size** (1.4 ms at `limit=1` →
-10.7 ms at `limit=40`). Per page of 20, the serializer issues three lookups per
-article (author, categories, tags) — fixed per page, so bounded, but it is the
-dominant term in read cost. See "Known cost centres" below.
+- **Per-article projections.** The batch made the statement count constant, not the
+  work: the serializer still assembles author, categories and tags per article in
+  memory. That is now in-memory cost rather than SQL round trips, and it is why a
+  `limit=100` page still costs more than a `limit=20` one. Measured read cost is flat
+  in the **catalogue** size (200 vs 800 works within noise) and grows with page size.
+- **Synchronous SQLite calls occupy the event loop.** This is why the ladder still
+  flattens at c=2. It is intrinsic to the single-file provider; the PostgreSQL
+  provider does not share it.
 
 ## Recommended ceiling per instance
 
@@ -66,14 +83,15 @@ at the saturation point:
 
 | Readers (concurrent, list pages) | Read latency to expect (p50) | Verdict |
 | --- | --- | --- |
-| up to ~10 | ~60 ms | comfortable |
-| ~10–25 | 60–150 ms | acceptable; latency starts to be visible |
-| ~25–40 | 150–250 ms | at the edge; page views feel slow |
-| beyond ~40 | > 250 ms | add an instance; do not add concurrency to this one |
+| up to ~10 | ~55 ms | comfortable |
+| ~10–35 | 55–190 ms | acceptable; latency starts to be visible |
+| ~35–60 | 190–330 ms | at the edge; page views feel slow |
+| beyond ~60 | > 330 ms | add an instance; do not add concurrency to this one |
 
-Writes are not the constraint. At 1,600+ writes/s the single writer is far beyond
-what a writing community produces; a self-hosted instance will exhaust read capacity
-long before write capacity.
+These are roughly 1.5× the pre-#162 reader counts for the same latency, which is the
+capacity the serializer fix bought. Writes are not the constraint: at 2,200+ writes/s
+the single writer is far beyond what a writing community produces, so a self-hosted
+instance exhausts read capacity long before write capacity.
 
 ### The outbox worker keeps up
 
@@ -99,9 +117,8 @@ instance, then record the ladder it prints.
 These are visible in the baseline and are candidates for a future change, not
 regressions:
 
-- **Three lookups per article in the list serializer** (author, categories, tags).
-  Fixed per page, but the largest single term in read cost. A batched variant would
-  move the 0.24 ms/article term.
+- **Per-article assembly in the list serializer.** The lookups are batched (#162), but
+  the projection is still built article by article.
 - **Synchronous SQLite calls occupy the event loop.** This is why the read ladder is
   flat. It is intrinsic to the single-file provider; the PostgreSQL provider does not
   share it.

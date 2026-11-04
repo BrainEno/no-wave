@@ -87,10 +87,12 @@
     "getTaxonomyBySlug",
     "listTaxonomyArticles",
     "listArticleTaxonomies",
+    "listArticlesTaxonomies",
     "createTag",
     "createTaxonomy",
     "deleteTaxonomy",
     "getAuthorProfile",
+    "getAuthorProfilesByIds",
     "searchUsers",
     "searchAuthors",
     "listFollowing",
@@ -273,6 +275,7 @@
       "factory": "createPostgresProfileStore",
       "methods": [
         "getAuthorProfile",
+        "getAuthorProfilesByIds",
         "getUserRole",
         "setUserRole",
         "searchAuthors",
@@ -301,6 +304,7 @@
         "getTaxonomyBySlug",
         "listTaxonomyArticles",
         "listArticleTaxonomies",
+        "listArticlesTaxonomies",
         "createTag",
         "createTaxonomy",
         "deleteTaxonomy"
@@ -424,6 +428,7 @@
       "factory": "createSqliteProfileStore",
       "methods": [
         "getAuthorProfile",
+        "getAuthorProfilesByIds",
         "getUserRole",
         "setUserRole",
         "searchAuthors",
@@ -453,6 +458,7 @@
         "getTaxonomyBySlug",
         "listTaxonomyArticles",
         "listArticleTaxonomies",
+        "listArticlesTaxonomies",
         "createTag",
         "createTaxonomy",
         "deleteTaxonomy"
