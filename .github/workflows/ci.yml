@@ -60,6 +60,13 @@ jobs:
           node-version: "24"
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: DEBUG apply migrations one by one
+        run: |
+          set -x
+          for f in apps/api/src/persistence/migrations/*.sql; do
+            echo "### $f"
+            PGPASSWORD=postgres psql -h localhost -U postgres -d bot_thk_test -v ON_ERROR_STOP=1 -f "$f" || { echo "FAILED AT $f"; exit 1; }
+          done
       - run: pnpm --filter @bot-thk/api test:integration
 
   # Proves the documented local chain on both persistence providers:
