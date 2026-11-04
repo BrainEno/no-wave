@@ -2404,6 +2404,112 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
     }
   });
 
+
+  /**
+   * The batch port methods (#162).
+   *
+   * The list serializer now reads a page's authors and taxonomies with two
+   * statements instead of three per article. That only holds if the batch
+   * answer equals the per-article answer, so these assert equality directly
+   * rather than spot-checking a field.
+   */
+  test(`${adapterName}: batch author profiles equal the per-user reads`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const authorIds = [`batch-author-a-${suffix}`, `batch-author-b-${suffix}`];
+    const viewerId = `batch-viewer-${suffix}`;
+    try {
+      await runtime.store.upsertAuthorProfile({ userId: authorIds[0], displayName: "批量作者甲", bio: "简介甲", locale: "zh-CN" });
+      await runtime.store.upsertAuthorProfile({ userId: authorIds[1], displayName: "批量作者乙", bio: "简介乙", locale: "zh-CN" });
+      await runtime.store.followUser({ actorId: viewerId, targetUserId: authorIds[0] });
+
+      const batched = await runtime.store.getAuthorProfilesByIds({ userIds: authorIds, locale: "zh-CN", viewerId });
+      assert.deepEqual(Object.keys(batched).sort(), [...authorIds].sort());
+      for (const userId of authorIds) {
+        const single = await runtime.store.getAuthorProfile({ userId, locale: "zh-CN", viewerId });
+        assert.deepEqual(batched[userId], single, `${userId}: batch and single must agree`);
+      }
+      // The viewer's follow state is part of the answer, per author, exactly as
+      // the single call reports it.
+      assert.equal(batched[authorIds[0]].isFollowing, true);
+      assert.equal(batched[authorIds[1]].isFollowing, false);
+
+      // Duplicates are the common case (a three-author page names each author
+      // many times); the record must still be keyed by user id and not repeat
+      // or drop anyone.
+      const withDuplicates = await runtime.store.getAuthorProfilesByIds({
+        userIds: [authorIds[0], authorIds[0], authorIds[1], authorIds[0]], locale: "zh-CN", viewerId: null,
+      });
+      assert.deepEqual(Object.keys(withDuplicates).sort(), [...authorIds].sort());
+
+      // An empty page is a legitimate request: no ids in, no queries needed.
+      assert.deepEqual(await runtime.store.getAuthorProfilesByIds({ userIds: [], locale: "zh-CN", viewerId: null }), {});
+      // An unknown id is absent from the record rather than an error or a null.
+      const missing = await runtime.store.getAuthorProfilesByIds({ userIds: [`batch-missing-${suffix}`], locale: "zh-CN", viewerId: null });
+      assert.deepEqual(missing, {});
+
+      // Locale selection is per request, matching the single read.
+      await runtime.store.upsertAuthorProfile({ userId: authorIds[0], displayName: "Batch Author A", bio: "Bio A", locale: "en" });
+      const english = await runtime.store.getAuthorProfilesByIds({ userIds: [authorIds[0]], locale: "en", viewerId: null });
+      assert.equal(english[authorIds[0]].displayName, "Batch Author A");
+      const chinese = await runtime.store.getAuthorProfilesByIds({ userIds: [authorIds[0]], locale: "zh-CN", viewerId: null });
+      assert.equal(chinese[authorIds[0]].displayName, "批量作者甲");
+    } finally { await runtime.cleanup(undefined, suffix); }
+  });
+
+  test(`${adapterName}: batch article taxonomies equal the per-article reads`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const actorId = `batch-taxonomy-actor-${suffix}`;
+    try {
+      // Two taxonomies per kind, named so that ordering is observable: the
+      // per-article query sorts by lowercased name then id, and the batch must
+      // reproduce that within each article.
+      const categories = [];
+      for (const name of ["批次乙类", "批次甲类"]) {
+        categories.push(await runtime.store.createTaxonomy({
+          actorId, actorIsEditor: true, kind: "category",
+          slug: `batch-cat-${name.endsWith("甲类") ? "a" : "b"}-${suffix}`,
+          name, description: "", locale: "zh-CN",
+        }));
+      }
+      const tag = await runtime.store.createTag({ actorId, name: `#批次标签${suffix.slice(0, 6)}`, locale: "zh-CN" });
+
+      const first = await runtime.store.createArticle({
+        authorId: actorId, slug: `batch-taxonomy-first-${suffix}`, title: "第一款", summary: "",
+        locale: "zh-CN", contentBlocks: [{ id: "p1", type: "paragraph", text: "正文" }], publish: true,
+        categoryIds: categories.map((item) => item.id), tagIds: [tag.id],
+      });
+      const second = await runtime.store.createArticle({
+        authorId: actorId, slug: `batch-taxonomy-second-${suffix}`, title: "第二款", summary: "",
+        locale: "zh-CN", contentBlocks: [{ id: "p1", type: "paragraph", text: "正文" }], publish: true,
+        categoryIds: [categories[0].id], tagIds: [],
+      });
+      const third = await runtime.store.createArticle({
+        authorId: actorId, slug: `batch-taxonomy-third-${suffix}`, title: "第三款", summary: "",
+        locale: "zh-CN", contentBlocks: [{ id: "p1", type: "paragraph", text: "正文" }], publish: true,
+      });
+      const articleIds = [first.id, second.id, third.id];
+
+      for (const kind of ["category", "tag"]) {
+        const batched = await runtime.store.listArticlesTaxonomies({ articleIds, kind, locale: "zh-CN" });
+        assert.deepEqual(Object.keys(batched).sort(), [...articleIds].sort(), `${kind}: every article is a key`);
+        for (const articleId of articleIds) {
+          const single = await runtime.store.listArticleTaxonomies({ articleId, kind, locale: "zh-CN" });
+          assert.deepEqual(batched[articleId], single, `${kind}/${articleId}: batch and single must agree, including order`);
+        }
+        // An article with no taxonomies of the kind is an empty list, not absent.
+        assert.deepEqual(batched[third.id], []);
+        // And the duplicate-id case must not double any row.
+        const duplicated = await runtime.store.listArticlesTaxonomies({ articleIds: [first.id, first.id], kind, locale: "zh-CN" });
+        assert.deepEqual(duplicated[first.id], batched[first.id]);
+      }
+      assert.equal((await runtime.store.listArticlesTaxonomies({ articleIds, kind: "category", locale: "zh-CN" }))[first.id].length, 2, "both categories survived the batch");
+
+      assert.deepEqual(await runtime.store.listArticlesTaxonomies({ articleIds: [], kind: "category", locale: "zh-CN" }), {});
+    } finally { await runtime.cleanup(undefined, suffix); }
+  });
+
 }
 
 registerAdapterContracts("SQLite", sqliteFixture);

@@ -118,8 +118,8 @@ export function seedParticipants() {
  */
 export const BASELINE_THRESHOLDS = Object.freeze({
   "public-page-read": [
-    { metric: "p95" as const, direction: "atMost" as const, limit: 400, rationale: "一页 20 篇的读走完整 HTTP 栈；#162 之后是固定次数的查询，慢过 400ms 说明查询数或体积又回到了按篇增长。" },
-    { metric: "throughput" as const, direction: "atLeast" as const, limit: 20, rationale: "8 个并发在共享 runner 上至少要到 20 req/s；低于此说明请求在串行排队（例如事件循环被同步写阻塞）。" },
+    { metric: "p95" as const, direction: "atMost" as const, limit: 150, rationale: "一页 20 篇走完整 HTTP 栈，#162 之后序列化固定 3 条语句、本机 p95 约 24ms。150ms 给了共享 runner 六倍余量，同时仍能拦住「退回 1+3N」：301 条同步语句会把 p95 推到数百毫秒。" },
+    { metric: "throughput" as const, direction: "atLeast" as const, limit: 150, rationale: "本机约 600 req/s、c=1 约 500。#162 之前即使 c=8 也只有约 170，所以 150 是「序列化放大回来了」的警戒线；runner 更慢也不该低于一页 20 篇 150 req/s。" },
   ],
   "authenticated-write": [
     { metric: "p95" as const, direction: "atMost" as const, limit: 250, rationale: "单写者下每次写都在阻塞事件循环；250ms 是本地观测值的一个数量级余量，再慢就说明事务里多了一次全表读写。" },

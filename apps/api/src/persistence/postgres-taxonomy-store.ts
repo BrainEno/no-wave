@@ -94,6 +94,46 @@ export function createPostgresTaxonomyStore(ctx: PostgresStoreContext) {
       return rows.map(mapTaxonomy);
     },
 
+    /**
+     * A page's taxonomies in one statement (#162).
+     *
+     * Same join and same `article_count` subquery as `listArticleTaxonomies`,
+     * widened from one article id to the distinct set, with `article_id` in the
+     * projection so the rows can be grouped. Ordering matches the per-article
+     * call (name, then id) within each article.
+     */
+    async listArticlesTaxonomies({ articleIds, kind, locale = "zh-CN" }) {
+      validateTaxonomyKind(kind);
+      validateArticleLocale(locale);
+      if (!Array.isArray(articleIds)) throw new ArticleInputError("articleIds must be an array.");
+      const distinct = [...new Set(articleIds)];
+      for (const articleId of distinct) {
+        if (!isUuid(articleId)) throw new ArticleInputError("articleIds must be valid article IDs.");
+      }
+      if (distinct.length === 0) return {};
+      const rows = await sql.unsafe(
+        `SELECT link.article_id, tax.id, tax.kind, tax.slug, tax.created_by,
+                COALESCE(requested.name, fallback.name) AS name,
+                COALESCE(requested.description, fallback.description, '') AS description,
+                $3::text AS locale,
+                (SELECT count(DISTINCT a2.id)::int
+                 FROM article_taxonomies AS links2
+                 JOIN articles AS a2 ON a2.id = links2.article_id AND a2.status = 'published'
+                 JOIN article_translations AS at2 ON at2.article_id = a2.id AND at2.locale = $3
+                 WHERE links2.taxonomy_id = tax.id) AS article_count
+         FROM article_taxonomies AS link
+         JOIN taxonomies AS tax ON tax.id = link.taxonomy_id AND tax.kind = $2
+         LEFT JOIN taxonomy_translations AS requested ON requested.taxonomy_id = tax.id AND requested.locale = $3
+         LEFT JOIN taxonomy_translations AS fallback ON fallback.taxonomy_id = tax.id AND fallback.locale = 'zh-TW'
+         WHERE link.article_id = ANY($1::uuid[]) AND COALESCE(requested.name, fallback.name) IS NOT NULL
+         ORDER BY link.article_id, lower(COALESCE(requested.name, fallback.name)), tax.id`,
+        [distinct, kind, locale],
+      );
+      const byArticle = {};
+      for (const articleId of distinct) byArticle[articleId] = [];
+      for (const row of rows) byArticle[row.article_id].push(mapTaxonomy(row));
+      return byArticle;
+    },
     async createTag({ actorId, name, locale = "zh-CN" }) {
       requiredText("actorId", actorId, 300);
       validateArticleLocale(locale);
@@ -231,5 +271,5 @@ export function createPostgresTaxonomyStore(ctx: PostgresStoreContext) {
       });
     },
 
-  }) satisfies Pick<TypedPersistenceAdapterContract, "listTaxonomies" | "getTaxonomyBySlug" | "listTaxonomyArticles" | "listArticleTaxonomies" | "createTag" | "createTaxonomy" | "deleteTaxonomy">;
+  }) satisfies Pick<TypedPersistenceAdapterContract, "listTaxonomies" | "getTaxonomyBySlug" | "listTaxonomyArticles" | "listArticleTaxonomies" | "listArticlesTaxonomies" | "createTag" | "createTaxonomy" | "deleteTaxonomy">;
 }

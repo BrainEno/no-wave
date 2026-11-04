@@ -97,6 +97,52 @@ export function createSqliteTaxonomyStore(db) {
         ORDER BY lower(COALESCE(requested.name, fallback.name)), tax.id
       `, locale, locale, locale, articleId, kind).map(mapTaxonomy);
     },
+    /**
+     * A page's taxonomies in one statement (#162).
+     *
+     * The single-article query already computes `article_count` against the
+     * whole published catalogue, so the batch is the same join with a widened
+     * `IN (...)`: the count is computed once per taxonomy row, then the rows are
+     * grouped by article in memory. Ordering is identical to the per-article
+     * call — name, then id — so attaching these lists produces byte-identical
+     * JSON to the old N+1 path.
+     */
+    listArticlesTaxonomies({ articleIds, kind, locale = "zh-CN" }) {
+      validateTaxonomyKind(kind);
+      validateArticleLocale(locale);
+      if (!Array.isArray(articleIds)) throw new ArticleInputError("articleIds must be an array.");
+      const distinct = [...new Set(articleIds)];
+      for (const articleId of distinct) {
+        if (!isUuid(articleId)) throw new ArticleInputError("articleIds must be valid article IDs.");
+      }
+      if (distinct.length === 0) return {};
+      const placeholders = distinct.map(() => "?").join(", ");
+      // `article_id` has to be in the projection — that grouping key is the whole
+      // point of the batch — so this spells the select out instead of reusing
+      // `taxonomySelect`. Every other column, the coalesce order and the
+      // `article_count` subquery are identical to the per-article query, so the
+      // attached lists are byte-for-byte what the N+1 path produced.
+      const rows = all(`
+        SELECT link.article_id, tax.id, tax.kind, tax.slug, tax.created_by,
+          COALESCE(requested.name, fallback.name) AS name,
+          COALESCE(requested.description, fallback.description, '') AS description,
+          ? AS locale,
+          (SELECT count(DISTINCT a.id) FROM article_taxonomies link2
+           JOIN articles a ON a.id = link2.article_id AND a.status = 'published'
+           JOIN article_translations at ON at.article_id = a.id AND at.locale = ?
+           WHERE link2.taxonomy_id = tax.id) AS article_count
+        FROM article_taxonomies link
+        JOIN taxonomies tax ON tax.id = link.taxonomy_id AND tax.kind = ?
+        LEFT JOIN taxonomy_translations requested ON requested.taxonomy_id = tax.id AND requested.locale = ?
+        LEFT JOIN taxonomy_translations fallback ON fallback.taxonomy_id = tax.id AND fallback.locale = 'zh-TW'
+        WHERE link.article_id IN (${placeholders}) AND COALESCE(requested.name, fallback.name) IS NOT NULL
+        ORDER BY link.article_id, lower(COALESCE(requested.name, fallback.name)), tax.id
+      `, locale, locale, kind, locale, ...distinct);
+      const byArticle = {};
+      for (const articleId of distinct) byArticle[articleId] = [];
+      for (const row of rows) byArticle[row.article_id].push(mapTaxonomy(row));
+      return byArticle;
+    },
     createTag({ actorId, name, locale = "zh-CN" }) {
       requiredText("actorId", actorId, 300); validateArticleLocale(locale);
       const normalized = normalizeHashtag(name);
@@ -174,5 +220,5 @@ export function createSqliteTaxonomyStore(db) {
         return true;
       });
     },
-  }) satisfies Pick<TypedPersistenceAdapterContract, "listTaxonomies" | "getTaxonomyBySlug" | "listTaxonomyArticles" | "listArticleTaxonomies" | "createTag" | "createTaxonomy" | "deleteTaxonomy">;
+  }) satisfies Pick<TypedPersistenceAdapterContract, "listTaxonomies" | "getTaxonomyBySlug" | "listTaxonomyArticles" | "listArticleTaxonomies" | "listArticlesTaxonomies" | "createTag" | "createTaxonomy" | "deleteTaxonomy">;
 }
