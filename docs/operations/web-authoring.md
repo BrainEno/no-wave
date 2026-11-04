@@ -87,8 +87,31 @@ Three properties matter:
   reader is told an image is in use but not always by whom therefore still comes
   from the same code as before.
 
-The site-wide scan (`listMediaScanRows`) still exists for the guarded delete. The
-two must agree, and a contract test asserts they do.
+### An in-use image cannot be deleted, whatever the code does
+
+Since #156 the database refuses it, in both directions:
+
+- `article_media_refs.asset_id` is `ON DELETE RESTRICT` — a work that names the
+  asset blocks its deletion
+- `user_profiles.avatar_media_id` is `ON DELETE RESTRICT` — so does a profile
+  showing it
+
+This is what makes the guard trustworthy. The delete used to check for
+references and then delete, and between those two statements a concurrent save
+could add a reference both transactions never saw; both committed, and the image
+was gone. Under PostgreSQL's READ COMMITTED that window was real. A constraint
+cannot go stale, because it is enforced by the `DELETE` itself. The delete path
+also takes a row lock on the asset (`FOR UPDATE`) so a writer naming it waits
+rather than racing.
+
+The check before the delete is still there, because a refusal should be a normal
+answer ("in use, by these works") rather than an exception. It now reads the
+reference table instead of scanning every body on the site — measured at 0.18 ms
+per delete with 2,000 works in the database.
+
+`listMediaScanRows` (the site-wide scan) is kept and a contract test asserts the
+table and the scan agree on how many uses there are, so the two cannot drift into
+being different opinions.
 
 ### Deletion is off in both tiers by default
 

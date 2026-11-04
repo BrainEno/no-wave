@@ -158,19 +158,37 @@ export function createPostgresMediaStore(ctx: PostgresStoreContext) {
       if (typeof id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) return null;
       return sql.begin(async (tx) => {
         const transactionId = createMigrationTransactionId();
-        const existing = await tx.unsafe("SELECT * FROM media_assets WHERE id = $1 AND owner_id = $2", [id, ownerId]);
+        // `FOR UPDATE` closes the write skew #156 was filed for. Under READ
+        // COMMITTED the check below reads a snapshot that a concurrent
+        // `createArticle` / `upsertAuthorProfile` can extend and commit after
+        // this statement but before the DELETE — both transactions succeed and
+        // the image the other one just referenced is gone. Holding a row lock on
+        // the asset makes the writer that names it wait here instead, so the two
+        // cannot both proceed.
+        //
+        // The reference table is then read instead of scanning every body
+        // (#163). `ON DELETE RESTRICT` is the backstop that makes that safe: if
+        // a reference somehow exists that this query did not see, the DELETE is
+        // refused by the constraint rather than committing over a live image.
+        const existing = await tx.unsafe(
+          "SELECT * FROM media_assets WHERE id = $1 AND owner_id = $2 FOR UPDATE",
+          [id, ownerId],
+        );
         const row = existing[0];
         if (!row) return null;
-        const needle = `%/media/${id.toLowerCase()}%`;
         const [bodies, avatars] = await Promise.all([
           tx.unsafe(
             `SELECT a.id AS article_id, a.slug, a.status, a.deleted_at, a.author_id, t.locale, t.title, t.content_blocks::text AS content_blocks
-             FROM article_translations t
-             JOIN articles a ON a.id = t.article_id
-             WHERE t.content_blocks::text ILIKE $1`,
-            [needle],
+             FROM article_media_refs r
+             JOIN article_translations t ON t.article_id = r.article_id AND t.locale = r.locale
+             JOIN articles a ON a.id = r.article_id
+             WHERE r.asset_id = $1`,
+            [id.toLowerCase()],
           ),
-          tx.unsafe("SELECT avatar_url FROM user_profiles WHERE avatar_url IS NOT NULL AND avatar_url ILIKE $1", [needle]),
+          tx.unsafe(
+            "SELECT avatar_url FROM user_profiles WHERE avatar_media_id = $1 AND avatar_url IS NOT NULL AND avatar_url <> ''",
+            [id.toLowerCase()],
+          ),
         ]);
         const usedBy = [
           ...bodies.map((body) => ({

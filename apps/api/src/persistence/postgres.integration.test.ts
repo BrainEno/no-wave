@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import test, { after, before } from "node:test";
 import { createPostgresClient, createPostgresStore } from "./postgres.ts";
 import { ConversationAccessError, IdempotencyConflictError } from "../domain/errors.ts";
@@ -24,11 +24,25 @@ after(async () => { if (sql) await sql.end({ timeout: 5 }); });
 test("migrations are repeatable and record applied versions once", integrationOptions, async () => {
   const first = await runMigrations(sql);
   const second = await runMigrations(sql);
-  assert.equal(first.discovered, 24);
-  assert.equal(second.applied.length, 0);
-  const versions = ["0001_initial_domain_schema", "0002_article_content", "0003_author_profiles", "0004_article_engagement", "0005_article_taxonomies", "0006_conversation_lifecycle", "0007_user_follows", "0008_literary_work_types_and_zh_cn", "0009_public_article_search_trigram_indexes", "0010_outbox_lease_tokens", "0011_self_hosted_identity", "0012_article_content_versions", "0013_comment_content_versions", "0014_provider_migration_journal", "0015_media_assets", "0016_article_comment_idempotency", "0017_article_soft_delete", "0018_conversation_idempotency", "0019_article_idempotency", "0020_identity_verification", "0021_user_roles", "0022_featured_articles", "0023_cursor_timestamp_millisecond_precision", "0024_article_media_refs"];
-  const rows = await sql.unsafe("SELECT version FROM api_schema_migrations WHERE version = ANY($1::text[])", [versions]);
-  assert.deepEqual(rows.map((row) => row.version).sort(), versions);
+  // Compared against the files on disk rather than a transcribed list. The list
+  // used to be hand-maintained, and it failed twice in a row by being one entry
+  // behind a new migration — a check that reports "24 !== 25" tells you the
+  // fixture is stale, not that anything is wrong. What this test is actually
+  // about is that every migration on disk is applied exactly once and that
+  // nothing else is recorded.
+  const onDisk = (await readdir(new URL("./migrations/", import.meta.url)))
+    .filter((name) => /^\d{4}_.*\.sql$/.test(name))
+    .map((name) => name.slice(0, -".sql".length))
+    .sort();
+  assert.equal(first.discovered, onDisk.length);
+  assert.equal(second.applied.length, 0, "a second run applies nothing");
+  const rows = await sql.unsafe(
+    "SELECT version FROM api_schema_migrations WHERE version = ANY($1::text[])",
+    [onDisk],
+  );
+  assert.deepEqual(rows.map((row) => row.version).sort(), onDisk);
+  const total = await sql.unsafe("SELECT count(*)::int AS n FROM api_schema_migrations");
+  assert.equal(total[0].n, onDisk.length, "and no version is recorded that is not a file");
 });
 
 test("PostgreSQL comment idempotency migration preserves existing comments", integrationOptions, async () => {
