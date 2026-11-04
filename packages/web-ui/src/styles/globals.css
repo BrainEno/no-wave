@@ -507,3 +507,20 @@ mark { background: var(--or); color: #0f0d0c; }
 .nw-like-note { margin: 0; color: var(--t2); font: 400 13px/1.6 var(--f-zh); }
 .nw-like-note a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
 .nw-like .nw-auth-error { margin: 0; border-top: 0; padding: 0; text-align: center; }
+
+/* 关注作者（#198）：作者页的那一个交互。按钮的按下态只在浏览器
+   拿到带身份的答案之后才可信，所以加载中一律禁用。 */
+.nw-follow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 16px 0 0; }
+.nw-follow-btn {
+  display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px;
+  border: 1px solid var(--nw-rule); border-radius: 999px; background: transparent;
+  color: var(--nw-ink); font: inherit; font-size: 14px; cursor: pointer;
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+.nw-follow-btn:hover:not(:disabled) { border-color: var(--nw-ink); }
+.nw-follow-btn:disabled { cursor: default; opacity: .55; }
+.nw-follow-on { background: var(--nw-ink); border-color: var(--nw-ink); color: var(--nw-paper); }
+.nw-follow-mark { font-size: 13px; line-height: 1; }
+.nw-follow-count { font-family: var(--nw-mono); font-size: 12px; letter-spacing: .04em; color: var(--nw-mute); }
+.nw-follow-note { flex-basis: 100%; font-size: 13px; color: var(--nw-mute); }
+.nw-follow-note a { text-decoration: underline; text-underline-offset: 3px; }
