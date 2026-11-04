@@ -9,6 +9,7 @@ import { ReaderBar, ReaderToc, ReadingProgress } from "@/components/reader/reade
 import { ReadAloud } from "@/components/reader/read-aloud.tsx";
 import { PassageAnnotations } from "@/components/reader/passage-annotations.tsx";
 import { ArticleComments } from "@/components/comments/article-comments.tsx";
+import { ArticleLike } from "@/components/public/article-like.tsx";
 import { SectionHeading, TypeChip, WorkRow } from "@/components/ui/parts.tsx";
 
 /**
@@ -107,6 +108,9 @@ export function ArticlePageView({ article, newer, older, related }: ArticleDetai
 
       {/* 划线：段落靠文字与上下文定位，标注只存在读者自己的浏览器里（ADR 0021）。 */}
       <PassageAnnotations slug={article.slug} locale={locale} labels={ui.reader.passages} />
+
+      {/* 收藏紧接正文之后：读者刚读完，这里是唯一还知道自己在读什么的位置。 */}
+      <ArticleLike slug={article.slug} locale={locale} />
 
       <ArticleComments slug={article.slug} locale={locale} />
 

@@ -69,7 +69,11 @@
 
 ## 当前前端（apps/web-rr + packages/web-ui）的需求覆盖
 
-两个前端只通过 `packages/web-http` 访问 10 个接口族：`me`、`me/email-verification`、`me/media`、`me/notifications*`、`me/sessions*`、`articles*`、`articles/:slug/comments`、`auth/*`。全部已实现，**没有缺口**。唯一的共同注意事项是 P3。
+两个前端只通过 `packages/web-http` 访问 11 个接口族：`me`、`me/email-verification`、`me/media`、`me/notifications*`、`me/sessions*`、`articles*`、`articles/:slug/comments`、`articles/:slug/like`、`auth/*`。全部已实现，**没有缺口**。唯一的共同注意事项是 P3。
+
+**`articles/:slug/like`（收藏）已接入**（#198）：共享行为在 `packages/web-http/src/likes.ts`（`handleArticleLikeRequest`：GET/PUT 方法限制、写请求的 exact-Origin 检查、slug/locale 形状校验、1 KiB 有界 body、`liked` 必须是真正的布尔值），`apps/web-rr` 侧只有 `app/routes/api.articles.$slug.like.ts` 一个薄绑定。界面是共享的 `ArticleLike`（`packages/web-ui`），放在正文结束之后、评论之前：乐观更新、失败回滚、未登录时给登录链接而不是报错、同一时刻只允许一个写请求在飞。
+
+在此之前这个接口在表里是 ✅ 但**没有任何 Web 调用方**——一个只对"已经知道它存在"的客户端可用的能力，不算是发布过的功能。
 
 **`me/sessions*`（多设备管理）已接入**：共享行为在 `packages/web-http/src/account.ts`（`handleAccountSessionsRequest` / `handleAccountSessionEndRequest` / `handleAccountOtherSessionsEndRequest`：方法、写请求的 exact-Origin 检查、id 形状校验、cookie 令牌转发），`apps/web-rr` 侧只有 `app/lib/account-proxy.ts` 里三个薄绑定和两个资源路由；界面在共享的 `AccountPanel`（`packages/web-ui`）里新增「登录的设备」一节：列出在线会话、标记「这台设备」、可逐台结束或一次结束其他全部。
 

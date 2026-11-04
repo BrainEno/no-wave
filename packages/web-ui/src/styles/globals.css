@@ -490,3 +490,20 @@ mark { background: var(--or); color: #0f0d0c; }
   .nw-dialog-actions { flex-direction: column-reverse; }
   .nw-dialog-actions .nw-btn { width: 100%; }
 }
+
+/* 收藏 (#198). Sits between the end of the body and the comment thread — the
+   moment a reader has finished the work and still knows what they read. */
+.nw-like { display: flex; flex-direction: column; align-items: center; gap: 10px; margin: 64px auto 0; max-width: 640px; text-align: center; }
+.nw-like-btn {
+  display: inline-flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 24px;
+  border: 1px solid var(--ink); border-radius: 0; background: none; color: var(--ink);
+  font: 700 15px var(--f-ss); cursor: pointer;
+}
+.nw-like-btn:disabled { cursor: progress; opacity: .6; }
+.nw-like-btn:focus-visible { outline: 3px solid var(--or); outline-offset: 3px; }
+.nw-like-on { background: var(--ink); color: var(--paper); }
+.nw-like-mark { font-size: 11px; line-height: 1; }
+.nw-like-count { margin: 0; color: var(--t2); font: 400 13px/1.6 var(--f-zh); }
+.nw-like-note { margin: 0; color: var(--t2); font: 400 13px/1.6 var(--f-zh); }
+.nw-like-note a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+.nw-like .nw-auth-error { margin: 0; border-top: 0; padding: 0; text-align: center; }
