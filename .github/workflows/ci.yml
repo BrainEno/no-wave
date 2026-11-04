@@ -251,6 +251,32 @@ jobs:
       - name: Bring the whole stack up and probe it (${{ matrix.provider }})
         run: pnpm stack:check
 
+  # Issue #64: the capacity baseline. Behavior tests say the right rows come back;
+  # they cannot say whether a page still costs two queries or has grown into one
+  # per article. This runs the same portable stack the portable-stack job probes,
+  # seeds 200 works, and measures the three paths documented in
+  # docs/testing/strategy.md, failing only on an order-of-magnitude regression.
+  #
+  # Deliberately NOT in `required-checks`: a shared runner is noisy enough that a
+  # hard latency gate would fail for reasons unrelated to the change, and a gate
+  # people learn to ignore is worse than no gate. The thresholds in
+  # scripts/lib/perf-scenarios.ts are wide enough to tolerate runner variance and
+  # tight enough to catch an N+1 returning or a scan appearing in a transaction.
+  performance-baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10.20.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Measure the capacity baseline
+        run: pnpm perf:baseline
+
   # Phase 6, item 2: the deployment artifacts. The React Router app ships as a
   # container image, and "it builds" is not the claim — the image is started
   # next to the API image and probed over HTTP, so a broken runtime dependency
