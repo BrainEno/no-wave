@@ -129,6 +129,19 @@ export {
   parseFeedInteger,
 } from "./feed.ts";
 export {
+  CONVERSATIONS_MAX_LIMIT,
+  CONVERSATION_ID_PATTERN,
+  INBOX_DEFAULT_LIMIT,
+  MESSAGES_DEFAULT_LIMIT,
+  conversationPath,
+  handleConversationMessagesRequest,
+  handleConversationRequest,
+  handleInboxRequest,
+  inboxPath,
+  messagesPath,
+  parseLimit,
+} from "./messages.ts";
+export {
   NOTIFICATION_ID_PATTERN,
   NOTIFICATIONS_LIMIT,
   handleNotificationReadRequest,

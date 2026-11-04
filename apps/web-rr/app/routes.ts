@@ -33,6 +33,12 @@ export default [
   // 关注流（#198）：私有页，loader 只按 session marker 决定是否重定向到登录。
   route("feed", "routes/feed.tsx"),
   route("en/feed", "routes/feed.tsx", { id: "en-feed" }),
+  // 私信读侧（#198）：与 /feed 同样的私有页模式——loader 只按 session marker
+  // 决定是否重定向，内容由浏览器带着自己的 cookie 去取。
+  route("messages", "routes/messages.tsx"),
+  route("en/messages", "routes/messages.tsx", { id: "en-messages" }),
+  route("messages/:id", "routes/messages.$id.tsx"),
+  route("en/messages/:id", "routes/messages.$id.tsx", { id: "en-message-thread" }),
   route("articles/:slug", "routes/article.tsx"),
   route("en/articles/:slug", "routes/article.tsx", { id: "en-article" }),
   route("sign-in", "routes/sign-in.tsx"),
@@ -77,6 +83,11 @@ route("api/authoring/notifications/:id/read", "routes/api.authoring.notification
   route("api/users/:userId/follow", "routes/api.users.$userId.follow.ts"),
   // 关注流：关注关系的读侧。没有它，关注只是走到别人主页看一眼（#198）。
   route("api/feed", "routes/api.feed.ts"),
+  // 私信读侧（#198）：收件箱、单个会话、消息分页。三处都必须登记，否则模块
+  // 只是躺在 routes/ 下的普通文件——#201 的收藏正是这样漏掉的。
+  route("api/inbox", "routes/api.inbox.ts"),
+  route("api/inbox/:id", "routes/api.inbox.$id.ts"),
+  route("api/inbox/:id/messages", "routes/api.inbox.$id.messages.ts"),
   route("api/media/:id", "routes/api.media.ts"),
   route("api/authoring/media", "routes/api.authoring.media.ts"),
   // One asset is deleted by id; the collection is both the upload target and the
