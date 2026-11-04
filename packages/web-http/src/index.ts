@@ -47,6 +47,13 @@ export {
   tokenCookieHeaders,
 } from "./cookies.ts";
 export { forwardAuthoringRequest, type ForwardMethod } from "./forward.ts";
+export {
+  InMemoryRefreshCoordinator,
+  refreshCoordinatorKey,
+  type InMemoryRefreshCoordinatorOptions,
+  type RefreshCoordinator,
+  type RefreshOutcome,
+} from "./refresh-coordinator.ts";
 export { NO_STORE, errorResponse, isRecord, jsonResponse, safeApiError } from "./http.ts";
 export {
   AUTHORING_ARTICLES_LIMIT,

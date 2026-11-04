@@ -2,6 +2,30 @@ import { apiUrl, readPayload, type ApiProxyConfig, type FetchImpl } from "./api.
 import { accessTokenFrom, clearedTokenCookieHeaders, refreshTokenFrom, tokenCookieHeaders, type TokenSet } from "./cookies.ts";
 import { NO_STORE, errorResponse } from "./http.ts";
 import { isTokenEnvelope, setIdempotencyKeyHeader } from "./policy.ts";
+import { InMemoryRefreshCoordinator, refreshCoordinatorKey, type RefreshCoordinator } from "./refresh-coordinator.ts";
+
+/**
+ * Concurrent 401s must agree on one rotation (ADR 0025). Production requests
+ * share the process-wide coordinator. A caller that injects its own `fetchImpl`
+ * is talking to a different upstream transport, so it gets its own ledger —
+ * rotation results never cross transports, and an injected test transport is
+ * isolated from every other one. `config.refreshCoordinator` is the explicit
+ * override a multi-instance deployment uses for a shared implementation.
+ */
+const processRefreshCoordinator = new InMemoryRefreshCoordinator();
+const transportRefreshCoordinators = new WeakMap<FetchImpl, RefreshCoordinator>();
+
+function coordinatorFor(config: ApiProxyConfig): RefreshCoordinator {
+  if (config.refreshCoordinator) return config.refreshCoordinator;
+  const transport = config.fetchImpl;
+  if (!transport) return processRefreshCoordinator;
+  let scoped = transportRefreshCoordinators.get(transport);
+  if (!scoped) {
+    scoped = new InMemoryRefreshCoordinator();
+    transportRefreshCoordinators.set(transport, scoped);
+  }
+  return scoped;
+}
 
 /**
  * Authenticated API forwarder for the browser-facing authoring/session/media
@@ -60,8 +84,14 @@ export async function forwardAuthoringRequest(
     upstream = await callApi(fetchImpl, base, path, method, body, accessToken, contentType, request.headers.get("idempotency-key"));
     if (upstream.status === 401 && refreshToken) {
       // Retry exactly once: a refresh loop would hammer the identity service and
-      // could replay a mutation more than once.
-      const refreshAttempt = await upgradeSession(fetchImpl, base, refreshToken);
+      // could replay a mutation more than once. Every request carrying this same
+      // stale credential pair joins one rotation instead of consuming the token
+      // again — a second presentation would revoke the whole session family.
+      const key = await refreshCoordinatorKey(base, refreshToken, accessToken);
+      const refreshAttempt = await coordinatorFor(config).resolve(
+        key,
+        () => upgradeSession(fetchImpl, base, refreshToken),
+      );
       if (refreshAttempt) {
         rotated = refreshAttempt;
         accessToken = refreshAttempt.accessToken;
