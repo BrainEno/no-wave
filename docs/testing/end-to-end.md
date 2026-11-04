@@ -20,7 +20,7 @@ that can be asserted more cheaply must be asserted more cheaply.
 | `e2e/devices.spec.ts` | Sign in → read the list of signed-in devices → end the other one → keep reading on this one; end the device you are holding → land on the sign-in page |
 | `e2e/read-aloud.spec.ts` | Read a published work aloud paragraph by paragraph → the mark follows the spoken paragraph → 停止 takes it off; a browser that cannot speak is given no control |
 | `e2e/passages.spec.ts` | Select a passage → 划线 → it is painted, listed and still there after a reload; write a note beside it and change it; 朗读这段 reads just that passage and takes the voice from a reading of the whole work; 删除 takes it off the page and out of the browser; 分享 writes it into a link, which a reader in a fresh browser opens and keeps for themselves, and a link whose words are not in the work says so and marks nothing |
-| `e2e/support/works.ts` | Not a spec: publishes a work over HTTP for the journeys that need one, and drags a selection across part of the page |
+| `e2e/support/works.ts` | Not a spec: publishes a work over HTTP for the journeys that need one, and drags a selection across part of the page after fonts and layout have settled |
 | `e2e/support/speech.ts` | Not a spec: replaces the browser's speech engine with one that can be driven, because a headless browser has no voices installed |
 | `e2e/support/accounts.ts` | Not a spec: opens an account through the sign-in form, in the browser, so a private screen is visited with a session the journey made |
 | `e2e/media-library.spec.ts` | An anonymous visit is sent to sign in and pointed back; a signed-in author is told when image storage is unconfigured rather than shown an empty library; the desk links to the library |
@@ -38,6 +38,34 @@ Conventions:
   `baseURL` (`currentOrigin()`), so the suite can be pointed at any stack —
   which is what let the same file run against two frameworks while there were
   two, and lets it run against a different port now.
+- **A drag is not a selection.** `selectPartOf` scrolls its target into view,
+  waits (with a cap) for the webfonts, then checks that a real, non-collapsed
+  selection overlaps that element before returning. A Chinese webfont
+  swapping in after `boundingBox()` moves the paragraph, and a drag at the old
+  coordinates leaves nothing selected; a fixed `waitForTimeout` hides that
+  instead of fixing it. One re-measured retry absorbs the remaining layout
+  shift, and a drag that still selects nothing fails with its own message.
+
+### A cold-load selection race (2026-11-04)
+
+The first `passages.spec.ts` journey once timed out for 60s waiting for
+`[data-passage-tools]` on the `main` merge run, while the other 32 journeys
+passed and a rerun of the same commit was green. No single cause was proven;
+two contributing causes were plausible, and the changes below address both:
+
+- The shelf renders before React flushes its passive effects. On a cold runner
+  a reader's drag can end in that gap; the selection survives its `mouseup`,
+  but the component had no listener yet. `PassageAnnotations` now reads the
+  selection once when its listener goes live as well as on each `mouseup` /
+  `touchend`, so an already-existing selection is treated like a fresh one.
+- The drag used coordinates measured before the webfonts settled. The helper
+  now waits for fonts and verifies the selection, as described above.
+
+The DOM-independent part of that decision — which words a mark covers, trimming
+whitespace, refusing over-long selections — is a pure function in
+`packages/web-ui/src/lib/passage-selection.ts`, covered by `pnpm test` without a
+browser. The timing itself can only be observed in a browser: the six 划线
+journeys in CI are the regression check, and local runs need Chromium installed.
 
 ## Running it
 

@@ -65,14 +65,49 @@ export async function publishWork(
   return { email, slug };
 }
 
-/** Drag the pointer across part of an element, the way a reader selects text. */
+/**
+ * Drag the pointer across part of an element, the way a reader selects text.
+ *
+ * Two things make this deterministic on a cold CI runner. The element is
+ * scrolled into view and the webfonts are awaited before its box is measured —
+ * a Chinese webfont swapping in moves the paragraph after `boundingBox()`, so
+ * dragging at the old coordinates can leave no selection at all. Then the
+ * selection itself is checked rather than assumed: if the drag produced
+ * nothing, the box is measured again and the drag is repeated once, and a
+ * genuinely broken drag fails immediately with a useful message instead of
+ * waiting a minute for a toolbar that can never appear.
+ */
 export async function selectPartOf(page: Page, locator: Locator, fraction = 0.6): Promise<void> {
-  const box = await locator.boundingBox();
-  if (!box) throw new Error("the element to select inside has no box on screen");
-  const y = box.y + box.height / 2;
-  await page.mouse.move(box.x + 8, y);
-  await page.mouse.down();
-  await page.mouse.move(box.x + box.width * fraction, y, { steps: 8 });
-  await page.mouse.up();
-  await page.waitForTimeout(200);
+  await locator.scrollIntoViewIfNeeded();
+  await page.evaluate(async () => {
+    // A stalled font CDN must not hold the journey: swap fonts settle quickly
+    // when reachable, and the fallback metrics are otherwise good enough. The
+    // second attempt below re-measures the box if a late swap still moved it.
+    await Promise.race([
+      document.fonts.ready,
+      new Promise<void>((resolve) => { setTimeout(resolve, 5_000); }),
+    ]);
+    return true;
+  });
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const box = await locator.boundingBox();
+    if (!box) throw new Error("the element to select inside has no box on screen");
+    const y = box.y + box.height / 2;
+    await page.mouse.move(box.x + 8, y);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * fraction, y, { steps: 8 });
+    await page.mouse.up();
+    const selected = await locator.evaluate((element) => {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return "";
+      const range = selection.getRangeAt(0);
+      // A selection that crosses into the next paragraph has the article as its
+      // common ancestor, but it still overlaps this one — intersectsNode is
+      // the honest test for "the drag selected something here".
+      return range.intersectsNode(element) ? selection.toString().trim() : "";
+    });
+    if (selected.length > 0) return;
+  }
+  throw new Error("dragging across the paragraph did not leave a text selection in it");
 }
