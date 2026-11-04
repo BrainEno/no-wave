@@ -6,18 +6,41 @@
  * file no longer exists at HEAD — so the `*-store.ts` files are now the source
  * of truth. This module reads their `satisfies Pick<...>` ownership declarations
  * and renders two checked-in artifacts: a JSON manifest and this ownership
- * document. `scripts/persistence-slices.test.ts` proves both are current and
- * that the layout still satisfies the contract's invariants.
+ * document. Every path is rooted through `layoutPaths(root)`, so
+ * `scripts/persistence-slices.test.ts` can mutate a disposable copy and prove
+ * the guards actually fail, as well as prove both artifacts are current.
  */
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const PERSISTENCE_DIR = path.join(ROOT, "apps/api/src/persistence");
-const PORTS_FILE = path.join(ROOT, "apps/api/src/application/persistence-ports.ts");
-export const MANIFEST_FILE = path.join(ROOT, "scripts/lib/persistence-slices.manifest.json");
-export const DOC_FILE = path.join(ROOT, "docs/architecture/persistence-slices.md");
+export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+
+/**
+ * Every filesystem path goes through here. A caller can point at a different
+ * root, which is what lets the regression tests mutate a copy of the layout and
+ * prove the guards actually fail instead of trusting that they would.
+ */
+export type LayoutPaths = {
+  root: string;
+  persistenceDir: string;
+  portsFile: string;
+  manifestFile: string;
+  docFile: string;
+};
+
+export function layoutPaths(root: string = ROOT): LayoutPaths {
+  return {
+    root,
+    persistenceDir: path.join(root, "apps/api/src/persistence"),
+    portsFile: path.join(root, "apps/api/src/application/persistence-ports.ts"),
+    manifestFile: path.join(root, "scripts/lib/persistence-slices.manifest.json"),
+    docFile: path.join(root, "docs/architecture/persistence-slices.md"),
+  };
+}
+
+export const MANIFEST_FILE = layoutPaths().manifestFile;
+export const DOC_FILE = layoutPaths().docFile;
 
 export type Provider = "sqlite" | "postgres";
 export type SliceEntry = {
@@ -72,20 +95,22 @@ function quoted(block: string): string[] {
   return [...new Set(found)];
 }
 
-async function readPortMethods(): Promise<string[]> {
-  const source = await readFile(PORTS_FILE, "utf8");
+async function readPortMethods(root: string = ROOT): Promise<string[]> {
+  const { portsFile } = layoutPaths(root);
+  const source = await readFile(portsFile, "utf8");
   const table = source.match(PORT_TABLE);
-  if (!table) throw new Error(`Cannot find persistencePortMethods in ${PORTS_FILE}`);
+  if (!table) throw new Error(`Cannot find persistencePortMethods in ${portsFile}`);
   return quoted(table[1]);
 }
 
 /** Read every slice file and the exact method set it declares. */
-export async function readSlices(): Promise<SliceEntry[]> {
-  const files = (await readdir(PERSISTENCE_DIR)).filter((file) => SLICE_FILE.test(file)).sort();
+export async function readSlices(root: string = ROOT): Promise<SliceEntry[]> {
+  const { persistenceDir } = layoutPaths(root);
+  const files = (await readdir(persistenceDir)).filter((file) => SLICE_FILE.test(file)).sort();
   const slices: SliceEntry[] = [];
   for (const file of files) {
     const provider = file.startsWith("sqlite-") ? "sqlite" : "postgres";
-    const source = await readFile(path.join(PERSISTENCE_DIR, file), "utf8");
+    const source = await readFile(path.join(persistenceDir, file), "utf8");
     const ownership = source.match(OWNERSHIP);
     const factory = source.match(FACTORY);
     if (!ownership || !factory) throw new Error(`${file} is missing its factory or satisfies Pick<...> ownership declaration`);
@@ -94,14 +119,14 @@ export async function readSlices(): Promise<SliceEntry[]> {
   return slices;
 }
 
-export async function readManifest(): Promise<Manifest> {
-  const portMethods = await readPortMethods();
+export async function readManifest(root: string = ROOT): Promise<Manifest> {
+  const portMethods = await readPortMethods(root);
   return {
     generatedBy: GENERATOR,
     baseline: { commit: BASELINE_COMMIT, file: BASELINE_FILE, inlineMethods: [...BASELINE_INLINE_METHODS] },
     portMethods,
     mediaMethods: [...MEDIA_METHODS],
-    slices: await readSlices(),
+    slices: await readSlices(root),
   };
 }
 
@@ -127,7 +152,9 @@ export function renderDoc(manifest: Manifest): string {
     "This generator emits the reviewed artifacts (`scripts/lib/persistence-slices.manifest.json`",
     "and this document) from those declarations; the checked-in test fails on drift, on a lost",
     "method, on an overlapping PostgreSQL slice, on a changed SQLite exception, or on an `any`",
-    "fallback reappearing at the PostgreSQL driver boundary.",
+    "fallback reappearing at the PostgreSQL driver boundary. A mutation test copies this layout,",
+    "breaks each invariant in turn and asserts the guard reports it, so the checks are proven",
+    "rather than merely documented.",
     "",
     `Baseline: \`${BASELINE_COMMIT}\` \`${BASELINE_FILE}\` declared`,
     `${BASELINE_INLINE_METHODS.length} inline methods (including \`health\` and \`transaction\`).`,
@@ -176,9 +203,10 @@ function stripComments(source: string): string {
 }
 
 /** Structural invariants. An empty array means the layout is valid. */
-export async function validateLayout(): Promise<string[]> {
+export async function validateLayout(root: string = ROOT): Promise<string[]> {
   const problems: string[] = [];
-  const manifest = await readManifest();
+  const { persistenceDir } = layoutPaths(root);
+  const manifest = await readManifest(root);
   const expected = new Set([...manifest.portMethods.filter((method) => method !== "health"), ...MEDIA_METHODS]);
 
   for (const provider of ["sqlite", "postgres"] as const) {
@@ -212,7 +240,7 @@ export async function validateLayout(): Promise<string[]> {
     }
 
     const compositionFile = provider === "sqlite" ? "sqlite-store.ts" : "postgres.ts";
-    const composition = await readFile(path.join(PERSISTENCE_DIR, compositionFile), "utf8");
+    const composition = await readFile(path.join(persistenceDir, compositionFile), "utf8");
     for (const slice of slices) {
       if (!composition.includes(`${slice.factory}(`)) problems.push(`${compositionFile}: missing \`${slice.factory}\``);
     }
@@ -221,10 +249,10 @@ export async function validateLayout(): Promise<string[]> {
     }
   }
 
-  const pgEntry = await readFile(path.join(PERSISTENCE_DIR, "postgres.ts"), "utf8");
+  const pgEntry = await readFile(path.join(persistenceDir, "postgres.ts"), "utf8");
   if (!/async health\(\)/.test(pgEntry)) problems.push("postgres.ts: missing `health`");
   if (!/transaction\(work\)/.test(pgEntry)) problems.push("postgres.ts: missing PostgreSQL-only `transaction`");
-  const sqliteEntry = await readFile(path.join(PERSISTENCE_DIR, "sqlite-store.ts"), "utf8");
+  const sqliteEntry = await readFile(path.join(persistenceDir, "sqlite-store.ts"), "utf8");
   if (!/isSessionRevoked:\s*sessionStore\.isSessionRevoked/.test(sqliteEntry)) {
     problems.push("sqlite-store.ts: session slice is no longer narrowed to `isSessionRevoked`");
   }
@@ -235,9 +263,9 @@ export async function validateLayout(): Promise<string[]> {
     if (!pgSlices.has(method)) problems.push(`first-round baseline method \`${method}\` is missing from the PostgreSQL slices`);
   }
 
-  const pgFiles = (await readdir(PERSISTENCE_DIR)).filter((file) => file.startsWith("postgres") && file.endsWith(".ts") && !file.includes(".test."));
+  const pgFiles = (await readdir(persistenceDir)).filter((file) => file.startsWith("postgres") && file.endsWith(".ts") && !file.includes(".test."));
   for (const file of pgFiles) {
-    const source = stripComments(await readFile(path.join(PERSISTENCE_DIR, file), "utf8"));
+    const source = stripComments(await readFile(path.join(persistenceDir, file), "utf8"));
     if (/:\s*any\b|<\s*any\s*>|\bas any\b/.test(source)) problems.push(`${file}: an \`any\` fallback returned to the PostgreSQL driver boundary`);
     if (source.includes("as unknown as")) problems.push(`${file}: \`as unknown as\` returned to a PostgreSQL slice`);
   }
@@ -245,24 +273,26 @@ export async function validateLayout(): Promise<string[]> {
 }
 
 /** Compare the checked-in generated artifacts with a fresh render. */
-export async function checkGeneratedFiles(): Promise<string[]> {
-  const manifest = await readManifest();
+export async function checkGeneratedFiles(root: string = ROOT): Promise<string[]> {
+  const { manifestFile, docFile } = layoutPaths(root);
+  const manifest = await readManifest(root);
   const expected: Array<[string, string]> = [
-    [MANIFEST_FILE, renderManifest(manifest)],
-    [DOC_FILE, renderDoc(manifest)],
+    [manifestFile, renderManifest(manifest)],
+    [docFile, renderDoc(manifest)],
   ];
   const problems: string[] = [];
   for (const [file, content] of expected) {
     let current: string;
     try { current = await readFile(file, "utf8"); }
-    catch { problems.push(`${path.relative(ROOT, file)} is missing; run pnpm slices:generate`); continue; }
-    if (current !== content) problems.push(`${path.relative(ROOT, file)} is stale; run pnpm slices:generate`);
+    catch { problems.push(`${path.relative(root, file)} is missing; run pnpm slices:generate`); continue; }
+    if (current !== content) problems.push(`${path.relative(root, file)} is stale; run pnpm slices:generate`);
   }
   return problems;
 }
 
-export async function writeGeneratedFiles(): Promise<void> {
-  const manifest = await readManifest();
-  await writeFile(MANIFEST_FILE, renderManifest(manifest), "utf8");
-  await writeFile(DOC_FILE, renderDoc(manifest), "utf8");
+export async function writeGeneratedFiles(root: string = ROOT): Promise<void> {
+  const { manifestFile, docFile } = layoutPaths(root);
+  const manifest = await readManifest(root);
+  await writeFile(manifestFile, renderManifest(manifest), "utf8");
+  await writeFile(docFile, renderDoc(manifest), "utf8");
 }

@@ -14,7 +14,9 @@ cannot run. The 20 `*-store.ts` files are now the source of truth: each closes w
 This generator emits the reviewed artifacts (`scripts/lib/persistence-slices.manifest.json`
 and this document) from those declarations; the checked-in test fails on drift, on a lost
 method, on an overlapping PostgreSQL slice, on a changed SQLite exception, or on an `any`
-fallback reappearing at the PostgreSQL driver boundary.
+fallback reappearing at the PostgreSQL driver boundary. A mutation test copies this layout,
+breaks each invariant in turn and asserts the guard reports it, so the checks are proven
+rather than merely documented.
 
 Baseline: `74b3a3a91329c2ae4bfc65a05c6b83a4b714d63d` `apps/api/src/persistence/postgres.ts` declared
 62 inline methods (including `health` and `transaction`).
