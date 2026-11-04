@@ -8,6 +8,7 @@ import {
 import { validateArticleLocale } from "../domain/article.ts";
 import { requiredText } from "../domain/validation.ts";
 import { AUTHOR_OFFSET_MAX, AUTHOR_QUERY_MAX_LENGTH, normalizeStoredRole, validateProfileUrl, validateUserRole } from "../domain/profile.ts";
+import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
 
 /**
  * SQLite implementation of the author-profile and follow persistence slice.
@@ -327,5 +328,5 @@ export function createSqliteProfileStore(db) {
         return mapProfile(row);
       });
     },
-  });
+  }) satisfies Pick<TypedPersistenceAdapterContract, "getAuthorProfile" | "getUserRole" | "setUserRole" | "searchAuthors" | "searchUsers" | "listFollowing" | "listFollowers" | "followUser" | "unfollowUser" | "upsertAuthorProfile">;
 }

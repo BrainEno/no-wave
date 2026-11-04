@@ -1,6 +1,7 @@
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import { createSqliteProviderMigrationCapture, migrationEntityKey, type CapturedChange } from "./sqlite-provider-migration-capture.ts";
 import { DEFAULT_AUTHOR_DISPLAY_NAME } from "../domain/profile.ts";
+import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
 
 /** SQLite identity contract adapter, composed by sqlite-store.ts. */
 export function createSqliteIdentityStore(db) {
@@ -359,5 +360,5 @@ export function createSqliteIdentityStore(db) {
         return { allowed: Number(row.attempts) <= limit, resetAt: row.reset_at };
       });
     },
-  });
+  }) satisfies Pick<TypedPersistenceAdapterContract, "createIdentityAccount" | "findIdentityAccount" | "createIdentitySession" | "rotateIdentityRefresh" | "revokeIdentityRefresh" | "revokeSession" | "issueIdentityToken" | "consumeIdentityToken" | "replaceIdentityPassword" | "listIdentitySessions" | "revokeIdentitySession" | "revokeIdentitySessions" | "markIdentityEmailVerified" | "findIdentityAccountByUserId" | "setIdentityEmail" | "findIdentityCredentials" | "pruneExpiredIdentityState" | "consumeRateLimit">;
 }

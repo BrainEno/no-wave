@@ -4,13 +4,25 @@
  * Implementations return domain-shaped records, not driver-specific rows.
  * The contract intentionally groups methods by domain so a PostgreSQL,
  * MongoDB, or SQLite adapter can be tested against the same behavioral suite.
+ *
+ * Both providers are checked against this one contract: PostgreSQL slices are
+ * asynchronous, most SQLite slices are synchronous. `PersistenceResult<T>` is
+ * the honest union for those methods; callers always `await`, so a synchronous
+ * value and a promise are observationally equivalent. Methods that both
+ * providers implement asynchronously (identity, sessions, rate limits, media,
+ * health) keep the narrower `Promise<T>` so the existing `IdentityStore`,
+ * `RateLimitStore` and `MediaMetadataStore` consumers stay precise.
  */
+import type { IdentityStore } from "./identity.ts";
+import type { MediaAsset, MediaScanRow } from "./media-assets.ts";
+
 /**
  * The single source of truth for the persistence surface.
  *
  * Runtime assertion (`assertPersistenceAdapter`) and the compile-time port types
  * below are both derived from this object, so a method cannot be added to one and
- * forgotten in the other.
+ * forgotten in the other. Media metadata and `transaction` are deliberately
+ * *absent*: they are provider/adjacent-service capabilities, not REST ports.
  */
 export const persistencePortMethods = Object.freeze({
   content: Object.freeze([
@@ -64,34 +76,383 @@ export type PortGroups = typeof persistencePortMethods;
 export type PortName = keyof PortGroups;
 export type PortMethodName<K extends PortName> = PortGroups[K][number];
 
+/** A provider may answer synchronously (SQLite) or asynchronously (PostgreSQL). */
+export type PersistenceResult<T> = T | Promise<T>;
+
+/* -------------------------------------------------------------------------- */
+/* Domain output records                                                      */
+/* -------------------------------------------------------------------------- */
+
+/** An article in one locale, as every provider answers a read. */
+export type StoredArticle = {
+  id: string; authorId: string; slug: string; workType: string; status: string;
+  locale: string; title: string; summary: string; contentBlocks: unknown;
+  contentBlocksVersion: number;
+  createdAt: string | null; updatedAt: string | null; publishedAt: string | null;
+};
+/** A tombstone in the author's desk, with the cost of its eventual sweep. */
+export type StoredDeletedArticle = StoredArticle & { deletedAt: string; commentCount: number };
+export type StoredTaxonomy = {
+  id: string; kind: string; slug: string; name: string; description: string;
+  locale: string; createdBy: string; articleCount: number;
+};
+export type StoredAuthorProfile = {
+  userId: string; role: string; displayName: string; bio: string;
+  avatarUrl: string | null; websiteUrl: string | null; locale: string;
+  followerCount: number; followingCount: number; isFollowing: boolean;
+  createdAt: string; updatedAt: string;
+};
+/** The public author-directory projection: reach plus published work count. */
+export type StoredAuthorDirectoryEntry = {
+  userId: string; displayName: string; bio: string; locale: string;
+  followerCount: number; workCount: number;
+};
+export type StoredArticleLikeInfo = {
+  articleId: string; slug: string; likeCount: number; likedByViewer: boolean;
+};
+export type StoredArticleComment = {
+  id: string; articleId: string; authorId: string; parentCommentId: string | null;
+  content: string; contentBlocks: unknown; contentBlocksVersion: number;
+  createdAt: string; updatedAt: string; locale: string; replies: StoredArticleComment[];
+};
+export type StoredMessage = {
+  id: string; conversationId: string; senderId: string; body: string;
+  createdAt: string; duplicate: boolean;
+};
+export type StoredConversation = {
+  id: string; createdBy: string | null; participantIds: string[];
+  createdAt: string; lastActivityAt: string; unreadCount: number;
+  lastMessage: StoredMessage | null;
+};
+/** A row in the recipient's inbox (list / mark-one). */
+export type NotificationRecord = {
+  id: string; userId: string; eventKey: string; payload: unknown;
+  createdAt: string; readAt: string | null;
+};
+/** The receipt returned by `createNotification`; it has no `readAt`. */
+export type NotificationReceipt = {
+  id: string; userId: string; eventKey: string; payload: unknown;
+  createdAt: string; duplicate: boolean;
+};
 /**
- * The persistence adapter, as seen by the application layer.
- *
- * The SQLite and PostgreSQL adapters are still authored without parameter or
- * return annotations, so this alias is the one place where the transport boundary
- * admits `any`. It exists so that typing an adapter method later propagates
- * through `PersistencePorts`/`ApplicationServices` automatically instead of being
- * blocked by a hand-written facade — the remaining work tracked in issue #66.
+ * Outbox leases are raw driver rows in both providers: the delivery worker and
+ * `message-notification-delivery.ts` read the snake_case column names. Do not
+ * "improve" these into camelCase without changing those consumers.
  */
-export type PersistenceAdapterMethods = Record<string, (...args: any[]) => any>;
+export type StoredOutboxEvent = {
+  id: string; event_key: string; event_type: string; aggregate_id: string;
+  payload: unknown; attempts: number; available_at: string; lease_token: string;
+};
+export type OutboxBacklog = { pendingEvents: number; oldestPendingAgeMs: number };
+export type RateLimitResult = { allowed: boolean; resetAt: string };
+export type DeletedArticleResult = { id: string; deletedAt: string };
+export type PurgedArticlesResult = { purged: number };
+
+/* -------------------------------------------------------------------------- */
+/* Domain input shapes                                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Required-ness here mirrors what each store actually validates at runtime.
+ * REST bodies are normalized into named types (see `transport/rest/bodies.ts`)
+ * rather than spread as `Record<string, unknown>`; no field is optional merely
+ * to make an unchecked spread compile. Outputs that are genuinely optional in
+ * the store (paging, locale defaults, cursors) remain optional.
+ */
+export type PublishedArticleSort = "latest" | "popular";
+export type ListPublishedArticlesInput = {
+  locale?: string; query?: string; authorId?: string | null; sort?: PublishedArticleSort;
+  limit?: number; offset?: number; cursor?: unknown;
+};
+export type ArticleBySlugInput = { slug: string; locale?: string };
+export type ArticleForViewerInput = { slug: string; locale?: string; actorId?: string | null };
+export type AuthorArticlesInput = { actorId: string; locale?: string; limit?: number };
+export type ArticleListPageInput = { locale?: string; limit?: number; offset?: number };
+export type CreateArticleInput = {
+  authorId: string; slug: string; title: string; contentBlocks: unknown;
+  summary?: string; locale?: string;
+  contentBlocksVersion?: number; publish?: boolean;
+  workType?: string; categoryIds?: readonly unknown[]; tagIds?: readonly unknown[];
+  idempotencyKey?: string | null; requestedSlug?: string | null;
+};
+export type UpdateArticleInput = {
+  articleId: string; actorId: string; slug: string; title: string; contentBlocks: unknown;
+  summary?: string; locale?: string;
+  contentBlocksVersion?: number; publish?: boolean;
+  workType?: string; categoryIds?: readonly unknown[]; tagIds?: readonly unknown[];
+};
+export type ArticleAuthorInput = { articleId: string; actorId: string };
+export type RestoreArticleInput = ArticleAuthorInput & { locale?: string };
+export type PurgeExpiredArticlesInput = { retentionDays?: number; now?: Date | string; limit?: number };
+export type RelatedArticlesInput = { slug: string; locale?: string; limit?: number };
+export type FollowingArticlesInput = { actorId: string; locale?: string; limit?: number; offset?: number };
+export type SetFeaturedArticlesInput = {
+  actorId: string; articleIds: string[]; actorIsEditor?: boolean; locale?: string;
+};
+export type TaxonomyListInput = {
+  kind: string; locale?: string; query?: string; limit?: number; offset?: number;
+};
+export type TaxonomyBySlugInput = { kind: string; slug: string; locale?: string };
+export type TaxonomyArticlesInput = TaxonomyBySlugInput & { limit?: number; offset?: number };
+export type ArticleTaxonomiesInput = { articleId: string; kind: string; locale?: string };
+export type CreateTagInput = { actorId: string; name: string; locale?: string };
+export type CreateTaxonomyInput = {
+  actorId: string; kind: string; slug: string; name: string;
+  actorIsEditor?: boolean; description?: string; locale?: string;
+};
+export type DeleteTaxonomyInput = { taxonomyId: string; actorId: string; actorIsEditor?: boolean };
+export type AuthorProfileInput = { userId: string; locale?: string; viewerId?: string | null };
+export type UserRoleInput = { actorId: string; userId: string; role: string };
+export type SearchAuthorsInput = { query?: string; locale?: string; limit?: number; offset?: number };
+export type SearchUsersInput = {
+  query: string; locale?: string; viewerId?: string | null; limit?: number;
+};
+export type RelatedUsersInput = {
+  userId: string; locale?: string; viewerId?: string | null; limit?: number;
+};
+export type FollowUserInput = { actorId: string; targetUserId: string };
+export type UpsertAuthorProfileInput = {
+  userId: string; displayName: string; bio?: string; avatarUrl?: string | null;
+  websiteUrl?: string | null; locale?: string;
+};
+export type ToggleArticleLikeInput = { slug: string; actorId: string; locale?: string };
+export type SetArticleLikeInput = ToggleArticleLikeInput & { liked: boolean };
+export type ArticleCommentsInput = { slug: string; locale?: string; limit?: number };
+export type CreateArticleCommentInput = {
+  slug: string; actorId: string; content: string;
+  locale?: string; contentBlocks?: unknown[] | null; contentBlocksVersion?: number;
+  parentCommentId?: string | null; idempotencyKey?: string | null;
+};
+export type DeleteArticleCommentInput = { commentId: string; actorId: string };
+export type ArticleCommentAuthorIdsInput = { articleId: string; limit?: number };
+export type CreateConversationInput = {
+  actorId: string; participantIds: string[]; idempotencyKey?: string | null;
+};
+export type ConversationMemberInput = { conversationId: string; actorId: string };
+export type UpdateConversationParticipantsInput = ConversationMemberInput & {
+  addUserIds?: string[]; removeUserIds?: string[];
+};
+export type ListConversationMessagesInput = ConversationMemberInput & {
+  limit?: number; before?: unknown;
+};
+export type ListConversationsInput = { actorId: string; limit?: number };
+export type PersistMessageInput = {
+  conversationId: string; senderId: string; body: string; idempotencyKey: string;
+};
+export type NotificationListInput = { actorId: string; limit?: number };
+export type NotificationActorInput = { actorId: string };
+export type MarkNotificationReadInput = { notificationId: string; actorId: string };
+export type CreateNotificationInput = { userId: string; eventKey: string; payload: unknown };
+export type DeliverMessageNotificationsInput = {
+  eventKey: string; messageId: string; conversationId: string; senderId: string;
+};
+export type RevokeSessionInput = { sessionId: string; expiresAt: string | Date };
+export type ClaimOutboxEventsInput = { limit?: number; leaseSeconds?: number };
+export type MarkOutboxDeliveredInput = { eventId: string; leaseToken: string };
+export type RescheduleOutboxEventInput = MarkOutboxDeliveredInput & { delaySeconds?: number };
+export type ListMediaAssetsInput = {
+  ownerId: string; cursor: { at: string; id: string } | null; limit: number;
+};
+export type DeleteUnusedMediaAssetInput = { id: string; ownerId: string };
+
+/* -------------------------------------------------------------------------- */
+/* The 11 typed port groups                                                    */
+/* -------------------------------------------------------------------------- */
+
+/** Article content, publication, author desks and the featured shelf. */
+export type ContentPersistencePort = {
+  listPublishedArticles(input?: ListPublishedArticlesInput): PersistenceResult<StoredArticle[]>;
+  getPublishedArticle(input: ArticleBySlugInput): PersistenceResult<StoredArticle | null>;
+  listMyArticles(input: AuthorArticlesInput): PersistenceResult<StoredArticle[]>;
+  createArticle(input: CreateArticleInput): PersistenceResult<StoredArticle>;
+  updateArticle(input: UpdateArticleInput): PersistenceResult<StoredArticle>;
+  deleteArticle(input: ArticleAuthorInput): PersistenceResult<DeletedArticleResult>;
+  restoreArticle(input: RestoreArticleInput): PersistenceResult<StoredArticle>;
+  listMyDeletedArticles(input: AuthorArticlesInput): PersistenceResult<StoredDeletedArticle[]>;
+  purgeExpiredArticles(input?: PurgeExpiredArticlesInput): PersistenceResult<PurgedArticlesResult>;
+  listLikedArticles(input: AuthorArticlesInput): PersistenceResult<StoredArticle[]>;
+  listRelatedArticles(input: RelatedArticlesInput): PersistenceResult<StoredArticle[]>;
+  listFollowingArticles(input: FollowingArticlesInput): PersistenceResult<StoredArticle[]>;
+  listFeaturedArticles(input?: ArticleListPageInput): PersistenceResult<StoredArticle[]>;
+  setFeaturedArticles(input: SetFeaturedArticlesInput): PersistenceResult<StoredArticle[]>;
+};
+
+/** User-generated hashtags and editorial categories. */
+export type TaxonomyPersistencePort = {
+  listTaxonomies(input: TaxonomyListInput): PersistenceResult<StoredTaxonomy[]>;
+  getTaxonomyBySlug(input: TaxonomyBySlugInput): PersistenceResult<StoredTaxonomy | null>;
+  listTaxonomyArticles(input: TaxonomyArticlesInput): PersistenceResult<StoredArticle[]>;
+  listArticleTaxonomies(input: ArticleTaxonomiesInput): PersistenceResult<StoredTaxonomy[]>;
+  createTag(input: CreateTagInput): PersistenceResult<StoredTaxonomy>;
+  createTaxonomy(input: CreateTaxonomyInput): PersistenceResult<StoredTaxonomy>;
+  deleteTaxonomy(input: DeleteTaxonomyInput): PersistenceResult<boolean>;
+};
+
+/** Author profiles, roles, search and follow relationships. */
+export type ProfilesPersistencePort = {
+  getAuthorProfile(input: AuthorProfileInput): PersistenceResult<StoredAuthorProfile | null>;
+  searchUsers(input: SearchUsersInput): PersistenceResult<StoredAuthorProfile[]>;
+  searchAuthors(input: SearchAuthorsInput): PersistenceResult<StoredAuthorDirectoryEntry[]>;
+  listFollowing(input: RelatedUsersInput): PersistenceResult<StoredAuthorProfile[]>;
+  listFollowers(input: RelatedUsersInput): PersistenceResult<StoredAuthorProfile[]>;
+  followUser(input: FollowUserInput): PersistenceResult<boolean>;
+  unfollowUser(input: FollowUserInput): PersistenceResult<boolean>;
+  upsertAuthorProfile(input: UpsertAuthorProfileInput): PersistenceResult<StoredAuthorProfile>;
+  getUserRole(input: { userId: string }): PersistenceResult<string>;
+  setUserRole(input: UserRoleInput): PersistenceResult<string>;
+};
+
+/** Article likes and threaded comments. */
+export type EngagementPersistencePort = {
+  getArticleLikeInfo(input: ArticleForViewerInput): PersistenceResult<StoredArticleLikeInfo | null>;
+  toggleArticleLike(input: ToggleArticleLikeInput): PersistenceResult<StoredArticleLikeInfo | null>;
+  setArticleLike(input: SetArticleLikeInput): PersistenceResult<StoredArticleLikeInfo | null>;
+  listArticleComments(input: ArticleCommentsInput): PersistenceResult<StoredArticleComment[]>;
+  createArticleComment(input: CreateArticleCommentInput): PersistenceResult<StoredArticleComment>;
+  deleteArticleComment(input: DeleteArticleCommentInput): PersistenceResult<boolean>;
+  listArticleCommentAuthorIds(input: ArticleCommentAuthorIdsInput): PersistenceResult<string[]>;
+};
+
+/**
+ * Conversations, membership and message persistence.
+ *
+ * `updateConversationParticipants` is the one known provider divergence: the
+ * PostgreSQL slice returns `true`, the SQLite slice returns the resulting
+ * participant id list. No REST or application caller reads the value (the route
+ * re-reads the conversation), but the contract records the union rather than
+ * pretending both providers agree. See the second-round residual notes.
+ */
+export type ConversationsPersistencePort = {
+  createConversation(input: CreateConversationInput): PersistenceResult<StoredConversation | null>;
+  getConversation(input: ConversationMemberInput): PersistenceResult<StoredConversation | null>;
+  updateConversationParticipants(input: UpdateConversationParticipantsInput): PersistenceResult<boolean | string[]>;
+  deleteConversation(input: ConversationMemberInput): PersistenceResult<boolean>;
+  markConversationAsRead(input: ConversationMemberInput): PersistenceResult<boolean>;
+  listConversationMessages(input: ListConversationMessagesInput): PersistenceResult<StoredMessage[]>;
+  listConversations(input: ListConversationsInput): PersistenceResult<StoredConversation[]>;
+  persistMessage(input: PersistMessageInput): PersistenceResult<StoredMessage>;
+  listConversationParticipantIds(input: { conversationId: string }): PersistenceResult<string[]>;
+};
+
+/** Recipient-scoped notification inbox and message delivery. */
+export type NotificationsPersistencePort = {
+  listNotifications(input: NotificationListInput): PersistenceResult<NotificationRecord[]>;
+  getUnreadNotificationCount(input: NotificationActorInput): PersistenceResult<number>;
+  markAllNotificationsRead(input: NotificationActorInput): PersistenceResult<number>;
+  markNotificationRead(input: MarkNotificationReadInput): PersistenceResult<NotificationRecord | null>;
+  createNotification(input: CreateNotificationInput): PersistenceResult<NotificationReceipt>;
+  deliverMessageNotifications(input: DeliverMessageNotificationsInput): PersistenceResult<boolean>;
+};
+
+/** Durable session revocation. Both providers implement these asynchronously. */
+export type SessionsPersistencePort = {
+  revokeSession(input: RevokeSessionInput): Promise<boolean>;
+  isSessionRevoked(sessionId: string): Promise<boolean>;
+};
+
+/**
+ * Self-hosted identity. `IdentityStore` is already the authoritative,
+ * fully annotated contract consumed by `createIdentityService`; reusing it here
+ * keeps one definition instead of a second hand-written copy that could drift.
+ */
+export type IdentityPersistencePort = Omit<IdentityStore, "consumeRateLimit">;
+
+/** Durable, atomic rate-limit buckets. */
+export type RateLimitsPersistencePort = {
+  consumeRateLimit: IdentityStore["consumeRateLimit"];
+};
+
+/** Transactional outbox leasing, acknowledgement and backlog metrics. */
+export type OutboxPersistencePort = {
+  claimOutboxEvents(input?: ClaimOutboxEventsInput): PersistenceResult<StoredOutboxEvent[]>;
+  markOutboxDelivered(input: MarkOutboxDeliveredInput): PersistenceResult<boolean>;
+  rescheduleOutboxEvent(input: RescheduleOutboxEventInput): PersistenceResult<boolean>;
+  outboxBacklog(): PersistenceResult<OutboxBacklog>;
+};
+
+/** Operational probes. */
+export type OperationsPersistencePort = {
+  health(): Promise<boolean>;
+};
+
+/* -------------------------------------------------------------------------- */
+/* Provider-only (non-port) methods                                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Media metadata is consumed by `createMediaAssetService` through the raw
+ * adapter, not through a domain port. It stays out of `persistencePortMethods`
+ * (so no REST port table exposes it) but is part of the adapter surface and is
+ * typed here so the composed store has no untyped methods left. All five media
+ * methods are `async` in both providers, so `Promise<T>` — not the union — is
+ * the accurate result and keeps `MediaMetadataStore` compatible.
+ */
+export type MediaPersistencePort = {
+  createMediaAsset(asset: Omit<MediaAsset, "createdAt">): Promise<MediaAsset>;
+  getMediaAsset(input: { id: string }): Promise<MediaAsset | null>;
+  listMediaAssets(input: ListMediaAssetsInput): Promise<MediaAsset[]>;
+  listMediaScanRows(): Promise<MediaScanRow[]>;
+  deleteUnusedMediaAsset(input: DeleteUnusedMediaAssetInput): Promise<{
+    deleted: MediaAsset | null; usedBy: MediaScanRow[];
+  } | null>;
+};
+
+/**
+ * `transaction` is a PostgreSQL-only helper used by its failure/rollback
+ * integration test; the SQLite provider has private transaction helpers inside
+ * its slices but exposes no public one. It is optional so both adapters can
+ * satisfy the same contract without inventing a SQLite behavior change.
+ */
+export type TransactionPersistencePort = {
+  transaction?(work: (...args: never[]) => unknown): Promise<unknown>;
+};
+
+/**
+ * The fully typed adapter contract: one explicit signature for every port
+ * method in the table, plus the provider-only media/transaction helpers.
+ * Declared as an intersection of *type aliases* (not interfaces) so it keeps an
+ * implicit index signature and therefore satisfies the generic constraint used
+ * by `assertPersistenceAdapter`/`createPersistencePorts`.
+ */
+export type TypedPersistenceAdapterContract =
+  & ContentPersistencePort
+  & TaxonomyPersistencePort
+  & ProfilesPersistencePort
+  & EngagementPersistencePort
+  & ConversationsPersistencePort
+  & NotificationsPersistencePort
+  & SessionsPersistencePort
+  & IdentityPersistencePort
+  & RateLimitsPersistencePort
+  & OutboxPersistencePort
+  & OperationsPersistencePort
+  & MediaPersistencePort
+  & TransactionPersistencePort;
+
+/**
+ * Broad structural constraint for adapter-shaped objects. `never[]` accepts a
+ * method with any parameter list (contravariance) while `unknown` forbids the
+ * `any` escape hatch in return positions; generic arguments still infer their
+ * own concrete method signatures. There is deliberately no
+ * `(...args: any[]) => any` branch: a `satisfies` check against this contract
+ * cannot be forged with `as unknown as`.
+ */
+export type PersistenceAdapterMethods = Record<string, (...args: never[]) => unknown>;
 
 /**
  * The shape an adapter must actually return.
  *
- * `PersistenceAdapterMethods` is deliberately open (`Record<string, ...>`) so the
- * port types can be derived from an adapter's own method list. That openness is
- * exactly what lets an adapter forget a method, so adapters annotate their return
- * value with *this* contract: every port method must exist, and a renamed or
- * dropped method becomes a compile error instead of a runtime 500 behind a route.
- * Parameter types stay permissive until the adapters are annotated method by
- * method (the remainder of issue #66).
+ * This used to be a mapped `(...args: any[]) => any`, which let a transport call
+ * silently pass a misspelled or wrongly typed argument. It is now the explicit
+ * domain contract, so `createPersistencePorts`, `ApplicationServices` and every
+ * REST route inherit the parameter and return types declared above (issue #66).
+ * Adapters annotate their returned object with `satisfies TypedPersistenceAdapterContract`,
+ * which turns a renamed/dropped/wrongly typed method into a compile error.
  */
-export type PersistenceAdapterContract = {
-  readonly [M in PortMethodName<PortName>]: (...args: any[]) => any;
-};
+export type PersistenceAdapterContract = TypedPersistenceAdapterContract;
 
 /** Domain-grouped repository ports, typed from the adapter that backs them. */
-export type PersistencePorts<A extends PersistenceAdapterMethods = PersistenceAdapterMethods> = {
+export type PersistencePorts<A extends PersistenceAdapterMethods = PersistenceAdapterContract> = {
   [K in PortName]: { [M in PortMethodName<K>]: A[M] };
 };
 
@@ -109,8 +470,29 @@ export function assertPersistenceAdapter<T extends PersistenceAdapterMethods>(ad
   return adapter;
 }
 
+/**
+ * Fail at composition time when two slices claim the same method name.
+ *
+ * Object spreads would otherwise let a later slice silently overwrite an
+ * earlier one; `satisfies` cannot see that. The one intentional duplicate in
+ * the SQLite tree (`revokeSession` in both the session and identity slices) is
+ * resolved explicitly by the composition before this guard runs.
+ */
+export function assertDisjointSlices(slices: ReadonlyArray<readonly [string, object]>): void {
+  const owners = new Map<string, string>();
+  for (const [name, slice] of slices) {
+    for (const method of Object.keys(slice)) {
+      const previous = owners.get(method);
+      if (previous !== undefined) {
+        throw new TypeError(`Persistence slice method "${method}" is defined by both ${previous} and ${name}.`);
+      }
+      owners.set(method, name);
+    }
+  }
+}
+
 /** Group a flat adapter into domain-specific repository ports. */
-export function createPersistencePorts<A extends PersistenceAdapterMethods = PersistenceAdapterMethods>(
+export function createPersistencePorts<A extends PersistenceAdapterMethods = PersistenceAdapterContract>(
   adapter: A,
   {
     onOperation,

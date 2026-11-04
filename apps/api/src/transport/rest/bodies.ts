@@ -6,29 +6,66 @@ import { ArticleInputError } from "../../domain/errors.ts";
 import { normalizeCommentContentInput } from "../../domain/comment-content.ts";
 import { isRecord } from "./http.ts";
 
+/**
+ * The REST-normalized article write body.
+ *
+ * `contentBlocks` is still a serialized JSON string here: the application
+ * service parses it at the boundary (`createApplicationServices`). Keeping this
+ * shape explicit stops a `Record<string, unknown>` spread from erasing the
+ * knowledge that `title`, `locale`, `contentBlocks` and `summary` are always
+ * present after validation.
+ */
+export type ArticleWriteBody = {
+  title: string;
+  locale: "zh-CN";
+  contentBlocks: string;
+  summary: string;
+  slug?: string;
+  publish?: boolean;
+  workType?: string;
+  contentBlocksVersion?: number;
+  categoryIds?: readonly unknown[];
+  tagIds?: readonly unknown[];
+};
+/** Updates address a stored article, so the slug and publish flag are mandatory. */
+export type ArticleUpdateBody = ArticleWriteBody & { slug: string; publish: boolean };
+
+/** A profile write body after validation; optional nullable URLs stay optional. */
+export type ProfileWriteBody = {
+  displayName: string;
+  bio: string;
+  locale: "zh-CN";
+  avatarUrl?: string | null;
+  websiteUrl?: string | null;
+};
+
 export const ARTICLE_WRITE_FIELDS = new Set([
   "slug", "title", "summary", "locale", "contentBlocks", "editorState", "contentBlocksVersion", "publish", "workType", "categoryIds", "tagIds",
 ]);
 
+export function normalizeArticleWriteBody(body: Record<string, unknown>, requirePublish: true): { input: ArticleUpdateBody | null; error: string | null };
+export function normalizeArticleWriteBody(body: Record<string, unknown>, requirePublish: boolean): { input: ArticleWriteBody | null; error: string | null };
 export function normalizeArticleWriteBody(
   body: Record<string, unknown>,
   requirePublish: boolean,
-): { input: Record<string, unknown> | null; error: string | null } {
+): { input: ArticleWriteBody | null; error: string | null } {
   if (Object.keys(body).some((key) => !ARTICLE_WRITE_FIELDS.has(key))) {
     return { input: null, error: "The request contains unsupported fields." };
   }
   if (body.locale !== undefined && body.locale !== "zh-CN") {
     return { input: null, error: "The REST API currently supports only locale zh-CN." };
   }
-  if (typeof body.title !== "string") {
+  const title = body.title;
+  if (typeof title !== "string") {
     return { input: null, error: "title must be a string." };
   }
-  if (body.slug !== undefined && typeof body.slug !== "string") {
+  const slugValue = body.slug;
+  if (slugValue !== undefined && typeof slugValue !== "string") {
     return { input: null, error: "slug must be a string when supplied." };
   }
   // Article creation may omit the slug: the route then derives one from the
   // title. Updates address a stored article, so they must name its slug.
-  const requestedSlug = typeof body.slug === "string" ? body.slug.trim() : "";
+  const requestedSlug = typeof slugValue === "string" ? slugValue.trim() : "";
   if (requirePublish && requestedSlug.length === 0) {
     return { input: null, error: "slug must be supplied as a non-empty string for article updates." };
   }
@@ -65,47 +102,56 @@ export function normalizeArticleWriteBody(
     contentBlocks = body.contentBlocks;
   }
 
-  if (body.summary !== undefined && typeof body.summary !== "string") {
+  const summaryValue = body.summary;
+  if (summaryValue !== undefined && typeof summaryValue !== "string") {
     return { input: null, error: "summary must be a string." };
   }
-  if (body.workType !== undefined && typeof body.workType !== "string") {
+  const workType = body.workType;
+  if (workType !== undefined && typeof workType !== "string") {
     return { input: null, error: "workType must be a string." };
   }
-  if (body.publish !== undefined && typeof body.publish !== "boolean") {
+  const publish = body.publish;
+  if (publish !== undefined && typeof publish !== "boolean") {
     return { input: null, error: "publish must be a boolean." };
   }
-  if (requirePublish && typeof body.publish !== "boolean") {
+  if (requirePublish && typeof publish !== "boolean") {
     return { input: null, error: "publish must be supplied as a boolean for article updates." };
   }
-  if (body.contentBlocksVersion !== undefined &&
-      (!Number.isInteger(body.contentBlocksVersion) ||
-       (body.contentBlocksVersion !== 0 && body.contentBlocksVersion !== 1))) {
+  const contentBlocksVersion = body.contentBlocksVersion;
+  if (contentBlocksVersion !== undefined &&
+      (typeof contentBlocksVersion !== "number" || !Number.isInteger(contentBlocksVersion) ||
+       (contentBlocksVersion !== 0 && contentBlocksVersion !== 1))) {
     return { input: null, error: "contentBlocksVersion must be 0 or 1." };
   }
-  for (const field of ["categoryIds", "tagIds"] as const) {
-    if (body[field] !== undefined && !Array.isArray(body[field])) {
+  const categoryIds = body.categoryIds;
+  const tagIds = body.tagIds;
+  for (const [field, value] of [["categoryIds", categoryIds], ["tagIds", tagIds]] as const) {
+    if (value !== undefined && !Array.isArray(value)) {
       return { input: null, error: field + " must be an array when supplied." };
     }
   }
 
-  const input: Record<string, unknown> = {
-    ...body,
+  // An empty summary is derived from the beginning of the body text.
+  const summary = typeof summaryValue === "string" && summaryValue.trim().length > 0
+    ? summaryValue
+    : summarizeArticleBlocks(contentBlocks, { maxLength: ARTICLE_SUMMARY_MAX_LENGTH });
+  const input: ArticleWriteBody = {
+    title,
     locale: "zh-CN",
     contentBlocks: JSON.stringify(contentBlocks),
+    summary,
   };
-  delete input.editorState;
-  if (hasEditorState) input.contentBlocksVersion = 1;
   if (requestedSlug.length > 0) {
+    // No slug supplied: omit the key entirely so the route generates one
+    // instead of forwarding an empty value the domain validator would reject.
     input.slug = requestedSlug;
-  } else {
-    // No slug supplied: signal the route to generate one instead of sending an
-    // empty value that the domain validator would reject.
-    delete input.slug;
   }
-  // An empty summary is derived from the beginning of the body text.
-  if (typeof body.summary !== "string" || body.summary.trim().length === 0) {
-    input.summary = summarizeArticleBlocks(contentBlocks, { maxLength: ARTICLE_SUMMARY_MAX_LENGTH });
-  }
+  if (hasEditorState) input.contentBlocksVersion = 1;
+  else if (typeof contentBlocksVersion === "number") input.contentBlocksVersion = contentBlocksVersion;
+  if (typeof publish === "boolean") input.publish = publish;
+  if (typeof workType === "string") input.workType = workType;
+  if (Array.isArray(categoryIds)) input.categoryIds = categoryIds;
+  if (Array.isArray(tagIds)) input.tagIds = tagIds;
   return { input, error: null };
 }
 
@@ -113,31 +159,43 @@ export const PROFILE_WRITE_FIELDS = new Set(["displayName", "bio", "avatarUrl", 
 
 export function normalizeProfileWriteBody(
   body: Record<string, unknown>,
-): { input: Record<string, unknown> | null; error: string | null } {
+): { input: ProfileWriteBody | null; error: string | null } {
   if (Object.keys(body).some((key) => !PROFILE_WRITE_FIELDS.has(key))) {
     return { input: null, error: "The request contains unsupported fields." };
   }
   if (body.locale !== undefined && body.locale !== "zh-CN") {
     return { input: null, error: "The REST API currently supports only locale zh-CN." };
   }
-  if (typeof body.displayName !== "string") {
+  const displayName = body.displayName;
+  if (typeof displayName !== "string") {
     return { input: null, error: "displayName must be a string." };
   }
-  if (body.bio !== undefined && typeof body.bio !== "string") {
+  const bio = body.bio;
+  if (bio !== undefined && typeof bio !== "string") {
     return { input: null, error: "bio must be a string." };
   }
-  for (const field of ["avatarUrl", "websiteUrl"] as const) {
-    if (body[field] !== undefined && body[field] !== null && typeof body[field] !== "string") {
+  const avatarUrl = body.avatarUrl;
+  const websiteUrl = body.websiteUrl;
+  for (const [field, value] of [["avatarUrl", avatarUrl], ["websiteUrl", websiteUrl]] as const) {
+    if (value !== undefined && value !== null && typeof value !== "string") {
       return { input: null, error: field + " must be a string or null." };
     }
   }
-  const input: Record<string, unknown> = {
-    displayName: body.displayName,
-    bio: body.bio ?? "",
+  const input: ProfileWriteBody = {
+    displayName,
+    bio: typeof bio === "string" ? bio : "",
     locale: "zh-CN",
   };
-  if (Object.hasOwn(body, "avatarUrl")) input.avatarUrl = body.avatarUrl;
-  if (Object.hasOwn(body, "websiteUrl")) input.websiteUrl = body.websiteUrl;
+  if (Object.hasOwn(body, "avatarUrl")) {
+    if (avatarUrl === null) input.avatarUrl = null;
+    else if (typeof avatarUrl === "string") input.avatarUrl = avatarUrl;
+    else input.avatarUrl = undefined;
+  }
+  if (Object.hasOwn(body, "websiteUrl")) {
+    if (websiteUrl === null) input.websiteUrl = null;
+    else if (typeof websiteUrl === "string") input.websiteUrl = websiteUrl;
+    else input.websiteUrl = undefined;
+  }
   return { input, error: null };
 }
 

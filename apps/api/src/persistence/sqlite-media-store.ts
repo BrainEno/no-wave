@@ -1,5 +1,6 @@
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import { createSqliteProviderMigrationCapture } from "./sqlite-provider-migration-capture.ts";
+import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
 
 function mapMediaAsset(row) {
   if (!row) return null;
@@ -157,5 +158,5 @@ export function createSqliteMediaStore(db) {
         throw error;
       }
     },
-  });
+  }) satisfies Pick<TypedPersistenceAdapterContract, "createMediaAsset" | "getMediaAsset" | "listMediaAssets" | "listMediaScanRows" | "deleteUnusedMediaAsset">;
 }

@@ -1,6 +1,7 @@
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import { createPostgresProviderMigrationCapture, migrationEntityKey, type CapturedChange } from "./postgres-provider-migration-capture.ts";
 import { DEFAULT_AUTHOR_DISPLAY_NAME } from "../domain/profile.ts";
+import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
 
 /**
  * PostgreSQL identity persistence. Refresh rotation, replay detection, logout
@@ -458,5 +459,5 @@ export function createPostgresIdentityStore(sql) {
         return { allowed: Number(rows[0].attempts) <= limit, resetAt: new Date(rows[0].reset_at).toISOString() };
       });
     },
-  });
+  }) satisfies Pick<TypedPersistenceAdapterContract, "createIdentityAccount" | "findIdentityAccount" | "createIdentitySession" | "rotateIdentityRefresh" | "revokeIdentityRefresh" | "revokeSession" | "issueIdentityToken" | "consumeIdentityToken" | "replaceIdentityPassword" | "listIdentitySessions" | "revokeIdentitySession" | "revokeIdentitySessions" | "markIdentityEmailVerified" | "findIdentityAccountByUserId" | "setIdentityEmail" | "findIdentityCredentials" | "pruneExpiredIdentityState" | "consumeRateLimit">;
 }

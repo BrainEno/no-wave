@@ -5,6 +5,7 @@ import { ArticleAuthorizationError, ArticleInputError, ArticleNotFoundError, Ide
 import { validateArticleLocale, validateArticleSlug } from "../domain/article.ts";
 import { validateStoredCommentContent } from "../domain/comment-content.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
+import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
 
 export function createSqliteEngagementStore(db) {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") {
@@ -203,5 +204,5 @@ export function createSqliteEngagementStore(db) {
         articleId, limit,
       ).map((row) => String(row.authorId));
     },
-  });
+  }) satisfies Pick<TypedPersistenceAdapterContract, "getArticleLikeInfo" | "toggleArticleLike" | "setArticleLike" | "listArticleComments" | "createArticleComment" | "deleteArticleComment" | "listArticleCommentAuthorIds">;
 }

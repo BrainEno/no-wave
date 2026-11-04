@@ -1,4 +1,4 @@
-import { assertPersistenceAdapter, type PersistenceAdapterContract } from "../application/persistence-ports.ts";
+import { assertDisjointSlices, assertPersistenceAdapter, type TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
 import { createSqliteArticleStore } from "./sqlite-article-store.ts";
 import { createSqliteTaxonomyStore } from "./sqlite-taxonomy-store.ts";
 import { createSqliteProfileStore } from "./sqlite-profile-store.ts";
@@ -14,35 +14,59 @@ import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
 /**
  * Compose the SQLite domain slices into one adapter-shaped object.
  *
- * This full adapter is registered as the default runtime provider. Its
- * operations are covered by the shared persistence-adapter contract tests.
+ * Every slice is checked at compile time against a `Pick` of the shared
+ * contract, and the composed object literal is checked with `satisfies`. The
+ * runtime assertion also verifies that no two slices claim the same method
+ * name: an object spread would otherwise let a later slice silently win.
  */
-export function createSqliteStore(db): PersistenceAdapterContract {
+export function createSqliteStore(db): TypedPersistenceAdapterContract {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") {
     throw new TypeError("A node:sqlite DatabaseSync connection is required.");
   }
 
-  const adapter = Object.assign(
-    {},
-    createSqliteArticleStore(db),
-    createSqliteTaxonomyStore(db),
-    createSqliteProfileStore(db),
-    createSqliteEngagementStore(db),
-    createSqliteConversationStore(db),
-    createSqliteNotificationStore(db),
-    createSqliteSessionStore(db),
-    // Identity replaces revokeSession with session-family revocation while
-    // preserving the legacy revoked-session lookup from the session slice.
-    createSqliteIdentityStore(db),
-    createSqliteOutboxStore(db),
-    createSqliteMediaStore(db),
-    {
-      async health() {
-        db.prepare("SELECT 1 AS ok").get();
-        return true;
-      },
+  const article = createSqliteArticleStore(db);
+  const taxonomy = createSqliteTaxonomyStore(db);
+  const profiles = createSqliteProfileStore(db);
+  const engagement = createSqliteEngagementStore(db);
+  const conversations = createSqliteConversationStore(db);
+  const notifications = createSqliteNotificationStore(db);
+  const sessionStore = createSqliteSessionStore(db);
+  // The identity slice owns `revokeSession`: it revokes both auth_sessions and
+  // revoked_sessions in one transaction, while the older session slice only
+  // touched revoked_sessions. Compose only the lookup from that slice so the
+  // winning implementation is explicit rather than a silent spread override.
+  const sessions = Object.freeze({ isSessionRevoked: sessionStore.isSessionRevoked });
+  const identity = createSqliteIdentityStore(db);
+  const outbox = createSqliteOutboxStore(db);
+  const media = createSqliteMediaStore(db);
+  const operations = Object.freeze({
+    async health() {
+      db.prepare("SELECT 1 AS ok").get();
+      return true;
     },
-  );
+  });
+
+  const slices = [
+    ["article", article], ["taxonomy", taxonomy], ["profiles", profiles],
+    ["engagement", engagement], ["conversations", conversations],
+    ["notifications", notifications], ["sessions", sessions], ["identity", identity],
+    ["outbox", outbox], ["media", media], ["operations", operations],
+  ] as const;
+  assertDisjointSlices(slices);
+
+  const adapter = {
+    ...article,
+    ...taxonomy,
+    ...profiles,
+    ...engagement,
+    ...conversations,
+    ...notifications,
+    ...sessions,
+    ...identity,
+    ...outbox,
+    ...media,
+    ...operations,
+  } satisfies TypedPersistenceAdapterContract;
 
   return Object.freeze(assertPersistenceAdapter(adapter));
 }

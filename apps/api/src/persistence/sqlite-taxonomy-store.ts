@@ -7,6 +7,7 @@ import {
 import { normalizeHashtag, validateTaxonomyKind } from "../domain/taxonomy.ts";
 import { validateArticleLocale, validateArticleSlug } from "../domain/article.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
+import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
 
 export function createSqliteTaxonomyStore(db) {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") {
@@ -173,5 +174,5 @@ export function createSqliteTaxonomyStore(db) {
         return true;
       });
     },
-  });
+  }) satisfies Pick<TypedPersistenceAdapterContract, "listTaxonomies" | "getTaxonomyBySlug" | "listTaxonomyArticles" | "listArticleTaxonomies" | "createTag" | "createTaxonomy" | "deleteTaxonomy">;
 }

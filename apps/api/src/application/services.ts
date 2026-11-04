@@ -1,4 +1,21 @@
-import { createPersistencePorts, type PersistencePorts } from "./persistence-ports.ts";
+import {
+  createPersistencePorts,
+  type PersistenceAdapterContract,
+  type PersistenceAdapterMethods,
+  type PersistencePorts,
+  type ArticleAuthorInput,
+  type AuthorArticlesInput,
+  type CreateTaxonomyInput,
+  type DeleteTaxonomyInput,
+  type DeletedArticleResult,
+  type PurgedArticlesResult,
+  type PurgeExpiredArticlesInput,
+  type RestoreArticleInput,
+  type SetFeaturedArticlesInput,
+  type StoredArticle,
+  type StoredDeletedArticle,
+  type StoredTaxonomy,
+} from "./persistence-ports.ts";
 import { ArticleInputError, ProfileAuthorizationError } from "../domain/errors.ts";
 
 type UnionToIntersection<U> = (U extends unknown ? (k: U) => void : never) extends (k: infer I) => void ? I : never;
@@ -7,23 +24,69 @@ type UnionToIntersection<U> = (U extends unknown ? (k: U) => void : never) exten
 type FlatPorts<P> = UnionToIntersection<{ [K in keyof P]: P[K] }[keyof P]>;
 
 /**
+ * The REST-normalized article write body as the application layer receives it.
+ * `contentBlocks` is still a serialized JSON array here; `createApplicationServices`
+ * parses it at the boundary. `transport/rest/bodies.ts` produces a structurally
+ * compatible shape (its `locale` is the narrower `"zh-CN"`).
+ */
+export type ArticleWriteInput = {
+  title: string;
+  contentBlocks: string;
+  summary: string;
+  locale?: string;
+  slug?: string;
+  publish?: boolean;
+  workType?: string;
+  contentBlocksVersion?: number;
+  categoryIds?: readonly unknown[];
+  tagIds?: readonly unknown[];
+};
+export type ArticleCreateServiceInput = ArticleWriteInput & {
+  authorId: string;
+  slug: string;
+  idempotencyKey?: string | null;
+  requestedSlug?: string | null;
+};
+export type ArticleUpdateServiceInput = ArticleWriteInput & {
+  articleId: string;
+  actorId: string;
+  slug: string;
+  publish: boolean;
+};
+
+/** Facade methods whose input or output differs from the raw port signature. */
+type ServiceOverrideName =
+  | "createArticle" | "updateArticle" | "deleteArticle" | "listMyDeletedArticles"
+  | "restoreArticle" | "purgeExpiredArticles" | "setFeaturedArticles"
+  | "createTaxonomy" | "deleteTaxonomy";
+
+/**
  * The application-facing service facade.
  *
  * The type is *derived* from the persistence port table rather than hand-written
  * again: `createApplicationServices` flattens the domain-grouped ports into one
- * object, so the facade type must flatten the same groups. Typing an adapter
- * method therefore tightens every transport call site automatically, and a method
- * name that does not exist in the table is a compile error instead of a runtime
- * "not a function". See issue #66 for the remaining work (annotating the adapter
- * implementations themselves).
+ * object. The handful of methods the facade deliberately wraps (editorial
+ * permission checks, serialized content parsing, tombstone retention) are
+ * `Omit`ted from that flattening and declared here with their real signatures —
+ * no index signature, no `any`, no assertion. Both a method that is not in the
+ * port table and a misspelled or wrongly typed argument are compile errors
+ * (issues #66 / #167).
  */
-export type ApplicationServices<A extends import("./persistence-ports.ts").PersistenceAdapterMethods = import("./persistence-ports.ts").PersistenceAdapterMethods> =
-  FlatPorts<PersistencePorts<A>> & {
-    createArticle(input: { authorId: string; contentBlocks: unknown; [key: string]: unknown }): Promise<unknown>;
-    updateArticle(input: { actorId: string; contentBlocks: unknown; [key: string]: unknown }): Promise<unknown>;
+export type ApplicationServices<A extends PersistenceAdapterMethods = PersistenceAdapterContract> =
+  Omit<FlatPorts<PersistencePorts<A>>, ServiceOverrideName> & {
+    createArticle(input: ArticleCreateServiceInput): Promise<StoredArticle>;
+    updateArticle(input: ArticleUpdateServiceInput): Promise<StoredArticle>;
+    deleteArticle(input: ArticleAuthorInput): Promise<DeletedArticleResult>;
+    listMyDeletedArticles(input: AuthorArticlesInput): Promise<Array<StoredDeletedArticle & { purgesAt?: string }>>;
+    restoreArticle(input: RestoreArticleInput): Promise<StoredArticle>;
+    purgeExpiredArticles(input?: PurgeExpiredArticlesInput): Promise<PurgedArticlesResult>;
+    /** `actorIsEditor` is decided here, not accepted from the transport. */
+    setFeaturedArticles(input: Omit<SetFeaturedArticlesInput, "actorIsEditor">): Promise<StoredArticle[]>;
+    createTaxonomy(input: Omit<CreateTaxonomyInput, "actorIsEditor">): Promise<StoredTaxonomy>;
+    deleteTaxonomy(input: Omit<DeleteTaxonomyInput, "actorIsEditor">): Promise<boolean>;
     /** ADR 0016: may this account curate? Consulted before every editorial write. */
     isEditor(input: { actorId: string }): Promise<boolean>;
-    assignUserRole(input: { actorId: string; userId: string; role: string }): Promise<unknown>;
+    assignUserRole(input: { actorId: string; userId: string; role: string }): Promise<string>;
   };
 
 /**
@@ -69,11 +132,11 @@ export function resolveTombstoneRetentionDays(env: NodeJS.ProcessEnv = process.e
   return parsed;
 }
 
-export function createApplicationServices<A extends import("./persistence-ports.ts").PersistenceAdapterMethods>({ persistence, onPersistenceOperation = null, env = process.env }: {
-  persistence: A;
+export function createApplicationServices({ persistence, onPersistenceOperation = null, env = process.env }: {
+  persistence: PersistenceAdapterContract;
   onPersistenceOperation?: ((sample: { operation: string; success: boolean; durationMs: number }) => void) | null;
   env?: NodeJS.ProcessEnv;
-}): ApplicationServices<A> {
+}): ApplicationServices {
   // ADR 0016, decision 2: the `role` column is the source of truth, but an empty
   // database can never mint its first editor through it — only an editor may write
   // it. `EDITOR_USER_IDS` is the way in, and the way back if the last editor is lost.
@@ -83,15 +146,16 @@ export function createApplicationServices<A extends import("./persistence-ports.
       .map((value) => value.trim())
       .filter((value) => value.length > 0),
   );
+  // `persistence` is the typed contract, so every call below is checked against
+  // the declared port inputs and outputs. No `as unknown as` is needed to keep
+  // the facade and the adapter in agreement.
   const ports = createPersistencePorts(persistence, { onOperation: onPersistenceOperation ?? undefined });
-  const serviceMethods = Object.values(ports).flatMap((group) => Object.entries(group));
-  const services = Object.fromEntries(serviceMethods);
 
   // Parse transport-serialized content at the application boundary, not in GraphQL.
-  const parseContentBlocks = (serialized: unknown) => {
+  const parseContentBlocks = (serialized: string): unknown[] => {
     let blocks;
     try {
-      blocks = JSON.parse(serialized as string);
+      blocks = JSON.parse(serialized);
     } catch {
       throw new ArticleInputError("contentBlocks must be a valid JSON array.");
     }
@@ -108,7 +172,7 @@ export function createApplicationServices<A extends import("./persistence-ports.
    * environment list is consulted before the column so bootstrapping works on a
    * database that has no roles yet.
    */
-  services.isEditor = async ({ actorId }: { actorId: string }) => {
+  const isEditor = async ({ actorId }: { actorId: string }): Promise<boolean> => {
     if (typeof actorId !== "string" || actorId.trim().length === 0) return false;
     if (bootstrapEditors.has(actorId)) return true;
     return await ports.profiles.getUserRole({ userId: actorId }) === "editor";
@@ -119,42 +183,35 @@ export function createApplicationServices<A extends import("./persistence-ports.
    * all. Refusing to change your own is enforced one layer down, in persistence,
    * so both adapters answer it identically under the same contract test.
    */
-  services.assignUserRole = async ({ actorId, userId, role }: { actorId: string; userId: string; role: string }) => {
-    const isEditor = await services.isEditor({ actorId });
-    if (!isEditor) throw new ProfileAuthorizationError();
+  const assignUserRole = async ({ actorId, userId, role }: { actorId: string; userId: string; role: string }): Promise<string> => {
+    if (!await isEditor({ actorId })) throw new ProfileAuthorizationError();
     return ports.profiles.setUserRole({ actorId, userId, role });
   };
 
   /**
    * ADR 0016, decision 1: a category is an editorial structure, a hashtag is the
-   * author's own words.
-   *
-   * The editor question is answered here — the only layer that can see
-   * `EDITOR_USER_IDS` — and handed to persistence as a plain fact, so both
-   * adapters enforce the same rule under the same contract test rather than each
-   * growing its own idea of who counts.
+   * author's own words. The editor question is answered here — the only layer
+   * that can see `EDITOR_USER_IDS` — and handed to persistence as a plain fact.
+   * ADR 0016, decision 4: the featured shelf is editorial in both directions.
    */
-  /**
-   * ADR 0016, decision 4: the featured shelf is editorial in both directions —
-   * anyone may read it, only an editor may arrange it.
-   */
-  services.setFeaturedArticles = async ({ actorId, ...input }) => {
-    const actorIsEditor = await services.isEditor({ actorId });
+  const setFeaturedArticles = async ({ actorId, ...input }: Omit<SetFeaturedArticlesInput, "actorIsEditor">): Promise<StoredArticle[]> => {
+    const actorIsEditor = await isEditor({ actorId });
     return ports.content.setFeaturedArticles({ ...input, actorId, actorIsEditor });
   };
-  services.createTaxonomy = async ({ actorId, ...input }) => {
-    const actorIsEditor = await services.isEditor({ actorId });
+  const createTaxonomy = async ({ actorId, ...input }: Omit<CreateTaxonomyInput, "actorIsEditor">): Promise<StoredTaxonomy> => {
+    const actorIsEditor = await isEditor({ actorId });
     return ports.taxonomy.createTaxonomy({ ...input, actorId, actorIsEditor });
   };
-  services.deleteTaxonomy = async ({ actorId, ...input }) => {
-    const actorIsEditor = await services.isEditor({ actorId });
+  const deleteTaxonomy = async ({ actorId, ...input }: Omit<DeleteTaxonomyInput, "actorIsEditor">): Promise<boolean> => {
+    const actorIsEditor = await isEditor({ actorId });
     return ports.taxonomy.deleteTaxonomy({ ...input, actorId, actorIsEditor });
   };
 
-  services.createArticle = async ({ authorId, ...input }) =>
+  const createArticleBase = async ({ authorId, ...input }: ArticleCreateServiceInput): Promise<StoredArticle> =>
     ports.content.createArticle({ ...input, authorId, contentBlocks: parseContentBlocks(input.contentBlocks) });
-  services.updateArticle = async ({ actorId, ...input }) =>
+  const updateArticleBase = async ({ actorId, ...input }: ArticleUpdateServiceInput): Promise<StoredArticle> =>
     ports.content.updateArticle({ ...input, actorId, contentBlocks: parseContentBlocks(input.contentBlocks) });
+
   /**
    * Tell the readers who commented on a work what deleting it means for them.
    *
@@ -193,7 +250,7 @@ export function createApplicationServices<A extends import("./persistence-ports.
   }
 
   // Deletion carries no body: it addresses a work the author already has.
-  services.deleteArticle = async ({ actorId, articleId }) => {
+  const deleteArticle = async ({ actorId, articleId }: ArticleAuthorInput): Promise<DeletedArticleResult> => {
     const deleted = await ports.content.deleteArticle({ articleId, actorId });
     const deletedAt = new Date(deleted?.deletedAt);
     if (Number.isFinite(deletedAt.getTime())) {
@@ -207,7 +264,7 @@ export function createApplicationServices<A extends import("./persistence-ports.
   // date is what makes it a deletion rather than an archive. The window is
   // policy, so it is resolved here and not in the stores: one place reads the
   // environment, both transports and every test see the same number.
-  services.listMyDeletedArticles = async ({ actorId, locale, limit }) => {
+  const listMyDeletedArticles = async ({ actorId, locale, limit }: AuthorArticlesInput): Promise<Array<StoredDeletedArticle & { purgesAt?: string }>> => {
     const retentionDays = resolveTombstoneRetentionDays(env);
     const articles = await ports.content.listMyDeletedArticles({ actorId, locale, limit });
     return articles.map((article) => {
@@ -218,9 +275,9 @@ export function createApplicationServices<A extends import("./persistence-ports.
       return { ...article, purgesAt: new Date(deletedAt.getTime() + retentionDays * 86_400_000).toISOString() };
     });
   };
-  services.restoreArticle = async ({ actorId, articleId, locale }) =>
+  const restoreArticle = async ({ actorId, articleId, locale }: RestoreArticleInput): Promise<StoredArticle> =>
     ports.content.restoreArticle({ articleId, actorId, locale });
-  services.purgeExpiredArticles = async ({ retentionDays = resolveTombstoneRetentionDays(env), now, limit }: { retentionDays?: number; now?: Date | string; limit?: number } = {}) =>
+  const purgeExpiredArticles = async ({ retentionDays = resolveTombstoneRetentionDays(env), now, limit }: PurgeExpiredArticlesInput = {}): Promise<PurgedArticlesResult> =>
     ports.content.purgeExpiredArticles({ retentionDays, now: now ?? new Date(), limit });
 
   /**
@@ -241,17 +298,45 @@ export function createApplicationServices<A extends import("./persistence-ports.
       // The next write tries again; a failed sweep must not look like a failed save.
     }
   }
-  const withTombstoneSweep = (work: (input: any) => Promise<any>) => async (input: any) => {
+  const withTombstoneSweep = <Input, Output>(work: (input: Input) => Promise<Output>) => async (input: Input): Promise<Output> => {
     try {
       return await work(input);
     } finally {
       await sweepTombstones();
     }
   };
-  services.createArticle = withTombstoneSweep(services.createArticle);
-  services.updateArticle = withTombstoneSweep(services.updateArticle);
-  services.deleteArticle = withTombstoneSweep(services.deleteArticle);
-  services.restoreArticle = withTombstoneSweep(services.restoreArticle);
+  const createArticle = withTombstoneSweep(createArticleBase);
+  const updateArticle = withTombstoneSweep(updateArticleBase);
+  const deleteArticleWithSweep = withTombstoneSweep(deleteArticle);
+  const restoreArticleWithSweep = withTombstoneSweep(restoreArticle);
 
-  return Object.freeze(services) as ApplicationServices<A>;
+  // Spreads provide every port method with its declared type; the trailing
+  // entries are the intentional application-layer overrides, each checked by
+  // `satisfies` against the single matching facade signature.
+  const services = {
+    ...ports.content,
+    ...ports.taxonomy,
+    ...ports.profiles,
+    ...ports.engagement,
+    ...ports.conversations,
+    ...ports.notifications,
+    ...ports.sessions,
+    ...ports.identity,
+    ...ports.rateLimits,
+    ...ports.outbox,
+    ...ports.operations,
+    isEditor,
+    assignUserRole,
+    setFeaturedArticles,
+    createTaxonomy,
+    deleteTaxonomy,
+    createArticle,
+    updateArticle,
+    deleteArticle: deleteArticleWithSweep,
+    listMyDeletedArticles,
+    restoreArticle: restoreArticleWithSweep,
+    purgeExpiredArticles,
+  } satisfies ApplicationServices;
+
+  return Object.freeze(services);
 }

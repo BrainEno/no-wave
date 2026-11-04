@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { assertOutboxLease } from "./outbox-lease.ts";
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import { createSqliteProviderMigrationCapture } from "./sqlite-provider-migration-capture.ts";
+import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
 
 /** SQLite transactional outbox store with lease-based claims and retry scheduling. */
 export function createSqliteOutboxStore(db) {
@@ -82,5 +83,5 @@ export function createSqliteOutboxStore(db) {
         oldestPendingAgeMs: Number.isFinite(oldest) ? Math.max(0, Date.now() - oldest) : 0,
       };
     },
-  });
+  }) satisfies Pick<TypedPersistenceAdapterContract, "claimOutboxEvents" | "markOutboxDelivered" | "rescheduleOutboxEvent" | "outboxBacklog">;
 }

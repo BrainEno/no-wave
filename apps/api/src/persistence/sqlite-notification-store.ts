@@ -3,6 +3,7 @@ import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import { createSqliteProviderMigrationCapture } from "./sqlite-provider-migration-capture.ts";
 import { InvalidMessageCursorError, IdempotencyConflictError } from "../domain/errors.ts";
 import { isUuid } from "../domain/validation.ts";
+import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
 
 /**
  * SQLite persistence slice for notifications. This remains an opt-in adapter
@@ -179,5 +180,5 @@ export function createSqliteNotificationStore(db) {
         throw error;
       }
     },
-  });
+  }) satisfies Pick<TypedPersistenceAdapterContract, "deliverMessageNotifications" | "listNotifications" | "getUnreadNotificationCount" | "markAllNotificationsRead" | "markNotificationRead" | "createNotification">;
 }
