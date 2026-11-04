@@ -73,11 +73,11 @@ export function createPostgresMediaStore(ctx: PostgresStoreContext) {
            FROM article_media_refs r
            JOIN articles a ON a.id = r.article_id
            JOIN article_translations t ON t.article_id = r.article_id AND t.locale = r.locale
-           WHERE r.asset_id = ANY($1::uuid[])`,
+           WHERE r.asset_id = ANY($1::text[])`,
           [ids],
         ),
         sql.unsafe(
-          "SELECT avatar_media_id AS asset_id FROM user_profiles WHERE avatar_media_id = ANY($1::uuid[])",
+          "SELECT avatar_media_id AS asset_id FROM user_profiles WHERE avatar_media_id = ANY($1::text[])",
           [ids],
         ),
       ]);

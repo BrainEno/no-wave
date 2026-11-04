@@ -3,8 +3,12 @@
 -- is noted here: jsonb needs an explicit ::text before it can be pattern
 -- matched, and the nullable avatar column is added with IF NOT EXISTS so this
 -- file stays re-runnable in the way 0003 and friends are.
+--
+-- `asset_id` is `text`, not `uuid`, because `media_assets.id` is `text` (see
+-- 0015_media_assets.sql — the id is the storage-naming key, not a uuid drawn by
+-- the database). A uuid column here would fail the foreign key outright.
 CREATE TABLE article_media_refs (
-  asset_id uuid NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,
+  asset_id text NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,
   article_id uuid NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
   locale text NOT NULL,
   PRIMARY KEY (asset_id, article_id, locale)
@@ -21,10 +25,10 @@ INSERT INTO article_media_refs (asset_id, article_id, locale)
 SELECT DISTINCT m.id, t.article_id, t.locale
 FROM media_assets m
 JOIN article_translations t
-  ON lower(t.content_blocks::text) LIKE '%/media/' || lower(m.id::text) || '%'
+  ON lower(t.content_blocks::text) LIKE '%/media/' || lower(m.id) || '%'
 ON CONFLICT DO NOTHING;
 
-ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS avatar_media_id uuid
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS avatar_media_id text
   REFERENCES media_assets(id) ON DELETE SET NULL;
 
 -- A correlated subquery rather than `UPDATE ... FROM LATERAL`: the lateral form
@@ -34,7 +38,7 @@ UPDATE user_profiles
 SET avatar_media_id = (
   SELECT m.id
   FROM media_assets m
-  WHERE lower(user_profiles.avatar_url) LIKE '%/media/' || lower(m.id::text) || '%'
+  WHERE lower(user_profiles.avatar_url) LIKE '%/media/' || lower(m.id) || '%'
   LIMIT 1
 )
 WHERE user_profiles.avatar_url IS NOT NULL AND user_profiles.avatar_url <> '';
