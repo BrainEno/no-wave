@@ -105,8 +105,14 @@ export async function assertTypedPortOutputs(): Promise<void> {
   void receiptDuplicate;
   const inboxReadAt: string | null = (await ports.notifications.listNotifications({ actorId: "u" }))[0].readAt;
   void inboxReadAt;
-  const outboxEventKey: string = (await ports.outbox.claimOutboxEvents())[0].event_key;
+  const claimedOutboxEvent = (await ports.outbox.claimOutboxEvents())[0];
+  const outboxEventKey: string = claimedOutboxEvent.event_key;
   void outboxEventKey;
+  const outboxAvailableAt: string = claimedOutboxEvent.available_at;
+  void outboxAvailableAt;
+  // @ts-expect-error `available_at` is an ISO string in both providers, not the driver's Date
+  const wrongOutboxAvailableAt: Date = claimedOutboxEvent.available_at;
+  void wrongOutboxAvailableAt;
   const role: string = await ports.profiles.setUserRole({ actorId: "u", userId: "v", role: "editor" });
   void role;
   const participantIds: string[] = await ports.conversations.updateConversationParticipants({ conversationId: "c", actorId: "u" });

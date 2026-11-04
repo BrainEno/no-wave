@@ -6,8 +6,24 @@
  */
 import { assertOutboxLease } from "./outbox-lease.ts";
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
-import type { PostgresStoreContext } from "./postgres-shared.ts";
+import { isoDate, parseJsonValue, type PostgresStoreContext } from "./postgres-shared.ts";
 import type { StoredOutboxEvent, TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
+
+/** The leasing RETURNING row as postgres.js decodes it: `timestamptz` is a Date. */
+type ClaimedOutboxRow = {
+  id: string; event_key: string; event_type: string; aggregate_id: string;
+  payload: unknown; attempts: number; available_at: string | Date; lease_token: string;
+};
+
+/** Map the driver row into the declared, provider-independent contract shape. */
+function mapClaimedOutboxEvent(row: ClaimedOutboxRow): StoredOutboxEvent {
+  return {
+    id: row.id, event_key: row.event_key, event_type: row.event_type,
+    aggregate_id: row.aggregate_id, payload: parseJsonValue(row.payload),
+    attempts: Number(row.attempts), available_at: isoDate(row.available_at),
+    lease_token: row.lease_token,
+  };
+}
 
 export function createPostgresOutboxStore(ctx: PostgresStoreContext) {
   const { sql, captureChanges } = ctx;
@@ -17,7 +33,7 @@ export function createPostgresOutboxStore(ctx: PostgresStoreContext) {
       if (!Number.isInteger(leaseSeconds) || leaseSeconds < 1 || leaseSeconds > 3600) throw new TypeError("leaseSeconds must be an integer between 1 and 3600.");
       return sql.begin(async (tx) => {
         const transactionId = createMigrationTransactionId();
-        const rows = await tx.unsafe<StoredOutboxEvent>(
+        const rows = await tx.unsafe<ClaimedOutboxRow>(
           "WITH picked AS ( SELECT id FROM outbox_events WHERE delivered_at IS NULL AND available_at <= now() ORDER BY created_at, id LIMIT $1 FOR UPDATE SKIP LOCKED ) " +
           "UPDATE outbox_events AS event SET attempts = event.attempts + 1, available_at = clock_timestamp() + ($2 * interval '1 second'), lease_token = gen_random_uuid() " +
           "FROM picked WHERE event.id = picked.id " +
@@ -30,7 +46,7 @@ export function createPostgresOutboxStore(ctx: PostgresStoreContext) {
           if (snapshot[0]) changes.push({ entityType: "outbox_events", entityId: row.id, operation: "upsert" as const, payload: snapshot[0] });
         }
         await captureChanges(tx, transactionId, changes);
-        return rows;
+        return rows.map(mapClaimedOutboxEvent);
       });
     },
 

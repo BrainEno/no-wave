@@ -135,9 +135,11 @@ export type NotificationReceipt = {
   createdAt: string; duplicate: boolean;
 };
 /**
- * Outbox leases are raw driver rows in both providers: the delivery worker and
+ * Outbox leases stay driver-shaped in both providers: the delivery worker and
  * `message-notification-delivery.ts` read the snake_case column names. Do not
- * "improve" these into camelCase without changing those consumers.
+ * "improve" these into camelCase without changing those consumers. The one
+ * exception is `available_at`: postgres.js decodes that `timestamptz` as a
+ * `Date`, so the PostgreSQL slice maps it to the same ISO string SQLite returns.
  */
 export type StoredOutboxEvent = {
   id: string; event_key: string; event_type: string; aggregate_id: string;
