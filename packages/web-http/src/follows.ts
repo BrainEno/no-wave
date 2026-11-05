@@ -1,6 +1,6 @@
 import type { ApiProxyConfig } from "./api.ts";
 import { errorResponse } from "./http.ts";
-import { forwardAuthoringRequest } from "./forward.ts";
+import { forwardAuthoringRequest, forwardViewerRead } from "./forward.ts";
 import { isSameOriginMutation } from "./policy.ts";
 
 /**
@@ -111,6 +111,7 @@ export async function handleUserFollowRequest(
     request.url,
     request.headers.get("origin"),
     request.headers.get("host"),
+    request.headers.get("x-forwarded-proto"),
   );
   if (!sameOrigin) {
     return errorResponse("ORIGIN_REJECTED", "The request origin was rejected.", 403);
@@ -164,10 +165,9 @@ export async function handleAuthorProfileRequest(
     return errorResponse("BAD_USER_INPUT", "Invalid author user ID or locale.", 400);
   }
 
-  return forwardAuthoringRequest(
+  return forwardViewerRead(
     request,
     "api/v1/authors/" + encodeURIComponent(params.userId) + "?locale=" + encodeURIComponent(locale),
-    "GET",
     config,
   );
 }

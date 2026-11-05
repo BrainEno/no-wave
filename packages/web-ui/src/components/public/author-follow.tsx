@@ -42,6 +42,7 @@ export function AuthorFollow({ userId, locale }: { userId: string; locale: Local
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [needsSignIn, setNeedsSignIn] = useState(false);
+  const [readAttempt, setReadAttempt] = useState(0);
   // Guards against a response the reader has already superseded, and against
   // the component unmounting mid-flight.
   const alive = useRef(true);
@@ -54,30 +55,32 @@ export function AuthorFollow({ userId, locale }: { userId: string; locale: Local
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setState(null);
     setError("");
+    setNeedsSignIn(false);
     const query = `?locale=${encodeURIComponent(locale)}`;
-    fetch(`/api/authors/${encodeURIComponent(userId)}${query}`, {
+    fetch(`/api/authoring/authors/${encodeURIComponent(userId)}${query}`, {
       headers: { accept: "application/json" },
       credentials: "same-origin",
       cache: "no-store",
     })
       .then(async (response) => {
-        if (cancelled) return;
         const payload: unknown = await response.json().catch(() => null);
-        const data = readState(payload);
-        // A failed *read* leaves the button disabled rather than guessing: the
-        // count is decoration, but the pressed state drives a write, and a write
-        // based on a guess is how the wrong verb gets sent.
-        if (data) setState(data);
+        if (cancelled) return;
+        const data = response.ok ? readState(payload) : null;
+        // The pressed state drives a write; an invalid read must not guess the
+        // verb or leave the previous author's state active.
+        if (!data) throw new Error(ui.followReadFailed);
+        setState(data);
       })
       .catch(() => {
-        if (!cancelled) setError(ui.followFailed);
+        if (!cancelled) setError(ui.followReadFailed);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [userId, locale, ui.followFailed]);
+  }, [userId, locale, ui.followReadFailed, readAttempt]);
 
   const toggle = useCallback(async () => {
     if (!state || pending) return;
@@ -96,7 +99,7 @@ export function AuthorFollow({ userId, locale }: { userId: string; locale: Local
 
     try {
       const query = `?locale=${encodeURIComponent(locale)}`;
-      const response = await fetch(`/api/users/${encodeURIComponent(userId)}/follow${query}`, {
+      const response = await fetch(`/api/authoring/users/${encodeURIComponent(userId)}/follow${query}`, {
         method: nextFollowing ? "POST" : "DELETE",
         headers: { accept: "application/json" },
         credentials: "same-origin",
@@ -111,12 +114,19 @@ export function AuthorFollow({ userId, locale }: { userId: string; locale: Local
         return;
       }
       const payload: unknown = await response.json().catch(() => null);
+      if (!alive.current) return;
       if (!response.ok) throw new Error(readError(payload));
 
-      // The server's numbers win: another reader may have followed during the
-      // round trip, and the API returns the profile it just recomputed.
+      // A malformed success can still have committed. Re-read before choosing
+      // another verb instead of presenting the optimistic guess as confirmed.
       const data = readState(payload);
-      setState(data ?? optimistic);
+      if (!data) {
+        setState(null);
+        setError(ui.followReadFailed);
+        return;
+      }
+      // The API's count includes anyone else who followed during the round trip.
+      setState(data);
     } catch {
       if (!alive.current) return;
       setState(current);
@@ -124,7 +134,7 @@ export function AuthorFollow({ userId, locale }: { userId: string; locale: Local
     } finally {
       if (alive.current) setPending(false);
     }
-  }, [state, pending, userId, locale, ui.followFailed]);
+  }, [state, pending, userId, locale, ui.followFailed, ui.followReadFailed]);
 
   const count = state?.followerCount ?? 0;
   const following = state?.isFollowing ?? false;
@@ -137,29 +147,34 @@ export function AuthorFollow({ userId, locale }: { userId: string; locale: Local
         className={`nw-follow-btn${following ? " nw-follow-on" : ""}`}
         onClick={toggle}
         disabled={disabled}
-        aria-pressed={following}
+        aria-pressed={state === null ? undefined : following}
         aria-busy={pending}
         aria-label={
           loading
             ? ui.followLoading
-            : following
-              ? `${ui.following} ${ui.followerCount(count)}`
-              : `${ui.follow} ${ui.followerCount(count)}`
+            : state === null
+              ? ui.follow
+              : following
+                ? `${ui.following} ${ui.followerCount(count)}`
+                : `${ui.follow} ${ui.followerCount(count)}`
         }
       >
         <span className="nw-follow-mark" aria-hidden="true">{following ? "✓" : "+"}</span>
         <span>{loading ? ui.followLoading : pending ? ui.following : following ? ui.following : ui.follow}</span>
       </button>
-      <span className="nw-follow-count">
+      {state ? <span className="nw-follow-count">
         {count > 0 ? ui.followerCount(count) : ui.followerNone}
-      </span>
+      </span> : null}
       {needsSignIn ? (
         <span className="nw-follow-note">
           {ui.followSignIn}{" "}
           <Link href={`/sign-in?next=${encodeURIComponent(currentPath())}`}>{copy.reader.saveSignInAction}</Link>
         </span>
       ) : null}
-      {error ? <span className="nw-follow-note" role="alert">{error}</span> : null}
+      {error ? <div className="nw-follow-note nw-interaction-error" role="alert">
+        <span>{error}</span>
+        {state === null ? <button type="button" className="nw-interaction-retry" onClick={() => setReadAttempt((value) => value + 1)}>{ui.followReadRetry}</button> : null}
+      </div> : null}
     </div>
   );
 }
@@ -176,7 +191,7 @@ function readState(payload: unknown): FollowState | null {
   const data = (payload as { data?: unknown }).data;
   if (typeof data !== "object" || data === null) return null;
   const { followerCount, isFollowing } = data as { followerCount?: unknown; isFollowing?: unknown };
-  if (typeof followerCount !== "number" || !Number.isFinite(followerCount) || followerCount < 0) return null;
+  if (typeof followerCount !== "number" || !Number.isSafeInteger(followerCount) || followerCount < 0) return null;
   if (typeof isFollowing !== "boolean") return null;
   return { followerCount, isFollowing };
 }

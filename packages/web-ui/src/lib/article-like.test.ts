@@ -66,7 +66,8 @@ test("the server's numbers win over the optimistic guess", async () => {
   const source = await readFile(likePath, "utf8");
   // Another reader may have saved the work during the round trip, so the
   // response body replaces the local guess rather than being ignored.
-  assert.match(source, /setState\(data \?\? optimistic\)/, "a successful write adopts the server's state");
+  assert.match(source, /setState\(data\)/, "a valid response adopts the server's state");
+  assert.doesNotMatch(source, /setState\(data \?\? optimistic\)/, "an invalid response must not become a confirmed guess");
   assert.match(source, /readState/, "and the payload is read defensively, not cast");
 });
 

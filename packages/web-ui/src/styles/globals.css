@@ -532,14 +532,16 @@ mark { background: var(--or); color: #0f0d0c; }
 .nw-feed-note { margin: 24px 0; }
 .nw-feed-author { text-decoration: underline; text-underline-offset: 3px; }
 .nw-feed-more { margin: 32px 0 0; }
-.nw-feed-retry {
-  display: inline-flex; align-items: center; gap: 8px; padding: 9px 18px;
+.nw-interaction-error { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.nw-like .nw-interaction-error { justify-content: center; }
+.nw-feed-retry, .nw-interaction-retry {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 9px 18px;
   border: 1px solid var(--nw-rule); border-radius: 999px; background: transparent;
   color: var(--nw-ink); font: inherit; font-size: 14px; cursor: pointer;
   transition: border-color .15s ease;
 }
-.nw-feed-retry:hover:not(:disabled) { border-color: var(--nw-ink); }
-.nw-feed-retry:disabled { cursor: default; opacity: .55; }
+.nw-feed-retry:hover:not(:disabled), .nw-interaction-retry:hover:not(:disabled) { border-color: var(--nw-ink); }
+.nw-feed-retry:disabled, .nw-interaction-retry:disabled { cursor: default; opacity: .55; }
 
 /* 私信（#198 读侧）：收件箱与线程。未读是读者用它做决定的信息，
    所以它必须比预览文字更显眼；「你自己的消息」与对方的也必须一眼分开。 */

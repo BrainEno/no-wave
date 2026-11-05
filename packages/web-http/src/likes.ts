@@ -1,7 +1,7 @@
 import type { ApiProxyConfig } from "./api.ts";
 import { readLimitedJson } from "./body.ts";
 import { errorResponse } from "./http.ts";
-import { forwardAuthoringRequest } from "./forward.ts";
+import { forwardAuthoringRequest, forwardViewerRead } from "./forward.ts";
 import { isSameOriginMutation } from "./policy.ts";
 
 /**
@@ -89,6 +89,7 @@ export async function handleArticleLikeRequest(
       request.url,
       request.headers.get("origin"),
       request.headers.get("host"),
+      request.headers.get("x-forwarded-proto"),
     );
     if (!sameOrigin) {
       return errorResponse("ORIGIN_REJECTED", "The request origin was rejected.", 403);
@@ -101,7 +102,7 @@ export async function handleArticleLikeRequest(
   }
 
   const path = likeRequestPath(params.slug, locale);
-  if (method === "GET") return forwardAuthoringRequest(request, path, "GET", config);
+  if (method === "GET") return forwardViewerRead(request, path, config);
 
   const body = await readLimitedJson(request, LIKE_BODY_MAX_BYTES);
   if (!body.ok) return body.response;

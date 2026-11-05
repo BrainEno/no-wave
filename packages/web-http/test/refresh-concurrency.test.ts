@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { forwardAuthoringRequest } from "../src/forward.ts";
+import { handleArticleLikeRequest } from "../src/likes.ts";
+import { handleFeedRequest } from "../src/feed.ts";
 import { InMemoryRefreshCoordinator } from "../src/refresh-coordinator.ts";
 import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE, SESSION_MARKER_COOKIE } from "../src/policy.ts";
 import { API_BASE, ROTATED, TOKENS, findCookie, json, request, setCookies, stubFetch, tokenEnvelope, type StubFetch } from "./helpers.ts";
@@ -184,4 +186,48 @@ test("two isolated Web processes each rotate without a shared coordinator", asyn
   const responses = await Promise.all(pending);
   assert.ok(responses.every((response) => response.status === 200));
   assert.equal(r.refreshCalls(), 2, "the shipped coordinator is process-scoped by design");
+});
+
+test("a public viewer read and a private feed share one renewal when access expires", async () => {
+  let staleReads = 0;
+  let releaseStale!: () => void;
+  const bothStale = new Promise<void>((resolve) => { releaseStale = resolve; });
+  let refreshStarted!: () => void;
+  const started = new Promise<void>((resolve) => { refreshStarted = resolve; });
+  let finishRefresh!: () => void;
+  const refreshGate = new Promise<void>((resolve) => { finishRefresh = resolve; });
+  let refreshCalls = 0;
+  const expired = async () => {
+    staleReads += 1;
+    if (staleReads === 2) releaseStale();
+    await bothStale;
+    return json({ error: { code: "UNAUTHENTICATED" } }, 401);
+  };
+  const authorized = (call: { init?: RequestInit }) => new Headers(call.init?.headers).get("authorization") === `Bearer ${ROTATED.accessToken}`;
+  const stub = stubFetch({
+    "api/v1/auth/refresh": async () => { refreshCalls += 1; refreshStarted(); await refreshGate; return tokenEnvelope(ROTATED); },
+    "api/v1/me/feed": (call) => authorized(call) ? json({ data: [{ slug: "following-work" }] }) : expired(),
+    "api/v1/me": (call) => authorized(call) ? json({ data: { id: "reader" } }) : expired(),
+    "api/v1/articles/": (call) => json({ data: { likeCount: 1, likedByViewer: authorized(call) } }),
+  });
+  const cookie = `${REFRESH_TOKEN_COOKIE}=${TOKENS.refreshToken}`;
+  const config = { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl, refreshCoordinator: new InMemoryRefreshCoordinator() };
+  const publicRead = handleArticleLikeRequest(
+    request("/api/authoring/articles/work/like", { method: "GET", headers: { cookie } }),
+    { slug: "work", locale: "zh-CN" }, config,
+  );
+  const privateRead = handleFeedRequest(
+    request("/api/authoring/feed", { method: "GET", headers: { cookie } }),
+    { locale: "zh-CN" }, config,
+  );
+  await started;
+  finishRefresh();
+  const [like, feed] = await Promise.all([publicRead, privateRead]);
+  assert.equal(refreshCalls, 1, "the same stale refresh token must not be presented twice");
+  assert.equal(like.status, 200);
+  assert.equal((await like.json()).data.likedByViewer, true);
+  assert.equal(feed.status, 200);
+  assert.equal((await feed.json()).data[0].slug, "following-work");
+  assert.ok(findCookie(like, ACCESS_TOKEN_COOKIE));
+  assert.ok(findCookie(feed, ACCESS_TOKEN_COOKIE));
 });
