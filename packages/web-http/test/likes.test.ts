@@ -7,8 +7,8 @@ import {
   likeRequestPath,
   parseLikeBody,
 } from "../src/likes.ts";
-import { ACCESS_TOKEN_COOKIE } from "../src/policy.ts";
-import { API_BASE, TOKENS, assertNoStore, json, request, stubFetch } from "./helpers.ts";
+import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE } from "../src/policy.ts";
+import { API_BASE, ROTATED, TOKENS, assertNoStore, findCookie, json, request, setCookies, stubFetch, tokenEnvelope } from "./helpers.ts";
 
 /**
  * Article-like proxy contract (#198).
@@ -56,7 +56,12 @@ test("returns the like state and forwards an anonymous read", async () => {
 });
 
 test("a signed-in read turns the session cookie into a bearer token upstream", async () => {
-  const { config, calls } = likeUpstream();
+  const stub = stubFetch({
+    "api/v1/me": () => json({ data: { id: "reader" } }),
+    "api/v1/articles/": () => json({ data: { likeCount: 3, likedByViewer: true } }),
+  });
+  const config = { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl };
+  const calls = stub.calls;
   const cookie = `${ACCESS_TOKEN_COOKIE}=${TOKENS.accessToken}`;
   const response = await handleArticleLikeRequest(
     new Request(`https://no-wave.test/api/articles/${SLUG}/like?locale=zh-CN`, {
@@ -67,12 +72,13 @@ test("a signed-in read turns the session cookie into a bearer token upstream", a
     config,
   );
   assert.equal(response.status, 200);
-  const forwarded = new Headers(calls[0].init?.headers);
-  // The cookie is read by the proxy and exchanged for a bearer token: the raw
-  // cookie never leaves this process, and the API does not have to know how the
-  // browser stores a session.
-  assert.equal(forwarded.get("authorization"), `Bearer ${TOKENS.accessToken}`);
-  assert.equal(forwarded.get("cookie"), null, "the cookie itself is not passed through");
+  assert.equal(calls.length, 2, "verify the viewer before reading the public field");
+  for (const call of calls) {
+    const forwarded = new Headers(call.init?.headers);
+    // Both requests use the same bearer, and the raw cookie never leaves the proxy.
+    assert.equal(forwarded.get("authorization"), `Bearer ${TOKENS.accessToken}`);
+    assert.equal(forwarded.get("cookie"), null);
+  }
 });
 
 test("PUT forwards exactly one boolean", async () => {
@@ -190,5 +196,95 @@ test("parseLikeBody accepts only real booleans", () => {
   assert.deepEqual(parseLikeBody({ liked: false }), { ok: true, liked: false });
   for (const value of [null, [], "true", 1, 0, undefined, { liked: "false" }]) {
     assert.deepEqual(parseLikeBody(value), { ok: false }, `${JSON.stringify(value)} is not a like body`);
+  }
+});
+
+// A public upstream read responds 200 for an invalid or missing bearer token.
+// With a renewable browser session that is NOT an anonymous answer: verify the
+// viewer first so the common refresh coordinator can recover the real state.
+test("a renewable session restores the viewer before a public like read", async () => {
+  for (const access of [undefined, TOKENS.accessToken]) {
+    const stub = stubFetch({
+      "api/v1/auth/refresh": () => tokenEnvelope(ROTATED),
+      "api/v1/me": ({ init }) => new Headers(init?.headers).get("authorization") === `Bearer ${ROTATED.accessToken}`
+        ? json({ data: { id: "reader" } })
+        : json({ error: { code: "UNAUTHENTICATED" } }, 401),
+      "api/v1/articles/": ({ init }) => json({ data: { likeCount: 1,
+        likedByViewer: new Headers(init?.headers).get("authorization") === `Bearer ${ROTATED.accessToken}` } }),
+    });
+    const cookie = [`${REFRESH_TOKEN_COOKIE}=${TOKENS.refreshToken}`,
+      ...(access ? [`${ACCESS_TOKEN_COOKIE}=${access}`] : [])].join("; ");
+    const response = await handleArticleLikeRequest(
+      new Request(`https://no-wave.test/api/authoring/articles/${SLUG}/like?locale=zh-CN`, { headers: { cookie } }),
+      { slug: SLUG, locale: "zh-CN" }, { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+    );
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).data.likedByViewer, true);
+    assertNoStore(response);
+    assert.equal(stub.calls.filter((call) => call.url.includes("/auth/refresh")).length, 1);
+    assert.equal(stub.calls.filter((call) => call.url.endsWith("/api/v1/me")).length, 2);
+    assert.ok(findCookie(response, ACCESS_TOKEN_COOKIE));
+    assert.ok(findCookie(response, REFRESH_TOKEN_COOKIE));
+    const resource = stub.calls.find((call) => call.url.includes("/api/v1/articles/"));
+    assert.equal(new Headers(resource?.init?.headers).get("authorization"), `Bearer ${ROTATED.accessToken}`);
+    assert.equal(new Headers(resource?.init?.headers).get("cookie"), null);
+  }
+});
+
+test("a rejected or unavailable session is not guessed as an anonymous like state", async () => {
+  for (const refreshStatus of [401, 503]) {
+    const stub = stubFetch({
+      "api/v1/me": () => json({ error: { code: "UNAUTHENTICATED" } }, 401),
+      "api/v1/auth/refresh": () => json({ error: { code: "UNAVAILABLE" } }, refreshStatus),
+      "api/v1/articles/": () => json({ data: { likeCount: 1, likedByViewer: false } }),
+    });
+    const response = await handleArticleLikeRequest(
+      new Request(`https://no-wave.test/api/authoring/articles/${SLUG}/like`, {
+        headers: { cookie: `${REFRESH_TOKEN_COOKIE}=${TOKENS.refreshToken}` },
+      }), { slug: SLUG, locale: "zh-CN" }, { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+    );
+    assert.equal(response.status, 401);
+    assertNoStore(response);
+    assert.equal(stub.calls.some((call) => call.url.includes("/api/v1/articles/")), false);
+    const cookies = setCookies(response);
+    if (refreshStatus === 401) {
+      assert.equal(cookies.length, 3);
+      assert.ok(cookies.every((cookie) => cookie.includes("Max-Age=0")));
+    } else {
+      assert.equal(cookies.length, 0, "an outage cannot prove the session ended");
+    }
+  }
+});
+
+test("a malformed session verification cannot become a confident public like read", async () => {
+  const stub = stubFetch({
+    "api/v1/me": () => json({ data: {} }),
+    "api/v1/articles/": () => json({ data: { likeCount: 1, likedByViewer: false } }),
+  });
+  const response = await handleArticleLikeRequest(
+    new Request(`https://no-wave.test/api/authoring/articles/${SLUG}/like`, {
+      headers: { cookie: `${ACCESS_TOKEN_COOKIE}=${TOKENS.accessToken}` },
+    }), { slug: SLUG }, { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+  );
+  assert.equal(response.status, 502);
+  assertNoStore(response);
+  assert.equal(stub.calls.some((call) => call.url.includes("/api/v1/articles/")), false);
+});
+
+test("like writes use the trusted TLS-terminating proxy origin without accepting a downgrade", async () => {
+  for (const [origin, expected] of [
+    ["https://preview.example", 200],
+    ["http://preview.example", 403],
+    ["https://evil.example", 403],
+  ] as const) {
+    const { config, calls } = likeUpstream();
+    const response = await handleArticleLikeRequest(
+      new Request(`http://127.0.0.1:3100/api/authoring/articles/${SLUG}/like`, {
+        method: "PUT", headers: { host: "preview.example", origin, "x-forwarded-proto": "https", "content-type": "application/json" },
+        body: '{"liked":true}',
+      }), { slug: SLUG }, config,
+    );
+    assert.equal(response.status, expected, origin);
+    assert.equal(calls.length, expected === 200 ? 1 : 0);
   }
 });

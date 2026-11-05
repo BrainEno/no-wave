@@ -30,6 +30,7 @@ function zh() {
       save: "收藏", savedState: "已收藏", saveCount: (n: number) => `${n} 人收藏`, saveNone: "还没有人收藏",
       saveSignIn: "登录后可以收藏作品。", saveSignInAction: "前往登录",
       saveFailed: "收藏状态没能保存，请稍后重试。",
+      saveReadFailed: "收藏状态暂时无法读取，请重试。", saveReadRetry: "重试读取收藏状态",
       saveLoading: "正在读取收藏状态…",
       // 朗读：顺序与文案都在 read-aloud.ts 里决定，这里只管界面上的词。
       listen: "朗读", pause: "暂停", resume: "继续", stop: "停止", done: "朗读结束",
@@ -59,6 +60,7 @@ function zh() {
       follow: "关注", following: "已关注", unfollow: "取消关注",
       followerCount: (n: number) => `${n} 人关注`, followerNone: "还没有人关注",
       followSignIn: "登录后可以关注作者。", followFailed: "关注状态没能保存，请稍后重试。", followLoading: "正在读取关注状态…",
+      followReadFailed: "关注状态暂时无法读取，请重试。", followReadRetry: "重试读取关注状态",
     },
     messages: {
       eyebrow: "私信", title: "收件箱", intro: "这里是你参与的对话。",
@@ -168,6 +170,7 @@ function en(): UiCopy {
       save: "Save", savedState: "Saved", saveCount: (n: number) => `${n} ${n === 1 ? "save" : "saves"}`, saveNone: "No saves yet",
       saveSignIn: "Sign in to save this work.", saveSignInAction: "Sign in",
       saveFailed: "Your save could not be recorded. Please try again.",
+      saveReadFailed: "Your save state could not be read. Please try again.", saveReadRetry: "Retry reading save state",
       saveLoading: "Reading save state…",
       listen: "Listen", pause: "Pause", resume: "Resume", stop: "Stop", done: "Finished reading",
       unavailable: "This browser has no voice available, so nothing was read.",
@@ -193,6 +196,7 @@ function en(): UiCopy {
       follow: "Follow", following: "Following", unfollow: "Unfollow",
       followerCount: (n: number) => `${n} ${n === 1 ? "follower" : "followers"}`, followerNone: "No followers yet",
       followSignIn: "Sign in to follow this author.", followFailed: "That follow did not save. Please try again.", followLoading: "Reading follow state…",
+      followReadFailed: "Your follow state could not be read. Please try again.", followReadRetry: "Retry reading follow state",
     },
     messages: {
       eyebrow: "MESSAGES", title: "Inbox", intro: "The conversations you are part of.",

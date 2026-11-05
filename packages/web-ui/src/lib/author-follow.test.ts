@@ -34,7 +34,7 @@ test("the control does not trust the server-rendered isFollowing", async () => {
   // `loadAuthorPage` calls the API with no cookie, so the HTML always carries
   // `isFollowing: false`. The button must fetch the real answer with the
   // browser's cookie before it is usable.
-  assert.match(source, /\/api\/authors\//, "the follow state is read with the viewer's own cookie");
+  assert.match(source, /\/api\/authoring\/authors\//, "the follow state is read within the viewer's access-cookie path");
   assert.match(source, /setLoading\(true\)/, "it starts in a loading state, not a guessed one");
   assert.match(source, /state === null/, "an unknown state disables the button");
   assert.match(source, /disabled = loading \|\| pending \|\| state === null/);
@@ -89,7 +89,8 @@ test("a second click while a write is in flight is dropped", async () => {
 
 test("the server's numbers win over the optimistic guess", async () => {
   const source = await readFile(followPath, "utf8");
-  assert.match(source, /setState\(data \?\? optimistic\)/);
+  assert.match(source, /setState\(data\)/);
+  assert.doesNotMatch(source, /setState\(data \?\? optimistic\)/);
   // Read defensively: a missing field must not become a confident `false`.
   assert.match(source, /typeof isFollowing !== "boolean"/);
 });

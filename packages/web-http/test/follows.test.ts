@@ -223,6 +223,7 @@ test("the author profile read carries the viewer, so isFollowing can be true", a
   // cookie were not forwarded, a reader who follows the author would see an
   // unfollowed button forever.
   const stub = stubFetch({
+    "api/v1/me": () => json({ data: { id: "reader" } }),
     "api/v1/authors/": () => json({ data: { userId: TARGET, followerCount: 4, isFollowing: true } }),
   });
   const cookie = `${ACCESS_TOKEN_COOKIE}=${TOKENS.accessToken}`;
@@ -236,8 +237,12 @@ test("the author profile read carries the viewer, so isFollowing can be true", a
   assert.equal(response.status, 200);
   const body = await response.json() as { data?: { isFollowing?: unknown } };
   assert.equal(body.data?.isFollowing, true);
-  const forwarded = new Headers(stub.calls[0].init?.headers);
-  assert.equal(forwarded.get("authorization"), `Bearer ${TOKENS.accessToken}`);
+  assert.equal(stub.calls.length, 2);
+  for (const call of stub.calls) {
+    const forwarded = new Headers(call.init?.headers);
+    assert.equal(forwarded.get("authorization"), `Bearer ${TOKENS.accessToken}`);
+    assert.equal(forwarded.get("cookie"), null);
+  }
 });
 
 test("the author profile read is public and works signed out", async () => {
@@ -273,4 +278,21 @@ test("the author profile read validates the id before forwarding", async () => {
   );
   assert.equal(response.status, 400);
   assert.equal(calls.length, 0);
+});
+
+test("follow writes use the trusted TLS-terminating proxy origin without accepting a downgrade", async () => {
+  for (const [origin, expected] of [
+    ["https://preview.example", 200],
+    ["http://preview.example", 403],
+    ["https://evil.example", 403],
+  ] as const) {
+    const { config, calls } = followUpstream();
+    const response = await handleUserFollowRequest(
+      new Request(`http://127.0.0.1:3100/api/authoring/users/${TARGET}/follow`, {
+        method: "POST", headers: { host: "preview.example", origin, "x-forwarded-proto": "https" },
+      }), { targetUserId: TARGET }, config,
+    );
+    assert.equal(response.status, expected, origin);
+    assert.equal(calls.length, expected === 200 ? 1 : 0);
+  }
 });

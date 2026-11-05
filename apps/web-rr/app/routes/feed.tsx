@@ -14,8 +14,8 @@ import { PRIVATE_PAGE_HEADERS } from "../lib/http-policy.ts";
  * cannot read it and must not try; the marker carries no credential and grants
  * nothing, it only says whether a session is still renewable (ADR 0025).
  *
- * The list itself is fetched by `FeedView` from `/api/feed`, which is the
- * request that can present the token to the API. That split matters beyond
+ * The list itself is fetched by `FeedView` from `/api/authoring/feed`, within
+ * the access-cookie path. That split matters beyond
  * taste: it means nothing rendered here has to be trusted, and it keeps the feed
  * out of any shared cache — the loader returns the same body to every signed-in
  * reader, and `no-store` is what stops a shared cache from handing a reader

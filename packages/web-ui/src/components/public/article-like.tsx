@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "@/lib/framework/link.tsx";
-import type { Locale } from "@/lib/content.ts";
+import { articlePath, type Locale } from "@/lib/content.ts";
 import { getUi } from "@/lib/ui-copy.ts";
 
 /**
@@ -38,6 +38,7 @@ export function ArticleLike({ slug, locale }: { slug: string; locale: Locale }) 
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [needsSignIn, setNeedsSignIn] = useState(false);
+  const [readAttempt, setReadAttempt] = useState(0);
   // Guards against a response from a request the reader has already superseded,
   // and against the component unmounting mid-flight.
   const alive = useRef(true);
@@ -50,29 +51,30 @@ export function ArticleLike({ slug, locale }: { slug: string; locale: Locale }) 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setState(null);
     setError("");
-    fetch(`/api/articles/${encodeURIComponent(slug)}/like?locale=${encodeURIComponent(locale)}`, {
+    setNeedsSignIn(false);
+    fetch(`/api/authoring/articles/${encodeURIComponent(slug)}/like?locale=${encodeURIComponent(locale)}`, {
       headers: { accept: "application/json" },
       credentials: "same-origin",
       cache: "no-store",
     })
       .then(async (response) => {
-        if (cancelled) return;
         const payload: unknown = await response.json().catch(() => null);
+        if (cancelled) return;
         if (!response.ok) throw new Error(readError(payload));
         const data = readState(payload);
-        if (!data) throw new Error(ui.saveFailed);
+        if (!data) throw new Error(ui.saveReadFailed);
         setState(data);
       })
       .catch(() => {
-        // A failed *read* is not the reader's problem to fix and does not block
-        // them: the count is decoration on a feature that still works, so the
-        // button stays usable and simply has no number.
-        if (!cancelled) setState((current) => current ?? { likeCount: 0, likedByViewer: false });
+        // Unknown is not "not saved": guessing would make the next click send
+        // the wrong intent for a reader who has already saved this work.
+        if (!cancelled) setError(ui.saveReadFailed);
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [slug, locale, ui.saveFailed]);
+  }, [slug, locale, ui.saveReadFailed, readAttempt]);
 
   const toggle = useCallback(async () => {
     if (pending) return;
@@ -90,7 +92,7 @@ export function ArticleLike({ slug, locale }: { slug: string; locale: Locale }) 
     setError("");
     setNeedsSignIn(false);
     try {
-      const response = await fetch(`/api/articles/${encodeURIComponent(slug)}/like?locale=${encodeURIComponent(locale)}`, {
+      const response = await fetch(`/api/authoring/articles/${encodeURIComponent(slug)}/like?locale=${encodeURIComponent(locale)}`, {
         method: "PUT",
         headers: { "content-type": "application/json", accept: "application/json" },
         credentials: "same-origin",
@@ -105,10 +107,16 @@ export function ArticleLike({ slug, locale }: { slug: string; locale: Locale }) 
         return;
       }
       if (!response.ok) throw new Error(readError(payload));
-      // Trust the server's numbers over the optimistic guess: another reader may
-      // have saved it in the meantime.
+      // The write may have committed even when its body cannot be interpreted.
+      // Do not guess a state or send another toggle until a fresh read confirms it.
       const data = readState(payload);
-      setState(data ?? optimistic);
+      if (!data) {
+        setState(null);
+        setError(ui.saveReadFailed);
+        return;
+      }
+      // Another reader may have saved it in the meantime; trust the server count.
+      setState(data);
     } catch {
       if (!alive.current) return;
       setState(current);
@@ -116,7 +124,7 @@ export function ArticleLike({ slug, locale }: { slug: string; locale: Locale }) 
     } finally {
       if (alive.current) setPending(false);
     }
-  }, [pending, state, slug, locale, ui.saveFailed]);
+  }, [pending, state, slug, locale, ui.saveFailed, ui.saveReadFailed]);
 
   const liked = state?.likedByViewer ?? false;
   const count = state?.likeCount ?? 0;
@@ -127,23 +135,26 @@ export function ArticleLike({ slug, locale }: { slug: string; locale: Locale }) 
         type="button"
         className={liked ? "nw-like-btn nw-like-on" : "nw-like-btn"}
         onClick={() => void toggle()}
-        disabled={pending || loading}
-        aria-pressed={liked}
-        aria-label={liked ? ui.savedState : ui.save}
+        disabled={pending || loading || state === null}
+        aria-pressed={state === null ? undefined : liked}
+        aria-label={loading ? ui.saveLoading : liked ? ui.savedState : ui.save}
       >
         <span aria-hidden="true" className="nw-like-mark">{liked ? "●" : "○"}</span>
         <span>{loading ? ui.saveLoading : liked ? ui.savedState : ui.save}</span>
       </button>
-      <p className="nw-like-count" role="status">
+      {state ? <p className="nw-like-count" role="status">
         {count === 0 ? ui.saveNone : ui.saveCount(count)}
-      </p>
+      </p> : null}
       {needsSignIn ? (
         <p className="nw-like-note" role="status">
           {ui.saveSignIn}{" "}
-          <Link href={`/sign-in?next=${encodeURIComponent(`/articles/${slug}`)}`}>{ui.saveSignInAction}</Link>
+          <Link href={`/sign-in?next=${encodeURIComponent(articlePath(slug, locale))}`}>{ui.saveSignInAction}</Link>
         </p>
       ) : null}
-      {error ? <p className="nw-auth-error" role="alert">{error}</p> : null}
+      {error ? <div className="nw-auth-error nw-interaction-error" role="alert">
+        <span>{error}</span>
+        {state === null ? <button type="button" className="nw-interaction-retry" onClick={() => setReadAttempt((value) => value + 1)}>{ui.saveReadRetry}</button> : null}
+      </div> : null}
     </div>
   );
 }
@@ -154,7 +165,7 @@ function readState(payload: unknown): LikeState | null {
   const data = (payload as { data?: unknown }).data;
   if (typeof data !== "object" || data === null) return null;
   const record = data as { likeCount?: unknown; likedByViewer?: unknown };
-  if (typeof record.likeCount !== "number" || typeof record.likedByViewer !== "boolean") return null;
+  if (typeof record.likeCount !== "number" || !Number.isSafeInteger(record.likeCount) || record.likeCount < 0 || typeof record.likedByViewer !== "boolean") return null;
   return { likeCount: record.likeCount, likedByViewer: record.likedByViewer };
 }
 

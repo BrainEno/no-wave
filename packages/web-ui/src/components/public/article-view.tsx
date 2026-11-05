@@ -109,8 +109,8 @@ export function ArticlePageView({ article, newer, older, related }: ArticleDetai
       {/* 划线：段落靠文字与上下文定位，标注只存在读者自己的浏览器里（ADR 0021）。 */}
       <PassageAnnotations slug={article.slug} locale={locale} labels={ui.reader.passages} />
 
-      {/* 收藏紧接正文之后：读者刚读完，这里是唯一还知道自己在读什么的位置。 */}
-      <ArticleLike slug={article.slug} locale={locale} />
+      {/* 收藏紧接正文之后。资源 key 隔离页面切换时尚未返回的写入。 */}
+      <ArticleLike key={`${locale}:${article.slug}`} slug={article.slug} locale={locale} />
 
       <ArticleComments slug={article.slug} locale={locale} />
 

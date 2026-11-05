@@ -83,6 +83,13 @@ route("api/authoring/notifications/:id/read", "routes/api.authoring.notification
   route("api/users/:userId/follow", "routes/api.users.$userId.follow.ts"),
   // 关注流：关注关系的读侧。没有它，关注只是走到别人主页看一眼（#198）。
   route("api/feed", "routes/api.feed.ts"),
+  // Browser requests need the access cookie scoped to /api/authoring. Public
+  // reads otherwise silently see an anonymous viewer, while private requests
+  // unnecessarily rotate the refresh token. Keep the original paths for clients.
+  route("api/authoring/articles/:slug/like", "routes/api.articles.$slug.like.ts", { id: "authoring-article-like" }),
+  route("api/authoring/authors/:userId", "routes/api.authors.$userId.ts", { id: "authoring-author-profile" }),
+  route("api/authoring/users/:userId/follow", "routes/api.users.$userId.follow.ts", { id: "authoring-user-follow" }),
+  route("api/authoring/feed", "routes/api.feed.ts", { id: "authoring-feed" }),
   // 私信读侧（#198）：收件箱、单个会话、消息分页。三处都必须登记，否则模块
   // 只是躺在 routes/ 下的普通文件——#201 的收藏正是这样漏掉的。
   route("api/inbox", "routes/api.inbox.ts"),

@@ -15,9 +15,11 @@ that can be asserted more cheaply must be asserted more cheaply.
 
 | Path | Purpose |
 | --- | --- |
-| `playwright.config.ts` | One chromium project — `web` — one worker; `webServer` starts the API (`node scripts/dev.ts --api-only`) and the **production** build of the Web application (`pnpm --filter @bot-thk/web-rr start`). Until 2026-11-01 there were two projects, `app-router` and `prototype`, running the same spec against both frameworks; the App Router is gone, so the suite runs once. |
+| `playwright.config.ts` | One chromium project — `web` — one worker; `webServer` starts the API and the **production** build of the Web application. An isolated run starts the API directly, without loading a developer's `.env.local`; targeted runs use `node scripts/dev.ts --api-only`. |
+| `scripts/e2e-runner.ts` | The no-argument `pnpm test:e2e` runs two sequential shards, each with a fresh disposable SQLite database and independent local stack. Explicit Playwright arguments or external E2E URLs retain the targeted/external behavior. |
 | `e2e/authoring.spec.ts` | Register → write → save draft → publish → read the public page → withdraw it → delete it → restore it from the recycle bin; first-save lost-response replay, edits during an uncertain save, account switching, navigation protection, and English/legacy Traditional Chinese editions across reload and restore |
 | `e2e/devices.spec.ts` | Sign in → read the list of signed-in devices → end the other one → keep reading on this one; end the device you are holding → land on the sign-in page |
+| `e2e/engagement.spec.ts` | Real browser cookies, save and follow persistence, optimistic rollback, private feed isolation, refresh, failed reads and retry, CSRF rejection, late responses during client navigation, and return to the English edition after sign-in |
 | `e2e/read-aloud.spec.ts` | Read a published work aloud paragraph by paragraph → the mark follows the spoken paragraph → 停止 takes it off; a browser that cannot speak is given no control |
 | `e2e/passages.spec.ts` | Select a passage → 划线 → it is painted, listed and still there after a reload; write a note beside it and change it; 朗读这段 reads just that passage and takes the voice from a reading of the whole work; 删除 takes it off the page and out of the browser; 分享 writes it into a link, which a reader in a fresh browser opens and keeps for themselves, and a link whose words are not in the work says so and marks nothing |
 | `e2e/support/works.ts` | Not a spec: publishes a work over HTTP for the journeys that need one, and drags a selection across part of the page after fonts and layout have settled |
@@ -78,8 +80,8 @@ journeys in CI are the regression check, and local runs need Chromium installed.
 ```sh
 pnpm test:e2e:install                     # once per machine: downloads the Chromium build
 pnpm build                                # production build of the Web application
-pnpm test:e2e                             # starts whatever is not already running
-pnpm test:e2e --project=web               # the only project
+pnpm test:e2e                             # all journeys, two disposable local stacks
+pnpm test:e2e --grep 'save'                # targeted Playwright run (see below)
 ```
 
 The suite runs against the **production** build rather than the dev server: on a
@@ -87,23 +89,29 @@ cold CI runner a dev server needs longer to compile the editor than a test shoul
 wait, and the production server is what readers actually use. The build is
 therefore required before a local run.
 
-`reuseExistingServer` is on outside CI, so a developer who already has
-`pnpm dev` running keeps the API and the Web app. In CI the job builds and starts
-its own stack.
+With no arguments or external E2E URLs, `pnpm test:e2e` creates two fresh
+SQLite databases in a temporary directory, migrates each, selects local ports,
+starts its own servers, and removes the directory afterwards. It supplies a
+short-lived test secret, does not reuse an existing server, and does not pass a
+developer's database, mail or object-storage settings to the API. Each shard
+has its own 30/IP/hour article budget; no production rate limit is changed.
 
-`DATABASE_PATH` decides where the SQLite file lives. CI points it at
-`/tmp/no-wave-e2e.sqlite`, so every run starts from an empty database — the journeys create real accounts and real articles, and nothing they
-write outlives the runner. Locally it defaults to the development database; point
-it somewhere temporary for a clean run:
+With explicit Playwright arguments (for example `--grep` or a spec path), or
+with `E2E_WEB_URL` / `E2E_API_BASE_URL` set, the command passes through to
+Playwright instead. Outside CI that mode reuses an existing server if one is
+listening. Otherwise, it uses the configured database: for a targeted local
+run, point it at a fresh disposable file and provide the usual local JWT
+configuration before starting:
 
 ```sh
-DATABASE_PATH=/tmp/no-wave-e2e.sqlite pnpm db:migrate
-DATABASE_PATH=/tmp/no-wave-e2e.sqlite AUTH_REGISTER_IP_LIMIT=60 pnpm test:e2e
+DATABASE_PROVIDER=sqlite DATABASE_PATH=/tmp/no-wave-e2e-focused.sqlite pnpm db:migrate
+DATABASE_PROVIDER=sqlite DATABASE_PATH=/tmp/no-wave-e2e-focused.sqlite AUTH_REGISTER_IP_LIMIT=60 pnpm test:e2e --grep 'save'
 ```
 
-The registration override matches CI and applies only to the disposable local
-API: the suite creates more than the default 20 accounts from one IP. It does
-not change the production article-creation limit.
+The registration override applies only to the disposable API and matches CI.
+A full pass-through run on one stack can exhaust the separate article-creation
+limit; use the no-argument isolated runner or run the two Playwright shards on
+separate freshly migrated stacks.
 
 Browsers are downloaded from `cdn.playwright.dev` into Playwright's cache — not
 from the npm registry and not into the repository. A machine with no access to
@@ -115,11 +123,12 @@ Set `E2E_WEB_URL` (default `http://127.0.0.1:3000`) or `E2E_API_BASE_URL`
 
 ## CI
 
-`.github/workflows/ci.yml` has an `e2e` job that migrates a **disposable**
-SQLite database (`/tmp/no-wave-e2e.sqlite`, discarded with the runner), builds the
-Web application, installs Chromium and runs `pnpm test:e2e`, uploading
-`playwright-report/` as an artifact (traces and screenshots on failure, 7-day
-retention).
+`.github/workflows/ci.yml` has an `e2e` matrix: each of its two shards runs on
+its own runner with a **disposable** SQLite database (`/tmp/no-wave-e2e.sqlite`,
+discarded with the runner). Each builds the Web application, installs Chromium,
+runs its Playwright shard and uploads `playwright-report-1` or
+`playwright-report-2` (traces and screenshots on failure, 7-day retention).
+The aggregate job succeeds only if both shards succeed.
 
 **It is part of `required-checks`** (2026-11-01), so a red browser journey blocks
 a merge. That is the point: this is the only layer that can see the authoring
@@ -138,8 +147,8 @@ What that buys, and what it costs:
   hang would otherwise hold the gate for the six hours GitHub's default allows.
 - A failure here is worth reading before it is worth re-running. Open the
   `playwright-report` artifact on the run: it carries the trace of the failed
-  attempt. If it reproduces locally (`pnpm test:e2e` against a migrated
-  `/tmp/no-wave-e2e.sqlite`), it is a real regression.
+  attempt. If it reproduces locally with `pnpm test:e2e` (or a targeted run
+  against a fresh migrated SQLite file), it is a real regression.
 
 Whether `required-checks` actually blocks a merge is a branch-protection setting
 managed in GitHub, not in this workflow file — see the README. If a merge goes

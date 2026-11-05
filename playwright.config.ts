@@ -18,6 +18,7 @@ import { defineConfig, devices } from "@playwright/test";
  */
 const apiUrl = process.env.E2E_API_BASE_URL ?? "http://127.0.0.1:4000";
 const webUrl = process.env.E2E_WEB_URL ?? "http://127.0.0.1:3000";
+const isolatedStack = process.env.E2E_ISOLATED_STACK === "1";
 
 export default defineConfig({
   testDir: "e2e",
@@ -48,9 +49,11 @@ export default defineConfig({
   // running keeps it — nothing is started twice.
   webServer: [
     {
-      command: "node scripts/dev.ts --api-only",
+      // The isolated runner supplies every API setting explicitly; bypassing
+      // dev.ts prevents a developer's .env.local from reaching the test API.
+      command: isolatedStack ? "node apps/api/src/server.ts" : "node scripts/dev.ts --api-only",
       url: apiUrl + "/ready",
-      reuseExistingServer: process.env.CI ? false : true,
+      reuseExistingServer: !process.env.CI && !isolatedStack,
       stdout: "pipe",
       stderr: "pipe",
       timeout: 240_000,
@@ -61,7 +64,7 @@ export default defineConfig({
       command: "pnpm --filter @bot-thk/web-rr start",
       url: webUrl,
       env: { PORT: String(new URL(webUrl).port || 3000) },
-      reuseExistingServer: process.env.CI ? false : true,
+      reuseExistingServer: !process.env.CI && !isolatedStack,
       stdout: "pipe",
       stderr: "pipe",
       timeout: 240_000,

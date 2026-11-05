@@ -68,6 +68,7 @@ export async function forwardAuthoringRequest(
   body?: BodyInit,
   contentType = "application/json; charset=utf-8",
   expectedActorId?: string,
+  verifyViewerIfPresent = false,
 ): Promise<Response> {
   const base = config.apiBaseUrl;
   if (!base) {
@@ -86,8 +87,14 @@ export async function forwardAuthoringRequest(
   // client: compare the API's verified /me to the editor's expected actor using
   // the *same token* as the following write. Recheck after a refresh. Checking
   // in the browser instead would race a cross-tab cookie/account change.
+  //
+  // A viewer-specific field on an otherwise public read needs the same check:
+  // the upstream treats expired/missing bearer tokens as anonymous and returns
+  // 200, which would bypass the usual 401-triggered refresh. With any session
+  // credential present, verify /me first; a genuinely anonymous read skips it.
+  const verifyViewer = verifyViewerIfPresent && Boolean(accessToken || refreshToken);
   async function guardedCall(token: string | undefined): Promise<Response> {
-    if (expectedActorId !== undefined) {
+    if (expectedActorId !== undefined || verifyViewer) {
       const identity = await callApi(fetchImpl, apiBase, "api/v1/me", "GET", undefined, token, contentType, null);
       if (!identity.ok) return identity;
       const payload: unknown = await identity.json().catch(() => null);
@@ -98,7 +105,7 @@ export async function forwardAuthoringRequest(
       if (typeof id !== "string" || id.length === 0) {
         return errorResponse("SERVICE_UNAVAILABLE", "The current account could not be verified.", 502);
       }
-      if (id !== expectedActorId) {
+      if (expectedActorId !== undefined && id !== expectedActorId) {
         return errorResponse("ACCOUNT_CHANGED", "The signed-in account changed. Sign in to the original account.", 409);
       }
     }
@@ -142,6 +149,16 @@ export async function forwardAuthoringRequest(
     for (const cookie of clearedTokenCookieHeaders(request)) response.headers.append("set-cookie", cookie);
   }
   return response;
+}
+
+/**
+ * Read a public resource whose response contains viewer-specific state. When a
+ * session cookie is present, verify it before fetching the public resource so
+ * an expired access cookie cannot be mistaken for a signed-out reader. Both the
+ * verification and read use the same access token, including after refresh.
+ */
+export function forwardViewerRead(request: Request, path: string, config: ApiProxyConfig = {}): Promise<Response> {
+  return forwardAuthoringRequest(request, path, "GET", config, undefined, undefined, undefined, true);
 }
 
 /**

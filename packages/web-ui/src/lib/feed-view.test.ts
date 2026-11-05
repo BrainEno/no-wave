@@ -69,7 +69,7 @@ test("the feed page is never cached or indexed", async () => {
 
 test("the list is fetched by the browser, not rendered into the shell", async () => {
   const source = await readFile(viewPath, "utf8");
-  assert.match(source, /fetch\(`\/api\/feed/);
+  assert.match(source, /fetch\(`\/api\/authoring\/feed/);
   assert.match(source, /credentials: "same-origin"/, "the cookie is the identity");
   assert.ok(!/useLoaderData/.test(source), "the list must not arrive pre-rendered");
 });

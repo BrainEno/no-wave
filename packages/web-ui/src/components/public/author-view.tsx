@@ -32,7 +32,8 @@ export function AuthorPageView({ locale, author, type, page, works }: AuthorPage
           <img className="nw-pt" src={portrait.src} alt="" width={portrait.width} height={portrait.height} />
           <div className="nw-m">{ui.author.profile} · {ui.author.count(works.length)}</div>
           <h1 data-reveal>{author.displayName}</h1>
-          <AuthorFollow userId={author.username} locale={locale} />
+          {/* Keep late writes for one author from changing another profile. */}
+          <AuthorFollow key={`${locale}:${author.username}`} userId={author.username} locale={locale} />
           <Link className="nw-message-author" href={`${locale === "zh-CN" ? "" : `/${locale}`}/messages?to=${encodeURIComponent(author.username)}`}>
             {ui.messages.messageAuthor}
           </Link>

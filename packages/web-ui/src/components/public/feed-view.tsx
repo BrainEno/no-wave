@@ -18,7 +18,7 @@ import { EmptyState, SectionHeading, TypeChip } from "@/components/ui/parts.tsx"
  * The page shell is server-rendered, but **the list is not**: the feed is
  * per-viewer and the loader cannot see the access token (it is `HttpOnly` and
  * scoped below `/`). So the shell decides only whether the visitor has a usable
- * session, and the list arrives from `/api/feed` with the browser's own cookie.
+ * session, and the list arrives from `/api/authoring/feed` with the browser's own cookie.
  *
  * Three states look similar and must not be collapsed:
  *
@@ -64,7 +64,7 @@ export function FeedView({ locale }: { locale: Locale }) {
 
       const query = `?locale=${encodeURIComponent(locale)}&limit=${PAGE_SIZE}&offset=${nextOffset}`;
       try {
-        const response = await fetch(`/api/feed${query}`, {
+        const response = await fetch(`/api/authoring/feed${query}`, {
           headers: { accept: "application/json" },
           credentials: "same-origin",
           cache: "no-store",
