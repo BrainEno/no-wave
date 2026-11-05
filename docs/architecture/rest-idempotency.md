@@ -86,7 +86,8 @@ fingerprint. Direct store callers that omit `requestedSlug` keep the old explici
 | `PUT /api/v1/me/profile` | state replacement | not required | convergent |
 | `PUT /api/v1/articles/:slug/like` | state-setting (`liked` in the body) | not required | convergent, notifications are transition-only |
 | `POST` / `DELETE /api/v1/users/:userId/follow` | relationship state | not required | convergent, no duplicate notifications |
-| `PUT /api/v1/conversations/:id/read`, `PUT /api/v1/me/notifications/:id/read`, `POST /api/v1/me/notifications/read-all` | read-state | not required | convergent |
+| `PUT /api/v1/conversations/:id/read` | timestamp-based mark-all | not required | convergent for an unchanged message set; a later retry can mark additional messages |
+| `PUT /api/v1/me/notifications/:id/read`, `POST /api/v1/me/notifications/read-all` | read-state | not required | convergent |
 | `DELETE /api/v1/comments/:id`, `DELETE /api/v1/taxonomies/:id`, `DELETE /api/v1/conversations/:id` | monotonic delete | not required | second delete is a stable not-found/tombstone outcome |
 | `POST /api/v1/tags`, `POST /api/v1/taxonomies` | non-idempotent create | not yet | **deferred** — see below |
 | `POST /api/v1/auth/register`, `login`, `refresh` | security transition | not accepted | **deferred** — see below |
@@ -95,6 +96,13 @@ fingerprint. Direct store callers that omit `requestedSlug` keep the old explici
 "Convergent" means the operation sets a state rather than appending to a history, so a repeat
 produces the same end state and no extra side effects. Requiring a key there would be ceremony:
 the rule from the inventory is to never demand one for an operation that is already repeat-safe.
+
+The conversation read endpoint is a qualified case: it advances a timestamp, not
+an explicit last-seen message cursor. Repeating the call after a lost response
+can also mark messages that arrived since the first attempt. The Web UI makes it
+an explicit mark-*all* action and does not silently retry an ambiguous outcome.
+Separately, timestamp equality can cause an unread message to be missed; this
+requires a storage-level ordering/watermark design, not an idempotency key.
 
 ## Deliberately deferred
 

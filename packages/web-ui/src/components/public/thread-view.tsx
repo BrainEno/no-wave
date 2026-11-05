@@ -8,6 +8,7 @@ import { dateLabel } from "@/lib/format.ts";
 import { MESSAGE_BODY_MAX_CHARS } from "@bot-thk/web-http";
 import { IDEMPOTENCY_KEY_HEADER, intentForAttempt, type PendingIntent } from "@/lib/idempotency-key.ts";
 import { SectionHeading } from "@/components/ui/parts.tsx";
+import { MarkConversationRead } from "@/components/public/mark-conversation-read.tsx";
 
 /**
  * 私信线程 — one conversation's messages (#198).
@@ -341,6 +342,7 @@ export function ThreadView({
             </article>
           ))}
         </div>
+        <MarkConversationRead key={conversationId} locale={locale} conversationId={conversationId} />
         {composer}
       </Shell>
     </main>

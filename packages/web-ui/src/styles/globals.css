@@ -564,6 +564,10 @@ mark { background: var(--or); color: #0f0d0c; }
 .nw-msg-meta { margin: 0 0 6px; }
 .nw-msg-body { margin: 0; white-space: pre-wrap; word-break: break-word; }
 
+/* Explicit mark-all action: the API advances a timestamp, not a visible-page cursor. */
+.nw-mark-read { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin: 32px 0 0; padding-top: 20px; border-top: 1px solid var(--ink); }
+.nw-mark-read-hint, .nw-mark-read-status { margin: 0; max-width: 44rem; }
+
 /* Reply box (私信 send half, #198). Sits inside the thread column, aligned with
    the message bodies above it so the conversation and the place you continue it
    read as one column. */

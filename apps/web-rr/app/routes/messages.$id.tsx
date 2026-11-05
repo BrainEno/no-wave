@@ -33,5 +33,5 @@ export const meta: MetaFunction = () => [
 
 export default function ThreadRoute() {
   const { locale, conversationId } = useLoaderData<typeof loader>();
-  return <ThreadView locale={locale} conversationId={conversationId} />;
+  return <ThreadView key={conversationId} locale={locale} conversationId={conversationId} />;
 }

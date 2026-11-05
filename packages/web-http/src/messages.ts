@@ -51,6 +51,10 @@ export function conversationPath(conversationId: string): string {
   return "api/v1/conversations/" + encodeURIComponent(conversationId);
 }
 
+export function conversationReadPath(conversationId: string): string {
+  return conversationPath(conversationId) + "/read";
+}
+
 /**
  * The message page path.
  *
@@ -160,6 +164,36 @@ export async function handleConversationMessagesRequest(
     "GET",
     config,
   );
+}
+
+/**
+ * `PUT /api/inbox/:id/read` — mark this actor's entire conversation read.
+ *
+ * This endpoint takes no cursor: the API advances the read timestamp when it
+ * processes the request, including messages not in the page the reader loaded.
+ * The UI exposes that as an explicit action rather than silently calling it on
+ * page load. The API, not the proxy, determines membership and read state.
+ */
+export async function handleConversationReadRequest(
+  request: Request,
+  params: { conversationId: string },
+  config: ApiProxyConfig = {},
+): Promise<Response> {
+  if (request.method !== "PUT") {
+    return errorResponse("METHOD_NOT_ALLOWED", "Only PUT is supported for marking a conversation read.", 405);
+  }
+  if (!isSameOriginMutation(
+    request.url,
+    request.headers.get("origin"),
+    request.headers.get("host"),
+    request.headers.get("x-forwarded-proto"),
+  )) {
+    return errorResponse("ORIGIN_REJECTED", "The request origin was rejected.", 403);
+  }
+  if (!isConversationId(params.conversationId)) {
+    return errorResponse("BAD_USER_INPUT", "Invalid conversation ID.", 400);
+  }
+  return forwardAuthoringRequest(request, conversationReadPath(params.conversationId), "PUT", config);
 }
 
 /**
