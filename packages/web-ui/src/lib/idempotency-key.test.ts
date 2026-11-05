@@ -32,7 +32,7 @@ test("getRandomValues is used when randomUUID is unavailable", () => {
     value: { getRandomValues: realCrypto.getRandomValues.bind(realCrypto) }, configurable: true,
   });
   try {
-    assert.match(mintKey(), /^[0-9a-f]{32}$/);
+    assert.match(mintKey(), /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     assert.notEqual(mintKey(), mintKey());
   } finally {
     if (descriptor) Object.defineProperty(globalThis, "crypto", descriptor);

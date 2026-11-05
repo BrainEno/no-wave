@@ -16,7 +16,7 @@ that can be asserted more cheaply must be asserted more cheaply.
 | Path | Purpose |
 | --- | --- |
 | `playwright.config.ts` | One chromium project — `web` — one worker; `webServer` starts the API (`node scripts/dev.ts --api-only`) and the **production** build of the Web application (`pnpm --filter @bot-thk/web-rr start`). Until 2026-11-01 there were two projects, `app-router` and `prototype`, running the same spec against both frameworks; the App Router is gone, so the suite runs once. |
-| `e2e/authoring.spec.ts` | Register → write → save draft → publish → read the public page → withdraw it → delete it → restore it from the recycle bin |
+| `e2e/authoring.spec.ts` | Register → write → save draft → publish → read the public page → withdraw it → delete it → restore it from the recycle bin; first-save lost-response replay, edits during an uncertain save, account switching, and navigation protection |
 | `e2e/devices.spec.ts` | Sign in → read the list of signed-in devices → end the other one → keep reading on this one; end the device you are holding → land on the sign-in page |
 | `e2e/read-aloud.spec.ts` | Read a published work aloud paragraph by paragraph → the mark follows the spoken paragraph → 停止 takes it off; a browser that cannot speak is given no control |
 | `e2e/passages.spec.ts` | Select a passage → 划线 → it is painted, listed and still there after a reload; write a note beside it and change it; 朗读这段 reads just that passage and takes the voice from a reading of the whole work; 删除 takes it off the page and out of the browser; 分享 writes it into a link, which a reader in a fresh browser opens and keeps for themselves, and a link whose words are not in the work says so and marks nothing |
@@ -38,6 +38,12 @@ Conventions:
   `baseURL` (`currentOrigin()`), so the suite can be pointed at any stack —
   which is what let the same file run against two frameworks while there were
   two, and lets it run against a different port now.
+- The API limits article creation to 30 requests per IP per hour, including
+  idempotent replays. The lost-response, cross-account and current-version
+  journeys exercise real creates; other editor error-state journeys simulate
+  responses, so the single shared stack does not exhaust that production limit.
+  If the suite grows past that budget, isolate stacks rather than relaxing the
+  production policy or hiding a `429`.
 - **A drag is not a selection.** `selectPartOf` scrolls its target into view,
   waits (with a cap) for the webfonts, then checks that a real, non-collapsed
   selection overlaps that element before returning. A Chinese webfont

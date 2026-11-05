@@ -14,6 +14,9 @@ import { $setBlocksType } from "@lexical/selection";
 import { $createParagraphNode, $getSelection, $insertNodes, $isRangeSelection, defineExtension, FORMAT_TEXT_COMMAND, REDO_COMMAND, UNDO_COMMAND, type ElementNode } from "lexical";
 import { ArticleImageNode, $createArticleImageNode } from "./article-image-node.tsx";
 import { PromptDialog, type PromptDialogField } from "@/components/ui/prompt-dialog.tsx";
+import { AUTHORING_ARTICLE_ID_PATTERN, AUTHORING_EXPECTED_ACTOR_HEADER, AUTHORING_NOT_FORWARDED_HEADER } from "@bot-thk/web-http";
+import { Link } from "@/lib/framework/link.tsx";
+import { IDEMPOTENCY_KEY_HEADER, intentForAttempt, type PendingIntent } from "@/lib/idempotency-key.ts";
 import type { WorkType } from "@/lib/content.ts";
 import { sanitizeEditorHref } from "@/lib/editor-href.ts";
 import { articleBlocksToLexicalEditorState, type LexicalEditorStateJson } from "@/lib/lexical-article-state.ts";
@@ -34,8 +37,10 @@ export type AuthoringArticle = {
 
 type ArticleEditorProps = {
   article: AuthoringArticle | null;
+  viewerId: string | null;
   onSaved(article: AuthoringArticle): void;
   onDeleted(article: AuthoringArticle): void;
+  onPendingChange(pending: boolean): void;
 };
 
 const extensionDependencies = [
@@ -203,9 +208,18 @@ function apiError(payload: unknown, fallback = "保存失败，请检查网络�
 function isSavedArticle(value: unknown): value is AuthoringArticle {
   if (typeof value !== "object" || value === null) return false;
   const item = value as Partial<AuthoringArticle>;
-  return typeof item.id === "string" && typeof item.slug === "string" &&
-    typeof item.title === "string" && (item.status === "draft" || item.status === "published") &&
-    Array.isArray(item.contentBlocks);
+  // A 2xx with a partial article cannot safely retire a create key: the write
+  // may have committed, but the editor cannot yet treat the result as a work.
+  return typeof item.id === "string" && AUTHORING_ARTICLE_ID_PATTERN.test(item.id) &&
+    typeof item.slug === "string" && item.slug.length <= 160 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(item.slug) &&
+    typeof item.title === "string" && item.title.trim().length > 0 &&
+    typeof item.summary === "string" && typeof item.locale === "string" && item.locale.length > 0 &&
+    (item.workType === "serial" || workTypes.some(({ value: type }) => type === item.workType)) &&
+    (item.status === "draft" || item.status === "published") &&
+    Array.isArray(item.contentBlocks) && item.contentBlocks.length > 0 &&
+    (item.contentBlocksVersion === 0 || item.contentBlocksVersion === 1) &&
+    (item.updatedAt === undefined || typeof item.updatedAt === "string") &&
+    (item.publishedAt === undefined || item.publishedAt === null || typeof item.publishedAt === "string");
 }
 
 /**
@@ -293,7 +307,38 @@ function collectPlainText(value: unknown): string {
   return result;
 }
 
-export function ArticleEditor({ article, onSaved, onDeleted }: ArticleEditorProps) {
+type SaveTarget = "draft" | "publish";
+type Draft = {
+  title: string;
+  summary: string;
+  locale: string;
+  workType: WorkType;
+  editorState: LexicalEditorStateJson | null;
+};
+type PendingCreate = PendingIntent & { target: SaveTarget; mayHaveCommitted: boolean };
+
+/** Serialize once per attempt; a pending create retains these exact bytes. */
+function saveBody(draft: Draft, target: SaveTarget, article: AuthoringArticle | null): string {
+  return JSON.stringify({
+    ...(article ? { slug: article.slug } : {}),
+    title: draft.title.trim(),
+    summary: draft.summary.trim(),
+    locale: draft.locale,
+    workType: draft.workType,
+    editorState: draft.editorState,
+    contentBlocksVersion: 1,
+    publish: target === "publish",
+  });
+}
+
+function errorCode(payload: unknown): string | null {
+  if (typeof payload !== "object" || payload === null || !("error" in payload)) return null;
+  const error = (payload as { error?: unknown }).error;
+  return typeof error === "object" && error !== null && "code" in error &&
+    typeof (error as { code?: unknown }).code === "string" ? (error as { code: string }).code : null;
+}
+
+export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPendingChange }: ArticleEditorProps) {
   const [initialState] = useState<LexicalEditorStateJson | null>(() => {
     try { return articleBlocksToLexicalEditorState(article?.contentBlocks); }
     catch { return null; }
@@ -308,6 +353,19 @@ export function ArticleEditor({ article, onSaved, onDeleted }: ArticleEditorProp
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
+  const [confirmedReplay, setConfirmedReplay] = useState(false);
+  const [signInHelp, setSignInHelp] = useState(false);
+  const [hasPending, setHasPending] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const inFlight = useRef(false);
+  const pending = useRef<PendingCreate | null>(null);
+  // A successful create can finish before React has rendered the parent's new
+  // article prop. The ref closes that gap so a fast second click is a PUT.
+  const created = useRef<AuthoringArticle | null>(null);
+  const blockedTarget = useRef<SaveTarget | null>(null);
+  // Fields remain editable during a request. Keep their latest values outside
+  // a stale async closure so success never claims later edits were saved.
+  const latest = useRef<Draft>({ title, summary, locale, workType, editorState });
   // One dialog, whichever the toolbar asked for. The resolver is held in a ref
   // rather than state: it is not rendered, and recreating it would drop the
   // pending promise.
@@ -333,60 +391,157 @@ export function ArticleEditor({ article, onSaved, onDeleted }: ArticleEditorProp
     $initialEditorState: JSON.stringify(initialState),
   }) : null, [initialState]);
 
-  const onEditorChange = useCallback((next: LexicalEditorStateJson) => setEditorState(next), []);
+  const onEditorChange = useCallback((next: LexicalEditorStateJson) => {
+    latest.current.editorState = next;
+    setEditorState(next);
+  }, []);
+
+  function clearPending() {
+    pending.current = null;
+    blockedTarget.current = null;
+    setHasPending(false);
+    onPendingChange(false);
+  }
 
   /**
-   * Save the document in the state the button asks for.
-   *
-   * `intent` names the target state rather than toggling a flag: a published
-   * work that is saved again stays published, and 转为草稿 is the one save that
-   * asks for the draft state explicitly. With a boolean the two cannot be told
-   * apart — `publish: false` had to mean "leave the status alone" for a work
-   * that was already public, which is precisely what unpublishing needs to say.
+   * Resolve one request. A create holds its key and original bytes until a
+   * well-formed success or an explicit discard; updates remain ordinary PUTs.
    */
-  async function save(intent: "draft" | "publish") {
-    if (!title.trim()) { setError("请填写作品标题。"); return; }
-    if (!editorState) { setError("编辑器内容尚未初始化，请重新载入页面。"); return; }
-    if (!collectPlainText(editorState.root).trim()) { setError("请先输入正文内容。"); return; }
-    const wasPublished = article?.status === "published";
+  async function performSave(target: SaveTarget, currentArticle: AuthoringArticle | null, body: string, create: PendingCreate | null) {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setError("");
+    setSignInHelp(false);
     setStatus("");
+    setConfirmedReplay(false);
     try {
-      const response = await fetch(article ? `/api/authoring/articles/${encodeURIComponent(article.id)}` : "/api/authoring/articles", {
-        method: article ? "PUT" : "POST",
-        headers: { "content-type": "application/json", accept: "application/json" },
+      const response = await fetch(currentArticle ? `/api/authoring/articles/${encodeURIComponent(currentArticle.id)}` : "/api/authoring/articles", {
+        method: currentArticle ? "PUT" : "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json",
+          ...(create && viewerId ? {
+            [IDEMPOTENCY_KEY_HEADER]: create.key,
+            [AUTHORING_EXPECTED_ACTOR_HEADER]: encodeURIComponent(viewerId),
+          } : {}),
+        },
         credentials: "same-origin",
         cache: "no-store",
-        body: JSON.stringify({
-          // New articles let the API derive the slug from the title; existing
-          // ones are addressed by the slug they already have.
-          ...(article ? { slug: article.slug } : {}),
-          title: title.trim(),
-          summary: summary.trim(),
-          locale,
-          workType,
-          editorState,
-          contentBlocksVersion: 1,
-          publish: intent === "publish",
-        }),
+        body,
       });
       const payload: unknown = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(apiError(payload));
+      if (!response.ok) {
+        const code = errorCode(payload);
+        if (create) {
+          // HTTP status alone cannot prove a write did not happen: even a 400
+          // could come from response assembly after commit. Only a same-origin
+          // proxy rejection explicitly marked *not forwarded* proves this one
+          // attempt did not write; an earlier ambiguous attempt still matters.
+          const rejectedBeforeWrite = response.headers.get(AUTHORING_NOT_FORWARDED_HEADER) === "1";
+          if (rejectedBeforeWrite && !create.mayHaveCommitted) {
+            clearPending();
+            setError(apiError(payload));
+            return;
+          }
+          if (response.status === 401) {
+            create.mayHaveCommitted = true;
+            setSignInHelp(true);
+            setError("登录状态已失效；请在新标签页登录原账户，再返回确认上次保存。");
+          } else if (response.status === 409 && code === "ACCOUNT_CHANGED") {
+            create.mayHaveCommitted = true;
+            setSignInHelp(true);
+            setError("登录账户已变化；请在新标签页登录原账户，再返回确认上次保存。");
+          } else if (response.status === 409) {
+            create.mayHaveCommitted = true;
+            setError("上次保存的请求与已有记录冲突。请先核对作品列表，再决定是否放弃这次未确认的请求。");
+          } else if (response.status === 400) {
+            create.mayHaveCommitted = true;
+            setError(`${apiError(payload)} 上次保存是否已创建仍需确认；请先核对作品列表。`);
+          } else {
+            create.mayHaveCommitted = true;
+            setError("暂时无法确认作品是否已创建。请确认上次保存，或先核对作品列表。");
+          }
+          return;
+        }
+        throw new Error(apiError(payload));
+      }
       const data = typeof payload === "object" && payload !== null && "data" in payload ? (payload as { data?: unknown }).data : null;
-      if (!isSavedArticle(data)) throw new Error("API 响应格式不正确，作品可能已保存，请刷新列表核对。");
+      if (!isSavedArticle(data)) {
+        if (create) {
+          create.mayHaveCommitted = true;
+          setError("暂时无法确认作品是否已创建：保存响应格式不正确。请确认上次保存。");
+          return;
+        }
+        throw new Error("API 响应格式不正确，作品可能已保存，请刷新列表核对。");
+      }
+      const hasLaterEdits = saveBody(latest.current, target, currentArticle) !== body;
+      const hasOtherAction = !!create && blockedTarget.current !== null && blockedTarget.current !== target;
+      const replayed = create?.mayHaveCommitted === true;
+      if (create) {
+        created.current = data;
+        clearPending();
+      }
       onSaved(data);
-      // Withdrawing a work is not the same message as saving one: the address
-      // the author was given a minute ago is the address that just stopped
-      // answering, so say so instead of pointing at it.
-      setStatus(wasPublished && intent === "draft"
-        ? "作品已转为草稿，公开页面已不可访问；重新发布即可恢复同一地址。"
-        : `${data.status === "published" ? "作品已发布。" : "草稿已保存。"} 作品地址：/articles/${data.slug}`);
+      // A replay returns the *current* resource, which another tab may have
+      // changed after the original create. Do not say this editor's snapshot
+      // was just saved over those changes.
+      const completion = replayed
+        ? `上次创建已确认。服务器返回的是当前版本，若曾在其他页面修改，请先核对再保存。作品地址：/articles/${data.slug}`
+        : currentArticle?.status === "published" && target === "draft"
+          ? "作品已转为草稿，公开页面已不可访问；重新发布即可恢复同一地址。"
+          : `${data.status === "published" ? "作品已发布。" : "草稿已保存。"} 作品地址：/articles/${data.slug}`;
+      setConfirmedReplay(replayed);
+      setStatus(`${completion}${hasLaterEdits ? " 当前修改尚未保存，请再次保存或发布。" : hasOtherAction ? " 所选操作尚未执行，请再次保存或发布。" : ""}`);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "保存失败，请重试。");
+      if (create) {
+        create.mayHaveCommitted = true;
+        setError("暂时无法确认作品是否已创建。请确认上次保存，或先核对作品列表。");
+      } else {
+        setError(caught instanceof Error ? caught.message : "保存失败，请重试。");
+      }
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
+  }
+
+  /** Save the state the button asks for, without changing a pending intent. */
+  async function save(target: SaveTarget) {
+    if (inFlight.current) return;
+    const draft = latest.current;
+    if (!draft.title.trim()) { setError("请填写作品标题。"); return; }
+    if (!draft.editorState) { setError("编辑器内容尚未初始化，请重新载入页面。"); return; }
+    if (!collectPlainText(draft.editorState.root).trim()) { setError("请先输入正文内容。"); return; }
+    const currentArticle = article ?? created.current;
+    const body = saveBody(draft, target, currentArticle);
+    if (currentArticle) {
+      await performSave(target, currentArticle, body, null);
+      return;
+    }
+    if (!viewerId) { setError("无法确认当前登录账户，请重新载入写作台后再保存。"); return; }
+    let intent: PendingIntent | null;
+    try { intent = intentForAttempt(pending.current, body); } catch {
+      setError("无法生成安全的保存标识，请检查浏览器安全设置后重试。");
+      return;
+    }
+    if (!intent) {
+      blockedTarget.current = target;
+      setSignInHelp(false);
+      setError("上次保存可能已经创建作品；当前内容或操作已改变。请先确认上次保存，当前编辑会保留。");
+      return;
+    }
+    const create = pending.current ?? { ...intent, target, mayHaveCommitted: false };
+    pending.current = create;
+    setHasPending(true);
+    onPendingChange(true);
+    await performSave(target, null, create.payload, create);
+  }
+
+  function retryPending() {
+    const create = pending.current;
+    if (!create || inFlight.current) return;
+    void performSave(create.target, null, create.payload, create);
   }
 
   /**
@@ -436,11 +591,11 @@ export function ArticleEditor({ article, onSaved, onDeleted }: ArticleEditorProp
     <section className="nw-article-editor" aria-label="作品编辑器">
       <div className="nw-article-fields">
         <label className="nw-field-wide">标题
-          <input value={title} onChange={(event) => setTitle(event.target.value)} required maxLength={200} />
+          <input value={title} onChange={(event) => { latest.current.title = event.target.value; setTitle(event.target.value); }} required maxLength={200} />
         </label>
         <p className="nw-field-note">作品地址（slug）由系统根据标题自动生成，无需填写。</p>
         <label>作品语言
-          <select value={locale} onChange={(event) => setLocale(event.target.value)}>
+          <select value={locale} onChange={(event) => { latest.current.locale = event.target.value; setLocale(event.target.value); }}>
             {/* A stored locale that is no longer authorable stays selectable for
                 this work only, so editing cannot silently change it. */}
             {retiredLocales[locale] ? <option value={locale}>{retiredLocales[locale]}</option> : null}
@@ -448,7 +603,7 @@ export function ArticleEditor({ article, onSaved, onDeleted }: ArticleEditorProp
           </select>
         </label>
         <label>作品类型
-          <select value={workType} onChange={(event) => setWorkType(event.target.value as WorkType)}>
+          <select value={workType} onChange={(event) => { latest.current.workType = event.target.value as WorkType; setWorkType(event.target.value as WorkType); }}>
             {/* An existing `serial` work keeps its type in the list, or opening
                 it would silently retype it on the next save — the compatibility
                 half of #196. The option is present only because the work already
@@ -460,7 +615,7 @@ export function ArticleEditor({ article, onSaved, onDeleted }: ArticleEditorProp
           </select>
         </label>
         <label className="nw-field-wide">摘要
-          <textarea value={summary} onChange={(event) => setSummary(event.target.value)} maxLength={2000} placeholder="留空则由系统摘取正文开头自动生成" />
+          <textarea value={summary} onChange={(event) => { latest.current.summary = event.target.value; setSummary(event.target.value); }} maxLength={2000} placeholder="留空则由系统摘取正文开头自动生成" />
         </label>
       </div>
       <LexicalExtensionComposer extension={extension} contentEditable={null}>
@@ -482,8 +637,26 @@ export function ArticleEditor({ article, onSaved, onDeleted }: ArticleEditorProp
         onSubmit={(values) => settleAsk(values)}
       />
       <p className="nw-lexical-empty-note">支持段落、二至四级标题、引用、列表、文本格式、链接、代码块及经服务端安全处理的图片。每张图片都会被重编码为 WebP；图片上传需配置 S3 兼容存储。</p>
-      {error ? <p className="nw-auth-error" role="alert">{error}</p> : null}
-      {status ? <p className="nw-auth-status" role="status">{status}</p> : null}
+      {error ? <p className="nw-auth-error" role="alert">{error}{signInHelp ? <> <Link href="/sign-in?next=%2Fwrite" target="_blank" rel="noopener noreferrer">登录原账户</Link></> : null}</p> : null}
+      {status ? <p className="nw-auth-status" role="status">{status}{confirmedReplay ? <> <Link href="/write" target="_blank" rel="noopener noreferrer">在新标签页核对服务器版本</Link></> : null}</p> : null}
+      {hasPending && !busy ? (
+        <div className="nw-authoring-recovery">
+          <p>这次请求和当前编辑只暂存在此页面。确认前请勿刷新或离开；确认原请求不会覆盖当前编辑。 <Link href="/write" target="_blank" rel="noopener noreferrer">在新标签页核对作品列表</Link></p>
+          <div className="nw-authoring-actions">
+            <button className="nw-btn" type="button" onClick={retryPending}>确认上次保存</button>
+            <button className="nw-btn" type="button" onClick={() => setConfirmDiscard(true)}>放弃上次未确认的请求</button>
+          </div>
+        </div>
+      ) : null}
+      <PromptDialog
+        open={confirmDiscard}
+        title="放弃未确认的保存？"
+        description="上次请求可能已经创建作品。放弃后再次保存可能产生重复作品，请先核对作品列表；当前输入不会被清空。"
+        fields={[]}
+        submitLabel="确认放弃"
+        onCancel={() => setConfirmDiscard(false)}
+        onSubmit={() => { clearPending(); setConfirmDiscard(false); setError(""); setSignInHelp(false); }}
+      />
       <div className="nw-authoring-actions">
         {article ? <button className="nw-btn" type="button" disabled={busy} onClick={() => void destroy()}>删除作品</button> : null}
         <button className="nw-btn" type="button" disabled={busy} onClick={() => void save(article?.status === "published" ? "publish" : "draft")}>{busy ? "保存中…" : article?.status === "published" ? "保存更新" : "保存草稿"}</button>

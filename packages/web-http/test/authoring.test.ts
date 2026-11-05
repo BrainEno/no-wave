@@ -14,8 +14,8 @@ import {
   handleAuthoringRestoreRequest,
   handleAuthoringSessionRequest,
 } from "../src/authoring.ts";
-import { ACCESS_TOKEN_COOKIE } from "../src/policy.ts";
-import { API_BASE, TOKENS, assertNoStore, json, request, stubFetch } from "./helpers.ts";
+import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE } from "../src/policy.ts";
+import { API_BASE, ROTATED, TOKENS, assertNoStore, json, request, stubFetch, tokenEnvelope } from "./helpers.ts";
 
 /**
  * Writing-desk proxy contract (Phase 4b).
@@ -362,4 +362,149 @@ test("a non-JSON body is refused with 415 instead of being relayed", async () =>
   );
   assert.equal(response.status, 415);
   assert.deepEqual(stub.calls, []);
+});
+
+const EXPECTED_AUTHOR_HEADER = "x-expected-author";
+const ORIGINAL_AUTHOR = "writer-original";
+
+test("an expected author is checked with the same credential used for the create", async () => {
+  const body = '{"title":"one"}';
+  const stub = stubFetch({
+    "api/v1/me": () => json({ data: { id: ORIGINAL_AUTHOR } }),
+    "api/v1/articles": () => json({ data: { id: ARTICLE_ID } }, 201),
+  });
+  const response = await handleAuthoringArticlesRequest(createRequest(body, {
+    cookie: `${ACCESS_TOKEN_COOKIE}=${TOKENS.accessToken}`,
+    [EXPECTED_AUTHOR_HEADER]: ORIGINAL_AUTHOR,
+    "idempotency-key": "retry-key",
+  }), { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl });
+  assert.equal(response.status, 201);
+  assertNoStore(response);
+  assert.deepEqual(stub.calls.map((call) => call.url), [`${API_BASE}/api/v1/me`, `${API_BASE}/api/v1/articles`]);
+  const identityHeaders = new Headers(stub.calls[0]?.init?.headers);
+  const createHeaders = new Headers(stub.calls[1]?.init?.headers);
+  assert.equal(identityHeaders.get("authorization"), `Bearer ${TOKENS.accessToken}`);
+  assert.equal(createHeaders.get("authorization"), identityHeaders.get("authorization"));
+  assert.equal(createHeaders.get("idempotency-key"), "retry-key");
+  assert.equal(createHeaders.get(EXPECTED_AUTHOR_HEADER), null);
+  assert.equal(stub.calls[1]?.init?.body, body);
+});
+
+test("an account change or unreadable identity never sends the create", async () => {
+  for (const [identity, expectedStatus, expectedCode] of [
+    [{ data: { id: "other-writer" } }, 409, "ACCOUNT_CHANGED"],
+    [{ data: {} }, 502, "SERVICE_UNAVAILABLE"],
+  ] as const) {
+    const stub = stubFetch({
+      "api/v1/me": () => json(identity),
+      "api/v1/articles": () => json({ data: { id: ARTICLE_ID } }, 201),
+    });
+    const response = await handleAuthoringArticlesRequest(createRequest('{"title":"one"}', {
+      cookie: `${ACCESS_TOKEN_COOKIE}=${TOKENS.accessToken}`,
+      [EXPECTED_AUTHOR_HEADER]: ORIGINAL_AUTHOR,
+    }), { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl });
+    assert.equal(response.status, expectedStatus);
+    assertNoStore(response);
+    assert.equal((await response.json() as { error: { code: string } }).error.code, expectedCode);
+    assert.equal(stub.calls.length, 1, "an unverified or different account must never reach the article API");
+    assert.equal(stub.calls[0]?.url, `${API_BASE}/api/v1/me`);
+  }
+});
+
+test("after refresh the expected author is checked again using the exact new create credential", async () => {
+  const stub = stubFetch({
+    "api/v1/auth/refresh": () => tokenEnvelope(ROTATED),
+    "api/v1/me": (call) => new Headers(call.init?.headers).get("authorization") === `Bearer ${TOKENS.accessToken}`
+      ? json({ error: { code: "UNAUTHENTICATED" } }, 401)
+      : json({ data: { id: ORIGINAL_AUTHOR } }),
+    "api/v1/articles": () => json({ data: { id: ARTICLE_ID } }, 201),
+  });
+  const response = await handleAuthoringArticlesRequest(createRequest('{"title":"one"}', {
+    cookie: `${ACCESS_TOKEN_COOKIE}=${TOKENS.accessToken}; ${REFRESH_TOKEN_COOKIE}=${TOKENS.refreshToken}`,
+    [EXPECTED_AUTHOR_HEADER]: ORIGINAL_AUTHOR,
+    "idempotency-key": "retry-key",
+  }), { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl });
+  assert.equal(response.status, 201);
+  assert.deepEqual(stub.calls.map((call) => new URL(call.url).pathname), [
+    "/api/v1/me", "/api/v1/auth/refresh", "/api/v1/me", "/api/v1/articles",
+  ]);
+  assert.equal(new Headers(stub.calls[2]?.init?.headers).get("authorization"), `Bearer ${ROTATED.accessToken}`);
+  assert.equal(new Headers(stub.calls[3]?.init?.headers).get("authorization"), `Bearer ${ROTATED.accessToken}`);
+  assert.equal(new Headers(stub.calls[3]?.init?.headers).get("idempotency-key"), "retry-key");
+  assert.ok(response.headers.getSetCookie().length > 0, "rotated session reaches the browser");
+});
+
+test("a 401 from the create itself refreshes and rechecks the author before retrying", async () => {
+  let creates = 0;
+  const stub = stubFetch({
+    "api/v1/auth/refresh": () => tokenEnvelope(ROTATED),
+    "api/v1/me": () => json({ data: { id: ORIGINAL_AUTHOR } }),
+    "api/v1/articles": () => ++creates === 1
+      ? json({ error: { code: "UNAUTHENTICATED" } }, 401)
+      : json({ data: { id: ARTICLE_ID } }, 201),
+  });
+  const response = await handleAuthoringArticlesRequest(createRequest('{"title":"one"}', {
+    cookie: `${ACCESS_TOKEN_COOKIE}=${TOKENS.accessToken}; ${REFRESH_TOKEN_COOKIE}=${TOKENS.refreshToken}`,
+    [EXPECTED_AUTHOR_HEADER]: ORIGINAL_AUTHOR,
+    "idempotency-key": "retry-key",
+  }), { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl });
+  assert.equal(response.status, 201);
+  assert.deepEqual(stub.calls.map((call) => new URL(call.url).pathname), [
+    "/api/v1/me", "/api/v1/articles", "/api/v1/auth/refresh", "/api/v1/me", "/api/v1/articles",
+  ]);
+  assert.equal(new Headers(stub.calls[3]?.init?.headers).get("authorization"), `Bearer ${ROTATED.accessToken}`);
+  assert.equal(new Headers(stub.calls[4]?.init?.headers).get("authorization"), `Bearer ${ROTATED.accessToken}`);
+  assert.equal(new Headers(stub.calls[4]?.init?.headers).get("idempotency-key"), "retry-key");
+  assert.ok(response.headers.getSetCookie().length > 0);
+});
+
+test("if refreshed credentials belong to another account, no create is sent", async () => {
+  const stub = stubFetch({
+    "api/v1/auth/refresh": () => tokenEnvelope(ROTATED),
+    "api/v1/me": (call) => new Headers(call.init?.headers).get("authorization") === `Bearer ${TOKENS.accessToken}`
+      ? json({ error: { code: "UNAUTHENTICATED" } }, 401)
+      : json({ data: { id: "other-writer" } }),
+    "api/v1/articles": () => json({ data: { id: ARTICLE_ID } }, 201),
+  });
+  const response = await handleAuthoringArticlesRequest(createRequest('{"title":"one"}', {
+    cookie: `${ACCESS_TOKEN_COOKIE}=${TOKENS.accessToken}; ${REFRESH_TOKEN_COOKIE}=${TOKENS.refreshToken}`,
+    [EXPECTED_AUTHOR_HEADER]: ORIGINAL_AUTHOR,
+  }), { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl });
+  assert.equal(response.status, 409);
+  assert.equal((await response.json() as { error: { code: string } }).error.code, "ACCOUNT_CHANGED");
+  assert.deepEqual(stub.calls.map((call) => new URL(call.url).pathname), [
+    "/api/v1/me", "/api/v1/auth/refresh", "/api/v1/me",
+  ]);
+  assert.ok(response.headers.getSetCookie().length > 0);
+});
+
+test("malformed expected-author preconditions are rejected before contacting the API", async () => {
+  for (const value of ["", "%", "x".repeat(301), "%20writer"]) {
+    const stub = upstream();
+    const response = await handleAuthoringArticlesRequest(createRequest('{"title":"one"}', {
+      [EXPECTED_AUTHOR_HEADER]: value,
+    }), { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl });
+    assert.equal(response.status, 400);
+    assertNoStore(response);
+    assert.deepEqual(stub.calls, []);
+  }
+});
+
+test("only local pre-forward rejections attest that the create was never sent", async () => {
+  const stub = upstream();
+  const invalidJson = await handleAuthoringArticlesRequest(createRequest("not json"), { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl });
+  assert.equal(invalidJson.status, 400);
+  assert.equal(invalidJson.headers.get("x-authoring-not-forwarded"), "1");
+  const oversized = await handleAuthoringArticlesRequest(createRequest(JSON.stringify({ text: "x".repeat(AUTHORING_BODY_MAX_BYTES + 1) })), { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl });
+  assert.equal(oversized.status, 413);
+  assert.equal(oversized.headers.get("x-authoring-not-forwarded"), "1");
+  assert.deepEqual(stub.calls, []);
+
+  const untrusted = stubFetch({
+    "api/v1/articles": () => json({ error: { code: "BAD_USER_INPUT" } }, 400, { "x-authoring-not-forwarded": "1" }),
+  });
+  const proxied = await handleAuthoringArticlesRequest(createRequest('{"title":"one"}'), { apiBaseUrl: API_BASE, fetchImpl: untrusted.fetchImpl });
+  assert.equal(proxied.status, 400);
+  assert.equal(proxied.headers.get("x-authoring-not-forwarded"), null, "an upstream response cannot attest the proxy did not send it");
+  assert.equal(untrusted.calls.length, 1);
 });
