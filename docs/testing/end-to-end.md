@@ -16,7 +16,7 @@ that can be asserted more cheaply must be asserted more cheaply.
 | Path | Purpose |
 | --- | --- |
 | `playwright.config.ts` | One chromium project — `web` — one worker; `webServer` starts the API (`node scripts/dev.ts --api-only`) and the **production** build of the Web application (`pnpm --filter @bot-thk/web-rr start`). Until 2026-11-01 there were two projects, `app-router` and `prototype`, running the same spec against both frameworks; the App Router is gone, so the suite runs once. |
-| `e2e/authoring.spec.ts` | Register → write → save draft → publish → read the public page → withdraw it → delete it → restore it from the recycle bin; first-save lost-response replay, edits during an uncertain save, account switching, and navigation protection |
+| `e2e/authoring.spec.ts` | Register → write → save draft → publish → read the public page → withdraw it → delete it → restore it from the recycle bin; first-save lost-response replay, edits during an uncertain save, account switching, navigation protection, and English/legacy Traditional Chinese editions across reload and restore |
 | `e2e/devices.spec.ts` | Sign in → read the list of signed-in devices → end the other one → keep reading on this one; end the device you are holding → land on the sign-in page |
 | `e2e/read-aloud.spec.ts` | Read a published work aloud paragraph by paragraph → the mark follows the spoken paragraph → 停止 takes it off; a browser that cannot speak is given no control |
 | `e2e/passages.spec.ts` | Select a passage → 划线 → it is painted, listed and still there after a reload; write a note beside it and change it; 朗读这段 reads just that passage and takes the voice from a reading of the whole work; 删除 takes it off the page and out of the browser; 分享 writes it into a link, which a reader in a fresh browser opens and keeps for themselves, and a link whose words are not in the work says so and marks nothing |
@@ -98,8 +98,12 @@ it somewhere temporary for a clean run:
 
 ```sh
 DATABASE_PATH=/tmp/no-wave-e2e.sqlite pnpm db:migrate
-DATABASE_PATH=/tmp/no-wave-e2e.sqlite pnpm test:e2e
+DATABASE_PATH=/tmp/no-wave-e2e.sqlite AUTH_REGISTER_IP_LIMIT=60 pnpm test:e2e
 ```
+
+The registration override matches CI and applies only to the disposable local
+API: the suite creates more than the default 20 accounts from one IP. It does
+not change the production article-creation limit.
 
 Browsers are downloaded from `cdn.playwright.dev` into Playwright's cache — not
 from the npm registry and not into the repository. A machine with no access to

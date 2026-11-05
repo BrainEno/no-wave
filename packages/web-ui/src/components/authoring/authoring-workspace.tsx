@@ -8,6 +8,7 @@ import { ArticleEditor, type AuthoringArticle } from "./article-editor.tsx";
 import { AuthorProfilePanel } from "./author-profile-panel.tsx";
 import { normalizeDisplayName, parseAuthorProfile, type AuthorProfile } from "@/lib/author-profile.ts";
 import { NotificationInbox } from "./notification-inbox.tsx";
+import { AUTHORING_LOCALES, isAuthoringLocale } from "@bot-thk/web-http";
 
 type WorkspaceState = "loading" | "unauthenticated" | "ready" | "error";
 
@@ -36,8 +37,17 @@ function isArticle(value: unknown): value is AuthoringArticle {
   if (typeof value !== "object" || value === null) return false;
   const item = value as Partial<AuthoringArticle>;
   return typeof item.id === "string" && typeof item.title === "string" &&
-    typeof item.slug === "string" && Array.isArray(item.contentBlocks) &&
-    (item.status === "draft" || item.status === "published");
+    typeof item.slug === "string" && typeof item.locale === "string" && isAuthoringLocale(item.locale) &&
+    Array.isArray(item.contentBlocks) && (item.status === "draft" || item.status === "published");
+}
+
+function localeLabel(locale: string): string {
+  return locale === "zh-CN" ? "简体中文" : locale === "zh-TW" ? "繁體中文" : "English";
+}
+
+/** Different language editions can share an article id. */
+function editionKey(article: AuthoringArticle): string {
+  return `${article.id}:${article.locale}`;
 }
 
 /**
@@ -62,6 +72,16 @@ function dataOf(payload: unknown): unknown {
     : null;
 }
 
+/** Older API releases silently ignored allLocales and returned zh-CN only. */
+function confirmsAllLocales(payload: unknown): boolean {
+  const meta = typeof payload === "object" && payload !== null && "meta" in payload
+    ? (payload as { meta?: unknown }).meta : null;
+  const locales = typeof meta === "object" && meta !== null && "locales" in meta
+    ? (meta as { locales?: unknown }).locales : null;
+  return Array.isArray(locales) && locales.length === AUTHORING_LOCALES.length &&
+    AUTHORING_LOCALES.every((locale) => locales.includes(locale));
+}
+
 function messageOf(payload: unknown): string {
   if (typeof payload === "object" && payload !== null && "error" in payload) {
     const error = (payload as { error?: { message?: unknown } }).error;
@@ -81,7 +101,9 @@ export function AuthoringWorkspace() {
   // The key now changes only when the author actually changes document: opening
   // a different work must reload it, saving the current one must not.
   const [editorKey, setEditorKey] = useState("new-0");
-  const [newCounter, setNewCounter] = useState(0);
+  const editorKeyRef = useRef("new-0");
+  const editorRevision = useRef(0);
+  const selectedRef = useRef<AuthoringArticle | null>(null);
   const [error, setError] = useState("");
   // A line about the desk as a whole rather than about the open document: the
   // message that follows a deletion outlives the editor, which is remounted.
@@ -109,6 +131,18 @@ export function AuthoringWorkspace() {
     setPendingCreate(value);
   }
 
+  function selectArticle(article: AuthoringArticle | null) {
+    selectedRef.current = article;
+    setSelected(article);
+  }
+
+  function switchEditor(prefix: string) {
+    const key = `${prefix}-${++editorRevision.current}`;
+    // Update synchronously: an older request can finish before React renders.
+    editorKeyRef.current = key;
+    setEditorKey(key);
+  }
+
   // Unrelated account/profile requests can also expire while a create is in
   // flight. Do not unmount the editor and lose its pending key in that case.
   function showSignIn() {
@@ -132,13 +166,14 @@ export function AuthoringWorkspace() {
   }, [pendingCreate, blocker]);
 
   async function reloadArticles() {
-    const response = await fetch("/api/authoring/articles", { credentials: "same-origin", cache: "no-store" });
+    const response = await fetch("/api/authoring/articles?allLocales=true", { credentials: "same-origin", cache: "no-store" });
     const payload: unknown = await response.json().catch(() => null);
     if (response.status === 401) { showSignIn(); return; }
     if (!response.ok) throw new Error(messageOf(payload));
+    if (!confirmsAllLocales(payload)) throw new Error("无法确认所有语言版本，请检查 API 版本后重试。");
     const data = typeof payload === "object" && payload !== null && "data" in payload ? (payload as { data?: unknown }).data : null;
-    if (!Array.isArray(data)) throw new Error("作品列表响应格式不正确。");
-    setArticles(data.filter(isArticle));
+    if (!Array.isArray(data) || !data.every(isArticle)) throw new Error("作品列表响应格式不正确，无法安全显示所有语言版本。");
+    setArticles(data);
     setState("ready");
   }
 
@@ -148,13 +183,14 @@ export function AuthoringWorkspace() {
    * reported inside the section it belongs to.
    */
   async function reloadDeletedArticles() {
-    const response = await fetch("/api/authoring/deleted-articles", { credentials: "same-origin", cache: "no-store" });
+    const response = await fetch("/api/authoring/deleted-articles?allLocales=true", { credentials: "same-origin", cache: "no-store" });
     const payload: unknown = await response.json().catch(() => null);
     if (response.status === 401) { showSignIn(); return; }
     if (!response.ok) throw new Error(messageOf(payload));
+    if (!confirmsAllLocales(payload)) throw new Error("无法确认回收站的所有语言版本。");
     const data = typeof payload === "object" && payload !== null && "data" in payload ? (payload as { data?: unknown }).data : null;
-    if (!Array.isArray(data)) throw new Error("回收站响应格式不正确。");
-    setDeleted(data.filter(isDeletedArticle));
+    if (!Array.isArray(data) || !data.every(isDeletedArticle)) throw new Error("回收站响应格式不正确，无法安全显示所有语言版本。");
+    setDeleted(data);
     setTrashError("");
   }
 
@@ -222,17 +258,19 @@ export function AuthoringWorkspace() {
 
   function openNewDocument() {
     if (pendingCreateRef.current) return;
-    const next = newCounter + 1;
-    setNewCounter(next);
-    setSelected(null);
-    setEditorKey(`new-${next}`);
+    selectArticle(null);
+    switchEditor("new");
     setNotice("");
   }
 
   function openDocument(article: AuthoringArticle) {
     if (pendingCreateRef.current) return;
-    setSelected(article);
-    setEditorKey(article.id);
+    // Re-clicking the open edition must not discard unsaved edits. A different
+    // edition of the same id must remount, even after the current save changed
+    // its locale and left the old editor key in place.
+    if (selectedRef.current && editionKey(selectedRef.current) === editionKey(article)) return;
+    selectArticle(article);
+    switchEditor(`work-${editionKey(article)}`);
     setNotice("");
   }
 
@@ -241,11 +279,13 @@ export function AuthoringWorkspace() {
    * document: keeping it mounted would show a work the API no longer returns,
    * and the next save would try to update a tombstone.
    */
-  async function afterDelete(article: AuthoringArticle) {
-    const next = newCounter + 1;
-    setNewCounter(next);
-    setSelected(null);
-    setEditorKey(`deleted-${next}`);
+  async function afterDelete(article: AuthoringArticle, sourceKey: string) {
+    // A delete affects every edition. Reset only if the deleting editor is
+    // still open, or if another edition of that same work is now open.
+    if (editorKeyRef.current === sourceKey || selectedRef.current?.id === article.id) {
+      selectArticle(null);
+      switchEditor("deleted");
+    }
     setError("");
     // The notice names the recycle bin because that is where the work now is:
     // "deleted" has to read as "moved", not as "gone".
@@ -264,7 +304,7 @@ export function AuthoringWorkspace() {
     setError("");
     setNotice("");
     try {
-      const response = await fetch(`/api/authoring/articles/${entry.id}/restore`, {
+      const response = await fetch(`/api/authoring/articles/${encodeURIComponent(entry.id)}/restore?locale=${encodeURIComponent(entry.locale)}`, {
         method: "POST",
         credentials: "same-origin",
         cache: "no-store",
@@ -282,14 +322,15 @@ export function AuthoringWorkspace() {
     }
   }
 
-  async function afterSave(article: AuthoringArticle) {
-    // Selecting the saved article keeps the editor mounted: it is the same
-    // document the author is looking at, and it now knows its own id, so the
-    // next save updates it instead of creating a second one.
-    setSelected(article);
-    setError("");
-    setNotice("");
-    setArticles((current) => [article, ...current.filter((item) => item.id !== article.id)].slice(0, 100));
+  async function afterSave(article: AuthoringArticle, sourceKey: string) {
+    // A slow PUT can resolve after a different document has opened. Refresh
+    // the list, but never replace the identity beneath that new editor.
+    if (editorKeyRef.current === sourceKey) {
+      selectArticle(article);
+      setError("");
+      setNotice("");
+    }
+    setArticles((current) => [article, ...current.filter((item) => editionKey(item) !== editionKey(article))]);
     try { await reloadArticles(); } catch (caught) {
       setError(caught instanceof Error ? caught.message : "作品已保存，但列表刷新失败。");
     }
@@ -303,8 +344,8 @@ export function AuthoringWorkspace() {
       if (pendingCreateRef.current) {
         showSignIn();
       } else {
-        setSelected(null);
-        setEditorKey("signed-out");
+        selectArticle(null);
+        switchEditor("signed-out");
         setState("unauthenticated");
       }
     }
@@ -383,10 +424,11 @@ export function AuthoringWorkspace() {
         <aside className="nw-authoring-sidebar" aria-label="我的作品">
           <h2>我的作品（{articles.length}）</h2>
           <button className="nw-btn nw-pri" type="button" disabled={pendingCreate} onClick={openNewDocument}>新建作品 +</button>
+          <p className="nw-m">显示各语言最近 100 个版本；同一作品的不同语言分别列出。</p>
           {articles.length === 0 ? <p className="nw-m">还没有草稿或已发布作品。</p> : articles.map((article) => (
-            <button className="nw-authoring-article" key={article.id} type="button" disabled={pendingCreate} aria-current={selected?.id === article.id ? "true" : undefined} onClick={() => openDocument(article)}>
+            <button className="nw-authoring-article" key={editionKey(article)} type="button" disabled={pendingCreate} aria-current={selected && editionKey(selected) === editionKey(article) ? "true" : undefined} onClick={() => openDocument(article)}>
               <span>{article.title}</span>
-              <small>{article.status === "published" ? "已发布" : "草稿"} · {article.updatedAt ? new Date(article.updatedAt).toLocaleDateString("zh-CN") : article.slug}</small>
+              <small>{article.status === "published" ? "已发布" : "草稿"} · {localeLabel(article.locale)} · {article.updatedAt ? new Date(article.updatedAt).toLocaleDateString("zh-CN") : article.slug}</small>
             </button>
           ))}
         </aside>
@@ -395,8 +437,8 @@ export function AuthoringWorkspace() {
             key={editorKey}
             article={selected}
             viewerId={viewerId}
-            onSaved={(article) => void afterSave(article)}
-            onDeleted={(article) => void afterDelete(article)}
+            onSaved={(article) => void afterSave(article, editorKey)}
+            onDeleted={(article) => void afterDelete(article, editorKey)}
             onPendingChange={changePendingCreate}
           />
         </div>
@@ -418,17 +460,17 @@ export function AuthoringWorkspace() {
           : deleted.map((entry) => {
             const days = daysUntilPurge(entry);
             return (
-              <div className="nw-authoring-trash-row" key={entry.id}>
+              <div className="nw-authoring-trash-row" key={editionKey(entry)}>
                 <span>{entry.title}</span>
                 <small>
-                  {entry.deletedAt ? `删除于 ${new Date(entry.deletedAt).toLocaleDateString("zh-CN")}` : "已删除"}
+                  {localeLabel(entry.locale)} · {entry.deletedAt ? `删除于 ${new Date(entry.deletedAt).toLocaleDateString("zh-CN")}` : "已删除"}
                   {days === null ? null : days === 0 ? " · 即将自动清除" : ` · 将在 ${days} 天后自动清除`}
                   {/* The one thing a restore cannot give back to a third party:
                       the sweep takes the comments with it, so the row says how
                       many rather than leaving the author to imagine it. */}
                   {entry.commentCount ? ` · 连同 ${entry.commentCount} 条评论` : null}
                 </small>
-                <button className="nw-btn" type="button" onClick={() => void restoreDeleted(entry)}>
+                <button className="nw-btn" type="button" aria-label={`还原《${entry.title}》（${localeLabel(entry.locale)}）`} onClick={() => void restoreDeleted(entry)}>
                   还原《{entry.title}》
                 </button>
               </div>

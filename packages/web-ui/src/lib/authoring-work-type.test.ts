@@ -73,5 +73,5 @@ test("a new work is not silently created as zh-CN", async () => {
   // Both authorable languages have to be offered, and the stored one preserved.
   assert.match(source, /authoringLocales[^=]*=\s*\[[\s\S]*"zh-CN"[\s\S]*"en"/, "zh-CN and en must be offered");
   assert.match(source, /article\?\.locale \?\?/, "an existing work keeps its own locale");
-  assert.match(source, /retiredLocales\[locale\]/, "an existing zh-TW work keeps its locale too");
+  assert.match(source, /retiredLocales\[article\.locale\]/, "an existing zh-TW work keeps its locale even while another option is selected");
 });

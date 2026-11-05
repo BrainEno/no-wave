@@ -3374,3 +3374,26 @@ test("REST article discovery takes a cursor instead of an offset, never both", a
     },
   });
 });
+
+test("all-locale authoring reads fail as a whole if one edition cannot be read", async () => {
+  const calls = [];
+  await withServer(async (baseUrl) => {
+    for (const path of ["/api/v1/me/articles?allLocales=true", "/api/v1/me/articles/deleted?allLocales=true"]) {
+      const response = await fetch(baseUrl + path, { headers: { authorization: `Bearer ${signedToken("writer")}` } });
+      assert.equal(response.status, 500, path);
+      const body = await response.json();
+      assert.equal(body.error.code, "INTERNAL_SERVER_ERROR");
+      assert.equal(Object.hasOwn(body, "data"), false, "a partial list cannot be mistaken for a complete list");
+      assert.equal(Object.hasOwn(body, "meta"), false);
+    }
+    assert.equal(calls.length, 6);
+    assert.ok(calls.every((call) => call.actorId === "writer"), "all editions use the verified actor");
+  }, {
+    env: authEnv,
+    store: {
+      async isSessionRevoked() { return false; },
+      async listMyArticles(args) { calls.push(args); if (args.locale === "en") throw new Error("synthetic locale read failure"); return []; },
+      async listMyDeletedArticles(args) { calls.push(args); if (args.locale === "en") throw new Error("synthetic locale read failure"); return []; },
+    },
+  });
+});

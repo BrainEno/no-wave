@@ -43,7 +43,7 @@ function notForwarded(response: Response): Response {
   return response;
 }
 
-/** The desk lists at most this many works; the API paginates the rest. */
+/** The desk lists at most this many editions per locale. */
 export const AUTHORING_ARTICLES_LIMIT = 100;
 
 export const AUTHORING_DEFAULT_LOCALE = "zh-CN";
@@ -73,8 +73,27 @@ export function authoringDeletedArticlesPath(
   return `api/v1/me/articles/deleted?locale=${encodeURIComponent(locale)}&limit=${encodeURIComponent(String(limit))}`;
 }
 
-export function authoringRestoreArticlePath(id: string): string {
-  return `api/v1/articles/${encodeURIComponent(id)}/restore`;
+export function authoringRestoreArticlePath(id: string, locale?: string): string {
+  const path = `api/v1/articles/${encodeURIComponent(id)}/restore`;
+  return locale === undefined ? path : `${path}?locale=${encodeURIComponent(locale)}`;
+}
+
+type ListSelection = { locale: string } | { allLocales: true };
+
+/** Do not silently reinterpret an invalid or ambiguous locale as zh-CN. */
+function listSelection(request: Request): ListSelection | null {
+  const params = new URL(request.url).searchParams;
+  const locales = params.getAll("locale");
+  const all = params.getAll("allLocales");
+  if (locales.length > 1 || all.length > 1) return null;
+  if (all.length === 1) return all[0] === "true" && locales.length === 0 ? { allLocales: true } : null;
+  const locale = locales[0] ?? AUTHORING_DEFAULT_LOCALE;
+  return isAuthoringLocale(locale) ? { locale } : null;
+}
+
+function allLocalesPath(deleted: boolean): string {
+  const path = deleted ? "api/v1/me/articles/deleted" : "api/v1/me/articles";
+  return `${path}?allLocales=true&limit=${AUTHORING_ARTICLES_LIMIT}`;
 }
 
 function methodOf(request: Request, allowed: readonly string[]): string | null {
@@ -119,7 +138,10 @@ export async function handleAuthoringArticlesRequest(
     return errorResponse("METHOD_NOT_ALLOWED", "Only GET and POST are supported for articles.", 405);
   }
   if (method === "GET") {
-    return forwardAuthoringRequest(request, authoringArticlesPath(), "GET", config);
+    const selection = listSelection(request);
+    if (!selection) return errorResponse("BAD_USER_INPUT", "Invalid locale or allLocales query parameter.", 400);
+    const path = "allLocales" in selection ? allLocalesPath(false) : authoringArticlesPath(selection.locale);
+    return forwardAuthoringRequest(request, path, "GET", config);
   }
   if (rejectCrossOrigin(request)) {
     return errorResponse("ORIGIN_REJECTED", "The request origin was rejected.", 403);
@@ -190,7 +212,10 @@ export async function handleAuthoringDeletedArticlesRequest(
   if (method === null) {
     return errorResponse("METHOD_NOT_ALLOWED", "Only GET is supported for deleted articles.", 405);
   }
-  return forwardAuthoringRequest(request, authoringDeletedArticlesPath(), "GET", config);
+  const selection = listSelection(request);
+  if (!selection) return errorResponse("BAD_USER_INPUT", "Invalid locale or allLocales query parameter.", 400);
+  const path = "allLocales" in selection ? allLocalesPath(true) : authoringDeletedArticlesPath(selection.locale);
+  return forwardAuthoringRequest(request, path, "GET", config);
 }
 
 /**
@@ -216,5 +241,10 @@ export async function handleAuthoringRestoreRequest(
   if (!AUTHORING_ARTICLE_ID_PATTERN.test(params.id)) {
     return errorResponse("BAD_USER_INPUT", "Invalid article ID.", 400);
   }
-  return forwardAuthoringRequest(request, authoringRestoreArticlePath(params.id), "POST", config);
+  const query = new URL(request.url).searchParams;
+  const locales = query.getAll("locale");
+  if (query.has("allLocales") || locales.length > 1 || (locales.length === 1 && !isAuthoringLocale(locales[0]))) {
+    return errorResponse("BAD_USER_INPUT", "Invalid locale query parameter.", 400);
+  }
+  return forwardAuthoringRequest(request, authoringRestoreArticlePath(params.id, locales[0]), "POST", config);
 }

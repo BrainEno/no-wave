@@ -27,7 +27,7 @@ type FlatPorts<P> = UnionToIntersection<{ [K in keyof P]: P[K] }[keyof P]>;
  * The REST-normalized article write body as the application layer receives it.
  * `contentBlocks` is still a serialized JSON array here; `createApplicationServices`
  * parses it at the boundary. `transport/rest/bodies.ts` produces a structurally
- * compatible shape (its `locale` is the narrower `"zh-CN"`).
+ * compatible shape (its `locale` is limited to the supported article locales).
  */
 export type ArticleWriteInput = {
   title: string;
