@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createPersistenceRuntime, describePersistenceRuntime } from "./persistence-runtime.ts";
+import { runConfiguredMigrations } from "../persistence/migrate.ts";
 import { persistencePortMethods } from "../application/persistence-ports.ts";
 import { resolveDatabaseProvider, resolvePostgresMigrationUrl, resolveSqliteDatabasePath } from "./database-config.ts";
 
@@ -76,6 +80,25 @@ test("SQLite runtime refuses an uninitialized database and explains the migratio
     createPersistenceRuntime({ env: { DATABASE_PATH: ":memory:" } }),
     /SQLite schema is not current.*pnpm --filter @bot-thk\/api migrate/i,
   );
+});
+
+test("a file-backed SQLite runtime starts only after an explicit migration", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "nw-ci-sqlite-"));
+  const env = { DATABASE_PROVIDER: "sqlite", DATABASE_PATH: join(directory, "api.sqlite") };
+  try {
+    await assert.rejects(createPersistenceRuntime({ env }), /SQLite schema is not current/);
+    const migrated = await runConfiguredMigrations({ env });
+    assert.equal(migrated.provider, "sqlite");
+    assert.ok(migrated.applied.length > 0);
+    const runtime = await createPersistenceRuntime({ env });
+    try {
+      assert.equal(await runtime.adapter.health(), true);
+    } finally {
+      await runtime.close();
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test("unimplemented providers fail closed and never fall back to PostgreSQL", async () => {
