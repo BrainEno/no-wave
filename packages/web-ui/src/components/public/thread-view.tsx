@@ -5,6 +5,8 @@ import { Link } from "@/lib/framework/link.tsx";
 import type { Locale } from "@/lib/content.ts";
 import { getUi } from "@/lib/ui-copy.ts";
 import { dateLabel } from "@/lib/format.ts";
+import { MESSAGE_BODY_MAX_CHARS } from "@bot-thk/web-http";
+import { IDEMPOTENCY_KEY_HEADER, intentForAttempt, type PendingIntent } from "@/lib/idempotency-key.ts";
 import { SectionHeading } from "@/components/ui/parts.tsx";
 
 /**
@@ -26,6 +28,9 @@ import { SectionHeading } from "@/components/ui/parts.tsx";
  * Paging walks *backwards*: the API returns the newest page first and takes a
  * `before` cursor for everything older. So the list renders in the order it
  * arrives (oldest at the top of the page) and "older" prepends.
+ *
+ * Each attempted reply retains its key and body until it succeeds or the
+ * reader explicitly abandons it. A lost response is not proof of failure.
  */
 
 type Message = { id: string; senderId: string; body: string; createdAt: string };
@@ -50,7 +55,12 @@ export function ThreadView({
   const [state, setState] = useState<ThreadState>({ kind: "loading" });
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [viewerId, setViewerId] = useState("");
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<"none" | "failed" | "invalid" | "conflict" | "changed" | "too-long" | "signed-out">("none");
   const generation = useRef(0);
+  const pending = useRef<PendingIntent | null>(null);
+  const inFlight = useRef(false);
 
   const load = useCallback(
     async (before: string | null, prepend: boolean) => {
@@ -58,7 +68,7 @@ export function ThreadView({
       if (prepend) setLoadingOlder(true);
       else setState({ kind: "loading" });
 
-      const query = `/api/inbox/${encodeURIComponent(conversationId)}/messages?limit=${PAGE_SIZE}${
+      const query = `/api/authoring/inbox/${encodeURIComponent(conversationId)}/messages?limit=${PAGE_SIZE}${
         before === null ? "" : `&before=${encodeURIComponent(before)}`
       }`;
       try {
@@ -112,6 +122,69 @@ export function ThreadView({
     return () => { generation.current += 1; };
   }, [load]);
 
+  const send = useCallback(async () => {
+    if (inFlight.current) return;
+    const text = draft.trim();
+    if (text === "") return;
+    if (text.length > MESSAGE_BODY_MAX_CHARS) {
+      setSendError("too-long");
+      return;
+    }
+
+    const payload = JSON.stringify({ body: text });
+    let intent: PendingIntent | null;
+    try {
+      intent = intentForAttempt(pending.current, payload);
+    } catch {
+      setSendError("failed");
+      return;
+    }
+    if (!intent) {
+      setSendError("changed");
+      return;
+    }
+    pending.current = intent;
+    inFlight.current = true;
+    setSending(true);
+    setSendError("none");
+    try {
+      const response = await fetch(`/api/authoring/inbox/${encodeURIComponent(conversationId)}/messages`, {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+          [IDEMPOTENCY_KEY_HEADER]: intent.key,
+        },
+        body: intent.payload,
+      });
+      if (response.status === 401) { setSendError("signed-out"); return; }
+      if (response.status === 409) { setSendError("conflict"); return; }
+      if (response.status === 400) { setSendError("invalid"); return; }
+      if (!response.ok) { setSendError("failed"); return; }
+
+      const created = readSentMessage(await response.json().catch(() => null));
+      if (created === null || created.body !== text) {
+        // The write may have succeeded even if its response cannot be displayed.
+        setSendError("failed");
+        return;
+      }
+      pending.current = null;
+      setDraft("");
+      setState((previous) => {
+        if (previous.kind !== "ready" || previous.messages.some((message) => message.id === created.id)) return previous;
+        return { ...previous, messages: [...previous.messages, created] };
+      });
+    } catch {
+      // The request may have been stored even though its response was lost.
+      setSendError("failed");
+    } finally {
+      inFlight.current = false;
+      setSending(false);
+    }
+  }, [conversationId, draft]);
+
   // Who "you" are — decoration only. A failure leaves messages attributed by id
   // rather than taking the conversation down.
   useEffect(() => {
@@ -135,6 +208,54 @@ export function ThreadView({
   }, []);
 
   const backHref = `${locale === "zh-CN" ? "" : `/${locale}`}/messages`;
+
+  const composer = (
+    <form className="nw-compose" onSubmit={(event) => { event.preventDefault(); void send(); }}>
+      <label className="nw-m nw-compose-label" htmlFor="nw-compose-body">{ui.compose}</label>
+      <textarea
+        id="nw-compose-body"
+        className="nw-compose-box"
+        value={draft}
+        onChange={(event) => { setDraft(event.target.value); setSendError("none"); }}
+        placeholder={ui.placeholder}
+        rows={3}
+        disabled={sending}
+      />
+      <div className="nw-compose-actions">
+        <button type="submit" className="nw-thread-btn" disabled={sending || draft.trim() === ""}>
+          {sending ? ui.sending : ui.send}
+        </button>
+        {sendError === "failed" ? (
+          <p className="nw-m nw-compose-error" role="alert">{ui.sendFailed}{" "}
+            <button type="button" className="nw-compose-retry" onClick={() => void send()}>{ui.sendRetry}</button>
+          </p>
+        ) : null}
+        {sendError === "too-long" ? <p className="nw-m nw-compose-error" role="alert">{ui.sendTooLong}</p> : null}
+        {sendError === "invalid" ? <p className="nw-m nw-compose-error" role="alert">{ui.sendInvalid}</p> : null}
+        {sendError === "signed-out" ? (
+          <p className="nw-m nw-compose-error" role="alert">{ui.sendSignIn}{" "}
+            <Link target="_blank" rel="noopener noreferrer" href={`/sign-in?next=${encodeURIComponent(`${backHref}/${conversationId}`)}`}>
+              {getUi(locale).reader.saveSignInAction}
+            </Link>
+          </p>
+        ) : null}
+      </div>
+      {sendError === "changed" || sendError === "conflict" ? (
+        <div className="nw-m nw-compose-error" role="alert">
+          <p>{sendError === "changed" ? ui.sendChanged : ui.sendConflict}</p>
+          {sendError === "changed" ? (
+            <button type="button" className="nw-compose-retry" onClick={() => {
+              if (!pending.current) return;
+              const original = JSON.parse(pending.current.payload) as { body: string };
+              setDraft(original.body);
+              setSendError("none");
+            }}>{ui.restoreMessage}</button>
+          ) : null}{" "}
+          <button type="button" className="nw-compose-retry" onClick={() => { pending.current = null; setSendError("none"); }}>{ui.discardPending}</button>
+        </div>
+      ) : null}
+    </form>
+  );
 
   if (state.kind === "loading") {
     return <main lang={locale} className="nw-w"><Shell ui={ui} backHref={backHref} locale={locale}><p className="nw-m nw-thread-note">{ui.threadLoading}</p></Shell></main>;
@@ -184,6 +305,7 @@ export function ThreadView({
       <main lang={locale} className="nw-w">
         <Shell ui={ui} backHref={backHref} locale={locale}>
           <p className="nw-m nw-thread-note">{ui.threadEmpty}</p>
+          {composer}
         </Shell>
       </main>
     );
@@ -219,6 +341,7 @@ export function ThreadView({
             </article>
           ))}
         </div>
+        {composer}
       </Shell>
     </main>
   );
@@ -281,4 +404,16 @@ function readMessages(payload: unknown): Message[] | null {
   }
   if (data.length > 0 && messages.length === 0) return null;
   return messages;
+}
+
+/** A successful replay is a success too; malformed responses retain the key. */
+function readSentMessage(payload: unknown): Message | null {
+  if (typeof payload !== "object" || payload === null) return null;
+  const data = (payload as { data?: unknown }).data;
+  if (typeof data !== "object" || data === null) return null;
+  const record = data as Record<string, unknown>;
+  if (typeof record.id !== "string" || !record.id || typeof record.body !== "string" ||
+      typeof record.senderId !== "string" || !record.senderId || typeof record.createdAt !== "string" ||
+      !Number.isFinite(Date.parse(record.createdAt))) return null;
+  return { id: record.id, senderId: record.senderId, body: record.body, createdAt: record.createdAt };
 }

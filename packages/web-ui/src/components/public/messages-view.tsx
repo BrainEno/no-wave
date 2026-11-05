@@ -5,6 +5,7 @@ import { Link } from "@/lib/framework/link.tsx";
 import type { Locale } from "@/lib/content.ts";
 import { getUi } from "@/lib/ui-copy.ts";
 import { EmptyState, SectionHeading } from "@/components/ui/parts.tsx";
+import { StartConversation } from "@/components/public/start-conversation.tsx";
 
 /**
  * 私信收件箱 — the read half of messages (#198).
@@ -41,7 +42,7 @@ type InboxState =
 
 const INBOX_LIMIT = 50;
 
-export function MessagesView({ locale }: { locale: Locale }) {
+export function MessagesView({ locale, initialRecipient = "" }: { locale: Locale; initialRecipient?: string }) {
   const ui = getUi(locale).messages;
   const [state, setState] = useState<InboxState>({ kind: "loading" });
   const [viewerId, setViewerId] = useState("");
@@ -51,7 +52,7 @@ export function MessagesView({ locale }: { locale: Locale }) {
     const mine = ++generation.current;
     setState({ kind: "loading" });
     try {
-      const response = await fetch(`/api/inbox?limit=${INBOX_LIMIT}`, {
+      const response = await fetch(`/api/authoring/inbox?limit=${INBOX_LIMIT}`, {
         headers: { accept: "application/json" },
         credentials: "same-origin",
         cache: "no-store",
@@ -145,6 +146,7 @@ export function MessagesView({ locale }: { locale: Locale }) {
       <main lang={locale} className="nw-w">
         {heading}
         <EmptyState title={ui.empty} body={ui.emptyHint} />
+        <StartConversation locale={locale} initialRecipient={initialRecipient} viewerId={viewerId} />
       </main>
     );
   }
@@ -153,6 +155,7 @@ export function MessagesView({ locale }: { locale: Locale }) {
     <main lang={locale} className="nw-w">
       {heading}
       <p className="nw-m nw-thread-intro">{ui.intro}</p>
+      <StartConversation locale={locale} initialRecipient={initialRecipient} viewerId={viewerId} />
       <div>
         {state.rows.map((row) => {
           const others = row.participantIds.filter((id) => id !== viewerId);

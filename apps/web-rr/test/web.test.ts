@@ -265,7 +265,7 @@ test("cookies become Secure when the request arrives over TLS", async () => {
   const result = await post(
     "/api/auth/login",
     JSON.stringify({ email: MOCK_CREDENTIALS.email, password: MOCK_CREDENTIALS.password }),
-    { "x-forwarded-proto": "https" },
+    { origin: baseUrl.replace(/^http:/, "https:"), "x-forwarded-proto": "https" },
   );
   assert.equal(result.status, 200);
   assert.match(result.headers.getSetCookie().find((cookie) => cookie.startsWith("nw_access=")) ?? "", /Secure/);
@@ -1413,4 +1413,47 @@ test("an address change reaches the API with the cookie's token, and a taken add
   });
   assert.equal(foreign.status, 403);
   assert.match(foreign.body, /ORIGIN_REJECTED/);
+});
+
+test("conversation write routes enforce key and origin before reaching the API", async () => {
+  const conversation = "c81407b1-4680-469d-9de4-2c34f042081c";
+  for (const [path, body] of [
+    ["/api/inbox", JSON.stringify({ participantIds: ["reader"] })],
+    ["/api/authoring/inbox", JSON.stringify({ participantIds: ["reader"] })],
+    [`/api/inbox/${conversation}/messages`, JSON.stringify({ body: "hello" })],
+    [`/api/authoring/inbox/${conversation}/messages`, JSON.stringify({ body: "hello" })],
+  ]) {
+    mockApi.resetRequests();
+    const noKey = await post(path, body, { cookie: DESK_COOKIE });
+    assert.equal(noKey.status, 400, path);
+    assert.match(noKey.body, /Idempotency-Key/);
+    const cross = await post(path, body, { cookie: DESK_COOKIE, origin: "https://attacker.example", "idempotency-key": "key" });
+    assert.equal(cross.status, 403, path);
+    assert.match(cross.body, /ORIGIN_REJECTED/);
+    assert.deepEqual(mockApi.requests(), [], "invalid requests must not reach the API");
+    // The mock does not implement conversations. A 404 from its fallback proves
+    // that this particular route was registered and did forward the valid write.
+    const valid = await post(path, body, { cookie: DESK_COOKIE, "idempotency-key": "key" });
+    assert.equal(valid.status, 404, path);
+    assert.match(valid.body, /No mock route/);
+    assert.match(valid.headers.get("cache-control") ?? "", /no-store/);
+    assert.ok(mockApi.requests().some((request) => request.includes("/api/v1/conversations")));
+  }
+});
+
+test("login and message writes accept the browser origin behind TLS termination", async () => {
+  // Node's fetch uses the URL authority for Host; only the public scheme differs
+  // from the plain HTTP hop between the TLS edge and this process.
+  const proxy = { origin: baseUrl.replace(/^http:/, "https:"), "x-forwarded-proto": "https" };
+  const login = await post("/api/auth/login", JSON.stringify(MOCK_CREDENTIALS), proxy);
+  assert.equal(login.status, 200);
+  assert.ok(login.headers.getSetCookie().some((cookie) => /nw_access=.*; Secure/.test(cookie)));
+  const body = JSON.stringify({ participantIds: ["reader"] });
+  const valid = await post("/api/authoring/inbox", body, { ...proxy, cookie: DESK_COOKIE, "idempotency-key": "key" });
+  assert.equal(valid.status, 404, "the origin was accepted and the mock API's fallback answered");
+  assert.match(valid.body, /No mock route/);
+  const cross = await post("/api/authoring/inbox", body, { ...proxy, origin: "https://attacker.example", "idempotency-key": "key" });
+  assert.equal(cross.status, 403);
+  const downgrade = await post("/api/authoring/inbox", body, { ...proxy, origin: baseUrl, "idempotency-key": "key" });
+  assert.equal(downgrade.status, 403);
 });

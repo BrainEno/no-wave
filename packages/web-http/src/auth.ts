@@ -67,7 +67,7 @@ export async function handleAuthRequest(
   if (!isAuthAction(action) && !isIdentityAction(action)) {
     return errorResponse("NOT_FOUND", "The authentication route was not found.", 404);
   }
-  if (!isSameOriginMutation(request.url, request.headers.get("origin"), request.headers.get("host"))) {
+  if (!isSameOriginMutation(request.url, request.headers.get("origin"), request.headers.get("host"), request.headers.get("x-forwarded-proto"))) {
     return errorResponse("ORIGIN_REJECTED", "The request origin was rejected.", 403);
   }
 

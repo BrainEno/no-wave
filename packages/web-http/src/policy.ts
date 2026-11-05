@@ -73,12 +73,16 @@ const HOST_AUTHORITY_PATTERN = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9]
  * The `Host` header is what the browser actually addressed, so prefer it, and
  * fall back to `request.url` when it is absent or malformed. The comparison
  * stays an exact origin equality (scheme, host and port), so a foreign origin,
- * a different port or a scheme downgrade is still rejected.
+ * a different port or a scheme downgrade is still rejected. When TLS is
+ * terminated at a trusted edge, `forwardedProto` supplies the browser-facing
+ * scheme, as it already does for secure cookies. The edge must overwrite this
+ * header rather than forwarding an untrusted client-supplied value.
  */
 export function isSameOriginMutation(
   requestUrl: string,
   originHeader: string | null,
   hostHeader: string | null = null,
+  forwardedProto: string | null = null,
 ): boolean {
   if (!originHeader) return false;
   try {
@@ -89,7 +93,9 @@ export function isSameOriginMutation(
     const authority = typeof hostHeader === "string" && HOST_AUTHORITY_PATTERN.test(hostHeader)
       ? hostHeader
       : request.host;
-    return origin.origin === `${request.protocol}//${authority}`;
+    const forwarded = forwardedProto?.split(",")[0]?.trim().toLowerCase();
+    const protocol = forwarded === "http" || forwarded === "https" ? `${forwarded}:` : request.protocol;
+    return origin.origin === `${protocol}//${authority}`;
   } catch {
     return false;
   }

@@ -80,3 +80,12 @@ test("idempotency keys are forwarded unchanged and absent keys stay absent", () 
   setIdempotencyKeyHeader(undefinedKey);
   assert.equal(undefinedKey.has("idempotency-key"), false);
 });
+
+test("a trusted TLS-terminating proxy supplies the browser-facing scheme", () => {
+  const url = "http://127.0.0.1:3000/api/auth/login";
+  assert.equal(isSameOriginMutation(url, "https://preview.example", "preview.example", "https"), true);
+  assert.equal(isSameOriginMutation(url, "http://preview.example", "preview.example", "https"), false);
+  assert.equal(isSameOriginMutation(url, "https://attacker.example", "preview.example", "https"), false);
+  assert.equal(isSameOriginMutation(url, "https://preview.example:8443", "preview.example", "https"), false);
+  assert.equal(isSameOriginMutation(url, "https://preview.example", "preview.example", "javascript"), false);
+});

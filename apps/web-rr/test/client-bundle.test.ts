@@ -59,6 +59,8 @@ const CLIENT_COMPONENTS: readonly ClientComponent[] = [
   // so every HTTP-level check passes on a page the visitor cannot navigate away
   // from.
   { component: "SiteChrome", sentinel: "nw-smooth", page: "/" },
+  { component: "StartConversation", sentinel: "/api/authoring/inbox", page: "/messages" },
+  { component: "ThreadView (reply)", sentinel: "nw-compose-body", page: "/messages/:id" },
   // The device list on the account page renders only after it has fetched, so
   // an HTML check on `/account` can never see it: without this the panel could
   // ship without its devices and every server-side assertion would stay green.

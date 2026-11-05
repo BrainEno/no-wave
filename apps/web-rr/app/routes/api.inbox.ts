@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { handleInboxRequest } from "@bot-thk/web-http";
+import { handleInboxRequest, handleStartConversationRequest } from "@bot-thk/web-http";
 import { optionalApiBaseUrl } from "../lib/runtime.ts";
 
 /**
@@ -27,10 +27,20 @@ export async function loader({ request }: LoaderFunctionArgs) {
 }
 
 /**
- * A write verb exists here only so it reaches the handler and gets the
- * application's own `405`. Without it React Router answers with a 405 of its own
- * and a body no other endpoint produces.
+ * `POST /api/inbox` — open a conversation.
+ *
+ * The read handler owns every other verb and answers `405` for them, so the split
+ * is on the method rather than on whether `action` was reached: React Router
+ * sends a POST here and nothing else, but stating the method keeps this route
+ * correct if a form ever submits to it.
+ *
+ * Without this `action` at all, React Router answers a POST with its own `405`
+ * and a body no other endpoint produces — which is why the read half already had
+ * one. Now it does something for the one verb that changes state.
  */
 export async function action({ request }: ActionFunctionArgs) {
+  if (request.method === "POST") {
+    return handleStartConversationRequest(request, { apiBaseUrl: optionalApiBaseUrl() });
+  }
   return inbox(request);
 }

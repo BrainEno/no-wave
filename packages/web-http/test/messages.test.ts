@@ -2,19 +2,26 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  CONVERSATIONS_MAX_LIMIT,
   CONVERSATION_ID_PATTERN,
+  CONVERSATION_MAX_PARTICIPANTS,
   INBOX_DEFAULT_LIMIT,
   MESSAGES_DEFAULT_LIMIT,
+  MESSAGE_BODY_MAX_CHARS,
+  MESSAGE_WRITE_MAX_BYTES,
   conversationPath,
   handleConversationMessagesRequest,
   handleConversationRequest,
   handleInboxRequest,
+  handleSendMessageRequest,
+  handleStartConversationRequest,
   inboxPath,
+  isUsableIdempotencyKey,
   messagesPath,
   parseLimit,
 } from "../src/messages.ts";
-import { ACCESS_TOKEN_COOKIE } from "../src/policy.ts";
-import { API_BASE, TOKENS, assertNoStore, json, stubFetch } from "./helpers.ts";
+import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE } from "../src/policy.ts";
+import { API_BASE, ROTATED, TOKENS, assertNoStore, json, stubFetch, tokenEnvelope } from "./helpers.ts";
 
 /**
  * Private-message read proxy contract (#198).
@@ -235,4 +242,406 @@ test("the conversation id pattern accepts UUIDs and refuses other shapes", () =>
   for (const bad of ["", "abc", "..", "a/b", CONVERSATION + "x", CONVERSATION.slice(0, -1)]) {
     assert.equal(CONVERSATION_ID_PATTERN.test(bad), false, JSON.stringify(bad));
   }
+});
+
+/**
+ * 私信写侧 contract (#198, send half).
+ *
+ * Sending is where a conversation gains rows, and the property that matters is
+ * not "a message was stored" — it is **"a retry did not store a second one."**
+ * The API expresses that with `Idempotency-Key`; these tests pin the three things
+ * this proxy can get wrong about it:
+ *
+ *   - minting a key of its own (every retry would then be a new message)
+ *   - dropping the caller's key (the API answers 400 and nothing is sent)
+ *   - accepting one that is empty or padded, which the API would reject anyway
+ *
+ * The fourth is about bodies: the proxy forwards only validated fields in a
+ * canonical JSON object. The API fingerprints the parsed message, not raw bytes.
+ */
+
+const SEND = `/api/inbox/${CONVERSATION}/messages`;
+
+function send(
+  options: { body?: string; key?: string | null; method?: string; origin?: string | null; cookie?: string | null } = {},
+): Request {
+  const headers: Record<string, string> = {
+    host: "no-wave.test",
+    "content-type": "application/json",
+  };
+  if (options.origin !== null) headers.origin = options.origin ?? "https://no-wave.test";
+  if (options.key !== null && options.key !== undefined) headers["idempotency-key"] = options.key;
+  if (options.cookie !== null) headers.cookie = options.cookie ?? SIGNED_IN;
+  return new Request(`https://no-wave.test${SEND}`, {
+    method: options.method ?? "POST",
+    headers,
+    ...(options.method === undefined || options.method === "POST"
+      ? { body: options.body ?? JSON.stringify({ body: "hello" }) }
+      : {}),
+  });
+}
+
+const SENT = { data: { id: "7255b378-0000-4000-8000-000000000000", body: "hello", duplicate: false } };
+
+function sendUpstream(response: () => Response = () => json(SENT, 201)) {
+  const stub = stubFetch({ "api/v1/conversations": response });
+  return { calls: stub.calls, config: { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl } };
+}
+
+test("a send carries the caller's idempotency key, unchanged", async () => {
+  const { calls, config } = sendUpstream();
+  const response = await handleSendMessageRequest(send({ key: "key-abc" }), { conversationId: CONVERSATION }, config);
+  assert.equal(response.status, 201);
+  const forwarded = new Headers(calls[0].init?.headers);
+  assert.equal(forwarded.get("idempotency-key"), "key-abc", "the caller's key is the one the API sees");
+  assert.equal(forwarded.get("authorization"), `Bearer ${TOKENS.accessToken}`);
+  assert.match(calls[0].url, /api\/v1\/conversations\/[^/]+\/messages$/);
+});
+
+test("the proxy never mints a key of its own", async () => {
+  // The failure this guards is subtle and total: a proxy that generated a key
+  // per request would make every retry a new message, and every other test here
+  // would still pass. So the assertion is about *identity*: the key must be
+  // byte-for-byte the one supplied.
+  const { config } = sendUpstream();
+  const supplied = "minted-in-the-browser-0123456789";
+  await handleSendMessageRequest(send({ key: supplied }), { conversationId: CONVERSATION }, config);
+
+  const { calls, config: second } = sendUpstream();
+  await handleSendMessageRequest(send({ key: supplied }), { conversationId: CONVERSATION }, second);
+  assert.equal(
+    new Headers(calls[0].init?.headers).get("idempotency-key"),
+    supplied,
+    "a key generated here would differ between these two attempts",
+  );
+});
+
+test("a send without a key is refused before the API sees it", async () => {
+  const { calls, config } = sendUpstream();
+  const response = await handleSendMessageRequest(send({ key: null }), { conversationId: CONVERSATION }, config);
+  assert.equal(response.status, 400);
+  const body = (await response.json()) as { error: { code: string; message: string } };
+  assert.equal(body.error.code, "BAD_USER_INPUT");
+  assert.match(body.error.message, /Idempotency-Key/);
+  assert.equal(calls.length, 0, "nothing was forwarded");
+});
+
+test("an unusable key is refused rather than repaired", async () => {
+  const { calls, config } = sendUpstream();
+  // Whitespace only. The padded case cannot be expressed through `Request`,
+  // whose Headers trims a value — so this asserts the in-process predicate
+  // instead, and the next test covers what is reachable over HTTP.
+  for (const key of ["", " ", "\t"]) {
+    const response = await handleSendMessageRequest(send({ key }), { conversationId: CONVERSATION }, config);
+    assert.equal(response.status, 400, JSON.stringify(key));
+  }
+  assert.equal(isUsableIdempotencyKey("x".repeat(300)), true, "300 is the API's ceiling, inclusive");
+  assert.equal(isUsableIdempotencyKey("x".repeat(301)), false);
+  assert.equal(isUsableIdempotencyKey(null), false);
+  assert.equal(calls.length, 0);
+});
+
+test("a blank message is reported as a blank message, not as a missing key", async () => {
+  // Both problems answer 400, so the order alone decides what the caller is
+  // told. Sending neither would be unlucky but explainable; sending both and
+  // complaining about the key would send them to fix the wrong thing.
+  const { calls, config } = sendUpstream();
+  const response = await handleSendMessageRequest(
+    send({ key: null, body: JSON.stringify({ body: "   " }) }),
+    { conversationId: CONVERSATION },
+    config,
+  );
+  assert.equal(response.status, 400);
+  const body = (await response.json()) as { error: { message: string } };
+  assert.match(body.error.message, /blank/, `expected the body to be blamed, got: ${body.error.message}`);
+  assert.ok(!/Idempotency-Key/.test(body.error.message), "the key must not be blamed for a blank draft");
+  assert.equal(calls.length, 0);
+});
+
+test("the forwarded body contains only the validated canonical JSON", async () => {
+  const { calls, config } = sendUpstream();
+  await handleSendMessageRequest(
+    send({ key: "k", body: '{ "body" :  "hello" }' }),
+    { conversationId: CONVERSATION },
+    config,
+  );
+  assert.equal(calls[0].init?.body, JSON.stringify({ body: "hello" }), "re-serialised, not passed through");
+});
+
+test("a 20 000 character Chinese message is accepted; 20 001 is not", async () => {
+  // Characters, not bytes. A byte-based bound set from the character count would
+  // refuse a legal message in the language most of this application is written
+  // in — and the test that checks the ceiling is a *character* ceiling has to
+  // use text where the two counts differ.
+  const chinese = "字".repeat(MESSAGE_BODY_MAX_CHARS);
+  assert.notEqual(new TextEncoder().encode(chinese).byteLength, chinese.length, "the units must differ");
+
+  const { calls, config } = sendUpstream();
+  const accepted = await handleSendMessageRequest(
+    send({ key: "k", body: JSON.stringify({ body: chinese }) }),
+    { conversationId: CONVERSATION },
+    config,
+  );
+  assert.equal(accepted.status, 201, "20 000 characters is legal, whatever it weighs");
+  assert.equal(calls.length, 1);
+
+  const refused = await handleSendMessageRequest(
+    send({ key: "k", body: JSON.stringify({ body: chinese + "字" }) }),
+    { conversationId: CONVERSATION },
+    config,
+  );
+  assert.equal(refused.status, 400);
+  assert.equal(calls.length, 1, "the oversized one was refused before the API");
+});
+
+test("the transport ceiling cannot be tighter than the character ceiling", () => {
+  // This is the guard that was missing the first time: a byte limit that looks
+  // generous (60 KB) still refuses 20 000 CJK characters (60 011 bytes). Stating
+  // the relationship here means the constant cannot drift away from the bound it
+  // is derived from without a failure.
+  assert.ok(
+    MESSAGE_WRITE_MAX_BYTES >= MESSAGE_BODY_MAX_CHARS * 6 + 1024,
+    `the JSON envelope must hold ${MESSAGE_BODY_MAX_CHARS} characters at 6 bytes each`,
+  );
+});
+
+test("JSON-escaped UTF-16 fits at the legal character limit", async () => {
+  // An unpaired surrogate is represented as six ASCII bytes in JSON.
+  const body = "a" + "\ud800".repeat(MESSAGE_BODY_MAX_CHARS - 2) + "z";
+  const encoded = JSON.stringify({ body });
+  assert.ok(new TextEncoder().encode(encoded).byteLength > MESSAGE_BODY_MAX_CHARS * 4);
+  const { calls, config } = sendUpstream();
+  const response = await handleSendMessageRequest(send({ key: "k", body: encoded }), { conversationId: CONVERSATION }, config);
+  assert.equal(response.status, 201);
+  assert.equal(calls.length, 1);
+});
+
+test("only `body` is accepted; other fields are not silently forwarded", async () => {
+  const { calls, config } = sendUpstream();
+  for (const body of [{ body: "hi", senderId: "someone-else" }, { text: "hi" }, { body: 42 }]) {
+    const response = await handleSendMessageRequest(
+      send({ key: "k", body: JSON.stringify(body) }),
+      { conversationId: CONVERSATION },
+      config,
+    );
+    assert.equal(response.status, 400, JSON.stringify(body));
+  }
+  assert.equal(calls.length, 0);
+});
+
+test("a message must already be trimmed, and the padding is not fixed for the caller", async () => {
+  const { config } = sendUpstream();
+  const response = await handleSendMessageRequest(
+    send({ key: "k", body: JSON.stringify({ body: " hello" }) }),
+    { conversationId: CONVERSATION },
+    config,
+  );
+  assert.equal(response.status, 400);
+  const body = (await response.json()) as { error: { message: string } };
+  assert.match(body.error.message, /whitespace/);
+});
+
+test("a cross-origin send is refused before the payload is even read", async () => {
+  // A cross-origin caller must not learn whether the conversation id it guessed
+  // was well-formed — so the origin check runs before the id check, and this
+  // request deliberately carries a nonsense id and a valid body.
+  const { calls, config } = sendUpstream();
+  const response = await handleSendMessageRequest(
+    send({ key: "k", origin: "https://evil.test" }),
+    { conversationId: "not-a-uuid" },
+    config,
+  );
+  assert.equal(response.status, 403);
+  const body = (await response.json()) as { error: { code: string } };
+  assert.equal(body.error.code, "ORIGIN_REJECTED");
+  assert.equal(calls.length, 0);
+});
+
+test("a conversation id is a UUID here too", async () => {
+  const { calls, config } = sendUpstream();
+  const response = await handleSendMessageRequest(send({ key: "k" }), { conversationId: "../../admin" }, config);
+  assert.equal(response.status, 400);
+  assert.equal(calls.length, 0);
+});
+
+test("the send route refuses every read verb", async () => {
+  const { calls, config } = sendUpstream();
+  for (const method of ["GET", "PUT", "PATCH", "DELETE"]) {
+    const response = await handleSendMessageRequest(send({ key: "k", method }), { conversationId: CONVERSATION }, config);
+    assert.equal(response.status, 405, method);
+  }
+  assert.equal(calls.length, 0);
+});
+
+test("the API's 409 is forwarded, so the client can tell a conflict from a failure", async () => {
+  const conflict = { error: { code: "IDEMPOTENCY_CONFLICT", message: "The key was used for a different message." } };
+  const { config } = sendUpstream(() => json(conflict, 409));
+  const response = await handleSendMessageRequest(send({ key: "k" }), { conversationId: CONVERSATION }, config);
+  assert.equal(response.status, 409, "a conflict must not be laundered into a generic failure");
+  assertNoStore(response);
+  assert.deepEqual(await response.json(), conflict);
+});
+
+test("opening a conversation forwards the caller-supplied participants", async () => {
+  const created = { data: { id: CONVERSATION, participantIds: ["frank-user", "grace-user"] } };
+  const stub = stubFetch({ "api/v1/conversations": () => json(created, 201) });
+  const config = { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl };
+
+  const request = new Request("https://no-wave.test/api/inbox", {
+    method: "POST",
+    headers: {
+      host: "no-wave.test",
+      origin: "https://no-wave.test",
+      "content-type": "application/json",
+      "idempotency-key": "start-1",
+    },
+    body: JSON.stringify({ participantIds: ["grace-user"] }),
+  });
+  const response = await handleStartConversationRequest(request, config);
+
+  assert.equal(response.status, 201);
+  assert.equal(stub.calls[0].init?.body, JSON.stringify({ participantIds: ["grace-user"] }));
+  assert.equal(new Headers(stub.calls[0].init?.headers).get("idempotency-key"), "start-1");
+  assert.match(stub.calls[0].url, /api\/v1\/conversations$/);
+});
+
+test("a conversation needs at least one other participant and no duplicates", async () => {
+  const stub = stubFetch({ "api/v1/conversations": () => json({ data: {} }, 201) });
+  const config = { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl };
+
+  const cases = [
+    { participantIds: [] },
+    { participantIds: ["grace-user", "grace-user"] },
+    { participantIds: [" grace-user"] },
+    { participantIds: [""] },
+    { participantIds: ["g".repeat(301)] },
+    { participantIds: Array.from({ length: CONVERSATION_MAX_PARTICIPANTS + 1 }, (_, i) => `user-${i}`) },
+    { participantIds: ["grace-user"], extra: true },
+  ];
+  for (const payload of cases) {
+    const request = new Request("https://no-wave.test/api/inbox", {
+      method: "POST",
+      headers: {
+        host: "no-wave.test",
+        origin: "https://no-wave.test",
+        "content-type": "application/json",
+        "idempotency-key": "start-1",
+      },
+      body: JSON.stringify(payload),
+    });
+    const response = await handleStartConversationRequest(request, config);
+    assert.equal(response.status, 400, JSON.stringify(payload));
+  }
+  assert.equal(stub.calls.length, 0);
+  assert.equal(CONVERSATION_MAX_PARTICIPANTS, 20, "the API's ceiling, not a new one");
+});
+
+test("opening a conversation requires a key for the same reason a reply does", async () => {
+  const stub = stubFetch({ "api/v1/conversations": () => json({ data: {} }, 201) });
+  const config = { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl };
+  const request = new Request("https://no-wave.test/api/inbox", {
+    method: "POST",
+    headers: {
+      host: "no-wave.test",
+      origin: "https://no-wave.test",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ participantIds: ["grace-user"] }),
+  });
+  const response = await handleStartConversationRequest(request, config);
+  assert.equal(response.status, 400);
+  assert.equal(stub.calls.length, 0, "a keyless open would be a second conversation on retry");
+});
+
+test("a chunked oversized message is stopped before the entire stream is buffered", async () => {
+  let pulls = 0;
+  let cancelled = false;
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      pulls += 1;
+      controller.enqueue(new Uint8Array(4096).fill(65));
+      if (pulls > 1000) controller.close();
+    },
+    cancel() { cancelled = true; },
+  });
+  const req = new Request(`https://no-wave.test${SEND}`, {
+    method: "POST",
+    headers: { host: "no-wave.test", origin: "https://no-wave.test", "content-type": "application/json", "idempotency-key": "stream" },
+    body: stream,
+    duplex: "half",
+  } as RequestInit);
+  const { calls, config } = sendUpstream();
+  const response = await handleSendMessageRequest(req, { conversationId: CONVERSATION }, config);
+  assert.equal(response.status, 413);
+  assert.equal(cancelled, true);
+  assert.ok(pulls < 1000, "the stream is cancelled as soon as it exceeds the limit");
+  assert.equal(calls.length, 0);
+});
+
+test("both writes preserve the caller's key and body across an access-token refresh", async () => {
+  for (const kind of ["message", "conversation"] as const) {
+    let resourceCalls = 0;
+    const stub = stubFetch({
+      "api/v1/auth/refresh": () => tokenEnvelope(ROTATED),
+      "api/v1/conversations": () => {
+        resourceCalls += 1;
+        return resourceCalls === 1 ? json({ error: { code: "UNAUTHENTICATED" } }, 401) : json(SENT, 201);
+      },
+    });
+    const cookie = `${SIGNED_IN}; ${REFRESH_TOKEN_COOKIE}=${TOKENS.refreshToken}`;
+    const body = kind === "message" ? JSON.stringify({ body: "hello" }) : JSON.stringify({ participantIds: ["other"] });
+    const req = kind === "message"
+      ? send({ key: "stable-key", body, cookie })
+      : new Request("https://no-wave.test/api/inbox", {
+          method: "POST", headers: { host: "no-wave.test", origin: "https://no-wave.test", cookie,
+            "content-type": "application/json", "idempotency-key": "stable-key" }, body,
+        });
+    const config = { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl };
+    const response = kind === "message"
+      ? await handleSendMessageRequest(req, { conversationId: CONVERSATION }, config)
+      : await handleStartConversationRequest(req, config);
+    assert.equal(response.status, 201, kind);
+    const writes = stub.calls.filter((call) => call.url.includes("/conversations"));
+    assert.equal(writes.length, 2);
+    for (const call of writes) {
+      assert.equal(new Headers(call.init?.headers).get("idempotency-key"), "stable-key");
+      assert.equal(call.init?.body, body);
+    }
+    assert.equal(new Headers(writes[1].init?.headers).get("authorization"), `Bearer ${ROTATED.accessToken}`);
+    assertNoStore(response);
+  }
+});
+
+test("send forwards membership and missing-resource errors without rewriting", async () => {
+  for (const status of [403, 404]) {
+    const error = { error: { code: status === 403 ? "FORBIDDEN" : "NOT_FOUND" } };
+    const { config } = sendUpstream(() => json(error, status));
+    const response = await handleSendMessageRequest(send({ key: "k" }), { conversationId: CONVERSATION }, config);
+    assert.equal(response.status, status);
+    assert.deepEqual(await response.json(), error);
+    assertNoStore(response);
+  }
+});
+
+test("starting a conversation rejects a cross-origin request before forwarding", async () => {
+  const { calls, config } = sendUpstream();
+  const req = new Request("https://no-wave.test/api/inbox", {
+    method: "POST",
+    headers: { host: "no-wave.test", origin: "https://evil.test", "content-type": "application/json", "idempotency-key": "k" },
+    body: JSON.stringify({ participantIds: ["other"] }),
+  });
+  assert.equal((await handleStartConversationRequest(req, config)).status, 403);
+  assert.equal(calls.length, 0);
+});
+
+test("a message write accepts the exact HTTPS origin behind a trusted TLS proxy", async () => {
+  const req = new Request(`http://127.0.0.1:3000${SEND}`, {
+    method: "POST",
+    headers: { host: "preview.example", origin: "https://preview.example", "x-forwarded-proto": "https",
+      "content-type": "application/json", "idempotency-key": "proxy-key", cookie: SIGNED_IN },
+    body: JSON.stringify({ body: "hello" }),
+  });
+  const { calls, config } = sendUpstream();
+  assert.equal((await handleSendMessageRequest(req, { conversationId: CONVERSATION }, config)).status, 201);
+  assert.equal(calls.length, 1);
 });
