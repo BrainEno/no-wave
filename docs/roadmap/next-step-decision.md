@@ -115,3 +115,9 @@ and `next` is out of the tree — see
 [ADR 0017](../architecture/decisions/0017-nextjs-retired-one-web-application.md).
 Still not a cutover: no production deployment, DNS change or traffic move has
 happened, and the Vercel configuration has not been touched.
+
+**Status 2026-11-05: #72 remains open.** The historical table above described the
+2026-10-29 snapshot; a [proposed moderation ADR](../architecture/decisions/0026-moderation-reports-and-appeals.md)
+and [threat model](../architecture/moderation-threat-model.md) are now available for review. They
+are not accepted or implemented. The selected privacy/role directions do not grant approval to
+implement moderation or deploy it.
