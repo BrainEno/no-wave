@@ -125,6 +125,8 @@ test("the inbox and thread routes are wired, and so are the resource routes", as
     'route("api/inbox", "routes/api.inbox.ts")',
     'route("api/inbox/:id", "routes/api.inbox.$id.ts")',
     'route("api/inbox/:id/messages", "routes/api.inbox.$id.messages.ts")',
+    'route("api/inbox/:id/read", "routes/api.inbox.$id.read.ts")',
+    'route("api/authoring/inbox/:id/read", "routes/api.inbox.$id.read.ts", { id: "authoring-inbox-read" })',
     'route("messages", "routes/messages.tsx")',
     'route("en/messages", "routes/messages.tsx", { id: "en-messages" })',
     'route("messages/:id", "routes/messages.$id.tsx")',

@@ -1456,4 +1456,34 @@ test("login and message writes accept the browser origin behind TLS termination"
   assert.equal(cross.status, 403);
   const downgrade = await post("/api/authoring/inbox", body, { ...proxy, origin: baseUrl, "idempotency-key": "key" });
   assert.equal(downgrade.status, 403);
+
+  const markPath = "/api/authoring/inbox/c81407b1-4680-469d-9de4-2c34f042081c/read";
+  const mark = await put(markPath, "", { ...proxy, cookie: DESK_COOKIE });
+  assert.equal(mark.status, 404, "the TLS origin was accepted and the mock API answered");
+  assert.match(mark.body, /No mock route/);
+  const crossMark = await put(markPath, "", { ...proxy, origin: "https://attacker.example", cookie: DESK_COOKIE });
+  assert.equal(crossMark.status, 403);
+  const downgradeMark = await put(markPath, "", { ...proxy, origin: baseUrl, cookie: DESK_COOKIE });
+  assert.equal(downgradeMark.status, 403);
+});
+
+test("mark-read routes enforce their verb, origin and id before forwarding", async () => {
+  const conversation = "c81407b1-4680-469d-9de4-2c34f042081c";
+  for (const path of [`/api/inbox/${conversation}/read`, `/api/authoring/inbox/${conversation}/read`]) {
+    mockApi.resetRequests();
+    const getResponse = await get(path, { cookie: DESK_COOKIE });
+    assert.equal(getResponse.status, 405, path);
+    assert.match(getResponse.body, /METHOD_NOT_ALLOWED/);
+    const postResponse = await post(path, "", { cookie: DESK_COOKIE });
+    assert.equal(postResponse.status, 405, path);
+    const cross = await put(path, "", { cookie: DESK_COOKIE, origin: "https://attacker.example" });
+    assert.equal(cross.status, 403, path);
+    assert.match(cross.body, /ORIGIN_REJECTED/);
+    assert.deepEqual(mockApi.requests(), []);
+    const valid = await put(path, "", { cookie: DESK_COOKIE });
+    assert.equal(valid.status, 404, "the mock API's fallback, not an unregistered route");
+    assert.match(valid.body, /No mock route/);
+    assert.match(valid.headers.get("cache-control") ?? "", /no-store/);
+    assert.ok(mockApi.requests().some((request) => request.includes(`/api/v1/conversations/${conversation}/read`)));
+  }
 });
