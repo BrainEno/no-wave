@@ -167,11 +167,11 @@ test("SQLite domain schema enforces localized JSON arrays and unique message ide
     db.prepare("INSERT INTO conversations (id, created_by) VALUES (?, ?)").run("c1", "u1");
     db.prepare("INSERT INTO conversation_participants (conversation_id, user_id) VALUES (?, ?)").run("c1", "u1");
     db.prepare(
-      "INSERT INTO messages (id, conversation_id, sender_id, body, idempotency_key, request_hash) VALUES (?, ?, ?, ?, ?, ?)",
-    ).run("m1", "c1", "u1", "hello", "key1", "a".repeat(64));
+      "INSERT INTO messages (id, conversation_id, sender_id, body, idempotency_key, request_hash, conversation_sequence) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    ).run("m1", "c1", "u1", "hello", "key1", "a".repeat(64), 1);
     assert.throws(() => db.prepare(
-      "INSERT INTO messages (id, conversation_id, sender_id, body, idempotency_key, request_hash) VALUES (?, ?, ?, ?, ?, ?)",
-    ).run("m2", "c1", "u1", "hello again", "key1", "b".repeat(64)), /UNIQUE constraint failed/i);
+      "INSERT INTO messages (id, conversation_id, sender_id, body, idempotency_key, request_hash, conversation_sequence) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    ).run("m2", "c1", "u1", "hello again", "key1", "b".repeat(64), 2), /UNIQUE constraint failed: messages.sender_id, messages.idempotency_key/i);
   } finally {
     db.close();
   }

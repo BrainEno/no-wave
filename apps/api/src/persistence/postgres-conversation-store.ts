@@ -112,7 +112,12 @@ export function createPostgresConversationStore(ctx: PostgresStoreContext) {
         }
         for (const userId of adds) {
           await tx.unsafe(
-            "INSERT INTO conversation_participants (conversation_id, user_id, last_read_at) VALUES ($1, $2, now()) ON CONFLICT (conversation_id, user_id) DO UPDATE SET left_at = NULL, joined_at = CASE WHEN conversation_participants.left_at IS NOT NULL THEN now() ELSE conversation_participants.joined_at END, last_read_at = CASE WHEN conversation_participants.left_at IS NOT NULL THEN now() ELSE conversation_participants.last_read_at END",
+            `INSERT INTO conversation_participants (conversation_id, user_id, last_read_at, last_read_sequence)
+             SELECT $1, $2, now(), last_message_sequence FROM conversations WHERE id = $1
+             ON CONFLICT (conversation_id, user_id) DO UPDATE SET left_at = NULL,
+               joined_at = CASE WHEN conversation_participants.left_at IS NOT NULL THEN now() ELSE conversation_participants.joined_at END,
+               last_read_at = CASE WHEN conversation_participants.left_at IS NOT NULL THEN now() ELSE conversation_participants.last_read_at END,
+               last_read_sequence = CASE WHEN conversation_participants.left_at IS NOT NULL THEN excluded.last_read_sequence ELSE conversation_participants.last_read_sequence END`,
             [conversationId, userId],
           );
         }
@@ -184,8 +189,22 @@ export function createPostgresConversationStore(ctx: PostgresStoreContext) {
       requiredText("actorId", actorId, 300);
       return sql.begin(async (tx) => {
         const transactionId = createMigrationTransactionId();
+        // Reject non-members before taking (or waiting for) a private row lock.
+        // Re-check in the UPDATE after locking: membership may change meanwhile.
+        const member = await tx.unsafe(
+          "SELECT 1 FROM conversation_participants WHERE conversation_id = $1 AND user_id = $2 AND left_at IS NULL",
+          [conversationId, actorId],
+        );
+        if (!member[0]) throw new ConversationAccessError();
+        // Use the same per-conversation lock as sends, membership changes and
+        // deletion. The mark includes every send committed before this lock,
+        // but cannot swallow a send that commits after it.
+        const conversation = await tx.unsafe("SELECT id FROM conversations WHERE id = $1 FOR UPDATE", [conversationId]);
+        if (!conversation[0]) throw new ConversationAccessError();
         const rows = await tx.unsafe(
-          "UPDATE conversation_participants SET last_read_at = now() WHERE conversation_id = $1 AND user_id = $2 AND left_at IS NULL RETURNING user_id",
+          `UPDATE conversation_participants SET last_read_at = now(),
+             last_read_sequence = (SELECT last_message_sequence FROM conversations WHERE id = $1)
+           WHERE conversation_id = $1 AND user_id = $2 AND left_at IS NULL RETURNING user_id`,
           [conversationId, actorId],
         );
         if (rows.length === 0) throw new ConversationAccessError();
@@ -217,18 +236,18 @@ export function createPostgresConversationStore(ctx: PostgresStoreContext) {
       let rows;
       if (before === null) {
         rows = await sql.unsafe(
-          "SELECT id, conversation_id, sender_id, body, created_at FROM (SELECT id, conversation_id, sender_id, body, created_at FROM messages WHERE conversation_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2) AS recent_messages ORDER BY created_at ASC, id ASC",
+          "SELECT id, conversation_id, sender_id, body, created_at FROM (SELECT id, conversation_id, sender_id, body, created_at, conversation_sequence FROM messages WHERE conversation_id = $1 ORDER BY conversation_sequence DESC LIMIT $2) AS recent_messages ORDER BY conversation_sequence ASC",
           [conversationId, limit],
         );
       } else {
         const cursors = await sql.unsafe(
-          "SELECT id, created_at FROM messages WHERE id = $1 AND conversation_id = $2",
+          "SELECT conversation_sequence FROM messages WHERE id = $1 AND conversation_id = $2",
           [before, conversationId],
         );
         if (cursors.length === 0) throw new InvalidMessageCursorError();
         rows = await sql.unsafe(
-          "SELECT id, conversation_id, sender_id, body, created_at FROM (SELECT id, conversation_id, sender_id, body, created_at FROM messages WHERE conversation_id = $1 AND (created_at, id) < ($3, $4) ORDER BY created_at DESC, id DESC LIMIT $2) AS older_messages ORDER BY created_at ASC, id ASC",
-          [conversationId, limit, cursors[0].created_at, cursors[0].id],
+          "SELECT id, conversation_id, sender_id, body, created_at FROM (SELECT id, conversation_id, sender_id, body, created_at, conversation_sequence FROM messages WHERE conversation_id = $1 AND conversation_sequence < $3 ORDER BY conversation_sequence DESC LIMIT $2) AS older_messages ORDER BY conversation_sequence ASC",
+          [conversationId, limit, cursors[0].conversation_sequence],
         );
       }
       return rows.map((row) => mapMessage(row));
@@ -253,14 +272,14 @@ export function createPostgresConversationStore(ctx: PostgresStoreContext) {
                 (SELECT count(*)::int FROM messages AS unread
                  WHERE unread.conversation_id = c.id
                    AND unread.sender_id <> $1
-                   AND (membership.last_read_at IS NULL OR unread.created_at > membership.last_read_at)) AS unread_count
+                   AND unread.conversation_sequence > membership.last_read_sequence) AS unread_count
          FROM conversation_participants AS membership
          JOIN conversations AS c ON c.id = membership.conversation_id
          LEFT JOIN LATERAL (
            SELECT m.id, m.conversation_id, m.sender_id, m.body, m.created_at
            FROM messages AS m
            WHERE m.conversation_id = c.id
-           ORDER BY m.created_at DESC, m.id DESC
+           ORDER BY m.conversation_sequence DESC
            LIMIT 1
          ) AS latest ON true
          LEFT JOIN LATERAL (
@@ -300,7 +319,9 @@ export function createPostgresConversationStore(ctx: PostgresStoreContext) {
         if (existing) return assertSameRequest(existing, hash);
 
         const inserted = await tx.unsafe(
-          "INSERT INTO messages (id, conversation_id, sender_id, body, idempotency_key, request_hash) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (sender_id, idempotency_key) DO NOTHING RETURNING id, conversation_id, sender_id, body, request_hash, created_at",
+          `INSERT INTO messages (id, conversation_id, sender_id, body, idempotency_key, request_hash, conversation_sequence)
+           SELECT $1, $2, $3, $4, $5, $6, last_message_sequence + 1 FROM conversations WHERE id = $2
+           ON CONFLICT (sender_id, idempotency_key) DO NOTHING RETURNING *`,
           [randomUUID(), conversationId, senderId, body, idempotencyKey, hash],
         );
         if (inserted.length === 0) {
@@ -309,6 +330,12 @@ export function createPostgresConversationStore(ctx: PostgresStoreContext) {
           return assertSameRequest(raced, hash);
         }
         const message = inserted[0];
+        // Only advance the counter after a new insert; a raced idempotency-key
+        // replay does not allocate a second message or move the read boundary.
+        const conversationSnapshot = await tx.unsafe(
+          "UPDATE conversations SET last_message_sequence = last_message_sequence + 1 WHERE id = $1 RETURNING *",
+          [conversationId],
+        );
         const outboxId = randomUUID();
         await tx.unsafe(
           "INSERT INTO outbox_events (id, event_key, event_type, aggregate_id, payload) VALUES ($1, $2, $3, $4, $5::jsonb)",
@@ -317,6 +344,7 @@ export function createPostgresConversationStore(ctx: PostgresStoreContext) {
         );
         const outboxRows = await tx.unsafe("SELECT * FROM outbox_events WHERE id = $1", [outboxId]);
         await captureChanges(tx, transactionId, [
+          { entityType: "conversations", entityId: conversationId, operation: "upsert", payload: conversationSnapshot[0] },
           { entityType: "messages", entityId: message.id, operation: "upsert", payload: message },
           { entityType: "outbox_events", entityId: outboxId, operation: "upsert", payload: outboxRows[0] },
         ]);

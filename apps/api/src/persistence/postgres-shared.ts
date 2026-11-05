@@ -64,14 +64,14 @@ export const CONVERSATION_FOR_MEMBER_SQL = `SELECT c.id, c.created_by, c.created
                 (SELECT count(*)::int FROM messages AS unread
                  WHERE unread.conversation_id = c.id
                    AND unread.sender_id <> $1
-                   AND (membership.last_read_at IS NULL OR unread.created_at > membership.last_read_at)) AS unread_count
+                   AND unread.conversation_sequence > membership.last_read_sequence) AS unread_count
          FROM conversation_participants AS membership
          JOIN conversations AS c ON c.id = membership.conversation_id
          LEFT JOIN LATERAL (
            SELECT m.id, m.conversation_id, m.sender_id, m.body, m.created_at
            FROM messages AS m
            WHERE m.conversation_id = c.id
-           ORDER BY m.created_at DESC, m.id DESC
+           ORDER BY m.conversation_sequence DESC
            LIMIT 1
          ) AS latest ON true
          LEFT JOIN LATERAL (

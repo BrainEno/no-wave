@@ -46,6 +46,39 @@ Given Carol is not a participant in Alice and Bob's conversation
 When Carol tries to send a message to its conversation ID  
 Then the API rejects the request before creating a message or changing any participant state.
 
+## MSG-06 — Read state follows persisted conversation order
+
+**Risk:** Critical
+
+Given Bob explicitly marks all messages in a conversation read<br>
+When Alice's next message is committed after the mark, even at the same clock time or after starting an earlier transaction<br>
+Then Bob's server-side unread count includes that message, but not Bob's own messages<br>
+And no other member's read state changes.
+
+Given a message send, membership removal, or another mark races with Bob's mark<br>
+Then each operation is serialized for that conversation<br>
+And a removed or non-member cannot advance Bob's read watermark.
+
+Given Bob is added or rejoined<br>
+Then existing messages start read for Bob, while re-adding an already active member preserves their unread state.
+
+Mark-all is not bounded by the messages actually displayed: a message committed
+before its serialization point can be included even if it was not loaded. A
+retry after an ambiguous response may mark additional messages.
+
+## MSG-07 — Upgrade preserves existing read state
+
+**Risk:** High
+
+Given persisted conversations using timestamp-based read state<br>
+When the sequence-watermark migration completes with writers fenced<br>
+Then each member's existing unread count is preserved<br>
+And future message/read ordering survives restarts and provider journal replay.
+
+Equal historical timestamps cannot establish whether a message was written
+before or after an old mark, so the migration cannot reconstruct previously
+missed unread messages. See [the upgrade boundary](../../architecture/conversation-read-order.md).
+
 ## NOTIF-01 — Notification inbox is server-persisted
 
 **Risk:** Critical

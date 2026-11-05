@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { setTimeout as delay } from "node:timers/promises";
 import { expect, test, type BrowserContext } from "@playwright/test";
 import { uniqueEmail } from "./support/accounts.ts";
 
@@ -55,9 +54,6 @@ test("explicitly mark one conversation read, including messages that arrive befo
     const first = await start(writer, origin, recipientId);
     const other = await start(writer, origin, recipientId);
     const empty = await start(writer, origin, recipientId);
-    // The store has millisecond read markers. Give the initial membership
-    // marker a distinct timestamp from the messages being sent.
-    await delay(10);
     await send(page.context(), origin, first, "recipient to writer");
     await send(writer, origin, first, "visible in the thread");
     await send(writer, origin, other, "another conversation");
@@ -105,7 +101,6 @@ test("explicitly mark one conversation read, including messages that arrive befo
 
     // A message sent after acknowledgement is unread again and the inbox shows
     // the server's answer, not a local optimistic guess.
-    await delay(10);
     await send(writer, origin, first, "arrived afterwards");
     expect(await unread(page.context(), origin, first)).toBe(1);
     await page.getByRole("link", { name: /返回收件箱/ }).click();
@@ -136,7 +131,6 @@ test("unconfirmed, signed-out and denied marks never pretend success or discard 
     const recipientId = await register(page.context(), origin);
     await register(writer, origin);
     const conversation = await start(writer, origin, recipientId);
-    await delay(10);
     await send(writer, origin, conversation, "hello reader");
     expect(await unread(page.context(), origin, conversation)).toBe(1);
     let attempts = 0;
@@ -165,7 +159,6 @@ test("unconfirmed, signed-out and denied marks never pretend success or discard 
     await expect(page.getByRole("alert")).toContainText("暂时无法确认是否标为已读");
     await expect(draft).toHaveValue("keep this draft");
     expect(await unread(page.context(), origin, conversation)).toBe(0);
-    await delay(10);
     await send(writer, origin, conversation, "new after the lost response");
     expect(await unread(page.context(), origin, conversation)).toBe(1);
     expect(attempts).toBe(1); // An ambiguous result must never trigger a silent retry.

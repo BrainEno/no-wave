@@ -35,7 +35,6 @@ test("SQLite conversation history supports cursor paging and unread/read state",
   assert.deepEqual(direct.participantIds,["alice","bob"]);
   assert.equal(await conversations.getConversation({conversationId:c.id,actorId:"intruder"}),null);
   const first=await conversations.persistMessage({conversationId:c.id,senderId:"alice",body:"one",idempotencyKey:"1"});
-  await new Promise(resolve=>setTimeout(resolve,3));
   const second=await conversations.persistMessage({conversationId:c.id,senderId:"bob",body:"two",idempotencyKey:"2"});
   const list=await conversations.listConversationMessages({conversationId:c.id,actorId:"alice",limit:1});
   assert.equal(list[0].id,second.id);
