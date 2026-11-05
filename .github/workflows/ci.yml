@@ -328,15 +328,22 @@ jobs:
         run: |
           set -eu
           docker network create nw-ci
+          docker volume create nw-ci-db
+          # The API refuses to start on a pending schema. Migrate *before* its
+          # container starts, otherwise it can exit while `docker exec` is still
+          # migrating and kill that process. The image itself never migrates on
+          # boot; a disposable named volume lets both containers see one DB.
+          echo "Migrating the SQLite volume using the API image"
+          docker run --rm -v nw-ci-db:/var/lib/no-wave \
+            -e DATABASE_PROVIDER=sqlite -e DATABASE_PATH=/var/lib/no-wave/api.sqlite \
+            bot-thk-api:ci node apps/api/src/persistence/migrate.ts
+          echo "Starting the API against the migrated volume"
           docker run -d --network nw-ci --name api \
+            -v nw-ci-db:/var/lib/no-wave \
             -e HOST=0.0.0.0 -e PORT=80 \
-            -e DATABASE_PROVIDER=sqlite -e DATABASE_PATH=/tmp/api.sqlite \
+            -e DATABASE_PROVIDER=sqlite -e DATABASE_PATH=/var/lib/no-wave/api.sqlite \
             -e AUTH_JWT_SECRET=container-image-ci-secret-0123456789abcdef \
             -p 4000:80 bot-thk-api:ci
-          # Migrations stay an explicit step inside the container too: the image
-          # never mutates a schema on boot.
-          docker exec api node apps/api/src/persistence/migrate.ts
-
           WEB_START=$(date +%s%3N)
           docker run -d --network nw-ci --name web \
             -e HOST=0.0.0.0 -e PORT=3100 \
@@ -373,11 +380,23 @@ jobs:
 
           echo "Both images build and serve: API health/ready and the React Router home page, 404, malformed URL and site shell."
           echo "::notice title=container-image timing::Web container cold start ${WEB_COLD_MS} ms (docker run -> shared smoke passed); start again from stopped ${WAKE_MS} ms."
+      - name: Diagnose failed containers
+        if: ${{ failure() }}
+        run: |
+          # Print only state and logs, not container config or environment.
+          for name in api web; do
+            if docker inspect "$name" > /dev/null 2>&1; then
+              docker inspect --format '{{.Name}} status={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} error={{.State.Error}}' "$name" || true
+              docker logs --tail 80 "$name" || true
+            fi
+          done
+          free -m || true
       - name: Stop the containers
         if: ${{ !cancelled() }}
         run: |
           docker rm -f api web > /dev/null 2>&1 || true
           docker network rm nw-ci > /dev/null 2>&1 || true
+          docker volume rm nw-ci-db > /dev/null 2>&1 || true
 
   # One gate, so a branch cannot be merged on a partial signal: every job above
   # has to have succeeded, and a skipped job reports as a failure rather than

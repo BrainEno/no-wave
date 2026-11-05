@@ -136,11 +136,32 @@ scheduler, which this API does not run.
 
 - Mint one key per user intent (a UUID is fine) *before* the first attempt, and reuse it only for
   retries of that same intent.
-- Retry only on transport failures, `429`, and `5xx`. A `4xx` other than `429` is an answer, not a
-  reason to try again.
-- The browser is not exempt: `packages/web-http` forwards `Idempotency-Key` verbatim through the
-  authoring proxy, so the desk gets replay protection for free once it starts minting keys. It does
-  not yet do so, which is why the article route treats the header as optional.
+- Automatic retries belong to transport failures, `429`, and `5xx`. A `4xx` other than `429`
+  needs an explicit response (correct input, restore the original session, or resolve a conflict),
+  not a blind retry. A previous ambiguous attempt can still have committed, so resolving it must
+  not silently replace its key or body.
+- The writing desk mints a fresh UUID v4 on the first save of a new work and sends it through
+  `packages/web-http`. It retains both key and exact serialized body for a retry, including the
+  draft/publish choice. On a lost or malformed success, `5xx`, `401`, or conflict it does not silently
+  start a second create. If the author has edited meanwhile, they can explicitly confirm the original
+  request without replacing the current editor contents, then save the edits as a `PUT`. Since
+  replay returns the resource's current version, the desk warns that another tab may have changed it
+  and offers a separate view for comparison. A definite local proxy rejection marked
+  `X-Authoring-Not-Forwarded: 1` on the *first* attempt permits a corrected intent; a bare `400`
+  can follow a committed write, and even a marked rejection cannot erase an earlier uncertain
+  attempt. The proxy strips upstream copies of that marker.
+  Later updates carry no create key.
+- Article keys are actor-scoped. A retry under a different signed-in account could otherwise create a
+  second work there, so the desk sends `X-Expected-Author` to its **same-origin proxy**. The proxy
+  checks `/api/v1/me` with the same verified access token it uses for the create, including after a
+  refresh; a changed or unverifiable account never reaches the create call. The header is only a
+  restrictive precondition, never proof of identity, and is not forwarded to the REST API. It remains
+  optional for older proxy clients; the public article API likewise remains compatible and optional-key.
+- The desk's pending intent and unsaved edits are **in memory only**. It blocks switching documents
+  while pending, warns on client-side navigation and requests a browser warning before unload. Those
+  warnings cannot survive a crash, forced close, or every mobile lifecycle; choosing to leave or
+  explicitly discard also loses the key. After that, inspect the original account's works in a new
+  tab before creating again. Durable recovery across reloads needs a separate privacy/storage design.
 
 ## Adding a new mutation
 

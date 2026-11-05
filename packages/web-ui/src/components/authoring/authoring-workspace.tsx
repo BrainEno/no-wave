@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "@/lib/framework/link.tsx";
+import { useNavigationBlocker } from "@/lib/framework/navigation.ts";
+import { PromptDialog } from "@/components/ui/prompt-dialog.tsx";
 import { ArticleEditor, type AuthoringArticle } from "./article-editor.tsx";
 import { AuthorProfilePanel } from "./author-profile-panel.tsx";
 import { normalizeDisplayName, parseAuthorProfile, type AuthorProfile } from "@/lib/author-profile.ts";
@@ -97,11 +99,42 @@ export function AuthoringWorkspace() {
   const [verificationBusy, setVerificationBusy] = useState(false);
   const [verificationStatus, setVerificationStatus] = useState("");
   const [profile, setProfile] = useState<AuthorProfile | null>(null);
+  const [viewerId, setViewerId] = useState<string | null>(null);
+  const [pendingCreate, setPendingCreate] = useState(false);
+  const pendingCreateRef = useRef(false);
+  const blocker = useNavigationBlocker(pendingCreate);
+
+  function changePendingCreate(value: boolean) {
+    pendingCreateRef.current = value;
+    setPendingCreate(value);
+  }
+
+  // Unrelated account/profile requests can also expire while a create is in
+  // flight. Do not unmount the editor and lose its pending key in that case.
+  function showSignIn() {
+    if (pendingCreateRef.current) {
+      setError("登录状态已失效；请在新标签页登录原账户，再返回确认上次保存。");
+    } else {
+      setState("unauthenticated");
+    }
+  }
+
+  useEffect(() => {
+    if (!pendingCreate) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [pendingCreate]);
+
+  useEffect(() => {
+    // The save may finish while a client-side navigation dialog is open.
+    if (!pendingCreate && blocker.state === "blocked") blocker.reset();
+  }, [pendingCreate, blocker]);
 
   async function reloadArticles() {
     const response = await fetch("/api/authoring/articles", { credentials: "same-origin", cache: "no-store" });
     const payload: unknown = await response.json().catch(() => null);
-    if (response.status === 401) { setState("unauthenticated"); return; }
+    if (response.status === 401) { showSignIn(); return; }
     if (!response.ok) throw new Error(messageOf(payload));
     const data = typeof payload === "object" && payload !== null && "data" in payload ? (payload as { data?: unknown }).data : null;
     if (!Array.isArray(data)) throw new Error("作品列表响应格式不正确。");
@@ -117,7 +150,7 @@ export function AuthoringWorkspace() {
   async function reloadDeletedArticles() {
     const response = await fetch("/api/authoring/deleted-articles", { credentials: "same-origin", cache: "no-store" });
     const payload: unknown = await response.json().catch(() => null);
-    if (response.status === 401) { setState("unauthenticated"); return; }
+    if (response.status === 401) { showSignIn(); return; }
     if (!response.ok) throw new Error(messageOf(payload));
     const data = typeof payload === "object" && payload !== null && "data" in payload ? (payload as { data?: unknown }).data : null;
     if (!Array.isArray(data)) throw new Error("回收站响应格式不正确。");
@@ -133,7 +166,7 @@ export function AuthoringWorkspace() {
   async function reloadProfile() {
     const response = await fetch("/api/authoring/profile", { credentials: "same-origin", cache: "no-store" });
     const payload: unknown = await response.json().catch(() => null);
-    if (response.status === 401) { setState("unauthenticated"); return; }
+    if (response.status === 401) { showSignIn(); return; }
     if (response.status === 404) { setProfile(null); return; }
     if (!response.ok) throw new Error(messageOf(payload));
     setProfile(parseAuthorProfile(payload));
@@ -150,7 +183,7 @@ export function AuthoringWorkspace() {
       body: JSON.stringify({ displayName: name, locale: "zh-CN" }),
     });
     const payload: unknown = await response.json().catch(() => null);
-    if (response.status === 401) { setState("unauthenticated"); throw new Error("登录状态已失效，请重新登录。"); }
+    if (response.status === 401) { showSignIn(); throw new Error("登录状态已失效，请重新登录。"); }
     if (!response.ok) throw new Error(messageOf(payload));
     const saved = parseAuthorProfile(payload);
     if (!saved) throw new Error("作者资料响应格式不正确。");
@@ -163,12 +196,17 @@ export function AuthoringWorkspace() {
       try {
         const response = await fetch("/api/authoring/session", { credentials: "same-origin", cache: "no-store" });
         if (!active) return;
-        if (response.status === 401) { setState("unauthenticated"); return; }
+        if (response.status === 401) { showSignIn(); return; }
         if (!response.ok) throw new Error("无法验证登录状态。");
         // Best effort in both directions: the desk works without the account
         // line, and an unreadable session body is not a reason to lose the desk.
         const session: unknown = await response.json().catch(() => null);
-        if (active) setAccount(isAccount(dataOf(session)) ? (dataOf(session) as Account) : null);
+        if (active) {
+          const data = dataOf(session);
+          setAccount(isAccount(data) ? data : null);
+          const id = typeof data === "object" && data !== null && "id" in data ? (data as { id?: unknown }).id : null;
+          setViewerId(typeof id === "string" && id.length > 0 && id.length <= 300 && id.trim() === id ? id : null);
+        }
         await reloadArticles();
         // Best effort: a missing profile is actionable, not a reason to lose the desk.
         await reloadProfile().catch(() => { if (active) setProfile(null); });
@@ -183,6 +221,7 @@ export function AuthoringWorkspace() {
   }, []);
 
   function openNewDocument() {
+    if (pendingCreateRef.current) return;
     const next = newCounter + 1;
     setNewCounter(next);
     setSelected(null);
@@ -191,6 +230,7 @@ export function AuthoringWorkspace() {
   }
 
   function openDocument(article: AuthoringArticle) {
+    if (pendingCreateRef.current) return;
     setSelected(article);
     setEditorKey(article.id);
     setNotice("");
@@ -256,12 +296,17 @@ export function AuthoringWorkspace() {
   }
 
   async function signOut() {
+    if (pendingCreateRef.current) return;
     try {
       await fetch("/api/auth/logout", { method: "POST", headers: { "content-type": "application/json" }, credentials: "same-origin", cache: "no-store", body: "{}" });
     } finally {
-      setSelected(null);
-      setEditorKey("signed-out");
-      setState("unauthenticated");
+      if (pendingCreateRef.current) {
+        showSignIn();
+      } else {
+        setSelected(null);
+        setEditorKey("signed-out");
+        setState("unauthenticated");
+      }
     }
   }
 
@@ -284,7 +329,7 @@ export function AuthoringWorkspace() {
         body: "{}",
       });
       const payload: unknown = await response.json().catch(() => null);
-      if (response.status === 401) { setState("unauthenticated"); return; }
+      if (response.status === 401) { showSignIn(); return; }
       if (!response.ok) throw new Error(messageOf(payload));
       const data = dataOf(payload);
       const already = typeof data === "object" && data !== null &&
@@ -310,7 +355,7 @@ export function AuthoringWorkspace() {
         <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
           {/* The images an author has uploaded, and which of them nothing uses. */}
           <Link className="nw-btn" href="/write/media">媒体库</Link>
-          <button className="nw-btn" type="button" onClick={() => void signOut()}>退出登录</button>
+          <button className="nw-btn" type="button" disabled={pendingCreate} onClick={() => void signOut()}>退出登录</button>
         </div>
       </div>
       <p className="nw-ep" style={{ marginTop: 18 }}>草稿与发布状态由 API 持久化；关闭页面后，可从作品列表继续编辑。</p>
@@ -337,9 +382,9 @@ export function AuthoringWorkspace() {
       <div className="nw-authoring-grid">
         <aside className="nw-authoring-sidebar" aria-label="我的作品">
           <h2>我的作品（{articles.length}）</h2>
-          <button className="nw-btn nw-pri" type="button" onClick={openNewDocument}>新建作品 +</button>
+          <button className="nw-btn nw-pri" type="button" disabled={pendingCreate} onClick={openNewDocument}>新建作品 +</button>
           {articles.length === 0 ? <p className="nw-m">还没有草稿或已发布作品。</p> : articles.map((article) => (
-            <button className="nw-authoring-article" key={article.id} type="button" aria-current={selected?.id === article.id ? "true" : undefined} onClick={() => openDocument(article)}>
+            <button className="nw-authoring-article" key={article.id} type="button" disabled={pendingCreate} aria-current={selected?.id === article.id ? "true" : undefined} onClick={() => openDocument(article)}>
               <span>{article.title}</span>
               <small>{article.status === "published" ? "已发布" : "草稿"} · {article.updatedAt ? new Date(article.updatedAt).toLocaleDateString("zh-CN") : article.slug}</small>
             </button>
@@ -349,11 +394,22 @@ export function AuthoringWorkspace() {
           <ArticleEditor
             key={editorKey}
             article={selected}
+            viewerId={viewerId}
             onSaved={(article) => void afterSave(article)}
             onDeleted={(article) => void afterDelete(article)}
+            onPendingChange={changePendingCreate}
           />
         </div>
       </div>
+      <PromptDialog
+        open={blocker.state === "blocked"}
+        title="上次保存尚未确认"
+        description="作品可能已经创建。离开后本页的重试标识和未保存的编辑会丢失，再次保存可能产生重复作品。"
+        fields={[]}
+        submitLabel="仍要离开"
+        onCancel={() => { if (blocker.state === "blocked") blocker.reset(); }}
+        onSubmit={() => { if (blocker.state === "blocked") blocker.proceed(); }}
+      />
       <section className="nw-authoring-trash" aria-label="回收站">
         <h2>回收站（{deleted.length}）</h2>
         {trashError ? <p className="nw-auth-error" role="alert">{trashError}</p> : null}

@@ -33,6 +33,16 @@ export const AUTHORING_ARTICLE_ID_PATTERN =
  */
 export const AUTHORING_BODY_MAX_BYTES = 2_000_000;
 
+/** Restrictive browser-to-proxy precondition, not an authentication credential. */
+export const AUTHORING_EXPECTED_ACTOR_HEADER = "x-expected-author";
+/** Set only on local create rejections, never on an upstream response. */
+export const AUTHORING_NOT_FORWARDED_HEADER = "x-authoring-not-forwarded";
+
+function notForwarded(response: Response): Response {
+  response.headers.set(AUTHORING_NOT_FORWARDED_HEADER, "1");
+  return response;
+}
+
 /** The desk lists at most this many works; the API paginates the rest. */
 export const AUTHORING_ARTICLES_LIMIT = 100;
 
@@ -115,8 +125,18 @@ export async function handleAuthoringArticlesRequest(
     return errorResponse("ORIGIN_REJECTED", "The request origin was rejected.", 403);
   }
   const body = await readLimitedJson(request, AUTHORING_BODY_MAX_BYTES);
-  if (!body.ok) return body.response;
-  return forwardAuthoringRequest(request, "api/v1/articles", "POST", config, body.text);
+  if (!body.ok) return notForwarded(body.response);
+  const rawExpectedActor = request.headers.get(AUTHORING_EXPECTED_ACTOR_HEADER);
+  let expectedActorId: string | undefined;
+  if (rawExpectedActor !== null) {
+    try { expectedActorId = decodeURIComponent(rawExpectedActor); } catch {
+      return notForwarded(errorResponse("BAD_USER_INPUT", "Invalid expected author.", 400));
+    }
+    if (!expectedActorId || expectedActorId.length > 300 || expectedActorId.trim() !== expectedActorId) {
+      return notForwarded(errorResponse("BAD_USER_INPUT", "Invalid expected author.", 400));
+    }
+  }
+  return forwardAuthoringRequest(request, "api/v1/articles", "POST", config, body.text, undefined, expectedActorId);
 }
 
 /**

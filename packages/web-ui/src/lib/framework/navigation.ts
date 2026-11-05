@@ -1,4 +1,4 @@
-import { useLocation, useNavigate, useRevalidator } from "react-router";
+import { useBlocker, useLocation, useNavigate, useRevalidator } from "react-router";
 
 /**
  * The navigation hooks half of the seam (`@/lib/framework/navigation.ts`).
@@ -35,4 +35,9 @@ export function useRouter(): AppRouter {
     // rather than pretending this does something.
     prefetch: () => {},
   };
+}
+
+/** Block client-side navigation while the caller holds an unconfirmed write. */
+export function useNavigationBlocker(when: boolean) {
+  return useBlocker(when);
 }

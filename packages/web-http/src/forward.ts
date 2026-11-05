@@ -67,12 +67,14 @@ export async function forwardAuthoringRequest(
   config: ApiProxyConfig = {},
   body?: BodyInit,
   contentType = "application/json; charset=utf-8",
+  expectedActorId?: string,
 ): Promise<Response> {
   const base = config.apiBaseUrl;
   if (!base) {
     return errorResponse("SERVICE_UNAVAILABLE", "The API service is not configured.", 503);
   }
   const fetchImpl = config.fetchImpl ?? fetch;
+  const apiBase = base;
 
   const refreshToken = refreshTokenFrom(request);
   let accessToken = accessTokenFrom(request);
@@ -80,8 +82,31 @@ export async function forwardAuthoringRequest(
   let clearCookies = false;
   let upstream: Response;
 
+  // An optional restrictive precondition, never an identity supplied by the
+  // client: compare the API's verified /me to the editor's expected actor using
+  // the *same token* as the following write. Recheck after a refresh. Checking
+  // in the browser instead would race a cross-tab cookie/account change.
+  async function guardedCall(token: string | undefined): Promise<Response> {
+    if (expectedActorId !== undefined) {
+      const identity = await callApi(fetchImpl, apiBase, "api/v1/me", "GET", undefined, token, contentType, null);
+      if (!identity.ok) return identity;
+      const payload: unknown = await identity.json().catch(() => null);
+      const data = typeof payload === "object" && payload !== null && "data" in payload
+        ? (payload as { data?: unknown }).data : null;
+      const id = typeof data === "object" && data !== null && "id" in data
+        ? (data as { id?: unknown }).id : null;
+      if (typeof id !== "string" || id.length === 0) {
+        return errorResponse("SERVICE_UNAVAILABLE", "The current account could not be verified.", 502);
+      }
+      if (id !== expectedActorId) {
+        return errorResponse("ACCOUNT_CHANGED", "The signed-in account changed. Sign in to the original account.", 409);
+      }
+    }
+    return callApi(fetchImpl, apiBase, path, method, body, token, contentType, request.headers.get("idempotency-key"));
+  }
+
   try {
-    upstream = await callApi(fetchImpl, base, path, method, body, accessToken, contentType, request.headers.get("idempotency-key"));
+    upstream = await guardedCall(accessToken);
     if (upstream.status === 401 && refreshToken) {
       // Retry exactly once: a refresh loop would hammer the identity service and
       // could replay a mutation more than once. Every request carrying this same
@@ -95,7 +120,7 @@ export async function forwardAuthoringRequest(
       if (refreshAttempt) {
         rotated = refreshAttempt;
         accessToken = refreshAttempt.accessToken;
-        upstream = await callApi(fetchImpl, base, path, method, body, accessToken, contentType, request.headers.get("idempotency-key"));
+        upstream = await guardedCall(accessToken);
       } else if (refreshAttempt === null) {
         // A rejected refresh token means the session is over: clear it instead of
         // leaving the browser to retry with a credential the API already refused.
