@@ -69,9 +69,9 @@ export function createSqliteConversationStore(db) {
         (SELECT json_group_array(user_id) FROM (SELECT user_id FROM conversation_participants cp WHERE cp.conversation_id=c.id AND cp.left_at IS NULL ORDER BY user_id)) AS participant_ids,
         latest.id AS latest_message_id,latest.conversation_id AS latest_message_conversation_id,
         latest.sender_id AS latest_message_sender_id,latest.body AS latest_message_body,latest.created_at AS latest_message_created_at,
-        (SELECT count(*) FROM messages m WHERE m.conversation_id=c.id AND m.sender_id <> ? AND (membership.last_read_at IS NULL OR m.created_at > membership.last_read_at)) AS unread_count
+        (SELECT count(*) FROM messages m WHERE m.conversation_id=c.id AND m.sender_id <> ? AND m.conversation_sequence > membership.last_read_sequence) AS unread_count
         FROM conversation_participants membership JOIN conversations c ON c.id=membership.conversation_id
-        LEFT JOIN messages latest ON latest.id=(SELECT id FROM messages m2 WHERE m2.conversation_id=c.id ORDER BY created_at DESC,id DESC LIMIT 1)
+        LEFT JOIN messages latest ON latest.id=(SELECT id FROM messages m2 WHERE m2.conversation_id=c.id ORDER BY conversation_sequence DESC LIMIT 1)
         WHERE membership.user_id=? AND membership.conversation_id=? AND membership.left_at IS NULL
         LIMIT 1`, memberId, memberId, conversationId);
     return row ? mapConversation(row) : null;
@@ -123,11 +123,13 @@ export function createSqliteConversationStore(db) {
         if (conversation.created_by !== actorId) throw new ConversationAccessError("Only the conversation creator can manage participants.");
         if (removes.includes(conversation.created_by)) throw new ConversationInputError("The conversation creator cannot be removed from its own conversation.");
         for (const userId of adds) {
-          run(`INSERT INTO conversation_participants (conversation_id,user_id,last_read_at) VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+          run(`INSERT INTO conversation_participants (conversation_id,user_id,last_read_at,last_read_sequence)
+            VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'), (SELECT last_message_sequence FROM conversations WHERE id = ?))
             ON CONFLICT(conversation_id,user_id) DO UPDATE SET
             left_at=NULL,
             joined_at=CASE WHEN conversation_participants.left_at IS NOT NULL THEN strftime('%Y-%m-%dT%H:%M:%fZ','now') ELSE conversation_participants.joined_at END,
-            last_read_at=CASE WHEN conversation_participants.left_at IS NOT NULL THEN strftime('%Y-%m-%dT%H:%M:%fZ','now') ELSE conversation_participants.last_read_at END`, conversationId, userId);
+            last_read_at=CASE WHEN conversation_participants.left_at IS NOT NULL THEN strftime('%Y-%m-%dT%H:%M:%fZ','now') ELSE conversation_participants.last_read_at END,
+            last_read_sequence=CASE WHEN conversation_participants.left_at IS NOT NULL THEN excluded.last_read_sequence ELSE conversation_participants.last_read_sequence END`, conversationId, userId, conversationId);
         }
         for (const userId of removes) run("UPDATE conversation_participants SET left_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE conversation_id = ? AND user_id = ? AND left_at IS NULL", conversationId, userId);
         const changedUserIds = [...new Set([...adds, ...removes])];
@@ -165,7 +167,9 @@ export function createSqliteConversationStore(db) {
     async markConversationAsRead({ conversationId, actorId }) {
       requiredText("conversationId", conversationId, 300); requiredText("actorId", actorId, 300);
       return transaction((transactionId) => {
-        const result = run("UPDATE conversation_participants SET last_read_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE conversation_id = ? AND user_id = ? AND left_at IS NULL", conversationId, actorId);
+        const result = run(`UPDATE conversation_participants SET last_read_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+          last_read_sequence = (SELECT last_message_sequence FROM conversations WHERE id = ?)
+          WHERE conversation_id = ? AND user_id = ? AND left_at IS NULL`, conversationId, conversationId, actorId);
         if (!result.changes) throw new ConversationAccessError();
         migrationCapture.captureInTransaction(db, transactionId, [
           { entityType: "conversation_participants", entityId: migrationEntityKey(conversationId, actorId), operation: "upsert", payload: get("SELECT * FROM conversation_participants WHERE conversation_id = ? AND user_id = ?", conversationId, actorId) },
@@ -179,11 +183,11 @@ export function createSqliteConversationStore(db) {
       if (before !== null && !isUuid(before)) throw new InvalidMessageCursorError("The message cursor must be a valid message ID.");
       requireMember(conversationId, actorId);
       if (before === null) {
-        return all("SELECT * FROM (SELECT id,conversation_id,sender_id,body,created_at FROM messages WHERE conversation_id = ? ORDER BY created_at DESC,id DESC LIMIT ?) recent ORDER BY created_at,id", conversationId, limit).map((row) => mapMessage(row));
+        return all("SELECT * FROM (SELECT id,conversation_id,sender_id,body,created_at,conversation_sequence FROM messages WHERE conversation_id = ? ORDER BY conversation_sequence DESC LIMIT ?) recent ORDER BY conversation_sequence", conversationId, limit).map((row) => mapMessage(row));
       }
-      const cursor = get("SELECT id,created_at FROM messages WHERE id = ? AND conversation_id = ?", before, conversationId);
+      const cursor = get("SELECT conversation_sequence FROM messages WHERE id = ? AND conversation_id = ?", before, conversationId);
       if (!cursor) throw new InvalidMessageCursorError();
-      return all("SELECT * FROM (SELECT id,conversation_id,sender_id,body,created_at FROM messages WHERE conversation_id = ? AND (created_at < ? OR (created_at = ? AND id < ?)) ORDER BY created_at DESC,id DESC LIMIT ?) older ORDER BY created_at,id", conversationId, cursor.created_at, cursor.created_at, cursor.id, limit).map((row) => mapMessage(row));
+      return all("SELECT * FROM (SELECT id,conversation_id,sender_id,body,created_at,conversation_sequence FROM messages WHERE conversation_id = ? AND conversation_sequence < ? ORDER BY conversation_sequence DESC LIMIT ?) older ORDER BY conversation_sequence", conversationId, cursor.conversation_sequence, limit).map((row) => mapMessage(row));
     },
     async getConversation({ conversationId, actorId }) {
       requiredText("conversationId", conversationId, 300);
@@ -198,9 +202,9 @@ export function createSqliteConversationStore(db) {
         (SELECT json_group_array(user_id) FROM (SELECT user_id FROM conversation_participants cp WHERE cp.conversation_id=c.id AND cp.left_at IS NULL ORDER BY user_id)) AS participant_ids,
         latest.id AS latest_message_id,latest.conversation_id AS latest_message_conversation_id,
         latest.sender_id AS latest_message_sender_id,latest.body AS latest_message_body,latest.created_at AS latest_message_created_at,
-        (SELECT count(*) FROM messages m WHERE m.conversation_id=c.id AND m.sender_id <> ? AND (membership.last_read_at IS NULL OR m.created_at > membership.last_read_at)) AS unread_count
+        (SELECT count(*) FROM messages m WHERE m.conversation_id=c.id AND m.sender_id <> ? AND m.conversation_sequence > membership.last_read_sequence) AS unread_count
         FROM conversation_participants membership JOIN conversations c ON c.id=membership.conversation_id
-        LEFT JOIN messages latest ON latest.id=(SELECT id FROM messages m2 WHERE m2.conversation_id=c.id ORDER BY created_at DESC,id DESC LIMIT 1)
+        LEFT JOIN messages latest ON latest.id=(SELECT id FROM messages m2 WHERE m2.conversation_id=c.id ORDER BY conversation_sequence DESC LIMIT 1)
         WHERE membership.user_id=? AND membership.left_at IS NULL
         ORDER BY COALESCE(latest.created_at,c.created_at) DESC,c.id DESC LIMIT ?`, actorId, actorId, limit).map(mapConversation);
     },
@@ -213,11 +217,16 @@ export function createSqliteConversationStore(db) {
         if (existing) return sameRequest(existing, requestHash);
         const id = randomUUID();
         const createdAt = new Date().toISOString();
-        run("INSERT INTO messages (id,conversation_id,sender_id,body,idempotency_key,request_hash,created_at) VALUES (?,?,?,?,?,?,?)", id, conversationId, senderId, body, idempotencyKey, requestHash, createdAt);
+        // BEGIN IMMEDIATE serializes this counter, message and outbox write with
+        // marks and membership changes on every SQLite connection.
+        run("UPDATE conversations SET last_message_sequence = last_message_sequence + 1 WHERE id = ?", conversationId);
+        run(`INSERT INTO messages (id,conversation_id,sender_id,body,idempotency_key,request_hash,created_at,conversation_sequence)
+          VALUES (?,?,?,?,?,?,?,(SELECT last_message_sequence FROM conversations WHERE id = ?))`, id, conversationId, senderId, body, idempotencyKey, requestHash, createdAt, conversationId);
         const outboxId = randomUUID();
         const outboxPayload = { messageId:id, conversationId, senderId };
         run("INSERT INTO outbox_events (id,event_key,event_type,aggregate_id,payload) VALUES (?,?,?,?,?)", outboxId, `message:${id}`, "message.created", id, JSON.stringify(outboxPayload));
         migrationCapture.captureInTransaction(db, transactionId, [
+          { entityType: "conversations", entityId: conversationId, operation: "upsert", payload: get("SELECT * FROM conversations WHERE id = ?", conversationId) },
           { entityType: "messages", entityId: id, operation: "upsert", payload: get("SELECT * FROM messages WHERE id = ?", id) },
           { entityType: "outbox_events", entityId: outboxId, operation: "upsert", payload: get("SELECT * FROM outbox_events WHERE id = ?", outboxId) },
         ]);

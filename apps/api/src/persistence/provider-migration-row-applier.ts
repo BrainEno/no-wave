@@ -1,6 +1,6 @@
 import { MigrationJournalError, type MigrationProvider } from "./provider-migration-journal.ts";
 
-type EntitySpec = { table: string; primaryKey: readonly string[]; columns: readonly string[]; jsonColumns?: readonly string[] };
+type EntitySpec = { table: string; primaryKey: readonly string[]; columns: readonly string[]; jsonColumns?: readonly string[]; requiredColumns?: readonly string[] };
 
 // Strict allowlist: journal data never supplies SQL identifiers. Keep this in sync
 // with the shared persistence schema contract for the SQLite and PostgreSQL providers.
@@ -15,9 +15,9 @@ const entities: Record<string, EntitySpec> = {
   user_profiles: { table: "user_profiles", primaryKey: ["user_id"], columns: ["user_id", "avatar_url", "website_url", "created_at", "updated_at"] },
   user_profile_translations: { table: "user_profile_translations", primaryKey: ["user_id", "locale"], columns: ["user_id", "locale", "display_name", "bio", "created_at", "updated_at"] },
   user_follows: { table: "user_follows", primaryKey: ["follower_id", "followed_id"], columns: ["follower_id", "followed_id", "created_at"] },
-  conversations: { table: "conversations", primaryKey: ["id"], columns: ["id", "created_by", "created_at"] },
-  conversation_participants: { table: "conversation_participants", primaryKey: ["conversation_id", "user_id"], columns: ["conversation_id", "user_id", "joined_at", "left_at", "last_read_at"] },
-  messages: { table: "messages", primaryKey: ["id"], columns: ["id", "conversation_id", "sender_id", "body", "idempotency_key", "request_hash", "created_at"] },
+  conversations: { table: "conversations", primaryKey: ["id"], columns: ["id", "created_by", "created_at", "idempotency_key_hash", "request_hash", "last_message_sequence"], requiredColumns: ["last_message_sequence"] },
+  conversation_participants: { table: "conversation_participants", primaryKey: ["conversation_id", "user_id"], columns: ["conversation_id", "user_id", "joined_at", "left_at", "last_read_at", "last_read_sequence"], requiredColumns: ["last_read_sequence"] },
+  messages: { table: "messages", primaryKey: ["id"], columns: ["id", "conversation_id", "sender_id", "body", "idempotency_key", "request_hash", "created_at", "conversation_sequence"], requiredColumns: ["conversation_sequence"] },
   notifications: { table: "notifications", primaryKey: ["id"], columns: ["id", "user_id", "event_key", "payload", "payload_hash", "created_at", "read_at"], jsonColumns: ["payload"] },
   outbox_events: { table: "outbox_events", primaryKey: ["id"], columns: ["id", "event_key", "event_type", "aggregate_id", "payload", "attempts", "available_at", "created_at", "delivered_at", "lease_token"], jsonColumns: ["payload"] },
   revoked_sessions: { table: "revoked_sessions", primaryKey: ["session_id"], columns: ["session_id", "revoked_at", "expires_at"] },
@@ -73,6 +73,10 @@ export function prepareMigrationRowPayload(
   const spec = getMigrationEntitySpec(entityType);
   const unknownColumns = Object.keys(input).filter(column => !spec.columns.includes(column));
   if (unknownColumns.length) throw new MigrationJournalError("UNSUPPORTED_COLUMN", "Migration payload contains unsupported columns for " + entityType + ": " + unknownColumns.join(", ") + ".");
+  // Old journal rows do not carry the sequence watermark. Replaying them onto
+  // the new schema would silently corrupt unread state; require a new snapshot.
+  const missingRequired = (spec.requiredColumns ?? []).filter(column => input[column] == null);
+  if (missingRequired.length) throw new MigrationJournalError("INCOMPATIBLE_SCHEMA", "Migration snapshot lacks required read-order sequence fields for " + entityType + ": " + missingRequired.join(", ") + ".");
   const missingKeys = spec.primaryKey.filter(column => typeof input[column] !== "string" || !(input[column] as string).length);
   if (missingKeys.length) throw new MigrationJournalError("INVALID_ENTITY_KEY", "Upsert payload is missing primary-key field(s): " + missingKeys.join(", ") + ".");
   const primaryKeyValues = migrationEntityKeyValues(entityId, spec.primaryKey);

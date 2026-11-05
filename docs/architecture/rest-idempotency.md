@@ -97,12 +97,15 @@ fingerprint. Direct store callers that omit `requestedSlug` keep the old explici
 produces the same end state and no extra side effects. Requiring a key there would be ceremony:
 the rule from the inventory is to never demand one for an operation that is already repeat-safe.
 
-The conversation read endpoint is a qualified case: it advances a timestamp, not
-an explicit last-seen message cursor. Repeating the call after a lost response
-can also mark messages that arrived since the first attempt. The Web UI makes it
-an explicit mark-*all* action and does not silently retry an ambiguous outcome.
-Separately, timestamp equality can cause an unread message to be missed; this
-requires a storage-level ordering/watermark design, not an idempotency key.
+The conversation read endpoint is a qualified case: it advances the member's
+server-side conversation watermark, not an explicit last-seen message cursor.
+Repeating the call after a lost response can also mark messages committed since
+the first attempt. The Web UI makes it an explicit mark-*all* action and does
+not silently retry an ambiguous outcome. A persisted per-conversation message
+sequence prevents timestamp equality or transaction start time from swallowing a
+later committed message; it does not make an unbounded retry idempotent. See
+[conversation read order](conversation-read-order.md) for locking and upgrade
+requirements.
 
 ## Deliberately deferred
 
