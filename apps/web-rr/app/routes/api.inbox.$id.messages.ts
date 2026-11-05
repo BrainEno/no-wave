@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { handleConversationMessagesRequest } from "@bot-thk/web-http";
+import { handleConversationMessagesRequest, handleSendMessageRequest } from "@bot-thk/web-http";
 import { optionalApiBaseUrl } from "../lib/runtime.ts";
 
 /**
@@ -23,6 +23,20 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   return messages(request, params.id);
 }
 
+/**
+ * Sending needs the `Idempotency-Key` header to reach the handler untouched, and
+ * it does: the action receives the browser's `Request` as-is. The handler is the
+ * only place that decides whether the key is usable, and it refuses rather than
+ * inventing one — a key minted here would differ per request and turn every retry
+ * into a second message.
+ */
 export async function action({ request, params }: ActionFunctionArgs) {
+  if (request.method === "POST") {
+    return handleSendMessageRequest(
+      request,
+      { conversationId: params.id ?? "" },
+      { apiBaseUrl: optionalApiBaseUrl() },
+    );
+  }
   return messages(request, params.id);
 }

@@ -20,11 +20,14 @@ import { PRIVATE_PAGE_HEADERS } from "../lib/http-policy.ts";
  */
 export async function loader({ request }: LoaderFunctionArgs) {
   const locale = localeFor(request);
-  const target = locale === "zh-CN" ? "/messages" : `/${locale}/messages`;
+  const inbox = locale === "zh-CN" ? "/messages" : `/${locale}/messages`;
+  const requestedRecipient = new URL(request.url).searchParams.get("to") ?? "";
+  const recipient = requestedRecipient.length <= 300 ? requestedRecipient.trim() : "";
+  const target = recipient ? `${inbox}?to=${encodeURIComponent(recipient)}` : inbox;
   if (!hasUsableSession(sessionMarkerFrom(request))) {
     throw redirect(`/sign-in?next=${encodeURIComponent(target)}`, { headers: PRIVATE_PAGE_HEADERS });
   }
-  return { locale };
+  return { locale, recipient };
 }
 
 export const headers: HeadersFunction = () => PRIVATE_PAGE_HEADERS;
@@ -35,6 +38,6 @@ export const meta: MetaFunction = () => [
 ];
 
 export default function MessagesRoute() {
-  const { locale } = useLoaderData<typeof loader>();
-  return <MessagesView locale={locale} />;
+  const { locale, recipient } = useLoaderData<typeof loader>();
+  return <MessagesView locale={locale} initialRecipient={recipient} />;
 }

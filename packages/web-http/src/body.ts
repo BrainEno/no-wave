@@ -19,15 +19,14 @@ export async function readLimitedJson(request: Request, maximumBytes: number): P
   if (Number.isFinite(declared) && declared > maximumBytes) {
     return { ok: false, response: errorResponse("PAYLOAD_TOO_LARGE", "The request body is too large.", 413) };
   }
-  let text: string;
-  try {
-    text = await request.text();
-  } catch {
-    return { ok: false, response: errorResponse("BAD_USER_INPUT", "The request body could not be read.", 400) };
-  }
-  if (new TextEncoder().encode(text).byteLength > maximumBytes) {
-    return { ok: false, response: errorResponse("PAYLOAD_TOO_LARGE", "The request body is too large.", 413) };
-  }
+  // Enforce the byte ceiling while reading, including for chunked requests with
+  // no Content-Length. Reading request.text() first would buffer without limit.
+  const body = await readLimitedStream(
+    request.body, maximumBytes, "The request body is too large.",
+    "The request body must be valid JSON.", "The request body could not be read.",
+  );
+  if (!body.ok) return { ok: false, response: body.response };
+  const text = new TextDecoder().decode(body.bytes);
   let value: unknown;
   try {
     value = JSON.parse(text) as unknown;

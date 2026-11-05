@@ -1,28 +1,11 @@
 import type { ApiProxyConfig } from "./api.ts";
+import { readLimitedJson } from "./body.ts";
 import { errorResponse } from "./http.ts";
 import { forwardAuthoringRequest } from "./forward.ts";
+import { isSameOriginMutation } from "./policy.ts";
 
-/**
- * 私信读侧 — the browser-facing proxy for a reader's conversations (#198).
- *
- * The conversations API has been served in full for a while: an inbox, a
- * per-conversation read, a message list with a cursor, a read marker, and a
- * compose path that requires an `Idempotency-Key`. No Web surface called any of
- * it, so "私信" existed only for clients that already knew the endpoints.
- *
- * This file covers the **read** half only — inbox, one conversation, and its
- * messages. Composing is deliberately not here: sending needs the idempotency
- * key handled end to end, and mixing "can I see my messages" with "can I write
- * one, and what happens to a retry" into a single change makes both harder to
- * review and the second one easy to get subtly wrong.
- *
- * All three routes require a session, and the API decides who may read what.
- * This proxy does not repeat that decision — but it must not launder the answer
- * either, because "not yours" and "does not exist" are security-relevant
- * distinctions the API already makes for itself.
- *
- * Nothing in this file imports a framework.
- */
+/** Browser-facing conversation reads and writes. The API remains responsible
+ * for authorization; this proxy validates inputs and preserves upstream errors. */
 
 /**
  * Conversation ids are UUIDs in every store this application ships.
@@ -177,4 +160,262 @@ export async function handleConversationMessagesRequest(
     "GET",
     config,
   );
+}
+
+/**
+ * 私信写侧 — sending a message, and opening the conversation it goes into (#198).
+ *
+ * The read half above arrived first and deliberately stopped at reading. This is
+ * the half that can create rows, and it has one requirement the read half never
+ * had: **a retry must not become a second message.**
+ *
+ * `POST /api/v1/conversations/:id/messages` and `POST /api/v1/conversations` both
+ * require an `Idempotency-Key`, and the API is honest about what each outcome
+ * means: the same key with the same body replays the original row (`duplicate:
+ * true`), the same key with a different body is a `409 IDEMPOTENCY_CONFLICT`. So
+ * the key is not a nicety here — it is the difference between one message and two.
+ *
+ * That is also why **this proxy never mints a key**. A key identifies an
+ * *intent* to send: "this exact message, once." A proxy that generated one per
+ * HTTP request would give every retry a fresh key, and the API would faithfully
+ * write a second message — the duplicate the key exists to prevent. The key has
+ * to be born in the browser, where the draft lives, and survive the retry. All
+ * this layer does is refuse a request that lacks one, and pass through the one it
+ * was given.
+ */
+
+/**
+ * The API's message bound, in characters, not bytes.
+ *
+ * Characters and bytes differ by up to 4:1 for CJK text, and getting that wrong
+ * in the *reject* direction would refuse a legal 20 000-character message in
+ * Chinese. The transport ceiling below is therefore derived from this rather
+ * than picked to look generous.
+ */
+export const MESSAGE_BODY_MAX_CHARS = 20000;
+
+/** A JSON-escaped UTF-16 code unit can take six bytes (e.g. `\\u0001`). */
+export const MESSAGE_WRITE_MAX_BYTES = MESSAGE_BODY_MAX_CHARS * 6 + 1024;
+
+/** The API's own ceiling on an `Idempotency-Key`. */
+export const IDEMPOTENCY_KEY_MAX_LENGTH = 300;
+
+/** The API accepts at most this many supplied participant IDs. */
+export const CONVERSATION_MAX_PARTICIPANTS = 20;
+
+/**
+ * A usable idempotency key: present, non-empty, not padded, within bounds.
+ *
+ * Whitespace is rejected rather than trimmed. Trimming looks harmless and is not:
+ * `" k"` and `"k"` would become the same key at this layer while the API hashes
+ * what it receives, so a client that sent both would get one row and believe it
+ * had sent two — or, in the other direction, two keys the caller considers
+ * distinct would collide. The padding is the client's mistake and the answer is
+ * a `400`, not a repair.
+ */
+export function isUsableIdempotencyKey(value: string | null): value is string {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= IDEMPOTENCY_KEY_MAX_LENGTH &&
+    value.trim() === value
+  );
+}
+
+/** Validate the API's message constraints and forward a canonical JSON object.
+ * The API fingerprints the parsed conversation ID, sender and body, rather than
+ * the original JSON whitespace. Unknown fields are rejected. */
+export function parseMessageBody(
+  value: unknown,
+): { ok: true; json: string } | { ok: false; message: string } {
+  const text = value as Record<string, unknown> | null;
+  if (typeof text !== "object" || text === null || Array.isArray(text)) {
+    return { ok: false, message: "A JSON object body is required." };
+  }
+  const keys = Object.keys(text);
+  if (keys.some((key) => key !== "body")) {
+    return { ok: false, message: "The request contains unsupported fields." };
+  }
+  const body = text.body;
+  if (typeof body !== "string") {
+    return { ok: false, message: "A message body must be a string." };
+  }
+  if (body.trim().length === 0) {
+    return { ok: false, message: "A message must not be blank." };
+  }
+  if (body !== body.trim()) {
+    // Not trimmed and not silently fixed. The API rejects padded text, and the
+    // client that pads is the one that can decide what it meant.
+    return { ok: false, message: "A message must not begin or end with whitespace." };
+  }
+  if (body.length > MESSAGE_BODY_MAX_CHARS) {
+    return {
+      ok: false,
+      message: `A message must be no longer than ${MESSAGE_BODY_MAX_CHARS} characters.`,
+    };
+  }
+  return { ok: true, json: JSON.stringify({ body }) };
+}
+
+/** Validate participant IDs. The API removes the authenticated actor itself;
+ * the proxy cannot do that because the actor's identity is known only upstream.
+ * Duplicate IDs are rejected as they are by the API, not silently collapsed. */
+export function parseParticipantIds(
+  value: unknown,
+): { ok: true; json: string } | { ok: false; message: string } {
+  const record = value as Record<string, unknown> | null;
+  if (typeof record !== "object" || record === null || Array.isArray(record)) {
+    return { ok: false, message: "A JSON object body is required." };
+  }
+  if (Object.keys(record).some((key) => key !== "participantIds")) {
+    return { ok: false, message: "The request contains unsupported fields." };
+  }
+  const ids = record.participantIds;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return { ok: false, message: "A conversation needs at least one other participant." };
+  }
+  if (ids.length > CONVERSATION_MAX_PARTICIPANTS) {
+    return {
+      ok: false,
+      message: `A request can name at most ${CONVERSATION_MAX_PARTICIPANTS} participant IDs.`,
+    };
+  }
+  const seen = new Set<string>();
+  for (const id of ids) {
+    if (typeof id !== "string" || id.length === 0 || id.length > 300 || id.trim() !== id) {
+      return { ok: false, message: "Each participant id must be a non-empty, trimmed user ID." };
+    }
+    if (seen.has(id)) {
+      return { ok: false, message: "A participant may not be listed twice." };
+    }
+    seen.add(id);
+  }
+  return { ok: true, json: JSON.stringify({ participantIds: ids }) };
+}
+
+/** The write-verb check the two send routes share. */
+function requirePost(request: Request): Response | null {
+  if (request.method === "POST") return null;
+  return errorResponse("METHOD_NOT_ALLOWED", "Only POST is supported for sending messages.", 405);
+}
+
+/**
+ * The two checks that must happen before *anything* about the payload is read.
+ *
+ * Order is not cosmetic:
+ *
+ *   1. **method** — a wrong verb never reaches validation.
+ *   2. **origin** — a cross-origin caller must not learn whether the id it
+ *      guessed is even well-formed, nor anything else about the request. This is
+ *      why the check precedes the id test and the body read, not merely why it
+ *      comes first in the file.
+ *
+ * The `Idempotency-Key` check is deliberately **not** here. It runs after the
+ * body is parsed, so a blank message is reported as a blank message and not as
+ * a missing key — see `requireIdempotencyKey`.
+ */
+function preflight(request: Request): Response | null {
+  const wrongMethod = requirePost(request);
+  if (wrongMethod) return wrongMethod;
+
+  const sameOrigin = isSameOriginMutation(
+    request.url,
+    request.headers.get("origin"),
+    request.headers.get("host"),
+    request.headers.get("x-forwarded-proto"),
+  );
+  if (!sameOrigin) {
+    return errorResponse("ORIGIN_REJECTED", "The request origin was rejected.", 403);
+  }
+  return null;
+}
+
+/**
+ * The key check, run last.
+ *
+ * Both a bad message and a bad key answer `400`, so the order decides which one
+ * the caller is told about. Only one of those messages helps them: a reader whose
+ * draft came through blank and whose client also failed to mint a key needs to
+ * hear about the draft. Reporting the key would send them to fix a header while
+ * the actual mistake sat in the text box.
+ */
+function requireIdempotencyKey(request: Request): { ok: true } | { ok: false; response: Response } {
+  const key = request.headers.get("idempotency-key");
+  if (isUsableIdempotencyKey(key)) return { ok: true };
+  return {
+    ok: false,
+    response: errorResponse(
+      "BAD_USER_INPUT",
+      "A valid Idempotency-Key header is required. It must be generated for the intent to send, not for each attempt, or a retry becomes a second message.",
+      400,
+    ),
+  };
+}
+
+/**
+ * `POST /api/inbox/:id/messages` — reply in a conversation.
+ *
+ * The forwarded body is the validated JSON produced by `parseMessageBody`.
+ * The API fingerprints the parsed message, not the original JSON bytes.
+ *
+ * The key rides on the original request and `forwardAuthoringRequest` copies it,
+ * including on the refresh-and-retry path — which matters more here than
+ * anywhere else: a 401 that triggers a refresh is exactly the kind of transient
+ * failure a client retries, and the key must be the same one on both attempts.
+ */
+export async function handleSendMessageRequest(
+  request: Request,
+  params: { conversationId: string },
+  config: ApiProxyConfig = {},
+): Promise<Response> {
+  const refused = preflight(request);
+  if (refused) return refused;
+
+  if (!isConversationId(params.conversationId)) {
+    return errorResponse("BAD_USER_INPUT", "Invalid conversation ID.", 400);
+  }
+
+  const payload = await readLimitedJson(request, MESSAGE_WRITE_MAX_BYTES);
+  if (!payload.ok) return payload.response;
+
+  const parsed = parseMessageBody(payload.value);
+  if (!parsed.ok) return errorResponse("BAD_USER_INPUT", parsed.message, 400);
+
+  const key = requireIdempotencyKey(request);
+  if (!key.ok) return key.response;
+
+  return forwardAuthoringRequest(
+    request,
+    conversationPath(params.conversationId) + "/messages",
+    "POST",
+    config,
+    parsed.json,
+  );
+}
+
+/**
+ * `POST /api/inbox` — open a conversation with the people named.
+ *
+ * A separate route rather than a flag on the reply path, because the two have
+ * different failure modes: this one can only fail on the participant list, and it
+ * answers with a conversation, while a reply answers with a message. Folding them
+ * together would mean one handler returning two shapes.
+ */
+export async function handleStartConversationRequest(
+  request: Request,
+  config: ApiProxyConfig = {},
+): Promise<Response> {
+  const refused = preflight(request);
+  if (refused) return refused;
+
+  const payload = await readLimitedJson(request, MESSAGE_WRITE_MAX_BYTES);
+  if (!payload.ok) return payload.response;
+
+  const parsed = parseParticipantIds(payload.value);
+  if (!parsed.ok) return errorResponse("BAD_USER_INPUT", parsed.message, 400);
+
+  const key = requireIdempotencyKey(request);
+  if (!key.ok) return key.response;
+
+  return forwardAuthoringRequest(request, "api/v1/conversations", "POST", config, parsed.json);
 }

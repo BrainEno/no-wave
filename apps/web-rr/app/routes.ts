@@ -88,6 +88,11 @@ route("api/authoring/notifications/:id/read", "routes/api.authoring.notification
   route("api/inbox", "routes/api.inbox.ts"),
   route("api/inbox/:id", "routes/api.inbox.$id.ts"),
   route("api/inbox/:id/messages", "routes/api.inbox.$id.messages.ts"),
+  // Browser calls use the authoring prefix so the scoped access cookie is sent.
+  // Keep the original /api/inbox endpoints for existing callers.
+  route("api/authoring/inbox", "routes/api.inbox.ts", { id: "authoring-inbox" }),
+  route("api/authoring/inbox/:id", "routes/api.inbox.$id.ts", { id: "authoring-inbox-item" }),
+  route("api/authoring/inbox/:id/messages", "routes/api.inbox.$id.messages.ts", { id: "authoring-inbox-messages" }),
   route("api/media/:id", "routes/api.media.ts"),
   route("api/authoring/media", "routes/api.authoring.media.ts"),
   // One asset is deleted by id; the collection is both the upload target and the

@@ -65,15 +65,19 @@
 
 ## 服务端有、客户端还没用到的能力
 
-以下都不是缺口，只是客户端尚未消费：通知（`me/notifications*`）、会话与私信（`conversations*`）、分类（`categories*`）、标签/分类的写与删（`taxonomies`、`taxonomies.item`）、`GET /users` 与 `users/:id/followers|following`、`GET /me/articles`、`POST /me/email-verification`，以及 `auth` 的 `forgot-password` / `reset-password` / `verify-email`。
+以下都不是缺口，只是 Flutter 客户端尚未消费：通知（`me/notifications*`）、会话与私信（`conversations*`）、分类（`categories*`）、标签/分类的写与删（`taxonomies`、`taxonomies.item`）、`GET /users` 与 `users/:id/followers|following`、`GET /me/articles`、`POST /me/email-verification`，以及 `auth` 的 `forgot-password` / `reset-password` / `verify-email`。
 
 ## 当前前端（apps/web-rr + packages/web-ui）的需求覆盖
 
-两个前端只通过 `packages/web-http` 访问 15 个接口族：`me`、`me/feed`、`me/email-verification`、`me/media`、`me/notifications*`、`me/sessions*`、`articles*`、`articles/:slug/comments`、`articles/:slug/like`、`users/:userId/follow`、`authors/:userId`、`conversations*`（读侧）、`auth/*`。全部已实现，**没有缺口**。唯一的共同注意事项是 P3。
+两个前端只通过 `packages/web-http` 访问 15 个接口族：`me`、`me/feed`、`me/email-verification`、`me/media`、`me/notifications*`、`me/sessions*`、`articles*`、`articles/:slug/comments`、`articles/:slug/like`、`users/:userId/follow`、`authors/:userId`、`conversations*`（收件箱、会话、消息分页及发送）、`auth/*`。全部已实现，**没有缺口**。唯一的共同注意事项是 P3。
 
-**`conversations*` 读侧（私信）已接入**（#198，仅读）：共享行为在 `packages/web-http/src/messages.ts`（`handleInboxRequest` / `handleConversationRequest` / `handleConversationMessagesRequest`：只收 GET、会话 id 必须是 UUID、limit 与 cursor 在边缘校验），`apps/web-rr` 侧是三个资源路由。页面是 `/messages` 与 `/messages/:id`，与 `/feed` 同一套私有页模式。
+**`conversations*`（私信）读写已接入**（#198）：共享行为在 `packages/web-http/src/messages.ts`。读侧提供收件箱、会话头和消息分页，写侧提供 `POST /conversations` 与 `POST /conversations/:id/messages`；会话 ID、分页参数、参与者及消息正文在边缘校验。页面为 `/messages` 与 `/messages/:id`，作者主页也提供预填收件人的入口。目前页面只发起一对一对话，API 和代理仍支持最多 20 个传入参与者。输入用户 ID 时需要核对：现有 API 不验证 ID 一定对应已存在的用户。
 
-**发送（`POST /conversations`、`POST /conversations/:id/messages`）尚未接入**，并且刻意不在本批里：按 `docs/architecture/rest-idempotency.md`，这两个都是 non-idempotent create 且**要求 `Idempotency-Key`**，API 缺键会直接 400。发送端的键怎么生成、失败重试复用同一个键、以及「答复之后清空」的时机，需要单独一次改动，混进读侧会让两件事都更难看清。
+按 `docs/architecture/rest-idempotency.md`，两个写入都要求 `Idempotency-Key`。浏览器为一次意图生成随机键，代理只验证和透传；无论网络异常、401、服务端失败还是响应无法解析，同一正文及同一个键都被保留供重试。若编辑了尚未确认的请求，页面阻止带旧键提交新内容，提供恢复原内容或明确放弃请求的选择；409 也需要明确放弃后才能开始新的意图。API 对解析后的消息字段计算指纹，对会话的参与者集合排序后计算指纹，**不是**对原始 JSON 字节计算。代理拒绝未 trim 的正文，页面在首次发送前 trim。
+
+待确认的键和内容目前只保存在打开的页面内，不写入本地存储；刷新或关闭页面后不会自动恢复。登录链接在新标签页打开以保留原页面，重试时应使用同一账户（API 的幂等键按账户隔离）；如离开页面前没有收到结果，应先检查会话，再决定是否重新发送。这不是跨页面重载的持久化重试保证。
+
+浏览器调用 `/api/authoring/inbox*` 别名，确保 `/api/authoring` 范围的访问 Cookie 被带上，而不必每次都旋转 refresh token；原有 `/api/inbox*` 路径仍可用。私信写入和登录的同源检查支持可信 TLS 终止代理传入的 `X-Forwarded-Proto`；部署的边缘代理必须覆盖客户端提供的该头。**`PUT /conversations/:id/read` 标已读尚未接入**。
 
 ### 私信的一处 API 不对称，单独记下来
 

@@ -33,7 +33,7 @@ function branchBody(source: string, predicate: string): string {
 
 test("the inbox is wired and fetched by the browser", async () => {
   const source = await readFile(inboxPath, "utf8");
-  assert.match(source, /fetch\(`\/api\/inbox\?limit=/);
+  assert.match(source, /fetch\(`\/api\/authoring\/inbox\?limit=/);
   assert.match(source, /credentials: "same-origin"/, "the cookie is the identity");
   assert.ok(!/useLoaderData/.test(source), "the list must not arrive pre-rendered");
 });
@@ -139,4 +139,15 @@ test("the UI language covers 私信 in both locales", async () => {
     const occurrences = copy.split(key).length - 1;
     assert.ok(occurrences >= 2, `${key} needs a zh and an en form, saw ${occurrences}`);
   }
+});
+
+test("both write endpoints are registered under the access-cookie path", async () => {
+  const table = await readFile(tablePath, "utf8");
+  assert.ok(table.includes('route("api/authoring/inbox", "routes/api.inbox.ts"'));
+  assert.ok(table.includes('route("api/authoring/inbox/:id/messages", "routes/api.inbox.$id.messages.ts"'));
+});
+
+test("author profiles lead to the conversation composer with a recipient", async () => {
+  const author = await readFile(new URL("../components/public/author-view.tsx", import.meta.url), "utf8");
+  assert.match(author, /messages\?to=\$\{encodeURIComponent\(author\.username\)\}/);
 });
