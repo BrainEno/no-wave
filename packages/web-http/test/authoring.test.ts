@@ -508,3 +508,69 @@ test("only local pre-forward rejections attest that the create was never sent", 
   assert.equal(proxied.headers.get("x-authoring-not-forwarded"), null, "an upstream response cannot attest the proxy did not send it");
   assert.equal(untrusted.calls.length, 1);
 });
+
+test("the desk can request all language editions without changing the existing default", async () => {
+  for (const [path, expected] of [
+    ["/api/authoring/articles?allLocales=true", "api/v1/me/articles?allLocales=true&limit=100"],
+    ["/api/authoring/deleted-articles?allLocales=true", "api/v1/me/articles/deleted?allLocales=true&limit=100"],
+    ["/api/authoring/articles?locale=en", "api/v1/me/articles?locale=en&limit=100"],
+    ["/api/authoring/deleted-articles?locale=zh-TW", "api/v1/me/articles/deleted?locale=zh-TW&limit=100"],
+  ] as const) {
+    const stub = upstream();
+    const handler = path.includes("deleted-articles") ? handleAuthoringDeletedArticlesRequest : handleAuthoringArticlesRequest;
+    const response = await handler(request(path, { method: "GET", headers: { host: "no-wave.test", cookie: `${ACCESS_TOKEN_COOKIE}=${TOKENS.accessToken}` } }),
+      { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl });
+    assert.equal(response.status, 200);
+    assertNoStore(response);
+    assert.equal(stub.calls[0]?.url, `${API_BASE}/${expected}`);
+    assert.equal(new Headers(stub.calls[0]?.init?.headers).get("authorization"), `Bearer ${TOKENS.accessToken}`);
+  }
+});
+
+test("invalid or ambiguous list language options are rejected before proxying", async () => {
+  for (const path of [
+    "/api/authoring/articles?locale=fr", "/api/authoring/articles?locale=all",
+    "/api/authoring/articles?allLocales=false", "/api/authoring/articles?allLocales=true&locale=en",
+    "/api/authoring/articles?locale=en&locale=zh-CN",
+    "/api/authoring/deleted-articles?allLocales=true&allLocales=true",
+    "/api/authoring/deleted-articles?locale=", "/api/authoring/deleted-articles?locale=zh-tw",
+  ]) {
+    const stub = upstream();
+    const handler = path.includes("deleted-articles") ? handleAuthoringDeletedArticlesRequest : handleAuthoringArticlesRequest;
+    const response = await handler(request(path, { method: "GET", headers: { host: "no-wave.test" } }), { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl });
+    assert.equal(response.status, 400, path);
+    assertNoStore(response);
+    assert.deepEqual(stub.calls, [], path);
+  }
+});
+
+test("restoring a specific edition forwards its actual locale, without weakening origin or id checks", async () => {
+  for (const locale of ["en", "zh-TW", "zh-CN"]) {
+    const stub = upstream({ data: { id: ARTICLE_ID, locale, status: "draft" } });
+    const response = await handleAuthoringRestoreRequest(
+      request(`/api/authoring/articles/${ARTICLE_ID}/restore?locale=${locale}`, {
+        method: "POST", headers: { host: "no-wave.test", origin: "https://no-wave.test" },
+      }), { id: ARTICLE_ID }, { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+    );
+    assert.equal(response.status, 200);
+    assertNoStore(response);
+    assert.equal(stub.calls[0]?.url, `${API_BASE}/api/v1/articles/${ARTICLE_ID}/restore?locale=${locale}`);
+    assert.equal(stub.calls[0]?.init?.body, undefined);
+  }
+  for (const query of ["locale=fr", "locale=", "locale=en&locale=zh-CN", "allLocales=true"]) {
+    const stub = upstream();
+    const response = await handleAuthoringRestoreRequest(
+      request(`/api/authoring/articles/${ARTICLE_ID}/restore?${query}`, {
+        method: "POST", headers: { host: "no-wave.test", origin: "https://no-wave.test" },
+      }), { id: ARTICLE_ID }, { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+    );
+    assert.equal(response.status, 400, query);
+    assert.deepEqual(stub.calls, []);
+  }
+  const cross = await handleAuthoringRestoreRequest(
+    request(`/api/authoring/articles/bad/restore?locale=fr`, {
+      method: "POST", headers: { host: "no-wave.test", origin: "https://evil.test" },
+    }), { id: "bad" }, { apiBaseUrl: API_BASE, fetchImpl: upstream().fetchImpl },
+  );
+  assert.equal(cross.status, 403);
+});

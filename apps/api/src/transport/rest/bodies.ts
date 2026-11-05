@@ -17,7 +17,7 @@ import { isRecord } from "./http.ts";
  */
 export type ArticleWriteBody = {
   title: string;
-  locale: "zh-CN";
+  locale: "zh-CN" | "zh-TW" | "en";
   contentBlocks: string;
   summary: string;
   slug?: string;
@@ -52,8 +52,12 @@ export function normalizeArticleWriteBody(
   if (Object.keys(body).some((key) => !ARTICLE_WRITE_FIELDS.has(key))) {
     return { input: null, error: "The request contains unsupported fields." };
   }
-  if (body.locale !== undefined && body.locale !== "zh-CN") {
-    return { input: null, error: "The REST API currently supports only locale zh-CN." };
+  // Missing locale retains the historical Simplified Chinese default. An
+  // explicit locale must pass through unchanged: zh-TW may be a legacy work
+  // even though the desk no longer offers it for new compositions.
+  const locale = body.locale === undefined ? "zh-CN" : body.locale;
+  if (locale !== "zh-CN" && locale !== "zh-TW" && locale !== "en") {
+    return { input: null, error: "locale must be zh-CN, zh-TW, or en." };
   }
   const title = body.title;
   if (typeof title !== "string") {
@@ -137,7 +141,7 @@ export function normalizeArticleWriteBody(
     : summarizeArticleBlocks(contentBlocks, { maxLength: ARTICLE_SUMMARY_MAX_LENGTH });
   const input: ArticleWriteBody = {
     title,
-    locale: "zh-CN",
+    locale,
     contentBlocks: JSON.stringify(contentBlocks),
     summary,
   };

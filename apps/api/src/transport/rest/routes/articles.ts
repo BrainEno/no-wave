@@ -1,5 +1,5 @@
 import type { RestRouteContext, RestRouteHandler } from "./context.ts";
-import { MAX_ARTICLE_OFFSET, authenticatedActorId, decodeSlug, decodeUserId, optionalViewerId, parseInteger, parseLocale, parseArticlePagination, parsePagination, parseQuery, parseSort, readJsonObject, sendBadInput, sendJson, sendJsonBodyError, sendServiceError, sendUnauthenticated, sendUnavailable } from "../http.ts";
+import { MAX_ARTICLE_OFFSET, SUPPORTED_LOCALES, authenticatedActorId, decodeSlug, decodeUserId, optionalViewerId, parseInteger, parseLocale, parseArticlePagination, parsePagination, parseQuery, parseSort, readJsonObject, sendBadInput, sendJson, sendJsonBodyError, sendServiceError, sendUnauthenticated, sendUnavailable } from "../http.ts";
 import { normalizeArticleWriteBody, normalizeCommentWriteBody, normalizeFeaturedWriteBody, normalizeLikeWriteBody, type ArticleWriteBody } from "../bodies.ts";
 import { serializeRestArticle, serializeRestArticles, serializeRestComment, serializeRestComments } from "../serializers.ts";
 import { slugifyArticleTitle, uniquifyArticleSlug } from "../../../domain/article-slug.ts";
@@ -7,6 +7,28 @@ import { MAX_FEATURED_ARTICLES } from "../../../domain/article.ts";
 import { ArticleSlugConflictError } from "../../../domain/errors.ts";
 
 const MAX_AUTO_SLUG_ATTEMPTS = 25;
+
+/**
+ * Author-only lists may opt into every supported edition. The existing default
+ * and `locale=` contract stay single-locale; an invalid or ambiguous selection
+ * never falls back to another language. The limit applies to each locale, so
+ * opting in cannot evict previously visible zh-CN works from the desk.
+ */
+function authoringListLocales(url: URL): string[] | null {
+  const all = url.searchParams.get("allLocales");
+  if (all !== null) {
+    if (all !== "true" || url.searchParams.has("locale")) return null;
+    return [...SUPPORTED_LOCALES];
+  }
+  const locale = parseLocale(url);
+  return locale ? [locale] : null;
+}
+
+/** Stable newest-first ordering, with distinct editions of the same id kept. */
+function newestFirst<T extends { id: string; locale: string }>(entries: T[], timestamp: (entry: T) => string | null): T[] {
+  return entries.sort((a, b) => (timestamp(b) ?? "").localeCompare(timestamp(a) ?? "") ||
+    b.id.localeCompare(a.id) || a.locale.localeCompare(b.locale));
+}
 
 /**
  * Create an article, deriving its slug from the title when the client did not
@@ -77,10 +99,10 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
       sendUnavailable(response);
       return;
     }
-    const locale = parseLocale(url);
+    const locales = authoringListLocales(url);
     const limit = parseInteger(url.searchParams, "limit", 50, 1, 100);
-    if (!locale || limit === null) {
-      sendBadInput(response, "Invalid locale or limit query parameter.");
+    if (!locales || limit === null) {
+      sendBadInput(response, "Invalid locale, allLocales, or limit query parameter.");
       return;
     }
     try {
@@ -89,8 +111,14 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
         sendUnauthenticated(response);
         return;
       }
-      const articles = await services.listMyArticles({ actorId, locale, limit });
-      sendJson(response, 200, { data: await serializeRestArticles(services, articles, actorId) });
+      // Authenticate once, then read every requested locale for that same actor.
+      // If any read fails, fail the whole request rather than hiding that edition.
+      const pages = await Promise.all(locales.map((locale) => services.listMyArticles({ actorId, locale, limit })));
+      const articles = locales.length === 1 ? pages[0] : newestFirst(pages.flat(), (article) => article.updatedAt);
+      const data = await serializeRestArticles(services, articles, actorId);
+      // A previous API silently ignored unknown query parameters. The marker
+      // lets the desk distinguish that old, partial answer from a complete one.
+      sendJson(response, 200, locales.length === 1 ? { data } : { data, meta: { locales } });
     } catch (error: unknown) {
       sendServiceError(response, error);
     }
@@ -472,10 +500,10 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
       sendUnavailable(response);
       return;
     }
-    const locale = parseLocale(url);
+    const locales = authoringListLocales(url);
     const limit = parseInteger(url.searchParams, "limit", 50, 1, 100);
-    if (!locale || limit === null) {
-      sendBadInput(response, "Invalid locale or limit query parameter.");
+    if (!locales || limit === null) {
+      sendBadInput(response, "Invalid locale, allLocales, or limit query parameter.");
       return;
     }
     try {
@@ -484,10 +512,11 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
         sendUnauthenticated(response);
         return;
       }
-      // The recycle bin: the author's own tombstones, each carrying the moment
-      // it was deleted and the moment the sweep will make that irreversible.
-      const articles = await services.listMyDeletedArticles({ actorId, locale, limit });
-      sendJson(response, 200, { data: await serializeRestArticles(services, articles, actorId) });
+      // The recycle bin follows the same language selection as the active list.
+      const pages = await Promise.all(locales.map((locale) => services.listMyDeletedArticles({ actorId, locale, limit })));
+      const articles = locales.length === 1 ? pages[0] : newestFirst(pages.flat(), (article) => article.deletedAt);
+      const data = await serializeRestArticles(services, articles, actorId);
+      sendJson(response, 200, locales.length === 1 ? { data } : { data, meta: { locales } });
     } catch (error: unknown) {
       sendServiceError(response, error);
     }

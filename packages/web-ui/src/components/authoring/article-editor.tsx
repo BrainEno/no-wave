@@ -14,7 +14,7 @@ import { $setBlocksType } from "@lexical/selection";
 import { $createParagraphNode, $getSelection, $insertNodes, $isRangeSelection, defineExtension, FORMAT_TEXT_COMMAND, REDO_COMMAND, UNDO_COMMAND, type ElementNode } from "lexical";
 import { ArticleImageNode, $createArticleImageNode } from "./article-image-node.tsx";
 import { PromptDialog, type PromptDialogField } from "@/components/ui/prompt-dialog.tsx";
-import { AUTHORING_ARTICLE_ID_PATTERN, AUTHORING_EXPECTED_ACTOR_HEADER, AUTHORING_NOT_FORWARDED_HEADER } from "@bot-thk/web-http";
+import { AUTHORING_ARTICLE_ID_PATTERN, AUTHORING_EXPECTED_ACTOR_HEADER, AUTHORING_NOT_FORWARDED_HEADER, isAuthoringLocale } from "@bot-thk/web-http";
 import { Link } from "@/lib/framework/link.tsx";
 import { IDEMPOTENCY_KEY_HEADER, intentForAttempt, type PendingIntent } from "@/lib/idempotency-key.ts";
 import type { WorkType } from "@/lib/content.ts";
@@ -213,7 +213,7 @@ function isSavedArticle(value: unknown): value is AuthoringArticle {
   return typeof item.id === "string" && AUTHORING_ARTICLE_ID_PATTERN.test(item.id) &&
     typeof item.slug === "string" && item.slug.length <= 160 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(item.slug) &&
     typeof item.title === "string" && item.title.trim().length > 0 &&
-    typeof item.summary === "string" && typeof item.locale === "string" && item.locale.length > 0 &&
+    typeof item.summary === "string" && typeof item.locale === "string" && isAuthoringLocale(item.locale) &&
     (item.workType === "serial" || workTypes.some(({ value: type }) => type === item.workType)) &&
     (item.status === "draft" || item.status === "published") &&
     Array.isArray(item.contentBlocks) && item.contentBlocks.length > 0 &&
@@ -249,18 +249,17 @@ const retiredWorkTypes: Partial<Record<WorkType, string>> = { serial: "连载" }
 /**
  * The languages a work can be *written* in (#196).
  *
- * `zh-TW` is absent on purpose. It is a locale the platform can read and serve —
- * it is still in the `Locale` union and still shown to readers — but it is not a
- * choice for a new work: `zh-CN` and `en` are the authored editions. An existing
- * `zh-TW` work keeps its locale through `retiredLocales` below, so opening one
- * does not silently migrate it.
+ * `zh-TW` is absent on purpose. The API and storage still support it, but the
+ * desk does not offer it for a new work: `zh-CN` and `en` are the authored
+ * editions. An existing `zh-TW` work keeps its locale through `retiredLocales`
+ * below, so opening one does not silently migrate it.
  */
 const authoringLocales: { value: string; label: string }[] = [
   { value: "zh-CN", label: "简体中文（zh-CN）" },
   { value: "en", label: "English (en)" },
 ];
 
-const retiredLocales: Record<string, string> = { "zh-TW": "繁體中文（zh-TW，已停用创作）" };
+const retiredLocales: Record<string, string> = { "zh-TW": "繁體中文（zh-TW，历史版本）" };
 
 /**
  * The two things the editor used to ask for with `window.prompt` (#195). The
@@ -316,6 +315,13 @@ type Draft = {
   editorState: LexicalEditorStateJson | null;
 };
 type PendingCreate = PendingIntent & { target: SaveTarget; mayHaveCommitted: boolean };
+type LocaleChangeSave = { target: SaveTarget; article: AuthoringArticle; body: string; locale: string };
+
+/** The public Web has zh-CN and English routes; legacy zh-TW has no Web route. */
+function publicArticlePath(article: Pick<AuthoringArticle, "slug" | "locale">): string | null {
+  if (article.locale !== "zh-CN" && article.locale !== "en") return null;
+  return `${article.locale === "en" ? "/en" : ""}/articles/${encodeURIComponent(article.slug)}`;
+}
 
 /** Serialize once per attempt; a pending create retains these exact bytes. */
 function saveBody(draft: Draft, target: SaveTarget, article: AuthoringArticle | null): string {
@@ -357,6 +363,7 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
   const [signInHelp, setSignInHelp] = useState(false);
   const [hasPending, setHasPending] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [localeChange, setLocaleChange] = useState<LocaleChangeSave | null>(null);
   const inFlight = useRef(false);
   const pending = useRef<PendingCreate | null>(null);
   // A successful create can finish before React has rendered the parent's new
@@ -467,7 +474,10 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
         throw new Error(apiError(payload));
       }
       const data = typeof payload === "object" && payload !== null && "data" in payload ? (payload as { data?: unknown }).data : null;
-      if (!isSavedArticle(data)) {
+      // A plausible response for another language is not confirmation of the
+      // submitted edition. Keep a create's exact retry intent until it matches.
+      const requestedLocale = (JSON.parse(body) as { locale: string }).locale;
+      if (!isSavedArticle(data) || data.locale !== requestedLocale) {
         if (create) {
           create.mayHaveCommitted = true;
           setError("暂时无法确认作品是否已创建：保存响应格式不正确。请确认上次保存。");
@@ -486,11 +496,13 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
       // A replay returns the *current* resource, which another tab may have
       // changed after the original create. Do not say this editor's snapshot
       // was just saved over those changes.
+      const publicPath = publicArticlePath(data);
+      const address = publicPath ? `作品地址：${publicPath}` : "该语言暂无公开网页地址。";
       const completion = replayed
-        ? `上次创建已确认。服务器返回的是当前版本，若曾在其他页面修改，请先核对再保存。作品地址：/articles/${data.slug}`
+        ? `上次创建已确认。服务器返回的是当前版本，若曾在其他页面修改，请先核对再保存。${address}`
         : currentArticle?.status === "published" && target === "draft"
           ? "作品已转为草稿，公开页面已不可访问；重新发布即可恢复同一地址。"
-          : `${data.status === "published" ? "作品已发布。" : "草稿已保存。"} 作品地址：/articles/${data.slug}`;
+          : `${data.status === "published" ? "作品已发布。" : "草稿已保存。"} ${address}`;
       setConfirmedReplay(replayed);
       setStatus(`${completion}${hasLaterEdits ? " 当前修改尚未保存，请再次保存或发布。" : hasOtherAction ? " 所选操作尚未执行，请再次保存或发布。" : ""}`);
     } catch (caught) {
@@ -516,7 +528,14 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
     const currentArticle = article ?? created.current;
     const body = saveBody(draft, target, currentArticle);
     if (currentArticle) {
-      await performSave(target, currentArticle, body, null);
+      // A PUT to another locale upserts a translation of the same article; if
+      // that translation already exists it replaces its text. Never do that as
+      // a surprising consequence of changing a dropdown.
+      if (draft.locale !== currentArticle.locale) {
+        setLocaleChange({ target, article: currentArticle, body, locale: draft.locale });
+      } else {
+        await performSave(target, currentArticle, body, null);
+      }
       return;
     }
     if (!viewerId) { setError("无法确认当前登录账户，请重新载入写作台后再保存。"); return; }
@@ -559,8 +578,8 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
     if (!article) return;
     const confirmed = window.confirm(
       `删除《${article.title}》？\n\n`
-      + "作品会立刻从写作台移除，已发布的页面也会立即不可访问。\n"
-      + "删除后可在回收站还原，但到期自动清除时，这篇作品下的评论会一起消失。",
+      + "作品的所有语言版本会立刻从写作台移除，已发布的页面也会立即不可访问。\n"
+      + "删除后可在回收站还原所有版本，但到期自动清除时，这篇作品下的评论会一起消失。",
     );
     if (!confirmed) return;
     setBusy(true);
@@ -587,6 +606,7 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
     return <p className="nw-auth-error" role="alert">此作品含有当前编辑器尚不支持的内容块（例如带署名的引用）。没有修改任何内容；请先返回作品列表。</p>;
   }
 
+  const articlePublicPath = article ? publicArticlePath(article) : null;
   return (
     <section className="nw-article-editor" aria-label="作品编辑器">
       <div className="nw-article-fields">
@@ -596,9 +616,9 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
         <p className="nw-field-note">作品地址（slug）由系统根据标题自动生成，无需填写。</p>
         <label>作品语言
           <select value={locale} onChange={(event) => { latest.current.locale = event.target.value; setLocale(event.target.value); }}>
-            {/* A stored locale that is no longer authorable stays selectable for
-                this work only, so editing cannot silently change it. */}
-            {retiredLocales[locale] ? <option value={locale}>{retiredLocales[locale]}</option> : null}
+            {/* Keep the stored retired option even while the author is trying
+                another selection, so they can return without losing edits. */}
+            {article && retiredLocales[article.locale] ? <option value={article.locale}>{retiredLocales[article.locale]}</option> : null}
             {authoringLocales.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
           </select>
         </label>
@@ -614,6 +634,7 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
             {workTypes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
           </select>
         </label>
+        {article ? <p className="nw-field-note">更改作品语言会写入该语言版本，已有版本可能被覆盖；发布状态和删除作用于所有版本。</p> : null}
         <label className="nw-field-wide">摘要
           <textarea value={summary} onChange={(event) => { latest.current.summary = event.target.value; setSummary(event.target.value); }} maxLength={2000} placeholder="留空则由系统摘取正文开头自动生成" />
         </label>
@@ -657,6 +678,19 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
         onCancel={() => setConfirmDiscard(false)}
         onSubmit={() => { clearPending(); setConfirmDiscard(false); setError(""); setSignInHelp(false); }}
       />
+      <PromptDialog
+        open={localeChange !== null}
+        title="保存到其他语言？"
+        description={`将内容保存到 ${localeChange?.locale ?? ""} 版本，不会删除当前版本；如果目标语言已有版本，它的标题和正文会被覆盖。发布状态对所有语言版本生效。`}
+        fields={[]}
+        submitLabel="确认保存"
+        onCancel={() => setLocaleChange(null)}
+        onSubmit={() => {
+          const change = localeChange;
+          setLocaleChange(null);
+          if (change) void performSave(change.target, change.article, change.body, null);
+        }}
+      />
       <div className="nw-authoring-actions">
         {article ? <button className="nw-btn" type="button" disabled={busy} onClick={() => void destroy()}>删除作品</button> : null}
         <button className="nw-btn" type="button" disabled={busy} onClick={() => void save(article?.status === "published" ? "publish" : "draft")}>{busy ? "保存中…" : article?.status === "published" ? "保存更新" : "保存草稿"}</button>
@@ -666,10 +700,10 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
             {/* Withdrawing a public page is one click and it takes the address
                 away from anyone who was reading it, so the desk asks first. */}
             <button className="nw-btn" type="button" disabled={busy} onClick={() => {
-              const confirmed = window.confirm(`转为草稿后，/articles/${article.slug} 将对读者不可访问（内容会保留在写作台）。确定继续？`);
+              const confirmed = window.confirm(`转为草稿后，${articlePublicPath ?? "该作品"} 的所有语言版本将对读者不可访问（内容会保留在写作台）。确定继续？`);
               if (confirmed) void save("draft");
             }}>转为草稿</button>
-            <a className="nw-btn" href={`/articles/${encodeURIComponent(article.slug)}`} target="_blank" rel="noreferrer">查看已发布作品 ↗</a>
+            {articlePublicPath ? <a className="nw-btn" href={articlePublicPath} target="_blank" rel="noreferrer">查看已发布作品 ↗</a> : <span className="nw-m">该语言暂无公开网页地址。</span>}
           </>
         ) : null}
       </div>
