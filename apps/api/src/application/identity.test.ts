@@ -10,6 +10,23 @@ import {
 } from "../domain/errors.ts";
 import { hashPassword, verifyPassword } from "../security/passwords.ts";
 
+test("login fails closed when the verified account state changes before session creation", async () => {
+  const password = "fixture-password-for-login";
+  const passwordHash = await hashPassword(password);
+  const email = "fixture-login@example.test";
+  let seenProof: unknown;
+  const service = createIdentityService({
+    env: { AUTH_JWT_SECRET: "fixture-secret-not-a-real-key-32-bytes", AUTH_JWT_ISSUER: "test", AUTH_JWT_AUDIENCE: "test" },
+    store: {
+      async consumeRateLimit() { return { allowed: true, resetAt: new Date(Date.now() + 60_000).toISOString() }; },
+      async findIdentityAccount() { return { userId: "fixture-user", passwordHash }; },
+      async createIdentitySession(_session, proof) { seenProof = proof; return false; },
+    },
+  });
+  await assert.rejects(service.login({ email, password }, "192.0.2.10"), IdentityAuthenticationError);
+  assert.deepEqual(seenProof, { email, passwordHash }, "the adapter must recheck the exact verified credentials");
+});
+
 test("identity maintenance is periodically invoked without exposing throttle subjects", async () => {
   const keys = [];
   let cleanups = 0;
@@ -107,6 +124,11 @@ function fakeIdentityStore({ accounts = [] as Array<{ userId: string; email: str
   const replacements: Array<{ userId: string; exceptSessionId: string | null }> = [];
   const passwords = new Map<string, string>();
   const verifiedAt = new Map<string, string>();
+  /** The proofs the service hands the store for its signed-in changes. */
+  const proofs: Array<{ operation: string; proof: unknown }> = [];
+  /** Runs inside the write, before the proof is compared: a competing reset. */
+  let duringReplace: (() => void) | null = null;
+  let duringEmailChange: (() => void) | null = null;
   /** Set to make the store refuse the replacement, the way a failed write does. */
   let refuseReplacement = false;
   const ended: string[] = [];
@@ -117,16 +139,20 @@ function fakeIdentityStore({ accounts = [] as Array<{ userId: string; email: str
     sessions.set(account.userId, ["session-1", "session-2"]);
   }
   const store = {
+    accounts,
     sent,
     tokens,
     revoked,
     revocations,
     replacements,
+    proofs,
     ended,
     used,
     passwords,
     verifiedAt,
     set refuseReplacement(value: boolean) { refuseReplacement = value; },
+    set duringReplace(value: (() => void) | null) { duringReplace = value; },
+    set duringEmailChange(value: (() => void) | null) { duringEmailChange = value; },
     async findIdentityAccount({ email }) {
       const account = accounts.find((entry) => entry.email === email);
       return account ? { userId: account.userId, passwordHash: passwords.get(account.userId) } : null;
@@ -152,8 +178,13 @@ function fakeIdentityStore({ accounts = [] as Array<{ userId: string; email: str
       if (!passwords.has(userId)) return null;
       return { userId, passwordHash: passwords.get(userId) };
     },
-    async setIdentityEmail({ userId, email }) {
+    async setIdentityEmail({ userId, email, proof = undefined }) {
+      proofs.push({ operation: "email", proof });
+      duringEmailChange?.();
+      duringEmailChange = null;
       if (!passwords.has(userId)) return false;
+      const current = accounts.find((entry) => entry.userId === userId);
+      if (proof && (!current || current.email !== proof.email || passwords.get(userId) !== proof.passwordHash)) return false;
       // Same rule as the real adapters: the address is unique, so a second
       // account cannot be moved onto one that is already taken.
       if (accounts.some((entry) => entry.userId !== userId && entry.email === email)) return false;
@@ -192,9 +223,18 @@ function fakeIdentityStore({ accounts = [] as Array<{ userId: string; email: str
      * setter to fall back on, which is the whole reason the service cannot be
      * left half-done by this call failing.
      */
-    async replaceIdentityPassword({ userId, passwordHash, exceptSessionId = null, consumedTokenHash = undefined }) {
+    async replaceIdentityPassword({ userId, passwordHash, exceptSessionId = null, consumedTokenHash = undefined, proof = undefined }) {
       replacements.push({ userId, exceptSessionId });
+      proofs.push({ operation: "password", proof });
+      duringReplace?.();
+      duringReplace = null;
       if (refuseReplacement) throw new Error("the store refused the replacement");
+      // Same rule as the real adapters: the state verified before the KDF has
+      // to still be the state on file when the write runs.
+      const account = accounts.find((entry) => entry.userId === userId);
+      if (proof && (!account || account.email !== proof.email || passwords.get(userId) !== proof.passwordHash)) {
+        return { updated: false, revokedSessions: 0 };
+      }
       if (consumedTokenHash !== undefined) {
         const token = tokens.get(consumedTokenHash);
         if (!token || token.userId !== userId || token.purpose !== "password_reset" || !token.consumedAt ||
@@ -395,6 +435,26 @@ test("a password change that the store cannot carry out is reported, not half ap
   assert.equal(store.passwords.get("user-1"), passwordHash, "and the old credential is what is still on file");
 });
 
+test("a password change that began before a reset cannot overwrite it", async () => {
+  const { store, service, currentPassword, passwordHash } = await changePasswordFixture();
+  // The reset commits while this change is hashing the new password: the old
+  // credential still verifies, and only the write can notice the difference.
+  const resetHash = await hashPassword("the-password-the-owner-reset-to");
+  store.duringReplace = () => { store.passwords.set("user-1", resetHash); };
+  await assert.rejects(service.changePassword({
+    userId: "user-1",
+    sessionId: "session-1",
+    body: { currentPassword, newPassword: "a-brand-new-password" },
+    ip: "192.0.2.10",
+  }), IdentityAuthenticationError);
+  assert.equal(store.passwords.get("user-1"), resetHash, "the owner's reset is what stays on file");
+  assert.ok(await verifyPassword("the-password-the-owner-reset-to", store.passwords.get("user-1") ?? null));
+  assert.equal(await verifyPassword("a-brand-new-password", store.passwords.get("user-1") ?? null), false);
+  assert.deepEqual(store.revocations, [], "the refused change signs nobody out");
+  assert.deepEqual(store.proofs, [{ operation: "password", proof: { email: "owner@example.test", passwordHash } }],
+    "the store is given exactly the state the service verified");
+});
+
 test("a wrong current password changes nothing and signs nobody out", async () => {
   const { store, service, currentPassword, passwordHash } = await changePasswordFixture();
   await assert.rejects(service.changePassword({
@@ -523,6 +583,45 @@ test("a wrong password leaves the address alone, and an address that is taken is
     ip: "192.0.2.10",
   }), IdentityInputError);
   assert.deepEqual(store.revocations, []);
+});
+
+test("an address change that began before a reset cannot move the account", async () => {
+  const { store, service, currentPassword } = await changeEmailFixture();
+  const resetHash = await hashPassword("the-password-the-owner-reset-to");
+  store.duringEmailChange = () => { store.passwords.set("user-1", resetHash); };
+  await assert.rejects(service.changeEmail({
+    userId: "user-1",
+    body: { password: currentPassword, email: "moved@example.test" },
+    ip: "192.0.2.10",
+  }), IdentityAuthenticationError, "a stale proof asks the visitor to sign in again, it does not claim a conflict");
+  assert.equal((await service.describeAccount("user-1")).email, "owner@example.test",
+    "the address does not move after the credential it was proved with has been replaced");
+});
+
+test("an address change cannot overwrite an address the account moved to meanwhile", async () => {
+  const { store, service, currentPassword } = await changeEmailFixture();
+  // Another tab of the same owner moved the account while this request was
+  // hashing the password: the proof names the address the account had then.
+  store.duringEmailChange = () => { store.accounts.find((entry) => entry.userId === "user-1").email = "owner-moved@example.test"; };
+  await assert.rejects(service.changeEmail({
+    userId: "user-1",
+    body: { password: currentPassword, email: "moved@example.test" },
+    ip: "192.0.2.10",
+  }), IdentityAuthenticationError);
+  assert.equal((await service.describeAccount("user-1")).email, "owner-moved@example.test");
+});
+
+test("an address change is only ever made with the state it verified", async () => {
+  const { store, service, currentPassword, secondEmail } = await changeEmailFixture();
+  await assert.rejects(service.changeEmail({
+    userId: "user-1",
+    body: { password: currentPassword, email: secondEmail },
+    ip: "192.0.2.10",
+  }), IdentityConflictError);
+  assert.equal(store.proofs.at(-1)?.operation, "email");
+  assert.deepEqual(store.proofs.at(-1)?.proof, {
+    email: "owner@example.test", passwordHash: store.passwords.get("user-1"),
+  }, "the refusal re-reads the account before calling it a conflict, and the proof is what it verified");
 });
 
 test("asking for the address the account already has is not a change, and keeps its proof", async () => {

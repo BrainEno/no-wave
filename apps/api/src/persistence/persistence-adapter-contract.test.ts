@@ -1471,7 +1471,7 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       refreshHash: "0".repeat(64), expiresAt: hour,
       accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
     };
-    await runtime.store.createIdentitySession(secondSession);
+    assert.equal(await runtime.store.createIdentitySession(secondSession, { email, passwordHash: "hash-before" }), true);
 
     const resetHash = "b".repeat(64);
     await runtime.store.issueIdentityToken({ userId, purpose: "password_reset", email, tokenHash: resetHash, expiresAt: hour });
@@ -1574,6 +1574,67 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       "an account that does not exist cannot be moved either");
   });
 
+  test(`${adapterName}: a session requires the current account and the verified credentials`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID(), userId = `identity-login-${suffix}`, email = `identity-login-${suffix}@example.test`;
+    const expiry = new Date(Date.now() + 3_600_000).toISOString();
+    const makeSession = () => ({ userId, sessionId: randomUUID(), accessTokenId: randomUUID(),
+      refreshHash: randomBytes(32).toString("hex"), expiresAt: expiry, accessExpiresAt: expiry });
+    const registered = makeSession(), late = makeSession();
+    const oldProof = { email, passwordHash: "fixture-before" };
+    assert.equal(await runtime.store.createIdentityAccount({ userId, ...oldProof, session: registered }), true);
+    for (const proof of [undefined, null, { email }, { ...oldProof, email: `wrong-${email}` }, { ...oldProof, passwordHash: "wrong" }]) {
+      assert.equal(await runtime.store.createIdentitySession(late, proof), false);
+    }
+    assert.equal(await runtime.store.createIdentitySession({ ...late, userId: `missing-${suffix}` }, oldProof), false);
+    assert.equal(await runtime.store.createIdentitySession(late, oldProof), true);
+    assert.deepEqual(await runtime.store.replaceIdentityPassword({ userId, passwordHash: "fixture-after" }), { updated: true, revokedSessions: 2 });
+    const afterPassword = makeSession(), newProof = { email, passwordHash: "fixture-after" };
+    assert.equal(await runtime.store.createIdentitySession(afterPassword, oldProof), false);
+    assert.equal(await runtime.store.createIdentitySession(afterPassword, newProof), true);
+    const moved = `moved-${email}`, afterEmail = makeSession();
+    assert.equal(await runtime.store.setIdentityEmail({ userId, email: moved }), true);
+    assert.equal(await runtime.store.createIdentitySession(afterEmail, newProof), false);
+    assert.equal(await runtime.store.createIdentitySession(afterEmail, { ...newProof, email: moved }), true);
+    assert.deepEqual((await runtime.store.listIdentitySessions({ userId, limit: 50 })).map((s) => s.sessionId).sort(),
+      [afterPassword.sessionId, afterEmail.sessionId].sort());
+  });
+
+  test(`${adapterName}: a signed-in change is refused once its proof no longer matches`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID(), userId = `identity-proof-${suffix}`, email = `identity-proof-${suffix}@example.test`;
+    const expiry = new Date(Date.now() + 3_600_000).toISOString();
+    const makeSession = () => ({ userId, sessionId: randomUUID(), accessTokenId: randomUUID(),
+      refreshHash: randomBytes(32).toString("hex"), expiresAt: expiry, accessExpiresAt: expiry });
+    const first = makeSession();
+    assert.equal(await runtime.store.createIdentityAccount({ userId, email, passwordHash: "hash-before", session: first }), true);
+    const verified = { email, passwordHash: "hash-before" }, stale = { ...verified, passwordHash: "hash-superseded" };
+    // A proof for an account that never had these facts is refused, including
+    // one for an address this account no longer (or never did) hold.
+    assert.deepEqual(await runtime.store.replaceIdentityPassword({ userId, passwordHash: "hash-from-stale", proof: stale }), { updated: false, revokedSessions: 0 });
+    assert.equal(await runtime.store.setIdentityEmail({ userId, email: `stale-${email}`, proof: { ...verified, email: `old-${email}` } }), false);
+    assert.equal(await runtime.store.setIdentityEmail({ userId: `missing-${suffix}`, email: `nowhere-${suffix}@example.test`, proof: verified }), false);
+    assert.equal((await runtime.store.findIdentityAccountByUserId({ userId }))?.email, email, "a refused move leaves the address alone");
+    assert.deepEqual((await runtime.store.findIdentityCredentials({ userId }))?.passwordHash, "hash-before");
+    // The reset lands, as it would between the verification and the stale write.
+    assert.deepEqual(await runtime.store.replaceIdentityPassword({ userId, passwordHash: "hash-reset" }), { updated: true, revokedSessions: 1 });
+    const afterReset = makeSession();
+    assert.equal(await runtime.store.createIdentitySession(afterReset, { email, passwordHash: "hash-reset" }), true);
+    assert.deepEqual(await runtime.store.replaceIdentityPassword({ userId, passwordHash: "hash-stale", exceptSessionId: afterReset.sessionId, proof: verified }),
+      { updated: false, revokedSessions: 0 }, "the older verified password cannot be written over the reset");
+    assert.equal(await runtime.store.setIdentityEmail({ userId, email: `stale-${email}`, proof: verified }), false,
+      "nor can the address move on a proof the reset invalidated");
+    assert.equal((await runtime.store.findIdentityCredentials({ userId }))?.passwordHash, "hash-reset");
+    assert.equal((await runtime.store.findIdentityAccountByUserId({ userId }))?.email, email);
+    assert.deepEqual((await runtime.store.listIdentitySessions({ userId, limit: 50 })).map((s) => s.sessionId), [afterReset.sessionId],
+      "the refused change revokes nothing");
+    // The current state is accepted, so the guard is not simply refusing.
+    assert.deepEqual(await runtime.store.replaceIdentityPassword({
+      userId, passwordHash: "hash-next", exceptSessionId: afterReset.sessionId, proof: { email, passwordHash: "hash-reset" },
+    }), { updated: true, revokedSessions: 0 });
+    assert.equal(await runtime.store.setIdentityEmail({ userId, email: `moved-${email}`, proof: { email, passwordHash: "hash-next" } }), true);
+  });
+
   test(`${adapterName}: a password replacement that cannot be written leaves every session as it was`, options, async () => {
     const runtime = await fixture();
     const suffix = randomUUID();
@@ -1596,7 +1657,7 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       refreshHash: otherRefresh, expiresAt: hour,
       accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
     };
-    await runtime.store.createIdentitySession(secondSession);
+    assert.equal(await runtime.store.createIdentitySession(secondSession, { email, passwordHash: "hash-before" }), true);
 
     /**
      * The point of the whole method: the sessions and the credential are two
@@ -1669,9 +1730,9 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
     const phone = makeSession();
     const laptop = makeSession();
     assert.equal(await runtime.store.createIdentityAccount({ userId, email, passwordHash: "hash-before", session: phone }), true);
-    await runtime.store.createIdentitySession(laptop);
+    assert.equal(await runtime.store.createIdentitySession(laptop, { email, passwordHash: "hash-before" }), true);
     // A session that already expired is not a device anybody can be asked about.
-    await runtime.store.createIdentitySession({ ...makeSession(), expiresAt: new Date(Date.now() - 1000).toISOString() });
+    assert.equal(await runtime.store.createIdentitySession({ ...makeSession(), expiresAt: new Date(Date.now() - 1000).toISOString() }, { email, passwordHash: "hash-before" }), true);
 
     const listed = await runtime.store.listIdentitySessions({ userId, limit: 50 });
     assert.deepEqual(listed.map((session) => session.sessionId).sort(), [phone.sessionId, laptop.sessionId].sort(),
@@ -1712,7 +1773,7 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
 
     // Ending every other device keeps the one that asked.
     const third = makeSession();
-    await runtime.store.createIdentitySession(third);
+    assert.equal(await runtime.store.createIdentitySession(third, { email, passwordHash: "hash-before" }), true);
     assert.equal(await runtime.store.revokeIdentitySessions({ userId, exceptSessionId: phone.sessionId }), 1,
       "the new device goes, the one that asked stays");
     const thirdAfter = await runtime.store.rotateIdentityRefresh({
@@ -1729,7 +1790,7 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
     assert.deepEqual(await runtime.store.listIdentitySessions({ userId, limit: 50 }), []);
 
     // The list is bounded, because it is rendered as a choice.
-    for (let index = 0; index < 3; index += 1) await runtime.store.createIdentitySession(makeSession());
+    for (let index = 0; index < 3; index += 1) assert.equal(await runtime.store.createIdentitySession(makeSession(), { email, passwordHash: "hash-before" }), true);
     assert.equal((await runtime.store.listIdentitySessions({ userId, limit: 2 })).length, 2);
     // ...and another account's devices are never in it.
     const otherUserId = `identity-other-${suffix}`;

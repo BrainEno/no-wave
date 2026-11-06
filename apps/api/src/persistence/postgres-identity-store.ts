@@ -105,9 +105,16 @@ export function createPostgresIdentityStore(sql: PgDatabase) {
       const rows = await sql.unsafe("SELECT user_id, password_hash FROM auth_accounts WHERE email = $1", [email]);
       return rows[0] ? { userId: rows[0].user_id, passwordHash: rows[0].password_hash } : null;
     },
-    async createIdentitySession(session) {
+    async createIdentitySession(session, proof) {
+      if (!proof || typeof proof.email !== "string" || typeof proof.passwordHash !== "string") return false;
       return sql.begin(async (tx) => {
         const transactionId = createMigrationTransactionId();
+        // Match password replacement's account → session lock order. The row
+        // lock protects the check until both the session and its capture commit.
+        // Compare in memory so the verified hash is never a SQL parameter.
+        const accounts = await tx.unsafe("SELECT email, password_hash FROM auth_accounts WHERE user_id = $1 FOR UPDATE", [session.userId]);
+        const account = accounts[0];
+        if (!account || account.email !== proof.email || account.password_hash !== proof.passwordHash) return false;
         await insertSession(tx, session);
         await captureSessionSnapshot(tx, transactionId, session.sessionId);
         return true;
@@ -258,10 +265,19 @@ export function createPostgresIdentityStore(sql: PgDatabase) {
      * would leave a new credential behind with the old sessions still live,
      * which is the one state a password change exists to prevent.
      */
-    async replaceIdentityPassword({ userId, passwordHash, exceptSessionId = null, consumedTokenHash }) {
+    async replaceIdentityPassword({ userId, passwordHash, exceptSessionId = null, consumedTokenHash, proof }) {
       return sql.begin(async (tx) => {
         const transactionId = createMigrationTransactionId();
-        if (consumedTokenHash !== undefined) {
+        if (proof) {
+          // The signed-in change verified these facts before the KDF ran. Hold
+          // the account row and compare them here, so a reset that committed
+          // meanwhile cannot be overwritten by the older request.
+          const accounts = await tx.unsafe("SELECT email, password_hash FROM auth_accounts WHERE user_id = $1 FOR UPDATE", [userId]);
+          const account = accounts[0];
+          if (!account || account.email !== proof.email || account.password_hash !== proof.passwordHash) {
+            return { updated: false, revokedSessions: 0 };
+          }
+        } else if (consumedTokenHash !== undefined) {
           if (!(await hasConsumedTokenProof(tx, userId, consumedTokenHash, "password_reset"))) return { updated: false, revokedSessions: 0 };
         } else {
           // Keep account → session lock order consistent with recovery, and
@@ -385,10 +401,17 @@ export function createPostgresIdentityStore(sql: PgDatabase) {
      * through. `false` means "that address belongs to somebody else": the
      * caller has already established that this account exists.
      */
-    async setIdentityEmail({ userId, email }) {
+    async setIdentityEmail({ userId, email, proof }) {
       try {
         return await sql.begin(async (tx) => {
           const transactionId = createMigrationTransactionId();
+          if (proof) {
+            // Lock the account before comparing: the check and the write have
+            // to be one decision, or a reset landing between them is missed.
+            const accounts = await tx.unsafe("SELECT email, password_hash FROM auth_accounts WHERE user_id = $1 FOR UPDATE", [userId]);
+            const account = accounts[0];
+            if (!account || account.email !== proof.email || account.password_hash !== proof.passwordHash) return false;
+          }
           const rows = await tx.unsafe(
             `UPDATE auth_accounts SET email = $1, email_verified_at = NULL
              WHERE user_id = $2
