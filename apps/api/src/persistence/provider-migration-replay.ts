@@ -28,6 +28,7 @@ type JournalPort = {
 export type MigrationReplayTarget = JournalPort & {
   readonly provider: MigrationProvider;
   assertEmptyMediaBaseline(): Promise<void> | void;
+  assertEmptyIdentityBaseline(): Promise<void> | void;
   applyTransaction(changes: readonly MigrationChange[]): Promise<void> | void;
 };
 
@@ -80,7 +81,10 @@ export async function prepareMigrationReplayTarget(input: {
   // No coordinated snapshot/watermark import exists yet. Never certify an old
   // target merely because its session has a fresh identifier. The applier
   // repeats this check in the first target transaction to close the prepare gap.
-  if ((await input.targetJournal.getCheckpoint(input.sessionId)) === 0) await input.targetJournal.assertEmptyMediaBaseline();
+  if ((await input.targetJournal.getCheckpoint(input.sessionId)) === 0) {
+    await input.targetJournal.assertEmptyMediaBaseline();
+    await input.targetJournal.assertEmptyIdentityBaseline();
+  }
   if (target.status === "prepared") {
     await input.targetJournal.transitionSession({
       sessionId: input.sessionId,

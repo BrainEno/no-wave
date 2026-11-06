@@ -30,8 +30,21 @@ export function createPostgresProviderMigrationReplayer(sql: PgDatabase) {
       EXISTS(SELECT 1 FROM media_assets) OR
       EXISTS(SELECT 1 FROM article_media_refs) OR
       EXISTS(SELECT 1 FROM article_translations) OR
+      EXISTS(SELECT 1 FROM featured_articles) OR
       EXISTS(SELECT 1 FROM user_profiles WHERE avatar_media_id IS NOT NULL OR lower(avatar_url) LIKE '%/media/%') AS populated`);
     if (row?.populated) throw new MigrationJournalError("UNVERIFIED_MEDIA_BASELINE", "Replay requires an empty media baseline; existing snapshots need coordinated rebuilding and reconciliation.");
+  }
+
+  async function assertEmptyIdentityBaseline(executor: PgExecutor = sql): Promise<void> {
+    await assertForeignKeysEnabled(executor);
+    const [row] = await executor.unsafe<{ populated: boolean }>(`SELECT
+      EXISTS(SELECT 1 FROM auth_sessions) OR
+      EXISTS(SELECT 1 FROM auth_access_tokens) OR
+      EXISTS(SELECT 1 FROM auth_refresh_tokens) OR
+      EXISTS(SELECT 1 FROM auth_identity_tokens) OR
+      EXISTS(SELECT 1 FROM revoked_sessions) OR
+      EXISTS(SELECT 1 FROM auth_rate_limits) AS populated`);
+    if (row?.populated) throw new MigrationJournalError("UNVERIFIED_IDENTITY_BASELINE", "Replay requires an empty identity-token and session baseline; existing credentials need coordinated reconciliation.");
   }
 
   async function applyRow(tx: PgExecutor, change: MigrationChange): Promise<void> {
@@ -99,7 +112,10 @@ export function createPostgresProviderMigrationReplayer(sql: PgDatabase) {
       assertMigrationReplaySchema(session.schema_version);
       if (session.target_provider !== "postgres") throw new MigrationJournalError("REPLAY_PROVIDER_MISMATCH", "The session does not target this provider.");
       const [checkpoint] = await tx.unsafe("SELECT last_sequence FROM provider_migration_checkpoints WHERE session_id = $1", [first.sessionId]);
-      if (!checkpoint || Number(checkpoint.last_sequence) === 0) await assertEmptyMediaBaseline(tx);
+      if (!checkpoint || Number(checkpoint.last_sequence) === 0) {
+        await assertEmptyMediaBaseline(tx);
+        await assertEmptyIdentityBaseline(tx);
+      }
       for (const change of changes) {
         const applied = await journal.markAppliedInTransaction(tx, change);
         if (!applied.duplicate) await applyRow(tx, change);
@@ -115,6 +131,7 @@ export function createPostgresProviderMigrationReplayer(sql: PgDatabase) {
     getCheckpoint: journal.getCheckpoint,
     readChangeBatch: journal.readChangeBatch,
     assertEmptyMediaBaseline: () => assertEmptyMediaBaseline(),
+    assertEmptyIdentityBaseline: () => assertEmptyIdentityBaseline(),
     applyTransaction,
   });
 }

@@ -32,8 +32,21 @@ export function createSqliteProviderMigrationReplayer(db: SqliteReplayDatabase) 
       EXISTS(SELECT 1 FROM media_assets) OR
       EXISTS(SELECT 1 FROM article_media_refs) OR
       EXISTS(SELECT 1 FROM article_translations) OR
+      EXISTS(SELECT 1 FROM featured_articles) OR
       EXISTS(SELECT 1 FROM user_profiles WHERE avatar_media_id IS NOT NULL OR lower(avatar_url) LIKE '%/media/%') AS populated`).get();
     if (row?.populated) throw new MigrationJournalError("UNVERIFIED_MEDIA_BASELINE", "Replay requires an empty media baseline; existing snapshots need coordinated rebuilding and reconciliation.");
+  }
+
+  function assertEmptyIdentityBaseline(): void {
+    assertForeignKeysEnabled();
+    const row = db.prepare(`SELECT
+      EXISTS(SELECT 1 FROM auth_sessions) OR
+      EXISTS(SELECT 1 FROM auth_access_tokens) OR
+      EXISTS(SELECT 1 FROM auth_refresh_tokens) OR
+      EXISTS(SELECT 1 FROM auth_identity_tokens) OR
+      EXISTS(SELECT 1 FROM revoked_sessions) OR
+      EXISTS(SELECT 1 FROM auth_rate_limits) AS populated`).get();
+    if (row?.populated) throw new MigrationJournalError("UNVERIFIED_IDENTITY_BASELINE", "Replay requires an empty identity-token and session baseline; existing credentials need coordinated reconciliation.");
   }
 
   function applyRow(change: MigrationChange): void {
@@ -104,7 +117,10 @@ export function createSqliteProviderMigrationReplayer(db: SqliteReplayDatabase) 
       const session = journal.getSession(first.sessionId);
       assertMigrationReplaySchema(session.schemaVersion);
       if (session.targetProvider !== "sqlite") throw new MigrationJournalError("REPLAY_PROVIDER_MISMATCH", "The session does not target this provider.");
-      if (journal.getCheckpoint(first.sessionId) === 0) assertEmptyMediaBaseline();
+      if (journal.getCheckpoint(first.sessionId) === 0) {
+        assertEmptyMediaBaseline();
+        assertEmptyIdentityBaseline();
+      }
       for (const change of changes) {
         const applied = journal.markAppliedInTransaction(db, change);
         if (!applied.duplicate) applyRow(change);
@@ -124,6 +140,7 @@ export function createSqliteProviderMigrationReplayer(db: SqliteReplayDatabase) 
     getCheckpoint: journal.getCheckpoint,
     readChangeBatch: journal.readChangeBatch,
     assertEmptyMediaBaseline,
+    assertEmptyIdentityBaseline,
     applyTransaction,
   });
 }

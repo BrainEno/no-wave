@@ -15,6 +15,10 @@ import { ARTICLE_MEDIA_REFS_SNAPSHOT, createMigrationTransactionId } from "./pro
 import type { PostgresStoreContext } from "./postgres-shared.ts";
 import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
 
+// A two-integer advisory-lock namespace, separate from the migration runner's
+// bigint lock. The other key is the target schema, so shelves do not interact.
+const FEATURED_SHELF_LOCK = 0x4e575348;
+
 export function createPostgresArticleStore(ctx: PostgresStoreContext) {
   const { sql, captureChanges } = ctx;
   return Object.freeze({
@@ -519,6 +523,9 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
       }
       await sql.begin(async (tx) => {
         const transactionId = createMigrationTransactionId();
+        // Lock even an empty shelf. Without a shared lock two replacements can
+        // both observe no rows and commit a merged list that neither editor sent.
+        await tx.unsafe("SELECT pg_advisory_xact_lock(hashtext(current_schema()), $1::integer)", [FEATURED_SHELF_LOCK]);
         // A draft or a deleted work on the public shelf is a promise the reader
         // cannot collect, so the whole write is refused rather than half applied:
         // a shelf that silently dropped two of the editor's picks is worse than

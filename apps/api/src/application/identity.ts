@@ -113,6 +113,8 @@ export type IdentityStore = {
    */
   replaceIdentityPassword(input: {
     userId: string; passwordHash: string; exceptSessionId?: string | null;
+    /** For recovery, require the consumed proof still to belong to this address. */
+    consumedTokenHash?: string;
   }): Promise<{ updated: boolean; revokedSessions: number }>;
   /**
    * Move an account to another address, and drop its proof of the old one.
@@ -133,7 +135,7 @@ export type IdentityStore = {
   revokeIdentitySession(input: { userId: string; sessionId: string }): Promise<boolean>;
   /** End every live session of one account except `exceptSessionId`; returns how many. */
   revokeIdentitySessions(input: { userId: string; exceptSessionId?: string | null }): Promise<number>;
-  markIdentityEmailVerified(input: { userId: string; verifiedAt: string }): Promise<boolean>;
+  markIdentityEmailVerified(input: { userId: string; verifiedAt: string; consumedTokenHash?: string }): Promise<boolean>;
   findIdentityAccountByUserId(input: { userId: string }): Promise<{ userId: string; email: string; emailVerifiedAt: string | null } | null>;
   pruneExpiredIdentityState(): Promise<unknown>;
 };
@@ -345,11 +347,11 @@ export function createIdentityService({ store, env, mailer = null, onMailDeliver
       const account = await store.findIdentityAccount({ email });
       if (account) {
         const token = randomToken();
-        await store.issueIdentityToken({
+        const issued = await store.issueIdentityToken({
           userId: account.userId, purpose: "password_reset", email,
           tokenHash: tokenHash(token), expiresAt: timestamp(Math.floor(Date.now() / 1000) + RESET_TOKEN_LIFETIME_SECONDS),
         });
-        await deliver({
+        if (issued) await deliver({
           purpose: "password_reset",
           to: email,
           token,
@@ -368,13 +370,14 @@ export function createIdentityService({ store, env, mailer = null, onMailDeliver
       const config = configuration(env);
       await consume("reset-password:ip", ip, 20, WINDOW_SECONDS, config.secret);
       await consume("reset-password:token", tokenHash(token), 5, WINDOW_SECONDS, config.secret);
-      const consumed = await store.consumeIdentityToken({ tokenHash: tokenHash(token), purpose: "password_reset" });
+      const consumedTokenHash = tokenHash(token);
+      const consumed = await store.consumeIdentityToken({ tokenHash: consumedTokenHash, purpose: "password_reset" });
       if (!consumed) throw new IdentityAuthenticationError();
       const passwordHash = await hashPassword(password);
-      // Every device signs out, and it happens in the same transaction as the
-      // new credential: a reset that wrote the hash and then failed to revoke
-      // would leave the stolen session holding a working refresh token.
-      await store.replaceIdentityPassword({ userId: consumed.userId, passwordHash, exceptSessionId: null });
+      // Recheck the consumed proof inside the password/revocation transaction:
+      // an address change or a newer link may invalidate it while hashing.
+      const replacement = await store.replaceIdentityPassword({ userId: consumed.userId, passwordHash, exceptSessionId: null, consumedTokenHash });
+      if (!replacement.updated) throw new IdentityAuthenticationError();
       return { ok: true };
     },
     /**
@@ -542,11 +545,11 @@ export function createIdentityService({ store, env, mailer = null, onMailDeliver
       if (!account) throw new IdentityAuthenticationError();
       if (account.emailVerifiedAt) return { ok: true, alreadyVerified: true };
       const token = randomToken();
-      await store.issueIdentityToken({
+      const issued = await store.issueIdentityToken({
         userId, purpose: "email_verification", email: account.email,
         tokenHash: tokenHash(token), expiresAt: timestamp(Math.floor(Date.now() / 1000) + VERIFICATION_TOKEN_LIFETIME_SECONDS),
       });
-      await deliver({
+      if (issued) await deliver({
         purpose: "email_verification",
         to: account.email,
         token,
@@ -560,9 +563,12 @@ export function createIdentityService({ store, env, mailer = null, onMailDeliver
       const token = tokenInput(body.token);
       const config = configuration(env);
       await consume("verify-email:ip", ip, 30, WINDOW_SECONDS, config.secret);
-      const consumed = await store.consumeIdentityToken({ tokenHash: tokenHash(token), purpose: "email_verification" });
+      const consumedTokenHash = tokenHash(token);
+      const consumed = await store.consumeIdentityToken({ tokenHash: consumedTokenHash, purpose: "email_verification" });
       if (!consumed) throw new IdentityAuthenticationError();
-      await store.markIdentityEmailVerified({ userId: consumed.userId, verifiedAt: timestamp(Math.floor(Date.now() / 1000)) });
+      const verified = await store.markIdentityEmailVerified({ userId: consumed.userId,
+        verifiedAt: timestamp(Math.floor(Date.now() / 1000)), consumedTokenHash });
+      if (!verified) throw new IdentityAuthenticationError();
       return { ok: true };
     },
     /**
