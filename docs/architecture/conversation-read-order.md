@@ -58,10 +58,12 @@ This is **not a rolling/mixed-version migration**:
    membership backfill and index creation, and monitor disk space and backups.
 4. Do not resume an old provider snapshot or pre-upgrade journal tail. The
    replayers reject old conversation/message snapshots that lack the sequence
-   fields rather than silently dropping unread state. Take a fresh,
-   version-matched snapshot/session after migration. Conversation counter,
-   message, outbox and member-watermark changes are captured transactionally for
-   new sessions; cross-provider hot cutover remains unimplemented. The journal
+   fields rather than silently dropping unread state. A fresh, coordinated and
+   version-matched snapshot/session is required, but the current replayers only
+   accept an [empty media baseline](provider-migration-media-references.md); a
+   general snapshot importer and watermark protocol are not implemented.
+   Conversation counter, message, outbox and member-watermark changes are captured
+   transactionally for new sessions; cross-provider hot cutover remains unimplemented. The journal
    contains private message bodies and their user-supplied idempotency keys (now
    included in PostgreSQL capture too), as well as credential-sensitive identity
    snapshots. Restrict access and retention accordingly; never log these rows.

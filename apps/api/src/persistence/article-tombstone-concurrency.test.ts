@@ -7,11 +7,12 @@ import test, { after, before, type TestContext } from "node:test";
 import { Worker } from "node:worker_threads";
 import { ArticleNotFoundError, IdempotencyConflictError } from "../domain/errors.ts";
 import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
-import { runMigrations } from "./migrate.ts";
-import { createPostgresClient, createPostgresStore } from "./postgres.ts";
+import { createPostgresStore } from "./postgres.ts";
+import { createIsolatedPostgresTestSchema } from "./test-support/isolated-postgres-schema.ts";
 import type { PgDatabase, PgRow, PgTransaction } from "./postgres-driver.ts";
 import { createPostgresProviderMigrationJournal } from "./postgres-provider-migration-journal.ts";
 import { createPostgresProviderMigrationReplayer } from "./postgres-provider-migration-replayer.ts";
+import { MIGRATION_REPLAY_SCHEMA_VERSION } from "./provider-migration-journal.ts";
 import { prepareMigrationReplayTarget, replayNextMigrationBatch } from "./provider-migration-replay.ts";
 import { prepareMigrationRowPayload } from "./provider-migration-row-applier.ts";
 import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
@@ -29,14 +30,15 @@ const sweepAt = "2000-02-01T00:00:00.000Z";
 const commentText = "A reader's words must survive a winning restore.";
 let sql: PgDatabase;
 let store: TypedPersistenceAdapterContract;
+let postgresFixture: Awaited<ReturnType<typeof createIsolatedPostgresTestSchema>>;
 
 before(async () => {
   if (!connectionString) return;
-  sql = await createPostgresClient({ connectionString, max: 8 });
-  await runMigrations(sql);
+  postgresFixture = await createIsolatedPostgresTestSchema(connectionString);
+  sql = postgresFixture.sql;
   store = createPostgresStore(sql);
 });
-after(async () => { if (sql) await sql.end({ timeout: 5 }); });
+after(async () => { if (postgresFixture) await postgresFixture.cleanup(); });
 
 function deferred<T = void>() {
   let resolve!: (value: T) => void;
@@ -136,7 +138,7 @@ async function fixture(t: TestContext) {
     await sql.unsafe("DELETE FROM notifications WHERE user_id = $1", [author]);
     await sql.unsafe("DELETE FROM articles WHERE author_id = $1", [author]);
   });
-  await journal.createSession({ sessionId, sourceProvider: "postgres", targetProvider: "sqlite", schemaVersion: "integration-v1" });
+  await journal.createSession({ sessionId, sourceProvider: "postgres", targetProvider: "sqlite", schemaVersion: MIGRATION_REPLAY_SCHEMA_VERSION });
   assert.equal(await journal.transitionSession({ sessionId, expectedStatus: "prepared", nextStatus: "recording" }), true);
   const article = await store.createArticle({
     authorId: author, slug, title: "A work to keep", locale: "zh-CN", publish: true,
@@ -305,7 +307,7 @@ for (const sourceProvider of ["sqlite", "postgres"] as const) {
     const targetStore = sourceProvider === "sqlite" ? store : sqliteStore;
     const sourceJournal = sourceProvider === "sqlite" ? createSqliteProviderMigrationJournal(db) : createPostgresProviderMigrationJournal(sql);
     const target = sourceProvider === "sqlite" ? createPostgresProviderMigrationReplayer(sql) : createSqliteProviderMigrationReplayer(db);
-    await sourceJournal.createSession({ sessionId, sourceProvider, targetProvider, schemaVersion: "integration-v1" });
+    await sourceJournal.createSession({ sessionId, sourceProvider, targetProvider, schemaVersion: MIGRATION_REPLAY_SCHEMA_VERSION });
     await sourceJournal.transitionSession({ sessionId, expectedStatus: "prepared", nextStatus: "recording" });
     const input = {
       authorId: author, slug: `replay-${suffix}`, title: "Idempotent work", locale: "zh-CN",
@@ -451,7 +453,7 @@ for (const [firstOperation, secondOperation] of [["restore", "purge"], ["purge",
     try {
       await runSqliteMigrations(db);
       const sqliteStore = createSqliteStore(db), journal = createSqliteProviderMigrationJournal(db);
-      journal.createSession({ sessionId, sourceProvider: "sqlite", targetProvider: "postgres", schemaVersion: "integration-v1" });
+      journal.createSession({ sessionId, sourceProvider: "sqlite", targetProvider: "postgres", schemaVersion: MIGRATION_REPLAY_SCHEMA_VERSION });
       journal.transitionSession({ sessionId, expectedStatus: "prepared", nextStatus: "recording" });
       const slug = `sqlite-race-${suffix}`;
       const article = await sqliteStore.createArticle({
@@ -559,7 +561,7 @@ test("SQLite: a failed purge commit rolls back article, comments, and journal to
     await runSqliteMigrations(db);
     const sqliteStore = createSqliteStore(db), journal = createSqliteProviderMigrationJournal(db);
     const suffix = randomUUID(), author = `rollback-${suffix}`, sessionId = `rollback-${suffix}`, slug = `rollback-${suffix}`;
-    journal.createSession({ sessionId, sourceProvider: "sqlite", targetProvider: "postgres", schemaVersion: "integration-v1" });
+    journal.createSession({ sessionId, sourceProvider: "sqlite", targetProvider: "postgres", schemaVersion: MIGRATION_REPLAY_SCHEMA_VERSION });
     journal.transitionSession({ sessionId, expectedStatus: "prepared", nextStatus: "recording" });
     const article = await sqliteStore.createArticle({
       authorId: author, slug, title: "A work to keep", locale: "zh-CN", publish: true,

@@ -4,9 +4,11 @@ import test, { after, before } from "node:test";
 import { createPostgresClient, createPostgresStore } from "./postgres.ts";
 import { createPostgresIdentityStore } from "./postgres-identity-store.ts";
 import { createPostgresProviderMigrationReplayer } from "./postgres-provider-migration-replayer.ts";
+import { MIGRATION_REPLAY_SCHEMA_VERSION } from "./provider-migration-journal.ts";
 import { prepareMigrationReplayTarget, replayNextMigrationBatch } from "./provider-migration-replay.ts";
 import { runMigrations } from "./migrate.ts";
 import { createPostgresProviderMigrationJournal } from "./postgres-provider-migration-journal.ts";
+import { createIsolatedPostgresTestSchema } from "./test-support/isolated-postgres-schema.ts";
 
 const connectionString = process.env.TEST_DATABASE_URL;
 const options = { skip: !connectionString && "Set TEST_DATABASE_URL to run PostgreSQL provider-migration journal integration tests." };
@@ -83,17 +85,17 @@ test("PostgreSQL domain writes capture profile, taxonomy-independent notificatio
     const marked = await store.markNotificationRead({ notificationId: notification.id, actorId: userId });
     assert.ok(marked?.readAt);
 
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
     assert.equal(await identity.createIdentityAccount({
       userId, email: userId + "@example.test", passwordHash: "test-password-hash",
       session: {
         sessionId: identitySessionId, userId, accessTokenId: initialAccessTokenId,
-        refreshHash: initialRefreshHash, expiresAt, accessExpiresAt: new Date(Date.now() + 30 * 60 * 1000),
+        refreshHash: initialRefreshHash, expiresAt, accessExpiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
       },
     }), true);
     const rotated = await identity.rotateIdentityRefresh({
       refreshHash: initialRefreshHash, nextRefreshHash, accessTokenId: nextAccessTokenId,
-      issuedAt: new Date().toISOString(), accessExpiresAt: new Date(Date.now() + 30 * 60 * 1000),
+      issuedAt: new Date().toISOString(), accessExpiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
     });
     assert.equal(rotated.status, "rotated");
 
@@ -150,6 +152,11 @@ test("PostgreSQL domain writes capture profile, taxonomy-independent notificatio
 
 
 test("PostgreSQL migration replayer applies JSON snapshots and tombstones with a durable resumable checkpoint", options, async () => {
+  assert.ok(connectionString);
+  // A replay target must have an empty media baseline. Other integration tests
+  // intentionally retain business fixtures in public, so use an isolated schema.
+  const isolated = await createIsolatedPostgresTestSchema(connectionString);
+  const sql = isolated.sql;
   const suffix = randomUUID();
   const sessionId = "replay-postgres-" + suffix;
   const notificationId = randomUUID();
@@ -158,7 +165,7 @@ test("PostgreSQL migration replayer applies JSON snapshots and tombstones with a
   const journal = createPostgresProviderMigrationJournal(sql);
   const target = createPostgresProviderMigrationReplayer(sql);
   try {
-    await journal.createSession({ sessionId, sourceProvider: "sqlite", targetProvider: "postgres", schemaVersion: "replay-integration-v1" });
+    await journal.createSession({ sessionId, sourceProvider: "sqlite", targetProvider: "postgres", schemaVersion: MIGRATION_REPLAY_SCHEMA_VERSION });
     await journal.transitionSession({ sessionId, expectedStatus: "prepared", nextStatus: "recording" });
     await prepareMigrationReplayTarget({ sourceJournal: journal, targetJournal: target, sessionId, targetProvider: "postgres" });
 
@@ -200,9 +207,6 @@ test("PostgreSQL migration replayer applies JSON snapshots and tombstones with a
     const done = await replayNextMigrationBatch({ sourceJournal: journal, target, sessionId });
     assert.equal(done.appliedChanges, 0);
   } finally {
-    if (sql) {
-      await sql.unsafe("DELETE FROM notifications WHERE id = $1", [notificationId]);
-      await sql.unsafe("DELETE FROM provider_migration_sessions WHERE session_id = $1", [sessionId]);
-    }
+    await isolated.cleanup();
   }
 });

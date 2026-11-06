@@ -1,18 +1,18 @@
-import { MigrationJournalError, type MigrationProvider } from "./provider-migration-journal.ts";
+import { ARTICLE_MEDIA_REFS_SNAPSHOT, MigrationJournalError, type MigrationProvider } from "./provider-migration-journal.ts";
 
-type EntitySpec = { table: string; primaryKey: readonly string[]; columns: readonly string[]; jsonColumns?: readonly string[]; requiredColumns?: readonly string[] };
+type EntitySpec = { table: string; primaryKey: readonly string[]; columns: readonly string[]; jsonColumns?: readonly string[]; requiredColumns?: readonly string[]; requiredKeys?: readonly string[] };
 
 // Strict allowlist: journal data never supplies SQL identifiers. Keep this in sync
 // with the shared persistence schema contract for the SQLite and PostgreSQL providers.
 const entities: Record<string, EntitySpec> = {
   articles: { table: "articles", primaryKey: ["id"], columns: ["id", "author_id", "slug", "status", "work_type", "created_at", "updated_at", "published_at", "deleted_at", "idempotency_key_hash", "request_hash"] },
-  article_translations: { table: "article_translations", primaryKey: ["article_id", "locale"], columns: ["article_id", "locale", "title", "summary", "content_blocks", "content_blocks_version", "created_at", "updated_at"], jsonColumns: ["content_blocks"] },
+  article_translations: { table: "article_translations", primaryKey: ["article_id", "locale"], columns: ["article_id", "locale", "title", "summary", "content_blocks", "content_blocks_version", "created_at", "updated_at"], jsonColumns: ["content_blocks"], requiredColumns: ["content_blocks"] },
   article_likes: { table: "article_likes", primaryKey: ["article_id", "user_id"], columns: ["article_id", "user_id", "created_at"] },
   article_comments: { table: "article_comments", primaryKey: ["id"], columns: ["id", "article_id", "author_id", "parent_comment_id", "content", "content_blocks", "content_blocks_version", "idempotency_key_hash", "request_hash", "created_at", "updated_at"], jsonColumns: ["content_blocks"] },
   taxonomies: { table: "taxonomies", primaryKey: ["id"], columns: ["id", "kind", "slug", "created_by", "created_at"] },
   taxonomy_translations: { table: "taxonomy_translations", primaryKey: ["taxonomy_id", "locale"], columns: ["taxonomy_id", "locale", "name", "description", "created_at", "updated_at"] },
   article_taxonomies: { table: "article_taxonomies", primaryKey: ["article_id", "taxonomy_id"], columns: ["article_id", "taxonomy_id", "created_at"] },
-  user_profiles: { table: "user_profiles", primaryKey: ["user_id"], columns: ["user_id", "avatar_url", "website_url", "created_at", "updated_at"] },
+  user_profiles: { table: "user_profiles", primaryKey: ["user_id"], columns: ["user_id", "avatar_url", "avatar_media_id", "role", "website_url", "created_at", "updated_at"], requiredColumns: ["role"], requiredKeys: ["avatar_url", "avatar_media_id"] },
   user_profile_translations: { table: "user_profile_translations", primaryKey: ["user_id", "locale"], columns: ["user_id", "locale", "display_name", "bio", "created_at", "updated_at"] },
   user_follows: { table: "user_follows", primaryKey: ["follower_id", "followed_id"], columns: ["follower_id", "followed_id", "created_at"] },
   conversations: { table: "conversations", primaryKey: ["id"], columns: ["id", "created_by", "created_at", "idempotency_key_hash", "request_hash", "last_message_sequence"], requiredColumns: ["last_message_sequence"] },
@@ -69,14 +69,30 @@ export function prepareMigrationRowPayload(
   entityType: string,
   entityId: string,
   input: Record<string, unknown>,
-): { spec: EntitySpec; primaryKeyValues: string[]; payload: Record<string, unknown>; columns: string[]; values: unknown[] } {
+): { spec: EntitySpec; primaryKeyValues: string[]; payload: Record<string, unknown>; columns: string[]; values: unknown[]; articleMediaRefs: string[] | null } {
   const spec = getMigrationEntitySpec(entityType);
-  const unknownColumns = Object.keys(input).filter(column => !spec.columns.includes(column));
+  const isTranslation = entityType === "article_translations";
+  const unknownColumns = Object.keys(input).filter(column => !spec.columns.includes(column) && !(isTranslation && column === ARTICLE_MEDIA_REFS_SNAPSHOT));
   if (unknownColumns.length) throw new MigrationJournalError("UNSUPPORTED_COLUMN", "Migration payload contains unsupported columns for " + entityType + ": " + unknownColumns.join(", ") + ".");
-  // Old journal rows do not carry the sequence watermark. Replaying them onto
-  // the new schema would silently corrupt unread state; require a new snapshot.
-  const missingRequired = (spec.requiredColumns ?? []).filter(column => input[column] == null);
-  if (missingRequired.length) throw new MigrationJournalError("INCOMPATIBLE_SCHEMA", "Migration snapshot lacks required read-order sequence fields for " + entityType + ": " + missingRequired.join(", ") + ".");
+  // Old snapshots cannot safely reconstruct unread state or avatar references.
+  // Nullable required keys are checked for presence rather than non-nullness.
+  const missingRequired = [
+    ...(spec.requiredColumns ?? []).filter(column => input[column] == null),
+    ...(spec.requiredKeys ?? []).filter(column => !Object.hasOwn(input, column)),
+  ];
+  if (missingRequired.length) throw new MigrationJournalError("INCOMPATIBLE_SCHEMA", "Migration snapshot has an incompatible schema for " + entityType + "; missing required fields: " + missingRequired.join(", ") + ".");
+  let articleMediaRefs: string[] | null = null;
+  if (isTranslation) {
+    const value = input[ARTICLE_MEDIA_REFS_SNAPSHOT];
+    if (!Array.isArray(value)) throw new MigrationJournalError("INCOMPATIBLE_SCHEMA", "Article translation lacks its complete media reference snapshot.");
+    if (value.some(id => typeof id !== "string" || !id.length || id.length > 512) || new Set(value).size !== value.length) {
+      throw new MigrationJournalError("INVALID_PAYLOAD", "Article media reference snapshot must contain distinct non-empty asset IDs.");
+    }
+    articleMediaRefs = value as string[];
+  }
+  if (entityType === "user_profiles" && input.avatar_media_id !== null && (typeof input.avatar_media_id !== "string" || !input.avatar_media_id.length)) {
+    throw new MigrationJournalError("INVALID_PAYLOAD", "Profile avatar media reference must be a non-empty asset ID or null.");
+  }
   const missingKeys = spec.primaryKey.filter(column => typeof input[column] !== "string" || !(input[column] as string).length);
   if (missingKeys.length) throw new MigrationJournalError("INVALID_ENTITY_KEY", "Upsert payload is missing primary-key field(s): " + missingKeys.join(", ") + ".");
   const primaryKeyValues = migrationEntityKeyValues(entityId, spec.primaryKey);
@@ -85,14 +101,14 @@ export function prepareMigrationRowPayload(
       throw new MigrationJournalError("ENTITY_KEY_MISMATCH", "Migration entity ID does not match the row's primary-key value.");
     }
   }
-  const columns = Object.keys(input).sort();
+  const columns = Object.keys(input).filter(column => !(isTranslation && column === ARTICLE_MEDIA_REFS_SNAPSHOT)).sort();
   const jsonColumns = new Set(spec.jsonColumns ?? []);
   const payload: Record<string, unknown> = {};
   for (const column of columns) {
     const value = input[column];
     payload[column] = jsonColumns.has(column) ? normalizeJson(value, targetProvider, entityType, column) : value;
   }
-  return { spec, primaryKeyValues, payload, columns, values: columns.map(column => payload[column]) };
+  return { spec, primaryKeyValues, payload, columns, values: columns.map(column => payload[column]), articleMediaRefs };
 }
 
 export function getSupportedMigrationEntityTypes(): string[] {

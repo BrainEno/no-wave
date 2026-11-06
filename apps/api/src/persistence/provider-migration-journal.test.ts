@@ -12,7 +12,7 @@ import { createSqliteIdentityStore } from "./sqlite-identity-store.ts";
 import { createSqliteOutboxStore } from "./sqlite-outbox-store.ts";
 import { createSqliteProviderMigrationReplayer } from "./sqlite-provider-migration-replayer.ts";
 import { prepareMigrationReplayTarget, replayNextMigrationBatch } from "./provider-migration-replay.ts";
-import { canonicalJson, validateMigrationChange } from "./provider-migration-journal.ts";
+import { ARTICLE_MEDIA_REFS_SNAPSHOT, MIGRATION_REPLAY_SCHEMA_VERSION, canonicalJson, validateMigrationChange } from "./provider-migration-journal.ts";
 
 function change(sessionId: string, changeId: string, transactionId: string, entityId: string, body: Record<string, unknown>) {
   return { sessionId, changeId, transactionId, entityType: "test-record", entityId, operation: "upsert" as const, payload: body };
@@ -147,7 +147,7 @@ test("SQLite domain writes atomically capture article, engagement, profile, conv
     await identities.createIdentityAccount({
       userId: "identity-capture-user", email: "identity-capture@example.test", passwordHash: "test-password-hash",
       session: {
-        sessionId: "identity-capture-session", accessTokenId: "identity-capture-access",
+        sessionId: "identity-capture-session", userId: "identity-capture-user", accessTokenId: "identity-capture-access",
         refreshHash: "a".repeat(64), expiresAt: new Date(Date.now() + 3600000).toISOString(),
         accessExpiresAt: new Date(Date.now() + 1800000).toISOString(),
       },
@@ -234,7 +234,7 @@ test("SQLite migration replayer applies source transactions atomically, resumes,
     const sourceJournal = createSqliteProviderMigrationJournal(sourceDb);
     const target = createSqliteProviderMigrationReplayer(targetDb);
     const sessionId = "sqlite-replay-transactional";
-    sourceJournal.createSession({ sessionId, sourceProvider: "postgres", targetProvider: "sqlite", schemaVersion: "replay-v1" });
+    sourceJournal.createSession({ sessionId, sourceProvider: "postgres", targetProvider: "sqlite", schemaVersion: MIGRATION_REPLAY_SCHEMA_VERSION });
     sourceJournal.transitionSession({ sessionId, expectedStatus: "prepared", nextStatus: "recording" });
     await prepareMigrationReplayTarget({ sourceJournal, targetJournal: target, sessionId, targetProvider: "sqlite" });
 
@@ -260,6 +260,7 @@ test("SQLite migration replayer applies source transactions atomically, resumes,
       article_id: "article-replay-1", locale: "en", title: "Replayable", summary: "Atomic row group",
       content_blocks: JSON.stringify([{ id: "block-1", type: "paragraph", text: "replayed" }]),
       content_blocks_version: 0, created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z",
+      [ARTICLE_MEDIA_REFS_SNAPSHOT]: [],
     });
     append("notification-upsert", "source-tx-notification", "notifications", "notification-replay-1", "upsert", {
       id: "notification-replay-1", user_id: "reader-1", event_key: "replay-event-1",
@@ -297,12 +298,14 @@ test("SQLite migration replayer applies source transactions atomically, resumes,
       appliedChanges: 2, transactions: 1, lastSequence: 2,
     });
     const translation = targetDb.prepare("SELECT content_blocks FROM article_translations WHERE article_id = ? AND locale = ?").get("article-replay-1", "en");
-    assert.deepEqual(JSON.parse(translation.content_blocks), [{ id: "block-1", type: "paragraph", text: "replayed" }]);
+    assert.equal(typeof translation.content_blocks, "string");
+    assert.deepEqual(JSON.parse(String(translation.content_blocks)), [{ id: "block-1", type: "paragraph", text: "replayed" }]);
 
     const second = await replayNextMigrationBatch({ sourceJournal, target, sessionId, limit: 1 });
     assert.equal(second.lastSequence, 3);
     const notificationPayload = targetDb.prepare("SELECT payload FROM notifications WHERE id = ?").get("notification-replay-1");
-    assert.deepEqual(JSON.parse(notificationPayload.payload), { type: "replay.test", nested: { ok: true } });
+    assert.equal(typeof notificationPayload.payload, "string");
+    assert.deepEqual(JSON.parse(String(notificationPayload.payload)), { type: "replay.test", nested: { ok: true } });
 
     const third = await replayNextMigrationBatch({ sourceJournal, target, sessionId, limit: 1 });
     assert.equal(third.lastSequence, 4);
@@ -310,7 +313,8 @@ test("SQLite migration replayer applies source transactions atomically, resumes,
     assert.equal(fourth.lastSequence, 5);
     assert.equal(targetDb.prepare("SELECT count(*) AS count FROM notifications WHERE id = ?").get("notification-replay-1").count, 0, "delete tombstone must remove the target row");
     const outboxPayload = targetDb.prepare("SELECT payload FROM outbox_events WHERE id = ?").get("outbox-replay-1");
-    assert.deepEqual(JSON.parse(outboxPayload.payload), { operation: "replay", nested: [1, 2] });
+    assert.equal(typeof outboxPayload.payload, "string");
+    assert.deepEqual(JSON.parse(String(outboxPayload.payload)), { operation: "replay", nested: [1, 2] });
 
     await target.applyTransaction(sourceChanges.slice(0, 2));
     assert.equal(await target.getCheckpoint(sessionId), 5, "replaying an already-applied transaction must be idempotent");

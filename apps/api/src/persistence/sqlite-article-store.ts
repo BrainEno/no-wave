@@ -5,7 +5,7 @@ import {
   articleIdempotencyReplayMatches,
 } from "../application/article-idempotency.ts";
 import { MEDIA_SRC_PATTERN } from "../application/media-assets.ts";
-import { createMigrationTransactionId } from "./provider-migration-journal.ts";
+import { ARTICLE_MEDIA_REFS_SNAPSHOT, createMigrationTransactionId } from "./provider-migration-journal.ts";
 import { createSqliteProviderMigrationCapture, migrationEntityKey } from "./sqlite-provider-migration-capture.ts";
 import {
   ArticleInputError,
@@ -188,7 +188,14 @@ export function createSqliteArticleStore(db) {
     const currentIds = new Set(links.map((link) => link.taxonomy_id));
     const changes = [];
     if (article) changes.push({ entityType: "articles", entityId: articleId, operation: "upsert", payload: article });
-    if (translation) changes.push({ entityType: "article_translations", entityId: migrationEntityKey(articleId, locale), operation: "upsert", payload: translation });
+    if (translation) {
+      // Capture the actual materialized set, including an explicit empty set,
+      // while the article write still owns the source transaction.
+      const mediaRefs = statement("SELECT asset_id FROM article_media_refs WHERE article_id = ? AND locale = ? ORDER BY asset_id").all(articleId, locale);
+      changes.push({ entityType: "article_translations", entityId: migrationEntityKey(articleId, locale), operation: "upsert", payload: {
+        ...translation, [ARTICLE_MEDIA_REFS_SNAPSHOT]: mediaRefs.map((row) => row.asset_id),
+      } });
+    }
     for (const link of links) changes.push({ entityType: "article_taxonomies", entityId: migrationEntityKey(articleId, link.taxonomy_id), operation: "upsert", payload: link });
     for (const link of previousLinks) if (!currentIds.has(link.taxonomy_id)) changes.push({ entityType: "article_taxonomies", entityId: migrationEntityKey(articleId, link.taxonomy_id), operation: "delete", payload: null });
     migrationCapture.captureInTransaction(db, transactionId, changes);
