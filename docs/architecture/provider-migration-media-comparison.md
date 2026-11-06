@@ -1,0 +1,36 @@
+# Read-only media comparison (diagnostic only)
+
+## Status and safety boundary
+
+This is a small **internal diagnostic**, not the reconciliation protocol or a cutover gate in [ADR 0010](decisions/0010-sqlite-first-and-online-provider-cutover.md). It compares three existing materialized datasets on a SQLite file and a PostgreSQL database. It does not write data, backfill, repair, delete objects, change a replay checkpoint, fence writers, promote a target, or authorize any production operation. [#217](https://github.com/BrainEno/no-wave/issues/217) remains open.
+
+Each database is read from its own consistent snapshot: SQLite is pinned first, then PostgreSQL. **They are not one globally synchronized snapshot.** Concurrent changes between the two pins can produce apparent differences even when both databases agreed before and after the change. Changes after a pin are invisible to that database's snapshot. Results have no source watermark and do not establish that the target is caught up. Consistent initial copying, complete write capture, an agreed watermark, fencing, cutover and rollback are still required; do not use a zero-difference result to enable deletion or promote a target.
+
+The diagnostic does **not** scan article bodies or derive references from avatar URLs. Identical materialized tables can be wrong on both sides; a missing reference on both sides produces zero differences. It does not verify foreign keys, schema/trigger integrity, account ownership, roles, identity, other data, media object bytes or object-store availability. In particular, it cannot establish that an asset is safe to delete. It also has not been qualified at production scale.
+
+## Scope and result
+
+`compareProviderMedia` in `apps/api/src/persistence/provider-migration-media-comparison.ts` is a server-side TypeScript function with no HTTP route, UI, CLI, or automatic invocation. A trusted test harness can call it with an existing SQLite filename, a dedicated `PgDatabase` pool, and `sourceProvider: "sqlite"` or `"postgres"`. The other provider is the target. Use it only on isolated, disposable fixtures for now; it is not a production runbook.
+
+The returned object is tagged `media-comparison-diagnostic` and contains aggregate counts only:
+
+| Dataset | Key and compared fields | Counts |
+| --- | --- | --- |
+| `assets` | Asset ID; owner, storage key, content type, byte size, width, height, SHA-256, creation instant | `equal`, `different`, `sourceOnly`, `targetOnly` |
+| `articleReferences` | Exact `(asset_id, article_id, locale)` in `article_media_refs`, including draft and tombstoned articles | `equal`, `sourceOnly`, `targetOnly` |
+| `avatars` | Profile user ID; exact `avatar_url` and `avatar_media_id` | `equal`, `different`, `sourceOnly`, `targetOnly` |
+
+A profile is included only if its URL or its materialized avatar ID is non-null. Thus a profile with neither is outside this media comparison even if it exists; an empty URL is non-null and is included. External URLs are compared as exact strings, not fetched. A matched key contributes once to either `equal` or `different`, regardless of how many fields differ. A key on only one side contributes to that side's count. Key identity is exact; reference triples are not collapsed across locales. SQLite text must be valid UTF-8 and PostgreSQL server and client encodings must be UTF-8. Ordering is bytewise and does not depend on a database's default locale.
+
+Creation times are compared as exact instants to microsecond precision, not as their textual timezone representation or a JavaScript `Date` truncated to milliseconds. Current PostgreSQL media migrations enforce milliseconds, but legacy SQLite values may contain sub-millisecond differences. Unsupported, invalid, out-of-range or more-than-six-digit timestamp representations fail closed instead of being silently treated as equal.
+
+This comparison reads asset metadata, IDs, reference keys and avatar URLs into process memory. **None is returned or deliberately logged:** no raw rows, content, IDs, hashes, storage keys, URLs, paths, SQL parameters, or underlying database error/stack/cause are included in the result or diagnostic errors. Even aggregate counts can reveal private operational information; restrict who can run or receive them and how long they are retained. The caller must use a dedicated least-privileged pool with driver query/debug/notice logging disabled or sanitized. Database/server audit logs, custom policies/functions and caller instrumentation are outside this function's control and can still expose sensitive information. Never expose the diagnostic through an unauthenticated route or log the returned counts indiscriminately.
+
+## Snapshot, failure and resource behavior
+
+- SQLite opens a **new read-only connection** to an existing file, enables `query_only`, starts a transaction and pins it with a table read; a missing file is not created. In-memory databases and `file:` URI filenames are rejected. The connection is rolled back and closed even on failure. Depending on SQLite/WAL configuration, normal read access can use shared-memory/sidecar files; read-only here refers to database data, not a promise of no filesystem activity.
+- PostgreSQL uses one `REPEATABLE READ READ ONLY` transaction. Before pinning its snapshot it takes `ACCESS SHARE` locks on all three tables; ordinary writes remain possible, but DDL and `TRUNCATE` cannot replace an unread table mid-scan. `row_security` is set to `off` locally so a role subject to row filtering fails rather than silently comparing a subset; this does not certify grants, policies or schema integrity. The transaction and its forward-only cursors end on completion or error. The caller owns and must close the pool and select the intended database and trusted schema/search path; their provenance is not checked.
+- The two sorted streams are merged in bounded pages. Defaults are 100 rows per page (maximum 500), at most 100,000 selected rows **per dataset per database**, and a 30-second best-effort elapsed limit (both limits can be lowered). Selected text fields over 16 KiB, malformed text or unsupported data fail the whole diagnostic. There is no partial result on a row, data, time or database error. Paging uses SQLite iteration and a PostgreSQL cursor, not private IDs as query parameters.
+- PostgreSQL statements have a transaction-local 10-second cap unless the connection already has a stricter statement timeout. The elapsed deadline is checked between operations; it cannot interrupt a synchronous SQLite query, an in-flight PostgreSQL statement, or time spent waiting to obtain a PostgreSQL pool connection. SQLite's busy wait is capped at two seconds. A database may still scan or sort many rows before producing a page, and long snapshots can hold locks or retain WAL/MVCC history. The row/page limits therefore do not make this safe for a busy or production-sized database.
+
+These limits are guardrails, not performance guarantees. `ProviderMediaComparisonError` reports fixed codes (`INVALID_OPTIONS`, `INVALID_DATA`, `ROW_LIMIT_EXCEEDED`, `TIME_LIMIT_EXCEEDED`, `DATABASE_READ_FAILED`) without preserving underlying errors. Investigate failures only in an appropriately protected environment; do not work around a limit by treating an incomplete run as a match.
