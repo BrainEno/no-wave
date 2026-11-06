@@ -40,6 +40,9 @@ async function sqliteFixture() {
     async setArticlePublishedAt(slug, publishedAt) {
       db.prepare("UPDATE articles SET published_at = ? WHERE slug = ?").run(publishedAt, slug);
     },
+    async setArticleDeletedAt(id, deletedAt) {
+      db.prepare("UPDATE articles SET deleted_at = ? WHERE id = ?").run(deletedAt, id);
+    },
     async setMediaAssetCreatedAt(id, createdAt) {
       db.prepare("UPDATE media_assets SET created_at = ? WHERE id = ?").run(createdAt, id);
     },
@@ -129,6 +132,9 @@ async function postgresFixture() {
     },
     async setArticlePublishedAt(slug, publishedAt) {
       await postgresSql.unsafe("UPDATE articles SET published_at = $1 WHERE slug = $2", [publishedAt, slug]);
+    },
+    async setArticleDeletedAt(id, deletedAt) {
+      await postgresSql.unsafe("UPDATE articles SET deleted_at = $1 WHERE id = $2", [deletedAt, id]);
     },
     async setMediaAssetCreatedAt(id, createdAt) {
       await postgresSql.unsafe("UPDATE media_assets SET created_at = $1 WHERE id = $2", [createdAt, id]);
@@ -984,6 +990,38 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       await assert.rejects(Promise.resolve().then(() => runtime.store.restoreArticle({
         articleId: swept.id, actorId: authorId,
       })), ArticleNotFoundError);
+    } finally { await runtime.cleanup(undefined, suffix); }
+  });
+
+  test(`${adapterName}: tombstone sweeps honor the strict cutoff, age order, and batch limit`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID(), authorId = `author-${suffix}`;
+    const times = [
+      "2000-01-01T00:00:00.000Z", "2000-01-01T12:00:00.000Z",
+      "2000-01-02T00:00:00.000Z", "2000-01-02T00:00:00.001Z",
+    ];
+    const ids: string[] = [];
+    try {
+      for (const [index, deletedAt] of times.entries()) {
+        const article = await runtime.store.createArticle({
+          authorId, slug: `contract-restore-${suffix}-boundary-${index}`, title: `Boundary ${index}`,
+          locale: "zh-CN", contentBlocks: [{ id: "p1", type: "paragraph", text: "Boundary test." }],
+        });
+        ids.push(article.id);
+        await runtime.store.deleteArticle({ articleId: article.id, actorId: authorId });
+        await runtime.setArticleDeletedAt(article.id, deletedAt);
+      }
+      const remaining = async () => new Set((await runtime.store.listMyDeletedArticles({ actorId: authorId })).map((article) => article.id));
+      const input = { retentionDays: 30, now: "2000-02-01T00:00:00.000Z", limit: 1 };
+      assert.equal((await runtime.store.purgeExpiredArticles(input)).purged, 1);
+      assert.deepEqual(await remaining(), new Set(ids.slice(1)), "the oldest eligible tombstone is removed first");
+      assert.equal((await runtime.store.purgeExpiredArticles(input)).purged, 1);
+      assert.deepEqual(await remaining(), new Set(ids.slice(2)), "limit bounds each sweep");
+      assert.equal((await runtime.store.purgeExpiredArticles(input)).purged, 0, "exactly at the cutoff is not older than the window");
+      assert.equal((await runtime.store.purgeExpiredArticles({ ...input, now: "2000-02-01T00:00:00.001Z" })).purged, 1);
+      assert.deepEqual(await remaining(), new Set([ids[3]]));
+      assert.equal((await runtime.store.purgeExpiredArticles({ ...input, now: "2000-02-01T00:00:00.002Z" })).purged, 1);
+      assert.equal((await remaining()).size, 0);
     } finally { await runtime.cleanup(undefined, suffix); }
   });
 

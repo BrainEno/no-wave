@@ -1,7 +1,7 @@
 import {
   assertChangeMatchesEnvelope, assertMigrationTransition, isMigrationSessionActive,
   MigrationJournalError, parseMigrationPayload, validateMigrationChange, validateMigrationSequence,
-  validateMigrationSession, type MigrationChange, type MigrationChangeInput, type MigrationSessionInput,
+  validateMigrationSession, type MigrationChange, type MigrationChangeInput, type MigrationProvider, type MigrationSessionInput,
   type MigrationSessionStatus,
 } from "./provider-migration-journal.ts";
 import type { PgDatabase, PgExecutor, PgRow } from "./postgres-driver.ts";
@@ -15,8 +15,9 @@ function fieldText(row: Row, key: string): string {
 function seq(row: Row, key: string): number { return validateMigrationSequence(Number(row[key]), key, key === "last_sequence"); }
 function dateText(value: unknown): string { return value instanceof Date ? value.toISOString() : new Date(String(value)).toISOString(); }
 function mapSession(row: Row) {
-  return { sessionId: fieldText(row, "session_id"), sourceProvider: fieldText(row, "source_provider"),
-    targetProvider: fieldText(row, "target_provider"), schemaVersion: fieldText(row, "schema_version"),
+  // Both provider columns have database CHECK constraints for MigrationProvider.
+  return { sessionId: fieldText(row, "session_id"), sourceProvider: fieldText(row, "source_provider") as MigrationProvider,
+    targetProvider: fieldText(row, "target_provider") as MigrationProvider, schemaVersion: fieldText(row, "schema_version"),
     status: fieldText(row, "status") as MigrationSessionStatus, nextSequence: seq(row, "next_sequence"),
     createdAt: dateText(row.created_at), updatedAt: dateText(row.updated_at) };
 }
