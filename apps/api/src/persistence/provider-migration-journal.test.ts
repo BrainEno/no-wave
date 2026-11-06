@@ -13,6 +13,7 @@ import { createSqliteOutboxStore } from "./sqlite-outbox-store.ts";
 import { createSqliteProviderMigrationReplayer } from "./sqlite-provider-migration-replayer.ts";
 import { prepareMigrationReplayTarget, replayNextMigrationBatch } from "./provider-migration-replay.ts";
 import { ARTICLE_MEDIA_REFS_SNAPSHOT, MIGRATION_REPLAY_SCHEMA_VERSION, canonicalJson, validateMigrationChange } from "./provider-migration-journal.ts";
+import { prepareMigrationRowPayload } from "./provider-migration-row-applier.ts";
 
 function change(sessionId: string, changeId: string, transactionId: string, entityId: string, body: Record<string, unknown>) {
   return { sessionId, changeId, transactionId, entityType: "test-record", entityId, operation: "upsert" as const, payload: body };
@@ -325,5 +326,33 @@ test("SQLite migration replayer applies source transactions atomically, resumes,
     if (targetDb.isTransaction) targetDb.exec("ROLLBACK");
     sourceDb.close();
     targetDb.close();
+  }
+});
+
+test("identity and featured replay rejects incomplete or malformed security-sensitive fields", () => {
+  const now = "2026-01-01T00:00:00.000Z", hash = "a".repeat(64);
+  const rows: Array<{ entity: string; id: string; payload: Record<string, unknown>; nullable: string }> = [
+    { entity: "auth_accounts", id: "user", nullable: "email_verified_at", payload: { user_id: "user", email: "user@example.test", password_hash: "fixture", created_at: now, email_verified_at: null } },
+    { entity: "auth_sessions", id: "session", nullable: "revoked_at", payload: { id: "session", user_id: "user", expires_at: now, created_at: now, revoked_at: null } },
+    { entity: "auth_refresh_tokens", id: hash, nullable: "used_at", payload: { token_hash: hash, session_id: "session", created_at: now, used_at: null } },
+    { entity: "auth_identity_tokens", id: hash, nullable: "consumed_at", payload: { token_hash: hash, user_id: "user", purpose: "password_reset", email: "user@example.test", created_at: now, expires_at: now, consumed_at: null } },
+  ];
+  for (const target of ["sqlite", "postgres"] as const) {
+    for (const row of rows) {
+      assert.doesNotThrow(() => prepareMigrationRowPayload(target, row.entity, row.id, row.payload));
+      assert.doesNotThrow(() => prepareMigrationRowPayload(target, row.entity, row.id, { ...row.payload, [row.nullable]: "2024-02-29T12:34:56.123+08:00" }));
+      const missing = { ...row.payload }; delete missing[row.nullable];
+      assert.throws(() => prepareMigrationRowPayload(target, row.entity, row.id, missing), /required|schema/i);
+      assert.throws(() => prepareMigrationRowPayload(target, row.entity, row.id, { ...row.payload, [row.nullable]: "not-a-timestamp" }), /timestamp|date/i);
+      assert.throws(() => prepareMigrationRowPayload(target, row.entity, row.id, { ...row.payload, [row.nullable]: "2026-02-30T00:00:00.000Z" }), /timestamp|date/i);
+      assert.throws(() => prepareMigrationRowPayload(target, row.entity, row.id, { ...row.payload, unexpected_column: "fixture" }), /unsupported columns/i);
+    }
+    const identity = rows[3].payload;
+    assert.throws(() => prepareMigrationRowPayload(target, "auth_identity_tokens", hash, { ...identity, purpose: "other" }), /purpose/i);
+    assert.throws(() => prepareMigrationRowPayload(target, "auth_identity_tokens", "x".repeat(64), { ...identity, token_hash: "x".repeat(64) }), /digest|hash/i);
+    assert.throws(() => prepareMigrationRowPayload(target, "auth_identity_tokens", hash, { ...identity, email: "" }), /email/i);
+    assert.throws(() => prepareMigrationRowPayload(target, "auth_rate_limits", hash, { key: hash, attempts: 0, reset_at: now }), /attempts/i);
+    assert.throws(() => prepareMigrationRowPayload(target, "featured_articles", "article", { article_id: "article", position: -1, created_by: "editor", created_at: now }), /position/i);
+    assert.throws(() => prepareMigrationRowPayload(target, "featured_articles", "article", { article_id: "article", position: "0", created_by: "editor", created_at: now }), /position/i);
   }
 });

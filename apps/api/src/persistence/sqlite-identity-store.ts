@@ -30,6 +30,15 @@ export function createSqliteIdentityStore(db) {
         revoked_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')`, sessionId);
   }
 
+  // A consumed proof can be invalidated between consumption and the later
+  // credential/verification write. Check it under the same write transaction
+  // as that write, including its purpose, owner and current account address.
+  function hasConsumedTokenProof(userId: string, tokenHash: string, purpose: string): boolean {
+    return Boolean(get(`SELECT 1 FROM auth_identity_tokens t JOIN auth_accounts a ON a.user_id = t.user_id
+      WHERE t.token_hash = ? AND t.user_id = ? AND t.purpose = ? AND t.consumed_at IS NOT NULL AND t.email = a.email`,
+    tokenHash, userId, purpose));
+  }
+
   function captureSessionSnapshot(transactionId, sessionId) {
     const changes: CapturedChange[] = [];
     const session = get("SELECT * FROM auth_sessions WHERE id = ?", sessionId);
@@ -131,15 +140,19 @@ export function createSqliteIdentityStore(db) {
       });
     },
     async issueIdentityToken({ userId, purpose, email, tokenHash, expiresAt }) {
-      if (typeof tokenHash !== "string" || tokenHash.length !== 64) throw new TypeError("tokenHash must be a 64-character hex digest.");
+      if (typeof tokenHash !== "string" || !/^[a-f0-9]{64}$/.test(tokenHash)) throw new TypeError("tokenHash must be a 64-character hex digest.");
       if (purpose !== "password_reset" && purpose !== "email_verification") throw new TypeError("purpose must be a supported identity token purpose.");
       return transaction((transactionId) => {
-        // Only one live token per purpose: two outstanding reset links is a
-        // support problem and doubles the surface a phished mailbox exposes.
+        const account = get("SELECT email FROM auth_accounts WHERE user_id = ?", userId);
+        if (!account || account.email !== email) return false;
+        // BEGIN IMMEDIATE serializes replacement. Capture every removed digest
+        // before the new row so replay cannot leave an older credential usable.
+        const replaced = all("SELECT token_hash FROM auth_identity_tokens WHERE user_id = ? AND purpose = ? ORDER BY token_hash", userId, purpose);
         run("DELETE FROM auth_identity_tokens WHERE user_id = ? AND purpose = ?", userId, purpose);
         run("INSERT INTO auth_identity_tokens (token_hash, user_id, purpose, email, expires_at) VALUES (?, ?, ?, ?, ?)",
           tokenHash, userId, purpose, email, new Date(expiresAt).toISOString());
         migrationCapture.captureInTransaction(db, transactionId, [
+          ...replaced.map((row) => ({ entityType: "auth_identity_tokens", entityId: row.token_hash, operation: "delete" as const, payload: null })),
           { entityType: "auth_identity_tokens", entityId: tokenHash, operation: "upsert", payload: get("SELECT * FROM auth_identity_tokens WHERE token_hash = ?", tokenHash) },
         ]);
         return true;
@@ -176,8 +189,11 @@ export function createSqliteIdentityStore(db) {
      * leave a new credential behind with the old sessions still live, which is
      * the one state a password change exists to prevent.
      */
-    async replaceIdentityPassword({ userId, passwordHash, exceptSessionId = null }) {
+    async replaceIdentityPassword({ userId, passwordHash, exceptSessionId = null, consumedTokenHash }) {
       return transaction((transactionId) => {
+        if (consumedTokenHash !== undefined && !hasConsumedTokenProof(userId, consumedTokenHash, "password_reset")) {
+          return { updated: false, revokedSessions: 0 };
+        }
         const sessionIds = all("SELECT id FROM auth_sessions WHERE user_id = ? AND revoked_at IS NULL", userId)
           .map((row) => row.id)
           .filter((id) => id !== exceptSessionId);
@@ -186,7 +202,7 @@ export function createSqliteIdentityStore(db) {
           captureSessionSnapshot(transactionId, sessionId);
         }
         const result = run("UPDATE auth_accounts SET password_hash = ? WHERE user_id = ?", passwordHash, userId);
-        migrationCapture.captureInTransaction(db, transactionId, [
+        if (Number(result.changes) > 0) migrationCapture.captureInTransaction(db, transactionId, [
           { entityType: "auth_accounts", entityId: userId, operation: "upsert", payload: get("SELECT * FROM auth_accounts WHERE user_id = ?", userId) },
         ]);
         return { updated: Number(result.changes) > 0, revokedSessions: sessionIds.length };
@@ -257,10 +273,11 @@ export function createSqliteIdentityStore(db) {
         return sessionIds.length;
       });
     },
-    async markIdentityEmailVerified({ userId, verifiedAt }) {
+    async markIdentityEmailVerified({ userId, verifiedAt, consumedTokenHash }) {
       return transaction((transactionId) => {
+        if (consumedTokenHash !== undefined && !hasConsumedTokenProof(userId, consumedTokenHash, "email_verification")) return false;
         const result = run("UPDATE auth_accounts SET email_verified_at = COALESCE(email_verified_at, ?) WHERE user_id = ?", new Date(verifiedAt).toISOString(), userId);
-        migrationCapture.captureInTransaction(db, transactionId, [
+        if (Number(result.changes) > 0) migrationCapture.captureInTransaction(db, transactionId, [
           { entityType: "auth_accounts", entityId: userId, operation: "upsert", payload: get("SELECT * FROM auth_accounts WHERE user_id = ?", userId) },
         ]);
         return Number(result.changes) > 0;
@@ -284,7 +301,10 @@ export function createSqliteIdentityStore(db) {
       return transaction((transactionId) => {
         const result = run("UPDATE OR IGNORE auth_accounts SET email = ?, email_verified_at = NULL WHERE user_id = ?", email, userId);
         if (Number(result.changes) === 0) return false;
+        const invalidated = all("SELECT token_hash FROM auth_identity_tokens WHERE user_id = ? ORDER BY token_hash", userId);
+        run("DELETE FROM auth_identity_tokens WHERE user_id = ?", userId);
         migrationCapture.captureInTransaction(db, transactionId, [
+          ...invalidated.map((row) => ({ entityType: "auth_identity_tokens", entityId: row.token_hash, operation: "delete" as const, payload: null })),
           { entityType: "auth_accounts", entityId: userId, operation: "upsert", payload: get("SELECT * FROM auth_accounts WHERE user_id = ?", userId) },
         ]);
         return true;

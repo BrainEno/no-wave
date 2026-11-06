@@ -136,6 +136,7 @@ function fakeIdentityStore({ accounts = [] as Array<{ userId: string; email: str
       return account ? { userId, email: account.email, emailVerifiedAt: verifiedAt.get(userId) ?? null } : null;
     },
     async issueIdentityToken({ userId, purpose, email, tokenHash, expiresAt }) {
+      if (!accounts.some((entry) => entry.userId === userId && entry.email === email)) return false;
       for (const [hash, token] of tokens) if (token.userId === userId && token.purpose === purpose) tokens.delete(hash);
       tokens.set(tokenHash, { userId, purpose, email, expiresAt, consumedAt: null });
       return true;
@@ -158,6 +159,7 @@ function fakeIdentityStore({ accounts = [] as Array<{ userId: string; email: str
       if (accounts.some((entry) => entry.userId !== userId && entry.email === email)) return false;
       accounts.find((entry) => entry.userId === userId).email = email;
       verifiedAt.delete(userId);
+      for (const [hash, token] of tokens) if (token.userId === userId) tokens.delete(hash);
       return true;
     },
     async listIdentitySessions({ userId, limit }) {
@@ -190,9 +192,16 @@ function fakeIdentityStore({ accounts = [] as Array<{ userId: string; email: str
      * setter to fall back on, which is the whole reason the service cannot be
      * left half-done by this call failing.
      */
-    async replaceIdentityPassword({ userId, passwordHash, exceptSessionId = null }) {
+    async replaceIdentityPassword({ userId, passwordHash, exceptSessionId = null, consumedTokenHash = undefined }) {
       replacements.push({ userId, exceptSessionId });
       if (refuseReplacement) throw new Error("the store refused the replacement");
+      if (consumedTokenHash !== undefined) {
+        const token = tokens.get(consumedTokenHash);
+        if (!token || token.userId !== userId || token.purpose !== "password_reset" || !token.consumedAt ||
+          !accounts.some((account) => account.userId === userId && account.email === token.email)) {
+          return { updated: false, revokedSessions: 0 };
+        }
+      }
       if (!passwords.has(userId)) return { updated: false, revokedSessions: 0 };
       const live = sessions.get(userId) ?? [];
       const doomed = live.filter((id) => id !== exceptSessionId);
@@ -202,7 +211,12 @@ function fakeIdentityStore({ accounts = [] as Array<{ userId: string; email: str
       passwords.set(userId, passwordHash);
       return { updated: true, revokedSessions: doomed.length };
     },
-    async markIdentityEmailVerified({ userId, verifiedAt: at }) {
+    async markIdentityEmailVerified({ userId, verifiedAt: at, consumedTokenHash = undefined }) {
+      if (consumedTokenHash !== undefined) {
+        const token = tokens.get(consumedTokenHash);
+        if (!token || token.userId !== userId || token.purpose !== "email_verification" || !token.consumedAt ||
+          !accounts.some((account) => account.userId === userId && account.email === token.email)) return false;
+      }
       if (!passwords.has(userId)) return false;
       verifiedAt.set(userId, at);
       return true;
@@ -701,4 +715,14 @@ test("a configured relay does not switch mail on by itself", async () => {
   const mail = resolveIdentityMailer(configured);
   await assert.rejects(mail.send({ to: "owner@example.test", purpose: "password_reset", subject: "s", text: "t", link: "https://example.test" }),
     MailDisabledError, "the mailer refuses too, so an unchecked path cannot quietly send");
+});
+
+test("a stale-address token issuance does not send an invalid link", async () => {
+  const store = fakeIdentityStore({ accounts: [{ userId: "user-1", email: "owner@example.test", passwordHash: "fixture-hash" }] });
+  store.issueIdentityToken = async () => false;
+  const mail = capturingMailer();
+  const service = createIdentityService({ store, env: identityEnv, mailer: mail.mailer });
+  assert.deepEqual(await service.requestPasswordReset({ email: "owner@example.test" }, "192.0.2.10"), { ok: true });
+  assert.deepEqual(await service.requestEmailVerification("user-1", "192.0.2.10"), { ok: true, alreadyVerified: false });
+  assert.equal(mail.sent.length, 0);
 });

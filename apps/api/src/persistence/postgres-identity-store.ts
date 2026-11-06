@@ -14,6 +14,18 @@ export function createPostgresIdentityStore(sql: PgDatabase) {
     await migrationCapture.captureInTransaction(tx, transactionId, changes);
   }
 
+  // Serialize the final credential/verification write with address changes
+  // and token replacements. A consumed row is still proof only while it is
+  // present, has the right purpose/owner, and names the current address.
+  async function hasConsumedTokenProof(tx: PgExecutor, userId: string, tokenHash: string, purpose: string): Promise<boolean> {
+    const accounts = await tx.unsafe("SELECT email FROM auth_accounts WHERE user_id = $1 FOR UPDATE", [userId]);
+    if (!accounts[0]) return false;
+    const rows = await tx.unsafe(`SELECT 1 FROM auth_identity_tokens
+      WHERE token_hash = $1 AND user_id = $2 AND purpose = $3 AND consumed_at IS NOT NULL AND email = $4`,
+    [tokenHash, userId, purpose, accounts[0].email]);
+    return Boolean(rows[0]);
+  }
+
   async function captureSessionSnapshot(tx: PgExecutor, transactionId, sessionId) {
     const [sessions, accessTokens, refreshTokens] = await Promise.all([
       tx.unsafe("SELECT * FROM auth_sessions WHERE id = $1", [sessionId]),
@@ -191,19 +203,22 @@ export function createPostgresIdentityStore(sql: PgDatabase) {
       });
     },
     async issueIdentityToken({ userId, purpose, email, tokenHash, expiresAt }) {
-      if (typeof tokenHash !== "string" || tokenHash.length !== 64) throw new TypeError("tokenHash must be a 64-character hex digest.");
+      if (typeof tokenHash !== "string" || !/^[a-f0-9]{64}$/.test(tokenHash)) throw new TypeError("tokenHash must be a 64-character hex digest.");
       if (purpose !== "password_reset" && purpose !== "email_verification") throw new TypeError("purpose must be a supported identity token purpose.");
       return sql.begin(async (tx) => {
         const transactionId = createMigrationTransactionId();
-        // Only one live token per purpose: two outstanding reset links is a
-        // support problem and doubles the surface a phished mailbox exposes.
-        await tx.unsafe("DELETE FROM auth_identity_tokens WHERE user_id = $1 AND purpose = $2", [userId, purpose]);
+        // Serialize issuance even when the purpose currently has no rows: two
+        // concurrent DELETEs of an empty set otherwise both insert live tokens.
+        const accounts = await tx.unsafe("SELECT email FROM auth_accounts WHERE user_id = $1 FOR UPDATE", [userId]);
+        if (!accounts[0] || accounts[0].email !== email) return false;
+        const replaced = await tx.unsafe("DELETE FROM auth_identity_tokens WHERE user_id = $1 AND purpose = $2 RETURNING token_hash", [userId, purpose]);
         await tx.unsafe(
           "INSERT INTO auth_identity_tokens (token_hash, user_id, purpose, email, expires_at) VALUES ($1, $2, $3, $4, $5)",
           [tokenHash, userId, purpose, email, new Date(expiresAt).toISOString()],
         );
         const rows = await tx.unsafe("SELECT * FROM auth_identity_tokens WHERE token_hash = $1", [tokenHash]);
         await captureChanges(tx, transactionId, [
+          ...replaced.sort((a, b) => String(a.token_hash).localeCompare(String(b.token_hash))).map((row) => ({ entityType: "auth_identity_tokens", entityId: row.token_hash, operation: "delete" as const, payload: null })),
           { entityType: "auth_identity_tokens", entityId: tokenHash, operation: "upsert", payload: rows[0] },
         ]);
         return true;
@@ -243,9 +258,17 @@ export function createPostgresIdentityStore(sql: PgDatabase) {
      * would leave a new credential behind with the old sessions still live,
      * which is the one state a password change exists to prevent.
      */
-    async replaceIdentityPassword({ userId, passwordHash, exceptSessionId = null }) {
+    async replaceIdentityPassword({ userId, passwordHash, exceptSessionId = null, consumedTokenHash }) {
       return sql.begin(async (tx) => {
         const transactionId = createMigrationTransactionId();
+        if (consumedTokenHash !== undefined) {
+          if (!(await hasConsumedTokenProof(tx, userId, consumedTokenHash, "password_reset"))) return { updated: false, revokedSessions: 0 };
+        } else {
+          // Keep account → session lock order consistent with recovery, and
+          // prevent a new session being inserted halfway through revocation.
+          const accounts = await tx.unsafe("SELECT user_id FROM auth_accounts WHERE user_id = $1 FOR UPDATE", [userId]);
+          if (!accounts[0]) return { updated: false, revokedSessions: 0 };
+        }
         const rows = await tx.unsafe(
           "SELECT id FROM auth_sessions WHERE user_id = $1 AND revoked_at IS NULL ORDER BY created_at FOR UPDATE",
           [userId],
@@ -330,9 +353,10 @@ export function createPostgresIdentityStore(sql: PgDatabase) {
         return sessionRows.length;
       });
     },
-    async markIdentityEmailVerified({ userId, verifiedAt }) {
+    async markIdentityEmailVerified({ userId, verifiedAt, consumedTokenHash }) {
       return sql.begin(async (tx) => {
         const transactionId = createMigrationTransactionId();
+        if (consumedTokenHash !== undefined && !(await hasConsumedTokenProof(tx, userId, consumedTokenHash, "email_verification"))) return false;
         const rows = await tx.unsafe(
           "UPDATE auth_accounts SET email_verified_at = COALESCE(email_verified_at, $1) WHERE user_id = $2 RETURNING *",
           [new Date(verifiedAt).toISOString(), userId],
@@ -373,7 +397,9 @@ export function createPostgresIdentityStore(sql: PgDatabase) {
             [email, userId],
           );
           if (!rows[0]) return false;
+          const invalidated = await tx.unsafe("DELETE FROM auth_identity_tokens WHERE user_id = $1 RETURNING token_hash", [userId]);
           await captureChanges(tx, transactionId, [
+            ...invalidated.sort((a, b) => String(a.token_hash).localeCompare(String(b.token_hash))).map((row) => ({ entityType: "auth_identity_tokens", entityId: row.token_hash, operation: "delete" as const, payload: null })),
             { entityType: "auth_accounts", entityId: userId, operation: "upsert", payload: rows[0] },
           ]);
           return true;
