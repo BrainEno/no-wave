@@ -39,6 +39,14 @@ export function createSqliteIdentityStore(db) {
     tokenHash, userId, purpose));
   }
 
+  // A signed-in change verifies the old credential outside the write, so the
+  // verified state is compared again under BEGIN IMMEDIATE. Only equality is
+  // checked, in memory: the verified hash is never a SQL parameter.
+  function hasAccountProof(userId, proof) {
+    const account = get("SELECT email, password_hash FROM auth_accounts WHERE user_id = ?", userId);
+    return Boolean(account) && account.email === proof.email && account.password_hash === proof.passwordHash;
+  }
+
   function captureSessionSnapshot(transactionId, sessionId) {
     const changes: CapturedChange[] = [];
     const session = get("SELECT * FROM auth_sessions WHERE id = ?", sessionId);
@@ -78,8 +86,13 @@ export function createSqliteIdentityStore(db) {
       const row = get("SELECT user_id, password_hash FROM auth_accounts WHERE email = ?", email);
       return row ? { userId: row.user_id, passwordHash: row.password_hash } : null;
     },
-    async createIdentitySession(session) {
+    async createIdentitySession(session, proof) {
+      if (!proof || typeof proof.email !== "string" || typeof proof.passwordHash !== "string") return false;
       return transaction((transactionId) => {
+        // BEGIN IMMEDIATE serializes this check and insert with account changes.
+        // Never pass the verified password hash as a SQL parameter or capture it.
+        const account = get("SELECT email, password_hash FROM auth_accounts WHERE user_id = ?", session.userId);
+        if (!account || account.email !== proof.email || account.password_hash !== proof.passwordHash) return false;
         insertSession(session);
         captureSessionSnapshot(transactionId, session.sessionId);
         return true;
@@ -189,8 +202,9 @@ export function createSqliteIdentityStore(db) {
      * leave a new credential behind with the old sessions still live, which is
      * the one state a password change exists to prevent.
      */
-    async replaceIdentityPassword({ userId, passwordHash, exceptSessionId = null, consumedTokenHash }) {
+    async replaceIdentityPassword({ userId, passwordHash, exceptSessionId = null, consumedTokenHash, proof }) {
       return transaction((transactionId) => {
+        if (proof && !hasAccountProof(userId, proof)) return { updated: false, revokedSessions: 0 };
         if (consumedTokenHash !== undefined && !hasConsumedTokenProof(userId, consumedTokenHash, "password_reset")) {
           return { updated: false, revokedSessions: 0 };
         }
@@ -297,8 +311,9 @@ export function createSqliteIdentityStore(db) {
      * caller has already established that this account exists and has already
      * normalised the address, so there is no second meaning left.
      */
-    async setIdentityEmail({ userId, email }) {
+    async setIdentityEmail({ userId, email, proof }) {
       return transaction((transactionId) => {
+        if (proof && !hasAccountProof(userId, proof)) return false;
         const result = run("UPDATE OR IGNORE auth_accounts SET email = ?, email_verified_at = NULL WHERE user_id = ?", email, userId);
         if (Number(result.changes) === 0) return false;
         const invalidated = all("SELECT token_hash FROM auth_identity_tokens WHERE user_id = ? ORDER BY token_hash", userId);

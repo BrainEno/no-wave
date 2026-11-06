@@ -1808,6 +1808,9 @@ test("REST current-session logout revokes the access token that was presented, t
  */
 test("REST password change is authenticated, spares its own session and stores only the new hash", async () => {
   const seen: { replaced: Record<string, unknown> | null } = { replaced: null };
+  // One salted hash for the whole test: a real store answers the same value
+  // every time it is asked, and the proof the service hands back names it.
+  const passwordHash = await hashPassword("the-current-password");
   await withServer(async (baseUrl) => {
     const response = await fetch(baseUrl + "/api/v1/me/password", {
       method: "PUT",
@@ -1829,12 +1832,16 @@ test("REST password change is authenticated, spares its own session and stores o
     assert.equal(seen.replaced?.exceptSessionId, "session-password-user");
     assert.notEqual(seen.replaced?.exceptSessionId, "token-password-user",
       "the access token is not a session, and must not be treated as one");
+    // The store re-checks this under its own lock, so the transport hands over
+    // exactly the state the service verified — no more of the account.
+    assert.deepEqual(seen.replaced?.proof, { email: "owner@example.test", passwordHash });
   }, {
     env: authEnv,
     store: {
       async isSessionRevoked() { return false; },
-      async findIdentityCredentials({ userId }) {
-        return { userId, passwordHash: await hashPassword("the-current-password") };
+      async findIdentityCredentials({ userId }) { return { userId, passwordHash }; },
+      async findIdentityAccountByUserId({ userId }) {
+        return { userId, email: "owner@example.test", emailVerifiedAt: null };
       },
       async replaceIdentityPassword(args) { seen.replaced = args; return { updated: true, revokedSessions: 1 }; },
     },
@@ -3264,6 +3271,7 @@ test("the application-relative media address a stored asset carries is served by
  */
 test("REST email change stores the new address, unproven, and signs nobody out", async () => {
   const seen: { email: Record<string, unknown> | null } = { email: null };
+  const passwordHash = await hashPassword("the-current-password");
   await withServer(async (baseUrl) => {
     const response = await fetch(baseUrl + "/api/v1/me/email", {
       method: "PUT",
@@ -3277,14 +3285,17 @@ test("REST email change stores the new address, unproven, and signs nobody out",
     assert.deepEqual(await response.json(), {
       data: { ok: true, email: "new.owner@example.test", emailVerifiedAt: null },
     });
-    assert.deepEqual(seen.email, { userId: "email-user", email: "new.owner@example.test" });
+    // The address move carries the state the service verified: the address the
+    // account had when the password was checked, and the credential it checked.
+    assert.deepEqual(seen.email, {
+      userId: "email-user", email: "new.owner@example.test",
+      proof: { email: "owner@example.test", passwordHash },
+    });
   }, {
     env: authEnv,
     store: {
       async isSessionRevoked() { return false; },
-      async findIdentityCredentials({ userId }) {
-        return { userId, passwordHash: await hashPassword("the-current-password") };
-      },
+      async findIdentityCredentials({ userId }) { return { userId, passwordHash }; },
       async findIdentityAccountByUserId({ userId }) {
         return { userId, email: "owner@example.test", emailVerifiedAt: "2026-01-01T00:00:00.000Z" };
       },
@@ -3296,6 +3307,9 @@ test("REST email change stores the new address, unproven, and signs nobody out",
 
 test("REST email change refuses a wrong password, reports a taken address, and is authenticated", async () => {
   let stored = 0;
+  // A stable hash, as a real store has: the retry-on-failure path compares the
+  // credential it verified with the one still on file.
+  const passwordHash = await hashPassword("the-current-password");
   await withServer(async (baseUrl) => {
     const session = { authorization: "Bearer " + signedToken("email-user"), "content-type": "application/json" };
 
@@ -3331,9 +3345,7 @@ test("REST email change refuses a wrong password, reports a taken address, and i
     env: authEnv,
     store: {
       async isSessionRevoked() { return false; },
-      async findIdentityCredentials({ userId }) {
-        return { userId, passwordHash: await hashPassword("the-current-password") };
-      },
+      async findIdentityCredentials({ userId }) { return { userId, passwordHash }; },
       async findIdentityAccountByUserId({ userId }) {
         return { userId, email: "owner@example.test", emailVerifiedAt: null };
       },

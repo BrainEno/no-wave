@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { Worker } from "node:worker_threads";
 import { createIdentityService } from "../application/identity.ts";
 import { IdentityAuthenticationError } from "../domain/errors.ts";
+import { hashPassword } from "../security/passwords.ts";
 import { createApiServer } from "../server.ts";
 import test, { type TestContext } from "node:test";
 import { createPostgresStore } from "./postgres.ts";
@@ -68,6 +69,75 @@ function registration(userId: string) {
 
 for (const sourceProvider of ["sqlite", "postgres"] as const) {
   const targetProvider = sourceProvider === "sqlite" ? "postgres" : "sqlite";
+
+  test(`${sourceProvider} → ${targetProvider}: session creation rejects missing or stale account proof without capture`, options, async (t) => {
+    const f = await fixture(t, sourceProvider), account = registration(randomUUID()), late = registration(account.userId).session;
+    assert.equal(await f.source.createIdentityAccount(account), true);
+    await f.drain();
+    const before = (await f.sourceJournal.getSession(f.sessionId)).nextSequence;
+    const proof = { email: account.email, passwordHash: account.passwordHash };
+    for (const invalid of [undefined, { ...proof, email: `moved-${proof.email}` }, { ...proof, passwordHash: "wrong-fixture-hash" }]) {
+      assert.equal(await f.source.createIdentitySession(late, invalid), false);
+      assert.equal((await f.sourceJournal.getSession(f.sessionId)).nextSequence, before, "a refused login must not leave a partial journal");
+    }
+    assert.deepEqual((await f.source.listIdentitySessions({ userId: account.userId, limit: 50 })).map((s) => s.sessionId), [account.session.sessionId]);
+    assert.equal(await f.source.createIdentitySession(late, proof), true, "current proof still creates a session");
+    await f.drain();
+    assert.deepEqual((await f.targetStore.listIdentitySessions({ userId: account.userId, limit: 50 })).map((s) => s.sessionId).sort(),
+      [account.session.sessionId, late.sessionId].sort());
+  });
+
+  test(`${sourceProvider} → ${targetProvider}: a failed session insert rolls back its rows and capture`, options, async (t) => {
+    const f = await fixture(t, sourceProvider), account = registration(randomUUID()), candidate = registration(account.userId).session;
+    await f.source.createIdentityAccount(account);
+    await f.drain();
+    const proof = { email: account.email, passwordHash: account.passwordHash };
+    const before = (await f.sourceJournal.getSession(f.sessionId)).nextSequence;
+    await assert.rejects(f.source.createIdentitySession({ ...candidate, refreshHash: account.session.refreshHash }, proof));
+    assert.equal((await f.sourceJournal.getSession(f.sessionId)).nextSequence, before);
+    assert.deepEqual((await f.source.listIdentitySessions({ userId: account.userId, limit: 50 })).map((s) => s.sessionId), [account.session.sessionId]);
+    assert.equal(await f.source.createIdentitySession(candidate, proof), true, "the rolled-back session id can be retried");
+    const captured = JSON.stringify(await f.sourceJournal.readChangeBatch({ sessionId: f.sessionId, afterSequence: before - 1, limit: 100 }));
+    assert.ok(!captured.includes(account.email) && !captured.includes(account.passwordHash), "session capture does not include the proof");
+    await f.drain();
+    assert.deepEqual((await f.targetStore.listIdentitySessions({ userId: account.userId, limit: 50 })).map((s) => s.sessionId).sort(),
+      [account.session.sessionId, candidate.sessionId].sort());
+  });
+
+  test(`${sourceProvider} → ${targetProvider}: a committed password replacement rejects an earlier login proof`, options, async (t) => {
+    const f = await fixture(t, sourceProvider), account = registration(randomUUID()), late = registration(account.userId).session;
+    await f.source.createIdentityAccount(account);
+    await f.drain();
+    assert.deepEqual(await f.source.replaceIdentityPassword({ userId: account.userId, passwordHash: "fixture-password-after" }),
+      { updated: true, revokedSessions: 1 });
+    await f.drain();
+    const before = (await f.sourceJournal.getSession(f.sessionId)).nextSequence;
+    assert.equal(await f.source.createIdentitySession(late, { email: account.email, passwordHash: account.passwordHash }), false);
+    assert.equal((await f.sourceJournal.getSession(f.sessionId)).nextSequence, before);
+    await f.drain();
+    assert.deepEqual(await f.source.listIdentitySessions({ userId: account.userId, limit: 50 }), []);
+    assert.deepEqual(await f.targetStore.listIdentitySessions({ userId: account.userId, limit: 50 }), []);
+    assert.equal(await f.targetStore.isSessionRevoked(account.session.accessTokenId), true);
+    assert.deepEqual(await f.targetStore.findIdentityCredentials({ userId: account.userId }), await f.source.findIdentityCredentials({ userId: account.userId }));
+  });
+
+  test(`${sourceProvider} → ${targetProvider}: a committed email change rejects an earlier login proof`, options, async (t) => {
+    const f = await fixture(t, sourceProvider), account = registration(randomUUID()), late = registration(account.userId).session;
+    await f.source.createIdentityAccount(account);
+    await f.drain();
+    const moved = `moved-${account.email}`;
+    assert.equal(await f.source.setIdentityEmail({ userId: account.userId, email: moved }), true);
+    await f.drain();
+    const before = (await f.sourceJournal.getSession(f.sessionId)).nextSequence;
+    assert.equal(await f.source.createIdentitySession(late, { email: account.email, passwordHash: account.passwordHash }), false);
+    assert.equal((await f.sourceJournal.getSession(f.sessionId)).nextSequence, before);
+    assert.equal(await f.source.createIdentitySession(late, { email: moved, passwordHash: account.passwordHash }), true);
+    await f.drain();
+    assert.deepEqual(await f.targetStore.findIdentityAccountByUserId({ userId: account.userId }), await f.source.findIdentityAccountByUserId({ userId: account.userId }));
+    assert.deepEqual((await f.targetStore.listIdentitySessions({ userId: account.userId, limit: 50 })).map((s) => s.sessionId).sort(),
+      [account.session.sessionId, late.sessionId].sort());
+  });
+
   test(`${sourceProvider} → ${targetProvider}: registration and verification replay the complete account`, options, async (t) => {
     const f = await fixture(t, sourceProvider);
     const input = registration(randomUUID());
@@ -252,8 +322,9 @@ for (const sourceProvider of ["sqlite", "postgres"] as const) {
     const original = await f.sourceJournal.readChangeBatch({ sessionId: f.sessionId, afterSequence: 0, limit: 1 });
     await f.drain();
     const second = registration(account.userId).session, third = registration(account.userId).session;
-    await f.source.createIdentitySession(second);
-    await f.source.createIdentitySession(third);
+    const proof = { email: account.email, passwordHash: account.passwordHash };
+    assert.equal(await f.source.createIdentitySession(second, proof), true);
+    assert.equal(await f.source.createIdentitySession(third, proof), true);
     await f.drain();
     const newRefresh = digest(randomUUID()), newAccess = randomUUID();
     assert.equal((await f.source.rotateIdentityRefresh({ refreshHash: account.session.refreshHash, nextRefreshHash: newRefresh,
@@ -510,6 +581,143 @@ for (const sourceProvider of ["sqlite", "postgres"] as const) {
     assert.equal(await hasToken(f, "source", tokenHash), true);
     assert.equal((await f.sourceJournal.getSession(f.sessionId)).nextSequence, before);
   });
+}
+
+for (const mutation of ["password-change", "email-change"] as const) {
+  const operation = (mutation === "password-change" ? "proof-password-change" : "proof-email-change") as const;
+  test(`SQLite: an earlier ${mutation} is refused once the reset has committed`, options, async (t) => {
+    const directory = await mkdtemp(join(tmpdir(), "nw-stale-change-race-")), filename = join(directory, "source.sqlite");
+    const f = await fixture(t, "sqlite", { sqliteFile: filename });
+    t.after(() => rm(directory, { recursive: true, force: true }));
+    const account = registration(randomUUID()), verified = { email: account.email, passwordHash: account.passwordHash };
+    await f.source.createIdentityAccount(account);
+    const gate = new SharedArrayBuffer(4), workers: Worker[] = [];
+    const common = { filename, session: account.session, proof: verified };
+    try {
+      // The owner's reset commits first; the signed-in change was verified
+      // against the state the reset has just replaced.
+      const reset = mutation === "password-change"
+        ? sqliteRaceWorker(new URL("./test-support/sqlite-login-replay-race-worker.ts", import.meta.url), { ...common, operation: "password-change", gate })
+        : sqliteRaceWorker(new URL("./test-support/sqlite-login-replay-race-worker.ts", import.meta.url), { ...common, operation: "email-change", gate });
+      workers.push(reset.worker); await reset.holding();
+      const stale = sqliteRaceWorker(new URL("./test-support/sqlite-login-replay-race-worker.ts", import.meta.url), { ...common, operation });
+      workers.push(stale.worker); await stale.beginning();
+      Atomics.store(new Int32Array(gate), 0, 1); Atomics.notify(new Int32Array(gate), 0);
+      const [resetResult, staleResult] = await Promise.all([reset.done(), stale.done()]);
+      if (resetResult.ok === false) throw new Error(`${resetResult.name}: ${resetResult.message}`);
+      if (staleResult.ok === false) throw new Error(`${staleResult.name}: ${staleResult.message}`);
+      if (mutation === "password-change") assert.deepEqual(resetResult.result, { updated: true, revokedSessions: 1 });
+      else assert.equal(resetResult.result, true);
+      assert.deepEqual(staleResult.result, mutation === "password-change" ? { updated: false, revokedSessions: 0 } : false);
+      const credentials = await f.source.findIdentityCredentials({ userId: account.userId });
+      const email = (await f.source.findIdentityAccountByUserId({ userId: account.userId }))?.email;
+      if (mutation === "password-change") {
+        assert.equal(credentials?.passwordHash, "fixture-password-after", "the reset is the credential on file");
+        assert.equal(email, account.email);
+      } else {
+        assert.equal(credentials?.passwordHash, verified.passwordHash, "the refused change does not touch the credential");
+        assert.equal(email, `moved-${account.email}`, "nor the address the reset moved it to");
+      }
+      const live = mutation === "password-change" ? [] : [account.session.sessionId];
+      assert.deepEqual((await f.source.listIdentitySessions({ userId: account.userId, limit: 50 })).map((s) => s.sessionId), live);
+      await f.drain();
+      assert.deepEqual((await f.targetStore.listIdentitySessions({ userId: account.userId, limit: 50 })).map((s) => s.sessionId), live);
+      assert.deepEqual(await f.targetStore.findIdentityCredentials({ userId: account.userId }), credentials);
+    } finally {
+      Atomics.store(new Int32Array(gate), 0, 1); Atomics.notify(new Int32Array(gate), 0);
+      await Promise.all(workers.map((worker) => worker.terminate()));
+    }
+  });
+}
+
+for (const mutation of ["password-change", "email-change"] as const) {
+  test(`PostgreSQL: an earlier ${mutation} waits for the reset's lock and is then refused`, options, async (t) => {
+    const f = await fixture(t, "postgres"), account = registration(randomUUID());
+    await f.source.createIdentityAccount(account);
+    await f.drain();
+    const verified = { email: account.email, passwordHash: account.passwordHash };
+    const reset = (store: typeof f.source) => mutation === "password-change"
+      ? store.replaceIdentityPassword({ userId: account.userId, passwordHash: "fixture-password-after" })
+      : store.setIdentityEmail({ userId: account.userId, email: `moved-${account.email}` });
+    const stale = (store: typeof f.source) => mutation === "password-change"
+      ? store.replaceIdentityPassword({ userId: account.userId, passwordHash: "fixture-password-signed-in", proof: verified })
+      : store.setIdentityEmail({ userId: account.userId, email: `signed-in-${account.email}`, proof: verified });
+    const ready = deferred<number>(), started = deferred<number>(), release = deferred();
+    let first: Promise<unknown> | undefined, second: Promise<unknown> | undefined;
+    try {
+      first = reset(createPostgresStore(heldTransaction(f.pg, ready, release)));
+      void first.catch(() => {});
+      const blocker = await bounded(ready.promise, "the reset to hold the account lock");
+      second = stale(createPostgresStore(observedTransaction(f.pg, started)));
+      void second.catch(() => {});
+      const waiter = await bounded(started.promise, "the stale change to start");
+      await waitUntilBlocked(f.pg, waiter, blocker);
+      release.resolve();
+      const [resetResult, staleResult] = await Promise.all([first, second]);
+      if (mutation === "password-change") {
+        assert.deepEqual(resetResult, { updated: true, revokedSessions: 1 });
+        assert.deepEqual(staleResult, { updated: false, revokedSessions: 0 });
+      } else {
+        assert.equal(resetResult, true);
+        assert.equal(staleResult, false);
+      }
+      await f.drain();
+      const credentials = await f.source.findIdentityCredentials({ userId: account.userId });
+      assert.deepEqual(await f.targetStore.findIdentityCredentials({ userId: account.userId }), credentials);
+      assert.equal((await f.source.findIdentityAccountByUserId({ userId: account.userId }))?.email,
+        mutation === "password-change" ? account.email : `moved-${account.email}`);
+      const live = mutation === "password-change" ? [] : [account.session.sessionId];
+      assert.deepEqual((await f.targetStore.listIdentitySessions({ userId: account.userId, limit: 50 })).map((s) => s.sessionId), live);
+    } finally {
+      release.resolve();
+      await Promise.allSettled([...(first ? [first] : []), ...(second ? [second] : [])]);
+    }
+  });
+}
+
+for (const mutation of ["password-change", "email-change"] as const) {
+  for (const winner of ["login", mutation] as const) {
+    test(`PostgreSQL: ${winner} commits first when login and ${mutation} overlap`, options, async (t) => {
+      const f = await fixture(t, "postgres"), account = registration(randomUUID()), late = registration(account.userId).session;
+      await f.source.createIdentityAccount(account);
+      await f.drain();
+      const login = (store: typeof f.source) => store.createIdentitySession(late, { email: account.email, passwordHash: account.passwordHash });
+      const change = (store: typeof f.source) => mutation === "password-change"
+        ? store.replaceIdentityPassword({ userId: account.userId, passwordHash: "fixture-password-after" })
+        : store.setIdentityEmail({ userId: account.userId, email: `moved-${account.email}` });
+      const ready = deferred<number>(), started = deferred<number>(), release = deferred();
+      let first: Promise<unknown> | undefined, second: Promise<unknown> | undefined;
+      try {
+        const firstStore = createPostgresStore(heldTransaction(f.pg, ready, release));
+        first = winner === "login" ? login(firstStore) : change(firstStore);
+        void first.catch(() => {});
+        const blocker = await bounded(ready.promise, "the first login/account operation to hold its locks");
+        const secondStore = createPostgresStore(observedTransaction(f.pg, started));
+        second = winner === "login" ? change(secondStore) : login(secondStore);
+        void second.catch(() => {});
+        const waiter = await bounded(started.promise, "the second login/account operation to start");
+        await waitUntilBlocked(f.pg, waiter, blocker);
+        release.resolve();
+        const [firstResult, secondResult] = await Promise.all([first, second]);
+        assert.equal(winner === "login" ? firstResult : secondResult, winner === "login");
+        const mutationResult = winner === "login" ? secondResult : firstResult;
+        if (mutation === "password-change") assert.deepEqual(mutationResult, { updated: true, revokedSessions: winner === "login" ? 2 : 1 });
+        else assert.equal(mutationResult, true);
+        await f.drain();
+        const expectedSessions = mutation === "password-change" ? [] :
+          winner === "login" ? [account.session.sessionId, late.sessionId].sort() : [account.session.sessionId];
+        assert.deepEqual((await f.source.listIdentitySessions({ userId: account.userId, limit: 50 })).map((s) => s.sessionId).sort(), expectedSessions);
+        assert.deepEqual((await f.targetStore.listIdentitySessions({ userId: account.userId, limit: 50 })).map((s) => s.sessionId).sort(), expectedSessions);
+        assert.equal(await f.source.isSessionRevoked(late.accessTokenId), mutation === "password-change" && winner === "login");
+        assert.equal(await f.targetStore.isSessionRevoked(late.accessTokenId), mutation === "password-change" && winner === "login");
+        assert.deepEqual(await f.targetStore.findIdentityAccountByUserId({ userId: account.userId }), await f.source.findIdentityAccountByUserId({ userId: account.userId }));
+        assert.deepEqual(await f.targetStore.findIdentityCredentials({ userId: account.userId }), await f.source.findIdentityCredentials({ userId: account.userId }));
+      } finally {
+        release.resolve();
+        await Promise.allSettled([...(first ? [first] : []), ...(second ? [second] : [])]);
+      }
+    });
+  }
 }
 
 for (const purpose of ["email_verification", "password_reset"] as const) {
@@ -832,10 +1040,10 @@ test("captured entities match both migrated schemas, primary keys, foreign keys 
 });
 
 type SqliteIdentityOutcome = { ok: true; result: unknown } | { ok: false; name: string; message: string };
-function sqliteIdentityWorker(input: { filename: string; operation: "issue" | "consume"; userId: string; email: string; tokenHash: string; expiresAt: string; gate?: SharedArrayBuffer }) {
+function sqliteRaceWorker(script: URL, input: object) {
   const beginning = deferred(), holding = deferred(), done = deferred<SqliteIdentityOutcome>();
   let outcome: SqliteIdentityOutcome | undefined;
-  const worker = new Worker(new URL("./test-support/sqlite-identity-replay-race-worker.ts", import.meta.url), { workerData: input });
+  const worker = new Worker(script, { workerData: input });
   const finish = (value: SqliteIdentityOutcome) => {
     if (outcome) return;
     outcome = value; beginning.resolve(); holding.resolve(); done.resolve(value);
@@ -857,6 +1065,54 @@ function sqliteIdentityWorker(input: { filename: string; operation: "issue" | "c
     },
     done: () => bounded(done.promise, "the SQLite identity worker result"),
   };
+}
+
+function sqliteIdentityWorker(input: { filename: string; operation: "issue" | "consume"; userId: string; email: string; tokenHash: string; expiresAt: string; gate?: SharedArrayBuffer }) {
+  return sqliteRaceWorker(new URL("./test-support/sqlite-identity-replay-race-worker.ts", import.meta.url), input);
+}
+
+for (const mutation of ["password-change", "email-change"] as const) {
+  for (const winner of ["login", mutation] as const) {
+    test(`SQLite: ${winner} commits first when login and ${mutation} overlap`, options, async (t) => {
+      const directory = await mkdtemp(join(tmpdir(), "nw-login-replay-race-")), filename = join(directory, "source.sqlite");
+      const f = await fixture(t, "sqlite", { sqliteFile: filename });
+      t.after(() => rm(directory, { recursive: true, force: true }));
+      const account = registration(randomUUID()), late = registration(account.userId).session;
+      await f.source.createIdentityAccount(account);
+      await f.drain();
+      const gate = new SharedArrayBuffer(4), workers: Worker[] = [];
+      const common = { filename, session: late, proof: { email: account.email, passwordHash: account.passwordHash } };
+      try {
+        const first = sqliteRaceWorker(new URL("./test-support/sqlite-login-replay-race-worker.ts", import.meta.url), { ...common, operation: winner, gate });
+        workers.push(first.worker); await first.holding();
+        const observer = createSqliteClient({ filename, timeoutMs: 0, enableWal: false });
+        try { assert.throws(() => observer.exec("BEGIN IMMEDIATE"), /locked|busy/i); }
+        finally { if (observer.isTransaction) observer.exec("ROLLBACK"); observer.close(); }
+        const secondOperation = winner === "login" ? mutation : "login";
+        const second = sqliteRaceWorker(new URL("./test-support/sqlite-login-replay-race-worker.ts", import.meta.url), { ...common, operation: secondOperation });
+        workers.push(second.worker); await second.beginning();
+        Atomics.store(new Int32Array(gate), 0, 1); Atomics.notify(new Int32Array(gate), 0);
+        const firstResult = await first.done(), secondResult = await second.done();
+        if (firstResult.ok === false) throw new Error(`${firstResult.name}: ${firstResult.message}`);
+        if (secondResult.ok === false) throw new Error(`${secondResult.name}: ${secondResult.message}`);
+        assert.equal(winner === "login" ? firstResult.result : secondResult.result, winner === "login");
+        const mutationResult = winner === "login" ? secondResult.result : firstResult.result;
+        if (mutation === "password-change") assert.deepEqual(mutationResult, { updated: true, revokedSessions: winner === "login" ? 2 : 1 });
+        else assert.equal(mutationResult, true);
+        await f.drain();
+        const expectedSessions = mutation === "password-change" ? [] :
+          winner === "login" ? [account.session.sessionId, late.sessionId].sort() : [account.session.sessionId];
+        assert.deepEqual((await f.source.listIdentitySessions({ userId: account.userId, limit: 50 })).map((s) => s.sessionId).sort(), expectedSessions);
+        assert.deepEqual((await f.targetStore.listIdentitySessions({ userId: account.userId, limit: 50 })).map((s) => s.sessionId).sort(), expectedSessions);
+        assert.equal(await f.targetStore.isSessionRevoked(late.accessTokenId), mutation === "password-change" && winner === "login");
+        assert.deepEqual(await f.targetStore.findIdentityAccountByUserId({ userId: account.userId }), await f.source.findIdentityAccountByUserId({ userId: account.userId }));
+        assert.deepEqual(await f.targetStore.findIdentityCredentials({ userId: account.userId }), await f.source.findIdentityCredentials({ userId: account.userId }));
+      } finally {
+        Atomics.store(new Int32Array(gate), 0, 1); Atomics.notify(new Int32Array(gate), 0);
+        await Promise.all(workers.map((worker) => worker.terminate()));
+      }
+    });
+  }
 }
 
 for (const winner of ["first-issue", "consume", "replace"] as const) {
@@ -899,6 +1155,107 @@ for (const winner of ["first-issue", "consume", "replace"] as const) {
       await Promise.all(workers.map((worker) => worker.terminate()));
     }
   });
+}
+
+for (const sourceProvider of ["sqlite", "postgres"] as const) {
+  for (const mutation of ["password-change", "email-change"] as const) {
+    test(`${sourceProvider}: HTTP login fails closed when ${mutation} wins after verification`, options, async (t) => {
+      const f = await fixture(t, sourceProvider), password = `fixture-password-${randomUUID()}`;
+      const account = { ...registration(randomUUID()), passwordHash: await hashPassword(password) };
+      await f.source.createIdentityAccount(account);
+      await f.drain();
+      let attempts = 0;
+      const store = { ...f.source, async createIdentitySession(
+        session: Parameters<typeof f.source.createIdentitySession>[0], proof: Parameters<typeof f.source.createIdentitySession>[1],
+      ) {
+        attempts += 1;
+        if (mutation === "password-change") await f.source.replaceIdentityPassword({ userId: account.userId, passwordHash: "fixture-password-after" });
+        else await f.source.setIdentityEmail({ userId: account.userId, email: `moved-${account.email}` });
+        const before = (await f.sourceJournal.getSession(f.sessionId)).nextSequence;
+        const created = await f.source.createIdentitySession(session, proof);
+        assert.equal((await f.sourceJournal.getSession(f.sessionId)).nextSequence, before, "the refused session leaves no journal records");
+        return created;
+      } };
+      const records: unknown[] = [];
+      const server = createApiServer({ store, env: {
+        AUTH_JWT_SECRET: "test-fixture-secret-not-a-real-credential", AUTH_JWT_ISSUER: "test", AUTH_JWT_AUDIENCE: "test",
+      }, logger: (record) => { records.push(record); } });
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+      try {
+        const address = server.address();
+        if (!address || typeof address === "string") throw new Error("The identity test server did not bind a port.");
+        const response = await fetch(`http://127.0.0.1:${address.port}/api/v1/auth/login`, {
+          method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: account.email, password }),
+        });
+        assert.equal(attempts, 1, "the password was verified before the account changed");
+        assert.equal(response.status, 401);
+        assert.equal(response.headers.get("set-cookie"), null);
+        const body = await response.text(), parsed = JSON.parse(body);
+        assert.equal(parsed.error?.code, "UNAUTHENTICATED");
+        assert.ok(!parsed.data?.accessToken && !parsed.data?.refreshToken);
+        for (const sensitive of [password, account.email, account.passwordHash]) {
+          assert.ok(!body.includes(sensitive) && !JSON.stringify(records).includes(sensitive));
+        }
+        await f.drain();
+        const expected = mutation === "password-change" ? [] : [account.session.sessionId];
+        assert.deepEqual((await f.source.listIdentitySessions({ userId: account.userId, limit: 50 })).map((s) => s.sessionId), expected);
+        assert.deepEqual((await f.targetStore.listIdentitySessions({ userId: account.userId, limit: 50 })).map((s) => s.sessionId), expected);
+      } finally { await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())); }
+    });
+  }
+}
+
+for (const sourceProvider of ["sqlite", "postgres"] as const) {
+  for (const endpoint of ["password", "email"] as const) {
+    test(`${sourceProvider}: HTTP ${endpoint} change is refused when a reset lands while it runs`, options, async (t) => {
+      const f = await fixture(t, sourceProvider), password = `fixture-password-${randomUUID()}`;
+      const account = { ...registration(randomUUID()), passwordHash: await hashPassword(password) };
+      await f.source.createIdentityAccount(account);
+      await f.drain();
+      // The reset commits between the password check and the write. A change
+      // that only verified the old credential would otherwise put it back.
+      const store = { ...f.source,
+        async replaceIdentityPassword(input: Parameters<typeof f.source.replaceIdentityPassword>[0]) {
+          if (input.proof && endpoint === "password") {
+            await f.source.replaceIdentityPassword({ userId: account.userId, passwordHash: "fixture-password-reset" });
+          }
+          return f.source.replaceIdentityPassword(input);
+        },
+        async setIdentityEmail(input: Parameters<typeof f.source.setIdentityEmail>[0]) {
+          if (input.proof && endpoint === "email") {
+            await f.source.replaceIdentityPassword({ userId: account.userId, passwordHash: "fixture-password-reset" });
+          }
+          return f.source.setIdentityEmail(input);
+        } };
+      const server = createApiServer({ store, env: {
+        AUTH_JWT_SECRET: "test-fixture-secret-not-a-real-credential", AUTH_JWT_ISSUER: "test", AUTH_JWT_AUDIENCE: "test",
+      } });
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+      try {
+        const address = server.address();
+        if (!address || typeof address === "string") throw new Error("The identity test server did not bind a port.");
+        const base = `http://127.0.0.1:${address.port}/api/v1`;
+        const login = await fetch(`${base}/auth/login`, {
+          method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: account.email, password }),
+        });
+        assert.equal(login.status, 200);
+        const accessToken = (await login.json() as { data?: { accessToken?: string } }).data?.accessToken;
+        assert.ok(accessToken, "the signed-in change is authenticated by the login it just made");
+        const response = await fetch(`${base}/me/${endpoint}`, {
+          method: "PUT", headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+          body: JSON.stringify(endpoint === "password"
+            ? { currentPassword: password, newPassword: "a-brand-new-password" }
+            : { password, email: `moved-${account.email}` }),
+        });
+        assert.equal(response.status, 401);
+        assert.equal((await response.json() as { error?: { code?: string } }).error?.code, "UNAUTHENTICATED");
+        assert.equal((await f.source.findIdentityCredentials({ userId: account.userId }))?.passwordHash, "fixture-password-reset",
+          "the reset is the credential that survives");
+        assert.equal((await f.source.findIdentityAccountByUserId({ userId: account.userId }))?.email, account.email,
+          "the refused change does not move the address");
+      } finally { await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())); }
+    });
+  }
 }
 
 for (const sourceProvider of ["sqlite", "postgres"] as const) {

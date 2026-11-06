@@ -423,10 +423,10 @@ function registerIdentityContracts(provider, options = {}) {
       }
       const recentSession = randomUUID();
       const recentExpiry = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-      await f.store.createIdentitySession({
+      assert.equal(await f.store.createIdentitySession({
         userId: stored.account.user_id, sessionId: recentSession, expiresAt: recentExpiry,
         accessTokenId: randomUUID(), accessExpiresAt: recentExpiry, refreshHash: randomBytes(32).toString("hex"),
-      });
+      }, { email: f.email, passwordHash: stored.account.password_hash }), true);
       await f.store.consumeRateLimit({ key: expiredKey, limit: 2, windowSeconds: 60 });
       await f.store.consumeRateLimit({ key: activeKey, limit: 2, windowSeconds: 60 });
       if (f.db) f.db.prepare("UPDATE auth_rate_limits SET reset_at = ? WHERE key = ?").run("2000-01-01T00:00:00.000Z", expiredKey);

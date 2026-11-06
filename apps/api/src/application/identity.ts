@@ -90,10 +90,13 @@ type IdentitySession = {
 type Rotation = { status: "invalid" | "reused" } | {
   status: "rotated"; userId: string; sessionId: string; accessExpiresAt: string; refreshExpiresAt: string;
 };
+/** The account state a caller verified before asking for a write. */
+type IdentityAccountProof = { email: string; passwordHash: string };
 export type IdentityStore = {
   createIdentityAccount(input: { userId: string; email: string; passwordHash: string; session: IdentitySession; displayName?: string }): Promise<boolean>;
   findIdentityAccount(input: { email: string }): Promise<{ userId: string; passwordHash: string } | null>;
-  createIdentitySession(session: IdentitySession): Promise<unknown>;
+  /** Create a session only while the account still has the credentials just verified. */
+  createIdentitySession(session: IdentitySession, proof: { email: string; passwordHash: string }): Promise<boolean>;
   rotateIdentityRefresh(input: { refreshHash: string; nextRefreshHash: string; accessTokenId: string; issuedAt: string; accessExpiresAt: string }): Promise<Rotation>;
   revokeIdentityRefresh(input: { refreshHash: string }): Promise<unknown>;
   consumeRateLimit(input: { key: string; limit: number; windowSeconds: number }): Promise<{ allowed: boolean; resetAt: string }>;
@@ -115,6 +118,14 @@ export type IdentityStore = {
     userId: string; passwordHash: string; exceptSessionId?: string | null;
     /** For recovery, require the consumed proof still to belong to this address. */
     consumedTokenHash?: string;
+    /**
+     * For a signed-in change, the account state the caller verified: the
+     * address it checked and the password hash it compared. The write happens
+     * only while the account still has both, under the same lock that a reset
+     * takes — otherwise a change that began before a reset would land after it
+     * and put the password back under the control of whoever held the old one.
+     */
+    proof?: IdentityAccountProof;
   }): Promise<{ updated: boolean; revokedSessions: number }>;
   /**
    * Move an account to another address, and drop its proof of the old one.
@@ -122,9 +133,11 @@ export type IdentityStore = {
    * `false` means the address belongs to somebody else — the unique index is
    * the arbiter, so two callers racing for one address cannot both win. The
    * address is normalised and the account is known to exist before this is
-   * called, so `false` has only that one meaning.
+   * called, so `false` has only that one meaning... unless `proof` is given:
+   * then `false` also means the proof no longer matches the account, and the
+   * caller has to tell those apart by re-reading the account.
    */
-  setIdentityEmail(input: { userId: string; email: string }): Promise<boolean>;
+  setIdentityEmail(input: { userId: string; email: string; proof?: IdentityAccountProof }): Promise<boolean>;
   /** The credential of one account, and nothing else about it. */
   findIdentityCredentials(input: { userId: string }): Promise<{ userId: string; passwordHash: string } | null>;
   /** Live sessions of one account, newest first, bounded by `limit`. */
@@ -303,7 +316,8 @@ export function createIdentityService({ store, env, mailer = null, onMailDeliver
       const prepared = prepareSession(account.userId, config);
       const response = tokens({ userId: account.userId, sessionId: prepared.session.sessionId, accessTokenId: prepared.session.accessTokenId, issuedAt: prepared.issuedAt,
         accessExpiresAt: prepared.session.accessExpiresAt, refreshExpiresAt: prepared.session.expiresAt, refreshToken: prepared.refreshToken });
-      await store.createIdentitySession(prepared.session);
+      const created = await store.createIdentitySession(prepared.session, { email, passwordHash: account.passwordHash });
+      if (created !== true) throw new IdentityAuthenticationError();
       return response;
     },
     async refresh(body: Record<string, unknown>, ip: string) {
@@ -416,10 +430,17 @@ export function createIdentityService({ store, env, mailer = null, onMailDeliver
       // response time does not say which one it was.
       const valid = await verifyPassword(current, account?.passwordHash ?? null);
       if (!account || !valid) throw new IdentityAuthenticationError();
+      const verifiedEmail = (await store.findIdentityAccountByUserId({ userId }))?.email;
+      if (!verifiedEmail) throw new IdentityAuthenticationError();
       const passwordHash = await hashPassword(next);
       // One call, one transaction: the new credential and the end of the other
-      // sessions have to be observable together or not at all.
-      const replaced = await store.replaceIdentityPassword({ userId, passwordHash, exceptSessionId: sessionId });
+      // sessions have to be observable together or not at all. The proof is the
+      // state verified above, re-checked under the write lock: a reset that
+      // committed while this password crossed the KDF must not be overwritten
+      // by a change that started before it.
+      const replaced = await store.replaceIdentityPassword({
+        userId, passwordHash, exceptSessionId: sessionId, proof: { email: verifiedEmail, passwordHash: account.passwordHash },
+      });
       if (!replaced.updated) throw new IdentityAuthenticationError();
       return { ok: true, revokedSessions: replaced.revokedSessions };
     },
@@ -525,8 +546,20 @@ export function createIdentityService({ store, env, mailer = null, onMailDeliver
       if (account.email === email) {
         return { ok: true, email: account.email, emailVerifiedAt: account.emailVerifiedAt };
       }
-      const changed = await store.setIdentityEmail({ userId, email });
-      if (!changed) throw new IdentityConflictError();
+      const proof = { email: account.email, passwordHash: credentials.passwordHash };
+      const changed = await store.setIdentityEmail({ userId, email, proof });
+      if (!changed) {
+        // Two reasons to say no: the address is taken, or the password this
+        // request verified is no longer the account's. Tell them apart by
+        // re-reading, so a reset that landed meanwhile answers "sign in again"
+        // rather than pretending somebody else owns the address.
+        const current = await store.findIdentityAccountByUserId({ userId });
+        const currentCredentials = await store.findIdentityCredentials({ userId });
+        if (!current || !currentCredentials || current.email !== proof.email || currentCredentials.passwordHash !== proof.passwordHash) {
+          throw new IdentityAuthenticationError();
+        }
+        throw new IdentityConflictError();
+      }
       return { ok: true, email, emailVerifiedAt: null };
     },
     /**
