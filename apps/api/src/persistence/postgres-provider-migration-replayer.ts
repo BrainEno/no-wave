@@ -1,5 +1,6 @@
 import {
   assertChangeMatchesEnvelope,
+  assertMigrationReplaySchema,
   MigrationJournalError,
   type MigrationChange,
 } from "./provider-migration-journal.ts";
@@ -14,11 +15,33 @@ export function createPostgresProviderMigrationReplayer(sql: PgDatabase) {
   }
   const journal = createPostgresProviderMigrationJournal(sql);
 
+  async function assertForeignKeysEnabled(executor: PgExecutor): Promise<void> {
+    const [row] = await executor.unsafe<{ role: string }>("SELECT current_setting('session_replication_role') AS role");
+    // PostgreSQL implements foreign keys as triggers; replica mode disables
+    // ordinary constraint triggers even though the schema still declares them.
+    if (!row || (row.role !== "origin" && row.role !== "local")) {
+      throw new MigrationJournalError("FOREIGN_KEYS_DISABLED", "PostgreSQL replay requires foreign-key trigger enforcement on the target connection.");
+    }
+  }
+
+  async function assertEmptyMediaBaseline(executor: PgExecutor = sql): Promise<void> {
+    await assertForeignKeysEnabled(executor);
+    const [row] = await executor.unsafe<{ populated: boolean }>(`SELECT
+      EXISTS(SELECT 1 FROM media_assets) OR
+      EXISTS(SELECT 1 FROM article_media_refs) OR
+      EXISTS(SELECT 1 FROM article_translations) OR
+      EXISTS(SELECT 1 FROM user_profiles WHERE avatar_media_id IS NOT NULL OR lower(avatar_url) LIKE '%/media/%') AS populated`);
+    if (row?.populated) throw new MigrationJournalError("UNVERIFIED_MEDIA_BASELINE", "Replay requires an empty media baseline; existing snapshots need coordinated rebuilding and reconciliation.");
+  }
+
   async function applyRow(tx: PgExecutor, change: MigrationChange): Promise<void> {
     const valid = assertChangeMatchesEnvelope(change);
     const spec = getMigrationEntitySpec(valid.entityType);
     if (valid.operation === "delete") {
       const keys = migrationEntityKeyValues(valid.entityId, spec.primaryKey);
+      if (valid.entityType === "article_translations") {
+        await tx.unsafe("DELETE FROM article_media_refs WHERE article_id = $1 AND locale = $2", keys);
+      }
       const where = spec.primaryKey.map((column, index) => column + " = $" + (index + 1)).join(" AND ");
       await tx.unsafe("DELETE FROM " + spec.table + " WHERE " + where, keys);
       return;
@@ -38,6 +61,15 @@ export function createPostgresProviderMigrationReplayer(sql: PgDatabase) {
       "INSERT INTO " + prepared.spec.table + " (" + prepared.columns.join(", ") + ") VALUES (" + placeholders + ") ON CONFLICT (" + conflictKeys + ") " + conflict,
       prepared.values,
     );
+    if (prepared.articleMediaRefs !== null) {
+      const [articleId, locale] = prepared.primaryKeyValues;
+      await tx.unsafe("DELETE FROM article_media_refs WHERE article_id = $1 AND locale = $2", [articleId, locale]);
+      if (prepared.articleMediaRefs.length) {
+        // Insert the captured IDs directly: a missing target asset must fail its
+        // foreign key and roll back the translation and checkpoint, not vanish.
+        await tx.unsafe("INSERT INTO article_media_refs (asset_id, article_id, locale) SELECT asset_id, $2, $3 FROM unnest($1::text[]) AS asset_id", [prepared.articleMediaRefs, articleId, locale]);
+      }
+    }
   }
 
   async function applyTransaction(changes: readonly MigrationChange[]): Promise<void> {
@@ -58,6 +90,16 @@ export function createPostgresProviderMigrationReplayer(sql: PgDatabase) {
     }
 
     await sql.begin(async (tx) => {
+      // Check this transaction's connection each time; pool connections may have
+      // different settings and a prior checkpoint is not evidence of enforcement.
+      await assertForeignKeysEnabled(tx);
+      // Serialize this preflight with the checkpoint writer for this session.
+      const [session] = await tx.unsafe("SELECT schema_version, target_provider FROM provider_migration_sessions WHERE session_id = $1 FOR UPDATE", [first.sessionId]);
+      if (!session) throw new MigrationJournalError("SESSION_NOT_FOUND", "The target migration session does not exist.");
+      assertMigrationReplaySchema(session.schema_version);
+      if (session.target_provider !== "postgres") throw new MigrationJournalError("REPLAY_PROVIDER_MISMATCH", "The session does not target this provider.");
+      const [checkpoint] = await tx.unsafe("SELECT last_sequence FROM provider_migration_checkpoints WHERE session_id = $1", [first.sessionId]);
+      if (!checkpoint || Number(checkpoint.last_sequence) === 0) await assertEmptyMediaBaseline(tx);
       for (const change of changes) {
         const applied = await journal.markAppliedInTransaction(tx, change);
         if (!applied.duplicate) await applyRow(tx, change);
@@ -72,6 +114,7 @@ export function createPostgresProviderMigrationReplayer(sql: PgDatabase) {
     transitionSession: journal.transitionSession,
     getCheckpoint: journal.getCheckpoint,
     readChangeBatch: journal.readChangeBatch,
+    assertEmptyMediaBaseline: () => assertEmptyMediaBaseline(),
     applyTransaction,
   });
 }

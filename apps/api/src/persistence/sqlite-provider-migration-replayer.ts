@@ -1,5 +1,6 @@
 import {
   assertChangeMatchesEnvelope,
+  assertMigrationReplaySchema,
   MigrationJournalError,
   type MigrationChange,
 } from "./provider-migration-journal.ts";
@@ -18,11 +19,33 @@ export function createSqliteProviderMigrationReplayer(db: SqliteReplayDatabase) 
   }
   const journal = createSqliteProviderMigrationJournal(db);
 
+  function assertForeignKeysEnabled(): void {
+    const row = db.prepare("PRAGMA foreign_keys").get();
+    if (!row || Number(row.foreign_keys) !== 1) {
+      throw new MigrationJournalError("FOREIGN_KEYS_DISABLED", "SQLite replay requires foreign-key constraint enforcement on the target connection.");
+    }
+  }
+
+  function assertEmptyMediaBaseline(): void {
+    assertForeignKeysEnabled();
+    const row = db.prepare(`SELECT
+      EXISTS(SELECT 1 FROM media_assets) OR
+      EXISTS(SELECT 1 FROM article_media_refs) OR
+      EXISTS(SELECT 1 FROM article_translations) OR
+      EXISTS(SELECT 1 FROM user_profiles WHERE avatar_media_id IS NOT NULL OR lower(avatar_url) LIKE '%/media/%') AS populated`).get();
+    if (row?.populated) throw new MigrationJournalError("UNVERIFIED_MEDIA_BASELINE", "Replay requires an empty media baseline; existing snapshots need coordinated rebuilding and reconciliation.");
+  }
+
   function applyRow(change: MigrationChange): void {
     const valid = assertChangeMatchesEnvelope(change);
     const spec = prepareSpec(valid.entityType);
     if (valid.operation === "delete") {
       const keys = migrationEntityKeyValues(valid.entityId, spec.primaryKey);
+      // The reference table is keyed to the article, not to the translation.
+      // Removing a locale independently must therefore release its set too.
+      if (valid.entityType === "article_translations") {
+        db.prepare("DELETE FROM article_media_refs WHERE article_id = ? AND locale = ?").run(...keys);
+      }
       const where = spec.primaryKey.map(column => column + " = ?").join(" AND ");
       db.prepare("DELETE FROM " + spec.table + " WHERE " + where).run(...keys);
       return;
@@ -41,6 +64,12 @@ export function createSqliteProviderMigrationReplayer(db: SqliteReplayDatabase) 
     db.prepare(
       "INSERT INTO " + prepared.spec.table + " (" + columns.join(", ") + ") VALUES (" + placeholders + ") ON CONFLICT (" + conflictKeys + ") " + conflict,
     ).run(...prepared.values);
+    if (prepared.articleMediaRefs !== null) {
+      const [articleId, locale] = prepared.primaryKeyValues;
+      db.prepare("DELETE FROM article_media_refs WHERE article_id = ? AND locale = ?").run(articleId, locale);
+      const insert = db.prepare("INSERT INTO article_media_refs (asset_id, article_id, locale) VALUES (?, ?, ?)");
+      for (const assetId of prepared.articleMediaRefs) insert.run(assetId, articleId, locale);
+    }
   }
 
   // Separate resolver keeps delete processing on the same strict table allowlist.
@@ -69,6 +98,13 @@ export function createSqliteProviderMigrationReplayer(db: SqliteReplayDatabase) 
 
     db.exec("BEGIN IMMEDIATE");
     try {
+      // PRAGMA cannot change while this transaction is open. Check every apply,
+      // not just preparation, so a later connection setting cannot bypass FKs.
+      assertForeignKeysEnabled();
+      const session = journal.getSession(first.sessionId);
+      assertMigrationReplaySchema(session.schemaVersion);
+      if (session.targetProvider !== "sqlite") throw new MigrationJournalError("REPLAY_PROVIDER_MISMATCH", "The session does not target this provider.");
+      if (journal.getCheckpoint(first.sessionId) === 0) assertEmptyMediaBaseline();
       for (const change of changes) {
         const applied = journal.markAppliedInTransaction(db, change);
         if (!applied.duplicate) applyRow(change);
@@ -87,6 +123,7 @@ export function createSqliteProviderMigrationReplayer(db: SqliteReplayDatabase) 
     transitionSession: journal.transitionSession,
     getCheckpoint: journal.getCheckpoint,
     readChangeBatch: journal.readChangeBatch,
+    assertEmptyMediaBaseline,
     applyTransaction,
   });
 }

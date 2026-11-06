@@ -8,10 +8,12 @@ import { Worker } from "node:worker_threads";
 import { ConversationAccessError } from "../domain/errors.ts";
 import { runMigrations } from "./migrate.ts";
 import { createPostgresClient, createPostgresStore } from "./postgres.ts";
+import { createIsolatedPostgresTestSchema } from "./test-support/isolated-postgres-schema.ts";
 import { createPostgresProviderMigrationJournal } from "./postgres-provider-migration-journal.ts";
 import { createPostgresProviderMigrationReplayer } from "./postgres-provider-migration-replayer.ts";
 import { createSqliteProviderMigrationJournal } from "./sqlite-provider-migration-journal.ts";
 import { createSqliteProviderMigrationReplayer } from "./sqlite-provider-migration-replayer.ts";
+import { MIGRATION_REPLAY_SCHEMA_VERSION } from "./provider-migration-journal.ts";
 import { prepareMigrationReplayTarget, replayNextMigrationBatch } from "./provider-migration-replay.ts";
 import { prepareMigrationRowPayload } from "./provider-migration-row-applier.ts";
 import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
@@ -244,7 +246,7 @@ test("PostgreSQL counts a later message at exactly the read timestamp across con
     secondConnection = await createPostgresClient({ connectionString, max: 1 });
     const reopened = createPostgresStore(secondConnection);
     assert.equal(await unread(reopened, conversation.id, bob), 1);
-    await assert.rejects(reopened.markConversationAsRead({ conversationId: conversation.id, actorId: `outsider-${suffix}` }), ConversationAccessError);
+    await assert.rejects(Promise.resolve().then(() => reopened.markConversationAsRead({ conversationId: conversation.id, actorId: `outsider-${suffix}` })), ConversationAccessError);
     assert.equal(await unread(reopened, conversation.id, bob), 1);
   } finally {
     if (secondConnection) await secondConnection.end({ timeout: 5 });
@@ -486,7 +488,8 @@ test("PostgreSQL upgrades a real legacy schema and preserves existing read state
       assert.deepEqual(afterCounts.map((row) => ({ ...row })), beforeCounts.map((row) => ({ ...row })));
       await assert.rejects(tx.savepoint((nested) => nested.unsafe(`INSERT INTO messages
         (id, conversation_id, sender_id, body, idempotency_key, request_hash) VALUES ($1, 'legacy', 'alice', 'old', 'old', $2)`, [randomUUID(), "a".repeat(64)])));
-      const upgraded = createPostgresStore(scoped);
+      // This scoped executor borrows the enclosing test transaction; it does not own a pool to close.
+      const upgraded = createPostgresStore({ ...scoped, end: async () => {} });
       assert.equal(await unread(upgraded, "legacy", "bob"), 1);
       await upgraded.markConversationAsRead({ conversationId: "legacy", actorId: "bob" });
       await upgraded.persistMessage({ conversationId: "legacy", senderId: "alice", body: "new", idempotencyKey: "new" });
@@ -512,14 +515,15 @@ for (const sourceProvider of ["sqlite", "postgres"] as const) {
     const sqliteJournal = createSqliteProviderMigrationJournal(db);
     const postgresJournal = createPostgresProviderMigrationJournal(sql);
     const sourceJournal = sourceProvider === "sqlite" ? sqliteJournal : postgresJournal;
-    const target = sourceProvider === "sqlite" ? createPostgresProviderMigrationReplayer(sql) : createSqliteProviderMigrationReplayer(db);
+    const isolated = sourceProvider === "sqlite" ? await createIsolatedPostgresTestSchema(connectionString!) : null;
+    const target = isolated ? createPostgresProviderMigrationReplayer(isolated.sql) : createSqliteProviderMigrationReplayer(db);
     const sourceStore = sourceProvider === "sqlite" ? sqliteStore : postgresStore;
-    const targetStore = sourceProvider === "sqlite" ? postgresStore : sqliteStore;
+    const targetStore = isolated ? createPostgresStore(isolated.sql) : sqliteStore;
     const targetProvider = sourceProvider === "sqlite" ? "postgres" : "sqlite";
     const suffix = randomUUID(), alice = `replay-alice-${suffix}`, bob = `replay-bob-${suffix}`, sessionId = `read-order-${suffix}`;
     let conversation;
     try {
-      await sourceJournal.createSession({ sessionId, sourceProvider, targetProvider, schemaVersion: "conversation-read-order-v1" });
+      await sourceJournal.createSession({ sessionId, sourceProvider, targetProvider, schemaVersion: MIGRATION_REPLAY_SCHEMA_VERSION });
       await sourceJournal.transitionSession({ sessionId, expectedStatus: "prepared", nextStatus: "recording" });
       await prepareMigrationReplayTarget({ sourceJournal, targetJournal: target, sessionId, targetProvider });
       conversation = await sourceStore.createConversation({ actorId: alice, participantIds: [bob], idempotencyKey: `open-${suffix}` });
@@ -538,8 +542,11 @@ for (const sourceProvider of ["sqlite", "postgres"] as const) {
       await targetStore.persistMessage({ ...first, body: "after replay", idempotencyKey: `third-${suffix}` });
       assert.equal(await unread(targetStore, conversation.id, bob), 2);
     } finally {
-      if (conversation) await cleanupPostgres(conversation.id);
-      await sql.unsafe("DELETE FROM provider_migration_sessions WHERE session_id = $1", [sessionId]);
+      if (isolated) await isolated.cleanup();
+      else {
+        if (conversation) await cleanupPostgres(conversation.id);
+        await sql.unsafe("DELETE FROM provider_migration_sessions WHERE session_id = $1", [sessionId]);
+      }
       db.close();
     }
   });

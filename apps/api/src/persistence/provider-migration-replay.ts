@@ -1,5 +1,6 @@
 import {
   assertChangeMatchesEnvelope,
+  assertMigrationReplaySchema,
   isMigrationSessionActive,
   MigrationJournalError,
   type MigrationChange,
@@ -26,6 +27,7 @@ type JournalPort = {
 
 export type MigrationReplayTarget = JournalPort & {
   readonly provider: MigrationProvider;
+  assertEmptyMediaBaseline(): Promise<void> | void;
   applyTransaction(changes: readonly MigrationChange[]): Promise<void> | void;
 };
 
@@ -43,6 +45,8 @@ function isSourceReplayable(status: MigrationSessionStatus): boolean {
 }
 
 function assertCompatibleSession(source: MigrationReplaySession, target: MigrationReplaySession, targetProvider: MigrationProvider): void {
+  assertMigrationReplaySchema(source.schemaVersion);
+  assertMigrationReplaySchema(target.schemaVersion);
   if (source.targetProvider !== targetProvider || target.targetProvider !== targetProvider ||
       source.sourceProvider !== target.sourceProvider || source.schemaVersion !== target.schemaVersion) {
     throw new MigrationJournalError("REPLAY_SESSION_MISMATCH", "Source and target migration session settings do not match the replay target.");
@@ -54,12 +58,13 @@ function assertCompatibleSession(source: MigrationReplaySession, target: Migrati
 /** Create/activate the matching migration session on the target without altering business data. */
 export async function prepareMigrationReplayTarget(input: {
   sourceJournal: JournalPort;
-  targetJournal: JournalPort;
+  targetJournal: MigrationReplayTarget;
   sessionId: string;
   targetProvider: MigrationProvider;
 }): Promise<MigrationReplaySession> {
   const source = await input.sourceJournal.getSession(input.sessionId);
-  if (source.targetProvider !== input.targetProvider || source.sourceProvider === input.targetProvider) {
+  assertMigrationReplaySchema(source.schemaVersion);
+  if (source.targetProvider !== input.targetProvider || source.sourceProvider === input.targetProvider || input.targetJournal.provider !== input.targetProvider) {
     throw new MigrationJournalError("REPLAY_PROVIDER_MISMATCH", "The requested replay target does not match the source session.");
   }
   if (!isSourceReplayable(source.status)) {
@@ -72,6 +77,10 @@ export async function prepareMigrationReplayTarget(input: {
     schemaVersion: source.schemaVersion,
   });
   let target = await input.targetJournal.getSession(input.sessionId);
+  // No coordinated snapshot/watermark import exists yet. Never certify an old
+  // target merely because its session has a fresh identifier. The applier
+  // repeats this check in the first target transaction to close the prepare gap.
+  if ((await input.targetJournal.getCheckpoint(input.sessionId)) === 0) await input.targetJournal.assertEmptyMediaBaseline();
   if (target.status === "prepared") {
     await input.targetJournal.transitionSession({
       sessionId: input.sessionId,

@@ -11,7 +11,7 @@ import { ArticleAuthorizationError, ArticleInputError, ArticleNotFoundError, Art
 import { isUuid, requiredText } from "../domain/validation.ts";
 import { migrationEntityKey } from "./postgres-provider-migration-capture.ts";
 import { isoDate, mapArticle, readArticleForAuthor, readFeaturedArticles, replaceArticleMediaReferences, replaceArticleTaxonomyKind } from "./postgres-shared.ts";
-import { createMigrationTransactionId } from "./provider-migration-journal.ts";
+import { ARTICLE_MEDIA_REFS_SNAPSHOT, createMigrationTransactionId } from "./provider-migration-journal.ts";
 import type { PostgresStoreContext } from "./postgres-shared.ts";
 import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
 
@@ -206,14 +206,17 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
           await replaceArticleMediaReferences(tx, article.id, input.locale, input.contentBlocks);
           await replaceArticleTaxonomyKind(tx, article.id, "category", selectedCategories);
           await replaceArticleTaxonomyKind(tx, article.id, "tag", selectedTags);
-          const [articleSnapshot, translationSnapshot, links] = await Promise.all([
+          const [articleSnapshot, translationSnapshot, links, mediaRefs] = await Promise.all([
             tx.unsafe("SELECT * FROM articles WHERE id = $1", [article.id]),
             tx.unsafe("SELECT * FROM article_translations WHERE article_id = $1 AND locale = $2", [article.id, input.locale]),
             tx.unsafe("SELECT * FROM article_taxonomies WHERE article_id = $1", [article.id]),
+            tx.unsafe("SELECT asset_id FROM article_media_refs WHERE article_id = $1 AND locale = $2 ORDER BY asset_id", [article.id, input.locale]),
           ]);
           await captureChanges(tx, transactionId, [
             { entityType: "articles", entityId: article.id, operation: "upsert", payload: articleSnapshot[0] },
-            { entityType: "article_translations", entityId: migrationEntityKey(article.id, input.locale), operation: "upsert", payload: translationSnapshot[0] },
+            { entityType: "article_translations", entityId: migrationEntityKey(article.id, input.locale), operation: "upsert", payload: {
+              ...translationSnapshot[0], [ARTICLE_MEDIA_REFS_SNAPSHOT]: mediaRefs.map((row) => row.asset_id),
+            } },
             ...links.map((link) => ({ entityType: "article_taxonomies", entityId: migrationEntityKey(link.article_id, link.taxonomy_id), operation: "upsert" as const, payload: link })),
           ]);
           return mapArticle({ ...article, ...translations[0] });
@@ -265,15 +268,18 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
           await replaceArticleMediaReferences(tx, articleId, input.locale, input.contentBlocks);
           await replaceArticleTaxonomyKind(tx, articleId, "category", selectedCategories);
           await replaceArticleTaxonomyKind(tx, articleId, "tag", selectedTags);
-          const [articleSnapshot, translationSnapshot, currentLinks] = await Promise.all([
+          const [articleSnapshot, translationSnapshot, currentLinks, mediaRefs] = await Promise.all([
             tx.unsafe("SELECT * FROM articles WHERE id = $1", [articleId]),
             tx.unsafe("SELECT * FROM article_translations WHERE article_id = $1 AND locale = $2", [articleId, input.locale]),
             tx.unsafe("SELECT * FROM article_taxonomies WHERE article_id = $1", [articleId]),
+            tx.unsafe("SELECT asset_id FROM article_media_refs WHERE article_id = $1 AND locale = $2 ORDER BY asset_id", [articleId, input.locale]),
           ]);
           const currentIds = new Set(currentLinks.map((link) => migrationEntityKey(link.article_id, link.taxonomy_id)));
           await captureChanges(tx, transactionId, [
             { entityType: "articles", entityId: articleId, operation: "upsert", payload: articleSnapshot[0] },
-            { entityType: "article_translations", entityId: migrationEntityKey(articleId, input.locale), operation: "upsert", payload: translationSnapshot[0] },
+            { entityType: "article_translations", entityId: migrationEntityKey(articleId, input.locale), operation: "upsert", payload: {
+              ...translationSnapshot[0], [ARTICLE_MEDIA_REFS_SNAPSHOT]: mediaRefs.map((row) => row.asset_id),
+            } },
             ...currentLinks.map((link) => ({ entityType: "article_taxonomies", entityId: migrationEntityKey(link.article_id, link.taxonomy_id), operation: "upsert" as const, payload: link })),
             ...previousLinks.filter((link) => !currentIds.has(migrationEntityKey(link.article_id, link.taxonomy_id))).map((link) => ({ entityType: "article_taxonomies", entityId: migrationEntityKey(link.article_id, link.taxonomy_id), operation: "delete" as const, payload: null })),
           ]);
