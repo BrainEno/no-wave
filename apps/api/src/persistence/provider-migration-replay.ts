@@ -26,7 +26,7 @@ type JournalPort = {
 
 export type MigrationReplayTarget = JournalPort & {
   readonly provider: MigrationProvider;
-  applyTransaction(changes: readonly MigrationChange[]): Promise<void>;
+  applyTransaction(changes: readonly MigrationChange[]): Promise<void> | void;
 };
 
 export type ReplayNextBatchResult = {

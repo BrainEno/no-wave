@@ -379,8 +379,13 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
       const cutoff = new Date(at.getTime() - retentionDays * 86_400_000).toISOString();
       return await sql.begin(async (tx) => {
         const transactionId = createMigrationTransactionId();
+        // Claim each candidate before inspecting its children. A restore holds
+        // this same row lock: an ordinary MVCC read could otherwise see its old
+        // tombstone and later delete the successfully restored work by ID.
+        // Skipped rows remain eligible for a later sweep, while concurrent
+        // sweepers can progress without counting or journaling the same row.
         const expired = (await tx.unsafe(
-          "SELECT id FROM articles WHERE deleted_at IS NOT NULL AND deleted_at < $1 ORDER BY deleted_at, id LIMIT $2",
+          "SELECT id FROM articles WHERE deleted_at IS NOT NULL AND deleted_at < $1 ORDER BY deleted_at, id LIMIT $2 FOR UPDATE SKIP LOCKED",
           [cutoff, limit],
         )).map((row) => row.id);
         if (expired.length === 0) return { purged: 0 };
