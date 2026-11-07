@@ -20,6 +20,55 @@ export function validateArticleWorkType(value) {
   return value;
 }
 
+/**
+ * Work types that can still exist but can no longer be chosen.
+ *
+ * `serial` (连载) was retired for new work by ADR 0016 / `38d087b` — the platform
+ * publishes short and medium-form writing, and a serialised work needs chapter
+ * state the product does not model. Deleting the type outright is not an option:
+ * works created before that decision still have to be listed, read and edited, so
+ * removing it would either orphan them or silently retype real content on the next
+ * save.
+ *
+ * The rule is therefore "cannot be chosen, can still exist". The authoring desk
+ * stopped offering it (#196); this is the same rule on the write contract, where
+ * a client that bypasses the desk can still reach it.
+ */
+const RETIRED_ARTICLE_WORK_TYPES = new Set(["serial"]);
+export const retiredArticleWorkTypes = Object.freeze([...RETIRED_ARTICLE_WORK_TYPES]);
+
+/**
+ * A type a new work may be created with.
+ *
+ * Called on create only: a stored `serial` work must stay saveable, or the author
+ * loses the ability to fix a typo in work the platform itself accepted.
+ */
+export function assertCreatableArticleWorkType(value) {
+  const workType = validateArticleWorkType(value);
+  if (RETIRED_ARTICLE_WORK_TYPES.has(workType)) {
+    throw new ArticleInputError("workType \"serial\" is retired: a new work must use an active literary work type.");
+  }
+  return workType;
+}
+
+/**
+ * A type change on an existing work.
+ *
+ * Unchanged is always allowed, including a legacy type keeping itself, so an
+ * ordinary edit of an old serial work is not rejected for the type it already
+ * has. Anything else has to be creatable — which also means an author may retype
+ * a legacy serial work to a supported type, the one direction that removes the
+ * legacy value.
+ */
+export function assertArticleWorkTypeChange(previousWorkType, value) {
+  if (value === undefined) return undefined;
+  const workType = validateArticleWorkType(value);
+  if (workType !== previousWorkType && RETIRED_ARTICLE_WORK_TYPES.has(workType)) {
+    throw new ArticleInputError("workType \"serial\" is retired: an existing work cannot be retyped to it.");
+  }
+  return workType;
+}
+
 export function validateArticleSlug(value) {
   const slug = requiredText("slug", value, 160);
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {

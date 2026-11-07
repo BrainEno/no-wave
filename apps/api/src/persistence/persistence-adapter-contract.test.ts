@@ -43,6 +43,18 @@ async function sqliteFixture() {
     async setArticleDeletedAt(id, deletedAt) {
       db.prepare("UPDATE articles SET deleted_at = ? WHERE id = ?").run(deletedAt, id);
     },
+    /**
+     * Write the type directly, the way a pre-retirement row got it.
+     *
+     * The create path now refuses a retired type, so a legacy work can only be
+     * simulated below the contract — which is exactly how such a row got here.
+     */
+    async setArticleWorkType(id, workType) {
+      db.prepare("UPDATE articles SET work_type = ? WHERE id = ?").run(workType, id);
+    },
+    async articleWorkType(id) {
+      return db.prepare("SELECT work_type FROM articles WHERE id = ?").get(id).work_type;
+    },
     async setMediaAssetCreatedAt(id, createdAt) {
       db.prepare("UPDATE media_assets SET created_at = ? WHERE id = ?").run(createdAt, id);
     },
@@ -115,6 +127,7 @@ async function sqliteFixture() {
         db.prepare("DELETE FROM media_assets WHERE owner_id = ?").run(`avatar-ref-owner-${suffix}`);
         db.prepare("DELETE FROM auth_accounts WHERE user_id IN (?, ?, ?)").run(`cursor-ms-author-${suffix}`, `cursor-ms-owner-${suffix}`, `identity-default-profile-${suffix}`);
         db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`cursor-ms-%-${suffix}`);
+        db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`contract-retired-${suffix}%`);
         for (const slug of [`contract-draft-${suffix}`, `contract-published-${suffix}`, `contract-liked-${suffix}`, `contract-comment-${suffix}`, `contract-comment-notifications-${suffix}`, `contract-create-once-${suffix}`, `contract-create-once-b-${suffix}`, `contract-create-twice-${suffix}`]) db.prepare("DELETE FROM articles WHERE slug = ?").run(slug);
         db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`feed-%-${suffix}`);
         db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`sort-%-${suffix}`);
@@ -150,6 +163,13 @@ async function postgresFixture() {
     },
     async setArticleDeletedAt(id, deletedAt) {
       await postgresSql.unsafe("UPDATE articles SET deleted_at = $1 WHERE id = $2", [deletedAt, id]);
+    },
+    async setArticleWorkType(id, workType) {
+      await postgresSql.unsafe("UPDATE articles SET work_type = $2 WHERE id = $1", [id, workType]);
+    },
+    async articleWorkType(id) {
+      const [row] = await postgresSql.unsafe("SELECT work_type FROM articles WHERE id = $1", [id]);
+      return row.work_type;
     },
     async setMediaAssetCreatedAt(id, createdAt) {
       await postgresSql.unsafe("UPDATE media_assets SET created_at = $1 WHERE id = $2", [createdAt, id]);
@@ -200,6 +220,7 @@ async function postgresFixture() {
         await postgresSql.unsafe("DELETE FROM revoked_sessions WHERE session_id = ANY($1::text[])", [[`contract-session-${suffix}`, `contract-expired-session-${suffix}`]]);
         await postgresSql.unsafe("DELETE FROM media_assets WHERE owner_id = $1", [`cursor-ms-owner-${suffix}`]);
         await postgresSql.unsafe("DELETE FROM auth_accounts WHERE user_id = ANY($1::text[])", [[`cursor-ms-author-${suffix}`, `cursor-ms-owner-${suffix}`, `identity-default-profile-${suffix}`]]);
+        await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`contract-retired-${suffix}%`]);
         await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`cursor-ms-%-${suffix}`]);
         await postgresSql.unsafe("DELETE FROM articles WHERE slug = ANY($1::text[])", [[`contract-draft-${suffix}`, `contract-published-${suffix}`, `contract-liked-${suffix}`, `contract-comment-${suffix}`, `contract-comment-notifications-${suffix}`, `contract-create-once-${suffix}`, `contract-create-once-b-${suffix}`, `contract-create-twice-${suffix}`]]);
         // A deleted work keeps its row under a released slug (`...-deleted-<id>`).
@@ -961,6 +982,59 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       assert.equal(published.contentBlocksVersion, 1);
       assert.deepEqual(published.contentBlocks, richTextBlocks);
       assert.ok((await runtime.store.listPublishedArticles({ locale: "zh-CN", query: "Now published" })).some((article) => article.id === articleId));
+    } finally { await runtime.cleanup(undefined, suffix); }
+  });
+
+  test(`${adapterName}: a retired work type cannot be created or retyped to, while a stored one stays editable`, options, async () => {
+    // ADR 0016 / 38d087b retired 连载 (`serial`). #196 removed it from the desk's
+    // create list, but the write contract still accepted it, so a client posting
+    // directly could create work the product says it does not publish. The other
+    // half matters just as much: legacy rows must keep being editable.
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const slug = `contract-retired-${suffix}`;
+    const block = [{ id: "p1", type: "paragraph", text: "Short form." }];
+    try {
+      await assert.rejects(
+        Promise.resolve().then(() => runtime.store.createArticle({
+          authorId: `author-${suffix}`, slug, title: "A serialised work", locale: "zh-CN",
+          contentBlocks: block, workType: "serial",
+        })),
+        (error) => error instanceof ArticleInputError && /"serial" is retired/.test(error.message),
+      );
+      // Nothing was written, so the address is still free for a supported type.
+      const created = await runtime.store.createArticle({
+        authorId: `author-${suffix}`, slug, title: "A short story", locale: "zh-CN",
+        contentBlocks: block, workType: "short_story",
+      });
+      assert.equal(created.workType, "short_story");
+
+      // A row that predates the retirement: written below the contract, exactly
+      // as the old API left it.
+      await runtime.setArticleWorkType(created.id, "serial");
+      const edited = await runtime.store.updateArticle({
+        articleId: created.id, actorId: `author-${suffix}`, slug,
+        title: "A short story, corrected", locale: "zh-CN", contentBlocks: block,
+        publish: false, workType: "serial",
+      });
+      assert.equal(edited.workType, "serial", "saving an existing serial work must not retype or reject it");
+
+      const retyped = await runtime.store.updateArticle({
+        articleId: created.id, actorId: `author-${suffix}`, slug,
+        title: "Now a short story", locale: "zh-CN", contentBlocks: block,
+        publish: false, workType: "short_story",
+      });
+      assert.equal(retyped.workType, "short_story", "an author may retype legacy work to a supported type");
+
+      await assert.rejects(
+        Promise.resolve().then(() => runtime.store.updateArticle({
+          articleId: created.id, actorId: `author-${suffix}`, slug,
+          title: "Back to serial", locale: "zh-CN", contentBlocks: block,
+          publish: false, workType: "serial",
+        })),
+        (error) => error instanceof ArticleInputError && /cannot be retyped to it/.test(error.message),
+      );
+      assert.equal(await runtime.articleWorkType(created.id), "short_story", "the rejected update changed nothing");
     } finally { await runtime.cleanup(undefined, suffix); }
   });
 

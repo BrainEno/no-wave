@@ -58,6 +58,51 @@ test("`serial` still exists for content that already has it", async () => {
     "utf8",
   );
   assert.match(domain, /"serial"/, "the API must still accept a stored serial work");
+  assert.match(
+    domain,
+    /RETIRED_ARTICLE_WORK_TYPES = new Set\(\["serial"\]\)/,
+    "and must also know that serial is the retired type, not an ordinary one",
+  );
+});
+
+/**
+ * The other half of #196: the desk stopped *offering* 连载, but the write contract
+ * still accepted it, so `POST /api/v1/articles` with `workType: "serial"` created
+ * work the product says it does not publish. A guard on the desk alone is a guard
+ * on the easiest client, not on the contract.
+ *
+ * Asserted statically here because this test already reads across packages and the
+ * behaviour itself is covered where it belongs: `domain/article.test.ts` for the
+ * rule, `persistence-adapter-contract.test.ts` for both providers and both
+ * directions (create refuses it, a stored row still saves and can be retyped).
+ */
+test("the write contract refuses a retired type but keeps a stored one editable", async () => {
+  const domain = await readFile(
+    new URL("../../../../apps/api/src/domain/article.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(domain, /export function assertCreatableArticleWorkType/, "create must gate retired types");
+  assert.match(
+    domain,
+    /export function assertArticleWorkTypeChange/,
+    "an update must distinguish \"unchanged\" from \"retyped to a retired type\"",
+  );
+
+  for (const store of ["postgres-article-store.ts", "sqlite-article-store.ts"]) {
+    const source = await readFile(
+      new URL(`../../../../apps/api/src/persistence/${store}`, import.meta.url),
+      "utf8",
+    );
+    assert.match(source, /assertCreatableArticleWorkType\(/, `${store} must gate creation`);
+    assert.match(source, /assertArticleWorkTypeChange\(/, `${store} must gate retyping`);
+    // The gate has to sit *after* the replay lookup, or a key minted before the
+    // retirement answers 400 for a write that already happened.
+    assert.ok(
+      source.indexOf("assertCreatableArticleWorkType(") > source.indexOf("idempotency_key_hash = $2")
+        || source.indexOf("assertCreatableArticleWorkType(") > source.indexOf("idempotency_key_hash = ?"),
+      `${store} must check the replay before the retirement`,
+    );
+  }
 });
 
 test("a new work is not silently created as zh-CN", async () => {

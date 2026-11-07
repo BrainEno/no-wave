@@ -281,7 +281,7 @@
 | `/submit` | 投稿 / 发布 | 写作、发布设置、预览、提交审核 |
 | `/search?q=` | 搜索结果 | 作品 / 作者 / 类型三类结果 |
 
-作品类型（8 种，中英对应）：小说 Fiction · 短篇小说 Short story · 诗歌 Poetry · 随笔 Essay · 评论 Review · 文学评论 Criticism · 非虚构 Nonfiction · 连载 Serial。类型标签是 1px 直角框，不做类型配色，保持单一强调色。
+作品类型（8 种，中英对应）：小说 Fiction · 短篇小说 Short story · 诗歌 Poetry · 随笔 Essay · 评论 Review · 文学评论 Criticism · 非虚构 Nonfiction · 连载 Serial。类型标签是 1px 直角框，不做类型配色，保持单一强调色。连载（Serial）自 ADR 0016 起不再作为可创作类型：新建作品的类型列表里没有它，`serial` 只用于在决定之前创建、需要继续阅读与编辑的旧作品（写入契约同样拒绝新建与“改回连载”）。
 
 ## 12. 排版：按作品类型区分版式
 

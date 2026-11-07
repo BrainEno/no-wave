@@ -15,6 +15,8 @@ import {
   ArticleNotFoundError,
 } from "../domain/errors.ts";
 import {
+  assertArticleWorkTypeChange,
+  assertCreatableArticleWorkType,
   validateArticleLocale,
   validateArticleSlug,
   normalizeArticleInput,
@@ -455,6 +457,9 @@ export function createSqliteArticleStore(db) {
               return readCreatedArticle(existing.id, input.locale);
             }
           }
+          // Same placement as PostgreSQL: replay first, retirement second, so a
+          // pre-retirement key still answers with the work it created.
+          assertCreatableArticleWorkType(input.workType ?? "other");
           const now = new Date().toISOString();
           db.prepare("INSERT INTO articles (id, author_id, slug, status, work_type, idempotency_key_hash, request_hash, created_at, updated_at, published_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
             .run(id, authorId, input.slug, input.publish ? "published" : "draft", input.workType ?? "other",
@@ -490,9 +495,10 @@ export function createSqliteArticleStore(db) {
       const tags = normalizeTaxonomyIds("tagIds", tagIds, 100);
       try {
         return transaction((transactionId) => {
-          const existing = statement("SELECT id, author_id, created_at, deleted_at FROM articles WHERE id = ?").get(articleId);
+          const existing = statement("SELECT id, author_id, created_at, deleted_at, work_type FROM articles WHERE id = ?").get(articleId);
           if (!existing || existing.deleted_at) throw new ArticleNotFoundError("The article was not found.");
           if (existing.author_id !== actorId) throw new ArticleAuthorizationError("Only the article author can update it.");
+          assertArticleWorkTypeChange(existing.work_type, input.workType);
           const previousLinks = statement("SELECT taxonomy_id FROM article_taxonomies WHERE article_id = ?").all(articleId);
           const now = new Date().toISOString();
           db.prepare("UPDATE articles SET slug = ?, status = ?, work_type = COALESCE(?, work_type), updated_at = ?, published_at = CASE WHEN ? = 1 THEN COALESCE(published_at, ?) ELSE NULL END WHERE id = ?")
