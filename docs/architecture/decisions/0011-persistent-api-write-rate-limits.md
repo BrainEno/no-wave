@@ -38,3 +38,41 @@ Unit tests assert canonical route policies, opaque bucket keys, route-specific l
 ## Follow-up boundary
 
 Idempotency keys for write operations that do not currently accept them, per-new-account publishing cooldowns, abuse reports, moderation queues, role-based moderation, soft deletion, and appeals are separate follow-up work. This ADR does not imply those capabilities are implemented.
+
+## Amendment (2026-11-07): policies are keyed by route id, and the table is total
+
+The decision above is unchanged — durable, HMAC-keyed, user-then-IP buckets with
+canonical operation names. What changed is **how a request finds its policy**.
+
+Resolution used to run through `endpointFor`, a hand-written list of ~38 path
+regexes: a second route table next to the real one, kept in sync by hand. Two
+failures followed from that shape, and both are silent:
+
+- renaming or moving a path stopped it being throttled, because the regex no
+  longer matched — the route still worked, it just stopped being limited;
+- `POLICIES[name] ?? DEFAULT_POLICY` turned a wrong or missing name into "use the
+  generic limits", so an endpoint could be limited twelve times more loosely than
+  intended and nothing would say so.
+
+Now `resolveWriteRateLimitPolicy(method, routeId)` reads a table keyed by
+`<METHOD> <route id>` — the REST route table's own identity, which the transport
+already resolved before this middleware runs. Consequences:
+
+1. **A path rename cannot change coverage.** The key is the route id, so the
+   bucket follows the route.
+2. **There is no default.** An unknown route resolves to `null` (not throttled
+   here) instead of inheriting limits nobody chose. Every mutating route must be
+   either in the table or in `IDENTITY_THROTTLED_ROUTE_IDS`, and
+   `assertWriteRateLimitsCoverRoutes` enforces that in both directions at module
+   load of the route table — a route added without a policy, a policy kept for a
+   deleted route, an exemption for a route that no longer exists, and an entry for
+   a route that is no longer a mutation all fail at boot and in the unit test.
+3. **The limits themselves did not change.** Bucket keys still come from the
+   canonical operation name, so existing counters keep their meaning. The
+   conversation/session/notification writes that previously inherited the generic
+   60/120 limits are now written down as such, one row each, in the table.
+
+This does not derive policies from handler code, does not add the trusted-proxy or
+edge design §6 requires, and does not coordinate limits across API instances
+beyond the shared durable counters.
+

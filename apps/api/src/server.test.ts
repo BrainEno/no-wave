@@ -845,6 +845,44 @@ test("REST write rate limits return 429 and Retry-After before invoking a mutati
   }, { env: authEnv, applicationServices });
 });
 
+/**
+ * The limiter resolves a policy from the *matched route id*, not from the path.
+ *
+ * Article creation was already covered above, so this uses routes that used to
+ * inherit the generic limits by falling through a default — a write whose limit
+ * nobody had written down. The assertion is the pair of bucket limits: they are
+ * the taxonomy rows from ADR 0011, reached through the route table rather than
+ * through a second list of path regexes.
+ */
+test("REST write rate limits resolve through the route id, including routes with no bespoke limits", async () => {
+  const calls = [];
+  const applicationServices = {
+    async isSessionRevoked() { return false; },
+    async consumeRateLimit(input) {
+      calls.push(input);
+      // The user bucket passes and the shared IP bucket is exhausted, so both
+      // rows of the policy are visible in one request.
+      return { allowed: calls.length === 1, resetAt: new Date(Date.now() + 3200).toISOString() };
+    },
+    async createTaxonomy() { throw new Error("The rate-limit check must run before persistence."); },
+  };
+  await withServer(async (baseUrl) => {
+    const response = await fetch(baseUrl + "/api/v1/tags", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer " + signedToken("taxonomy-writer"),
+      },
+      body: JSON.stringify({ slug: "rate-limited-tag", name: "Rate limited" }),
+    });
+    assert.equal(response.status, 429);
+    assert.match(response.headers.get("retry-after") ?? "", /^[1-4]$/);
+    // User bucket first, then the shared IP bucket: 30 and 60 a minute.
+    assert.deepEqual(calls.map((call) => call.limit), [30, 60]);
+    assert.deepEqual(calls.map((call) => call.windowSeconds), [60, 60]);
+  }, { env: authEnv, applicationServices });
+});
+
 test("REST write rate limiter ignores spoofed forwarding headers and uses the verified user", async () => {
   const calls = [];
   const applicationServices = {
