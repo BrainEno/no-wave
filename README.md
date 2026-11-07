@@ -33,6 +33,8 @@ pnpm db:migrate                    # creates apps/api/data/no-wave.sqlite
 pnpm dev                           # API :4000 + Web :3000
 ```
 
+The API publishes its own contract at <http://localhost:4000/api/v1/openapi.json>; [docs/api/openapi.md](docs/api/openapi.md) explains the document and walks through register → publish → read with `curl`.
+
 In a second terminal, verify the whole chain:
 
 ```sh
@@ -241,6 +243,8 @@ This repository ships one deployment path, not a platform manifest: the two cont
 | `pnpm dev --check --exit` | Probe, then stop both processes; used by CI. |
 | `pnpm check:local --read-only` | Verify the chain without write probes. |
 | `pnpm verify:publish` | Verify writing-desk publish visibility without mail; prints article links. |
+| `pnpm openapi:check` | Prove the checked-in OpenAPI contract (`docs/api/openapi.json`) matches the API's route table. |
+| `pnpm openapi:write` | Regenerate that file after an intentional contract change. |
 
 ## PostgreSQL integration tests
 

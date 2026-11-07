@@ -2,6 +2,7 @@ import type { RestRouteGroup } from "./context.ts";
 import { handleAuthRoutes } from "./auth.ts";
 import { handleMediaRoutes } from "./media.ts";
 import { handleHealthRoute } from "./health.ts";
+import { handleOpenApiRoute } from "./openapi.ts";
 import { handleIdentityRoutes } from "./identity.ts";
 import { handleNotificationRoutes } from "./notifications.ts";
 import { handleConversationRoutes } from "./conversations.ts";
@@ -25,6 +26,7 @@ export const REST_ROUTE_GROUPS: readonly RestRouteGroup[] = Object.freeze([
   enforceWriteRateLimit,
   handleMediaRoutes,
   handleHealthRoute,
+  handleOpenApiRoute,
   handleIdentityRoutes,
   handleNotificationRoutes,
   handleConversationRoutes,

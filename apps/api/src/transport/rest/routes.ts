@@ -41,6 +41,10 @@ const RELATIONS = ["followers", "following"] as const;
 
 export const REST_ROUTES: readonly RestRoute[] = Object.freeze([
   { id: "health", methods: ["GET"], segments: [literal("health")] },
+  // The contract endpoint. It is a route like any other on purpose: the document
+  // is generated from this table, so serving it from the table keeps the answer
+  // and the API's own idea of itself in one place (`./openapi/`).
+  { id: "openapi", methods: ["GET"], segments: [literal("openapi.json")] },
   { id: "auth", methods: ["POST"], segments: [literal("auth"), param("action", AUTH_ACTIONS)] },
 
   { id: "me", methods: ["GET"], segments: [literal("me")] },

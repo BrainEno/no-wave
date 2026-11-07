@@ -235,6 +235,9 @@ The verifier pins `HS256`, private type `application/vnd.bot-thk.access+jwt`, is
 
 The API exposes a versioned REST business contract under `/api/v1`. REST handlers call the shared application-service facade and do not access PostgreSQL directly. All REST JSON responses use `Cache-Control: no-store`. Private endpoints derive the acting user exclusively from a verified bearer JWT, reject revoked sessions and never accept client-supplied actor/owner IDs.
 
+`GET /api/v1/openapi.json` serves the machine-readable contract for this surface — an OpenAPI 3.1 document generated from the same route table the dispatcher matches against (50 paths, 64 operations, including which operations answer anonymously and which need a session). The checked-in copy is `docs/api/openapi.json`; `pnpm openapi:check` compares it byte-for-byte with the generated document and the root test list runs it, and `pnpm openapi:write` refreshes it after an intentional change. A route added without an operation fails the API at start-up rather than leaving the published contract incomplete. What the document does and does not claim, plus a "register → publish → read" journey over `curl`, is in [docs/api/openapi.md](../../docs/api/openapi.md).
+
+
 ### Public read routes
 
 - `GET /api/v1/health` — liveness response, independent of persistence.

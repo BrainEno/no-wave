@@ -138,7 +138,7 @@
 | 能力 | 现状 | 说明 |
 | --- | --- | --- |
 | 健康检查 / 就绪 / 指标 | ✅ | `/healthz`、`/readyz`、`/metrics`。 |
-| **机器可读 API 契约（OpenAPI）** | ❌ | issue #63 半完成：文档齐，但没有 OpenAPI 产物，也没有"注册 → 登录 → 发布 → 阅读"的 quickstart。客户端是手写的。 |
+| **机器可读 API 契约（OpenAPI）** | ✅ | issue #63：`GET /api/v1/openapi.json` 与签入的 `docs/api/openapi.json` 由路由表生成（OpenAPI 3.1，50 条路径 / 64 个操作）；`pnpm openapi:check` 在 CI 里防止漂移。同一份文档里的 “five-minute journey” 即「注册 → 登录 → 发布 → 阅读」快速开始，已在本地栈上逐条跑通。客户端仍手写，但现在可以对着一份可信契约写。详见 [docs/api/openapi.md](openapi.md)。 |
 | **性能基线 / 负载测试** | ❌ | issue #64，全仓库无基线。 |
 | 幂等存储 | ❌ | issue #71，仅文章创建有 idempotency key（自实现），没有通用存储。 |
 | PWA / 离线 | ❌ | 基线里明确"PWA 与可靠投递是两件事"；PWA 侧 pending。 |
@@ -156,7 +156,7 @@
 3. **媒体库列表 + 孤儿回收（P4）** —— 与作者日常强相关，且 P4 已被独立标记为待决策。
 4. **举报 / 审核 / 角色** —— issue #72，先写 ADR 再动代码。
 5. **会话管理 + 注销账号** —— 账号安全 G2 的收尾。
-6. **OpenAPI 契约** —— issue #63，客户端接入越多收益越大。
+6. ✅ **OpenAPI 契约** —— issue #63 已落地（`docs/api/openapi.md`）；剩下的是让更多客户端真的用它。
 
 ## 待你决策
 
