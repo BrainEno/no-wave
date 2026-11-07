@@ -2,26 +2,38 @@ import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import { createSqliteProviderMigrationCapture, migrationEntityKey, type CapturedChange } from "./sqlite-provider-migration-capture.ts";
 import { DEFAULT_AUTHOR_DISPLAY_NAME } from "../domain/profile.ts";
 import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
+import type { SqliteRow, SqliteRunner } from "./sqlite.ts";
 
 /** SQLite identity contract adapter, composed by sqlite-store.ts. */
-export function createSqliteIdentityStore(db) {
-  if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") throw new TypeError("A SQLite database connection is required.");
-  const run = (sql, ...args) => db.prepare(sql).run(...args);
-  const get = (sql, ...args) => db.prepare(sql).get(...args);
-  const all = (sql, ...args) => db.prepare(sql).all(...args);
+export function createSqliteIdentityStore(db: SqliteRunner) {
+  if (!db || typeof db.prepare !== "function") throw new TypeError("A SQLite database connection is required.");
+  const run = (sql: string, ...args: unknown[]) => db.prepare(sql).run(...args);
+  const get = (sql: string, ...args: unknown[]) => db.prepare(sql).get(...args);
+  const all = (sql: string, ...args: unknown[]) => db.prepare(sql).all(...args);
+
+  /** The row a capture just wrote; a missing one is a bug, not a valid payload. */
+  function one(sql: string, ...args: unknown[]): SqliteRow {
+    const row = get(sql, ...args);
+    if (!row) throw new Error("Expected a row for the migration capture: " + sql);
+    return row;
+  }
+
   const migrationCapture = createSqliteProviderMigrationCapture(db);
-  function transaction(work) {
+  function transaction<T>(work: (transactionId: string) => T): T {
     const transactionId = createMigrationTransactionId();
     db.exec("BEGIN IMMEDIATE");
     try { const result = work(transactionId); db.exec("COMMIT"); return result; }
     catch (error) { try { db.exec("ROLLBACK"); } catch {} throw error; }
   }
-  function insertSession(session) {
+  function insertSession(session: {
+    sessionId: string; userId: string; expiresAt: string;
+    accessTokenId: string; accessExpiresAt: string; refreshHash: string;
+  }): void {
     run("INSERT INTO auth_sessions (id, user_id, expires_at) VALUES (?, ?, ?)", session.sessionId, session.userId, new Date(session.expiresAt).toISOString());
     run("INSERT INTO auth_access_tokens (token_id, session_id, expires_at) VALUES (?, ?, ?)", session.accessTokenId, session.sessionId, new Date(session.accessExpiresAt).toISOString());
     run("INSERT INTO auth_refresh_tokens (token_hash, session_id) VALUES (?, ?)", session.refreshHash, session.sessionId);
   }
-  function revokeSessionFamily(sessionId) {
+  function revokeSessionFamily(sessionId: string): void {
     run("UPDATE auth_sessions SET revoked_at = COALESCE(revoked_at, strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE id = ?", sessionId);
     run(`INSERT INTO revoked_sessions (session_id, expires_at)
       SELECT token_id, expires_at FROM auth_access_tokens WHERE session_id = ?
@@ -42,12 +54,12 @@ export function createSqliteIdentityStore(db) {
   // A signed-in change verifies the old credential outside the write, so the
   // verified state is compared again under BEGIN IMMEDIATE. Only equality is
   // checked, in memory: the verified hash is never a SQL parameter.
-  function hasAccountProof(userId, proof) {
+  function hasAccountProof(userId: string, proof: { email: string; passwordHash: string }): boolean {
     const account = get("SELECT email, password_hash FROM auth_accounts WHERE user_id = ?", userId);
-    return Boolean(account) && account.email === proof.email && account.password_hash === proof.passwordHash;
+    return account !== undefined && account.email === proof.email && account.password_hash === proof.passwordHash;
   }
 
-  function captureSessionSnapshot(transactionId, sessionId) {
+  function captureSessionSnapshot(transactionId: string, sessionId: string): void {
     const changes: CapturedChange[] = [];
     const session = get("SELECT * FROM auth_sessions WHERE id = ?", sessionId);
     const accessTokens = all("SELECT * FROM auth_access_tokens WHERE session_id = ?", sessionId);
@@ -74,9 +86,9 @@ export function createSqliteIdentityStore(db) {
         run("INSERT INTO user_profiles (user_id) VALUES (?) ON CONFLICT(user_id) DO NOTHING", userId);
         run("INSERT INTO user_profile_translations (user_id, locale, display_name, bio) VALUES (?, 'zh-CN', ?, '') ON CONFLICT(user_id, locale) DO NOTHING", userId, displayName);
         migrationCapture.captureInTransaction(db, transactionId, [
-          { entityType: "auth_accounts", entityId: userId, operation: "upsert", payload: get("SELECT * FROM auth_accounts WHERE user_id = ?", userId) },
-          { entityType: "user_profiles", entityId: userId, operation: "upsert", payload: get("SELECT * FROM user_profiles WHERE user_id = ?", userId) },
-          { entityType: "user_profile_translations", entityId: migrationEntityKey(userId, "zh-CN"), operation: "upsert", payload: get("SELECT * FROM user_profile_translations WHERE user_id = ? AND locale = ?", userId, "zh-CN") },
+          { entityType: "auth_accounts", entityId: userId, operation: "upsert", payload: one("SELECT * FROM auth_accounts WHERE user_id = ?", userId) },
+          { entityType: "user_profiles", entityId: userId, operation: "upsert", payload: one("SELECT * FROM user_profiles WHERE user_id = ?", userId) },
+          { entityType: "user_profile_translations", entityId: migrationEntityKey(userId, "zh-CN"), operation: "upsert", payload: one("SELECT * FROM user_profile_translations WHERE user_id = ? AND locale = ?", userId, "zh-CN") },
         ]);
         captureSessionSnapshot(transactionId, session.sessionId);
         return true;
@@ -103,8 +115,9 @@ export function createSqliteIdentityStore(db) {
         const token = get("SELECT session_id, used_at FROM auth_refresh_tokens WHERE token_hash = ?", refreshHash);
         if (!token) return { status: "invalid" };
         const session = get("SELECT id, user_id, expires_at, revoked_at FROM auth_sessions WHERE id = ?", token.session_id);
-        const expires = session && new Date(session.expires_at).getTime();
-        if (!session || session.revoked_at || expires <= Date.now() || expires <= new Date(issuedAt).getTime()) return { status: "invalid" };
+        const expires = session ? new Date(session.expires_at).getTime() : Number.NaN;
+        if (!session || session.revoked_at || !Number.isFinite(expires) ||
+            expires <= Date.now() || expires <= new Date(issuedAt).getTime()) return { status: "invalid" };
         if (token.used_at) {
           revokeSessionFamily(session.id);
           captureSessionSnapshot(transactionId, session.id);
@@ -117,9 +130,9 @@ export function createSqliteIdentityStore(db) {
         run("INSERT INTO auth_refresh_tokens (token_hash, session_id) VALUES (?, ?)", nextRefreshHash, session.id);
         run("INSERT INTO auth_access_tokens (token_id, session_id, expires_at) VALUES (?, ?, ?)", accessTokenId, session.id, cappedExpiry.toISOString());
         migrationCapture.captureInTransaction(db, transactionId, [
-          { entityType: "auth_refresh_tokens", entityId: refreshHash, operation: "upsert", payload: get("SELECT * FROM auth_refresh_tokens WHERE token_hash = ?", refreshHash) },
-          { entityType: "auth_refresh_tokens", entityId: nextRefreshHash, operation: "upsert", payload: get("SELECT * FROM auth_refresh_tokens WHERE token_hash = ?", nextRefreshHash) },
-          { entityType: "auth_access_tokens", entityId: accessTokenId, operation: "upsert", payload: get("SELECT * FROM auth_access_tokens WHERE token_id = ?", accessTokenId) },
+          { entityType: "auth_refresh_tokens", entityId: refreshHash, operation: "upsert", payload: one("SELECT * FROM auth_refresh_tokens WHERE token_hash = ?", refreshHash) },
+          { entityType: "auth_refresh_tokens", entityId: nextRefreshHash, operation: "upsert", payload: one("SELECT * FROM auth_refresh_tokens WHERE token_hash = ?", nextRefreshHash) },
+          { entityType: "auth_access_tokens", entityId: accessTokenId, operation: "upsert", payload: one("SELECT * FROM auth_access_tokens WHERE token_id = ?", accessTokenId) },
         ]);
         return { status: "rotated", userId: session.user_id, sessionId: session.id, accessExpiresAt: cappedExpiry.toISOString(), refreshExpiresAt: new Date(session.expires_at).toISOString() };
       });
@@ -147,7 +160,7 @@ export function createSqliteIdentityStore(db) {
             revoked_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')`, sessionId, expiration.toISOString());
         if (access) captureSessionSnapshot(transactionId, access.session_id);
         migrationCapture.captureInTransaction(db, transactionId, [
-          { entityType: "revoked_sessions", entityId: sessionId, operation: "upsert", payload: get("SELECT * FROM revoked_sessions WHERE session_id = ?", sessionId) },
+          { entityType: "revoked_sessions", entityId: sessionId, operation: "upsert", payload: one("SELECT * FROM revoked_sessions WHERE session_id = ?", sessionId) },
         ]);
         return true;
       });
@@ -166,7 +179,7 @@ export function createSqliteIdentityStore(db) {
           tokenHash, userId, purpose, email, new Date(expiresAt).toISOString());
         migrationCapture.captureInTransaction(db, transactionId, [
           ...replaced.map((row) => ({ entityType: "auth_identity_tokens", entityId: row.token_hash, operation: "delete" as const, payload: null })),
-          { entityType: "auth_identity_tokens", entityId: tokenHash, operation: "upsert", payload: get("SELECT * FROM auth_identity_tokens WHERE token_hash = ?", tokenHash) },
+          { entityType: "auth_identity_tokens", entityId: tokenHash, operation: "upsert", payload: one("SELECT * FROM auth_identity_tokens WHERE token_hash = ?", tokenHash) },
         ]);
         return true;
       });
@@ -181,7 +194,7 @@ export function createSqliteIdentityStore(db) {
         const result = run("UPDATE auth_identity_tokens SET consumed_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE token_hash = ? AND consumed_at IS NULL", tokenHash);
         if (Number(result.changes) === 0) return null;
         migrationCapture.captureInTransaction(db, transactionId, [
-          { entityType: "auth_identity_tokens", entityId: tokenHash, operation: "upsert", payload: get("SELECT * FROM auth_identity_tokens WHERE token_hash = ?", tokenHash) },
+          { entityType: "auth_identity_tokens", entityId: tokenHash, operation: "upsert", payload: one("SELECT * FROM auth_identity_tokens WHERE token_hash = ?", tokenHash) },
         ]);
         return { userId: row.user_id, email: row.email };
       });
@@ -217,7 +230,7 @@ export function createSqliteIdentityStore(db) {
         }
         const result = run("UPDATE auth_accounts SET password_hash = ? WHERE user_id = ?", passwordHash, userId);
         if (Number(result.changes) > 0) migrationCapture.captureInTransaction(db, transactionId, [
-          { entityType: "auth_accounts", entityId: userId, operation: "upsert", payload: get("SELECT * FROM auth_accounts WHERE user_id = ?", userId) },
+          { entityType: "auth_accounts", entityId: userId, operation: "upsert", payload: one("SELECT * FROM auth_accounts WHERE user_id = ?", userId) },
         ]);
         return { updated: Number(result.changes) > 0, revokedSessions: sessionIds.length };
       });
@@ -292,7 +305,7 @@ export function createSqliteIdentityStore(db) {
         if (consumedTokenHash !== undefined && !hasConsumedTokenProof(userId, consumedTokenHash, "email_verification")) return false;
         const result = run("UPDATE auth_accounts SET email_verified_at = COALESCE(email_verified_at, ?) WHERE user_id = ?", new Date(verifiedAt).toISOString(), userId);
         if (Number(result.changes) > 0) migrationCapture.captureInTransaction(db, transactionId, [
-          { entityType: "auth_accounts", entityId: userId, operation: "upsert", payload: get("SELECT * FROM auth_accounts WHERE user_id = ?", userId) },
+          { entityType: "auth_accounts", entityId: userId, operation: "upsert", payload: one("SELECT * FROM auth_accounts WHERE user_id = ?", userId) },
         ]);
         return Number(result.changes) > 0;
       });
@@ -320,7 +333,7 @@ export function createSqliteIdentityStore(db) {
         run("DELETE FROM auth_identity_tokens WHERE user_id = ?", userId);
         migrationCapture.captureInTransaction(db, transactionId, [
           ...invalidated.map((row) => ({ entityType: "auth_identity_tokens", entityId: row.token_hash, operation: "delete" as const, payload: null })),
-          { entityType: "auth_accounts", entityId: userId, operation: "upsert", payload: get("SELECT * FROM auth_accounts WHERE user_id = ?", userId) },
+          { entityType: "auth_accounts", entityId: userId, operation: "upsert", payload: one("SELECT * FROM auth_accounts WHERE user_id = ?", userId) },
         ]);
         return true;
       });
@@ -389,8 +402,9 @@ export function createSqliteIdentityStore(db) {
                             WHEN auth_rate_limits.attempts >= ? THEN ? ELSE auth_rate_limits.attempts + 1 END,
             reset_at = CASE WHEN auth_rate_limits.reset_at <= ? THEN excluded.reset_at ELSE auth_rate_limits.reset_at END
           RETURNING attempts, reset_at`, key, resetAt, now, limit + 1, limit + 1, now);
+        if (!row) throw new Error("The rate-limit upsert returned no row.");
         migrationCapture.captureInTransaction(db, transactionId, [
-          { entityType: "auth_rate_limits", entityId: key, operation: "upsert", payload: get("SELECT * FROM auth_rate_limits WHERE key = ?", key) },
+          { entityType: "auth_rate_limits", entityId: key, operation: "upsert", payload: one("SELECT * FROM auth_rate_limits WHERE key = ?", key) },
         ]);
         return { allowed: Number(row.attempts) <= limit, resetAt: row.reset_at };
       });

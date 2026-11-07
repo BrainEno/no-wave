@@ -1,9 +1,10 @@
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import { createSqliteProviderMigrationCapture } from "./sqlite-provider-migration-capture.ts";
+import type { MediaScanRow } from "../application/media-assets.ts";
 import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
+import type { SqliteRow, SqliteRunner } from "./sqlite.ts";
 
-function mapMediaAsset(row) {
-  if (!row) return null;
+function mapMediaAssetRow(row: SqliteRow) {
   return {
     id: row.id,
     ownerId: row.owner_id,
@@ -17,21 +18,26 @@ function mapMediaAsset(row) {
   };
 }
 
+/** A read that may legitimately find nothing (a missing id, or another owner's). */
+function mapMediaAsset(row: SqliteRow | undefined) {
+  return row ? mapMediaAssetRow(row) : null;
+}
+
 /** SQLite implementation of the portable media metadata port. Object bytes never enter SQLite. */
-export function createSqliteMediaStore(db) {
+export function createSqliteMediaStore(db: SqliteRunner) {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") {
     throw new TypeError("A node:sqlite DatabaseSync connection is required.");
   }
   const migrationCapture = createSqliteProviderMigrationCapture(db);
-  const run = (sql, ...args) => db.prepare(sql).run(...args);
-  const get = (sql, ...args) => db.prepare(sql).get(...args);
+  const run = (sql: string, ...args: unknown[]) => db.prepare(sql).run(...args);
+  const get = (sql: string, ...args: unknown[]) => db.prepare(sql).get(...args);
 
   /** Work bodies and avatars, in the shape the media reference scan reads. */
   const BODY_SQL = `SELECT a.id AS article_id, a.slug, a.status, a.deleted_at, a.author_id, t.locale, t.title, t.content_blocks
          FROM article_translations t
          JOIN articles a ON a.id = t.article_id`;
   const AVATAR_SQL = "SELECT avatar_url FROM user_profiles WHERE avatar_url IS NOT NULL AND avatar_url <> ''";
-  const mapBody = (row) => ({
+  const mapBody = (row: SqliteRow): MediaScanRow => ({
     kind: "work",
     content: row.content_blocks,
     work: {
@@ -44,7 +50,7 @@ export function createSqliteMediaStore(db) {
       authorId: row.author_id ?? "",
     },
   });
-  const mapAvatar = (row) => ({ kind: "avatar", content: row.avatar_url });
+  const mapAvatar = (row: SqliteRow): MediaScanRow => ({ kind: "avatar", content: row.avatar_url });
   /**
    * The same two questions answered from the materialised references (#163)
    * instead of by scanning every body on the site.
@@ -61,7 +67,7 @@ export function createSqliteMediaStore(db) {
    * not the proof: `evidenceRowsUsing` is asked as well before anything is
    * deleted.
    */
-  const referenceRowsUsing = (id) => {
+  const referenceRowsUsing = (id: string): MediaScanRow[] => {
     const assetId = String(id).toLowerCase();
     const bodyRows = db.prepare(
       `SELECT a.id AS article_id, a.slug, a.status, a.deleted_at, a.author_id, t.locale, t.title, t.content_blocks
@@ -91,7 +97,7 @@ export function createSqliteMediaStore(db) {
    * pathological body can return; the caller only needs to know that something
    * uses the asset.
    */
-  const evidenceRowsUsing = (id) => {
+  const evidenceRowsUsing = (id: string): MediaScanRow[] => {
     const assetId = String(id).toLowerCase();
     // The row says "this asset": `content` carries the asset's own id, exactly as
     // the reference-table rows do, so the caller's extraction and redaction code
@@ -99,10 +105,10 @@ export function createSqliteMediaStore(db) {
     const evidence = `/media/${assetId}`;
     const bodies = db.prepare(
       `${BODY_SQL} WHERE instr(lower(t.content_blocks), ?) > 0 LIMIT 200`,
-    ).all(assetId).map((row) => ({ ...mapBody(row), content: evidence }));
+    ).all(assetId).map((row): MediaScanRow => ({ ...mapBody(row), content: evidence }));
     const avatars = db.prepare(
       "SELECT avatar_url FROM user_profiles WHERE avatar_url IS NOT NULL AND avatar_url <> '' AND instr(lower(avatar_url), ?) > 0 LIMIT 200",
-    ).all(assetId).map(() => ({ kind: "avatar", content: evidence }));
+    ).all(assetId).map((): MediaScanRow => ({ kind: "avatar", content: evidence }));
     return [...bodies, ...avatars];
   };
 
@@ -121,7 +127,7 @@ export function createSqliteMediaStore(db) {
           { entityType: "media_assets", entityId: asset.id, operation: "upsert", payload: row },
         ]);
         db.exec("COMMIT");
-        return mapMediaAsset(row);
+        return mapMediaAssetRow(row);
       } catch (error) {
         try { db.exec("ROLLBACK"); } catch { /* preserve the original failure */ }
         throw error;
@@ -150,7 +156,7 @@ export function createSqliteMediaStore(db) {
         : db.prepare(
           "SELECT * FROM media_assets WHERE owner_id = ? AND (created_at < ? OR (created_at = ? AND id < ?)) ORDER BY created_at DESC, id DESC LIMIT ?",
         ).all(ownerId, cursor.at, cursor.at, cursor.id, safeLimit + 1);
-      return rows.map(mapMediaAsset);
+      return rows.map(mapMediaAssetRow);
     },
     /**
      * Every place a media URL can live, for the reference scan: every work body,
@@ -196,7 +202,7 @@ export function createSqliteMediaStore(db) {
         `SELECT avatar_media_id AS asset_id FROM user_profiles WHERE avatar_media_id IN (${placeholders})`,
       ).all(...ids);
       return [
-        ...workRows.map((row) => ({
+        ...workRows.map((row): MediaScanRow => ({
           kind: "work",
           content: `/media/${row.asset_id}`,
           work: {
@@ -209,7 +215,7 @@ export function createSqliteMediaStore(db) {
             authorId: row.author_id ?? "",
           },
         })),
-        ...avatarRows.map((row) => ({ kind: "avatar", content: `/media/${row.asset_id}` })),
+        ...avatarRows.map((row): MediaScanRow => ({ kind: "avatar", content: `/media/${row.asset_id}` })),
       ];
     },
     /**
@@ -256,7 +262,7 @@ export function createSqliteMediaStore(db) {
           { entityType: "media_assets", entityId: id, operation: "delete", payload: null },
         ]);
         db.exec("COMMIT");
-        return { deleted: mapMediaAsset(row), usedBy: [] };
+        return { deleted: mapMediaAssetRow(row), usedBy: [] };
       } catch (error) {
         try { db.exec("ROLLBACK"); } catch { /* preserve the original failure */ }
         throw error;

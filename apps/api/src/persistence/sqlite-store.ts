@@ -9,7 +9,7 @@ import { createSqliteSessionStore } from "./sqlite-session-store.ts";
 import { createSqliteIdentityStore } from "./sqlite-identity-store.ts";
 import { createSqliteOutboxStore } from "./sqlite-outbox-store.ts";
 import { createSqliteMediaStore } from "./sqlite-media-store.ts";
-import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
+import { createSqliteClient, runSqliteMigrations, type SqliteRunner } from "./sqlite.ts";
 
 /**
  * Compose the SQLite domain slices into one adapter-shaped object.
@@ -19,7 +19,7 @@ import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
  * runtime assertion also verifies that no two slices claim the same method
  * name: an object spread would otherwise let a later slice silently win.
  */
-export function createSqliteStore(db): TypedPersistenceAdapterContract {
+export function createSqliteStore(db: SqliteRunner): TypedPersistenceAdapterContract {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") {
     throw new TypeError("A node:sqlite DatabaseSync connection is required.");
   }

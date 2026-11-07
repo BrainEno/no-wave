@@ -6,7 +6,7 @@ import {
 } from "../application/article-idempotency.ts";
 import { MEDIA_SRC_PATTERN } from "../application/media-assets.ts";
 import { ARTICLE_MEDIA_REFS_SNAPSHOT, createMigrationTransactionId } from "./provider-migration-journal.ts";
-import { createSqliteProviderMigrationCapture, migrationEntityKey } from "./sqlite-provider-migration-capture.ts";
+import { createSqliteProviderMigrationCapture, migrationEntityKey, type CapturedChange } from "./sqlite-provider-migration-capture.ts";
 import {
   ArticleInputError,
   ArticleSlugConflictError,
@@ -25,12 +25,13 @@ import {
 } from "../domain/article.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
 import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
+import type { SqliteRow, SqliteRunner } from "./sqlite.ts";
 
 /**
  * SQLite implementation of the article/content persistence slice.
  * This is a domain slice composed into the SQLite provider by sqlite-store.ts.
  */
-export function createSqliteArticleStore(db) {
+export function createSqliteArticleStore(db: SqliteRunner) {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") {
     throw new TypeError("A node:sqlite DatabaseSync connection is required.");
   }
@@ -51,7 +52,7 @@ export function createSqliteArticleStore(db) {
     FROM articles a
     JOIN article_translations t ON t.article_id = a.id
   `;
-  const mapArticle = (row) => row ? ({
+  const mapArticle = (row: SqliteRow) => ({
     id: row.id,
     authorId: row.author_id,
     slug: row.slug,
@@ -65,7 +66,7 @@ export function createSqliteArticleStore(db) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     publishedAt: row.published_at,
-  }) : null;
+  });
   // The desk's recycle bin reads the same article shape plus the tombstone
   // timestamp and the number of comments that would die with it, so it gets its
   // own select rather than a flag on the shared one. The count is part of the
@@ -79,12 +80,14 @@ export function createSqliteArticleStore(db) {
     FROM articles a
     JOIN article_translations t ON t.article_id = a.id
   `;
-  const mapDeletedArticle = (row) => row ? ({
+  /** A read that may legitimately find nothing. */
+  const mapArticleFound = (row: SqliteRow | undefined) => (row ? mapArticle(row) : null);
+  const mapDeletedArticle = (row: SqliteRow) => ({
     ...mapArticle(row),
     deletedAt: row.deleted_at,
     commentCount: Number(row.comment_count ?? 0),
-  }) : null;
-  const statement = (sql) => db.prepare(sql);
+  });
+  const statement = (sql: string) => db.prepare(sql);
   const featuredSelect = statement(articleSelect + `
     JOIN featured_articles AS f ON f.article_id = a.id
     WHERE a.status = 'published' AND t.locale = ?
@@ -92,13 +95,13 @@ export function createSqliteArticleStore(db) {
     LIMIT ? OFFSET ?
   `);
   /** Shared by the public read and by the writer's read-back after it commits. */
-  const readFeaturedArticles = (locale, limit, offset) => featuredSelect.all(locale, limit, offset).map(mapArticle);
+  const readFeaturedArticles = (locale: string, limit: number, offset: number) => featuredSelect.all(locale, limit, offset).map(mapArticle);
   const featuredStatus = statement("SELECT status FROM articles WHERE id = ?");
   const publishedArticleBySlug = statement(
     articleSelect + " WHERE a.slug = ? AND a.status = 'published' AND t.locale = ? LIMIT 1",
   );
 
-  function transaction(work) {
+  function transaction<T>(work: (transactionId: string) => T): T {
     const transactionId = createMigrationTransactionId();
     db.exec("BEGIN IMMEDIATE");
     try {
@@ -119,10 +122,10 @@ export function createSqliteArticleStore(db) {
    * reference. Deduplicated because a body may show the same image twice and the
    * primary key is (asset, article, locale).
    */
-  function mediaIdsIn(contentBlocks) {
+  function mediaIdsIn(contentBlocks: unknown): string[] {
     const text = typeof contentBlocks === "string" ? contentBlocks : JSON.stringify(contentBlocks ?? []);
-    const ids = new Set();
-    for (const match of text.matchAll(MEDIA_SRC_PATTERN)) ids.add(match[1].toLowerCase());
+    const ids = new Set<string>();
+    for (const match of text.matchAll(MEDIA_SRC_PATTERN)) ids.add(String(match[1]).toLowerCase());
     return [...ids];
   }
 
@@ -140,7 +143,7 @@ export function createSqliteArticleStore(db) {
    * migration ran) and a foreign-key failure must not fail the article save.
    * `ON DELETE CASCADE` on the other side cleans up when an asset does go.
    */
-  function replaceMediaReferences(articleId, locale, contentBlocks) {
+  function replaceMediaReferences(articleId: string, locale: string, contentBlocks: unknown): void {
     statement("DELETE FROM article_media_refs WHERE article_id = ? AND locale = ?").run(articleId, locale);
     const ids = mediaIdsIn(contentBlocks);
     if (ids.length === 0) return;
@@ -150,7 +153,7 @@ export function createSqliteArticleStore(db) {
     for (const assetId of ids) insert.run(articleId, locale, assetId);
   }
 
-  function replaceTaxonomies(articleId, kind, ids) {
+  function replaceTaxonomies(articleId: string, kind: string, ids: string[] | undefined): void {
     if (ids === undefined) return;
     if (ids.length) {
       const placeholders = ids.map(() => "?").join(", ");
@@ -175,7 +178,7 @@ export function createSqliteArticleStore(db) {
    * change set — and capturing the row is what keeps a replica that is replaying
    * this journal from keeping a work the author just deleted.
    */
-  function captureArticleRow(transactionId, articleId) {
+  function captureArticleRow(transactionId: string, articleId: string): void {
     const article = statement("SELECT * FROM articles WHERE id = ?").get(articleId);
     if (!article) return;
     migrationCapture.captureInTransaction(db, transactionId, [
@@ -183,12 +186,17 @@ export function createSqliteArticleStore(db) {
     ]);
   }
 
-  function captureArticleState(transactionId, articleId, locale, previousLinks = []) {
+  function captureArticleState(
+    transactionId: string,
+    articleId: string,
+    locale: string,
+    previousLinks: { taxonomy_id: string }[] = [],
+  ): void {
     const article = statement("SELECT * FROM articles WHERE id = ?").get(articleId);
     const translation = statement("SELECT * FROM article_translations WHERE article_id = ? AND locale = ?").get(articleId, locale);
     const links = statement("SELECT article_id, taxonomy_id FROM article_taxonomies WHERE article_id = ?").all(articleId);
-    const currentIds = new Set(links.map((link) => link.taxonomy_id));
-    const changes = [];
+    const currentIds = new Set<string>(links.map((link) => String(link.taxonomy_id)));
+    const changes: CapturedChange[] = [];
     if (article) changes.push({ entityType: "articles", entityId: articleId, operation: "upsert", payload: article });
     if (translation) {
       // Capture the actual materialized set, including an explicit empty set,
@@ -204,12 +212,18 @@ export function createSqliteArticleStore(db) {
   }
 
   /**
-   * Read back a work that a replayed create already made, in the locale the
-   * caller asked for (falling back to the translation it was written in).
+   * Read back a work this transaction just wrote, in the locale the caller
+   * asked for (falling back to the translation it was written in). Nothing is
+   * returned when the row is missing: the write is in the same transaction, so
+   * a missing read-back is an invariant violation, not a not-found answer.
    */
-  function readCreatedArticle(articleId, locale) {
-    return mapArticle(statement(articleSelect + " WHERE a.id = ? AND t.locale = COALESCE((SELECT locale FROM article_translations WHERE article_id = ? AND locale = ?), (SELECT locale FROM article_translations WHERE article_id = ? ORDER BY created_at LIMIT 1))")
-      .get(articleId, articleId, locale, articleId));
+  function readArticleAfterWrite(articleId: string, locale: string) {
+    const row = statement(articleSelect + " WHERE a.id = ? AND t.locale = COALESCE((SELECT locale FROM article_translations WHERE article_id = ? AND locale = ?), (SELECT locale FROM article_translations WHERE article_id = ? ORDER BY created_at LIMIT 1))")
+      .get(articleId, articleId, locale, articleId);
+    // The write that just committed created this row; a missing read-back is an
+    // invariant violation, not a not-found answer.
+    if (!row) throw new ArticleInputError("The article could not be read back after it was written.");
+    return mapArticle(row);
   }
 
   return Object.freeze({
@@ -327,8 +341,8 @@ export function createSqliteArticleStore(db) {
         });
         const rows = statement("SELECT * FROM featured_articles").all();
         migrationCapture.captureInTransaction(db, transactionId, [
-          ...previous.map((row) => ({ entityType: "featured_articles", entityId: row.article_id, operation: "delete", payload: null })),
-          ...rows.map((row) => ({ entityType: "featured_articles", entityId: row.article_id, operation: "upsert", payload: row })),
+          ...previous.map((row): CapturedChange => ({ entityType: "featured_articles", entityId: row.article_id, operation: "delete", payload: null })),
+          ...rows.map((row): CapturedChange => ({ entityType: "featured_articles", entityId: row.article_id, operation: "upsert", payload: row })),
         ]);
       });
       return readFeaturedArticles(locale, MAX_FEATURED_ARTICLES, 0);
@@ -360,7 +374,7 @@ export function createSqliteArticleStore(db) {
     getPublishedArticle({ slug, locale = "zh-CN" }) {
       validateArticleSlug(slug);
       validateArticleLocale(locale);
-      return mapArticle(publishedArticleBySlug.get(slug, locale));
+      return mapArticleFound(publishedArticleBySlug.get(slug, locale));
     },
 
     listMyArticles({ actorId, locale = "zh-CN", limit = 50 }) {
@@ -438,7 +452,7 @@ export function createSqliteArticleStore(db) {
       };
       const fingerprintForSlug = (value: string | null) => articleIdempotencyFingerprint({ ...fingerprintBase, slug: value });
       const fingerprint = fingerprintForSlug(fingerprintSlug);
-      const replayMatches = (row) => articleIdempotencyReplayMatches(
+      const replayMatches = (row: SqliteRow) => articleIdempotencyReplayMatches(
         row.request_hash,
         fingerprint,
         fingerprintSlug === null
@@ -454,7 +468,7 @@ export function createSqliteArticleStore(db) {
             const existing = db.prepare("SELECT id, slug, request_hash FROM articles WHERE author_id = ? AND idempotency_key_hash = ?").get(authorId, keyHash);
             if (existing) {
               if (!replayMatches(existing)) throw new IdempotencyConflictError();
-              return readCreatedArticle(existing.id, input.locale);
+              return readArticleAfterWrite(existing.id, input.locale);
             }
           }
           // Same placement as PostgreSQL: replay first, retirement second, so a
@@ -470,17 +484,18 @@ export function createSqliteArticleStore(db) {
           replaceTaxonomies(id, "category", categories);
           replaceTaxonomies(id, "tag", tags);
           captureArticleState(transactionId, id, input.locale);
-          return mapArticle(statement(articleSelect + " WHERE a.id = ? AND t.locale = ?").get(id, input.locale));
+          return readArticleAfterWrite(id, input.locale);
         });
       } catch (error) {
-        if (/UNIQUE constraint failed: articles\.slug/i.test(error.message)) throw new ArticleSlugConflictError();
+        const message = error instanceof Error ? error.message : String(error);
+        if (/UNIQUE constraint failed: articles\.slug/i.test(message)) throw new ArticleSlugConflictError();
         // Another writer took the same key between the replay check and the
         // insert: the work exists now, so answer with it rather than a 500.
-        if (keyHash !== null && /articles_author_idempotency_key_idx|articles\.idempotency_key_hash/i.test(error.message)) {
+        if (keyHash !== null && /articles_author_idempotency_key_idx|articles\.idempotency_key_hash/i.test(message)) {
           const existing = db.prepare("SELECT id, slug, request_hash FROM articles WHERE author_id = ? AND idempotency_key_hash = ?").get(authorId, keyHash);
           if (existing) {
             if (!replayMatches(existing)) throw new IdempotencyConflictError();
-            return readCreatedArticle(existing.id, input.locale);
+            return readArticleAfterWrite(existing.id, input.locale);
           }
         }
         throw error;
@@ -499,7 +514,8 @@ export function createSqliteArticleStore(db) {
           if (!existing || existing.deleted_at) throw new ArticleNotFoundError("The article was not found.");
           if (existing.author_id !== actorId) throw new ArticleAuthorizationError("Only the article author can update it.");
           assertArticleWorkTypeChange(existing.work_type, input.workType);
-          const previousLinks = statement("SELECT taxonomy_id FROM article_taxonomies WHERE article_id = ?").all(articleId);
+          const previousLinks = statement("SELECT taxonomy_id FROM article_taxonomies WHERE article_id = ?").all(articleId)
+            .map((link) => ({ taxonomy_id: String(link.taxonomy_id) }));
           const now = new Date().toISOString();
           db.prepare("UPDATE articles SET slug = ?, status = ?, work_type = COALESCE(?, work_type), updated_at = ?, published_at = CASE WHEN ? = 1 THEN COALESCE(published_at, ?) ELSE NULL END WHERE id = ?")
             .run(input.slug, input.publish ? "published" : "draft", input.workType ?? null, now, input.publish ? 1 : 0, now, articleId);
@@ -512,10 +528,11 @@ export function createSqliteArticleStore(db) {
           replaceTaxonomies(articleId, "category", categories);
           replaceTaxonomies(articleId, "tag", tags);
           captureArticleState(transactionId, articleId, input.locale, previousLinks);
-          return mapArticle(statement(articleSelect + " WHERE a.id = ? AND t.locale = ?").get(articleId, input.locale));
+          return readArticleAfterWrite(articleId, input.locale);
         });
       } catch (error) {
-        if (/UNIQUE constraint failed: articles\.slug/i.test(error.message)) throw new ArticleSlugConflictError();
+        const message = error instanceof Error ? error.message : String(error);
+        if (/UNIQUE constraint failed: articles\.slug/i.test(message)) throw new ArticleSlugConflictError();
         throw error;
       }
     },
@@ -586,7 +603,7 @@ export function createSqliteArticleStore(db) {
         db.prepare("UPDATE articles SET deleted_at = NULL, status = 'draft', slug = ?, updated_at = ? WHERE id = ?")
           .run(taken ? existing.slug : preferred, now, articleId);
         captureArticleRow(transactionId, articleId);
-        return mapArticle(statement(articleSelect + " WHERE a.id = ? AND t.locale = ?").get(articleId, locale));
+        return readArticleAfterWrite(articleId, locale);
       });
     },
 
@@ -614,8 +631,8 @@ export function createSqliteArticleStore(db) {
       const cutoff = new Date(at.getTime() - retentionDays * 86_400_000).toISOString();
       return transaction((transactionId) => {
         const expired = statement("SELECT id FROM articles WHERE deleted_at IS NOT NULL AND deleted_at < ? ORDER BY deleted_at, id LIMIT ?")
-          .all(cutoff, limit).map((row) => row.id);
-        const changes = [];
+          .all(cutoff, limit).map((row) => String(row.id));
+        const changes: CapturedChange[] = [];
         for (const id of expired) {
           changes.push({ entityType: "articles", entityId: id, operation: "delete", payload: null });
           for (const row of statement("SELECT locale FROM article_translations WHERE article_id = ?").all(id)) {

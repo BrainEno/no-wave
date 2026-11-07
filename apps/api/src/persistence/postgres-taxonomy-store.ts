@@ -10,7 +10,7 @@ import { ArticleAuthorizationError, ArticleInputError, TaxonomyConflictError } f
 import { normalizeHashtag, validateTaxonomyKind } from "../domain/taxonomy.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
 import { migrationEntityKey } from "./postgres-provider-migration-capture.ts";
-import { listTaxonomiesFrom, mapArticle, mapTaxonomy } from "./postgres-shared.ts";
+import { isUniqueViolation, listTaxonomiesFrom, mapArticle, mapTaxonomy } from "./postgres-shared.ts";
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import type { PostgresStoreContext } from "./postgres-shared.ts";
 import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
@@ -129,7 +129,7 @@ export function createPostgresTaxonomyStore(ctx: PostgresStoreContext) {
          ORDER BY link.article_id, lower(COALESCE(requested.name, fallback.name)), tax.id`,
         [distinct, kind, locale],
       );
-      const byArticle = {};
+      const byArticle: Record<string, ReturnType<typeof mapTaxonomy>[]> = {};
       for (const articleId of distinct) byArticle[articleId] = [];
       for (const row of rows) byArticle[row.article_id].push(mapTaxonomy(row));
       return byArticle;
@@ -238,7 +238,7 @@ export function createPostgresTaxonomyStore(ctx: PostgresStoreContext) {
           return mapTaxonomy(found[0]);
         });
       } catch (error) {
-        if (error?.code === "23505") throw new TaxonomyConflictError();
+        if (isUniqueViolation(error)) throw new TaxonomyConflictError();
         throw error;
       }
     },

@@ -17,7 +17,7 @@ import { createPostgresOutboxStore } from "./postgres-outbox-store.ts";
 import { createPostgresMediaStore } from "./postgres-media-store.ts";
 import { createPostgresSessionStore } from "./postgres-session-store.ts";
 import { createPostgresStoreContext } from "./postgres-shared.ts";
-import type { PgDatabase } from "./postgres-driver.ts";
+import type { PgDatabase, PgTransaction } from "./postgres-driver.ts";
 
 export function createPostgresClient({
   connectionString = process.env.DATABASE_URL,
@@ -69,9 +69,12 @@ export function createPostgresStore(sql: PgDatabase): TypedPersistenceAdapterCon
       await sql.unsafe("SELECT 1 AS ok");
       return true;
     },
-    transaction(work) {
+    transaction(work: (...args: never[]) => unknown): Promise<unknown> {
       if (typeof work !== "function") throw new TypeError("Transaction callback is required.");
-      return sql.begin(work);
+      // The contract's callback is `(...args: never[]) => unknown` so a provider
+      // without transactions can omit the method; postgres.js calls it with the
+      // transaction handle, which is the only argument this seam ever passes.
+      return sql.begin(work as (tx: PgTransaction) => unknown);
     },
   });
 

@@ -12,7 +12,7 @@ export function createOutboxMetrics() {
   let backlogSampledAt = 0;
   const batchDuration = { count: 0, sum: 0, buckets: HISTOGRAM_BUCKETS_MS.map(() => 0) };
 
-  function observeBatchDuration(durationMs) {
+  function observeBatchDuration(durationMs: number): void {
     const duration = Number.isFinite(durationMs) ? Math.max(0, durationMs) : 0;
     batchDuration.count += 1;
     batchDuration.sum += duration;
@@ -21,7 +21,14 @@ export function createOutboxMetrics() {
     });
   }
 
-  function recordBatch({ claimed: claimedCount = 0, delivered: deliveredCount = 0, failed: failedCount = 0 }, durationMs) {
+  function recordBatch(
+    { claimed: claimedCount = 0, delivered: deliveredCount = 0, failed: failedCount = 0 }: {
+      claimed?: number;
+      delivered?: number;
+      failed?: number;
+    },
+    durationMs: number,
+  ): void {
     batches += 1;
     claimed += Math.max(0, Number.isFinite(claimedCount) ? claimedCount : 0);
     delivered += Math.max(0, Number.isFinite(deliveredCount) ? deliveredCount : 0);
@@ -29,7 +36,10 @@ export function createOutboxMetrics() {
     observeBatchDuration(durationMs);
   }
 
-  function recordBacklog({ pendingEvents: pending, oldestPendingAgeMs: oldestAge }) {
+  function recordBacklog({ pendingEvents: pending, oldestPendingAgeMs: oldestAge }: {
+    pendingEvents: number;
+    oldestPendingAgeMs: number;
+  }): void {
     pendingEvents = Number.isSafeInteger(pending) && pending >= 0 ? pending : 0;
     oldestPendingAgeMs = Number.isFinite(oldestAge) ? Math.max(0, oldestAge) : 0;
     backlogSampledAt = Date.now();

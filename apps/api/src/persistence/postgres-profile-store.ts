@@ -9,7 +9,7 @@ import { validateArticleLocale } from "../domain/article.ts";
 import { ProfileInputError, ProfileNotFoundError } from "../domain/errors.ts";
 import { AUTHOR_OFFSET_MAX, AUTHOR_QUERY_MAX_LENGTH, normalizeStoredRole, validateProfileUrl, validateUserRole } from "../domain/profile.ts";
 import { requiredText } from "../domain/validation.ts";
-import { migrationEntityKey } from "./postgres-provider-migration-capture.ts";
+import { migrationEntityKey, type CapturedChange } from "./postgres-provider-migration-capture.ts";
 import { findAuthorProfile, findAuthorProfilesByIds, listRelatedProfiles, mapAuthorProfile, requestHash } from "./postgres-shared.ts";
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import type { PostgresStoreContext } from "./postgres-shared.ts";
@@ -166,7 +166,7 @@ export function createPostgresProfileStore(ctx: PostgresStoreContext) {
       if (actorId === targetUserId) throw new ProfileInputError("You cannot follow your own account.");
       return sql.begin(async (tx) => {
         const transactionId = createMigrationTransactionId();
-        const changes = [];
+        const changes: CapturedChange[] = [];
         const target = await tx.unsafe("SELECT user_id FROM user_profiles WHERE user_id = $1", [targetUserId]);
         if (target.length === 0) throw new ProfileNotFoundError();
         const inserted = await tx.unsafe(

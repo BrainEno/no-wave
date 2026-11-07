@@ -40,7 +40,7 @@ const retryDelaySeconds = integerSetting("OUTBOX_RETRY_DELAY_SECONDS", 30, 1, 86
 const deadlineMs = integerSetting("OUTBOX_DRAIN_DEADLINE_MS", 10_000, 1, 600_000);
 const maxBatches = integerSetting("OUTBOX_DRAIN_MAX_BATCHES", 20, 1, 1000);
 
-function writeDrainLog(level, event, fields = {}) {
+function writeDrainLog(level: "info" | "warn" | "error", event: string, fields: Record<string, unknown> = {}): void {
   const line = JSON.stringify({
     timestamp: new Date().toISOString(),
     level,

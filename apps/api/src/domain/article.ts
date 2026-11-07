@@ -13,8 +13,8 @@ export const supportedArticleWorkTypes = Object.freeze([...ARTICLE_WORK_TYPES]);
 
 export { SUPPORTED_ARTICLE_LOCALES };
 
-export function validateArticleWorkType(value) {
-  if (!ARTICLE_WORK_TYPES.has(value)) {
+export function validateArticleWorkType(value: unknown): string {
+  if (typeof value !== "string" || !ARTICLE_WORK_TYPES.has(value)) {
     throw new ArticleInputError("workType must be one of the supported literary work types.");
   }
   return value;
@@ -43,7 +43,7 @@ export const retiredArticleWorkTypes = Object.freeze([...RETIRED_ARTICLE_WORK_TY
  * Called on create only: a stored `serial` work must stay saveable, or the author
  * loses the ability to fix a typo in work the platform itself accepted.
  */
-export function assertCreatableArticleWorkType(value) {
+export function assertCreatableArticleWorkType(value: unknown): string {
   const workType = validateArticleWorkType(value);
   if (RETIRED_ARTICLE_WORK_TYPES.has(workType)) {
     throw new ArticleInputError("workType \"serial\" is retired: a new work must use an active literary work type.");
@@ -60,7 +60,7 @@ export function assertCreatableArticleWorkType(value) {
  * a legacy serial work to a supported type, the one direction that removes the
  * legacy value.
  */
-export function assertArticleWorkTypeChange(previousWorkType, value) {
+export function assertArticleWorkTypeChange(previousWorkType: string, value: unknown): string | undefined {
   if (value === undefined) return undefined;
   const workType = validateArticleWorkType(value);
   if (workType !== previousWorkType && RETIRED_ARTICLE_WORK_TYPES.has(workType)) {
@@ -69,7 +69,7 @@ export function assertArticleWorkTypeChange(previousWorkType, value) {
   return workType;
 }
 
-export function validateArticleSlug(value) {
+export function validateArticleSlug(value: unknown): string {
   const slug = requiredText("slug", value, 160);
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
     throw new ArticleInputError("slug must contain lowercase ASCII letters, digits, and single hyphens.");
@@ -77,39 +77,39 @@ export function validateArticleSlug(value) {
   return slug;
 }
 
-export function validateArticleLocale(value) {
-  if (!SUPPORTED_ARTICLE_LOCALES.has(value)) {
+export function validateArticleLocale(value: unknown): string {
+  if (typeof value !== "string" || !SUPPORTED_ARTICLE_LOCALES.has(value)) {
     throw new ArticleInputError("locale must be zh-CN, zh-TW or en.");
   }
   return value;
 }
 
-export function validateArticleContentBlocksVersion(value) {
+export function validateArticleContentBlocksVersion(value: unknown): number {
   const version = value === undefined ? 0 : value;
-  if (!Number.isInteger(version) || !ARTICLE_CONTENT_BLOCK_VERSIONS.has(version)) {
+  if (typeof version !== "number" || !Number.isInteger(version) || !ARTICLE_CONTENT_BLOCK_VERSIONS.has(version)) {
     throw new ArticleInputError("contentBlocksVersion must be 0 or 1.");
   }
   return version;
 }
 
-function isRecord(value) {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function rejectUnknownFields(value, allowedFields, name) {
+function rejectUnknownFields(value: Record<string, unknown>, allowedFields: ReadonlySet<string>, name: string): void {
   if (Object.keys(value).some((field) => !allowedFields.has(field))) {
     throw new ArticleInputError(`${name} contains unsupported fields.`);
   }
 }
 
-function validateDocumentUrl(name, value) {
+function validateDocumentUrl(name: string, value: unknown): string {
   const urlValue = requiredText(name, value, 2048);
   if (/[\u0000-\u0020\u007f\\]/.test(urlValue)) {
     throw new ArticleInputError(`${name} must not contain whitespace, control characters, or backslashes.`);
   }
   if (urlValue.startsWith("/") && !urlValue.startsWith("//")) return urlValue;
 
-  let parsed;
+  let parsed: URL;
   try {
     parsed = new URL(urlValue);
   } catch {
@@ -122,13 +122,13 @@ function validateDocumentUrl(name, value) {
   return urlValue;
 }
 
-function validateInlineRuns(runs, expectedText, name) {
+function validateInlineRuns(runs: unknown, expectedText: string, name: string): void {
   if (!Array.isArray(runs) || runs.length < 1 || runs.length > MAX_INLINE_RUNS_PER_BLOCK) {
     throw new ArticleInputError(`${name} must contain between 1 and ${MAX_INLINE_RUNS_PER_BLOCK} inline runs.`);
   }
   let combinedText = "";
   for (let index = 0; index < runs.length; index += 1) {
-    const run = runs[index];
+    const run: unknown = runs[index];
     const runName = `${name}[${index}]`;
     if (!isRecord(run)) throw new ArticleInputError(`${runName} must be an object.`);
     rejectUnknownFields(run, new Set(["text", "marks", "href"]), runName);
@@ -137,7 +137,7 @@ function validateInlineRuns(runs, expectedText, name) {
     }
     if (run.marks !== undefined &&
         (!Array.isArray(run.marks) || run.marks.length > INLINE_MARKS.size ||
-         !run.marks.every((mark) => typeof mark === "string" && INLINE_MARKS.has(mark)) ||
+         !run.marks.every((mark: unknown) => typeof mark === "string" && INLINE_MARKS.has(mark)) ||
          new Set(run.marks).size !== run.marks.length)) {
       throw new ArticleInputError(`${runName}.marks must contain unique supported inline marks.`);
     }
@@ -149,7 +149,7 @@ function validateInlineRuns(runs, expectedText, name) {
   }
 }
 
-const BLOCK_FIELDS = {
+const BLOCK_FIELDS: Readonly<Record<string, ReadonlySet<string>>> = {
   paragraph: new Set(["id", "type", "text", "inlines"]),
   heading: new Set(["id", "type", "text", "level", "inlines"]),
   quote: new Set(["id", "type", "text", "attribution", "inlines"]),
@@ -158,7 +158,7 @@ const BLOCK_FIELDS = {
   code: new Set(["id", "type", "language", "code"]),
 };
 
-export function validateArticleBlocks(blocks, contentBlocksVersion = 0) {
+export function validateArticleBlocks(blocks: unknown, contentBlocksVersion: unknown = 0): Record<string, unknown>[] {
   const version = validateArticleContentBlocksVersion(contentBlocksVersion);
   if (!Array.isArray(blocks) || blocks.length < 1 || blocks.length > 200) {
     throw new ArticleInputError("contentBlocks must be an array containing between 1 and 200 blocks.");
@@ -167,12 +167,17 @@ export function validateArticleBlocks(blocks, contentBlocksVersion = 0) {
     throw new ArticleInputError("contentBlocks must not exceed 1000000 serialized characters.");
   }
 
-  const seenIds = new Set();
-  return blocks.map((block, index) => {
+  const seenIds = new Set<string>();
+  // `Array.isArray` narrows `unknown` to `any[]`; naming it `unknown[]` keeps the
+  // element type honest, so every field below has to be validated to be read.
+  const parsedBlocks: unknown[] = blocks;
+  return parsedBlocks.map((block, index) => {
     const name = `contentBlocks[${index}]`;
     if (!isRecord(block)) throw new ArticleInputError(`${name} must be an object.`);
-    if (!ARTICLE_BLOCK_TYPES.has(block.type)) throw new ArticleInputError(`${name}.type is unsupported.`);
-    rejectUnknownFields(block, BLOCK_FIELDS[block.type], name);
+    if (typeof block.type !== "string" || !ARTICLE_BLOCK_TYPES.has(block.type)) {
+      throw new ArticleInputError(`${name}.type is unsupported.`);
+    }
+    rejectUnknownFields(block, BLOCK_FIELDS[block.type]!, name);
     if (version === 0 && ("inlines" in block || "itemInlines" in block)) {
       throw new ArticleInputError("Inline formatting and links require contentBlocksVersion 1.");
     }
@@ -183,7 +188,7 @@ export function validateArticleBlocks(blocks, contentBlocksVersion = 0) {
 
     if (block.type === "paragraph" || block.type === "heading" || block.type === "quote") {
       const text = requiredText(`${name}.text`, block.text, 20_000);
-      if (block.type === "heading" && (!Number.isInteger(block.level) || block.level < 2 || block.level > 4)) {
+      if (block.type === "heading" && (typeof block.level !== "number" || !Number.isInteger(block.level) || block.level < 2 || block.level > 4)) {
         throw new ArticleInputError("heading level must be an integer between 2 and 4.");
       }
       if (block.type === "quote" && block.attribution !== undefined &&
@@ -195,16 +200,21 @@ export function validateArticleBlocks(blocks, contentBlocksVersion = 0) {
         validateInlineRuns(block.inlines, text, `${name}.inlines`);
       }
     } else if (block.type === "list") {
-      if (typeof block.ordered !== "boolean" || !Array.isArray(block.items) || block.items.length < 1 || block.items.length > 100 ||
-          !block.items.every((item) => typeof item === "string" && item.trim().length > 0 && item.length <= 2000)) {
+      const items = block.items;
+      const itemInlines = block.itemInlines;
+      if (typeof block.ordered !== "boolean" || !Array.isArray(items) || items.length < 1 || items.length > 100 ||
+          !items.every((item) => typeof item === "string" && item.trim().length > 0 && item.length <= 2000)) {
         throw new ArticleInputError("list blocks require an ordered flag and 1 to 100 non-empty text items.");
       }
-      if (block.itemInlines !== undefined) {
-        if (version !== 1 || !Array.isArray(block.itemInlines) || block.itemInlines.length !== block.items.length) {
+      // Every item passed the predicate above, so this keeps all of them and
+      // gives the loop below the string element type the predicate proved.
+      const itemTexts = items.filter((item): item is string => typeof item === "string");
+      if (itemInlines !== undefined) {
+        if (version !== 1 || !Array.isArray(itemInlines) || itemInlines.length !== itemTexts.length) {
           throw new ArticleInputError("itemInlines requires version 1 and exactly one inline-run array per list item.");
         }
-        block.itemInlines.forEach((runs, itemIndex) =>
-          validateInlineRuns(runs, block.items[itemIndex], `${name}.itemInlines[${itemIndex}]`));
+        itemInlines.forEach((runs, itemIndex) =>
+          validateInlineRuns(runs, itemTexts[itemIndex]!, `${name}.itemInlines[${itemIndex}]`));
       }
     } else if (block.type === "image") {
       const src = requiredText(`${name}.src`, block.src, 2048);
@@ -225,7 +235,18 @@ export function validateArticleBlocks(blocks, contentBlocksVersion = 0) {
   });
 }
 
-export function normalizeArticleInput({ slug, title, summary, locale, contentBlocks, contentBlocksVersion, publish, workType }) {
+export type ArticleNormalizeInput = {
+  slug: unknown;
+  title: unknown;
+  summary?: unknown;
+  locale: unknown;
+  contentBlocks: unknown;
+  contentBlocksVersion?: unknown;
+  publish?: unknown;
+  workType?: unknown;
+};
+
+export function normalizeArticleInput({ slug, title, summary, locale, contentBlocks, contentBlocksVersion, publish, workType }: ArticleNormalizeInput) {
   const version = validateArticleContentBlocksVersion(contentBlocksVersion);
   return {
     slug: validateArticleSlug(slug),
@@ -350,11 +371,17 @@ export function resolveArticleCursor(args: { cursor: unknown; sort: string; offs
   return decoded;
 }
 
-export function normalizeTaxonomyIds(name, ids, max) {
+export function normalizeTaxonomyIds(name: string, ids: unknown, max: number): string[] | undefined {
   if (ids === undefined || ids === null) return undefined;
-  if (!Array.isArray(ids) || ids.length > max || !ids.every(isUuid)) {
+  if (!Array.isArray(ids) || ids.length > max) {
     throw new ArticleInputError(`${name} must contain at most ${max} valid UUIDs.`);
   }
-  if (new Set(ids).size !== ids.length) throw new ArticleInputError(`${name} cannot contain duplicate IDs.`);
-  return ids;
+  // `isUuid` is a type predicate, so the filter is the narrowing: a rejected id
+  // simply does not survive it, and the length check below is the rejection.
+  const normalized = ids.filter(isUuid);
+  if (normalized.length !== ids.length) {
+    throw new ArticleInputError(`${name} must contain at most ${max} valid UUIDs.`);
+  }
+  if (new Set(normalized).size !== normalized.length) throw new ArticleInputError(`${name} cannot contain duplicate IDs.`);
+  return normalized;
 }

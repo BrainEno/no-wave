@@ -251,7 +251,9 @@ export async function validateLayout(root: string = ROOT): Promise<string[]> {
 
   const pgEntry = await readFile(path.join(persistenceDir, "postgres.ts"), "utf8");
   if (!/async health\(\)/.test(pgEntry)) problems.push("postgres.ts: missing `health`");
-  if (!/transaction\(work\)/.test(pgEntry)) problems.push("postgres.ts: missing PostgreSQL-only `transaction`");
+  // The signature is annotated under `strict`, so match the method and its
+  // callback parameter rather than the exact pre-strict spelling.
+  if (!/transaction\(work\s*[:,)]/.test(pgEntry)) problems.push("postgres.ts: missing PostgreSQL-only `transaction`");
   const sqliteEntry = await readFile(path.join(persistenceDir, "sqlite-store.ts"), "utf8");
   if (!/isSessionRevoked:\s*sessionStore\.isSessionRevoked/.test(sqliteEntry)) {
     problems.push("sqlite-store.ts: session slice is no longer narrowed to `isSessionRevoked`");

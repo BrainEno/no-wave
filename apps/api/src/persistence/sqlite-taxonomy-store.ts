@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
-import { createSqliteProviderMigrationCapture, migrationEntityKey } from "./sqlite-provider-migration-capture.ts";
+import { createSqliteProviderMigrationCapture, migrationEntityKey, type CapturedChange } from "./sqlite-provider-migration-capture.ts";
 import {
   ArticleInputError, ArticleAuthorizationError, TaxonomyConflictError,
 } from "../domain/errors.ts";
@@ -8,16 +8,25 @@ import { normalizeHashtag, validateTaxonomyKind } from "../domain/taxonomy.ts";
 import { validateArticleLocale, validateArticleSlug } from "../domain/article.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
 import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
+import type { SqliteRow, SqliteRunner } from "./sqlite.ts";
 
-export function createSqliteTaxonomyStore(db) {
+export function createSqliteTaxonomyStore(db: SqliteRunner) {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") {
     throw new TypeError("A node:sqlite DatabaseSync connection is required.");
   }
-  const run = (sql, ...params) => db.prepare(sql).run(...params);
-  const get = (sql, ...params) => db.prepare(sql).get(...params);
-  const all = (sql, ...params) => db.prepare(sql).all(...params);
+  const run = (sql: string, ...params: unknown[]) => db.prepare(sql).run(...params);
+  const get = (sql: string, ...params: unknown[]) => db.prepare(sql).get(...params);
+  const all = (sql: string, ...params: unknown[]) => db.prepare(sql).all(...params);
+
+  /** The row a capture just wrote; a missing one is a bug, not a valid payload. */
+  function one(sql: string, ...args: unknown[]): SqliteRow {
+    const row = get(sql, ...args);
+    if (!row) throw new Error("Expected a row for the migration capture: " + sql);
+    return row;
+  }
+
   const migrationCapture = createSqliteProviderMigrationCapture(db);
-  const transaction = (fn) => {
+  const transaction = <T,>(fn: (transactionId: string) => T): T => {
     const transactionId = createMigrationTransactionId();
     db.exec("BEGIN IMMEDIATE");
     try { const result = fn(transactionId); db.exec("COMMIT"); return result; }
@@ -36,14 +45,25 @@ export function createSqliteTaxonomyStore(db) {
     LEFT JOIN taxonomy_translations requested ON requested.taxonomy_id = tax.id AND requested.locale = ?
     LEFT JOIN taxonomy_translations fallback ON fallback.taxonomy_id = tax.id AND fallback.locale = 'zh-TW'
   `;
-  const mapTaxonomy = (r) => r ? ({
+  const mapTaxonomyRow = (r: SqliteRow) => ({
     id: r.id, kind: r.kind, slug: r.slug, name: r.name,
     description: r.description ?? "", locale: r.locale,
     createdBy: r.created_by, articleCount: Number(r.article_count ?? 0),
-  }) : null;
-  const taxonomyForLocale = (where, params, locale) => {
+  });
+  const mapTaxonomy = (r: SqliteRow | undefined) => r ? mapTaxonomyRow(r) : null;
+  const taxonomyForLocale = (where: string, params: unknown[], locale: string) => {
     const row = get(taxonomySelect + " WHERE " + where, locale, locale, locale, ...params);
     return mapTaxonomy(row);
+  };
+  /**
+   * A writer's read-back: the taxonomy row and the translation that names it
+   * were written earlier in this same transaction, so an empty answer is an
+   * invariant violation rather than a not-found one.
+   */
+  const taxonomyForLocaleAfterWrite = (where: string, params: unknown[], locale: string) => {
+    const taxonomy = taxonomyForLocale(where, params, locale);
+    if (!taxonomy) throw new Error("The taxonomy was not readable after it was written.");
+    return taxonomy;
   };
   function validateList({ locale = "zh-CN", query = "", limit = 100, offset = 0 }) {
     validateArticleLocale(locale);
@@ -61,7 +81,7 @@ export function createSqliteTaxonomyStore(db) {
           AND (? = '' OR instr(lower(COALESCE(requested.name, fallback.name)), ?) > 0)
         ORDER BY lower(COALESCE(requested.name, fallback.name)), tax.id LIMIT ? OFFSET ?
       `, input.locale, input.locale, input.locale, kind, input.query, input.query, limit, input.offset);
-      return rows.map(mapTaxonomy);
+      return rows.map(mapTaxonomyRow);
     },
     getTaxonomyBySlug({ kind, slug, locale = "zh-CN" }) {
       validateTaxonomyKind(kind); validateArticleSlug(slug); validateArticleLocale(locale);
@@ -73,7 +93,7 @@ export function createSqliteTaxonomyStore(db) {
       if (!Number.isInteger(offset) || offset < 0 || offset > 1000000) throw new ArticleInputError("offset must be an integer between 0 and 1000000.");
       return all(`
         SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at,
-          at.locale, at.title, at.summary, at.content_blocks
+          at.locale, at.title, at.summary, at.content_blocks, at.content_blocks_version
         FROM taxonomies tax
         JOIN taxonomy_translations tt ON tt.taxonomy_id = tax.id AND tt.locale = ?
         JOIN article_taxonomies link ON link.taxonomy_id = tax.id
@@ -84,8 +104,9 @@ export function createSqliteTaxonomyStore(db) {
       `, locale, locale, kind, slug, limit, offset).map((r) => ({
         id:r.id, authorId:r.author_id, slug:r.slug, workType:r.work_type ?? "other",
         status:r.status, locale:r.locale, title:r.title, summary:r.summary,
-        contentBlocks:JSON.parse(r.content_blocks), createdAt:r.created_at,
-        updatedAt:r.updated_at, publishedAt:r.published_at,
+        contentBlocks:JSON.parse(r.content_blocks),
+        contentBlocksVersion: Number(r.content_blocks_version ?? 0),
+        createdAt:r.created_at, updatedAt:r.updated_at, publishedAt:r.published_at,
       }));
     },
     listArticleTaxonomies({ articleId, kind, locale = "zh-CN" }) {
@@ -95,7 +116,7 @@ export function createSqliteTaxonomyStore(db) {
         JOIN article_taxonomies link ON link.taxonomy_id = tax.id
         WHERE link.article_id = ? AND tax.kind = ? AND COALESCE(requested.name, fallback.name) IS NOT NULL
         ORDER BY lower(COALESCE(requested.name, fallback.name)), tax.id
-      `, locale, locale, locale, articleId, kind).map(mapTaxonomy);
+      `, locale, locale, locale, articleId, kind).map(mapTaxonomyRow);
     },
     /**
      * A page's taxonomies in one statement (#162).
@@ -138,9 +159,9 @@ export function createSqliteTaxonomyStore(db) {
         WHERE link.article_id IN (${placeholders}) AND COALESCE(requested.name, fallback.name) IS NOT NULL
         ORDER BY link.article_id, lower(COALESCE(requested.name, fallback.name)), tax.id
       `, locale, locale, kind, locale, ...distinct);
-      const byArticle = {};
+      const byArticle: Record<string, ReturnType<typeof mapTaxonomyRow>[]> = {};
       for (const articleId of distinct) byArticle[articleId] = [];
-      for (const row of rows) byArticle[row.article_id].push(mapTaxonomy(row));
+      for (const row of rows) byArticle[row.article_id].push(mapTaxonomyRow(row));
       return byArticle;
     },
     createTag({ actorId, name, locale = "zh-CN" }) {
@@ -152,10 +173,10 @@ export function createSqliteTaxonomyStore(db) {
         if (!tax) throw new TaxonomyConflictError();
         run("INSERT INTO taxonomy_translations (taxonomy_id, locale, name, description) VALUES (?, ?, ?, '') ON CONFLICT(taxonomy_id, locale) DO NOTHING", tax.id, locale, normalized.displayName);
         migrationCapture.captureInTransaction(db, transactionId, [
-          { entityType: "taxonomies", entityId: tax.id, operation: "upsert", payload: get("SELECT * FROM taxonomies WHERE id = ?", tax.id) },
-          { entityType: "taxonomy_translations", entityId: migrationEntityKey(tax.id, locale), operation: "upsert", payload: get("SELECT * FROM taxonomy_translations WHERE taxonomy_id = ? AND locale = ?", tax.id, locale) },
+          { entityType: "taxonomies", entityId: tax.id, operation: "upsert", payload: one("SELECT * FROM taxonomies WHERE id = ?", tax.id) },
+          { entityType: "taxonomy_translations", entityId: migrationEntityKey(tax.id, locale), operation: "upsert", payload: one("SELECT * FROM taxonomy_translations WHERE taxonomy_id = ? AND locale = ?", tax.id, locale) },
         ]);
-        return taxonomyForLocale("tax.id = ? AND requested.locale = ? LIMIT 1", [tax.id, locale], locale);
+        return taxonomyForLocaleAfterWrite("tax.id = ? AND requested.locale = ? LIMIT 1", [tax.id, locale], locale);
       });
     },
     /**
@@ -190,10 +211,10 @@ export function createSqliteTaxonomyStore(db) {
         }
         run("INSERT INTO taxonomy_translations (taxonomy_id, locale, name, description) VALUES (?, ?, ?, ?) ON CONFLICT(taxonomy_id, locale) DO UPDATE SET name = excluded.name, description = excluded.description, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')", tax.id, locale, name, description);
         migrationCapture.captureInTransaction(db, transactionId, [
-          { entityType: "taxonomies", entityId: tax.id, operation: "upsert", payload: get("SELECT * FROM taxonomies WHERE id = ?", tax.id) },
-          { entityType: "taxonomy_translations", entityId: migrationEntityKey(tax.id, locale), operation: "upsert", payload: get("SELECT * FROM taxonomy_translations WHERE taxonomy_id = ? AND locale = ?", tax.id, locale) },
+          { entityType: "taxonomies", entityId: tax.id, operation: "upsert", payload: one("SELECT * FROM taxonomies WHERE id = ?", tax.id) },
+          { entityType: "taxonomy_translations", entityId: migrationEntityKey(tax.id, locale), operation: "upsert", payload: one("SELECT * FROM taxonomy_translations WHERE taxonomy_id = ? AND locale = ?", tax.id, locale) },
         ]);
-        return taxonomyForLocale("tax.id = ? LIMIT 1", [tax.id], locale);
+        return taxonomyForLocaleAfterWrite("tax.id = ? LIMIT 1", [tax.id], locale);
       });
     },
     deleteTaxonomy({ taxonomyId, actorId, actorIsEditor = false }) {
@@ -214,8 +235,8 @@ export function createSqliteTaxonomyStore(db) {
         run("DELETE FROM taxonomies WHERE id = ?", taxonomyId);
         migrationCapture.captureInTransaction(db, transactionId, [
           { entityType: "taxonomies", entityId: taxonomyId, operation: "delete", payload: null },
-          ...translations.map((row) => ({ entityType: "taxonomy_translations", entityId: migrationEntityKey(taxonomyId, row.locale), operation: "delete", payload: null })),
-          ...links.map((row) => ({ entityType: "article_taxonomies", entityId: migrationEntityKey(row.article_id, taxonomyId), operation: "delete", payload: null })),
+          ...translations.map((row): CapturedChange => ({ entityType: "taxonomy_translations", entityId: migrationEntityKey(taxonomyId, row.locale), operation: "delete", payload: null })),
+          ...links.map((row): CapturedChange => ({ entityType: "article_taxonomies", entityId: migrationEntityKey(row.article_id, taxonomyId), operation: "delete", payload: null })),
         ]);
         return true;
       });

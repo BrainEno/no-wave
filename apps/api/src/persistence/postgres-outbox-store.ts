@@ -6,6 +6,7 @@
  */
 import { assertOutboxLease } from "./outbox-lease.ts";
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
+import type { CapturedChange } from "./postgres-provider-migration-capture.ts";
 import { isoDate, parseJsonValue, type PostgresStoreContext } from "./postgres-shared.ts";
 import type { StoredOutboxEvent, TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
 
@@ -40,7 +41,7 @@ export function createPostgresOutboxStore(ctx: PostgresStoreContext) {
           "RETURNING event.id, event.event_key, event.event_type, event.aggregate_id, event.payload, event.attempts, event.available_at, event.lease_token",
           [limit, leaseSeconds],
         );
-        const changes = [];
+        const changes: CapturedChange[] = [];
         for (const row of rows) {
           const snapshot = await tx.unsafe("SELECT * FROM outbox_events WHERE id = $1", [row.id]);
           if (snapshot[0]) changes.push({ entityType: "outbox_events", entityId: row.id, operation: "upsert" as const, payload: snapshot[0] });
