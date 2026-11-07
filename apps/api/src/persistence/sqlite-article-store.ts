@@ -19,7 +19,7 @@ import {
   validateArticleSlug,
   normalizeArticleInput,
   normalizeTaxonomyIds,
-  MAX_FEATURED_ARTICLES, resolveArticleCursor,
+  MAX_FEATURED_ARTICLES, maxArticleOffset, resolveArticleCursor,
 } from "../domain/article.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
 import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
@@ -230,8 +230,11 @@ export function createSqliteArticleStore(db) {
       if (typeof query !== "string" || query.length > 200) throw new ArticleInputError("query must be a string no longer than 200 characters.");
       if (authorId !== null) requiredText("authorId", authorId, 300);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
-      if (!Number.isInteger(offset) || offset < 0 || offset > 100000) throw new ArticleInputError("offset must be an integer between 0 and 100000.");
       if (sort !== "latest" && sort !== "popular") throw new ArticleInputError("sort must be 'latest' or 'popular'.");
+      // Same ceiling as PostgreSQL, and the same reason it depends on the order.
+      if (!Number.isInteger(offset) || offset < 0 || offset > maxArticleOffset(sort)) {
+        throw new ArticleInputError(`offset must be an integer between 0 and ${maxArticleOffset(sort)}${sort === "popular" ? " with sort=popular" : ""}.`);
+      }
       const needle = query.trim().toLocaleLowerCase(locale);
       // `popular` counts every save the work has ever had: the tab is "most
       // saved", not "trending", and a work that collected its likes two years
@@ -241,6 +244,12 @@ export function createSqliteArticleStore(db) {
       // The body is searched too, one block at a time rather than as the JSON it
       // is stored as: matching the raw text would let a reader find every work by
       // searching "paragraph", which is a word no reader ever typed on purpose.
+      //
+      // This stays a scan by design: a single-host SQLite file has no trigram
+      // operator class to lean on, and an FTS5 side table would have to be kept in
+      // step with every write path for a search whose cost here is bounded by one
+      // machine's content. PostgreSQL carries the index instead (migration 0027),
+      // where the scan was over a shared database.
       // A cursor is only meaningful against the newest-first order. "Most saved"
       // is ranked by a count that changes while you read it, so a page boundary
       // drawn through it would move under the reader: they would meet a work

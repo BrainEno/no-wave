@@ -1575,6 +1575,51 @@ test("REST article discovery accepts sort=popular and rejects an unknown sort", 
   });
 });
 
+/**
+ * `sort=popular` has no cursor to fall back on, so the page it may be asked for
+ * is bounded; `sort=latest` does have one and keeps the deeper ceiling
+ * (audit F-23). The refusal names the ceiling and the way out, because "Invalid
+ * offset query parameter" would send a client to retry the same page.
+ */
+test("REST article discovery stops the most-saved order at its ceiling and says how to page deeper", async () => {
+  const calls = [];
+  const profile = {
+    userId: "some-author", displayName: "作者", bio: "", avatarUrl: null, websiteUrl: null,
+    locale: "zh-CN", createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z",
+    followerCount: 0, followingCount: 0, isFollowing: false,
+  };
+  await withServer(async (baseUrl) => {
+    const deepPopular = await fetch(baseUrl + "/api/v1/articles?sort=popular&offset=10001");
+    assert.equal(deepPopular.status, 400);
+    const refusal = (await deepPopular.json()).error.message;
+    assert.match(refusal, /offset is limited to 10000 with sort=popular/);
+    assert.match(refusal, /sort=latest and a cursor/, "the refusal has to name the way to page that deep");
+
+    // The same depth is still offered newest-first, and the newest-first ceiling
+    // is unchanged.
+    const deepLatest = await fetch(baseUrl + "/api/v1/articles?offset=10001");
+    assert.equal(deepLatest.status, 200);
+    assert.deepEqual(calls[0], { locale: "zh-CN", query: "", sort: "latest", limit: 20, offset: 10001 });
+    assert.equal((await fetch(baseUrl + "/api/v1/articles?offset=100001")).status, 400);
+
+    // An author's work list is the same list, so it states the same ceiling...
+    const authorDeep = await fetch(baseUrl + "/api/v1/authors/some-author/articles?sort=popular&offset=10001");
+    assert.equal(authorDeep.status, 400);
+    assert.match((await authorDeep.json()).error.message, /sort=popular/);
+    // ...and a genuinely malformed parameter still gets the parameter error.
+    const bogus = await fetch(baseUrl + "/api/v1/authors/some-author/articles?sort=hottest&offset=10001");
+    assert.equal(bogus.status, 400);
+    assert.match((await bogus.json()).error.message, /Invalid author user ID, locale/);
+    assert.equal(calls.length, 1, "a refused page never reaches the store");
+  }, {
+    env: authEnv,
+    store: {
+      async listPublishedArticles(args) { calls.push(args); return []; },
+      async getAuthorProfile() { return profile; },
+    },
+  });
+});
+
 test("REST role assignment is editor-only, refuses self-service and returns the updated profile", async () => {
   const calls = [];
   let roleOfWriter = "member";

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
 import { randomBytes, randomUUID } from "node:crypto";
-import { encodeArticleCursor } from "../domain/article.ts";
+import { MAX_ARTICLE_OFFSET, MAX_ARTICLE_OFFSET_POPULAR, encodeArticleCursor } from "../domain/article.ts";
 import { DEFAULT_AUTHOR_DISPLAY_NAME } from "../domain/profile.ts";
 import { ArticleInputError, ArticleSlugConflictError, ConversationInputError, IdempotencyConflictError, ConversationAccessError, ArticleAuthorizationError, ArticleNotFoundError, ProfileInputError, ProfileNotFoundError } from "../domain/errors.ts";
 import { createPostgresClient, createPostgresStore } from "./postgres.ts";
@@ -2259,10 +2259,27 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       await publish(`search-in-title-${suffix}`, `雨-${suffix}`, `雨的摘要-${suffix}`, "正文里没有那个字。");
       await publish(`search-in-body-${suffix}`, `无题-${suffix}`, `平淡的摘要-${suffix}`, "她把书翻到第七十页，窗外正下着雨。");
       await publish(`search-absent-${suffix}`, `别的-${suffix}`, `别的摘要-${suffix}`, "完全无关的一段正文。");
+      // The word is in the *second* block, so a body search that stops at the
+      // first block it reads would miss it.
+      await runtime.store.createArticle({
+        authorId,
+        slug: `search-later-block-${suffix}`,
+        title: `两段-${suffix}`,
+        summary: `两段的摘要-${suffix}`,
+        locale: "zh-CN",
+        contentBlocks: [
+          { id: "p1", type: "paragraph", text: "第一段里没有那个字。" },
+          { id: "p2", type: "paragraph", text: "第二段写着：雨停了。" },
+        ],
+        publish: true,
+      });
 
       const slugs = (articles) => articles.map((article) => article.slug).sort();
       const byWord = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: "雨", limit: 50 });
-      assert.deepEqual(slugs(byWord), [`search-in-body-${suffix}`, `search-in-title-${suffix}`].sort());
+      assert.deepEqual(
+        slugs(byWord),
+        [`search-in-body-${suffix}`, `search-in-title-${suffix}`, `search-later-block-${suffix}`].sort(),
+      );
 
       // The body adds hits; it does not replace the fields that were already
       // searched, and it is not searched at the cost of them.
@@ -2274,7 +2291,41 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
 
       // The body search composes with what surrounds it.
       const scoped = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: "雨", authorId, sort: "popular", limit: 50 });
-      assert.deepEqual(slugs(scoped), [`search-in-body-${suffix}`, `search-in-title-${suffix}`].sort());
+      assert.deepEqual(
+        slugs(scoped),
+        [`search-in-body-${suffix}`, `search-in-title-${suffix}`, `search-later-block-${suffix}`].sort(),
+      );
+    } finally {
+      await runtime.cleanup(undefined, suffix);
+    }
+  });
+
+  /**
+   * The two orders have different ceilings, and the store enforces the same one
+   * the route applies (audit F-23).
+   *
+   * `latest` can be walked exactly by a cursor, so a deep `OFFSET` is merely
+   * expensive. `popular` orders by a count that changes as it is read, so there
+   * is no cursor to fall back on and the honest answer past the ceiling is a
+   * refusal rather than a page that may be wrong before it is rendered.
+   */
+  test(`${adapterName}: the most-saved order is not pageable past its ceiling`, options, async () => {
+    const runtime = await fixture();
+    const suffix = `offset-ceiling-${randomUUID().slice(0, 8)}`;
+    try {
+      await assert.rejects(
+        Promise.resolve().then(() =>
+          runtime.store.listPublishedArticles({ locale: "zh-CN", sort: "popular", offset: MAX_ARTICLE_OFFSET_POPULAR + 1 }),
+        ),
+        (error) => error instanceof ArticleInputError && /sort=popular/.test(error.message),
+      );
+      // The same depth is allowed newest-first, and the newest-first ceiling is
+      // still the one the transport publishes.
+      assert.deepEqual(await runtime.store.listPublishedArticles({ locale: "zh-CN", offset: MAX_ARTICLE_OFFSET_POPULAR + 1 }), []);
+      await assert.rejects(
+        Promise.resolve().then(() => runtime.store.listPublishedArticles({ locale: "zh-CN", offset: MAX_ARTICLE_OFFSET + 1 })),
+        ArticleInputError,
+      );
     } finally {
       await runtime.cleanup(undefined, suffix);
     }

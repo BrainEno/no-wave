@@ -16,8 +16,6 @@ export const NO_ROUTE_PARAMS: Readonly<Record<string, string>> = Object.freeze({
 
 export const MAX_QUERY_LENGTH = 200;
 
-export const MAX_ARTICLE_OFFSET = 100_000;
-
 export const MAX_TAXONOMY_OFFSET = 1_000_000;
 
 export const MAX_JSON_BODY_BYTES = 2 * 1024 * 1024;

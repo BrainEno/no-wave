@@ -201,6 +201,38 @@ export function normalizeArticleInput({ slug, title, summary, locale, contentBlo
 export const MAX_FEATURED_ARTICLES = 20;
 
 /**
+ * How deep a reader may page through the public article lists by `offset`.
+ *
+ * Two ceilings, because the two orders can offer different things past a point.
+ *
+ * `sort=latest` walks the newest-first order, which a cursor names exactly — the
+ * keyset `(published_at, id)` — so a deep page is supported and 100 000 is only a
+ * sanity bound on an `OFFSET` the database still has to count.
+ *
+ * `sort=popular` cannot have a cursor: the count it orders by changes while the
+ * reader is reading, so a page boundary drawn through it drifts — they meet a
+ * work twice after it is saved, and never meet one that was saved past them
+ * (ADR 0006's list contract, and the same reasoning the store states). What that
+ * order has instead is a bound: past 10 000 the answer is not "another page", it
+ * is "this list is not a place to read that far", and the route says so instead
+ * of running a scan whose result would be wrong by the time it returned.
+ */
+export const MAX_ARTICLE_OFFSET = 100_000;
+
+export const MAX_ARTICLE_OFFSET_POPULAR = 10_000;
+
+/** The offset ceiling that applies to a list read in this order. */
+export function maxArticleOffset(sort: "latest" | "popular"): number {
+  return sort === "popular" ? MAX_ARTICLE_OFFSET_POPULAR : MAX_ARTICLE_OFFSET;
+}
+
+/** The refusal for a page deeper than the order allows, or `null` if it is not that case. */
+export function describeArticleOffsetLimit(sort: "latest" | "popular", requested: number): string | null {
+  if (sort === "latest" || !Number.isSafeInteger(requested) || requested <= MAX_ARTICLE_OFFSET_POPULAR) return null;
+  return `offset is limited to ${MAX_ARTICLE_OFFSET_POPULAR} with sort=popular: the most-saved order is re-ranked while it is read, so it has no cursor to fall back on. Page deeper with sort=latest and a cursor.`;
+}
+
+/**
  * The cursor pointing *past* `publishedAt`/`id` in the newest-first order.
  *
  * The encoding is shared with every other newest-first list (ADR 0022); what is

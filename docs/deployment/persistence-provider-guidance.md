@@ -22,6 +22,8 @@ Use Node.js 24.15.0 or newer within the supported Node 24 line for the current r
 
 SQLite is intended for a local or single-host deployment with a durable local database path. Keep the database and its WAL/SHM files on the same host and an appropriate local filesystem; do not treat WAL as a cross-host replication or high-availability mechanism. Plan and rehearse backups/restores, control filesystem permissions, monitor disk capacity, and avoid multiple application hosts opening a shared SQLite file over a network filesystem.
 
+**PostgreSQL needs the `pg_trgm` extension.** Article search is a case-insensitive substring match, and the indexes that make it cheap are trigram indexes: `CREATE EXTENSION IF NOT EXISTS pg_trgm` runs in migration 0009, so a host whose database role may not install extensions fails the migration rather than degrading silently. Managed providers (Neon included) allow it; a restricted self-hosted server needs the `postgresql-contrib` package and a role with permission to create the extension once. The search column those indexes cover is described in [ADR 0030](../architecture/decisions/0030-body-search-generated-column.md).
+
 Prefer PostgreSQL when production requirements include multiple API instances, independent application hosts, server-managed concurrent writes, or operational needs beyond a single machine. Configure `DATABASE_PROVIDER=postgres` and `DATABASE_URL`, apply reviewed migrations as an explicit release step, and configure least-privilege credentials, TLS, backups, restore drills, connection bounds, and monitoring.
 
 ## Re-evaluation and fallback conditions
