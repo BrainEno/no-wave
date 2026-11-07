@@ -17,40 +17,69 @@ export type WriteRateLimitPolicy = {
   userLimit: number;
 };
 
-const DEFAULT_POLICY = Object.freeze({ windowSeconds: 60, ipLimit: 120, userLimit: 60 });
-const POLICIES: Readonly<Record<string, Omit<WriteRateLimitPolicy, "endpoint">>> = Object.freeze({
-  "article.create": { windowSeconds: 60 * 60, ipLimit: 30, userLimit: 10 },
-  "media.upload": { windowSeconds: 60 * 60, ipLimit: 20, userLimit: 10 },
-  "article.update": { windowSeconds: 60 * 60, ipLimit: 60, userLimit: 20 },
-  "comment.create": { windowSeconds: 60, ipLimit: 60, userLimit: 20 },
-  "comment.delete": { windowSeconds: 60, ipLimit: 120, userLimit: 60 },
-  "message.send": { windowSeconds: 60, ipLimit: 120, userLimit: 30 },
-  "user.follow": { windowSeconds: 60, ipLimit: 120, userLimit: 60 },
-  "user.unfollow": { windowSeconds: 60, ipLimit: 120, userLimit: 60 },
-  "article.like.set": { windowSeconds: 60, ipLimit: 120, userLimit: 60 },
-  "profile.update": { windowSeconds: 60 * 60, ipLimit: 60, userLimit: 20 },
-  "taxonomy.create": { windowSeconds: 60, ipLimit: 60, userLimit: 30 },
-  "taxonomy.delete": { windowSeconds: 60, ipLimit: 60, userLimit: 30 },
+/**
+ * One entry per mutating route, keyed by `<METHOD> <route id>`.
+ *
+ * The key is the route table's identity, not a path. That matters twice:
+ *
+ * - a renamed path keeps its bucket, so renaming a route cannot silently stop
+ *   throttling it (the previous resolution was a hand-written list of path
+ *   regexes — a second route table nothing could keep honest);
+ * - there is no default entry. An unknown route does not fall back to "some
+ *   limits": `assertWriteRateLimitsCoverRoutes` refuses to boot, and
+ *   `resolveWriteRateLimitPolicy` answers `null` for anything it does not name.
+ *
+ * `endpoint` is the canonical operation name the HMAC bucket keys are derived
+ * from (ADR 0011 §3). Two routes that are one operation on the product level —
+ * `POST tags` and `POST taxonomies` — deliberately share it, and the two methods
+ * of one route (`PUT` vs `DELETE` on an article) deliberately do not.
+ */
+const POLICIES: Readonly<Record<string, WriteRateLimitPolicy>> = Object.freeze({
+  "POST articles": { endpoint: "article.create", windowSeconds: 3600, ipLimit: 30, userLimit: 10 },
+  "PUT articles.item": { endpoint: "article.update", windowSeconds: 3600, ipLimit: 60, userLimit: 20 },
   // Deleting a work is the most expensive write in the API: it also writes one
-  // notification per commenter (bounded, but real work), so it is throttled
-  // like a creation rather than like a click.
-  "article.delete": { windowSeconds: 60, ipLimit: 60, userLimit: 20 },
-  "article.restore": { windowSeconds: 60, ipLimit: 60, userLimit: 20 },
-  // Every media delete re-scans article bodies for references, so it costs far
-  // more than the one row it removes.
-  "media.delete": { windowSeconds: 60, ipLimit: 60, userLimit: 20 },
+  // notification per commenter (bounded, but real work), so it is throttled like
+  // a creation rather than like a click.
+  "DELETE articles.item": { endpoint: "article.delete", windowSeconds: 60, ipLimit: 60, userLimit: 20 },
+  "POST articles.restore": { endpoint: "article.restore", windowSeconds: 60, ipLimit: 60, userLimit: 20 },
+  "PUT articles.like": { endpoint: "article.like.set", windowSeconds: 60, ipLimit: 120, userLimit: 60 },
+  "POST articles.comments": { endpoint: "comment.create", windowSeconds: 60, ipLimit: 60, userLimit: 20 },
+  "DELETE comments.item": { endpoint: "comment.delete", windowSeconds: 60, ipLimit: 120, userLimit: 60 },
+  "POST me.media": { endpoint: "media.upload", windowSeconds: 3600, ipLimit: 20, userLimit: 10 },
+  // Every media (row) delete is guarded by a reference check; since #217 that
+  // check can also scan bodies, so it costs more than the row it removes.
+  "DELETE me.media.item": { endpoint: "media.delete", windowSeconds: 60, ipLimit: 60, userLimit: 20 },
+  "PUT me.profile": { endpoint: "profile.update", windowSeconds: 3600, ipLimit: 60, userLimit: 20 },
   // Editorial writes: few callers, whole-site consequences.
-  "featured.set": { windowSeconds: 60, ipLimit: 30, userLimit: 10 },
-  "user.role.set": { windowSeconds: 60, ipLimit: 30, userLimit: 10 },
+  "PUT featured": { endpoint: "featured.set", windowSeconds: 60, ipLimit: 30, userLimit: 10 },
+  "PUT users.role": { endpoint: "user.role.set", windowSeconds: 60, ipLimit: 30, userLimit: 10 },
+  "POST users.follow": { endpoint: "user.follow", windowSeconds: 60, ipLimit: 120, userLimit: 60 },
+  "DELETE users.follow": { endpoint: "user.unfollow", windowSeconds: 60, ipLimit: 120, userLimit: 60 },
+  "POST tags": { endpoint: "taxonomy.create", windowSeconds: 60, ipLimit: 60, userLimit: 30 },
+  "POST taxonomies": { endpoint: "taxonomy.create", windowSeconds: 60, ipLimit: 60, userLimit: 30 },
+  "DELETE taxonomies.item": { endpoint: "taxonomy.delete", windowSeconds: 60, ipLimit: 60, userLimit: 30 },
+  "POST conversations": { endpoint: "conversation.create", windowSeconds: 60, ipLimit: 120, userLimit: 60 },
+  "POST conversations.messages": { endpoint: "message.send", windowSeconds: 60, ipLimit: 120, userLimit: 30 },
+  "PATCH conversations.participants": { endpoint: "conversation.participants.update", windowSeconds: 60, ipLimit: 120, userLimit: 60 },
+  "PUT conversations.read": { endpoint: "conversation.read", windowSeconds: 60, ipLimit: 120, userLimit: 60 },
+  "DELETE conversations.item": { endpoint: "conversation.delete", windowSeconds: 60, ipLimit: 120, userLimit: 60 },
+  "DELETE me.session": { endpoint: "session.revoke", windowSeconds: 60, ipLimit: 120, userLimit: 60 },
+  "PUT me.notifications.read": { endpoint: "notification.read", windowSeconds: 60, ipLimit: 120, userLimit: 60 },
+  "POST me.notifications.read-all": { endpoint: "notification.read-all", windowSeconds: 60, ipLimit: 120, userLimit: 60 },
 });
+
+/** Methods that can change state, and therefore need a policy or an exemption. */
+const WRITE_METHODS: ReadonlySet<string> = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 /**
  * Write routes the generic limiter deliberately does not cover.
  *
  * These are throttled by the identity service instead, which runs *before* this
  * one and keeps its own durable per-account and per-address buckets. They are
- * named here so the coverage test can tell "handled elsewhere" from "forgotten"
- * — the two look identical from `endpointFor`.
+ * named here — by route id, like the policy table — so
+ * `assertWriteRateLimitsCoverRoutes` can tell "handled elsewhere" from
+ * "forgotten". Without the list those two states look identical: neither has a
+ * generic policy.
  */
 export const IDENTITY_THROTTLED_ROUTE_IDS: readonly string[] = Object.freeze([
   "auth",
@@ -61,45 +90,69 @@ export const IDENTITY_THROTTLED_ROUTE_IDS: readonly string[] = Object.freeze([
   "me.sessions.item",
 ]);
 
-function endpointFor(method: string, pathname: string): string | null {
-  if (method === "POST" && pathname === "/api/v1/articles") return "article.create";
-  if (method === "POST" && pathname === "/api/v1/me/media") return "media.upload";
-  if (method === "PUT" && /^\/api\/v1\/articles\/[^/]+$/.test(pathname)) return "article.update";
-  if (method === "PUT" && /^\/api\/v1\/me\/profile$/.test(pathname)) return "profile.update";
-  if (method === "DELETE" && pathname === "/api/v1/me/session") return "session.revoke";
-  if (method === "POST" && /^\/api\/v1\/users\/[^/]+\/follow$/.test(pathname)) return "user.follow";
-  if (method === "DELETE" && /^\/api\/v1\/users\/[^/]+\/follow$/.test(pathname)) return "user.unfollow";
-  if (method === "PUT" && /^\/api\/v1\/articles\/[^/]+\/like$/.test(pathname)) return "article.like.set";
-  if (method === "POST" && /^\/api\/v1\/articles\/[^/]+\/comments$/.test(pathname)) return "comment.create";
-  if (method === "DELETE" && /^\/api\/v1\/comments\/[^/]+$/.test(pathname)) return "comment.delete";
-  if (method === "POST" && (pathname === "/api/v1/tags" || pathname === "/api/v1/taxonomies")) return "taxonomy.create";
-  if (method === "DELETE" && /^\/api\/v1\/taxonomies\/[^/]+$/.test(pathname)) return "taxonomy.delete";
-  if (method === "POST" && pathname === "/api/v1/conversations") return "conversation.create";
-  if (method === "POST" && /^\/api\/v1\/conversations\/[^/]+\/messages$/.test(pathname)) return "message.send";
-  if (method === "PATCH" && /^\/api\/v1\/conversations\/[^/]+\/participants$/.test(pathname)) return "conversation.participants.update";
-  if (method === "DELETE" && /^\/api\/v1\/conversations\/[^/]+$/.test(pathname)) return "conversation.delete";
-  if (method === "PUT" && /^\/api\/v1\/conversations\/[^/]+\/read$/.test(pathname)) return "conversation.read";
-  if (method === "PUT" && /^\/api\/v1\/me\/notifications\/[^/]+\/read$/.test(pathname)) return "notification.read";
-  if (method === "POST" && pathname === "/api/v1/me/notifications/read-all") return "notification.read-all";
-  if (method === "DELETE" && /^\/api\/v1\/articles\/[^/]+$/.test(pathname)) return "article.delete";
-  if (method === "POST" && /^\/api\/v1\/articles\/[^/]+\/restore$/.test(pathname)) return "article.restore";
-  if (method === "DELETE" && /^\/api\/v1\/me\/media\/[^/]+$/.test(pathname)) return "media.delete";
-  if (method === "PUT" && pathname === "/api/v1/featured") return "featured.set";
-  if (method === "PUT" && /^\/api\/v1\/users\/[^/]+\/role$/.test(pathname)) return "user.role.set";
-  return null;
+/** The table key for one route and method. */
+function writeRateLimitPolicyKey(method: string, routeId: string): string {
+  return `${method.toUpperCase()} ${routeId}`;
 }
 
 /**
- * Return a canonical route-level policy. Resource IDs/slugs never enter rate
- * limit keys, preventing attackers from evading limits or creating unbounded
- * buckets by varying path segments. Authentication endpoints keep their
- * existing dedicated, stricter policies in the identity use case.
+ * The policy for a request the transport already matched.
+ *
+ * `routeId` is the matched route's id (`null` when nothing matched), so resource
+ * ids and slugs are never part of the lookup and can never become part of a
+ * bucket key. An unknown route answers `null`: unthrottled by *this* limiter,
+ * never silently throttled by some default. Every such case has to be listed in
+ * `IDENTITY_THROTTLED_ROUTE_IDS` or given a policy — the boot check below and its
+ * test are what make that a requirement rather than a hope.
  */
-export function resolveWriteRateLimitPolicy(method: string, pathname: string): WriteRateLimitPolicy | null {
-  const endpoint = endpointFor(method.toUpperCase(), pathname);
-  if (!endpoint) return null;
-  const policy = POLICIES[endpoint] ?? DEFAULT_POLICY;
-  return { endpoint, ...policy };
+export function resolveWriteRateLimitPolicy(method: string, routeId: string | null): WriteRateLimitPolicy | null {
+  if (typeof routeId !== "string" || routeId.length === 0) return null;
+  return POLICIES[writeRateLimitPolicyKey(method, routeId)] ?? null;
+}
+
+type RateLimitedRoute = { id: string; methods: readonly string[] };
+
+/**
+ * Refuse to start when the policy table and the route table disagree.
+ *
+ * This is the structural half of the fix: the old resolver was a second,
+ * hand-written route list, and nothing could tell "throttled elsewhere" from
+ * "forgotten" — five write routes had shipped unthrottled before a test noticed.
+ * Called by the transport (which owns the route table) at module load, so a route
+ * added, renamed or deleted without its policy fails at boot instead of going
+ * quietly unthrottled. The unit test calls it too, so a failure is reported as a
+ * readable assertion rather than an import-time stack.
+ */
+export function assertWriteRateLimitsCoverRoutes(routes: readonly RateLimitedRoute[]): void {
+  const mutating = new Map<string, string>();
+  for (const route of routes) {
+    for (const method of route.methods) {
+      if (WRITE_METHODS.has(method)) mutating.set(writeRateLimitPolicyKey(method, route.id), route.id);
+    }
+  }
+
+  const problems: string[] = [];
+  for (const [key, routeId] of mutating) {
+    if (key in POLICIES) {
+      if (IDENTITY_THROTTLED_ROUTE_IDS.includes(routeId)) {
+        problems.push(`${key} has a generic policy but is also throttled by the identity service`);
+      }
+      continue;
+    }
+    if (IDENTITY_THROTTLED_ROUTE_IDS.includes(routeId)) continue;
+    problems.push(`${key} has no policy and no identity-service exemption`);
+  }
+  for (const key of Object.keys(POLICIES)) {
+    if (!mutating.has(key)) problems.push(`${key} has a policy but is not a mutating route`);
+  }
+  for (const routeId of IDENTITY_THROTTLED_ROUTE_IDS) {
+    const anyMutating = [...mutating.values()].some((id) => id === routeId);
+    if (!anyMutating) problems.push(`${routeId} is exempt from the generic limiter but is not a mutating route`);
+  }
+
+  if (problems.length > 0) {
+    throw new Error(`The write rate-limit table does not match the route table: ${problems.join("; ")}.`);
+  }
 }
 
 function bucketKey(secret: string, endpoint: string, scope: "user" | "ip", subject: string): string {
@@ -117,14 +170,19 @@ export function createRateLimitService({ store, env }: { store: RateLimitStore; 
   let rateOperations = 0;
 
   return Object.freeze({
+    /**
+     * Charge the buckets for one already-matched write.
+     *
+     * The caller resolves the policy from the route id, so this function never
+     * re-derives an operation name from a path — a second opinion about what a
+     * request is, which is how the two lists drifted apart in the first place.
+     */
     async checkWrite(input: {
-      method: string;
-      pathname: string;
+      policy: WriteRateLimitPolicy;
       ip: string;
       actorId: string | null;
     }): Promise<void> {
-      const policy = resolveWriteRateLimitPolicy(input.method, input.pathname);
-      if (!policy) return;
+      const policy = input.policy;
 
       // All successful private writes already require a valid JWT configuration.
       // During a misconfigured startup, leave the existing authentication path

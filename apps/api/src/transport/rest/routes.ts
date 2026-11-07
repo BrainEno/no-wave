@@ -1,3 +1,5 @@
+import { assertWriteRateLimitsCoverRoutes } from "../../application/rate-limit.ts";
+
 /**
  * Declarative REST route table.
  *
@@ -143,6 +145,17 @@ export const REST_ROUTES: readonly RestRoute[] = Object.freeze([
   },
   { id: "conversations.item", methods: ["GET", "DELETE"], segments: [literal("conversations"), param("id")] },
 ]);
+
+/**
+ * Refuse to start when a mutating route has no rate-limit policy (ADR 0011).
+ *
+ * This runs at module load because the table above is the only thing that knows a
+ * route exists: a route added, renamed or deleted without its policy must fail
+ * here — and in the test that calls the same check — rather than go quietly
+ * unthrottled in production. Shipping exactly that used to be possible, because the
+ * limiter kept its own hand-written list of paths.
+ */
+assertWriteRateLimitsCoverRoutes(REST_ROUTES);
 
 export type RouteResolution =
   | { readonly kind: "matched"; readonly id: string; readonly params: Readonly<Record<string, string>> }
