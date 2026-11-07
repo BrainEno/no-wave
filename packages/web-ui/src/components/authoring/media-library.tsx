@@ -1,5 +1,6 @@
 import { Link } from "@/lib/framework/link.tsx";
 import { useCallback, useEffect, useState } from "react";
+import { useConfirm } from "@/components/ui/confirm-dialog.tsx";
 
 /**
  * The author's media library (ADR 0022).
@@ -174,6 +175,7 @@ export function MediaLibrary() {
   const [notice, setNotice] = useState("");
   const [loadingMore, setLoadingMore] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   const load = useCallback(async (loadCursor: string | null, append: boolean) => {
     const query = new URLSearchParams({ limit: String(PAGE_SIZE) });
@@ -234,7 +236,13 @@ export function MediaLibrary() {
    * the item is refreshed so the button goes away.
    */
   async function remove(item: MediaItem) {
-    if (window.confirm("删除这张图片？图片文件与记录都会移除，且无法复原。") === false) return;
+    const confirmed = await confirm({
+      title: "删除这张图片？",
+      description: "图片文件与记录都会移除，且无法复原。",
+      confirmLabel: "删除图片",
+      tone: "danger",
+    });
+    if (!confirmed) return;
     setRemoving(item.id);
     setError("");
     setNotice("");
@@ -377,6 +385,7 @@ export function MediaLibrary() {
           </button>
         </p>
       ) : null}
+      {confirmDialog}
     </section>
   );
 }
