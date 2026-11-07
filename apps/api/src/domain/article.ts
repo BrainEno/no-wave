@@ -226,10 +226,39 @@ export function maxArticleOffset(sort: "latest" | "popular"): number {
   return sort === "popular" ? MAX_ARTICLE_OFFSET_POPULAR : MAX_ARTICLE_OFFSET;
 }
 
-/** The refusal for a page deeper than the order allows, or `null` if it is not that case. */
+/**
+ * The refusal for a page deeper than the order allows, or `null` if it is not
+ * that case.
+ */
 export function describeArticleOffsetLimit(sort: "latest" | "popular", requested: number): string | null {
   if (sort === "latest" || !Number.isSafeInteger(requested) || requested <= MAX_ARTICLE_OFFSET_POPULAR) return null;
   return `offset is limited to ${MAX_ARTICLE_OFFSET_POPULAR} with sort=popular: the most-saved order is re-ranked while it is read, so it has no cursor to fall back on. Page deeper with sort=latest and a cursor.`;
+}
+
+/**
+ * The refusal for a cursor in an order that has none, or `null`.
+ *
+ * `sort=popular` counts saves, and a save can land while the reader is paging:
+ * the row a cursor names may have moved, so the token cannot mean "resume here".
+ * `latest` is published-at order, which only grows at the top. The transport asks
+ * this before the store does, so the answer is a `400` with a reason rather than
+ * an exception from inside a query — the same reason the offset ceiling is
+ * checked there.
+ */
+export function describeArticleCursorOrder(sort: "latest" | "popular"): string | null {
+  if (sort === "latest") return null;
+  return `cursor is only supported with sort=latest: the most-saved order is re-ranked while it is read, so it has no stable place to resume from. Page with an offset up to ${MAX_ARTICLE_OFFSET_POPULAR}, or use sort=latest with a cursor.`;
+}
+
+/** Whichever of the two page refusals applies to this request, or `null`. */
+export function describeArticlePageRefusal(args: {
+  sort: "latest" | "popular";
+  /** Whether the request named a cursor at all — that is what makes the first one apply. */
+  hasCursor: boolean;
+  offset: number;
+}): string | null {
+  if (args.hasCursor) return describeArticleCursorOrder(args.sort);
+  return describeArticleOffsetLimit(args.sort, args.offset);
 }
 
 /**

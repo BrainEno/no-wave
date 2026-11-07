@@ -1620,6 +1620,58 @@ test("REST article discovery stops the most-saved order at its ceiling and says 
   });
 });
 
+/**
+ * A cursor is a place in one order, and `sort=popular` has none (F-23's other
+ * half).
+ *
+ * The store already refuses the combination, but it refuses from *inside* a
+ * query, which the transport can only report as the generic "The request input
+ * is invalid." The reader who sent it learns nothing: the message does not say
+ * which of six parameters is wrong, and it does not say that the same page is
+ * available newest-first. So the check moved to the parser, where the reason is
+ * known — and where a refused page never reaches the store, the same rule the
+ * offset ceiling follows.
+ */
+test("a cursor with sort=popular is a named 400, not an exception from the store", async () => {
+  const calls = [];
+  const profile = {
+    userId: "some-author", displayName: "作者", bio: "", avatarUrl: null, websiteUrl: null,
+    locale: "zh-CN", createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z",
+    followerCount: 0, followingCount: 0, isFollowing: false,
+  };
+  await withServer(async (baseUrl) => {
+    const cursor = encodeURIComponent("2026-01-01T00:00:00.000Z|11111111-1111-4111-8111-111111111111");
+    const popular = await fetch(`${baseUrl}/api/v1/articles?sort=popular&cursor=${cursor}`);
+    assert.equal(popular.status, 400, "a cursor in the most-saved order is bad input, not a server error");
+    const refusal = (await popular.json()).error.message;
+    assert.match(refusal, /cursor is only supported with sort=latest/);
+    assert.match(refusal, /offset up to 10000/, "the refusal names the way to page in this order");
+    assert.match(refusal, /sort=latest with a cursor/, "and the way to page deeper");
+
+    // The author's list is the same list, so it refuses the same way.
+    const authorPopular = await fetch(`${baseUrl}/api/v1/authors/some-author/articles?sort=popular&cursor=${cursor}`);
+    assert.equal(authorPopular.status, 400);
+    assert.match((await authorPopular.json()).error.message, /cursor is only supported with sort=latest/);
+
+    // A cursor in the newest-first order is still passed through untouched, and
+    // a page with neither parameter is still the first page.
+    const latest = await fetch(`${baseUrl}/api/v1/articles?cursor=${cursor}&limit=5`);
+    assert.equal(latest.status, 200);
+    assert.deepEqual(calls[0], { locale: "zh-CN", query: "", sort: "latest", limit: 5, cursor: "2026-01-01T00:00:00.000Z|11111111-1111-4111-8111-111111111111" });
+    assert.equal((await fetch(`${baseUrl}/api/v1/articles?sort=popular&offset=10`)).status, 200);
+    assert.deepEqual(calls[1], { locale: "zh-CN", query: "", sort: "popular", limit: 20, offset: 10 });
+
+    // The two refusals never reached the store.
+    assert.equal(calls.length, 2, "a refused page must not be built by the store");
+  }, {
+    env: authEnv,
+    store: {
+      async listPublishedArticles(args) { calls.push(args); return []; },
+      async getAuthorProfile() { return profile; },
+    },
+  });
+});
+
 test("REST role assignment is editor-only, refuses self-service and returns the updated profile", async () => {
   const calls = [];
   let roleOfWriter = "member";
