@@ -126,6 +126,63 @@ export function createPostgresNotificationStore(ctx: PostgresStoreContext) {
       });
     },
 
+    /**
+     * Many inbox rows, one transaction (audit F-23).
+     *
+     * Same semantics as the single call, one row at a time inside one
+     * transaction: a duplicate key is reported as `duplicate: true`, the same key
+     * with a different payload raises `IdempotencyConflictError`, and a failure
+     * anywhere rolls the whole batch back. Receipts are returned in input order.
+     */
+    async createNotifications(inputs) {
+      if (!Array.isArray(inputs)) throw new TypeError("createNotifications expects an array of notification inputs.");
+      if (inputs.length === 0) return [];
+      const prepared = inputs.map(({ userId, eventKey, payload }) => {
+        for (const [name, value] of Object.entries({ userId, eventKey })) {
+          if (typeof value !== "string" || value.trim().length === 0 || value !== value.trim()) {
+            throw new TypeError(`${name} must be a non-empty, trimmed string.`);
+          }
+        }
+        if (payload === undefined) throw new TypeError("payload is required.");
+        return { userId, eventKey, payload, hash: requestHash(payload) };
+      });
+      return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const changes = [];
+        const receipts = [];
+        for (const { userId, eventKey, payload, hash } of prepared) {
+          const inserted = await tx.unsafe(
+            "INSERT INTO notifications (id, user_id, event_key, payload, payload_hash) VALUES ($1, $2, $3, $4::jsonb, $5) ON CONFLICT (user_id, event_key) DO NOTHING RETURNING id, user_id, event_key, payload, created_at, payload_hash",
+            [randomUUID(), userId, eventKey, payload, hash],
+          );
+          let row = inserted[0];
+          let duplicate = false;
+          if (row) {
+            changes.push({ entityType: "notifications", entityId: row.id, operation: "upsert", payload: row });
+          } else {
+            const existing = await tx.unsafe(
+              "SELECT id, user_id, event_key, payload, created_at, payload_hash FROM notifications WHERE user_id = $1 AND event_key = $2",
+              [userId, eventKey],
+            );
+            row = existing[0];
+            if (!row) throw new Error("Notification idempotency row disappeared during transaction.");
+            if (row.payload_hash !== hash) throw new IdempotencyConflictError("The notification event key was already used with a different payload.");
+            duplicate = true;
+          }
+          receipts.push({
+            id: row.id,
+            userId: row.user_id,
+            eventKey: row.event_key,
+            payload: parseJsonValue(row.payload),
+            createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : new Date(row.created_at).toISOString(),
+            duplicate,
+          });
+        }
+        await captureChanges(tx, transactionId, changes);
+        return receipts;
+      });
+    },
+
     async deliverMessageNotifications({ eventKey, messageId, conversationId, senderId }) {
       for (const [name, value] of Object.entries({ eventKey, conversationId, senderId })) requiredText(name, value, 300);
       if (!isUuid(messageId)) throw new TypeError("messageId must be a valid UUID.");
@@ -171,5 +228,5 @@ export function createPostgresNotificationStore(ctx: PostgresStoreContext) {
       });
     },
 
-  }) satisfies Pick<TypedPersistenceAdapterContract, "listNotifications" | "getUnreadNotificationCount" | "markAllNotificationsRead" | "markNotificationRead" | "createNotification" | "deliverMessageNotifications">;
+  }) satisfies Pick<TypedPersistenceAdapterContract, "listNotifications" | "getUnreadNotificationCount" | "markAllNotificationsRead" | "markNotificationRead" | "createNotification" | "createNotifications" | "deliverMessageNotifications">;
 }

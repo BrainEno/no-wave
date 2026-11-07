@@ -1227,9 +1227,11 @@ test("REST tells the readers who commented on a deleted work when their words go
       async isSessionRevoked() { return false; },
       async deleteArticle(args) { return { id: args.articleId, deletedAt }; },
       async listArticleCommentAuthorIds() { return ["reader-1", "reader-2", "owner"]; },
-      async createNotification(input) {
-        notified.push(input);
-        return { id: `notification-${notified.length}`, duplicate: false };
+      // Audit F-23: the notices go out as one batched transaction, not one
+      // statement per commenter.
+      async createNotifications(inputs) {
+        notified.push(...inputs);
+        return inputs.map((input) => ({ id: `notification-${input.userId}`, duplicate: false }));
       },
     },
   });

@@ -58,3 +58,63 @@ test("SQLite notification operations validate inputs", async () => {
     assert.equal(await store.markNotificationRead({ notificationId: randomUUID(), actorId: "user-a" }), null);
   } finally { db.close(); }
 });
+
+/**
+ * The batch write is what makes a deletion with many commenters affordable
+ * (audit F-23).
+ *
+ * The count that matters is `BEGIN IMMEDIATE`, not rows inserted: on a
+ * single-writer database every transaction is a chance for every other writer to
+ * wait. Deleting a work tells up to 200 commenters, which used to be 200 of them.
+ */
+test("SQLite writes a page of inbox rows in one transaction, and one conflict still rolls back the batch", async () => {
+  const { db, store } = await fixture();
+  const transactions: string[] = [];
+  const exec = db.exec.bind(db);
+  db.exec = (sql: string) => {
+    transactions.push(sql);
+    return exec(sql);
+  };
+  try {
+    const inputs = Array.from({ length: 120 }, (_, index) => ({
+      userId: `reader-${index}`,
+      eventKey: `article.deleted:article-1:reader-${index}`,
+      payload: { type: "article.deleted", articleId: "article-1", purgesAt: "2026-12-01T00:00:00.000Z" },
+    }));
+    const receipts = await store.createNotifications(inputs);
+
+    assert.equal(transactions.filter((sql) => /^BEGIN/i.test(sql)).length, 1, "one transaction for the whole page");
+    assert.equal(transactions.filter((sql) => /^COMMIT/i.test(sql)).length, 1);
+    assert.equal(receipts.length, inputs.length);
+    assert.deepEqual(receipts.map((receipt) => receipt.userId), inputs.map((input) => input.userId), "receipts keep input order");
+    assert.ok(receipts.every((receipt) => receipt.duplicate === false));
+    assert.equal(db.prepare("SELECT count(*) AS count FROM notifications").get().count, inputs.length);
+
+    // Replaying the same batch is all duplicates, and writes nothing new.
+    const replay = await store.createNotifications(inputs);
+    assert.ok(replay.every((receipt) => receipt.duplicate === true));
+    assert.deepEqual(replay.map((receipt) => receipt.id), receipts.map((receipt) => receipt.id));
+
+    // One conflicting key refuses the whole call: the new key in the same batch
+    // must not survive the rollback.
+    await assert.rejects(
+      store.createNotifications([
+        { userId: "reader-0", eventKey: "article.deleted:article-1:reader-0", payload: { type: "different" } },
+        { userId: "late-reader", eventKey: "article.deleted:article-1:late-reader", payload: { type: "article.deleted" } },
+      ]),
+      IdempotencyConflictError,
+    );
+    assert.equal(
+      db.prepare("SELECT count(*) AS count FROM notifications WHERE user_id = ?").get("late-reader").count,
+      0,
+      "the batch is one transaction: nothing from it may land",
+    );
+
+    // An empty page opens no transaction at all.
+    const before = transactions.length;
+    assert.deepEqual(await store.createNotifications([]), []);
+    assert.equal(transactions.length, before);
+  } finally {
+    db.close();
+  }
+});

@@ -124,6 +124,7 @@
     "markAllNotificationsRead",
     "markNotificationRead",
     "createNotification",
+    "createNotifications",
     "deliverMessageNotifications",
     "revokeSession",
     "isSessionRevoked",
@@ -258,6 +259,7 @@
         "markAllNotificationsRead",
         "markNotificationRead",
         "createNotification",
+        "createNotifications",
         "deliverMessageNotifications"
       ]
     },
@@ -412,7 +414,8 @@
         "getUnreadNotificationCount",
         "markAllNotificationsRead",
         "markNotificationRead",
-        "createNotification"
+        "createNotification",
+        "createNotifications"
       ]
     },
     {
