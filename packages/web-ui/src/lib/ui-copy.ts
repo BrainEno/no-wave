@@ -123,7 +123,6 @@ function zh() {
       notFoundTitle: "找不到这个页面", notFoundBody: "你访问的内容不存在，或已被移除。", backHome: "回到首页",
     },
     footer: { rights: "无浪潮 No Wave", language: "简体中文", signIn: "登录" },
-    signIn: { title: "登录", body: "身份验证尚未在当前阶段实现。登录、关注与通知将在后端就绪后接入。" },
     auth: {
       /**
        * What a form says instead of the API's own words.
@@ -259,7 +258,6 @@ function en(): UiCopy {
       notFoundTitle: "Page not found", notFoundBody: "The content does not exist or has been removed.", backHome: "Back to home",
     },
     footer: { rights: "No Wave", language: "English", signIn: "Sign in" },
-    signIn: { title: "Sign in", body: "Authentication is not implemented at this stage. Sign-in, following and notifications will be connected once the backend is ready." },
     auth: {
       emailTaken: "That address already has an account. Sign in instead.",
       failed: "The request failed. Try again in a moment.",

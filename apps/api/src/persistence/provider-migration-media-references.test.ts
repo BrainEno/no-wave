@@ -439,6 +439,11 @@ function holdBeforeCommit(db: PgDatabase, ready: Deferred<number>, release: Defe
   };
 }
 
+// `prefix` is a substring, not a full statement: the observed statement is an
+// implementation detail that gains columns (the article ownership lock grew
+// `work_type` when the retired-type rule landed), and a matcher that pins the
+// whole text turns a column addition into a 10-second timeout that looks like a
+// concurrency bug.
 function observeAttempt(db: PgDatabase, prefix: string, attempting: Deferred<number>): PgDatabase {
   return {
     unsafe: (...args) => db.unsafe(...args), end: (...args) => db.end(...args),
@@ -446,7 +451,7 @@ function observeAttempt(db: PgDatabase, prefix: string, attempting: Deferred<num
       const [backend] = await tx.unsafe<{ pid: number }>("SELECT pg_backend_pid() AS pid");
       return work({
         unsafe<TRow = PgRow>(query: string, parameters?: readonly unknown[]): Promise<TRow[]> {
-          if (query.startsWith(prefix)) attempting.resolve(backend.pid);
+          if (query.includes(prefix)) attempting.resolve(backend.pid);
           return tx.unsafe<TRow>(query, parameters);
         },
       });
@@ -609,7 +614,7 @@ test("PostgreSQL source: overlapping translation edits capture the committed ref
     }));
     void first.catch(() => {});
     const blocker = await bounded(ready.promise, "the first source edit to hold its transaction");
-    second = Promise.resolve(createPostgresStore(observeAttempt(sql, "SELECT author_id, deleted_at FROM articles", attempting)).updateArticle({
+    second = Promise.resolve(createPostgresStore(observeAttempt(sql, "FROM articles WHERE id = $1 FOR UPDATE", attempting)).updateArticle({
       articleId: article.id, actorId: f.author, slug, title: "Second", locale: "en", contentBlocks: blocks(secondId),
     }));
     void second.catch(() => {});
