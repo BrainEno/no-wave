@@ -1,18 +1,26 @@
 # ADR 0026: Reports, scoped moderation and independent appeals
 
-- Status: **Proposed — revised 2026-11-07 (P2/P3/P4 decided); not accepted, not implemented**
+- Status: **Accepted — design accepted 2026-11-07; nothing implemented, and P1/P5–P10 are release gates**
 - Date: 2026-11-05
 - Relates to: [issue #72](https://github.com/BrainEno/no-wave/issues/72),
   [ADR 0016](0016-editorial-taxonomy-and-editor-role.md),
   [ADR 0010](0010-sqlite-first-and-online-provider-cutover.md),
   [REST idempotency](../rest-idempotency.md), and the
-  [proposed threat model](../moderation-threat-model.md)
+  [threat model](../moderation-threat-model.md)
 
-This is a reviewable proposal, **not permission to implement a moderation schema, API or UI**.
-Issue #72 requires an accepted ADR and threat model before implementation. The owner selected four
-product directions on 2026-11-05, recorded in §1; the rest of this document is a recommendation or
-an explicit open question. Selecting those directions did not accept this ADR, settle the legal
-basis, approve deployment, or authorize a moderation release. No paths in §7 exist yet.
+**Accepted 2026-11-07 by the owner.** The design below is the decision; the feature does not exist.
+No moderation schema, migration, service, REST route, audit log or UI is authorized by this
+acceptance, because §9's remaining gates are about the data itself and cannot be closed in code
+review: legal and privacy review (P8), evidence key lifecycle and backup/journal deletion (P5), cache
+and shared-media propagation (P6), target-specific hold semantics (P7), the maximum duration of an
+uphold (P9), reviewer independence after roster deletion (P10), and the reason taxonomy and reviewer
+rubric that turn a report count into a verdict (P1). Until each is resolved — or explicitly gated
+with a documented operational procedure — the answer to "can we ship this?" is no, and no paths in
+§7 exist.
+
+What acceptance does establish: the scope (one-message reports, administrator-only first release,
+independent appeals), the retention clocks after final closure (§6), and the three decisions recorded
+in §1 — the `ADMIN_USER_IDS` bootstrap, the 30-day appeal window and the 180-day escalation.
 
 ## Context: what must not be mistaken for a moderation system
 
@@ -427,6 +435,9 @@ tests. Passing this design review alone will not satisfy #72's implementation ac
 | P9 | Decide the maximum duration, reassessment and ending of an upheld visibility hold, including pending appeals and continued holds after audit expiry. | A permanent visibility flag could become an unreviewed sanction or covert audit retention. Do not silently change a pending appeal's action or extend the selected evidence/audit deadlines. |
 | P10 | Choose how to verify reviewer independence for a message after conversation membership is deleted; review the case-scoped pseudonymous-guard option against fail-closed unavailability, data minimization, key custody and retention. | The source roster cascades away today. A missing row is not proof of no conflict, but retaining a guard creates additional sensitive data. |
 
-**Decision request:** reviewers should resolve or explicitly gate P1–P10, review the linked threat
-model, then explicitly accept or reject this ADR. Until then, keep #72 open and do not implement its
-moderation migrations, services, REST routes or audit system.
+**Status of this list:** the owner accepted the ADR on 2026-11-07 with P2, P3 and P4 decided. The
+rows above that are **not** struck through are release gates: they must be resolved, or explicitly
+gated with a documented operational procedure, before the first migration is written. Acceptance is
+permission to *build towards* this design, not to collect real reports: no moderation migrations,
+services, REST routes or audit system exist, and #72's implementation half stays open until these
+gates close.

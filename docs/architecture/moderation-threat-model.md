@@ -1,17 +1,18 @@
-# Threat model: proposed reports, moderation and appeals
+# Threat model: reports, moderation and appeals (accepted design, unshipped feature)
 
-- Status: **Proposed — controls and tests below do not exist yet**
+- Status: **Accepted with ADR 0026 on 2026-11-07 — the controls and tests below do not exist yet**
 - Date: 2026-11-05
 - Scope: the candidate first release in [ADR 0026](decisions/0026-moderation-reports-and-appeals.md),
   including one-message reports, administrator-only review, holds, independent appeals, retention,
   provider migration and caches.
 - Issue: [#72](https://github.com/BrainEno/no-wave/issues/72)
 
-This document assesses a proposal, not deployed security controls or legal compliance. Issue #72
-requires the ADR and this threat model to be accepted before its database/API implementation. The
-owner's selected directions are recorded in the ADR; approval of those directions is not acceptance
-of either document. The unresolved decisions and release gates in ADR 0026 §9 are part of the threat
-model, not optional follow-up work.
+This document assesses a design that has been accepted (2026-11-07, with ADR 0026) — not deployed
+security controls, and not legal compliance. What the acceptance means here: these are the threats
+the implementation will be judged against, so the controls in the table are the definition of done
+rather than suggestions. The unresolved decisions and release gates in ADR 0026 §9 are part of the
+threat model, not optional follow-up work, and no moderation code may ship while a control marked
+critical is missing.
 
 ## Assets and trust boundaries
 
@@ -108,7 +109,8 @@ inferred, even if it is never disclosed by the API. Retaining a selected message
 deletion is a material privacy choice, not merely an implementation detail. Reports are not proof,
 and a delay while independent review is unavailable may harm either party.
 
-Before acceptance, reviewers must resolve or explicitly gate ADR 0026 P1–P10 and decide whether these
-residual risks are tolerable. Before collecting real reports, all release gates must be met and the
-privacy notices, controls, operational staff and retention runbooks must actually exist. This
-proposal creates no new privilege, database, REST route, deployment or promise of legal compliance.
+Acceptance (2026-11-07) means the owner judged these residual risks the ones to design against. It
+does not mean they are now tolerable in production: before collecting real reports, every release
+gate still open in ADR 0026 §9 must be met, and the privacy notices, controls, operational staff and
+retention runbooks must actually exist. This design confers no new privilege, creates no database,
+REST route or deployment, and promises no legal compliance.

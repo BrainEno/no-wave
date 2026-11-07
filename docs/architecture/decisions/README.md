@@ -32,7 +32,7 @@ which of two `0011`s meant what.
 | [0023](0023-a-shared-passage-is-a-link-not-a-record.md) | A shared passage is a link, not a record | Accepted | 2026-11-02 |
 | [0024](0024-authors-are-a-directory-not-a-side-effect-of-works.md) | Authors are a directory, not a side effect of their works | Accepted | 2026-11-02 |
 | [0025](0025-browser-session-refresh-protocol.md) | The browser session is one cookie contract and one refresh per rotation | Accepted | 2026-11-04 |
-| [0026](0026-moderation-reports-and-appeals.md) | Reports, scoped moderation and independent appeals | Proposed | 2026-11-05 |
+| [0026](0026-moderation-reports-and-appeals.md) | Reports, scoped moderation and independent appeals | Accepted | 2026-11-05 |
 | [0027](0027-client-address-behind-a-proxy.md) | The client address is the socket peer unless the deployment names its proxies | Accepted | 2026-11-07 |
 | [0028](0028-s3-compatible-media-storage.md) | Server-mediated uploads to S3-compatible media storage | Accepted | 2026-10-29 |
 | [0029](0029-one-deployment-path.md) | One deployment path — the repository ships no platform manifest | Accepted | 2026-11-07 |
