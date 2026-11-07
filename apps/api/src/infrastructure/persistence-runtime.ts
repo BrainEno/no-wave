@@ -1,6 +1,10 @@
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
-import { assertPersistenceAdapter } from "../application/persistence-ports.ts";
+import {
+  assertPersistenceAdapter,
+  type PersistenceAdapterContract,
+  type PersistenceAdapterMethods,
+} from "../application/persistence-ports.ts";
 import { resolveDatabaseProvider, resolvePostgresMigrationUrl, resolveSqliteDatabasePath } from "./database-config.ts";
 
 const builtInProviders = Object.freeze({
@@ -108,6 +112,42 @@ export function describePersistenceRuntime({
 }
 
 /**
+ * A registered provider factory.
+ *
+ * It answers `unknown` on purpose. A factory can be supplied by the deployment,
+ * so its return value is untrusted input; typing it as the runtime shape would
+ * move a runtime check into a compile-time assumption and make "a broken factory
+ * throws a useful TypeError" untestable.
+ */
+export type PersistenceRuntimeFactory = (args: { env: NodeJS.ProcessEnv }) => Promise<unknown> | unknown;
+
+/** The adapter-plus-teardown a provider factory must answer. */
+type PersistenceRuntime = {
+  adapter: PersistenceAdapterMethods;
+  close: (...args: never[]) => unknown;
+};
+
+/**
+ * The checked methods, named as the domain contract.
+ *
+ * `assertPersistenceAdapter` verifies at runtime that every method in the port
+ * table exists; TypeScript cannot turn that loop into a structural proof, so the
+ * last step is an assertion — the same class of boundary as `JSON.parse`, and the
+ * only one on this path.
+ */
+function checkedAdapter(adapter: PersistenceAdapterMethods): PersistenceAdapterContract {
+  assertPersistenceAdapter(adapter);
+  return adapter as PersistenceAdapterContract;
+}
+
+function isPersistenceRuntime(value: unknown): value is PersistenceRuntime {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as { adapter?: unknown; close?: unknown };
+  return typeof candidate.adapter === "object" && candidate.adapter !== null
+    && typeof candidate.close === "function";
+}
+
+/**
  * SQLite is the fresh-install default. Existing deployments that set only
  * DATABASE_URL keep using PostgreSQL; provider switches are always explicit.
  * MongoDB remains unavailable until its adapter passes the shared contracts.
@@ -119,7 +159,7 @@ export async function createPersistenceRuntime({
 }: {
   provider?: string;
   env?: NodeJS.ProcessEnv;
-  providers?: Record<string, (args: { env: NodeJS.ProcessEnv }) => Promise<any> | any>;
+  providers?: Record<string, PersistenceRuntimeFactory>;
 } = {}) {
   const selectedProvider = resolveDatabaseProvider({ provider, env });
   const factory = providers[selectedProvider];
@@ -130,9 +170,14 @@ export async function createPersistenceRuntime({
     );
   }
   const runtime = await factory({ env });
-  if (!runtime || !runtime.adapter || typeof runtime.adapter !== "object" || typeof runtime.close !== "function") {
+  if (!isPersistenceRuntime(runtime)) {
     throw new TypeError(`The "${selectedProvider}" persistence factory must return { adapter, close }.`);
   }
-  assertPersistenceAdapter(runtime.adapter);
-  return Object.freeze({ provider: selectedProvider, adapter: runtime.adapter, close: runtime.close });
+  // The factory is untrusted input (a provider may be registered by a deployment,
+  // and the tests register deliberately broken ones to assert this failure), so
+  // the shape is checked at runtime and the full contract is asserted here. The
+  // explicit type argument is what keeps `adapter` typed as the domain contract
+  // instead of the loose "some methods" shape the guard can prove.
+  const adapter = checkedAdapter(runtime.adapter);
+  return Object.freeze({ provider: selectedProvider, adapter, close: runtime.close });
 }

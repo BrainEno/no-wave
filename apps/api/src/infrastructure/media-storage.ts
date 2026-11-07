@@ -12,10 +12,23 @@ export type MediaObjectStorage = {
   close(): void;
 };
 
+/**
+ * The slice of the S3 client this adapter uses.
+ *
+ * `send` answers `unknown` rather than the SDK's generic response type: the only
+ * field read is `Body`, and the SDK's `Output` type parameter does not assign to
+ * a narrower structural shape. Promise<unknown> keeps the call site honest — the
+ * response is narrowed by a guard before anything touches it.
+ */
 type MediaStorageClient = {
-  send(command: unknown): Promise<any>;
+  send(command: unknown): Promise<unknown>;
   destroy(): void;
 };
+
+/** A response whose `Body` this adapter may stream; everything else is ignored. */
+function hasBody(value: unknown): value is { Body: unknown } {
+  return typeof value === "object" && value !== null && "Body" in value;
+}
 
 /**
  * Test seams. Production callers pass nothing; the adapter builds a real
@@ -190,7 +203,9 @@ export function createMediaObjectStorage(
         () => client.send(new GetObjectCommand({ Bucket: config.bucket, Key: key })),
         { sleep },
       );
-      if (!response.Body) throw new MediaStorageUnavailableError("The stored media object has no body.");
+      if (!hasBody(response) || !response.Body) {
+        throw new MediaStorageUnavailableError("The stored media object has no body.");
+      }
       const chunks: Buffer[] = [];
       let size = 0;
       for await (const chunk of response.Body as AsyncIterable<Uint8Array>) {

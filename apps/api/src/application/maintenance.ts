@@ -66,7 +66,13 @@ export type MaintenanceReport = {
  */
 export type MaintenanceStore = {
   pruneExpiredIdentityState?: () => Promise<unknown>;
-  purgeExpiredArticles?: (input: { retentionDays: number; now: Date; limit: number }) => Promise<unknown>;
+  /**
+   * A value *or* a promise: `purgeExpiredArticles` is `PersistenceResult` on the
+   * adapter (the SQLite adapter is synchronous), and this shape used to require
+   * `Promise<unknown>` — which only compiled because the runtime's `adapter` was
+   * `any`. `await` accepts both, so the type was the only thing wrong.
+   */
+  purgeExpiredArticles?: (input: { retentionDays: number; now: Date; limit: number }) => unknown;
 };
 
 function boundedInteger(name: string, value: number | undefined, fallback: number, maximum: number): number {
