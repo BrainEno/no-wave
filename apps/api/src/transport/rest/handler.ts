@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createIdentityService } from "../../application/identity.ts";
 import { createRateLimitService, type RateLimitBucket, type RateLimitStore } from "../../application/rate-limit.ts";
+import type { BackgroundFailureReporter } from "../../application/background-tasks.ts";
 import { resolveRestRoute } from "./routes.ts";
 import { REST_ROUTE_GROUPS } from "./routes/index.ts";
 import type { RestRouteContext } from "./routes/context.ts";
@@ -30,7 +31,20 @@ const MEDIA_APPLICATION_PATH = /^\/api\/media\/([^/]+)\/?$/;
  * per-request {@link RestRouteContext}. Everything else lives in `./routes/*.ts`
  * behind the ordered `REST_ROUTE_GROUPS` list (issue #58).
  */
-export function createRestHandler({ services, env = process.env, mediaAssets = null, onMailDelivery = null }: { services: RestServices | null; env?: NodeJS.ProcessEnv; mediaAssets?: MediaAssetsPort | null; onMailDelivery?: ((sample: { purpose: string; outcome: string; durationMs: number; code?: string; message?: string }) => void) | null }) {
+export function createRestHandler({
+  services,
+  env = process.env,
+  mediaAssets = null,
+  onMailDelivery = null,
+  onBackgroundFailure = null,
+}: {
+  services: RestServices | null;
+  env?: NodeJS.ProcessEnv;
+  mediaAssets?: MediaAssetsPort | null;
+  onMailDelivery?: ((sample: { purpose: string; outcome: string; durationMs: number; code?: string; message?: string }) => void) | null;
+  /** Where a background task's failure goes (audit F-22); see `application/background-tasks.ts`. */
+  onBackgroundFailure?: BackgroundFailureReporter;
+}) {
   // The facade is assembled dynamically from the validated persistence ports.
   // `ApplicationServices` already carries the identity store methods
   // (`createIdentityAccount`, `findIdentityAccount`, ...), so no assertion is
@@ -44,7 +58,9 @@ export function createRestHandler({ services, env = process.env, mediaAssets = n
           : undefined,
       }
     : null;
-  const writeRateLimiter = rateLimitStore ? createRateLimitService({ store: rateLimitStore, env }) : null;
+  const writeRateLimiter = rateLimitStore
+    ? createRateLimitService({ store: rateLimitStore, env, onBackgroundFailure })
+    : null;
 
   return async function handleRest(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
     let url = new URL(request.url ?? "/", "http://localhost");

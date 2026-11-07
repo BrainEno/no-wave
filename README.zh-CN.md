@@ -106,6 +106,13 @@ SQLite 是**本地开发**与单机安装的默认选择。由于 `node:sqlite` 
 
 Neon 生产分支的 PostgreSQL URL、私有媒体存储与服务开通见 [Neon 部署与运维](docs/operations/neon-deployment.md)。**不要把该页当作日常本地开发流程**：它会把生产 URL 拉进 `.env.local`，而本地探针会写入数据。账户邮件（密码找回、邮箱验证）已经完成但**默认关闭**，只有运维在 `.env.local` 设置 `MAIL_ENABLED` 后才会发送；详见[账户邮件：开启前不会发送](docs/operations/mail-setup.md)。
 
+## 定时维护
+
+过期会话、已关闭的限流窗口，以及超过保留期的软删除作品，由一个一次性进程
+`pnpm --filter @bot-thk/api maintenance` 清理，预期由调度器每小时运行一次。
+没有它，低流量实例永远不会清理：进程内那两次顺带的清扫只在有写入时才发生。调度
+命令、边界参数与退出码见[定时维护](docs/operations/scheduled-maintenance.md)。
+
 <a id="observability"></a>
 ## 可观测性
 

@@ -20,6 +20,7 @@ Current in-process metrics:
 - `api_persistence_operation_duration_ms_{bucket,sum,count}`: persistence-port operation wall-clock duration in milliseconds.
 - `api_identity_mail_deliveries_total{purpose,outcome}`: account-mail delivery attempts, by `password_reset` / `email_verification` and `sent` / `failed` / `skipped`.
 - `api_identity_mail_delivery_duration_ms_{bucket,sum,count}`: wall-clock duration of one delivery attempt (including its retry).
+- `api_background_task_failures_total{task}`: cleanup and notice work that failed — `identity-prune`, `tombstone-purge`, `tombstone-notifications` (see [scheduled maintenance](scheduled-maintenance.md)). The label is a closed set; an unrecognised task collapses to `other`. The error class is in the accompanying log line, not in a label.
 
 The notification worker is a separate process. Enable its dedicated Prometheus listener with `OUTBOX_METRICS_PORT=9100`; `OUTBOX_METRICS_HOST` defaults to `127.0.0.1` and should only be changed to a reachable interface when the scrape network is restricted. The optional endpoint exposes:
 
@@ -56,6 +57,26 @@ purpose and the SMTP error code. There is no queue and no retry after the
 request ends: a transient relay failure is retried **once, inside the request**,
 and a failure that survives that is final — the user asks again and gets a new
 link.
+
+## Alerting on background cleanup
+
+The cleanup sweeps are the mirror image of account mail: no request is waiting
+for them, so a purge that has been failing since Tuesday produces a perfectly
+healthy-looking API and a recycle bin that keeps growing. The counter is the
+signal an alert rules on, and it only exists in the API process while the sweeps
+run there — a scheduled `pnpm --filter @bot-thk/api maintenance` run reports its
+failures in its own JSON log line instead (see
+[scheduled maintenance](scheduled-maintenance.md)).
+
+```
+# A sweep has failed at least once in the last 24 hours.
+sum(increase(api_background_task_failures_total{task=~".*-(prune|purge)"}[24h])) > 0
+```
+
+Each failure also writes one `background_task_failed` log record at `warn` with
+`task`, `errorName` and, for the deletion notices, `failed` (how many readers
+could not be told). The error **class** is all that travels: a driver message can
+carry a connection string.
 
 ## Known boundaries
 

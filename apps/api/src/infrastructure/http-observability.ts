@@ -1,5 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type { BackgroundFailure } from "../application/background-tasks.ts";
 
 const HISTOGRAM_BUCKETS_MS = Object.freeze([5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000]);
 const TRACEPARENT_PATTERN = /^00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$/i;
@@ -17,6 +18,7 @@ type Histogram = { count: number; sum: number; buckets: number[] };
 type RequestMetric = { method: string; route: string; status: string; count: number; duration: Histogram };
 type PersistenceMetric = { operation: string; outcome: string; count: number; duration: Histogram };
 type MailMetric = { purpose: string; outcome: string; count: number; duration: Histogram };
+type BackgroundFailureMetric = { task: string; count: number };
 
 /**
  * Account-mail purposes, as a closed set.
@@ -27,6 +29,16 @@ type MailMetric = { purpose: string; outcome: string; count: number; duration: H
  */
 const MAIL_PURPOSES = Object.freeze(["password_reset", "email_verification"]);
 const MAIL_OUTCOMES = Object.freeze(["sent", "failed", "skipped"]);
+
+/**
+ * Background tasks, as a closed set — same rule as `MAIL_PURPOSES`.
+ *
+ * `errorName` is deliberately *not* a label: error classes are open-ended (every
+ * driver and every runtime version contributes its own), and the counter exists
+ * to answer "is the cleanup working", which one label answers. The class travels
+ * in the log line next to it.
+ */
+const BACKGROUND_TASKS = Object.freeze(["identity-prune", "tombstone-purge", "tombstone-notifications"]);
 
 function newHistogram(): Histogram {
   return { count: 0, sum: 0, buckets: HISTOGRAM_BUCKETS_MS.map(() => 0) };
@@ -110,6 +122,7 @@ export function createHttpObservability({
   const authFailures = new Map<string, { method: string; status: string; count: number }>();
   const persistence = new Map<string, PersistenceMetric>();
   const mail = new Map<string, MailMetric>();
+  const backgroundFailures = new Map<string, BackgroundFailureMetric>();
   let activeRequests = 0;
 
   function log(record: Omit<LogRecord, "timestamp" | "component">): void {
@@ -190,6 +203,30 @@ export function createHttpObservability({
       message: typeof message === "string" && message.length > 0
         ? message.slice(0, 240)
         : skipped ? "No mail was sent because account mail is switched off." : "The mail could not be delivered.",
+    });
+  }
+
+  /**
+   * Record one background task that failed (audit F-22).
+   *
+   * The cleanup sweeps and the deletion notices are work no request is waiting
+   * for, so their failures cannot surface in an HTTP status. A sweep that has
+   * been failing since Tuesday looks exactly like a database with nothing to
+   * clean. The counter is what an alert rules on; the log line, with the error
+   * class and no driver text, is what a human reads afterwards.
+   */
+  function observeBackgroundFailure({ task, errorName, failed }: BackgroundFailure): void {
+    const safeTask = BACKGROUND_TASKS.includes(task) ? task : "other";
+    const metric = backgroundFailures.get(safeTask) ?? { task: safeTask, count: 0 };
+    metric.count += 1;
+    backgroundFailures.set(safeTask, metric);
+
+    log({
+      level: "warn",
+      event: "background_task_failed",
+      task: safeTask,
+      errorName: SAFE_OPERATION.test(errorName) ? errorName : "Error",
+      ...(typeof failed === "number" && Number.isInteger(failed) && failed > 0 ? { failed } : {}),
     });
   }
 
@@ -314,6 +351,14 @@ export function createHttpObservability({
     }
 
     lines.push(
+      "# HELP api_background_task_failures_total Background cleanup and notice tasks that failed.",
+      "# TYPE api_background_task_failures_total counter",
+    );
+    for (const metric of [...backgroundFailures.values()].sort((a, b) => a.task.localeCompare(b.task))) {
+      lines.push(`api_background_task_failures_total{task="${metric.task}"} ${metric.count}`);
+    }
+
+    lines.push(
       "# HELP api_identity_mail_deliveries_total Account-mail delivery attempts by purpose and outcome.",
       "# TYPE api_identity_mail_deliveries_total counter",
     );
@@ -338,5 +383,5 @@ export function createHttpObservability({
     return lines.join("\n") + "\n";
   }
 
-  return Object.freeze({ beginRequest, observePersistenceOperation, observeMailDelivery, renderMetrics });
+  return Object.freeze({ beginRequest, observePersistenceOperation, observeMailDelivery, observeBackgroundFailure, renderMetrics });
 }

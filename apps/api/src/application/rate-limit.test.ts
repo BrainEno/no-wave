@@ -225,3 +225,35 @@ test("write limits are not applied when authentication cannot be configured", as
   await service.checkWrite({ policy: policyFor("POST", "articles"), ip: "unknown", actorId: null });
   assert.equal(calls, 0);
 });
+
+test("a failed expired-state prune is reported, and the user's write still goes through", async () => {
+  // The prune rides on writes and used to be awaited bare: a maintenance problem
+  // answered the writer with a 500. It is background work, so it reports and is
+  // swallowed — and the report carries the error class, never the driver text.
+  const failures = [];
+  let pruned = 0;
+  const service = createRateLimitService({
+    env,
+    onBackgroundFailure: (failure) => failures.push(failure),
+    store: {
+      async consumeRateLimit() {
+        return { allowed: true, resetAt: new Date(Date.now() + 60000).toISOString() };
+      },
+      async pruneExpiredIdentityState() {
+        pruned += 1;
+        throw new TypeError("connection string postgres://writer:hunter2@db.internal/no_wave is invalid");
+      },
+    },
+  });
+
+  // The sweep is opportunistic (every 128 checks), so the write that triggers it
+  // is the 128th; every one of them must succeed.
+  for (let attempt = 0; attempt < 128; attempt += 1) {
+    await service.checkWrite({ policy: policyFor("POST", "articles"), ip: "192.0.2.10", actorId: "writer-123" });
+  }
+
+  assert.equal(pruned, 1, "one prune per 128 checks");
+  assert.deepEqual(failures, [{ task: "identity-prune", errorName: "TypeError" }]);
+  assert.equal(JSON.stringify(failures).includes("hunter2"), false);
+  assert.equal(JSON.stringify(failures).includes("db.internal"), false);
+});

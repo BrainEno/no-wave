@@ -183,3 +183,41 @@ test("a failure message is truncated rather than relayed whole", () => {
   observability.observeMailDelivery({ purpose: "password_reset", outcome: "failed", durationMs: 1, message: "x".repeat(5000) });
   assert.equal(String(logs.at(-1).message).length, 240);
 });
+
+/**
+ * Audit F-22: the cleanup sweeps run outside any request, so a failure has no
+ * status code to appear in. Without this counter a purge that stopped working is
+ * indistinguishable from a recycle bin that is always empty.
+ */
+test("a failed background task is counted, logged as a warning, and carries the class only", () => {
+  const logs = [];
+  const observability = createHttpObservability({ logger: (record) => logs.push(record) });
+  observability.observeBackgroundFailure({ task: "tombstone-purge", errorName: "RangeError" });
+  observability.observeBackgroundFailure({ task: "tombstone-notifications", errorName: "Error", failed: 3 });
+
+  const first = logs.at(-2);
+  assert.equal(first.level, "warn");
+  assert.equal(first.event, "background_task_failed");
+  assert.equal(first.task, "tombstone-purge");
+  assert.equal(first.errorName, "RangeError");
+  assert.equal("failed" in first, false, "a one-off task counts nothing");
+
+  const second = logs.at(-1);
+  assert.equal(second.task, "tombstone-notifications");
+  assert.equal(second.failed, 3, "the count of undeliverable notices is the useful part");
+
+  const rendered = observability.renderMetrics();
+  assert.match(rendered, /api_background_task_failures_total\{task="tombstone-purge"\} 1/);
+  assert.match(rendered, /api_background_task_failures_total\{task="tombstone-notifications"\} 1/);
+});
+
+test("an unknown task name collapses to one label instead of growing the counter", () => {
+  const observability = createHttpObservability({ logger: () => {} });
+  // `errorName` is attacker-adjacent text in the worst case; neither it nor an
+  // unrecognised task may become a label of its own.
+  observability.observeBackgroundFailure({ task: "some-new-task" as never, errorName: "not a class name" });
+  const rendered = observability.renderMetrics();
+  assert.match(rendered, /api_background_task_failures_total\{task="other"\} 1/);
+  assert.equal(rendered.includes("some-new-task"), false);
+  assert.equal(rendered.includes("not a class name"), false);
+});

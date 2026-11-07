@@ -154,3 +154,54 @@ test("application article use cases reject malformed or non-array content before
 
   assert.deepEqual(calls, []);
 });
+
+test("a failing cleanup rides on the write without becoming the write's failure — and is reported", async () => {
+  // Audit F-22: both of these used to `catch {}`, so a broken cleanup was
+  // indistinguishable from an empty one. They still may not fail the user's save;
+  // they now say what happened, by class, on the API's own log sink.
+  const failures: Array<{ task: string; errorName: string; failed?: number }> = [];
+  const persistence = completeFakeAdapter();
+  persistence.createArticle = async () => ({ id: "article-1", slug: "kept" });
+  persistence.purgeExpiredArticles = async () => {
+    throw new RangeError("database is locked for postgres://writer:hunter2@db.internal/no_wave");
+  };
+  persistence.deleteArticle = async () => ({ id: "article-1", deletedAt: "2026-01-02T03:04:05.678Z" });
+  persistence.listArticleCommentAuthorIds = async () => ["reader-1", "reader-2"];
+  persistence.createNotification = async () => { throw new Error("inbox unavailable"); };
+  const services = createApplicationServices({
+    persistence,
+    onBackgroundFailure: (failure) => failures.push(failure),
+  });
+
+  // The tombstone sweep fires every 32 writes; the 32nd must still return the
+  // article it created.
+  let last;
+  for (let write = 0; write < 32; write += 1) {
+    last = await services.createArticle({ authorId: "author-1", slug: "kept", title: "Kept", locale: "en", contentBlocks: "[]", summary: "" });
+  }
+  assert.deepEqual(last, { id: "article-1", slug: "kept" });
+
+  assert.deepEqual(failures, [{ task: "tombstone-purge", errorName: "RangeError" }]);
+  assert.equal(JSON.stringify(failures).includes("hunter2"), false, "no connection string may reach the report");
+
+  // The deletion notice is a background write too: one report per deletion, with
+  // the count of readers who could not be told.
+  await services.deleteArticle({ actorId: "author-1", articleId: "article-1" });
+  const notice = failures.find((failure) => failure.task === "tombstone-notifications");
+  assert.deepEqual(notice, { task: "tombstone-notifications", errorName: "Error", failed: 2 });
+});
+
+test("a reporter that throws cannot turn a cleanup failure into a request failure", async () => {
+  const persistence = completeFakeAdapter();
+  persistence.deleteArticle = async () => ({ id: "article-1", deletedAt: "2026-01-02T03:04:05.678Z" });
+  persistence.listArticleCommentAuthorIds = async () => ["reader-1"];
+  persistence.createNotification = async () => { throw new Error("inbox unavailable"); };
+  const services = createApplicationServices({
+    persistence,
+    onBackgroundFailure: () => { throw new Error("the log sink is full"); },
+  });
+  assert.deepEqual(await services.deleteArticle({ actorId: "author-1", articleId: "article-1" }), {
+    id: "article-1",
+    deletedAt: "2026-01-02T03:04:05.678Z",
+  });
+});
