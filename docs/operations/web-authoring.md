@@ -105,9 +105,28 @@ also takes a row lock on the asset (`FOR UPDATE`) so a writer naming it waits
 rather than racing.
 
 The check before the delete is still there, because a refusal should be a normal
-answer ("in use, by these works") rather than an exception. It now reads the
-reference table instead of scanning every body on the site — measured at 0.18 ms
-per delete with 2,000 works in the database.
+answer ("in use, by these works") rather than an exception. It reads the
+reference table first — measured at 0.18 ms per delete with 2,000 works in the
+database — instead of scanning every body on the site.
+
+**The reference table is the fast path, not the proof.** The constraint above can
+only refuse a delete it can see a row for; a reference row can be *missing* while
+the body still holds the URL. That is exactly what a provider replay older than
+reference capture leaves behind (#217), and it is also what an older writer or a
+hand-written `DELETE FROM article_media_refs` leaves behind. So the guarded delete
+asks a second question in the same transaction: does any translation body, or any
+profile picture URL, still contain this asset id? If one does, the delete is
+refused and the work is named in the 409 exactly as before.
+
+That second question is a scan bounded by `LIMIT 200` on each side, and it runs
+only on the path where the reference table said "unused" — i.e. only when an asset
+is about to be deleted, which is rare and off by default. It cannot repair a
+drifted reference table, and it makes the library's own `orphan` badge stricter
+than "the delete will succeed": the badge still comes from the reference table, so
+a drifted asset can be shown as an orphan and then refused. The refusal is the
+correct answer in that case, and
+[the materialisation audit](../architecture/provider-migration-media-audit.md) is
+what tells you the table has drifted.
 
 `listMediaScanRows` (the site-wide scan) is kept and a contract test asserts the
 table and the scan agree on how many uses there are, so the two cannot drift into
@@ -127,18 +146,19 @@ Two independent switches, and they do different jobs:
   decides only whether the button is offered. Turning it on while the API switch
   is off shows a button whose press is refused.
 
-Why the API refuses by default: the guard above is correct within one transaction,
-but on PostgreSQL that transaction runs at READ COMMITTED and takes no lock on the
-`media_assets` row. A concurrent `createArticle` / `upsertAuthorProfile` that writes
-a reference to the same image can commit *between* the scan and the delete, and both
-transactions then succeed — leaving a work whose images are permanently gone (#156).
-The fix is the materialised reference table in #163, with `ON DELETE RESTRICT`
-enforced by the database rather than by a scan.
+Why the API refuses by default: deletion is irreversible, an unused image costs
+storage rather than correctness, and "refuse" is the answer that cannot lose
+someone's published picture.
 
-**So turning this on re-enables a known data-loss race.** Set it only on an
-instance where you accept that risk — for example SQLite, where the delete is
-synchronous and serialised — and turn it back off when #163 lands and the guard no
-longer depends on a scan.
+The data-loss race that first justified the default (#156 — a reference committed
+between the scan and the delete) is closed: the PostgreSQL path takes a row lock on
+the asset, so a writer naming it waits or fails instead of racing the delete, and
+`ON DELETE RESTRICT` refuses a delete a reference row still points at. Since #217
+the guard also re-reads the bodies before it commits, so a *missing* reference row
+cannot authorise a delete either. Turning the switch on is therefore a product
+decision about letting owners delete their own unused images — check the
+[capacity notes](../deployment/capacity.md) for what the extra scan costs — not an
+acceptance of a known way to lose one.
 
 The Web-side switch is documented here rather than in the Web app's own notes
 because the two have to be read together: one decides what is offered, the other

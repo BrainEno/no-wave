@@ -134,6 +134,21 @@ The table is kept current by the writer's own transaction, and a migration
 backfills the existing corpus; see `docs/operations/web-authoring.md` for how the
 reference is defined and how redaction is preserved.
 
+### The guarded delete scans once, for one id
+
+Since #217 `deleteUnusedMediaAsset` also asks whether any translation body or
+profile picture URL still contains the asset id it is about to remove, because the
+reference table is a fast path and not proof (see
+[the authoring notes](../operations/web-authoring.md)). That scan is O(translations)
+for a single id, bounded by `LIMIT 200` on each side, and it runs **only** where the
+reference table said "unused" — that is, only when an image is actually about to be
+deleted. Deletion is off by default (`MEDIA_DELETE_ENABLED`), so the cost is not on
+any read path.
+
+No measurement is recorded here for the scan at 20k works. It is not a per-request
+cost on the library page, and inventing a number for it would be worse than saying
+so: measure it with the same harness if deletion is ever enabled at that size.
+
 ## Known cost centres
 
 These are visible in the baseline and are candidates for a future change, not
