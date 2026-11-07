@@ -185,6 +185,15 @@ try {
 
   const signIn = await fetch(`${baseUrl}/sign-in`);
   assert.equal(signIn.status, 200, "the sign-in page should return 200");
+  // Per-visitor by construction: `?next=` makes the HTML a function of the
+  // request, and the loader's answer is read per request. It shipped without a
+  // `headers` export (F-18), which is why the policy is asserted here as well as
+  // by the sweep over every private page in `apps/web-rr/test/web.test.ts`.
+  assert.match(
+    signIn.headers.get("cache-control") ?? "",
+    /no-store/i,
+    "the sign-in page must not be held by a shared cache",
+  );
   assert.doesNotMatch(
     await signIn.text(),
     /\/forgot-password/,

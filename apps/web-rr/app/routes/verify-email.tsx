@@ -4,6 +4,7 @@ import { VerifyEmailPanel } from "@/components/auth/verify-email-panel.tsx";
 import { MailDisabledNotice } from "@/components/auth/mail-disabled-notice.tsx";
 import { isMailEnabled } from "@/lib/mail-feature.ts";
 import { titleWithSite } from "../lib/meta.ts";
+import { PRIVATE_PAGE_HEADERS } from "../lib/http-policy.ts";
 
 /**
  * Where a verification link lands.
@@ -22,7 +23,7 @@ export async function loader({ url }: LoaderFunctionArgs) {
 }
 
 /** Private: the URL carries a single-use token until it is spent. */
-export const headers: HeadersFunction = () => ({ "Cache-Control": "no-store, max-age=0" });
+export const headers: HeadersFunction = () => PRIVATE_PAGE_HEADERS;
 
 export const meta: MetaFunction = () => [
   { title: titleWithSite("验证邮箱") },

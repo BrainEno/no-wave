@@ -1082,6 +1082,38 @@ test("the writing desk renders its shared client component, privately", async ()
   assert.match(result.body, /noindex/);
 });
 
+test("every private page answers no-store, sign-in included", async () => {
+  // By URL, over the production build. `/sign-in` is the page that shipped
+  // without a `headers` export (F-18); the rest of the list is here because the
+  // failure mode is a page somebody forgot, not a page that answers wrongly.
+  const privatePaths = [
+    "/sign-in",
+    "/sign-in?next=%2Faccount",
+    "/forgot-password",
+    "/reset-password",
+    "/verify-email",
+    "/search?q=%E6%8A%B5%E6%8A%97",
+    "/write",
+    "/write/media",
+    "/feed",
+    "/messages",
+    "/account",
+    "/admin/featured",
+  ];
+  for (const path of privatePaths) {
+    const result = await get(path);
+    assert.ok(
+      [200, 302, 307].includes(result.status),
+      `${path} must render or redirect rather than fail (got ${result.status})`,
+    );
+    assert.match(
+      result.headers.get("cache-control") ?? "",
+      /no-store/,
+      `${path} is per-visitor and must never be held by a shared cache`,
+    );
+  }
+});
+
 test("a signed-out desk is told it is signed out, not handed an error page", async () => {
   const result = await get("/api/authoring/session");
   assert.equal(result.status, 401);

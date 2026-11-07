@@ -4,6 +4,7 @@ import { ResetPasswordForm } from "@/components/auth/reset-password-form.tsx";
 import { MailDisabledNotice } from "@/components/auth/mail-disabled-notice.tsx";
 import { isMailEnabled } from "@/lib/mail-feature.ts";
 import { titleWithSite } from "../lib/meta.ts";
+import { PRIVATE_PAGE_HEADERS } from "../lib/http-policy.ts";
 
 /**
  * Where a recovery link lands.
@@ -30,7 +31,7 @@ export async function loader({ url }: LoaderFunctionArgs) {
  * credential until the token is spent. A shared cache that stored this page
  * would store a working password reset.
  */
-export const headers: HeadersFunction = () => ({ "Cache-Control": "no-store, max-age=0" });
+export const headers: HeadersFunction = () => PRIVATE_PAGE_HEADERS;
 
 export const meta: MetaFunction = () => [
   { title: titleWithSite("设置新密码") },
