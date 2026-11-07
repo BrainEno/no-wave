@@ -1,18 +1,26 @@
 # ADR 0026: Reports, scoped moderation and independent appeals
 
-- Status: **Proposed — not accepted, not implemented**
+- Status: **Accepted — design accepted 2026-11-07; nothing implemented, and P1/P5–P10 are release gates**
 - Date: 2026-11-05
 - Relates to: [issue #72](https://github.com/BrainEno/no-wave/issues/72),
   [ADR 0016](0016-editorial-taxonomy-and-editor-role.md),
   [ADR 0010](0010-sqlite-first-and-online-provider-cutover.md),
   [REST idempotency](../rest-idempotency.md), and the
-  [proposed threat model](../moderation-threat-model.md)
+  [threat model](../moderation-threat-model.md)
 
-This is a reviewable proposal, **not permission to implement a moderation schema, API or UI**.
-Issue #72 requires an accepted ADR and threat model before implementation. The owner selected four
-product directions on 2026-11-05, recorded in §1; the rest of this document is a recommendation or
-an explicit open question. Selecting those directions did not accept this ADR, settle the legal
-basis, approve deployment, or authorize a moderation release. No paths in §7 exist yet.
+**Accepted 2026-11-07 by the owner.** The design below is the decision; the feature does not exist.
+No moderation schema, migration, service, REST route, audit log or UI is authorized by this
+acceptance, because §9's remaining gates are about the data itself and cannot be closed in code
+review: legal and privacy review (P8), evidence key lifecycle and backup/journal deletion (P5), cache
+and shared-media propagation (P6), target-specific hold semantics (P7), the maximum duration of an
+uphold (P9), reviewer independence after roster deletion (P10), and the reason taxonomy and reviewer
+rubric that turn a report count into a verdict (P1). Until each is resolved — or explicitly gated
+with a documented operational procedure — the answer to "can we ship this?" is no, and no paths in
+§7 exist.
+
+What acceptance does establish: the scope (one-message reports, administrator-only first release,
+independent appeals), the retention clocks after final closure (§6), and the three decisions recorded
+in §1 — the `ADMIN_USER_IDS` bootstrap, the 30-day appeal window and the 180-day escalation.
 
 ## Context: what must not be mistaken for a moderation system
 
@@ -54,10 +62,27 @@ The owner chose these directions for this proposal:
    appeal. If no independent reviewer is available, it stays pending; it is not automatically denied
    or accepted, and the existing action does not silently change.
 
-The owner still needs to review the complete proposal and accept or amend the ADR and threat model.
-In particular, the open items in §9 are **release and/or acceptance gates**, not defaults to silently
-implement. Legal and privacy review must determine applicable obligations; the proposed durations
-are product choices, not a claim of legal compliance.
+### Decisions recorded 2026-11-07
+
+Three of the gates in §9 were put to the owner and answered. They are decisions about this design,
+not acceptance of it, and they do not authorize implementation:
+
+| Gate | Decision |
+| --- | --- |
+| **P4** administrator bootstrap | **Environment allowlist**, in the shape `EDITOR_USER_IDS` already has: `ADMIN_USER_IDS` names the accounts that hold moderation authority, and a `MODERATOR_USER_IDS` allowlist is reserved for the later `moderator` role. No new grantable value is added to `user_profiles.role`, so the existing editor role endpoint cannot hand out moderation. |
+| **P2** appeal window | **30 days** from the durable in-app decision notice — the candidate duration, now fixed. |
+| **P3** unresolved cases | **180 days**, then the case escalates to a human with a notice to the reporter. It is never closed silently and its evidence is never extended by inaction. |
+
+What these do **not** settle: the reason taxonomy and reviewer rubric (P1), evidence key
+lifecycle and backup/journal deletion (P5), cache and shared-media propagation (P6),
+target-specific hold semantics and evidence visibility to the appealing subject (P7), the legal
+basis (P8), the maximum duration of an upheld visibility hold (P9), and reviewer-independence
+verification once conversation rosters are gone (P10). Those remain gates in §9.
+
+The owner still has to review the complete proposal — including this revision — and accept or amend
+the ADR and threat model. Every item in §9 that is still open is a **release and/or acceptance gate**,
+not a default to silently implement. Legal and privacy review must determine applicable obligations;
+the durations here are product choices, not a claim of legal compliance.
 
 ## 2. Scope, authority and conflicts
 
@@ -73,6 +98,14 @@ from a request's `userId`, a profile role, a browser marker, or a cached JWT rol
 must take effect for subsequent requests without waiting for an access token to expire. Unknown roles,
 unavailable authorization/audit storage, and missing privileges fail closed. Access to a case does not
 confer access to unrelated cases, draft works, the message's thread, or another reporter's data.
+
+**Decided 2026-11-07 (P4):** administrator authority comes from an environment allowlist,
+`ADMIN_USER_IDS`, checked per request against the verified actor — the same operational shape
+`EDITOR_USER_IDS` has, and the reason the capability cannot be granted through any endpoint. The
+allowlist is deployment configuration, so revocation is a redeploy rather than a database write;
+that is a deliberate trade (it cannot be done by a compromised editor session), and §9's remaining
+operational questions — two-person operation, last-admin recovery, break-glass access and the
+independent-human check — still gate release.
 
 A future administrator capability must be stored and granted independently of `user_profiles.role`.
 It must not be obtained via `EDITOR_USER_IDS` or the existing editor role endpoint. Existing accounts
@@ -214,9 +247,10 @@ assignment, appeal status or active holds changed concurrently, re-read and re-a
 new decision. When the appeal is pending, no timeout may silently decide it. The policy for cases
 that remain open too long is an explicit gate in §9, not indefinite evidence retention.
 
-The candidate appeal window is **30 days from durable in-app decision notice**, not from an
-unobserved best-effort email or a moderator's click. The duration, deadline behavior, whether
-reporters can appeal and exceptions require explicit approval. A late submission must not silently
+**Decided 2026-11-07 (P2):** the appeal window is **30 days from the durable in-app decision
+notice** — not from an unobserved best-effort email, and not from a moderator's click. Deadline
+behaviour, whether a reporter may appeal a dismissal, and any late exception remain open (§9 P2's
+second half); what is fixed is the length and the clock it is measured from. A late submission must not silently
 reopen a finalized case or extend retention; any exception must be a documented, authorized process
 with a new retention decision. A genuinely unavailable independent reviewer creates an operational
 alert; it does not give the original decision-maker authority to review their own work.
@@ -299,9 +333,15 @@ cannot resurrect evidence or a released hold. Do not log deleted text to prove d
 
 A recorded legal hold is a possible exception **only** after legal review: narrowly scoped,
 authorized, documented with an owner and review/expiry date, periodically reassessed, and removed
-as soon as no longer required. It is not an indefinite "just in case" flag. The open-case/appeal
-maximum, deadlines and handling at that maximum remain unresolved (§9). No real reports should be
-collected until an enforceable policy exists for them as well as finalized cases.
+as soon as no longer required. It is not an indefinite "just in case" flag.
+
+**Decided 2026-11-07 (P3):** an unresolved report or a pending appeal has a maximum of **180 days**.
+At that point the case escalates to a human — with a notice to the reporter — rather than being
+closed silently, denied, accepted, or left to hold evidence indefinitely. What happens at the
+escalation (reassignment, an explicit decision, a documented legal hold) is an operational
+procedure, and the deadline still has to be enforced identically across backups and journal copies
+(P5). No real reports should be collected until an enforceable policy exists for them as well as
+finalized cases.
 
 The 90-day rule covers the submitted evidence copy, not the original message still legitimately
 visible to its participants, unrelated source snapshots, or copies a participant has made. Existing
@@ -385,9 +425,9 @@ tests. Passing this design review alone will not satisfy #72's implementation ac
 | ID | Decision and proposed direction | Why it gates acceptance / release |
 | --- | --- | --- |
 | P1 | Approve reason taxonomy, reviewer rubric, priority and incident/escalation procedures; define capacity and quotas. | A report count is not a verdict; legal/emergency expectations and abuse handling must be explicit. |
-| P2 | Decide appeal window (candidate 30 days), late exceptions and whether reporters can appeal dismissals. | Determines final closure, notices, fairness and retention clocks. |
-| P3 | Set a **maximum retention and operational outcome for unresolved reports and pending appeals**, including lack of an independent reviewer; define narrowly scoped legal holds. | The selected 90/365-day clocks start only after final closure and cannot justify indefinite open-case storage. Preserve independent review without silently deciding an appeal. |
-| P4 | Design administrator bootstrap, grant/revocation, independent-human verification, conflict declarations, account security and emergency recovery. | No moderation/admin role or MFA exists; `editor` bootstrap is not sufficient. |
+| P2 | ~~Appeal window~~ **Decided 2026-11-07: 30 days from durable in-app notice.** Still open: late exceptions and whether reporters can appeal dismissals. | Determines final closure, notices, fairness and retention clocks. |
+| P3 | ~~Maximum for open cases~~ **Decided 2026-11-07: 180 days, then escalate to a human with notice to the reporter — never silent closure.** Still open: the escalation procedure (including the no-independent-reviewer case) and narrowly scoped legal holds. | The selected 90/365-day clocks start only after final closure and cannot justify indefinite open-case storage. Preserve independent review without silently deciding an appeal. |
+| P4 | ~~Administrator bootstrap~~ **Decided 2026-11-07: `ADMIN_USER_IDS` environment allowlist, checked per request; `MODERATOR_USER_IDS` reserved for the later role; no new grantable `role` value.** Still open: two-person operation, independent-human verification, conflict declarations, account security, last-admin recovery and break-glass. | No moderation/admin role or MFA exists; `editor` bootstrap is not sufficient. |
 | P5 | Approve evidence encryption/key lifecycle, backup and journal deletion/recovery, source-data policy and data-subject notices. | The selected retention deadlines must hold across recoverable copies, not merely the live row. |
 | P6 | Decide HTML cache propagation objective, purge/failure handling and a separate shared-media incident process. | Current cached pages/media can outlive a database hide and shared assets affect other authors. |
 | P7 | Confirm target-specific hold/restore behavior, including an unpublish/tombstone before decision; reporter duplicate/merge rules; and whether a subject can view selected evidence for an effective appeal without revealing another participant. | Hiding a whole translated work, constraining a private edit, deleting a thread and revealing private content have different consequences. |
@@ -395,6 +435,9 @@ tests. Passing this design review alone will not satisfy #72's implementation ac
 | P9 | Decide the maximum duration, reassessment and ending of an upheld visibility hold, including pending appeals and continued holds after audit expiry. | A permanent visibility flag could become an unreviewed sanction or covert audit retention. Do not silently change a pending appeal's action or extend the selected evidence/audit deadlines. |
 | P10 | Choose how to verify reviewer independence for a message after conversation membership is deleted; review the case-scoped pseudonymous-guard option against fail-closed unavailability, data minimization, key custody and retention. | The source roster cascades away today. A missing row is not proof of no conflict, but retaining a guard creates additional sensitive data. |
 
-**Decision request:** reviewers should resolve or explicitly gate P1–P10, review the linked threat
-model, then explicitly accept or reject this ADR. Until then, keep #72 open and do not implement its
-moderation migrations, services, REST routes or audit system.
+**Status of this list:** the owner accepted the ADR on 2026-11-07 with P2, P3 and P4 decided. The
+rows above that are **not** struck through are release gates: they must be resolved, or explicitly
+gated with a documented operational procedure, before the first migration is written. Acceptance is
+permission to *build towards* this design, not to collect real reports: no moderation migrations,
+services, REST routes or audit system exist, and #72's implementation half stays open until these
+gates close.

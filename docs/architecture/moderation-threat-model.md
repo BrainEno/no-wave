@@ -1,17 +1,18 @@
-# Threat model: proposed reports, moderation and appeals
+# Threat model: reports, moderation and appeals (accepted design, unshipped feature)
 
-- Status: **Proposed — controls and tests below do not exist yet**
+- Status: **Accepted with ADR 0026 on 2026-11-07 — the controls and tests below do not exist yet**
 - Date: 2026-11-05
 - Scope: the candidate first release in [ADR 0026](decisions/0026-moderation-reports-and-appeals.md),
   including one-message reports, administrator-only review, holds, independent appeals, retention,
   provider migration and caches.
 - Issue: [#72](https://github.com/BrainEno/no-wave/issues/72)
 
-This document assesses a proposal, not deployed security controls or legal compliance. Issue #72
-requires the ADR and this threat model to be accepted before its database/API implementation. The
-owner's selected directions are recorded in the ADR; approval of those directions is not acceptance
-of either document. The unresolved decisions and release gates in ADR 0026 §9 are part of the threat
-model, not optional follow-up work.
+This document assesses a design that has been accepted (2026-11-07, with ADR 0026) — not deployed
+security controls, and not legal compliance. What the acceptance means here: these are the threats
+the implementation will be judged against, so the controls in the table are the definition of done
+rather than suggestions. The unresolved decisions and release gates in ADR 0026 §9 are part of the
+threat model, not optional follow-up work, and no moderation code may ship while a control marked
+critical is missing.
 
 ## Assets and trust boundaries
 
@@ -62,7 +63,7 @@ passes. Severity is qualitative and assumes real users and private messages.
 | T02 / critical | A participant is removed or a conversation is deleted between access check and snapshot, creating a report from content they can no longer access or leaving a partial copy. | Serialize membership, source existence, capture and receipt in one provider transaction; define which concurrent commit wins; A2, A7. | Source deletion after a successful submission does not erase the allowed evidence copy before its deadline. |
 | T03 / critical | An administrator uses a message report as an excuse to read adjacent messages, the participant roster, private drafts or unrelated cases. | Only the submitted one-message snapshot and minimal metadata; no privileged membership or conversation browse; scoped evidence reads, conflict checks and audited access; A1, A2, A6. | An administrator may already be an ordinary participant in a different conversation; unrelated normal rights are not expanded by a case. Infrastructure operators still need separate controls. |
 | T04 / high | Reporter or subject identity leaks through receipts, notification payloads, queues, errors, counts, logs or shared caches, enabling retaliation. | Separate reporter/subject/administrator views, non-enumerating answers, no reporter identity or free text in subject notices, no-store, redacted telemetry; A1, A8, A11. | The sender of a two-person message may infer the reporter. Do not advertise absolute anonymity; review what information an effective appeal needs (ADR P7). |
-| T05 / critical | A malicious or compromised privileged user promotes themselves, obtains a role via the editorial endpoint, or keeps access after revocation. | Independent administrator capability, no `EDITOR_USER_IDS` inheritance, audited grant/revoke and offline bootstrap, server-side current authorization, strong operational account-security gate; A6, A14, A15. | Existing identity does not provide MFA. Bootstrap, security controls, last-admin recovery and independent-human verification remain undecided (P4). |
+| T05 / critical | A malicious or compromised privileged user promotes themselves, obtains a role via the editorial endpoint, or keeps access after revocation. | Independent administrator capability, no `EDITOR_USER_IDS` inheritance, audited grant/revoke and offline bootstrap, server-side current authorization, strong operational account-security gate; A6, A14, A15. | Existing identity does not provide MFA. Bootstrap is decided — an `ADMIN_USER_IDS` allowlist checked per request (2026-11-07) — but account security, last-admin recovery and independent-human verification remain open gates (P4). |
 | T06 / high | An interested administrator or original decision-maker dismisses evidence or rubber-stamps their own appeal; two accounts represent the same human. After conversation deletion, treating a missing roster as no conflict lets a former participant review. | Server-enforced subject/reporter/conversation/decision-maker exclusions, fail closed if conflict facts are unavailable, declared conflicts, independent human review and audit; A2, A5, A6, A15. | Personal relationships are not fully machine-detectable. A possible case-scoped keyed guard itself retains sensitive membership information; its feasibility and deletion need review (P10). Two people do not guarantee an unconflicted reviewer. |
 | T07 / high | Coordinated false/duplicate reports, targeted report flooding or joining a case as a reporter makes every reviewer conflicted and suppresses speech or starves the queue. | No automatic sanction based on count; authenticated/IP throttles, bounded notes, separate reporter evidence and receipts, careful case split/reassignment with audit, operational monitoring; A6, A7, A12. | Quotas, queue rubric, staffing and treatment of material new information require approval (P1/P7). A split cannot be used to evade a genuine conflict. |
 | T08 / high | A reviewer acts on stale content; an author edits, deletes/restores or swaps a slug to bypass a hold, or one case's reversal releases a second case's hold. | Server version token, stale re-review of public data, stable target IDs, intersect all active holds with ordinary visibility, atomic release and no automatic recreation of deleted source; A3, A4, A5. | Article holds affect all locales; media and deleted-comment subtree implications need an explicit product decision (P7). |
@@ -108,7 +109,8 @@ inferred, even if it is never disclosed by the API. Retaining a selected message
 deletion is a material privacy choice, not merely an implementation detail. Reports are not proof,
 and a delay while independent review is unavailable may harm either party.
 
-Before acceptance, reviewers must resolve or explicitly gate ADR 0026 P1–P10 and decide whether these
-residual risks are tolerable. Before collecting real reports, all release gates must be met and the
-privacy notices, controls, operational staff and retention runbooks must actually exist. This
-proposal creates no new privilege, database, REST route, deployment or promise of legal compliance.
+Acceptance (2026-11-07) means the owner judged these residual risks the ones to design against. It
+does not mean they are now tolerable in production: before collecting real reports, every release
+gate still open in ADR 0026 §9 must be met, and the privacy notices, controls, operational staff and
+retention runbooks must actually exist. This design confers no new privilege, creates no database,
+REST route or deployment, and promises no legal compliance.

@@ -358,6 +358,7 @@ the probe's skip semantics cannot silently regress.
 | Writing desk says published, but public pages are empty | Missing author profile, Web fell back to fixtures, or `/en/articles` was opened. | Run `pnpm verify:publish`; set `API_BASE_URL`, write the profile, and open `/articles`. |
 | `429 RATE_LIMITED` in the probe | 20 registrations per IP per hour. | Wait, or use `--read-only`. |
 | `image upload returns 503` | `MEDIA_S3_*` is not configured. | Expected; see [Web authoring operations](../operations/web-authoring.md). |
+| `test:integration` fails with `Media materialization audit encountered unsupported or oversized data.` (`INVALID_DATA`) | The PostgreSQL cluster was initialised with `server_encoding = SQL_ASCII` — a hand-rolled `initdb` without `--encoding`, unlike `postgres:17-alpine`. The media audit and comparison refuse to decode rows they cannot prove are UTF-8. | Re-create the cluster with `initdb --encoding=UTF8 --locale=C`, or use `pnpm db:up`. Check with `SHOW server_encoding`. |
 
 ## 10. Known limits
 
