@@ -13,10 +13,10 @@ import { optionalApiBaseUrl } from "../lib/runtime.ts";
  * Reads only. Following and unfollowing are `POST`/`DELETE` on
  * `api.users.$userId.follow`, because the API models the relationship that way.
  */
-export async function loader({ request, params }: LoaderFunctionArgs) {
+export async function loader({ request, params, url }: LoaderFunctionArgs) {
   return handleAuthorProfileRequest(
     request,
-    { userId: params.userId ?? "", locale: new URL(request.url).searchParams.get("locale") },
+    { userId: params.userId ?? "", locale: url.searchParams.get("locale") },
     { apiBaseUrl: optionalApiBaseUrl() },
   );
 }

@@ -18,10 +18,10 @@ import { PRIVATE_PAGE_HEADERS } from "../lib/http-policy.ts";
  * signed-in reader gets byte-identical HTML, and a shared cache that kept it
  * would show one reader another reader's page.
  */
-export async function loader({ request }: LoaderFunctionArgs) {
-  const locale = localeFor(request);
+export async function loader({ request, url }: LoaderFunctionArgs) {
+  const locale = localeFor(url);
   const inbox = locale === "zh-CN" ? "/messages" : `/${locale}/messages`;
-  const requestedRecipient = new URL(request.url).searchParams.get("to") ?? "";
+  const requestedRecipient = url.searchParams.get("to") ?? "";
   const recipient = requestedRecipient.length <= 300 ? requestedRecipient.trim() : "";
   const target = recipient ? `${inbox}?to=${encodeURIComponent(recipient)}` : inbox;
   if (!hasUsableSession(sessionMarkerFrom(request))) {

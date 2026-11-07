@@ -28,11 +28,13 @@ import {
   evaluateNodeVersion,
   loadLocalEnvFile,
   parseDevArguments,
+  repositoryRoot,
   resolveLocalDevConfig,
   webPackageDirectory,
   type LocalDevIssue,
 } from "./lib/local-dev-config.ts";
 import { formatReport, runLocalChecks } from "./local-dev-check.ts";
+import { resolveWebBuildCli } from "./lib/web-build-cli.ts";
 
 type Role = "api" | "web";
 
@@ -248,7 +250,7 @@ async function main(): Promise<void> {
     const webChild = spawn(
       process.execPath,
       [
-        join(webPackageDirectory, "node_modules/@react-router/dev/bin.js"),
+        resolveWebBuildCli(repositoryRoot),
         "dev",
         "--port",
         String(config.web.port),

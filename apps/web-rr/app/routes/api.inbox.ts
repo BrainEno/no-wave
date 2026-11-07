@@ -14,16 +14,16 @@ import { optionalApiBaseUrl } from "../lib/runtime.ts";
  * the `401` unchanged: a signed-out reader and a reader whose inbox is empty
  * must not look the same.
  */
-function inbox(request: Request) {
+function inbox(request: Request, url: URL) {
   return handleInboxRequest(
     request,
-    { limit: new URL(request.url).searchParams.get("limit") },
+    { limit: url.searchParams.get("limit") },
     { apiBaseUrl: optionalApiBaseUrl() },
   );
 }
 
-export async function loader({ request }: LoaderFunctionArgs) {
-  return inbox(request);
+export async function loader({ request, url }: LoaderFunctionArgs) {
+  return inbox(request, url);
 }
 
 /**
@@ -38,9 +38,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
  * and a body no other endpoint produces — which is why the read half already had
  * one. Now it does something for the one verb that changes state.
  */
-export async function action({ request }: ActionFunctionArgs) {
+export async function action({ request, url }: ActionFunctionArgs) {
   if (request.method === "POST") {
     return handleStartConversationRequest(request, { apiBaseUrl: optionalApiBaseUrl() });
   }
-  return inbox(request);
+  return inbox(request, url);
 }

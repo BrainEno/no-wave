@@ -17,9 +17,8 @@ import { metaDescriptors, siteUrlFromMatches } from "../lib/meta.ts";
  * shared package, so no route can drift from another —
  * they would have to drift in the shared module.
  */
-export async function loader({ request }: LoaderFunctionArgs) {
-  const locale = localeFor(request);
-  const url = new URL(request.url);
+export async function loader({ url }: LoaderFunctionArgs) {
+  const locale = localeFor(url);
   try {
     return await loadArchivePage({
       locale,
@@ -34,8 +33,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
 export const headers: HeadersFunction = () => PUBLIC_PAGE_HEADERS;
 
-export const meta: MetaFunction<typeof loader> = ({ data, matches }) =>
-  metaDescriptors(archiveMetadata(data?.locale ?? "zh-CN", siteUrlFromMatches(matches)));
+export const meta: MetaFunction<typeof loader> = ({ loaderData, matches }) =>
+  metaDescriptors(archiveMetadata(loaderData?.locale ?? "zh-CN", siteUrlFromMatches(matches)));
 
 export default function ArchiveRoute() {
   return <ArchivePageView {...useLoaderData<typeof loader>()} />;

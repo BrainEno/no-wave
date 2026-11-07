@@ -3,6 +3,11 @@
 - Status: Accepted
 - Date: 2026-10-29
 - Supersedes: ADR 0002 for the target Web framework; the existing Next.js application remains the working implementation until migration and cutover gates pass.
+- Amendment 2026-11-07: the framework *choice* is unchanged — React Router Framework Mode —
+  and the application now runs React Router 8.5.1 (Framework Mode) on React 19.2.9. The
+  version-specific parts of this record ("React Router 7 Framework Mode") describe the
+  state at the time of the decision; the migration followed the official v7 → v8 guide,
+  adopting every v8 future flag on 7.18.5 before the version bump.
 - Amendment 2026-11-01: the gates have passed and the Next.js application has been deleted. See [ADR 0017](0017-nextjs-retired-one-web-application.md), which supersedes the "do not delete" clause below and nothing else in this record.
 
 ## Context

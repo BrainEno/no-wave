@@ -17,10 +17,10 @@ import { optionalApiBaseUrl } from "../lib/runtime.ts";
  * The implementation is the shared `@bot-thk/web-http` handler — the Origin
  * check, the id/locale validation and cookie-attached forwarding exist once.
  */
-function follow(request: Request, userId: string | undefined) {
+function follow(request: Request, url: URL, userId: string | undefined) {
   return handleUserFollowRequest(
     request,
-    { targetUserId: userId ?? "", locale: new URL(request.url).searchParams.get("locale") },
+    { targetUserId: userId ?? "", locale: url.searchParams.get("locale") },
     { apiBaseUrl: optionalApiBaseUrl() },
   );
 }
@@ -31,10 +31,10 @@ function follow(request: Request, userId: string | undefined) {
  * different status and a different shape from every other wrong-method answer in
  * this application, for a route that has no read to offer.
  */
-export async function loader({ request, params }: LoaderFunctionArgs) {
-  return follow(request, params.userId);
+export async function loader({ request, params, url }: LoaderFunctionArgs) {
+  return follow(request, url, params.userId);
 }
 
-export async function action({ request, params }: ActionFunctionArgs) {
-  return follow(request, params.userId);
+export async function action({ request, params, url }: ActionFunctionArgs) {
+  return follow(request, url, params.userId);
 }

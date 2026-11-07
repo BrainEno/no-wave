@@ -18,8 +18,8 @@ import { metaDescriptors, siteUrlFromMatches } from "../lib/meta.ts";
  * which is why the tests below assert server-rendered structure and not
  * animation.
  */
-export async function loader({ request }: LoaderFunctionArgs) {
-  const locale = localeFor(request);
+export async function loader({ url }: LoaderFunctionArgs) {
+  const locale = localeFor(url);
   try {
     return await loadHomePage({ locale });
   } catch (error: unknown) {
@@ -29,8 +29,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
 export const headers: HeadersFunction = () => PUBLIC_PAGE_HEADERS;
 
-export const meta: MetaFunction<typeof loader> = ({ data, matches }) => {
-  const locale: Locale = data?.locale ?? "zh-CN";
+export const meta: MetaFunction<typeof loader> = ({ loaderData, matches }) => {
+  const locale: Locale = loaderData?.locale ?? "zh-CN";
   // `/` is the root segment, where the site title is used bare; `/en` is a
   // segment deeper and does carry the suffix. Mirror both.
   return metaDescriptors(homeMetadata(locale, siteUrlFromMatches(matches)), { absoluteTitle: locale === "zh-CN" });

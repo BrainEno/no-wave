@@ -12,11 +12,11 @@ import {
   parseArguments,
   portableStackEnvironment,
   resolveJwtSecret,
-  resolveWebBuildCli,
   annotationLines,
   type StackArguments,
   type StackOptions,
 } from "./portable-stack.ts";
+import { resolveWebBuildCli } from "./lib/web-build-cli.ts";
 
 /**
  * The properties `pnpm stack:check` is supposed to prove, asserted where they
@@ -57,7 +57,9 @@ function documentedVariables(): Set<string> {
 
 test("the Web build CLI resolves without spawning a global pnpm", () => {
   const cli = resolveWebBuildCli(repositoryRoot);
-  assert.ok(cli.endsWith("bin.js"), "the resolved CLI must be the React Router entry point");
+  // Whatever the package calls the file (`bin.js` through v7, `bin.cjs` in
+  // v8), it has to be a real entry point that exists in this checkout.
+  assert.match(cli, /[\/]bin\.[cm]?js$/, "the resolved CLI must be the React Router entry point");
   assert.equal(existsSync(cli), true, "the resolved CLI must exist in this checkout");
   assert.equal(/pnpm(?:\.cmd|\.exe)?$/i.test(cli), false, "the build must not resolve to a bare pnpm executable");
   assert.equal(cli.includes("pnpm --filter"), false, "the build must not invoke pnpm as a package-manager command");

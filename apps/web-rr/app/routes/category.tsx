@@ -14,9 +14,8 @@ import { titleWithSite } from "../lib/meta.ts";
  * The category and its article page are fetched together: one round trip on the
  * happy path, and an unknown slug still answers 404 before any HTML is sent.
  */
-export async function loader({ params, request }: LoaderFunctionArgs) {
-  const locale = localeFor(request);
-  const url = new URL(request.url);
+export async function loader({ params, url }: LoaderFunctionArgs) {
+  const locale = localeFor(url);
 
   let loaded;
   try {
@@ -37,11 +36,11 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
 export const headers: HeadersFunction = () => PUBLIC_PAGE_HEADERS;
 
-export const meta: MetaFunction<typeof loader> = ({ data }) => {
-  if (!data) return [{ title: titleWithSite(undefined) }];
+export const meta: MetaFunction<typeof loader> = ({ loaderData }) => {
+  if (!loaderData) return [{ title: titleWithSite(undefined) }];
   return [
-    { title: titleWithSite(data.category.name) },
-    { name: "description", content: data.category.description || `浏览「${data.category.name}」分类中的已发表作品。` },
+    { title: titleWithSite(loaderData.category.name) },
+    { name: "description", content: loaderData.category.description || `浏览「${loaderData.category.name}」分类中的已发表作品。` },
   ];
 };
 

@@ -1,7 +1,7 @@
 # React Router 7 prototype — Phase 1 report
 
 - Phase: 1 of [the portability roadmap](frontend-portability-migration.md)
-- Target: React Router 7.18.5 Framework Mode (`apps/web-rr`)
+- Target: React Router 8.5.1 Framework Mode (`apps/web-rr`); this report was written on 7.18.5
 - Status: prototype builds, serves on plain Node.js and passes its behavior tests
 - **Status 2026-11-01: this is no longer a prototype.** `apps/web` (Next.js 16) has
   been deleted and this application is the Web application; the shared code it used

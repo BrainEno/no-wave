@@ -16,8 +16,7 @@ import { titleWithSite } from "../lib/meta.ts";
  * The panel spends the token on arrival rather than on a button press; that is
  * the shared component's behaviour and it is unchanged here.
  */
-export async function loader({ request }: LoaderFunctionArgs) {
-  const url = new URL(request.url);
+export async function loader({ url }: LoaderFunctionArgs) {
   const token = url.searchParams.get("token")?.trim() ?? "";
   return { token, mailEnabled: isMailEnabled() };
 }

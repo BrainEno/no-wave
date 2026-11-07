@@ -1,7 +1,7 @@
 # Frontend framework and hosting-portability migration
 
 - Owner approval: 2026-10-29
-- Target: React Router 7 Framework Mode
+- Target: React Router Framework Mode (7 at the time of writing; now 8.5.1 — see [ADR 0012](../architecture/decisions/0012-portable-web-framework-migration.md))
 - Current implementation: Next.js App Router, preserved until staged migration passes
 - Baseline audited: `main@d9515c6d66881a7599d35581f38640b0ebb74a78`
 - Status: **the migration is complete and the Next.js application is gone.** Phases 0–5
