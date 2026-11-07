@@ -19,7 +19,7 @@ export async function enforceWriteRateLimit(ctx: RestRouteContext): Promise<bool
         // separately configured trusted proxy has already enforced this policy.
         await writeRateLimiter.checkWrite({
           policy: writePolicy,
-          ip: request.socket.remoteAddress ?? "unknown",
+          ip: ctx.clientAddress,
           actorId,
         });
       } catch (error: unknown) {

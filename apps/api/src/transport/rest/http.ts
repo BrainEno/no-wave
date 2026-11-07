@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { writeStructuredLog } from "../../infrastructure/http-observability.ts";
+import { redactDiagnostic, secretValues } from "../../infrastructure/log-redaction.ts";
 import { DomainError, RateLimitError } from "../../domain/errors.ts";
 import { createAuthContext } from "../../security/authentication.ts";
 import type { ApplicationServices } from "../../application/services.ts";
@@ -178,13 +179,17 @@ export const DOMAIN_ERROR_RESPONSES: Record<string, RestErrorResponse> = {
 
 /**
  * Reduce a thrown value to something safe to write to a server log: the error
- * class and message, never the stack and never the response body. A driver
- * error can carry connection strings or row values, so the message is capped.
+ * class and a redacted, capped message — never the stack and never the response
+ * body. A driver error can carry the DSN it was handed or the row values it
+ * rejected, so the message goes through `redactDiagnostic` before it is logged
+ * (audit F-21).
  */
-function describeUnhandledError(error: unknown): { errorName: string; errorMessage: string } {
-  if (!(error instanceof Error)) return { errorName: "NonErrorThrow", errorMessage: String(error).slice(0, 200) };
+function describeUnhandledError(error: unknown): { errorName: string; errorMessage: string | null } {
+  if (!(error instanceof Error)) {
+    return { errorName: "NonErrorThrow", errorMessage: redactDiagnostic(String(error), { maxLength: 200 }) };
+  }
   const name = /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name) ? error.name : "Error";
-  return { errorName: name, errorMessage: error.message.slice(0, 200) };
+  return { errorName: name, errorMessage: redactDiagnostic(error.message, { secrets: secretValues(), maxLength: 200 }) };
 }
 
 export function sendServiceError(response: ServerResponse, error: unknown): void {
@@ -208,7 +213,7 @@ export function sendServiceError(response: ServerResponse, error: unknown): void
     event: "rest_unhandled_error",
     requestId: typeof requestId === "string" ? requestId : null,
     errorName,
-    errorMessage,
+    ...(errorMessage ? { errorMessage } : {}),
   });
 
   // Do not expose raw exception messages, stack traces, or database details.
