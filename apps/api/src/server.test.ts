@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash, createHmac, randomBytes } from "node:crypto";
-import test from "node:test";
+import test, { mock } from "node:test";
 import { request as httpRequest } from "node:http";
 import { createApiServer } from "./server.ts";
 import { persistencePortMethods } from "./application/persistence-ports.ts";
@@ -911,6 +911,90 @@ test("REST write rate limiter ignores spoofed forwarding headers and uses the ve
     assert.equal(calls[0].key, calls[2].key, "verified user bucket must be stable");
     assert.equal(calls[1].key, calls[3].key, "IP bucket must use the socket peer, not X-Forwarded-For");
   }, { env: authEnv, applicationServices });
+});
+
+test("an unhandled failure is logged without the connection string it was handed", async () => {
+  // Audit F-21: the 500 log line exists because "the access log says 500 and
+  // nothing else" is not diagnosable, but a driver message can quote back the DSN
+  // it was given. The line keeps the class and the useful part of the message and
+  // loses the credentials.
+  const store = {
+    async listPublishedArticles() {
+      throw new Error("connection failed for postgres://writer:hunter2@db.internal:5432/no_wave");
+    },
+  };
+  // The failure line is written by `writeStructuredLog` (one JSON object to
+  // stderr), not by the request logger, so the test captures the stream itself.
+  const written = [];
+  const write = mock.method(process.stderr, "write", (chunk) => {
+    written.push(String(chunk));
+    return true;
+  });
+  try {
+    await withServer(async (baseUrl) => {
+      const response = await fetch(baseUrl + "/api/v1/articles?locale=zh-CN");
+      assert.equal(response.status, 500);
+      assert.equal((await response.json()).error.code, "INTERNAL_SERVER_ERROR");
+    }, { env: { ...authEnv, DATABASE_URL: "postgres://writer:hunter2@db.internal:5432/no_wave" }, store });
+  } finally {
+    write.mock.restore();
+  }
+
+  const lines = written.join("").split("\n").filter(Boolean);
+  const line = lines.find((candidate) => candidate.includes("rest_unhandled_error"));
+  assert.ok(line, "the failure must be visible to the operator");
+  const failure = JSON.parse(line);
+  assert.equal(failure.level, "error");
+  assert.equal(failure.errorName, "Error");
+  assert.equal(line.includes("hunter2"), false, "the password never reaches the log");
+  assert.match(failure.errorMessage, /db\.internal:5432\/no_wave/, "the host and database are still useful");
+});
+
+test("a configured trusted proxy makes the forwarded address the bucket, and only that far from the right", async () => {
+  // Audit F-21: behind a reverse proxy the socket peer is the proxy, so every
+  // visitor shared one IP bucket. `TRUSTED_PROXY_HOPS` names how many proxies are
+  // in front of the API; the address is read that many entries from the right, so
+  // a client can prepend whatever it likes without moving the position.
+  const calls = [];
+  const applicationServices = {
+    async isSessionRevoked() { return false; },
+    async consumeRateLimit(input) {
+      calls.push(input);
+      return { allowed: true, resetAt: new Date(Date.now() + 60000).toISOString() };
+    },
+    async createArticle() { throw new Error("The rate-limit smoke test must not reach persistence."); },
+  };
+  await withServer(async (baseUrl) => {
+    const attempt = async (forwardedFor: string) => {
+      const response = await fetch(baseUrl + "/api/v1/articles", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer " + signedToken("proxy-writer"),
+          "x-forwarded-for": forwardedFor,
+        },
+        body: "not json",
+      });
+      assert.equal(response.status, 400);
+    };
+    // Two different visitors behind the same proxy: different IP buckets.
+    await attempt("203.0.113.10");
+    await attempt("203.0.113.11");
+    // A spoofed prefix does not move the client, because the proxy appended the
+    // real address last.
+    await attempt("198.51.100.99, 203.0.113.10");
+  }, { env: { ...authEnv, TRUSTED_PROXY_HOPS: "1" }, applicationServices });
+
+  assert.equal(calls.length, 6);
+  assert.notEqual(calls[1].key, calls[3].key, "two visitors behind one proxy are two buckets");
+  assert.equal(calls[5].key, calls[1].key, "a spoofed prefix does not move the client");
+});
+
+test("an unusable TRUSTED_PROXY_HOPS refuses to start the server instead of quietly sharing one bucket", async () => {
+  assert.throws(
+    () => createApiServer({ env: { ...authEnv, TRUSTED_PROXY_HOPS: "true" }, store: null }),
+    (error: unknown) => error instanceof RangeError && /TRUSTED_PROXY_HOPS/.test((error as Error).message),
+  );
 });
 
 test("REST rejects unsupported locales, oversized search terms and offsets before persistence", async () => {

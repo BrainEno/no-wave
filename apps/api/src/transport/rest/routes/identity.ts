@@ -95,7 +95,7 @@ const IDENTITY_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Obje
         sendUnauthenticated(response);
         return;
       }
-      const ip = request.socket.remoteAddress ?? "unknown";
+      const ip = ctx.clientAddress;
       const data = await identity.requestEmailVerification(actorId, ip);
       sendJson(response, 202, { data });
     } catch (error: unknown) {
@@ -219,7 +219,7 @@ const IDENTITY_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Obje
         sendUnauthenticated(response);
         return;
       }
-      const ip = request.socket.remoteAddress ?? "unknown";
+      const ip = ctx.clientAddress;
       const data = request.method === "DELETE"
         ? await identity.endOtherSessions({ userId: user.id, sessionId: user.sessionId, ip })
         : await identity.listSessions({ userId: user.id, sessionId: user.sessionId, ip });
@@ -252,7 +252,7 @@ const IDENTITY_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Obje
         sendUnauthenticated(response);
         return;
       }
-      const ip = request.socket.remoteAddress ?? "unknown";
+      const ip = ctx.clientAddress;
       const data = await identity.endSession({
         userId: user.id,
         sessionId: String(routeParams.sessionId ?? ""),
@@ -280,7 +280,7 @@ const IDENTITY_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Obje
         sendUnauthenticated(response);
         return;
       }
-      const ip = request.socket.remoteAddress ?? "unknown";
+      const ip = ctx.clientAddress;
       const data = await identity.changePassword({
         userId: user.id,
         sessionId: user.sessionId,
@@ -318,7 +318,7 @@ const IDENTITY_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Obje
         sendUnauthenticated(response);
         return;
       }
-      const ip = request.socket.remoteAddress ?? "unknown";
+      const ip = ctx.clientAddress;
       const data = await identity.changeEmail({ userId: actorId, body: bodyResult.value, ip });
       sendJson(response, 200, { data });
     } catch (error: unknown) {

@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { createIdentityService } from "../../application/identity.ts";
 import { createRateLimitService, type RateLimitBucket, type RateLimitStore } from "../../application/rate-limit.ts";
 import type { BackgroundFailureReporter } from "../../application/background-tasks.ts";
+import { clientAddressFor, resolveTrustedProxyHops } from "./client-address.ts";
 import { resolveRestRoute } from "./routes.ts";
 import { REST_ROUTE_GROUPS } from "./routes/index.ts";
 import type { RestRouteContext } from "./routes/context.ts";
@@ -58,6 +59,9 @@ export function createRestHandler({
           : undefined,
       }
     : null;
+  // Resolved at composition time, not per request: an invalid value must fail
+  // the process at startup, not produce a 500 on the first login attempt.
+  const trustedProxyHops = resolveTrustedProxyHops(env);
   const writeRateLimiter = rateLimitStore
     ? createRateLimitService({ store: rateLimitStore, env, onBackgroundFailure })
     : null;
@@ -98,6 +102,7 @@ export function createRestHandler({
       url,
       routeId: route.kind === "matched" ? route.id : null,
       routeParams: route.kind === "matched" ? route.params : NO_ROUTE_PARAMS,
+      clientAddress: clientAddressFor(request, trustedProxyHops),
       services,
       env,
       mediaAssets,

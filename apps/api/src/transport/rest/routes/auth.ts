@@ -31,9 +31,10 @@ const AUTH_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Object.f
     const bodyResult = await readJsonObject(request, 4096);
     if (bodyResult.ok === false) { sendJsonBodyError(response, request, bodyResult); return; }
     try {
-      // Never trust X-Forwarded-For supplied by the client. An operator must
-      // enforce additional trusted-proxy/edge throttling when behind a proxy.
-      const ip = request.socket.remoteAddress ?? "unknown";
+      // The address is resolved once per request by the handler: the socket peer
+      // by default, or the entry a configured number of trusted proxies wrote.
+      // A header the client controls never chooses its own bucket (audit F-21).
+      const ip = ctx.clientAddress;
       const action = String(routeParams.action ?? "");
       const run = AUTH_ACTIONS[action];
       if (!run) { sendJson(response, 404, { error: { code: "NOT_FOUND", message: "The requested resource was not found." } }); return; }

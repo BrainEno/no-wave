@@ -4,6 +4,7 @@ import { createApplicationServices } from "./application/services.ts";
 import { assertPersistenceAdapter } from "./application/persistence-ports.ts";
 import { createPersistenceRuntime, describePersistenceRuntime } from "./infrastructure/persistence-runtime.ts";
 import { createHttpObservability, writeStructuredLog } from "./infrastructure/http-observability.ts";
+import { redactDiagnostic, secretValues } from "./infrastructure/log-redaction.ts";
 import { createMediaAssetService } from "./application/media-assets.ts";
 import { createMediaObjectStorage } from "./infrastructure/media-storage.ts";
 
@@ -170,14 +171,17 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
       : "Error";
     // The message is the whole point of this line: an API that cannot start
     // otherwise reports only "Error", which sends you to the debugger to find
-    // out that a migration is pending or the database is unreachable. Capped,
-    // and never the stack — but see the note about connection strings in
-    // `docs/audit/backend-review-2026-11.md`.
+    // out that a migration is pending or the database is unreachable. It is
+    // redacted and capped rather than trusted: a driver can quote back the DSN
+    // it was handed, and that DSN contains the password (audit F-21).
+    const errorMessage = error instanceof Error
+      ? redactDiagnostic(error.message, { secrets: secretValues() })
+      : null;
     writeStructuredLog({
       level: "error",
       event: "api_startup_failed",
       errorName,
-      ...(error instanceof Error ? { errorMessage: error.message.slice(0, 500) } : {}),
+      ...(errorMessage ? { errorMessage } : {}),
     });
     process.exitCode = 1;
   });

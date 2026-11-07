@@ -19,6 +19,13 @@ export type RestRouteContext = {
   /** The matched route id, or `null` when no route matched and the request is a read. */
   readonly routeId: string | null;
   readonly routeParams: Readonly<Record<string, string>>;
+  /**
+   * The address this request is charged to — the socket peer, or the address the
+   * configured number of trusted proxies says it came from. Resolved once, here,
+   * so no route can re-derive it differently (audit F-21); see
+   * `../client-address.ts`.
+   */
+  readonly clientAddress: string;
   readonly services: RestServices | null;
   readonly env: NodeJS.ProcessEnv;
   readonly mediaAssets: MediaAssetsPort | null;

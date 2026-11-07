@@ -4,7 +4,9 @@
 
 The API writes one JSON object per completed HTTP request to stdout, or stderr for warning/error results. Each event includes a server-generated `requestId`, a validated W3C `traceparent` trace ID (or a generated fallback), a bounded route label, normalized method, HTTP status, elapsed milliseconds and a level. The response returns the generated ID in `X-Request-Id`.
 
-The log schema is intentionally allowlisted. It does **not** include the raw request URL, query parameters, remote IP, cookies, authorization headers, request/response bodies, actor/user IDs or exception messages. Unexpected handler failures return a sanitized 500 response; only a sanitized error name is logged. Never add arbitrary request objects or driver exception messages to log records.
+The log schema is intentionally allowlisted. It does **not** include the raw request URL, query parameters, remote IP, cookies, authorization headers, request/response bodies or actor/user IDs. Unexpected handler failures return a sanitized 500 response and log `rest_unhandled_error` with the error class plus a message that has been through `redactDiagnostic` (`apps/api/src/infrastructure/log-redaction.ts`): DSN userinfo, `password=`/`token:`-style pairs and the values of the secrets this process reads from its environment are masked, the text is flattened to one line, and it is capped at 200 characters. The startup failure line (`api_startup_failed`) is redacted the same way, because a driver that was handed a malformed DSN can quote it back and the DSN contains its password.
+
+Both lines exist on purpose: "the access log says 500 and nothing else" is not diagnosable, and a stale schema (`relation "featured_articles" does not exist`) is worth one line. Never log an arbitrary request object, a full stack, or an unredacted exception message.
 
 ## Prometheus metrics
 

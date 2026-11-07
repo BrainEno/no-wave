@@ -182,6 +182,28 @@ The REST-only migration is complete: public reads and authenticated writes are e
 
 Author profiles are stored with shared account-level avatar/website fields and per-locale display name/bio translations. User discovery supports localized display-name/ID search, following/follower lists, follower/following counts, and viewer-specific follow state. Follow and unfollow mutations derive the follower from JWT identity; a newly created follow writes an idempotent relationship and a durable `user.followed` notification in the same transaction; `updateMyProfile` derives the profile owner from the verified JWT. Published article results expose a nullable localized `author` profile when the owner has configured that locale. Articles are stored independently of the legacy MongoDB backend. Each article has one unique slug, author identity derived from verified JWT `sub`, draft/published state, and translated content rows keyed by `zh-TW` or `en`. Public list/detail queries return published content only; `myArticles` includes the authenticated owner's drafts. Article bodies are stored as validated JSON content blocks (`paragraph`, `heading`, `quote`, `list`, `image`, `code`) with a persisted `contentBlocksVersion`. Version 0 is the backward-compatible plain-text contract. Version 1 adds optional `inlines` arrays to text blocks and `itemInlines` arrays to list blocks; each run is `{ text, marks?, href? }`, marks are unique values from `bold`, `italic`, `underline`, `strikethrough`, and `code`, and concatenated run text must exactly equal the block/list-item plain-text fallback. Link URLs are limited to valid HTTP(S) URLs without credentials or site-root-relative paths; protocol-relative URLs, executable schemes, arbitrary HTML and unsupported node properties are rejected. A document is limited to 200 blocks, 1,000 inline runs per text/list-item entry, 50,000 characters per code block and 1,000,000 serialized characters. `contentBlocks` is returned as a JSON array by REST. Create/update operations enforce author ownership, reject duplicate slugs, and validate body shape before persistence. Category/tag records and their localized labels are persisted separately from articles. `createTag(name, locale)` supports user-created Unicode hashtags (including Traditional Chinese), strips a leading `#`, normalizes full-width/case variants, generates a stable collision-resistant slug, and reuses the same global tag across users instead of giving each user a private tag. Tag reuse and article association are open to any authenticated author; tag labels are not overwritten by later duplicate creates. The legacy `createTaxonomy(kind: "category", ...)` category path remains creator-scoped.  article-to-taxonomy links are replaceable transactionally during article creation/update, public taxonomy queries filter to published articles in the requested locale, and default-language labels are used as a display fallback. Taxonomy edits and deletion are limited to the creating user pending role-aware administrative policy. Authenticated `likedArticles` returns only the viewer's liked, published articles that have the requested translation. `relatedArticles` ranks other published articles in the requested locale by shared category/tag links, then same author and recency. `setArticleLike` is a retry-safe, idempotent like/unlike operation; `toggleArticleLike` remains available for compatibility. A newly created like writes a durable `article.liked` notification for the author in the same transaction, except when the author likes their own article. New comments notify the article author, and replies notify the parent comment author; the comment and its notifications commit atomically. Article likes are unique per user and article; their toggle operation locks the published article row to serialize concurrent toggles. Comment threads are stored as a parent-child relation with cascading reply deletion; public reads expose only published articles in the requested locale, and comments can only be deleted by their author.
 
+## Client address behind a proxy (ADR 0027)
+
+Every per-IP decision in the API — the write rate-limit buckets, `login` /
+`register` / `refresh` attempt limits, and the address recorded for a session —
+uses the TCP peer address by default, and ignores `X-Forwarded-For`, because a
+header the client controls must never choose its own bucket.
+
+On a deployment with a reverse proxy, a platform router or a container ingress in
+front of the API, the socket peer **is** that proxy: every visitor then shares one
+bucket, so the per-IP limits silently become a global cap. Say how many proxies
+are in front of the API instead of trusting the header wholesale:
+
+| Variable | Default | Bounds | Meaning |
+| --- | --- | --- | --- |
+| `TRUSTED_PROXY_HOPS` | `0` | 0–5 | How many proxies in front of this process. `1` for a single ingress (Render, Fly, nginx, `docker run -p`), `2` for a CDN in front of an ingress |
+
+The address is read that many entries from the **right** of the chain, which is the
+one the outermost trusted proxy appended; anything a client writes to the left of
+it cannot move that position. A chain shorter than the configured number of hops
+is not trusted and falls back to the peer, and an invalid value refuses to start
+the process. See [ADR 0027](../docs/architecture/decisions/0027-client-address-behind-a-proxy.md).
+
 ## Integration tests
 
 Use a disposable PostgreSQL database only:
