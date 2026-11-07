@@ -52,10 +52,14 @@ export function createSqliteMediaStore(db) {
    * The definition of "in use" has not changed — an asset whose id appears in a
    * body counts — but the place it is *answered* has: `article_media_refs` holds
    * that relationship materialised, and #156 made the database enforce it with
-   * `ON DELETE RESTRICT`. That constraint is what makes trusting this query
-   * safe. If it ever misses a reference the raw scan would have found, the
-   * delete it allows is refused by the foreign key instead of committing and
-   * leaving a broken image behind.
+   * `ON DELETE RESTRICT`.
+   *
+   * That constraint only refuses a delete it can see a row for. A row can be
+   * *missing* — a provider replay that predates reference capture (#217), an
+   * older writer, a direct SQL fix — and then the foreign key has nothing to
+   * refuse while the body still holds the URL. So this query is the fast path,
+   * not the proof: `evidenceRowsUsing` is asked as well before anything is
+   * deleted.
    */
   const referenceRowsUsing = (id) => {
     const assetId = String(id).toLowerCase();
@@ -70,6 +74,36 @@ export function createSqliteMediaStore(db) {
       "SELECT avatar_url FROM user_profiles WHERE avatar_media_id = ? AND avatar_url IS NOT NULL AND avatar_url <> ''",
     ).all(assetId);
     return [...bodyRows.map(mapBody), ...avatarRows.map(mapAvatar)];
+  };
+
+  /**
+   * The site-wide scan narrowed to one asset: the *evidence* that it is in use.
+   *
+   * `listMediaScanRows` asks this about every asset at once, which is what makes
+   * the library page expensive; here the question is about one id at the moment
+   * it would be deleted, so the same definition of "in use" costs one scan of
+   * `article_translations` and one of the profiles instead of a materialised copy
+   * kept correct forever.
+   *
+   * This is not the fast path and it is deliberately not the first answer — the
+   * reference table is. It is the backstop for a reference table that is wrong,
+   * which is the one case the foreign key cannot cover. `LIMIT` caps how much a
+   * pathological body can return; the caller only needs to know that something
+   * uses the asset.
+   */
+  const evidenceRowsUsing = (id) => {
+    const assetId = String(id).toLowerCase();
+    // The row says "this asset": `content` carries the asset's own id, exactly as
+    // the reference-table rows do, so the caller's extraction and redaction code
+    // does not care which of the two questions answered.
+    const evidence = `/media/${assetId}`;
+    const bodies = db.prepare(
+      `${BODY_SQL} WHERE instr(lower(t.content_blocks), ?) > 0 LIMIT 200`,
+    ).all(assetId).map((row) => ({ ...mapBody(row), content: evidence }));
+    const avatars = db.prepare(
+      "SELECT avatar_url FROM user_profiles WHERE avatar_url IS NOT NULL AND avatar_url <> '' AND instr(lower(avatar_url), ?) > 0 LIMIT 200",
+    ).all(assetId).map(() => ({ kind: "avatar", content: evidence }));
+    return [...bodies, ...avatars];
   };
 
   return Object.freeze({
@@ -202,16 +236,20 @@ export function createSqliteMediaStore(db) {
           db.exec("COMMIT");
           return null;
         }
-        // The reference table answers this in O(references), not O(site text).
-        // Because #156 added `ON DELETE RESTRICT`, the delete below cannot
-        // actually lose a reference this check missed — the database refuses it
-        // — so the table can be trusted as the fast path rather than as the
-        // authority. If it ever misses, the constraint turns the miss into a
-        // thrown error instead of a broken image.
+        // The reference table answers this in O(references), not O(site text),
+        // and `ON DELETE RESTRICT` refuses a delete it can see a row for. The
+        // gap it cannot cover is a row that was never written: then the body
+        // still holds the URL and this delete would commit over a live image
+        // (#217). The same transaction therefore asks the body scan as well.
         const usedBy = referenceRowsUsing(id);
         if (usedBy.length > 0) {
           db.exec("COMMIT");
           return { deleted: null, usedBy };
+        }
+        const evidence = evidenceRowsUsing(id);
+        if (evidence.length > 0) {
+          db.exec("COMMIT");
+          return { deleted: null, usedBy: evidence };
         }
         run("DELETE FROM media_assets WHERE id = ? AND owner_id = ?", id, ownerId);
         migrationCapture.captureInTransaction(db, transactionId, [

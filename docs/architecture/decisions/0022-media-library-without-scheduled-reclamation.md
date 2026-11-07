@@ -133,3 +133,22 @@ reclaimed. The delete still answers `200`, because the deletion the reader asked
   difference between "you have no images" and "this deployment cannot accept images".
 - The cost of a library read grows with the size of the whole archive. Documented, bounded by the
   page size, and fixable with a table when it is a problem rather than a worry.
+
+## Amendment (2026-11-07): the reference table is a fast path, not proof
+
+§4 made the scan and the delete one provider operation and moved the "is anything
+using it" question onto `article_media_refs`. That is correct for every reference a
+*writer* in this codebase materialised — but the foreign key can only refuse a
+delete it can see a row for. [Issue #217](https://github.com/BrainEno/no-wave/issues/217)
+found the missing case: a cross-provider replay (or an older writer, or a direct SQL
+fix) can leave the body holding the image URL with no reference row, and the guarded
+delete then treated the image as unused and removed it.
+
+`deleteUnusedMediaAsset` therefore asks a second question in the same transaction:
+does any translation body, or any profile picture URL, still contain this asset id?
+The decision (no scheduled reclamation, owner-initiated deletes behind a guarded
+operation) is unchanged; what changes is that the guard no longer treats the
+materialised table as the answer. A drifted table means a refusal the reader did not
+expect, never a deleted image. This does not make a drifted table safe for a provider
+cutover — ADR 0010's snapshot, watermark, fence and reconciliation gates are still
+required.

@@ -167,9 +167,11 @@ export function createPostgresMediaStore(ctx: PostgresStoreContext) {
         // cannot both proceed.
         //
         // The reference table is then read instead of scanning every body
-        // (#163). `ON DELETE RESTRICT` is the backstop that makes that safe: if
-        // a reference somehow exists that this query did not see, the DELETE is
-        // refused by the constraint rather than committing over a live image.
+        // (#163). `ON DELETE RESTRICT` refuses a delete it can see a row for; the
+        // case it cannot cover is a row that was never written (a replay older
+        // than reference capture — #217 — an older writer, a direct SQL fix), and
+        // then the body still holds the URL. So the reference table is the fast
+        // path, not the proof: the body scan below is the backstop.
         const existing = await tx.unsafe(
           "SELECT * FROM media_assets WHERE id = $1 AND owner_id = $2 FOR UPDATE",
           [id, ownerId],
@@ -207,6 +209,52 @@ export function createPostgresMediaStore(ctx: PostgresStoreContext) {
           ...avatars.map((avatar) => ({ kind: "avatar" as const, content: avatar.avatar_url })),
         ];
         if (usedBy.length > 0) return { deleted: null, usedBy };
+        // One asset, one scan of the translations and the profiles: the same
+        // definition of "in use" as `listMediaScanRows`, asked at the moment it
+        // would matter. `LIMIT` bounds a pathological body; the caller only
+        // needs to know that something still names the asset.
+        const assetId = id.toLowerCase();
+        const [bodyEvidence, avatarEvidence] = await Promise.all([
+          tx.unsafe(
+            `SELECT a.id AS article_id, a.slug, a.status, a.deleted_at, a.author_id, t.locale, t.title, t.content_blocks::text AS content_blocks
+             FROM article_translations t
+             JOIN articles a ON a.id = t.article_id
+             WHERE strpos(lower(t.content_blocks::text), $1::text) > 0
+             LIMIT 200`,
+            [assetId],
+          ),
+          tx.unsafe(
+            `SELECT avatar_url FROM user_profiles
+             WHERE avatar_url IS NOT NULL AND avatar_url <> '' AND strpos(lower(avatar_url), $1::text) > 0
+             LIMIT 200`,
+            [assetId],
+          ),
+        ]);
+        if (bodyEvidence.length > 0 || avatarEvidence.length > 0) {
+          return {
+            deleted: null,
+            usedBy: [
+              ...bodyEvidence.map((body) => ({
+                kind: "work" as const,
+                // The row says "this asset": `content` carries the asset's own id,
+                // exactly as the reference-table rows do, so the caller's
+                // extraction and redaction code does not care which question
+                // answered.
+                content: `/media/${assetId}`,
+                work: {
+                  articleId: body.article_id,
+                  slug: body.slug,
+                  status: body.status,
+                  deletedAt: body.deleted_at ? new Date(body.deleted_at).toISOString() : null,
+                  locale: body.locale,
+                  title: body.title,
+                  authorId: body.author_id ?? "",
+                },
+              })),
+              ...avatarEvidence.map(() => ({ kind: "avatar" as const, content: `/media/${assetId}` })),
+            ],
+          };
+        }
         await tx.unsafe("DELETE FROM media_assets WHERE id = $1 AND owner_id = $2", [id, ownerId]);
         await captureChanges(tx, transactionId, [{ entityType: "media_assets", entityId: id, operation: "delete", payload: null }]);
         return {

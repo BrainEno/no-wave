@@ -46,6 +46,20 @@ async function sqliteFixture() {
     async setMediaAssetCreatedAt(id, createdAt) {
       db.prepare("UPDATE media_assets SET created_at = ? WHERE id = ?").run(createdAt, id);
     },
+    /**
+     * Remove a materialised media reference while leaving the body alone.
+     *
+     * That is the state a replay, an older writer or a direct SQL fix can leave
+     * behind, and the state the delete guard must survive: the reference table is
+     * the fast path, not proof, and `ON DELETE RESTRICT` has nothing to refuse
+     * when the row was never written.
+     */
+    async dropMediaReference(assetId) {
+      db.prepare("DELETE FROM article_media_refs WHERE asset_id = ?").run(assetId);
+    },
+    async clearAvatarMediaId(userId) {
+      db.prepare("UPDATE user_profiles SET avatar_media_id = NULL WHERE user_id = ?").run(userId);
+    },
     async cleanup(conversationId, suffix) {
       if (conversationId) {
         const messages = db.prepare("SELECT id FROM messages WHERE conversation_id = ?").all(conversationId);
@@ -69,6 +83,7 @@ async function sqliteFixture() {
           `identity-default-profile-${suffix}`,
           `restrict-owner-${suffix}`, `restrict-avatar-owner-${suffix}`,
           `media-ref-owner-${suffix}`, `avatar-ref-owner-${suffix}`,
+          `drift-owner-${suffix}`, `drift-avatar-owner-${suffix}`,
           `sort-liker-${suffix}-1`,
           `sort-liker-${suffix}-2`,
           `sort-liker-${suffix}-3`,
@@ -138,6 +153,12 @@ async function postgresFixture() {
     },
     async setMediaAssetCreatedAt(id, createdAt) {
       await postgresSql.unsafe("UPDATE media_assets SET created_at = $1 WHERE id = $2", [createdAt, id]);
+    },
+    async dropMediaReference(assetId) {
+      await postgresSql.unsafe("DELETE FROM article_media_refs WHERE asset_id = $1", [assetId]);
+    },
+    async clearAvatarMediaId(userId) {
+      await postgresSql.unsafe("UPDATE user_profiles SET avatar_media_id = NULL WHERE user_id = $1", [userId]);
     },
     async cleanup(conversationId, suffix) {
       if (conversationId) {
@@ -1427,6 +1448,108 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
         }
       }
     }
+  });
+
+  /**
+   * #217, from the other side: a reference row can be *missing*.
+   *
+   * `ON DELETE RESTRICT` only refuses a delete it can see a row for. A provider
+   * replay that predates reference capture, an older writer or a direct SQL fix
+   * can leave the body holding the URL while the row is gone — and the guard then
+   * answered "unused" and deleted an image a published work still shows. The
+   * materialised table is the fast path; the body is the evidence.
+   */
+  test(`${adapterName}: a missing materialised reference cannot authorise a delete`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const ownerId = `drift-owner-${suffix}`;
+    const hour = new Date(Date.now() + 3_600_000).toISOString();
+    try {
+      await runtime.store.createIdentityAccount({
+        userId: ownerId, email: `drift-${suffix}@example.test`, passwordHash: "hash",
+        session: {
+          sessionId: randomUUID(), userId: ownerId, accessTokenId: randomUUID(),
+          refreshHash: (suffix.replace(/-/g, "") + "f").padEnd(64, "f"), expiresAt: hour,
+          accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+        },
+      });
+      const asset = await runtime.store.createMediaAsset({
+        id: randomUUID(), ownerId, storageKey: `${suffix}/drift.webp`, contentType: "image/webp",
+        byteSize: 12, width: 2, height: 2, sha256: "f".repeat(64),
+      });
+      const article = await runtime.store.createArticle({
+        authorId: ownerId, slug: `drift-${suffix}`, title: "仍然在用", summary: "",
+        locale: "zh-CN", publish: true,
+        contentBlocks: [{ id: "i1", type: "image", src: `/api/v1/media/${asset.id}`, alt: "" }],
+      });
+
+      // The write materialised the reference, so the fast path knows the work.
+      assert.equal((await runtime.store.listReferencesForAssets({ assetIds: [asset.id] })).length, 1);
+
+      // Now the drift: the row goes, the body stays.
+      await runtime.dropMediaReference(asset.id);
+      assert.deepEqual(
+        await runtime.store.listReferencesForAssets({ assetIds: [asset.id] }),
+        [],
+        "the materialised table no longer knows about the work",
+      );
+
+      const refused = await runtime.store.deleteUnusedMediaAsset({ id: asset.id, ownerId });
+      assert.equal(refused?.deleted ?? null, null, "the body is still evidence that the image is in use");
+      assert.ok(
+        (refused?.usedBy ?? []).some((row) => row.kind === "work" && row.work?.articleId === article.id),
+        "and the caller is told which work holds it",
+      );
+      assert.deepEqual(
+        [...new Set((refused?.usedBy ?? []).map((row) => row.content))],
+        [`/media/${asset.id}`],
+        "evidence rows describe this asset, exactly like reference rows do",
+      );
+      assert.ok(await runtime.store.getMediaAsset({ id: asset.id }), "the asset row survives");
+
+      // A tombstone keeps its translation, so the evidence has to go with a purge.
+      await runtime.store.deleteArticle({ articleId: article.id, actorId: ownerId });
+      await runtime.store.purgeExpiredArticles({
+        retentionDays: 30, now: new Date(Date.now() + 400 * 86_400_000), limit: 100,
+      });
+      const allowed = await runtime.store.deleteUnusedMediaAsset({ id: asset.id, ownerId });
+      assert.equal(allowed?.deleted?.id, asset.id, "once nothing mentions it, the delete goes through");
+    } finally { await runtime.cleanup(undefined, suffix); }
+  });
+
+  /**
+   * The avatar half of the same drift: a picture stored only as a URL on the
+   * profile, with no `avatar_media_id` to make the foreign key refuse.
+   */
+  test(`${adapterName}: an avatar URL with no materialised avatar id still blocks the delete`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const ownerId = `drift-avatar-owner-${suffix}`;
+    const hour = new Date(Date.now() + 3_600_000).toISOString();
+    try {
+      await runtime.store.createIdentityAccount({
+        userId: ownerId, email: `drift-avatar-${suffix}@example.test`, passwordHash: "hash",
+        session: {
+          sessionId: randomUUID(), userId: ownerId, accessTokenId: randomUUID(),
+          refreshHash: (suffix.replace(/-/g, "") + "a").padEnd(64, "a"), expiresAt: hour,
+          accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+        },
+      });
+      const asset = await runtime.store.createMediaAsset({
+        id: randomUUID(), ownerId, storageKey: `${suffix}/face.webp`, contentType: "image/webp",
+        byteSize: 12, width: 2, height: 2, sha256: "a".repeat(64),
+      });
+      await runtime.store.upsertAuthorProfile({
+        userId: ownerId, locale: "zh-CN", displayName: "有头像的人", bio: "",
+        avatarUrl: `/api/v1/media/${asset.id}`,
+      });
+      await runtime.clearAvatarMediaId(ownerId);
+
+      const refused = await runtime.store.deleteUnusedMediaAsset({ id: asset.id, ownerId });
+      assert.equal(refused?.deleted ?? null, null, "the stored URL is evidence even without the id column");
+      assert.ok((refused?.usedBy ?? []).some((row) => row.kind === "avatar"));
+      assert.ok(await runtime.store.getMediaAsset({ id: asset.id }));
+    } finally { await runtime.cleanup(undefined, suffix); }
   });
 
   test(`${adapterName}: the media reference scan returns raw JSON text for every draft and tombstone`, options, async () => {

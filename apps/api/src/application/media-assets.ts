@@ -172,18 +172,19 @@ export class MediaInputError extends Error {
 /**
  * Is media deletion switched on for this deployment? (default: no)
  *
- * The delete route decides whether an image is still referenced by scanning
- * every work's body, then deletes it. Those two steps are not serialised against
- * a concurrent `createArticle` / `upsertAuthorProfile` on PostgreSQL, which runs
- * at READ COMMITTED and takes no lock on the `media_assets` row: a work saved in
- * the window between the scan and the delete loses its images permanently. That
- * is a data-loss race, not a performance problem, and the fix (#163) is a
- * materialised reference table with an `ON DELETE RESTRICT` foreign key.
+ * Deletion is irreversible — the row goes and then the object — and an unused
+ * image costs storage, so the shipped default is "refuse". This is the
+ * server-side switch, deliberately at the route rather than in the Web app:
+ * hiding a button in one client leaves every other caller — including a Flutter
+ * build against the same API — able to delete.
  *
- * Until that lands the operation is off. This is the server-side answer, and it
- * is deliberately at the route rather than in the Web app: hiding a button in
- * one client leaves every other caller — including a Flutter build against the
- * same API — able to delete.
+ * The data-loss race that first justified the default (#156) is closed: the
+ * guarded delete takes a row lock on the asset and the foreign keys refuse a
+ * delete something references, and since #217 the guard also re-reads the bodies
+ * before it commits, so a missing reference row cannot authorise the delete
+ * either. What is left is a product decision: turning the switch on is a choice
+ * to let owners delete their own unused images, not a choice to accept a known
+ * way of losing one.
  *
  * Read at request time, like `isMailEnabled`, so an operator can turn it on
  * without a rebuild. Unset, empty and unrecognised values all mean "off": a
@@ -485,7 +486,8 @@ export function createMediaAssetService({ store, storage }: {
      * it is not done here either, because a check followed by a delete is two
      * statements with a gap between them, and a work saved in that gap loses its
      * images. `deleteUnusedMediaAsset` scans and deletes in one operation, and
-     * answers with whatever it found.
+     * answers with whatever it found — including a work whose reference row is
+     * missing but whose body still holds the URL (#217).
      *
      * The **row goes first**, which is the other way round from what this used to
      * do, and the reason is the same race: once the guarded delete has committed,
