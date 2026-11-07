@@ -7,6 +7,7 @@ import { AUTH_ROUTE_IDS } from "./routes/auth.ts";
 import { AUTHOR_ROUTE_IDS } from "./routes/authors.ts";
 import { CONVERSATION_ROUTE_IDS } from "./routes/conversations.ts";
 import { HEALTH_ROUTE_IDS } from "./routes/health.ts";
+import { OPENAPI_ROUTE_IDS } from "./routes/openapi.ts";
 import { IDENTITY_ROUTE_IDS } from "./routes/identity.ts";
 import { MEDIA_ROUTE_IDS } from "./routes/media.ts";
 import { NOTIFICATION_ROUTE_IDS } from "./routes/notifications.ts";
@@ -26,6 +27,7 @@ const GROUPS: readonly { name: string; ids: readonly string[] }[] = [
   { name: "auth", ids: AUTH_ROUTE_IDS },
   { name: "media", ids: MEDIA_ROUTE_IDS },
   { name: "health", ids: HEALTH_ROUTE_IDS },
+  { name: "openapi", ids: OPENAPI_ROUTE_IDS },
   { name: "identity", ids: IDENTITY_ROUTE_IDS },
   { name: "notifications", ids: NOTIFICATION_ROUTE_IDS },
   { name: "conversations", ids: CONVERSATION_ROUTE_IDS },
@@ -66,6 +68,7 @@ test("route ids are grouped where a reader would look for them", () => {
   const byGroup = new Map(GROUPS.map((group) => [group.name, new Set(group.ids)]));
   const expectations: readonly [string, readonly string[]][] = [
     ["health", ["health"]],
+    ["openapi", ["openapi"]],
     ["auth", ["auth"]],
     ["media", ["media.item", "me.media", "me.media.item"]],
     ["identity", ["me", "me.email", "me.email-verification", "me.password", "me.profile", "me.session", "me.sessions", "me.sessions.item", "users", "users.relationships", "users.follow", "users.role"]],
