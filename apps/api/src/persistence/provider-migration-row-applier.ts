@@ -151,6 +151,17 @@ export function prepareMigrationRowPayload(
   input: Record<string, unknown>,
 ): { spec: EntitySpec; primaryKeyValues: string[]; payload: Record<string, unknown>; columns: string[]; values: unknown[]; articleMediaRefs: string[] | null } {
   const spec = getMigrationEntitySpec(entityType);
+  // A derived column belongs to the provider that computes it (ADR 0030). If a
+  // payload carries one — a capture that selected the whole row, an older
+  // journal — it is dropped here instead of being replayed into a provider that
+  // may have no such column, and instead of failing the whole batch over a value
+  // nobody needs to copy.
+  const derived = spec.derivedColumns ?? [];
+  if (derived.length > 0) {
+    const carried: Record<string, unknown> = { ...input };
+    for (const column of derived) delete carried[column];
+    input = carried;
+  }
   const isTranslation = entityType === "article_translations";
   const unknownColumns = Object.keys(input).filter(column => !spec.columns.includes(column) && !(isTranslation && column === ARTICLE_MEDIA_REFS_SNAPSHOT));
   if (unknownColumns.length) throw new MigrationJournalError("UNSUPPORTED_COLUMN", "Migration payload contains unsupported columns for " + entityType + ": " + unknownColumns.join(", ") + ".");

@@ -19,6 +19,18 @@ import type { TypedPersistenceAdapterContract } from "../application/persistence
 // bigint lock. The other key is the target schema, so shelves do not interact.
 const FEATURED_SHELF_LOCK = 0x4e575348;
 
+/**
+ * The columns a translation contributes to the migration journal.
+ *
+ * Named rather than `SELECT *`: the payload is portable, and a provider-computed
+ * column is not (ADR 0030). `content_search_text` reached the journal exactly
+ * that way — the capture spread a whole row into a payload that the other
+ * provider then refused, with an error about unsupported columns and no hint
+ * where the extra one came from.
+ */
+const TRANSLATION_JOURNAL_COLUMNS =
+  "article_id, locale, title, summary, content_blocks, content_blocks_version, created_at, updated_at";
+
 export function createPostgresArticleStore(ctx: PostgresStoreContext) {
   const { sql, captureChanges } = ctx;
   return Object.freeze({
@@ -214,7 +226,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
           await replaceArticleTaxonomyKind(tx, article.id, "tag", selectedTags);
           const [articleSnapshot, translationSnapshot, links, mediaRefs] = await Promise.all([
             tx.unsafe("SELECT * FROM articles WHERE id = $1", [article.id]),
-            tx.unsafe("SELECT * FROM article_translations WHERE article_id = $1 AND locale = $2", [article.id, input.locale]),
+            tx.unsafe(`SELECT ${TRANSLATION_JOURNAL_COLUMNS} FROM article_translations WHERE article_id = $1 AND locale = $2`, [article.id, input.locale]),
             tx.unsafe("SELECT * FROM article_taxonomies WHERE article_id = $1", [article.id]),
             tx.unsafe("SELECT asset_id FROM article_media_refs WHERE article_id = $1 AND locale = $2 ORDER BY asset_id", [article.id, input.locale]),
           ]);
@@ -276,7 +288,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
           await replaceArticleTaxonomyKind(tx, articleId, "tag", selectedTags);
           const [articleSnapshot, translationSnapshot, currentLinks, mediaRefs] = await Promise.all([
             tx.unsafe("SELECT * FROM articles WHERE id = $1", [articleId]),
-            tx.unsafe("SELECT * FROM article_translations WHERE article_id = $1 AND locale = $2", [articleId, input.locale]),
+            tx.unsafe(`SELECT ${TRANSLATION_JOURNAL_COLUMNS} FROM article_translations WHERE article_id = $1 AND locale = $2`, [articleId, input.locale]),
             tx.unsafe("SELECT * FROM article_taxonomies WHERE article_id = $1", [articleId]),
             tx.unsafe("SELECT asset_id FROM article_media_refs WHERE article_id = $1 AND locale = $2 ORDER BY asset_id", [articleId, input.locale]),
           ]);
