@@ -4,7 +4,7 @@ import {
   handleNotificationsRequest,
   handleNotificationsUnreadCountRequest,
 } from "@bot-thk/web-http";
-import { optionalApiBaseUrl } from "./runtime.ts";
+import { apiProxyConfig } from "./runtime.ts";
 
 /**
  * React Router binding for the notification inbox.
@@ -15,17 +15,17 @@ import { optionalApiBaseUrl } from "./runtime.ts";
  * and media adapters.
  */
 export function handleNotifications(request: Request): Promise<Response> {
-  return handleNotificationsRequest(request, { apiBaseUrl: optionalApiBaseUrl() });
+  return handleNotificationsRequest(request, apiProxyConfig());
 }
 
 export function handleNotificationsUnreadCount(request: Request): Promise<Response> {
-  return handleNotificationsUnreadCountRequest(request, { apiBaseUrl: optionalApiBaseUrl() });
+  return handleNotificationsUnreadCountRequest(request, apiProxyConfig());
 }
 
 export function handleNotificationsReadAll(request: Request): Promise<Response> {
-  return handleNotificationsReadAllRequest(request, { apiBaseUrl: optionalApiBaseUrl() });
+  return handleNotificationsReadAllRequest(request, apiProxyConfig());
 }
 
 export function handleNotificationRead(request: Request, id: string | undefined): Promise<Response> {
-  return handleNotificationReadRequest(request, { id: id ?? "" }, { apiBaseUrl: optionalApiBaseUrl() });
+  return handleNotificationReadRequest(request, { id: id ?? "" }, apiProxyConfig());
 }

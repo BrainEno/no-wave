@@ -1,10 +1,10 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { handleConversationReadRequest } from "@bot-thk/web-http";
-import { optionalApiBaseUrl } from "../lib/runtime.ts";
+import { apiProxyConfig } from "../lib/runtime.ts";
 
 /** Both aliases use the shared method, Origin and ID checks. */
 function markRead(request: Request, id: string | undefined) {
-  return handleConversationReadRequest(request, { conversationId: id ?? "" }, { apiBaseUrl: optionalApiBaseUrl() });
+  return handleConversationReadRequest(request, { conversationId: id ?? "" }, apiProxyConfig());
 }
 
 export function loader({ request, params }: LoaderFunctionArgs) {

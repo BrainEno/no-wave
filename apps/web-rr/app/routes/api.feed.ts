@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { handleFeedRequest } from "@bot-thk/web-http";
-import { optionalApiBaseUrl } from "../lib/runtime.ts";
+import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**
  * `GET /api/feed` — resource route, no component.
@@ -24,7 +24,7 @@ function feed(request: Request, url: URL) {
       limit: params.get("limit"),
       offset: params.get("offset"),
     },
-    { apiBaseUrl: optionalApiBaseUrl() },
+    apiProxyConfig(),
   );
 }
 

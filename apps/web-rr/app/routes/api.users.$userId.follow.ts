@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { handleUserFollowRequest } from "@bot-thk/web-http";
-import { optionalApiBaseUrl } from "../lib/runtime.ts";
+import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**
  * `POST`/`DELETE /api/users/:userId/follow` — resource route, no component.
@@ -21,7 +21,7 @@ function follow(request: Request, url: URL, userId: string | undefined) {
   return handleUserFollowRequest(
     request,
     { targetUserId: userId ?? "", locale: url.searchParams.get("locale") },
-    { apiBaseUrl: optionalApiBaseUrl() },
+    apiProxyConfig(),
   );
 }
 

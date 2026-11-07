@@ -1,6 +1,6 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { handlePublicMediaRequest } from "@bot-thk/web-http";
-import { optionalApiBaseUrl } from "../lib/runtime.ts";
+import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**
  * Public media read (`GET /api/media/:id`) — resource route, no component.
@@ -10,5 +10,5 @@ import { optionalApiBaseUrl } from "../lib/runtime.ts";
  * exists, so the two frameworks cannot disagree about a media response.
  */
 export async function loader({ params, request }: LoaderFunctionArgs) {
-  return handlePublicMediaRequest(request, params.id ?? "", { apiBaseUrl: optionalApiBaseUrl() });
+  return handlePublicMediaRequest(request, params.id ?? "", apiProxyConfig());
 }

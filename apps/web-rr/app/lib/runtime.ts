@@ -1,4 +1,5 @@
 import { createApiContentClient, resolveApiBaseUrl } from "@/lib/api-content.ts";
+import { resolveUpstreamTimeoutMs, type ApiProxyConfig } from "@bot-thk/web-http";
 
 /**
  * Server-only runtime wiring.
@@ -26,10 +27,36 @@ export function optionalApiBaseUrl(): string | undefined {
   }
 }
 
+/**
+ * Upstream budget for every API call this process makes (audit F-17).
+ *
+ * `API_TIMEOUT_MS` overrides the default. Values are validated by
+ * `resolveUpstreamTimeoutMs`, which throws on anything that is not a whole
+ * number of milliseconds in range: a typo must never silently become an
+ * unbounded wait. The thrown error surfaces as the route's own 503 (public
+ * pages) or as its "not configured correctly" 503 (proxies).
+ */
+export function apiTimeoutMs(): number {
+  return resolveUpstreamTimeoutMs(process.env.API_TIMEOUT_MS);
+}
+
 export function requireContentClient() {
   const endpoint = apiBaseUrl();
   if (!endpoint) throw new Error("API_BASE_URL must be configured to read API-backed content.");
-  return createApiContentClient({ endpoint });
+  return createApiContentClient({ endpoint, timeoutMs: apiTimeoutMs() });
+}
+
+/**
+ * Config for one proxied API call: origin plus the bounded budget.
+ *
+ * Every adapter goes through this, so a route added later cannot quietly call
+ * the API without a deadline. The raw value is passed through rather than
+ * resolved here: each handler validates it before calling the API and answers a
+ * malformed one with its own "not configured correctly" 503, so the rejection
+ * happens in one place instead of two.
+ */
+export function apiProxyConfig(): ApiProxyConfig {
+  return { apiBaseUrl: optionalApiBaseUrl(), upstreamTimeoutMs: process.env.API_TIMEOUT_MS };
 }
 
 /**

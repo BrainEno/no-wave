@@ -307,3 +307,55 @@ test("an asset still used by a work is reported as a conflict with the works tha
   assert.match(body, /MEDIA_IN_USE/);
   assert.match(body, /uses-it/);
 });
+
+test("a hung object store answers 504 within the budget instead of pinning the request", async () => {
+  const stub = stubFetch({ "api/v1/media/": () => new Promise<Response>(() => {}) });
+  const started = Date.now();
+  const response = await handlePublicMediaRequest(
+    request(`/api/media/${MEDIA_ID}`, { method: "GET" }),
+    MEDIA_ID,
+    { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl, upstreamTimeoutMs: 40 },
+  );
+
+  assert.equal(response.status, 504);
+  const body = await response.text();
+  assert.match(body, /UPSTREAM_TIMEOUT/);
+  assert.equal(/api\.example\.test|Bearer|access-token/.test(body), false);
+  assert.ok(Date.now() - started < 2_000);
+});
+
+test("an object whose bytes stall after its headers also times out", async () => {
+  const stub = stubFetch({
+    "api/v1/media/": () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new Uint8Array([0x52, 0x49, 0x46, 0x46]));
+            // Never closes.
+          },
+        }),
+        { status: 200, headers: { "content-type": "image/webp" } },
+      ),
+  });
+  const response = await handlePublicMediaRequest(
+    request(`/api/media/${MEDIA_ID}`, { method: "GET" }),
+    MEDIA_ID,
+    { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl, upstreamTimeoutMs: 60 },
+  );
+
+  // Not "unreadable bytes": the bytes never arrived, which is a timeout.
+  assert.equal(response.status, 504);
+  assert.match(await response.text(), /UPSTREAM_TIMEOUT/);
+});
+
+test("a malformed media budget fails closed and never reaches storage", async () => {
+  const stub = stubFetch({ "api/v1/media/": () => json({}, 500) });
+  const response = await handlePublicMediaRequest(
+    request(`/api/media/${MEDIA_ID}`, { method: "GET" }),
+    MEDIA_ID,
+    { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl, upstreamTimeoutMs: "later" },
+  );
+
+  assert.equal(response.status, 503);
+  assert.equal(stub.calls.length, 0);
+});

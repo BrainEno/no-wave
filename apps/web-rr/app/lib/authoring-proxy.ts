@@ -8,7 +8,7 @@ import {
   handleAuthoringRestoreRequest,
   handleAuthoringSessionRequest,
 } from "@bot-thk/web-http";
-import { optionalApiBaseUrl } from "./runtime.ts";
+import { apiProxyConfig } from "./runtime.ts";
 
 /**
  * React Router binding for the writing desk's API (ADR 0012, Phase 4b).
@@ -19,29 +19,29 @@ import { optionalApiBaseUrl } from "./runtime.ts";
  * like `auth-proxy.ts` and the media and comments adapters.
  */
 export function handleAuthoringSession(request: Request): Promise<Response> {
-  return handleAuthoringSessionRequest(request, { apiBaseUrl: optionalApiBaseUrl() });
+  return handleAuthoringSessionRequest(request, apiProxyConfig());
 }
 
 export function handleAuthoringArticles(request: Request): Promise<Response> {
-  return handleAuthoringArticlesRequest(request, { apiBaseUrl: optionalApiBaseUrl() });
+  return handleAuthoringArticlesRequest(request, apiProxyConfig());
 }
 
 export function handleAuthoringProfile(request: Request): Promise<Response> {
-  return handleAuthoringProfileRequest(request, { apiBaseUrl: optionalApiBaseUrl() });
+  return handleAuthoringProfileRequest(request, apiProxyConfig());
 }
 
 export function handleAuthoringArticle(request: Request, id: string | undefined): Promise<Response> {
-  return handleAuthoringArticleRequest(request, { id: id ?? "" }, { apiBaseUrl: optionalApiBaseUrl() });
+  return handleAuthoringArticleRequest(request, { id: id ?? "" }, apiProxyConfig());
 }
 export function handleAuthoringDeletedArticles(request: Request): Promise<Response> {
-  return handleAuthoringDeletedArticlesRequest(request, { apiBaseUrl: optionalApiBaseUrl() });
+  return handleAuthoringDeletedArticlesRequest(request, apiProxyConfig());
 }
 export function handleAuthoringFeatured(request: Request): Promise<Response> {
-  return handleAuthoringFeaturedRequest(request, { apiBaseUrl: optionalApiBaseUrl() });
+  return handleAuthoringFeaturedRequest(request, apiProxyConfig());
 }
 export function handleAuthoringFeaturedCandidates(request: Request): Promise<Response> {
-  return handleAuthoringFeaturedCandidatesRequest(request, { apiBaseUrl: optionalApiBaseUrl() });
+  return handleAuthoringFeaturedCandidatesRequest(request, apiProxyConfig());
 }
 export function handleAuthoringRestoreArticle(request: Request, id: string | undefined): Promise<Response> {
-  return handleAuthoringRestoreRequest(request, { id: id ?? "" }, { apiBaseUrl: optionalApiBaseUrl() });
+  return handleAuthoringRestoreRequest(request, { id: id ?? "" }, apiProxyConfig());
 }

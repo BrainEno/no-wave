@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { handleArticleLikeRequest } from "@bot-thk/web-http";
-import { optionalApiBaseUrl } from "../lib/runtime.ts";
+import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**
  * `GET`/`PUT /api/articles/:slug/like` — resource route, no component.
@@ -18,7 +18,7 @@ function like(request: Request, url: URL, slug: string | undefined) {
   return handleArticleLikeRequest(
     request,
     { slug: slug ?? "", locale: url.searchParams.get("locale") },
-    { apiBaseUrl: optionalApiBaseUrl() },
+    apiProxyConfig(),
   );
 }
 

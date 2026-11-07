@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs } from "react-router";
 import { handleMediaDeleteRequest } from "@bot-thk/web-http";
-import { optionalApiBaseUrl } from "../lib/runtime.ts";
+import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**
  * `DELETE /api/authoring/media/:id` — resource route, no component (ADR 0022).
@@ -11,5 +11,5 @@ import { optionalApiBaseUrl } from "../lib/runtime.ts";
  * now — not as it was when the page was rendered.
  */
 export async function action({ request, params }: ActionFunctionArgs) {
-  return handleMediaDeleteRequest(request, { id: String(params.id ?? "") }, { apiBaseUrl: optionalApiBaseUrl() });
+  return handleMediaDeleteRequest(request, { id: String(params.id ?? "") }, apiProxyConfig());
 }

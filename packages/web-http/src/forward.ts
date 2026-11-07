@@ -1,4 +1,11 @@
-import { apiUrl, readPayload, type ApiProxyConfig, type FetchImpl } from "./api.ts";
+import {
+  UpstreamTimeoutError,
+  apiUrl,
+  resolveUpstreamTimeoutMs,
+  withUpstreamDeadline,
+  type ApiProxyConfig,
+  type FetchImpl,
+} from "./api.ts";
 import { accessTokenFrom, clearedTokenCookieHeaders, refreshTokenFrom, tokenCookieHeaders, type TokenSet } from "./cookies.ts";
 import { NO_STORE, errorResponse } from "./http.ts";
 import { isTokenEnvelope, setIdempotencyKeyHeader } from "./policy.ts";
@@ -38,6 +45,29 @@ function coordinatorFor(config: ApiProxyConfig): RefreshCoordinator {
  */
 export type ForwardMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
+/**
+ * One upstream reply, fully read.
+ *
+ * The body is buffered inside the same deadline as the connection: a proxy that
+ * forwards JSON has to finish with it, and an upstream that sends headers and
+ * then stops mid-body would otherwise hold the caller exactly like a hung
+ * connection. The proxied surface is JSON of bounded size, so buffering does not
+ * change what this forwarder can carry.
+ */
+type BufferedUpstream = { status: number; contentType: string | null; text: string };
+
+/** The `data` field of a `{ data: ... }` envelope, or `null` when unusable. */
+function dataFromText(text: string): unknown {
+  try {
+    const payload: unknown = JSON.parse(text);
+    return typeof payload === "object" && payload !== null && "data" in payload
+      ? (payload as { data?: unknown }).data
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 async function callApi(
   fetchImpl: FetchImpl,
   base: string,
@@ -47,16 +77,25 @@ async function callApi(
   token: string | undefined,
   contentType: string,
   idempotencyKey: string | null,
-): Promise<Response> {
+  timeoutMs: number,
+): Promise<BufferedUpstream> {
   const headers = new Headers({ accept: "application/json" });
   if (body !== undefined) headers.set("content-type", contentType);
   if (token) headers.set("authorization", `Bearer ${token}`);
   setIdempotencyKeyHeader(headers, idempotencyKey);
-  return fetchImpl(apiUrl(base, path), {
-    method,
-    headers,
-    ...(body === undefined ? {} : { body }),
-    cache: "no-store",
+  return withUpstreamDeadline(timeoutMs, async (signal) => {
+    const response = await fetchImpl(apiUrl(base, path), {
+      method,
+      headers,
+      ...(body === undefined ? {} : { body }),
+      cache: "no-store",
+      signal,
+    });
+    return {
+      status: response.status,
+      contentType: response.headers.get("content-type"),
+      text: await response.text(),
+    };
   });
 }
 
@@ -76,12 +115,22 @@ export async function forwardAuthoringRequest(
   }
   const fetchImpl = config.fetchImpl ?? fetch;
   const apiBase = base;
+  let timeoutMs: number;
+  try {
+    timeoutMs = resolveUpstreamTimeoutMs(config.upstreamTimeoutMs);
+  } catch {
+    // A malformed budget is a deployment error. Answer like a missing origin
+    // instead of letting a typo become an unbounded wait.
+    return errorResponse("SERVICE_UNAVAILABLE", "The API service is not configured correctly.", 503);
+  }
 
   const refreshToken = refreshTokenFrom(request);
   let accessToken = accessTokenFrom(request);
   let rotated: TokenSet | null | undefined = null;
   let clearCookies = false;
-  let upstream: Response;
+  /** A complete answer that is not the resource reply (identity check, failure). */
+  let reply: Response | undefined;
+  let upstream: BufferedUpstream | undefined;
 
   // An optional restrictive precondition, never an identity supplied by the
   // client: compare the API's verified /me to the editor's expected actor using
@@ -93,13 +142,19 @@ export async function forwardAuthoringRequest(
   // 200, which would bypass the usual 401-triggered refresh. With any session
   // credential present, verify /me first; a genuinely anonymous read skips it.
   const verifyViewer = verifyViewerIfPresent && Boolean(accessToken || refreshToken);
-  async function guardedCall(token: string | undefined): Promise<Response> {
+  async function guardedCall(token: string | undefined): Promise<BufferedUpstream | Response> {
     if (expectedActorId !== undefined || verifyViewer) {
-      const identity = await callApi(fetchImpl, apiBase, "api/v1/me", "GET", undefined, token, contentType, null);
-      if (!identity.ok) return identity;
-      const payload: unknown = await identity.json().catch(() => null);
-      const data = typeof payload === "object" && payload !== null && "data" in payload
-        ? (payload as { data?: unknown }).data : null;
+      const identity = await callApi(fetchImpl, apiBase, "api/v1/me", "GET", undefined, token, contentType, null, timeoutMs);
+      if (identity.status < 200 || identity.status > 299) {
+        return new Response(identity.text, {
+          status: identity.status,
+          headers: new Headers({
+            "cache-control": NO_STORE,
+            "content-type": identity.contentType ?? "application/json; charset=utf-8",
+          }),
+        });
+      }
+      const data = dataFromText(identity.text);
       const id = typeof data === "object" && data !== null && "id" in data
         ? (data as { id?: unknown }).id : null;
       if (typeof id !== "string" || id.length === 0) {
@@ -109,12 +164,28 @@ export async function forwardAuthoringRequest(
         return errorResponse("ACCOUNT_CHANGED", "The signed-in account changed. Sign in to the original account.", 409);
       }
     }
-    return callApi(fetchImpl, apiBase, path, method, body, token, contentType, request.headers.get("idempotency-key"));
+    return callApi(
+      fetchImpl,
+      apiBase,
+      path,
+      method,
+      body,
+      token,
+      contentType,
+      request.headers.get("idempotency-key"),
+      timeoutMs,
+    );
   }
 
   try {
-    upstream = await guardedCall(accessToken);
-    if (upstream.status === 401 && refreshToken) {
+    const first = await guardedCall(accessToken);
+    // Either shape can be a 401: the resource itself, or the preceding /me
+    // precondition (which is answered by the identity service and can expire
+    // first). Both mean "this credential is stale, try one rotation".
+    if (first.status !== 401 || !refreshToken) {
+      if (first instanceof Response) reply = first;
+      else upstream = first;
+    } else {
       // Retry exactly once: a refresh loop would hammer the identity service and
       // could replay a mutation more than once. Every request carrying this same
       // stale credential pair joins one rotation instead of consuming the token
@@ -122,26 +193,46 @@ export async function forwardAuthoringRequest(
       const key = await refreshCoordinatorKey(base, refreshToken, accessToken);
       const refreshAttempt = await coordinatorFor(config).resolve(
         key,
-        () => upgradeSession(fetchImpl, base, refreshToken),
+        () => upgradeSession(fetchImpl, base, refreshToken, timeoutMs),
       );
       if (refreshAttempt) {
         rotated = refreshAttempt;
         accessToken = refreshAttempt.accessToken;
-        upstream = await guardedCall(accessToken);
-      } else if (refreshAttempt === null) {
-        // A rejected refresh token means the session is over: clear it instead of
-        // leaving the browser to retry with a credential the API already refused.
-        clearCookies = true;
+        const retried = await guardedCall(accessToken);
+        if (retried instanceof Response) reply = retried;
+        else upstream = retried;
+      } else {
+        if (refreshAttempt === null) {
+          // A rejected refresh token means the session is over: clear it instead of
+          // leaving the browser to retry with a credential the API already refused.
+          clearCookies = true;
+        }
+        // Pass the original 401 through: it failed for a reason this proxy cannot
+        // improve on, and the refresh proved nothing about the session.
+        if (first instanceof Response) reply = first;
+        else upstream = first;
       }
     }
-  } catch {
-    return errorResponse("SERVICE_UNAVAILABLE", "The API service could not be reached.", 502);
+  } catch (error) {
+    reply = error instanceof UpstreamTimeoutError
+      ? errorResponse("UPSTREAM_TIMEOUT", "The API service did not answer in time.", 504)
+      : errorResponse("SERVICE_UNAVAILABLE", "The API service could not be reached.", 502);
   }
 
-  const headers = new Headers({ "cache-control": NO_STORE });
-  headers.set("content-type", upstream.headers.get("content-type") ?? "application/json; charset=utf-8");
-  const text = await upstream.text();
-  const response = new Response(text, { status: upstream.status, headers });
+  let response: Response;
+  if (reply) {
+    response = reply;
+  } else if (upstream) {
+    response = new Response(upstream.text, {
+      status: upstream.status,
+      headers: new Headers({
+        "cache-control": NO_STORE,
+        "content-type": upstream.contentType ?? "application/json; charset=utf-8",
+      }),
+    });
+  } else {
+    response = errorResponse("SERVICE_UNAVAILABLE", "The API service could not be reached.", 502);
+  }
 
   if (rotated) {
     for (const cookie of tokenCookieHeaders(request, rotated)) response.headers.append("set-cookie", cookie);
@@ -169,20 +260,41 @@ export function forwardViewerRead(request: Request, path: string, config: ApiPro
  * refresh failed in a way that proves nothing about the session (network error or
  * 5xx), where the original 401 must simply be passed through.
  */
-async function upgradeSession(fetchImpl: FetchImpl, base: string, refreshToken: string): Promise<TokenSet | null | undefined> {
-  let response: Response;
+async function upgradeSession(
+  fetchImpl: FetchImpl,
+  base: string,
+  refreshToken: string,
+  timeoutMs: number,
+): Promise<TokenSet | null | undefined> {
+  let result: BufferedUpstream;
   try {
-    response = await fetchImpl(apiUrl(base, "api/v1/auth/refresh"), {
-      method: "POST",
-      headers: { accept: "application/json", "content-type": "application/json; charset=utf-8" },
-      body: JSON.stringify({ refreshToken }),
-      cache: "no-store",
+    // The rotation has its own budget. A timeout here (like a network failure)
+    // proves nothing about the session, so the original 401 is passed through
+    // instead of clearing a credential that may still be valid upstream.
+    result = await withUpstreamDeadline(timeoutMs, async (signal) => {
+      const response = await fetchImpl(apiUrl(base, "api/v1/auth/refresh"), {
+        method: "POST",
+        headers: { accept: "application/json", "content-type": "application/json; charset=utf-8" },
+        body: JSON.stringify({ refreshToken }),
+        cache: "no-store",
+        signal,
+      });
+      return {
+        status: response.status,
+        contentType: response.headers.get("content-type"),
+        text: await response.text(),
+      };
     });
   } catch {
     return undefined;
   }
-  const payload = await readPayload(response);
-  if (response.ok && isTokenEnvelope(payload)) return payload.data;
-  if (response.status === 400 || response.status === 401) return null;
+  let payload: unknown = null;
+  try {
+    payload = JSON.parse(result.text) as unknown;
+  } catch {
+    payload = null;
+  }
+  if (result.status >= 200 && result.status <= 299 && isTokenEnvelope(payload)) return payload.data;
+  if (result.status === 400 || result.status === 401) return null;
   return undefined;
 }

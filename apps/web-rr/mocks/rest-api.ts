@@ -447,11 +447,22 @@ async function readJson(request: IncomingMessage): Promise<Record<string, unknow
   }
 }
 
+/**
+ * A query value that makes the mock never answer.
+ *
+ * `handle` returns without writing a single byte and without closing the socket,
+ * which is exactly the failure the Web tier's upstream budget exists for: an API
+ * that accepted the connection and then went quiet. No page sends it.
+ */
+export const MOCK_STALL_QUERY = "__stall__";
+
 function handle(request: IncomingMessage, response: ServerResponse, body: Record<string, unknown>): void {
   const url = new URL(request.url ?? "/", "http://mock.invalid");
   const method = request.method ?? "GET";
   const path = url.pathname;
   const locale = localeOf(url);
+
+  if (url.searchParams.get("query") === MOCK_STALL_QUERY) return;
 
   if (method === "GET" && path === "/api/v1/articles") {
     const query = url.searchParams.get("query") ?? "";
