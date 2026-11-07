@@ -403,7 +403,7 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
     }
   },
   "comments.item": async (ctx: RestRouteContext): Promise<void> => {
-    const { request, response, services, env, routeParams } = ctx;
+    const { request, response, url, services, env, routeParams } = ctx;
     if (!services) {
       sendUnavailable(response);
       return;
@@ -411,6 +411,53 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
     const commentId = decodeUserId(routeParams.id);
     if (!commentId) {
       sendBadInput(response, "Invalid comment ID.");
+      return;
+    }
+    if (request.method === "PATCH") {
+      // `locale` selects the edition to answer in, exactly as the thread read
+      // does; the comment itself belongs to the work, not to one translation.
+      const locale = parseLocale(url);
+      if (!locale) {
+        sendBadInput(response, "Invalid locale query parameter.");
+        return;
+      }
+      const bodyResult = await readJsonObject(request);
+      if (bodyResult.ok === false) {
+        sendJsonBodyError(response, request, bodyResult);
+        return;
+      }
+      const normalized = normalizeCommentWriteBody(bodyResult.value);
+      if (!normalized.input) {
+        sendBadInput(response, normalized.error ?? "Invalid comment input.");
+        return;
+      }
+      if (normalized.input.parentCommentId !== null) {
+        // An edit replaces text. Moving a reply to another comment would rewrite
+        // the thread it answered, and the create route is the only place a parent
+        // is chosen.
+        sendBadInput(response, "parentCommentId cannot be changed by an edit.");
+        return;
+      }
+      try {
+        const actorId = await authenticatedActorId(request, services, env);
+        if (!actorId) {
+          sendUnauthenticated(response);
+          return;
+        }
+        const updated = await services.updateArticleComment({
+          commentId, actorId, locale,
+          content: normalized.input.content,
+          contentBlocks: normalized.input.contentBlocks,
+          contentBlocksVersion: normalized.input.contentBlocksVersion,
+        });
+        if (!updated) {
+          sendJson(response, 404, { error: { code: "NOT_FOUND", message: "The comment was not found." } });
+          return;
+        }
+        sendJson(response, 200, { data: await serializeRestComment(services, updated, actorId) });
+      } catch (error: unknown) {
+        sendServiceError(response, error);
+      }
       return;
     }
     try {

@@ -19,6 +19,7 @@ type MappedComment = {
   contentBlocksVersion: number;
   createdAt: string;
   updatedAt: string;
+  editedAt: string | null;
   locale: string;
   replies: MappedComment[];
 };
@@ -65,6 +66,7 @@ export function createSqliteEngagementStore(db: SqliteRunner) {
       contentBlocks: row.content_blocks == null ? null : JSON.parse(row.content_blocks),
       contentBlocksVersion: Number(row.content_blocks_version ?? 0),
       createdAt: isoDate(row.created_at), updatedAt: isoDate(row.updated_at),
+      editedAt: row.edited_at == null ? null : isoDate(row.edited_at),
       locale: row.locale, replies: [],
     };
   }
@@ -128,7 +130,7 @@ export function createSqliteEngagementStore(db: SqliteRunner) {
     listArticleComments({ slug, locale = "zh-CN", limit = 50 }) {
       validateArticleSlug(slug); validateArticleLocale(locale);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
-      const rows = all("WITH RECURSIVE target_article AS (SELECT a.id FROM articles a JOIN article_translations t ON t.article_id = a.id WHERE a.slug = ? AND a.status = 'published' AND t.locale = ?), root_comments AS (SELECT c.id, c.article_id, c.author_id, c.parent_comment_id, c.content, c.content_blocks, c.content_blocks_version, c.created_at, c.updated_at, 0 AS depth FROM article_comments c JOIN target_article a ON a.id = c.article_id WHERE c.parent_comment_id IS NULL ORDER BY c.created_at ASC, c.id ASC LIMIT ?), comment_tree AS (SELECT * FROM root_comments UNION ALL SELECT child.id, child.article_id, child.author_id, child.parent_comment_id, child.content, child.content_blocks, child.content_blocks_version, child.created_at, child.updated_at, parent.depth + 1 FROM article_comments child JOIN comment_tree parent ON child.parent_comment_id = parent.id WHERE parent.depth < 10) SELECT id, article_id, author_id, parent_comment_id, content, content_blocks, content_blocks_version, created_at, updated_at, depth FROM comment_tree ORDER BY created_at ASC, id ASC", slug, locale, limit);
+      const rows = all("WITH RECURSIVE target_article AS (SELECT a.id FROM articles a JOIN article_translations t ON t.article_id = a.id WHERE a.slug = ? AND a.status = 'published' AND t.locale = ?), root_comments AS (SELECT c.id, c.article_id, c.author_id, c.parent_comment_id, c.content, c.content_blocks, c.content_blocks_version, c.created_at, c.updated_at, c.edited_at, 0 AS depth FROM article_comments c JOIN target_article a ON a.id = c.article_id WHERE c.parent_comment_id IS NULL ORDER BY c.created_at ASC, c.id ASC LIMIT ?), comment_tree AS (SELECT * FROM root_comments UNION ALL SELECT child.id, child.article_id, child.author_id, child.parent_comment_id, child.content, child.content_blocks, child.content_blocks_version, child.created_at, child.updated_at, child.edited_at, parent.depth + 1 FROM article_comments child JOIN comment_tree parent ON child.parent_comment_id = parent.id WHERE parent.depth < 10) SELECT id, article_id, author_id, parent_comment_id, content, content_blocks, content_blocks_version, created_at, updated_at, edited_at, depth FROM comment_tree ORDER BY created_at ASC, id ASC", slug, locale, limit);
       const nodes = new Map<string, MappedComment>();
       for (const row of rows) nodes.set(row.id, mapComment({ ...row, locale }));
       const roots: MappedComment[] = [];
@@ -189,6 +191,40 @@ export function createSqliteEngagementStore(db: SqliteRunner) {
         return mapComment({ ...row, locale });
       });
     },
+    /**
+     * Correct a comment's own words (ADR 0031).
+     *
+     * Only the author may do this, and the answer for "not yours" is the same
+     * error deletion raises — a different answer here would let a caller probe
+     * which comment ids exist. `parent_comment_id`, `created_at` and the
+     * idempotency record are untouched: an edit replaces text, it does not create
+     * a new comment or move a reply out of its thread. `edited_at` is stamped
+     * once per write so a reader can see the text changed, and the previous text
+     * is not retained.
+     */
+    updateArticleComment({ commentId, actorId, content, locale = "zh-CN", contentBlocks = null, contentBlocksVersion = 0 }) {
+      if (!isUuid(commentId)) throw new ArticleInputError("commentId must be a valid comment ID.");
+      validateActor(actorId);
+      validateArticleLocale(locale);
+      const normalizedContent = validateStoredCommentContent({ content, contentBlocks, contentBlocksVersion });
+      return transaction((transactionId) => {
+        const row = get("SELECT author_id FROM article_comments WHERE id = ?", commentId);
+        if (!row) return null;
+        if (row.author_id !== actorId) throw new ArticleAuthorizationError("You can edit only your own comment.");
+        run(
+          "UPDATE article_comments SET content = ?, content_blocks = ?, content_blocks_version = ?, edited_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
+          normalizedContent.content,
+          normalizedContent.contentBlocks === null ? null : JSON.stringify(normalizedContent.contentBlocks),
+          normalizedContent.contentBlocksVersion,
+          commentId,
+        );
+        const updated = one("SELECT * FROM article_comments WHERE id = ?", commentId);
+        migrationCapture.captureInTransaction(db, transactionId, [
+          { entityType: "article_comments", entityId: commentId, operation: "upsert", payload: updated },
+        ]);
+        return mapComment({ ...updated, locale });
+      });
+    },
     deleteArticleComment({ commentId, actorId }) {
       if (!isUuid(commentId)) throw new ArticleInputError("commentId must be a valid comment ID.");
       validateActor(actorId);
@@ -225,5 +261,5 @@ export function createSqliteEngagementStore(db: SqliteRunner) {
         articleId, limit,
       ).map((row) => String(row.authorId));
     },
-  }) satisfies Pick<TypedPersistenceAdapterContract, "getArticleLikeInfo" | "toggleArticleLike" | "setArticleLike" | "listArticleComments" | "createArticleComment" | "deleteArticleComment" | "listArticleCommentAuthorIds">;
+  }) satisfies Pick<TypedPersistenceAdapterContract, "getArticleLikeInfo" | "toggleArticleLike" | "setArticleLike" | "listArticleComments" | "createArticleComment" | "updateArticleComment" | "deleteArticleComment" | "listArticleCommentAuthorIds">;
 }

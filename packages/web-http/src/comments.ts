@@ -23,6 +23,17 @@ import { isSameOriginMutation } from "./policy.ts";
 /** Article slugs are lowercase kebab-case; the shape is checked before proxying. */
 export const COMMENT_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
+/**
+ * Comment ids are UUIDs, because the API mints them.
+ *
+ * Unlike slugs the API accepts any bounded opaque id, so this check would reject
+ * an id a direct API client could address. That is the point: every comment the
+ * browser can edit was created by the API, so a value that is not a UUID cannot
+ * name one, and refusing it here keeps junk out of the upstream request and out
+ * of the rate-limit buckets that key on the route.
+ */
+export const COMMENT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
 /** Locales the comment thread is served in. */
 export const COMMENT_LOCALES: readonly string[] = Object.freeze(["zh-CN", "zh-TW", "en"]);
 
@@ -90,4 +101,45 @@ export async function handleArticleCommentsRequest(
   const body = await readLimitedJson(request, COMMENT_BODY_MAX_BYTES);
   if (!body.ok) return body.response;
   return forwardAuthoringRequest(request, path, "POST", config, body.text);
+}
+
+/**
+ * Proxy `PATCH /api/comments/:id` — correcting a comment's own words (ADR 0031).
+ *
+ * A separate handler rather than another method on the thread path: the thread is
+ * addressed by slug (public, cacheable-read shape) and a comment by id, and one
+ * function that accepts both would have to decide which of two routes a request
+ * is aiming at from its path. Authorization is still the cookie: the API decides
+ * whether the caller is the comment's author, and this layer only refuses
+ * requests that cannot be one of ours.
+ */
+export async function handleCommentUpdateRequest(
+  request: Request,
+  params: { id: string; locale?: string | null },
+  config: ApiProxyConfig = {},
+): Promise<Response> {
+  if (request.method !== "PATCH") {
+    return errorResponse("METHOD_NOT_ALLOWED", "Only PATCH is supported for a comment.", 405);
+  }
+  const sameOrigin = isSameOriginMutation(
+    request.url,
+    request.headers.get("origin"),
+    request.headers.get("host"),
+  );
+  if (!sameOrigin) {
+    return errorResponse("ORIGIN_REJECTED", "The request origin was rejected.", 403);
+  }
+  const locale = params.locale?.trim() || COMMENT_DEFAULT_LOCALE;
+  if (!COMMENT_ID_PATTERN.test(params.id) || !isCommentLocale(locale)) {
+    return errorResponse("BAD_USER_INPUT", "Invalid comment id or locale.", 400);
+  }
+  const body = await readLimitedJson(request, COMMENT_BODY_MAX_BYTES);
+  if (!body.ok) return body.response;
+  return forwardAuthoringRequest(
+    request,
+    "api/v1/comments/" + encodeURIComponent(params.id) + "?locale=" + encodeURIComponent(locale),
+    "PATCH",
+    config,
+    body.text,
+  );
 }

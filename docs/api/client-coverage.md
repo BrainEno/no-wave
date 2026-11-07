@@ -53,6 +53,7 @@
 |---|---|---|
 | `GET /articles/:slug/comments` | `articles.comments` | ✅ |
 | `POST /articles/:slug/comments`（带 `Idempotency-Key`）| `articles.comments` | ✅ |
+| `PATCH /comments/:id`（修改自己的评论，[ADR 0031](../architecture/decisions/0031-comment-edits.md)）| `comments.item` (PATCH) | ✅ |
 | `DELETE /comments/:id` | `comments.item` | ✅ |
 | `GET /articles/:slug/like` | `articles.like` (GET) | ✅ |
 | `PUT /articles/:slug/like` | `articles.like` (PUT) | ✅ |

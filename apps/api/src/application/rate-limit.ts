@@ -45,6 +45,9 @@ const POLICIES: Readonly<Record<string, WriteRateLimitPolicy>> = Object.freeze({
   "POST articles.restore": { endpoint: "article.restore", windowSeconds: 60, ipLimit: 60, userLimit: 20 },
   "PUT articles.like": { endpoint: "article.like.set", windowSeconds: 60, ipLimit: 120, userLimit: 60 },
   "POST articles.comments": { endpoint: "comment.create", windowSeconds: 60, ipLimit: 60, userLimit: 20 },
+  // An edit writes one row and sends no notification, so it is throttled like the
+  // delete next to it rather than like a creation.
+  "PATCH comments.item": { endpoint: "comment.update", windowSeconds: 60, ipLimit: 120, userLimit: 60 },
   "DELETE comments.item": { endpoint: "comment.delete", windowSeconds: 60, ipLimit: 120, userLimit: 60 },
   "POST me.media": { endpoint: "media.upload", windowSeconds: 3600, ipLimit: 20, userLimit: 10 },
   // Every media (row) delete is guarded by a reference check; since #217 that

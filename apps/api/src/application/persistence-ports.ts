@@ -42,7 +42,7 @@ export const persistencePortMethods = Object.freeze({
   ] as const),
   engagement: Object.freeze([
     "getArticleLikeInfo", "toggleArticleLike", "setArticleLike",
-    "listArticleComments", "createArticleComment", "deleteArticleComment",
+    "listArticleComments", "createArticleComment", "updateArticleComment", "deleteArticleComment",
     "listArticleCommentAuthorIds",
   ] as const),
   conversations: Object.freeze([
@@ -113,7 +113,10 @@ export type StoredArticleLikeInfo = {
 export type StoredArticleComment = {
   id: string; articleId: string; authorId: string; parentCommentId: string | null;
   content: string; contentBlocks: unknown; contentBlocksVersion: number;
-  createdAt: string; updatedAt: string; locale: string; replies: StoredArticleComment[];
+  createdAt: string; updatedAt: string;
+  /** When the author last corrected the text, or `null` for a comment as written. */
+  editedAt: string | null;
+  locale: string; replies: StoredArticleComment[];
 };
 export type StoredMessage = {
   id: string; conversationId: string; senderId: string; body: string;
@@ -241,6 +244,18 @@ export type CreateArticleCommentInput = {
   locale?: string; contentBlocks?: unknown[] | null; contentBlocksVersion?: number;
   parentCommentId?: string | null; idempotencyKey?: string | null;
 };
+/**
+ * A correction of a comment's own words.
+ *
+ * `parentCommentId` is absent on purpose: an edit replaces text, it does not move
+ * a reply out of the thread it answered. `locale` is the edition the caller is
+ * addressing and is used for the response projection only — a comment belongs to
+ * the work, not to one translation of it.
+ */
+export type UpdateArticleCommentInput = {
+  commentId: string; actorId: string; content: string;
+  locale?: string; contentBlocks?: unknown[] | null; contentBlocksVersion?: number;
+};
 export type DeleteArticleCommentInput = { commentId: string; actorId: string };
 export type ArticleCommentAuthorIdsInput = { articleId: string; limit?: number };
 export type CreateConversationInput = {
@@ -337,6 +352,14 @@ export type EngagementPersistencePort = {
   setArticleLike(input: SetArticleLikeInput): PersistenceResult<StoredArticleLikeInfo | null>;
   listArticleComments(input: ArticleCommentsInput): PersistenceResult<StoredArticleComment[]>;
   createArticleComment(input: CreateArticleCommentInput): PersistenceResult<StoredArticleComment>;
+  /**
+   * Replace a comment's content.
+   *
+   * `null` means "no such comment". A comment that exists and belongs to somebody
+   * else is an authorization error, exactly like deletion: the answer must not
+   * become a way to learn which ids exist.
+   */
+  updateArticleComment(input: UpdateArticleCommentInput): PersistenceResult<StoredArticleComment | null>;
   deleteArticleComment(input: DeleteArticleCommentInput): PersistenceResult<boolean>;
   listArticleCommentAuthorIds(input: ArticleCommentAuthorIdsInput): PersistenceResult<string[]>;
 };

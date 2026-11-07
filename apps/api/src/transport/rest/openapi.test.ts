@@ -23,7 +23,7 @@ import { REST_ROUTES, resolveRestRoute, type HttpMethod } from "./routes.ts";
  * would survive a bug in the generator: every route is in the document, every
  * documented path routes back to the table, every `$ref` resolves, and the two
  * claims about authentication (anonymous operations really declare no credential,
- * optional ones really offer both) hold for all 64 operations.
+ * optional ones really offer both) hold for all 65 operations.
  *
  * These run without a database or a server. `openapi.integration.test.ts` boots
  * one and checks the served document and the authentication claims against the

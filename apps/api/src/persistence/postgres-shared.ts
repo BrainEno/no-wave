@@ -156,6 +156,7 @@ export function mapArticleComment(row: PgRow) {
     contentBlocksVersion: Number(row.content_blocks_version ?? 0),
     createdAt: isoDate(row.created_at),
     updatedAt: isoDate(row.updated_at),
+    editedAt: isoDateOrNull(row.edited_at),
     locale: row.locale,
     replies: [],
   };

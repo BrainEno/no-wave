@@ -415,6 +415,9 @@ mark { background: var(--or); color: #0f0d0c; }
 .nw-comment-body p { margin: 12px 0; }
 .nw-comment-body a { text-decoration: underline; text-decoration-color: var(--or); text-underline-offset: 3px; }
 .nw-comment-body code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+/* 编辑过的标记（ADR 0031）：读者需要知道这段文字发表后改过，但不该被做成一枚徽章。 */
+.nw-comment-item header .nw-comment-edited { color: var(--t2); font-size: 12px; }
+.nw-comment-edit { margin-left: auto; min-height: 32px; padding: 2px 10px; font-size: 13px; }
 
 /* ---------- 划线（ADR 0021）：用 Custom Highlight API 上色，不改写读者看到的 DOM ---------- */
 ::highlight(nw-passage) { background: rgba(216, 84, 31, .16); }

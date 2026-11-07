@@ -102,7 +102,7 @@ header is documented on the operation, with the replay rules in
 | --- | --- |
 | Every route and method in the API is in the document, and nothing else is | `openapi.test.ts` builds both sets from the live route table and compares them |
 | Every documented path is routable by the dispatcher | the same test hands each documented path back to `resolveRestRoute` |
-| An operation documented as anonymous does not answer `401`, and a session-only `GET`/`DELETE` does answer `401` without a credential | `openapi.integration.test.ts` boots a real server and calls all 64 operations |
+| An operation documented as anonymous does not answer `401`, and a session-only `GET`/`DELETE` does answer `401` without a credential | `openapi.integration.test.ts` boots a real server and calls all 65 operations |
 | Every operation has a summary, an id, a success response and a `400` | `openapi.test.ts` |
 | Every `$ref` resolves; every path parameter is declared; no duplicate operation ids | `openapi.test.ts` |
 | The checked-in file is the served document | `scripts/openapi.test.ts` and `pnpm openapi:check` |
@@ -111,7 +111,7 @@ Deliberately outside the document's scope:
 
 - **Response headers.** Every JSON response carries `Cache-Control: no-store` and
   uploaded images carry an immutable policy; that is a property of the transport,
-  stated in the document's introduction rather than repeated on 64 operations.
+  stated in the document's introduction rather than repeated on 65 operations.
 - **Rate limits.** Write throttling is per account and per TCP peer with buckets
   defined in `apps/api/src/application/rate-limit.ts`; the numbers are operational
   settings, not part of the contract. See

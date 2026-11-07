@@ -13,6 +13,7 @@ import type { Locale } from "@/lib/content.ts";
 import { sanitizeEditorHref } from "@/lib/editor-href.ts";
 import { PromptDialog, type PromptDialogField } from "@/components/ui/prompt-dialog.tsx";
 import { articleBlocksToLexicalEditorState, type LexicalEditorStateJson } from "@/lib/lexical-article-state.ts";
+import { canEditComment, commentCopy, commentEditBody, commentEditPath, editedMarker } from "@/lib/comment-edit.ts";
 
 const COMMENT_LINK_FIELDS: readonly PromptDialogField[] = [
   {
@@ -29,10 +30,13 @@ type CommentRun = { text: string; marks?: string[]; href?: string };
 type CommentBlock = { id: string; type: "paragraph"; text: string; inlines?: CommentRun[] };
 type CommentView = {
   id: string;
+  authorId?: string;
   content: string;
   contentBlocks?: CommentBlock[] | null;
   contentBlocksVersion?: 0 | 1;
   createdAt: string;
+  /** Set by the API once the author has corrected the text (ADR 0031). */
+  editedAt?: string | null;
   author?: { displayName?: string; username?: string } | null;
   replies?: CommentView[];
 };
@@ -87,17 +91,74 @@ function renderCommentBlocks(comment: CommentView): ReactNode {
     ));
 }
 
-function CommentItem({ comment, locale }: { comment: CommentView; locale: Locale }) {
+/** The blocks an edit starts from: the stored ones, or the plain text as paragraphs. */
+function blocksForEdit(comment: CommentView): CommentBlock[] {
+  if (Array.isArray(comment.contentBlocks) && comment.contentBlocks.length > 0) return comment.contentBlocks;
+  return comment.content
+    .split("\n")
+    .filter((line) => line.trim().length > 0)
+    .slice(0, 20)
+    .map((line, index) => ({ id: "comment-" + comment.id + "-" + index, type: "paragraph" as const, text: line }));
+}
+
+type EditHandler = (comment: CommentView, editorState: LexicalEditorStateJson) => Promise<boolean>;
+
+function CommentItem({ comment, locale, viewerId, onEdit }: {
+  comment: CommentView;
+  locale: Locale;
+  viewerId: string | null;
+  onEdit: EditHandler;
+}) {
+  const copy = commentCopy(locale);
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
   const timestamp = Date.parse(comment.createdAt);
   const date = Number.isFinite(timestamp) ? new Date(timestamp).toLocaleString(locale === "en" ? "en-US" : "zh-CN") : "";
+  const marker = editedMarker(locale, comment);
+  const editable = canEditComment(viewerId, comment);
+
+  async function save(state: LexicalEditorStateJson): Promise<boolean> {
+    setBusy(true);
+    try {
+      const saved = await onEdit(comment, state);
+      if (saved) setEditing(false);
+      return saved;
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <article className="nw-comment-item">
       <header>
         <strong>{comment.author?.displayName || comment.author?.username || "读者"}</strong>
         <time dateTime={comment.createdAt}>{date}</time>
+        {marker ? <span className="nw-comment-edited" title={locale === "en" ? "Changed after it was posted" : "发表后修改过"}>· {marker}</span> : null}
+        {editable && !editing ? (
+          <button className="nw-btn nw-comment-edit" type="button" onClick={() => setEditing(true)}>{copy.edit}</button>
+        ) : null}
       </header>
-      <div className="nw-comment-body">{renderCommentBlocks(comment)}</div>
-      {comment.replies?.length ? <div className="nw-comment-replies">{comment.replies.map((reply) => <CommentItem key={reply.id} comment={reply} locale={locale} />)}</div> : null}
+      {editing ? (
+        <CommentComposer
+          resetKey={0}
+          initialBlocks={blocksForEdit(comment)}
+          submitLabel={copy.save}
+          busyLabel={copy.saving}
+          onCancel={() => setEditing(false)}
+          cancelLabel={copy.cancel}
+          onSubmit={save}
+          busy={busy}
+        />
+      ) : (
+        <div className="nw-comment-body">{renderCommentBlocks(comment)}</div>
+      )}
+      {comment.replies?.length ? (
+        <div className="nw-comment-replies">
+          {comment.replies.map((reply) => (
+            <CommentItem key={reply.id} comment={reply} locale={locale} viewerId={viewerId} onEdit={onEdit} />
+          ))}
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -159,12 +220,23 @@ const commentTheme = {
   text: { bold: "nw-lexical-bold", italic: "nw-lexical-italic", underline: "nw-lexical-underline", strikethrough: "nw-lexical-strikethrough", code: "nw-lexical-inline-code" },
 };
 
-function CommentComposer({ resetKey, onSubmit, busy }: {
+function CommentComposer({ resetKey, onSubmit, busy, initialBlocks, submitLabel, busyLabel, cancelLabel, onCancel }: {
   resetKey: number;
   onSubmit(state: LexicalEditorStateJson): Promise<boolean>;
   busy: boolean;
+  /** Prefills the editor; used by an edit, absent for a new comment. */
+  initialBlocks?: CommentBlock[] | null;
+  submitLabel?: string;
+  busyLabel?: string;
+  cancelLabel?: string;
+  onCancel?: () => void;
 }) {
-  const initialState = useMemo(() => articleBlocksToLexicalEditorState([{ id: "comment-empty", type: "paragraph", text: "" }]), []);
+  const initialState = useMemo(
+    () => articleBlocksToLexicalEditorState(
+      initialBlocks && initialBlocks.length > 0 ? initialBlocks : [{ id: "comment-empty", type: "paragraph", text: "" }],
+    ),
+    [initialBlocks],
+  );
   const [editorState, setEditorState] = useState<LexicalEditorStateJson>(initialState);
   const extension = useMemo(() => defineExtension({
     name: "@no-wave/comment-composition",
@@ -217,13 +289,20 @@ function CommentComposer({ resetKey, onSubmit, busy }: {
       />
       {formError ? <p className="nw-auth-error" role="alert">{formError}</p> : null}
       <div className="nw-authoring-actions">
-        <button className="nw-btn nw-pri" type="submit" disabled={busy}>{busy ? "正在提交…" : "提交评论"}</button>
+        <button className="nw-btn nw-pri" type="submit" disabled={busy}>
+          {busy ? (busyLabel ?? "正在提交…") : (submitLabel ?? "提交评论")}
+        </button>
+        {onCancel ? (
+          <button className="nw-btn" type="button" onClick={onCancel} disabled={busy}>{cancelLabel ?? "取消"}</button>
+        ) : null}
       </div>
     </form>
   );
 }
 
 export function ArticleComments({ slug, locale }: { slug: string; locale: Locale }) {
+  const copy = commentCopy(locale);
+  const [viewerId, setViewerId] = useState<string | null>(null);
   const [comments, setComments] = useState<CommentView[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [busy, setBusy] = useState(false);
@@ -240,6 +319,27 @@ export function ArticleComments({ slug, locale }: { slug: string; locale: Locale
     setComments(data.filter(isComment));
     setState("ready");
   }, [slug, locale]);
+
+  /**
+   * Who is reading, if anyone.
+   *
+   * Only used to decide whether to offer the edit button — the API is the thing
+   * that decides whether an edit is allowed, and it answers 403 for somebody
+   * else's comment. The session endpoint answers 401 for a visitor, which is a
+   * fact about the page, not an error to report.
+   */
+  useEffect(() => {
+    let active = true;
+    fetch("/api/authoring/session", { credentials: "same-origin", cache: "no-store" })
+      .then(async (response) => (response.ok ? await response.json().catch(() => null) : null))
+      .then((payload: unknown) => {
+        if (!active || !isRecord(payload) || !isRecord(payload.data)) return;
+        const id = payload.data.id;
+        if (typeof id === "string" && id.length > 0) setViewerId(id);
+      })
+      .catch(() => { /* an anonymous reader simply gets no edit buttons */ });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -281,13 +381,47 @@ export function ArticleComments({ slug, locale }: { slug: string; locale: Locale
     }
   }
 
+  async function edit(comment: CommentView, editorState: LexicalEditorStateJson): Promise<boolean> {
+    setError("");
+    setStatus("");
+    try {
+      const response = await fetch(commentEditPath(comment.id, locale), {
+        method: "PATCH",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        credentials: "same-origin",
+        cache: "no-store",
+        body: JSON.stringify(commentEditBody(editorState)),
+      });
+      const payload: unknown = await response.json().catch(() => null);
+      if (response.status === 401) {
+        setError(copy.signInToEdit);
+        return false;
+      }
+      if (!response.ok) throw new Error(readError(payload));
+      setStatus(copy.updated);
+      try { await reload(); } catch {
+        setStatus(copy.staleList);
+      }
+      return true;
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : copy.failed);
+      return false;
+    }
+  }
+
   return (
     <section className="nw-comment-section" aria-labelledby="nw-comments-title">
       <h2 id="nw-comments-title">回应 / Comments</h2>
       {state === "loading" ? <p className="nw-m" role="status">正在载入评论……</p> : null}
       {state === "error" ? <p className="nw-auth-error" role="alert">{error}</p> : null}
       {state === "ready" && comments.length === 0 ? <p className="nw-m">还没有评论，欢迎留下第一条回应。</p> : null}
-      {comments.length > 0 ? <div className="nw-comment-list">{comments.map((comment) => <CommentItem key={comment.id} comment={comment} locale={locale} />)}</div> : null}
+      {comments.length > 0 ? (
+        <div className="nw-comment-list">
+          {comments.map((comment) => (
+            <CommentItem key={comment.id} comment={comment} locale={locale} viewerId={viewerId} onEdit={edit} />
+          ))}
+        </div>
+      ) : null}
       <h3>写下你的回应</h3>
       <CommentComposer key={resetKey} resetKey={resetKey} onSubmit={submit} busy={busy} />
       {status ? <p role="status" className="nw-auth-status">{status}</p> : null}

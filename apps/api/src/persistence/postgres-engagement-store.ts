@@ -131,7 +131,8 @@ export function createPostgresEngagementStore(ctx: PostgresStoreContext) {
         ),
         root_comments AS (
           SELECT c.id, c.article_id, c.author_id, c.parent_comment_id, c.content,
-                 c.content_blocks, c.content_blocks_version, c.created_at, c.updated_at, 0::int AS depth
+                 c.content_blocks, c.content_blocks_version, c.created_at, c.updated_at,
+                 c.edited_at, 0::int AS depth
           FROM article_comments AS c
           JOIN target_article AS a ON a.id = c.article_id
           WHERE c.parent_comment_id IS NULL
@@ -143,13 +144,13 @@ export function createPostgresEngagementStore(ctx: PostgresStoreContext) {
           UNION ALL
           SELECT child.id, child.article_id, child.author_id, child.parent_comment_id,
                  child.content, child.content_blocks, child.content_blocks_version,
-                 child.created_at, child.updated_at, parent.depth + 1
+                 child.created_at, child.updated_at, child.edited_at, parent.depth + 1
           FROM article_comments AS child
           JOIN comment_tree AS parent ON child.parent_comment_id = parent.id
           WHERE parent.depth < 10
         )
         SELECT id, article_id, author_id, parent_comment_id, content,
-               content_blocks, content_blocks_version, created_at, updated_at, depth
+               content_blocks, content_blocks_version, created_at, updated_at, edited_at, depth
         FROM comment_tree
         ORDER BY created_at ASC, id ASC`,
         [slug, locale, limit],
@@ -256,6 +257,50 @@ export function createPostgresEngagementStore(ctx: PostgresStoreContext) {
       });
     },
 
+    /**
+     * Correct a comment's own words (ADR 0031).
+     *
+     * The row is locked `FOR UPDATE` before the ownership check so a delete and an
+     * edit of the same comment cannot interleave into an edit that resurrects a
+     * deleted row or a delete that loses an edit's journal entry. The text is
+     * replaced, the author, the parent link, `created_at` and the idempotency
+     * record stay as they were; `edited_at` records that a reader is looking at
+     * corrected text. No notification is emitted: an edit is not an event the
+     * thread should be pinged about, and re-notifying would hand any author a way
+     * to page everyone in it.
+     */
+    async updateArticleComment({ commentId, actorId, content, locale = "zh-CN", contentBlocks = null, contentBlocksVersion = 0 }) {
+      if (!isUuid(commentId)) throw new ArticleInputError("commentId must be a valid comment ID.");
+      requiredText("actorId", actorId, 300);
+      validateArticleLocale(locale);
+      const normalizedContent = validateStoredCommentContent({ content, contentBlocks, contentBlocksVersion });
+      return sql.begin(async (tx) => {
+        const transactionId = createMigrationTransactionId();
+        const owned = await tx.unsafe(
+          "SELECT author_id FROM article_comments WHERE id = $1 FOR UPDATE",
+          [commentId],
+        );
+        if (owned.length === 0) return null;
+        if (owned[0].author_id !== actorId) throw new ArticleAuthorizationError("You can edit only your own comment.");
+        const updated = await tx.unsafe(
+          `UPDATE article_comments
+           SET content = $2, content_blocks = $3::jsonb, content_blocks_version = $4,
+               edited_at = now(), updated_at = now()
+           WHERE id = $1
+           RETURNING *`,
+          [commentId, normalizedContent.content,
+            normalizedContent.contentBlocks === null ? null : normalizedContent.contentBlocks,
+            normalizedContent.contentBlocksVersion],
+        );
+        const comment = updated[0];
+        if (!comment) throw new Error("Comment update did not return a row.");
+        await captureChanges(tx, transactionId, [
+          { entityType: "article_comments", entityId: commentId, operation: "upsert", payload: comment },
+        ]);
+        return mapArticleComment({ ...comment, locale });
+      });
+    },
+
     async deleteArticleComment({ commentId, actorId }) {
       if (!isUuid(commentId)) throw new ArticleInputError("commentId must be a valid comment ID.");
       requiredText("actorId", actorId, 300);
@@ -297,5 +342,5 @@ export function createPostgresEngagementStore(ctx: PostgresStoreContext) {
       return rows.map((row) => String(row.author_id));
     },
 
-  }) satisfies Pick<TypedPersistenceAdapterContract, "getArticleLikeInfo" | "toggleArticleLike" | "setArticleLike" | "listArticleComments" | "createArticleComment" | "deleteArticleComment" | "listArticleCommentAuthorIds">;
+  }) satisfies Pick<TypedPersistenceAdapterContract, "getArticleLikeInfo" | "toggleArticleLike" | "setArticleLike" | "listArticleComments" | "createArticleComment" | "updateArticleComment" | "deleteArticleComment" | "listArticleCommentAuthorIds">;
 }

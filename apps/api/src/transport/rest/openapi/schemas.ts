@@ -249,7 +249,7 @@ export const SCHEMAS: Readonly<Record<string, JsonSchema>> = Object.freeze({
 
   Comment: {
     type: "object",
-    required: ["id", "articleId", "authorId", "content", "contentBlocks", "contentBlocksVersion", "createdAt", "locale", "replies"],
+    required: ["id", "articleId", "authorId", "content", "contentBlocks", "contentBlocksVersion", "createdAt", "editedAt", "locale", "replies"],
     properties: {
       id: TEXT,
       articleId: TEXT,
@@ -260,6 +260,10 @@ export const SCHEMAS: Readonly<Record<string, JsonSchema>> = Object.freeze({
       contentBlocksVersion: { type: "integer", enum: [0, 1] },
       createdAt: TIMESTAMP,
       updatedAt: TIMESTAMP,
+      editedAt: {
+        ...NULLABLE_TIMESTAMP,
+        description: "When the author last corrected the text, or `null` for a comment as written. Previous text is not retained (ADR 0031).",
+      },
       locale: { type: "string", enum: LOCALES },
       author: nullable(ref("AuthorProfile")),
       replies: { type: "array", items: { $ref: "#/components/schemas/Comment" } },
@@ -427,6 +431,21 @@ export const SCHEMAS: Readonly<Record<string, JsonSchema>> = Object.freeze({
       editorState: { type: "object", description: "Write-only serialized Lexical state." },
       contentBlocksVersion: { type: "integer", enum: [0, 1] },
       parentCommentId: nullable(TEXT),
+    },
+  },
+
+  /**
+   * A correction, not a new comment: no `parentCommentId`, because an edit may not
+   * move a reply out of the thread it answered.
+   */
+  CommentUpdate: {
+    type: "object",
+    description: "Exactly one of `content` (version 0 plain text) or `contentBlocks` / `editorState` (version 1 rich text). An edit replaces the text and stamps `editedAt`; it does not re-notify the thread.",
+    properties: {
+      content: { type: "string", maxLength: 5000 },
+      contentBlocks: { type: "array", items: { type: "object" } },
+      editorState: { type: "object", description: "Write-only serialized Lexical state." },
+      contentBlocksVersion: { type: "integer", enum: [0, 1] },
     },
   },
 
