@@ -1,11 +1,12 @@
 import { createServer } from "node:http";
 import { createRestHandler } from "./transport/rest/handler.ts";
 import { createApplicationServices } from "./application/services.ts";
-import { assertPersistenceAdapter } from "./application/persistence-ports.ts";
+import { assertPersistenceAdapter, type PersistenceAdapterContract } from "./application/persistence-ports.ts";
 import { createPersistenceRuntime, describePersistenceRuntime } from "./infrastructure/persistence-runtime.ts";
 import { createHttpObservability, writeStructuredLog } from "./infrastructure/http-observability.ts";
 import { redactDiagnostic, secretValues } from "./infrastructure/log-redaction.ts";
 import { createMediaAssetService } from "./application/media-assets.ts";
+import type { ApplicationServices } from "./application/services.ts";
 import { createMediaObjectStorage } from "./infrastructure/media-storage.ts";
 
 /** REST is the only business HTTP transport exposed by this API. */
@@ -16,6 +17,13 @@ export function createApiServer({
   logger = writeStructuredLog,
   observability: suppliedObservability = null,
   mediaAssets = null,
+}: {
+  env?: NodeJS.ProcessEnv;
+  store?: PersistenceAdapterContract | null;
+  applicationServices?: ApplicationServices | null;
+  logger?: typeof writeStructuredLog;
+  observability?: ReturnType<typeof createHttpObservability> | null;
+  mediaAssets?: ReturnType<typeof createMediaAssetService> | null;
 } = {}) {
   const observability = suppliedObservability ?? createHttpObservability({ logger });
   // Audit F-22: the cleanup sweeps and the deletion notices are background work,
@@ -49,7 +57,7 @@ export function createApiServer({
   return createServer(async (request, response) => {
     const startedAt = process.hrtime.bigint();
     const observation = observability.beginRequest(request, response);
-    let errorName;
+    let errorName: string | undefined;
     const finish = (statusCode = response.statusCode) => observation.finish({
       statusCode,
       durationMs: Number(process.hrtime.bigint() - startedAt) / 1_000_000,

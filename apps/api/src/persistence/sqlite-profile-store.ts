@@ -9,21 +9,31 @@ import { validateArticleLocale } from "../domain/article.ts";
 import { requiredText } from "../domain/validation.ts";
 import { AUTHOR_OFFSET_MAX, AUTHOR_QUERY_MAX_LENGTH, normalizeStoredRole, validateProfileUrl, validateUserRole } from "../domain/profile.ts";
 import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
+import { isoDate } from "./sqlite.ts";
+import type { SqliteRow, SqliteRunner } from "./sqlite.ts";
 
 /**
  * SQLite implementation of the author-profile and follow persistence slice.
  * This is intentionally not a complete persistence adapter and is not wired
  * into runtime until every persistence port has behavioral parity.
  */
-export function createSqliteProfileStore(db) {
+export function createSqliteProfileStore(db: SqliteRunner) {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") {
     throw new TypeError("A node:sqlite DatabaseSync connection is required.");
   }
-  const run = (sql, ...params) => db.prepare(sql).run(...params);
-  const get = (sql, ...params) => db.prepare(sql).get(...params);
-  const all = (sql, ...params) => db.prepare(sql).all(...params);
+  const run = (sql: string, ...params: unknown[]) => db.prepare(sql).run(...params);
+  const get = (sql: string, ...params: unknown[]) => db.prepare(sql).get(...params);
+  const all = (sql: string, ...params: unknown[]) => db.prepare(sql).all(...params);
+
+  /** The row a capture just wrote; a missing one is a bug, not a valid payload. */
+  function one(sql: string, ...args: unknown[]): SqliteRow {
+    const row = get(sql, ...args);
+    if (!row) throw new Error("Expected a row for the migration capture: " + sql);
+    return row;
+  }
+
   const migrationCapture = createSqliteProviderMigrationCapture(db);
-  const transaction = (fn) => {
+  const transaction = <T,>(fn: (transactionId: string) => T): T => {
     const transactionId = createMigrationTransactionId();
     db.exec("BEGIN IMMEDIATE");
     try {
@@ -35,7 +45,7 @@ export function createSqliteProfileStore(db) {
       throw error;
     }
   };
-  const requestHash = (value) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+  const requestHash = (value: unknown): string => createHash("sha256").update(JSON.stringify(value)).digest("hex");
   const profileSelect = `
     SELECT p.user_id, p.role, p.avatar_url, p.website_url, p.created_at,
       MAX(p.updated_at, translated.updated_at) AS updated_at,
@@ -53,8 +63,7 @@ export function createSqliteProfileStore(db) {
         ORDER BY CASE WHEN t.locale = ? THEN 0 WHEN t.locale = 'zh-TW' THEN 1 ELSE 2 END, t.locale
         LIMIT 1
       )`;
-  function mapProfile(row) {
-    const iso = (value) => value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+  function mapProfile(row: SqliteRow) {
     return {
       userId: row.user_id,
       role: normalizeStoredRole(row.role),
@@ -66,17 +75,17 @@ export function createSqliteProfileStore(db) {
       followerCount: Number(row.follower_count ?? 0),
       followingCount: Number(row.following_count ?? 0),
       isFollowing: Boolean(row.is_following_viewer),
-      createdAt: iso(row.created_at),
-      updatedAt: iso(row.updated_at),
+      createdAt: isoDate(row.created_at),
+      updatedAt: isoDate(row.updated_at),
     };
   }
-  function profileById(userId, locale, viewerId) {
+  function profileById(userId: string, locale: string, viewerId: string | null) {
     return get(
       `${profileSelect} WHERE p.user_id = ? LIMIT 1`,
       viewerId, viewerId, locale, userId,
     );
   }
-  function validateViewer(viewerId) {
+  function validateViewer(viewerId: string | null): void {
     if (viewerId !== null) requiredText("viewerId", viewerId, 300);
   }
 
@@ -105,7 +114,7 @@ export function createSqliteProfileStore(db) {
       SELECT 1 FROM articles a JOIN article_translations t ON t.article_id = a.id
       WHERE a.author_id = p.user_id AND a.status = 'published' AND t.locale = ?
     )`;
-  const mapAuthorSearch = (row) => ({
+  const mapAuthorSearch = (row: SqliteRow) => ({
     userId: row.user_id,
     displayName: row.display_name,
     bio: row.bio ?? "",
@@ -113,7 +122,13 @@ export function createSqliteProfileStore(db) {
     followerCount: Number(row.follower_count ?? 0),
     workCount: Number(row.work_count ?? 0),
   });
-  function listRelatedProfiles({ relationship, userId, locale = "zh-CN", viewerId = null, limit = 50 }) {
+  function listRelatedProfiles({ relationship, userId, locale = "zh-CN", viewerId = null, limit = 50 }: {
+    relationship: "following" | "followers";
+    userId: string;
+    locale?: string;
+    viewerId?: string | null;
+    limit?: number;
+  }) {
     requiredText("userId", userId, 300);
     validateArticleLocale(locale);
     validateViewer(viewerId);
@@ -165,7 +180,7 @@ export function createSqliteProfileStore(db) {
         `${profileSelect} WHERE p.user_id IN (${placeholders})`,
         viewerId, viewerId, locale, ...distinct,
       );
-      const profiles = {};
+      const profiles: Record<string, ReturnType<typeof mapProfile>> = {};
       for (const row of rows) profiles[row.user_id] = mapProfile(row);
       return profiles;
     },
@@ -192,7 +207,7 @@ export function createSqliteProfileStore(db) {
           "UPDATE user_profiles SET role = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE user_id = ?",
           validatedRole, userId,
         );
-        const row = get("SELECT * FROM user_profiles WHERE user_id = ?", userId);
+        const row = one("SELECT * FROM user_profiles WHERE user_id = ?", userId);
         migrationCapture.captureInTransaction(db, transactionId, [
           { entityType: "user_profiles", entityId: userId, operation: "upsert", payload: row },
         ]);
@@ -286,9 +301,9 @@ export function createSqliteProfileStore(db) {
             "INSERT INTO notifications (id, user_id, event_key, payload, payload_hash) VALUES (?, ?, ?, ?, ?) ON CONFLICT (user_id, event_key) DO NOTHING",
             randomUUID(), targetUserId, eventKey, JSON.stringify(payload), requestHash(payload),
           );
-          const notification = get("SELECT * FROM notifications WHERE user_id = ? AND event_key = ?", targetUserId, eventKey);
+          const notification = one("SELECT * FROM notifications WHERE user_id = ? AND event_key = ?", targetUserId, eventKey);
           migrationCapture.captureInTransaction(db, transactionId, [
-            { entityType: "user_follows", entityId: migrationEntityKey(actorId, targetUserId), operation: "upsert", payload: get("SELECT * FROM user_follows WHERE follower_id = ? AND followed_id = ?", actorId, targetUserId) },
+            { entityType: "user_follows", entityId: migrationEntityKey(actorId, targetUserId), operation: "upsert", payload: one("SELECT * FROM user_follows WHERE follower_id = ? AND followed_id = ?", actorId, targetUserId) },
             { entityType: "notifications", entityId: notification.id, operation: "upsert", payload: notification },
           ]);
         }
@@ -363,8 +378,8 @@ export function createSqliteProfileStore(db) {
         );
         if (!row) throw new Error("Profile row was not available after upsert.");
         migrationCapture.captureInTransaction(db, transactionId, [
-          { entityType: "user_profiles", entityId: userId, operation: "upsert", payload: get("SELECT * FROM user_profiles WHERE user_id = ?", userId) },
-          { entityType: "user_profile_translations", entityId: migrationEntityKey(userId, locale), operation: "upsert", payload: get("SELECT * FROM user_profile_translations WHERE user_id = ? AND locale = ?", userId, locale) },
+          { entityType: "user_profiles", entityId: userId, operation: "upsert", payload: one("SELECT * FROM user_profiles WHERE user_id = ?", userId) },
+          { entityType: "user_profile_translations", entityId: migrationEntityKey(userId, locale), operation: "upsert", payload: one("SELECT * FROM user_profile_translations WHERE user_id = ? AND locale = ?", userId, locale) },
         ]);
         return mapProfile(row);
       });

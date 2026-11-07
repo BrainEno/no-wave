@@ -14,19 +14,40 @@ import { requiredText } from "../domain/validation.ts";
 import { createPostgresProviderMigrationCapture, type CapturedChange } from "./postgres-provider-migration-capture.ts";
 import type { PgDatabase, PgExecutor, PgRow } from "./postgres-driver.ts";
 
-export function requestHash(value) {
+/**
+ * PostgreSQL's unique-violation class, read off an `unknown` catch binding.
+ *
+ * `23505` is the one driver detail a slice is allowed to branch on — the same
+ * check the SQLite slices make against its own constraint message — so it lives
+ * here rather than as an `any` cast in every writer.
+ */
+export function isUniqueViolation(error: unknown): boolean {
+  return typeof error === "object" && error !== null && (error as { code?: unknown }).code === "23505";
+}
+
+export function requestHash(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
-export function parseJsonValue(value) {
+export function parseJsonValue(value: unknown): unknown {
   if (typeof value !== "string") return value;
   try { return JSON.parse(value); } catch { return value; }
 }
-export function mapMessage(row: PgRow, duplicate = false) {
-  const createdAt = row.created_at instanceof Date ? row.created_at.toISOString() : new Date(row.created_at).toISOString();
+export function mapMessage(row: PgRow, duplicate = false): {
+  id: string; conversationId: string; senderId: string; body: string; createdAt: string; duplicate: boolean;
+} {
+  const createdAt = isoDate(row.created_at);
   return { id: row.id, conversationId: row.conversation_id, senderId: row.sender_id, body: row.body, createdAt, duplicate };
 }
-export function isoDate(value) {
-  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+/** A driver timestamp as ISO-8601; `DATE`/`TIMESTAMPTZ` arrive as `Date`. */
+export function isoDate(value: unknown): string {
+  if (value instanceof Date || typeof value === "string" || typeof value === "number") {
+    return new Date(value).toISOString();
+  }
+  throw new TypeError("A PostgreSQL timestamp column returned a value that is not a date.");
+}
+/** The nullable form: a `NULL` timestamp stays `null`. */
+export function isoDateOrNull(value: unknown): string | null {
+  return value === null || value === undefined ? null : isoDate(value);
 }
 export function mapConversation(row: PgRow) {
   return {
@@ -86,7 +107,10 @@ export const CONVERSATION_FOR_MEMBER_SQL = `SELECT c.id, c.created_by, c.created
  * One work as its author sees it, used to answer a replayed create with the work
  * it already made rather than with a frozen copy of the first response.
  */
-export async function readArticleForAuthor(executor: PgExecutor, { articleId, locale }) {
+export async function readArticleForAuthor(
+  executor: PgExecutor,
+  { articleId, locale }: { articleId: string; locale: string },
+) {
   const rows = await executor.unsafe(
     `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at,
             t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version
@@ -100,13 +124,28 @@ export async function readArticleForAuthor(executor: PgExecutor, { articleId, lo
   return rows[0] ? mapArticle(rows[0]) : null;
 }
 
-export async function findConversationForMember(executor: PgExecutor, { conversationId, actorId }) {
+/**
+ * The writer's read-back of a work it just committed (or just found a replay
+ * of). A missing row here is an invariant violation, not a not-found answer.
+ */
+export async function readArticleForAuthorOrThrow(
+  executor: PgExecutor,
+  input: { articleId: string; locale: string },
+) {
+  const article = await readArticleForAuthor(executor, input);
+  if (!article) throw new ArticleInputError("The article could not be read back after it was written.");
+  return article;
+}
+
+export async function findConversationForMember(
+  executor: PgExecutor,
+  { conversationId, actorId }: { conversationId: string; actorId: string },
+) {
   const rows = await executor.unsafe(CONVERSATION_FOR_MEMBER_SQL, [actorId, conversationId]);
   return rows[0] ? mapConversation(rows[0]) : null;
 }
 
 export function mapArticleComment(row: PgRow) {
-  const iso = (value) => value instanceof Date ? value.toISOString() : new Date(value).toISOString();
   return {
     id: row.id,
     articleId: row.article_id,
@@ -115,8 +154,8 @@ export function mapArticleComment(row: PgRow) {
     content: row.content,
     contentBlocks: row.content_blocks == null ? null : parseJsonValue(row.content_blocks),
     contentBlocksVersion: Number(row.content_blocks_version ?? 0),
-    createdAt: iso(row.created_at),
-    updatedAt: iso(row.updated_at),
+    createdAt: isoDate(row.created_at),
+    updatedAt: isoDate(row.updated_at),
     locale: row.locale,
     replies: [],
   };
@@ -135,7 +174,6 @@ export function mapTaxonomy(row: PgRow) {
   };
 }
 export function mapArticle(row: PgRow) {
-  const iso = (value) => value == null ? null : (value instanceof Date ? value.toISOString() : new Date(value).toISOString());
   return {
     id: row.id,
     authorId: row.author_id,
@@ -147,12 +185,21 @@ export function mapArticle(row: PgRow) {
     summary: row.summary,
     contentBlocks: parseJsonValue(row.content_blocks),
     contentBlocksVersion: Number(row.content_blocks_version ?? 0),
-    createdAt: iso(row.created_at),
-    updatedAt: iso(row.updated_at),
-    publishedAt: iso(row.published_at),
+    createdAt: isoDateOrNull(row.created_at),
+    updatedAt: isoDateOrNull(row.updated_at),
+    publishedAt: isoDateOrNull(row.published_at),
   };
 }
-export async function listTaxonomiesFrom(executor: PgExecutor, { kind, locale = "zh-CN", query = "", limit = 100, offset = 0 }) {
+export async function listTaxonomiesFrom(
+  executor: PgExecutor,
+  { kind, locale = "zh-CN", query = "", limit = 100, offset = 0 }: {
+    kind: string;
+    locale?: string;
+    query?: string;
+    limit?: number;
+    offset?: number;
+  },
+) {
   validateTaxonomyKind(kind);
   validateArticleLocale(locale);
   if (typeof query !== "string" || query.length > 200) throw new ArticleInputError("query must be a string no longer than 200 characters.");
@@ -193,8 +240,8 @@ export async function listTaxonomiesFrom(executor: PgExecutor, { kind, locale = 
 export async function replaceArticleMediaReferences(tx: PgExecutor, articleId: string, locale: string, contentBlocks: unknown) {
   await tx.unsafe("DELETE FROM article_media_refs WHERE article_id = $1 AND locale = $2", [articleId, locale]);
   const text = typeof contentBlocks === "string" ? contentBlocks : JSON.stringify(contentBlocks ?? "");
-  const ids = new Set();
-  for (const match of text.matchAll(MEDIA_SRC_PATTERN)) ids.add(match[1].toLowerCase());
+  const ids = new Set<string>();
+  for (const match of text.matchAll(MEDIA_SRC_PATTERN)) ids.add(String(match[1]).toLowerCase());
   if (ids.size === 0) return;
   // `FROM media_assets` rather than a plain VALUES list: a body may name an id
   // that was never uploaded here, and a foreign-key failure must not fail the
@@ -206,11 +253,11 @@ export async function replaceArticleMediaReferences(tx: PgExecutor, articleId: s
     [[...ids], articleId, locale],
   );
 }
-export async function replaceArticleTaxonomyKind(tx: PgExecutor, articleId, kind, ids) {
+export async function replaceArticleTaxonomyKind(tx: PgExecutor, articleId: string, kind: string, ids: string[] | undefined) {
   if (ids === undefined) return;
   validateTaxonomyKind(kind);
   if (ids.length > 0) {
-    const placeholders = ids.map((_, index) => "$" + (index + 2)).join(", ");
+    const placeholders = ids.map((_id, index) => "$" + (index + 2)).join(", ");
     const rows = await tx.unsafe(
       `SELECT id FROM taxonomies WHERE kind = $1 AND id IN (${placeholders})`,
       [kind, ...ids],
@@ -229,7 +276,6 @@ export async function replaceArticleTaxonomyKind(tx: PgExecutor, articleId, kind
   }
 }
 export function mapAuthorProfile(row: PgRow) {
-  const iso = (value) => value instanceof Date ? value.toISOString() : new Date(value).toISOString();
   return {
     userId: row.user_id,
     role: normalizeStoredRole(row.role),
@@ -241,8 +287,8 @@ export function mapAuthorProfile(row: PgRow) {
     followerCount: Number(row.follower_count ?? 0),
     followingCount: Number(row.following_count ?? 0),
     isFollowing: Boolean(row.is_following_viewer ?? false),
-    createdAt: iso(row.created_at),
-    updatedAt: iso(row.updated_at),
+    createdAt: isoDate(row.created_at),
+    updatedAt: isoDate(row.updated_at),
   };
 }
 /**
@@ -251,7 +297,10 @@ export function mapAuthorProfile(row: PgRow) {
  * without re-entering the transaction — a read inside the open transaction would
  * either take a second connection or see its own uncommitted rows only.
  */
-export async function readFeaturedArticles(executor: PgExecutor, { locale = "zh-CN", limit = 20, offset = 0 } = {}) {
+export async function readFeaturedArticles(
+  executor: PgExecutor,
+  { locale = "zh-CN", limit = 20, offset = 0 }: { locale?: string; limit?: number; offset?: number } = {},
+) {
   validateArticleLocale(locale);
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
   if (!Number.isInteger(offset) || offset < 0 || offset > 100000) throw new ArticleInputError("offset must be an integer between 0 and 100000.");
@@ -269,7 +318,10 @@ export async function readFeaturedArticles(executor: PgExecutor, { locale = "zh-
   return rows.map(mapArticle);
 }
 
-export async function findAuthorProfile(executor: PgExecutor, { userId, locale = "zh-CN", viewerId = null }) {
+export async function findAuthorProfile(
+  executor: PgExecutor,
+  { userId, locale = "zh-CN", viewerId = null }: { userId: string; locale?: string; viewerId?: string | null },
+) {
   requiredText("userId", userId, 300);
   validateArticleLocale(locale);
   if (viewerId !== null) requiredText("viewerId", viewerId, 300);
@@ -303,7 +355,14 @@ export async function findAuthorProfile(executor: PgExecutor, { userId, locale =
  * id to the distinct id set. A list of twenty articles on a three-author site
  * names each author seven times; this answers each of them once.
  */
-export async function findAuthorProfilesByIds(executor: PgExecutor, { userIds, locale = "zh-CN", viewerId = null }) {
+export async function findAuthorProfilesByIds(
+  executor: PgExecutor,
+  { userIds, locale = "zh-CN", viewerId = null }: {
+    userIds: string[];
+    locale?: string;
+    viewerId?: string | null;
+  },
+) {
   validateArticleLocale(locale);
   if (viewerId !== null) requiredText("viewerId", viewerId, 300);
   const distinct = [...new Set(userIds)];
@@ -329,11 +388,20 @@ export async function findAuthorProfilesByIds(executor: PgExecutor, { userIds, l
      WHERE p.user_id = ANY($1::text[])`,
     [distinct, locale, viewerId],
   );
-  const profiles = {};
+  const profiles: Record<string, ReturnType<typeof mapAuthorProfile>> = {};
   for (const row of rows) profiles[row.user_id] = mapAuthorProfile(row);
   return profiles;
 }
-export async function listRelatedProfiles(executor: PgExecutor, { relationship, userId, locale = "zh-CN", viewerId = null, limit = 50 }) {
+export async function listRelatedProfiles(
+  executor: PgExecutor,
+  { relationship, userId, locale = "zh-CN", viewerId = null, limit = 50 }: {
+    relationship: "following" | "followers";
+    userId: string;
+    locale?: string;
+    viewerId?: string | null;
+    limit?: number;
+  },
+) {
   requiredText("userId", userId, 300);
   validateArticleLocale(locale);
   if (viewerId !== null) requiredText("viewerId", viewerId, 300);
@@ -365,18 +433,21 @@ export async function listRelatedProfiles(executor: PgExecutor, { relationship, 
   );
   return rows.map(mapAuthorProfile);
 }
-export async function findMessage(tx: PgExecutor, senderId, idempotencyKey) {
+export async function findMessage(tx: PgExecutor, senderId: string, idempotencyKey: string) {
   const rows = await tx.unsafe(
     "SELECT id, conversation_id, sender_id, body, request_hash, created_at FROM messages WHERE sender_id = $1 AND idempotency_key = $2",
     [senderId, idempotencyKey],
   );
   return rows[0] ?? null;
 }
-export function assertSameRequest(existing: PgRow, hash) {
+export function assertSameRequest(existing: PgRow, hash: string) {
   if (existing.request_hash !== hash) throw new IdempotencyConflictError();
   return mapMessage(existing, true);
 }
-export async function readArticleLikeInfo(executor: PgExecutor, { slug, locale = "zh-CN", actorId = null }) {
+export async function readArticleLikeInfo(
+  executor: PgExecutor,
+  { slug, locale = "zh-CN", actorId = null }: { slug: string; locale?: string; actorId?: string | null },
+) {
   validateArticleSlug(slug);
   validateArticleLocale(locale);
   if (actorId !== null) requiredText("actorId", actorId, 300);

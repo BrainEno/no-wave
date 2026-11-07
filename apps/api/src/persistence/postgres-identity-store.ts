@@ -10,7 +10,7 @@ import type { PgDatabase, PgExecutor } from "./postgres-driver.ts";
  */
 export function createPostgresIdentityStore(sql: PgDatabase) {
   const migrationCapture = createPostgresProviderMigrationCapture(sql);
-  async function captureChanges(tx: PgExecutor, transactionId, changes: readonly CapturedChange[]) {
+  async function captureChanges(tx: PgExecutor, transactionId: string, changes: readonly CapturedChange[]): Promise<void> {
     await migrationCapture.captureInTransaction(tx, transactionId, changes);
   }
 
@@ -26,7 +26,7 @@ export function createPostgresIdentityStore(sql: PgDatabase) {
     return Boolean(rows[0]);
   }
 
-  async function captureSessionSnapshot(tx: PgExecutor, transactionId, sessionId) {
+  async function captureSessionSnapshot(tx: PgExecutor, transactionId: string, sessionId: string): Promise<void> {
     const [sessions, accessTokens, refreshTokens] = await Promise.all([
       tx.unsafe("SELECT * FROM auth_sessions WHERE id = $1", [sessionId]),
       tx.unsafe("SELECT * FROM auth_access_tokens WHERE session_id = $1", [sessionId]),
@@ -44,7 +44,17 @@ export function createPostgresIdentityStore(sql: PgDatabase) {
     await captureChanges(tx, transactionId, changes);
   }
 
-  async function insertSession(tx: PgExecutor, session) {
+  async function insertSession(
+    tx: PgExecutor,
+    session: {
+      sessionId: string;
+      userId: string;
+      expiresAt: string | Date;
+      accessTokenId: string;
+      accessExpiresAt: string | Date;
+      refreshHash: string;
+    },
+  ): Promise<void> {
     await tx.unsafe(
       "INSERT INTO auth_sessions (id, user_id, expires_at) VALUES ($1, $2, $3)",
       [session.sessionId, session.userId, session.expiresAt],
@@ -59,7 +69,7 @@ export function createPostgresIdentityStore(sql: PgDatabase) {
     );
   }
 
-  async function revokeLockedSession(tx: PgExecutor, sessionId) {
+  async function revokeLockedSession(tx: PgExecutor, sessionId: string): Promise<void> {
     await tx.unsafe("UPDATE auth_sessions SET revoked_at = COALESCE(revoked_at, clock_timestamp()) WHERE id = $1", [sessionId]);
     await tx.unsafe(
       `INSERT INTO revoked_sessions (session_id, expires_at)

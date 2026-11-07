@@ -2,10 +2,34 @@
  * Dispatch up to `limit` transactional outbox events.
  * Delivery is at-least-once: consumers must deduplicate by eventKey.
  */
-function safeErrorName(error) {
+import type {
+  OutboxPersistencePort,
+  StoredOutboxEvent,
+} from "../application/persistence-ports.ts";
+
+function safeErrorName(error: unknown): string {
   if (!(error instanceof Error)) return "NonErrorThrow";
   return /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name) ? error.name : "Error";
 }
+
+/** Everything a delivery observer is allowed to see: identifiers and classes. */
+export type OutboxDeliveryFailure = {
+  eventId: string;
+  eventType: string;
+  attempts: number;
+  errorName: string;
+  retryScheduled: boolean;
+  retryScheduleErrorName: string | null;
+};
+
+export type DispatchOutboxBatchInput = {
+  store: Pick<OutboxPersistencePort, "claimOutboxEvents" | "markOutboxDelivered" | "rescheduleOutboxEvent">;
+  deliver: (event: StoredOutboxEvent) => Promise<void>;
+  limit?: number;
+  leaseSeconds?: number;
+  retryDelaySeconds?: number;
+  onDeliveryFailure?: ((failure: OutboxDeliveryFailure) => void) | null;
+};
 
 export async function dispatchOutboxBatch({
   store,
@@ -14,7 +38,7 @@ export async function dispatchOutboxBatch({
   leaseSeconds = 60,
   retryDelaySeconds = 30,
   onDeliveryFailure = null,
-}) {
+}: DispatchOutboxBatchInput) {
   if (!store || typeof store.claimOutboxEvents !== "function" ||
       typeof store.markOutboxDelivered !== "function" ||
       typeof store.rescheduleOutboxEvent !== "function") {

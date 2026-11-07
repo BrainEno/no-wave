@@ -1,10 +1,10 @@
-import { createServer } from "node:http";
+import { createServer, type Server } from "node:http";
 import { createPersistenceRuntime } from "../infrastructure/persistence-runtime.ts";
 import { dispatchOutboxBatch } from "./outbox-worker.ts";
 import { createMessageNotificationDelivery } from "./message-notification-delivery.ts";
 import { createOutboxMetrics } from "./outbox-metrics.ts";
 
-function integerSetting(name, fallback, min, max) {
+function integerSetting(name: string, fallback: number, min: number, max: number): number {
   const raw = process.env[name];
   if (raw === undefined || raw === "") return fallback;
   const value = Number(raw);
@@ -22,14 +22,14 @@ const retryDelaySeconds = integerSetting("OUTBOX_RETRY_DELAY_SECONDS", 30, 1, 86
 const metricsPort = integerSetting("OUTBOX_METRICS_PORT", 0, 0, 65535);
 const metricsHost = process.env.OUTBOX_METRICS_HOST ?? "127.0.0.1";
 const metricsRefreshIntervalMs = integerSetting("OUTBOX_METRICS_REFRESH_INTERVAL_MS", 5000, 1000, 60000);
-const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+const delay = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-function safeErrorName(error) {
+function safeErrorName(error: unknown): string {
   if (!(error instanceof Error)) return "NonErrorThrow";
   return /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name) ? error.name : "Error";
 }
 
-function writeWorkerLog(level, event, fields = {}) {
+function writeWorkerLog(level: "info" | "warn" | "error", event: string, fields: Record<string, unknown> = {}): void {
   const line = JSON.stringify({
     timestamp: new Date().toISOString(),
     level,
@@ -41,11 +41,11 @@ function writeWorkerLog(level, event, fields = {}) {
   else process.stdout.write(line);
 }
 
-function safeMetricsPath(request) {
+function safeMetricsPath(request: import("node:http").IncomingMessage): string {
   try { return new URL(request.url ?? "/", "http://localhost").pathname; } catch { return "/not_found"; }
 }
 
-function createWorkerMetricsServer(metrics) {
+function createWorkerMetricsServer(metrics: ReturnType<typeof createOutboxMetrics>): Server {
   return createServer((request, response) => {
     if (request.method === "GET" && safeMetricsPath(request) === "/metrics") {
       response.writeHead(200, {
@@ -63,13 +63,16 @@ function createWorkerMetricsServer(metrics) {
   });
 }
 
-async function refreshBacklogMetrics(store, metrics) {
+async function refreshBacklogMetrics(
+  store: Awaited<ReturnType<typeof createPersistenceRuntime>>["adapter"],
+  metrics: ReturnType<typeof createOutboxMetrics>,
+) {
   metrics.recordBacklog(await store.outboxBacklog());
 }
 
-async function listen(server, port, host) {
+async function listen(server: Server, port: number, host: string): Promise<void> {
   await new Promise((resolve, reject) => {
-    const onError = (error) => {
+    const onError = (error: Error) => {
       server.off("listening", onListening);
       reject(error);
     };
@@ -92,7 +95,7 @@ async function runWorker() {
   const runtime = await createPersistenceRuntime({ env: process.env });
   const store = runtime.adapter;
   const metrics = createOutboxMetrics();
-  let metricsServer = null;
+  let metricsServer: Server | null = null;
   let stopping = false;
   const stop = () => { stopping = true; };
   process.once("SIGINT", stop);
@@ -136,7 +139,8 @@ async function runWorker() {
           ),
         });
         metrics.recordBatch(result, Number(process.hrtime.bigint() - startedAt) / 1_000_000);
-        if (metricsServer && Date.now() - lastMetricsRefreshAt >= metricsRefreshIntervalMs) {
+        const refreshDue = metricsServer !== null && Date.now() - lastMetricsRefreshAt >= metricsRefreshIntervalMs;
+        if (refreshDue) {
           lastMetricsRefreshAt = Date.now();
           try {
             await refreshBacklogMetrics(store, metrics);
@@ -158,8 +162,9 @@ async function runWorker() {
     }
   } finally {
     writeWorkerLog("info", "worker_stopping");
-    if (metricsServer) {
-      await new Promise((resolve) => metricsServer.close(() => resolve(undefined)));
+    const server = metricsServer;
+    if (server) {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
     }
     await runtime.close();
   }

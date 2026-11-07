@@ -8,7 +8,7 @@ import {
 import { resolveDatabaseProvider, resolvePostgresMigrationUrl, resolveSqliteDatabasePath } from "./database-config.ts";
 
 const builtInProviders = Object.freeze({
-  sqlite: async ({ env }) => {
+  sqlite: async ({ env }: { env: NodeJS.ProcessEnv }) => {
     const filename = resolveSqliteDatabasePath({ env });
     if (filename !== ":memory:") await mkdir(dirname(filename), { recursive: true });
     const { createSqliteClient, getSqliteMigrationStatus, runSqliteMigrations } = await import("../persistence/sqlite.ts");
@@ -28,7 +28,7 @@ const builtInProviders = Object.freeze({
       throw error;
     }
   },
-  postgres: async ({ env }) => {
+  postgres: async ({ env }: { env: NodeJS.ProcessEnv }) => {
     if (typeof env.DATABASE_URL !== "string" || env.DATABASE_URL.length === 0) {
       throw new Error("DATABASE_URL is required when DATABASE_PROVIDER=postgres.");
     }

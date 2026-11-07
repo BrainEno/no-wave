@@ -375,7 +375,7 @@ export function createMediaAssetService({ store, storage }: {
   store: MediaMetadataStore;
   storage: MediaObjectStorage;
 }) {
-  const requiredStoreMethods = [
+  const requiredStoreMethods: (keyof MediaMetadataStore)[] = [
     "createMediaAsset", "getMediaAsset", "listMediaAssets", "listMediaScanRows",
     "listReferencesForAssets", "deleteUnusedMediaAsset",
   ];

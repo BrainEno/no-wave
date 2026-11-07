@@ -1,26 +1,33 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
-import { createSqliteProviderMigrationCapture } from "./sqlite-provider-migration-capture.ts";
+import { createSqliteProviderMigrationCapture, type CapturedChange } from "./sqlite-provider-migration-capture.ts";
 import { InvalidMessageCursorError, IdempotencyConflictError } from "../domain/errors.ts";
 import { isUuid } from "../domain/validation.ts";
-import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
+import type { NotificationReceipt, TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
+import type { SqliteRow, SqliteRunner } from "./sqlite.ts";
 
 /**
  * SQLite persistence slice for notifications. This remains an opt-in adapter
  * component until every persistence port has contract parity.
  */
-function requiredText(name, value) {
+function requiredText(name: string, value: unknown): void {
   if (typeof value !== "string" || value.trim().length === 0 || value !== value.trim()) {
     throw new TypeError(`${name} must be a non-empty, trimmed string.`);
   }
 }
-function requestHash(value) {
+function requestHash(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
-function parsePayload(value) {
+function parsePayload(value: unknown): unknown {
   return typeof value === "string" ? JSON.parse(value) : value;
 }
-function mapNotification(row) {
+/** The row a capture is about to journal; a missing one is a bug, not a payload. */
+function notificationSnapshot(db: SqliteRunner, notificationId: string): SqliteRow {
+  const snapshot = db.prepare("SELECT * FROM notifications WHERE id = ?").get(notificationId);
+  if (!snapshot) throw new Error("The notification row disappeared during its own transaction.");
+  return snapshot;
+}
+function mapNotification(row: SqliteRow) {
   return {
     id: row.id,
     userId: row.user_id,
@@ -31,7 +38,7 @@ function mapNotification(row) {
   };
 }
 
-export function createSqliteNotificationStore(db) {
+export function createSqliteNotificationStore(db: SqliteRunner) {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") {
     throw new TypeError("A SQLite database connection is required.");
   }
@@ -65,7 +72,7 @@ export function createSqliteNotificationStore(db) {
       // BEGIN IMMEDIATE serializes this transaction with membership changes
       // and conversation deletion, including across SQLite connections.
       const transactionId = createMigrationTransactionId();
-      const changes = [];
+      const changes: CapturedChange[] = [];
       db.exec("BEGIN IMMEDIATE");
       try {
         const conversation = db.prepare("SELECT id FROM conversations WHERE id = ?").get(conversationId);
@@ -103,7 +110,9 @@ export function createSqliteNotificationStore(db) {
     },
     async getUnreadNotificationCount({ actorId }) {
       requiredText("actorId", actorId);
-      return Number(unread.get(actorId).count);
+      // `count(*)` always answers one row, so the read cannot be empty.
+      const counted = unread.get(actorId);
+      return Number(counted?.count ?? 0);
     },
     async markAllNotificationsRead({ actorId }) {
       requiredText("actorId", actorId);
@@ -112,10 +121,11 @@ export function createSqliteNotificationStore(db) {
       try {
         const targets = db.prepare("SELECT id FROM notifications WHERE user_id = ? AND read_at IS NULL ORDER BY id").all(actorId);
         const changed = Number(markAll.run(actorId).changes);
-        const changes = targets.map(({ id }) => {
-          const snapshot = db.prepare("SELECT * FROM notifications WHERE id = ?").get(id);
-          return snapshot ? { entityType: "notifications", entityId: id, operation: "upsert", payload: snapshot } : null;
-        }).filter(Boolean);
+        const changes: CapturedChange[] = [];
+        for (const { id } of targets) {
+          const snapshot = notificationSnapshot(db, id);
+          changes.push({ entityType: "notifications", entityId: String(id), operation: "upsert", payload: snapshot });
+        }
         migrationCapture.captureInTransaction(db, transactionId, changes);
         db.exec("COMMIT");
         return changed;
@@ -137,7 +147,7 @@ export function createSqliteNotificationStore(db) {
         const row = getOne.get(notificationId, actorId);
         if (before && before.read_at == null && row) {
           migrationCapture.captureInTransaction(db, transactionId, [
-            { entityType: "notifications", entityId: notificationId, operation: "upsert", payload: db.prepare("SELECT * FROM notifications WHERE id = ?").get(notificationId) },
+            { entityType: "notifications", entityId: notificationId, operation: "upsert", payload: notificationSnapshot(db, notificationId) },
           ]);
         }
         db.exec("COMMIT");
@@ -164,7 +174,7 @@ export function createSqliteNotificationStore(db) {
         }
         const duplicate = Number(insertResult.changes) === 0;
         if (!duplicate) migrationCapture.captureInTransaction(db, transactionId, [
-          { entityType: "notifications", entityId: notificationId, operation: "upsert", payload: db.prepare("SELECT * FROM notifications WHERE id = ?").get(notificationId) },
+          { entityType: "notifications", entityId: notificationId, operation: "upsert", payload: notificationSnapshot(db, notificationId) },
         ]);
         db.exec("COMMIT");
         return {
@@ -192,7 +202,7 @@ export function createSqliteNotificationStore(db) {
      * own `ON CONFLICT` answer (`duplicate`) and its own payload-hash check, and
      * the batch is bounded by its caller. Receipts come back in input order.
      */
-    async createNotifications(inputs) {
+    async createNotifications(inputs: { userId: string; eventKey: string; payload: unknown }[]) {
       if (!Array.isArray(inputs)) throw new TypeError("createNotifications expects an array of notification inputs.");
       if (inputs.length === 0) return [];
       const prepared = inputs.map(({ userId, eventKey, payload }) => {
@@ -203,8 +213,8 @@ export function createSqliteNotificationStore(db) {
       });
 
       const transactionId = createMigrationTransactionId();
-      const changes = [];
-      const receipts = [];
+      const changes: CapturedChange[] = [];
+      const receipts: NotificationReceipt[] = [];
       db.exec("BEGIN IMMEDIATE");
       try {
         for (const { userId, eventKey, payload, hash } of prepared) {

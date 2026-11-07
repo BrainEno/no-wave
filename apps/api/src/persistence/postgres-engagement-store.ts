@@ -9,7 +9,7 @@ import { validateArticleLocale, validateArticleSlug } from "../domain/article.ts
 import { validateStoredCommentContent } from "../domain/comment-content.ts";
 import { ArticleAuthorizationError, ArticleInputError, ArticleNotFoundError, IdempotencyConflictError } from "../domain/errors.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
-import { migrationEntityKey } from "./postgres-provider-migration-capture.ts";
+import { migrationEntityKey, type CapturedChange } from "./postgres-provider-migration-capture.ts";
 import { mapArticleComment, readArticleLikeInfo, requestHash } from "./postgres-shared.ts";
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import type { PostgresStoreContext } from "./postgres-shared.ts";
@@ -28,7 +28,7 @@ export function createPostgresEngagementStore(ctx: PostgresStoreContext) {
       requiredText("actorId", actorId, 300);
       return sql.begin(async (tx) => {
         const transactionId = createMigrationTransactionId();
-        const changes = [];
+        const changes: CapturedChange[] = [];
         const articles = await tx.unsafe(
           "SELECT a.id, a.author_id FROM articles AS a JOIN article_translations AS t ON t.article_id = a.id WHERE a.slug = $1 AND a.status = 'published' AND t.locale = $2 FOR UPDATE OF a",
           [slug, locale],
@@ -76,7 +76,7 @@ export function createPostgresEngagementStore(ctx: PostgresStoreContext) {
       if (typeof liked !== "boolean") throw new ArticleInputError("liked must be a boolean.");
       return sql.begin(async (tx) => {
         const transactionId = createMigrationTransactionId();
-        const changes = [];
+        const changes: CapturedChange[] = [];
         const articles = await tx.unsafe(
           "SELECT a.id, a.author_id FROM articles AS a JOIN article_translations AS t ON t.article_id = a.id WHERE a.slug = $1 AND a.status = 'published' AND t.locale = $2 FOR UPDATE OF a",
           [slug, locale],
@@ -199,7 +199,7 @@ export function createPostgresEngagementStore(ctx: PostgresStoreContext) {
           }
         }
         const transactionId = createMigrationTransactionId();
-        const changes = [];
+        const changes: CapturedChange[] = [];
         const articles = await tx.unsafe(
           "SELECT a.id, a.author_id FROM articles AS a JOIN article_translations AS t ON t.article_id = a.id WHERE a.slug = $1 AND a.status = 'published' AND t.locale = $2 FOR SHARE OF a",
           [slug, locale],

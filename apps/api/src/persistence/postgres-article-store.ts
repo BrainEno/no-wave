@@ -10,9 +10,10 @@ import { MAX_FEATURED_ARTICLES, assertArticleWorkTypeChange, assertCreatableArti
 import { ArticleAuthorizationError, ArticleInputError, ArticleNotFoundError, ArticleSlugConflictError, IdempotencyConflictError } from "../domain/errors.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
 import { migrationEntityKey } from "./postgres-provider-migration-capture.ts";
-import { isoDate, mapArticle, readArticleForAuthor, readFeaturedArticles, replaceArticleMediaReferences, replaceArticleTaxonomyKind } from "./postgres-shared.ts";
+import { isUniqueViolation, isoDate, mapArticle, readArticleForAuthorOrThrow, readFeaturedArticles, replaceArticleMediaReferences, replaceArticleTaxonomyKind } from "./postgres-shared.ts";
 import { ARTICLE_MEDIA_REFS_SNAPSHOT, createMigrationTransactionId } from "./provider-migration-journal.ts";
 import type { PostgresStoreContext } from "./postgres-shared.ts";
+import type { PgRow } from "./postgres-driver.ts";
 import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
 
 // A two-integer advisory-lock namespace, separate from the migration runner's
@@ -169,7 +170,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
       };
       const fingerprintForSlug = (value: string | null) => articleIdempotencyFingerprint({ ...fingerprintBase, slug: value });
       const fingerprint = fingerprintForSlug(fingerprintSlug);
-      const replayMatches = (row) => articleIdempotencyReplayMatches(
+      const replayMatches = (row: PgRow) => articleIdempotencyReplayMatches(
         row.request_hash,
         fingerprint,
         fingerprintSlug === null
@@ -194,7 +195,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
               if (!replayMatches(existing)) {
                 throw new IdempotencyConflictError("The idempotency key was already used for a different article request.");
               }
-              return readArticleForAuthor(tx, { articleId: existing.id, locale: input.locale });
+              return readArticleForAuthorOrThrow(tx, { articleId: existing.id, locale: input.locale });
             }
           }
           // A retired type is not a choice this version makes. The check sits
@@ -219,7 +220,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
             if (!replayMatches(existing)) {
               throw new IdempotencyConflictError("The idempotency key was already used for a different article request.");
             }
-            return readArticleForAuthor(tx, { articleId: existing.id, locale: input.locale });
+            return readArticleForAuthorOrThrow(tx, { articleId: existing.id, locale: input.locale });
           }
           const article = rows[0];
           const translations = await tx.unsafe(
@@ -245,7 +246,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
           return mapArticle({ ...article, ...translations[0] });
         });
       } catch (error) {
-        if (error?.code !== "23505") throw error;
+        if (!isUniqueViolation(error)) throw error;
         // Two writers raced on the same key and the slug index reported the
         // collision first: the work exists now, so answer with it rather than
         // sending the author back to the slug uniquifier for a second copy.
@@ -258,7 +259,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
             if (!replayMatches(existing)) {
               throw new IdempotencyConflictError("The idempotency key was already used for a different article request.");
             }
-            return readArticleForAuthor(sql, { articleId: existing.id, locale: input.locale });
+            return readArticleForAuthorOrThrow(sql, { articleId: existing.id, locale: input.locale });
           }
         }
         throw new ArticleSlugConflictError();
@@ -310,7 +311,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
           return mapArticle({ ...rows[0], ...translations[0] });
         });
       } catch (error) {
-        if (error?.code === "23505") throw new ArticleSlugConflictError();
+        if (isUniqueViolation(error)) throw new ArticleSlugConflictError();
         throw error;
       }
     },

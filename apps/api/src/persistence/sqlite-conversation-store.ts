@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
-import { createSqliteProviderMigrationCapture, migrationEntityKey } from "./sqlite-provider-migration-capture.ts";
+import { createSqliteProviderMigrationCapture, migrationEntityKey, type CapturedChange } from "./sqlite-provider-migration-capture.ts";
 import {
   IdempotencyConflictError, ConversationAccessError, ConversationInputError,
   ConversationNotFoundError, InvalidMessageCursorError,
@@ -8,17 +8,28 @@ import {
 import { isUuid, requiredText } from "../domain/validation.ts";
 import { normalizeParticipantIds } from "../domain/conversation.ts";
 import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
+import { isoDate } from "./sqlite.ts";
+import type { SqliteRow, SqliteRunner } from "./sqlite.ts";
 
-const iso = (value) => value == null ? null : new Date(value).toISOString();
-const hash = (value) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
-function mapMessage(row, duplicate = false) {
-  return { id: row.id, conversationId: row.conversation_id, senderId: row.sender_id, body: row.body, createdAt: iso(row.created_at), duplicate };
+const hash = (value: unknown): string => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+type MappedMessage = { id: string; conversationId: string; senderId: string; body: string; createdAt: string; duplicate: boolean };
+type MappedConversation = {
+  id: string;
+  createdBy: string | null;
+  participantIds: string[];
+  createdAt: string;
+  lastActivityAt: string;
+  unreadCount: number;
+  lastMessage: MappedMessage | null;
+};
+function mapMessage(row: SqliteRow, duplicate = false): MappedMessage {
+  return { id: row.id, conversationId: row.conversation_id, senderId: row.sender_id, body: row.body, createdAt: isoDate(row.created_at), duplicate };
 }
-function mapConversation(row) {
+function mapConversation(row: SqliteRow): MappedConversation {
   return {
     id: row.id, createdBy: row.created_by ?? null,
-    participantIds: JSON.parse(row.participant_ids ?? "[]"),
-    createdAt: iso(row.created_at), lastActivityAt: iso(row.last_activity_at ?? row.created_at),
+    participantIds: JSON.parse(row.participant_ids ?? "[]") as string[],
+    createdAt: isoDate(row.created_at), lastActivityAt: isoDate(row.last_activity_at ?? row.created_at),
     unreadCount: Number(row.unread_count ?? 0),
     lastMessage: row.latest_message_id ? mapMessage({
       id: row.latest_message_id, conversation_id: row.latest_message_conversation_id,
@@ -29,30 +40,38 @@ function mapConversation(row) {
 }
 
 /** SQLite conversation/message persistence slice, composed by sqlite-store.ts. */
-export function createSqliteConversationStore(db) {
+export function createSqliteConversationStore(db: SqliteRunner) {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") {
     throw new TypeError("A node:sqlite DatabaseSync connection is required.");
   }
   const migrationCapture = createSqliteProviderMigrationCapture(db);
-  const get = (sql, ...args) => db.prepare(sql).get(...args);
-  const all = (sql, ...args) => db.prepare(sql).all(...args);
-  const run = (sql, ...args) => db.prepare(sql).run(...args);
-  function transaction(work) {
+  const get = (sql: string, ...args: unknown[]) => db.prepare(sql).get(...args);
+  const all = (sql: string, ...args: unknown[]) => db.prepare(sql).all(...args);
+
+  /** The row a capture just wrote; a missing one is a bug, not a valid payload. */
+  function one(sql: string, ...args: unknown[]): SqliteRow {
+    const row = get(sql, ...args);
+    if (!row) throw new Error("Expected a row for the migration capture: " + sql);
+    return row;
+  }
+
+  const run = (sql: string, ...args: unknown[]) => db.prepare(sql).run(...args);
+  function transaction<T>(work: (transactionId: string) => T): T {
     const transactionId = createMigrationTransactionId();
     db.exec("BEGIN IMMEDIATE");
     try { const value = work(transactionId); db.exec("COMMIT"); return value; }
     catch (error) { try { db.exec("ROLLBACK"); } catch {} throw error; }
   }
-  function activeMember(conversationId, userId) {
+  function activeMember(conversationId: string, userId: string): boolean {
     return Boolean(get("SELECT 1 FROM conversation_participants WHERE conversation_id = ? AND user_id = ? AND left_at IS NULL", conversationId, userId));
   }
-  function requireMember(conversationId, actorId) {
+  function requireMember(conversationId: string, actorId: string): void {
     if (!activeMember(conversationId, actorId)) throw new ConversationAccessError();
   }
-  function findMessage(senderId, key) {
+  function findMessage(senderId: string, key: string) {
     return get("SELECT id, conversation_id, sender_id, body, request_hash, created_at FROM messages WHERE sender_id = ? AND idempotency_key = ?", senderId, key);
   }
-  function sameRequest(row, requestHash) {
+  function sameRequest(row: SqliteRow, requestHash: string): MappedMessage {
     if (row.request_hash !== requestHash) throw new IdempotencyConflictError("The idempotency key was already used for a different message request.");
     return mapMessage(row, true);
   }
@@ -63,7 +82,7 @@ export function createSqliteConversationStore(db) {
    * a replayed create returns what the conversation *is now* (participants may
    * have been added since), not a frozen copy of the 201 it would have returned.
    */
-  function conversationForMember(conversationId, memberId) {
+  function conversationForMember(conversationId: string, memberId: string): MappedConversation | null {
     const row = get(`SELECT c.id,c.created_by,c.created_at,
         COALESCE(latest.created_at,c.created_at) AS last_activity_at,
         (SELECT json_group_array(user_id) FROM (SELECT user_id FROM conversation_participants cp WHERE cp.conversation_id=c.id AND cp.left_at IS NULL ORDER BY user_id)) AS participant_ids,
@@ -102,12 +121,12 @@ export function createSqliteConversationStore(db) {
         run("INSERT INTO conversations (id, created_by, idempotency_key_hash, request_hash) VALUES (?, ?, ?, ?)", id, actorId, keyHash, keyHash === null ? null : fingerprint);
         const insert = db.prepare("INSERT INTO conversation_participants (conversation_id, user_id, last_read_at) VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))");
         for (const userId of ids) insert.run(id, userId);
-        const row = get("SELECT * FROM conversations WHERE id = ?", id);
+        const row = one("SELECT * FROM conversations WHERE id = ?", id);
         migrationCapture.captureInTransaction(db, transactionId, [
           { entityType: "conversations", entityId: id, operation: "upsert", payload: row },
-          ...ids.map((userId) => ({ entityType: "conversation_participants", entityId: migrationEntityKey(id, userId), operation: "upsert" as const, payload: get("SELECT * FROM conversation_participants WHERE conversation_id = ? AND user_id = ?", id, userId) })),
+          ...ids.map((userId) => ({ entityType: "conversation_participants", entityId: migrationEntityKey(id, userId), operation: "upsert" as const, payload: one("SELECT * FROM conversation_participants WHERE conversation_id = ? AND user_id = ?", id, userId) })),
         ]);
-        return { id: row.id, createdBy: row.created_by, participantIds: ids, createdAt: iso(row.created_at), lastActivityAt: iso(row.created_at), unreadCount: 0, lastMessage: null };
+        return { id: String(row.id), createdBy: row.created_by ?? null, participantIds: ids, createdAt: isoDate(row.created_at), lastActivityAt: isoDate(row.created_at), unreadCount: 0, lastMessage: null };
       });
     },
     async updateConversationParticipants({ conversationId, actorId, addUserIds = [], removeUserIds = [] }) {
@@ -135,7 +154,7 @@ export function createSqliteConversationStore(db) {
         const changedUserIds = [...new Set([...adds, ...removes])];
         migrationCapture.captureInTransaction(db, transactionId, changedUserIds.map((userId) => ({
           entityType: "conversation_participants", entityId: migrationEntityKey(conversationId, userId), operation: "upsert" as const,
-          payload: get("SELECT * FROM conversation_participants WHERE conversation_id = ? AND user_id = ?", conversationId, userId),
+          payload: one("SELECT * FROM conversation_participants WHERE conversation_id = ? AND user_id = ?", conversationId, userId),
         })).filter((change) => change.payload != null));
         return all("SELECT user_id FROM conversation_participants WHERE conversation_id = ? AND left_at IS NULL ORDER BY user_id", conversationId).map((row) => row.user_id);
       });
@@ -156,10 +175,10 @@ export function createSqliteConversationStore(db) {
         run("DELETE FROM conversations WHERE id = ?", conversationId);
         migrationCapture.captureInTransaction(db, transactionId, [
           { entityType: "conversations", entityId: conversationId, operation: "delete", payload: null },
-          ...participants.map((row) => ({ entityType: "conversation_participants", entityId: migrationEntityKey(conversationId, row.user_id), operation: "delete", payload: null })),
-          ...messages.map((row) => ({ entityType: "messages", entityId: row.id, operation: "delete", payload: null })),
-          ...outbox.map((row) => ({ entityType: "outbox_events", entityId: row.id, operation: "delete", payload: null })),
-          ...notifications.map((row) => ({ entityType: "notifications", entityId: row.id, operation: "delete", payload: null })),
+          ...participants.map((row): CapturedChange => ({ entityType: "conversation_participants", entityId: migrationEntityKey(conversationId, row.user_id), operation: "delete", payload: null })),
+          ...messages.map((row): CapturedChange => ({ entityType: "messages", entityId: row.id, operation: "delete", payload: null })),
+          ...outbox.map((row): CapturedChange => ({ entityType: "outbox_events", entityId: row.id, operation: "delete", payload: null })),
+          ...notifications.map((row): CapturedChange => ({ entityType: "notifications", entityId: row.id, operation: "delete", payload: null })),
         ]);
         return true;
       });
@@ -172,7 +191,7 @@ export function createSqliteConversationStore(db) {
           WHERE conversation_id = ? AND user_id = ? AND left_at IS NULL`, conversationId, conversationId, actorId);
         if (!result.changes) throw new ConversationAccessError();
         migrationCapture.captureInTransaction(db, transactionId, [
-          { entityType: "conversation_participants", entityId: migrationEntityKey(conversationId, actorId), operation: "upsert", payload: get("SELECT * FROM conversation_participants WHERE conversation_id = ? AND user_id = ?", conversationId, actorId) },
+          { entityType: "conversation_participants", entityId: migrationEntityKey(conversationId, actorId), operation: "upsert", payload: one("SELECT * FROM conversation_participants WHERE conversation_id = ? AND user_id = ?", conversationId, actorId) },
         ]);
         return true;
       });
@@ -226,11 +245,11 @@ export function createSqliteConversationStore(db) {
         const outboxPayload = { messageId:id, conversationId, senderId };
         run("INSERT INTO outbox_events (id,event_key,event_type,aggregate_id,payload) VALUES (?,?,?,?,?)", outboxId, `message:${id}`, "message.created", id, JSON.stringify(outboxPayload));
         migrationCapture.captureInTransaction(db, transactionId, [
-          { entityType: "conversations", entityId: conversationId, operation: "upsert", payload: get("SELECT * FROM conversations WHERE id = ?", conversationId) },
-          { entityType: "messages", entityId: id, operation: "upsert", payload: get("SELECT * FROM messages WHERE id = ?", id) },
-          { entityType: "outbox_events", entityId: outboxId, operation: "upsert", payload: get("SELECT * FROM outbox_events WHERE id = ?", outboxId) },
+          { entityType: "conversations", entityId: conversationId, operation: "upsert", payload: one("SELECT * FROM conversations WHERE id = ?", conversationId) },
+          { entityType: "messages", entityId: id, operation: "upsert", payload: one("SELECT * FROM messages WHERE id = ?", id) },
+          { entityType: "outbox_events", entityId: outboxId, operation: "upsert", payload: one("SELECT * FROM outbox_events WHERE id = ?", outboxId) },
         ]);
-        return mapMessage(get("SELECT id,conversation_id,sender_id,body,created_at FROM messages WHERE id = ?", id));
+        return mapMessage(one("SELECT id,conversation_id,sender_id,body,created_at FROM messages WHERE id = ?", id));
       });
     },
     async listConversationParticipantIds({ conversationId }) {

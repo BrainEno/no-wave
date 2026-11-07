@@ -8,6 +8,57 @@ const defaultDirectory = join(here, "migrations", "sqlite");
 const migrationPattern = /^\d{4}_[a-z0-9_]+\.sql$/;
 
 type SqliteStatement = ReturnType<DatabaseSync["prepare"]>;
+
+/**
+ * A row as the SQLite driver returns it.
+ *
+ * Column *values* are dynamic by nature: the driver answers text, integers,
+ * reals, blobs and null for the same `SELECT *`, and every slice's mapper converts
+ * them into the declared domain record. This type is the SQLite counterpart of
+ * `postgres.Row` — the PostgreSQL slices have used the driver's own dynamic row
+ * type all along, and pretending otherwise here would only move the same cast into
+ * two hundred call sites.
+ *
+ * It is the single dynamic boundary in this package, named once so that
+ * `typed-boundaries.test.ts` can exempt it and nothing else: `any` anywhere outside
+ * this alias still fails the build.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type SqliteRow = { [column: string]: any };
+
+/** Statement accessors as the slices use them: dynamic rows in, bindings out. */
+export type SqliteRunner = {
+  exec(sql: string): void;
+  close(): void;
+  prepare(sql: string): {
+    run(...values: unknown[]): { changes: number | bigint };
+    get(...values: unknown[]): SqliteRow | undefined;
+    all(...values: unknown[]): SqliteRow[];
+  };
+};
+/**
+ * A timestamp column as an ISO-8601 string.
+ *
+ * SQLite has no date type: the same column can answer text from `strftime`, text
+ * from a `TEXT` default, or a number from a writer that bound epoch
+ * milliseconds, and every mapper in every slice has to turn all three into the
+ * one representation the domain contract declares. That conversion lives here so
+ * the maps do not each re-decide it — and so none of them needs a cast to satisfy
+ * `new Date(...)`. A `NULL` reaches this function as `null`, which is a caller
+ * decision, not a timestamp: use `isoDateOrNull` for a nullable column.
+ */
+export function isoDate(value: unknown): string {
+  if (value instanceof Date || typeof value === "string" || typeof value === "number") {
+    return new Date(value).toISOString();
+  }
+  throw new TypeError("A SQLite timestamp column returned a value that is not a date.");
+}
+
+/** The nullable form: a `NULL` column stays `null`. */
+export function isoDateOrNull(value: unknown): string | null {
+  return value === null || value === undefined ? null : isoDate(value);
+}
+
 type UnknownFunction = (...args: unknown[]) => unknown;
 
 /**
@@ -93,7 +144,10 @@ export function createSqliteClient({
  * uninitialized DB reports every migration pending, allowing runtime startup
  * to fail with an actionable instruction rather than serve a half-built schema.
  */
-export async function getSqliteMigrationStatus(db, { directory = defaultDirectory } = {}) {
+export async function getSqliteMigrationStatus(
+  db: SqliteRunner,
+  { directory = defaultDirectory }: { directory?: string } = {},
+): Promise<{ discovered: number; applied: string[]; pending: string[] }> {
   if (!db || typeof db.exec !== "function" || typeof db.prepare !== "function") {
     throw new TypeError("A SQLite database connection is required.");
   }
@@ -102,8 +156,8 @@ export async function getSqliteMigrationStatus(db, { directory = defaultDirector
   const table = db.prepare(
     "SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'api_schema_migrations'",
   ).get();
-  const appliedVersions = new Set(table
-    ? db.prepare("SELECT version FROM api_schema_migrations").all().map((row) => row.version)
+  const appliedVersions = new Set<string>(table
+    ? db.prepare("SELECT version FROM api_schema_migrations").all().map((row) => String(row.version))
     : []);
   const applied = files.filter((file) => appliedVersions.has(file.slice(0, -".sql".length)));
   const pending = files.filter((file) => !appliedVersions.has(file.slice(0, -".sql".length)));
@@ -114,7 +168,10 @@ export async function getSqliteMigrationStatus(db, { directory = defaultDirector
  * Apply SQLite-specific migrations in lexical/version order. Each migration
  * and its version record commit atomically; BEGIN IMMEDIATE serializes runners.
  */
-export async function runSqliteMigrations(db, { directory = defaultDirectory } = {}) {
+export async function runSqliteMigrations(
+  db: SqliteRunner,
+  { directory = defaultDirectory }: { directory?: string } = {},
+): Promise<string[]> {
   if (!db || typeof db.exec !== "function" || typeof db.prepare !== "function") {
     throw new TypeError("A SQLite database connection is required.");
   }
@@ -158,7 +215,8 @@ export async function runSqliteMigrations(db, { directory = defaultDirectory } =
       } catch {
         // Preserve the original migration error if rollback itself fails.
       }
-      throw new Error(`SQLite migration ${version} failed: ${error.message}`, { cause: error });
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(`SQLite migration ${version} failed: ${detail}`, { cause: error });
     }
   }
 

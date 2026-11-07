@@ -9,6 +9,7 @@ import { IdempotencyConflictError, InvalidMessageCursorError } from "../domain/e
 import { isUuid, requiredText } from "../domain/validation.ts";
 import { parseJsonValue, requestHash } from "./postgres-shared.ts";
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
+import type { CapturedChange } from "./postgres-provider-migration-capture.ts";
 import type { PostgresStoreContext } from "./postgres-shared.ts";
 import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
 
@@ -148,7 +149,7 @@ export function createPostgresNotificationStore(ctx: PostgresStoreContext) {
       });
       return sql.begin(async (tx) => {
         const transactionId = createMigrationTransactionId();
-        const changes = [];
+        const changes: CapturedChange[] = [];
         const receipts = [];
         for (const { userId, eventKey, payload, hash } of prepared) {
           const inserted = await tx.unsafe(
@@ -190,7 +191,7 @@ export function createPostgresNotificationStore(ctx: PostgresStoreContext) {
       const hash = requestHash(payload);
       return sql.begin(async (tx) => {
         const transactionId = createMigrationTransactionId();
-        const changes = [];
+        const changes: CapturedChange[] = [];
         // All membership edits and deletes lock this same row first. A stale
         // event whose conversation has been deleted is a harmless no-op.
         const conversation = await tx.unsafe("SELECT id FROM conversations WHERE id = $1 FOR UPDATE", [conversationId]);

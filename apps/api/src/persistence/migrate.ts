@@ -2,6 +2,7 @@ import { mkdir, readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createPostgresClient } from "./postgres.ts";
+import type { PgDatabase, PgRow, PgTransaction } from "./postgres-driver.ts";
 import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
 import { resolveDatabaseProvider, resolvePostgresMigrationUrl, resolveSqliteDatabasePath } from "../infrastructure/database-config.ts";
 
@@ -27,12 +28,17 @@ const migrationPattern = /^\d{4}_[a-z0-9_]+\.sql$/;
  * `public.api_schema_migrations` here would disagree with a database that
  * applies migrations under a different search path.
  */
-export async function getPostgresMigrationStatus(sql, { directory = defaultDirectory } = {}) {
+export async function getPostgresMigrationStatus(
+  sql: PgDatabase,
+  { directory = defaultDirectory }: { directory?: string } = {},
+) {
   const files = (await readdir(directory)).filter((name) => migrationPattern.test(name)).sort();
   if (files.length === 0) throw new Error("No versioned SQL migrations were found.");
-  const [table] = await sql.unsafe("SELECT to_regclass('api_schema_migrations') IS NOT NULL AS present");
+  const [table] = await sql.unsafe<{ present: boolean }>(
+    "SELECT to_regclass('api_schema_migrations') IS NOT NULL AS present",
+  );
   const rows = table?.present ? await sql.unsafe("SELECT version FROM api_schema_migrations") : [];
-  const appliedVersions = new Set(rows.map((row) => row.version));
+  const appliedVersions = new Set(rows.map((row) => String(row.version)));
   return {
     discovered: files.length,
     applied: files.filter((file) => appliedVersions.has(file.slice(0, -".sql".length))),
@@ -40,12 +46,15 @@ export async function getPostgresMigrationStatus(sql, { directory = defaultDirec
   };
 }
 
-export async function runMigrations(sql, { directory = defaultDirectory } = {}) {
+export async function runMigrations(
+  sql: PgDatabase,
+  { directory = defaultDirectory }: { directory?: string } = {},
+) {
   const files = (await readdir(directory)).filter((name) => migrationPattern.test(name)).sort();
   if (files.length === 0) throw new Error("No versioned SQL migrations were found.");
-  const applied = [];
+  const applied: string[] = [];
 
-  await sql.begin(async (tx) => {
+  await sql.begin(async (tx: PgTransaction) => {
     await tx.unsafe("SELECT pg_advisory_xact_lock($1)", [advisoryLockId]);
     await tx.unsafe("CREATE TABLE IF NOT EXISTS api_schema_migrations (version text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())");
   });
@@ -54,7 +63,7 @@ export async function runMigrations(sql, { directory = defaultDirectory } = {}) 
     const version = file.slice(0, -".sql".length);
     const source = await readFile(join(directory, file), "utf8");
     let wasApplied = false;
-    await sql.begin(async (tx) => {
+    await sql.begin(async (tx: PgTransaction) => {
       await tx.unsafe("SELECT pg_advisory_xact_lock($1)", [advisoryLockId]);
       const rows = await tx.unsafe("SELECT version FROM api_schema_migrations WHERE version = $1", [version]);
       if (rows.length) return;
@@ -67,7 +76,9 @@ export async function runMigrations(sql, { directory = defaultDirectory } = {}) 
   return { discovered: files.length, applied };
 }
 
-export async function runConfiguredMigrations({ env = process.env } = {}) {
+export async function runConfiguredMigrations(
+  { env = process.env }: { env?: NodeJS.ProcessEnv } = {},
+) {
   const provider = resolveDatabaseProvider({ env });
   if (provider === "sqlite") {
     const filename = resolveSqliteDatabasePath({ env });
@@ -75,14 +86,15 @@ export async function runConfiguredMigrations({ env = process.env } = {}) {
     const db = createSqliteClient({ filename });
     try {
       const applied = await runSqliteMigrations(db);
-      const discovered = Number(db.prepare("SELECT count(*) AS count FROM api_schema_migrations").get().count);
+      const counted = db.prepare("SELECT count(*) AS count FROM api_schema_migrations").get();
+      const discovered = Number(counted?.count ?? 0);
       return { provider, discovered, applied };
     } finally {
       db.close();
     }
   }
   if (provider === "postgres") {
-    let sql;
+    let sql: Awaited<ReturnType<typeof createPostgresClient>> | undefined;
     try {
       sql = await createPostgresClient({ connectionString: resolvePostgresMigrationUrl({ env }) });
       return { provider, ...(await runMigrations(sql)) };
@@ -98,7 +110,7 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
     const result = await runConfiguredMigrations();
     process.stdout.write(`${result.provider} migrations checked: ${result.discovered}; newly applied: ${result.applied.length}\n`);
   } catch (error) {
-    process.stderr.write(`Database migration failed: ${error.message}\n`);
+    process.stderr.write(`Database migration failed: ${error instanceof Error ? error.message : String(error)}\n`);
     process.exitCode = 1;
   }
 }

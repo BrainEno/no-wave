@@ -573,13 +573,13 @@ export function createPersistencePorts<A extends PersistenceAdapterMethods = Per
       port,
       Object.freeze(Object.fromEntries(methods.map((method) => [
         method,
-        (...args) => {
+        (...args: unknown[]) => {
           const operation = adapter[method];
           if (typeof operation !== "function") {
             throw new TypeError(`Persistence adapter does not implement ${port}.${method}.`);
           }
           const startedAt = process.hrtime.bigint();
-          const report = (success) => {
+          const report = (success: boolean): void => {
             if (typeof onOperation !== "function") return;
             try {
               onOperation({
@@ -601,8 +601,8 @@ export function createPersistencePorts<A extends PersistenceAdapterMethods = Per
           if (result !== null && (typeof result === "object" || typeof result === "function") &&
               typeof result.then === "function") {
             return result.then(
-              (value) => { report(true); return value; },
-              (error) => { report(false); throw error; },
+              (value: unknown) => { report(true); return value; },
+              (error: unknown) => { report(false); throw error; },
             );
           }
           report(true);
@@ -610,5 +610,5 @@ export function createPersistencePorts<A extends PersistenceAdapterMethods = Per
         },
       ]))),
     ]),
-  )) as PersistencePorts<A>;
+  )) as unknown as PersistencePorts<A>;
 }

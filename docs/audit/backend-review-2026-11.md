@@ -271,7 +271,7 @@ Postgres 侧 `listPublishedArticles` 的 `query` 分支会对全部已发布文�
 | 检查项 | 结果 |
 | --- | --- |
 | `pnpm install --frozen-lockfile` | 成功（sandbox 为 Node 22.22.3，项目要求 `>=24 <25`，用 `--config.engine-strict=false` 绕过 engine 检查） |
-| `tsc --noEmit`（`tsconfig.json` + `tsconfig.strict.json`） | 通过，0 错误 |
+| `tsc --noEmit`（`tsconfig.json`，`strict: true`） | 通过，0 错误 |
 | API 单元测试（`test:unit` 的 27 个文件） | **276 passed / 0 failed** |
 | 持久化 + 安全 + 路由测试（21 个文件） | **209 passed / 1 failed / 39 skipped** |
 | 实测脚本（N+1 计数、媒体扫描体量、限流覆盖枚举） | 见 B1 / B2 / A2，脚本在 `/tmp`，**未写入仓库** |
@@ -381,7 +381,7 @@ React Router 把所有路径都交给路由处理，仓库里又从来没有 fav
 ### 本次实际执行的检查（E1 / E2）
 
 - 复现：删除 `featured_articles` 表后精确复现“1×500 + 3×200”，且 500 最快。
-- `tsc --noEmit`：`apps/api`（含 `tsconfig.strict.json`）、`packages/web-ui`、
+- `tsc --noEmit`：`apps/api`（`strict: true`）、`packages/web-ui`、
   `packages/web-http`、`apps/web-rr` 全部通过。
 - 新增 `apps/api/src/persistence/migrate.test.ts`（5 例，用假 `sql` 客户端，
   不需要真实数据库）：全通过。已同时注册到根 `test` 脚本与 `apps/api` 的

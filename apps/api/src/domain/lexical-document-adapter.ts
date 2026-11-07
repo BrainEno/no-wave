@@ -1,5 +1,12 @@
 import { ArticleInputError } from "./errors.ts";
-import { validateArticleBlocks, validateArticleContentBlocksVersion } from "./article.ts";
+import { isRecord, validateArticleBlocks, validateArticleContentBlocksVersion } from "./article.ts";
+
+/** A Lexical node as it arrives: untyped JSON that this adapter must prove. */
+type LexNode = Record<string, unknown>;
+/** An inline run in application form. */
+export type InlineRun = { text: string; marks?: string[]; href?: string };
+/** Any block this adapter emits: the id is assigned later, in `assignBlockIds`. */
+type ParsedBlock = ParsedTextBlock | ParsedListBlock | ParsedCodeBlock | ParsedImageBlock;
 
 const TEXT_FORMATS = Object.freeze([
   { mark: "bold", flag: 1 },
@@ -27,22 +34,21 @@ const TEXT_KEYS = new Set(["detail", "format", "mode", "style", "text", "type", 
  */
 type ParsedTextBlock = { id: string; type: string; text: string; level?: number; inlines?: unknown[] };
 type ParsedListBlock = { id: string; type: "list"; ordered: boolean; items: string[]; itemInlines?: unknown[] };
+type ParsedCodeBlock = { id: string; type: "code"; language: string; code: string };
+type ParsedImageBlock = { id: string; type: "image"; src: string; alt: string; caption?: string };
 
-function fail(path, message) {
+function fail(path: string, message: string): never {
   throw new ArticleInputError("Lexical adapter: " + path + " " + message);
 }
-function isRecord(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-function expectRecord(value, path) {
+function expectRecord(value: unknown, path: string): LexNode {
   if (!isRecord(value)) fail(path, "must be an object.");
   return value;
 }
-function onlyKeys(value, allowed, path) {
+function onlyKeys(value: LexNode, allowed: ReadonlySet<string>, path: string): void {
   const unknown = Object.keys(value).find((key) => !allowed.has(key));
   if (unknown) fail(path, 'contains unsupported field "' + unknown + '".');
 }
-function validateElementEnvelope(node, path) {
+function validateElementEnvelope(node: LexNode, path: string): unknown[] {
   if (node.version !== 1) fail(path, "must use Lexical node version 1.");
   if (node.direction !== undefined && node.direction !== null && node.direction !== "ltr") {
     fail(path, "uses text direction metadata that the article contract cannot preserve.");
@@ -56,15 +62,15 @@ function validateElementEnvelope(node, path) {
   if (!Array.isArray(node.children)) fail(path + ".children", "must be an array.");
   return node.children;
 }
-function textMarks(format, path) {
+function textMarks(format: unknown, path: string): string[] {
   const numericFormat = format === undefined ? 0 : format;
-  if (!Number.isInteger(numericFormat) || numericFormat < 0 ||
+  if (typeof numericFormat !== "number" || !Number.isInteger(numericFormat) || numericFormat < 0 ||
       (numericFormat & ~TEXT_FORMAT_MASK) !== 0) {
     fail(path + ".format", "contains unsupported Lexical text formatting flags.");
   }
   return TEXT_FORMATS.filter((item) => (numericFormat & item.flag) !== 0).map((item) => item.mark);
 }
-function parseTextNode(node, path, href, { code = false } = {}) {
+function parseTextNode(node: LexNode, path: string, href: string | undefined, { code = false }: { code?: boolean } = {}): InlineRun {
   expectRecord(node, path);
   const allowedKeys = node.type === "code-highlight"
     ? new Set([...TEXT_KEYS, "highlightType"])
@@ -74,20 +80,21 @@ function parseTextNode(node, path, href, { code = false } = {}) {
     fail(path, 'contains unsupported inline node type "' + String(node.type) + '".');
   }
   if (node.version !== 1) fail(path, "must use Lexical node version 1.");
-  if (typeof node.text !== "string") fail(path + ".text", "must be a string.");
+  const text = node.text;
+  if (typeof text !== "string") fail(path + ".text", "must be a string.");
   if (node.detail !== undefined && node.detail !== 0) fail(path + ".detail", "uses unsupported text detail flags.");
   if (node.mode !== undefined && node.mode !== "normal") fail(path + ".mode", "uses unsupported text mode.");
   if (node.style !== undefined && node.style !== "") fail(path + ".style", "uses inline CSS that the article contract cannot preserve.");
   const marks = textMarks(node.format, path);
   if (code && marks.length) fail(path + ".format", "uses inline formatting inside a code block.");
   return {
-    text: node.text,
+    text,
     ...(marks.length ? { marks } : {}),
     ...(href !== undefined ? { href } : {}),
   };
 }
-function mergeInlineRuns(runs) {
-  const merged = [];
+function mergeInlineRuns(runs: InlineRun[]): InlineRun[] {
+  const merged: InlineRun[] = [];
   for (const run of runs) {
     const previous = merged[merged.length - 1];
     const previousMarks = previous && previous.marks ? previous.marks : [];
@@ -101,9 +108,9 @@ function mergeInlineRuns(runs) {
   }
   return merged;
 }
-function parseInlineNodes(nodes, path, { code = false } = {}) {
+function parseInlineNodes(nodes: unknown, path: string, { code = false }: { code?: boolean } = {}): InlineRun[] {
   if (!Array.isArray(nodes)) fail(path, "must be an array.");
-  const runs = [];
+  const runs: InlineRun[] = [];
   for (let index = 0; index < nodes.length; index += 1) {
     const nodePath = path + "[" + index + "]";
     const node = expectRecord(nodes[index], nodePath);
@@ -118,7 +125,8 @@ function parseInlineNodes(nodes, path, { code = false } = {}) {
       const linkKeys = new Set([...ELEMENT_KEYS, "url", "rel", "target", "title"]);
       onlyKeys(node, linkKeys, nodePath);
       const children = validateElementEnvelope(node, nodePath);
-      if (typeof node.url !== "string" || node.url.length === 0) fail(nodePath + ".url", "must be a non-empty URL.");
+      const url = node.url;
+      if (typeof url !== "string" || url.length === 0) fail(nodePath + ".url", "must be a non-empty URL.");
       for (const key of ["rel", "target", "title"]) {
         if (node[key] !== undefined && node[key] !== null && node[key] !== "") {
           fail(nodePath + "." + key, "uses link metadata that the article contract cannot preserve.");
@@ -129,7 +137,7 @@ function parseInlineNodes(nodes, path, { code = false } = {}) {
         const childPath = nodePath + ".children[" + childIndex + "]";
         const child = expectRecord(children[childIndex], childPath);
         if (child.type !== "text") fail(childPath, "contains a nested or unsupported link child.");
-        runs.push(parseTextNode(child, childPath, node.url));
+        runs.push(parseTextNode(child, childPath, url));
       }
       continue;
     }
@@ -142,7 +150,7 @@ function parseInlineNodes(nodes, path, { code = false } = {}) {
  * author typed, but the article contract requires trimmed block text — without
  * this a paragraph ending in a space would fail to save.
  */
-function trimRuns(runs) {
+function trimRuns(runs: InlineRun[]): InlineRun[] {
   const trimmed = runs.map((run) => ({ ...run }));
   while (trimmed.length > 0 && trimmed[0].text.trim().length === 0) trimmed.shift();
   while (trimmed.length > 0 && trimmed[trimmed.length - 1].text.trim().length === 0) trimmed.pop();
@@ -153,15 +161,15 @@ function trimRuns(runs) {
   trimmed[trimmed.length - 1] = { ...trimmed[trimmed.length - 1], text: trimmed[trimmed.length - 1].text.trimEnd() };
   return trimmed;
 }
-function hasInlineMarkup(runs) {
+function hasInlineMarkup(runs: InlineRun[]): boolean {
   return runs.some((run) => run.href !== undefined || (run.marks && run.marks.length > 0));
 }
-function plainText(runs) {
+function plainText(runs: InlineRun[]): string {
   return runs.map((run) => run.text).join("");
 }
-function parseBlock(node, index) {
+function parseBlock(input: unknown, index: number): ParsedBlock | null {
   const path = "root.children[" + index + "]";
-  expectRecord(node, path);
+  const node = expectRecord(input, path);
   if (typeof node.type !== "string") fail(path + ".type", "must be a string.");
   if (node.version !== 1) fail(path, "must use Lexical node version 1.");
 
@@ -192,8 +200,8 @@ function parseBlock(node, index) {
     if (!ordered && !unordered) fail(path, "must be an ordered or unordered list; checklists are not supported.");
     if (node.start !== undefined && node.start !== 1) fail(path + ".start", "must be 1 because custom list start values are not supported.");
     if (children.length > 100) fail(path + ".children", "must contain at most 100 list items.");
-    const items = [];
-    const itemInlines = [];
+    const items: string[] = [];
+    const itemInlines: unknown[][] = [];
     let anyMarkup = false;
     for (let itemIndex = 0; itemIndex < children.length; itemIndex += 1) {
       const itemPath = path + ".children[" + itemIndex + "]";
@@ -202,7 +210,9 @@ function parseBlock(node, index) {
       onlyKeys(item, new Set([...ELEMENT_KEYS, "checked", "value"]), itemPath);
       const itemChildren = validateElementEnvelope(item, itemPath);
       if (item.checked !== undefined && item.checked !== null) fail(itemPath + ".checked", "represents checkbox state not supported by the article contract.");
-      if (item.value !== undefined && (!Number.isInteger(item.value) || item.value < 1)) fail(itemPath + ".value", "must be a positive integer.");
+      if (item.value !== undefined && (typeof item.value !== "number" || !Number.isInteger(item.value) || item.value < 1)) {
+        fail(itemPath + ".value", "must be a positive integer.");
+      }
       const runs = trimRuns(parseInlineNodes(itemChildren, itemPath + ".children"));
       const text = plainText(runs);
       if (!text.trim()) continue;
@@ -246,15 +256,15 @@ function parseBlock(node, index) {
     };
   }
 
-  fail(path, 'contains unsupported block node type "' + node.type + '".');
+  fail(path, 'contains unsupported block node type "' + String(node.type) + '".');
 }
-function textFormat(marks = []) {
+function textFormat(marks: string[] = []): number {
   return marks.reduce((format, mark) => {
     const descriptor = TEXT_FORMATS.find((item) => item.mark === mark);
     return format | (descriptor ? descriptor.flag : 0);
   }, 0);
 }
-function lexicalTextNode(run) {
+function lexicalTextNode(run: { text: string; marks?: string[] }): LexNode {
   return {
     detail: 0,
     format: textFormat(run.marks || []),
@@ -265,7 +275,7 @@ function lexicalTextNode(run) {
     version: 1,
   };
 }
-function lexicalLinkNode(run) {
+function lexicalLinkNode(run: InlineRun): LexNode {
   return {
     children: [lexicalTextNode(run)],
     direction: null,
@@ -279,10 +289,10 @@ function lexicalLinkNode(run) {
     version: 1,
   };
 }
-function lexicalInlineNodes(runs) {
+function lexicalInlineNodes(runs: InlineRun[]): LexNode[] {
   return runs.map((run) => run.href === undefined ? lexicalTextNode(run) : lexicalLinkNode(run));
 }
-function lexicalElement(type, children, extra = {}) {
+function lexicalElement(type: string, children: unknown[], extra: Record<string, unknown> = {}): LexNode {
   return {
     children,
     direction: null,
@@ -293,75 +303,98 @@ function lexicalElement(type, children, extra = {}) {
     ...extra,
   };
 }
-function toLexicalBlock(block, index) {
+/**
+ * A block that has been through `validateArticleBlocks`.
+ *
+ * The validator returns `Record<string, unknown>[]` because it accepts untrusted
+ * JSON; by the time this adapter renders a block, every field below has been
+ * checked. The single assertion in `toLexicalBlock` is that boundary.
+ */
+type ValidatedBlock =
+  | { type: "paragraph"; text: string; inlines?: InlineRun[] }
+  | { type: "heading"; text: string; level: number; inlines?: InlineRun[] }
+  | { type: "quote"; text: string; attribution?: string; inlines?: InlineRun[] }
+  | { type: "list"; ordered: boolean; items: string[]; itemInlines?: InlineRun[][] }
+  | { type: "code"; language: string; code: string }
+  | { type: "image"; src: string; alt: string; caption?: string };
+
+function toLexicalBlock(block: LexNode, index: number): LexNode {
   const path = "contentBlocks[" + index + "]";
-  if (block.type === "paragraph") {
-    return lexicalElement("paragraph", lexicalInlineNodes(block.inlines || [{ text: block.text }]));
+  const validated = block as ValidatedBlock;
+  if (validated.type === "paragraph") {
+    return lexicalElement("paragraph", lexicalInlineNodes(validated.inlines || [{ text: validated.text }]));
   }
-  if (block.type === "heading") {
-    return lexicalElement("heading", lexicalInlineNodes(block.inlines || [{ text: block.text }]), { tag: "h" + block.level });
+  if (validated.type === "heading") {
+    return lexicalElement("heading", lexicalInlineNodes(validated.inlines || [{ text: validated.text }]), { tag: "h" + validated.level });
   }
-  if (block.type === "quote") {
-    if (block.attribution !== undefined && block.attribution !== "") {
+  if (validated.type === "quote") {
+    if (validated.attribution !== undefined && validated.attribution !== "") {
       fail(path + ".attribution", "cannot be represented by the configured standard Lexical QuoteNode.");
     }
-    return lexicalElement("quote", lexicalInlineNodes(block.inlines || [{ text: block.text }]));
+    return lexicalElement("quote", lexicalInlineNodes(validated.inlines || [{ text: validated.text }]));
   }
-  if (block.type === "list") {
-    const items = block.items.map((item, itemIndex) => lexicalElement(
+  if (validated.type === "list") {
+    const items = validated.items.map((item, itemIndex) => lexicalElement(
       "listitem",
-      lexicalInlineNodes(block.itemInlines ? block.itemInlines[itemIndex] : [{ text: item }]),
+      lexicalInlineNodes(validated.itemInlines ? validated.itemInlines[itemIndex] ?? [{ text: item }] : [{ text: item }]),
       { checked: null, value: itemIndex + 1 },
     ));
     return lexicalElement("list", items, {
-      listType: block.ordered ? "number" : "bullet",
+      listType: validated.ordered ? "number" : "bullet",
       start: 1,
-      tag: block.ordered ? "ol" : "ul",
+      tag: validated.ordered ? "ol" : "ul",
     });
   }
-  if (block.type === "code") {
-    const children = block.code.length ? [lexicalTextNode({ text: block.code })] : [];
-    return lexicalElement("code", children, { language: block.language, theme: "" });
+  if (validated.type === "code") {
+    const children = validated.code.length ? [lexicalTextNode({ text: validated.code })] : [];
+    return lexicalElement("code", children, { language: validated.language, theme: "" });
   }
-  if (block.type === "image") {
+  if (validated.type === "image") {
     return {
       type: "image",
       version: 1,
-      src: block.src,
-      alt: block.alt,
-      ...(block.caption ? { caption: block.caption } : {}),
+      src: validated.src,
+      alt: validated.alt,
+      ...(validated.caption ? { caption: validated.caption } : {}),
     };
   }
-  fail(path, 'block type "' + block.type + '" has no registered Lexical node adapter.');
+  fail(path, 'block type "' + String((validated as { type: unknown }).type) + '" has no registered Lexical node adapter.');
 }
-function canonicalize(value) {
+
+function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalize);
   if (!isRecord(value)) return value;
-  const sorted = {};
+  const sorted: Record<string, unknown> = {};
   for (const key of Object.keys(value).sort()) sorted[key] = canonicalize(value[key]);
   return sorted;
 }
-function blockSignature(block) {
-  const content = { ...block };
+function blockSignature(block: LexNode): string {
+  const content: LexNode = { ...block };
   delete content.id;
   return JSON.stringify(canonicalize(content));
 }
-function assignBlockIds(blocks, previousBlocks, idFactory) {
-  const previousBySignature = new Map();
+function assignBlockIds(
+  blocks: LexNode[],
+  previousBlocks: unknown,
+  idFactory: (index: number, block: LexNode) => string,
+): LexNode[] {
+  const previousBySignature = new Map<string, string[]>();
   for (const previous of Array.isArray(previousBlocks) ? previousBlocks : []) {
-    if (!isRecord(previous) || typeof previous.id !== "string") continue;
+    if (!isRecord(previous)) continue;
+    const previousId = previous.id;
+    if (typeof previousId !== "string") continue;
     const signature = blockSignature(previous);
     const matches = previousBySignature.get(signature) || [];
-    matches.push(previous.id);
+    matches.push(previousId);
     previousBySignature.set(signature, matches);
   }
-  const used = new Set();
+  const used = new Set<string>();
   return blocks.map((block, index) => {
     const matches = previousBySignature.get(blockSignature(block));
-    let id;
+    let id: string | undefined;
     while (matches && matches.length && !id) {
       const candidate = matches.shift();
-      if (!used.has(candidate)) id = candidate;
+      if (candidate !== undefined && !used.has(candidate)) id = candidate;
     }
     if (!id) id = idFactory(index, block);
     if (typeof id !== "string" || id.trim().length === 0 || id.length > 100) {
@@ -382,8 +415,14 @@ function assignBlockIds(blocks, previousBlocks, idFactory) {
  * Unsupported/custom nodes fail closed; no HTML rendering or Lexical runtime
  * package is required by this adapter.
  */
-export function lexicalEditorStateToArticleDocument(serializedState, { previousBlocks = [], idFactory = (index) => "lexical-block-" + (index + 1) } = {}) {
-  let state = serializedState;
+export function lexicalEditorStateToArticleDocument(
+  serializedState: unknown,
+  {
+    previousBlocks = [],
+    idFactory = (index: number) => "lexical-block-" + (index + 1),
+  }: { previousBlocks?: unknown; idFactory?: (index: number, block: LexNode) => string } = {},
+) {
+  let state: unknown = serializedState;
   if (typeof state === "string") {
     if (state.length > MAX_LEXICAL_JSON_CHARACTERS) fail("state", "exceeds the serialized size limit.");
     try {
@@ -400,9 +439,9 @@ export function lexicalEditorStateToArticleDocument(serializedState, { previousB
     }
   }
 
-  expectRecord(state, "state");
-  onlyKeys(state, new Set(["root"]), "state");
-  const root = expectRecord(state.root, "state.root");
+  const stateRecord = expectRecord(state, "state");
+  onlyKeys(stateRecord, new Set(["root"]), "state");
+  const root = expectRecord(stateRecord.root, "state.root");
   onlyKeys(root, new Set([...ELEMENT_KEYS]), "state.root");
   if (root.type !== "root") fail("state.root", "must be a Lexical root node.");
   const children = validateElementEnvelope(root, "state.root");
@@ -423,7 +462,10 @@ export function lexicalEditorStateToArticleDocument(serializedState, { previousB
  * Image nodes and quote attributions are rejected until matching custom-node
  * and media-workflow contracts are implemented.
  */
-export function articleDocumentToLexicalEditorState(contentBlocks, { contentBlocksVersion = 1 } = {}) {
+export function articleDocumentToLexicalEditorState(
+  contentBlocks: unknown,
+  { contentBlocksVersion = 1 }: { contentBlocksVersion?: unknown } = {},
+) {
   const version = validateArticleContentBlocksVersion(contentBlocksVersion);
   const validated = validateArticleBlocks(contentBlocks, version);
   return { root: lexicalElement("root", validated.map(toLexicalBlock)) };

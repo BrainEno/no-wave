@@ -1,15 +1,16 @@
 import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
+import type { SqliteRunner } from "./sqlite.ts";
 
 /**
  * SQLite persistence slice for revoked sessions, composed by sqlite-store.ts.
  */
-function requiredSessionId(sessionId) {
+function requiredSessionId(sessionId: unknown): void {
   if (typeof sessionId !== "string" || sessionId.trim().length === 0 || sessionId !== sessionId.trim()) {
     throw new TypeError("sessionId must be a non-empty, trimmed string.");
   }
 }
 
-export function createSqliteSessionStore(db) {
+export function createSqliteSessionStore(db: SqliteRunner) {
   if (!db || typeof db.prepare !== "function") throw new TypeError("A SQLite database connection is required.");
   const findRevoked = db.prepare(
     "SELECT 1 AS revoked FROM revoked_sessions WHERE session_id = ? AND expires_at > ?",
