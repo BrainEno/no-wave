@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { TOMBSTONE_NOTIFICATION_LIMIT, createApplicationServices } from "./services.ts";
+import {
+  TOMBSTONE_NOTIFICATION_BATCH_SIZE,
+  TOMBSTONE_NOTIFICATION_LIMIT,
+  createApplicationServices,
+} from "./services.ts";
 import { assertPersistenceAdapter, persistencePortMethods, createPersistencePorts } from "./persistence-ports.ts";
 
 function completeFakeAdapter() {
@@ -52,6 +56,7 @@ test("application service facade exposes domain operations without requiring a d
 
 test("deleting a work tells the readers who commented on it when their words go", async () => {
   const notified: Array<{ userId: string; eventKey: string; payload: unknown }> = [];
+  const calls: number[] = [];
   let requestedLimit;
   const persistence = completeFakeAdapter();
   persistence.deleteArticle = async () => ({ id: "article-1", deletedAt: "2026-01-02T03:04:05.678Z" });
@@ -59,15 +64,19 @@ test("deleting a work tells the readers who commented on it when their words go"
     requestedLimit = args.limit;
     return ["reader-1", "reader-2", "author-1"];
   };
-  persistence.createNotification = async (input) => {
-    notified.push(input);
-    return { id: `notification-${notified.length}`, duplicate: false };
+  // Audit F-23: the notices are written in batches, one transaction each, rather
+  // than one transaction per reader inside the deleting request.
+  persistence.createNotifications = async (inputs) => {
+    calls.push(inputs.length);
+    for (const input of inputs) notified.push(input);
+    return inputs.map((input) => ({ id: `notification-${input.userId}`, duplicate: false }));
   };
   const services = createApplicationServices({ persistence, env: { ARTICLE_TOMBSTONE_RETENTION_DAYS: "30" } });
   await services.deleteArticle({ actorId: "author-1", articleId: "article-1" });
 
   // Every commenter is told once; the author who deleted their own work is not.
   assert.deepEqual(notified.map((input) => input.userId), ["reader-1", "reader-2"]);
+  assert.deepEqual(calls, [2], "two notices, one transaction");
   // The notice names the date the sweep runs, not the deletion: that is the
   // date the reader's own words disappear.
   assert.deepEqual(notified[0].payload, {
@@ -85,6 +94,12 @@ test("a reader who cannot be told does not stop the deletion", async () => {
   const persistence = completeFakeAdapter();
   persistence.deleteArticle = async () => ({ id: "article-1", deletedAt: "2026-01-02T03:04:05.678Z" });
   persistence.listArticleCommentAuthorIds = async () => ["reader-1", "reader-2"];
+  // The batch is one transaction, so a collision inside it writes nothing; the
+  // deletion path then retries that batch row by row, which is what isolates the
+  // one reader who cannot be told.
+  persistence.createNotifications = async () => {
+    throw new Error("one of these keys was already used with a different payload");
+  };
   persistence.createNotification = async ({ userId }) => {
     if (userId === "reader-1") throw new Error("the inbox row could not be written");
     notified.push(userId);
@@ -106,6 +121,46 @@ test("a reader who cannot be told does not stop the deletion", async () => {
     id: "article-1",
     deletedAt: "2026-01-02T03:04:05.678Z",
   });
+});
+
+test("a page of commenters is written in batches, and a failing batch costs only its own readers", async () => {
+  // Audit F-23: 200 recipients used to mean 200 transactions inside one DELETE
+  // request. They are now ceil(200 / batch) transactions, and one bad batch must
+  // not take the others with it.
+  const recipients = Array.from({ length: 150 }, (_, index) => `reader-${index}`);
+  const delivered: string[][] = [];
+  const batchCalls: string[][] = [];
+  const failures: Array<{ task: string; errorName: string; failed?: number }> = [];
+  const persistence = completeFakeAdapter();
+  persistence.deleteArticle = async () => ({ id: "article-1", deletedAt: "2026-01-02T03:04:05.678Z" });
+  persistence.listArticleCommentAuthorIds = async () => recipients;
+  persistence.createNotifications = async (inputs) => {
+    batchCalls.push(inputs.map((input) => input.userId));
+    // The middle batch is the broken one.
+    if (batchCalls.length === 2) throw new Error("the second batch could not be written");
+    delivered.push(inputs.map((input) => input.userId));
+    return inputs.map((input) => ({ id: `notification-${input.userId}`, duplicate: false }));
+  };
+  // The retry after a failed batch: two rows land one at a time, so exactly the
+  // remaining readers of that batch are counted as never told.
+  let retried = 0;
+  persistence.createNotification = async ({ userId }) => {
+    retried += 1;
+    if (retried <= 2) return { id: `notification-${userId}`, duplicate: false };
+    throw new Error("this reader's inbox row cannot be written");
+  };
+
+  const services = createApplicationServices({ persistence, onBackgroundFailure: (failure) => failures.push(failure) });
+  await services.deleteArticle({ actorId: "author-1", articleId: "article-1" });
+
+  assert.deepEqual(batchCalls.map((batch) => batch.length), [50, 50, 50], "three transactions, not 150");
+  assert.deepEqual(delivered, [recipients.slice(0, 50), recipients.slice(100)], "the batches around the broken one are committed");
+  assert.equal(retried, 50, "only the failed batch is retried row by row");
+  assert.deepEqual(failures, [{
+    task: "tombstone-notifications",
+    errorName: "Error",
+    failed: 48,
+  }]);
 });
 
 test("application article use cases parse serialized content blocks before persistence", async () => {
@@ -167,6 +222,7 @@ test("a failing cleanup rides on the write without becoming the write's failure 
   };
   persistence.deleteArticle = async () => ({ id: "article-1", deletedAt: "2026-01-02T03:04:05.678Z" });
   persistence.listArticleCommentAuthorIds = async () => ["reader-1", "reader-2"];
+  persistence.createNotifications = async () => { throw new Error("inbox unavailable"); };
   persistence.createNotification = async () => { throw new Error("inbox unavailable"); };
   const services = createApplicationServices({
     persistence,
@@ -195,7 +251,7 @@ test("a reporter that throws cannot turn a cleanup failure into a request failur
   const persistence = completeFakeAdapter();
   persistence.deleteArticle = async () => ({ id: "article-1", deletedAt: "2026-01-02T03:04:05.678Z" });
   persistence.listArticleCommentAuthorIds = async () => ["reader-1"];
-  persistence.createNotification = async () => { throw new Error("inbox unavailable"); };
+  persistence.createNotifications = async () => { throw new Error("inbox unavailable"); };
   const services = createApplicationServices({
     persistence,
     onBackgroundFailure: () => { throw new Error("the log sink is full"); },

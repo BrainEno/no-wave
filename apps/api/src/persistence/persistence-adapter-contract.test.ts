@@ -790,6 +790,68 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
     }
   });
 
+  /**
+   * The batch inbox write (audit F-23).
+   *
+   * Deleting a work tells up to 200 commenters. The per-row call is a transaction
+   * of its own, so the desk used to hold the SQLite write lock 200 times inside one
+   * `DELETE` request. The batch must be *the same work*, not a cheaper variant:
+   * same receipts, same duplicate handling, same payload-conflict refusal, and one
+   * transaction that either lands whole or not at all.
+   */
+  test(`${adapterName}: batch inbox writes match the single writes, in order and in one transaction`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const users = [`batch-notify-a-${suffix}`, `batch-notify-b-${suffix}`, `batch-notify-c-${suffix}`];
+    try {
+      const events = users.map((userId, index) => ({
+        userId,
+        eventKey: `batch-event-${index}-${suffix}`,
+        payload: { type: "contract.batch", index },
+      }));
+
+      // The per-row answer, for comparison.
+      const singles = [];
+      for (const event of events) singles.push(await runtime.store.createNotification(event));
+
+      // A batch of the same events is all duplicates of what already exists, reported
+      // in input order and with the ids the first writes produced.
+      const duplicates = await runtime.store.createNotifications(events);
+      assert.deepEqual(duplicates.map((receipt) => receipt.userId), users);
+      assert.deepEqual(duplicates.map((receipt) => receipt.duplicate), [true, true, true]);
+      assert.deepEqual(duplicates.map((receipt) => receipt.id), singles.map((receipt) => receipt.id));
+
+      // New keys in one call: one receipt each, none of them a duplicate.
+      const fresh = await runtime.store.createNotifications(
+        users.map((userId, index) => ({
+          userId,
+          eventKey: `batch-fresh-${index}-${suffix}`,
+          payload: { type: "contract.batch.fresh", index },
+        })),
+      );
+      assert.deepEqual(fresh.map((receipt) => receipt.duplicate), [false, false, false]);
+      assert.equal(new Set(fresh.map((receipt) => receipt.id)).size, users.length);
+      assert.equal(await runtime.store.getUnreadNotificationCount({ actorId: users[0] }), 2);
+
+      // One conflict inside a batch refuses the whole batch: a caller that asked
+      // for three notices is never handed two and no error.
+      const before = await runtime.store.getUnreadNotificationCount({ actorId: users[1] });
+      await assert.rejects(
+        runtime.store.createNotifications([
+          { userId: users[1], eventKey: `batch-fresh-1-${suffix}`, payload: { type: "conflict.retry" } },
+          { userId: users[1], eventKey: `batch-rollback-${suffix}`, payload: { type: "contract.batch.rollback" } },
+        ]),
+        IdempotencyConflictError,
+      );
+      assert.equal(await runtime.store.getUnreadNotificationCount({ actorId: users[1] }), before, "nothing from the failed batch landed");
+
+      // An empty batch is a no-op, not an error.
+      assert.deepEqual(await runtime.store.createNotifications([]), []);
+    } finally {
+      await runtime.cleanup(undefined, suffix);
+    }
+  });
+
   test(`${adapterName}: session revocation preserves the furthest expiry and expires on schedule`, options, async () => {
     const runtime = await fixture();
     const suffix = randomUUID();

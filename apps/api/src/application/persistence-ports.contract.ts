@@ -102,6 +102,10 @@ export async function assertTypedPortOutputs(): Promise<void> {
   const delivered: boolean = await ports.notifications.deliverMessageNotifications({ eventKey: "e", messageId: "m", conversationId: "c", senderId: "s" });
   void delivered;
   const receiptDuplicate: boolean = (await ports.notifications.createNotification({ userId: "u", eventKey: "e", payload: {} })).duplicate;
+  const receipts: Array<{ id: string; duplicate: boolean }> = await ports.notifications.createNotifications([
+    { userId: "u", eventKey: "e1", payload: {} },
+    { userId: "u", eventKey: "e2", payload: {} },
+  ]);
   void receiptDuplicate;
   const inboxReadAt: string | null = (await ports.notifications.listNotifications({ actorId: "u" }))[0].readAt;
   void inboxReadAt;

@@ -52,7 +52,7 @@ export const persistencePortMethods = Object.freeze({
   ] as const),
   notifications: Object.freeze([
     "listNotifications", "getUnreadNotificationCount", "markAllNotificationsRead",
-    "markNotificationRead", "createNotification", "deliverMessageNotifications",
+    "markNotificationRead", "createNotification", "createNotifications", "deliverMessageNotifications",
   ] as const),
   sessions: Object.freeze(["revokeSession", "isSessionRevoked"] as const),
   identity: Object.freeze([
@@ -369,6 +369,29 @@ export type NotificationsPersistencePort = {
   markAllNotificationsRead(input: NotificationActorInput): PersistenceResult<number>;
   markNotificationRead(input: MarkNotificationReadInput): PersistenceResult<NotificationRecord | null>;
   createNotification(input: CreateNotificationInput): PersistenceResult<NotificationReceipt>;
+  /**
+   * Write one inbox row per input in **a single transaction** (audit F-23).
+   *
+   * Deleting a work tells up to 200 commenters, and the per-row call is a
+   * transaction of its own: on SQLite that is 200 `BEGIN IMMEDIATE` … `COMMIT`
+   * cycles holding the write lock inside one `DELETE` request, so every other
+   * writer on the instance waits behind a page of notices. The batch is the same
+   * work with one transaction and one commit.
+   *
+   * Semantics, matching the single call row by row:
+   * - the same `(userId, eventKey)` pair is an idempotent replay, reported as
+   *   `duplicate: true`, not an error;
+   * - the same key with a **different** payload is an `IdempotencyConflictError`;
+   * - because it is one transaction, a conflict or a driver failure rolls the
+   *   whole call back. Callers that need per-row isolation send smaller batches
+   *   and treat a failed batch as a failed batch — never as "some of these
+   *   probably landed";
+   * - an empty input list is a no-op that opens no transaction and returns `[]`.
+   *
+   * Receipts are returned in **input order**, duplicates included, so a caller
+   * can line them up with what it asked for.
+   */
+  createNotifications(inputs: CreateNotificationInput[]): PersistenceResult<NotificationReceipt[]>;
   deliverMessageNotifications(input: DeliverMessageNotificationsInput): PersistenceResult<boolean>;
 };
 

@@ -119,6 +119,18 @@ export const TOMBSTONE_PURGE_EVERY_WRITES = 32;
 export const TOMBSTONE_NOTIFICATION_LIMIT = 200;
 
 /**
+ * How many deletion notices go in one transaction (audit F-23).
+ *
+ * The single-row call is a transaction of its own, so the old loop held the
+ * SQLite write lock 200 times inside one `DELETE` request: every other writer on
+ * the instance waited behind a page of notices. Fifty per batch keeps each
+ * transaction short (and each failed batch small) while turning 200 commits into
+ * four. The batch is all-or-nothing, so a batch is also the unit of "these
+ * readers were told".
+ */
+export const TOMBSTONE_NOTIFICATION_BATCH_SIZE = 50;
+
+/**
  * Read the retention window from the environment.
  *
  * A value outside the accepted range is not clamped — clamping `0` up to `1`
@@ -251,6 +263,12 @@ export function createApplicationServices({
    * was never told. They are *reported* instead — one line per deletion, carrying
    * the count and the error class, so a broken notification write stops being
    * invisible without turning into a 500.
+   *
+   * The notices are written in batches of {@link TOMBSTONE_NOTIFICATION_BATCH_SIZE},
+   * one transaction each (audit F-23). Per row they were 200 transactions inside
+   * one `DELETE`, which on SQLite means the write lock 200 times for every other
+   * writer on the instance. A batch that fails is retried row by row, so one
+   * unwritable key still costs one reader rather than a whole page.
    */
   async function notifyCommentAuthors(articleId: string, actorId: string, purgesAt: string): Promise<void> {
     if (typeof ports.engagement.listArticleCommentAuthorIds !== "function") return;
@@ -263,24 +281,50 @@ export function createApplicationServices({
       return;
     }
     if (!Array.isArray(authorIds)) return;
+    const notice = (userId: string) => ({
+      userId,
+      eventKey: `article.deleted:${articleId}:${userId}`,
+      payload: { type: "article.deleted", articleId, purgesAt },
+    });
+    // The author deleting their own work needs no notice about it.
+    const recipients = authorIds.filter(
+      (userId): userId is string => typeof userId === "string" && userId.length > 0 && userId !== actorId,
+    );
     let failed = 0;
     let firstFailure: string | null = null;
-    for (const userId of authorIds) {
-      // The author deleting their own work needs no notice about it.
-      if (typeof userId !== "string" || userId.length === 0 || userId === actorId) continue;
+    for (let start = 0; start < recipients.length; start += TOMBSTONE_NOTIFICATION_BATCH_SIZE) {
+      const batch = recipients.slice(start, start + TOMBSTONE_NOTIFICATION_BATCH_SIZE);
       try {
-        await ports.notifications.createNotification({
-          userId,
-          eventKey: `article.deleted:${articleId}:${userId}`,
-          payload: { type: "article.deleted", articleId, purgesAt },
-        });
+        // One transaction per batch, in the order the readers were listed.
+        await ports.notifications.createNotifications(batch.map(notice));
+        continue;
       } catch (error) {
-        // One undeliverable inbox row must not stop the others.
-        failed += 1;
+        // The batch is one transaction, so a failure anywhere in it wrote
+        // nothing. Record it, then fall back to one row at a time for *this*
+        // batch only: a single unwritable key must cost one reader, not fifty,
+        // and the deletion itself never fails because an inbox row could not be
+        // written.
         firstFailure ??= safeErrorClass(error);
       }
+      for (const userId of batch) {
+        try {
+          await ports.notifications.createNotification(notice(userId));
+        } catch (error) {
+          failed += 1;
+          firstFailure ??= safeErrorClass(error);
+        }
+      }
     }
-    if (firstFailure !== null) report({ task: "tombstone-notifications", errorName: firstFailure, failed });
+    // `failed` counts readers who were never told. It is omitted when the batch
+    // failed but the row-by-row retry wrote every notice: the failure is still
+    // worth a line (something is flaky), and it is not worth claiming a loss.
+    if (firstFailure !== null) {
+      report({
+        task: "tombstone-notifications",
+        errorName: firstFailure,
+        ...(failed > 0 ? { failed } : {}),
+      });
+    }
   }
 
   // Deletion carries no body: it addresses a work the author already has.

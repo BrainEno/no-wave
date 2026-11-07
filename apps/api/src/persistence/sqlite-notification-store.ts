@@ -180,5 +180,64 @@ export function createSqliteNotificationStore(db) {
         throw error;
       }
     },
-  }) satisfies Pick<TypedPersistenceAdapterContract, "deliverMessageNotifications" | "listNotifications" | "getUnreadNotificationCount" | "markAllNotificationsRead" | "markNotificationRead" | "createNotification">;
+    /**
+     * Many inbox rows, one transaction (audit F-23).
+     *
+     * `createNotification` per recipient is what deletion used to do: up to 200
+     * `BEGIN IMMEDIATE` … `COMMIT` cycles inside one `DELETE` request, each one
+     * taking the SQLite write lock away from every other writer. This is the same
+     * work in one transaction and one commit.
+     *
+     * The loop is deliberate rather than a multi-row `INSERT`: each row needs its
+     * own `ON CONFLICT` answer (`duplicate`) and its own payload-hash check, and
+     * the batch is bounded by its caller. Receipts come back in input order.
+     */
+    async createNotifications(inputs) {
+      if (!Array.isArray(inputs)) throw new TypeError("createNotifications expects an array of notification inputs.");
+      if (inputs.length === 0) return [];
+      const prepared = inputs.map(({ userId, eventKey, payload }) => {
+        requiredText("userId", userId);
+        requiredText("eventKey", eventKey);
+        if (payload === undefined) throw new TypeError("payload is required.");
+        return { userId, eventKey, payload, hash: requestHash(payload) };
+      });
+
+      const transactionId = createMigrationTransactionId();
+      const changes = [];
+      const receipts = [];
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        for (const { userId, eventKey, payload, hash } of prepared) {
+          const notificationId = randomUUID();
+          const insertResult = insert.run(notificationId, userId, eventKey, JSON.stringify(payload), hash);
+          const row = getByKey.get(userId, eventKey);
+          if (!row) throw new Error("Notification idempotency row disappeared during transaction.");
+          if (row.payload_hash !== hash) {
+            // One conflict rolls the whole batch back: a caller that asked for
+            // fifty notices should not be handed thirty-five and no error.
+            throw new IdempotencyConflictError("The notification event key was already used with a different payload.");
+          }
+          const duplicate = Number(insertResult.changes) === 0;
+          if (!duplicate) {
+            const snapshot = db.prepare("SELECT * FROM notifications WHERE id = ?").get(notificationId);
+            if (snapshot) changes.push({ entityType: "notifications", entityId: notificationId, operation: "upsert", payload: snapshot });
+          }
+          receipts.push({
+            id: row.id,
+            userId: row.user_id,
+            eventKey: row.event_key,
+            payload: parsePayload(row.payload),
+            createdAt: new Date(row.created_at).toISOString(),
+            duplicate,
+          });
+        }
+        migrationCapture.captureInTransaction(db, transactionId, changes);
+        db.exec("COMMIT");
+        return receipts;
+      } catch (error) {
+        try { db.exec("ROLLBACK"); } catch { /* Preserve the original error. */ }
+        throw error;
+      }
+    },
+  }) satisfies Pick<TypedPersistenceAdapterContract, "deliverMessageNotifications" | "listNotifications" | "getUnreadNotificationCount" | "markAllNotificationsRead" | "markNotificationRead" | "createNotification" | "createNotifications">;
 }
