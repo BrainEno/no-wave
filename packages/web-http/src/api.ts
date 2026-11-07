@@ -1,10 +1,11 @@
 /**
  * Explicit inputs for every handler in this package.
  *
- * Nothing here reads `process.env`: the adapter that knows the runtime (Next.js,
- * React Router, a test) resolves the API origin and passes it in. That is what
- * makes the same handler testable without a framework request object, and it is
- * why a Vercel service binding can stay a transitional detail of one adapter.
+ * Nothing here reads `process.env`: the adapter that knows the runtime (the React
+ * Router app, a container, a test) resolves the API origin and passes it in. That
+ * is what makes the same handler testable without a framework request object, and
+ * it is why a Vercel service binding can stay a transitional detail of one
+ * adapter.
  */
 import type { RefreshCoordinator } from "./refresh-coordinator.ts";
 

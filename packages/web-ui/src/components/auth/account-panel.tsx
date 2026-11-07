@@ -1,5 +1,3 @@
-"use client";
-
 import { Link } from "@/lib/framework/link.tsx";
 import { useRouter } from "@/lib/framework/navigation.ts";
 import { useEffect, useState, type FormEvent } from "react";

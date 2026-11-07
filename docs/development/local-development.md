@@ -26,6 +26,7 @@ pnpm setup:local          # writes .env.local with a generated 48-byte JWT secre
 # SQLite (default)
 pnpm db:migrate           # create apps/api/data/no-wave.sqlite
 pnpm dev                  # API :4000 + Web :3000, with readiness gates
+                          # (why 3000 and not the package's 3100: see Ports below)
 
 # or PostgreSQL in Docker
 pnpm setup:local --force --postgres
@@ -40,6 +41,22 @@ pnpm check:local
 `pnpm check:local` is the answer to "is my local API actually reachable from my
 local Web app?" It walks the layers in dependency order and prints one line per
 layer, so the first `[FAIL]` identifies the broken layer.
+
+### Ports
+
+| Process | Port | Where it comes from |
+| --- | --- | --- |
+| API | **4000** | `PORT`. The API's own default is 4000 too, so a bare `node apps/api/src/index.ts` lands in the same place. |
+| Web, through the chain | **3000** | `WEB_PORT`, set explicitly for the child process by `pnpm dev` / `dev:web` / `stack:start`. `check:local` probes `:3000`. |
+| Web, run inside the package | **3100** | `apps/web-rr/vite.config.ts` and `apps/web-rr/server.ts` default to 3100 when `PORT` is unset — `pnpm --filter @no-wave/web-rr dev`, and the same default as the container image. |
+
+The split is deliberate (ADR 0017): the orchestrated chain kept the 3000 every
+document, probe and `WEB_DEV_ALLOWED_ORIGINS` value already used, while the
+package default stayed at 3100 so that a bare `react-router dev` started beside a
+running chain does not collide with it. Every orchestrated path passes `PORT`
+explicitly, so which port you get depends on how you started the server, not on
+what is in `.env.local` — `WEB_PORT=3000` in the chain does not change the
+package default.
 
 ## 2. What was missing before
 

@@ -21,6 +21,7 @@ import test from "node:test";
  */
 
 const packageRoot = fileURLToPath(new URL("../../", import.meta.url));
+const repositoryRoot = fileURLToPath(new URL("../../../../", import.meta.url));
 
 /** Every `.ts`/`.tsx` file under a directory, recursively. */
 function sources(dir: string): string[] {
@@ -72,4 +73,26 @@ test("both halves of the seam exist and are implemented with the router", () => 
 test("the seam exports what the components ask of it", () => {
   assert.deepEqual(exportedFunctions(join(packageRoot, "src/lib/framework/link.tsx")), ["Link"]);
   assert.deepEqual(exportedFunctions(join(packageRoot, "src/lib/framework/navigation.ts")), ["useNavigationBlocker", "usePathname", "useRouter"]);
+});
+
+/**
+ * No file carries a `"use client"` / `"use server"` directive.
+ *
+ * Those mark a React Server Components boundary, and React Router has none: the
+ * directives were left behind by the Next.js application ADR 0017 retired, and
+ * every one of them cost a build warning. Rollup reports a module-level
+ * directive it cannot honour ("Module level directives cause errors when
+ * bundled"), cannot map that report back to source, and prints
+ * `Error when using sourcemap for reporting an error` instead — twice per file,
+ * once per build environment, 56 lines of noise that hid nothing until something
+ * real was printed among them. The directives were dead before this test; it
+ * keeps them dead.
+ */
+test("no source file carries a framework directive the router cannot honour", () => {
+  const directive = /^\s*["']use (client|server)["']\s*;?\s*$/m;
+  const offenders = ["apps", "packages"]
+    .flatMap((directory) => sources(join(repositoryRoot, directory)))
+    .filter((file) => directive.test(readFileSync(file, "utf8")))
+    .map((file) => relative(repositoryRoot, file).replace(/\\/g, "/"));
+  assert.deepEqual(offenders.sort(), [], 'a `"use client"` directive is a Next.js RSC boundary, not a React Router one');
 });

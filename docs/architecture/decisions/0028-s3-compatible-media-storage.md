@@ -1,7 +1,11 @@
-# ADR 0011: Server-mediated uploads to S3-compatible media storage
+# ADR 0028: Server-mediated uploads to S3-compatible media storage
 
 - Status: Accepted
 - Date: 2026-10-29
+- Renumbered: 2026-11-07, from `0011`, which this decision had shared with
+  [ADR 0011 (persistent write rate limits)](0011-persistent-api-write-rate-limits.md).
+  The decision itself is unchanged; the index in this directory is the list of
+  record.
 
 ## Context
 

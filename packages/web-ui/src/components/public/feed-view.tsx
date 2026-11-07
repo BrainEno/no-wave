@@ -1,5 +1,3 @@
-"use client";
-
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "@/lib/framework/link.tsx";
 import { articlePath, type Locale, type WorkType } from "@/lib/content.ts";

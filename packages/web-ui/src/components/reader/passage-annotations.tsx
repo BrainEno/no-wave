@@ -1,5 +1,3 @@
-"use client";
-
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Locale } from "@/lib/content.ts";
 import { speechLang } from "@/lib/read-aloud.ts";

@@ -1,5 +1,3 @@
-"use client";
-
 import { Link } from "@/lib/framework/link.tsx";
 import { useEffect, useRef, useState } from "react";
 

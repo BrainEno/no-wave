@@ -53,7 +53,8 @@ Reading marks are **the reader's own, kept in their own browser, and never sent 
 
 - **Copy watermarking and blocking near-whole-article copies.** `red-room-archive` does both. They are
   a copyright posture, not a reading feature, and this project's position on reuse and on automated
-  collection is a decision for the owner (see ADR 0011). They are not smuggled in behind 划线.
+  collection is still an open decision for the owner — no ADR records one, and this file is not the
+  place to smuggle one in behind 划线.
 - **Sharing a passage, as a record.** `red-room-archive` builds a share card for one, and any version
   of sharing that writes the passage somewhere is refused here for the reasons above. Sharing was
   added later *as a link and nothing else* — the work's own words in a URL fragment, carrying no note

@@ -15,6 +15,9 @@ import type { Config } from "@react-router/dev/config";
  */
 export default {
   ssr: true,
-  // Keep the production build out of the Next.js app's `.next` directory.
+  // `build/client` and `build/server`, which is what `server.ts` and the
+  // container image serve. (The directory name predates ADR 0017 retiring the
+  // other framework; nothing else reads it, and renaming it would churn the
+  // Dockerfile and the smoke test for no behaviour.)
   buildDirectory: "build",
 } satisfies Config;

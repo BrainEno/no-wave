@@ -81,6 +81,13 @@ proxy and the writing desk.
   no other site for it to be pointing at.
 - The end-to-end suite drives one browser project instead of two, halving its
   runtime without losing a journey.
+- The shared components no longer carry `"use client"`. It marked a Server
+  Components boundary that React Router does not have, so every one of the 28
+  files that kept it produced two Rollup warnings per build ("module level
+  directives cause errors when bundled") — and because the report could not be
+  mapped back to source, each printed as `Error when using sourcemap for
+  reporting an error` instead: 56 lines that made a real one invisible.
+  `packages/web-ui/src/lib/framework-seam.test.ts` now rejects the directive.
 
 **Deferred, deliberately:**
 
@@ -97,7 +104,9 @@ both cases the migration is additive rather than a cutover:
   directory. No Vercel deployment has been run to verify it builds there the way
   `docker build` does locally.
 - The application's own default port (3100) and the dev chain's (3000) are
-  unchanged; every orchestrated path sets `PORT` explicitly.
+  unchanged; every orchestrated path sets `PORT` explicitly. Why the two
+  defaults differ, and which port each way of starting the server gets, is
+  tabulated in [local development §Ports](../../development/local-development.md#ports).
 
 ## References
 

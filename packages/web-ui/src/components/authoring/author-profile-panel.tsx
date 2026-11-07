@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useState, type FormEvent } from "react";
 import { normalizeDisplayName, type AuthorProfile } from "@/lib/author-profile.ts";
 
