@@ -1,3 +1,4 @@
+import { resolveUpstreamTimeoutMs, withUpstreamDeadline } from "@bot-thk/web-http";
 import type { ArticleContentBlock, ArticleSort, ArticleView, AuthorView, Locale, WorkType } from "./content.ts";
 import {
   defaultLocale,
@@ -203,21 +204,35 @@ function mapCategory(category: unknown): CategoryView | null {
   };
 }
 
-export function createApiContentClient({ endpoint, fetchImpl = fetch }: { endpoint?: string; fetchImpl?: FetchImpl } = {}): ApiContentClient {
+export function createApiContentClient(
+  { endpoint, fetchImpl = fetch, timeoutMs }: { endpoint?: string; fetchImpl?: FetchImpl; timeoutMs?: number | string | null } = {},
+): ApiContentClient {
+  // Resolved once, at construction: a malformed budget is a deployment error and
+  // must fail here rather than turn the first page request into an unbounded
+  // wait. The default (`DEFAULT_UPSTREAM_TIMEOUT_MS`) applies when unset.
+  const budget = resolveUpstreamTimeoutMs(timeoutMs);
   async function request(path: string, query: QueryValues = {}, allowNotFound = false): Promise<unknown | null> {
     if (typeof endpoint !== "string" || endpoint.trim().length === 0) {
       throw new Error("API_BASE_URL or API_SERVICE_URL must be configured to use API-backed content.");
     }
-    const response = await fetchImpl(buildApiUrl(endpoint, path, query), {
-      method: "GET",
-      headers: { accept: "application/json" },
-      cache: "no-store",
+    // Everything — connection, headers and the JSON body — happens under one
+    // deadline. Without it a hung content API pins the SSR request that reads it,
+    // and every request that arrives behind it waits on the same stalled socket.
+    const result = await withUpstreamDeadline(budget, async (signal) => {
+      const response = await fetchImpl(buildApiUrl(endpoint, path, query), {
+        method: "GET",
+        headers: { accept: "application/json" },
+        cache: "no-store",
+        signal,
+      });
+      if (!response.ok) return { status: response.status, ok: false as const, payload: null };
+      return { status: response.status, ok: true as const, payload: await response.json() };
     });
-    if (!response.ok) {
-      if (allowNotFound && response.status === 404) return null;
-      throw new Error(`Content API request failed with HTTP ${response.status}.`);
+    if (!result.ok) {
+      if (allowNotFound && result.status === 404) return null;
+      throw new Error(`Content API request failed with HTTP ${result.status}.`);
     }
-    const payload = await response.json();
+    const payload = result.payload;
     if (!isRecord(payload)) throw new Error("The content API returned an invalid response.");
     if (isRecord(payload.error)) {
       const code = typeof payload.error.code === "string" ? payload.error.code : "API_ERROR";
@@ -283,7 +298,11 @@ export function createApiContentClient({ endpoint, fetchImpl = fetch }: { endpoi
 
 function configuredClient(): ApiContentClient | null {
   const endpoint = resolveApiBaseUrl();
-  return endpoint ? createApiContentClient({ endpoint }) : null;
+  // `API_TIMEOUT_MS` sits next to the origin it bounds: the same page loader that
+  // discovers `API_BASE_URL` here also resolves the budget, so an explicit client
+  // and an environment-configured one cannot drift apart. An invalid value throws
+  // here and becomes the page's own 503, never an unbounded wait.
+  return endpoint ? createApiContentClient({ endpoint, timeoutMs: process.env.API_TIMEOUT_MS }) : null;
 }
 
 /**

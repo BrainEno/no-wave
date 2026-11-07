@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { handleConversationRequest } from "@bot-thk/web-http";
-import { optionalApiBaseUrl } from "../lib/runtime.ts";
+import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**
  * `GET /api/inbox/:id` — one conversation's header.
@@ -13,7 +13,7 @@ function conversation(request: Request, id: string | undefined) {
   return handleConversationRequest(
     request,
     { conversationId: id ?? "" },
-    { apiBaseUrl: optionalApiBaseUrl() },
+    apiProxyConfig(),
   );
 }
 

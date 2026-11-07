@@ -1,4 +1,11 @@
-import { apiUrl, type ApiProxyConfig, type FetchImpl } from "./api.ts";
+import {
+  UpstreamTimeoutError,
+  apiUrl,
+  resolveUpstreamTimeoutMs,
+  withUpstreamDeadline,
+  type ApiProxyConfig,
+  type FetchImpl,
+} from "./api.ts";
 import { readLimitedBytes, readLimitedStream } from "./body.ts";
 import { errorResponse } from "./http.ts";
 import { isSameOriginMutation } from "./policy.ts";
@@ -76,15 +83,53 @@ export async function handlePublicMediaRequest(
   const incomingEtag = request.headers.get("if-none-match");
   if (incomingEtag && ETAG_PATTERN.test(incomingEtag.trim())) headers.set("if-none-match", incomingEtag.trim());
 
+  let timeoutMs: number;
+  try {
+    timeoutMs = resolveUpstreamTimeoutMs(config.upstreamTimeoutMs);
+  } catch {
+    return errorResponse("SERVICE_UNAVAILABLE", "The media service is not configured correctly.", 503);
+  }
+
   const fetchImpl: FetchImpl = config.fetchImpl ?? fetch;
   let upstream: Response;
+  let bytes: Uint8Array<ArrayBuffer> | undefined;
   try {
-    upstream = await fetchImpl(apiUrl(base, `api/v1/media/${encodeURIComponent(id)}`), {
-      method: "GET",
-      headers,
-      cache: "no-store",
-    });
-  } catch {
+    // Headers *and* body share one budget. The byte ceiling already bounds how
+    // much is read; the deadline bounds how long a partly delivered object may
+    // keep the connection. An abort surfaces as a read failure, so the signal is
+    // checked explicitly instead of being reported as bad bytes.
+    ({ upstream, bytes } = await withUpstreamDeadline(timeoutMs, async (signal) => {
+      const response = await fetchImpl(apiUrl(base, `api/v1/media/${encodeURIComponent(id)}`), {
+        method: "GET",
+        headers,
+        cache: "no-store",
+        signal,
+      });
+      // A conditional hit or an error status has no object to bound: the status
+      // is mapped below, and there is nothing to read.
+      if (response.status === 304 || !response.ok) {
+        await response.body?.cancel().catch(() => {});
+        return { upstream: response, bytes: undefined };
+      }
+      const body = await readLimitedStream(response.body, MEDIA_MAX_BYTES);
+      if (signal.aborted) throw new UpstreamTimeoutError(timeoutMs);
+      if (body.ok === false) throw new MediaBodyFailure(body.reason);
+      return { upstream: response, bytes: body.bytes };
+    }));
+  } catch (error) {
+    if (error instanceof UpstreamTimeoutError) {
+      return errorResponse("UPSTREAM_TIMEOUT", "The media service did not answer in time.", 504);
+    }
+    if (error instanceof MediaBodyFailure) {
+      // Every bounded-read failure is an upstream problem here, not a client error:
+      // the visitor asked for a valid object and the bytes came back unusable.
+      const message = error.reason === "empty"
+        ? "The media object has no response body."
+        : error.reason === "unreadable"
+        ? "The media object could not be read."
+        : "The media object exceeded the response limit.";
+      return errorResponse("MEDIA_STORAGE_UNAVAILABLE", message, 502);
+    }
     return errorResponse("SERVICE_UNAVAILABLE", "The media service could not be reached.", 502);
   }
 
@@ -106,25 +151,18 @@ export async function handlePublicMediaRequest(
     return errorResponse("MEDIA_STORAGE_UNAVAILABLE", "The media object exceeded the response limit.", 502);
   }
 
-  const body = await readLimitedStream(upstream.body, MEDIA_MAX_BYTES);
-  if (body.ok === false) {
-    // Every bounded-read failure is an upstream problem here, not a client error:
-    // the visitor asked for a valid object and the bytes came back unusable.
-    const message = body.reason === "empty"
-      ? "The media object has no response body."
-      : body.reason === "unreadable"
-      ? "The media object could not be read."
-      : "The media object exceeded the response limit.";
-    return errorResponse("MEDIA_STORAGE_UNAVAILABLE", message, 502);
+  if (!bytes) {
+    // Defensive: a successful status without buffered bytes is an upstream bug.
+    return errorResponse("MEDIA_STORAGE_UNAVAILABLE", "The media object could not be read.", 502);
   }
 
-  const response = new Response(body.bytes, {
+  const response = new Response(bytes, {
     status: 200,
     headers: {
       // Only the normalized type is passed through; anything else is served as a
       // download-safe octet stream so a stored object cannot be replayed as HTML.
       "content-type": upstream.headers.get("content-type") === "image/webp" ? "image/webp" : "application/octet-stream",
-      "content-length": String(body.bytes.byteLength),
+      "content-length": String(bytes.byteLength),
       "cache-control": MEDIA_IMMUTABLE_CACHE,
       "x-content-type-options": "nosniff",
       "content-security-policy": "default-src 'none'; sandbox",
@@ -232,4 +270,15 @@ export async function handleMediaDeleteRequest(
     return errorResponse("NOT_FOUND", "The requested media asset was not found.", 404);
   }
   return forwardAuthoringRequest(request, `api/v1/me/media/${encodeURIComponent(id)}`, "DELETE", config);
+}
+
+/** A bounded read that failed after the upstream answered: mapping data, not a thrown type user code sees. */
+class MediaBodyFailure extends Error {
+  readonly reason: "empty" | "unreadable" | "too-large";
+
+  constructor(reason: "empty" | "unreadable" | "too-large") {
+    super(reason);
+    this.name = "MediaBodyFailure";
+    this.reason = reason;
+  }
 }

@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { handleInboxRequest, handleStartConversationRequest } from "@bot-thk/web-http";
-import { optionalApiBaseUrl } from "../lib/runtime.ts";
+import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**
  * `GET /api/inbox` — resource route, no component.
@@ -18,7 +18,7 @@ function inbox(request: Request, url: URL) {
   return handleInboxRequest(
     request,
     { limit: url.searchParams.get("limit") },
-    { apiBaseUrl: optionalApiBaseUrl() },
+    apiProxyConfig(),
   );
 }
 
@@ -40,7 +40,7 @@ export async function loader({ request, url }: LoaderFunctionArgs) {
  */
 export async function action({ request, url }: ActionFunctionArgs) {
   if (request.method === "POST") {
-    return handleStartConversationRequest(request, { apiBaseUrl: optionalApiBaseUrl() });
+    return handleStartConversationRequest(request, apiProxyConfig());
   }
   return inbox(request, url);
 }

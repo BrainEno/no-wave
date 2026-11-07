@@ -23,7 +23,17 @@ export {
   handleAccountSessionEndRequest,
   handleAccountOtherSessionsEndRequest,
 } from "./account.ts";
-export { apiUrl, readPayload, type ApiProxyConfig, type FetchImpl } from "./api.ts";
+export {
+  DEFAULT_UPSTREAM_TIMEOUT_MS,
+  MAXIMUM_UPSTREAM_TIMEOUT_MS,
+  UpstreamTimeoutError,
+  apiUrl,
+  readPayload,
+  resolveUpstreamTimeoutMs,
+  withUpstreamDeadline,
+  type ApiProxyConfig,
+  type FetchImpl,
+} from "./api.ts";
 export {
   readLimitedBytes,
   readLimitedJson,

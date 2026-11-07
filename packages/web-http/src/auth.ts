@@ -1,4 +1,12 @@
-import { apiUrl, readPayload, type ApiProxyConfig } from "./api.ts";
+import {
+  UpstreamTimeoutError,
+  apiUrl,
+  readPayload,
+  resolveUpstreamTimeoutMs,
+  withUpstreamDeadline,
+  type ApiProxyConfig,
+  type FetchImpl,
+} from "./api.ts";
 import { readLimitedJson } from "./body.ts";
 import { clearedTokenCookieHeaders, refreshTokenFrom, tokenCookieHeaders } from "./cookies.ts";
 import { errorResponse, isRecord, jsonResponse, safeApiError } from "./http.ts";
@@ -81,9 +89,23 @@ export async function handleAuthRequest(
     );
   }
 
+  let timeoutMs: number;
+  try {
+    timeoutMs = resolveUpstreamTimeoutMs(config.upstreamTimeoutMs);
+  } catch {
+    // A malformed budget is a deployment error: fail closed on the same path as
+    // a missing origin rather than call the API without a deadline.
+    return errorResponse(
+      "SERVICE_UNAVAILABLE",
+      "The API service is not configured correctly.",
+      503,
+      action === "logout" ? clearedTokenCookieHeaders(request) : [],
+    );
+  }
+
   // Diverted before any session handling: these three neither read nor write
   // credentials, so the token machinery below must never see them.
-  if (isIdentityAction(action)) return handleIdentityAction(request, action, base, config);
+  if (isIdentityAction(action)) return handleIdentityAction(request, action, base, config, timeoutMs);
 
   let body: string;
   if (action === "login" || action === "register") {
@@ -104,17 +126,14 @@ export async function handleAuthRequest(
   const fetchImpl = config.fetchImpl ?? fetch;
   let upstream: Response;
   try {
-    upstream = await fetchImpl(apiUrl(base, `api/v1/auth/${action}`), {
-      method: "POST",
-      headers: { accept: "application/json", "content-type": "application/json; charset=utf-8" },
-      body,
-      cache: "no-store",
-    });
-  } catch {
+    upstream = await callAuthApi(fetchImpl, apiUrl(base, `api/v1/auth/${action}`), body, timeoutMs);
+  } catch (error) {
     return errorResponse(
-      "SERVICE_UNAVAILABLE",
-      "The API service could not be reached.",
-      502,
+      error instanceof UpstreamTimeoutError ? "UPSTREAM_TIMEOUT" : "SERVICE_UNAVAILABLE",
+      error instanceof UpstreamTimeoutError
+        ? "The API service did not answer in time."
+        : "The API service could not be reached.",
+      error instanceof UpstreamTimeoutError ? 504 : 502,
       action === "logout" ? clearedTokenCookieHeaders(request) : [],
     );
   }
@@ -160,6 +179,7 @@ async function handleIdentityAction(
   action: IdentityAction,
   base: string,
   config: ApiProxyConfig,
+  timeoutMs: number,
 ): Promise<Response> {
   const parsed = await readLimitedJson(request, LOGIN_BODY_LIMIT_BYTES);
   if (!parsed.ok) return parsed.response;
@@ -167,14 +187,15 @@ async function handleIdentityAction(
   const fetchImpl = config.fetchImpl ?? fetch;
   let upstream: Response;
   try {
-    upstream = await fetchImpl(apiUrl(base, `api/v1/auth/${action}`), {
-      method: "POST",
-      headers: { accept: "application/json", "content-type": "application/json; charset=utf-8" },
-      body: parsed.text,
-      cache: "no-store",
-    });
-  } catch {
-    return errorResponse("SERVICE_UNAVAILABLE", "The API service could not be reached.", 502);
+    upstream = await callAuthApi(fetchImpl, apiUrl(base, `api/v1/auth/${action}`), parsed.text, timeoutMs);
+  } catch (error) {
+    return errorResponse(
+      error instanceof UpstreamTimeoutError ? "UPSTREAM_TIMEOUT" : "SERVICE_UNAVAILABLE",
+      error instanceof UpstreamTimeoutError
+        ? "The API service did not answer in time."
+        : "The API service could not be reached.",
+      error instanceof UpstreamTimeoutError ? 504 : 502,
+    );
   }
 
   const payload = await readPayload(upstream);
@@ -187,4 +208,31 @@ async function handleIdentityAction(
     return errorResponse("INVALID_AUTH_RESPONSE", "The API returned an invalid authentication response.", 502, cookies);
   }
   return jsonResponse({ data: payload.data }, upstream.status, cookies);
+}
+
+/**
+ * One authentication call, buffered under the upstream budget.
+ *
+ * The buffer is taken *inside* the deadline and the response is rebuilt from
+ * it, so the caller still sees the upstream status and headers (relayed errors
+ * read `retry-after`) while a body that stalls after its headers cannot hold the
+ * request open. Authentication payloads are small, and the proxies read them in
+ * full anyway.
+ */
+async function callAuthApi(fetchImpl: FetchImpl, url: string, body: string, timeoutMs: number): Promise<Response> {
+  return withUpstreamDeadline(timeoutMs, async (signal) => {
+    const response = await fetchImpl(url, {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/json; charset=utf-8" },
+      body,
+      cache: "no-store",
+      signal,
+    });
+    const buffered = await response.arrayBuffer();
+    return new Response(buffered.byteLength === 0 ? null : buffered, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
+  });
 }

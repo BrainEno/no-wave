@@ -12,6 +12,7 @@ import {
   MOCK_DISPLAY_NAME,
   MOCK_MEDIA,
   MOCK_NOTIFICATION,
+  MOCK_STALL_QUERY,
   MOCK_TOKENS,
   resetMockDevices,
   resetMockNotifications,
@@ -85,6 +86,9 @@ before(async () => {
       API_BASE_URL: mockApi.url,
       // Prove the Vercel-only binding is not required for a working deployment.
       API_SERVICE_URL: "",
+      // Short enough for the stalled-upstream test to finish quickly, long
+      // enough that every ordinary mock answer stays inside the budget.
+      API_TIMEOUT_MS: "1200",
       SITE_URL: "https://no-wave.example",
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -410,6 +414,41 @@ test("sign-in sets the session marker the account page reads", async () => {
   const value = marker.slice("nw_session=".length, marker.indexOf(";"));
   assert.match(value, /^\d+$/, "the marker carries an expiry, never a credential");
 });
+
+/**
+ * Boot the same build on another port with extra environment, run a check, stop.
+ *
+ * The switches under test are read at request time, so a second process is the
+ * only honest way to show the same build behaving differently.
+ */
+async function withEnvServer(extra: Record<string, string>, run: (url: string) => Promise<void>): Promise<void> {
+  const port = await freePort();
+  const url = `http://127.0.0.1:${port}`;
+  const child = spawn(process.execPath, ["server.ts"], {
+    cwd: packageDir,
+    env: {
+      ...process.env,
+      NODE_ENV: "production",
+      PORT: String(port),
+      HOST: "127.0.0.1",
+      API_BASE_URL: mockApi.url,
+      API_SERVICE_URL: "",
+      SITE_URL: "https://no-wave.example",
+      ...extra,
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  try {
+    await waitForServer(`${url}/`);
+    await run(url);
+  } finally {
+    await new Promise<void>((resolve) => {
+      if (child.exitCode !== null) { resolve(); return; }
+      child.once("exit", () => resolve());
+      child.kill("SIGTERM");
+    });
+  }
+}
 
 /**
  * Boot the same build on another port with `MAIL_ENABLED=true`.
@@ -1513,4 +1552,45 @@ test("mark-read routes enforce their verb, origin and id before forwarding", asy
     assert.match(valid.headers.get("cache-control") ?? "", /no-store/);
     assert.ok(mockApi.requests().some((request) => request.includes(`/api/v1/conversations/${conversation}/read`)));
   }
+});
+
+test("a stalled content API answers 503 inside the budget and leaves the server serving", async () => {
+  // `API_TIMEOUT_MS` is 1200 for this process (see the spawn environment). The
+  // mock API accepts the connection and then says nothing, which is the failure
+  // a bare `fetch` would wait out until the socket or the client gave up.
+  const started = Date.now();
+  const stalled = await get(`/search?q=${MOCK_STALL_QUERY}`);
+  const elapsed = Date.now() - started;
+
+  assert.equal(stalled.status, 503);
+  assert.match(stalled.headers.get("cache-control") ?? "", /no-store/);
+  assert.match(stalled.body, /服务暂时不可用/, "the page's own 503 boundary, not a blank error");
+  assert.match(stalled.body, /data-error-boundary="500"/);
+  // Bounded by the budget, not by a browser or load-balancer timeout.
+  assert.ok(elapsed >= 1_000 && elapsed < 10_000, `elapsed ${elapsed} ms outside the configured budget`);
+
+  // The stalled request must not have pinned the process: an ordinary page is
+  // still served immediately after it.
+  mockApi.resetRequests();
+  const afterStall = await get("/");
+  assert.equal(afterStall.status, 200);
+  assert.ok(mockApi.requests().length > 0);
+});
+
+test("a malformed API_TIMEOUT_MS fails closed instead of waiting forever", async () => {
+  await withEnvServer({ API_TIMEOUT_MS: "soon" }, async (url) => {
+    // The public read never reaches the API: the budget is invalid, and the page
+    // answers its own 503 rather than calling out without a deadline.
+    mockApi.resetRequests();
+    const page = await fetch(`${url}/search?q=anything`);
+    assert.equal(page.status, 503);
+    assert.match(await page.text(), /服务暂时不可用/);
+    assert.deepEqual(mockApi.requests(), []);
+
+    // The same rejection on a proxy route carries the proxy's own error code.
+    const proxied = await fetch(`${url}/api/feed`, { headers: { accept: "application/json" } });
+    assert.equal(proxied.status, 503);
+    assert.match(await proxied.text(), /SERVICE_UNAVAILABLE/);
+    assert.deepEqual(mockApi.requests(), []);
+  });
 });

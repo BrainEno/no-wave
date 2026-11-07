@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { handleMediaDeleteRequest, handleMediaLibraryRequest, handleMediaUploadRequest } from "@bot-thk/web-http";
-import { optionalApiBaseUrl } from "../lib/runtime.ts";
+import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**
  * Authenticated image traffic (`POST` upload, `GET` library, on
@@ -13,7 +13,7 @@ import { optionalApiBaseUrl } from "../lib/runtime.ts";
 
 /** `POST` — an upload. */
 export async function action({ request }: ActionFunctionArgs) {
-  return handleMediaUploadRequest(request, { apiBaseUrl: optionalApiBaseUrl() });
+  return handleMediaUploadRequest(request, apiProxyConfig());
 }
 
 /**
@@ -23,5 +23,5 @@ export async function action({ request }: ActionFunctionArgs) {
  * collection, and which of the two a request means is the method's to say.
  */
 export async function loader({ request }: LoaderFunctionArgs) {
-  return handleMediaLibraryRequest(request, { apiBaseUrl: optionalApiBaseUrl() });
+  return handleMediaLibraryRequest(request, apiProxyConfig());
 }

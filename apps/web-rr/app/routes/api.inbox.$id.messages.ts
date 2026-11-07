@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { handleConversationMessagesRequest, handleSendMessageRequest } from "@bot-thk/web-http";
-import { optionalApiBaseUrl } from "../lib/runtime.ts";
+import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**
  * `GET /api/inbox/:id/messages` — one page of a conversation, oldest first.
@@ -15,7 +15,7 @@ function messages(request: Request, url: URL, id: string | undefined) {
   return handleConversationMessagesRequest(
     request,
     { conversationId: id ?? "", limit: params.get("limit"), before: params.get("before") },
-    { apiBaseUrl: optionalApiBaseUrl() },
+    apiProxyConfig(),
   );
 }
 
@@ -35,7 +35,7 @@ export async function action({ request, params, url }: ActionFunctionArgs) {
     return handleSendMessageRequest(
       request,
       { conversationId: params.id ?? "" },
-      { apiBaseUrl: optionalApiBaseUrl() },
+      apiProxyConfig(),
     );
   }
   return messages(request, url, params.id);

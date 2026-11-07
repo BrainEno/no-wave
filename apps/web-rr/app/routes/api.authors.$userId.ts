@@ -1,6 +1,6 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { handleAuthorProfileRequest } from "@bot-thk/web-http";
-import { optionalApiBaseUrl } from "../lib/runtime.ts";
+import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**
  * `GET /api/authors/:userId` — resource route, no component.
@@ -17,6 +17,6 @@ export async function loader({ request, params, url }: LoaderFunctionArgs) {
   return handleAuthorProfileRequest(
     request,
     { userId: params.userId ?? "", locale: url.searchParams.get("locale") },
-    { apiBaseUrl: optionalApiBaseUrl() },
+    apiProxyConfig(),
   );
 }

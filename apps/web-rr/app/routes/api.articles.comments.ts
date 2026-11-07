@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { handleArticleCommentsRequest } from "@bot-thk/web-http";
-import { optionalApiBaseUrl } from "../lib/runtime.ts";
+import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**
  * `GET`/`POST /api/articles/:slug/comments` — resource route, no component.
@@ -19,7 +19,7 @@ function comments(request: Request, url: URL, slug: string | undefined) {
   return handleArticleCommentsRequest(
     request,
     { slug: slug ?? "", locale: url.searchParams.get("locale") },
-    { apiBaseUrl: optionalApiBaseUrl() },
+    apiProxyConfig(),
   );
 }
 

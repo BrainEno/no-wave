@@ -38,7 +38,10 @@ function race(staleRequests: number, refreshResponse: Response): {
     "api/v1/auth/refresh": () => {
       refreshCalls += 1;
       notifyRefreshStarted();
-      return refreshResult;
+      // Each caller gets its own Response, exactly as a real transport would
+      // hand out one per request; the gate below still holds them all behind the
+      // same single rotation.
+      return refreshResult.then((response) => response.clone());
     },
     "api/v1/notifications": (call) => {
       const auth = new Headers(call.init?.headers).get("authorization");

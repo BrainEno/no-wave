@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { UpstreamTimeoutError } from "@bot-thk/web-http";
 import { createApiContentClient, listPublicFeatured, resolveApiBaseUrl } from "./api-content.ts";
 
 type CapturedRequest = { url: string; init: RequestInit | undefined };
@@ -329,4 +330,77 @@ test("an unconfigured API offers no shelf rather than a fake one", async () => {
   await withUnconfiguredApi(async () => {
     assert.deepEqual(await listPublicFeatured({ locale: "zh-CN" }), []);
   });
+});
+
+test("a hung content API fails within the budget instead of holding the SSR request", async () => {
+  const started = Date.now();
+  const client = createApiContentClient({
+    endpoint: "https://api.example.test",
+    timeoutMs: 40,
+    fetchImpl: () => new Promise<Response>(() => {}),
+  });
+
+  await assert.rejects(
+    client.listArticles({ locale: "zh-CN" }),
+    (error: unknown) => {
+      assert.ok(error instanceof UpstreamTimeoutError);
+      assert.equal(error.name, "UpstreamTimeoutError");
+      // The SSR error boundary renders nothing from the message, but the class
+      // name is logged, so it must stay stable and carry no origin.
+      assert.equal(/https:\/\/api\.example\.test/.test(error.message), false);
+      return true;
+    },
+  );
+  assert.ok(Date.now() - started < 2_000);
+});
+
+test("a content API that stops after its headers still fails within the budget", async () => {
+  const client = createApiContentClient({
+    endpoint: "https://api.example.test",
+    timeoutMs: 40,
+    fetchImpl: () =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode('{"data":['));
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      ),
+  });
+
+  await assert.rejects(client.listArticles({ locale: "zh-CN" }), UpstreamTimeoutError);
+});
+
+test("the content client rejects a malformed budget at construction", () => {
+  for (const invalid of [0, -1, 1.5, "soon", 999_999]) {
+    assert.throws(
+      () => createApiContentClient({ endpoint: "https://api.example.test", timeoutMs: invalid }),
+      RangeError,
+      `budget ${JSON.stringify(invalid)} must be rejected`,
+    );
+  }
+});
+
+test("a normal content read is unaffected by the budget", async () => {
+  let seen: AbortSignal | undefined;
+  const client = createApiContentClient({
+    endpoint: "https://api.example.test",
+    timeoutMs: 5_000,
+    fetchImpl: (_input, init) => {
+      seen = init?.signal ?? undefined;
+      return Promise.resolve(new Response(JSON.stringify({ data: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }));
+    },
+  });
+
+  assert.deepEqual(await client.listArticles({ locale: "zh-CN" }), []);
+  // The deadline is handed to the transport so a cooperating fetch can drop the
+  // socket; it is not aborted once the call has finished.
+  assert.ok(seen instanceof AbortSignal);
+  assert.equal(seen?.aborted, false);
 });
