@@ -1,6 +1,6 @@
 import type { RestRouteContext, RestRouteHandler } from "./context.ts";
 import { decodeUserId, optionalViewerId, parseLocale, parseArticlePagination, parsePagination, parseQuery, parseSort, sendBadInput, sendJson, sendServiceError, sendUnavailable } from "../http.ts";
-import { describeArticleOffsetLimit, maxArticleOffset } from "../../../domain/article.ts";
+import { describeArticlePageRefusal, maxArticleOffset } from "../../../domain/article.ts";
 import { AUTHOR_OFFSET_MAX } from "../../../domain/profile.ts";
 import { serializeRestArticles } from "../serializers.ts";
 
@@ -50,12 +50,14 @@ const AUTHOR_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Object
     const locale = parseLocale(url);
     const query = parseQuery(url);
     const sort = parseSort(url);
-    const pagination = parseArticlePagination(url, 20, maxArticleOffset(sort ?? "latest"));
+    const pagination = parseArticlePagination(url, 20, maxArticleOffset(sort ?? "latest"), sort ?? "latest");
     if (!userId || !locale || query === null || sort === null || !pagination) {
       const requested = Number(url.searchParams.get("offset") ?? "0");
       sendBadInput(
         response,
-        (userId && locale && query !== null && sort !== null ? describeArticleOffsetLimit(sort, requested) : null)
+        (userId && locale && query !== null && sort !== null
+          ? describeArticlePageRefusal({ sort, hasCursor: url.searchParams.has("cursor"), offset: requested })
+          : null)
           ?? "Invalid author user ID, locale, query, sort, limit, offset, or cursor query parameter.",
       );
       return;

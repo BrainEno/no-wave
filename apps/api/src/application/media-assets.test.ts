@@ -325,6 +325,36 @@ test("the library is newest first, one page at a time, and marks what nothing us
   assert.equal(second.nextCursor, null, "a short page is the end");
 });
 
+/**
+ * The library asks about the page it renders, never about the whole site (#163).
+ *
+ * This is the shape of the defect, not a detail about one method. `listLibrary`
+ * used to call `listMediaScanRows`, which returns every translation of every
+ * work in every locale — ~77 MiB of JSON at twenty thousand works, read to
+ * answer a question about twelve thumbnails. The fake below **fails** if that
+ * method is touched at all, and records which ids the reference question named,
+ * so "just read the whole archive, it is simpler" cannot come back unnoticed.
+ */
+test("the library never scans the whole site", async () => {
+  const assets = [assetAt(1), assetAt(2), assetAt(3)];
+  const { store } = libraryStore(assets);
+  const asked: string[][] = [];
+  store.listReferencesForAssets = async ({ assetIds }: { assetIds: readonly string[] }) => {
+    asked.push([...assetIds]);
+    return [];
+  };
+  store.listMediaScanRows = async () => {
+    throw new Error("a library read must not read every work body");
+  };
+  const service = createMediaAssetService({ store, storage: storageSpy().storage });
+
+  const page = await service.listLibrary({ ownerId: OWNER, limit: 2 });
+
+  assert.deepEqual(asked, [[assetAt(1).id, assetAt(2).id]], "one question, naming only the assets on the page");
+  assert.deepEqual(page.items.map((item) => item.orphan), [true, true], "and it still answers the badge");
+  assert.ok(page.nextCursor, "the page-shape is unchanged");
+});
+
 test("a library read rejects a bad limit and a bad cursor instead of guessing", async () => {
   const { store } = libraryStore([assetAt(1)]);
   const service = createMediaAssetService({ store, storage: storageSpy().storage });

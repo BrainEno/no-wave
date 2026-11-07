@@ -18,6 +18,13 @@
  *
  * Nothing is written to disk: the instance filesystem is ephemeral and the app
  * may be duplicated at any time, so there is no local page cache to rely on.
+ *
+ * Every page route exports exactly one of the two, taken from here and never
+ * re-spelled in place: `apps/web-rr/test/cache-policy.test.ts` fails when a new
+ * page is added to neither list, when a listed route stops exporting `headers`,
+ * or when a route writes a `Cache-Control` of its own. `/sign-in` is why — it
+ * carried `?next=` and a per-request mail switch and shipped with no policy at
+ * all.
  */
 export const PUBLIC_PAGE_HEADERS = {
   "Cache-Control": "public, max-age=0, s-maxage=60, stale-while-revalidate=300",

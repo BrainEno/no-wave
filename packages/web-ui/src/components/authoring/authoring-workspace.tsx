@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@/lib/framework/link.tsx";
 import { useNavigationBlocker } from "@/lib/framework/navigation.ts";
-import { PromptDialog } from "@/components/ui/prompt-dialog.tsx";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog.tsx";
 import { ArticleEditor, type AuthoringArticle } from "./article-editor.tsx";
 import { AuthorProfilePanel } from "./author-profile-panel.tsx";
 import { normalizeDisplayName, parseAuthorProfile, type AuthorProfile } from "@/lib/author-profile.ts";
@@ -441,14 +441,17 @@ export function AuthoringWorkspace() {
           />
         </div>
       </div>
-      <PromptDialog
+      {/* Leaving with an unconfirmed request is a question, not a form: the
+          answer is a route decision (`blocker.proceed()`), so it belongs in the
+          confirmation dialog rather than in an empty prompt form. */}
+      <ConfirmDialog
         open={blocker.state === "blocked"}
         title="上次保存尚未确认"
         description="作品可能已经创建。离开后本页的重试标识和未保存的编辑会丢失，再次保存可能产生重复作品。"
-        fields={[]}
-        submitLabel="仍要离开"
+        confirmLabel="仍要离开"
+        tone="danger"
         onCancel={() => { if (blocker.state === "blocked") blocker.reset(); }}
-        onSubmit={() => { if (blocker.state === "blocked") blocker.proceed(); }}
+        onConfirm={() => { if (blocker.state === "blocked") blocker.proceed(); }}
       />
       <section className="nw-authoring-trash" aria-label="回收站">
         <h2>回收站（{deleted.length}）</h2>

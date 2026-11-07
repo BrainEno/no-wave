@@ -12,6 +12,7 @@ import { $setBlocksType } from "@lexical/selection";
 import { $createParagraphNode, $getSelection, $insertNodes, $isRangeSelection, defineExtension, FORMAT_TEXT_COMMAND, REDO_COMMAND, UNDO_COMMAND, type ElementNode } from "lexical";
 import { ArticleImageNode, $createArticleImageNode } from "./article-image-node.tsx";
 import { PromptDialog, type PromptDialogField } from "@/components/ui/prompt-dialog.tsx";
+import { useConfirm } from "@/components/ui/confirm-dialog.tsx";
 import { AUTHORING_ARTICLE_ID_PATTERN, AUTHORING_EXPECTED_ACTOR_HEADER, AUTHORING_NOT_FORWARDED_HEADER, isAuthoringLocale } from "@bot-thk/web-http";
 import { Link } from "@/lib/framework/link.tsx";
 import { IDEMPOTENCY_KEY_HEADER, intentForAttempt, type PendingIntent } from "@/lib/idempotency-key.ts";
@@ -360,8 +361,6 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
   const [confirmedReplay, setConfirmedReplay] = useState(false);
   const [signInHelp, setSignInHelp] = useState(false);
   const [hasPending, setHasPending] = useState(false);
-  const [confirmDiscard, setConfirmDiscard] = useState(false);
-  const [localeChange, setLocaleChange] = useState<LocaleChangeSave | null>(null);
   const inFlight = useRef(false);
   const pending = useRef<PendingCreate | null>(null);
   // A successful create can finish before React has rendered the parent's new
@@ -376,6 +375,7 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
   // pending promise.
   const [askKind, setAskKind] = useState<"link" | "image" | null>(null);
   const askResolver = useRef<((values: Record<string, string> | null) => void) | null>(null);
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const ask = useCallback((kind: "link" | "image") => new Promise<Record<string, string> | null>((resolve) => {
     askResolver.current = resolve;
     setAskKind(kind);
@@ -530,7 +530,7 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
       // that translation already exists it replaces its text. Never do that as
       // a surprising consequence of changing a dropdown.
       if (draft.locale !== currentArticle.locale) {
-        setLocaleChange({ target, article: currentArticle, body, locale: draft.locale });
+        void askLocale({ target, article: currentArticle, body, locale: draft.locale });
       } else {
         await performSave(target, currentArticle, body, null);
       }
@@ -574,11 +574,13 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
    */
   async function destroy() {
     if (!article) return;
-    const confirmed = window.confirm(
-      `删除《${article.title}》？\n\n`
-      + "作品的所有语言版本会立刻从写作台移除，已发布的页面也会立即不可访问。\n"
-      + "删除后可在回收站还原所有版本，但到期自动清除时，这篇作品下的评论会一起消失。",
-    );
+    const confirmed = await confirm({
+      title: `删除《${article.title}》？`,
+      description: "作品的所有语言版本会立刻从写作台移除，已发布的页面也会立即不可访问。\n"
+        + "删除后可在回收站还原所有版本，但到期自动清除时，这篇作品下的评论会一起消失。",
+      confirmLabel: "确认删除",
+      tone: "danger",
+    });
     if (!confirmed) return;
     setBusy(true);
     setError("");
@@ -600,11 +602,67 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
     }
   }
 
+  // The address a published work lives at, or null for a draft. Computed once so
+  // the withdrawal dialog and the desk's link cannot disagree about it.
+  const articlePublicPath = article ? publicArticlePath(article) : null;
+
+  /**
+   * Abandon a request whose outcome is unknown.
+   *
+   * This is the one confirmation on the desk that warns about a duplicate rather
+   * than a loss: the request may have created the work, and saving again after
+   * giving up on it would create a second one. Not destructive to the text —
+   * which is why it is not `tone: "danger"` — but not something to click through
+   * either.
+   */
+  async function discardPending() {
+    const confirmed = await confirm({
+      title: "放弃未确认的保存？",
+      description: "上次请求可能已经创建作品。放弃后再次保存可能产生重复作品，请先核对作品列表；当前输入不会被清空。",
+      confirmLabel: "确认放弃",
+    });
+    if (!confirmed) return;
+    clearPending();
+    setError("");
+    setSignInHelp(false);
+  }
+
+  /**
+   * Saving into another language's edition overwrites that edition's title and
+   * body, so a dropdown change is confirmed as a write rather than treated as a
+   * view. Cancelling must leave the other edition untouched.
+   */
+  async function askLocale(change: LocaleChangeSave) {
+    const confirmed = await confirm({
+      title: "保存到其他语言？",
+      description: `将内容保存到 ${change.locale} 版本，不会删除当前版本；如果目标语言已有版本，它的标题和正文会被覆盖。发布状态对所有语言版本生效。`,
+      confirmLabel: "确认保存",
+    });
+    if (confirmed) await performSave(change.target, change.article, change.body, null);
+  }
+
+  /**
+   * Withdraw a published work: the address stops serving it and readers lose it
+   * where they left it, so the desk asks first.
+   *
+   * The dialog names the address that goes dark and says the text is kept, which
+   * is the difference between "withdraw" and "delete" that a one-line browser
+   * `confirm()` could not carry.
+   */
+  async function withdraw() {
+    if (!article) return;
+    const confirmed = await confirm({
+      title: "转为草稿？",
+      description: `转为草稿后，${articlePublicPath ?? "该作品"} 的所有语言版本将对读者不可访问（内容会保留在写作台）。`,
+      confirmLabel: "确认转为草稿",
+    });
+    if (confirmed) void save("draft");
+  }
+
   if (!initialState || !extension) {
     return <p className="nw-auth-error" role="alert">此作品含有当前编辑器尚不支持的内容块（例如带署名的引用）。没有修改任何内容；请先返回作品列表。</p>;
   }
 
-  const articlePublicPath = article ? publicArticlePath(article) : null;
   return (
     <section className="nw-article-editor" aria-label="作品编辑器">
       <div className="nw-article-fields">
@@ -663,32 +721,10 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
           <p>这次请求和当前编辑只暂存在此页面。确认前请勿刷新或离开；确认原请求不会覆盖当前编辑。 <Link href="/write" target="_blank" rel="noopener noreferrer">在新标签页核对作品列表</Link></p>
           <div className="nw-authoring-actions">
             <button className="nw-btn" type="button" onClick={retryPending}>确认上次保存</button>
-            <button className="nw-btn" type="button" onClick={() => setConfirmDiscard(true)}>放弃上次未确认的请求</button>
+            <button className="nw-btn" type="button" onClick={() => void discardPending()}>放弃上次未确认的请求</button>
           </div>
         </div>
       ) : null}
-      <PromptDialog
-        open={confirmDiscard}
-        title="放弃未确认的保存？"
-        description="上次请求可能已经创建作品。放弃后再次保存可能产生重复作品，请先核对作品列表；当前输入不会被清空。"
-        fields={[]}
-        submitLabel="确认放弃"
-        onCancel={() => setConfirmDiscard(false)}
-        onSubmit={() => { clearPending(); setConfirmDiscard(false); setError(""); setSignInHelp(false); }}
-      />
-      <PromptDialog
-        open={localeChange !== null}
-        title="保存到其他语言？"
-        description={`将内容保存到 ${localeChange?.locale ?? ""} 版本，不会删除当前版本；如果目标语言已有版本，它的标题和正文会被覆盖。发布状态对所有语言版本生效。`}
-        fields={[]}
-        submitLabel="确认保存"
-        onCancel={() => setLocaleChange(null)}
-        onSubmit={() => {
-          const change = localeChange;
-          setLocaleChange(null);
-          if (change) void performSave(change.target, change.article, change.body, null);
-        }}
-      />
       <div className="nw-authoring-actions">
         {article ? <button className="nw-btn" type="button" disabled={busy} onClick={() => void destroy()}>删除作品</button> : null}
         <button className="nw-btn" type="button" disabled={busy} onClick={() => void save(article?.status === "published" ? "publish" : "draft")}>{busy ? "保存中…" : article?.status === "published" ? "保存更新" : "保存草稿"}</button>
@@ -697,14 +733,12 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
           <>
             {/* Withdrawing a public page is one click and it takes the address
                 away from anyone who was reading it, so the desk asks first. */}
-            <button className="nw-btn" type="button" disabled={busy} onClick={() => {
-              const confirmed = window.confirm(`转为草稿后，${articlePublicPath ?? "该作品"} 的所有语言版本将对读者不可访问（内容会保留在写作台）。确定继续？`);
-              if (confirmed) void save("draft");
-            }}>转为草稿</button>
+            <button className="nw-btn" type="button" disabled={busy} onClick={() => void withdraw()}>转为草稿</button>
             {articlePublicPath ? <a className="nw-btn" href={articlePublicPath} target="_blank" rel="noreferrer">查看已发布作品 ↗</a> : <span className="nw-m">该语言暂无公开网页地址。</span>}
           </>
         ) : null}
       </div>
+      {confirmDialog}
     </section>
   );
 }

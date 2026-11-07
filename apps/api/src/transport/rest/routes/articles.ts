@@ -1,6 +1,6 @@
 import type { RestRouteContext, RestRouteHandler } from "./context.ts";
 import { SUPPORTED_LOCALES, authenticatedActorId, decodeSlug, decodeUserId, optionalViewerId, parseInteger, parseLocale, parseArticlePagination, parsePagination, parseQuery, parseSort, readJsonObject, sendBadInput, sendJson, sendJsonBodyError, sendServiceError, sendUnauthenticated, sendUnavailable } from "../http.ts";
-import { MAX_ARTICLE_OFFSET, describeArticleOffsetLimit, maxArticleOffset } from "../../../domain/article.ts";
+import { MAX_ARTICLE_OFFSET, describeArticlePageRefusal, maxArticleOffset } from "../../../domain/article.ts";
 import { normalizeArticleWriteBody, normalizeCommentWriteBody, normalizeFeaturedWriteBody, normalizeLikeWriteBody, type ArticleWriteBody } from "../bodies.ts";
 import { serializeRestArticle, serializeRestArticles, serializeRestComment, serializeRestComments } from "../serializers.ts";
 import { slugifyArticleTitle, uniquifyArticleSlug } from "../../../domain/article-slug.ts";
@@ -253,12 +253,16 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
     const sort = parseSort(url);
     // The ceiling depends on the order: `latest` has a cursor for depth,
     // `popular` does not (see `maxArticleOffset`).
-    const pagination = parseArticlePagination(url, 20, maxArticleOffset(sort ?? "latest"));
+    const pagination = parseArticlePagination(url, 20, maxArticleOffset(sort ?? "latest"), sort ?? "latest");
     if (!locale || query === null || sort === null || !pagination) {
       const requested = Number(url.searchParams.get("offset") ?? "0");
       sendBadInput(
         response,
-        (sort === null ? null : describeArticleOffsetLimit(sort, requested))
+        (sort === null ? null : describeArticlePageRefusal({
+          sort,
+          hasCursor: url.searchParams.has("cursor"),
+          offset: requested,
+        }))
           ?? "Invalid locale, query, sort, limit, offset, or cursor query parameter.",
       );
       return;

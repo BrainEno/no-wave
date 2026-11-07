@@ -28,13 +28,6 @@ export const MAX_IMAGE_UPLOAD_BYTES = 8 * 1024 * 1024;
  * a mistyped method name fails `tsc` instead of failing on the one branch a test
  * happens to miss (issue #66).
  */
-
-/**
- * The REST transport consumes the application facade, not an open-ended record of
- * functions: `ApplicationServices` is derived from the persistence port table, so
- * a mistyped method name fails `tsc` instead of failing on the one branch a test
- * happens to miss (issue #66).
- */
 export type RestServices = ApplicationServices;
 
 export function sendJson(response: ServerResponse, status: number, body: unknown): void {
@@ -103,12 +96,22 @@ export type ArticlePagination =
   | { kind: "offset"; limit: number; offset: number }
   | { kind: "cursor"; limit: number; cursor: string };
 
-export function parseArticlePagination(url: URL, defaultLimit: number, maxOffset: number): ArticlePagination | null {
+export function parseArticlePagination(
+  url: URL,
+  defaultLimit: number,
+  maxOffset: number,
+  sort: "latest" | "popular" = "latest",
+): ArticlePagination | null {
   const limit = parseInteger(url.searchParams, "limit", defaultLimit, 1, 100);
   if (limit === null) return null;
   const rawCursor = url.searchParams.get("cursor");
   const rawOffset = url.searchParams.get("offset");
   if (rawCursor !== null) {
+    // A cursor is a place in the newest-first order. `sort=popular` re-ranks, so
+    // there is no place to resume from and the store would have to throw to say
+    // so; refusing here keeps "a refused page never reaches the store" true and
+    // lets the answer name the way out.
+    if (sort !== "latest") return null;
     if (rawOffset !== null) return null;
     if (rawCursor.length === 0 || rawCursor.length > 512 || rawCursor !== rawCursor.trim()) return null;
     return { kind: "cursor", limit, cursor: rawCursor };

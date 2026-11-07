@@ -6,6 +6,7 @@ import { ForgotPasswordForm } from "@/components/auth/forgot-password-form.tsx";
 import { MailDisabledNotice } from "@/components/auth/mail-disabled-notice.tsx";
 import { isMailEnabled } from "@/lib/mail-feature.ts";
 import { titleWithSite } from "../lib/meta.ts";
+import { PRIVATE_PAGE_HEADERS } from "../lib/http-policy.ts";
 
 /**
  * Ask for a recovery link.
@@ -25,7 +26,7 @@ export async function loader() {
  * Private: a page reached while trying to prove ownership of an account must
  * never be held by a shared cache, and it must never be indexed.
  */
-export const headers: HeadersFunction = () => ({ "Cache-Control": "no-store, max-age=0" });
+export const headers: HeadersFunction = () => PRIVATE_PAGE_HEADERS;
 
 export const meta: MetaFunction = () => [
   { title: titleWithSite("找回密码") },

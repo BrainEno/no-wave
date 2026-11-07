@@ -29,11 +29,11 @@ An asset is an **orphan** when `/api/media/<id>` appears in no work's content.
 - **Every author's works count, not just the uploader's.** An image is served publicly at
   `/api/media/<id>`, so anyone can have put it in their own work; the check reads all content.
 
-The check is one pass over `article_translations.content_blocks` per library read — O(all content).
-That is the honest cost of the question: knowing that nothing uses an image means looking at
-everything that could use it. If it ever matters, the answer is a `media_references` table
-maintained on save. It is **not** a narrower scan, which would quietly decide that some references
-do not count.
+The question is answered from the materialised `article_media_refs` table, which every article
+write maintains in its own transaction (#163, below): the library asks about the ids on the page it
+is rendering, and the delete asks about one id inside the transaction that would remove it. It is
+**not** a narrower scan of the bodies — the table holds what a body actually contains, so a
+reference that exists is a reference that is counted.
 
 ### Why nothing reclaims on a schedule
 
@@ -131,8 +131,9 @@ reclaimed. The delete still answers `200`, because the deletion the reader asked
 - An author can see their uploads and act on the ones nothing uses, at `/write/media`.
 - A deployment without object storage says so (`503`) rather than showing an empty library — the
   difference between "you have no images" and "this deployment cannot accept images".
-- The cost of a library read grows with the size of the whole archive. Documented, bounded by the
-  page size, and fixable with a table when it is a problem rather than a worry.
+- The cost of a library read is one indexed question about the page it renders, not a pass over the
+  archive. The site-wide body scan survives only as the guarded delete's backstop for a reference
+  row that was never written (the amendment below), and only when the table answered "nothing".
 
 ## Amendment (2026-11-07): the reference table is a fast path, not proof
 
@@ -152,3 +153,24 @@ materialised table as the answer. A drifted table means a refusal the reader did
 expect, never a deleted image. This does not make a drifted table safe for a provider
 cutover — ADR 0010's snapshot, watermark, fence and reconciliation gates are still
 required.
+
+## Amendment (2026-11-07): the library asks about its page, not the archive
+
+The original decision assumed the reference question had to be answered by reading every translation
+body, and accepted O(all content) as the honest price. It does not: `article_media_refs` is
+maintained inside each article write transaction (create, edit, replay, cascade), so both providers
+can answer the question by index instead of by reading text.
+
+`GET /me/media` therefore pages first and asks `listReferencesForAssets({ assetIds })` about those
+ids only — one question per page, O(page). At twenty thousand works the old path read roughly
+77 MiB of JSON to draw twelve thumbnails; the new one reads the rows for twelve ids.
+
+The site-wide scan is not gone, and should not be: `deleteUnusedMediaAsset` still asks
+`listMediaScanRows`' equivalent inside its transaction when the table says nothing is using the
+asset, because a row that was never written (the replay case above) is exactly the case a table
+cannot prove. That is a bounded extra question (`LIMIT 200`) on one human-initiated delete, not a
+per-request cost — and it is what keeps a drifted table a refusal rather than a deleted image.
+
+`apps/api/src/application/media-assets.test.ts` guards the split: a library read that touches
+`listMediaScanRows` at all fails, and the ids the reference question names must be exactly the ids
+on the page.

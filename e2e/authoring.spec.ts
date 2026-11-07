@@ -288,6 +288,21 @@ test.afterEach(async ({ page }, testInfo) => {
   console.log(`FAILED ${testInfo.title} at ${page.url()}\ntraffic:\n${traffic.join("\n")}\nconsole:\n${consoleLog.join("\n")}\n${await pageDigest(page)}`);
 });
 
+/**
+ * Answer one of the desk's own confirmations (#F-12).
+ *
+ * These used to be `window.confirm`, so the suite could answer them with
+ * `page.on("dialog")` and never look at the page. They are now a native
+ * `<dialog>` the product owns: the name is the question, the buttons are the
+ * answer, and a missing dialog is a visible failure instead of a silent delete.
+ */
+async function answerDeskDialog(page: Page, name: string | RegExp, answer: string): Promise<void> {
+  const dialog = page.getByRole("dialog", { name });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: answer }).click();
+  await expect(dialog).not.toBeVisible();
+}
+
 test("the sign-in form registers an account and opens the authoring desk", async ({ page }) => {
   const email = uniqueEmail("signup");
   await page.goto("/sign-in?next=%2Fwrite");
@@ -405,11 +420,6 @@ test("publishing an article makes it readable at its generated address with a ge
 });
 
 test("returning a published work to draft withdraws it from the public site", async ({ page, request }) => {
-  // The desk asks before it withdraws a page that readers may be on. That
-  // confirmation is the product's own guard, so the suite answers it instead of
-  // muting it — a dialog that never appears is then a failure, not a no-op.
-  page.on("dialog", (dialog) => void dialog.accept());
-
   await registerWriter(page, request);
   const title = `浏览器验证撤稿 ${Date.now().toString(36)}`;
   const slug = await writeAndSave(page, title, true);
@@ -430,6 +440,14 @@ test("returning a published work to draft withdraws it from the public site", as
   const withdraw = page.getByRole("button", { name: "转为草稿" });
   await expect(withdraw).toBeVisible({ timeout: 45_000 });
   await withdraw.click();
+  // The desk asks before it withdraws a page that readers may be on. That
+  // confirmation is the product's own dialog (#F-12), not a browser `confirm()`:
+  // the suite answers it, so a dialog that never appears is a failure rather
+  // than a no-op, and what the author is told is an assertion of its own.
+  const withdrawDialog = page.getByRole("dialog", { name: "转为草稿？" });
+  await expect(withdrawDialog).toContainText("将对读者不可访问");
+  await expect(withdrawDialog).toContainText("内容会保留在写作台");
+  await withdrawDialog.getByRole("button", { name: "确认转为草稿" }).click();
 
   await expect(async () => {
     const saved = await savedArticles(page);
@@ -445,15 +463,6 @@ test("returning a published work to draft withdraws it from the public site", as
 });
 
 test("deleting a work takes it out of the desk and off the site", async ({ page, request }) => {
-  // The product asks before deleting, so the suite answers rather than muting
-  // the dialog: that keeps "no confirmation" a failure instead of a silent
-  // delete, and it lets the journey read what the author was actually told.
-  let confirmation = "";
-  page.on("dialog", (dialog) => {
-    confirmation = dialog.message();
-    void dialog.accept();
-  });
-
   await registerWriter(page, request);
   const title = `浏览器验证删除 ${Date.now().toString(36)}`;
   const slug = await writeAndSave(page, title, true);
@@ -468,14 +477,33 @@ test("deleting a work takes it out of the desk and off the site", async ({ page,
   await expect(entry).toBeVisible({ timeout: 45_000 });
   await entry.click();
   await waitForEditor(page);
-  await page.getByRole("button", { name: "删除作品" }).click();
+  await page.getByRole("button", { name: "删除作品", exact: true }).click();
 
   // What the confirmation says is part of the feature. It used to promise
   // \u201c删除后无法恢复\u201d; with a recycle bin behind the button that was the desk
   // lying about its own undo. It now names the way back and the one thing a
   // restore cannot give back to a third party — the comments under the work.
-  expect(confirmation).toContain("回收站");
-  expect(confirmation).toContain("评论");
+  const deleteDialog = page.getByRole("dialog", { name: /删除《.*》？/ });
+  await expect(deleteDialog).toContainText("回收站");
+  await expect(deleteDialog).toContainText("评论");
+  await expect(deleteDialog).toContainText("所有语言版本");
+
+  // Cancelling is a no-op. The old `window.confirm` answered "Cancel" with the
+  // same `false` this dialog answers with, and a replacement whose escape hatch
+  // deletes anyway would be worse than the blocking dialog it replaced.
+  await deleteDialog.getByRole("button", { name: "取消" }).click();
+  await expect(deleteDialog).not.toBeVisible();
+  await page.goto(`/articles/${slug}`);
+  await expect(publicHeading, "cancelling the confirmation must leave the work published").toBeVisible({ timeout: 45_000 });
+
+  // The destructive answer has to be aimed at: back into the desk, open the
+  // work again, and this time say yes.
+  await page.goto("/write");
+  await waitForEditor(page);
+  await entry.click();
+  await waitForEditor(page);
+  await page.getByRole("button", { name: "删除作品", exact: true }).click();
+  await answerDeskDialog(page, /删除《.*》？/, "确认删除");
 
   // The notice belongs to the desk, not to the editor: the editor is reset to a
   // new document, so a message that only the editor could show would vanish with
@@ -492,8 +520,6 @@ test("deleting a work takes it out of the desk and off the site", async ({ page,
 });
 
 test("a deleted work can be restored from the recycle bin, as a draft", async ({ page, request }) => {
-  page.on("dialog", (dialog) => void dialog.accept());
-
   await registerWriter(page, request);
   const title = `浏览器验证还原 ${Date.now().toString(36)}`;
   const slug = await writeAndSave(page, title, true);
@@ -504,7 +530,8 @@ test("a deleted work can be restored from the recycle bin, as a draft", async ({
   await expect(entry).toBeVisible({ timeout: 45_000 });
   await entry.click();
   await waitForEditor(page);
-  await page.getByRole("button", { name: "删除作品" }).click();
+  await page.getByRole("button", { name: "删除作品", exact: true }).click();
+  await answerDeskDialog(page, /删除《.*》？/, "确认删除");
   await expect(page.getByRole("status").filter({ hasText: "已删除" })).toContainText(title, { timeout: 45_000 });
 
   // The deletion is not the end of the story: the work is in the recycle bin,
@@ -546,11 +573,6 @@ test("a deleted work can be restored from the recycle bin, as a draft", async ({
  * actually read it, in a browser, in both frameworks.
  */
 test("a reader who commented on a deleted work is told so in their own desk", async ({ page, request }) => {
-  // The product asks before deleting, so the suite answers rather than muting
-  // the dialog: that keeps "no confirmation" a failure instead of a silent
-  // delete.
-  page.on("dialog", (dialog) => void dialog.accept());
-
   // Two accounts, one browser: the author who deletes, and the reader whose
   // comment goes with the work.
   await registerWriter(page, request);
@@ -579,7 +601,8 @@ test("a reader who commented on a deleted work is told so in their own desk", as
   await expect(entry).toBeVisible({ timeout: 45_000 });
   await entry.click();
   await waitForEditor(page);
-  await page.getByRole("button", { name: "删除作品" }).click();
+  await page.getByRole("button", { name: "删除作品", exact: true }).click();
+  await answerDeskDialog(page, /删除《.*》？/, "确认删除");
   await expect(page.getByRole("status").filter({ hasText: "已删除" })).toContainText(title, { timeout: 45_000 });
 
   // The author is not notified of their own deletion: the notice exists for the
@@ -1130,15 +1153,13 @@ test("changing only publish intent cannot reuse an uncertain create as a differe
   await expect(page.getByRole("status").filter({ hasText: "所选操作尚未执行" })).toBeVisible();
   expect(attempts[1]).toEqual(attempts[0]);
   expect((await savedArticles(page))[0]).toMatchObject({ id: committedId, status: "published" });
-  page.once("dialog", (dialog) => void dialog.accept());
   await page.getByRole("button", { name: "转为草稿" }).click();
+  await answerDeskDialog(page, "转为草稿？", "确认转为草稿");
   await expect(page.getByRole("status").filter({ hasText: "作品已转为草稿" })).toBeVisible();
   expect((await savedArticles(page))[0]).toMatchObject({ id: committedId, status: "draft" });
 });
 
 test("English and historical Traditional Chinese editions remain discoverable, editable and restorable", async ({ page, request }) => {
-  let deletionWarning = "";
-  page.on("dialog", (dialog) => { deletionWarning = dialog.message(); void dialog.accept(); });
   await registerWriter(page, request);
   await waitForEditor(page);
 
@@ -1227,9 +1248,11 @@ test("English and historical Traditional Chinese editions remain discoverable, e
     await route.fulfill({ response });
   });
   const deleteResponse = page.waitForResponse((response) => response.url().includes(`/api/authoring/articles/${created.id}`) && response.request().method() === "DELETE");
-  await page.getByRole("button", { name: "删除作品" }).click();
+  await page.getByRole("button", { name: "删除作品", exact: true }).click();
+  const languageDelete = page.getByRole("dialog", { name: /删除《.*》？/ });
+  await expect(languageDelete).toContainText("所有语言版本");
+  await languageDelete.getByRole("button", { name: "确认删除" }).click();
   await deleteCommitted;
-  expect(deletionWarning).toContain("所有语言版本");
   await shelf.getByRole("button", { name: /Edited English edition/ }).click();
   await expect(page.getByLabel("作品语言")).toHaveValue("en");
   releaseDelete();
@@ -1271,7 +1294,8 @@ test("English and historical Traditional Chinese editions remain discoverable, e
   expect(traditional.status()).toBe(200);
   const traditionalWorks = (await traditional.json()).data as { locale: string; title: string }[];
   expect(traditionalWorks).toContainEqual(expect.objectContaining({ locale: "zh-TW", title: "編輯後的繁體中文作品" }));
-  await page.getByRole("button", { name: "删除作品" }).click();
+  await page.getByRole("button", { name: "删除作品", exact: true }).click();
+  await answerDeskDialog(page, /删除《.*》？/, "确认删除");
   await expect(trash.getByRole("button", { name: "还原《編輯後的繁體中文作品》" })).toBeVisible();
   await trash.getByRole("button", { name: "还原《編輯後的繁體中文作品》" }).click();
   await expect(shelf.getByRole("button", { name: /編輯後的繁體中文作品/ })).toBeVisible();
@@ -1324,7 +1348,8 @@ test("English and historical Traditional Chinese editions remain discoverable, e
   });
   await shelf.getByRole("button", { name: /English update in flight/ }).click();
   const otherDelete = page.waitForResponse((response) => response.url().includes(`/api/authoring/articles/${created.id}`) && response.request().method() === "DELETE");
-  await page.getByRole("button", { name: "删除作品" }).click();
+  await page.getByRole("button", { name: "删除作品", exact: true }).click();
+  await answerDeskDialog(page, /删除《.*》？/, "确认删除");
   await otherCommitted;
   await shelf.getByRole("button", { name: /仍在編輯的繁體作品/ }).click();
   await expect(page.getByLabel("作品语言")).toHaveValue("zh-TW");

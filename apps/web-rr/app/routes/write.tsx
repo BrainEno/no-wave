@@ -2,6 +2,7 @@ import type { HeadersFunction, MetaFunction } from "react-router";
 // Unmodified shared client component: it fetches /api/authoring/session and
 // /api/authoring/articles after it hydrates, both served by this app now.
 import { AuthoringWorkspace } from "@/components/authoring/authoring-workspace.tsx";
+import { PRIVATE_PAGE_HEADERS } from "../lib/http-policy.ts";
 
 /**
  * The writing desk (Phase 4b).
@@ -20,7 +21,7 @@ export const meta: MetaFunction = () => [
  * The desk is private: a shared cache must not be able to keep it, exactly like
  * `/account`.
  */
-export const headers: HeadersFunction = () => ({ "Cache-Control": "no-store, max-age=0" });
+export const headers: HeadersFunction = () => PRIVATE_PAGE_HEADERS;
 
 export default function WriteRoute() {
   return (
