@@ -226,6 +226,12 @@ pnpm dev
 
 `pnpm stack:start` 会以普通 `node` 子进程启动 API、Web、迁移与 outbox drain，不依赖 Vercel service binding。`pnpm stack:check` 做同样的事，但会额外用一条命令验证整个栈。两者都只从文档中列明的变量组装环境，不继承整个 shell。默认配置会使用一次性的本地 SQLite 文件；运行前不要导出 Neon `DATABASE_URL`，因为 `stack:check` 会采用它。见 `scripts/portable-stack.ts`。
 
+### 部署
+
+本仓库只有一条部署路径，不再附带平台清单：两个容器镜像（`apps/api/Dockerfile`、`apps/web-rr/Dockerfile`）加上上面三个进程。CI 的 `container-image` 任务会构建这两个镜像、在同一网络启动、只靠 `API_BASE_URL` 打通两层，并从外部用 HTTP 探测；`portable-stack` 任务则不用 Docker 跑同一批进程。因此「部署的东西」就是「被测过的东西」——契约见 [可移植栈](docs/operations/portable-stack.md)，镜像细节见[容器镜像](docs/operations/portable-stack.md#container-images)。
+
+`vercel.json` 已于 2026-11-07 删除（[ADR 0029](docs/architecture/decisions/0029-one-deployment-path.md)）：它把同样的三个工作负载声明为 Vercel Services，但本仓库从未真正部署过；一份没人运行的清单只是声明，不是配置。把容器托管到任何平台仍然可行，但要重新引入平台清单，需要一个真正跑过的部署来验证。
+
 <a id="other-checks-and-commands"></a>
 ## 其他检查与命令
 

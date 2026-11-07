@@ -1,13 +1,29 @@
 import { ARTICLE_MEDIA_REFS_SNAPSHOT, MigrationJournalError, type MigrationProvider } from "./provider-migration-journal.ts";
 import { MAX_FEATURED_ARTICLES } from "../domain/article.ts";
 
-type EntitySpec = { table: string; primaryKey: readonly string[]; columns: readonly string[]; jsonColumns?: readonly string[]; requiredColumns?: readonly string[]; requiredKeys?: readonly string[] };
+type EntitySpec = {
+  table: string;
+  primaryKey: readonly string[];
+  columns: readonly string[];
+  jsonColumns?: readonly string[];
+  requiredColumns?: readonly string[];
+  requiredKeys?: readonly string[];
+  /**
+   * Columns a provider computes for itself rather than carrying in a row payload
+   * (ADR 0030). They are not part of the portable entity: capture does not read
+   * them, replay does not write them, and a target provider may have none of
+   * them. They exist so the schema-parity test can still say "both providers
+   * have exactly the columns they are supposed to have" without pretending a
+   * derived index column belongs to the data model.
+   */
+  derivedColumns?: readonly string[];
+};
 
 // Strict allowlist: journal data never supplies SQL identifiers. Keep this in sync
 // with the shared persistence schema contract for the SQLite and PostgreSQL providers.
 const entities: Record<string, EntitySpec> = {
   articles: { table: "articles", primaryKey: ["id"], columns: ["id", "author_id", "slug", "status", "work_type", "created_at", "updated_at", "published_at", "deleted_at", "idempotency_key_hash", "request_hash"] },
-  article_translations: { table: "article_translations", primaryKey: ["article_id", "locale"], columns: ["article_id", "locale", "title", "summary", "content_blocks", "content_blocks_version", "created_at", "updated_at"], jsonColumns: ["content_blocks"], requiredColumns: ["content_blocks"] },
+  article_translations: { table: "article_translations", primaryKey: ["article_id", "locale"], columns: ["article_id", "locale", "title", "summary", "content_blocks", "content_blocks_version", "created_at", "updated_at"], jsonColumns: ["content_blocks"], requiredColumns: ["content_blocks"], derivedColumns: ["content_search_text"] },
   article_likes: { table: "article_likes", primaryKey: ["article_id", "user_id"], columns: ["article_id", "user_id", "created_at"] },
   article_comments: { table: "article_comments", primaryKey: ["id"], columns: ["id", "article_id", "author_id", "parent_comment_id", "content", "content_blocks", "content_blocks_version", "idempotency_key_hash", "request_hash", "created_at", "updated_at"], jsonColumns: ["content_blocks"] },
   taxonomies: { table: "taxonomies", primaryKey: ["id"], columns: ["id", "kind", "slug", "created_by", "created_at"] },
@@ -135,6 +151,17 @@ export function prepareMigrationRowPayload(
   input: Record<string, unknown>,
 ): { spec: EntitySpec; primaryKeyValues: string[]; payload: Record<string, unknown>; columns: string[]; values: unknown[]; articleMediaRefs: string[] | null } {
   const spec = getMigrationEntitySpec(entityType);
+  // A derived column belongs to the provider that computes it (ADR 0030). If a
+  // payload carries one — a capture that selected the whole row, an older
+  // journal — it is dropped here instead of being replayed into a provider that
+  // may have no such column, and instead of failing the whole batch over a value
+  // nobody needs to copy.
+  const derived = spec.derivedColumns ?? [];
+  if (derived.length > 0) {
+    const carried: Record<string, unknown> = { ...input };
+    for (const column of derived) delete carried[column];
+    input = carried;
+  }
   const isTranslation = entityType === "article_translations";
   const unknownColumns = Object.keys(input).filter(column => !spec.columns.includes(column) && !(isTranslation && column === ARTICLE_MEDIA_REFS_SNAPSHOT));
   if (unknownColumns.length) throw new MigrationJournalError("UNSUPPORTED_COLUMN", "Migration payload contains unsupported columns for " + entityType + ": " + unknownColumns.join(", ") + ".");

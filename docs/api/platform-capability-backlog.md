@@ -36,7 +36,7 @@
 | 能力 | 现状 | 说明 |
 | --- | --- | --- |
 | 首页 Feed | ✅ | 分页，按 `published_at DESC`。 |
-| 搜索 | ✅ **本次补上正文** | 现在匹配标题 + 摘要 + **正文**（逐块取 `text`，不是匹配 JSON 原文，所以搜 `paragraph` 不会命中所有作品）；仍然没有相关度排序，只有 `latest` / `popular`。 |
+| 搜索 | ✅ **本次补上正文，并让它可索引** | 匹配标题 + 摘要 + **正文**（只取每块的 `text`，不是匹配 JSON 原文，所以搜 `paragraph` 不会命中所有作品）；仍然没有相关度排序，只有 `latest` / `popular`。PostgreSQL 侧正文曾用 `jsonb_array_elements ... ->>'text' ILIKE` 在查询里逐块比对，任何索引都用不上，等于每次搜索都全表扫一遍译文；现在正文由生成列 `content_search_text` 承载，和标题/摘要一样走 `pg_trgm` GIN 索引（迁移 0027，见 ADR 0030）。SQLite 仍逐块 `instr` 扫描——单机库没有 trigram 运算符类，而 FTS5 旁表要为每条写路径维护同步，收益不抵复杂度。 |
 | 按标签 / 分类 / 作者浏览 | ✅ | `tags.articles`、`categories.articles`、`authors.articles`。 |
 | **作者搜索 / 作者目录** | ✅ **本次新增** | `GET /api/v1/authors?query=&locale=&limit=&offset=`（公开、无登录）与 `/authors` 页面。只列在该语言下有已发表作品的作者；有关键词按相关度（前缀优先），无关键词按粉丝数。此前搜索页的「作者」标签页是从命中的作品反推作者的，搜名字找不到作品里没出现这个名字的作者。见 ADR 0024。 |
 | 文末相关阅读 | ✅ | 服务端 `articles.related`，共享分类优先、同作者次之，最多 6 篇。 |
@@ -44,6 +44,7 @@
 | **最多收藏 / 热门排序** | ✅ **语义已改为全时段** | 本次去掉了 30 天窗口：`sort=popular` 现在是**累计**收藏数（第零节：收藏 = 点赞），老作品照样上榜。见 ADR 0016 决策 5。 |
 | **编辑推荐 / 精选** | ✅ **本次新增** | `GET`/`PUT /api/v1/featured` + `featured_articles` 表，编辑随时重排/移除/清空；前端 `/admin/featured`。见第零节与 ADR 0016 决策 4。 |
 | **游标分页** | ✅ **本次新增** | `?cursor=<base64url(publishedAt\|id)>` 与 `offset` 互斥，客户端自己从上一页最后一项构造（响应仍是数组，没有 `nextCursor`）。仅 `sort=latest`——`popular` 的排名在阅读过程中会变，游标会漂。 |
+| **深翻页上限按排序区分** | ✅ **本次收紧** | `sort=latest` 的 `offset` 上限仍是 100000（有游标可接手）；`sort=popular` 收紧到 10000，超过直接 `400` 并在 message 里写明「改走 `sort=latest` + cursor」。理由同上：`popular` 没有游标可退，深页返回的顺序在读到之前就已经变了，与其给一个可能错的页，不如说清楚。`/articles` 与 `/authors/:id/articles` 用同一个上限。 |
 
 ## 三、本次新增：关注流 `GET /api/v1/me/feed`
 

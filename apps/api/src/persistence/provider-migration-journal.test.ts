@@ -356,3 +356,40 @@ test("identity and featured replay rejects incomplete or malformed security-sens
     assert.throws(() => prepareMigrationRowPayload(target, "featured_articles", "article", { article_id: "article", position: "0", created_by: "editor", created_at: now }), /position/i);
   }
 });
+
+/**
+ * A provider's derived column never travels (ADR 0030).
+ *
+ * The failure this prevents is sharp: the PostgreSQL capture used to select the
+ * whole translation row, so `content_search_text` — a value only PostgreSQL
+ * computes — landed in the journal, and the SQLite replayer rejected the batch
+ * with "unsupported columns", naming a column nobody had written. Capture now
+ * names its columns; this covers the other half, a payload that carries one
+ * anyway (an older journal, a provider added later).
+ */
+test("a payload carrying a provider-derived column is replayed without it", () => {
+  const payload = {
+    article_id: "article-derived",
+    locale: "en",
+    title: "Derived column",
+    summary: "",
+    content_blocks: JSON.stringify([{ id: "b1", type: "paragraph", text: "body" }]),
+    content_blocks_version: 0,
+    created_at: "2026-01-01T00:00:00.000Z",
+    updated_at: "2026-01-01T00:00:00.000Z",
+    [ARTICLE_MEDIA_REFS_SNAPSHOT]: [],
+  };
+  const prepared = prepareMigrationRowPayload("sqlite", "article_translations", JSON.stringify(["article-derived", "en"]), {
+    ...payload,
+    content_search_text: '["body"]',
+  });
+  assert.equal(prepared.columns.includes("content_search_text"), false, "a derived column is not replayed");
+  assert.equal(Object.hasOwn(prepared.payload, "content_search_text"), false);
+  assert.deepEqual(prepared.columns.sort(), Object.keys(payload).filter((key) => key !== ARTICLE_MEDIA_REFS_SNAPSHOT).sort());
+
+  // An undeclared column is still a hard failure: the allowlist is the point.
+  assert.throws(
+    () => prepareMigrationRowPayload("sqlite", "article_translations", JSON.stringify(["article-derived", "en"]), { ...payload, surprise_column: "no" }),
+    /unsupported columns/i,
+  );
+});

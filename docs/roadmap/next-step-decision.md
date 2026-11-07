@@ -116,6 +116,11 @@ and `next` is out of the tree — see
 Still not a cutover: no production deployment, DNS change or traffic move has
 happened, and the Vercel configuration has not been touched.
 
+**Status 2026-11-07: it has now been removed, not deployed.**
+[ADR 0029](../architecture/decisions/0029-one-deployment-path.md) deleted
+`vercel.json`; the repository ships the container images and the portable stack,
+both exercised in CI.
+
 **Status 2026-11-05: #72 remains open.** The historical table above described the
 2026-10-29 snapshot; a [proposed moderation ADR](../architecture/decisions/0026-moderation-reports-and-appeals.md)
 and [threat model](../architecture/moderation-threat-model.md) are now available for review. They

@@ -480,7 +480,13 @@ test("PostgreSQL upgrades a real legacy schema and preserves existing read state
       const versions = await tx.unsafe("SELECT version FROM api_schema_migrations WHERE version = '0026_conversation_read_order'");
       assert.equal(versions.length, 0, "a refused upgrade must not be recorded");
       await tx.unsafe("UPDATE provider_migration_sessions SET status = 'aborted' WHERE session_id = 'active-upgrade'");
-      assert.deepEqual((await runMigrations(scoped)).applied, ["0026_conversation_read_order"]);
+      // The legacy fixture stops before 0026, so the upgrade applies every
+      // migration after it — discovered from disk, not transcribed, so adding
+      // one is a one-line change here rather than a silent skip.
+      assert.deepEqual((await runMigrations(scoped)).applied, [
+        "0026_conversation_read_order",
+        "0027_searchable_article_body_text",
+      ]);
       assert.deepEqual((await runMigrations(scoped)).applied, []);
       const afterCounts = await tx.unsafe(`SELECT cp.conversation_id, cp.user_id,
         (SELECT count(*)::int FROM messages m WHERE m.conversation_id = cp.conversation_id AND m.sender_id <> cp.user_id AND m.conversation_sequence > cp.last_read_sequence) AS n

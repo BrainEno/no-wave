@@ -234,10 +234,12 @@ so it was escalated instead of taken as a side effect of a migration PR.
 
 It is now fixed, on these grounds:
 
-- `docs/deployment/vercel.md` already defines `NEXT_PUBLIC_SITE_URL` as *"the
-  canonical public website URL for metadata"*, so a page that ignores it is
-  contradicting the project's own configuration contract — a defect, not a
-  deliberate choice.
+- The project's own configuration contract already defined
+  `NEXT_PUBLIC_SITE_URL` as *"the canonical public website URL for metadata"*
+  (the deployment guide that said so was deleted with `vercel.json` in
+  [ADR 0029](../architecture/decisions/0029-one-deployment-path.md); the
+  variable is still read, see the README), so a page that ignores it is
+  contradicting that contract — a defect, not a deliberate choice.
 - The origin is resolved in **one** function, `configuredSiteUrl()`
   (`packages/web-ui/src/lib/site-metadata.ts`), used by every page, by the sitemap, by
   robots and by `metadataBase`. Six copies of the

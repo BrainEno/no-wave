@@ -1005,8 +1005,18 @@ test("captured entities match both migrated schemas, primary keys, foreign keys 
     const spec = getMigrationEntitySpec(entity);
     const sqliteColumns = f.db.prepare(`PRAGMA table_info(${spec.table})`).all();
     const pgColumns = await f.pg.unsafe<{ column_name: string }>("SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = $1", [spec.table]);
-    assert.deepEqual(sqliteColumns.map((row) => row.name).sort(), [...spec.columns].sort(), `${entity}: SQLite columns`);
-    assert.deepEqual(pgColumns.map((row) => row.column_name).sort(), [...spec.columns].sort(), `${entity}: PostgreSQL columns`);
+    // A row payload carries `spec.columns`; `derivedColumns` are the provider's
+    // own business (a generated search column, for one) and are not copied
+    // between providers. A derived column is still a real column, so both lists
+    // are compared against "portable plus derived".
+    const derived = spec.derivedColumns ?? [];
+    assert.deepEqual(derived.filter((name) => spec.columns.includes(name)), [], `${entity}: a derived column is not carried`);
+    const assertColumns = (actual: string[], label: string) => {
+      assert.deepEqual(spec.columns.filter((name) => !actual.includes(name)), [], `${entity}: ${label} is missing a portable column`);
+      assert.deepEqual(actual.filter((name) => !spec.columns.includes(name) && !derived.includes(name)), [], `${entity}: ${label} has a column the spec does not declare`);
+    };
+    assertColumns(sqliteColumns.map((row) => row.name), "SQLite columns");
+    assertColumns(pgColumns.map((row) => row.column_name), "PostgreSQL columns");
     const sqlitePrimary = sqliteColumns.filter((row) => Number(row.pk) > 0).sort((a, b) => Number(a.pk) - Number(b.pk)).map((row) => row.name);
     const pgPrimary = await f.pg.unsafe<{ column_name: string }>(`SELECT k.column_name FROM information_schema.table_constraints c
       JOIN information_schema.key_column_usage k USING (constraint_catalog, constraint_schema, constraint_name)

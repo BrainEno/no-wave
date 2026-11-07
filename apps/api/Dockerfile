@@ -2,7 +2,7 @@ FROM node:24-alpine
 
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
-# Vercel container services default to port 80; the platform can override PORT.
+# 80 is what a host router in front of the container expects to reach; PORT overrides it.
 ENV PORT=80
 
 WORKDIR /app

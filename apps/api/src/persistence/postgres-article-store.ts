@@ -6,7 +6,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { articleIdempotencyFingerprint, articleIdempotencyKeyHash, articleIdempotencyReplayMatches } from "../application/article-idempotency.ts";
-import { MAX_FEATURED_ARTICLES, normalizeArticleInput, normalizeTaxonomyIds, resolveArticleCursor, validateArticleLocale, validateArticleSlug } from "../domain/article.ts";
+import { MAX_FEATURED_ARTICLES, maxArticleOffset, normalizeArticleInput, normalizeTaxonomyIds, resolveArticleCursor, validateArticleLocale, validateArticleSlug } from "../domain/article.ts";
 import { ArticleAuthorizationError, ArticleInputError, ArticleNotFoundError, ArticleSlugConflictError, IdempotencyConflictError } from "../domain/errors.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
 import { migrationEntityKey } from "./postgres-provider-migration-capture.ts";
@@ -19,21 +19,38 @@ import type { TypedPersistenceAdapterContract } from "../application/persistence
 // bigint lock. The other key is the target schema, so shelves do not interact.
 const FEATURED_SHELF_LOCK = 0x4e575348;
 
+/**
+ * The columns a translation contributes to the migration journal.
+ *
+ * Named rather than `SELECT *`: the payload is portable, and a provider-computed
+ * column is not (ADR 0030). `content_search_text` reached the journal exactly
+ * that way — the capture spread a whole row into a payload that the other
+ * provider then refused, with an error about unsupported columns and no hint
+ * where the extra one came from.
+ */
+const TRANSLATION_JOURNAL_COLUMNS =
+  "article_id, locale, title, summary, content_blocks, content_blocks_version, created_at, updated_at";
+
 export function createPostgresArticleStore(ctx: PostgresStoreContext) {
   const { sql, captureChanges } = ctx;
   return Object.freeze({
     async listPublishedArticles({ locale = "zh-CN", query = "", authorId = null, sort = "latest", limit = 20, offset = 0, cursor = null } = {}) {
       validateArticleLocale(locale);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
-      if (!Number.isInteger(offset) || offset < 0 || offset > 100000) {
-        throw new ArticleInputError("offset must be an integer between 0 and 100000.");
-      }
       if (typeof query !== "string" || query.length > 200) throw new ArticleInputError("query must be a string no longer than 200 characters.");
       if (authorId !== null) requiredText("authorId", authorId, 300);
       if (sort !== "latest" && sort !== "popular") throw new ArticleInputError("sort must be 'latest' or 'popular'.");
+      // The ceiling depends on the order, and the route applies the same one:
+      // `latest` can be cursored, `popular` cannot (see `maxArticleOffset`).
+      if (!Number.isInteger(offset) || offset < 0 || offset > maxArticleOffset(sort)) {
+        throw new ArticleInputError(`offset must be an integer between 0 and ${maxArticleOffset(sort)}${sort === "popular" ? " with sort=popular" : ""}.`);
+      }
       const search = query.trim() ? query.trim() : null;
       // Escape LIKE metacharacters to preserve literal substring semantics.
-      // The pg_trgm GIN indexes make non-empty title/summary searches indexable.
+      // Three pg_trgm GIN indexes make a non-empty search indexable: title and
+      // summary (migration 0009) and the generated `content_search_text`
+      // (migration 0027) that holds the blocks' text. The body used to be matched
+      // block by block inside the query, which no index can serve.
       const searchPattern = search === null
         ? null
         : "%" + search.replace(/[\\%_]/g, "\\$&") + "%";
@@ -62,10 +79,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
          JOIN article_translations AS t ON t.article_id = a.id
          WHERE a.status = 'published' AND t.locale = $1
            AND ($2::text IS NULL OR t.title ILIKE $2 ESCAPE E'\\\\' OR t.summary ILIKE $2 ESCAPE E'\\\\'
-             OR EXISTS (
-               SELECT 1 FROM jsonb_array_elements(t.content_blocks) AS block(value)
-               WHERE jsonb_typeof(block.value) = 'object' AND (block.value->>'text') ILIKE $2 ESCAPE E'\\\\'
-             ))
+             OR t.content_search_text ILIKE $2 ESCAPE E'\\\\')
            AND ($3::text IS NULL OR a.author_id = $3)
            ${keysetClause}
          ORDER BY ${popular ? "like_count DESC, a.published_at DESC, a.id DESC" : "a.published_at DESC, a.id DESC"}
@@ -212,7 +226,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
           await replaceArticleTaxonomyKind(tx, article.id, "tag", selectedTags);
           const [articleSnapshot, translationSnapshot, links, mediaRefs] = await Promise.all([
             tx.unsafe("SELECT * FROM articles WHERE id = $1", [article.id]),
-            tx.unsafe("SELECT * FROM article_translations WHERE article_id = $1 AND locale = $2", [article.id, input.locale]),
+            tx.unsafe(`SELECT ${TRANSLATION_JOURNAL_COLUMNS} FROM article_translations WHERE article_id = $1 AND locale = $2`, [article.id, input.locale]),
             tx.unsafe("SELECT * FROM article_taxonomies WHERE article_id = $1", [article.id]),
             tx.unsafe("SELECT asset_id FROM article_media_refs WHERE article_id = $1 AND locale = $2 ORDER BY asset_id", [article.id, input.locale]),
           ]);
@@ -274,7 +288,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
           await replaceArticleTaxonomyKind(tx, articleId, "tag", selectedTags);
           const [articleSnapshot, translationSnapshot, currentLinks, mediaRefs] = await Promise.all([
             tx.unsafe("SELECT * FROM articles WHERE id = $1", [articleId]),
-            tx.unsafe("SELECT * FROM article_translations WHERE article_id = $1 AND locale = $2", [articleId, input.locale]),
+            tx.unsafe(`SELECT ${TRANSLATION_JOURNAL_COLUMNS} FROM article_translations WHERE article_id = $1 AND locale = $2`, [articleId, input.locale]),
             tx.unsafe("SELECT * FROM article_taxonomies WHERE article_id = $1", [articleId]),
             tx.unsafe("SELECT asset_id FROM article_media_refs WHERE article_id = $1 AND locale = $2 ORDER BY asset_id", [articleId, input.locale]),
           ]);

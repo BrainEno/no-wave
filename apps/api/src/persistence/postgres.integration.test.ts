@@ -45,6 +45,50 @@ test("migrations are repeatable and record applied versions once", integrationOp
   assert.equal(total[0].n, onDisk.length, "and no version is recorded that is not a file");
 });
 
+/**
+ * The body-search column and its index (migration 0027, audit F-23).
+ *
+ * The search used to match `jsonb_array_elements(...) ->>'text'` inside the
+ * query, which no index can serve, so every body search scanned every published
+ * translation of the locale. What is asserted here is the shape that makes it
+ * indexable — a stored generated column and a trigram index over it — and that
+ * the planner will actually use it for the predicate the store sends, which is
+ * the part a schema-only check would miss if the two expressions drifted.
+ */
+test("the body search is backed by a generated column and a trigram index", integrationOptions, async () => {
+  const [column] = await sql.unsafe(
+    `SELECT is_generated, generation_expression
+       FROM information_schema.columns
+      WHERE table_schema = current_schema() AND table_name = 'article_translations' AND column_name = 'content_search_text'`,
+  );
+  assert.ok(column, "article_translations.content_search_text exists");
+  assert.equal(column.is_generated, "ALWAYS", "the column is generated, so no write path can leave it stale");
+  assert.match(column.generation_expression, /jsonb_path_query_array/, "it is built from the blocks, not a copy of them");
+
+  const [index] = await sql.unsafe(
+    `SELECT indexdef FROM pg_indexes
+      WHERE schemaname = current_schema() AND tablename = 'article_translations'
+        AND indexname = 'article_translations_content_search_trgm_idx'`,
+  );
+  assert.ok(index, "the trigram index exists");
+  assert.match(index.indexdef, /USING gin/);
+  assert.match(index.indexdef, /gin_trgm_ops/);
+
+  // With sequential scans disabled the planner can only answer this predicate
+  // from the trigram index: a plan without it means the index cannot serve the
+  // query, which is exactly the bug migration 0027 exists to remove.
+  let plan: string[] = [];
+  await sql.begin(async (tx) => {
+    await tx.unsafe("SET LOCAL enable_seqscan = off");
+    const rows = await tx.unsafe(
+      "EXPLAIN SELECT 1 FROM article_translations WHERE content_search_text ILIKE $1",
+      ["%searchable%"],
+    );
+    plan = rows.map((row: Record<string, string>) => row["QUERY PLAN"]);
+  });
+  assert.match(plan.join("\n"), /article_translations_content_search_trgm_idx/);
+});
+
 test("PostgreSQL comment idempotency migration preserves existing comments", integrationOptions, async () => {
   const migration = await readFile(new URL("./migrations/0016_article_comment_idempotency.sql", import.meta.url), "utf8");
   const commentId = randomUUID();
