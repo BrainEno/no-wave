@@ -1,12 +1,26 @@
 import {
   assertChangeMatchesEnvelope, assertMigrationTransition, isMigrationSessionActive,
   MigrationJournalError, parseMigrationPayload, validateMigrationChange, validateMigrationSequence,
-  validateMigrationSession, type MigrationChange, type MigrationChangeInput, type MigrationSessionInput,
-  type MigrationSessionStatus,
+  validateMigrationSession, type MigrationChange, type MigrationChangeInput, type MigrationChangeOperation,
+  type MigrationSessionInput, type MigrationSessionStatus,
 } from "./provider-migration-journal.ts";
 
-type Row = Record<string, any>;
-type Statement = { get(...args: any[]): Row | undefined; all(...args: any[]): Row[]; run(...args: any[]): { changes: number | bigint } };
+/**
+ * A raw SQLite row.
+ *
+ * Driver rows are untyped by nature: this journal writes columns the domain
+ * types do not describe, and reading them through a typed interface would mean
+ * inventing types for values the driver returns as text or integers anyway. The
+ * boundary is narrow on purpose — everything leaves this module through the
+ * `mapSession`/`mapChange` functions below, which convert a row into the declared
+ * journal contract.
+ */
+type Row = Record<string, unknown>;
+type Statement = {
+  get(...args: unknown[]): Row | undefined;
+  all(...args: unknown[]): Row[];
+  run(...args: unknown[]): { changes: number | bigint };
+};
 export type SqliteMigrationExecutor = { prepare(sql: string): Statement; readonly isTransaction?: boolean };
 
 function requireTransaction(tx: SqliteMigrationExecutor): void {
@@ -15,19 +29,43 @@ function requireTransaction(tx: SqliteMigrationExecutor): void {
 function seq(row: Row, key: string): number {
   return validateMigrationSequence(Number(row[key]), key, key === "last_sequence");
 }
+
+/**
+ * Column readers.
+ *
+ * A driver row is `Record<string, unknown>`, and the mapping functions used to
+ * push those unknowns straight into the journal contract — a `NULL` session id or
+ * an integer where text was expected became an object that looked like a session
+ * and failed much later, in the replayer. These read one column and say which
+ * column was wrong.
+ */
+function text(row: Row, key: string): string {
+  const value = row[key];
+  if (typeof value !== "string") {
+    throw new MigrationJournalError("INVALID_ROW", `Column "${key}" must be text in a migration row.`);
+  }
+  return value;
+}
+
 function mapSession(row: Row) {
   return {
-    sessionId: row.session_id, sourceProvider: row.source_provider, targetProvider: row.target_provider,
-    schemaVersion: row.schema_version, status: row.status as MigrationSessionStatus,
-    nextSequence: seq(row, "next_sequence"), createdAt: row.created_at, updatedAt: row.updated_at,
+    sessionId: text(row, "session_id"), sourceProvider: text(row, "source_provider"),
+    targetProvider: text(row, "target_provider"),
+    // `schema_version` is a TEXT column holding the replay schema version, and the
+    // contract keeps it as text: it names a wire format, it is not arithmetic.
+    schemaVersion: text(row, "schema_version"), status: text(row, "status") as MigrationSessionStatus,
+    nextSequence: seq(row, "next_sequence"), createdAt: text(row, "created_at"),
+    updatedAt: text(row, "updated_at"),
   };
 }
 function mapChange(row: Row, duplicate = false): MigrationChange {
   return {
-    sessionId: row.session_id, sequence: seq(row, "sequence"), changeId: row.change_id,
-    transactionId: row.transaction_id, entityType: row.entity_type, entityId: row.entity_id,
-    operation: row.operation, payload: parseMigrationPayload(row.payload), changeHash: String(row.change_hash).trim(),
-    recordedAt: row.recorded_at, ...(duplicate ? { duplicate: true } : {}),
+    sessionId: text(row, "session_id"), sequence: seq(row, "sequence"), changeId: text(row, "change_id"),
+    transactionId: text(row, "transaction_id"), entityType: text(row, "entity_type"),
+    entityId: text(row, "entity_id"),
+    operation: text(row, "operation") as MigrationChangeOperation,
+    payload: parseMigrationPayload(row.payload), changeHash: String(row.change_hash).trim(),
+    recordedAt: text(row, "recorded_at"), ...(duplicate ? { duplicate: true } : {}),
   };
 }
 function sessionRow(db: SqliteMigrationExecutor, id: string): Row {
