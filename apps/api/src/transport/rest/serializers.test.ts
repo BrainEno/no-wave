@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { createSqliteClient, runSqliteMigrations } from "../../persistence/sqlite.ts";
 import { createSqliteStore } from "../../persistence/sqlite-store.ts";
 import { serializeRestArticle, serializeRestArticles } from "./serializers.ts";
+import type { StoredAuthorProfile, StoredTaxonomy } from "../../application/persistence-ports.ts";
 
 /**
  * The list serializer's two obligations after #162.
@@ -192,5 +193,33 @@ test("the single-article path is the batch path with one item, not a second quer
     // single path were hand-written again, these two numbers would diverge.
     assert.equal(singleCount, counter.prepared, "both paths must prepare the same number of statements");
     assert.equal(singleCount, 3, "and that number must be the batch prefetch, not three per article");
+  } finally { db.close(); }
+});
+
+/**
+ * Compile-time guard for the response boundary.
+ *
+ * `0 extends 1 & T` is true only for `any`; it is the standard way to catch the
+ * type that defeats every other assertion. The serializer used to be `any` in
+ * and `any` out, so `article.authors` (a typo) compiled and shipped JSON with a
+ * hole in it. These lines fail to compile if that comes back — they are
+ * assertions on the *types*, with a `false` at runtime so the test runner can
+ * still report them.
+ */
+type IsAny<T> = 0 extends 1 & T ? true : false;
+
+test("the serializers hand routes a typed projection, not `any`", async () => {
+  const { db, store, articles } = await seededStore();
+  try {
+    const [page] = await serializeRestArticles(store, [articles[0]], null);
+    const pageIsNotAny: IsAny<typeof page> = false;
+    const authorIsNotAny: IsAny<typeof page.author> = false;
+    // These annotations only compile if the projection is real.
+    const author: StoredAuthorProfile | null = page.author;
+    const categories: StoredTaxonomy[] = page.categories;
+
+    assert.deepEqual([pageIsNotAny, authorIsNotAny], [false, false]);
+    assert.ok(author === null || typeof author === "object");
+    assert.ok(Array.isArray(categories));
   } finally { db.close(); }
 });

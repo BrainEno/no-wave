@@ -17,6 +17,17 @@ const MAX_LEXICAL_JSON_CHARACTERS = 1_000_000;
 const ELEMENT_KEYS = new Set(["children", "direction", "format", "indent", "textFormat", "textStyle", "type", "version"]);
 const TEXT_KEYS = new Set(["detail", "format", "mode", "style", "text", "type", "version"]);
 
+/**
+ * A block, as this adapter builds it for the writer.
+ *
+ * These were `Record<string, any>` — the loosest possible description of a
+ * structure that has exactly two shapes. `inlines`/`itemInlines` stay `unknown[]`
+ * because the runs are validated by the article contract downstream; naming them
+ * here would duplicate that validation in the wrong layer.
+ */
+type ParsedTextBlock = { id: string; type: string; text: string; level?: number; inlines?: unknown[] };
+type ParsedListBlock = { id: string; type: "list"; ordered: boolean; items: string[]; itemInlines?: unknown[] };
+
 function fail(path, message) {
   throw new ArticleInputError("Lexical adapter: " + path + " " + message);
 }
@@ -164,7 +175,7 @@ function parseBlock(node, index) {
     // leave blank lines behind. Blank blocks carry no content, so they are
     // dropped instead of failing a save.
     if (!text.trim()) return null;
-    const block: Record<string, any> = { id: "lexical-block-" + (index + 1), type: node.type, text };
+    const block: ParsedTextBlock = { id: "lexical-block-" + (index + 1), type: node.type, text };
     if (node.type === "heading") {
       if (typeof node.tag !== "string" || !/^h[2-4]$/.test(node.tag)) fail(path + ".tag", "must be h2, h3, or h4.");
       block.level = Number(node.tag.slice(1));
@@ -200,7 +211,7 @@ function parseBlock(node, index) {
       anyMarkup ||= hasInlineMarkup(runs);
     }
     if (items.length === 0) return null;
-    const block: Record<string, any> = { id: "lexical-block-" + (index + 1), type: "list", ordered, items };
+    const block: ParsedListBlock = { id: "lexical-block-" + (index + 1), type: "list", ordered, items };
     if (anyMarkup) block.itemInlines = itemInlines;
     return block;
   }
