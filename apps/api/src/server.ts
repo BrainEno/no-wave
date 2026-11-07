@@ -17,16 +17,33 @@ export function createApiServer({
   mediaAssets = null,
 } = {}) {
   const observability = suppliedObservability ?? createHttpObservability({ logger });
+  // Audit F-22: the cleanup sweeps and the deletion notices are background work,
+  // so their failures have no status code to appear in. They go to the same
+  // counter and log line as account mail — one call, so the two cannot disagree —
+  // and the log carries the error *class* only: a driver message can contain a
+  // connection string.
+  const onBackgroundFailure = observability.observeBackgroundFailure;
   // The environment reaches the service facade too: the retention window for
   // deleted works is read there, and a test (or an embedded host) that supplies
   // its own `env` must see its own value, not the process's.
   const services = applicationServices ?? (store
-    ? createApplicationServices({ persistence: store, onPersistenceOperation: observability.observePersistenceOperation, env })
+    ? createApplicationServices({
+        persistence: store,
+        onPersistenceOperation: observability.observePersistenceOperation,
+        onBackgroundFailure,
+        env,
+      })
     : null);
   // Mail delivery is invisible in the HTTP status code by design (a recovery
   // request answers 202 whether or not the mail went out), so the counter is the
   // only thing an alert can rule on.
-  const handleRest = createRestHandler({ services, env, mediaAssets, onMailDelivery: observability.observeMailDelivery });
+  const handleRest = createRestHandler({
+    services,
+    env,
+    mediaAssets,
+    onMailDelivery: observability.observeMailDelivery,
+    onBackgroundFailure,
+  });
 
   return createServer(async (request, response) => {
     const startedAt = process.hrtime.bigint();
@@ -126,6 +143,7 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
     const services = createApplicationServices({
       persistence: runtime.adapter,
       onPersistenceOperation: observability.observePersistenceOperation,
+      onBackgroundFailure: observability.observeBackgroundFailure,
     });
     await services.health();
     const closePersistence = runtime.close;

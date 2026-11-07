@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import { WriteRateLimitError } from "../domain/errors.ts";
+import { runReportedTask, type BackgroundFailureReporter } from "./background-tasks.ts";
 
 export type RateLimitBucket = {
   key: string;
@@ -166,7 +167,12 @@ function retryAfterSeconds(resetAt: string, windowSeconds: number): number {
   return Math.max(1, Math.ceil((reset - Date.now()) / 1000)) || windowSeconds;
 }
 
-export function createRateLimitService({ store, env }: { store: RateLimitStore; env: NodeJS.ProcessEnv }) {
+export function createRateLimitService({ store, env, onBackgroundFailure = null }: {
+  store: RateLimitStore;
+  env: NodeJS.ProcessEnv;
+  /** Where a failed expired-state prune goes (audit F-22). */
+  onBackgroundFailure?: BackgroundFailureReporter;
+}) {
   let rateOperations = 0;
 
   return Object.freeze({
@@ -190,11 +196,21 @@ export function createRateLimitService({ store, env }: { store: RateLimitStore; 
       const secret = env.AUTH_JWT_SECRET;
       if (typeof secret !== "string" || Buffer.byteLength(secret, "utf8") < 32) return;
 
+      // Opportunistic expired-state cleanup, every 128 checks. It is a supplement
+      // to the scheduled `runMaintenance`, not the trigger: an instance with no
+      // writes never reaches this line.
       rateOperations += 1;
       if (rateOperations >= 128) {
         rateOperations = 0;
         if (typeof store.pruneExpiredIdentityState === "function") {
-          await store.pruneExpiredIdentityState();
+          // Reported and swallowed. This used to be awaited bare, so a failed
+          // prune answered the *user's write* with a 500 — a maintenance problem
+          // charged to whoever happened to be writing at the time.
+          await runReportedTask({
+            task: "identity-prune",
+            report: onBackgroundFailure,
+            work: () => store.pruneExpiredIdentityState!(),
+          });
         }
       }
 

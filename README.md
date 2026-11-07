@@ -102,6 +102,16 @@ SQLite remains the default for **local development** and single-host installs. *
 
 For the Neon production branch, PostgreSQL URLs, private media storage, and service provisioning, see [Neon deployment and operations](docs/operations/neon-deployment.md). **Do not use that page for routine local development**: it pulls production URLs into `.env.local`, and local probes write data. Account mail (password recovery, email verification) is built and **switched off**; nothing is sent until an operator sets `MAIL_ENABLED` in `.env.local`. See [Account mail: off until you switch it on](docs/operations/mail-setup.md).
 
+## Scheduled maintenance
+
+Expired sessions, closed rate-limit windows and deleted works past their
+retention window are cleaned up by a one-shot process,
+`pnpm --filter @bot-thk/api maintenance`, that a scheduler is expected to run
+hourly. Without it a quiet instance never prunes anything: the sweeps it also
+performs opportunistically only happen on writes. See
+[Scheduled maintenance](docs/operations/scheduled-maintenance.md) for the cron
+line, the bounds and the exit codes.
+
 ## Observability
 
 The API emits structured logs at `/metrics`, separate API and Web readiness probes, and article/comment metrics. Internal service configuration is never returned by `/metrics`; see [API observability](docs/operations/api-observability.md). Health and readiness are exercised by the local chain and CI.

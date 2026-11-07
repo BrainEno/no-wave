@@ -113,6 +113,37 @@ Migrations remain an explicit step. Startup fails closed when the SQLite schema 
 
 An existing environment that sets only `DATABASE_URL` continues to select PostgreSQL for backwards compatibility. For new PostgreSQL deployments, set `DATABASE_PROVIDER=postgres` explicitly.
 
+## Scheduled maintenance
+
+The API cleans up expired sessions, closed rate-limit windows, spent revocations
+and article tombstones past `ARTICLE_TOMBSTONE_RETENTION_DAYS`. It also runs a
+bounded sweep of both whenever it happens to write — every 128 write rate-limit
+checks and every 32 article writes — but an instance that nobody writes to would
+never clean anything up, so the cleanup has its own trigger:
+
+```sh
+pnpm --filter @bot-thk/api maintenance
+```
+
+A one-shot process, in the shape of `drain:notifications`: it opens the configured
+persistence runtime, checks `health()`, sweeps what is due in up to
+`MAINTENANCE_MAX_PASSES` passes (default `5`, maximum `20`) of at most
+`MAINTENANCE_ARTICLE_LIMIT` tombstones (default `100`, maximum `500`), logs one
+JSON summary line and exits `0`, or `1` if a sweep failed or the run could not
+start. Out-of-range settings are a startup error, never a silent clamp. A run that
+removed nothing is a normal `info` line, not a warning.
+
+The sweeps read `ARTICLE_TOMBSTONE_RETENTION_DAYS` exactly as the recycle bin
+does, so the date a user is shown and the date their words go cannot drift apart.
+A failing sweep is reported through `onBackgroundFailure` — the API adds these to
+`api_background_task_failures_total{task}` and logs `background_task_failed` with
+the error **class only** — and never fails the write or delete that carried it.
+
+Schedule it (hourly is enough), and read
+[scheduled maintenance](../../docs/operations/scheduled-maintenance.md) for the
+cron/Action/systemd examples, exit codes and the list of things this run
+deliberately does not do.
+
 ## PostgreSQL setup
 
 Set `DATABASE_PROVIDER=postgres` and `DATABASE_URL` to a developer-owned PostgreSQL database, then run:

@@ -17,6 +17,7 @@ import {
   type StoredTaxonomy,
 } from "./persistence-ports.ts";
 import { ArticleInputError, ProfileAuthorizationError } from "../domain/errors.ts";
+import { runReportedTask, safeErrorClass, type BackgroundFailure, type BackgroundFailureReporter } from "./background-tasks.ts";
 
 type UnionToIntersection<U> = (U extends unknown ? (k: U) => void : never) extends (k: infer I) => void ? I : never;
 
@@ -132,9 +133,20 @@ export function resolveTombstoneRetentionDays(env: NodeJS.ProcessEnv = process.e
   return parsed;
 }
 
-export function createApplicationServices({ persistence, onPersistenceOperation = null, env = process.env }: {
+export function createApplicationServices({
+  persistence,
+  onPersistenceOperation = null,
+  onBackgroundFailure = null,
+  env = process.env,
+}: {
   persistence: PersistenceAdapterContract;
   onPersistenceOperation?: ((sample: { operation: string; success: boolean; durationMs: number }) => void) | null;
+  /**
+   * Where a cleanup or inbox failure goes (audit F-22). The default is to report
+   * nothing, which is what an embedded host or a test wants; the API passes a
+   * structured-log sink so an operator can see a sweep that has stopped working.
+   */
+  onBackgroundFailure?: BackgroundFailureReporter;
   env?: NodeJS.ProcessEnv;
 }): ApplicationServices {
   // ADR 0016, decision 2: the `role` column is the source of truth, but an empty
@@ -150,6 +162,18 @@ export function createApplicationServices({ persistence, onPersistenceOperation 
   // the declared port inputs and outputs. No `as unknown as` is needed to keep
   // the facade and the adapter in agreement.
   const ports = createPersistencePorts(persistence, { onOperation: onPersistenceOperation ?? undefined });
+
+  // One sink for every background failure, so a task cannot be added below and
+  // quietly skip the report. A sink that throws is not allowed to fail a request
+  // that has already done the right thing.
+  const report = (failure: BackgroundFailure): void => {
+    try {
+      onBackgroundFailure?.(failure);
+    } catch {
+      // Reporting is best-effort by definition; the failure itself still travels
+      // back through `runReportedTask` for maintenance runs that log a summary.
+    }
+  };
 
   // Parse transport-serialized content at the application boundary, not in GraphQL.
   const parseContentBlocks = (serialized: string): unknown[] => {
@@ -215,14 +239,18 @@ export function createApplicationServices({ persistence, onPersistenceOperation 
   /**
    * Tell the readers who commented on a work what deleting it means for them.
    *
-   * The sweep takes the comments with the row, and there is no scheduler that
-   * could warn those readers the day before — so the only moment the system can
-   * reach them is the deletion itself. One notification each, naming the date
-   * their words go, deduplicated by the notification store's own event key.
+   * The sweep takes the comments with the row, and the scheduled maintenance run
+   * only removes rows — it does not warn anyone the day before, because a notice
+   * per pending deletion per day would be a mailing list. The only moment the
+   * system can reach those readers is the deletion itself. One notification each,
+   * naming the date their words go, deduplicated by the notification store's own
+   * event key.
    *
-   * Every failure here is swallowed on purpose: a work the author cannot delete
-   * because an inbox row could not be written would be a far worse bug than a
-   * reader who was never told.
+   * No failure here may fail the delete: a work the author cannot remove because
+   * an inbox row could not be written would be a far worse bug than a reader who
+   * was never told. They are *reported* instead — one line per deletion, carrying
+   * the count and the error class, so a broken notification write stops being
+   * invisible without turning into a 500.
    */
   async function notifyCommentAuthors(articleId: string, actorId: string, purgesAt: string): Promise<void> {
     if (typeof ports.engagement.listArticleCommentAuthorIds !== "function") return;
@@ -230,10 +258,13 @@ export function createApplicationServices({ persistence, onPersistenceOperation 
     let authorIds: unknown;
     try {
       authorIds = await ports.engagement.listArticleCommentAuthorIds({ articleId, limit: TOMBSTONE_NOTIFICATION_LIMIT });
-    } catch {
+    } catch (error) {
+      report({ task: "tombstone-notifications", errorName: safeErrorClass(error) });
       return;
     }
     if (!Array.isArray(authorIds)) return;
+    let failed = 0;
+    let firstFailure: string | null = null;
     for (const userId of authorIds) {
       // The author deleting their own work needs no notice about it.
       if (typeof userId !== "string" || userId.length === 0 || userId === actorId) continue;
@@ -243,10 +274,13 @@ export function createApplicationServices({ persistence, onPersistenceOperation 
           eventKey: `article.deleted:${articleId}:${userId}`,
           payload: { type: "article.deleted", articleId, purgesAt },
         });
-      } catch {
+      } catch (error) {
         // One undeliverable inbox row must not stop the others.
+        failed += 1;
+        firstFailure ??= safeErrorClass(error);
       }
     }
+    if (firstFailure !== null) report({ task: "tombstone-notifications", errorName: firstFailure, failed });
   }
 
   // Deletion carries no body: it addresses a work the author already has.
@@ -285,6 +319,13 @@ export function createApplicationServices({ persistence, onPersistenceOperation 
    * it rides on the desk's own writes, is awaited inside the request, and is
    * never allowed to fail the write that triggered it. Nothing is detached, so
    * no work can outlive the process or the request.
+   *
+   * This is a *supplement* since audit F-22, not the trigger. A quiet instance
+   * has no writes to ride on, which is why `runMaintenance` exists and why the
+   * operation is documented as a scheduled job. What changed here is only the
+   * failure: it used to vanish, and on an instance whose writes all come from the
+   * one author, a purge that had stopped working looked exactly like a bin that
+   * was always empty.
    */
   let writesUntilTombstonePurge = TOMBSTONE_PURGE_EVERY_WRITES;
   async function sweepTombstones(): Promise<void> {
@@ -292,11 +333,11 @@ export function createApplicationServices({ persistence, onPersistenceOperation 
     if (writesUntilTombstonePurge > 0) return;
     writesUntilTombstonePurge = TOMBSTONE_PURGE_EVERY_WRITES;
     if (typeof ports.content.purgeExpiredArticles !== "function") return;
-    try {
-      await ports.content.purgeExpiredArticles({ retentionDays: resolveTombstoneRetentionDays(env) });
-    } catch {
-      // The next write tries again; a failed sweep must not look like a failed save.
-    }
+    await runReportedTask({
+      task: "tombstone-purge",
+      report: onBackgroundFailure,
+      work: async () => ports.content.purgeExpiredArticles({ retentionDays: resolveTombstoneRetentionDays(env) }),
+    });
   }
   const withTombstoneSweep = <Input, Output>(work: (input: Input) => Promise<Output>) => async (input: Input): Promise<Output> => {
     try {
