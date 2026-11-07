@@ -70,7 +70,8 @@ Verified on Neon's own documentation (object-storage overview, plans, and pricin
 1. `requestChecksumCalculation: "WHEN_REQUIRED"` on the S3 client — the flexible-checksum trailer the SDK adds by default is rejected by S3-compatible stores, Neon's included.
 2. Bounded retry (`withStorageRetry`, 3 attempts, 100/200 ms backoff) for `SlowDown` / `RequestTimeout` / `Throttling` / HTTP 429 / 503 on the three idempotent operations (`putObject`, `getObject`, `deleteObject`). Non-retryable errors (bad key, credentials, checksum) still fail on the first attempt so misconfiguration is not masked.
 
-Configuration stays provider-neutral (`MEDIA_S3_*` with `AWS_*` fallbacks, path-style addressing); see [Neon deployment](../operations/neon-deployment.md) and ADR 0011. No Neon-specific code exists in business logic, and no live bucket was created or tested this round — the runtime rows in §1 stay unverified until Phase 6.
+Configuration stays provider-neutral (`MEDIA_S3_*` with `AWS_*` fallbacks, path-style addressing); see [Neon deployment](../operations/neon-deployment.md) and
+[ADR 0028](../architecture/decisions/0028-s3-compatible-media-storage.md). No Neon-specific code exists in business logic, and no live bucket was created or tested this round — the runtime rows in §1 stay unverified until Phase 6.
 
 ## 5. Candidate: notification outbox worker
 

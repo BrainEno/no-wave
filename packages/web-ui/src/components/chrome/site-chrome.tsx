@@ -1,5 +1,3 @@
-"use client";
-
 import { Link } from "@/lib/framework/link.tsx";
 import { usePathname } from "@/lib/framework/navigation.ts";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";

@@ -83,7 +83,7 @@ Moderation, analytics and real-time clients remain incomplete. Mail-dependent em
 - API authentication is Bearer-token based. Web clients authenticate through same-origin Web routes and receive an HttpOnly cookie; browser code does not hold a long-lived token in local storage.
 - The old `API_GRAPHQL_URL` value is accepted for one transition release only and emits a deprecation warning. New code must use `/api/v1` REST paths; see [REST idempotency](docs/architecture/rest-idempotency.md).
 
-The structured engineering review, architectural decisions, and roadmap live in [docs/audit](docs/audit), [docs/architecture/decisions](docs/architecture/decisions), and [docs/roadmap](docs/roadmap).
+The structured engineering review, architectural decisions, and roadmap live in [docs/audit](docs/audit), [the decision index](docs/architecture/decisions/README.md), and [docs/roadmap](docs/roadmap). Decisions are numbered permanently; `pnpm test` fails if two share a number, so a citation of "ADR 0011" means one thing.
 
 ## Prerequisites
 
@@ -221,7 +221,7 @@ pnpm dev
 
 ### One portable command
 
-`pnpm stack:start` starts API, Web, migration and outbox-drain processes as plain `node` children with no Vercel binding. `pnpm stack:check` does the same and verifies the stack with one command. Both assemble the environment from documented variables rather than inheriting the whole shell. The default profile uses a throwaway local SQLite file; do not export a Neon `DATABASE_URL` before running them, because `stack:check` will honour it. See `scripts/portable-stack.ts`.
+`pnpm stack:start` starts API, Web, migration and outbox-drain processes as plain `node` children with no Vercel binding. `pnpm stack:check` does the same and verifies the stack with one command. A second entry point ships in the repository: `vercel.json` declares the same three workloads as [Vercel Services](docs/deployment/vercel.md) — `web` and `api` as containers built from the Dockerfiles CI already smoke-tests, plus the notification daemon. CI builds both container images it names, and `pnpm test` checks that every path in it exists — but **no deployment has been run from this repository**, so treat it as a documented option and read the caveat at the top of that page before choosing it. Both assemble the environment from documented variables rather than inheriting the whole shell. The default profile uses a throwaway local SQLite file; do not export a Neon `DATABASE_URL` before running them, because `stack:check` will honour it. See `scripts/portable-stack.ts`.
 
 ## Other checks and commands
 

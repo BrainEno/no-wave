@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { motionState } from "@/lib/motion-state.ts";

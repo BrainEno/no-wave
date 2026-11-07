@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useRef, useState } from "react";
 
 type BarLabels = { smaller: string; larger: string; theme: string; dark: string; light: string; copy: string; copied: string; sizeLabel: string };

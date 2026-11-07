@@ -4,10 +4,10 @@ import { MAIL_DISABLED_NOTICE } from "@/lib/mail-copy.ts";
 /**
  * What the mail-dependent pages show instead of a form that cannot work.
  *
- * No `"use client"`: it has no state, and keeping it server-rendered means the
- * copy is in the HTML for a visitor who arrived from a link in an old mail. It
- * is also imported by client components (`AccountPanel`), which is why it only
- * imports copy — never anything that reads `process.env`.
+ * No hooks and no state, so it renders on the server and the copy is in the
+ * HTML for a visitor who arrived from a link in an old mail. It is also imported
+ * by interactive components (`AccountPanel`), which is why it only imports copy
+ * — never anything that reads `process.env`.
  *
  * The two links are not decoration. A visitor who needs their password back has
  * been sent here by something, and "no" without a next step is the least useful

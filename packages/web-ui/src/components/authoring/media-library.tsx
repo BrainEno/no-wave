@@ -1,5 +1,3 @@
-"use client";
-
 import { Link } from "@/lib/framework/link.tsx";
 import { useCallback, useEffect, useState } from "react";
 

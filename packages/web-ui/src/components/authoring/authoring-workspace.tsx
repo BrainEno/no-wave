@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@/lib/framework/link.tsx";
 import { useNavigationBlocker } from "@/lib/framework/navigation.ts";

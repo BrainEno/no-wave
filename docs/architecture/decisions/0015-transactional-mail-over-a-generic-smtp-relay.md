@@ -36,8 +36,9 @@ dependency.**
    Nobody has to rewrite the mailer to change provider, and no provider name
    appears in business logic, which is what ADR 0012 asks for.
 2. **No new dependency.** The client is ~330 lines of `node:net`/`node:tls` in
-   `apps/api/src/infrastructure/smtp-client.ts`, next to the S3 client that ADR
-   0011 already accepted on the same reasoning. `nodemailer` would be less code
+   `apps/api/src/infrastructure/smtp-client.ts`, next to the S3 client that
+   [ADR 0028](0028-s3-compatible-media-storage.md) already accepted on the same
+   reasoning. `nodemailer` would be less code
    *of ours* and far more code *in the process* — its surface (streams, plugins,
    DKIM signing, connection pooling) is an order of magnitude larger than one
    sender, one recipient and a text body.

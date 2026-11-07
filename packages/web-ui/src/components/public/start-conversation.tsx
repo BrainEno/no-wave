@@ -1,5 +1,3 @@
-"use client";
-
 import { useRef, useState } from "react";
 import { CONVERSATION_ID_PATTERN } from "@bot-thk/web-http";
 import { Link } from "@/lib/framework/link.tsx";
