@@ -18,9 +18,8 @@ import { metaDescriptors, siteUrlFromMatches, titleWithSite } from "../lib/meta.
  * 404. The two API calls (author, then their works) are sequential because the
  * second is meaningless without the first.
  */
-export async function loader({ params, request }: LoaderFunctionArgs) {
-  const locale = localeFor(request);
-  const url = new URL(request.url);
+export async function loader({ params, url }: LoaderFunctionArgs) {
+  const locale = localeFor(url);
 
   let author;
   try {
@@ -46,9 +45,9 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
 export const headers: HeadersFunction = () => PUBLIC_PAGE_HEADERS;
 
-export const meta: MetaFunction<typeof loader> = ({ data, matches }) => {
-  if (!data) return [{ title: titleWithSite(undefined) }];
-  return metaDescriptors(authorMetadata(data.author, siteUrlFromMatches(matches)));
+export const meta: MetaFunction<typeof loader> = ({ loaderData, matches }) => {
+  if (!loaderData) return [{ title: titleWithSite(undefined) }];
+  return metaDescriptors(authorMetadata(loaderData.author, siteUrlFromMatches(matches)));
 };
 
 export default function AuthorRoute() {

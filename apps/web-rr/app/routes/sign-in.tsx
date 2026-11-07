@@ -13,8 +13,7 @@ import { isMailEnabled } from "@/lib/mail-feature.ts";
  * failures) and posts to `/api/auth/:action`, which this app implements as a
  * resource route over the framework-neutral handler in `app/lib/auth-proxy.ts`.
  */
-export async function loader({ request }: LoaderFunctionArgs) {
-  const url = new URL(request.url);
+export async function loader({ url }: LoaderFunctionArgs) {
   // Read at request time, not build time: switching mail on must not require a
   // rebuild.
   return { nextPath: safeRedirectPath(url.searchParams.get("next") ?? "/account"), mailEnabled: isMailEnabled() };

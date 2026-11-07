@@ -31,11 +31,11 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { resolveWebBuildCli } from "./lib/web-build-cli.ts";
 
 export type CheckStatus = "pass" | "fail" | "skip";
 
@@ -197,22 +197,6 @@ export type PortableStack = {
 
 function repositoryRoot(): string {
   return fileURLToPath(new URL("..", import.meta.url));
-}
-
-/**
- * Resolve the React Router CLI from the Web workspace's own installed
- * dependencies.
- *
- * `spawn("pnpm", …)` only works when a global pnpm shim happens to be on PATH;
- * `node scripts/verify-publish.ts` on a machine that only enabled corepack
- * fails with ENOENT before the build starts. Running the local CLI with
- * `process.execPath` removes that platform dependency while keeping the same
- * `react-router build` entry point.
- */
-export function resolveWebBuildCli(root: string): string {
-  const requireFromWeb = createRequire(pathToFileURL(join(root, "apps/web-rr", "package.json")));
-  const packageJson = requireFromWeb.resolve("@react-router/dev/package.json");
-  return join(dirname(packageJson), "bin.js");
 }
 
 export function freePort(): Promise<number> {

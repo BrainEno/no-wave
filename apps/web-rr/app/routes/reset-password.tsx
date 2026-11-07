@@ -18,8 +18,7 @@ import { titleWithSite } from "../lib/meta.ts";
  * already renders "链接不完整" for it, and that wording is the same in both
  * applications.
  */
-export async function loader({ request }: LoaderFunctionArgs) {
-  const url = new URL(request.url);
+export async function loader({ url }: LoaderFunctionArgs) {
   const token = url.searchParams.get("token")?.trim() ?? "";
   // A reset link can only have arrived by mail, so with mail off there is no
   // token to redeem and the form would only ever answer "invalid link".

@@ -16,9 +16,8 @@ import { titleWithSite } from "../lib/meta.ts";
  * results depend on an arbitrary query string, so a shared cache would only
  * collect low-hit-rate entries.
  */
-export async function loader({ request }: LoaderFunctionArgs) {
-  const locale = localeFor(request);
-  const url = new URL(request.url);
+export async function loader({ url }: LoaderFunctionArgs) {
+  const locale = localeFor(url);
   try {
     return await loadSearchPage({
       locale,
@@ -33,8 +32,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
 export const headers: HeadersFunction = () => PRIVATE_PAGE_HEADERS;
 
-export const meta: MetaFunction<typeof loader> = ({ data }) => {
-  const locale: Locale = data?.locale ?? "zh-CN";
+export const meta: MetaFunction<typeof loader> = ({ loaderData }) => {
+  const locale: Locale = loaderData?.locale ?? "zh-CN";
   // Same strings as `app/search/page.tsx` and `app/en/search/page.tsx`: the title
   // and description are part of what the migration must not change.
   const english = locale === "en";

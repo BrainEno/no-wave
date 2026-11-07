@@ -15,8 +15,8 @@ import { optionalApiBaseUrl } from "../lib/runtime.ts";
  * the `401` back unchanged, because a signed-out caller and a caller whose
  * follow graph is empty must not look the same.
  */
-function feed(request: Request) {
-  const params = new URL(request.url).searchParams;
+function feed(request: Request, url: URL) {
+  const params = url.searchParams;
   return handleFeedRequest(
     request,
     {
@@ -28,8 +28,8 @@ function feed(request: Request) {
   );
 }
 
-export async function loader({ request }: LoaderFunctionArgs) {
-  return feed(request);
+export async function loader({ request, url }: LoaderFunctionArgs) {
+  return feed(request, url);
 }
 
 /**
@@ -42,6 +42,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
  * uniformly would then meet a shape no other endpoint produces, for the one
  * request nobody should be making.
  */
-export async function action({ request }: ActionFunctionArgs) {
-  return feed(request);
+export async function action({ request, url }: ActionFunctionArgs) {
+  return feed(request, url);
 }

@@ -15,18 +15,18 @@ import { optionalApiBaseUrl } from "../lib/runtime.ts";
  * mutations, the bounded body and cookie-attached forwarding exist once, so the
  * two frameworks cannot disagree about a comment request.
  */
-function comments(request: Request, slug: string | undefined) {
+function comments(request: Request, url: URL, slug: string | undefined) {
   return handleArticleCommentsRequest(
     request,
-    { slug: slug ?? "", locale: new URL(request.url).searchParams.get("locale") },
+    { slug: slug ?? "", locale: url.searchParams.get("locale") },
     { apiBaseUrl: optionalApiBaseUrl() },
   );
 }
 
-export async function loader({ request, params }: LoaderFunctionArgs) {
-  return comments(request, params.slug);
+export async function loader({ request, params, url }: LoaderFunctionArgs) {
+  return comments(request, url, params.slug);
 }
 
-export async function action({ request, params }: ActionFunctionArgs) {
-  return comments(request, params.slug);
+export async function action({ request, params, url }: ActionFunctionArgs) {
+  return comments(request, url, params.slug);
 }

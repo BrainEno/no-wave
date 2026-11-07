@@ -16,9 +16,8 @@ import { titleWithSite } from "../lib/meta.ts";
  * reuses it unmodified — the only migration work was moving the data access
  * into `loadCategoryIndexPage`.
  */
-export async function loader({ request }: LoaderFunctionArgs) {
-  const locale = localeFor(request);
-  const url = new URL(request.url);
+export async function loader({ url }: LoaderFunctionArgs) {
+  const locale = localeFor(url);
   try {
     return await loadCategoryIndexPage({
       locale,
@@ -32,8 +31,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
 export const headers: HeadersFunction = () => PUBLIC_PAGE_HEADERS;
 
-export const meta: MetaFunction<typeof loader> = ({ data }) => {
-  const locale: Locale = data?.locale ?? "zh-CN";
+export const meta: MetaFunction<typeof loader> = ({ loaderData }) => {
+  const locale: Locale = loaderData?.locale ?? "zh-CN";
   const english = locale === "en";
   return [
     { title: titleWithSite(english ? "Categories" : "作品分类") },

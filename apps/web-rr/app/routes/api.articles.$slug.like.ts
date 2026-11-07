@@ -14,18 +14,18 @@ import { optionalApiBaseUrl } from "../lib/runtime.ts";
  * validation, the exact-Origin check on the mutation, the bounded body and
  * cookie-attached forwarding exist once.
  */
-function like(request: Request, slug: string | undefined) {
+function like(request: Request, url: URL, slug: string | undefined) {
   return handleArticleLikeRequest(
     request,
-    { slug: slug ?? "", locale: new URL(request.url).searchParams.get("locale") },
+    { slug: slug ?? "", locale: url.searchParams.get("locale") },
     { apiBaseUrl: optionalApiBaseUrl() },
   );
 }
 
-export async function loader({ request, params }: LoaderFunctionArgs) {
-  return like(request, params.slug);
+export async function loader({ request, params, url }: LoaderFunctionArgs) {
+  return like(request, url, params.slug);
 }
 
-export async function action({ request, params }: ActionFunctionArgs) {
-  return like(request, params.slug);
+export async function action({ request, params, url }: ActionFunctionArgs) {
+  return like(request, url, params.slug);
 }

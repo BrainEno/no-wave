@@ -112,7 +112,9 @@ test("a wrong verb gets the application's error shape, not the router's", async 
   // and the shape is wrong, which is worse than it sounds: a client that parses
   // `{error:{code}}` everywhere meets something else on this one endpoint.
   assert.match(route, /export async function action/);
-  const loaderAndAction = route.match(/return feed\(request\)/g) ?? [];
+  // The handler takes React Router's normalized `url` alongside the request
+  // (v8's request pass-through), so both exports pass it the same way.
+  const loaderAndAction = route.match(/return feed\(request, url\)/g) ?? [];
   assert.ok(loaderAndAction.length >= 2, "loader and action must share one handler");
   assert.match(route, /errorResponse|METHOD_NOT_ALLOWED|handleFeedRequest/, "the handler owns the 405");
 });

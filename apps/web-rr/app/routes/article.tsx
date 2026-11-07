@@ -21,8 +21,8 @@ import { localeFor } from "../lib/locale.ts";
  * the shared `loadArticleDetailPage`, and `ArticlePageView` is the shared view,
  * interactive parts included.
  */
-export async function loader({ params, request }: LoaderFunctionArgs) {
-  const locale = localeFor(request);
+export async function loader({ params, url }: LoaderFunctionArgs) {
+  const locale = localeFor(url);
   let page: Awaited<ReturnType<typeof loadArticleDetailPage>>;
   try {
     page = await loadArticleDetailPage({ slug: params.slug ?? "", locale });
@@ -37,7 +37,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
 export const headers: HeadersFunction = () => PUBLIC_PAGE_HEADERS;
 
-export const meta: MetaFunction<typeof loader> = ({ data: loaded, matches }) => {
+export const meta: MetaFunction<typeof loader> = ({ loaderData: loaded, matches }) => {
   if (!loaded) return [{ title: titleWithSite(undefined) }];
   return metaDescriptors(articleMetadata(loaded.article, siteUrlFromMatches(matches)));
 };

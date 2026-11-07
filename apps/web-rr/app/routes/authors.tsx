@@ -19,9 +19,8 @@ import { titleWithSite } from "../lib/meta.ts";
  * `q` and `page` are both in the URL, so a filtered or paged directory is a link
  * a reader can send to somebody.
  */
-export async function loader({ request }: LoaderFunctionArgs) {
-  const locale = localeFor(request);
-  const url = new URL(request.url);
+export async function loader({ url }: LoaderFunctionArgs) {
+  const locale = localeFor(url);
   try {
     return await loadAuthorIndexPage({
       locale,
@@ -35,8 +34,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
 export const headers: HeadersFunction = () => PUBLIC_PAGE_HEADERS;
 
-export const meta: MetaFunction<typeof loader> = ({ data }) => {
-  const locale: Locale = data?.locale ?? "zh-CN";
+export const meta: MetaFunction<typeof loader> = ({ loaderData }) => {
+  const locale: Locale = loaderData?.locale ?? "zh-CN";
   const english = locale === "en";
   return [
     { title: titleWithSite(english ? "Authors" : "作者") },

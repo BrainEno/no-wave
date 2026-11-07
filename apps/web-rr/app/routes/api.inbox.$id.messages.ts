@@ -10,8 +10,8 @@ import { optionalApiBaseUrl } from "../lib/runtime.ts";
  * explicit empty cursor — this route passes `null` rather than `""` so the proxy
  * can tell them apart.
  */
-function messages(request: Request, id: string | undefined) {
-  const params = new URL(request.url).searchParams;
+function messages(request: Request, url: URL, id: string | undefined) {
+  const params = url.searchParams;
   return handleConversationMessagesRequest(
     request,
     { conversationId: id ?? "", limit: params.get("limit"), before: params.get("before") },
@@ -19,8 +19,8 @@ function messages(request: Request, id: string | undefined) {
   );
 }
 
-export async function loader({ request, params }: LoaderFunctionArgs) {
-  return messages(request, params.id);
+export async function loader({ request, params, url }: LoaderFunctionArgs) {
+  return messages(request, url, params.id);
 }
 
 /**
@@ -30,7 +30,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
  * inventing one — a key minted here would differ per request and turn every retry
  * into a second message.
  */
-export async function action({ request, params }: ActionFunctionArgs) {
+export async function action({ request, params, url }: ActionFunctionArgs) {
   if (request.method === "POST") {
     return handleSendMessageRequest(
       request,
@@ -38,5 +38,5 @@ export async function action({ request, params }: ActionFunctionArgs) {
       { apiBaseUrl: optionalApiBaseUrl() },
     );
   }
-  return messages(request, params.id);
+  return messages(request, url, params.id);
 }

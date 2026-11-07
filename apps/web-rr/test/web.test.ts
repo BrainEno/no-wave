@@ -166,6 +166,33 @@ test("home renders API-backed articles on the server", async () => {
 });
 
 /**
+ * Client-side navigation fetches `/en.data`, not `/en`.
+ *
+ * React Router's request pass-through (`future.v8_passThroughRequests`, the v8
+ * default) hands handlers the raw `Request`, so `new URL(request.url).pathname`
+ * sees the `.data` suffix and an `/en` prefix test fails: the English home would
+ * hydrate in Chinese even though its server-rendered HTML was English. The
+ * loaders therefore read the framework's normalized `url` instead, and this
+ * asserts the answer is the same either way the page is asked for.
+ */
+test("the English home answers in English when it is fetched as data, not just as a document", async () => {
+  const document = await get("/en");
+  assert.equal(document.status, 200);
+  assert.match(document.body, /lang="en"/);
+
+  const data = await get("/en.data");
+  assert.equal(data.status, 200);
+  assert.match(data.body, /"en-home"/, "the data request matches the English route");
+  assert.match(data.body, /"locale","en"/, "and it loads English content");
+
+  // The root's data request moved from `/_root.data` to `/_.data` in this
+  // version; the default locale must still be what the root route answers.
+  const root = await get("/_.data");
+  assert.equal(root.status, 200);
+  assert.match(root.body, /"locale","zh-CN"/);
+});
+
+/**
  * The site shell — navigation, language switch, notification panel, footer — is
  * the one thing a status code cannot tell you about. A page with no navigation
  * still has a status, a title, a canonical URL and its content, so every one of
