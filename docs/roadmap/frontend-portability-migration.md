@@ -67,15 +67,19 @@ There is one additional Next Server Action module: `apps/web/src/app/spike-form/
 
 These behaviors had tests in `apps/web/src/lib/authoring-proxy-policy.test.ts` (now `packages/web-ui/src/lib/authoring-proxy-policy.test.ts`) and related Web/API contract tests. Before moving code, identify which tests validate shared behavior and which only exercise the current Next adapter. Preserve behavior tests and replace adapter-specific assertions deliberately.
 
-### Vercel-only deployment assumptions
+### Vercel-only deployment assumptions (inventory, now closed)
 
-Current `vercel.json` defines:
-- A Web service rooted at `apps/web`, preset to `nextjs` — still the case in `vercel.json`, which no deployment has changed (see ADR 0017, deferred items).
+At the time of this inventory, `vercel.json` defined:
+- A Web service rooted at `apps/web`, preset to `nextjs`.
 - A private API service binding injected as `API_SERVICE_URL`.
 - A rewrite of `/api/v1/*` to the API service and a catch-all rewrite to Web.
 - A single `notifications` Daemon instance in region `hkg1`, running `apps/api/src/persistence/notification-worker.ts`.
 
-The migration must replace, not silently depend on, the service binding and Daemon. External routing can vary by host; the application route contract must not. Do not modify production Vercel settings or deploy as part of this documentation/route-inventory stage.
+The migration replaced the binding and the Daemon rather than depending on them. The
+manifest itself was never deployed, and on 2026-11-07 the owner retired it:
+[ADR 0029](../architecture/decisions/0029-one-deployment-path.md) deleted
+`vercel.json` and the repository now ships the container images and the portable
+stack instead. The list above is history, not current configuration.
 
 ### Current repository tests
 
@@ -299,7 +303,7 @@ comparison against a real host (Phase 6).
   closed ahead of the validation window because keeping the retired application cost
   more than it protected — the replacement had already passed every gate that could
   be run without a host.
-- [ ] Remove the Vercel-specific Web framework/service-binding/Daemon assumptions only after the replacement's deployment and worker paths are verified.
+- [x] Remove the Vercel-specific Web framework/service-binding/Daemon assumptions only after the replacement's deployment and worker paths are verified. → done 2026-11-07 ([ADR 0029](../architecture/decisions/0029-one-deployment-path.md)): `vercel.json` is deleted, the API image is plain `apps/api/Dockerfile`, and the worker runs as a plain process under `pnpm stack:start` and in the container-image CI job.
 - [ ] Keep the standalone API, REST contract, database adapters, private media boundary and outbox semantics independent of the selected host.
 - [ ] Re-run the complete CI suite after cleanup and update README/operations guides to reflect only tested deployment instructions.
 

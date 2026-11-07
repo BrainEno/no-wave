@@ -221,7 +221,13 @@ pnpm dev
 
 ### One portable command
 
-`pnpm stack:start` starts API, Web, migration and outbox-drain processes as plain `node` children with no Vercel binding. `pnpm stack:check` does the same and verifies the stack with one command. A second entry point ships in the repository: `vercel.json` declares the same three workloads as [Vercel Services](docs/deployment/vercel.md) — `web` and `api` as containers built from the Dockerfiles CI already smoke-tests, plus the notification daemon. CI builds both container images it names, and `pnpm test` checks that every path in it exists — but **no deployment has been run from this repository**, so treat it as a documented option and read the caveat at the top of that page before choosing it. Both assemble the environment from documented variables rather than inheriting the whole shell. The default profile uses a throwaway local SQLite file; do not export a Neon `DATABASE_URL` before running them, because `stack:check` will honour it. See `scripts/portable-stack.ts`.
+`pnpm stack:start` starts API, Web, migration and outbox-drain processes as plain `node` children with no Vercel binding. `pnpm stack:check` does the same and verifies the stack with one command. Both assemble the environment from documented variables rather than inheriting the whole shell. The default profile uses a throwaway local SQLite file; do not export a Neon `DATABASE_URL` before running them, because `stack:check` will honour it. See `scripts/portable-stack.ts`.
+
+### Deployment
+
+This repository ships one deployment path, not a platform manifest: the two container images (`apps/api/Dockerfile`, `apps/web-rr/Dockerfile`) and the three processes above. The `container-image` CI job builds both images, starts them on one network with only `API_BASE_URL` connecting the tiers, and probes them over HTTP; the `portable-stack` jobs run the same processes without Docker. What deploys is therefore what is tested — see [the portable stack](docs/operations/portable-stack.md) for the contract and [container images](docs/operations/portable-stack.md#container-images) for the build details.
+
+`vercel.json` was deleted on 2026-11-07 ([ADR 0029](docs/architecture/decisions/0029-one-deployment-path.md)): it declared the same three workloads as Vercel Services, no deployment had ever been run from this repository, and a manifest nothing runs is a claim rather than a configuration. Hosting a container on any platform is still possible; reintroducing a platform manifest is a decision that needs a deployment to verify it.
 
 ## Other checks and commands
 

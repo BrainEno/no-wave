@@ -192,12 +192,15 @@ Two images, both built from the repository's single lockfile, both plain
 
 | Image | File | Build | Serves |
 | --- | --- | --- | --- |
-| API | `apps/api/Dockerfile.vercel` | production dependencies only | `node apps/api/src/server.ts` |
+| API | `apps/api/Dockerfile` | production dependencies only | `node apps/api/src/server.ts` |
 | Web | `apps/web-rr/Dockerfile` | two stages: build with devDependencies, then production dependencies only | `node server.ts` |
 
-The filename of the API image is a leftover from the Vercel era; the file itself
-contains nothing Vercel-specific (it is referenced by `vercel.json`, so renaming
-it belongs to Phase 7, not to a cleanup nobody asked for).
+Both files are built by the `container-image` CI job, which then runs them on one
+network and probes them over HTTP — the images are exercised, not just built. The
+API image was called `Dockerfile.vercel` until [ADR 0029](../architecture/decisions/0029-one-deployment-path.md)
+retired the platform manifest that referenced it; the file never contained
+anything Vercel-specific, and the rename removed the last name that said
+otherwise.
 
 **Why the Web image has two stages.** The build needs `vite`, `@react-router/dev`
 and — because the application compiles the shared source tree in

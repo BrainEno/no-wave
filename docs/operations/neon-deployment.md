@@ -143,12 +143,13 @@ invocation URL with `neon functions get health`, then call its `/health` path. I
 returns `200` only if its injected `DATABASE_URL` can execute `SELECT 1`; failures
 return a sanitized `503`.
 
-## Vercel environment
+## Deployment environment
 
-This repository's `vercel.json` continues to deploy the existing Web app and
-standalone API service. Neon provisioning does not automatically copy local credentials
-into Vercel's environment settings. Add the following **server-only** variables to the
-Vercel project for the environments that should connect to this Neon branch:
+This repository ships no platform manifest (ADR 0029): a deployment runs the two
+container images or the portable stack, and the environment below is what it has
+to be given. Neon provisioning does not copy local credentials anywhere, so these
+are the **server-only** variables to set on the API and Web containers for the
+environments that should connect to this Neon branch:
 
 - `DATABASE_PROVIDER=postgres`
 - `DATABASE_URL` (Neon's pooled URL)
@@ -156,7 +157,7 @@ Vercel project for the environments that should connect to this Neon branch:
 - `AUTH_JWT_SECRET`, `AUTH_JWT_ISSUER`, `AUTH_JWT_AUDIENCE`
 - `MEDIA_S3_BUCKET=media`
 - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_ENDPOINT_URL_S3`, `AWS_REGION`
-- `MAIL_ENABLED` — set it to `true` on **both** the API and the Web service to switch account mail
+- `MAIL_ENABLED` — set it to `true` on **both** the API and the Web containers to switch account mail
   on. Everything below does nothing until you do: while it is off, recovery and verification answer
   `409 MAIL_DISABLED` and the Web app hides the pages that lead to them. Off by default, and the
   full procedure lives in [Account mail: off until you switch it on](mail-setup.md).
@@ -166,12 +167,13 @@ Vercel project for the environments that should connect to this Neon branch:
   stays a dead letter. Generic SMTP submission, so any relay works; TLS is required by default
   (ADR 0015).
 
-Use values from the linked Neon branch, not from a preview branch. Never add secrets to
-`vercel.json`, GitHub Actions YAML, a tracked dotenv file, or the browser bundle. After
-adding Vercel variables, redeploy the API/Web services and verify `/health` and
-`/ready` on the deployed application. Run database migrations as a separate reviewed
-release step with a backup/cutover plan; do not run production migrations automatically
-on every server start.
+Use values from the linked Neon branch, not from a preview branch. Never put secrets in
+a tracked file, in GitHub Actions YAML, or in the browser bundle — set them in the
+platform's own secret store, which is outside this repository. After changing them,
+redeploy the API and Web containers and verify `/health` and `/ready` on the running
+application. Run database migrations as a separate reviewed release step with a
+backup/cutover plan; do not run production migrations automatically on every server
+start.
 
 ## Current boundary
 

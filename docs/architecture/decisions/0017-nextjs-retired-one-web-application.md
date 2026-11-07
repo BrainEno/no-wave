@@ -99,10 +99,11 @@ both cases the migration is additive rather than a cutover:
   the value in a dashboard this repository cannot edit — a rename that emptied
   every canonical URL on the next deploy would be worse than the name it
   replaced. `SITE_URL` wins when both are set.
-- `vercel.json` declares `web` as a container service built from
+- ~~`vercel.json` declares `web` as a container service built from
   `apps/web-rr/Dockerfile` instead of a `nextjs` preset rooted at the deleted
-  directory. No Vercel deployment has been run to verify it builds there the way
-  `docker build` does locally.
+  directory.~~ The file is gone as of 2026-11-07: no Vercel deployment was ever
+  run to verify it, so [ADR 0029](0029-one-deployment-path.md) deleted it and the
+  repository now ships the container images instead of a platform manifest.
 - The application's own default port (3100) and the dev chain's (3000) are
   unchanged; every orchestrated path sets `PORT` explicitly. Why the two
   defaults differ, and which port each way of starting the server gets, is

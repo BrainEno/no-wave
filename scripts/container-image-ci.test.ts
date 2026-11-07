@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import test from "node:test";
 
 /**
@@ -43,4 +45,25 @@ test("container CI migrates the shared SQLite volume before starting the API", a
   assert.ok((step.match(/pnpm test:container-smoke/g) ?? []).length >= 2, "both cold-start and restart HTTP probes remain required");
   assert.match(step, /docker stop web/);
   assert.match(step, /docker start web/);
+});
+
+/**
+ * Every `docker build -f <file>` in the workflow names a file that exists.
+ *
+ * The repository ships no platform manifest (ADR 0029), so the Dockerfiles are
+ * the only build definition there is: a `-f` path that no longer exists is a
+ * deployment path nobody can take, and CI would report it as a red build with a
+ * message about a missing file rather than about a missing image.
+ */
+test("the container CI job builds Dockerfiles that exist", async () => {
+  const workflow = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+  const root = new URL("..", import.meta.url).pathname;
+  const buildFiles = [...workflow.matchAll(/docker build -f (\S+)/g)].map((match) => match[1]!);
+  assert.deepEqual(
+    buildFiles.map((file) => file.replace(/\/$/, "")),
+    ["apps/api/Dockerfile", "apps/web-rr/Dockerfile"],
+    "the workflow must build the API and Web images, by their real paths",
+  );
+  const missing = buildFiles.filter((file) => !existsSync(join(root, file)));
+  assert.deepEqual(missing, [], "a Dockerfile named in CI must exist");
 });

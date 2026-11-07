@@ -6,7 +6,8 @@ actually connected. It also records why the tooling looks the way it does, and
 which gaps in the previous setup it closes.
 
 Scope: developer machines only. Nothing here is a deployment procedure. See
-[Vercel deployment](../deployment/vercel.md) and
+[the portable stack](../operations/portable-stack.md) — the same processes, built
+into the container images CI runs — and
 [persistence-provider deployment guidance](../deployment/persistence-provider-guidance.md)
 for that.
 

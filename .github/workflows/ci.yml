@@ -304,10 +304,10 @@ jobs:
       - name: Build the API image
         run: |
           set -eu
-          if ! docker build -f apps/api/Dockerfile.vercel -t bot-thk-api:ci . > /tmp/api-build.log 2>&1; then
+          if ! docker build -f apps/api/Dockerfile -t bot-thk-api:ci . > /tmp/api-build.log 2>&1; then
             tail -n 60 /tmp/api-build.log
             MESSAGE=$(grep -i -E "error|cannot|failed|not found|missing|panic|ERR_" /tmp/api-build.log | head -20 | sed -e 's/%/%25/g' | awk 'BEGIN{ORS="%0A"}{print}')
-            echo "::error title=docker build (apps/api/Dockerfile.vercel)::${MESSAGE}"
+            echo "::error title=docker build (apps/api/Dockerfile)::${MESSAGE}"
             exit 1
           fi
           tail -n 3 /tmp/api-build.log
