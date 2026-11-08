@@ -6,6 +6,7 @@ import {
   COMMENT_PAGE_LIMIT,
   commentsRequestPath,
   handleArticleCommentsRequest,
+  handleCommentUpdateRequest,
 } from "../src/comments.ts";
 import { ACCESS_TOKEN_COOKIE } from "../src/policy.ts";
 import { API_BASE, assertNoStore, json, request, stubFetch } from "./helpers.ts";
@@ -223,4 +224,136 @@ test("an unreachable API is a 502 that never leaks the failure detail", async ()
   });
   assert.equal(response.status, 502);
   assert.doesNotMatch(await response.text(), /ECONNREFUSED|10\.0\.0\.4/);
+});
+
+/**
+ * Comment editing proxy (ADR 0031).
+ *
+ * The edit is a second address — `PATCH /api/comments/:id` — because a comment
+ * is addressed by id while the thread is addressed by slug. Nothing about who may
+ * edit is decided here: the API answers `403` for somebody else's comment. What
+ * this layer owns is that a request leaving the app is one we could have made.
+ */
+const COMMENT_ID = "3f2b6c2e-0d1a-4c3a-9a6f-1c1f0b7d2e44";
+
+function editRequest(body: string | null, headers: Record<string, string> = {}, method = "PATCH", id = COMMENT_ID): Request {
+  return request(`/api/comments/${id}?locale=zh-CN`, {
+    method,
+    ...(body === null ? {} : { body }),
+    headers: { host: "no-wave.test", ...headers },
+  });
+}
+
+function editUpstream(body: unknown = { data: { id: COMMENT_ID } }, status = 200) {
+  return stubFetch({ "api/v1/comments/": () => json(body, status) });
+}
+
+test("an edit is forwarded to the comment's own address, verbatim", async () => {
+  const stub = editUpstream();
+  const payload = JSON.stringify({ editorState: { root: {} }, contentBlocksVersion: 1 });
+  const response = await handleCommentUpdateRequest(
+    editRequest(payload, { cookie: `${ACCESS_TOKEN_COOKIE}=access-token-value` }),
+    { id: COMMENT_ID, locale: "zh-CN" },
+    { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+  );
+
+  assert.equal(response.status, 200);
+  assertNoStore(response);
+  assert.equal(stub.calls.length, 1);
+  const forwarded = stub.calls[0];
+  assert.equal(forwarded?.init?.method, "PATCH");
+  assert.equal(
+    forwarded?.url,
+    `${API_BASE}/api/v1/comments/${COMMENT_ID}?locale=zh-CN`,
+    "an edit must address the comment by id, never by slug",
+  );
+  assert.equal(forwarded?.init?.body, payload, "the body is the API's contract; the proxy does not rewrite it");
+  const headers = new Headers((forwarded?.init?.headers ?? {}) as HeadersInit);
+  assert.equal(headers.get("authorization"), "Bearer access-token-value", "the HttpOnly cookie authorizes the edit");
+  assert.equal(headers.get("idempotency-key"), null, "an edit is not an idempotency-keyed write (ADR 0031)");
+});
+
+test("an edit that cannot name one of our comments never reaches the network", async () => {
+  const stub = editUpstream();
+  const rejected: Array<{ label: string; id: string; locale: string | null }> = [
+    { label: "not a uuid", id: "comment-1", locale: "zh-CN" },
+    { label: "path traversal", id: "../../admin", locale: "zh-CN" },
+    { label: "empty", id: "", locale: "zh-CN" },
+    { label: "over-long", id: "a".repeat(400), locale: "zh-CN" },
+    { label: "unknown locale", id: COMMENT_ID, locale: "klingon" },
+  ];
+  for (const { label, id, locale } of rejected) {
+    const response = await handleCommentUpdateRequest(
+      editRequest(JSON.stringify({ content: "改一下" }), {}, "PATCH", id === "" ? "%20" : id),
+      { id, locale },
+      { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+    );
+    assert.equal(response.status, 400, `${label} must be rejected locally`);
+    assert.equal((await response.json() as { error: { code: string } }).error.code, "BAD_USER_INPUT");
+  }
+  assert.deepEqual(stub.calls, []);
+});
+
+test("an edit is only accepted from our own origin and only as PATCH", async () => {
+  const stub = editUpstream();
+  const cross = await handleCommentUpdateRequest(
+    editRequest(JSON.stringify({ content: "改一下" }), { origin: "https://evil.test" }),
+    { id: COMMENT_ID, locale: "zh-CN" },
+    { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+  );
+  assert.equal(cross.status, 403);
+  assert.equal((await cross.json() as { error: { code: string } }).error.code, "ORIGIN_REJECTED");
+
+  for (const method of ["POST", "PUT", "DELETE", "GET"]) {
+    const response = await handleCommentUpdateRequest(
+      editRequest(method === "GET" ? null : JSON.stringify({ content: "改一下" }), {}, method),
+      { id: COMMENT_ID, locale: "zh-CN" },
+      { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+    );
+    assert.equal(response.status, 405, `${method} must not be forwarded to the edit endpoint`);
+  }
+  assert.deepEqual(stub.calls, [], "nothing may be forwarded before the origin and method checks pass");
+});
+
+test("an edit body is bounded and must be JSON", async () => {
+  const stub = editUpstream();
+  const notJson = await handleCommentUpdateRequest(
+    editRequest("content=text", { "content-type": "text/plain" }),
+    { id: COMMENT_ID, locale: "zh-CN" },
+    { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+  );
+  assert.equal(notJson.status, 415);
+
+  const tooLarge = await handleCommentUpdateRequest(
+    editRequest(JSON.stringify({ content: "x".repeat(COMMENT_BODY_MAX_BYTES + 1) })),
+    { id: COMMENT_ID, locale: "zh-CN" },
+    { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+  );
+  assert.equal(tooLarge.status, 413);
+  assert.deepEqual(stub.calls, []);
+});
+
+test("the API's refusal of an edit is passed on unchanged", async () => {
+  for (const [status, code] of [[403, "FORBIDDEN"], [404, "NOT_FOUND"]] as const) {
+    const stub = stubFetch({ "api/v1/comments/": () => json({ error: { code, message: "No." } }, status) });
+    const response = await handleCommentUpdateRequest(
+      editRequest(JSON.stringify({ content: "改一下" })),
+      { id: COMMENT_ID, locale: "zh-CN" },
+      { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+    );
+    assert.equal(response.status, status);
+    assertNoStore(response);
+    assert.equal((await response.json() as { error: { code: string } }).error.code, code);
+  }
+});
+
+test("an unconfigured API is a 503 for an edit that never reaches the network", async () => {
+  const stub = editUpstream();
+  const response = await handleCommentUpdateRequest(
+    editRequest(JSON.stringify({ content: "改一下" })),
+    { id: COMMENT_ID, locale: "zh-CN" },
+    { apiBaseUrl: undefined, fetchImpl: stub.fetchImpl },
+  );
+  assert.equal(response.status, 503);
+  assert.deepEqual(stub.calls, []);
 });

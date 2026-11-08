@@ -19,7 +19,7 @@ breaks each invariant in turn and asserts the guard reports it, so the checks ar
 rather than merely documented.
 
 Baseline: `74b3a3a91329c2ae4bfc65a05c6b83a4b714d63d` `apps/api/src/persistence/postgres.ts` declared
-63 inline methods (including `health` and `transaction`).
+64 inline methods (including `health` and `transaction`).
 The 60 domain methods must still exist in the current PostgreSQL slices, while `health`
 and `transaction` stay in the small `postgres.ts` entry point. A brace-balanced re-check
 of `searchAuthors` — flagged as non-verbatim in the first round — shows its body is
@@ -28,15 +28,15 @@ from a code change.
 
 ## Slice ownership
 
-The port table declares 80 methods; each provider's slices own
-79 of them (all but `health`) plus the 6 media
+The port table declares 81 methods; each provider's slices own
+80 of them (all but `health`) plus the 6 media
 methods. `health` and PostgreSQL's optional `transaction` are composed by the entry point.
 
 | Provider | Slice | Factory | Methods |
 | --- | --- | --- | --- |
 | postgres | `postgres-article-store.ts` | `createPostgresArticleStore` | 14 |
 | postgres | `postgres-conversation-store.ts` | `createPostgresConversationStore` | 9 |
-| postgres | `postgres-engagement-store.ts` | `createPostgresEngagementStore` | 7 |
+| postgres | `postgres-engagement-store.ts` | `createPostgresEngagementStore` | 8 |
 | postgres | `postgres-identity-store.ts` | `createPostgresIdentityStore` | 18 |
 | postgres | `postgres-media-store.ts` | `createPostgresMediaStore` | 6 |
 | postgres | `postgres-notification-store.ts` | `createPostgresNotificationStore` | 7 |
@@ -46,7 +46,7 @@ methods. `health` and PostgreSQL's optional `transaction` are composed by the en
 | postgres | `postgres-taxonomy-store.ts` | `createPostgresTaxonomyStore` | 8 |
 | sqlite | `sqlite-article-store.ts` | `createSqliteArticleStore` | 14 |
 | sqlite | `sqlite-conversation-store.ts` | `createSqliteConversationStore` | 9 |
-| sqlite | `sqlite-engagement-store.ts` | `createSqliteEngagementStore` | 7 |
+| sqlite | `sqlite-engagement-store.ts` | `createSqliteEngagementStore` | 8 |
 | sqlite | `sqlite-identity-store.ts` | `createSqliteIdentityStore` | 18 |
 | sqlite | `sqlite-media-store.ts` | `createSqliteMediaStore` | 6 |
 | sqlite | `sqlite-notification-store.ts` | `createSqliteNotificationStore` | 7 |
@@ -61,7 +61,7 @@ methods. `health` and PostgreSQL's optional `transaction` are composed by the en
 
 - `sqlite-article-store.ts`: `listPublishedArticles`, `listFeaturedArticles`, `setFeaturedArticles`, `listFollowingArticles`, `getPublishedArticle`, `listMyArticles`, `listMyDeletedArticles`, `listLikedArticles`, `listRelatedArticles`, `createArticle`, `updateArticle`, `deleteArticle`, `restoreArticle`, `purgeExpiredArticles`
 - `sqlite-conversation-store.ts`: `createConversation`, `updateConversationParticipants`, `deleteConversation`, `markConversationAsRead`, `listConversationMessages`, `getConversation`, `listConversations`, `persistMessage`, `listConversationParticipantIds`
-- `sqlite-engagement-store.ts`: `getArticleLikeInfo`, `toggleArticleLike`, `setArticleLike`, `listArticleComments`, `createArticleComment`, `deleteArticleComment`, `listArticleCommentAuthorIds`
+- `sqlite-engagement-store.ts`: `getArticleLikeInfo`, `toggleArticleLike`, `setArticleLike`, `listArticleComments`, `createArticleComment`, `updateArticleComment`, `deleteArticleComment`, `listArticleCommentAuthorIds`
 - `sqlite-identity-store.ts`: `createIdentityAccount`, `findIdentityAccount`, `createIdentitySession`, `rotateIdentityRefresh`, `revokeIdentityRefresh`, `revokeSession`, `issueIdentityToken`, `consumeIdentityToken`, `replaceIdentityPassword`, `listIdentitySessions`, `revokeIdentitySession`, `revokeIdentitySessions`, `markIdentityEmailVerified`, `findIdentityAccountByUserId`, `setIdentityEmail`, `findIdentityCredentials`, `pruneExpiredIdentityState`, `consumeRateLimit`
 - `sqlite-media-store.ts`: `createMediaAsset`, `getMediaAsset`, `listMediaAssets`, `listMediaScanRows`, `listReferencesForAssets`, `deleteUnusedMediaAsset`
 - `sqlite-notification-store.ts`: `deliverMessageNotifications`, `listNotifications`, `getUnreadNotificationCount`, `markAllNotificationsRead`, `markNotificationRead`, `createNotification`, `createNotifications`
@@ -74,7 +74,7 @@ methods. `health` and PostgreSQL's optional `transaction` are composed by the en
 
 - `postgres-article-store.ts`: `listPublishedArticles`, `getPublishedArticle`, `listMyArticles`, `listMyDeletedArticles`, `createArticle`, `updateArticle`, `deleteArticle`, `restoreArticle`, `purgeExpiredArticles`, `listLikedArticles`, `listRelatedArticles`, `listFollowingArticles`, `listFeaturedArticles`, `setFeaturedArticles`
 - `postgres-conversation-store.ts`: `createConversation`, `getConversation`, `updateConversationParticipants`, `deleteConversation`, `markConversationAsRead`, `listConversationMessages`, `listConversations`, `persistMessage`, `listConversationParticipantIds`
-- `postgres-engagement-store.ts`: `getArticleLikeInfo`, `toggleArticleLike`, `setArticleLike`, `listArticleComments`, `createArticleComment`, `deleteArticleComment`, `listArticleCommentAuthorIds`
+- `postgres-engagement-store.ts`: `getArticleLikeInfo`, `toggleArticleLike`, `setArticleLike`, `listArticleComments`, `createArticleComment`, `updateArticleComment`, `deleteArticleComment`, `listArticleCommentAuthorIds`
 - `postgres-identity-store.ts`: `createIdentityAccount`, `findIdentityAccount`, `createIdentitySession`, `rotateIdentityRefresh`, `revokeIdentityRefresh`, `revokeSession`, `issueIdentityToken`, `consumeIdentityToken`, `replaceIdentityPassword`, `listIdentitySessions`, `revokeIdentitySession`, `revokeIdentitySessions`, `markIdentityEmailVerified`, `findIdentityAccountByUserId`, `setIdentityEmail`, `findIdentityCredentials`, `pruneExpiredIdentityState`, `consumeRateLimit`
 - `postgres-media-store.ts`: `createMediaAsset`, `getMediaAsset`, `listMediaScanRows`, `listReferencesForAssets`, `listMediaAssets`, `deleteUnusedMediaAsset`
 - `postgres-notification-store.ts`: `listNotifications`, `getUnreadNotificationCount`, `markAllNotificationsRead`, `markNotificationRead`, `createNotification`, `createNotifications`, `deliverMessageNotifications`

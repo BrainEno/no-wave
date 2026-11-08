@@ -102,11 +102,13 @@ export {
 export {
   COMMENT_BODY_MAX_BYTES,
   COMMENT_DEFAULT_LOCALE,
+  COMMENT_ID_PATTERN,
   COMMENT_LOCALES,
   COMMENT_PAGE_LIMIT,
   COMMENT_SLUG_PATTERN,
   commentsRequestPath,
   handleArticleCommentsRequest,
+  handleCommentUpdateRequest,
   isCommentLocale,
 } from "./comments.ts";
 export {

@@ -438,12 +438,25 @@ export const OPERATIONS: Readonly<Record<string, OperationMetadata>> = Object.fr
     response: { status: 201, description: "The stored comment.", data: "Comment" },
   },
 
+  "PATCH comments.item": {
+    summary: "Correct your own comment",
+    description:
+      "Only the author may edit; somebody else's comment answers `403 FORBIDDEN` and a comment that does not exist answers `404 NOT_FOUND`, the same pair the delete answers. The edit replaces the text, stamps `editedAt` and leaves `createdAt`, the parent link and the idempotency record alone, so the thread keeps its order. No notification is emitted: re-notifying on every edit would let an author page the whole thread at will. Previous text is not retained — there is no revision history in v1 (ADR 0031).",
+    security: "session",
+    tags: ["comments"],
+    pathParams: { id: "The comment's id." },
+    query: [localeParameter("Edition to answer in. Defaults to `zh-CN`.")],
+    requestBody: { schema: "CommentUpdate", description: "Exactly one of `content` or `contentBlocks` / `editorState`.", required: true },
+    errors: [403, 404],
+    response: { description: "The corrected comment, with `editedAt` set.", data: "Comment" },
+  },
+
   "DELETE comments.item": {
     summary: "Delete your own comment",
     security: "session",
     tags: ["comments"],
     pathParams: { id: "The comment's id." },
-    errors: [404],
+    errors: [403, 404],
     response: { description: "Whether the comment was deleted.", data: "DeletionReceipt" },
   },
 

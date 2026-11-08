@@ -2686,6 +2686,74 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
     }
   });
 
+  test(`${adapterName}: a comment edit replaces the text, keeps the thread and is owner-only`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const slug = `contract-comment-edit-${suffix}`;
+    const author = `comment-editor-${suffix}`;
+    const stranger = `comment-stranger-${suffix}`;
+    try {
+      await runtime.store.createArticle({
+        authorId: `edit-article-author-${suffix}`, slug, title: "Comment editing contract", summary: "",
+        locale: "zh-CN", contentBlocks: [{ id: "p1", type: "paragraph", text: "Shared contract content." }], publish: true,
+      });
+      const comment = await runtime.store.createArticleComment({
+        slug, locale: "zh-CN", actorId: author, content: "First wording of the thought.",
+      });
+      assert.equal(comment.editedAt, null, "a comment as written carries no edit marker");
+
+      // Somebody else's comment is an authorization failure, not a silent no-op
+      // and not a different answer that would reveal which ids exist.
+      await assert.rejects(
+        Promise.resolve().then(() => runtime.store.updateArticleComment({
+          commentId: comment.id, actorId: stranger, content: "Somebody else's words now.",
+        })),
+        ArticleAuthorizationError,
+      );
+
+      const edited = await runtime.store.updateArticleComment({
+        commentId: comment.id, actorId: author, locale: "zh-CN", content: "Second wording of the thought.",
+      });
+      assert.ok(edited, "an edit of an existing comment returns the row");
+      assert.equal(edited.id, comment.id);
+      assert.equal(edited.content, "Second wording of the thought.");
+      assert.equal(edited.authorId, author, "an edit does not move a comment to another account");
+      assert.equal(edited.parentCommentId, null, "an edit does not re-parent a comment");
+      assert.equal(edited.createdAt, comment.createdAt, "an edit does not reorder the thread");
+      assert.equal(typeof edited.editedAt, "string");
+      assert.ok((edited.editedAt ?? "").length > 0);
+
+      // The list read is the one the public page uses, so the correction must be
+      // what a reader sees — and the marker must survive the projection.
+      const listed = await runtime.store.listArticleComments({ slug, locale: "zh-CN" });
+      assert.equal(listed.length, 1);
+      assert.equal(listed[0]?.content, "Second wording of the thought.");
+      assert.equal(typeof listed[0]?.editedAt, "string");
+
+      // An edit that upgrades to the versioned block document keeps the two
+      // content columns consistent; the schema check rejects a mismatch.
+      const withBlocks = await runtime.store.updateArticleComment({
+        commentId: comment.id, actorId: author, locale: "zh-CN", content: "Rich wording of the thought.",
+        contentBlocks: [{ id: "p1", type: "paragraph", text: "Rich wording of the thought." }], contentBlocksVersion: 1,
+      });
+      assert.equal(withBlocks?.contentBlocksVersion, 1);
+      assert.deepEqual(withBlocks?.contentBlocks, [{ id: "p1", type: "paragraph", text: "Rich wording of the thought." }]);
+
+      // A comment that does not exist answers `null`: "not found" and "not yours"
+      // stay distinguishable to the caller, and only the second is an error.
+      assert.equal(await runtime.store.updateArticleComment({
+        commentId: randomUUID(), actorId: author, content: "Nothing to edit.",
+      }), null);
+
+      // Deleting the edit's target removes it, and editing it afterwards is
+      // `null` rather than a resurrected row.
+      assert.equal(await runtime.store.deleteArticleComment({ commentId: comment.id, actorId: author }), true);
+      assert.equal(await runtime.store.updateArticleComment({
+        commentId: comment.id, actorId: author, content: "After deletion.",
+      }), null);
+    } finally { await runtime.cleanup(undefined, suffix); }
+  });
+
   test(`${adapterName}: article comment deletion is owner-only and idempotent after deletion`, options, async () => {
     const runtime = await fixture();
     const suffix = randomUUID();

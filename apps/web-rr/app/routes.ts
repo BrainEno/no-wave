@@ -75,6 +75,8 @@ route("api/authoring/notifications/:id/read", "routes/api.authoring.notification
   route("api/authoring/articles/:id/restore", "routes/api.authoring.articles.$id.restore.ts"),
   route("api/authoring/deleted-articles", "routes/api.authoring.deleted-articles.ts"),
   route("api/articles/:slug/comments", "routes/api.articles.comments.ts"),
+  // 评论编辑（ADR 0031）：单条评论按 id 寻址，和按 slug 寻址的评论区分开登记。
+  route("api/comments/:id", "routes/api.comments.$id.ts"),
   // 收藏与关注（#198）。两条都必须在这里登记：路由表是显式的，模块文件放
   // 在 routes/ 下而没有登记就只是一个不会被调用的普通文件——收藏在 #201 里
   // 正是这样漏掉的。

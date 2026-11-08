@@ -58,6 +58,7 @@ test("parameterised routes capture their parameters", () => {
     ["/api/v1/articles/portable-web-foundation/related", "GET", { slug: "portable-web-foundation" }],
     ["/api/v1/articles/11111111-1111-4111-8111-111111111111/restore", "POST", { id: "11111111-1111-4111-8111-111111111111" }],
     ["/api/v1/comments/11111111-1111-4111-8111-111111111111", "DELETE", { id: "11111111-1111-4111-8111-111111111111" }],
+    ["/api/v1/comments/11111111-1111-4111-8111-111111111111", "PATCH", { id: "11111111-1111-4111-8111-111111111111" }],
     ["/api/v1/me/sessions/11111111-1111-4111-8111-111111111111", "DELETE", { sessionId: "11111111-1111-4111-8111-111111111111" }],
     ["/api/v1/me/media/11111111-1111-4111-8111-111111111111", "DELETE", { id: "11111111-1111-4111-8111-111111111111" }],
     ["/api/v1/users/writer/follow", "POST", { userId: "writer" }],
@@ -114,7 +115,10 @@ test("a known path with an unsupported method reports the exact allow-list", () 
     ["/api/v1/me/feed", "DELETE", "GET"],
     ["/api/v1/users/some-user/role", "GET", "PUT"],
     ["/api/v1/articles/some-slug/comments", "PUT", "GET, POST"],
-    ["/api/v1/comments/some-id", "GET", "DELETE"],
+    ["/api/v1/comments/some-id", "GET", "PATCH, DELETE"],
+    // An edit is the second method a comment answers, and it is a different
+    // method on purpose: a correction is not a create and not a delete (ADR 0031).
+    ["/api/v1/comments/some-id", "PUT", "PATCH, DELETE"],
     ["/api/v1/tags", "DELETE", "GET, POST"],
     ["/api/v1/taxonomies", "GET", "POST"],
     ["/api/v1/conversations/c1", "PUT", "GET, DELETE"],

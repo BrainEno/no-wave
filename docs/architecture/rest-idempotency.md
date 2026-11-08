@@ -82,6 +82,7 @@ fingerprint. Direct store callers that omit `requestedSlug` keep the old explici
 | `POST /api/v1/conversations/:id/messages` | non-idempotent create | **required** | implemented — `messages.idempotency_key` + `request_hash`, unique per sender |
 | `POST /api/v1/articles` | non-idempotent create | optional | implemented — `articles.idempotency_key_hash` (migrations `0019` / sqlite `0011`) |
 | `POST /api/v1/articles/:slug/comments` | non-idempotent create | optional | implemented — `article_comments.idempotency_key_hash` (migrations `0016` / sqlite `0008`) |
+| `PATCH /api/v1/comments/:id` | text replacement | not required | convergent — a repeat writes the same words and re-stamps `edited_at`; no notification is emitted either way (ADR 0031) |
 | `PUT /api/v1/articles/:articleId` | conditional state replacement | not required | convergent — a repeat writes the same state |
 | `PUT /api/v1/me/profile` | state replacement | not required | convergent |
 | `PUT /api/v1/articles/:slug/like` | state-setting (`liked` in the body) | not required | convergent, notifications are transition-only |

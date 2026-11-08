@@ -110,7 +110,10 @@ export const REST_ROUTES: readonly RestRoute[] = Object.freeze([
     segments: [literal("articles"), param("slug"), literal("comments")],
   },
   { id: "articles.related", methods: ["GET"], segments: [literal("articles"), param("slug"), literal("related")] },
-  { id: "comments.item", methods: ["DELETE"], segments: [literal("comments"), param("id")] },
+  // A comment can be corrected by its author (`PATCH`) and withdrawn by them
+  // (`DELETE`); both address the same row and both answer `403` for somebody
+  // else's comment, so neither can be used to probe which ids exist.
+  { id: "comments.item", methods: ["PATCH", "DELETE"], segments: [literal("comments"), param("id")] },
 
   { id: "tags", methods: ["GET", "POST"], segments: [literal("tags")] },
   { id: "tags.item", methods: ["GET"], segments: [literal("tags"), param("slug")] },

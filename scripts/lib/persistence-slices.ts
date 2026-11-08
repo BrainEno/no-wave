@@ -64,7 +64,7 @@ export const BASELINE_FILE = "apps/api/src/persistence/postgres.ts";
 /** Methods declared inside `return Object.freeze({ ... })` in that monolith. */
 export const BASELINE_INLINE_METHODS: readonly string[] = Object.freeze([
   "health", "transaction", "getArticleLikeInfo", "toggleArticleLike", "setArticleLike",
-  "listArticleComments", "createArticleComment", "deleteArticleComment", "listArticleCommentAuthorIds",
+  "listArticleComments", "createArticleComment", "updateArticleComment", "deleteArticleComment", "listArticleCommentAuthorIds",
   "listTaxonomies", "getTaxonomyBySlug", "listTaxonomyArticles", "listArticleTaxonomies",
   "createTag", "createTaxonomy", "deleteTaxonomy", "getAuthorProfile", "getUserRole", "setUserRole",
   "searchAuthors", "searchUsers", "listFollowing", "listFollowers", "followUser", "unfollowUser",

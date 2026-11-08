@@ -1807,6 +1807,116 @@
       }
     },
     "/api/v1/comments/{id}": {
+      "patch": {
+        "tags": [
+          "comments"
+        ],
+        "summary": "Correct your own comment",
+        "operationId": "comments.item.patch",
+        "responses": {
+          "200": {
+            "description": "The corrected comment, with `editedAt` set.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Comment"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request: `BAD_USER_INPUT` for a query or body the contract does not allow, `BAD_INPUT` for discovery paging misuse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid, unrevoked bearer token was presented (`UNAUTHENTICATED`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller is authenticated but not allowed to do this (`FORBIDDEN`); categories and the featured shelf are editorial.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The addressed row does not exist, or is not visible to this caller (`NOT_FOUND`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Only the author may edit; somebody else's comment answers `403 FORBIDDEN` and a comment that does not exist answers `404 NOT_FOUND`, the same pair the delete answers. The edit replaces the text, stamps `editedAt` and leaves `createdAt`, the parent link and the idempotency record alone, so the thread keeps its order. No notification is emitted: re-notifying on every edit would let an author page the whole thread at will. Previous text is not retained — there is no revision history in v1 (ADR 0031).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The comment's id.",
+            "schema": {
+              "type": "string",
+              "maxLength": 300
+            }
+          },
+          {
+            "name": "locale",
+            "in": "query",
+            "required": false,
+            "description": "Edition to answer in. Defaults to `zh-CN`.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "zh-CN",
+                "zh-TW",
+                "en"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "Exactly one of `content` or `contentBlocks` / `editorState`.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommentUpdate"
+              }
+            }
+          }
+        }
+      },
       "delete": {
         "tags": [
           "comments"
@@ -1844,6 +1954,16 @@
           },
           "401": {
             "description": "No valid, unrevoked bearer token was presented (`UNAUTHENTICATED`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller is authenticated but not allowed to do this (`FORBIDDEN`); categories and the featured shelf are editorial.",
             "content": {
               "application/json": {
                 "schema": {
@@ -5999,6 +6119,7 @@
           "contentBlocks",
           "contentBlocksVersion",
           "createdAt",
+          "editedAt",
           "locale",
           "replies"
         ],
@@ -6047,6 +6168,18 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "editedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the author last corrected the text, or `null` for a comment as written. Previous text is not retained (ADR 0031)."
           },
           "locale": {
             "type": "string",
@@ -6520,6 +6653,33 @@
               {
                 "type": "null"
               }
+            ]
+          }
+        }
+      },
+      "CommentUpdate": {
+        "type": "object",
+        "description": "Exactly one of `content` (version 0 plain text) or `contentBlocks` / `editorState` (version 1 rich text). An edit replaces the text and stamps `editedAt`; it does not re-notify the thread.",
+        "properties": {
+          "content": {
+            "type": "string",
+            "maxLength": 5000
+          },
+          "contentBlocks": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "editorState": {
+            "type": "object",
+            "description": "Write-only serialized Lexical state."
+          },
+          "contentBlocksVersion": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
             ]
           }
         }
