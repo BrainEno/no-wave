@@ -65,6 +65,12 @@ const POLICIES: Readonly<Record<string, WriteRateLimitPolicy>> = Object.freeze({
   "POST tags": { endpoint: "taxonomy.create", windowSeconds: 60, ipLimit: 60, userLimit: 30 },
   "POST taxonomies": { endpoint: "taxonomy.create", windowSeconds: 60, ipLimit: 60, userLimit: 30 },
   "DELETE taxonomies.item": { endpoint: "taxonomy.delete", windowSeconds: 60, ipLimit: 60, userLimit: 30 },
+  // An import writes many works in one request, so it is throttled over a longer
+  // window than a single create: ten per ten minutes per account is enough for a
+  // careful author (a dry run, a few applies, a retry after a fixed bundle) and
+  // far too few for a loop. The report is what makes retrying rarely necessary:
+  // a failed page is named, so the fix is a new bundle, not another attempt.
+  "POST imports.notion": { endpoint: "import.notion", windowSeconds: 600, ipLimit: 20, userLimit: 10 },
   "POST conversations": { endpoint: "conversation.create", windowSeconds: 60, ipLimit: 120, userLimit: 60 },
   "POST conversations.messages": { endpoint: "message.send", windowSeconds: 60, ipLimit: 120, userLimit: 30 },
   "PATCH conversations.participants": { endpoint: "conversation.participants.update", windowSeconds: 60, ipLimit: 120, userLimit: 60 },

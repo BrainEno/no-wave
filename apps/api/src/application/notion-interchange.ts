@@ -101,24 +101,28 @@ export type NotionPageLike = {
  * authoring desk counts them, the import result groups by them, and a test can
  * assert that a real payload produces exactly the set it should.
  */
-export type InterchangeIssueCode =
-  | "empty-block-dropped"
-  | "unsupported-block"
-  | "block-limit-reached"
-  | "expiring-image-url"
-  | "link-block-flattened"
-  | "equation-flattened"
-  | "callout-flattened"
-  | "toggle-flattened"
-  | "checkbox-state-dropped"
-  | "table-block-dropped"
-  | "invalid-block-dropped"
-  | "empty-body"
-  | "empty-title"
-  | "slug-derived"
-  | "work-type-fallback"
-  | "featured-image-not-carried"
-  | "hierarchy-not-carried";
+export const INTERCHANGE_ISSUE_CODES = Object.freeze([
+  "empty-block-dropped",
+  "unsupported-block",
+  "block-limit-reached",
+  "expiring-image-url",
+  "link-block-flattened",
+  "equation-flattened",
+  "callout-flattened",
+  "toggle-flattened",
+  "checkbox-state-dropped",
+  "table-block-dropped",
+  "invalid-block-dropped",
+  "empty-body",
+  "empty-title",
+  "slug-derived",
+  "work-type-fallback",
+  "featured-image-not-carried",
+  "hierarchy-not-carried",
+] as const);
+
+/** Derived from the list so the published contract and the code cannot drift. */
+export type InterchangeIssueCode = (typeof INTERCHANGE_ISSUE_CODES)[number];
 
 export type InterchangeIssue = { code: InterchangeIssueCode; detail: string };
 

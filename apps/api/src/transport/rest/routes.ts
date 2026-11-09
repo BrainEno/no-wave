@@ -118,6 +118,12 @@ export const REST_ROUTES: readonly RestRoute[] = Object.freeze([
   // else's comment, so neither can be used to probe which ids exist.
   { id: "comments.item", methods: ["PATCH", "DELETE"], segments: [literal("comments"), param("id")] },
 
+  // Importing is a write on two axes at once — it can create works and tags — so
+  // it is a `POST` that reports per page rather than a batch of ordinary creates
+  // (ADR 0037). `apply` decides whether anything is written; the default dry run
+  // is a read.
+  { id: "imports.notion", methods: ["POST"], segments: [literal("imports"), literal("notion")] },
+
   { id: "tags", methods: ["GET", "POST"], segments: [literal("tags")] },
   { id: "tags.item", methods: ["GET"], segments: [literal("tags"), param("slug")] },
   { id: "tags.articles", methods: ["GET"], segments: [literal("tags"), param("slug"), literal("articles")] },

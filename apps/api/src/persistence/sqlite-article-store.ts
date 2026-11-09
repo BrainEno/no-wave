@@ -445,6 +445,16 @@ export function createSqliteArticleStore(db: SqliteRunner) {
         .all(actorId, locale, limit).map(mapArticle);
     },
 
+    getMyArticle({ articleId, actorId, locale = "zh-CN" }: { articleId: string; actorId: string; locale?: string }) {
+      requiredText("articleId", articleId, 64);
+      requiredText("actorId", actorId, 300);
+      validateArticleLocale(locale);
+      // The author predicate is the permission check, not a filter: another
+      // account's id and a nonexistent id are the same answer.
+      return mapArticleFound(statement(articleSelect + " WHERE a.id = ? AND a.author_id = ? AND t.locale = ? AND a.deleted_at IS NULL LIMIT 1")
+        .get(articleId, actorId, locale) as SqliteRow | undefined);
+    },
+
     /**
      * The author's own tombstones, newest deletion first.
      *
@@ -713,5 +723,5 @@ export function createSqliteArticleStore(db: SqliteRunner) {
         return { purged: expired.length };
       });
     },
-  }) satisfies Pick<TypedPersistenceAdapterContract, "listPublishedArticles" | "listFeaturedArticles" | "setFeaturedArticles" | "listFollowingArticles" | "getPublishedArticle" | "incrementArticleViewCount" | "listMyArticles" | "listMyDeletedArticles" | "listLikedArticles" | "listRelatedArticles" | "createArticle" | "updateArticle" | "deleteArticle" | "restoreArticle" | "purgeExpiredArticles">;
+  }) satisfies Pick<TypedPersistenceAdapterContract, "listPublishedArticles" | "listFeaturedArticles" | "setFeaturedArticles" | "listFollowingArticles" | "getPublishedArticle" | "incrementArticleViewCount" | "listMyArticles" | "getMyArticle" | "listMyDeletedArticles" | "listLikedArticles" | "listRelatedArticles" | "createArticle" | "updateArticle" | "deleteArticle" | "restoreArticle" | "purgeExpiredArticles">;
 }

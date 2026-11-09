@@ -15,6 +15,7 @@ import { createPostgresConversationStore } from "./postgres-conversation-store.t
 import { createPostgresNotificationStore } from "./postgres-notification-store.ts";
 import { createPostgresOutboxStore } from "./postgres-outbox-store.ts";
 import { createPostgresMediaStore } from "./postgres-media-store.ts";
+import { createPostgresImportStore } from "./postgres-import-store.ts";
 import { createPostgresSessionStore } from "./postgres-session-store.ts";
 import { createPostgresStoreContext } from "./postgres-shared.ts";
 import type { PgDatabase, PgTransaction } from "./postgres-driver.ts";
@@ -61,6 +62,7 @@ export function createPostgresStore(sql: PgDatabase): TypedPersistenceAdapterCon
   const notifications = createPostgresNotificationStore(ctx);
   const outbox = createPostgresOutboxStore(ctx);
   const media = createPostgresMediaStore(ctx);
+  const imports = createPostgresImportStore(sql);
   const sessions = createPostgresSessionStore(ctx);
   // `transaction` is PostgreSQL-only; it is optional in the shared contract so
   // the SQLite provider is not forced to invent a matching helper.
@@ -81,7 +83,7 @@ export function createPostgresStore(sql: PgDatabase): TypedPersistenceAdapterCon
   const slices = [
     ["identity", identity], ["article", article], ["taxonomy", taxonomy],
     ["profiles", profiles], ["engagement", engagement], ["conversations", conversations],
-    ["notifications", notifications], ["outbox", outbox], ["media", media],
+    ["notifications", notifications], ["outbox", outbox], ["media", media], ["imports", imports],
     ["sessions", sessions], ["provider", provider],
   ] as const;
   assertDisjointSlices(slices);
@@ -98,6 +100,7 @@ export function createPostgresStore(sql: PgDatabase): TypedPersistenceAdapterCon
     ...notifications,
     ...outbox,
     ...media,
+    ...imports,
     ...sessions,
     ...provider,
   } satisfies TypedPersistenceAdapterContract;

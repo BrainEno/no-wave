@@ -158,6 +158,25 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
       return rows.map(mapArticle);
     },
 
+    async getMyArticle({ articleId, actorId, locale = "zh-CN" }: { articleId: string; actorId: string; locale?: string }) {
+      requiredText("articleId", articleId, 64);
+      requiredText("actorId", actorId, 300);
+      validateArticleLocale(locale);
+      // An id that is not a uuid cannot match a uuid column; answer like a miss
+      // instead of letting the cast raise a driver error.
+      if (!isUuid(articleId)) return null;
+      const rows = await sql.unsafe(
+        `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count,
+                t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version
+         FROM articles AS a
+         JOIN article_translations AS t ON t.article_id = a.id
+         WHERE a.id = $1::uuid AND a.author_id = $2 AND t.locale = $3 AND a.deleted_at IS NULL
+         LIMIT 1`,
+        [articleId, actorId, locale],
+      );
+      return rows[0] ? mapArticle(rows[0]) : null;
+    },
+
     /**
      * The author's own tombstones, newest deletion first (see the SQLite slice
      * for why the desk needs them). `purgesAt` is added by the service layer,
@@ -610,5 +629,5 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
       return readFeaturedArticles(sql, { locale, limit: MAX_FEATURED_ARTICLES, offset: 0 });
     },
 
-  }) satisfies Pick<TypedPersistenceAdapterContract, "listPublishedArticles" | "getPublishedArticle" | "incrementArticleViewCount" | "listMyArticles" | "listMyDeletedArticles" | "createArticle" | "updateArticle" | "deleteArticle" | "restoreArticle" | "purgeExpiredArticles" | "listLikedArticles" | "listRelatedArticles" | "listFollowingArticles" | "listFeaturedArticles" | "setFeaturedArticles">;
+  }) satisfies Pick<TypedPersistenceAdapterContract, "listPublishedArticles" | "getPublishedArticle" | "incrementArticleViewCount" | "listMyArticles" | "getMyArticle" | "listMyDeletedArticles" | "createArticle" | "updateArticle" | "deleteArticle" | "restoreArticle" | "purgeExpiredArticles" | "listLikedArticles" | "listRelatedArticles" | "listFollowingArticles" | "listFeaturedArticles" | "setFeaturedArticles">;
 }

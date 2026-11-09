@@ -211,7 +211,11 @@ export async function validateLayout(root: string = ROOT): Promise<string[]> {
 
   for (const provider of ["sqlite", "postgres"] as const) {
     const slices = manifest.slices.filter((slice) => slice.provider === provider);
-    if (slices.length !== 10) problems.push(`${provider}: expected 10 slices, found ${slices.length}`);
+    // The count is hard-coded on purpose: adding or removing a slice is a
+    // decision about ownership, not a side effect of moving a file. It went from
+    // ten to eleven when `imports` arrived (ADR 0037) — provenance is neither
+    // content nor taxonomy, and folding it into either slice would have hidden it.
+    if (slices.length !== 11) problems.push(`${provider}: expected 11 slices, found ${slices.length}`);
     const owned = new Map<string, string[]>();
     const union = new Set<string>();
     for (const slice of slices) {

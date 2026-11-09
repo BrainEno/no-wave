@@ -4,11 +4,8 @@ import { MAX_ARTICLE_OFFSET, describeArticlePageRefusal, maxArticleOffset } from
 import { decodeCursor } from "../../../domain/cursor.ts";
 import { normalizeArticleWriteBody, normalizeCommentWriteBody, normalizeFeaturedWriteBody, normalizeLikeWriteBody, type ArticleWriteBody } from "../bodies.ts";
 import { serializeRestArticle, serializeRestArticles, serializeRestComment, serializeRestComments } from "../serializers.ts";
-import { slugifyArticleTitle, uniquifyArticleSlug } from "../../../domain/article-slug.ts";
 import { MAX_FEATURED_ARTICLES } from "../../../domain/article.ts";
-import { ArticleSlugConflictError } from "../../../domain/errors.ts";
-
-const MAX_AUTO_SLUG_ATTEMPTS = 25;
+import { createArticleWithSlug } from "../../../application/article-create.ts";
 
 /**
  * Author-only lists may opt into every supported edition. The existing default
@@ -30,42 +27,6 @@ function authoringListLocales(url: URL): string[] | null {
 function newestFirst<T extends { id: string; locale: string }>(entries: T[], timestamp: (entry: T) => string | null): T[] {
   return entries.sort((a, b) => (timestamp(b) ?? "").localeCompare(timestamp(a) ?? "") ||
     b.id.localeCompare(a.id) || a.locale.localeCompare(b.locale));
-}
-
-/**
- * Create an article, deriving its slug from the title when the client did not
- * supply one.
- *
- * Uniqueness is owned by the database (a unique index on `articles.slug`), so a
- * generated slug that is already taken is re-suffixed rather than surfacing a
- * conflict the author cannot act on: the author never typed it. A
- * client-supplied slug is never rewritten and keeps its 409 conflict.
- */
-/**
- * Create a work, uniquifying the slug while the address is taken.
- *
- * `idempotencyKey` and `requestedSlug` are forwarded on every attempt: the
- * store replays the work a retried request already created, and the fingerprint
- * must describe the client's original request rather than whichever suffixed
- * slug this particular attempt happened to try.
- */
-async function createArticleWithSlug(
-  services: NonNullable<RestRouteContext["services"]>,
-  input: ArticleWriteBody,
-  authorId: string,
-  idempotencyKey: string | null,
-): Promise<unknown> {
-  const requestedSlug = typeof input.slug === "string" && input.slug.length > 0 ? input.slug : null;
-  const baseSlug = requestedSlug ?? slugifyArticleTitle(input.title);
-  for (let attempt = 1; ; attempt += 1) {
-    const slug = attempt === 1 ? baseSlug : uniquifyArticleSlug(baseSlug, attempt);
-    try {
-      return await services.createArticle({ ...input, slug, authorId, idempotencyKey, requestedSlug });
-    } catch (error: unknown) {
-      const retryable = requestedSlug === null && error instanceof ArticleSlugConflictError && attempt < MAX_AUTO_SLUG_ATTEMPTS;
-      if (!retryable) throw error;
-    }
-  }
 }
 
 /** Article collection/detail writes, related/like/comment reads and the current
@@ -242,7 +203,7 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
           sendUnauthenticated(response);
           return;
         }
-        const article = await createArticleWithSlug(services, normalized.input, authorId, idempotencyKey);
+        const article = await createArticleWithSlug((input) => services.createArticle(input), normalized.input, authorId, idempotencyKey);
         sendJson(response, 201, { data: await serializeRestArticle(services, article, authorId) });
       } catch (error: unknown) {
         sendServiceError(response, error);

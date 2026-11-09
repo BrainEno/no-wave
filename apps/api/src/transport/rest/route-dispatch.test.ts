@@ -12,6 +12,7 @@ import { IDENTITY_ROUTE_IDS } from "./routes/identity.ts";
 import { MEDIA_ROUTE_IDS } from "./routes/media.ts";
 import { NOTIFICATION_ROUTE_IDS } from "./routes/notifications.ts";
 import { TAXONOMY_ROUTE_IDS } from "./routes/taxonomies.ts";
+import { IMPORT_ROUTE_IDS } from "./routes/imports.ts";
 
 /**
  * Dispatch coverage.
@@ -34,6 +35,7 @@ const GROUPS: readonly { name: string; ids: readonly string[] }[] = [
   { name: "articles", ids: ARTICLE_ROUTE_IDS },
   { name: "authors", ids: AUTHOR_ROUTE_IDS },
   { name: "taxonomies", ids: TAXONOMY_ROUTE_IDS },
+  { name: "imports", ids: IMPORT_ROUTE_IDS },
 ];
 
 test("every declared route is claimed by exactly one group", () => {

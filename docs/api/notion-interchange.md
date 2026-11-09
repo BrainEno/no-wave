@@ -168,7 +168,7 @@ published with invented text.
 ```
 Notion API ──(client, user's own token)──► bundle {pages, blocks}
                                               │
-                        POST /api/v1/imports/notion  (phase 2)
+                        POST /api/v1/imports/notion  (§10)
                                               │
                                    notion-interchange.ts          ← the only mapping
                                               │  draft  + issues
@@ -196,10 +196,12 @@ Notion API ──(client, user's own token)──► bundle {pages, blocks}
    own data. The client fetches from Notion and posts the bundle; the seed path in
    this repository does the same with a token from its own environment. The server
    only ever sees content.
-4. **Idempotency is a link record, not a diff.** `(provider, external_page_id)`
-   → `(article_id, locale)` plus a content digest lives next to the article; a
+4. **Idempotency is a link record, not a diff.** `external_content_links` holds
+   one row per `(provider, page, locale)` → `(article_id, digest, owner)`; a
    re-import of an unchanged page is a no-op, and a changed one updates the same
-   article instead of creating a second copy.
+   article instead of creating a second copy. The digest lives in the database, so
+   a client's claim that it "already imported" something is never trusted
+   ([ADR 0037](../architecture/decisions/0037-import-provenance.md)).
 5. **Images are copied, not linked.** The import step fetches expiring URLs
    through the existing server-mediated upload path (ADR 0028) so the work does
    not depend on Notion's bucket staying reachable.
@@ -210,8 +212,8 @@ Notion API ──(client, user's own token)──► bundle {pages, blocks}
 | --- | --- | --- |
 | 0 | The pure mapping, both directions, with fixtures from the real database | **landed** |
 | 1 | Seed: `scripts/notion-seed.ts` reads a bundle (a captured JSON file, or fetches it with a token from the environment) and creates/updates articles through the REST API for one author | **landed** (§9) |
-| 2 | `POST /api/v1/imports/notion` (dry run + apply, per-page report), the link table (migration), signed-in users importing into their own account | next |
-| 3 | `GET /api/v1/imports/notion/export?slugs=` returning a Notion-shaped bundle; the authoring desk offers "export to Notion" and downloads it, or pushes it with their own token | after that |
+| 2 | `POST /api/v1/imports/notion` (dry run + apply, per-page report), the link table (migration), signed-in users importing into their own account | **landed** (§10) |
+| 3 | `GET /api/v1/imports/notion/export?slugs=` returning a Notion-shaped bundle; the authoring desk offers "export to Notion" and downloads it, or pushes it with their own token | next |
 | 4 | Import UI on the authoring desk, and an upload-by-token flow for the Flutter client | later |
 
 Phase 0 is what makes 1–4 cheap: every later phase is transport and storage
@@ -319,3 +321,77 @@ writes nothing; a blank page is refused with `empty-body`.
 and of a page's body, recursive children in order, one retry on `429`, and an
 error that names the endpoint but never the token), and
 `scripts/lib/notion-bundle.test.ts` covers grouping, digests and the plan.
+The planner itself moved to `apps/api/src/application/notion-bundle.ts` in
+phase 2, because the endpoint and the seed must answer "is this page already
+imported?" the same way; `scripts/lib/notion-bundle.ts` re-exports it.
+
+## 10. Importing through the API (phase 2)
+
+`POST /api/v1/imports/notion` is the endpoint a signed-in author calls with a
+bundle they fetched themselves. The full contract is in
+`docs/api/openapi.json`; this section is the part a reader of the mapping needs.
+
+```http
+POST /api/v1/imports/notion
+Authorization: Bearer <access token>
+Content-Type: application/json
+
+{ "bundle": { "version": 1, "database": {...}, "pages": [...] }, "apply": false }
+```
+
+**A dry run is the default.** Without `apply: true` nothing is written — no
+works, no tags, no provenance rows — and `pages` is the plan: one line per page
+with `action` (`create` / `update` / `skip` / `refused` / `failed`), the work's
+`slug` and `articleId` when one exists, a one-line `detail`, and the mapping's
+`issues`. A dry run is what an author should send first, and it is a pure read, so
+it costs nothing to repeat.
+
+**Re-importing is idempotent, and the memory is the server's.** Each applied
+edition writes `external_content_links` (`provider = "notion"`,
+`external_id = <page id>`, `locale`), holding the work it produced and a digest of
+what a reader sees. The same bundle a second time answers `skip` for every page and
+writes nothing; a changed page answers `update` and keeps the work's existing
+address (an import never renames anything). The table is migration `0033`
+(`0020` on SQLite); why it exists is
+[ADR 0037](../architecture/decisions/0037-import-provenance.md).
+
+**A work's translations arrive as one work.** `English` and `Parent item`
+relations group pages before anything is written, so the primary page creates the
+article and the other editions are written onto it in their own locale. The report
+counts an added edition as an `update`: one work, one article, one address.
+
+**Nothing is deleted, unpublished or claimed twice.** A page linked to another
+account is refused (`this page is already imported into another account`) rather
+than copied — a Notion page names one work in the world. A link whose work was
+deleted is refused rather than recreated. A page that cannot become a work
+(`empty-body`, `empty-title`) is refused with its issue codes while the rest of the
+bundle still lands.
+
+**Limits and refusals.** At most 200 pages per bundle (`400` beyond that), an 8 MB
+JSON body (`413`), `application/json` only (`415`), a session (`401`), and a write
+rate limit of ten imports per ten minutes per account. Creates still carry
+`Idempotency-Key: notion-seed:<page id>` so a request that dies mid-way can be
+retried without duplicating what it already wrote.
+
+**What it does not do.** It does not fetch anything from Notion (the token stays
+with the client, ADR 0036 decision 3), copy images (`expiring-image-url`,
+`featured-image-not-carried`), carry hierarchy or `Rank`, or delete work that
+vanished from the bundle.
+
+### Where the guarantees are tested
+
+- `apps/api/src/application/notion-import.test.ts` — decisions against a stub: a
+  dry run touches no writing service; an apply records owner and digest; the same
+  bundle twice writes nothing at all; a changed page updates and keeps its address;
+  an empty page is refused while the rest lands; another account's page is refused;
+  a deleted work is refused; translations attach to one work; a malformed bundle and
+  an oversized one are rejected before anything is read.
+- `apps/api/src/transport/rest/imports.integration.test.ts` — real HTTP and a real
+  database, on SQLite always and on PostgreSQL when `TEST_DATABASE_URL` is set: the
+  `401`, the dry run writing nothing, the apply creating a work that **the public
+  unauthenticated read** then serves (the same request the web and Flutter clients
+  make), the idempotent second run, the update that keeps the slug, the refusal for
+  a second account, and the `400`s.
+- `apps/api/src/persistence/persistence-adapter-contract.test.ts` — the link table
+  behaves identically on both providers: one row per page edition, an upsert that
+  replaces in place, and `getMyArticle` scoping (an id is not a permission).
