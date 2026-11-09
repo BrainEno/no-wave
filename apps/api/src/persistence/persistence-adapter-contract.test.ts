@@ -3807,6 +3807,56 @@ const hour = new Date(Date.now() + 3_600_000).toISOString();
     } finally { await runtime.cleanup(undefined, suffix); }
   });
 
+  test(`${adapterName}: import links are one row per page edition and reads stay owner-scoped`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const author = `import-link-author-${suffix}`;
+    const other = `import-link-other-${suffix}`;
+    const externalId = `page-${suffix}`;
+    const syncedAt = "2026-11-03T09:00:00.000Z";
+    try {
+      const article = await runtime.store.createArticle({
+        authorId: author, slug: `import-link-${suffix}`, title: "导入的作品",
+        contentBlocks: [{ id: "block-1", type: "paragraph", text: "正文" }], publish: false,
+      });
+
+      // Nothing is linked before the first import.
+      assert.equal(await runtime.store.getExternalContentLink({ provider: "notion", externalId, locale: "zh-CN" }), null);
+
+      const first = await runtime.store.upsertExternalContentLink({
+        provider: "notion", externalId, locale: "zh-CN", articleId: article.id,
+        ownerId: author, digest: "a".repeat(16), syncedAt,
+      });
+      assert.equal(first.articleId, article.id);
+      assert.equal(first.ownerId, author);
+      assert.equal(first.syncedAt, syncedAt, "both providers answer the same instant, to the millisecond");
+
+      // Re-linking the same page edition replaces it: one page, one row.
+      const second = await runtime.store.upsertExternalContentLink({
+        provider: "notion", externalId, locale: "zh-CN", articleId: article.id,
+        ownerId: author, digest: "b".repeat(16), syncedAt: "2026-11-03T10:00:00.000Z",
+      });
+      assert.equal(second.digest, "b".repeat(16));
+      assert.equal(second.syncedAt, "2026-11-03T10:00:00.000Z");
+      const reread = await runtime.store.getExternalContentLink({ provider: "notion", externalId, locale: "zh-CN" });
+      assert.equal(reread?.digest, "b".repeat(16), "the second import updated the row instead of adding one");
+
+      // Editions of one work are separate links pointing at the same article.
+      const english = await runtime.store.upsertExternalContentLink({
+        provider: "notion", externalId: `${externalId}-en`, locale: "en", articleId: article.id,
+        ownerId: author, digest: "c".repeat(16), syncedAt,
+      });
+      assert.equal(english.articleId, article.id);
+
+      // The owner can read the work by id; another account reads nothing, and a
+      // deleted work is not readable either.
+      assert.equal((await runtime.store.getMyArticle({ articleId: article.id, actorId: author }))?.slug, article.slug);
+      assert.equal(await runtime.store.getMyArticle({ articleId: article.id, actorId: other }), null);
+      await runtime.store.deleteArticle({ articleId: article.id, actorId: author });
+      assert.equal(await runtime.store.getMyArticle({ articleId: article.id, actorId: author }), null, "a tombstone is not an import target");
+    } finally { await runtime.cleanup(undefined, suffix); }
+  });
+
 }
 
 registerAdapterContracts("SQLite", sqliteFixture);

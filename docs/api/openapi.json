@@ -3008,6 +3008,92 @@
         "description": "Answers without touching persistence, so it stays a liveness check rather than a database health check."
       }
     },
+    "/api/v1/imports/notion": {
+      "post": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "Import a Notion database bundle into your own works",
+        "operationId": "imports.notion.post",
+        "responses": {
+          "200": {
+            "description": "The per-page report (and, with `apply: true`, what was written).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/NotionImportReport"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request: `BAD_USER_INPUT` for a query or body the contract does not allow, `BAD_INPUT` for discovery paging misuse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid, unrevoked bearer token was presented (`UNAUTHENTICATED`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body is larger than this route accepts (`PAYLOAD_TOO_LARGE`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "The request body is not `application/json` (`UNSUPPORTED_MEDIA_TYPE`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "The bundle is a Notion export of one database: its pages, their properties and their blocks. Each work becomes an article owned by the caller; a work's other language versions become article translations of the same article.\n\n**A dry run is the default.** Without `apply: true` nothing is written — no works, no tags, no provenance rows — and `pages` describes exactly what a real run would do. Send `apply: true` to perform those writes.\n\n**Re-importing is idempotent.** The server records which page each edition came from, together with a digest of the content it produced, so importing the same bundle twice reports `skip` and writes nothing; changed pages update the work they already belong to and keep the address it already has. A page that disappeared from Notion is reported, never deleted here, and a work the author deleted is refused rather than recreated.\n\nPages that cannot become a work (`empty-body`, `empty-title`, and the other `issues` codes) are reported per page instead of failing the request: an import of forty pages does not fail because one of them is empty. Every write carries `Idempotency-Key: notion-seed:<pageId>`, so a request that dies mid-way can be retried without duplicating what it already created.",
+        "requestBody": {
+          "required": true,
+          "description": "The bundle, and whether to apply it.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotionImportRequest"
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/me": {
       "get": {
         "tags": [
@@ -7016,6 +7102,257 @@
         "properties": {
           "liked": {
             "type": "boolean"
+          }
+        }
+      },
+      "NotionBundle": {
+        "type": "object",
+        "required": [
+          "version",
+          "database",
+          "pages"
+        ],
+        "description": "A Notion database export: the database, and its pages with their flattened blocks.",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "enum": [
+              1
+            ]
+          },
+          "database": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "title": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          "pages": {
+            "type": "array",
+            "maxItems": 200,
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "properties",
+                "blocks"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "properties": {
+                  "type": "object",
+                  "description": "Notion property values, keyed by property name."
+                },
+                "blocks": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  },
+                  "description": "The page body, depth-first and flattened."
+                },
+                "inTrash": {
+                  "type": "boolean"
+                },
+                "archived": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        }
+      },
+      "NotionImportRequest": {
+        "type": "object",
+        "required": [
+          "bundle"
+        ],
+        "description": "A dry run unless `apply` is `true`. A dry run is a pure read: it creates no works, no tags, and no links, and its `pages` describe what would happen.",
+        "properties": {
+          "bundle": {
+            "$ref": "#/components/schemas/NotionBundle"
+          },
+          "apply": {
+            "type": "boolean",
+            "default": false,
+            "description": "`true` performs the writes the report describes."
+          }
+        }
+      },
+      "NotionImportReport": {
+        "type": "object",
+        "required": [
+          "applied",
+          "database",
+          "summary",
+          "pages"
+        ],
+        "description": "One line per page. `applied: false` means nothing was written and every action below is a plan.",
+        "properties": {
+          "applied": {
+            "type": "boolean"
+          },
+          "database": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "title": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          "summary": {
+            "type": "object",
+            "required": [
+              "create",
+              "update",
+              "skip",
+              "refused",
+              "failed"
+            ],
+            "properties": {
+              "create": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "update": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "skip": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "refused": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "failed": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "pages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "externalId",
+                "title",
+                "locale",
+                "action",
+                "slug",
+                "articleId",
+                "detail",
+                "issues"
+              ],
+              "properties": {
+                "externalId": {
+                  "type": "string",
+                  "description": "The Notion page id this edition came from."
+                },
+                "title": {
+                  "type": "string"
+                },
+                "locale": {
+                  "type": "string",
+                  "description": "The edition's locale; empty for a page that could not become a work."
+                },
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "create",
+                    "update",
+                    "skip",
+                    "refused",
+                    "failed"
+                  ]
+                },
+                "slug": {
+                  "type": "string",
+                  "description": "The address of the work this edition belongs to."
+                },
+                "articleId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "detail": {
+                  "type": "string",
+                  "description": "One line a human can read."
+                },
+                "issues": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "code",
+                      "detail"
+                    ],
+                    "properties": {
+                      "code": {
+                        "type": "string",
+                        "enum": [
+                          "empty-block-dropped",
+                          "unsupported-block",
+                          "block-limit-reached",
+                          "expiring-image-url",
+                          "link-block-flattened",
+                          "equation-flattened",
+                          "callout-flattened",
+                          "toggle-flattened",
+                          "checkbox-state-dropped",
+                          "table-block-dropped",
+                          "invalid-block-dropped",
+                          "empty-body",
+                          "empty-title",
+                          "slug-derived",
+                          "work-type-fallback",
+                          "featured-image-not-carried",
+                          "hierarchy-not-carried"
+                        ]
+                      },
+                      "detail": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }

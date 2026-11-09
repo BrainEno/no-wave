@@ -118,6 +118,12 @@ export const REST_ROUTES: readonly RestRoute[] = Object.freeze([
   // else's comment, so neither can be used to probe which ids exist.
   { id: "comments.item", methods: ["PATCH", "DELETE"], segments: [literal("comments"), param("id")] },
 
+  // Importing is a write on two axes at once — it can create works and tags — so
+  // it is a `POST` that reports per page rather than a batch of ordinary creates
+  // (ADR 0037). `apply` decides whether anything is written; the default dry run
+  // is a read.
+  { id: "imports.notion", methods: ["POST"], segments: [literal("imports"), literal("notion")] },
+
   { id: "tags", methods: ["GET", "POST"], segments: [literal("tags")] },
   { id: "tags.item", methods: ["GET"], segments: [literal("tags"), param("slug")] },
   { id: "tags.articles", methods: ["GET"], segments: [literal("tags"), param("slug"), literal("articles")] },
@@ -169,7 +175,12 @@ assertWriteRateLimitsCoverRoutes(REST_ROUTES);
 
 export type RouteResolution =
   | { readonly kind: "matched"; readonly id: string; readonly params: Readonly<Record<string, string>> }
-  | { readonly kind: "method_not_allowed"; readonly allow: string }
+  /**
+   * A real route with the wrong method, or the catch-all refusal for a write to
+   * an unknown path. `id` is present only in the first case: a `405` that names
+   * the endpoint it refused is diagnosable, and a catch-all has nothing to name.
+   */
+  | { readonly kind: "method_not_allowed"; readonly allow: string; readonly id?: string }
   | { readonly kind: "unmatched" };
 
 /**
@@ -200,7 +211,7 @@ export function resolveRestRoute(pathname: string, method: string): RouteResolut
     }
     if (!matched) continue;
     if (!route.methods.includes(method as HttpMethod)) {
-      return { kind: "method_not_allowed", allow: route.methods.join(", ") };
+      return { kind: "method_not_allowed", allow: route.methods.join(", "), id: route.id };
     }
     return { kind: "matched", id: route.id, params };
   }

@@ -26,7 +26,7 @@ import type { MediaAsset, MediaScanRow } from "./media-assets.ts";
  */
 export const persistencePortMethods = Object.freeze({
   content: Object.freeze([
-    "listPublishedArticles", "getPublishedArticle", "listMyArticles",
+    "listPublishedArticles", "getPublishedArticle", "listMyArticles", "getMyArticle",
     "createArticle", "updateArticle", "deleteArticle", "restoreArticle",
     "listMyDeletedArticles", "purgeExpiredArticles", "listLikedArticles", "listRelatedArticles",
     "listFollowingArticles", "listFeaturedArticles", "setFeaturedArticles",
@@ -66,6 +66,7 @@ export const persistencePortMethods = Object.freeze({
     "issueIdentityToken", "consumeIdentityToken",
     "pruneExpiredIdentityState",
   ] as const),
+  imports: Object.freeze(["getExternalContentLink", "upsertExternalContentLink"] as const),
   rateLimits: Object.freeze(["consumeRateLimit"] as const),
   outbox: Object.freeze([
     "claimOutboxEvents", "markOutboxDelivered", "rescheduleOutboxEvent", "outboxBacklog",
@@ -114,6 +115,17 @@ export type StoredAuthorProfile = {
 export type StoredAuthorDirectoryEntry = {
   userId: string; displayName: string; bio: string; locale: string;
   followerCount: number; workCount: number;
+};
+/**
+ * Where an imported edition came from (ADR 0037).
+ *
+ * One row per `(provider, external page, locale)`: the page is the author's
+ * identity for the content, the article is ours, and `digest` is the fingerprint
+ * of what a reader sees — the comparison that turns a re-import into a no-op.
+ */
+export type StoredExternalContentLink = {
+  provider: string; externalId: string; locale: string; articleId: string;
+  ownerId: string; digest: string; syncedAt: string;
 };
 export type StoredArticleLikeInfo = {
   articleId: string; slug: string; likeCount: number; likedByViewer: boolean;
@@ -244,6 +256,8 @@ export type UpsertAuthorProfileInput = {
   userId: string; displayName: string; bio?: string; avatarUrl?: string | null;
   websiteUrl?: string | null; locale?: string;
 };
+export type ExternalContentLinkKey = { provider: string; externalId: string; locale: string };
+export type UpsertExternalContentLinkInput = StoredExternalContentLink;
 export type ToggleArticleLikeInput = { slug: string; actorId: string; locale?: string };
 export type SetArticleLikeInput = ToggleArticleLikeInput & { liked: boolean };
 /**
@@ -338,6 +352,17 @@ export type ContentPersistencePort = {
   listPublishedArticles(input?: ListPublishedArticlesInput): PersistenceResult<StoredArticle[]>;
   getPublishedArticle(input: ArticleBySlugInput): PersistenceResult<StoredArticle | null>;
   listMyArticles(input: AuthorArticlesInput): PersistenceResult<StoredArticle[]>;
+  /**
+   * One of the author's own works, by id, in one edition.
+   *
+   * The import needs this and a slug cannot stand in for it: the address of an
+   * imported work is whatever the store decided when it was created (possibly
+   * suffixed), and a re-import has to write back the address the work already
+   * has instead of renaming it to the address the mapping would have picked.
+   * Scoped by `actorId` for the same reason every other author read is: an id is
+   * not a permission.
+   */
+  getMyArticle(input: { articleId: string; actorId: string; locale?: string }): PersistenceResult<StoredArticle | null>;
   createArticle(input: CreateArticleInput): PersistenceResult<StoredArticle>;
   updateArticle(input: UpdateArticleInput): PersistenceResult<StoredArticle>;
   deleteArticle(input: ArticleAuthorInput): PersistenceResult<DeletedArticleResult>;
@@ -463,6 +488,18 @@ export type NotificationsPersistencePort = {
 };
 
 /** Durable session revocation. Both providers implement these asynchronously. */
+/**
+ * Import provenance: which external page an edition came from.
+ *
+ * Two methods, deliberately. An importer needs to look one link up before a write
+ * and to record one after it; anything more (a queue, a sync cursor, a conflict
+ * log) would be the beginning of the sync engine ADR 0036 refused.
+ */
+export type ImportsPersistencePort = {
+  getExternalContentLink(input: ExternalContentLinkKey): PersistenceResult<StoredExternalContentLink | null>;
+  upsertExternalContentLink(input: UpsertExternalContentLinkInput): PersistenceResult<StoredExternalContentLink>;
+};
+
 export type SessionsPersistencePort = {
   revokeSession(input: RevokeSessionInput): Promise<boolean>;
   isSessionRevoked(sessionId: string): Promise<boolean>;
@@ -550,6 +587,7 @@ export type TypedPersistenceAdapterContract =
   & EngagementPersistencePort
   & ConversationsPersistencePort
   & NotificationsPersistencePort
+  & ImportsPersistencePort
   & SessionsPersistencePort
   & IdentityPersistencePort
   & RateLimitsPersistencePort

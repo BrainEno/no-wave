@@ -486,6 +486,7 @@ export function createApplicationServices({
     ...ports.identity,
     ...ports.rateLimits,
     ...ports.outbox,
+    ...ports.imports,
     ...ports.operations,
     isEditor,
     assignUserRole,

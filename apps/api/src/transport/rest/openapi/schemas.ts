@@ -5,6 +5,8 @@ import {
   supportedArticleWorkTypes,
 } from "../../../domain/article.ts";
 import { USER_ROLES } from "../../../domain/profile.ts";
+import { INTERCHANGE_ISSUE_CODES } from "../../../application/notion-interchange.ts";
+import { MAX_IMPORT_PAGES } from "../../../application/notion-import.ts";
 
 /**
  * The component schemas of the published OpenAPI document.
@@ -562,6 +564,107 @@ export const SCHEMAS: Readonly<Record<string, JsonSchema>> = Object.freeze({
     required: ["liked"],
     description: "Explicit state, not a toggle, so a retried request cannot flip it back.",
     properties: { liked: { type: "boolean" } },
+  },
+
+  /**
+   * The bundle a Notion export carries.
+   *
+   * Deliberately shallow: `blocks` are the application's own versioned block
+   * objects, and `properties` are Notion's property values as the exporter wrote
+   * them. Pinning either here would put a second copy of somebody else's schema in
+   * our contract — and it would be the copy that rots.
+   */
+  NotionBundle: {
+    type: "object",
+    required: ["version", "database", "pages"],
+    description: "A Notion database export: the database, and its pages with their flattened blocks.",
+    properties: {
+      version: { type: "integer", enum: [1] },
+      database: {
+        type: "object",
+        required: ["id"],
+        properties: { id: TEXT, title: nullable(TEXT) },
+      },
+      pages: {
+        type: "array",
+        maxItems: MAX_IMPORT_PAGES,
+        items: {
+          type: "object",
+          required: ["id", "properties", "blocks"],
+          properties: {
+            id: TEXT,
+            properties: { type: "object", description: "Notion property values, keyed by property name." },
+            blocks: { type: "array", items: { type: "object" }, description: "The page body, depth-first and flattened." },
+            inTrash: { type: "boolean" },
+            archived: { type: "boolean" },
+          },
+        },
+      },
+    },
+  },
+
+  NotionImportRequest: {
+    type: "object",
+    required: ["bundle"],
+    description:
+      "A dry run unless `apply` is `true`. A dry run is a pure read: it creates no works, no tags, and no links, and its `pages` describe what would happen.",
+    properties: {
+      bundle: ref("NotionBundle"),
+      apply: { type: "boolean", default: false, description: "`true` performs the writes the report describes." },
+    },
+  },
+
+  NotionImportReport: {
+    type: "object",
+    required: ["applied", "database", "summary", "pages"],
+    description:
+      "One line per page. `applied: false` means nothing was written and every action below is a plan.",
+    properties: {
+      applied: { type: "boolean" },
+      database: {
+        type: "object",
+        required: ["id"],
+        properties: { id: TEXT, title: nullable(TEXT) },
+      },
+      summary: {
+        type: "object",
+        required: ["create", "update", "skip", "refused", "failed"],
+        properties: {
+          create: { type: "integer", minimum: 0 },
+          update: { type: "integer", minimum: 0 },
+          skip: { type: "integer", minimum: 0 },
+          refused: { type: "integer", minimum: 0 },
+          failed: { type: "integer", minimum: 0 },
+        },
+      },
+      pages: {
+        type: "array",
+        items: {
+          type: "object",
+          required: ["externalId", "title", "locale", "action", "slug", "articleId", "detail", "issues"],
+          properties: {
+            externalId: { type: "string", description: "The Notion page id this edition came from." },
+            title: TEXT,
+            locale: { type: "string", description: "The edition's locale; empty for a page that could not become a work." },
+            action: { type: "string", enum: ["create", "update", "skip", "refused", "failed"] },
+            slug: { type: "string", description: "The address of the work this edition belongs to." },
+            articleId: nullable(TEXT),
+            detail: { type: "string", description: "One line a human can read." },
+            issues: {
+              type: "array",
+              items: {
+                type: "object",
+                required: ["code", "detail"],
+                properties: {
+                  code: { type: "string", enum: [...INTERCHANGE_ISSUE_CODES] },
+                  detail: TEXT,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
   },
 });
 

@@ -1,4 +1,4 @@
-import { createServer } from "node:http";
+import { createServer, type IncomingMessage } from "node:http";
 import { createRestHandler } from "./transport/rest/handler.ts";
 import { createApplicationServices } from "./application/services.ts";
 import { assertPersistenceAdapter, type PersistenceAdapterContract } from "./application/persistence-ports.ts";
@@ -46,17 +46,23 @@ export function createApiServer({
   // Mail delivery is invisible in the HTTP status code by design (a recovery
   // request answers 202 whether or not the mail went out), so the counter is the
   // only thing an alert can rule on.
+  // Per-request observations, so the transport can name the route that matched.
+  // A WeakMap keyed by the request: nothing to clean up, and a finished request
+  // cannot keep an observation alive.
+  const observations = new WeakMap<IncomingMessage, ReturnType<typeof observability.beginRequest>>();
   const handleRest = createRestHandler({
     services,
     env,
     mediaAssets,
     onMailDelivery: observability.observeMailDelivery,
     onBackgroundFailure,
+    onRouteMatched: (request, routeId) => observations.get(request)?.assignRoute(routeId),
   });
 
   return createServer(async (request, response) => {
     const startedAt = process.hrtime.bigint();
     const observation = observability.beginRequest(request, response);
+    observations.set(request, observation);
     let errorName: string | undefined;
     const finish = (statusCode = response.statusCode) => observation.finish({
       statusCode,

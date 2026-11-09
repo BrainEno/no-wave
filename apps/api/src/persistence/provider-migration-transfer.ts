@@ -121,6 +121,10 @@ export const PROVIDER_TRANSFER_ORDER: readonly string[] = Object.freeze([
   "messages",
   "notifications",
   "outbox_events",
+  // Provenance is data about where content came from, so a cutover that dropped
+  // it would make the next Notion import create a second copy of every work
+  // (ADR 0037). Last, because it references `articles` and nothing references it.
+  "external_content_links",
 ]);
 
 /**

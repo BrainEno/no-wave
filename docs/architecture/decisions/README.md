@@ -43,6 +43,7 @@ which of two `0011`s meant what.
 | [0034](0034-comment-thread-pagination.md) | A thread pages by top-level comment, and a reply travels with its root | Accepted | 2026-11-09 |
 | [0035](0035-article-view-counts.md) | A view is one reader, one work, one day — and never the author | Accepted | 2026-11-09 |
 | [0036](0036-notion-as-interchange-format.md) | Notion is an interchange format, not a database the site syncs with | Accepted | 2026-11-03 |
+| [0037](0037-import-provenance.md) | An import remembers where each edition came from, in the database | Accepted | 2026-11-09 |
 The status column carries the leading word of each file's `- Status:` line —
 read the file for the qualifier ("Superseded by ADR 0012", "Accepted as the
 initial direction").

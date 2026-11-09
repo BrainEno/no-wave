@@ -3027,6 +3027,42 @@ test("HTTP requests include a correlation ID and logs exclude URL, query, and cr
   assert.equal(serialized.includes("access_token"), false);
 });
 
+test("the access log names the endpoint that answered, and quiet probes stay out of it", async () => {
+  const logs = [];
+  await withServer(async (baseUrl) => {
+    // A matched route: the log says which one, not `/api/v1/*`.
+    const tags = await fetch(baseUrl + "/api/v1/tags?locale=zh-CN");
+    assert.equal(tags.status, 200);
+    await tags.text();
+
+    // A successful liveness probe: counted in metrics, absent from the log. This
+    // is the line a host — or a client stuck in a retry loop — would otherwise
+    // write a quarter of a million times an hour.
+    const probe = await fetch(baseUrl + "/api/v1/health");
+    assert.equal(probe.status, 200);
+    await probe.text();
+  }, {
+    logger: (record) => logs.push(record),
+    store: { async isSessionRevoked() { return false; } },
+  });
+
+  const completed = logs.filter((record) => record.event === "http_request_completed");
+  assert.deepEqual(completed.map((record) => record.route), ["tags"], "only the real request is logged, under its route id");
+  assert.equal(JSON.stringify(logs).includes("zh-CN"), false, "the query string never reaches the log");
+});
+
+test("an unmatched API path is still labelled as the API, not as a route", async () => {
+  const logs = [];
+  await withServer(async (baseUrl) => {
+    const response = await fetch(baseUrl + "/api/v1/no-such-endpoint");
+    assert.equal(response.status, 404);
+    await response.text();
+  }, { logger: (record) => logs.push(record) });
+
+  assert.equal(logs[0].route, "/api/v1/*", "there is no route id to name, and the path must not become the label");
+  assert.equal(logs[0].statusCode, 404);
+});
+
 test("Prometheus metrics endpoint exposes bounded HTTP and authentication metrics", async () => {
   await withServer(async (baseUrl) => {
     const health = await fetch(baseUrl + "/health");

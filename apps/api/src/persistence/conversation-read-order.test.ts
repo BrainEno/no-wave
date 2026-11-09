@@ -428,7 +428,7 @@ test("SQLite upgrade preserves historical read counts and refuses unsequenced le
     db.prepare("UPDATE provider_migration_sessions SET status = 'aborted' WHERE session_id = ?").run("active-upgrade");
     assert.deepEqual(
       await runSqliteMigrations(db),
-      ["0017_conversation_read_order", "0018_comment_edits", "0019_article_view_counts"],
+      ["0017_conversation_read_order", "0018_comment_edits", "0019_article_view_counts", "0020_notion_import_links"],
     );
     assert.deepEqual(await runSqliteMigrations(db), []);
     const store = createSqliteConversationStore(db);
@@ -494,6 +494,7 @@ test("PostgreSQL upgrades a real legacy schema and preserves existing read state
         "0030_notification_created_at_millisecond_precision",
         "0031_comment_created_at_millisecond_precision",
         "0032_article_view_counts",
+        "0033_notion_import_links",
       ]);
       assert.deepEqual((await runMigrations(scoped)).applied, []);
       const afterCounts = await tx.unsafe(`SELECT cp.conversation_id, cp.user_id,

@@ -74,6 +74,7 @@
     "listPublishedArticles",
     "getPublishedArticle",
     "listMyArticles",
+    "getMyArticle",
     "createArticle",
     "updateArticle",
     "deleteArticle",
@@ -147,6 +148,8 @@
     "issueIdentityToken",
     "consumeIdentityToken",
     "pruneExpiredIdentityState",
+    "getExternalContentLink",
+    "upsertExternalContentLink",
     "consumeRateLimit",
     "claimOutboxEvents",
     "markOutboxDelivered",
@@ -172,6 +175,7 @@
         "getPublishedArticle",
         "incrementArticleViewCount",
         "listMyArticles",
+        "getMyArticle",
         "listMyDeletedArticles",
         "createArticle",
         "updateArticle",
@@ -239,6 +243,15 @@
         "findIdentityCredentials",
         "pruneExpiredIdentityState",
         "consumeRateLimit"
+      ]
+    },
+    {
+      "provider": "postgres",
+      "file": "postgres-import-store.ts",
+      "factory": "createPostgresImportStore",
+      "methods": [
+        "getExternalContentLink",
+        "upsertExternalContentLink"
       ]
     },
     {
@@ -332,6 +345,7 @@
         "getPublishedArticle",
         "incrementArticleViewCount",
         "listMyArticles",
+        "getMyArticle",
         "listMyDeletedArticles",
         "listLikedArticles",
         "listRelatedArticles",
@@ -396,6 +410,15 @@
         "findIdentityCredentials",
         "pruneExpiredIdentityState",
         "consumeRateLimit"
+      ]
+    },
+    {
+      "provider": "sqlite",
+      "file": "sqlite-import-store.ts",
+      "factory": "createSqliteImportStore",
+      "methods": [
+        "getExternalContentLink",
+        "upsertExternalContentLink"
       ]
     },
     {

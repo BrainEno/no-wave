@@ -9,6 +9,7 @@ import { createSqliteSessionStore } from "./sqlite-session-store.ts";
 import { createSqliteIdentityStore } from "./sqlite-identity-store.ts";
 import { createSqliteOutboxStore } from "./sqlite-outbox-store.ts";
 import { createSqliteMediaStore } from "./sqlite-media-store.ts";
+import { createSqliteImportStore } from "./sqlite-import-store.ts";
 import { createSqliteClient, runSqliteMigrations, type SqliteRunner } from "./sqlite.ts";
 
 /**
@@ -39,6 +40,7 @@ export function createSqliteStore(db: SqliteRunner): TypedPersistenceAdapterCont
   const identity = createSqliteIdentityStore(db);
   const outbox = createSqliteOutboxStore(db);
   const media = createSqliteMediaStore(db);
+  const imports = createSqliteImportStore(db);
   const operations = Object.freeze({
     async health() {
       db.prepare("SELECT 1 AS ok").get();
@@ -50,7 +52,7 @@ export function createSqliteStore(db: SqliteRunner): TypedPersistenceAdapterCont
     ["article", article], ["taxonomy", taxonomy], ["profiles", profiles],
     ["engagement", engagement], ["conversations", conversations],
     ["notifications", notifications], ["sessions", sessions], ["identity", identity],
-    ["outbox", outbox], ["media", media], ["operations", operations],
+    ["outbox", outbox], ["media", media], ["imports", imports], ["operations", operations],
   ] as const;
   assertDisjointSlices(slices);
 
@@ -65,6 +67,7 @@ export function createSqliteStore(db: SqliteRunner): TypedPersistenceAdapterCont
     ...identity,
     ...outbox,
     ...media,
+    ...imports,
     ...operations,
   } satisfies TypedPersistenceAdapterContract;
 

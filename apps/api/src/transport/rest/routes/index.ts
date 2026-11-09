@@ -9,6 +9,7 @@ import { handleConversationRoutes } from "./conversations.ts";
 import { handleArticleRoutes } from "./articles.ts";
 import { handleAuthorRoutes } from "./authors.ts";
 import { handleTaxonomyRoutes } from "./taxonomies.ts";
+import { handleImportRoutes } from "./imports.ts";
 import { enforceWriteRateLimit } from "./write-rate-limit.ts";
 
 /**
@@ -33,4 +34,5 @@ export const REST_ROUTE_GROUPS: readonly RestRouteGroup[] = Object.freeze([
   handleArticleRoutes,
   handleAuthorRoutes,
   handleTaxonomyRoutes,
+  handleImportRoutes,
 ]);

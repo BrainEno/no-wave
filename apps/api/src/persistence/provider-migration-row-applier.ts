@@ -46,6 +46,10 @@ const entities: Record<string, EntitySpec> = {
   auth_rate_limits: { table: "auth_rate_limits", primaryKey: ["key"], columns: ["key", "attempts", "reset_at"], requiredColumns: ["attempts", "reset_at"] },
   featured_articles: { table: "featured_articles", primaryKey: ["article_id"], columns: ["article_id", "position", "created_by", "created_at"], requiredColumns: ["position", "created_by", "created_at"] },
   media_assets: { table: "media_assets", primaryKey: ["id"], columns: ["id", "owner_id", "storage_key", "content_type", "byte_size", "width", "height", "sha256", "created_at"] },
+  // Provenance travels with the data (ADR 0037). If a cutover dropped these rows
+  // the next import would treat every page as new and create a second copy of a
+  // work it had already imported — the exact failure the table prevents.
+  external_content_links: { table: "external_content_links", primaryKey: ["provider", "external_id", "locale"], columns: ["provider", "external_id", "locale", "article_id", "owner_id", "digest", "synced_at"], requiredColumns: ["article_id", "owner_id", "digest", "synced_at"] },
 };
 
 export type MigrationEntitySpec = EntitySpec;
