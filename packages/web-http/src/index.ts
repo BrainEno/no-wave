@@ -113,6 +113,10 @@ export {
   isCommentLocale,
 } from "./comments.ts";
 export {
+  articleViewPath,
+  handleArticleViewRequest,
+} from "./views.ts";
+export {
   LIKE_BODY_MAX_BYTES,
   LIKE_DEFAULT_LOCALE,
   LIKE_LOCALES,

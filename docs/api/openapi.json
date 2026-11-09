@@ -1140,6 +1140,88 @@
         ]
       }
     },
+    "/api/v1/articles/{slug}/views": {
+      "post": {
+        "tags": [
+          "articles"
+        ],
+        "summary": "Record that a reader opened a published work",
+        "operationId": "articles.views.post",
+        "responses": {
+          "200": {
+            "description": "Whether this read counted, and the total afterwards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ArticleView"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request: `BAD_USER_INPUT` for a query or body the contract does not allow, `BAD_INPUT` for discovery paging misuse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The addressed row does not exist, or is not visible to this caller (`NOT_FOUND`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {},
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "A beacon the page sends after it has actually rendered the work — never part of the cached `GET`. Counting is `(work, reader, UTC day)`: one account or one address contributes at most one view per work per day, the author's own reads never count, and a repeat answers `200 {counted: false}` rather than an error. Public: an anonymous reader is counted, keyed by a digest of their address, and no address or account id is stored. A slug that is not a published work answers `404`.",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "description": "The work's slug.",
+            "schema": {
+              "type": "string",
+              "maxLength": 300
+            }
+          },
+          {
+            "name": "locale",
+            "in": "query",
+            "required": false,
+            "description": "Language edition to read. Defaults to `zh-CN` when absent.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "zh-CN",
+                "zh-TW",
+                "en"
+              ]
+            }
+          }
+        ]
+      }
+    },
     "/api/v1/auth/{action}": {
       "post": {
         "tags": [
@@ -5934,7 +6016,8 @@
           "title",
           "summary",
           "contentBlocks",
-          "contentBlocksVersion"
+          "contentBlocksVersion",
+          "viewCount"
         ],
         "description": "A stored work plus the `author`, `categories` and `tags` the API adds. One id identifies the work; `(id, locale)` identifies one of its translations.",
         "properties": {
@@ -6032,6 +6115,11 @@
               }
             ]
           },
+          "viewCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Readers who opened the work, counted once per reader per UTC day and never the author's own visits (ADR 0035). Work-wide, not per translation."
+          },
           "author": {
             "anyOf": [
               {
@@ -6092,6 +6180,25 @@
           "deletedAt": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "ArticleView": {
+        "type": "object",
+        "required": [
+          "counted",
+          "viewCount"
+        ],
+        "description": "The answer to a view beacon.",
+        "properties": {
+          "counted": {
+            "type": "boolean",
+            "description": "Whether this call moved the number. `false` is a normal answer: the author's own read, or a second visit to the same work on the same UTC day."
+          },
+          "viewCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The work's total afterwards."
           }
         }
       },

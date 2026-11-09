@@ -402,6 +402,18 @@ export const OPERATIONS: Readonly<Record<string, OperationMetadata>> = Object.fr
     response: { description: "The count and the viewer's own state.", data: "ArticleLikeState" },
   },
 
+  "POST articles.views": {
+    summary: "Record that a reader opened a published work",
+    description:
+      "A beacon the page sends after it has actually rendered the work — never part of the cached `GET`. Counting is `(work, reader, UTC day)`: one account or one address contributes at most one view per work per day, the author's own reads never count, and a repeat answers `200 {counted: false}` rather than an error. Public: an anonymous reader is counted, keyed by a digest of their address, and no address or account id is stored. A slug that is not a published work answers `404`.",
+    security: "optional-session",
+    tags: ["articles"],
+    pathParams: { slug: "The work's slug." },
+    query: [localeParameter()],
+    errors: [404],
+    response: { status: 200, description: "Whether this read counted, and the total afterwards.", data: "ArticleView" },
+  },
+
   "PUT articles.like": {
     summary: "Set an explicit like state",
     description: "State-setting rather than a toggle: a retried request cannot flip the value back.",

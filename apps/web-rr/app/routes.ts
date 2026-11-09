@@ -81,6 +81,9 @@ route("api/authoring/notifications/:id/read", "routes/api.authoring.notification
   // 在 routes/ 下而没有登记就只是一个不会被调用的普通文件——收藏在 #201 里
   // 正是这样漏掉的。
   route("api/articles/:slug/like", "routes/api.articles.$slug.like.ts"),
+  // 阅读数（ADR 0035）：页面挂载后发一次的信标。只有 action，没有 loader——
+  // 一个 `GET` 不能让计数动，阅读是写。
+  route("api/articles/:slug/views", "routes/api.articles.$slug.views.ts"),
   route("api/authors/:userId", "routes/api.authors.$userId.ts"),
   route("api/users/:userId/follow", "routes/api.users.$userId.follow.ts"),
   // 关注流：关注关系的读侧。没有它，关注只是走到别人主页看一眼（#198）。

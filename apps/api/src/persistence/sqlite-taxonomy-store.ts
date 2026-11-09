@@ -92,7 +92,7 @@ export function createSqliteTaxonomyStore(db: SqliteRunner) {
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
       if (!Number.isInteger(offset) || offset < 0 || offset > 1000000) throw new ArticleInputError("offset must be an integer between 0 and 1000000.");
       return all(`
-        SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at,
+        SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count,
           at.locale, at.title, at.summary, at.content_blocks, at.content_blocks_version
         FROM taxonomies tax
         JOIN taxonomy_translations tt ON tt.taxonomy_id = tax.id AND tt.locale = ?
@@ -107,6 +107,7 @@ export function createSqliteTaxonomyStore(db: SqliteRunner) {
         contentBlocks:JSON.parse(r.content_blocks),
         contentBlocksVersion: Number(r.content_blocks_version ?? 0),
         createdAt:r.created_at, updatedAt:r.updated_at, publishedAt:r.published_at,
+        viewCount: Number(r.view_count ?? 0),
       }));
     },
     listArticleTaxonomies({ articleId, kind, locale = "zh-CN" }) {

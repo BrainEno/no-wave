@@ -41,6 +41,7 @@ which of two `0011`s meant what.
 | [0032](0032-comment-thread-depth.md) | A comment thread has a bottom, and the reader sees all of it | Accepted | 2026-11-09 |
 | [0033](0033-off-line-database-copy.md) | Moving a database means an off-line copy, and the target starts empty | Accepted | 2026-11-09 |
 | [0034](0034-comment-thread-pagination.md) | A thread pages by top-level comment, and a reply travels with its root | Accepted | 2026-11-09 |
+| [0035](0035-article-view-counts.md) | A view is one reader, one work, one day — and never the author | Accepted | 2026-11-09 |
 The status column carries the leading word of each file's `- Status:` line —
 read the file for the qualifier ("Superseded by ADR 0012", "Accepted as the
 initial direction").

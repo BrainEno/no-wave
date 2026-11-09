@@ -87,7 +87,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
         : "";
       params.push(limit, offset);
       const rows = await sql.unsafe(
-        `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at,
+        `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count,
                 t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version,
                 ${popular ? "(SELECT count(*)::int FROM article_likes l WHERE l.article_id = a.id)" : "0"} AS like_count
          FROM articles AS a
@@ -108,7 +108,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
       const normalizedSlug = validateArticleSlug(slug);
       validateArticleLocale(locale);
       const rows = await sql.unsafe(
-        `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at,
+        `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count,
                 t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version
          FROM articles AS a
          JOIN article_translations AS t ON t.article_id = a.id
@@ -119,12 +119,34 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
       return rows[0] ? mapArticle(rows[0]) : null;
     },
 
+    /**
+     * Add one to a work's reach (ADR 0035).
+     *
+     * `RETURNING view_count` answers the new total in the same statement, and the
+     * increment is what a row lock serialises: two readers on the same work at
+     * the same instant each take their turn rather than overwriting each other.
+     *
+     * No journal row, deliberately: the journal carries documents across a
+     * provider cutover, and giving every page read a journal write to preserve a
+     * metric would cost more than the number is worth. The table copy at cutover
+     * still brings the column across.
+     */
+    async incrementArticleViewCount({ articleId }) {
+      if (!isUuid(articleId)) throw new ArticleInputError("articleId must be a valid article ID.");
+      const rows = await sql.unsafe(
+        "UPDATE articles SET view_count = view_count + 1 WHERE id = $1 RETURNING view_count",
+        [articleId],
+      );
+      if (!rows[0]) throw new ArticleNotFoundError("The article was not found.");
+      return Number(rows[0].view_count);
+    },
+
     async listMyArticles({ actorId, locale = "zh-CN", limit = 50 }: { actorId: string; locale?: string; limit?: number } = { actorId: "" }) {
       requiredText("actorId", actorId, 300);
       validateArticleLocale(locale);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
       const rows = await sql.unsafe(
-        `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at,
+        `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count,
                 t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version
          FROM articles AS a
          JOIN article_translations AS t ON t.article_id = a.id
@@ -146,7 +168,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
       validateArticleLocale(locale);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
       const rows = await sql.unsafe(
-        `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.deleted_at,
+        `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count, a.deleted_at,
                 t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version,
                 (SELECT count(*) FROM article_comments AS c WHERE c.article_id = a.id) AS comment_count
          FROM articles AS a
@@ -221,7 +243,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
             "INSERT INTO articles (id, author_id, slug, work_type, status, idempotency_key_hash, request_hash, published_at) " +
             "VALUES ($1, $2, $3, $4, $5, $6, $7, CASE WHEN $8 THEN date_trunc('milliseconds', now()) ELSE NULL END) " +
             "ON CONFLICT (author_id, idempotency_key_hash) WHERE idempotency_key_hash IS NOT NULL DO NOTHING " +
-            "RETURNING id, author_id, slug, work_type, status, created_at, updated_at, published_at",
+            "RETURNING id, author_id, slug, work_type, status, created_at, updated_at, published_at, view_count",
             [randomUUID(), authorId, input.slug, input.workType ?? "other", input.publish ? "published" : "draft",
               keyHash, keyHash === null ? null : fingerprint, input.publish],
           );
@@ -296,7 +318,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
           assertArticleWorkTypeChange(ownership[0].work_type, input.workType);
           const previousLinks = await tx.unsafe("SELECT * FROM article_taxonomies WHERE article_id = $1", [articleId]);
           const rows = await tx.unsafe(
-            "UPDATE articles SET slug = $2, work_type = COALESCE($6, work_type), status = $3, published_at = CASE WHEN $4 THEN date_trunc('milliseconds', COALESCE(published_at, now())) ELSE NULL END, updated_at = now() WHERE id = $1 AND author_id = $5 RETURNING id, author_id, slug, work_type, status, created_at, updated_at, published_at",
+            "UPDATE articles SET slug = $2, work_type = COALESCE($6, work_type), status = $3, published_at = CASE WHEN $4 THEN date_trunc('milliseconds', COALESCE(published_at, now())) ELSE NULL END, updated_at = now() WHERE id = $1 AND author_id = $5 RETURNING id, author_id, slug, work_type, status, created_at, updated_at, published_at, view_count",
             [articleId, input.slug, input.publish ? "published" : "draft", input.publish, actorId, input.workType ?? null],
           );
           if (!rows[0]) throw new ArticleNotFoundError();
@@ -386,7 +408,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
         const rows = await tx.unsafe(
           `UPDATE articles SET deleted_at = NULL, status = 'draft', updated_at = now(),
              slug = CASE WHEN EXISTS (SELECT 1 FROM articles AS o WHERE o.slug = $2 AND o.id <> $1) THEN articles.slug ELSE $2 END
-           WHERE id = $1 RETURNING id, author_id, slug, work_type, status, created_at, updated_at, published_at`,
+           WHERE id = $1 RETURNING id, author_id, slug, work_type, status, created_at, updated_at, published_at, view_count`,
           [articleId, preferred],
         );
         if (!rows[0]) throw new ArticleNotFoundError("The article was not found.");
@@ -459,7 +481,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
         throw new ArticleInputError("limit must be an integer between 1 and 100.");
       }
       const rows = await sql.unsafe(
-        `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at,
+        `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count,
                 t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version
          FROM article_likes AS likes
          JOIN articles AS a ON a.id = likes.article_id AND a.status = 'published'
@@ -487,7 +509,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
           LIMIT 1
         ),
         candidates AS (
-          SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at,
+          SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count,
                  t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version,
                  count(DISTINCT candidate_link.taxonomy_id)::int AS shared_taxonomy_count,
                  (a.author_id = target.author_id) AS same_author
@@ -497,10 +519,10 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
           LEFT JOIN article_taxonomies AS target_link ON target_link.article_id = target.id
           LEFT JOIN article_taxonomies AS candidate_link
             ON candidate_link.article_id = a.id AND candidate_link.taxonomy_id = target_link.taxonomy_id
-          GROUP BY a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at,
+          GROUP BY a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count,
                    t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version, target.author_id
         )
-        SELECT id, author_id, slug, status, created_at, updated_at, published_at, locale, title, summary, content_blocks, content_blocks_version
+        SELECT id, author_id, slug, status, created_at, updated_at, published_at, view_count, locale, title, summary, content_blocks, content_blocks_version
         FROM candidates
         ORDER BY shared_taxonomy_count DESC, same_author DESC, published_at DESC, id DESC
         LIMIT $3`,
@@ -517,7 +539,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
         throw new ArticleInputError("offset must be an integer between 0 and 100000.");
       }
       const rows = await sql.unsafe(
-        `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at,
+        `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count,
                 t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version
          FROM articles AS a
          JOIN article_translations AS t ON t.article_id = a.id
@@ -588,5 +610,5 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
       return readFeaturedArticles(sql, { locale, limit: MAX_FEATURED_ARTICLES, offset: 0 });
     },
 
-  }) satisfies Pick<TypedPersistenceAdapterContract, "listPublishedArticles" | "getPublishedArticle" | "listMyArticles" | "listMyDeletedArticles" | "createArticle" | "updateArticle" | "deleteArticle" | "restoreArticle" | "purgeExpiredArticles" | "listLikedArticles" | "listRelatedArticles" | "listFollowingArticles" | "listFeaturedArticles" | "setFeaturedArticles">;
+  }) satisfies Pick<TypedPersistenceAdapterContract, "listPublishedArticles" | "getPublishedArticle" | "incrementArticleViewCount" | "listMyArticles" | "listMyDeletedArticles" | "createArticle" | "updateArticle" | "deleteArticle" | "restoreArticle" | "purgeExpiredArticles" | "listLikedArticles" | "listRelatedArticles" | "listFollowingArticles" | "listFeaturedArticles" | "setFeaturedArticles">;
 }

@@ -40,7 +40,8 @@ export function createSqliteArticleStore(db: SqliteRunner) {
   const migrationCapture = createSqliteProviderMigrationCapture(db);
 
   const articleColumns = `a.id, a.author_id, a.slug, a.work_type, a.status, t.locale,
-           t.title, t.summary, t.content_blocks, t.content_blocks_version, a.created_at, a.updated_at, a.published_at`;
+           t.title, t.summary, t.content_blocks, t.content_blocks_version, a.created_at, a.updated_at, a.published_at,
+           a.view_count`;
   const articleSelect = `
     SELECT ${articleColumns}
     FROM articles a
@@ -67,6 +68,7 @@ export function createSqliteArticleStore(db: SqliteRunner) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     publishedAt: row.published_at,
+    viewCount: Number(row.view_count ?? 0),
   });
   // The desk's recycle bin reads the same article shape plus the tombstone
   // timestamp and the number of comments that would die with it, so it gets its
@@ -76,7 +78,7 @@ export function createSqliteArticleStore(db: SqliteRunner) {
   // the only irreversible thing the slice can do to a third party.
   const deletedArticleSelect = `
     SELECT a.id, a.author_id, a.slug, a.work_type, a.status, t.locale,
-           t.title, t.summary, t.content_blocks, t.content_blocks_version, a.created_at, a.updated_at, a.published_at, a.deleted_at,
+           t.title, t.summary, t.content_blocks, t.content_blocks_version, a.created_at, a.updated_at, a.published_at, a.view_count, a.deleted_at,
            (SELECT count(*) FROM article_comments c WHERE c.article_id = a.id) AS comment_count
     FROM articles a
     JOIN article_translations t ON t.article_id = a.id
@@ -413,6 +415,26 @@ export function createSqliteArticleStore(db: SqliteRunner) {
       return mapArticleFound(publishedArticleBySlug.get(slug, locale));
     },
 
+    /**
+     * Add one to a work's reach (ADR 0035).
+     *
+     * `RETURNING view_count` answers the new total in the same statement, so the
+     * caller never has to re-read a row it just wrote; the guard is the row
+     * itself — an id that matches nothing is a bug in the caller, not a view to
+     * drop silently.
+     *
+     * This deliberately does **not** write a provider-migration journal row. The
+     * journal carries documents across a cutover; a view is a metric, and giving
+     * it a journal row would double the cost of every page read to preserve a
+     * number that the ordinary table copy already brings across.
+     */
+    incrementArticleViewCount({ articleId }) {
+      if (!isUuid(articleId)) throw new ArticleInputError("articleId must be a valid article ID.");
+      const row = statement("UPDATE articles SET view_count = view_count + 1 WHERE id = ? RETURNING view_count").get(articleId);
+      if (!row) throw new ArticleNotFoundError("The article was not found.");
+      return Number(row.view_count);
+    },
+
     listMyArticles({ actorId, locale = "zh-CN", limit = 50 }) {
       requiredText("actorId", actorId, 300);
       validateArticleLocale(locale);
@@ -461,7 +483,7 @@ export function createSqliteArticleStore(db: SqliteRunner) {
         LEFT JOIN article_taxonomies target_link ON target_link.article_id = ?
         LEFT JOIN article_taxonomies candidate_link ON candidate_link.article_id = a.id AND candidate_link.taxonomy_id = target_link.taxonomy_id
         WHERE a.status = 'published' AND a.id <> ? AND t.locale = ?
-        GROUP BY a.id, a.author_id, a.slug, a.work_type, a.status, t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version, a.created_at, a.updated_at, a.published_at
+        GROUP BY a.id, a.author_id, a.slug, a.work_type, a.status, t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version, a.created_at, a.updated_at, a.published_at, a.view_count
         ORDER BY count(DISTINCT candidate_link.taxonomy_id) DESC, (a.author_id = ?) DESC, a.published_at DESC, a.id DESC LIMIT ?
       `).all(current.id, current.id, locale, current.author_id, limit).map(mapArticle);
     },
@@ -691,5 +713,5 @@ export function createSqliteArticleStore(db: SqliteRunner) {
         return { purged: expired.length };
       });
     },
-  }) satisfies Pick<TypedPersistenceAdapterContract, "listPublishedArticles" | "listFeaturedArticles" | "setFeaturedArticles" | "listFollowingArticles" | "getPublishedArticle" | "listMyArticles" | "listMyDeletedArticles" | "listLikedArticles" | "listRelatedArticles" | "createArticle" | "updateArticle" | "deleteArticle" | "restoreArticle" | "purgeExpiredArticles">;
+  }) satisfies Pick<TypedPersistenceAdapterContract, "listPublishedArticles" | "listFeaturedArticles" | "setFeaturedArticles" | "listFollowingArticles" | "getPublishedArticle" | "incrementArticleViewCount" | "listMyArticles" | "listMyDeletedArticles" | "listLikedArticles" | "listRelatedArticles" | "createArticle" | "updateArticle" | "deleteArticle" | "restoreArticle" | "purgeExpiredArticles">;
 }

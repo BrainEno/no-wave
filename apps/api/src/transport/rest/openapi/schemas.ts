@@ -192,7 +192,7 @@ export const SCHEMAS: Readonly<Record<string, JsonSchema>> = Object.freeze({
 
   Article: {
     type: "object",
-    required: ["id", "authorId", "slug", "workType", "status", "locale", "title", "summary", "contentBlocks", "contentBlocksVersion"],
+    required: ["id", "authorId", "slug", "workType", "status", "locale", "title", "summary", "contentBlocks", "contentBlocksVersion", "viewCount"],
     description:
       "A stored work plus the `author`, `categories` and `tags` the API adds. One id identifies the work; `(id, locale)` identifies one of its translations.",
     properties: {
@@ -213,6 +213,12 @@ export const SCHEMAS: Readonly<Record<string, JsonSchema>> = Object.freeze({
       createdAt: NULLABLE_TIMESTAMP,
       updatedAt: NULLABLE_TIMESTAMP,
       publishedAt: NULLABLE_TIMESTAMP,
+      viewCount: {
+        type: "integer",
+        minimum: 0,
+        description:
+          "Readers who opened the work, counted once per reader per UTC day and never the author's own visits (ADR 0035). Work-wide, not per translation.",
+      },
       author: nullable(ref("AuthorProfile")),
       categories: { type: "array", items: ref("Taxonomy") },
       tags: { type: "array", items: ref("Taxonomy") },
@@ -234,6 +240,20 @@ export const SCHEMAS: Readonly<Record<string, JsonSchema>> = Object.freeze({
     type: "object",
     required: ["id", "deletedAt"],
     properties: { id: TEXT, deletedAt: TIMESTAMP },
+  },
+
+  ArticleView: {
+    type: "object",
+    required: ["counted", "viewCount"],
+    description: "The answer to a view beacon.",
+    properties: {
+      counted: {
+        type: "boolean",
+        description:
+          "Whether this call moved the number. `false` is a normal answer: the author's own read, or a second visit to the same work on the same UTC day.",
+      },
+      viewCount: { type: "integer", minimum: 0, description: "The work's total afterwards." },
+    },
   },
 
   ArticleLikeState: {
