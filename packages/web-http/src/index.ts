@@ -105,6 +105,7 @@ export {
   COMMENT_ID_PATTERN,
   COMMENT_LOCALES,
   COMMENT_PAGE_LIMIT,
+  COMMENT_PAGE_LIMIT_MAX,
   COMMENT_SLUG_PATTERN,
   commentsRequestPath,
   handleArticleCommentsRequest,

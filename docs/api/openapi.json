@@ -654,7 +654,7 @@
         "operationId": "articles.comments.get",
         "responses": {
           "200": {
-            "description": "Top-level comments with their replies.",
+            "description": "A page of top-level comments, each with its replies.",
             "content": {
               "application/json": {
                 "schema": {
@@ -683,16 +683,6 @@
                 }
               }
             }
-          },
-          "404": {
-            "description": "The addressed row does not exist, or is not visible to this caller (`NOT_FOUND`).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -701,6 +691,7 @@
             "bearerAuth": []
           }
         ],
+        "description": "`limit` counts **top-level** comments, not replies: each top-level comment arrives with its whole reply tree, so a page boundary never cuts a conversation in half. The order is oldest first, by `(createdAt, id)`. To read further down a long thread, send `cursor` built from the **last top-level comment** of the page already received: `base64url(\"<createdAt>|<id>\")`, using the `createdAt` exactly as returned. Each page is a plain array with no `nextCursor`; keep requesting while a page is non-empty and stop at the first empty one. A reply posted mid-read is newer than the cursor, so it never shifts the roots the reader has not reached yet: it appears under its own root, or not at all on this pass.",
         "parameters": [
           {
             "name": "slug",
@@ -736,6 +727,15 @@
               "minimum": 1,
               "maximum": 100,
               "default": 50
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "`base64url(\"<createdAt>|<id>\")` of the last top-level comment already received. An empty page is the end of the thread.",
+            "schema": {
+              "type": "string"
             }
           }
         ]

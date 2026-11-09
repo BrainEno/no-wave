@@ -49,15 +49,34 @@ export function isCommentLocale(locale: string): boolean {
   return COMMENT_LOCALES.includes(locale);
 }
 
-export function commentsRequestPath(slug: string, locale: string): string {
-  return (
-    "api/v1/articles/" +
-    encodeURIComponent(slug) +
-    "/comments?locale=" +
-    encodeURIComponent(locale) +
-    "&limit=" +
-    COMMENT_PAGE_LIMIT
-  );
+/** The API's own ceiling for one page of a thread. */
+export const COMMENT_PAGE_LIMIT_MAX = 100;
+
+/**
+ * The cursor is opaque to this proxy: the API produced it and only the API can
+ * read it. All that is checked here is that it is a base64url token at all, so a
+ * local mistake is a `400` next to the page instead of an upstream one.
+ */
+const COMMENT_CURSOR_PATTERN = /^[A-Za-z0-9_-]{1,512}$/;
+
+/**
+ * A thread's address, with an optional cursor continuing an earlier page.
+ *
+ * `limit` counts top-level comments and each arrives with its reply tree, so the
+ * cursor names the last root already shown. It is built by whoever produced the
+ * page, which is what keeps the response a plain array.
+ */
+export function commentsRequestPath(
+  slug: string,
+  locale: string,
+  options: { limit?: number; cursor?: string | null } = {},
+): string {
+  const query = new URLSearchParams({
+    locale,
+    limit: String(options.limit ?? COMMENT_PAGE_LIMIT),
+  });
+  if (options.cursor !== null && options.cursor !== undefined) query.set("cursor", options.cursor);
+  return "api/v1/articles/" + encodeURIComponent(slug) + "/comments?" + query.toString();
 }
 
 /**
@@ -93,10 +112,32 @@ export async function handleArticleCommentsRequest(
     return errorResponse("BAD_USER_INPUT", "Invalid article slug or locale.", 400);
   }
 
-  const path = commentsRequestPath(params.slug, locale);
   if (method === "GET") {
-    return forwardAuthoringRequest(request, path, "GET", config);
+    // `limit` and `cursor` are re-validated rather than passed through, for the
+    // same reason the inbox and the media library do it: a value the API would
+    // reject should be rejected where the page can explain it. Anything else in
+    // the query string is dropped — this proxy forwards two parameters.
+    const query = new URL(request.url).searchParams;
+    const rawCursor = query.get("cursor");
+    if (rawCursor !== null && !COMMENT_CURSOR_PATTERN.test(rawCursor)) {
+      return errorResponse("BAD_USER_INPUT", "Invalid cursor.", 400);
+    }
+    const rawLimit = query.get("limit");
+    let limit = COMMENT_PAGE_LIMIT;
+    if (rawLimit !== null) {
+      const parsed = /^[1-9][0-9]{0,2}$/.test(rawLimit) ? Number(rawLimit) : Number.NaN;
+      if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > COMMENT_PAGE_LIMIT_MAX) {
+        return errorResponse(
+          "BAD_USER_INPUT",
+          `limit must be a whole number between 1 and ${COMMENT_PAGE_LIMIT_MAX}.`,
+          400,
+        );
+      }
+      limit = parsed;
+    }
+    return forwardAuthoringRequest(request, commentsRequestPath(params.slug, locale, { limit, cursor: rawCursor }), "GET", config);
   }
+  const path = commentsRequestPath(params.slug, locale);
 
   const body = await readLimitedJson(request, COMMENT_BODY_MAX_BYTES);
   if (!body.ok) return body.response;

@@ -1,6 +1,7 @@
 import type { RestRouteContext, RestRouteHandler } from "./context.ts";
 import { SUPPORTED_LOCALES, authenticatedActorId, decodeSlug, decodeUserId, optionalViewerId, parseInteger, parseLocale, parseArticlePagination, parsePagination, parseQuery, parseSort, readJsonObject, sendBadInput, sendJson, sendJsonBodyError, sendServiceError, sendUnauthenticated, sendUnavailable } from "../http.ts";
 import { MAX_ARTICLE_OFFSET, describeArticlePageRefusal, maxArticleOffset } from "../../../domain/article.ts";
+import { decodeCursor } from "../../../domain/cursor.ts";
 import { normalizeArticleWriteBody, normalizeCommentWriteBody, normalizeFeaturedWriteBody, normalizeLikeWriteBody, type ArticleWriteBody } from "../bodies.ts";
 import { serializeRestArticle, serializeRestArticles, serializeRestComment, serializeRestComments } from "../serializers.ts";
 import { slugifyArticleTitle, uniquifyArticleSlug } from "../../../domain/article-slug.ts";
@@ -361,9 +362,21 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
         sendBadInput(response, "Invalid comment limit.");
         return;
       }
+      // `cursor` continues the thread after the last top-level comment already
+      // shown. It is validated here because it is half of a sort key: an
+      // unusable half can only fail in the database, and a client's typo is not
+      // a server error.
+      const rawCursor = url.searchParams.get("cursor");
+      const cursor = rawCursor === null ? null : decodeCursor(rawCursor);
+      if (rawCursor !== null && cursor === null) {
+        sendBadInput(response, "Invalid comment cursor.");
+        return;
+      }
       try {
         const viewerId = await optionalViewerId(request, services, env);
-        const comments = await services.listArticleComments({ slug, locale, limit });
+        const comments = await services.listArticleComments(
+          cursor === null ? { slug, locale, limit } : { slug, locale, limit, cursor },
+        );
         sendJson(response, 200, { data: await serializeRestComments(services, comments, viewerId) });
       } catch (error: unknown) {
         sendServiceError(response, error);

@@ -148,10 +148,31 @@ export function createSqliteEngagementStore(db: SqliteRunner) {
         return likeInfo({ slug, locale, actorId });
       });
     },
-    listArticleComments({ slug, locale = "zh-CN", limit = 50 }) {
+    /**
+     * The thread's first page, or the page after a cursor (ADR 0034).
+     *
+     * `limit` counts top-level comments; each arrives with its whole reply tree,
+     * so a page boundary never cuts a conversation in half. The cursor is the
+     * `(created_at, id)` of the last root already shown, and the next page starts
+     * strictly after it. Both halves are passed as nullable parameters and tested
+     * with `IS NULL`, so one statement serves both the first page and every later
+     * one — a second, nearly identical CTE is a second place for the two engines
+     * to drift apart.
+     *
+     * `created_at` is stored at millisecond precision (the schema default is
+     * `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`, and PostgreSQL migration 0031
+     * enforces the same), so the text comparison below is also the chronological
+     * one and nothing inside the boundary millisecond is skipped.
+     */
+    listArticleComments({ slug, locale = "zh-CN", limit = 50, cursor = null }) {
       validateArticleSlug(slug); validateArticleLocale(locale);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
-      const rows = all("WITH RECURSIVE target_article AS (SELECT a.id FROM articles a JOIN article_translations t ON t.article_id = a.id WHERE a.slug = ? AND a.status = 'published' AND t.locale = ?), root_comments AS (SELECT c.id, c.article_id, c.author_id, c.parent_comment_id, c.content, c.content_blocks, c.content_blocks_version, c.created_at, c.updated_at, c.edited_at, 0 AS depth FROM article_comments c JOIN target_article a ON a.id = c.article_id WHERE c.parent_comment_id IS NULL ORDER BY c.created_at ASC, c.id ASC LIMIT ?), comment_tree AS (SELECT * FROM root_comments UNION ALL SELECT child.id, child.article_id, child.author_id, child.parent_comment_id, child.content, child.content_blocks, child.content_blocks_version, child.created_at, child.updated_at, child.edited_at, parent.depth + 1 FROM article_comments child JOIN comment_tree parent ON child.parent_comment_id = parent.id WHERE parent.depth < ?) SELECT id, article_id, author_id, parent_comment_id, content, content_blocks, content_blocks_version, created_at, updated_at, edited_at, depth FROM comment_tree ORDER BY created_at ASC, id ASC", slug, locale, limit, MAX_COMMENT_TREE_DEPTH);
+      const at = cursor === null || cursor === undefined ? null : cursor.at;
+      const afterId = cursor === null || cursor === undefined ? null : cursor.id;
+      if ((at !== null && typeof at !== "string") || (afterId !== null && typeof afterId !== "string")) {
+        throw new ArticleInputError("cursor must be {at, id} or null.");
+      }
+      const rows = all("WITH RECURSIVE page AS (SELECT ? AS at, ? AS id), target_article AS (SELECT a.id FROM articles a JOIN article_translations t ON t.article_id = a.id WHERE a.slug = ? AND a.status = 'published' AND t.locale = ?), root_comments AS (SELECT c.id, c.article_id, c.author_id, c.parent_comment_id, c.content, c.content_blocks, c.content_blocks_version, c.created_at, c.updated_at, c.edited_at, 0 AS depth FROM article_comments c JOIN target_article a ON a.id = c.article_id WHERE c.parent_comment_id IS NULL AND ((SELECT at FROM page) IS NULL OR c.created_at > (SELECT at FROM page) OR (c.created_at = (SELECT at FROM page) AND c.id > (SELECT id FROM page))) ORDER BY c.created_at ASC, c.id ASC LIMIT ?), comment_tree AS (SELECT * FROM root_comments UNION ALL SELECT child.id, child.article_id, child.author_id, child.parent_comment_id, child.content, child.content_blocks, child.content_blocks_version, child.created_at, child.updated_at, child.edited_at, parent.depth + 1 FROM article_comments child JOIN comment_tree parent ON child.parent_comment_id = parent.id WHERE parent.depth < ?) SELECT id, article_id, author_id, parent_comment_id, content, content_blocks, content_blocks_version, created_at, updated_at, edited_at, depth FROM comment_tree ORDER BY created_at ASC, id ASC", at, afterId, slug, locale, limit, MAX_COMMENT_TREE_DEPTH);
       const nodes = new Map<string, MappedComment>();
       for (const row of rows) nodes.set(row.id, mapComment({ ...row, locale }));
       const roots: MappedComment[] = [];

@@ -95,6 +95,16 @@ async function sqliteFixture() {
       db.prepare("UPDATE notifications SET created_at = ? WHERE id = ?").run(createdAt, id);
     },
     /**
+     * Pin a comment's stored time.
+     *
+     * A thread pages by `(created_at, id)`, and the cases that matter are roots
+     * sharing one millisecond — which `now()` will not produce on demand — and a
+     * cursor that lands inside such a millisecond.
+     */
+    async setArticleCommentCreatedAt(id, createdAt) {
+      db.prepare("UPDATE article_comments SET created_at = ? WHERE id = ?").run(createdAt, id);
+    },
+    /**
      * Remove a materialised media reference while leaving the body alone.
      *
      * That is the state a replay, an older writer or a direct SQL fix can leave
@@ -235,6 +245,9 @@ async function postgresFixture() {
     },
     async setNotificationCreatedAt(id, createdAt) {
       await postgresSql.unsafe("UPDATE notifications SET created_at = $1 WHERE id = $2", [createdAt, id]);
+    },
+    async setArticleCommentCreatedAt(id, createdAt) {
+      await postgresSql.unsafe("UPDATE article_comments SET created_at = $1 WHERE id = $2", [createdAt, id]);
     },
     async dropMediaReference(assetId) {
       await postgresSql.unsafe("DELETE FROM article_media_refs WHERE asset_id = $1", [assetId]);
@@ -1715,6 +1728,125 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       const walk = (nodes) => { for (const node of nodes) { flattened.push(node.id); walk(node.replies); } };
       walk(await runtime.store.listArticleComments({ slug, locale: "zh-CN" }));
       assert.deepEqual(flattened, chain, "a comment that was accepted must never be truncated away");
+    } finally { await runtime.cleanup(undefined, suffix); }
+  });
+
+  /**
+   * The thread's first page used to be the only page (#248 follow-up).
+   *
+   * `GET /articles/:slug/comments` counts `limit` in top-level comments and the
+   * route had no other parameter, so on a work with more roots than that the rest
+   * existed in the database and nowhere a reader could reach. The cursor is the
+   * last root of the page; what has to hold is that every root appears exactly
+   * once across pages, in the same oldest-first order one big page would use,
+   * that replies travel with their root, and that the boundary millisecond loses
+   * nothing — which is only true because comment times are stored at the
+   * precision the cursor can name (migration 0031).
+   */
+  test(`${adapterName}: a comment thread pages by root and loses nothing at a boundary`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const slug = `contract-comment-pages-${suffix}`;
+    const otherSlug = `contract-comment-pages-other-${suffix}`;
+    const authorId = `paging-author-${suffix}`;
+    const commenter = `paging-commenter-${suffix}`;
+    // Two roots share this millisecond; that is what the `id` half is for.
+    const shared = "2026-06-01T00:00:00.123Z";
+    try {
+      for (const target of [slug, otherSlug]) {
+        await runtime.store.createArticle({
+          authorId, slug: target, title: "Paging contract article", summary: "",
+          locale: "zh-CN", contentBlocks: [{ id: "p1", type: "paragraph", text: "Paging contract content." }], publish: true,
+        });
+      }
+      const create = (target, content, parentCommentId = null) =>
+        runtime.store.createArticleComment({ slug: target, locale: "zh-CN", actorId: commenter, content, parentCommentId });
+
+      const roots = [];
+      for (const [content, at] of [
+        ["root-1", "2026-06-01T00:00:00.121Z"],
+        ["root-2", shared],
+        ["root-3", shared],
+        ["root-4", "2026-06-01T00:00:00.124Z"],
+        ["root-5", "2026-06-01T00:00:00.125Z"],
+      ]) {
+        const root = await create(slug, content);
+        await runtime.setArticleCommentCreatedAt(root.id, at);
+        roots.push({ id: root.id, at });
+      }
+      const otherRoot = await create(otherSlug, "other-work's-comment");
+      await runtime.setArticleCommentCreatedAt(otherRoot.id, "2026-06-01T00:00:00.122Z");
+      const reply = await create(slug, "reply-to-root-2", roots[1].id);
+      await runtime.setArticleCommentCreatedAt(reply.id, "2026-06-01T00:00:00.130Z");
+      const nested = await create(slug, "reply-to-reply", reply.id);
+      await runtime.setArticleCommentCreatedAt(nested.id, "2026-06-01T00:00:00.131Z");
+
+      // The order one unbounded page would return: oldest first, id breaking the
+      // tie inside a millisecond.
+      const expected = [...roots]
+        .sort((a, b) => (a.at === b.at ? (a.id < b.id ? -1 : 1) : a.at < b.at ? -1 : 1))
+        .map((root) => root.id);
+
+      const walk = async (limit) => {
+        const seen = [];
+        const pages = [];
+        let cursor = null;
+        for (let guard = 0; guard < 20; guard += 1) {
+          const page = await runtime.store.listArticleComments({
+            slug, locale: "zh-CN", limit, ...(cursor === null ? {} : { cursor }),
+          });
+          if (page.length === 0) { pages.push(0); break; }
+          pages.push(page.length);
+          seen.push(...page.map((node) => node.id));
+          const last = page[page.length - 1];
+          cursor = { at: last.createdAt, id: last.id };
+        }
+        return { seen, pages };
+      };
+
+      const twoAtATime = await walk(2);
+      assert.deepEqual(twoAtATime.seen, expected, "every root appears once, in thread order, across pages of two");
+      assert.deepEqual(twoAtATime.pages, [2, 2, 1, 0], "a short page still reports what it holds, and the end is empty");
+      // The boundary falls inside the shared millisecond, which is exactly the
+      // case a millisecond-truncating read gets wrong.
+      assert.ok(twoAtATime.pages.length >= 3);
+
+      const oneAtATime = await walk(1);
+      assert.deepEqual(oneAtATime.seen, expected, "page size is a client choice, not a contract change");
+
+      // A reply is never a page of its own: it arrives with the root it answers,
+      // all the way down, and the page still counts one root.
+      const secondPage = await runtime.store.listArticleComments({
+        slug, locale: "zh-CN", limit: 2, cursor: { at: roots[0].at, id: roots[0].id },
+      });
+      const rootWithReplies = secondPage.find((node) => node.replies.length > 0);
+      assert.ok(rootWithReplies, "the reply's root is on the page the reply belongs to");
+      assert.equal(rootWithReplies.id, roots[1].id);
+      assert.equal(rootWithReplies.replies.length, 1);
+      assert.equal(rootWithReplies.replies[0].id, reply.id);
+      assert.deepEqual(rootWithReplies.replies[0].replies.map((node) => node.id), [nested.id]);
+
+      // Another work's comment is not on this thread, whatever its timestamp.
+      assert.ok(!twoAtATime.seen.includes(otherRoot.id), "a page belongs to one work");
+
+      // Reading past the end is empty, not an error, and not a repeat.
+      const lastRoot = expected[expected.length - 1];
+      const past = await runtime.store.listArticleComments({
+        slug, locale: "zh-CN", limit: 2,
+        cursor: { at: roots.find((root) => root.id === lastRoot).at, id: lastRoot },
+      });
+      assert.deepEqual(past, []);
+
+      // A cursor is two strings; anything else is the caller's bug, and it is
+      // refused here rather than surfacing as a database error.
+      for (const bad of [{ at: 1, id: lastRoot }, { at: shared, id: 2 }]) {
+        await assert.rejects(
+          Promise.resolve().then(() => runtime.store.listArticleComments({
+            slug, locale: "zh-CN", limit: 2, cursor: bad,
+          })),
+          { code: "BAD_USER_INPUT" },
+        );
+      }
     } finally { await runtime.cleanup(undefined, suffix); }
   });
 
