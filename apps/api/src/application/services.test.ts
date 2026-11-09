@@ -261,3 +261,116 @@ test("a reporter that throws cannot turn a cleanup failure into a request failur
     deletedAt: "2026-01-02T03:04:05.678Z",
   });
 });
+
+/**
+ * What the counter counts (ADR 0035).
+ *
+ * The four decisions that make a view a view, each asserted where it is made: a
+ * signed-in reader is charged one bucket for the day, a repeat answers "not
+ * counted" instead of incrementing, the author's own reading is refused before
+ * anything is charged, and a deployment with no secret to key readers by records
+ * nothing rather than recording a number that means nothing.
+ */
+test("a read is counted once per reader per day, and the author's own reading is not", async () => {
+  const article = {
+    id: "9f0e3d2a-0000-4000-8000-000000000001",
+    authorId: "author-1",
+    slug: "clean-architecture",
+    workType: "essay",
+    status: "published",
+    locale: "en",
+    title: "Clean Architecture",
+    summary: "",
+    contentBlocks: [],
+    contentBlocksVersion: 1,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    publishedAt: "2026-01-01T00:00:00.000Z",
+    viewCount: 7,
+  };
+  const charges: Array<{ key: string; limit: number; windowSeconds: number }> = [];
+  const increments: string[] = [];
+  let allow = true;
+  const persistence = completeFakeAdapter();
+  persistence.getPublishedArticle = async () => article;
+  persistence.consumeRateLimit = async (bucket) => {
+    charges.push(bucket);
+    return { allowed: allow, resetAt: "2026-03-02T00:00:00.000Z" };
+  };
+  persistence.incrementArticleViewCount = async ({ articleId }) => {
+    increments.push(articleId);
+    return 8;
+  };
+  const services = createApplicationServices({
+    persistence,
+    env: { AUTH_JWT_SECRET: "s".repeat(40) },
+  });
+
+  // A reader's first visit of the day: one bucket charged for one view.
+  assert.deepEqual(
+    await services.recordArticleView({ slug: "clean-architecture", locale: "en", actorId: "reader-1", address: "203.0.113.9" }),
+    { counted: true, viewCount: 8 },
+  );
+  assert.equal(charges.length, 1);
+  assert.equal(charges[0].limit, 1, "one view per bucket");
+  assert.equal(charges[0].windowSeconds, 86_400);
+  assert.match(charges[0].key, /^[0-9a-f]{64}$/, "the bucket key is a digest, not the reader");
+  assert.deepEqual(increments, [article.id]);
+
+  // The same reader, the same day: the bucket says no, and nothing is written.
+  allow = false;
+  assert.deepEqual(
+    await services.recordArticleView({ slug: "clean-architecture", locale: "en", actorId: "reader-1", address: "203.0.113.9" }),
+    { counted: false, viewCount: 7 },
+    "a deduplicated view reports the count the reader already had",
+  );
+  assert.deepEqual(increments, [article.id], "the deduplicated read did not touch the counter");
+
+  // The author reading their own work is not charged at all — not even a bucket.
+  charges.length = 0;
+  assert.deepEqual(
+    await services.recordArticleView({ slug: "clean-architecture", locale: "en", actorId: "author-1", address: "203.0.113.9" }),
+    { counted: false, viewCount: 7 },
+  );
+  assert.deepEqual(charges, [], "the author's proofreading never reaches the dedupe store");
+});
+
+test("a view of something that is not a published work is a not-found, not a discarded write", async () => {
+  const persistence = completeFakeAdapter();
+  persistence.getPublishedArticle = async () => null;
+  const services = createApplicationServices({ persistence, env: { AUTH_JWT_SECRET: "s".repeat(40) } });
+  await assert.rejects(
+    Promise.resolve().then(() => services.recordArticleView({ slug: "never-published", address: "203.0.113.9" })),
+    { code: "NOT_FOUND" },
+  );
+});
+
+test("without a secret to key readers by, nothing is counted", async () => {
+  const article = {
+    id: "9f0e3d2a-0000-4000-8000-000000000002",
+    authorId: "author-1",
+    slug: "unkeyed",
+    viewCount: 3,
+  };
+  const charges: unknown[] = [];
+  const increments: unknown[] = [];
+  const persistence = completeFakeAdapter();
+  persistence.getPublishedArticle = async () => article;
+  persistence.consumeRateLimit = async (bucket) => {
+    charges.push(bucket);
+    return { allowed: true, resetAt: "2026-03-02T00:00:00.000Z" };
+  };
+  persistence.incrementArticleViewCount = async (input) => {
+    increments.push(input);
+    return 4;
+  };
+  // A short secret is the misconfiguration the rest of the service also refuses;
+  // here it must not turn into an inflatable counter.
+  const services = createApplicationServices({ persistence, env: { AUTH_JWT_SECRET: "short" } });
+  assert.deepEqual(
+    await services.recordArticleView({ slug: "unkeyed", address: "203.0.113.9" }),
+    { counted: false, viewCount: 3 },
+  );
+  assert.deepEqual(charges, []);
+  assert.deepEqual(increments, []);
+});

@@ -300,6 +300,39 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
       sendServiceError(response, error);
     }
   },
+  /**
+   * `POST /api/v1/articles/:slug/views` — one reader opened one work.
+   *
+   * Public and anonymous-friendly (ADR 0035): a beacon that required a session
+   * would count only the people who signed in, which is the smallest and least
+   * representative part of an audience. The session is optional and used for two
+   * things only — keying the dedupe bucket per account, and refusing to count the
+   * author's own proofreading.
+   *
+   * `200` covers "not counted": a second visit in the same day is an ordinary
+   * answer, and a caller does not need a status code to interpret it.
+   */
+  "articles.views": async (ctx: RestRouteContext): Promise<void> => {
+    const { request, response, url, services, env, routeParams, clientAddress } = ctx;
+    if (!services) {
+      sendUnavailable(response);
+      return;
+    }
+    const slug = decodeSlug(routeParams.slug);
+    const locale = parseLocale(url);
+    if (!slug || !locale) {
+      sendBadInput(response, "Invalid article slug or locale.");
+      return;
+    }
+    try {
+      const actorId = await optionalViewerId(request, services, env);
+      const result = await services.recordArticleView({ slug, locale, actorId, address: clientAddress });
+      sendJson(response, 200, { data: result });
+    } catch (error: unknown) {
+      sendServiceError(response, error);
+    }
+  },
+
   "articles.like": async (ctx: RestRouteContext): Promise<void> => {
     const { request, response, url, services, env, routeParams } = ctx;
     if (!services) {

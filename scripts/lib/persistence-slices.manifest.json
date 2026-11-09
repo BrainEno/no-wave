@@ -85,6 +85,7 @@
     "listFollowingArticles",
     "listFeaturedArticles",
     "setFeaturedArticles",
+    "incrementArticleViewCount",
     "listTaxonomies",
     "getTaxonomyBySlug",
     "listTaxonomyArticles",
@@ -169,6 +170,7 @@
       "methods": [
         "listPublishedArticles",
         "getPublishedArticle",
+        "incrementArticleViewCount",
         "listMyArticles",
         "listMyDeletedArticles",
         "createArticle",
@@ -328,6 +330,7 @@
         "setFeaturedArticles",
         "listFollowingArticles",
         "getPublishedArticle",
+        "incrementArticleViewCount",
         "listMyArticles",
         "listMyDeletedArticles",
         "listLikedArticles",

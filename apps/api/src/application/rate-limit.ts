@@ -44,6 +44,9 @@ const POLICIES: Readonly<Record<string, WriteRateLimitPolicy>> = Object.freeze({
   "DELETE articles.item": { endpoint: "article.delete", windowSeconds: 60, ipLimit: 60, userLimit: 20 },
   "POST articles.restore": { endpoint: "article.restore", windowSeconds: 60, ipLimit: 60, userLimit: 20 },
   "PUT articles.like": { endpoint: "article.like.set", windowSeconds: 60, ipLimit: 120, userLimit: 60 },
+  // A view beacon: the dedupe key already limits one hit per reader per day, and
+  // this is what stops a caller who does not bother inventing new readers.
+  "POST articles.views": { endpoint: "article.view", windowSeconds: 60, ipLimit: 120, userLimit: 60 },
   "POST articles.comments": { endpoint: "comment.create", windowSeconds: 60, ipLimit: 60, userLimit: 20 },
   // An edit writes one row and sends no notification, so it is throttled like the
   // delete next to it rather than like a creation.

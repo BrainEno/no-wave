@@ -10,6 +10,7 @@ import { ReadAloud } from "@/components/reader/read-aloud.tsx";
 import { PassageAnnotations } from "@/components/reader/passage-annotations.tsx";
 import { ArticleComments } from "@/components/comments/article-comments.tsx";
 import { ArticleLike } from "@/components/public/article-like.tsx";
+import { ArticleViewBeacon } from "@/components/public/article-view-beacon.tsx";
 import { SectionHeading, TypeChip, WorkRow } from "@/components/ui/parts.tsx";
 
 /**
@@ -108,6 +109,9 @@ export function ArticlePageView({ article, newer, older, related }: ArticleDetai
 
       {/* 划线：段落靠文字与上下文定位，标注只存在读者自己的浏览器里（ADR 0021）。 */}
       <PassageAnnotations slug={article.slug} locale={locale} labels={ui.reader.passages} />
+
+      {/* 阅读数（ADR 0035）：页面挂载后发一次信标，不渲染任何东西。 */}
+      <ArticleViewBeacon slug={article.slug} locale={locale} />
 
       {/* 收藏紧接正文之后。资源 key 隔离页面切换时尚未返回的写入。 */}
       <ArticleLike key={`${locale}:${article.slug}`} slug={article.slug} locale={locale} />

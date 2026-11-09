@@ -16,7 +16,15 @@ import {
   type StoredDeletedArticle,
   type StoredTaxonomy,
 } from "./persistence-ports.ts";
-import { ArticleInputError, ProfileAuthorizationError } from "../domain/errors.ts";
+import { ArticleInputError, ArticleNotFoundError, ProfileAuthorizationError } from "../domain/errors.ts";
+import {
+  ARTICLE_VIEW_LIMIT,
+  ARTICLE_VIEW_WINDOW_SECONDS,
+  articleViewDay,
+  articleViewKey,
+  articleViewReader,
+  articleViewsAvailable,
+} from "./article-views.ts";
 import { runReportedTask, safeErrorClass, type BackgroundFailure, type BackgroundFailureReporter } from "./background-tasks.ts";
 
 type UnionToIntersection<U> = (U extends unknown ? (k: U) => void : never) extends (k: infer I) => void ? I : never;
@@ -55,6 +63,21 @@ export type ArticleUpdateServiceInput = ArticleWriteInput & {
   publish: boolean;
 };
 
+/**
+ * One reader opening one work, as the transport saw it.
+ *
+ * `actorId` is the verified session or `null`; `address` is whatever
+ * `clientAddressFor` decided the peer is — never trusted for anything but the
+ * anonymous dedupe key, and never stored.
+ */
+export type ArticleViewInput = {
+  slug: string;
+  locale?: string;
+  actorId?: string | null;
+  address: string;
+};
+export type ArticleViewResult = { counted: boolean; viewCount: number };
+
 /** Facade methods whose input or output differs from the raw port signature. */
 type ServiceOverrideName =
   | "createArticle" | "updateArticle" | "deleteArticle" | "listMyDeletedArticles"
@@ -85,6 +108,15 @@ export type ApplicationServices<A extends PersistenceAdapterMethods = Persistenc
     setFeaturedArticles(input: Omit<SetFeaturedArticlesInput, "actorIsEditor">): Promise<StoredArticle[]>;
     createTaxonomy(input: Omit<CreateTaxonomyInput, "actorIsEditor">): Promise<StoredTaxonomy>;
     deleteTaxonomy(input: Omit<DeleteTaxonomyInput, "actorIsEditor">): Promise<boolean>;
+    /**
+     * Record that someone opened a published work (ADR 0035).
+     *
+     * `counted` says whether this call was the one that moved the number: the
+     * author's own reads and a reader's second visit on the same UTC day answer
+     * `{counted: false}` with the count they already had, because a deduplicated
+     * view is a normal outcome, not an error the browser has to interpret.
+     */
+    recordArticleView(input: ArticleViewInput): Promise<ArticleViewResult>;
     /** ADR 0016: may this account curate? Consulted before every editorial write. */
     isEditor(input: { actorId: string }): Promise<boolean>;
     assignUserRole(input: { actorId: string; userId: string; role: string }): Promise<string>;
@@ -398,6 +430,51 @@ export function createApplicationServices({
   // Spreads provide every port method with its declared type; the trailing
   // entries are the intentional application-layer overrides, each checked by
   // `satisfies` against the single matching facade signature.
+  /**
+   * Count this read, if this read is a view (ADR 0035).
+   *
+   * The order is deliberate: resolve the work first (a slug that is not a
+   * published work is a `404`, not a discarded view), then refuse the author's
+   * own reading, then charge the day's bucket, then increment. A failure between
+   * the last two steps loses one view; the reverse order would count a view the
+   * bucket had not allowed, which is the one failure a metric must not have.
+   */
+  const recordArticleView = async ({
+    slug,
+    locale = "zh-CN",
+    actorId = null,
+    address,
+  }: ArticleViewInput): Promise<ArticleViewResult> => {
+    const article = await ports.content.getPublishedArticle({ slug, locale });
+    if (!article) throw new ArticleNotFoundError();
+
+    // The author's own reloads are proofreading, not reach.
+    if (actorId !== null && actorId === article.authorId) {
+      return { counted: false, viewCount: article.viewCount };
+    }
+
+    const secret = env?.AUTH_JWT_SECRET;
+    if (!articleViewsAvailable(secret)) {
+      return { counted: false, viewCount: article.viewCount };
+    }
+
+    const key = articleViewKey({
+      secret,
+      articleId: article.id,
+      viewer: articleViewReader(actorId, address),
+      day: articleViewDay(new Date()),
+    });
+    const bucket = await ports.rateLimits.consumeRateLimit({
+      key,
+      limit: ARTICLE_VIEW_LIMIT,
+      windowSeconds: ARTICLE_VIEW_WINDOW_SECONDS,
+    });
+    if (!bucket.allowed) {
+      return { counted: false, viewCount: article.viewCount };
+    }
+    return { counted: true, viewCount: await ports.content.incrementArticleViewCount({ articleId: article.id }) };
+  };
+
   const services = {
     ...ports.content,
     ...ports.taxonomy,
@@ -421,6 +498,7 @@ export function createApplicationServices({
     listMyDeletedArticles,
     restoreArticle: restoreArticleWithSweep,
     purgeExpiredArticles,
+    recordArticleView,
   } satisfies ApplicationServices;
 
   return Object.freeze(services);

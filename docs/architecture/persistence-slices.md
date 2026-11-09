@@ -28,13 +28,13 @@ from a code change.
 
 ## Slice ownership
 
-The port table declares 81 methods; each provider's slices own
-80 of them (all but `health`) plus the 6 media
+The port table declares 82 methods; each provider's slices own
+81 of them (all but `health`) plus the 6 media
 methods. `health` and PostgreSQL's optional `transaction` are composed by the entry point.
 
 | Provider | Slice | Factory | Methods |
 | --- | --- | --- | --- |
-| postgres | `postgres-article-store.ts` | `createPostgresArticleStore` | 14 |
+| postgres | `postgres-article-store.ts` | `createPostgresArticleStore` | 15 |
 | postgres | `postgres-conversation-store.ts` | `createPostgresConversationStore` | 9 |
 | postgres | `postgres-engagement-store.ts` | `createPostgresEngagementStore` | 8 |
 | postgres | `postgres-identity-store.ts` | `createPostgresIdentityStore` | 18 |
@@ -44,7 +44,7 @@ methods. `health` and PostgreSQL's optional `transaction` are composed by the en
 | postgres | `postgres-profile-store.ts` | `createPostgresProfileStore` | 11 |
 | postgres | `postgres-session-store.ts` | `createPostgresSessionStore` | 1 |
 | postgres | `postgres-taxonomy-store.ts` | `createPostgresTaxonomyStore` | 8 |
-| sqlite | `sqlite-article-store.ts` | `createSqliteArticleStore` | 14 |
+| sqlite | `sqlite-article-store.ts` | `createSqliteArticleStore` | 15 |
 | sqlite | `sqlite-conversation-store.ts` | `createSqliteConversationStore` | 9 |
 | sqlite | `sqlite-engagement-store.ts` | `createSqliteEngagementStore` | 8 |
 | sqlite | `sqlite-identity-store.ts` | `createSqliteIdentityStore` | 18 |
@@ -59,7 +59,7 @@ methods. `health` and PostgreSQL's optional `transaction` are composed by the en
 
 #### sqlite
 
-- `sqlite-article-store.ts`: `listPublishedArticles`, `listFeaturedArticles`, `setFeaturedArticles`, `listFollowingArticles`, `getPublishedArticle`, `listMyArticles`, `listMyDeletedArticles`, `listLikedArticles`, `listRelatedArticles`, `createArticle`, `updateArticle`, `deleteArticle`, `restoreArticle`, `purgeExpiredArticles`
+- `sqlite-article-store.ts`: `listPublishedArticles`, `listFeaturedArticles`, `setFeaturedArticles`, `listFollowingArticles`, `getPublishedArticle`, `incrementArticleViewCount`, `listMyArticles`, `listMyDeletedArticles`, `listLikedArticles`, `listRelatedArticles`, `createArticle`, `updateArticle`, `deleteArticle`, `restoreArticle`, `purgeExpiredArticles`
 - `sqlite-conversation-store.ts`: `createConversation`, `updateConversationParticipants`, `deleteConversation`, `markConversationAsRead`, `listConversationMessages`, `getConversation`, `listConversations`, `persistMessage`, `listConversationParticipantIds`
 - `sqlite-engagement-store.ts`: `getArticleLikeInfo`, `toggleArticleLike`, `setArticleLike`, `listArticleComments`, `createArticleComment`, `updateArticleComment`, `deleteArticleComment`, `listArticleCommentAuthorIds`
 - `sqlite-identity-store.ts`: `createIdentityAccount`, `findIdentityAccount`, `createIdentitySession`, `rotateIdentityRefresh`, `revokeIdentityRefresh`, `revokeSession`, `issueIdentityToken`, `consumeIdentityToken`, `replaceIdentityPassword`, `listIdentitySessions`, `revokeIdentitySession`, `revokeIdentitySessions`, `markIdentityEmailVerified`, `findIdentityAccountByUserId`, `setIdentityEmail`, `findIdentityCredentials`, `pruneExpiredIdentityState`, `consumeRateLimit`
@@ -72,7 +72,7 @@ methods. `health` and PostgreSQL's optional `transaction` are composed by the en
 
 #### postgres
 
-- `postgres-article-store.ts`: `listPublishedArticles`, `getPublishedArticle`, `listMyArticles`, `listMyDeletedArticles`, `createArticle`, `updateArticle`, `deleteArticle`, `restoreArticle`, `purgeExpiredArticles`, `listLikedArticles`, `listRelatedArticles`, `listFollowingArticles`, `listFeaturedArticles`, `setFeaturedArticles`
+- `postgres-article-store.ts`: `listPublishedArticles`, `getPublishedArticle`, `incrementArticleViewCount`, `listMyArticles`, `listMyDeletedArticles`, `createArticle`, `updateArticle`, `deleteArticle`, `restoreArticle`, `purgeExpiredArticles`, `listLikedArticles`, `listRelatedArticles`, `listFollowingArticles`, `listFeaturedArticles`, `setFeaturedArticles`
 - `postgres-conversation-store.ts`: `createConversation`, `getConversation`, `updateConversationParticipants`, `deleteConversation`, `markConversationAsRead`, `listConversationMessages`, `listConversations`, `persistMessage`, `listConversationParticipantIds`
 - `postgres-engagement-store.ts`: `getArticleLikeInfo`, `toggleArticleLike`, `setArticleLike`, `listArticleComments`, `createArticleComment`, `updateArticleComment`, `deleteArticleComment`, `listArticleCommentAuthorIds`
 - `postgres-identity-store.ts`: `createIdentityAccount`, `findIdentityAccount`, `createIdentitySession`, `rotateIdentityRefresh`, `revokeIdentityRefresh`, `revokeSession`, `issueIdentityToken`, `consumeIdentityToken`, `replaceIdentityPassword`, `listIdentitySessions`, `revokeIdentitySession`, `revokeIdentitySessions`, `markIdentityEmailVerified`, `findIdentityAccountByUserId`, `setIdentityEmail`, `findIdentityCredentials`, `pruneExpiredIdentityState`, `consumeRateLimit`

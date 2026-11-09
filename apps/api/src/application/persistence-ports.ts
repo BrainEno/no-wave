@@ -30,6 +30,7 @@ export const persistencePortMethods = Object.freeze({
     "createArticle", "updateArticle", "deleteArticle", "restoreArticle",
     "listMyDeletedArticles", "purgeExpiredArticles", "listLikedArticles", "listRelatedArticles",
     "listFollowingArticles", "listFeaturedArticles", "setFeaturedArticles",
+    "incrementArticleViewCount",
   ] as const),
   taxonomy: Object.freeze([
     "listTaxonomies", "getTaxonomyBySlug", "listTaxonomyArticles",
@@ -89,6 +90,13 @@ export type StoredArticle = {
   locale: string; title: string; summary: string; contentBlocks: unknown;
   contentBlocksVersion: number;
   createdAt: string | null; updatedAt: string | null; publishedAt: string | null;
+  /**
+   * How many distinct readers have opened it (ADR 0035).
+   *
+   * Work-wide, not per translation: a translation is another door into the same
+   * room. Kept on the row so a page of works costs no additional read.
+   */
+  viewCount: number;
 };
 /** A tombstone in the author's desk, with the cost of its eventual sweep. */
 export type StoredDeletedArticle = StoredArticle & { deletedAt: string; commentCount: number };
@@ -341,6 +349,15 @@ export type ContentPersistencePort = {
   listFollowingArticles(input: FollowingArticlesInput): PersistenceResult<StoredArticle[]>;
   listFeaturedArticles(input?: ArticleListPageInput): PersistenceResult<StoredArticle[]>;
   setFeaturedArticles(input: SetFeaturedArticlesInput): PersistenceResult<StoredArticle[]>;
+  /**
+   * Add one to a work's reach and answer the new total (ADR 0035).
+   *
+   * This is the only writer of `articles.view_count`. It does not decide whether
+   * a view is a view — the application layer settles that first, with the
+   * one-per-reader-per-day token — so calling it directly is exactly what
+   * "count this one" means.
+   */
+  incrementArticleViewCount(input: { articleId: string }): PersistenceResult<number>;
 };
 
 /** User-generated hashtags and editorial categories. */

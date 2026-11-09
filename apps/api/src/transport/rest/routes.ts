@@ -104,6 +104,9 @@ export const REST_ROUTES: readonly RestRoute[] = Object.freeze([
     segments: [literal("articles"), param("id"), literal("restore")],
   },
   { id: "articles.like", methods: ["GET", "PUT"], segments: [literal("articles"), param("slug"), literal("like")] },
+  // A read is a `POST` here because it writes: the beacon a page sends once it
+  // has actually rendered the work, never part of the cached `GET` (ADR 0035).
+  { id: "articles.views", methods: ["POST"], segments: [literal("articles"), param("slug"), literal("views")] },
   {
     id: "articles.comments",
     methods: ["GET", "POST"],

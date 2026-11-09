@@ -2358,6 +2358,91 @@ test("REST article comments support public listing and authenticated replies", a
   });
 });
 
+test("REST article views count one reader once a day, refuse the author, and 404 an unpublished slug", async () => {
+  const article = {
+    id: "9f0e3d2a-0000-4000-8000-000000000001",
+    authorId: "author-user",
+    slug: "counted-work",
+    workType: "essay",
+    status: "published",
+    locale: "zh-CN",
+    title: "被阅读的作品",
+    summary: "",
+    contentBlocks: [],
+    contentBlocksVersion: 1,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    publishedAt: "2026-01-01T00:00:00.000Z",
+    viewCount: 4,
+  };
+  const charges = [];
+  const increments = [];
+  let allow = true;
+  await withServer(async (baseUrl) => {
+    // The route is throttled before it counts, so the view bucket is the one
+    // charged with a limit of one — the policy buckets beside it are the ordinary
+    // write limits, and they must not be confused for the dedupe.
+    const viewCharges = () => charges.filter((bucket) => bucket.limit === 1);
+
+    // An anonymous reader: no session, keyed by address.
+    const first = await fetch(baseUrl + "/api/v1/articles/counted-work/views", { method: "POST" });
+    assert.equal(first.status, 200);
+    assert.deepEqual(await first.json(), { data: { counted: true, viewCount: 5 } });
+    assert.equal(viewCharges().length, 1);
+    assert.equal(viewCharges()[0].windowSeconds, 86_400);
+    assert.match(viewCharges()[0].key, /^[0-9a-f]{64}$/);
+    assert.deepEqual(increments, [article.id]);
+
+    // The same reader again, the same day: an ordinary "not counted".
+    allow = false;
+    const second = await fetch(baseUrl + "/api/v1/articles/counted-work/views", { method: "POST" });
+    assert.equal(second.status, 200);
+    assert.deepEqual(await second.json(), { data: { counted: false, viewCount: 4 } });
+    assert.deepEqual(increments, [article.id], "a deduplicated read writes nothing");
+
+    // The author's own visit never reaches the per-reader bucket at all.
+    charges.length = 0;
+    const authorRead = await fetch(baseUrl + "/api/v1/articles/counted-work/views", {
+      method: "POST",
+      headers: { authorization: "Bearer " + signedToken("author-user") },
+    });
+    assert.equal(authorRead.status, 200);
+    assert.deepEqual(await authorRead.json(), { data: { counted: false, viewCount: 4 } });
+    assert.deepEqual(viewCharges(), []);
+    assert.deepEqual(increments, [article.id], "the author's own read moved nothing");
+
+    // Reading a work is not a `GET`: a cached fetch must not move a counter.
+    const get = await fetch(baseUrl + "/api/v1/articles/counted-work/views");
+    assert.equal(get.status, 405);
+    assert.equal(get.headers.get("allow"), "POST");
+
+    // A slug that is not a published work is a 404, not a view that vanished.
+    const missing = await fetch(baseUrl + "/api/v1/articles/no-such-work/views", { method: "POST" });
+    assert.equal(missing.status, 404);
+    // The message is the transport's generic not-found, so an unpublished slug and
+    // a mistyped one are indistinguishable from outside.
+    assert.deepEqual(await missing.json(), {
+      error: { code: "NOT_FOUND", message: "The requested resource was not found." },
+    });
+  }, {
+    env: authEnv,
+    store: {
+      async getPublishedArticle({ slug }) { return slug === "counted-work" ? article : null; },
+      async consumeRateLimit(bucket) {
+        charges.push(bucket);
+        // The view budget is the one that can be spent; the write limits beside it
+        // stay open so the test is about the counter, not about throttling.
+        if (bucket.limit === 1) return { allowed: allow, resetAt: "2026-03-02T00:00:00.000Z" };
+        return { allowed: true, resetAt: "2026-03-01T00:01:00.000Z" };
+      },
+      async incrementArticleViewCount({ articleId }) {
+        increments.push(articleId);
+        return article.viewCount + 1;
+      },
+    },
+  });
+});
+
 test("REST article comments continue a thread from a cursor and refuse a malformed one", async () => {
   const calls: Array<Record<string, unknown>> = [];
   const at = "2026-06-01T00:00:00.123Z";

@@ -22,7 +22,7 @@ type EntitySpec = {
 // Strict allowlist: journal data never supplies SQL identifiers. Keep this in sync
 // with the shared persistence schema contract for the SQLite and PostgreSQL providers.
 const entities: Record<string, EntitySpec> = {
-  articles: { table: "articles", primaryKey: ["id"], columns: ["id", "author_id", "slug", "status", "work_type", "created_at", "updated_at", "published_at", "deleted_at", "idempotency_key_hash", "request_hash"] },
+  articles: { table: "articles", primaryKey: ["id"], columns: ["id", "author_id", "slug", "status", "work_type", "created_at", "updated_at", "published_at", "deleted_at", "idempotency_key_hash", "request_hash", "view_count"] },
   article_translations: { table: "article_translations", primaryKey: ["article_id", "locale"], columns: ["article_id", "locale", "title", "summary", "content_blocks", "content_blocks_version", "created_at", "updated_at"], jsonColumns: ["content_blocks"], requiredColumns: ["content_blocks"], derivedColumns: ["content_search_text"] },
   article_likes: { table: "article_likes", primaryKey: ["article_id", "user_id"], columns: ["article_id", "user_id", "created_at"] },
   article_comments: { table: "article_comments", primaryKey: ["id"], columns: ["id", "article_id", "author_id", "parent_comment_id", "content", "content_blocks", "content_blocks_version", "idempotency_key_hash", "request_hash", "edited_at", "created_at", "updated_at"], jsonColumns: ["content_blocks"] },

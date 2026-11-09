@@ -1851,6 +1851,65 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
   });
 
   /**
+   * A work's reach is stored, not recomputed (ADR 0035).
+   *
+   * The counter is denormalised so that every list which shows a work reads it
+   * with the row it already has, which makes one property load-bearing: the column
+   * must move *only* through `incrementArticleViewCount`, and every read path must
+   * see the same number. A second, derived count would drift the first time a
+   * page was rendered between two increments.
+   */
+  test(`${adapterName}: a work's view count is work-wide, monotonic, and visible on every read`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const slug = `contract-views-${suffix}`;
+    const authorId = `views-author-${suffix}`;
+    try {
+      // The list path is reached through a search term the title carries, so the
+      // assertion is about the same work rather than about a lucky ordering.
+      const marker = `viewcontract${suffix.replace(/-/g, "")}`;
+      const created = await runtime.store.createArticle({
+        authorId, slug, title: `View contract ${marker}`, summary: "",
+        locale: "zh-CN", contentBlocks: [{ id: "p1", type: "paragraph", text: "Counted words." }], publish: true,
+      });
+      const detail = () => runtime.store.getPublishedArticle({ slug, locale: "zh-CN" });
+      const listed = async () => (await runtime.store.listPublishedArticles({ locale: "zh-CN", query: marker, limit: 10 }))[0];
+
+      assert.equal((await detail()).viewCount, 0, "a new work has been read by nobody");
+      assert.equal((await listed()).viewCount, 0, "the list path reads the same column as the detail path");
+
+      assert.equal(await runtime.store.incrementArticleViewCount({ articleId: created.id }), 1);
+      assert.equal(await runtime.store.incrementArticleViewCount({ articleId: created.id }), 2);
+      assert.equal((await detail()).viewCount, 2, "the counter is the row, not a second table that could drift");
+      assert.equal((await listed()).viewCount, 2);
+
+      // Another work has its own number: reach is not a site-wide tally.
+      const sibling = await runtime.store.createArticle({
+        authorId, slug: `${slug}-sibling`, title: "Sibling", summary: "",
+        locale: "zh-CN", contentBlocks: [{ id: "p1", type: "paragraph", text: "Other words." }], publish: true,
+      });
+      assert.equal((await runtime.store.getPublishedArticle({ slug: `${slug}-sibling`, locale: "zh-CN" })).viewCount, 0);
+
+      // A draft is not a page anyone can open, and a missing row is a caller bug.
+      await assert.rejects(
+        Promise.resolve().then(() => runtime.store.incrementArticleViewCount({ articleId: "not-a-uuid" })),
+        { code: "BAD_USER_INPUT" },
+      );
+      await assert.rejects(
+        Promise.resolve().then(() => runtime.store.incrementArticleViewCount({ articleId: randomUUID() })),
+        { code: "NOT_FOUND" },
+      );
+
+      // Deleting and restoring a work does not reset its history: the reach the
+      // author earned is what the tombstone comes back with.
+      await runtime.store.deleteArticle({ articleId: created.id, actorId: authorId });
+      const restored = await runtime.store.restoreArticle({ articleId: created.id, actorId: authorId });
+      assert.equal(restored.viewCount, 2, "a restored work keeps its readership");
+      assert.equal((await runtime.store.getPublishedArticle({ slug: `${slug}-sibling`, locale: "zh-CN" })).id, sibling.id);
+    } finally { await runtime.cleanup(undefined, suffix); }
+  });
+
+  /**
    * The media library's persistence (ADR 0022).
    *
    * The assertions that matter are the ones the application layer depends on:
