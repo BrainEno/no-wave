@@ -209,8 +209,8 @@ Notion API ──(client, user's own token)──► bundle {pages, blocks}
 | Phase | Scope | State |
 | --- | --- | --- |
 | 0 | The pure mapping, both directions, with fixtures from the real database | **landed** |
-| 1 | Seed: `scripts/notion-seed.ts` reads a bundle (exported JSON or a token in the environment) and creates/updates articles through the REST API for one author | next |
-| 2 | `POST /api/v1/imports/notion` (dry run + apply, per-page report), the link table (migration), signed-in users importing into their own account | after that |
+| 1 | Seed: `scripts/notion-seed.ts` reads a bundle (a captured JSON file, or fetches it with a token from the environment) and creates/updates articles through the REST API for one author | **landed** (§9) |
+| 2 | `POST /api/v1/imports/notion` (dry run + apply, per-page report), the link table (migration), signed-in users importing into their own account | next |
 | 3 | `GET /api/v1/imports/notion/export?slugs=` returning a Notion-shaped bundle; the authoring desk offers "export to Notion" and downloads it, or pushes it with their own token | after that |
 | 4 | Import UI on the authoring desk, and an upload-by-token flow for the Flutter client | later |
 
@@ -240,3 +240,82 @@ which one is empty.
 
 Issues: `slug-derived` (`墙壁 -> qiangbi`) and one `empty-block-dropped`. No
 content is lost.
+
+## 9. Running the seed (phase 1)
+
+The seed exists so the mapping can be used *today*, on a real database, without
+waiting for the REST surface. It is an operator command, it talks HTTP only, and
+it writes through the same contract the writing desk uses — which is also why it
+is the honest rehearsal for phase 2.
+
+```bash
+# 1. capture the database once (the token stays in this process's environment)
+NOTION_TOKEN=secret_… pnpm notion:seed \
+  --notion-database <database-id> --write-bundle notion-bundle.json
+
+# 2. see exactly what would happen; nothing is written
+pnpm notion:seed --bundle notion-bundle.json \
+  --email author@example.com --password '…'
+
+# 3. write it
+pnpm notion:seed --bundle notion-bundle.json \
+  --email author@example.com --password '…' --apply
+```
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `--bundle <file>` | — | read a captured bundle |
+| `--notion-database <id>` | `$NOTION_DATABASE_ID` | fetch the bundle with `$NOTION_TOKEN` |
+| `--write-bundle <file>` | — | save what was fetched, so later runs need no token |
+| `--api <url>` | `$API_BASE_URL` or `http://127.0.0.1:3000` | the instance to write into |
+| `--email`, `--password` | `$NOTION_SEED_EMAIL`, `$NOTION_SEED_PASSWORD` | the author account (it must already exist, with a profile) |
+| `--state <file>` | `.notion-seed-state.json` | what has been imported, by page id |
+| `--apply` | off | without it the run is a dry run |
+| `--json` | off | machine-readable report |
+
+### What a run guarantees
+
+- **Dry run is the default.** Without `--apply` the command issues **no request
+  at all** — it cannot log in, cannot read tags, cannot write. The plan, the
+  refusals and the loss report are printed exactly as they would be.
+- **`Published: false` becomes a draft.** It is created unpublished: visible in
+  the author's desk, invisible to readers, the same as a work saved there.
+- **One work, one status, one instant.** In the real database the English page
+  carries `Published: false` and no `Date` while its Chinese partner is
+  published and dated. Publishing and the publication instant are properties of
+  the *work*, so an edition inherits both — otherwise every run would re-date the
+  translation from the clock and rewrite an untouched work.
+- **Re-running is safe, in two independent ways.** Creates carry an
+  `Idempotency-Key` of `notion-seed:<page id>`, which the API stores with the
+  article (ADR 0019) — so a run that dies half-way cannot duplicate a page it
+  already created. And the state file keeps a digest of what a *reader* sees, so
+  an untouched page is a `skip`, an edited one is an update of the same article,
+  and a page that was merely touched in Notion (a moved cursor, a recoloured
+  block) is not a change at all.
+- **Tags are reused, not duplicated.** The run lists existing tags and creates
+  only the missing ones; a second 「诗歌」 would split every tag page in two.
+- **Nothing is lost silently.** A page that cannot be an article (no title, no
+  body) is *refused* with its issue codes; every block the site cannot carry is
+  counted at the end.
+
+### What it deliberately does not do
+
+It does not delete, unpublish or move anything that vanished from the bundle: a
+one-way first import must never be able to destroy work. It does not create the
+author account (that is registration plus a profile), and it does not copy
+Notion-hosted images — those URLs expire within the hour, so they are reported
+(`expiring-image-url`, `featured-image-not-carried`) and re-hosting them belongs
+with the media pipeline rather than a seed script.
+
+### Where the guarantees are tested
+
+`scripts/lib/notion-seed-run.test.ts` runs the real driver against a stub that
+speaks the REST contract: a dry run issues zero requests; an apply logs in, lists
+tags, creates one article per *work* (not per page) with the page's idempotency
+key, `PUT`s the translation onto the work's id with `locale: "en"`, and writes
+state that maps both pages to the same article; a second run with the same bundle
+writes nothing; a blank page is refused with `empty-body`.
+`scripts/lib/notion-client.test.ts` covers the fetcher (pagination of the query
+and of a page's body, recursive children in order, one retry on `429`, and an
+error that names the endpoint but never the token), and
+`scripts/lib/notion-bundle.test.ts` covers grouping, digests and the plan.

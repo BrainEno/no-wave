@@ -27,3 +27,7 @@ data/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+
+# Notion seed: local run state and captured bundles (content, not code)
+.notion-seed-state.json
+notion-bundle.json

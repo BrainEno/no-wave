@@ -71,7 +71,12 @@ already has.**
    must update, not duplicate, so a link record `(provider, external_page_id) →
    (article_id, locale)` is the unit of idempotency, and a content digest on it
    decides whether a re-import is a no-op. The mapping itself is deterministic,
-   so "same page, same blocks" produces the same draft.
+   so "same page, same blocks" produces the same draft. Until that table exists
+   (phase 2), the seed run gets the same property from two things it already
+   has: the API's stored `Idempotency-Key` (`notion-seed:<page id>`, ADR 0019),
+   which makes a create of an already-created page a no-op, and a local digest
+   file, which makes an unchanged page a skip. Neither is a migration, and both
+   are replaced — not accompanied — by the link table.
 
 5. **Lossy corners are recorded, never guessed.** The site's block model is
    smaller than Notion's and its article has no cover field, no nesting, no
