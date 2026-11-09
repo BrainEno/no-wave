@@ -9,11 +9,12 @@ import { articleIdempotencyFingerprint, articleIdempotencyKeyHash, articleIdempo
 import { MAX_FEATURED_ARTICLES, assertArticleWorkTypeChange, assertCreatableArticleWorkType, maxArticleOffset, normalizeArticleInput, normalizeTaxonomyIds, resolveArticleCursor, validateArticleLocale, validateArticleSlug } from "../domain/article.ts";
 import { ArticleAuthorizationError, ArticleInputError, ArticleNotFoundError, ArticleSlugConflictError, IdempotencyConflictError } from "../domain/errors.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
+import { releasedArticleSlug, stripDeletedSlugSuffix } from "../domain/article-slug.ts";
 import { migrationEntityKey } from "./postgres-provider-migration-capture.ts";
 import { isUniqueViolation, isoDate, mapArticle, readArticleForAuthorOrThrow, readFeaturedArticles, replaceArticleMediaReferences, replaceArticleTaxonomyKind } from "./postgres-shared.ts";
 import { ARTICLE_MEDIA_REFS_SNAPSHOT, createMigrationTransactionId } from "./provider-migration-journal.ts";
 import type { PostgresStoreContext } from "./postgres-shared.ts";
-import type { PgRow } from "./postgres-driver.ts";
+import type { PgExecutor, PgRow } from "./postgres-driver.ts";
 import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
 
 // A two-integer advisory-lock namespace, separate from the migration runner's
@@ -34,6 +35,19 @@ const TRANSLATION_JOURNAL_COLUMNS =
 
 export function createPostgresArticleStore(ctx: PostgresStoreContext) {
   const { sql, captureChanges } = ctx;
+  /**
+   * The address a tombstone gets, guaranteed storable (#241). Same rule as the
+   * SQLite slice: strip what the row already carries, fit the suffix inside the
+   * 160-character contract, and step aside if a live work holds the result.
+   */
+  const releaseSlug = async (tx: PgExecutor, slug: string, articleId: string): Promise<string> => {
+    for (let attempt = 1; attempt <= 9; attempt += 1) {
+      const candidate = releasedArticleSlug(slug, articleId, attempt === 1 ? "" : `-${attempt}`);
+      const taken = await tx.unsafe("SELECT 1 FROM articles WHERE slug = $1 AND id <> $2", [candidate, articleId]);
+      if (taken.length === 0) return candidate;
+    }
+    return releasedArticleSlug(slug, articleId, `-${Math.random().toString(36).slice(2, 8)}`);
+  };
   return Object.freeze({
     async listPublishedArticles({ locale = "zh-CN", query = "", authorId = null, sort = "latest", limit = 20, offset = 0, cursor = null } = {}) {
       validateArticleLocale(locale);
@@ -330,7 +344,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
         const existing = await tx.unsafe("SELECT author_id, slug, deleted_at FROM articles WHERE id = $1 FOR UPDATE", [articleId]);
         if (!existing[0] || existing[0].deleted_at) throw new ArticleNotFoundError("The article was not found.");
         if (existing[0].author_id !== actorId) throw new ArticleAuthorizationError("Only the article author can delete it.");
-        const releasedSlug = `${existing[0].slug}-deleted-${articleId.slice(0, 8)}`;
+        const releasedSlug = await releaseSlug(tx, existing[0].slug, articleId);
         const rows = await tx.unsafe(
           "UPDATE articles SET status = 'draft', deleted_at = now(), slug = $2, updated_at = now() WHERE id = $1 RETURNING id, deleted_at",
           [articleId, releasedSlug],
@@ -366,9 +380,9 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
         if (existing[0].author_id !== actorId) throw new ArticleAuthorizationError("Only the article author can restore it.");
         const translation = await tx.unsafe("SELECT locale FROM article_translations WHERE article_id = $1 AND locale = $2", [articleId, locale]);
         if (!translation[0]) throw new ArticleNotFoundError(`The article has no ${locale} translation.`);
-        const suffix = `-deleted-${articleId.slice(0, 8)}`;
-        const current = existing[0].slug;
-        const preferred = current.endsWith(suffix) ? current.slice(0, -suffix.length) : current;
+        // Every suffix, not just this work's: a tombstone deleted twice before
+        // #241 carries two, and restoring it should not hand back the older one.
+        const preferred = stripDeletedSlugSuffix(existing[0].slug);
         const rows = await tx.unsafe(
           `UPDATE articles SET deleted_at = NULL, status = 'draft', updated_at = now(),
              slug = CASE WHEN EXISTS (SELECT 1 FROM articles AS o WHERE o.slug = $2 AND o.id <> $1) THEN articles.slug ELSE $2 END

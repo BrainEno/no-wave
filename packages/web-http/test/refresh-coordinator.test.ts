@@ -84,3 +84,61 @@ test("the ledger key is a digest, not a credential, and separates every input", 
   assert.notEqual(base, await refreshCoordinatorKey("https://api.example.test", TOKENS.refreshToken, undefined));
   assert.equal(base, await refreshCoordinatorKey("https://api.example.test", TOKENS.refreshToken, TOKENS.accessToken));
 });
+
+/**
+ * A transient failure must not become a five-second blackout (#244).
+ *
+ * The ledger exists so a request that reaches its 401 *after* a sibling's
+ * rotation finished still gets that sibling's session. `undefined` is not a
+ * session — it is "no answer, try again" — so remembering it made one dropped
+ * connection tell every request in the reuse window to stop trying. The refusal
+ * below is the control: it is a fact about the credential and stays reusable.
+ */
+test("a transient failure is shared for a moment, then retried — a refusal is kept", async () => {
+  let clock = 1_000;
+  const coordinator = new InMemoryRefreshCoordinator({ reuseMs: 5_000, transientMs: 250, now: () => clock });
+
+  let attempts = 0;
+  const flaky = async () => { attempts += 1; throw new Error("socket hang up"); };
+  assert.equal(await coordinator.resolve("key", flaky), undefined);
+  // A sibling whose 401 landed with the same burst but which was descheduled
+  // until after the first attempt settled: one answer, not two rotations.
+  clock += 100;
+  assert.equal(await coordinator.resolve("key", flaky), undefined);
+  assert.equal(attempts, 1, "a burst shares its failure");
+  // Past the transient window the next caller rotates again instead of
+  // inheriting a dropped connection for the whole reuse period.
+  clock += 200;
+  assert.equal(await coordinator.resolve("key", flaky), undefined);
+  assert.equal(attempts, 2, "a transient failure must not be reused for the reuse window");
+
+  let refusals = 0;
+  const refused = async () => { refusals += 1; return null; };
+  assert.equal(await coordinator.resolve("refused", refused), null);
+  clock += 1;
+  assert.equal(await coordinator.resolve("refused", refused), null);
+  assert.equal(refusals, 1, "a definitive refusal is still reused: retrying only confirms it");
+});
+
+test("a 5xx-style undefined answer is settled for in-flight waiters but not reused", async () => {
+  let clock = 0;
+  let calls = 0;
+  let release: (value: undefined) => void = () => {};
+  const gate = new Promise<undefined>((resolve) => { release = resolve; });
+  const coordinator = new InMemoryRefreshCoordinator({ reuseMs: 5_000, now: () => clock });
+  const rotate = async () => { calls += 1; return gate; };
+
+  const waiting = [0, 1].map(() => coordinator.resolve("key", rotate));
+  release(undefined);
+  assert.deepEqual(await Promise.all(waiting), [undefined, undefined]);
+  assert.equal(calls, 1, "concurrent callers still share one attempt");
+
+  clock += 100;
+  await coordinator.resolve("key", async () => { calls += 1; return ROTATED; });
+  assert.equal(calls, 1, "a sibling inside the transient window still shares the answer");
+
+  clock += 250;
+  await coordinator.resolve("key", async () => { calls += 1; return ROTATED; });
+  assert.equal(calls, 2, "the next caller after a 5xx rotates instead of replaying the 5xx");
+});
+

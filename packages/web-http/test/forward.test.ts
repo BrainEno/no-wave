@@ -188,3 +188,67 @@ test("no Authorization header is sent when the access cookie is absent", async (
   assert.equal(headers.get("authorization"), null);
   assert.equal(headers.get("idempotency-key"), null);
 });
+
+/**
+ * A throttle has to reach the browser with its wait (#244).
+ *
+ * The forwarder reconstructs the upstream response from a buffered body, which
+ * meant it also had to decide which headers may cross. Everything else stays
+ * dropped — this is a JSON proxy, not a tunnel — but `Retry-After` is the one
+ * header a 429 is useless without: without it a page can only guess how long to
+ * wait, and a "try again in a moment" spinner is as good as none.
+ */
+test("a 429 keeps its Retry-After, normalized to seconds, and nothing else from upstream", async () => {
+  const stub = stubFetch({
+    "api/v1/me/articles": () => json(
+      { error: { code: "RATE_LIMITED", message: "slow down" } },
+      429,
+      { "retry-after": "42", "x-upstream-only": "must-not-leak", "set-cookie": "nw_evil=1" },
+    ),
+  });
+  const response = await forwardAuthoringRequest(
+    request("/api/authoring/articles", { method: "POST", headers: { cookie: sessionCookie } }),
+    "api/v1/me/articles",
+    "POST",
+    { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+    JSON.stringify({ title: "x" }),
+  );
+
+  assert.equal(response.status, 429);
+  assertNoStore(response);
+  assert.equal(response.headers.get("retry-after"), "42", "a throttled caller must learn when to come back");
+  assert.equal(response.headers.get("x-upstream-only"), null, "no other upstream header crosses the proxy");
+  assert.equal(response.headers.get("set-cookie"), null, "an upstream cookie is never relayed");
+  assert.equal(findCookie(response, ACCESS_TOKEN_COOKIE), undefined);
+});
+
+test("an unusable Retry-After is dropped rather than copied", async () => {
+  const dropped = ["not-a-number", "0", "-5", "", "1".repeat(99)];
+  for (const header of dropped) {
+    const stub = stubFetch({
+      "api/v1/me/articles": () => json({ error: { code: "RATE_LIMITED", message: "slow down" } }, 429, { "retry-after": header }),
+    });
+    const response = await forwardAuthoringRequest(
+      request("/api/authoring/articles", { method: "GET", headers: { cookie: sessionCookie } }),
+      "api/v1/me/articles",
+      "GET",
+      { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+    );
+    assert.equal(response.status, 429);
+    assert.equal(response.headers.get("retry-after"), null, `${JSON.stringify(header)} must not be relayed`);
+  }
+
+  // A day-long wait is a real answer, just an implausible one; it is clamped to
+  // the documented ceiling instead of being copied or thrown away.
+  const absurd = stubFetch({
+    "api/v1/me/articles": () => json({ error: { code: "RATE_LIMITED", message: "slow down" } }, 429, { "retry-after": "999999999" }),
+  });
+  const clamped = await forwardAuthoringRequest(
+    request("/api/authoring/articles", { method: "GET", headers: { cookie: sessionCookie } }),
+    "api/v1/me/articles",
+    "GET",
+    { apiBaseUrl: API_BASE, fetchImpl: absurd.fetchImpl },
+  );
+  assert.equal(clamped.headers.get("retry-after"), "86400");
+});
+

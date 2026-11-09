@@ -32,9 +32,24 @@ export function editedMarker(locale: Locale, comment: EditableComment): string |
   return locale === "en" ? "edited" : "已编辑";
 }
 
+/**
+ * The address a new comment is sent to.
+ *
+ * Both write paths sit under `/api/authoring` because that is where the access
+ * cookie is scoped (ADR 0025): the browser only sends `nw_access` for paths under
+ * that prefix. Registering the write on `/api/articles/...` — which is where the
+ * *read* belongs, and where it still is — meant every comment submission arrived
+ * without a credential, took a 401, and paid for a refresh-token rotation before
+ * the retry could work (#242). The read stays public and cache-shaped; the writes
+ * need the credential, so they live where the credential is.
+ */
+export function commentCreatePath(slug: string, locale: string): string {
+  return "/api/authoring/articles/" + encodeURIComponent(slug) + "/comments?locale=" + encodeURIComponent(locale);
+}
+
 /** The address an edit is sent to; the locale is the edition to answer in. */
 export function commentEditPath(commentId: string, locale: string): string {
-  return "/api/comments/" + encodeURIComponent(commentId) + "?locale=" + encodeURIComponent(locale);
+  return "/api/authoring/comments/" + encodeURIComponent(commentId) + "?locale=" + encodeURIComponent(locale);
 }
 
 /**

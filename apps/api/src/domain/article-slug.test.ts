@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ARTICLE_SLUG_MAX_LENGTH, slugifyArticleTitle, uniquifyArticleSlug } from "./article-slug.ts";
+import { ARTICLE_SLUG_MAX_LENGTH, releasedArticleSlug, slugifyArticleTitle, stripDeletedSlugSuffix, uniquifyArticleSlug } from "./article-slug.ts";
 
 /**
  * Slug generation is contract-checked rather than string-compared: the pinyin
@@ -80,3 +80,64 @@ test("uniquify suffixes a counter and then a hash, and never returns an empty sl
     "the hash suffix must be deterministic for the same attempt",
   );
 });
+
+/**
+ * The tombstone address (#241).
+ *
+ * Deleting a work releases its public address by suffixing it; restoring tries to
+ * give it back. The rules that make that a cycle rather than a ratchet are small
+ * enough to live in one function, so they are pinned here: the suffix never
+ * stacks, the result always fits the 160-character stored contract, and the
+ * result is always a slug the same contract accepts.
+ */
+const ARTICLE_ID = "1a2b3c4d-0000-4000-8000-000000000000";
+
+test("the tombstone suffix is stripped once per application, never partially", () => {
+  assert.equal(stripDeletedSlugSuffix("a-story"), "a-story");
+  assert.equal(stripDeletedSlugSuffix("a-story-deleted-1a2b3c4d"), "a-story");
+  assert.equal(
+    stripDeletedSlugSuffix("a-story-deleted-1a2b3c4d-deleted-1a2b3c4d"),
+    "a-story",
+    "a row that was deleted twice before the fix heals on its next delete",
+  );
+  // Only the tombstone shape at the end counts: a title may legitimately contain
+  // the words, and truncating those would silently rename the work.
+  assert.equal(stripDeletedSlugSuffix("deleted-notes"), "deleted-notes");
+  assert.equal(stripDeletedSlugSuffix("a-deleted-1a2b3c4d-notes"), "a-deleted-1a2b3c4d-notes");
+  assert.equal(stripDeletedSlugSuffix("a-deleted-1a2b3c"), "a-deleted-1a2b3c", "eight hex characters or it is not ours");
+});
+
+test("a released slug always fits the stored contract", () => {
+  for (const length of [1, 2, 60, 143, 144, 150, 160]) {
+    const slug = length <= 2 ? "a".repeat(length) : `w-${"a".repeat(length - 2)}`;
+    const released = releasedArticleSlug(slug, ARTICLE_ID);
+    assert.ok(released.length <= 160, `${length}: ${released.length} characters`);
+    assert.match(released, SLUG_PATTERN, `${length}: ${released}`);
+    assert.equal(released.endsWith(`-deleted-${ARTICLE_ID.slice(0, 8)}`), true);
+  }
+  // Truncation may land on a hyphen; the result must not end one segment early
+  // with a trailing hyphen.
+  const onHyphen = `a-${"b".repeat(141)}-tail`;
+  const released = releasedArticleSlug(onHyphen, ARTICLE_ID);
+  assert.match(released, SLUG_PATTERN);
+  assert.equal(released.includes("--"), false);
+});
+
+test("releasing a released slug changes nothing, and a disambiguator still fits", () => {
+  const once = releasedArticleSlug("a-story", ARTICLE_ID);
+  assert.equal(releasedArticleSlug(once, ARTICLE_ID), once, "the second delete of the same work is a no-op on the suffix");
+  assert.equal(once.split("-deleted-").length - 1, 1);
+
+  const second = releasedArticleSlug("a-story", ARTICLE_ID, "-2");
+  assert.equal(second, `${once}-2`, "a taken address steps aside instead of failing the delete");
+  const long = releasedArticleSlug("w-" + "a".repeat(158), ARTICLE_ID, "-9");
+  assert.ok(long.length <= 160, `${long.length} characters`);
+  assert.match(long, SLUG_PATTERN);
+
+  // Two different works cannot collide, because the id is the suffix.
+  assert.notEqual(
+    releasedArticleSlug("a-story", ARTICLE_ID),
+    releasedArticleSlug("a-story", "ffffffff-0000-4000-8000-000000000000"),
+  );
+});
+

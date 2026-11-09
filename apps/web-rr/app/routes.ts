@@ -88,6 +88,11 @@ route("api/authoring/notifications/:id/read", "routes/api.authoring.notification
   // Browser requests need the access cookie scoped to /api/authoring. Public
   // reads otherwise silently see an anonymous viewer, while private requests
   // unnecessarily rotate the refresh token. Keep the original paths for clients.
+  // 评论的写路径同样要在 /api/authoring 下再登记一次（#242）：浏览器只会把
+  // nw_access 发给这个前缀，否则每次发评都要先吃一个 401 再轮换刷新令牌。
+  // 读仍然是公开的 /api/articles/:slug/comments，不动。
+  route("api/authoring/articles/:slug/comments", "routes/api.articles.comments.ts", { id: "authoring-article-comments" }),
+  route("api/authoring/comments/:id", "routes/api.comments.$id.ts", { id: "authoring-comment" }),
   route("api/authoring/articles/:slug/like", "routes/api.articles.$slug.like.ts", { id: "authoring-article-like" }),
   route("api/authoring/authors/:userId", "routes/api.authors.$userId.ts", { id: "authoring-author-profile" }),
   route("api/authoring/users/:userId/follow", "routes/api.users.$userId.follow.ts", { id: "authoring-user-follow" }),

@@ -2,7 +2,18 @@ type JsonObject = Record<string, unknown>;
 export type LexicalEditorStateJson = { root: JsonObject & { children: JsonObject[] } };
 
 const INLINE_MARKS = new Set(["bold", "italic", "underline", "strikethrough", "code"]);
-const MARK_BITS: Record<string, number> = { bold: 1, italic: 2, underline: 4, strikethrough: 8, code: 16 };
+/**
+ * Lexical's text-format bitmask, which is a wire format and not a local detail.
+ *
+ * The numbers are Lexical's own (`IS_BOLD = 1`, `IS_ITALIC = 2`,
+ * `IS_STRIKETHROUGH = 4`, `IS_UNDERLINE = 8`, `IS_CODE = 16`). This table used to
+ * have underline and strikethrough the other way round, so every save from the
+ * Web editor swapped them: the API's adapter reads the same bits and named them
+ * the Lexical way (#240). `lexical-web-compat.test.ts` round-trips every mark
+ * through both implementations and `lexical-article-state.test.ts` pins these
+ * exact numbers, so the two tables cannot drift apart again.
+ */
+const MARK_BITS: Record<string, number> = { bold: 1, italic: 2, strikethrough: 4, underline: 8, code: 16 };
 
 function record(value: unknown): JsonObject | null {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value as JsonObject : null;

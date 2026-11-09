@@ -13,7 +13,7 @@ import type { Locale } from "@/lib/content.ts";
 import { sanitizeEditorHref } from "@/lib/editor-href.ts";
 import { PromptDialog, type PromptDialogField } from "@/components/ui/prompt-dialog.tsx";
 import { articleBlocksToLexicalEditorState, type LexicalEditorStateJson } from "@/lib/lexical-article-state.ts";
-import { canEditComment, commentCopy, commentEditBody, commentEditPath, editedMarker } from "@/lib/comment-edit.ts";
+import { canEditComment, commentCopy, commentCreatePath, commentEditBody, commentEditPath, editedMarker } from "@/lib/comment-edit.ts";
 
 const COMMENT_LINK_FIELDS: readonly PromptDialogField[] = [
   {
@@ -354,7 +354,10 @@ export function ArticleComments({ slug, locale }: { slug: string; locale: Locale
     setError("");
     setStatus("");
     try {
-      const response = await fetch("/api/articles/" + encodeURIComponent(slug) + "/comments?locale=" + encodeURIComponent(locale), {
+      // The write goes to the authoring prefix: that is the only place the
+      // access cookie is sent, and without it every submission took a 401 and a
+      // token rotation before succeeding (#242).
+      const response = await fetch(commentCreatePath(slug, locale), {
         method: "POST",
         headers: { "content-type": "application/json", accept: "application/json" },
         credentials: "same-origin",
