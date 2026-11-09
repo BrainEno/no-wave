@@ -35,6 +35,46 @@ test("SQLite article store creates, lists, and reads published translations", as
 });
 
 
+/**
+ * Case folding is the one place the two engines do not answer the same way
+ * (#245).
+ *
+ * SQLite's built-in `lower()` folds exactly `A`–`Z`, so on this engine a search
+ * for `éclair` never matched `Éclair`. The store registers a Unicode fold
+ * (`nw_fold`, see sqlite.ts) and applies the same mapping to the needle, which
+ * is what this test pins. PostgreSQL's fold comes from the database collation —
+ * on a `C` cluster it stops at ASCII too — so it is documented rather than
+ * asserted here, because asserting it would only test the cluster.
+ */
+test("SQLite search folds non-ASCII letters on both sides", async () => {
+  const { db, store } = await fixture();
+  try {
+    store.createArticle({
+      authorId: "author-fold",
+      slug: "fold-article",
+      title: "Éclair 与 ÜBER",
+      summary: "Crème brûlée",
+      locale: "zh-CN",
+      contentBlocks: [{ id: "p1", type: "paragraph", text: "Straße im Süden" }],
+      publish: true,
+    });
+    const hits = (query) => store.listPublishedArticles({ locale: "zh-CN", query, limit: 10 }).map((article) => article.slug);
+
+    // Lowercased needle, mixed-case title: SQLite's own `lower()` cannot do this.
+    assert.deepEqual(hits("éclair"), ["fold-article"]);
+    // Uppercased needle against a lowercase haystack, in two scripts.
+    assert.deepEqual(hits("crème"), ["fold-article"]);
+    assert.deepEqual(hits("über"), ["fold-article"]);
+    // And the same fold reaches the body.
+    assert.deepEqual(hits("süden"), ["fold-article"]);
+    // A term that only differs by case is the same term.
+    assert.deepEqual(hits("ÉCLAIR"), ["fold-article"]);
+    assert.deepEqual(hits("strasse"), [], "folding is case, not transliteration");
+  } finally {
+    db.close();
+  }
+});
+
 test("SQLite public article listing filters by stable authorId before pagination", async () => {
   const { db, store } = await fixture();
   try {

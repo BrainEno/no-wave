@@ -64,6 +64,11 @@ test("the body search is backed by a generated column and a trigram index", inte
   assert.ok(column, "article_translations.content_search_text exists");
   assert.equal(column.is_generated, "ALWAYS", "the column is generated, so no write path can leave it stale");
   assert.match(column.generation_expression, /jsonb_path_query_array/, "it is built from the blocks, not a copy of them");
+  // Every field a reader wrote, not just the prose (#245): a bullet or a line of
+  // code is often the only place a term appears in a technical work.
+  // The catalog renders the path with quoted keys, so match the field, not the SQL.
+  assert.match(column.generation_expression, /items/, "list items are body text");
+  assert.match(column.generation_expression, /code/, "a code block is body text");
 
   const [index] = await sql.unsafe(
     `SELECT indexdef FROM pg_indexes

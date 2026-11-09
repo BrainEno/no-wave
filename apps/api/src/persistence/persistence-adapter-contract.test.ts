@@ -2505,6 +2505,10 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
    * body is therefore searched too — block by block, and never as the JSON it is
    * stored as, because matching the raw text would make "paragraph" the most
    * successful query on the site.
+   *
+   * "One line" is not always a paragraph: it can be a bullet or a line of code
+   * (#245). Both engines search every field a reader wrote, and neither searches
+   * the block vocabulary.
    */
   test(`${adapterName}: a search finds a work by a word that appears only in its body`, options, async () => {
     const runtime = await fixture();
@@ -2546,8 +2550,29 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       const bySummary = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: `雨的摘要-${suffix}`, limit: 50 });
       assert.deepEqual(slugs(bySummary), [`search-in-title-${suffix}`]);
 
+      // A list's items and a code block's code are text the reader wrote (#245),
+      // and on a technical site they are often the only place a term appears.
+      await runtime.store.createArticle({
+        authorId,
+        slug: `search-list-code-${suffix}`,
+        title: `代码与清单-${suffix}`,
+        summary: `技术笔记的摘要-${suffix}`,
+        locale: "zh-CN",
+        contentBlocks: [
+          { id: "l1", type: "list", ordered: false, items: ["列表独有词条阿尔法"] },
+          { id: "c1", type: "code", language: "ts", code: "const uniqueCodeTokenBeta = 1;" },
+        ],
+        publish: true,
+      });
+      const byListItem = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: "阿尔法", limit: 50 });
+      assert.deepEqual(slugs(byListItem), [`search-list-code-${suffix}`], "a list item is body text");
+      // The needle is folded by the engine, so the same hit is found in any case.
+      const byCode = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: "uniquecodetokenbeta", limit: 50 });
+      assert.deepEqual(slugs(byCode), [`search-list-code-${suffix}`], "so is a line of code");
+
       // Storage is not content: a block's own vocabulary is not findable.
       assert.deepEqual(await runtime.store.listPublishedArticles({ locale: "zh-CN", query: "paragraph", limit: 50 }), []);
+      assert.deepEqual(await runtime.store.listPublishedArticles({ locale: "zh-CN", query: "ordered", limit: 50 }), []);
 
       // The body search composes with what surrounds it.
       const scoped = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: "雨", authorId, sort: "popular", limit: 50 });
