@@ -38,6 +38,7 @@ which of two `0011`s meant what.
 | [0029](0029-one-deployment-path.md) | One deployment path — the repository ships no platform manifest | Accepted | 2026-11-07 |
 | [0030](0030-body-search-generated-column.md) | Body search reads a generated column, not the JSON blocks | Accepted | 2026-11-07 |
 | [0031](0031-comment-edits.md) | A comment edit replaces the words and nothing else | Accepted | 2026-11-08 |
+| [0032](0032-comment-thread-depth.md) | A comment thread has a bottom, and the reader sees all of it | Accepted | 2026-11-09 |
 The status column carries the leading word of each file's `- Status:` line —
 read the file for the qualifier ("Superseded by ADR 0012", "Accepted as the
 initial direction").

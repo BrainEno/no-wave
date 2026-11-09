@@ -225,6 +225,24 @@ export async function serializeRestComment(
   return projectComment(services, comment, viewerId);
 }
 
+/**
+ * Attach author profiles to a page of comment trees (#246).
+ *
+ * The old shape asked for each node's author inside the recursion, one statement
+ * per comment, so a thread of 50 cost 50 round trips — on the synchronous SQLite
+ * driver, 50 blocks of the event loop while a reader waited for a page they had
+ * already been promised. It is the same defect #162 removed from article lists,
+ * in the one projection that was left behind.
+ *
+ * The fix is the same shape: walk the forest once, collect the distinct
+ * (author, locale) pairs, ask for them in one batch, then assemble in memory.
+ * Comments nest, so the walk is a stack rather than a map; the count of statements
+ * is one per locale no matter how deep or wide the thread is.
+ *
+ * Output is unchanged, deliberately: the same keys, the same `null` author for a
+ * comment whose author has no profile, the same reply order, and non-object
+ * replies passed through exactly as the recursive call passed them through.
+ */
 export async function serializeRestComments<C extends CommentLike>(
   services: RestServices,
   comments: readonly C[],
@@ -240,29 +258,71 @@ export async function serializeRestComments(
   comments: unknown,
   viewerId: string | null,
 ): Promise<unknown[]> {
-  if (!Array.isArray(comments)) return [];
-  return Promise.all(comments.map((comment) => serializeRestComment(services, comment, viewerId)));
+  if (!Array.isArray(comments) || comments.length === 0) return [];
+  const records = comments.filter(isRecord);
+  if (records.length === 0) return comments.slice();
+  const projected = await projectComments(services, records, viewerId);
+  const byRecord = new Map<unknown, unknown>(records.map((record, index) => [record, projected[index]]));
+  return comments.map((comment) => (isRecord(comment) ? byRecord.get(comment) ?? comment : comment));
 }
 
+/** Every comment in a forest, roots first, in document order. */
+function flattenComments(roots: readonly Record<string, unknown>[]): Record<string, unknown>[] {
+  const all: Record<string, unknown>[] = [];
+  const stack: Record<string, unknown>[] = [...roots].reverse();
+  while (stack.length > 0) {
+    const comment = stack.pop()!;
+    all.push(comment);
+    const replies = Array.isArray(comment.replies) ? comment.replies : [];
+    for (let index = replies.length - 1; index >= 0; index -= 1) {
+      const reply = replies[index];
+      if (isRecord(reply)) stack.push(reply);
+    }
+  }
+  return all;
+}
+
+async function projectComments(
+  services: RestServices,
+  roots: readonly Record<string, unknown>[],
+  viewerId: string | null,
+): Promise<Array<SerializedRestComment<Record<string, unknown>>>> {
+  const all = flattenComments(roots);
+  // One author-locale pair per distinct pair: a profile carries the locale it was
+  // rendered in, so an author appearing in two locale lists needs two answers —
+  // and the same author replying three times needs one.
+  const authorIds = [...new Set(all.map((comment) => comment.authorId).filter(isIdentifier))];
+  const localesUsed = [...new Set(all.map((comment) => localeOf(comment)))];
+  const profilesByLocale = await Promise.all(localesUsed.map((locale) =>
+    authorIds.length === 0
+      ? Promise.resolve<Record<string, StoredAuthorProfile>>({})
+      : Promise.resolve(services.getAuthorProfilesByIds({ userIds: authorIds, locale, viewerId }))));
+  const profiles = new Map(localesUsed.map((locale, index) => [locale, profilesByLocale[index]]));
+
+  const project = (comment: Record<string, unknown>): SerializedRestComment<Record<string, unknown>> => {
+    const authorId = typeof comment.authorId === "string" ? comment.authorId : null;
+    const replies = Array.isArray(comment.replies) ? comment.replies : [];
+    return {
+      ...(comment as Omit<Record<string, unknown>, "replies">),
+      author: authorId ? profiles.get(localeOf(comment))?.[authorId] ?? null : null,
+      // A reply that is not an object is handed back untouched, exactly as the
+      // recursive call handed it back; the stored contract says a reply is a
+      // comment, which is why the result still needs the module's one assertion.
+      replies: replies
+        .map((reply) => (isRecord(reply) ? project(reply) : reply)) as SerializedRestComment<StoredArticleComment>[],
+    };
+  };
+  return roots.map(project);
+}
+
+/** A single comment is the batch path with one item, not a second query path. */
 async function projectComment(
   services: RestServices,
   comment: Record<string, unknown>,
   viewerId: string | null,
 ): Promise<SerializedRestComment<Record<string, unknown>>> {
-  const authorId = typeof comment.authorId === "string" ? comment.authorId : null;
-  const author = authorId
-    ? await services.getAuthorProfile({ userId: authorId, locale: localeOf(comment), viewerId })
-    : null;
-  const replies = Array.isArray(comment.replies) ? comment.replies : [];
-  const projected = await Promise.all(replies.map((reply) => serializeRestComment(services, reply, viewerId)));
-  return {
-    ...(comment as Omit<Record<string, unknown>, "replies">),
-    author: author ?? null,
-    // The recursion cannot express its own input type: the guard above already
-    // discarded every reply that is not an object, and the stored contract says a
-    // reply is a comment. This is the one assertion in the module.
-    replies: projected as SerializedRestComment<StoredArticleComment>[],
-  };
+  const [projected] = await projectComments(services, [comment], viewerId);
+  return projected;
 }
 
 function isIdentifier(value: unknown): value is string {

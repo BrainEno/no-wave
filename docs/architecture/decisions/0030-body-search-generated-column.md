@@ -84,6 +84,41 @@ Why a generated column rather than the alternatives:
   path for a search whose cost is bounded by one machine's content. The contract
   suite runs every search test against both adapters, so the two agree on
   *results*; they differ only in how the PostgreSQL one is found.
+### Amendment (#245): the body is every field a reader wrote
+
+The first version of the column collected only `$[*].text` — the prose of
+paragraphs, headings and quotes. Lists and code blocks have no `text` member, so
+a bullet's `items` and a code block's `code` were not body text for search
+purposes: on a technical site, exactly the works someone searches for were the
+ones whose only mention of a term sat inside a snippet or a bullet.
+
+Migration 0029 drops and re-adds the column with all three fields:
+
+```sql
+jsonb_path_query_array(content_blocks, '$[*].text')::text        || ' ' ||
+jsonb_path_query_array(content_blocks, '$[*].items[*]')::text    || ' ' ||
+jsonb_path_query_array(content_blocks, '$[*].code')::text
+```
+
+The arrays are still serialised by `jsonb_path_query_array`, which collects
+**values only**, so the property this ADR was built around survives: the block's
+own vocabulary (`paragraph`, `ordered`, `language`) is not searchable. The
+contract test now asserts both halves — a bullet and a code line are findable, a
+block type is not — and it runs against both adapters, so the two engines agree
+on results.
+
+**Case folding differs by engine, deliberately.** SQLite's `lower()` folds
+exactly `A`–`Z`; it cannot be told a collation, so `éclair` never matched
+`Éclair` and every case-marked letter outside ASCII was a silent gap. The SQLite
+connection now registers `nw_fold` (JavaScript `toLowerCase`, i.e. the Unicode
+simple case mapping) and applies the same mapping to the needle. PostgreSQL needs
+nothing: its `ILIKE` folds according to the database collation, which is
+Unicode-aware on a UTF-8 cluster and ASCII-only on a `C` one — a property of the
+cluster, not of this code. The SQLite behaviour is pinned by a SQLite-only test;
+asserting it on PostgreSQL would only test whichever cluster the suite happened
+to run against. `casefold()` (PostgreSQL 18) would make the two identical and is
+the natural follow-up once the supported floor reaches 18.
+
 - **The column is not portable domain data.** The provider-migration protocol
   copies the columns a row carries, and this one is computed from another of them,
   so it is declared as a *derived* column in the migration entity spec: capture

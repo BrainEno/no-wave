@@ -6,7 +6,10 @@
  */
 import { randomUUID } from "node:crypto";
 import { validateArticleLocale, validateArticleSlug } from "../domain/article.ts";
-import { validateStoredCommentContent } from "../domain/comment-content.ts";
+import {
+  CommentDepthError, MAX_COMMENT_REPLY_DEPTH, MAX_COMMENT_TREE_DEPTH,
+  validateStoredCommentContent,
+} from "../domain/comment-content.ts";
 import { ArticleAuthorizationError, ArticleInputError, ArticleNotFoundError, IdempotencyConflictError } from "../domain/errors.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
 import { migrationEntityKey, type CapturedChange } from "./postgres-provider-migration-capture.ts";
@@ -147,13 +150,13 @@ export function createPostgresEngagementStore(ctx: PostgresStoreContext) {
                  child.created_at, child.updated_at, child.edited_at, parent.depth + 1
           FROM article_comments AS child
           JOIN comment_tree AS parent ON child.parent_comment_id = parent.id
-          WHERE parent.depth < 10
+          WHERE parent.depth < $4
         )
         SELECT id, article_id, author_id, parent_comment_id, content,
                content_blocks, content_blocks_version, created_at, updated_at, edited_at, depth
         FROM comment_tree
         ORDER BY created_at ASC, id ASC`,
-        [slug, locale, limit],
+        [slug, locale, limit, MAX_COMMENT_TREE_DEPTH],
       );
       const nodes = new Map();
       for (const row of rows) nodes.set(row.id, mapArticleComment({ ...row, locale }));
@@ -214,6 +217,21 @@ export function createPostgresEngagementStore(ctx: PostgresStoreContext) {
             [parentCommentId, article.id],
           );
           if (parentRows.length === 0) throw new ArticleInputError("parentCommentId must reference a comment on this article.");
+          // Refused here rather than hidden later: the read path used to stop at
+          // a fixed level, so a deep reply was accepted and then never returned
+          // (#246). A refusal the writer can act on is the honest answer.
+          const chain = await tx.unsafe(
+            `WITH RECURSIVE chain(id, parent_comment_id, depth) AS (
+               SELECT id, parent_comment_id, 0 FROM article_comments WHERE id = $1
+               UNION ALL
+               SELECT c.id, c.parent_comment_id, chain.depth + 1
+                 FROM article_comments AS c JOIN chain ON c.id = chain.parent_comment_id
+             ) SELECT MAX(depth)::int AS depth FROM chain`,
+            [parentCommentId],
+          );
+          if (Number(chain[0].depth) + 1 > MAX_COMMENT_REPLY_DEPTH) {
+            throw new CommentDepthError();
+          }
           parentAuthorId = parentRows[0].author_id;
         }
         const rows = await tx.unsafe(

@@ -1,9 +1,49 @@
-import { ArticleInputError } from "./errors.ts";
+import { ArticleInputError, DomainError } from "./errors.ts";
 import { validateArticleBlocks } from "./article.ts";
 import { lexicalEditorStateToArticleDocument } from "./lexical-document-adapter.ts";
 
 const MAX_COMMENT_CHARACTERS = 5000;
 const MAX_COMMENT_PARAGRAPHS = 20;
+
+/**
+ * How deep a reply may sit below the comment it answers (#246).
+ *
+ * A thread is a conversation, not a data structure: past a handful of levels the
+ * indentation is wider than the column and every new reply is answering
+ * something nobody can read in context. The cap is enforced where comments are
+ * *written* so the reader never meets a thread that is deeper than it can show —
+ * the read path used to truncate at a fixed level instead, which turned a
+ * successful post into a comment that vanished on refresh.
+ *
+ * The number is a product decision, not an engine limit: 8 levels is a
+ * conversation (comment, reply, reply-to-reply…) on a phone screen.
+ */
+export const MAX_COMMENT_REPLY_DEPTH = 8;
+
+/**
+ * The depth at which the read recursion stops, for the same reason a loop needs
+ * a counter: a comment whose parent chain contains itself would otherwise recurse
+ * forever. It is **not** a display rule — nothing the write path accepts comes
+ * close — so a legacy thread deeper than the cap is still returned in full.
+ */
+export const MAX_COMMENT_TREE_DEPTH = 64;
+
+/** What a reader is told when they try to answer a comment at the bottom. */
+export const COMMENT_DEPTH_LIMIT_MESSAGE =
+  `Replies stop at ${MAX_COMMENT_REPLY_DEPTH} levels. Answer an earlier comment in this thread instead.`;
+
+/**
+ * A reply that would sit deeper than a thread is shown (#246).
+ *
+ * Its own code rather than `BAD_USER_INPUT`, for the reason `EMAIL_TAKEN` has
+ * one: every `ArticleInputError` reaches the client as "the request input is
+ * invalid", which is true and useless. A client that can say "this thread is
+ * full — answer an earlier comment" needs to recognise the case, and the status
+ * code alone (400) cannot tell it from a hundred other validation failures.
+ */
+export class CommentDepthError extends DomainError {
+  constructor() { super("CommentDepthError", "COMMENT_DEPTH_EXCEEDED", COMMENT_DEPTH_LIMIT_MESSAGE); }
+}
 
 export type CommentInlineRun = { text: string; marks?: string[]; href?: string };
 export type CommentContentBlock = { id: string; type: "paragraph"; text: string; inlines?: CommentInlineRun[] };

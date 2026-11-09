@@ -270,7 +270,10 @@ export function createSqliteArticleStore(db: SqliteRunner) {
       if (!Number.isInteger(offset) || offset < 0 || offset > maxArticleOffset(sort)) {
         throw new ArticleInputError(`offset must be an integer between 0 and ${maxArticleOffset(sort)}${sort === "popular" ? " with sort=popular" : ""}.`);
       }
-      const needle = query.trim().toLocaleLowerCase(locale);
+      // Folded with the plain (locale-independent) mapping, because that is what
+      // `nw_fold` applies to the columns: `toLocaleLowerCase("tr")` maps `I` to a
+      // dotless `ı`, and the two sides would then disagree about a letter (#245).
+      const needle = query.trim().toLowerCase();
       // `popular` counts every save the work has ever had: the tab is "most
       // saved", not "trending", and a work that collected its likes two years
       // ago is still one of the most-saved works on the site. Keeping a window
@@ -279,6 +282,15 @@ export function createSqliteArticleStore(db: SqliteRunner) {
       // The body is searched too, one block at a time rather than as the JSON it
       // is stored as: matching the raw text would let a reader find every work by
       // searching "paragraph", which is a word no reader ever typed on purpose.
+      //
+      // Every field a reader reads is searched — the `text` of prose blocks, the
+      // `items` of a list and the `code` of a code block (#245). A technical work
+      // whose only mention of a term is inside a snippet or a bullet was
+      // unfindable, which is exactly the work someone would search for. The keys
+      // and block types are still not content.
+      //
+      // `nw_fold` rather than `lower`: see its declaration in sqlite.ts — SQLite's
+      // own fold stops at ASCII, so non-Latin case marks were unmatchable (#245).
       //
       // This stays a scan by design: a single-host SQLite file has no trigram
       // operator class to lean on, and an FTS5 side table would have to be kept in
@@ -292,16 +304,21 @@ export function createSqliteArticleStore(db: SqliteRunner) {
       const keyset = resolveArticleCursor({ cursor, sort, offset });
       const rows = statement((popular ? articleSelectWithLikeCount : articleSelect) + `
         WHERE a.status = 'published' AND t.locale = ?
-          AND (? = '' OR instr(lower(t.title), lower(?)) > 0 OR instr(lower(t.summary), lower(?)) > 0
+          AND (? = '' OR instr(nw_fold(t.title), ?) > 0 OR instr(nw_fold(t.summary), ?) > 0
             OR EXISTS (
               SELECT 1 FROM json_each(t.content_blocks) AS block
-              WHERE instr(lower(COALESCE(json_extract(block.value, '$.text'), '')), lower(?)) > 0
+              WHERE instr(nw_fold(COALESCE(json_extract(block.value, '$.text'), '')), ?) > 0
+                OR instr(nw_fold(COALESCE(json_extract(block.value, '$.code'), '')), ?) > 0
+                OR EXISTS (
+                  SELECT 1 FROM json_each(block.value, '$.items') AS item
+                  WHERE instr(nw_fold(item.value), ?) > 0
+                )
             ))
           AND (? IS NULL OR a.author_id = ?)
           ${keyset ? "AND (a.published_at < ? OR (a.published_at = ? AND a.id < ?))" : ""}
         ORDER BY ${popular ? "like_count DESC, a.published_at DESC, a.id DESC" : "a.published_at DESC, a.id DESC"}
         LIMIT ? OFFSET ?
-      `).all(locale, needle, needle, needle, needle, authorId, authorId,
+      `).all(locale, needle, needle, needle, needle, needle, needle, authorId, authorId,
         ...(keyset ? [keyset.publishedAt, keyset.publishedAt, keyset.id] : []), limit, offset);
       return rows.map(mapArticle);
     },

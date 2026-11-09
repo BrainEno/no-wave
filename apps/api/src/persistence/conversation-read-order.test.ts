@@ -487,6 +487,7 @@ test("PostgreSQL upgrades a real legacy schema and preserves existing read state
         "0026_conversation_read_order",
         "0027_searchable_article_body_text",
         "0028_comment_edits",
+        "0029_search_list_items_and_code",
       ]);
       assert.deepEqual((await runMigrations(scoped)).applied, []);
       const afterCounts = await tx.unsafe(`SELECT cp.conversation_id, cp.user_id,

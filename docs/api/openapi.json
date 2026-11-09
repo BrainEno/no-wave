@@ -811,7 +811,7 @@
             "bearerAuth": []
           }
         ],
-        "description": "Only a SHA-256 digest of the `Idempotency-Key` is stored, not the header. A replay with the same normalized request returns the same comment and does not send a second notification.",
+        "description": "Only a SHA-256 digest of the `Idempotency-Key` is stored, not the header. A replay with the same normalized request returns the same comment and does not send a second notification. A reply that would sit deeper than a thread is shown answers `400 COMMENT_DEPTH_EXCEEDED` — reply higher up the thread instead; every comment that was accepted is returned by the read (ADR 0032).",
         "parameters": [
           {
             "name": "slug",

@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { MAX_ARTICLE_OFFSET, MAX_ARTICLE_OFFSET_POPULAR, encodeArticleCursor } from "../domain/article.ts";
 import { DEFAULT_AUTHOR_DISPLAY_NAME } from "../domain/profile.ts";
+import { CommentDepthError, COMMENT_DEPTH_LIMIT_MESSAGE, MAX_COMMENT_REPLY_DEPTH } from "../domain/comment-content.ts";
 import { ArticleInputError, ArticleSlugConflictError, ConversationInputError, IdempotencyConflictError, ConversationAccessError, ArticleAuthorizationError, ArticleNotFoundError, ProfileInputError, ProfileNotFoundError } from "../domain/errors.ts";
 import { createPostgresClient, createPostgresStore } from "./postgres.ts";
 import { runMigrations } from "./migrate.ts";
@@ -1536,6 +1537,57 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
     }
   });
   /**
+   * A thread has a bottom (#246).
+   *
+   * The write path used to accept any reply and the read path stopped at a fixed
+   * level, so a deep reply was created successfully and then never came back:
+   * the writer saw 201, refreshed, and found nothing. The cap is therefore
+   * enforced where the comment is written, and the assertion that matters is not
+   * "depth 9 is refused" but "everything that was accepted comes back".
+   */
+  test(`${adapterName}: a comment thread stops at the depth the reader can see`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const slug = `contract-comment-depth-${suffix}`;
+    const articleAuthor = `depth-author-${suffix}`;
+    const commenter = `depth-commenter-${suffix}`;
+    // The cap is a published contract, so the test reads it rather than repeating
+    // a number that could drift away from the message the writer is shown.
+    const deepestAllowed = MAX_COMMENT_REPLY_DEPTH;
+    try {
+      await runtime.store.createArticle({
+        authorId: articleAuthor, slug, title: "Depth contract article", summary: "",
+        locale: "zh-CN", contentBlocks: [{ id: "p1", type: "paragraph", text: "Depth contract content." }], publish: true,
+      });
+      const chain = [];
+      let parentCommentId = null;
+      for (let depth = 0; depth <= deepestAllowed; depth += 1) {
+        const comment = await runtime.store.createArticleComment({
+          slug, locale: "zh-CN", actorId: commenter, content: `Depth ${depth}`, parentCommentId,
+        });
+        chain.push(comment.id);
+        parentCommentId = comment.id;
+      }
+
+      // One level deeper is refused, with a message that says what to do.
+      await assert.rejects(
+        Promise.resolve().then(() => runtime.store.createArticleComment({
+          slug, locale: "zh-CN", actorId: commenter, content: "Too Deep", parentCommentId,
+        })),
+        (error) => error instanceof CommentDepthError
+          && error.code === "COMMENT_DEPTH_EXCEEDED"
+          && error.message === COMMENT_DEPTH_LIMIT_MESSAGE,
+      );
+
+      // Everything the store accepted is returned, one node per level, in order.
+      const flattened = [];
+      const walk = (nodes) => { for (const node of nodes) { flattened.push(node.id); walk(node.replies); } };
+      walk(await runtime.store.listArticleComments({ slug, locale: "zh-CN" }));
+      assert.deepEqual(flattened, chain, "a comment that was accepted must never be truncated away");
+    } finally { await runtime.cleanup(undefined, suffix); }
+  });
+
+  /**
    * The media library's persistence (ADR 0022).
    *
    * The assertions that matter are the ones the application layer depends on:
@@ -1903,22 +1955,26 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
     const suffix = randomUUID();
     const userId = `identity-user-${suffix}`;
     const email = `identity-${suffix}@example.test`;
-    const hour = new Date(Date.now() + 3_600_000).toISOString();
+        // Keyed digests, derived from this run's suffix: a fixed literal would
+    // collide on its primary key the second time this suite runs against the
+    // same database, failing a test that has nothing to do with reruns.
+    const tokenHash = (label: string) => createHash("sha256").update(`${suffix}:${label}`).digest("hex");
+const hour = new Date(Date.now() + 3_600_000).toISOString();
     const session = {
       sessionId: randomUUID(), userId, accessTokenId: randomUUID(),
-      refreshHash: "a".repeat(64), expiresAt: hour,
+      refreshHash: tokenHash("a"), expiresAt: hour,
       accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
     };
     assert.equal(await runtime.store.createIdentityAccount({ userId, email, passwordHash: "hash-before", session }), true);
     // A second device, so a revocation can be asked to spare one of two.
     const secondSession = {
       sessionId: randomUUID(), userId, accessTokenId: randomUUID(),
-      refreshHash: "0".repeat(64), expiresAt: hour,
+      refreshHash: tokenHash("0"), expiresAt: hour,
       accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
     };
     assert.equal(await runtime.store.createIdentitySession(secondSession, { email, passwordHash: "hash-before" }), true);
 
-    const resetHash = "b".repeat(64);
+    const resetHash = tokenHash("b");
     await runtime.store.issueIdentityToken({ userId, purpose: "password_reset", email, tokenHash: resetHash, expiresAt: hour });
     assert.equal(await runtime.store.consumeIdentityToken({ tokenHash: resetHash, purpose: "email_verification" }), null,
       "a reset link must not be redeemable as a verification link");
@@ -1926,14 +1982,14 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
     assert.equal(await runtime.store.consumeIdentityToken({ tokenHash: resetHash, purpose: "password_reset" }), null,
       "the link works exactly once");
 
-    const expiredHash = "c".repeat(64);
+    const expiredHash = tokenHash("c");
     await runtime.store.issueIdentityToken({ userId, purpose: "password_reset", email, tokenHash: expiredHash, expiresAt: new Date(Date.now() - 1000).toISOString() });
     assert.equal(await runtime.store.consumeIdentityToken({ tokenHash: expiredHash, purpose: "password_reset" }), null);
 
     // Issuing again supersedes the link that is already out: two live recovery
     // links is a support problem and doubles what a phished mailbox exposes.
-    const superseded = "d".repeat(64);
-    const replacement = "e".repeat(64);
+    const superseded = tokenHash("d");
+    const replacement = tokenHash("e");
     await runtime.store.issueIdentityToken({ userId, purpose: "email_verification", email, tokenHash: superseded, expiresAt: hour });
     await runtime.store.issueIdentityToken({ userId, purpose: "email_verification", email, tokenHash: replacement, expiresAt: hour });
     assert.equal(await runtime.store.consumeIdentityToken({ tokenHash: superseded, purpose: "email_verification" }), null);
@@ -1951,14 +2007,14 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
     assert.equal((await runtime.store.findIdentityAccount({ email })).passwordHash, "hash-after");
 
     const rotated = await runtime.store.rotateIdentityRefresh({
-      refreshHash: "a".repeat(64), nextRefreshHash: "f".repeat(64),
+      refreshHash: tokenHash("a"), nextRefreshHash: tokenHash("f"),
       accessTokenId: randomUUID(), issuedAt: new Date().toISOString(),
       accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
     });
     assert.equal(rotated.status, "rotated", "the spared device keeps its refresh family");
     // The second device was live too — it was signed out, not already dead.
     const signedOut = await runtime.store.rotateIdentityRefresh({
-      refreshHash: "0".repeat(64), nextRefreshHash: "1".repeat(64),
+      refreshHash: tokenHash("0"), nextRefreshHash: tokenHash("1"),
       accessTokenId: randomUUID(), issuedAt: new Date().toISOString(),
       accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
     });
@@ -1971,7 +2027,7 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
     assert.equal(await runtime.store.replaceIdentityPassword({ userId, passwordHash: "hash-final-2", exceptSessionId: null }).then((r) => r.revokedSessions), 0,
       "a second sweep finds nothing left to revoke");
     const afterRevocation = await runtime.store.rotateIdentityRefresh({
-      refreshHash: "f".repeat(64), nextRefreshHash: "2".repeat(64),
+      refreshHash: tokenHash("f"), nextRefreshHash: tokenHash("2"),
       accessTokenId: randomUUID(), issuedAt: new Date().toISOString(),
       accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
     });
@@ -2005,7 +2061,7 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
     const otherEmail = `identity-other-${suffix}@example.test`;
     const otherSession = {
       sessionId: randomUUID(), userId: otherUserId, accessTokenId: randomUUID(),
-      refreshHash: "5".repeat(64), expiresAt: hour,
+      refreshHash: tokenHash("5"), expiresAt: hour,
       accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
     };
     assert.equal(await runtime.store.createIdentityAccount({
@@ -2505,6 +2561,10 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
    * body is therefore searched too — block by block, and never as the JSON it is
    * stored as, because matching the raw text would make "paragraph" the most
    * successful query on the site.
+   *
+   * "One line" is not always a paragraph: it can be a bullet or a line of code
+   * (#245). Both engines search every field a reader wrote, and neither searches
+   * the block vocabulary.
    */
   test(`${adapterName}: a search finds a work by a word that appears only in its body`, options, async () => {
     const runtime = await fixture();
@@ -2546,8 +2606,29 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       const bySummary = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: `雨的摘要-${suffix}`, limit: 50 });
       assert.deepEqual(slugs(bySummary), [`search-in-title-${suffix}`]);
 
+      // A list's items and a code block's code are text the reader wrote (#245),
+      // and on a technical site they are often the only place a term appears.
+      await runtime.store.createArticle({
+        authorId,
+        slug: `search-list-code-${suffix}`,
+        title: `代码与清单-${suffix}`,
+        summary: `技术笔记的摘要-${suffix}`,
+        locale: "zh-CN",
+        contentBlocks: [
+          { id: "l1", type: "list", ordered: false, items: ["列表独有词条阿尔法"] },
+          { id: "c1", type: "code", language: "ts", code: "const uniqueCodeTokenBeta = 1;" },
+        ],
+        publish: true,
+      });
+      const byListItem = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: "阿尔法", limit: 50 });
+      assert.deepEqual(slugs(byListItem), [`search-list-code-${suffix}`], "a list item is body text");
+      // The needle is folded by the engine, so the same hit is found in any case.
+      const byCode = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: "uniquecodetokenbeta", limit: 50 });
+      assert.deepEqual(slugs(byCode), [`search-list-code-${suffix}`], "so is a line of code");
+
       // Storage is not content: a block's own vocabulary is not findable.
       assert.deepEqual(await runtime.store.listPublishedArticles({ locale: "zh-CN", query: "paragraph", limit: 50 }), []);
+      assert.deepEqual(await runtime.store.listPublishedArticles({ locale: "zh-CN", query: "ordered", limit: 50 }), []);
 
       // The body search composes with what surrounds it.
       const scoped = await runtime.store.listPublishedArticles({ locale: "zh-CN", query: "雨", authorId, sort: "popular", limit: 50 });

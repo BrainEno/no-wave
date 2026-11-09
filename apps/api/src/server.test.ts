@@ -2342,6 +2342,13 @@ test("REST article comments support public listing and authenticated replies", a
       async getAuthorProfile(args) {
         return args.userId === "commenter-user" ? commenterProfile : null;
       },
+      // The comment tree is projected the way an article page is (#246): one
+      // batch for the distinct authors rather than one read per node.
+      async getAuthorProfilesByIds({ userIds }) {
+        return Object.fromEntries(userIds
+          .filter((userId) => userId === "commenter-user")
+          .map((userId) => [userId, commenterProfile]));
+      },
       async createArticleComment(args) {
         calls.push({ kind: "create", args });
         return comment;

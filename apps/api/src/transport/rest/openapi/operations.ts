@@ -427,7 +427,7 @@ export const OPERATIONS: Readonly<Record<string, OperationMetadata>> = Object.fr
   "POST articles.comments": {
     summary: "Comment on, or reply to a comment on, a published work",
     description:
-      "Only a SHA-256 digest of the `Idempotency-Key` is stored, not the header. A replay with the same normalized request returns the same comment and does not send a second notification.",
+      "Only a SHA-256 digest of the `Idempotency-Key` is stored, not the header. A replay with the same normalized request returns the same comment and does not send a second notification. A reply that would sit deeper than a thread is shown answers `400 COMMENT_DEPTH_EXCEEDED` — reply higher up the thread instead; every comment that was accepted is returned by the read (ADR 0032).",
     security: "session",
     tags: ["comments"],
     pathParams: { slug: "The work's slug." },

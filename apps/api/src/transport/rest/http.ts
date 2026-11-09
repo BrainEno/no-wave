@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { writeStructuredLog } from "../../infrastructure/http-observability.ts";
 import { redactDiagnostic, secretValues } from "../../infrastructure/log-redaction.ts";
+import { COMMENT_DEPTH_LIMIT_MESSAGE } from "../../domain/comment-content.ts";
 import { DomainError, RateLimitError } from "../../domain/errors.ts";
 import { createAuthContext } from "../../security/authentication.ts";
 import type { ApplicationServices } from "../../application/services.ts";
@@ -155,6 +156,9 @@ export type RestErrorResponse = { status: number; code: string; message: string 
 
 export const DOMAIN_ERROR_RESPONSES: Record<string, RestErrorResponse> = {
   BAD_USER_INPUT: { status: 400, code: "BAD_USER_INPUT", message: "The request input is invalid." },
+  // Its own code (still 400) because the generic message cannot say what to do
+  // instead: a thread that is full is answered by replying higher up (#246).
+  COMMENT_DEPTH_EXCEEDED: { status: 400, code: "COMMENT_DEPTH_EXCEEDED", message: COMMENT_DEPTH_LIMIT_MESSAGE },
   FORBIDDEN: { status: 403, code: "FORBIDDEN", message: "You are not allowed to access this resource." },
   UNAUTHENTICATED: { status: 401, code: "UNAUTHENTICATED", message: "The credentials are invalid." },
   RATE_LIMITED: { status: 429, code: "RATE_LIMITED", message: "Too many requests. Try again later." },

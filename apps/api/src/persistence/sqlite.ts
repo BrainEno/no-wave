@@ -103,6 +103,35 @@ function wrapSqliteStatement(statement: SqliteStatement): SqliteStatement {
 }
 
 /**
+ * The Unicode case fold the SQLite queries use instead of `lower()` (#245).
+ *
+ * SQLite's `lower()` folds exactly `A`–`Z`: the function is built for a database
+ * that predates Unicode, and it cannot be told a collation. A reader searching
+ * `éclair` therefore never matched `Éclair`, and every language with case-marked
+ * letters above ASCII had a silent half of its vocabulary. JavaScript's
+ * `toLowerCase` is the Unicode simple case mapping, so registering it as an SQL
+ * function gives the scans a fold that agrees with the one the store applies to
+ * the needle in JavaScript.
+ *
+ * The name is exported because the query has to spell it: a function that exists
+ * on the connection but is not in the SQL is dead code, and one in the SQL that
+ * is not on the connection is a runtime error on the first search.
+ */
+export const SQLITE_FOLD_SQL_FUNCTION = "nw_fold";
+
+/**
+ * Register the SQL helpers every prepared statement may rely on.
+ *
+ * It runs at open time on the one connection the runtime composes, so no caller
+ * has to remember it — a store created from a bare `DatabaseSync` would fail on
+ * the first search rather than quietly searching less.
+ */
+function registerSqliteFunctions(db: DatabaseSync): void {
+  db.function(SQLITE_FOLD_SQL_FUNCTION, { deterministic: true }, (value) =>
+    typeof value === "string" ? value.toLowerCase() : "");
+}
+
+/**
  * Open a local SQLite database with API safety defaults. The full adapter is
  * composed by sqlite-store.ts and registered in persistence-runtime.ts.
  */
@@ -120,6 +149,7 @@ export function createSqliteClient({
 
   const db = new DatabaseSync(filename);
   try {
+    registerSqliteFunctions(db);
     db.exec("PRAGMA foreign_keys = ON");
     db.exec(`PRAGMA busy_timeout = ${timeoutMs}`);
     if (enableWal && filename !== ":memory:") {
