@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import {
   canEditComment,
   commentCopy,
+  commentCreatePath,
   commentEditBody,
   commentEditPath,
   editedMarker,
@@ -44,16 +45,39 @@ test("the edited marker appears only after an edit, and in the reader's language
 
 test("an edit addresses one comment by id, in the edition being read", () => {
   const id = "3f2b6c2e-0d1a-4c3a-9a6f-1c1f0b7d2e44";
-  assert.equal(commentEditPath(id, "zh-CN"), `/api/comments/${id}?locale=zh-CN`);
+  assert.equal(commentEditPath(id, "zh-CN"), `/api/authoring/comments/${id}?locale=zh-CN`);
   assert.equal(
     commentEditPath(id, "en"),
-    `/api/comments/${id}?locale=en`,
+    `/api/authoring/comments/${id}?locale=en`,
     "the locale decides which edition of the author's name and date comes back",
   );
   assert.equal(
     commentEditPath("a b/c", "zh-CN"),
-    "/api/comments/a%20b%2Fc?locale=zh-CN",
+    "/api/authoring/comments/a%20b%2Fc?locale=zh-CN",
     "an id is data, not a path segment",
+  );
+});
+
+/**
+ * #242: both writes live where the credential lives.
+ *
+ * `nw_access` is scoped to `/api/authoring` (ADR 0025), so a form that posted to
+ * `/api/articles/:slug/comments` arrived anonymous, took a 401 and forced a
+ * refresh-token rotation before the retry could work. The read stays on the
+ * public path — that is the half that must not need a credential — while every
+ * write carries the prefix. This is a source-level assertion because the cookie
+ * path is enforced by the browser, not by any code the test can call.
+ */
+test("comment writes are addressed under /api/authoring, and the reader is not", () => {
+  const id = "3f2b6c2e-0d1a-4c3a-9a6f-1c1f0b7d2e44";
+  for (const path of [commentCreatePath("a-story", "zh-CN"), commentEditPath(id, "zh-CN")]) {
+    assert.ok(path.startsWith("/api/authoring/"), `${path} must be under the authoring prefix`);
+  }
+  assert.equal(commentCreatePath("a-story", "zh-CN"), "/api/authoring/articles/a-story/comments?locale=zh-CN");
+  assert.equal(
+    commentCreatePath("a b/c", "zh-CN"),
+    "/api/authoring/articles/a%20b%2Fc/comments?locale=zh-CN",
+    "a slug is data, not a path segment",
   );
 });
 
@@ -91,6 +115,12 @@ test("the comment section renders the marker and edits through the id-addressed 
   assert.match(source, /editedMarker\(locale, comment\)/, "the edited marker must be computed from the comment");
   assert.match(source, /\{marker \?/, "the marker must be rendered, not only computed");
   assert.match(source, /fetch\(commentEditPath\(comment\.id, locale\)/, "an edit must address the comment by id");
+  assert.match(source, /fetch\(commentCreatePath\(slug, locale\)/, "a new comment must use the authoring-scoped path");
+  assert.equal(
+    source.includes('"/api/articles/" + encodeURIComponent(slug) + "/comments"'),
+    false,
+    "the anonymous read path must not be used for a write",
+  );
   assert.match(source, /method: "PATCH"/, "an edit is a PATCH, not a second POST");
   assert.match(source, /commentEditBody\(editorState\)/, "the edit body must come from the shared helper");
   assert.match(source, /canEditComment\(viewerId, comment\)/, "the button must depend on who is reading");

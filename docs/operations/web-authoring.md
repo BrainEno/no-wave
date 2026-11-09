@@ -183,7 +183,7 @@ See [ADR 0022](../architecture/decisions/0022-media-library-without-scheduled-re
 
 ## Comments
 
-Article comments use a deliberately smaller Lexical configuration: paragraphs, bold, italic, underline, strikethrough and links only. The browser calls same-origin comment routes; create requests require an exact `Origin` match and use the authenticated API. Rich comment blocks are validated by the existing application-owned v1 comment contract. Images, headings, lists and code are not accepted in comments.
+Article comments use a deliberately smaller Lexical configuration: paragraphs, bold, italic, underline, strikethrough and links only. The browser calls same-origin comment routes; create and edit requests require an exact `Origin` match and use the authenticated API. The **read** stays on `/api/articles/:slug/comments`, which any visitor can fetch. The **writes** live under `/api/authoring` — `POST /api/authoring/articles/:slug/comments` and `PATCH /api/authoring/comments/:id` — because that is the only prefix the access cookie is sent to (ADR 0025). Registering a write on the read path looks identical in a test that supplies its own cookie, and in a browser it is a guaranteed 401 plus a refresh-token rotation on every comment (#242). Rich comment blocks are validated by the existing application-owned v1 comment contract. Images, headings, lists and code are not accepted in comments.
 
 ## Authentication boundary
 

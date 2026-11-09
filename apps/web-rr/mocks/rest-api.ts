@@ -622,6 +622,47 @@ function handle(request: IncomingMessage, response: ServerResponse, body: Record
     return;
   }
 
+  /**
+   * One comment, addressed by id — the edit surface (ADR 0031).
+   *
+   * The API decides who may edit; the mock only has to be honest about the
+   * credential and the shape, so the proxy's own rules (origin, body bound, uuid
+   * and locale validation) are what the browser-level test exercises.
+   */
+  const commentItem = /^\/api\/v1\/comments\/([^/]+)$/.exec(path);
+  if (commentItem) {
+    const id = decodeURIComponent(commentItem[1] ?? "");
+    if (method !== "PATCH") {
+      send(response, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed." } });
+      return;
+    }
+    if (!request.headers.authorization) {
+      send(response, 401, { error: { code: "UNAUTHENTICATED", message: "Sign in to edit." } });
+      return;
+    }
+    if (id !== MOCK_COMMENT_ID) {
+      send(response, 404, { error: { code: "NOT_FOUND", message: "The comment was not found." } });
+      return;
+    }
+    const content = typeof body.content === "string" ? body.content.trim() : "";
+    if (!content) {
+      send(response, 400, { error: { code: "BAD_USER_INPUT", message: "Comment is empty." } });
+      return;
+    }
+    send(response, 200, {
+      data: {
+        id,
+        content,
+        body: content,
+        createdAt: new Date(Date.now() - 3_600_000).toISOString(),
+        editedAt: new Date().toISOString(),
+        author: { userId: MOCK_AUTHOR.username, displayName: MOCK_DISPLAY_NAME, username: MOCK_AUTHOR.username },
+        replies: [],
+      },
+    });
+    return;
+  }
+
   if (method === "POST" && (path === "/api/v1/auth/login" || path === "/api/v1/auth/register")) {
     const email = typeof body.email === "string" ? body.email : "";
     const password = typeof body.password === "string" ? body.password : "";

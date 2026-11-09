@@ -130,6 +130,16 @@ async function post(pathname: string, body: string, headers: Record<string, stri
   return { status: response.status, headers: response.headers, body: await response.text() };
 }
 
+async function patch(pathname: string, body: string, headers: Record<string, string> = {}): Promise<Result> {
+  const response = await fetch(`${baseUrl}${pathname}`, {
+    method: "PATCH",
+    body,
+    headers: { "content-type": "application/json", origin: baseUrl, ...headers },
+    redirect: "manual",
+  });
+  return { status: response.status, headers: response.headers, body: await response.text() };
+}
+
 async function del(pathname: string, headers: Record<string, string> = {}): Promise<Result> {
   const response = await fetch(`${baseUrl}${pathname}`, {
     method: "DELETE",
@@ -1002,6 +1012,63 @@ test("posting a comment requires our own origin and a session", async () => {
   assert.equal(signedIn.status, 201);
   const created = JSON.parse(signedIn.body) as { data: { body: string } };
   assert.equal(created.data.body, "值得一读");
+});
+
+/**
+ * #242: a comment write has to be proposed where the credential lives.
+ *
+ * `nw_access` is scoped to `/api/authoring` (ADR 0025), so a browser never sends
+ * it to `/api/articles/...`. The write only looked correct because the proxy
+ * attaches the cookie from the *request* it received: with the read path
+ * registered as the write path too, every submission arrived without a token,
+ * took a 401, and paid for a refresh-token rotation before the retry could
+ * succeed — two round trips and a database write per comment, for nothing.
+ *
+ * Both halves are asserted here: the authoring aliases exist and answer, and one
+ * submission produces exactly one upstream call, carrying the credential.
+ */
+test("a comment write is served under /api/authoring, where the access cookie is sent", async () => {
+  const path = "/api/authoring/articles/portable-web-foundation/comments?locale=zh-CN";
+  mockApi.resetRequests();
+  const created = await post(path, JSON.stringify({ body: "作者可以在原处改字" }), {
+    cookie: `nw_access=${MOCK_TOKENS.accessToken}`,
+  });
+  assert.equal(created.status, 201, created.body);
+
+  const calls = mockApi.requests();
+  assert.equal(
+    calls.filter((call) => call.includes("/api/v1/articles/") && call.includes("/comments")).length,
+    1,
+    `one submission is one upstream write: ${calls.join(", ")}`,
+  );
+  assert.equal(
+    calls.filter((call) => call.includes("/api/v1/auth/refresh")).length,
+    0,
+    "a credential was presented, so no rotation was needed",
+  );
+
+  // Cross-origin is still refused on the alias, and still refused before the API
+  // is reached: two registrations of one handler must not mean two policies.
+  mockApi.resetRequests();
+  const cross = await post(path, JSON.stringify({ body: "好" }), { origin: "https://evil.test" });
+  assert.equal(cross.status, 403);
+  assert.deepEqual(mockApi.requests(), []);
+});
+
+test("a comment edit is served under /api/authoring too", async () => {
+  const edit = await patch(`/api/authoring/comments/${MOCK_COMMENT_ID}?locale=zh-CN`,
+    JSON.stringify({ content: "改过的字" }), { cookie: `nw_access=${MOCK_TOKENS.accessToken}` });
+  assert.equal(edit.status, 200, edit.body);
+  const payload = JSON.parse(edit.body) as { data: { content: string; editedAt: string | null } };
+  assert.equal(payload.data.content, "改过的字");
+  assert.equal(typeof payload.data.editedAt, "string");
+
+  // An id that is not a comment id is refused locally, without a round trip.
+  mockApi.resetRequests();
+  const refused = await patch("/api/authoring/comments/not-a-uuid?locale=zh-CN",
+    JSON.stringify({ content: "改过的字" }), { cookie: `nw_access=${MOCK_TOKENS.accessToken}` });
+  assert.equal(refused.status, 400);
+  assert.deepEqual(mockApi.requests(), []);
 });
 
 /**
