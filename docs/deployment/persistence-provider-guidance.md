@@ -10,6 +10,8 @@ For a local machine, `compose.yaml` and `pnpm db:up` provide PostgreSQL 17 with 
 
 This recommendation does not mean changing `DATABASE_PROVIDER` migrates data. Provider selection only chooses the adapter at process startup. Cross-provider migration requires the separate, reviewed snapshot/change-capture/reconciliation/cutover procedure documented in [the migration plan](../architecture/postgres-migration-plan.md).
 
+Moving data between engines today means `pnpm db:transfer`, an off-line copy into an empty database, performed with the API stopped and verified by a per-table reconciliation report: see the [transfer runbook](./provider-transfer-runbook.md). It is not online replication and does not switch live traffic.
+
 ## Runtime compatibility notice
 
 This repository pins the supported runtime to Node.js 24 (`>=24 <25`). The official Node.js documentation marks `node:sqlite` as **Stability 1.2 — Release Candidate** starting at Node.js 24.15.0; before that minor release, it is still marked experimental. Release-candidate APIs are not equivalent to Stability 2 stable APIs and may change before stabilization.
