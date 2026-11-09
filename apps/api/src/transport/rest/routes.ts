@@ -175,7 +175,12 @@ assertWriteRateLimitsCoverRoutes(REST_ROUTES);
 
 export type RouteResolution =
   | { readonly kind: "matched"; readonly id: string; readonly params: Readonly<Record<string, string>> }
-  | { readonly kind: "method_not_allowed"; readonly allow: string }
+  /**
+   * A real route with the wrong method, or the catch-all refusal for a write to
+   * an unknown path. `id` is present only in the first case: a `405` that names
+   * the endpoint it refused is diagnosable, and a catch-all has nothing to name.
+   */
+  | { readonly kind: "method_not_allowed"; readonly allow: string; readonly id?: string }
   | { readonly kind: "unmatched" };
 
 /**
@@ -206,7 +211,7 @@ export function resolveRestRoute(pathname: string, method: string): RouteResolut
     }
     if (!matched) continue;
     if (!route.methods.includes(method as HttpMethod)) {
-      return { kind: "method_not_allowed", allow: route.methods.join(", ") };
+      return { kind: "method_not_allowed", allow: route.methods.join(", "), id: route.id };
     }
     return { kind: "matched", id: route.id, params };
   }

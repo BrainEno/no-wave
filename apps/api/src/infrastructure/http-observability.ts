@@ -68,6 +68,36 @@ function safeMethod(method: string | undefined): string {
   }
 }
 
+/**
+ * Route ids a handler may label itself with (`articles.item`, `imports.notion`).
+ *
+ * The initial label is derived from the URL and collapses every versioned path
+ * into `/api/v1/*`, which is right for an *unmatched* request — there is no route
+ * id to name — and useless for a matched one: a flood of one endpoint reads as a
+ * flood of "the API", and the histogram cannot say which endpoint is slow. A
+ * matched route therefore relabels itself with its id from the route table, which
+ * is a closed set: no path, no id, no query value ever enters the label.
+ */
+const ROUTE_ID_PATTERN = /^[a-z][a-z0-9]*(?:\.[a-z0-9-]+)*$/;
+
+/** Labels that a deployment probes on a timer rather than a person's request. */
+const PROBE_ROUTES = Object.freeze(["/health", "/ready", "health"]);
+
+/**
+ * A client in a loop is a fact, and a terminal full of it is not a diagnosis.
+ *
+ * `FLOOD_THRESHOLD` requests on one route inside one second is far more than any
+ * page makes and is what a retry loop, a tab stuck on reload or a monitor with no
+ * interval looks like. One warning per route per `FLOOD_QUIET_MS` says so once:
+ * "250 requests in 1 s on `health`" is the sentence the operator needed, and the
+ * individual lines — suppressed for probes, still written for everything else —
+ * are noise around it. The label counter is bounded by the route table, so the
+ * bookkeeping cannot grow with traffic.
+ */
+const FLOOD_WINDOW_MS = 1_000;
+const FLOOD_THRESHOLD = 200;
+const FLOOD_QUIET_MS = 30_000;
+
 function safeRoute(request: IncomingMessage): string {
   let pathname = "/";
   try {
@@ -230,11 +260,44 @@ export function createHttpObservability({
     });
   }
 
+  /** Per-route request rate, for the flood notice only. */
+  const floodWindows = new Map<string, { windowStart: number; count: number; warnedAt: number }>();
+
+  /**
+   * Count one completed request and, when a route is being hammered, say so once.
+   *
+   * Deliberately not a rate limiter: nothing is refused here. The API answered
+   * every one of those requests correctly — the problem is the caller, and the
+   * one line this writes is enough to find it.
+   */
+  function noteRequestRate(route: string, now: number): void {
+    const entry = floodWindows.get(route);
+    if (!entry || now - entry.windowStart >= FLOOD_WINDOW_MS) {
+      floodWindows.set(route, { windowStart: now, count: 1, warnedAt: entry?.warnedAt ?? 0 });
+      return;
+    }
+    entry.count += 1;
+    if (entry.count < FLOOD_THRESHOLD || now - entry.warnedAt < FLOOD_QUIET_MS) return;
+    entry.warnedAt = now;
+    log({
+      level: "warn",
+      event: "http_request_flood",
+      route,
+      requestsPerSecond: entry.count,
+      message: "One client is requesting this route in a loop; the API is answering, the caller is the problem.",
+    });
+  }
+
   function beginRequest(request: IncomingMessage, response: ServerResponse) {
     const requestId = randomUUID();
     const traceId = traceIdFor(request);
     const method = safeMethod(request.method);
-    const route = safeRoute(request);
+    let route = safeRoute(request);
+    // Whether this is a versioned API request, decided before a route can rename
+    // itself: the authentication-failure counter is about the API's `401`s, and it
+    // must not stop counting just because the label became `me.profile`.
+    const apiRequest = route === "/api/v1/*";
+    let labelled = false;
     response.setHeader("x-request-id", requestId);
     activeRequests += 1;
     let finished = false;
@@ -243,7 +306,22 @@ export function createHttpObservability({
       requestId,
       traceId,
       method,
-      route,
+      /**
+       * Name the endpoint that matched, once.
+       *
+       * Called by the transport after route resolution, when the route id is
+       * finally known. Only the first assignment wins and only a shape from the
+       * route table is accepted, so neither a handler nor a URL can invent a
+       * label — an unbounded label is how a metrics backend falls over.
+       */
+      assignRoute(routeId: string) {
+        if (labelled || finished) return;
+        if (typeof routeId !== "string" || routeId.length === 0 || routeId.length > 64) return;
+        if (!ROUTE_ID_PATTERN.test(routeId)) return;
+        route = routeId;
+        labelled = true;
+      },
+      get route() { return route; },
       finish({
         statusCode,
         durationMs,
@@ -265,17 +343,25 @@ export function createHttpObservability({
         }
         metric.count += 1;
         observe(metric.duration, durationMs);
-        if (route === "/api/v1/*" && (status === "401" || status === "403")) {
+        if (apiRequest && (status === "401" || status === "403")) {
           const authKey = method + "\u0000" + status;
           const authMetric = authFailures.get(authKey) ?? { method, status, count: 0 };
           authMetric.count += 1;
           authFailures.set(authKey, authMetric);
         }
 
+        noteRequestRate(route, Date.now());
         const numericStatus = Number(status);
         const level: LogLevel = errorName || numericStatus >= 500
           ? "error"
           : numericStatus >= 400 ? "warn" : "info";
+        // A successful liveness or readiness probe is a timer, not a reader. It
+        // stays in the metrics — the count and the latency are the point — but it
+        // does not get a log line: a host probing every second would otherwise
+        // be the loudest thing in the terminal, and a misconfigured client probing
+        // in a loop buries every line that matters. A *failing* probe is logged,
+        // because that is the one an operator has to see.
+        if (level === "info" && PROBE_ROUTES.includes(route)) return;
         log({
           level,
           event: "http_request_completed",

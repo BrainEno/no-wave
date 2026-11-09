@@ -4,6 +4,12 @@
 
 The API writes one JSON object per completed HTTP request to stdout, or stderr for warning/error results. Each event includes a server-generated `requestId`, a validated W3C `traceparent` trace ID (or a generated fallback), a bounded route label, normalized method, HTTP status, elapsed milliseconds and a level. The response returns the generated ID in `X-Request-Id`.
 
+The `route` label is the **matched route id** from the route table (`articles.item`, `me.notifications.read-all`, `imports.notion`, …) — never the URL, never a slug or an id from the path. A request that matched no route keeps the generic `/api/v1/*`, because there is nothing to name. This is what makes a terminal readable: "one endpoint is being hammered" and "the API is being hammered" are different facts, and the label is the only place the difference can appear. `405` also names the route it refused.
+
+**Successful liveness and readiness probes are counted but not logged.** `/health`, `/ready` and `GET /api/v1/health` are timers, not readers: a host probing every second would otherwise be the loudest line in the output, and a client stuck in a loop would bury every line that matters. They stay in the metrics (count and latency are the point) and a **failing** probe is still logged, because that is the one an operator has to see.
+
+**A client in a loop is reported once.** When one route completes 200 requests inside a second, the API writes a single `http_request_flood` warning (`level: warn`, `route`, `requestsPerSecond`) and then stays quiet about that route for 30 seconds. Nothing is refused — every one of those requests was answered correctly — but the line says plainly where the traffic is coming from, which is the question a scrolling terminal cannot answer.
+
 The log schema is intentionally allowlisted. It does **not** include the raw request URL, query parameters, remote IP, cookies, authorization headers, request/response bodies or actor/user IDs. Unexpected handler failures return a sanitized 500 response and log `rest_unhandled_error` with the error class plus a message that has been through `redactDiagnostic` (`apps/api/src/infrastructure/log-redaction.ts`): DSN userinfo, `password=`/`token:`-style pairs and the values of the secrets this process reads from its environment are masked, the text is flattened to one line, and it is capped at 200 characters. The startup failure line (`api_startup_failed`) is redacted the same way, because a driver that was handed a malformed DSN can quote it back and the DSN contains its password.
 
 Both lines exist on purpose: "the access log says 500 and nothing else" is not diagnosable, and a stale schema (`relation "featured_articles" does not exist`) is worth one line. Never log an arbitrary request object, a full stack, or an unredacted exception message.
@@ -32,7 +38,7 @@ The notification worker is a separate process. Enable its dedicated Prometheus l
 
 The worker metrics listener is disabled unless a nonzero port is configured. For container or remote scraping, set `OUTBOX_METRICS_HOST` deliberately and enforce a private network policy; the listener has no authentication and must not be exposed to the public Internet.
 
-Labels intentionally use a small fixed set of HTTP methods and route groups. Resource IDs, query values, users, IP addresses and exception text never become metric labels. Persistence timing measures complete application persistence-port calls (including adapter logic), not individual SQL statements.
+Labels intentionally use a small fixed set (HTTP methods and route ids from the route table, plus `/health`, `/ready`, `/metrics` and `/not_found`). Resource IDs, query values, users, IP addresses and exception text never become metric labels; the transport assigns the route id once, validated against the id shape, so neither a handler nor a URL can invent a series. Persistence timing measures complete application persistence-port calls (including adapter logic), not individual SQL statements.
 
 Metrics are in-memory, process-local counters; a restart resets them. Scrape and aggregate every API instance separately. Do not expose `/metrics` publicly: restrict it with the deployment network or trusted reverse-proxy/ingress policy. The endpoint does not reveal identities or payloads, but traffic and operation rates are operational information.
 

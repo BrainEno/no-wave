@@ -45,6 +45,86 @@ test("HTTP observations use a generated request ID and a validated upstream trac
   assert.equal(JSON.stringify(logs).includes("token="), false);
 });
 
+test("a matched route names itself in the log and the metrics, and only a bounded id is accepted", () => {
+  const logs = [];
+  const observability = createHttpObservability({ logger: (record) => logs.push(record) });
+
+  const observation = observability.beginRequest(
+    fakeRequest({ method: "GET", url: "/api/v1/articles/private-id/comments?locale=zh-CN" }),
+    fakeResponse(),
+  );
+  observation.assignRoute("articles.comments");
+  observation.finish({ statusCode: 200, durationMs: 4 });
+
+  assert.equal(logs[0].route, "articles.comments", "the endpoint, not the path and not the resource id");
+  assert.equal(JSON.stringify(logs).includes("private-id"), false);
+
+  // A handler — or a URL — cannot invent a label, and a label is set once.
+  const hostile = observability.beginRequest(fakeRequest({ url: "/api/v1/articles" }), fakeResponse());
+  hostile.assignRoute("../../etc/passwd");
+  hostile.assignRoute("articles");
+  hostile.assignRoute("articles.item");
+  hostile.finish({ statusCode: 200, durationMs: 1 });
+  assert.equal(logs[1].route, "articles", "the first bounded assignment wins; the path-shaped one was ignored");
+
+  const metrics = observability.renderMetrics();
+  assert.match(metrics, /api_http_requests_total\{method="GET",route="articles.comments",status="200"\} 1/);
+});
+
+test("a successful probe is counted but not logged, and a failing one is logged", () => {
+  const logs = [];
+  const observability = createHttpObservability({ logger: (record) => logs.push(record) });
+
+  const healthy = observability.beginRequest(fakeRequest({ url: "/api/v1/health" }), fakeResponse());
+  healthy.assignRoute("health");
+  healthy.finish({ statusCode: 200, durationMs: 0.2 });
+  assert.deepEqual(logs, [], "a liveness probe every second must not be the loudest line in the terminal");
+
+  const degraded = observability.beginRequest(fakeRequest({ url: "/api/v1/health" }), fakeResponse());
+  degraded.assignRoute("health");
+  degraded.finish({ statusCode: 503, durationMs: 1.4 });
+  assert.equal(logs.length, 1);
+  assert.equal(logs[0].statusCode, 503, "the probe that fails is the one an operator has to see");
+
+  // Still counted: the metrics are where a probe belongs.
+  const metrics = observability.renderMetrics();
+  assert.match(metrics, /api_http_requests_total\{method="GET",route="health",status="200"\} 1/);
+  assert.match(metrics, /api_http_requests_total\{method="GET",route="health",status="503"\} 1/);
+});
+
+test("a client polling one route in a loop produces one warning, not one line per request", () => {
+  const logs = [];
+  const observability = createHttpObservability({ logger: (record) => logs.push(record) });
+
+  // 300 liveness probes inside one second: a client with no interval.
+  for (let index = 0; index < 300; index += 1) {
+    const observation = observability.beginRequest(fakeRequest({ url: "/api/v1/health" }), fakeResponse());
+    observation.assignRoute("health");
+    observation.finish({ statusCode: 200, durationMs: 0.16 });
+  }
+
+  const warnings = logs.filter((record) => record.event === "http_request_flood");
+  assert.equal(warnings.length, 1, "one line says it; the other 299 requests are noise");
+  assert.equal(warnings[0].level, "warn");
+  assert.equal(warnings[0].route, "health");
+  assert.ok(warnings[0].requestsPerSecond >= 200);
+  assert.equal(logs.filter((record) => record.event === "http_request_completed").length, 0, "successful probes stay out of the log");
+
+  // The quieter-window rule: another burst immediately afterwards does not repeat it.
+  for (let index = 0; index < 300; index += 1) {
+    const observation = observability.beginRequest(fakeRequest({ url: "/api/v1/health" }), fakeResponse());
+    observation.assignRoute("health");
+    observation.finish({ statusCode: 200, durationMs: 0.16 });
+  }
+  assert.equal(logs.filter((record) => record.event === "http_request_flood").length, 1);
+
+  // And a normal page load never triggers it.
+  const single = observability.beginRequest(fakeRequest({ url: "/api/v1/tags" }), fakeResponse());
+  single.assignRoute("tags");
+  single.finish({ statusCode: 200, durationMs: 2 });
+  assert.equal(logs.filter((record) => record.event === "http_request_flood").length, 1);
+});
+
 test("invalid trace context is ignored and a new trace ID is generated", () => {
   const observability = createHttpObservability({ logger: () => {} });
   const observation = observability.beginRequest(

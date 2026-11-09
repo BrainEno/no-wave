@@ -38,6 +38,7 @@ export function createRestHandler({
   mediaAssets = null,
   onMailDelivery = null,
   onBackgroundFailure = null,
+  onRouteMatched = null,
 }: {
   services: RestServices | null;
   env?: NodeJS.ProcessEnv;
@@ -45,6 +46,15 @@ export function createRestHandler({
   onMailDelivery?: ((sample: { purpose: string; outcome: string; durationMs: number; code?: string; message?: string }) => void) | null;
   /** Where a background task's failure goes (audit F-22); see `application/background-tasks.ts`. */
   onBackgroundFailure?: BackgroundFailureReporter;
+  /**
+   * Told which route id answered, for the access log and the metrics.
+   *
+   * The observation starts before routing, when the only thing known is the URL,
+   * so every versioned request is labelled `/api/v1/*`. This is how it learns the
+   * endpoint — a bounded id from the route table, never the path — and it is why
+   * a terminal full of one endpoint can be read at a glance.
+   */
+  onRouteMatched?: ((request: IncomingMessage, routeId: string) => void) | null;
 }) {
   // The facade is assembled dynamically from the validated persistence ports.
   // `ApplicationServices` already carries the identity store methods
@@ -90,6 +100,13 @@ export function createRestHandler({
     // One parse per request. The route table owns every path, the methods each one
     // accepts, and therefore the 405 allow-list; nothing below re-derives them.
     const route = resolveRestRoute(url.pathname, request.method ?? "GET");
+    // Named before anything answers: a `405` names the endpoint it refused, and a
+    // matched route names itself, so the log line and the metrics agree with the
+    // handler that actually ran.
+    if (onRouteMatched) {
+      const routeId = route.kind === "matched" ? route.id : route.kind === "method_not_allowed" ? route.id : undefined;
+      if (routeId !== undefined) onRouteMatched(request, routeId);
+    }
     if (route.kind === "method_not_allowed") {
       response.setHeader("allow", route.allow);
       sendJson(response, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "The HTTP method is not supported for this endpoint." } });
