@@ -51,3 +51,37 @@ test("the editor refuses inconsistent inline text instead of silently dropping c
     /do not match/,
   );
 });
+
+/**
+ * The mark bitmask is a wire format (#240).
+ *
+ * A paragraph is turned into Lexical text nodes whose `format` is a bitmask, and
+ * the API's adapter turns those numbers back into marks. When this table had
+ * underline and strikethrough the other way round, every save from the editor
+ * silently swapped the two — the text survived, the emphasis did not. The
+ * numbers below are Lexical's own, and they are asserted one by one so a future
+ * "tidy-up" of the table fails here instead of in somebody's article.
+ */
+test("text format bits are Lexical's IS_BOLD/IS_ITALIC/IS_STRIKETHROUGH/IS_UNDERLINE/IS_CODE", () => {
+  const state = articleBlocksToLexicalEditorState([{
+    id: "format-bits",
+    type: "paragraph",
+    text: "biusdcl",
+    inlines: [
+      { text: "b", marks: ["bold"] },
+      { text: "i", marks: ["italic"] },
+      { text: "u", marks: ["underline"] },
+      { text: "s", marks: ["strikethrough"] },
+      { text: "d", marks: ["bold", "italic"] },
+      { text: "c", marks: ["code"] },
+      { text: "l", marks: ["bold", "italic", "underline", "strikethrough", "code"] },
+    ],
+  }]);
+  const runs = state.root.children[0].children as Record<string, unknown>[];
+  assert.deepEqual(runs.map((run) => run.format), [1, 2, 8, 4, 3, 16, 31]);
+  // Named, not just numbered: an underscore is 8 and a strike-through is 4 in
+  // Lexical, and reading the list above without this line is how it was missed.
+  assert.equal(runs[2]?.text, "u");
+  assert.equal(runs[3]?.text, "s");
+});
+
