@@ -107,3 +107,60 @@ export function uniquifyArticleSlug(base: string, attempt: number): string {
   if (attempt <= MAX_UNIQUE_ATTEMPTS) return `${slug}-${attempt}`;
   return `${slug}-${shortDigest(`${slug}#${attempt}`)}`;
 }
+
+/**
+ * The suffix a tombstone carries, and the address it releases.
+ *
+ * Deleting a work has to give up its public address: otherwise rewriting the
+ * same title afterwards collides with the tombstone forever, with a 409 the
+ * author cannot resolve. The tombstone therefore becomes
+ * `<slug>-deleted-<id8>` — unique by construction, because the id is.
+ *
+ * Two invariants have to survive (#241):
+ *
+ * 1. **The suffix is never stacked.** Restoring a tombstone whose original
+ *    address has been taken keeps the suffixed slug (a restore must never fail
+ *    over an address the author cannot see), so the *next* delete of that same
+ *    work used to append a second `-deleted-…`. Seventeen characters per
+ *    cycle, forever.
+ * 2. **The result is a valid slug.** A 155-character address plus a 17-character
+ *    suffix is 172, and `validateArticleSlug` refuses anything over 160 — so the
+ *    restored draft could be deleted but never saved again. The base is
+ *    truncated to whatever the suffix leaves room for.
+ */
+export const DELETED_SLUG_SUFFIX_LENGTH = 17;
+
+/** The longest address the stored contract accepts (see `validateArticleSlug`). */
+const MAX_STORED_SLUG_LENGTH = 160;
+
+const DELETED_SUFFIX_AT_END = /-deleted-[0-9a-f]{8}$/i;
+
+/**
+ * The address without its tombstone suffix, as many times as it was applied.
+ *
+ * Looping rather than stripping once, so a row that already carries two (from a
+ * delete/restore cycle that happened before this fix) heals on its next delete
+ * instead of keeping the older suffix forever.
+ */
+export function stripDeletedSlugSuffix(slug: string): string {
+  let base = typeof slug === "string" ? slug : "";
+  while (DELETED_SUFFIX_AT_END.test(base)) base = base.replace(DELETED_SUFFIX_AT_END, "");
+  return base;
+}
+
+/**
+ * The slug a tombstone gets when `slug` is released.
+ *
+ * `disambiguator` exists for the one case the id cannot settle: a *live* work
+ * already holding the exact address this tombstone wants (somebody typed
+ * `foo-deleted-1a2b3c4d` as a title). The store retries with `-2`, `-3`, … rather
+ * than letting a unique index turn a delete into a 500.
+ */
+export function releasedArticleSlug(slug: string, articleId: string, disambiguator = ""): string {
+  const suffix = `-deleted-${String(articleId).slice(0, 8).toLowerCase()}${disambiguator}`;
+  const room = Math.max(1, MAX_STORED_SLUG_LENGTH - suffix.length);
+  const base = stripDeletedSlugSuffix(slug).slice(0, room).replace(/-+$/, "");
+  const fallback = ARTICLE_SLUG_FALLBACK_PREFIX.slice(0, room).replace(/-+$/, "") || "a";
+  return `${base.length > 0 ? base : fallback}${suffix}`;
+}
+

@@ -24,6 +24,7 @@ import {
   MAX_FEATURED_ARTICLES, maxArticleOffset, resolveArticleCursor,
 } from "../domain/article.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
+import { releasedArticleSlug, stripDeletedSlugSuffix } from "../domain/article-slug.ts";
 import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
 import type { SqliteRow, SqliteRunner } from "./sqlite.ts";
 
@@ -225,6 +226,24 @@ export function createSqliteArticleStore(db: SqliteRunner) {
     if (!row) throw new ArticleInputError("The article could not be read back after it was written.");
     return mapArticle(row);
   }
+
+  /**
+   * The address a tombstone gets, guaranteed storable (#241).
+   *
+   * `releasedArticleSlug` strips any suffix the row already carries and truncates
+   * the base so the result fits the 160-character contract. The loop is for the
+   * one collision the id cannot settle: a live work already holding the exact
+   * `…-deleted-<id8>` address, which would otherwise turn a delete into a
+   * unique-index error the author cannot act on.
+   */
+  const releaseSlug = (slug: string, articleId: string): string => {
+    const slugTaken = statement("SELECT 1 AS found FROM articles WHERE slug = ? AND id <> ?");
+    for (let attempt = 1; attempt <= 9; attempt += 1) {
+      const candidate = releasedArticleSlug(slug, articleId, attempt === 1 ? "" : `-${attempt}`);
+      if (!slugTaken.get(candidate, articleId)) return candidate;
+    }
+    return releasedArticleSlug(slug, articleId, `-${Math.random().toString(36).slice(2, 8)}`);
+  };
 
   return Object.freeze({
   /**
@@ -561,7 +580,7 @@ export function createSqliteArticleStore(db: SqliteRunner) {
         if (!existing || existing.deleted_at) throw new ArticleNotFoundError("The article was not found.");
         if (existing.author_id !== actorId) throw new ArticleAuthorizationError("Only the article author can delete it.");
         const now = new Date().toISOString();
-        const releasedSlug = `${existing.slug}-deleted-${articleId.slice(0, 8)}`;
+        const releasedSlug = releaseSlug(existing.slug, articleId);
         db.prepare("UPDATE articles SET status = 'draft', deleted_at = ?, slug = ?, updated_at = ? WHERE id = ?")
           .run(now, releasedSlug, now, articleId);
         captureArticleRow(transactionId, articleId);
@@ -595,8 +614,9 @@ export function createSqliteArticleStore(db: SqliteRunner) {
         const translation = statement("SELECT locale FROM article_translations WHERE article_id = ? AND locale = ?").get(articleId, locale);
         if (!translation) throw new ArticleNotFoundError(`The article has no ${locale} translation.`);
         const now = new Date().toISOString();
-        const suffix = `-deleted-${articleId.slice(0, 8)}`;
-        const preferred = existing.slug.endsWith(suffix) ? existing.slug.slice(0, -suffix.length) : existing.slug;
+        // Every suffix, not just this work's: a tombstone deleted twice before
+        // #241 carries two, and restoring it should not hand back the older one.
+        const preferred = stripDeletedSlugSuffix(existing.slug);
         const taken = preferred === existing.slug
           ? undefined
           : statement("SELECT 1 AS found FROM articles WHERE slug = ? AND id <> ?").get(preferred, articleId);
