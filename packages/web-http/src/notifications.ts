@@ -26,8 +26,27 @@ export const NOTIFICATION_ID_PATTERN =
 /** The inbox shows at most this many notices; the API paginates the rest. */
 export const NOTIFICATIONS_LIMIT = 50;
 
-export function notificationsPath(limit: number = NOTIFICATIONS_LIMIT): string {
-  return `api/v1/me/notifications?limit=${encodeURIComponent(String(limit))}`;
+/** The API's own ceiling for one page of the inbox. */
+export const NOTIFICATIONS_LIMIT_MAX = 100;
+
+/**
+ * The cursor is opaque to this proxy: it is a base64url string the API produced,
+ * and the only thing worth checking is that it is one — forwarding arbitrary
+ * bytes would turn a local mistake into an upstream `400` the reader cannot see.
+ */
+const CURSOR_PATTERN = /^[A-Za-z0-9_-]{1,512}$/;
+
+/**
+ * The inbox's address, with an optional cursor continuing an earlier page.
+ *
+ * `cursor` is the `(createdAt, id)` of the last notice already shown, encoded by
+ * whoever produced the page — the browser builds it from the row it has, which is
+ * what keeps the response a plain array.
+ */
+export function notificationsPath(limit: number = NOTIFICATIONS_LIMIT, cursor: string | null = null): string {
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (cursor !== null) query.set("cursor", cursor);
+  return `api/v1/me/notifications?${query.toString()}`;
 }
 
 export function notificationsUnreadCountPath(): string {
@@ -57,6 +76,11 @@ function rejectCrossOrigin(request: Request): boolean {
  * A 401 is an answer, not an error: the desk renders its "sign in first" panel
  * from it. The refresh-and-retry and the cookie clearing on a rejected refresh
  * token are `forwardAuthoringRequest`'s job.
+ *
+ * `limit` and `cursor` are re-validated here rather than passed through, for the
+ * same reason the media library does it: a value the API would reject should be
+ * rejected where the page can explain it. Anything else in the query string is
+ * dropped — this proxy forwards two parameters, not whatever the caller typed.
  */
 export async function handleNotificationsRequest(
   request: Request,
@@ -66,7 +90,21 @@ export async function handleNotificationsRequest(
   if (method === null) {
     return errorResponse("METHOD_NOT_ALLOWED", "Only GET is supported for notifications.", 405);
   }
-  return forwardAuthoringRequest(request, notificationsPath(), "GET", config);
+  const params = new URL(request.url).searchParams;
+  const rawCursor = params.get("cursor");
+  if (rawCursor !== null && CURSOR_PATTERN.test(rawCursor) === false) {
+    return errorResponse("BAD_USER_INPUT", "Invalid cursor.", 400);
+  }
+  const rawLimit = params.get("limit");
+  let limit = NOTIFICATIONS_LIMIT;
+  if (rawLimit !== null) {
+    const parsed = /^[1-9][0-9]{0,2}$/.test(rawLimit) ? Number(rawLimit) : Number.NaN;
+    if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > NOTIFICATIONS_LIMIT_MAX) {
+      return errorResponse("BAD_USER_INPUT", `limit must be a whole number between 1 and ${NOTIFICATIONS_LIMIT_MAX}.`, 400);
+    }
+    limit = parsed;
+  }
+  return forwardAuthoringRequest(request, notificationsPath(limit, rawCursor), "GET", config);
 }
 
 /** `GET /api/notifications/unread-count` — how many of them are still unread. */

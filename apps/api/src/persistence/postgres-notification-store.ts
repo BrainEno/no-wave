@@ -16,16 +16,30 @@ import type { TypedPersistenceAdapterContract } from "../application/persistence
 export function createPostgresNotificationStore(ctx: PostgresStoreContext) {
   const { sql, captureChanges } = ctx;
   return Object.freeze({
-    async listNotifications({ actorId, limit = 50 }) {
+    async listNotifications({ actorId, limit = 50, cursor = null }) {
       if (typeof actorId !== "string" || actorId.trim().length === 0 || actorId !== actorId.trim()) {
         throw new TypeError("actorId must be a non-empty, trimmed string.");
       }
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
         throw new TypeError("limit must be an integer between 1 and 100.");
       }
+      if (cursor !== null && cursor !== undefined
+        && (typeof cursor !== "object" || typeof cursor.at !== "string" || typeof cursor.id !== "string")) {
+        throw new TypeError("cursor must be {at, id} or null.");
+      }
+      const hasCursor = cursor !== null && cursor !== undefined;
+      /**
+       * `date_trunc('milliseconds', …)` is belt and braces: migration 0030 stored
+       * every row at millisecond precision and a `CHECK` now keeps it that way, so
+       * the truncation changes nothing on a migrated database. It stays because a
+       * cursor that names a place must compare against exactly what the cursor
+       * names, and because it keeps `notifications_user_created_idx` usable.
+       */
       const rows = await sql.unsafe(
-        "SELECT id, user_id, event_key, payload, created_at, read_at FROM notifications WHERE user_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2",
-        [actorId, limit],
+        !hasCursor
+          ? "SELECT id, user_id, event_key, payload, created_at, read_at FROM notifications WHERE user_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2"
+          : "SELECT id, user_id, event_key, payload, created_at, read_at FROM notifications WHERE user_id = $1 AND (created_at < date_trunc('milliseconds', $2::timestamptz) OR (created_at = date_trunc('milliseconds', $2::timestamptz) AND id < $3)) ORDER BY created_at DESC, id DESC LIMIT $4",
+        hasCursor ? [actorId, cursor.at, cursor.id, limit] : [actorId, limit],
       );
       return rows.map((row) => ({
         id: row.id,

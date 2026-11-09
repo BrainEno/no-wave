@@ -8,6 +8,7 @@ import { createSqliteClient, runSqliteMigrations } from "./persistence/sqlite.ts
 import { createSqliteStore } from "./persistence/sqlite-store.ts";
 import { ArticleAuthorizationError, ArticleInputError, ArticleNotFoundError, ArticleSlugConflictError, DomainError, IdempotencyConflictError, IdentityConflictError, ProfileInputError, ProfileNotFoundError } from "./domain/errors.ts";
 import { isUuid } from "./domain/validation.ts";
+import { encodeCursor } from "./domain/cursor.ts";
 import { hashPassword, verifyPassword } from "./security/passwords.ts";
 import { MediaAssetInUseError, MediaAssetNotFoundError } from "./application/media-assets.ts";
 
@@ -2775,6 +2776,65 @@ test("REST notification routes are recipient-scoped and preserve their JSON-stri
     { method: "markNotificationRead", args: { notificationId: "ffffffff-ffff-4fff-8fff-ffffffffffff", actorId: "reader-user" } },
     { method: "markAllNotificationsRead", args: { actorId: "reader-user" } },
   ]);
+});
+
+test("REST notification inbox decodes a page cursor and refuses a malformed one", async () => {
+  const calls: Array<{ method: string; args: Record<string, unknown> }> = [];
+  const at = "2026-01-01T00:00:00.123Z";
+  const id = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+  await withServer(async (baseUrl) => {
+    const authorization = "Bearer " + signedToken("reader-user");
+    const paged = await fetch(
+      `${baseUrl}/api/v1/me/notifications?limit=5&cursor=${encodeURIComponent(encodeCursor(at, id))}`,
+      { headers: { authorization } },
+    );
+    assert.equal(paged.status, 200);
+    assert.deepEqual(await paged.json(), { data: [] });
+    // The store sees the two halves of the sort key, not the client's base64.
+    assert.deepEqual(calls.at(-1), { method: "listNotifications", args: { actorId: "reader-user", limit: 5, cursor: { at, id } } });
+
+    // Without a cursor the request is the first page, exactly as before.
+    const first = await fetch(`${baseUrl}/api/v1/me/notifications?limit=5`, { headers: { authorization } });
+    assert.equal(first.status, 200);
+    assert.deepEqual(calls.at(-1), { method: "listNotifications", args: { actorId: "reader-user", limit: 5 } });
+
+    // A cursor half the API cannot compare is the client's mistake: 400, never a
+    // database error surfacing as 500.
+    for (const bad of [
+      "not-a-cursor",
+      encodeCursor("2026-01-01T00:00:00.123Z", "not-a-uuid"),
+      encodeCursor("2026-01-01T00:00:00Z", id),
+      Buffer.from("", "utf8").toString("base64url"),
+    ]) {
+      const response = await fetch(
+        `${baseUrl}/api/v1/me/notifications?cursor=${encodeURIComponent(bad)}`,
+        { headers: { authorization } },
+      );
+      assert.equal(response.status, 400, `cursor ${JSON.stringify(bad)} is rejected`);
+      assert.deepEqual(await response.json(), {
+        error: { code: "BAD_USER_INPUT", message: "Invalid cursor query parameter." },
+      });
+    }
+    assert.equal(calls.filter((call) => call.method === "listNotifications").length, 2, "a refused cursor never reaches the store");
+
+    // A cursor cannot select somebody else's inbox either: the actor is the token.
+    const other = await fetch(
+      `${baseUrl}/api/v1/me/notifications?cursor=${encodeURIComponent(encodeCursor(at, id))}`,
+      { headers: { authorization: "Bearer " + signedToken("stranger-user") } },
+    );
+    assert.equal(other.status, 200);
+    assert.deepEqual(calls.at(-1), { method: "listNotifications", args: { actorId: "stranger-user", limit: 50, cursor: { at, id } } });
+
+    const unauthenticated = await fetch(
+      `${baseUrl}/api/v1/me/notifications?cursor=${encodeURIComponent(encodeCursor(at, id))}`,
+    );
+    assert.equal(unauthenticated.status, 401);
+  }, {
+    env: authEnv,
+    store: {
+      async listNotifications(args) { calls.push({ method: "listNotifications", args }); return []; },
+    },
+  });
 });
 
 test("REST rejects duplicated query parameters before reading or writing route data", async () => {

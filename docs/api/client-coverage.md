@@ -66,7 +66,7 @@
 
 ## 服务端有、客户端还没用到的能力
 
-以下都不是缺口，只是 Flutter 客户端尚未消费：通知（`me/notifications*`）、会话与私信（`conversations*`）、分类（`categories*`）、标签/分类的写与删（`taxonomies`、`taxonomies.item`）、`GET /users` 与 `users/:id/followers|following`、`GET /me/articles`、`POST /me/email-verification`，以及 `auth` 的 `forgot-password` / `reset-password` / `verify-email`。
+以下都不是缺口，只是 Flutter 客户端尚未消费：通知（`me/notifications*` —— 服务端已支持 `cursor` 向旧通知翻页，见 [通知收件箱分页](./notification-inbox-pagination.md)；Flutter 目前只请求最近一页）、会话与私信（`conversations*`）、分类（`categories*`）、标签/分类的写与删（`taxonomies`、`taxonomies.item`）、`GET /users` 与 `users/:id/followers|following`、`GET /me/articles`、`POST /me/email-verification`，以及 `auth` 的 `forgot-password` / `reset-password` / `verify-email`。
 
 ## 当前前端（apps/web-rr + packages/web-ui）的需求覆盖
 

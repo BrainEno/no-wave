@@ -691,10 +691,15 @@ export const OPERATIONS: Readonly<Record<string, OperationMetadata>> = Object.fr
 
   "GET me.notifications": {
     summary: "The notification inbox",
+    description:
+      "Newest first, ordered by `(createdAt, id)`. To read older notices, send `cursor` built from the **last** notification of the page already received: `base64url(\"<createdAt>|<id>\")`, using the `createdAt` exactly as returned. Each page is a plain array with no `nextCursor`; keep requesting while a page is non-empty and stop at the first empty one. A notification that arrives while the reader is paging is newer than the cursor and therefore does not shift the older pages; marking notices read does not change their position. The recipient comes from the token — there is no parameter that selects someone else's inbox.",
     security: "session",
     tags: ["notifications"],
-    query: [limitParameter(50)],
-    response: { description: "The caller's notifications, newest first.", data: "Notification", array: true },
+    query: [
+      limitParameter(50),
+      { name: "cursor", description: "`base64url(\"<createdAt>|<id>\")` of the last notification already received. An empty page is the end of the inbox.", schema: { type: "string" } },
+    ],
+    response: { description: "One page of the caller's notifications, newest first.", data: "Notification", array: true },
   },
 
   "GET me.notifications.unread-count": {

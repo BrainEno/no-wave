@@ -152,3 +152,15 @@ And logs do not include event payloads, raw exception messages, access tokens, r
 And a failure in the logging callback does not interrupt durable retry handling.
 
 If retry scheduling itself fails, the worker records a sanitized batch-level error and continues polling after the configured delay.
+
+## NOTIF-08 — Older notifications are reachable, once each
+
+**Risk:** Medium
+
+Given Alice has more notifications than one page (`limit`, at most 100)  
+When she requests the next page with the cursor of the last notification she received  
+Then the server returns the notifications strictly older than that `(createdAt, id)` pair  
+And notifications that share its millisecond are ordered by descending id, so none is skipped or repeated  
+And a notification created between two page requests appears above the cursor instead of shifting the rest  
+And marking notifications read does not change the order  
+And a malformed cursor answers `400 BAD_USER_INPUT`, never a server error.

@@ -86,6 +86,15 @@ async function sqliteFixture() {
       db.prepare("UPDATE media_assets SET created_at = ? WHERE id = ?").run(createdAt, id);
     },
     /**
+     * Pin a notification's stored time.
+     *
+     * The inbox is ordered by `(created_at, id)`, and the interesting cases are
+     * rows that share a millisecond — which `now()` will not produce on demand.
+     */
+    async setNotificationCreatedAt(id, createdAt) {
+      db.prepare("UPDATE notifications SET created_at = ? WHERE id = ?").run(createdAt, id);
+    },
+    /**
      * Remove a materialised media reference while leaving the body alone.
      *
      * That is the state a replay, an older writer or a direct SQL fix can leave
@@ -223,6 +232,9 @@ async function postgresFixture() {
     },
     async setMediaAssetCreatedAt(id, createdAt) {
       await postgresSql.unsafe("UPDATE media_assets SET created_at = $1 WHERE id = $2", [createdAt, id]);
+    },
+    async setNotificationCreatedAt(id, createdAt) {
+      await postgresSql.unsafe("UPDATE notifications SET created_at = $1 WHERE id = $2", [createdAt, id]);
     },
     async dropMediaReference(assetId) {
       await postgresSql.unsafe("DELETE FROM article_media_refs WHERE asset_id = $1", [assetId]);
@@ -738,6 +750,125 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       assert.equal((await runtime.store.claimOutboxEvents({ limit: 1 })).length, 0);
     } finally {
       await runtime.cleanup(conversationId);
+    }
+  });
+
+  /**
+   * The inbox cursor is the whole feature, and the two engines disagree about
+   * time by default: SQLite stores the millisecond text it was given, PostgreSQL
+   * stores `now()`'s microseconds. These assertions are the same on both, and the
+   * ones about a shared millisecond are the reason migration 0030 exists.
+   */
+  test(`${adapterName}: the inbox pages backwards by (createdAt, id) without repeats or gaps`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const reader = `notif-page-reader-${suffix}`;
+    const stranger = `notif-page-stranger-${suffix}`;
+    // Newest first, oldest last, with three rows inside one millisecond so the id
+    // tie-break has something to decide.
+    const schedule = [
+      "2026-06-01T00:00:00.125Z",
+      "2026-06-01T00:00:00.123Z",
+      "2026-06-01T00:00:00.123Z",
+      "2026-06-01T00:00:00.123Z",
+      "2026-06-01T00:00:00.121Z",
+    ];
+    /** The order a cursor walk must produce: newer first, then id descending. */
+    const newestFirst = (rows) => [...rows].sort((left, right) => {
+      if (left.createdAt !== right.createdAt) return left.createdAt < right.createdAt ? 1 : -1;
+      return left.id < right.id ? 1 : -1;
+    });
+    try {
+      const mine = [];
+      for (const [index, createdAt] of schedule.entries()) {
+        const created = await runtime.store.createNotification({
+          userId: reader, eventKey: `page-${index}-${suffix}`, payload: { type: "page.test", index },
+        });
+        await runtime.setNotificationCreatedAt(created.id, createdAt);
+        mine.push({ id: created.id, createdAt });
+      }
+      const theirs = [];
+      for (const [index, createdAt] of schedule.slice(0, 2).entries()) {
+        const created = await runtime.store.createNotification({
+          userId: stranger, eventKey: `page-stranger-${index}-${suffix}`, payload: { type: "page.test" },
+        });
+        await runtime.setNotificationCreatedAt(created.id, createdAt);
+        theirs.push({ id: created.id, createdAt });
+      }
+      const expected = newestFirst(mine).map((row) => row.id);
+
+      /** Page like a client does: no cursor first, then the last row of each page. */
+      const walk = async (pageSize, { onPage } = {}) => {
+        const seen = [];
+        let last = null;
+        let page = 0;
+        for (;;) {
+          const rows = await runtime.store.listNotifications({
+            actorId: reader,
+            limit: pageSize,
+            ...(last === null ? {} : { cursor: { at: last.createdAt, id: last.id } }),
+          });
+          if (rows.length === 0) break;
+          assert.ok(rows.length <= pageSize, "a page never exceeds its limit");
+          for (const row of rows) seen.push(row.id);
+          last = rows[rows.length - 1];
+          page += 1;
+          assert.ok(page < 50, "the walk terminates");
+          await onPage?.({ page, last, rows });
+        }
+        return seen;
+      };
+
+      // A three-page walk at a size that does not divide the rows.
+      const walked = await walk(2);
+      assert.deepEqual(walked, expected, "every notification is read once, in order");
+      assert.deepEqual([...walked].sort(), [...expected].sort());
+      assert.equal(new Set(walked).size, expected.length, "no notification is repeated");
+      assert.ok(!walked.some((id) => theirs.some((row) => row.id === id)), "another account's inbox is invisible");
+
+      // A size of one walks the same order.
+      assert.deepEqual(await walk(1), expected);
+      // And a page larger than the inbox returns everything, then an empty page.
+      const all = await runtime.store.listNotifications({ actorId: reader, limit: 100 });
+      assert.deepEqual(all.map((row) => row.id), expected);
+
+      // Marking a notification read changes nothing about the order.
+      await runtime.store.markNotificationRead({ notificationId: expected[2], actorId: reader });
+      assert.deepEqual(await walk(2), expected, "read state does not move a row");
+
+      // A notification that arrives mid-walk is newer than the cursor, so it must
+      // not shift the older pages: no repeats, and nothing old is skipped.
+      const seenWithIntruder = await walk(2, {
+        onPage: async ({ page }) => {
+          if (page !== 1) return;
+          const intruder = await runtime.store.createNotification({
+            userId: reader, eventKey: `page-intruder-${suffix}`, payload: { type: "page.test", intruder: true },
+          });
+          await runtime.setNotificationCreatedAt(intruder.id, "2026-06-01T00:00:09.000Z");
+        },
+      });
+      assert.deepEqual(seenWithIntruder, expected, "a newer insert neither repeats nor hides an older row");
+
+      // The stranger's own inbox pages independently.
+      const strangerPage = await runtime.store.listNotifications({ actorId: stranger, limit: 1 });
+      assert.equal(strangerPage.length, 1);
+      assert.equal(strangerPage[0].userId, stranger);
+      const strangerRest = await runtime.store.listNotifications({
+        actorId: stranger, limit: 10,
+        cursor: { at: strangerPage[0].createdAt, id: strangerPage[0].id },
+      });
+      assert.deepEqual(
+        [...strangerPage, ...strangerRest].map((row) => row.id),
+        newestFirst(theirs).map((row) => row.id),
+      );
+
+      // Limits and cursor shapes are validated, not guessed at.
+      await assert.rejects(runtime.store.listNotifications({ actorId: reader, limit: 0 }), TypeError);
+      await assert.rejects(runtime.store.listNotifications({ actorId: reader, limit: 101 }), TypeError);
+      await assert.rejects(runtime.store.listNotifications({ actorId: reader, cursor: "not-a-cursor" }), TypeError);
+      await assert.rejects(runtime.store.listNotifications({ actorId: reader, cursor: { at: "2026-06-01T00:00:00.123Z" } }), TypeError);
+    } finally {
+      await runtime.cleanup(undefined, suffix);
     }
   });
 

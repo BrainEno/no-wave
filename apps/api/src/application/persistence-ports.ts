@@ -272,7 +272,20 @@ export type ListConversationsInput = { actorId: string; limit?: number };
 export type PersistMessageInput = {
   conversationId: string; senderId: string; body: string; idempotencyKey: string;
 };
-export type NotificationListInput = { actorId: string; limit?: number };
+/**
+ * One page of an inbox.
+ *
+ * `cursor` is the `(created_at, id)` of the last notification already shown, in
+ * the newest-first order the list is read in. It is *decoded* here rather than
+ * passed as the client's string: base64 and separators are a transport detail,
+ * and a store that parsed them would be a second, disagreeing validator of the
+ * same contract.
+ */
+export type NotificationListInput = {
+  actorId: string;
+  limit?: number;
+  cursor?: { at: string; id: string } | null;
+};
 export type NotificationActorInput = { actorId: string };
 export type MarkNotificationReadInput = { notificationId: string; actorId: string };
 export type CreateNotificationInput = { userId: string; eventKey: string; payload: unknown };
