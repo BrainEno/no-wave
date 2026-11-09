@@ -3770,7 +3770,7 @@
         "operationId": "me.notifications.get",
         "responses": {
           "200": {
-            "description": "The caller's notifications, newest first.",
+            "description": "One page of the caller's notifications, newest first.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3816,6 +3816,7 @@
             "bearerAuth": []
           }
         ],
+        "description": "Newest first, ordered by `(createdAt, id)`. To read older notices, send `cursor` built from the **last** notification of the page already received: `base64url(\"<createdAt>|<id>\")`, using the `createdAt` exactly as returned. Each page is a plain array with no `nextCursor`; keep requesting while a page is non-empty and stop at the first empty one. A notification that arrives while the reader is paging is newer than the cursor and therefore does not shift the older pages; marking notices read does not change their position. The recipient comes from the token — there is no parameter that selects someone else's inbox.",
         "parameters": [
           {
             "name": "limit",
@@ -3827,6 +3828,15 @@
               "minimum": 1,
               "maximum": 100,
               "default": 50
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "`base64url(\"<createdAt>|<id>\")` of the last notification already received. An empty page is the end of the inbox.",
+            "schema": {
+              "type": "string"
             }
           }
         ]

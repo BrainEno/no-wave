@@ -46,6 +46,21 @@ export function createSqliteNotificationStore(db: SqliteRunner) {
   const list = db.prepare(
     "SELECT id, user_id, event_key, payload, created_at, read_at FROM notifications WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT ?",
   );
+  /**
+   * The same read, continued from a place in the `(created_at DESC, id DESC)`
+   * order.
+   *
+   * The comparison is expanded rather than written as a row value so it says the
+   * same thing on both providers and still uses `notifications_user_created_idx`:
+   * strictly older timestamps, plus the same millisecond broken by descending id.
+   * `created_at` is stored at millisecond precision (the schema default is
+   * `strftime('%Y-%m-%dT%H:%M:%fZ')`, and the PostgreSQL migration 0030 enforces
+   * the same), so the string in the cursor is the string in the row and no row
+   * inside the boundary millisecond can be skipped.
+   */
+  const listAfter = db.prepare(
+    "SELECT id, user_id, event_key, payload, created_at, read_at FROM notifications WHERE user_id = ? AND (created_at < ? OR (created_at = ? AND id < ?)) ORDER BY created_at DESC, id DESC LIMIT ?",
+  );
   const unread = db.prepare("SELECT count(*) AS count FROM notifications WHERE user_id = ? AND read_at IS NULL");
   const markAll = db.prepare(
     "UPDATE notifications SET read_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE user_id = ? AND read_at IS NULL",
@@ -101,12 +116,19 @@ export function createSqliteNotificationStore(db: SqliteRunner) {
         throw error;
       }
     },
-    async listNotifications({ actorId, limit = 50 }) {
+    async listNotifications({ actorId, limit = 50, cursor = null }) {
       requiredText("actorId", actorId);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
         throw new TypeError("limit must be an integer between 1 and 100.");
       }
-      return list.all(actorId, limit).map(mapNotification);
+      const hasCursor = cursor !== null && cursor !== undefined;
+      if (!hasCursor) return list.all(actorId, limit).map(mapNotification);
+      // Malformed input is refused rather than compared: a cursor is half of a
+      // sort key, and an unusable half can only fail in SQL.
+      if (typeof cursor !== "object" || typeof cursor.at !== "string" || typeof cursor.id !== "string") {
+        throw new TypeError("cursor must be {at, id} or null.");
+      }
+      return listAfter.all(actorId, cursor.at, cursor.at, cursor.id, limit).map(mapNotification);
     },
     async getUnreadNotificationCount({ actorId }) {
       requiredText("actorId", actorId);

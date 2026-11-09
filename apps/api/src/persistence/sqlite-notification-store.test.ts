@@ -118,3 +118,47 @@ test("SQLite writes a page of inbox rows in one transaction, and one conflict st
     db.close();
   }
 });
+
+test("SQLite inbox paging uses the (created_at, id) boundary and skips nothing in the boundary millisecond", async () => {
+  const { db, store } = await fixture();
+  try {
+    const sameMs = "2026-06-01T00:00:00.123Z";
+    // Newest first: one notice above the shared millisecond, three inside it,
+    // one below. The three inside it are ordered by descending id.
+    const rows = [];
+    for (const [index, createdAt] of [
+      "2026-06-01T00:00:00.124Z", sameMs, sameMs, sameMs, "2026-06-01T00:00:00.122Z",
+    ].entries()) {
+      const created = await store.createNotification({
+        userId: "user-a", eventKey: `page-${index}`, payload: { index },
+      });
+      db.prepare("UPDATE notifications SET created_at = ? WHERE id = ?").run(createdAt, created.id);
+      rows.push({ id: created.id, createdAt });
+    }
+    const expected = [...rows]
+      .sort((left, right) => (left.createdAt === right.createdAt
+        ? (left.id < right.id ? 1 : -1)
+        : (left.createdAt < right.createdAt ? 1 : -1)))
+      .map((row) => row.id);
+
+    const seen = [];
+    let last = null;
+    for (;;) {
+      const page = await store.listNotifications({
+        actorId: "user-a", limit: 2,
+        ...(last === null ? {} : { cursor: { at: last.createdAt, id: last.id } }),
+      });
+      if (page.length === 0) break;
+      seen.push(...page.map((row) => row.id));
+      last = page[page.length - 1];
+    }
+    assert.deepEqual(seen, expected, "every notice is read once, in order");
+    assert.equal(new Set(seen).size, expected.length);
+
+    // A cursor that names the middle of the shared millisecond continues after it.
+    const mid = expected[2];
+    const midRow = rows.find((row) => row.id === mid);
+    const rest = await store.listNotifications({ actorId: "user-a", limit: 10, cursor: { at: midRow.createdAt, id: midRow.id } });
+    assert.deepEqual(rest.map((row) => row.id), expected.slice(3));
+  } finally { db.close(); }
+});

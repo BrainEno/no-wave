@@ -80,6 +80,47 @@ test("the inbox is a no-store read that carries the page limit the API documents
   assert.equal(write.status, 405);
 });
 
+test("the inbox forwards a page size and a cursor, and refuses either when malformed", async () => {
+  const cursor = Buffer.from("2026-01-02T03:04:05.678Z|3f7c1d90-8a2b-4c1e-9f3a-6c5b2e8d1a44", "utf8").toString("base64url");
+  const stub = upstream();
+  const paged = await handleNotificationsRequest(
+    request(`/api/notifications?limit=20&cursor=${encodeURIComponent(cursor)}`, { method: "GET", headers: { host: "no-wave.test" } }),
+    { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+  );
+  assert.equal(paged.status, 200);
+  const forwarded = new URL(stub.calls[0]?.url ?? "");
+  assert.equal(forwarded.searchParams.get("limit"), "20");
+  assert.equal(forwarded.searchParams.get("cursor"), cursor);
+
+  // Anything else in the query string is dropped: this proxy forwards two
+  // parameters, not whatever the caller typed.
+  const extra = upstream();
+  await handleNotificationsRequest(
+    request("/api/notifications?limit=20&userId=someone-else&cursor=" + encodeURIComponent(cursor), { method: "GET", headers: { host: "no-wave.test" } }),
+    { apiBaseUrl: API_BASE, fetchImpl: extra.fetchImpl },
+  );
+  const cleaned = new URL(extra.calls[0]?.url ?? "");
+  assert.deepEqual([...cleaned.searchParams.keys()].sort(), ["cursor", "limit"]);
+  assert.equal(cleaned.searchParams.get("userId"), null);
+
+  // A malformed cursor or an out-of-range limit is rejected here, not upstream.
+  for (const [query, message] of [
+    ["cursor=not%20a%20cursor", "Invalid cursor."],
+    ["limit=0", "limit must be a whole number between 1 and 100."],
+    ["limit=101", "limit must be a whole number between 1 and 100."],
+    ["limit=abc", "limit must be a whole number between 1 and 100."],
+  ]) {
+    const unused = upstream();
+    const response = await handleNotificationsRequest(
+      request(`/api/notifications?${query}`, { method: "GET", headers: { host: "no-wave.test" } }),
+      { apiBaseUrl: API_BASE, fetchImpl: unused.fetchImpl },
+    );
+    assert.equal(response.status, 400, `${query} is refused`);
+    assert.deepEqual(await response.json(), { error: { code: "BAD_USER_INPUT", message } });
+    assert.deepEqual(unused.calls, [], `${query} never reaches the API`);
+  }
+});
+
 test("the unread count is a no-store read of its own endpoint", async () => {
   const stub = upstream({ data: 2 });
   const counted = await handleNotificationsUnreadCountRequest(

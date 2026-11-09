@@ -139,6 +139,53 @@ test("PostgreSQL cursor migration normalizes legacy microseconds and enforces mi
   }), (error) => error === rollback);
 });
 
+test("PostgreSQL notification times are normalized to the cursor's millisecond precision", integrationOptions, async () => {
+  const migration = await readFile(new URL("./migrations/0030_notification_created_at_millisecond_precision.sql", import.meta.url), "utf8");
+  const rollback = new Error("rollback disposable notification migration fixture");
+  const a = "00000000-0000-4000-8000-0000000000a1";
+  const b = "00000000-0000-4000-8000-0000000000a2";
+  await assert.rejects(sql.begin(async (tx) => {
+    // A temporary table with the inherited shape keeps the real schema untouched
+    // while giving the migration the legacy rows it is written for.
+    await tx.unsafe(`CREATE TEMP TABLE notifications (
+      id uuid PRIMARY KEY,
+      user_id text NOT NULL,
+      event_key text NOT NULL,
+      payload jsonb NOT NULL,
+      payload_hash char(64) NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      read_at timestamptz
+    ) ON COMMIT DROP`);
+    // Sub-millisecond values arrive as SQL literals: a bound string is truncated
+    // by some drivers, and these are the values a pre-migration row really holds.
+    await tx.unsafe(`INSERT INTO notifications (id, user_id, event_key, payload, payload_hash, created_at) VALUES
+      ('${a}'::uuid, 'legacy-user', 'legacy-1', '{}'::jsonb, repeat('a', 64), '2026-06-01T00:00:00.123900Z'::timestamptz),
+      ('${b}'::uuid, 'legacy-user', 'legacy-2', '{}'::jsonb, repeat('b', 64), '2026-06-01T00:00:00.123400Z'::timestamptz)`);
+
+    await tx.unsafe(migration);
+
+    const rows = await tx.unsafe("SELECT id, created_at FROM notifications ORDER BY id");
+    assert.deepEqual(rows.map((row) => new Date(row.created_at).toISOString()), [
+      "2026-06-01T00:00:00.123Z",
+      "2026-06-01T00:00:00.123Z",
+    ], "legacy notification times are truncated to what a cursor can name");
+
+    // The default now agrees with the cursor, so a new notice cannot land
+    // between two names for the same millisecond.
+    await tx.unsafe("INSERT INTO notifications (id, user_id, event_key, payload, payload_hash) VALUES ('00000000-0000-4000-8000-0000000000a3'::uuid, 'legacy-user', 'legacy-3', '{}'::jsonb, repeat('c', 64))");
+    const [created] = await tx.unsafe(
+      "SELECT created_at = date_trunc('milliseconds', created_at) AS ok FROM notifications WHERE event_key = 'legacy-3'",
+    );
+    assert.equal(created.ok, true, "the column default has no microseconds");
+
+    // A write that bypasses the application cannot reintroduce the bug.
+    await assert.rejects(tx.unsafe(
+      "INSERT INTO notifications (id, user_id, event_key, payload, payload_hash, created_at) VALUES ('00000000-0000-4000-8000-0000000000a4'::uuid, 'legacy-user', 'legacy-4', '{}'::jsonb, repeat('d', 64), '2026-06-01T00:00:00.123900Z'::timestamptz)",
+    ));
+    throw rollback;
+  }), (error) => error === rollback);
+});
+
 test("PostgreSQL HTTP cursors read every same-millisecond row, then an empty page", integrationOptions, async () => {
   const suffix = randomUUID().replaceAll("-", "");
   const authorId = randomUUID();
@@ -289,5 +336,108 @@ test("PostgreSQL HTTP cursors read every same-millisecond row, then an empty pag
     await sql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`cursor-ms-%-${suffix}`]);
     await sql.unsafe("DELETE FROM user_profiles WHERE user_id = $1", [authorId]);
     await sql.unsafe("DELETE FROM auth_accounts WHERE user_id = $1", [ownerId]);
+  }
+});
+
+test("PostgreSQL notification cursors page the inbox backwards, once each", integrationOptions, async () => {
+  const suffix = randomUUID().replaceAll("-", "");
+  const reader = `notif-cursor-reader-${suffix}`;
+  const stranger = `notif-cursor-stranger-${suffix}`;
+  const sameMs = "2026-06-01T00:00:00.123Z";
+  const schedule = [
+    "2026-06-01T00:00:00.124Z",
+    sameMs, sameMs, sameMs,
+    "2026-06-01T00:00:00.122Z",
+  ];
+  const insertNotification = async (userId, eventKey, createdAt) => {
+    const id = randomUUID();
+    await sql.unsafe(
+      "INSERT INTO notifications (id, user_id, event_key, payload, payload_hash, created_at) VALUES ($1, $2, $3, $4::jsonb, $5, $6::timestamptz)",
+      [id, userId, eventKey, { type: "cursor.test" }, "a".repeat(64), createdAt],
+    );
+    return { id, createdAt };
+  };
+  const mine = [];
+  for (const [index, createdAt] of schedule.entries()) {
+    mine.push(await insertNotification(reader, `cursor-${index}-${suffix}`, createdAt));
+  }
+  const theirs = [
+    await insertNotification(stranger, `cursor-stranger-1-${suffix}`, sameMs),
+    await insertNotification(stranger, `cursor-stranger-2-${suffix}`, sameMs),
+  ];
+  const newestFirst = (rows) => [...rows].sort((left, right) => {
+    if (left.createdAt !== right.createdAt) return left.createdAt < right.createdAt ? 1 : -1;
+    return left.id < right.id ? 1 : -1;
+  }).map((row) => row.id);
+  const expected = newestFirst(mine);
+
+  try {
+    await withApiServer(async (baseUrl) => {
+      const inboxUrl = (limit, cursor = null) =>
+        `${baseUrl}/me/notifications?limit=${limit}` + (cursor === null ? "" : `&cursor=${encodeURIComponent(cursor)}`);
+      const authorization = bearer(reader);
+      let intruderId = null;
+      const walk = async (limit, { insertIntruder = false } = {}) => {
+        const seen = [];
+        let cursor = null;
+        let page = 0;
+        for (;;) {
+          const response = await fetch(inboxUrl(limit, cursor), { headers: { authorization } });
+          assert.equal(response.status, 200);
+          const items = (await response.json()).data;
+          if (items.length === 0) return seen;
+          assert.ok(items.length <= limit, "a page never exceeds its limit");
+          for (const item of items) seen.push(item.id);
+          const last = items[items.length - 1];
+          cursor = encodeCursor(last.createdAt, last.id);
+          page += 1;
+          assert.ok(page < 50, "the walk terminates");
+          if (insertIntruder && page === 1) {
+            const intruder = await insertNotification(reader, `cursor-intruder-${suffix}`, "2026-06-01T00:00:09.000Z");
+            const head = await fetch(inboxUrl(10), { headers: { authorization } });
+            assert.ok((await head.json()).data.some((item) => item.id === intruder.id), "the newer notice exists above the cursor");
+            intruderId = intruder.id;
+          }
+        }
+      };
+
+      assert.deepEqual(await walk(2), expected, "every notification is read once, newest first");
+      assert.deepEqual(await walk(1), expected, "a page size of one walks the same order");
+      assert.deepEqual(await walk(100), expected, "a page larger than the inbox returns everything, then nothing");
+
+      // Marking a notice read must not move it.
+      const readOne = await fetch(`${baseUrl}/me/notifications/${expected[2]}/read`, { method: "PUT", headers: { authorization } });
+      assert.equal(readOne.status, 200);
+      assert.deepEqual(await walk(2), expected, "read state does not reorder the inbox");
+
+      // A notice arriving mid-scroll is newer than the cursor: no repeats, no gaps.
+      const withIntruder = await walk(2, { insertIntruder: true });
+      assert.deepEqual(withIntruder, expected);
+      assert.ok(intruderId !== null && !withIntruder.includes(intruderId), "the newer notice is not re-read by an older page");
+
+      // The stranger's token sees the stranger's inbox, and only theirs.
+      const strangerInbox = await fetch(inboxUrl(100), { headers: { authorization: bearer(stranger) } });
+      assert.equal(strangerInbox.status, 200);
+      assert.deepEqual(
+        (await strangerInbox.json()).data.map((item) => item.id),
+        newestFirst(theirs),
+      );
+
+      // Malformed cursors are the client's mistake, answered as one.
+      for (const bad of ["not-a-cursor", encodeCursor("2026-06-01T00:00:00.123Z", "not-a-uuid"), Buffer.from("2026-06-01T00:00:00Z|" + randomUUID()).toString("base64url")]) {
+        const response = await fetch(inboxUrl(2, bad), { headers: { authorization } });
+        assert.equal(response.status, 400, `cursor ${bad} is rejected`);
+        assert.deepEqual(await response.json(), { error: { code: "BAD_USER_INPUT", message: "Invalid cursor query parameter." } });
+      }
+
+      // Limit boundaries behave as documented, and an unauthenticated read stays 401.
+      for (const badLimit of ["0", "101", "abc"]) {
+        const response = await fetch(`${baseUrl}/me/notifications?limit=${badLimit}`, { headers: { authorization } });
+        assert.equal(response.status, 400, `limit ${badLimit} is rejected`);
+      }
+      assert.equal((await fetch(inboxUrl(10))).status, 401);
+    });
+  } finally {
+    await sql.unsafe("DELETE FROM notifications WHERE user_id = ANY($1::text[])", [[reader, stranger]]);
   }
 });
