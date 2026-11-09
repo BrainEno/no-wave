@@ -94,6 +94,16 @@ different key. No raw credential is retained as a map key, logged or persisted.
   window, that request would submit the old token and revoke the family. The
   window is bounded, the entry count is capped, and entries are memory-only.
 
+  A transient `undefined` is settled for a much shorter window (`transientMs`,
+  default 250 ms) than a rotated or refused answer (#244). Those two are facts
+  about the session and stay reusable for `reuseMs`; "no answer" is not, and
+  keeping it for the full window turned a single dropped connection into five
+  seconds in which every request was told to stop trying. A quarter of a second
+  still covers a sibling whose 401 landed with the same burst but which was
+  descheduled until after the first attempt settled, which is the case this
+  window exists for. `transientMs` is clamped to `reuseMs`, so `reuseMs: 0`
+  disables both.
+
 Every caller applies the same outcome, so concurrent requests converge instead
 of disagreeing:
 
@@ -101,7 +111,7 @@ of disagreeing:
 | --- | --- | --- |
 | `TokenSet` | rotation succeeded | retries its own resource once with the new access token; writes the rotated cookies (tokens `HttpOnly`) into **its own** response |
 | `null` | refresh definitively rejected (400/401) | returns the original 401 and clears all three cookies |
-| `undefined` | transient failure (network, 5xx, malformed envelope) | returns the original 401 and changes no cookie |
+| `undefined` | transient failure (network, 5xx, malformed envelope) | returns the original 401 and changes no cookie; remembered for `transientMs` only, so the next request after that retries |
 
 The identity layer sees exactly one presentation of the old token. Genuine
 replay after the reuse window still reaches the API and still revokes the

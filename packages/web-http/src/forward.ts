@@ -9,6 +9,7 @@ import {
 import { accessTokenFrom, clearedTokenCookieHeaders, refreshTokenFrom, tokenCookieHeaders, type TokenSet } from "./cookies.ts";
 import { NO_STORE, errorResponse } from "./http.ts";
 import { isTokenEnvelope, setIdempotencyKeyHeader } from "./policy.ts";
+import { parseRetryAfterSeconds } from "./retry-after.ts";
 import { InMemoryRefreshCoordinator, refreshCoordinatorKey, type RefreshCoordinator } from "./refresh-coordinator.ts";
 
 /**
@@ -54,7 +55,20 @@ export type ForwardMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
  * connection. The proxied surface is JSON of bounded size, so buffering does not
  * change what this forwarder can carry.
  */
-type BufferedUpstream = { status: number; contentType: string | null; text: string };
+type BufferedUpstream = {
+  status: number;
+  contentType: string | null;
+  text: string;
+  /**
+   * The raw upstream `Retry-After`, kept so a throttled caller can be told when
+   * to come back (#244).
+   *
+   * It is relayed through `parseRetryAfterSeconds`, exactly like the auth
+   * proxy's error path: the browser sees normalized integer seconds and nothing
+   * else, so this cannot become a channel for arbitrary upstream headers.
+   */
+  retryAfter: string | null;
+};
 
 /** The `data` field of a `{ data: ... }` envelope, or `null` when unusable. */
 function dataFromText(text: string): unknown {
@@ -95,6 +109,7 @@ async function callApi(
       status: response.status,
       contentType: response.headers.get("content-type"),
       text: await response.text(),
+      retryAfter: response.headers.get("retry-after"),
     };
   });
 }
@@ -223,13 +238,15 @@ export async function forwardAuthoringRequest(
   if (reply) {
     response = reply;
   } else if (upstream) {
-    response = new Response(upstream.text, {
-      status: upstream.status,
-      headers: new Headers({
-        "cache-control": NO_STORE,
-        "content-type": upstream.contentType ?? "application/json; charset=utf-8",
-      }),
+    const headers = new Headers({
+      "cache-control": NO_STORE,
+      "content-type": upstream.contentType ?? "application/json; charset=utf-8",
     });
+    // A 429 from the API carries how long the caller should wait; dropping it
+    // left the browser with no way to back off except guessing (#244).
+    const retryAfterSeconds = parseRetryAfterSeconds(upstream.retryAfter);
+    if (retryAfterSeconds !== null) headers.set("retry-after", String(retryAfterSeconds));
+    response = new Response(upstream.text, { status: upstream.status, headers });
   } else {
     response = errorResponse("SERVICE_UNAVAILABLE", "The API service could not be reached.", 502);
   }
@@ -283,6 +300,7 @@ async function upgradeSession(
         status: response.status,
         contentType: response.headers.get("content-type"),
         text: await response.text(),
+        retryAfter: response.headers.get("retry-after"),
       };
     });
   } catch {

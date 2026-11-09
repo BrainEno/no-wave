@@ -50,6 +50,16 @@ export type InMemoryRefreshCoordinatorOptions = {
    * the family. Short and memory-only by design.
    */
   reuseMs?: number;
+  /**
+   * How long a **transient** failure (`undefined`) stays reusable — the "no
+   * answer, try again" case.
+   *
+   * It is deliberately much shorter than `reuseMs` (#244). Two requests whose
+   * 401s landed together are one burst and must share one answer even if the
+   * second one is descheduled until after the first settled; a request five
+   * seconds later is a new attempt and must not inherit a dropped connection.
+   */
+  transientMs?: number;
   /** Cap on retained settled entries, so an abusive burst cannot grow the map. */
   maxEntries?: number;
   /** Injectable for deterministic tests. */
@@ -59,16 +69,29 @@ export type InMemoryRefreshCoordinatorOptions = {
 const DEFAULT_REUSE_MS = 5_000;
 const DEFAULT_MAX_ENTRIES = 1_024;
 
+/**
+ * How long "no answer, try again" is shared between requests (#244).
+ *
+ * A quarter of a second covers the scheduling gap between two requests that were
+ * dispatched together, and is far too short to stand between a reader and a
+ * retry. The reuse window it replaces was five seconds.
+ */
+const DEFAULT_TRANSIENT_MS = 250;
+
 /** The shipped coordinator: a single-flight promise plus a short result ledger. */
 export class InMemoryRefreshCoordinator implements RefreshCoordinator {
   private readonly pending = new Map<string, Promise<RefreshOutcome>>();
   private readonly settled = new Map<string, { at: number; outcome: RefreshOutcome }>();
   private readonly reuseMs: number;
+  private readonly transientMs: number;
   private readonly maxEntries: number;
   private readonly now: () => number;
 
   constructor(options: InMemoryRefreshCoordinatorOptions = {}) {
     this.reuseMs = Math.max(0, options.reuseMs ?? DEFAULT_REUSE_MS);
+    // Never longer than the reuse window itself: a caller that asked for no
+    // reuse at all asked for none of the transient kind either.
+    this.transientMs = Math.min(this.reuseMs, Math.max(0, options.transientMs ?? DEFAULT_TRANSIENT_MS));
     this.maxEntries = Math.max(1, Math.floor(options.maxEntries ?? DEFAULT_MAX_ENTRIES));
     this.now = options.now ?? Date.now;
   }
@@ -77,7 +100,10 @@ export class InMemoryRefreshCoordinator implements RefreshCoordinator {
     const now = this.now();
     this.expire(now);
     const cached = this.settled.get(key);
-    if (cached && this.reuseMs > 0 && now - cached.at < this.reuseMs) return cached.outcome;
+    if (cached) {
+      const ttl = cached.outcome === undefined ? this.transientMs : this.reuseMs;
+      if (ttl > 0 && now - cached.at < ttl) return cached.outcome;
+    }
     const inFlight = this.pending.get(key);
     if (inFlight) return inFlight;
 
@@ -100,6 +126,12 @@ export class InMemoryRefreshCoordinator implements RefreshCoordinator {
       // It must not clear cookies, and it must not reject one of the waiters.
       outcome = undefined;
     }
+    // Every answer is settled, but a transient one for a much shorter window
+    // (#244). Siblings in one burst must still share a failure — they were
+    // already in flight, and re-presenting the same refresh token is what revokes
+    // the family — while a request arriving after that window retries instead of
+    // inheriting a dropped connection for the whole reuse period, which is how
+    // one blip became five seconds of failures for every request in between.
     const at = this.now();
     this.expire(at);
     this.settled.delete(key);
@@ -110,7 +142,8 @@ export class InMemoryRefreshCoordinator implements RefreshCoordinator {
 
   private expire(now: number): void {
     for (const [key, entry] of this.settled) {
-      if (now - entry.at < this.reuseMs) continue;
+      const ttl = entry.outcome === undefined ? this.transientMs : this.reuseMs;
+      if (now - entry.at < ttl) continue;
       this.settled.delete(key);
     }
   }
