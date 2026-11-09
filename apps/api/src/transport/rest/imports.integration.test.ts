@@ -178,6 +178,81 @@ for (const provider of ["sqlite", "postgres"] as const) {
       // 6. A body that is not a bundle is the caller's mistake, not a 500.
       await call("/imports/notion", 400, post(author, { bundle: { version: 9, pages: "nope" }, apply: true }));
       await call("/imports/notion", 400, post(author, { apply: true }));
+
+      // 7. The other direction: the work comes back out as a bundle.
+      // A session first, exactly like every other session-only read: an anonymous
+      // caller cannot use the status code to learn what the endpoint accepts.
+      await call(`/imports/notion/export?slugs=${page.slug}`, 401);
+      await call("/imports/notion/export", 401);
+      const authorHeaders = { headers: { authorization: `Bearer ${token(author)}` } };
+      await call("/imports/notion/export", 400, authorHeaders);
+      await call("/imports/notion/export?slugs=Not%20A%20Slug", 400, authorHeaders);
+      const empty = await call("/imports/notion/export?slugs=no-such-work", 200, {
+        headers: { authorization: `Bearer ${token(author)}` },
+      });
+      assert.deepEqual(empty.data.bundle.pages, []);
+      assert.deepEqual(empty.data.report.missing, ["no-such-work"]);
+
+      const exported = await call(`/imports/notion/export?slugs=${page.slug}`, 200, {
+        headers: { authorization: `Bearer ${token(author)}` },
+      });
+      const exportedPage = exported.data.bundle.pages[0];
+      // The page id is the page the work came from, so pushing this back to Notion
+      // updates that page rather than creating a duplicate.
+      assert.equal(exportedPage.id, pageId);
+      assert.equal(exported.data.report.works[0].pages[0].provenance, "notion");
+      assert.equal(exportedPage.properties.Page.title[0].plain_text, "墙壁");
+      assert.equal(exportedPage.properties.Slug.rich_text[0].plain_text, page.slug);
+      // The `Date` is the work's publication day *here*: this site stamps the
+      // instant when a work is published, so the day Notion carried and the day
+      // the site published on are two different facts, and only the second one is
+      // stored.
+      assert.equal(exportedPage.properties.Date.date.start, reread.data.publishedAt.slice(0, 10));
+      assert.equal(exportedPage.properties.Published.checkbox, true);
+      assert.deepEqual(exportedPage.properties.Tags.multi_select, [{ name: "诗歌" }]);
+      assert.match(JSON.stringify(exportedPage.blocks), /改过的正文/);
+      assert.deepEqual(exported.data.report.works[0].issues, [], "this work loses nothing on the way out");
+
+      // An export is a read: repeating it changes nothing.
+      const repeated = await call(`/imports/notion/export?slugs=${page.slug}`, 200, {
+        headers: { authorization: `Bearer ${token(author)}` },
+      });
+      assert.deepEqual(repeated.data.bundle, exported.data.bundle);
+      assert.equal(await linkCount(), 1, "an export writes no provenance row");
+
+      // 8. The bundle is one the import accepts, and it addresses the work it came
+      // from rather than creating a second one. The first re-import is an
+      // `update` — the digest covers the page's date, and the day this site
+      // published on is not the day the original bundle carried — and the second
+      // is a `skip`: the memory converges after one pass, and nothing drifts.
+      const roundTrip = await call("/imports/notion", 200, post(author, { bundle: exported.data.bundle, apply: true }));
+      assert.deepEqual(roundTrip.data.summary, { create: 0, update: 1, skip: 0, refused: 0, failed: 0 });
+      assert.equal(roundTrip.data.pages[0].articleId, page.articleId);
+      const settled = await call("/imports/notion", 200, post(author, { bundle: exported.data.bundle, apply: true }));
+      assert.deepEqual(settled.data.summary, { create: 0, update: 0, skip: 1, refused: 0, failed: 0 });
+
+      // 9. A work written here has no Notion page, so it exports with an id this
+      // API made up — and another account's export of the same address is empty,
+      // not a 403 that would confirm the work exists.
+      const created = await call("/articles", 201, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token(author)}` },
+        body: JSON.stringify({
+          title: `手写的作品 ${suffix}`,
+          contentBlocks: [{ id: "block-1", type: "paragraph", text: "在本站写的正文" }],
+          publish: true,
+        }),
+      });
+      const handwritten = await call(`/imports/notion/export?slugs=${created.data.slug}`, 200, {
+        headers: { authorization: `Bearer ${token(author)}` },
+      });
+      assert.equal(handwritten.data.report.works[0].pages[0].provenance, "site");
+      assert.equal(handwritten.data.bundle.pages[0].id, `site:${created.data.id}:zh-CN`);
+      const theirs = await call(`/imports/notion/export?slugs=${created.data.slug}`, 200, {
+        headers: { authorization: `Bearer ${token(other)}` },
+      });
+      assert.deepEqual(theirs.data.report.missing, [created.data.slug]);
+      assert.deepEqual(theirs.data.bundle.pages, []);
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
       await forgetThisRun();

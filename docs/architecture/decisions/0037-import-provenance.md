@@ -106,13 +106,15 @@ the import is one endpoint that reports per page.**
   future seed can use it and drop the file. ADR 0036's decision 4 said the link
   table would *replace* the key-plus-digest pair rather than accompany it; that is
   now true for the server, which is where it matters.
-- **A new persistence slice.** `imports` owns exactly two methods
-  (`getExternalContentLink`, `upsertExternalContentLink`) in both providers. It is
-  its own slice rather than a corner of `article` or `taxonomy`: provenance is
-  neither content nor classification, and folding it into either would have made
-  it invisible in the ownership document. The provider-migration row applier lists
-  the table, because a cutover that dropped these rows would make the next import
-  create a second copy of every work.
+- **A new persistence slice.** `imports` owns three methods
+  (`getExternalContentLink`, `upsertExternalContentLink`, and — since the export
+  landed, ADR 0036 decision 7 — `listExternalContentLinks`, the same question asked
+  by work rather than by page) in both providers. It is its own slice rather than a
+  corner of `article` or `taxonomy`: provenance is neither content nor
+  classification, and folding it into either would have made it invisible in the
+  ownership document. The provider-migration row applier lists the table, because a
+  cutover that dropped these rows would make the next import create a second copy
+  of every work.
 - **Two new contract surfaces.** The persistence port table gained `imports` and
   `getMyArticle`; the REST contract gained one operation with two schemas
   (`NotionImportRequest`, `NotionImportReport`) and documented `413` / `415`

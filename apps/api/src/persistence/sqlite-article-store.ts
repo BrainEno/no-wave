@@ -456,6 +456,22 @@ export function createSqliteArticleStore(db: SqliteRunner) {
     },
 
     /**
+     * Every edition of one of the author's works, by its address.
+     *
+     * One statement, because "the editions of this work" is a single question:
+     * a per-locale loop would be three statements for an answer the join already
+     * has. Ordered by locale so the caller — not the driver — decides which
+     * edition is the primary one. A tombstone is not an edition: it is deleted,
+     * and deleting it released the address for reuse.
+     */
+    listMyArticleEditions({ slug, actorId }: { slug: string; actorId: string }) {
+      validateArticleSlug(slug);
+      requiredText("actorId", actorId, 300);
+      return statement(articleSelect + " WHERE a.slug = ? AND a.author_id = ? AND a.deleted_at IS NULL ORDER BY t.locale")
+        .all(slug, actorId).map(mapArticle);
+    },
+
+    /**
      * The author's own tombstones, newest deletion first.
      *
      * This is the list that makes a soft delete honest: without it, a deleted
@@ -723,5 +739,5 @@ export function createSqliteArticleStore(db: SqliteRunner) {
         return { purged: expired.length };
       });
     },
-  }) satisfies Pick<TypedPersistenceAdapterContract, "listPublishedArticles" | "listFeaturedArticles" | "setFeaturedArticles" | "listFollowingArticles" | "getPublishedArticle" | "incrementArticleViewCount" | "listMyArticles" | "getMyArticle" | "listMyDeletedArticles" | "listLikedArticles" | "listRelatedArticles" | "createArticle" | "updateArticle" | "deleteArticle" | "restoreArticle" | "purgeExpiredArticles">;
+  }) satisfies Pick<TypedPersistenceAdapterContract, "listPublishedArticles" | "listFeaturedArticles" | "setFeaturedArticles" | "listFollowingArticles" | "getPublishedArticle" | "incrementArticleViewCount" | "listMyArticles" | "getMyArticle" | "listMyArticleEditions" | "listMyDeletedArticles" | "listLikedArticles" | "listRelatedArticles" | "createArticle" | "updateArticle" | "deleteArticle" | "restoreArticle" | "purgeExpiredArticles">;
 }

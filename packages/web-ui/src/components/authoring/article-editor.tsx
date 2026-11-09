@@ -737,6 +737,15 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
             {articlePublicPath ? <a className="nw-btn" href={articlePublicPath} target="_blank" rel="noreferrer">查看已发布作品 ↗</a> : <span className="nw-m">该语言暂无公开网页地址。</span>}
           </>
         ) : null}
+        {/* The other direction of the Notion exchange (ADR 0036): the work so far,
+            as a bundle the author can push into their own database with their own
+            token. A plain download, because the proxy answers with the file — and
+            it is offered for drafts too, since an export writes nothing. */}
+        {article ? (
+          <a className="nw-btn" href={`/api/authoring/notion-export?slugs=${encodeURIComponent(article.slug)}`}>
+            导出到 Notion ↓
+          </a>
+        ) : null}
       </div>
       {confirmDialog}
     </section>

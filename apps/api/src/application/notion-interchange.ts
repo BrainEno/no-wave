@@ -119,6 +119,14 @@ export const INTERCHANGE_ISSUE_CODES = Object.freeze([
   "work-type-fallback",
   "featured-image-not-carried",
   "hierarchy-not-carried",
+  /**
+   * Export-side: a property of the work that has no Notion property to live in,
+   * so a round trip comes back different. Reported rather than dropped, because
+   * the author is about to hand this bundle to their own database.
+   */
+  "work-type-not-carried",
+  /** Export-side: an edition in a language the Notion mapping has no page for. */
+  "translation-locale-not-carried",
 ] as const);
 
 /** Derived from the list so the published contract and the code cannot drift. */
@@ -761,7 +769,7 @@ export function articleBlocksToNotionBlocks(
 export function notionPageFromArticleDraft(
   draft: Pick<NotionArticleDraft, "title" | "summary" | "slug" | "tags" | "publish" | "publishedAt" | "contentBlocks">,
   options: NotionExportOptions = {},
-): { properties: Record<string, unknown>; children: NotionBlockLike[]; issues: InterchangeIssue[] } {
+): { properties: Record<string, NotionPropertyValue>; children: NotionBlockLike[]; issues: InterchangeIssue[] } {
   const names = { ...DEFAULT_NOTION_PROPERTY_NAMES, ...(options.propertyNames ?? {}) };
   const { blocks, issues } = articleBlocksToNotionBlocks(draft.contentBlocks);
   const text = (value: string): NotionRichText[] => (value.length > 0 ? richTextFromInlines(value, undefined) : []);

@@ -63,7 +63,7 @@ function queryParameters(parameters: readonly QueryParameter[] | undefined): Rea
   return (parameters ?? []).map((parameter) => ({
     name: parameter.name,
     in: "query",
-    required: false,
+    required: parameter.required ?? false,
     description: parameter.description,
     schema: parameter.schema,
   }));

@@ -3857,6 +3857,53 @@ const hour = new Date(Date.now() + 3_600_000).toISOString();
     } finally { await runtime.cleanup(undefined, suffix); }
   });
 
+  test(`${adapterName}: the export's two reads are the inverse of the import's`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const author = `export-author-${suffix}`;
+    const other = `export-other-${suffix}`;
+    const slug = `export-work-${suffix}`;
+    try {
+      const primary = await runtime.store.createArticle({
+        authorId: author, slug, title: "墙壁",
+        contentBlocks: [{ id: "block-1", type: "paragraph", text: "正文" }], publish: true,
+      });
+      // One work, two editions: the export asks for the work by its address and
+      // gets the editions back in locale order, so the primary one is the
+      // caller's decision rather than the driver's.
+      await runtime.store.updateArticle({
+        articleId: primary.id, actorId: author, slug, title: "The Wall",
+        contentBlocks: [{ id: "block-1", type: "paragraph", text: "The body" }],
+        locale: "en", publish: true,
+      });
+      const editions = await runtime.store.listMyArticleEditions({ slug, actorId: author });
+      assert.deepEqual(editions.map((edition) => edition.locale), ["en", "zh-CN"], "ordered by locale, on both providers");
+      assert.equal(new Set(editions.map((edition) => edition.id)).size, 1, "one work, not two articles");
+      assert.equal(editions[0]!.slug, slug);
+
+      // The same address is not a permission: another account reads nothing.
+      assert.deepEqual(await runtime.store.listMyArticleEditions({ slug, actorId: other }), []);
+
+      // Provenance, read the other way round: by work rather than by page.
+      await runtime.store.upsertExternalContentLink({
+        provider: "notion", externalId: `page-${suffix}`, locale: "zh-CN", articleId: primary.id,
+        ownerId: author, digest: "d".repeat(16), syncedAt: "2026-11-03T09:00:00.000Z",
+      });
+      const links = await runtime.store.listExternalContentLinks({ provider: "notion", articleId: primary.id, ownerId: author });
+      assert.equal(links.length, 1);
+      assert.equal(links[0]!.externalId, `page-${suffix}`, "the page the work came from, so an export can name it again");
+      assert.equal(links[0]!.locale, "zh-CN");
+      // Owner-scoped like every other read here.
+      assert.deepEqual(await runtime.store.listExternalContentLinks({ provider: "notion", articleId: primary.id, ownerId: other }), []);
+      // Another provider's rows are not this question's answer.
+      assert.deepEqual(await runtime.store.listExternalContentLinks({ provider: "notion", articleId: other, ownerId: author }), []);
+
+      // A tombstone is not an exportable work: deleting it released the address.
+      await runtime.store.deleteArticle({ articleId: primary.id, actorId: author });
+      assert.deepEqual(await runtime.store.listMyArticleEditions({ slug, actorId: author }), []);
+    } finally { await runtime.cleanup(undefined, suffix); }
+  });
+
 }
 
 registerAdapterContracts("SQLite", sqliteFixture);

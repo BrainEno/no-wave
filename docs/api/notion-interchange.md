@@ -96,6 +96,20 @@ midnight of that day**: `2026-10-08` → `2026-10-08T00:00:00.000Z`.
 Export writes the date back as `YYYY-MM-DD` (Notion's own day granularity), so a
 round trip does not accumulate time-of-day drift.
 
+Two things about that day are worth stating plainly, because they are not the
+same fact:
+
+- **This site stamps its own publication instant.** Publishing (here, or through
+  an import) writes `published_at` with the site's clock; the `Date` a Notion page
+  carried is *not* what a work's publication day becomes. So an exported bundle
+  carries the day **this** site published on, which may differ from the day the
+  page it came from carried.
+- **A re-import compares the digest, and the digest covers that day.** Re-importing
+  a freshly exported bundle is therefore an `update` the first time — identical
+  content, one write — and a `skip` from then on, because the stored digest and
+  the bundle's draft now agree. `imports.integration.test.ts` asserts exactly that
+  convergence rather than claiming a round trip is a no-op on its first pass.
+
 ## 5. Blocks
 
 The site's block model is `paragraph`, `heading` (levels 2–4), `quote`, `list`
@@ -159,6 +173,8 @@ structure and are not reconstructed from a site that has no such concepts.
 | `to_do` state | a published work has no checkbox | `checkbox-state-dropped` |
 | Table cell grids | no table block exists | `table-block-dropped` |
 | A signed Notion image URL | it 403s within the hour; the bytes must be copied into media storage first | `expiring-image-url` |
+| A work type its `Tags` do not imply | the import derives `workType` from the tags, and Notion has no property to hold it; a round trip would change it silently | `work-type-not-carried` |
+| A `zh-TW` edition of a `zh-CN` work | a translated edition travels as one linked page, and the mapping reads that page as `en` | `translation-locale-not-carried` |
 
 A page that ends up with **no** blocks is refused (`empty-body`) rather than
 published with invented text.
@@ -179,6 +195,10 @@ Notion API ──(client, user's own token)──► bundle {pages, blocks}
                         articles / article_translations / taxonomies
                                               │
                     existing REST reads ──► web (react-router) · Flutter
+                                              │
+              GET /api/v1/imports/notion/export  (§11)  ──► bundle ──► Notion
+                                (same mapping, the other direction,
+                                 with page ids from `external_content_links`)
 ```
 
 1. **The mapping is pure and shared by both directions.** No HTTP, no database,
@@ -213,7 +233,7 @@ Notion API ──(client, user's own token)──► bundle {pages, blocks}
 | 0 | The pure mapping, both directions, with fixtures from the real database | **landed** |
 | 1 | Seed: `scripts/notion-seed.ts` reads a bundle (a captured JSON file, or fetches it with a token from the environment) and creates/updates articles through the REST API for one author | **landed** (§9) |
 | 2 | `POST /api/v1/imports/notion` (dry run + apply, per-page report), the link table (migration), signed-in users importing into their own account | **landed** (§10) |
-| 3 | `GET /api/v1/imports/notion/export?slugs=` returning a Notion-shaped bundle; the authoring desk offers "export to Notion" and downloads it, or pushes it with their own token | next |
+| 3 | `GET /api/v1/imports/notion/export?slugs=` returning a Notion-shaped bundle; the authoring desk offers "export to Notion" and downloads it, or pushes it with their own token | **landed** (§11) |
 | 4 | Import UI on the authoring desk, and an upload-by-token flow for the Flutter client | later |
 
 Phase 0 is what makes 1–4 cheap: every later phase is transport and storage
@@ -395,3 +415,89 @@ vanished from the bundle.
 - `apps/api/src/persistence/persistence-adapter-contract.test.ts` — the link table
   behaves identically on both providers: one row per page edition, an upsert that
   replaces in place, and `getMyArticle` scoping (an id is not a permission).
+
+## 11. Exporting through the API (phase 3)
+
+`GET /api/v1/imports/notion/export?slugs=a,b` is the exchange in the other
+direction: a signed-in author asks for their own works as a bundle they can push
+into their Notion database with their own token (ADR 0036 decision 3 — this API
+never holds a Notion credential). The full contract is in
+`docs/api/openapi.json`; this section is the part a reader of the mapping needs.
+
+```http
+GET /api/v1/imports/notion/export?slugs=qiangbi,cai-diao
+Authorization: Bearer <access token>
+```
+
+```jsonc
+{
+  "data": {
+    "bundle": { "version": 1, "database": { "id": "", "title": "no-wave export" }, "pages": [ /* … */ ] },
+    "report": {
+      "works": [{
+        "slug": "qiangbi", "articleId": "…", "title": "墙壁", "primaryLocale": "zh-CN",
+        "pages": [{ "locale": "zh-CN", "pageId": "01331af0-…", "provenance": "notion", "articleId": "…", "issues": [] }],
+        "issues": []
+      }],
+      "missing": [],
+      "summary": { "works": 1, "pages": 1, "missing": 0 }
+    }
+  }
+}
+```
+
+`data.bundle` is exactly the object `POST /api/v1/imports/notion` accepts as its
+`bundle`; write it to a file and it is a bundle. `data.report` is what the bundle
+could not say about itself.
+
+**A work is one address, up to two pages.** The primary page is the edition in
+this site's own order of preference (`zh-CN`, then `zh-TW`, then `en`), so the
+same work exports the same way twice. An `en` edition travels as a second page
+paired by the `English` relation on **both** sides — the shape the author's own
+database already has. Every page carries the work's address in `Slug`: the site
+has one address per work, and an export does not invent a second one.
+
+**Page ids are provenance.** An edition that was imported from Notion carries the
+page id it came from (`provenance: "notion"`), read back through
+`external_content_links`; writing to that id updates the page the author already
+has. An edition written here carries `site:<articleId>:<locale>`
+(`provenance: "site"`) — not an invented Notion id, so repeat exports are
+byte-identical and a client can diff them.
+
+**Nothing is written.** No provenance row, no work, no tag: exporting twice returns
+the same bundle, and the desk can offer a download on a draft. `slugs` is capped
+at 50 works per request and the resulting bundle never exceeds the 200 pages an
+import accepts.
+
+**What Notion cannot hold is reported, not guessed.** A `zh-TW` edition is
+`translation-locale-not-carried` (the mapping has one translation language); a
+work type its own `Tags` do not imply is `work-type-not-carried`, because an
+import derives `workType` from the tags and would come back with a different one.
+A requested slug that is not one of the caller's live works — including a work in
+the recycle bin — is listed in `missing` rather than failing the request, and a
+work of another account is indistinguishable from one that does not exist.
+
+**One round-trip seam, stated.** Publishing here stamps this site's own instant,
+and an import's digest covers the page's `Date`. Re-importing a freshly exported
+bundle is therefore one `update` with identical content, then `skip` — the memory
+converges, and nothing about the work drifts (§4).
+
+### Where the guarantees are tested
+
+- `apps/api/src/application/notion-export.test.ts` — decisions against a stub: one
+  address and one page per edition paired by the relation; provenance ids reused
+  and `site:` ids stable across two exports; a `zh-TW` edition reported instead of
+  written as `en`; a work type its tags do not imply reported; unknown and
+  other-account slugs listed as `missing`; tags read once per language; the
+  request bounds refused before anything is read; and an exported page fed back
+  through `parseNotionBundle` and the mapping to prove the digest is unchanged.
+- `apps/api/src/transport/rest/imports.integration.test.ts` — real HTTP and a real
+  database on both providers: the `401`, the `400`s for a missing or malformed
+  `slugs`, an unknown slug answering `200` with `missing`, an imported work
+  exported with **the page id it came from** and its properties, blocks and tags
+  intact, an export written nowhere, the exported bundle re-imported onto the same
+  work (`update`, then `skip`), a hand-written work exported with a `site:` id, and
+  another account's export of the same address coming back empty.
+- `packages/web-http/test/authoring.test.ts` — the desk's download: the answer is
+  an attachment, a malformed or oversized `slugs` is refused locally, and a failed
+  export keeps the API's error instead of saving it as a file.

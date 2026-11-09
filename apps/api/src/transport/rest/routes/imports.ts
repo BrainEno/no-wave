@@ -1,6 +1,7 @@
 import type { RestRouteContext, RestRouteHandler } from "./context.ts";
 import { authenticatedActorId, readJsonObject, sendBadInput, sendJson, sendJsonBodyError, sendServiceError, sendUnauthenticated, sendUnavailable } from "../http.ts";
 import { NotionBundleError } from "../../../application/notion-bundle.ts";
+import { MAX_EXPORT_WORKS, NotionExportRequestError, exportNotionBundle } from "../../../application/notion-export.ts";
 import { NotionImportRequestError, importNotionBundle } from "../../../application/notion-import.ts";
 
 /**
@@ -17,7 +18,35 @@ function readApplyFlag(value: unknown): boolean | null {
   return typeof value === "boolean" ? value : null;
 }
 
-/** Import endpoints (`imports.notion`). */
+/** The address shape a slug must have before it is looked up. */
+const EXPORT_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/**
+ * The works one export request names.
+ *
+ * `slugs` is a comma-separated list rather than a repeated parameter, because the
+ * transport refuses repeated query parameters outright (an ambiguous request is
+ * answered, not guessed). Order is kept and duplicates are not an error: a caller
+ * that pasted two lists together gets one page per work, which is what they meant.
+ */
+function readExportSlugs(url: URL): string[] | string {
+  const raw = url.searchParams.get("slugs");
+  if (raw === null) return "A `slugs` query parameter is required, for example `?slugs=qiangbi,cai-diao`.";
+  const slugs = raw.split(",").map((slug) => slug.trim()).filter((slug) => slug.length > 0);
+  if (slugs.length === 0) return "`slugs` must name at least one work.";
+  for (const slug of slugs) {
+    if (slug.length > 160 || !EXPORT_SLUG_PATTERN.test(slug)) {
+      return `\`${slug}\` is not a work address; slugs are lowercase ASCII words joined by single hyphens.`;
+    }
+  }
+  const unique = [...new Set(slugs)];
+  if (unique.length > MAX_EXPORT_WORKS) {
+    return `At most ${MAX_EXPORT_WORKS} works can be exported in one request; this one names ${unique.length}.`;
+  }
+  return unique;
+}
+
+/** Import endpoints (`imports.notion`, `imports.notion.export`). */
 const IMPORT_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Object.freeze({
   /**
    * `POST /api/v1/imports/notion` — import a Notion bundle into the caller's own
@@ -53,6 +82,42 @@ const IMPORT_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Object
       // A bundle that is not a bundle is the caller's mistake, not ours: say
       // which shape was expected instead of a generic 500.
       if (error instanceof NotionBundleError || error instanceof NotionImportRequestError) {
+        sendBadInput(response, error.message);
+        return;
+      }
+      sendServiceError(response, error);
+    }
+  },
+
+  /**
+   * `GET /api/v1/imports/notion/export?slugs=` — the caller's own works as a
+   * Notion bundle (ADR 0036, phase 3).
+   *
+   * A read, so it is safe to repeat: nothing is written, no provenance row is
+   * created, and exporting twice produces the same bundle. The response carries
+   * the bundle under `data.bundle` and what it could not say under
+   * `data.report` — which pages are updates of pages the author already has,
+   * which requested works were not found, and where a round trip would differ.
+   */
+  "imports.notion.export": async (ctx: RestRouteContext): Promise<void> => {
+    const { request, response, url, services, env } = ctx;
+    if (!services) { sendUnavailable(response); return; }
+
+    try {
+      // The session comes first, like every other session-only read: an anonymous
+      // caller learns nothing about what the endpoint accepts, and a caller who is
+      // signed in gets the reason rather than a 401 for a typo.
+      const actorId = await authenticatedActorId(request, services, env);
+      if (!actorId) { sendUnauthenticated(response); return; }
+
+      const slugs = readExportSlugs(url);
+      if (typeof slugs === "string") { sendBadInput(response, slugs); return; }
+
+      const exported = await exportNotionBundle({ actorId, slugs, deps: services });
+      sendJson(response, 200, { data: exported });
+    } catch (error: unknown) {
+      // Too many works, or none: the caller's mistake, answered with the reason.
+      if (error instanceof NotionExportRequestError) {
         sendBadInput(response, error.message);
         return;
       }

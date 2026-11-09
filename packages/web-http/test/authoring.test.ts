@@ -7,10 +7,12 @@ import {
   authoringArticlePath,
   authoringArticlesPath,
   authoringDeletedArticlesPath,
+  authoringNotionExportPath,
   authoringRestoreArticlePath,
   handleAuthoringArticleRequest,
   handleAuthoringArticlesRequest,
   handleAuthoringDeletedArticlesRequest,
+  handleAuthoringNotionExportRequest,
   handleAuthoringRestoreRequest,
   handleAuthoringSessionRequest,
 } from "../src/authoring.ts";
@@ -55,6 +57,10 @@ function trashRequest(method = "GET", headers: Record<string, string> = {}): Req
     method,
     headers: { host: "no-wave.test", ...headers },
   });
+}
+
+function exportRequest(query: string, method = "GET"): Request {
+  return request(`/api/authoring/notion-export${query}`, { method, headers: { host: "no-wave.test" } });
 }
 
 function sessionRequest(method = "GET", headers: Record<string, string> = {}): Request {
@@ -573,4 +579,57 @@ test("restoring a specific edition forwards its actual locale, without weakening
     }), { id: "bad" }, { apiBaseUrl: API_BASE, fetchImpl: upstream().fetchImpl },
   );
   assert.equal(cross.status, 403);
+});
+
+test("the Notion export downloads the bundle instead of rendering it", async () => {
+  const bundle = { version: 1, database: { id: "", title: "no-wave export" }, pages: [{ id: "site:article-1:zh-CN", properties: {}, blocks: [] }] };
+  const stub = upstream({ data: { bundle, report: { works: [], missing: [], summary: { works: 0, pages: 1, missing: 0 } } } });
+
+  const exported = await handleAuthoringNotionExportRequest(
+    exportRequest("?slugs=qiangbi,cai-diao"),
+    { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+  );
+
+  assert.equal(exported.status, 200);
+  assertNoStore(exported);
+  // The one thing this route adds to the shared forwarder: the browser saves the
+  // answer, because a bundle the author has to copy out of a JSON viewer is not a
+  // download.
+  assert.match(exported.headers.get("content-disposition") ?? "", /^attachment; filename="notion-bundle\.json"$/);
+  assert.equal(stub.calls[0]?.url, `${API_BASE}/${authoringNotionExportPath(["qiangbi", "cai-diao"])}`);
+  assert.equal(stub.calls[0]?.init?.method, "GET");
+  assert.deepEqual(await exported.json(), { data: { bundle, report: { works: [], missing: [], summary: { works: 0, pages: 1, missing: 0 } } } });
+});
+
+test("an export names at most fifty works, and only addresses", async () => {
+  const stub = upstream();
+  const config = { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl };
+
+  // No parameter, an empty one, and a duplicate parameter: all answered locally.
+  assert.equal((await handleAuthoringNotionExportRequest(exportRequest(""), config)).status, 400);
+  assert.equal((await handleAuthoringNotionExportRequest(exportRequest("?slugs="), config)).status, 400);
+  assert.equal((await handleAuthoringNotionExportRequest(exportRequest("?slugs=a&slugs=b"), config)).status, 400);
+  // A title is not an address, and the proxy says so without asking the API.
+  assert.equal((await handleAuthoringNotionExportRequest(exportRequest("?slugs=%E5%A2%99%E5%A3%81"), config)).status, 400);
+  assert.equal((await handleAuthoringNotionExportRequest(exportRequest("?slugs=Qiangbi"), config)).status, 400);
+  const tooMany = Array.from({ length: 51 }, (_, index) => `work-${index}`).join(",");
+  assert.equal((await handleAuthoringNotionExportRequest(exportRequest(`?slugs=${tooMany}`), config)).status, 400);
+  assert.equal((await handleAuthoringNotionExportRequest(exportRequest("?slugs=qiangbi", "POST"), config)).status, 405);
+  assert.equal(stub.calls.length, 0, "a refused export never reaches the network");
+
+  // The fifty-first work is the one that is refused, not the fiftieth.
+  const allowed = Array.from({ length: 50 }, (_, index) => `work-${index}`).join(",");
+  const accepted = await handleAuthoringNotionExportRequest(exportRequest(`?slugs=${allowed}`), config);
+  assert.equal(accepted.status, 200);
+});
+
+test("a failed export keeps the API's error instead of saving it as a file", async () => {
+  const stub = upstream({ error: { code: "UNAUTHENTICATED", message: "Authentication is required." } }, 401);
+  const refused = await handleAuthoringNotionExportRequest(
+    exportRequest("?slugs=qiangbi"),
+    { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+  );
+  assert.equal(refused.status, 401);
+  assert.equal(refused.headers.get("content-disposition"), null);
+  assert.deepEqual(await refused.json(), { error: { code: "UNAUTHENTICATED", message: "Authentication is required." } });
 });

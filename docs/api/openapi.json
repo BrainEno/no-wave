@@ -3094,6 +3094,72 @@
         }
       }
     },
+    "/api/v1/imports/notion/export": {
+      "get": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "Export your own works as a Notion database bundle",
+        "operationId": "imports.notion.export.get",
+        "responses": {
+          "200": {
+            "description": "The bundle, and what it could not say (missing works, provenance, losses).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/NotionExport"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request: `BAD_USER_INPUT` for a query or body the contract does not allow, `BAD_INPUT` for discovery paging misuse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid, unrevoked bearer token was presented (`UNAUTHENTICATED`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "The inverse of `POST imports.notion`, and it produces a bundle that endpoint accepts: an export can be handed to Notion, or imported back as a copy. Nothing is written — exporting twice returns the same bundle.\n\n**`slugs` is a comma-separated list** of your own works (at most 50 per request). A slug that is not one of your live works is listed in `report.missing` rather than failing the request, so a stale desk list still exports everything else.\n\n**A work is one address and up to three editions.** The primary page is the edition in the site's own preference (`zh-CN`, `zh-TW`, `en`); the `en` edition travels as a second page linked by the `English` relation, exactly as the author's own database pairs them. A `zh-TW` edition of a `zh-CN` work is reported (`translation-locale-not-carried`) instead of being written into the wrong language.\n\n**Page ids are provenance.** An edition that was imported from Notion carries the page id it came from, so pushing the bundle back updates that page instead of creating a duplicate. A work written here has no Notion page, and carries a stable `site:<articleId>:<locale>` id — repeat exports are byte-identical, and the client decides what to do with a page Notion has never seen.\n\n**What Notion cannot hold is reported, not dropped.** A work type that its own tags do not imply would import back as a different type (`work-type-not-carried`); an image whose URL expires is reported per page. Properties Notion has no column for — categories, hierarchy, reading order — are not carried and are not invented.",
+        "parameters": [
+          {
+            "name": "slugs",
+            "in": "query",
+            "required": true,
+            "description": "Comma-separated work addresses, at most 50. Duplicates are ignored.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
     "/api/v1/me": {
       "get": {
         "tags": [
@@ -7177,6 +7243,134 @@
           }
         }
       },
+      "NotionExport": {
+        "type": "object",
+        "required": [
+          "bundle",
+          "report"
+        ],
+        "description": "The bundle — exactly what `POST imports.notion` accepts as its `bundle` — and the report of what it could not say. `data.bundle` can be written to a file and pushed to Notion as it is.",
+        "properties": {
+          "bundle": {
+            "$ref": "#/components/schemas/NotionBundle"
+          },
+          "report": {
+            "$ref": "#/components/schemas/NotionExportReport"
+          }
+        }
+      },
+      "NotionExportReport": {
+        "type": "object",
+        "required": [
+          "works",
+          "missing",
+          "summary"
+        ],
+        "description": "Which works travelled, which requested slugs did not, and every place a round trip would differ from the original.",
+        "properties": {
+          "works": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NotionExportWork"
+            }
+          },
+          "missing": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Slugs that are not an edition of one of your live works (a deleted work is one of them)."
+          },
+          "summary": {
+            "type": "object",
+            "required": [
+              "works",
+              "pages",
+              "missing"
+            ],
+            "properties": {
+              "works": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "pages": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "missing": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      },
+      "NotionExportWork": {
+        "type": "object",
+        "required": [
+          "slug",
+          "articleId",
+          "title",
+          "primaryLocale",
+          "pages",
+          "issues"
+        ],
+        "properties": {
+          "slug": {
+            "type": "string",
+            "description": "The work's address; every page of the work carries it."
+          },
+          "articleId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "primaryLocale": {
+            "type": "string",
+            "description": "The edition whose properties and body describe the work."
+          },
+          "pages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "locale",
+                "pageId",
+                "provenance",
+                "articleId",
+                "issues"
+              ],
+              "properties": {
+                "locale": {
+                  "type": "string"
+                },
+                "pageId": {
+                  "type": "string",
+                  "description": "The id the page carries in the bundle."
+                },
+                "provenance": {
+                  "type": "string",
+                  "enum": [
+                    "notion",
+                    "site"
+                  ],
+                  "description": "`notion` means the id is the page this edition was imported from, so writing to it updates that page. `site` means the id was made here (`site:<articleId>:<locale>`) because the work was written in this site."
+                },
+                "articleId": {
+                  "type": "string"
+                },
+                "issues": {
+                  "$ref": "#/components/schemas/InterchangeIssues"
+                }
+              }
+            }
+          },
+          "issues": {
+            "$ref": "#/components/schemas/InterchangeIssues"
+          }
+        }
+      },
       "NotionImportRequest": {
         "type": "object",
         "required": [
@@ -7191,6 +7385,46 @@
             "type": "boolean",
             "default": false,
             "description": "`true` performs the writes the report describes."
+          }
+        }
+      },
+      "InterchangeIssues": {
+        "type": "array",
+        "description": "Every place the mapping could not carry something verbatim.",
+        "items": {
+          "type": "object",
+          "required": [
+            "code",
+            "detail"
+          ],
+          "properties": {
+            "code": {
+              "type": "string",
+              "enum": [
+                "empty-block-dropped",
+                "unsupported-block",
+                "block-limit-reached",
+                "expiring-image-url",
+                "link-block-flattened",
+                "equation-flattened",
+                "callout-flattened",
+                "toggle-flattened",
+                "checkbox-state-dropped",
+                "table-block-dropped",
+                "invalid-block-dropped",
+                "empty-body",
+                "empty-title",
+                "slug-derived",
+                "work-type-fallback",
+                "featured-image-not-carried",
+                "hierarchy-not-carried",
+                "work-type-not-carried",
+                "translation-locale-not-carried"
+              ]
+            },
+            "detail": {
+              "type": "string"
+            }
           }
         }
       },
@@ -7315,41 +7549,7 @@
                   "description": "One line a human can read."
                 },
                 "issues": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "required": [
-                      "code",
-                      "detail"
-                    ],
-                    "properties": {
-                      "code": {
-                        "type": "string",
-                        "enum": [
-                          "empty-block-dropped",
-                          "unsupported-block",
-                          "block-limit-reached",
-                          "expiring-image-url",
-                          "link-block-flattened",
-                          "equation-flattened",
-                          "callout-flattened",
-                          "toggle-flattened",
-                          "checkbox-state-dropped",
-                          "table-block-dropped",
-                          "invalid-block-dropped",
-                          "empty-body",
-                          "empty-title",
-                          "slug-derived",
-                          "work-type-fallback",
-                          "featured-image-not-carried",
-                          "hierarchy-not-carried"
-                        ]
-                      },
-                      "detail": {
-                        "type": "string"
-                      }
-                    }
-                  }
+                  "$ref": "#/components/schemas/InterchangeIssues"
                 }
               }
             }
