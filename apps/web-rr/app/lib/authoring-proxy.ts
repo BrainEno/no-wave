@@ -5,6 +5,7 @@ import {
   handleAuthoringFeaturedCandidatesRequest,
   handleAuthoringFeaturedRequest,
   handleAuthoringNotionExportRequest,
+  handleAuthoringNotionImportRequest,
   handleAuthoringProfileRequest,
   handleAuthoringRestoreRequest,
   handleAuthoringSessionRequest,
@@ -51,6 +52,17 @@ export function handleAuthoringFeaturedCandidates(request: Request): Promise<Res
  */
 export function handleAuthoringNotionExport(request: Request): Promise<Response> {
   return handleAuthoringNotionExportRequest(request, apiProxyConfig());
+}
+
+/**
+ * The Notion import (ADR 0036, phase 4).
+ *
+ * The desk posts the bundle the author chose; the API answers with the per-page
+ * report, and the proxy adds nothing to it. The response body is JSON in both
+ * cases — a dry run is a `200` with `applied: false`, not an error.
+ */
+export function handleAuthoringNotionImport(request: Request): Promise<Response> {
+  return handleAuthoringNotionImportRequest(request, apiProxyConfig());
 }
 
 export function handleAuthoringRestoreArticle(request: Request, id: string | undefined): Promise<Response> {

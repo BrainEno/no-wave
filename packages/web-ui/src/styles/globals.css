@@ -464,6 +464,44 @@ mark { background: var(--or); color: #0f0d0c; }
   .nw-media h1 { font-size: 48px; }
 }
 
+/* --- Notion import (ADR 0036, phase 4) ----------------------------------
+   One page, one decision: read the plan, then confirm. The action badge is the
+   only colour on the list, because "nothing was written here" (拒绝, 失败) is the
+   row an author has to find before pressing the button. */
+.nw-import { padding-bottom: 96px; }
+.nw-import h1 { max-width: 900px; font-size: clamp(44px, 8vw, 104px); font-weight: 400; line-height: 1.05; }
+.nw-import-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.nw-import-pick { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin: 28px 0 8px; }
+.nw-import-pick label { cursor: pointer; }
+.nw-import-file { color: var(--t2); font: 400 13px/1.6 var(--f-ss); overflow-wrap: anywhere; }
+.nw-import-report { margin-top: 28px; border-top: 1px solid var(--ink); padding-top: 20px; }
+.nw-import-headline { margin: 0; font: 600 18px/1.5 var(--f-zh); }
+.nw-import-source { margin: 6px 0 0; color: var(--t2); font: 400 12px/1.6 var(--f-ss); overflow-wrap: anywhere; }
+.nw-import-pages { list-style: none; margin: 20px 0 0; padding: 0; display: grid; gap: 2px; }
+.nw-import-page {
+  display: grid; grid-template-columns: 4.5em 1fr auto; align-items: baseline; gap: 4px 12px;
+  padding: 10px 0; border-bottom: 1px solid color-mix(in srgb, var(--t2) 40%, transparent);
+}
+.nw-import-page[data-action="refused"],
+.nw-import-page[data-action="failed"] { border-bottom-color: var(--ink); }
+.nw-import-action { font: 700 12px/1.6 var(--f-ss); color: var(--t2); letter-spacing: .06em; }
+.nw-import-action[data-action="create"] { color: var(--ink); }
+.nw-import-action[data-action="refused"],
+.nw-import-action[data-action="failed"] { color: var(--red); }
+.nw-import-title { font: 400 16px/1.5 var(--f-zh); overflow-wrap: anywhere; }
+.nw-import-locale { color: var(--t2); font: 400 12px/1.6 var(--f-ss); }
+.nw-import-issues { grid-column: 2 / -1; color: var(--t2); font: 400 12px/1.6 var(--f-ss); overflow-wrap: anywhere; }
+.nw-import-reason { grid-column: 2 / -1; color: var(--red); font: 400 12px/1.6 var(--f-zh); overflow-wrap: anywhere; }
+.nw-import-issues-summary { margin: 20px 0 0; color: var(--t2); font: 400 13px/1.6 var(--f-zh); overflow-wrap: anywhere; }
+.nw-import-confirm { display: grid; gap: 10px; justify-items: start; margin-top: 28px; }
+.nw-import-confirm .nw-m { margin: 0; max-width: 60ch; }
+.nw-import-done { margin-top: 28px; }
+@media (max-width: 640px) {
+  .nw-import h1 { font-size: 48px; }
+  .nw-import-page { grid-template-columns: 4.5em 1fr; }
+  .nw-import-pick .nw-btn { width: 100%; }
+}
+
 /* Inline form dialog (#195): replaces window.prompt for link and image input.
    Per UI_DESIGN_SYSTEM §4.9 — 52-high field, 1px square frame, transparent
    background, 13px meta label above, and an error in red with the "⚠ 错误："

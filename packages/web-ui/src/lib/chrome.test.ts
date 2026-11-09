@@ -116,7 +116,7 @@ test("grain tile and offsets are generated once, deterministically", () => {
 });
 
 test("tool and form routes use native scrolling, reading routes keep the smoother", () => {
-  for (const path of ["/write", "/write/media", "/account", "/admin/featured", "/sign-in", "/en/write", "/forgot-password"]) {
+  for (const path of ["/write", "/write/media", "/write/notion", "/account", "/admin/featured", "/sign-in", "/en/write", "/forgot-password"]) {
     assert.equal(shouldUseSmoothScroll(path), false, path);
   }
   for (const path of ["/", "/en", "/articles/some-slug", "/en/articles", "/authors", "/administrator", "/write-up"]) {

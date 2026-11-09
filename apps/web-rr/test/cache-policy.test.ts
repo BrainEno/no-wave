@@ -53,6 +53,7 @@ const PRIVATE_PAGES = [
   "verify-email",
   "write",
   "write.media",
+  "write.notion",
 ];
 
 async function pageRouteModules(): Promise<string[]> {

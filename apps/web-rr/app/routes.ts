@@ -50,6 +50,7 @@ export default [
   route("verify-email", "routes/verify-email.tsx"),
   route("write", "routes/write.tsx"),
   route("write/media", "routes/write.media.tsx"),
+  route("write/notion", "routes/write.notion.tsx"),
   route("account", "routes/account.tsx"),
   route("admin/featured", "routes/admin.featured.tsx"),
   route("sitemap.xml", "routes/sitemap.xml.ts"),
@@ -77,6 +78,7 @@ route("api/authoring/notifications/:id/read", "routes/api.authoring.notification
   // Notion exchange (ADR 0036): the import is a `POST` to the API from the desk's
   // own client; the export is a download, so the browser needs a URL it can follow.
   route("api/authoring/notion-export", "routes/api.authoring.notion-export.ts"),
+  route("api/authoring/notion-import", "routes/api.authoring.notion-import.ts"),
   route("api/articles/:slug/comments", "routes/api.articles.comments.ts"),
   // 评论编辑（ADR 0031）：单条评论按 id 寻址，和按 slug 寻址的评论区分开登记。
   route("api/comments/:id", "routes/api.comments.$id.ts"),

@@ -50,6 +50,10 @@ const CLIENT_COMPONENTS: readonly ClientComponent[] = [
   // arrives after hydration — an HTML check would see an empty shell and pass.
   { component: "MediaLibrary", sentinel: "还没有上传过图片", page: "write/media" },
   { component: "ArticleEditor", sentinel: "作品地址（slug）由系统根据标题自动生成", page: "write" },
+  // The Notion import (ADR 0036, phase 4). The page is a file picker and nothing
+  // else until a file is chosen, so an HTML check would see a heading and a
+  // button and pass; the sentinel is the request only this panel makes.
+  { component: "NotionImport", sentinel: "/api/authoring/notion-import", page: "write/notion" },
   // The desk's inbox. It is the only screen that can show a reader the notice a
   // deletion wrote them, and it renders nothing until it has fetched — so if it
   // is missing from the bundle, the desk still looks complete.
