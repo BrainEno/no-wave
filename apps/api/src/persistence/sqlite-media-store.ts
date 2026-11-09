@@ -1,6 +1,7 @@
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import { createSqliteProviderMigrationCapture } from "./sqlite-provider-migration-capture.ts";
 import type { MediaScanRow } from "../application/media-assets.ts";
+import { contentReferencesMediaAsset } from "../application/media-reference-pattern.ts";
 import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
 import type { SqliteRow, SqliteRunner } from "./sqlite.ts";
 
@@ -99,16 +100,17 @@ export function createSqliteMediaStore(db: SqliteRunner) {
    */
   const evidenceRowsUsing = (id: string): MediaScanRow[] => {
     const assetId = String(id).toLowerCase();
-    // The row says "this asset": `content` carries the asset's own id, exactly as
-    // the reference-table rows do, so the caller's extraction and redaction code
-    // does not care which of the two questions answered.
-    const evidence = `/media/${assetId}`;
+    // The substring match narrows the candidates; `contentReferencesMediaAsset`
+    // decides. Both are needed: without the SQL filter this would read every body
+    // on the site, and without the predicate a body that merely mentions the id —
+    // a quoted UUID in a technical article, a debug log — would count as a
+    // reference and block a delete the library calls orphaned (#243).
     const bodies = db.prepare(
       `${BODY_SQL} WHERE instr(lower(t.content_blocks), ?) > 0 LIMIT 200`,
-    ).all(assetId).map((row): MediaScanRow => ({ ...mapBody(row), content: evidence }));
+    ).all(assetId).map(mapBody).filter((row) => contentReferencesMediaAsset(row.content, assetId));
     const avatars = db.prepare(
       "SELECT avatar_url FROM user_profiles WHERE avatar_url IS NOT NULL AND avatar_url <> '' AND instr(lower(avatar_url), ?) > 0 LIMIT 200",
-    ).all(assetId).map((): MediaScanRow => ({ kind: "avatar", content: evidence }));
+    ).all(assetId).map(mapAvatar).filter((row) => contentReferencesMediaAsset(row.content, assetId));
     return [...bodies, ...avatars];
   };
 

@@ -5,6 +5,7 @@
  * postgres-shared.ts so every slice reads rows the same way.
  */
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
+import { contentReferencesMediaAsset } from "../application/media-reference-pattern.ts";
 import type { PostgresStoreContext } from "./postgres-shared.ts";
 import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
 
@@ -230,17 +231,19 @@ export function createPostgresMediaStore(ctx: PostgresStoreContext) {
             [assetId],
           ),
         ]);
-        if (bodyEvidence.length > 0 || avatarEvidence.length > 0) {
+        // The substring match only narrows the candidates; the shared pattern
+        // decides. A body that merely mentions the id — a quoted UUID in a
+        // technical article, a debug log — is not a reference, and counting it
+        // blocked a delete the library page called orphaned (#243).
+        const referencedBodies = bodyEvidence.filter((body) => contentReferencesMediaAsset(body.content_blocks, assetId));
+        const referencedAvatars = avatarEvidence.filter((avatar) => contentReferencesMediaAsset(avatar.avatar_url, assetId));
+        if (referencedBodies.length > 0 || referencedAvatars.length > 0) {
           return {
             deleted: null,
             usedBy: [
-              ...bodyEvidence.map((body) => ({
+              ...referencedBodies.map((body) => ({
                 kind: "work" as const,
-                // The row says "this asset": `content` carries the asset's own id,
-                // exactly as the reference-table rows do, so the caller's
-                // extraction and redaction code does not care which question
-                // answered.
-                content: `/media/${assetId}`,
+                content: body.content_blocks,
                 work: {
                   articleId: body.article_id,
                   slug: body.slug,
@@ -251,7 +254,7 @@ export function createPostgresMediaStore(ctx: PostgresStoreContext) {
                   authorId: body.author_id ?? "",
                 },
               })),
-              ...avatarEvidence.map(() => ({ kind: "avatar" as const, content: `/media/${assetId}` })),
+              ...referencedAvatars.map((avatar) => ({ kind: "avatar" as const, content: avatar.avatar_url })),
             ],
           };
         }
