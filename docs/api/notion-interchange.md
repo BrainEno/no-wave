@@ -234,7 +234,7 @@ Notion API ──(client, user's own token)──► bundle {pages, blocks}
 | 1 | Seed: `scripts/notion-seed.ts` reads a bundle (a captured JSON file, or fetches it with a token from the environment) and creates/updates articles through the REST API for one author | **landed** (§9) |
 | 2 | `POST /api/v1/imports/notion` (dry run + apply, per-page report), the link table (migration), signed-in users importing into their own account | **landed** (§10) |
 | 3 | `GET /api/v1/imports/notion/export?slugs=` returning a Notion-shaped bundle; the authoring desk offers "export to Notion" and downloads it, or pushes it with their own token | **landed** (§11) |
-| 4 | Import UI on the authoring desk, and an upload-by-token flow for the Flutter client | later |
+| 4 | Import UI on the authoring desk, and an upload-by-token flow for the Flutter client | **landed** (§12) |
 
 Phase 0 is what makes 1–4 cheap: every later phase is transport and storage
 around a mapping that is already pinned by tests.
@@ -501,3 +501,125 @@ converges, and nothing about the work drifts (§4).
 - `packages/web-http/test/authoring.test.ts` — the desk's download: the answer is
   an attachment, a malformed or oversized `slugs` is refused locally, and a failed
   export keeps the API's error instead of saving it as a file.
+
+## 12. Importing from the desk, and from any client (phase 4)
+
+Phases 1–3 made the mapping usable by an operator, by a script and by a
+downloaded file. Phase 4 puts it in front of the author: `/write/notion` in the
+web application, and the same endpoint for a client that would rather be a phone
+than a browser.
+
+### 12.1 The authoring desk
+
+`/write/notion` is a private, unindexed page under `/write`, gated the way the
+media library is: the loader answers from the session marker — a cookie that
+carries no credential — and either renders the shell or redirects to
+`/sign-in?next=%2Fwrite%2Fnotion`. Everything that decides anything happens
+after hydration, against data the API verifies.
+
+The page asks the server twice, and that is the whole design:
+
+1. **Choosing a file is a dry run.** The browser reads the file, checks only what
+   makes "this is not a bundle" certain — it parses as JSON, it is an object, it
+   has `version: 1`, a `pages` array of pages with an `id`, a
+   `properties` object and a `blocks` array, within 8 MB and 200 pages — and then
+   `POST /api/authoring/notion-import` with `{ bundle }`. Nothing is written; the
+   answer is the plan.
+2. **The plan is shown, page by page.** Each line is the API's: the action
+   (`create` / `update` / `skip` / `refused` / `failed`), the title, the locale,
+   the mapping's issue codes, and — for a page that was refused or failed — the
+   server's reason. The codes and the reasons are printed as the server wrote
+   them; only the action names are translated, because they are the page's own
+   vocabulary. A summary line counts them, and a second line groups the issue
+   codes, because "what did not come across" is a question about kinds, not about
+   pages.
+3. **Only the plan that would write offers the write.** The confirm button says
+   how many works it would touch and exists only while the plan has a `create` or
+   an `update`. A second import of an unchanged database therefore has no button
+   at all: the server has already said there is nothing to do, and a button that
+   would write nothing is a button that teaches the author to distrust the page.
+   Pressing it sends the same bundle with `apply: true`, and the report that comes
+   back is the same list saying what happened — after which the button is gone.
+
+The proxy in front of the endpoint adds nothing to the answer and refuses only
+things a request can be wrong about before the API sees it: `POST` only (`405`),
+same origin (`403`), `application/json` only (`415`), at most 8 MB (`413`), JSON
+that parses to an object with a `bundle` object (`400`), and `apply` present only
+as a boolean — `"true"` is a `400` rather than a write. The bundle is forwarded
+as the text that arrived: re-serialising it would rewrite a document the author
+chose, and the digest that decides "unchanged" is computed over what the server
+received. Every refusal the proxy makes is marked
+`x-authoring-not-forwarded: 1`; an upstream refusal is not.
+
+### 12.2 Upload by token, from a client (Flutter and anything else)
+
+A client does exactly what the seed does, with the user's own token in the
+client's own process (ADR 0036 decision 3 — this API never stores a Notion
+credential), and then exactly what the desk does:
+
+```text
+1. client → api.notion.com   POST /v1/databases/<id>/query   (Authorization: Bearer <notion token>)
+2. client → api.notion.com   GET  /v1/blocks/<page id>/children
+3. client                    build { "version": 1, "database": {…}, "pages": […] }
+4. client → this API         POST /api/v1/imports/notion  { "bundle": … }            ← dry run, writes nothing
+5. client                    show pages[].action / issues / detail to the user
+6. client → this API         POST /api/v1/imports/notion  { "bundle": …, "apply": true }
+7. client                    show the report again; it is now what happened
+```
+
+`scripts/lib/notion-bundle.ts` and `scripts/notion-seed.ts` are the reference
+implementation of steps 1–3 in TypeScript; the shape they produce is the shape
+steps 4 and 6 accept, and it is the shape §11 exports.
+
+The bounds are the endpoint's (§10), and they are the ones a client has to plan
+for:
+
+| Bound | Value | What a client does about it |
+| --- | --- | --- |
+| body | 8 MB of JSON | split by **work**, not by page — see below |
+| pages | 200 per bundle | same split |
+| blocks per page | 200 (`maxBlocks`) | the rest are dropped, and the page says `block-limit-reached` |
+| rate | 10 imports / 10 minutes / account | batch, and show the wait rather than retrying in a loop |
+
+**Split a work's pages together.** The `English` / `Parent item` relations group
+pages *within one bundle*, so a batch boundary that separates a work's primary
+page from its translation leaves the translation to arrive as a work of its own
+in its own locale. Batches are idempotent, so the safe grouping is: one work and
+all of its editions per batch, and as many works per batch as the two ceilings
+allow.
+
+**Retrying is safe, and cheap.** A dry run is a pure read. An applied import
+records the page id, the work and a digest, so repeating a batch — because a
+connection died, or because the client resumed it — writes nothing for the pages
+that already landed and continues with the rest. Creates also carry
+`Idempotency-Key: notion-seed:<page id>`, so even a request that dies mid-way
+leaves no duplicate behind.
+
+**Nothing is deleted, unpublished or rewritten elsewhere.** An import writes only
+the caller's own works, never renames an existing one, and never publishes
+something the bundle did not mark published. A client that mirrors a Notion
+database should treat the report as the record of what happened, not as a plan it
+still has to apply itself.
+
+### Where the guarantees are tested
+
+- `packages/web-ui/src/lib/notion-import.test.ts` — the page's decisions without
+  a browser: which files are refused and with which sentence (not JSON, not an
+  object, a saved API response, no `version`, too many pages, a page missing its
+  id or `properties` or `blocks`, named by index), both ceilings refused and both
+  exactly at the limit accepted, an empty `pages` array accepted because the API
+  answers it with an empty plan, a report read as written with unreadable pages
+  dropped, the summary preferring the API's count, a plan that would write
+  offering the write and one that would not not offering it, an applied report
+  never offering the write again, and issue codes counted by kind.
+- `packages/web-http/test/authoring.test.ts` — the proxy: the dry run is the
+  default and the bundle is forwarded byte for byte, `apply` must be a boolean,
+  the method, origin, content type, length and shape checks that never reach the
+  network, and an upstream refusal passed through unmarked.
+- `apps/web-rr/test/client-bundle.test.ts` — the panel is in the emitted client
+  bundle, so the page hydrates instead of rendering a picker that does nothing.
+- `e2e/notion-import.spec.ts` — the journey in a browser: an anonymous visitor
+  pointed back after signing in, the desk linking here, a chosen file showing the
+  plan before anything is written, the confirm button writing it once, the work
+  appearing in the desk, and the same file imported twice writing nothing the
+  second time.

@@ -106,6 +106,25 @@ already has.**
    read of the caller's own rows, and a client that needs a provenance row gets
    one from an import, not from a download.
 
+8. **The desk's import is a file the browser reads, and its first request is a
+   dry run.** Phase 4 puts the import behind `/write/notion`: the author chooses
+   the bundle file, the browser reads it, and the *same* route is called twice —
+   once without `apply` to get the plan, once with it after the author has read
+   that plan. Three things follow, and each is a decision rather than an
+   implementation detail. The file is read in the browser because a bundle is a
+   document, not bytes a server must parse for the author: a file that is not
+   JSON, or that is a saved API response, is answered with that sentence instead
+   of a round trip, while the API remains the authority on what a bundle *is*.
+   The first request writes nothing because an author who has not yet seen which
+   pages are new, which are unchanged and which were refused has not agreed to
+   anything. And the report is rendered as the server wrote it — action names are
+   translated, but issue codes and refusal reasons are not re-worded, because a
+   paraphrased reason can say something the import did not do. The client side of
+   phase 4 is the mirror image: a client with the user's own token fetches the
+   pages from Notion and posts the bundle to the same endpoint, so nothing about
+   the token changes (decision 3) and a Flutter build needs no endpoint of its
+   own.
+
 ## Consequences
 
 - **There is deliberately no live sync.** Import is a one-shot run that can be

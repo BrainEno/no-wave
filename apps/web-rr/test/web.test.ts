@@ -1027,6 +1027,12 @@ test("posting a comment requires our own origin and a session", async () => {
  * Both halves are asserted here: the authoring aliases exist and answer, and one
  * submission produces exactly one upstream call, carrying the credential.
  */
+test("the Notion import resource rejects GET without invoking an import", async () => {
+  const result = await get("/api/authoring/notion-import");
+  assert.equal(result.status, 405);
+  assert.equal(JSON.parse(result.body).error.code, "METHOD_NOT_ALLOWED");
+});
+
 test("a comment write is served under /api/authoring, where the access cookie is sent", async () => {
   const path = "/api/authoring/articles/portable-web-foundation/comments?locale=zh-CN";
   mockApi.resetRequests();
@@ -1138,6 +1144,27 @@ function articleBody(title: string, publish = false): string {
   });
 }
 
+test("the Notion import page is private, renders its panel, and is gated the same way", async () => {
+  // No session marker: the loader answers the browser it sent, not a shell it
+  // would then have to make interactive for somebody who is not signed in.
+  const anonymous = await get("/write/notion");
+  assert.ok([302, 307].includes(anonymous.status), `expected a redirect, got ${anonymous.status}`);
+  assert.match(anonymous.headers.get("location") ?? "", /^\/sign-in\?next=%2Fwrite%2Fnotion$/);
+  assert.match(anonymous.headers.get("cache-control") ?? "", /no-store/);
+
+  // Signed in: the page is the shared panel, unindexed like the rest of `/write`.
+  // Two cookies, because the loader reads the marker (`nw_session`, a timestamp
+  // with no credential in it) and the API read that follows uses the token.
+  const signedIn = await get("/write/notion", {
+    cookie: `${DESK_COOKIE}; nw_session=${Math.floor((Date.now() + 3_600_000) / 1000)}`,
+  });
+  assert.equal(signedIn.status, 200);
+  assert.match(signedIn.body, /data-route="write-notion"/);
+  assert.match(signedIn.body, /从 Notion 导入/);
+  assert.match(signedIn.body, /noindex/);
+  assert.match(signedIn.headers.get("cache-control") ?? "", /no-store/);
+});
+
 test("the writing desk renders its shared client component, privately", async () => {
   const result = await get("/write");
   assert.equal(result.status, 200);
@@ -1162,6 +1189,7 @@ test("every private page answers no-store, sign-in included", async () => {
     "/search?q=%E6%8A%B5%E6%8A%97",
     "/write",
     "/write/media",
+    "/write/notion",
     "/feed",
     "/messages",
     "/account",

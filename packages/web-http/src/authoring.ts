@@ -1,7 +1,7 @@
 import type { ApiProxyConfig } from "./api.ts";
 import { readLimitedJson } from "./body.ts";
 import { forwardAuthoringRequest } from "./forward.ts";
-import { errorResponse } from "./http.ts";
+import { errorResponse, isRecord } from "./http.ts";
 import { isSameOriginMutation } from "./policy.ts";
 
 /**
@@ -47,7 +47,7 @@ export const AUTHORING_BODY_MAX_BYTES = 2_000_000;
 
 /** Restrictive browser-to-proxy precondition, not an authentication credential. */
 export const AUTHORING_EXPECTED_ACTOR_HEADER = "x-expected-author";
-/** Set only on local create rejections, never on an upstream response. */
+/** Set only on a rejection the proxy answers itself, never on an upstream response. */
 export const AUTHORING_NOT_FORWARDED_HEADER = "x-authoring-not-forwarded";
 
 function notForwarded(response: Response): Response {
@@ -287,6 +287,55 @@ export async function handleAuthoringNotionExportRequest(
   const headers = new Headers(upstream.headers);
   headers.set("content-disposition", 'attachment; filename="notion-bundle.json"');
   return new Response(await upstream.text(), { status: upstream.status, headers });
+}
+
+/**
+ * How large a Notion bundle may be before it is refused.
+ *
+ * The API's own ceiling (`MAX_NOTION_IMPORT_BYTES`), repeated here for the same
+ * reason the media upload repeats its limit: the proxy holds the bytes while it
+ * reads them, so the decision belongs where they arrive rather than one hop later.
+ */
+export const AUTHORING_NOTION_IMPORT_MAX_BYTES = 8 * 1024 * 1024;
+
+/**
+ * `POST /api/authoring/notion-import` — import a Notion bundle into the caller's
+ * own works (ADR 0036, phase 4).
+ *
+ * The desk sends the file the author chose and the one decision the browser is
+ * allowed to make: whether this is the dry run or the write. Everything else —
+ * whether the bundle is one, which pages are new, which are unchanged since the
+ * last import, which are refused and why — is the API's answer, and the proxy
+ * passes it through untouched so the page shows the report the server produced.
+ *
+ * The body is forwarded as the *text* that arrived. Re-serialising it would
+ * rewrite a document the author chose, and the import's "unchanged since last
+ * time" check is a digest of what the server received.
+ */
+export async function handleAuthoringNotionImportRequest(
+  request: Request,
+  config: ApiProxyConfig = {},
+): Promise<Response> {
+  const method = methodOf(request, ["POST"]);
+  if (method === null) {
+    return errorResponse("METHOD_NOT_ALLOWED", "Only POST is supported for an import.", 405);
+  }
+  if (rejectCrossOrigin(request)) {
+    return errorResponse("ORIGIN_REJECTED", "The request origin was rejected.", 403);
+  }
+  const body = await readLimitedJson(request, AUTHORING_NOTION_IMPORT_MAX_BYTES);
+  if (!body.ok) return notForwarded(body.response);
+
+  // `apply` decides whether anything is written, so an ambiguous value is answered
+  // rather than coerced: `"true"` from a hand-written client must not become a write.
+  if (body.value.apply !== undefined && typeof body.value.apply !== "boolean") {
+    return notForwarded(errorResponse("BAD_USER_INPUT", "`apply` must be a boolean when present.", 400));
+  }
+  if (!isRecord(body.value.bundle)) {
+    return notForwarded(errorResponse("BAD_USER_INPUT", "A `bundle` object is required.", 400));
+  }
+
+  return forwardAuthoringRequest(request, "api/v1/imports/notion", "POST", config, body.text);
 }
 
 /**

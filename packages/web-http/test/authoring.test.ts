@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   AUTHORING_ARTICLES_LIMIT,
   AUTHORING_BODY_MAX_BYTES,
+  AUTHORING_NOTION_IMPORT_MAX_BYTES,
   authoringArticlePath,
   authoringArticlesPath,
   authoringDeletedArticlesPath,
@@ -13,6 +14,7 @@ import {
   handleAuthoringArticlesRequest,
   handleAuthoringDeletedArticlesRequest,
   handleAuthoringNotionExportRequest,
+  handleAuthoringNotionImportRequest,
   handleAuthoringRestoreRequest,
   handleAuthoringSessionRequest,
 } from "../src/authoring.ts";
@@ -61,6 +63,14 @@ function trashRequest(method = "GET", headers: Record<string, string> = {}): Req
 
 function exportRequest(query: string, method = "GET"): Request {
   return request(`/api/authoring/notion-export${query}`, { method, headers: { host: "no-wave.test" } });
+}
+
+function importRequest(body: string, headers: Record<string, string> = {}, method = "POST"): Request {
+  const origin = { host: "no-wave.test", origin: "https://no-wave.test", ...headers };
+  // A GET cannot carry a body, and the method check is the point of that case.
+  return method === "GET"
+    ? request("/api/authoring/notion-import", { method, headers: origin })
+    : request("/api/authoring/notion-import", { method, body, headers: origin });
 }
 
 function sessionRequest(method = "GET", headers: Record<string, string> = {}): Request {
@@ -632,4 +642,135 @@ test("a failed export keeps the API's error instead of saving it as a file", asy
   assert.equal(refused.status, 401);
   assert.equal(refused.headers.get("content-disposition"), null);
   assert.deepEqual(await refused.json(), { error: { code: "UNAUTHENTICATED", message: "Authentication is required." } });
+});
+
+/**
+ * The Notion import (ADR 0036, phase 4).
+ *
+ * The desk sends a file the author chose and one flag. What the proxy must get
+ * right is the part a browser cannot check for itself: that a dry run stays a dry
+ * run, that a body is bounded before it is buffered, and that the report the API
+ * produced reaches the page as it was written.
+ */
+
+const BUNDLE = {
+  version: 1,
+  database: { id: "db-1", title: "无浪潮草稿" },
+  pages: [{ id: "page-1", properties: { Title: { type: "title", title: [] } }, blocks: [] }],
+};
+
+const DRY_RUN_REPORT = {
+  applied: false,
+  database: { id: "db-1", title: "无浪潮草稿" },
+  summary: { create: 1, update: 0, skip: 0, refused: 1, failed: 0 },
+  pages: [
+    { externalId: "page-1", title: "墙", locale: "zh-CN", action: "create", slug: "qiang", articleId: null, detail: "would create", issues: [] },
+    { externalId: "page-2", title: "诗", locale: "zh-CN", action: "refused", slug: "", articleId: null, detail: "the page claims another author's work", issues: [{ code: "provenance-conflict", detail: "page-2 is linked to somebody else" }] },
+  ],
+};
+
+test("a dry run is the default, and the bundle travels as the author sent it", async () => {
+  const stub = stubFetch({ "api/v1/imports/notion": () => json({ data: DRY_RUN_REPORT }) });
+  const body = JSON.stringify({ bundle: BUNDLE });
+  const response = await handleAuthoringNotionImportRequest(importRequest(body), {
+    apiBaseUrl: API_BASE,
+    fetchImpl: stub.fetchImpl,
+  });
+
+  assert.equal(response.status, 200);
+  assertNoStore(response);
+  assert.equal(stub.calls.length, 1);
+  assert.equal(stub.calls[0]?.url, `${API_BASE}/api/v1/imports/notion`);
+  assert.equal(stub.calls[0]?.init?.method, "POST");
+  // Byte for byte: the import compares a digest of what it received against the
+  // one stored from the last import, so re-serialising here would make every
+  // second import a write.
+  assert.equal(stub.calls[0]?.init?.body, body);
+  // The plan reaches the page untouched, including the refused page and its issue.
+  assert.deepEqual(await response.json(), { data: DRY_RUN_REPORT });
+});
+
+test("applying is one explicit boolean", async () => {
+  const stub = stubFetch({ "api/v1/imports/notion": () => json({ data: { ...DRY_RUN_REPORT, applied: true } }) });
+  const config = { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl };
+  const applied = await handleAuthoringNotionImportRequest(
+    importRequest(JSON.stringify({ bundle: BUNDLE, apply: true })),
+    config,
+  );
+  assert.equal(applied.status, 200);
+  assert.equal(stub.calls[0]?.init?.body, JSON.stringify({ bundle: BUNDLE, apply: true }));
+
+  // `"true"` is not `true`. A hand-written client that sends a string must not be
+  // the difference between a plan and a write.
+  for (const apply of ["true", 1, null]) {
+    const refused = await handleAuthoringNotionImportRequest(
+      importRequest(JSON.stringify({ bundle: BUNDLE, apply })),
+      config,
+    );
+    assert.equal(refused.status, 400, `apply: ${JSON.stringify(apply)}`);
+    assert.equal(refused.headers.get("x-authoring-not-forwarded"), "1");
+  }
+  assert.equal(stub.calls.length, 1, "an ambiguous apply never reaches the API");
+});
+
+test("an import is bounded, same-origin, and POST", async () => {
+  const stub = stubFetch({ "api/v1/": () => json({ data: DRY_RUN_REPORT }) });
+  const config = { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl };
+  const body = JSON.stringify({ bundle: BUNDLE });
+
+  const get = await handleAuthoringNotionImportRequest(importRequest(body, {}, "GET"), config);
+  assert.equal(get.status, 405);
+
+  const crossOrigin = await handleAuthoringNotionImportRequest(
+    importRequest(body, { origin: "https://evil.test" }),
+    config,
+  );
+  assert.equal(crossOrigin.status, 403);
+
+  const notJson = await handleAuthoringNotionImportRequest(
+    importRequest(body, { "content-type": "text/plain" }),
+    config,
+  );
+  assert.equal(notJson.status, 415);
+
+  const declaredTooLarge = await handleAuthoringNotionImportRequest(
+    importRequest(body, { "content-length": String(AUTHORING_NOTION_IMPORT_MAX_BYTES + 1) }),
+    config,
+  );
+  assert.equal(declaredTooLarge.status, 413);
+
+  const invalidJson = await handleAuthoringNotionImportRequest(importRequest("{"), config);
+  assert.equal(invalidJson.status, 400);
+
+  // A bundle is an object, and a request without one is refused here rather than
+  // answered by an API that had to parse eight megabytes to say so.
+  for (const payload of [{}, { bundle: BUNDLE.pages }, { bundle: "bundle.json" }]) {
+    const missing = await handleAuthoringNotionImportRequest(importRequest(JSON.stringify(payload)), config);
+    assert.equal(missing.status, 400, JSON.stringify(payload).slice(0, 40));
+    assert.equal(missing.headers.get("x-authoring-not-forwarded"), "1");
+  }
+  assert.equal(stub.calls.length, 0, "no refused import reaches the network");
+});
+
+test("an import that the API refuses keeps the API's answer", async () => {
+  // The mapping's refusals are per page and arrive as a report, but a bundle the
+  // API cannot read at all is a 400 with a sentence naming the field — the one
+  // thing an author can act on, so the proxy passes it through rather than
+  // replacing it with a status code.
+  const refusal = { error: { code: "BAD_USER_INPUT", message: "`bundle.pages[3].blocks` must be an array." } };
+  const stub = stubFetch({ "api/v1/imports/notion": () => json(refusal, 400) });
+  const response = await handleAuthoringNotionImportRequest(
+    importRequest(JSON.stringify({ bundle: BUNDLE })),
+    { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+  );
+  assert.equal(response.status, 400);
+  assert.equal(response.headers.get("x-authoring-not-forwarded"), null, "an upstream refusal is not the proxy's");
+  assert.deepEqual(await response.json(), refusal);
+
+  const unauthenticated = stubFetch({ "api/v1/imports/notion": () => json({ error: { code: "UNAUTHENTICATED" } }, 401) });
+  const anonymous = await handleAuthoringNotionImportRequest(
+    importRequest(JSON.stringify({ bundle: BUNDLE })),
+    { apiBaseUrl: API_BASE, fetchImpl: unauthenticated.fetchImpl },
+  );
+  assert.equal(anonymous.status, 401);
 });
