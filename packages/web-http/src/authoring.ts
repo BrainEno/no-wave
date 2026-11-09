@@ -22,6 +22,18 @@ import { isSameOriginMutation } from "./policy.ts";
  * Nothing in this file imports a framework.
  */
 
+/** The address shape a slug must have before it is forwarded to the API. */
+export const AUTHORING_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/**
+ * How many works one export may name.
+ *
+ * The same ceiling the API enforces. Checked here as well so a browser asking for
+ * a thousand works gets one 400 from the proxy instead of an upstream request
+ * that reads a thousand links to answer the same thing.
+ */
+export const AUTHORING_EXPORT_MAX_WORKS = 50;
+
 /** Article ids are UUIDs; the shape is checked before proxying. */
 export const AUTHORING_ARTICLE_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -71,6 +83,17 @@ export function authoringDeletedArticlesPath(
   limit: number = AUTHORING_ARTICLES_LIMIT,
 ): string {
   return `api/v1/me/articles/deleted?locale=${encodeURIComponent(locale)}&limit=${encodeURIComponent(String(limit))}`;
+}
+
+/**
+ * The Notion export, as the API spells it.
+ *
+ * The list travels as one comma-separated parameter because the API refuses a
+ * repeated query parameter outright: a request it cannot read unambiguously is
+ * answered, not guessed.
+ */
+export function authoringNotionExportPath(slugs: readonly string[]): string {
+  return `api/v1/imports/notion/export?slugs=${slugs.map((slug) => encodeURIComponent(slug)).join(",")}`;
 }
 
 export function authoringRestoreArticlePath(id: string, locale?: string): string {
@@ -216,6 +239,54 @@ export async function handleAuthoringDeletedArticlesRequest(
   if (!selection) return errorResponse("BAD_USER_INPUT", "Invalid locale or allLocales query parameter.", 400);
   const path = "allLocales" in selection ? allLocalesPath(true) : authoringDeletedArticlesPath(selection.locale);
   return forwardAuthoringRequest(request, path, "GET", config);
+}
+
+/**
+ * `GET /api/authoring/notion-export?slugs=` — the author's own works as a Notion
+ * bundle they can download (ADR 0036, phase 3).
+ *
+ * The API's answer *is* the file, so the proxy marks it as an attachment: the
+ * browser saves it instead of rendering it, and the desk's "export to Notion"
+ * link needs no client-side blob handling. A failure keeps the JSON error the
+ * API sent (and the proxy's own 400 for a slug it can see is not one), because a
+ * download that silently saves an error page would be worse than no download.
+ */
+export async function handleAuthoringNotionExportRequest(
+  request: Request,
+  config: ApiProxyConfig = {},
+): Promise<Response> {
+  const method = methodOf(request, ["GET"]);
+  if (method === null) {
+    return errorResponse("METHOD_NOT_ALLOWED", "Only GET is supported for an export.", 405);
+  }
+  const raw = new URL(request.url).searchParams.getAll("slugs");
+  if (raw.length !== 1) {
+    return errorResponse("BAD_USER_INPUT", "Exactly one `slugs` query parameter is required.", 400);
+  }
+  const slugs = [...new Set(raw[0]!.split(",").map((slug) => slug.trim()).filter((slug) => slug.length > 0))];
+  if (slugs.length === 0) {
+    return errorResponse("BAD_USER_INPUT", "`slugs` must name at least one work.", 400);
+  }
+  if (slugs.length > AUTHORING_EXPORT_MAX_WORKS) {
+    return errorResponse(
+      "BAD_USER_INPUT",
+      `At most ${AUTHORING_EXPORT_MAX_WORKS} works can be exported in one request.`,
+      400,
+    );
+  }
+  for (const slug of slugs) {
+    if (slug.length > 160 || !AUTHORING_SLUG_PATTERN.test(slug)) {
+      return errorResponse("BAD_USER_INPUT", `\`${slug}\` is not a work address.`, 400);
+    }
+  }
+
+  const upstream = await forwardAuthoringRequest(request, authoringNotionExportPath(slugs), "GET", config);
+  if (!upstream.ok) return upstream;
+  // Rebuilt rather than mutated: the forwarder's answer already carries the
+  // no-store policy and any rotated session cookie, and both are kept.
+  const headers = new Headers(upstream.headers);
+  headers.set("content-disposition", 'attachment; filename="notion-bundle.json"');
+  return new Response(await upstream.text(), { status: upstream.status, headers });
 }
 
 /**

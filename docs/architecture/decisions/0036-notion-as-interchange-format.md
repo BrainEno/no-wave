@@ -95,6 +95,17 @@ already has.**
    expected to fetch the bytes into the site's own media storage (ADR 0028)
    before writing the article.
 
+7. **The export is the same bundle in the other direction, and its page ids are
+   provenance.** `GET /api/v1/imports/notion/export` answers with a bundle the
+   import endpoint accepts, produced by the same mapping — so the two directions
+   cannot drift, and a round trip is a test rather than a hope. Where an edition
+   came from Notion, the exported page carries **that page id**, which is what
+   makes "push this back with my token" an update of the page the author already
+   has instead of a duplicate; a work written here carries a stable `site:<id>`
+   page id instead of an invented Notion one. The export writes nothing: it is a
+   read of the caller's own rows, and a client that needs a provenance row gets
+   one from an import, not from a download.
+
 ## Consequences
 
 - **There is deliberately no live sync.** Import is a one-shot run that can be

@@ -1,6 +1,7 @@
 import { createPostgresProviderMigrationCapture, migrationEntityKey } from "./postgres-provider-migration-capture.ts";
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
+import { isUuid } from "../domain/validation.ts";
 import type { PgDatabase } from "./postgres-driver.ts";
 
 /**
@@ -52,6 +53,20 @@ export function createPostgresImportStore(sql: PgDatabase) {
       return rows[0] ? mapLinkRow(rows[0]) : null;
     },
 
+    /** The links of one work, locale order; see the SQLite slice. */
+    async listExternalContentLinks({ provider, articleId, ownerId }: { provider: string; articleId: string; ownerId: string }) {
+      // An id that is not a uuid cannot match a uuid column; answer like a miss
+      // instead of letting the cast raise a driver error, exactly like `getMyArticle`.
+      if (!isUuid(articleId)) return [];
+      const rows = await sql.unsafe<ExternalContentLinkRow>(
+        `SELECT ${SELECT_COLUMNS} FROM external_content_links
+         WHERE provider = $1 AND article_id = $2::uuid AND owner_id = $3
+         ORDER BY locale`,
+        [provider, articleId, ownerId],
+      );
+      return rows.map(mapLinkRow);
+    },
+
     async upsertExternalContentLink(input: {
       provider: string; externalId: string; locale: string; articleId: string;
       ownerId: string; digest: string; syncedAt: string;
@@ -81,5 +96,5 @@ export function createPostgresImportStore(sql: PgDatabase) {
         return mapLinkRow(row);
       });
     },
-  }) satisfies Pick<TypedPersistenceAdapterContract, "getExternalContentLink" | "upsertExternalContentLink">;
+  }) satisfies Pick<TypedPersistenceAdapterContract, "getExternalContentLink" | "listExternalContentLinks" | "upsertExternalContentLink">;
 }

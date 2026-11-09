@@ -603,6 +603,72 @@ export const SCHEMAS: Readonly<Record<string, JsonSchema>> = Object.freeze({
     },
   },
 
+  NotionExport: {
+    type: "object",
+    required: ["bundle", "report"],
+    description:
+      "The bundle — exactly what `POST imports.notion` accepts as its `bundle` — and the report of what it could not say. `data.bundle` can be written to a file and pushed to Notion as it is.",
+    properties: {
+      bundle: ref("NotionBundle"),
+      report: ref("NotionExportReport"),
+    },
+  },
+
+  NotionExportReport: {
+    type: "object",
+    required: ["works", "missing", "summary"],
+    description:
+      "Which works travelled, which requested slugs did not, and every place a round trip would differ from the original.",
+    properties: {
+      works: { type: "array", items: ref("NotionExportWork") },
+      missing: {
+        type: "array",
+        items: { type: "string" },
+        description: "Slugs that are not an edition of one of your live works (a deleted work is one of them).",
+      },
+      summary: {
+        type: "object",
+        required: ["works", "pages", "missing"],
+        properties: {
+          works: { type: "integer", minimum: 0 },
+          pages: { type: "integer", minimum: 0 },
+          missing: { type: "integer", minimum: 0 },
+        },
+      },
+    },
+  },
+
+  NotionExportWork: {
+    type: "object",
+    required: ["slug", "articleId", "title", "primaryLocale", "pages", "issues"],
+    properties: {
+      slug: { type: "string", description: "The work's address; every page of the work carries it." },
+      articleId: TEXT,
+      title: TEXT,
+      primaryLocale: { type: "string", description: "The edition whose properties and body describe the work." },
+      pages: {
+        type: "array",
+        items: {
+          type: "object",
+          required: ["locale", "pageId", "provenance", "articleId", "issues"],
+          properties: {
+            locale: { type: "string" },
+            pageId: { type: "string", description: "The id the page carries in the bundle." },
+            provenance: {
+              type: "string",
+              enum: ["notion", "site"],
+              description:
+                "`notion` means the id is the page this edition was imported from, so writing to it updates that page. `site` means the id was made here (`site:<articleId>:<locale>`) because the work was written in this site.",
+            },
+            articleId: TEXT,
+            issues: ref("InterchangeIssues"),
+          },
+        },
+      },
+      issues: ref("InterchangeIssues"),
+    },
+  },
+
   NotionImportRequest: {
     type: "object",
     required: ["bundle"],
@@ -611,6 +677,26 @@ export const SCHEMAS: Readonly<Record<string, JsonSchema>> = Object.freeze({
     properties: {
       bundle: ref("NotionBundle"),
       apply: { type: "boolean", default: false, description: "`true` performs the writes the report describes." },
+    },
+  },
+
+  /**
+   * The mapping's issue list, shared by both reports.
+   *
+   * One component rather than two inline copies: an export reports the same codes
+   * an import does (and two of its own), so a client that switches on `code`
+   * reads one enum in either direction.
+   */
+  InterchangeIssues: {
+    type: "array",
+    description: "Every place the mapping could not carry something verbatim.",
+    items: {
+      type: "object",
+      required: ["code", "detail"],
+      properties: {
+        code: { type: "string", enum: [...INTERCHANGE_ISSUE_CODES] },
+        detail: TEXT,
+      },
     },
   },
 
@@ -650,17 +736,7 @@ export const SCHEMAS: Readonly<Record<string, JsonSchema>> = Object.freeze({
             slug: { type: "string", description: "The address of the work this edition belongs to." },
             articleId: nullable(TEXT),
             detail: { type: "string", description: "One line a human can read." },
-            issues: {
-              type: "array",
-              items: {
-                type: "object",
-                required: ["code", "detail"],
-                properties: {
-                  code: { type: "string", enum: [...INTERCHANGE_ISSUE_CODES] },
-                  detail: TEXT,
-                },
-              },
-            },
+            issues: ref("InterchangeIssues"),
           },
         },
       },

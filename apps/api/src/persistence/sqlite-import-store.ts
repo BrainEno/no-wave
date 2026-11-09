@@ -45,6 +45,20 @@ export function createSqliteImportStore(db: SqliteRunner) {
       return row ? mapRow(row) : null;
     },
 
+    /**
+     * The links of one work — the export's question, answered by the index that
+     * already exists on `article_id`.
+     *
+     * Scoped by owner as well: the article predicate is what makes this a read of
+     * the caller's own work, and the owner predicate keeps a link that was moved
+     * (or never was theirs) from being reported as provenance.
+     */
+    async listExternalContentLinks({ provider, articleId, ownerId }: { provider: string; articleId: string; ownerId: string }) {
+      return db.prepare(
+        "SELECT provider, external_id, locale, article_id, owner_id, digest, synced_at FROM external_content_links WHERE provider = ? AND article_id = ? AND owner_id = ? ORDER BY locale",
+      ).all(provider, articleId, ownerId).map(mapRow);
+    },
+
     async upsertExternalContentLink(input: {
       provider: string; externalId: string; locale: string; articleId: string;
       ownerId: string; digest: string; syncedAt: string;
@@ -76,5 +90,5 @@ export function createSqliteImportStore(db: SqliteRunner) {
         throw error;
       }
     },
-  }) satisfies Pick<TypedPersistenceAdapterContract, "getExternalContentLink" | "upsertExternalContentLink">;
+  }) satisfies Pick<TypedPersistenceAdapterContract, "getExternalContentLink" | "listExternalContentLinks" | "upsertExternalContentLink">;
 }

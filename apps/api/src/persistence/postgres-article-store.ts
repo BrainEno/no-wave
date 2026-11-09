@@ -178,6 +178,28 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
     },
 
     /**
+     * Every edition of one of the author's works, by its address.
+     *
+     * One statement for the same reason the SQLite slice has one: the editions
+     * are rows of a join, not three lookups. `ORDER BY t.locale` is what keeps
+     * the answer identical on both providers.
+     */
+    async listMyArticleEditions({ slug, actorId }: { slug: string; actorId: string }) {
+      validateArticleSlug(slug);
+      requiredText("actorId", actorId, 300);
+      const rows = await sql.unsafe(
+        `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count,
+                t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version
+         FROM articles AS a
+         JOIN article_translations AS t ON t.article_id = a.id
+         WHERE a.slug = $1 AND a.author_id = $2 AND a.deleted_at IS NULL
+         ORDER BY t.locale`,
+        [slug, actorId],
+      );
+      return rows.map(mapArticle);
+    },
+
+    /**
      * The author's own tombstones, newest deletion first (see the SQLite slice
      * for why the desk needs them). `purgesAt` is added by the service layer,
      * which owns the retention window; a store returns the timestamp it has.
@@ -629,5 +651,5 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
       return readFeaturedArticles(sql, { locale, limit: MAX_FEATURED_ARTICLES, offset: 0 });
     },
 
-  }) satisfies Pick<TypedPersistenceAdapterContract, "listPublishedArticles" | "getPublishedArticle" | "incrementArticleViewCount" | "listMyArticles" | "getMyArticle" | "listMyDeletedArticles" | "createArticle" | "updateArticle" | "deleteArticle" | "restoreArticle" | "purgeExpiredArticles" | "listLikedArticles" | "listRelatedArticles" | "listFollowingArticles" | "listFeaturedArticles" | "setFeaturedArticles">;
+  }) satisfies Pick<TypedPersistenceAdapterContract, "listPublishedArticles" | "getPublishedArticle" | "incrementArticleViewCount" | "listMyArticles" | "getMyArticle" | "listMyArticleEditions" | "listMyDeletedArticles" | "createArticle" | "updateArticle" | "deleteArticle" | "restoreArticle" | "purgeExpiredArticles" | "listLikedArticles" | "listRelatedArticles" | "listFollowingArticles" | "listFeaturedArticles" | "setFeaturedArticles">;
 }

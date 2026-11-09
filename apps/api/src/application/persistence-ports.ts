@@ -26,7 +26,7 @@ import type { MediaAsset, MediaScanRow } from "./media-assets.ts";
  */
 export const persistencePortMethods = Object.freeze({
   content: Object.freeze([
-    "listPublishedArticles", "getPublishedArticle", "listMyArticles", "getMyArticle",
+    "listPublishedArticles", "getPublishedArticle", "listMyArticles", "getMyArticle", "listMyArticleEditions",
     "createArticle", "updateArticle", "deleteArticle", "restoreArticle",
     "listMyDeletedArticles", "purgeExpiredArticles", "listLikedArticles", "listRelatedArticles",
     "listFollowingArticles", "listFeaturedArticles", "setFeaturedArticles",
@@ -66,7 +66,7 @@ export const persistencePortMethods = Object.freeze({
     "issueIdentityToken", "consumeIdentityToken",
     "pruneExpiredIdentityState",
   ] as const),
-  imports: Object.freeze(["getExternalContentLink", "upsertExternalContentLink"] as const),
+  imports: Object.freeze(["getExternalContentLink", "upsertExternalContentLink", "listExternalContentLinks"] as const),
   rateLimits: Object.freeze(["consumeRateLimit"] as const),
   outbox: Object.freeze([
     "claimOutboxEvents", "markOutboxDelivered", "rescheduleOutboxEvent", "outboxBacklog",
@@ -257,6 +257,15 @@ export type UpsertAuthorProfileInput = {
   websiteUrl?: string | null; locale?: string;
 };
 export type ExternalContentLinkKey = { provider: string; externalId: string; locale: string };
+/**
+ * The inverse question: where did *this* article come from?
+ *
+ * The import asks by page (`getExternalContentLink`); the export asks by work, to
+ * put the original page id back into the bundle it writes. `ownerId` is part of
+ * the question for the same reason it is part of the write: a link belongs to the
+ * account that created it, so an id is never a permission.
+ */
+export type ExternalContentLinksForArticleInput = { provider: string; articleId: string; ownerId: string };
 export type UpsertExternalContentLinkInput = StoredExternalContentLink;
 export type ToggleArticleLikeInput = { slug: string; actorId: string; locale?: string };
 export type SetArticleLikeInput = ToggleArticleLikeInput & { liked: boolean };
@@ -363,6 +372,18 @@ export type ContentPersistencePort = {
    * not a permission.
    */
   getMyArticle(input: { articleId: string; actorId: string; locale?: string }): PersistenceResult<StoredArticle | null>;
+  /**
+   * Every edition of one of the author's own works, by its address.
+   *
+   * The export needs the shape a work actually has — one address, up to three
+   * locales — and no existing read answers it: `listMyArticles` pages one locale
+   * at a time (a work missing from the first hundred would silently disappear
+   * from an export), and `getMyArticle` needs the id, which a caller holding a
+   * slug does not have. Scoped by `actorId` like every other author read, and
+   * ordered by locale so "which edition is the primary one" is the caller's
+   * decision rather than the driver's.
+   */
+  listMyArticleEditions(input: { slug: string; actorId: string }): PersistenceResult<StoredArticle[]>;
   createArticle(input: CreateArticleInput): PersistenceResult<StoredArticle>;
   updateArticle(input: UpdateArticleInput): PersistenceResult<StoredArticle>;
   deleteArticle(input: ArticleAuthorInput): PersistenceResult<DeletedArticleResult>;
@@ -491,13 +512,16 @@ export type NotificationsPersistencePort = {
 /**
  * Import provenance: which external page an edition came from.
  *
- * Two methods, deliberately. An importer needs to look one link up before a write
- * and to record one after it; anything more (a queue, a sync cursor, a conflict
- * log) would be the beginning of the sync engine ADR 0036 refused.
+ * The importer looks one link up before a write and records one after it; the
+ * exporter asks the reverse question, so a bundle it produces names the page the
+ * work already came from instead of a new one. Those are the only three questions
+ * — anything more (a queue, a sync cursor, a conflict log) would be the beginning
+ * of the sync engine ADR 0036 refused.
  */
 export type ImportsPersistencePort = {
   getExternalContentLink(input: ExternalContentLinkKey): PersistenceResult<StoredExternalContentLink | null>;
   upsertExternalContentLink(input: UpsertExternalContentLinkInput): PersistenceResult<StoredExternalContentLink>;
+  listExternalContentLinks(input: ExternalContentLinksForArticleInput): PersistenceResult<StoredExternalContentLink[]>;
 };
 
 export type SessionsPersistencePort = {

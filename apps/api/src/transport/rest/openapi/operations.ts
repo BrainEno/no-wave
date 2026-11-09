@@ -39,6 +39,15 @@ export type QueryParameter = {
   readonly name: string;
   readonly description: string;
   readonly schema: JsonSchema;
+  /**
+   * The parameter must be present.
+   *
+   * Absent means optional, which is what every query parameter was until an
+   * endpoint existed that cannot answer without one (`slugs` on the Notion
+   * export). Stating it in the contract matters: a generated client that believes
+   * the parameter is optional cannot be blamed for sending none of it.
+   */
+  readonly required?: boolean;
 };
 
 export type ResponseSpec = {
@@ -426,6 +435,30 @@ export const OPERATIONS: Readonly<Record<string, OperationMetadata>> = Object.fr
     requestBody: { schema: "NotionImportRequest", description: "The bundle, and whether to apply it.", required: true },
     errors: [413, 415],
     response: { status: 200, description: "The per-page report (and, with `apply: true`, what was written).", data: "NotionImportReport" },
+  },
+
+  "GET imports.notion.export": {
+    summary: "Export your own works as a Notion database bundle",
+    description:
+      "The inverse of `POST imports.notion`, and it produces a bundle that endpoint accepts: an export can be handed to Notion, or imported back as a copy. Nothing is written — exporting twice returns the same bundle.\n\n" +
+      "**`slugs` is a comma-separated list** of your own works (at most 50 per request). A slug that is not one of your live works is listed in `report.missing` rather than failing the request, so a stale desk list still exports everything else.\n\n" +
+      "**A work is one address and up to three editions.** The primary page is the edition in the site's own preference (`zh-CN`, `zh-TW`, `en`); the `en` edition travels as a second page linked by the `English` relation, exactly as the author's own database pairs them. A `zh-TW` edition of a `zh-CN` work is reported (`translation-locale-not-carried`) instead of being written into the wrong language.\n\n" +
+      "**Page ids are provenance.** An edition that was imported from Notion carries the page id it came from, so pushing the bundle back updates that page instead of creating a duplicate. A work written here has no Notion page, and carries a stable `site:<articleId>:<locale>` id — repeat exports are byte-identical, and the client decides what to do with a page Notion has never seen.\n\n" +
+      "**What Notion cannot hold is reported, not dropped.** A work type that its own tags do not imply would import back as a different type (`work-type-not-carried`); an image whose URL expires is reported per page. Properties Notion has no column for — categories, hierarchy, reading order — are not carried and are not invented.",
+    security: "session",
+    tags: ["imports"],
+    query: [
+      {
+        name: "slugs",
+        description: "Comma-separated work addresses, at most 50. Duplicates are ignored.",
+        required: true,
+        schema: { type: "string" },
+      },
+    ],
+    response: {
+      description: "The bundle, and what it could not say (missing works, provenance, losses).",
+      data: "NotionExport",
+    },
   },
 
   "PUT articles.like": {

@@ -123,6 +123,14 @@ export const REST_ROUTES: readonly RestRoute[] = Object.freeze([
   // (ADR 0037). `apply` decides whether anything is written; the default dry run
   // is a read.
   { id: "imports.notion", methods: ["POST"], segments: [literal("imports"), literal("notion")] },
+  // The same exchange in the other direction: the caller's own works, as a bundle
+  // they can push into their database with their own token. A `GET` because it
+  // writes nothing — and because the answer is a file a browser can download.
+  {
+    id: "imports.notion.export",
+    methods: ["GET"],
+    segments: [literal("imports"), literal("notion"), literal("export")],
+  },
 
   { id: "tags", methods: ["GET", "POST"], segments: [literal("tags")] },
   { id: "tags.item", methods: ["GET"], segments: [literal("tags"), param("slug")] },

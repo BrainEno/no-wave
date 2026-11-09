@@ -4,6 +4,7 @@ import {
   handleAuthoringDeletedArticlesRequest,
   handleAuthoringFeaturedCandidatesRequest,
   handleAuthoringFeaturedRequest,
+  handleAuthoringNotionExportRequest,
   handleAuthoringProfileRequest,
   handleAuthoringRestoreRequest,
   handleAuthoringSessionRequest,
@@ -42,6 +43,16 @@ export function handleAuthoringFeatured(request: Request): Promise<Response> {
 export function handleAuthoringFeaturedCandidates(request: Request): Promise<Response> {
   return handleAuthoringFeaturedCandidatesRequest(request, apiProxyConfig());
 }
+/**
+ * The Notion export (ADR 0036, phase 3).
+ *
+ * The response is the bundle itself, marked as a download: the desk links straight
+ * at this route, and the browser saves a file.
+ */
+export function handleAuthoringNotionExport(request: Request): Promise<Response> {
+  return handleAuthoringNotionExportRequest(request, apiProxyConfig());
+}
+
 export function handleAuthoringRestoreArticle(request: Request, id: string | undefined): Promise<Response> {
   return handleAuthoringRestoreRequest(request, { id: id ?? "" }, apiProxyConfig());
 }
