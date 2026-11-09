@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { registerThroughForm, uniqueEmail } from "./support/accounts.ts";
 
@@ -58,10 +59,14 @@ const BUNDLE = {
 };
 
 function bundleFile() {
+  // External page IDs are globally owned, not scoped to a test account. Give
+  // each journey (and retry) its own identity, but reuse the returned file when
+  // checking that a second import of the same page is skipped.
+  const bundle = { ...BUNDLE, pages: BUNDLE.pages.map((page) => ({ ...page, id: randomUUID() })) };
   return {
     name: "notion-bundle.json",
     mimeType: "application/json",
-    buffer: Buffer.from(JSON.stringify(BUNDLE), "utf8"),
+    buffer: Buffer.from(JSON.stringify(bundle), "utf8"),
   };
 }
 
@@ -79,11 +84,12 @@ test("the writing desk links to the import", async ({ page }) => {
 });
 
 test("choosing a bundle shows the plan, and only the confirm button writes it", async ({ page }) => {
+  const file = bundleFile();
   await registerThroughForm(page, uniqueEmail("notion-import"), "/write/notion");
 
   // The panel is client-rendered: this is the empty state, after hydration.
   await expect(page.getByText("还没有选择文件")).toBeVisible();
-  await page.setInputFiles("#notion-bundle-file", bundleFile());
+  await page.setInputFiles("#notion-bundle-file", file);
 
   // The dry run's answer, before anything is written.
   await expect(page.getByText(/计划：新建 1 件、更新 0 件、跳过 0 页/)).toBeVisible();
@@ -95,7 +101,7 @@ test("choosing a bundle shows the plan, and only the confirm button writes it", 
   await expect(page.getByText(TITLE)).toHaveCount(0);
 
   await page.goto("/write/notion");
-  await page.setInputFiles("#notion-bundle-file", bundleFile());
+  await page.setInputFiles("#notion-bundle-file", file);
   await expect(page.getByText(/计划：新建 1 件/)).toBeVisible();
   await page.getByRole("button", { name: /确认导入（写入 1 件作品）/ }).click();
 
@@ -110,13 +116,15 @@ test("choosing a bundle shows the plan, and only the confirm button writes it", 
 });
 
 test("importing the same file twice writes nothing the second time", async ({ page }) => {
+  const file = bundleFile();
   await registerThroughForm(page, uniqueEmail("notion-twice"), "/write/notion");
 
-  await page.setInputFiles("#notion-bundle-file", bundleFile());
+  await page.setInputFiles("#notion-bundle-file", file);
+  await expect(page.getByText(/计划：新建 1 件、更新 0 件、跳过 0 页/)).toBeVisible();
   await page.getByRole("button", { name: /确认导入/ }).click();
   await expect(page.getByText(/已导入：新建 1 件/)).toBeVisible();
 
-  await page.setInputFiles("#notion-bundle-file", bundleFile());
+  await page.setInputFiles("#notion-bundle-file", file);
   // The server remembers the digest of what it imported, so the second plan is
   // "nothing to do" rather than a second copy of the same work.
   await expect(page.getByText(/计划：新建 0 件、更新 0 件、跳过 1 页/)).toBeVisible();
