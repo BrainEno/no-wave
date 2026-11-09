@@ -27,6 +27,32 @@ after(async () => {
 });
 
 async function sqliteFixture() {
+  /**
+   * Remove everything a test created, matched by its random suffix.
+   *
+   * Written after #241's fix added three ids the hand-maintained list in
+   * `cleanup` did not know about: the leftovers made the author-directory paging
+   * assertions fail in a *different* test, which is the worst kind of failure to
+   * debug. Ids and slugs in this file all embed the per-test suffix, so the
+   * suffix alone is enough — and a new test cannot forget to register itself.
+   */
+  const sweepBySuffix = (suffix: string): void => {
+    const like = `%${suffix}%`;
+    db.prepare("DELETE FROM notifications WHERE user_id LIKE ?").run(like);
+    db.prepare("DELETE FROM user_follows WHERE follower_id LIKE ? OR followed_id LIKE ?").run(like, like);
+    db.prepare("UPDATE user_profiles SET avatar_media_id = NULL WHERE user_id LIKE ?").run(like);
+    db.prepare("DELETE FROM user_profile_translations WHERE user_id LIKE ?").run(like);
+    db.prepare("DELETE FROM user_profiles WHERE user_id LIKE ?").run(like);
+    db.prepare("DELETE FROM auth_accounts WHERE user_id LIKE ?").run(like);
+    // Articles before assets: `article_media_refs` refuses an asset delete while
+    // a work still points at it (#156). Author-matched as well as slug-matched,
+    // because a released tombstone slug is truncated and no longer carries the
+    // suffix.
+    db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(like);
+    db.prepare("DELETE FROM articles WHERE author_id LIKE ?").run(like);
+    db.prepare("DELETE FROM media_assets WHERE owner_id LIKE ?").run(like);
+  };
+
   const db = createSqliteClient({ filename: ":memory:", enableWal: false });
   await runSqliteMigrations(db);
   return {
@@ -142,6 +168,12 @@ async function sqliteFixture() {
         db.prepare("DELETE FROM articles WHERE slug LIKE ?").run(`contract-commenters-${suffix}%`);
         db.prepare("DELETE FROM taxonomies WHERE slug = ?").run(`contract-category-${suffix}`);
         db.prepare("DELETE FROM taxonomies WHERE slug LIKE ?").run(`%-${suffix}`);
+        // The list above is a record of what each test used to create, not a
+        // guarantee: a new test that forgets to add its ids leaves a published
+        // author behind, and the next test that pages the author directory
+        // fails with somebody else's name. So sweep by the suffix itself, which
+        // every row this run created carries by construction.
+        sweepBySuffix(suffix);
       }
       db.close();
     },
@@ -149,6 +181,23 @@ async function sqliteFixture() {
 }
 
 async function postgresFixture() {
+  /** Remove everything a test created, matched by its random suffix. */
+  const sweepBySuffix = async (suffix: string): Promise<void> => {
+    const like = `%${suffix}%`;
+    await postgresSql.unsafe("DELETE FROM notifications WHERE user_id LIKE $1", [like]);
+    await postgresSql.unsafe("DELETE FROM user_follows WHERE follower_id LIKE $1 OR followed_id LIKE $1", [like]);
+    await postgresSql.unsafe("UPDATE user_profiles SET avatar_media_id = NULL WHERE user_id LIKE $1", [like]);
+    await postgresSql.unsafe("DELETE FROM user_profile_translations WHERE user_id LIKE $1", [like]);
+    await postgresSql.unsafe("DELETE FROM user_profiles WHERE user_id LIKE $1", [like]);
+    await postgresSql.unsafe("DELETE FROM auth_accounts WHERE user_id LIKE $1", [like]);
+    // Articles before assets: `ON DELETE RESTRICT` refuses an asset a work still
+    // points at (#156). Author-matched as well as slug-matched, because a
+    // released tombstone slug is truncated and no longer carries the suffix.
+    await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [like]);
+    await postgresSql.unsafe("DELETE FROM articles WHERE author_id LIKE $1", [like]);
+    await postgresSql.unsafe("DELETE FROM media_assets WHERE owner_id LIKE $1", [like]);
+  };
+
   return {
     store: postgresStore,
     async makeOutboxAvailable(eventId) {
@@ -235,6 +284,12 @@ async function postgresFixture() {
         await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`search-%-${suffix}`]);
         await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`cursor-%-${suffix}`]);
         await postgresSql.unsafe("DELETE FROM articles WHERE slug LIKE $1", [`auto-slug-%-${suffix}`]);
+        // The list above is a record of what each test used to create, not a
+        // guarantee: a new test that forgets to add its ids leaves a published
+        // author behind, and the next test that pages the author directory fails
+        // with somebody else's name. So sweep by the suffix itself, which every
+        // row this run created carries by construction.
+        await sweepBySuffix(suffix);
       }
     },
   };
@@ -1150,6 +1205,87 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
     } finally { await runtime.cleanup(undefined, suffix); }
   });
 
+  /**
+   * #241: delete/restore must be a cycle, not a ratchet.
+   *
+   * Two invariants were broken by appending `-deleted-<id8>` to whatever the row
+   * already held. The suffix stacked — 17 characters per delete, forever — and a
+   * long address went over the 160-character stored contract, so a restored
+   * draft could be deleted but never saved again: `validateArticleSlug` refuses
+   * the very slug the store had just written.
+   */
+  test(`${adapterName}: repeated delete and restore keeps the tombstone slug storable`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const authorId = `slug-cycle-${suffix}`;
+    // A legal address at the edge of the contract: 150 characters, so any suffix
+    // takes it over 160 unless the base makes room.
+    const longSlug = `cycle-${"a".repeat(150 - "cycle-".length)}`;
+    assert.equal(longSlug.length, 150);
+    const contentBlocks = [{ id: "p1", type: "paragraph", text: "Long addressed work." }];
+    try {
+      const created = await runtime.store.createArticle({
+        authorId, slug: longSlug, title: "Long address", summary: "", locale: "zh-CN", contentBlocks, publish: true,
+      });
+
+      // First delete: the released address must already fit the contract.
+      const deleted = await runtime.store.deleteArticle({ articleId: created.id, actorId: authorId });
+      assert.equal(deleted.id, created.id);
+      const tombstone = (await runtime.store.listMyDeletedArticles({ actorId: authorId, locale: "zh-CN" }))
+        .find((article) => article.id === created.id);
+      assert.ok(tombstone, "the tombstone exists");
+      assert.ok(tombstone.slug.length <= 160, `a tombstone slug must fit the contract, got ${tombstone.slug.length}`);
+      assert.match(tombstone.slug, /^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+      assert.equal(tombstone.slug.endsWith(`-deleted-${created.id.slice(0, 8)}`), true);
+
+      // Somebody else takes the address the tombstone released.
+      const squatter = await runtime.store.createArticle({
+        authorId: `squatter-${suffix}`, slug: longSlug, title: "Same address", summary: "",
+        locale: "zh-CN", contentBlocks, publish: false,
+      });
+
+      // Restoring must succeed, and must not stack. For an address this long the
+      // released slug was truncated to make room for its suffix, so the address
+      // the restore can reclaim is that truncated one — shorter than the original,
+      // still legal, and never a failure over an address the author cannot see.
+      const restored = await runtime.store.restoreArticle({ articleId: created.id, actorId: authorId, locale: "zh-CN" });
+      assert.ok(restored.slug.length <= 160, `restored slug must fit the contract, got ${restored.slug.length}`);
+      assert.match(restored.slug, /^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+      assert.notEqual(restored.slug, longSlug, "the squatter holds the original address");
+      assert.equal(longSlug.startsWith(restored.slug), true, "and what comes back is that address, truncated to fit");
+
+      // The draft has to be editable again: this is the failure the issue
+      // reported — a slug the store wrote but the contract refuses.
+      const saved = await runtime.store.updateArticle({
+        articleId: created.id, actorId: authorId, slug: restored.slug,
+        title: "Long address, edited after restore", summary: "", locale: "zh-CN",
+        contentBlocks, publish: false,
+      });
+      assert.equal(saved.id, created.id);
+
+      // And delete twice more: the suffix must not accumulate.
+      for (let cycle = 0; cycle < 2; cycle += 1) {
+        await runtime.store.deleteArticle({ articleId: created.id, actorId: authorId });
+        const current = (await runtime.store.listMyDeletedArticles({ actorId: authorId, locale: "zh-CN" }))
+          .find((article) => article.id === created.id);
+        assert.ok(current);
+        assert.ok(current.slug.length <= 160, `cycle ${cycle + 2}: ${current.slug.length} characters`);
+        assert.equal(
+          current.slug.split("-deleted-").length - 1, 1,
+          `cycle ${cycle + 2} must not stack suffixes: ${current.slug}`,
+        );
+        const back = await runtime.store.restoreArticle({ articleId: created.id, actorId: authorId, locale: "zh-CN" });
+        assert.ok(back.slug.length <= 160);
+        assert.equal(back.slug.includes("-deleted-"), false, "a restore reclaims an address; it does not keep the tombstone's");
+      }
+
+      // The squatter's address is never disturbed by any of this.
+      const squatterNow = (await runtime.store.listMyArticles({ actorId: `squatter-${suffix}`, locale: "zh-CN" }))
+        .find((article) => article.id === squatter.id);
+      assert.equal(squatterNow?.slug, longSlug);
+    } finally { await runtime.cleanup(undefined, suffix); }
+  });
+
   test(`${adapterName}: tombstone sweeps honor the strict cutoff, age order, and batch limit`, options, async () => {
     const runtime = await fixture();
     const suffix = randomUUID(), authorId = `author-${suffix}`;
@@ -1636,10 +1772,12 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
         (refused?.usedBy ?? []).some((row) => row.kind === "work" && row.work?.articleId === article.id),
         "and the caller is told which work holds it",
       );
-      assert.deepEqual(
-        [...new Set((refused?.usedBy ?? []).map((row) => row.content))],
-        [`/media/${asset.id}`],
-        "evidence rows describe this asset, exactly like reference rows do",
+      const evidence = [...new Set((refused?.usedBy ?? []).map((row) => row.content))];
+      assert.equal(evidence.length, 1, "one work holds the asset");
+      assert.match(
+        String(evidence[0]),
+        new RegExp(`/media/${asset.id}\"`),
+        "the evidence is the work's own body, and it really does name this asset as a URL",
       );
       assert.ok(await runtime.store.getMediaAsset({ id: asset.id }), "the asset row survives");
 
@@ -1650,6 +1788,54 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
       });
       const allowed = await runtime.store.deleteUnusedMediaAsset({ id: asset.id, ownerId });
       assert.equal(allowed?.deleted?.id, asset.id, "once nothing mentions it, the delete goes through");
+    } finally { await runtime.cleanup(undefined, suffix); }
+  });
+
+  /**
+   * #243: mentioning an id is not referencing an asset.
+   *
+   * The delete-time backstop asked SQL whether the id appears anywhere in the
+   * body and then handed the caller a fabricated `content` — `/media/<id>` — so
+   * its own extraction step agreed with the answer it had already decided. A
+   * technical article quoting a UUID in prose therefore pinned the image forever,
+   * while the library page, which extracts from the real body, showed it as
+   * orphaned. The badge and the refusal have to be the same rule.
+   */
+  test(`${adapterName}: a body that only mentions an asset id does not block the delete`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const ownerId = `mention-owner-${suffix}`;
+    const hour = new Date(Date.now() + 3_600_000).toISOString();
+    try {
+      await runtime.store.createIdentityAccount({
+        userId: ownerId, email: `mention-${suffix}@example.test`, passwordHash: "hash",
+        session: {
+          sessionId: randomUUID(), userId: ownerId, accessTokenId: randomUUID(),
+          refreshHash: (suffix.replace(/-/g, "") + "b").padEnd(64, "b"), expiresAt: hour,
+          accessExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+        },
+      });
+      const asset = await runtime.store.createMediaAsset({
+        id: randomUUID(), ownerId, storageKey: `${suffix}/mention.webp`, contentType: "image/webp",
+        byteSize: 12, width: 2, height: 2, sha256: "b".repeat(64),
+      });
+      // A published article that quotes the UUID as text: no image block, no
+      // reference row, no reference. This is the shape the issue reproduced with.
+      await runtime.store.createArticle({
+        authorId: ownerId, slug: `mention-${suffix}`, title: "调试日志", summary: "",
+        locale: "zh-CN", publish: true,
+        contentBlocks: [{ id: "p1", type: "paragraph", text: `调试记录 ID: ${asset.id}` }],
+      });
+
+      // The library's own answer, from the real body: unreferenced.
+      const scan = await runtime.store.listMediaScanRows();
+      const mentions = scan.filter((row) => row.kind === "work" && String(row.content).includes(asset.id));
+      assert.equal(mentions.length, 1, "the prose really is in the scan's input");
+
+      const allowed = await runtime.store.deleteUnusedMediaAsset({ id: asset.id, ownerId });
+      assert.equal(allowed?.deleted?.id, asset.id, "a quoted id is not a reference");
+      assert.deepEqual(allowed?.usedBy, []);
+      assert.equal(await runtime.store.getMediaAsset({ id: asset.id }), null);
     } finally { await runtime.cleanup(undefined, suffix); }
   });
 
