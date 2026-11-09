@@ -7,6 +7,7 @@ import { createSqliteClient, runSqliteMigrations } from "../../persistence/sqlit
 import { createSqliteStore } from "../../persistence/sqlite-store.ts";
 import { createPostgresClient, createPostgresStore } from "../../persistence/postgres.ts";
 import { runMigrations } from "../../persistence/migrate.ts";
+import { COMMENT_DEPTH_LIMIT_MESSAGE, MAX_COMMENT_REPLY_DEPTH } from "../../domain/comment-content.ts";
 
 // Comment editing (ADR 0031) end to end: HTTP → service → real database, on both
 // providers. The properties a reader can observe are the ones under test — the
@@ -135,6 +136,51 @@ for (const provider of ["sqlite", "postgres"] as const) {
         method: "PATCH", headers: jsonHeaders(author), body: JSON.stringify({}),
       });
       assert.equal(empty.status, 400);
+
+      /*
+       * A thread has a bottom (#246).
+       *
+       * The write path used to accept any reply while the read path stopped at a
+       * fixed level, so a deep reply was created and then never came back: 201,
+       * refresh, gone. The cap is asserted here as a *transport* contract, because
+       * that is where a writer meets it — a 400 whose message says what to do
+       * instead of a comment that silently disappears.
+       */
+      let parentId: string | null = null;
+      const chain: string[] = [];
+      for (let depth = 0; depth <= MAX_COMMENT_REPLY_DEPTH; depth += 1) {
+        const posted = await call(`/articles/${slug}/comments?locale=zh-CN`, {
+          method: "POST", headers: jsonHeaders(author),
+          body: JSON.stringify({ content: `Depth ${depth}`, parentCommentId: parentId }),
+        }, 201);
+        parentId = String((posted.body.data as Record<string, unknown>).id);
+        chain.push(parentId);
+      }
+      const tooDeep = await call(`/articles/${slug}/comments?locale=zh-CN`, {
+        method: "POST", headers: jsonHeaders(author),
+        body: JSON.stringify({ content: "Too deep", parentCommentId: parentId }),
+      });
+      assert.equal(tooDeep.status, 400);
+      // A code of its own, not the generic `BAD_USER_INPUT`: the client has to be
+      // able to say what went wrong, and "the request input is invalid" is not it.
+      assert.equal((tooDeep.body.error as Record<string, unknown>).code, "COMMENT_DEPTH_EXCEEDED");
+      assert.equal((tooDeep.body.error as Record<string, unknown>).message, COMMENT_DEPTH_LIMIT_MESSAGE);
+
+      // Everything that was accepted is returned: the cap is a rule about writing,
+      // never a truncation of what the reader is shown.
+      const deepThread = await call(`/articles/${slug}/comments?locale=zh-CN`, {}, 200);
+      const seen = new Set<string>();
+      const visit = (nodes: unknown) => {
+        if (!Array.isArray(nodes)) return;
+        for (const node of nodes) {
+          if (typeof node !== "object" || node === null) continue;
+          const record = node as Record<string, unknown>;
+          if (typeof record.id === "string") seen.add(record.id);
+          visit(record.replies);
+        }
+      };
+      visit(deepThread.body.data);
+      assert.deepEqual(chain.filter((id) => !seen.has(id)), [], "an accepted comment must never be truncated away");
 
       // Deleting still works after an edit, and a deleted comment cannot be edited.
       await call(`/comments/${commentId}`, { method: "DELETE", headers: auth(author) }, 200);

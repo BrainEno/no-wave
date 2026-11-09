@@ -3,7 +3,10 @@ import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import { createSqliteProviderMigrationCapture, migrationEntityKey, type CapturedChange } from "./sqlite-provider-migration-capture.ts";
 import { ArticleAuthorizationError, ArticleInputError, ArticleNotFoundError, IdempotencyConflictError } from "../domain/errors.ts";
 import { validateArticleLocale, validateArticleSlug } from "../domain/article.ts";
-import { validateStoredCommentContent } from "../domain/comment-content.ts";
+import {
+  CommentDepthError, MAX_COMMENT_REPLY_DEPTH, MAX_COMMENT_TREE_DEPTH,
+  validateStoredCommentContent,
+} from "../domain/comment-content.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
 import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
 import { isoDate } from "./sqlite.ts";
@@ -70,6 +73,24 @@ export function createSqliteEngagementStore(db: SqliteRunner) {
       locale: row.locale, replies: [],
     };
   }
+  /**
+   * How far below the root a comment sits: 0 for a top-level comment (#246).
+   *
+   * The chain is walked upwards from the comment, which is the only direction
+   * that terminates: a thread can have many replies and one parent. The write
+   * path asks this about the *parent* before inserting, because a cap enforced
+   * afterwards is a cap the reader has already been told about.
+   */
+  function commentDepth(commentId: string): number {
+    const row = get(`WITH RECURSIVE chain(id, parent_comment_id, depth) AS (
+        SELECT id, parent_comment_id, 0 FROM article_comments WHERE id = ?
+        UNION ALL
+        SELECT c.id, c.parent_comment_id, chain.depth + 1
+          FROM article_comments AS c JOIN chain ON c.id = chain.parent_comment_id
+      ) SELECT MAX(depth) AS depth FROM chain`, commentId);
+    return Number(row?.depth ?? 0);
+  }
+
   function notify(userId: string, eventKey: string, payload: unknown): SqliteRow | undefined {
     run("INSERT INTO notifications (id, user_id, event_key, payload, payload_hash) VALUES (?, ?, ?, ?, ?) ON CONFLICT (user_id, event_key) DO NOTHING", randomUUID(), userId, eventKey, JSON.stringify(payload), requestHash(payload));
     return get("SELECT * FROM notifications WHERE user_id = ? AND event_key = ?", userId, eventKey);
@@ -130,7 +151,7 @@ export function createSqliteEngagementStore(db: SqliteRunner) {
     listArticleComments({ slug, locale = "zh-CN", limit = 50 }) {
       validateArticleSlug(slug); validateArticleLocale(locale);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
-      const rows = all("WITH RECURSIVE target_article AS (SELECT a.id FROM articles a JOIN article_translations t ON t.article_id = a.id WHERE a.slug = ? AND a.status = 'published' AND t.locale = ?), root_comments AS (SELECT c.id, c.article_id, c.author_id, c.parent_comment_id, c.content, c.content_blocks, c.content_blocks_version, c.created_at, c.updated_at, c.edited_at, 0 AS depth FROM article_comments c JOIN target_article a ON a.id = c.article_id WHERE c.parent_comment_id IS NULL ORDER BY c.created_at ASC, c.id ASC LIMIT ?), comment_tree AS (SELECT * FROM root_comments UNION ALL SELECT child.id, child.article_id, child.author_id, child.parent_comment_id, child.content, child.content_blocks, child.content_blocks_version, child.created_at, child.updated_at, child.edited_at, parent.depth + 1 FROM article_comments child JOIN comment_tree parent ON child.parent_comment_id = parent.id WHERE parent.depth < 10) SELECT id, article_id, author_id, parent_comment_id, content, content_blocks, content_blocks_version, created_at, updated_at, edited_at, depth FROM comment_tree ORDER BY created_at ASC, id ASC", slug, locale, limit);
+      const rows = all("WITH RECURSIVE target_article AS (SELECT a.id FROM articles a JOIN article_translations t ON t.article_id = a.id WHERE a.slug = ? AND a.status = 'published' AND t.locale = ?), root_comments AS (SELECT c.id, c.article_id, c.author_id, c.parent_comment_id, c.content, c.content_blocks, c.content_blocks_version, c.created_at, c.updated_at, c.edited_at, 0 AS depth FROM article_comments c JOIN target_article a ON a.id = c.article_id WHERE c.parent_comment_id IS NULL ORDER BY c.created_at ASC, c.id ASC LIMIT ?), comment_tree AS (SELECT * FROM root_comments UNION ALL SELECT child.id, child.article_id, child.author_id, child.parent_comment_id, child.content, child.content_blocks, child.content_blocks_version, child.created_at, child.updated_at, child.edited_at, parent.depth + 1 FROM article_comments child JOIN comment_tree parent ON child.parent_comment_id = parent.id WHERE parent.depth < ?) SELECT id, article_id, author_id, parent_comment_id, content, content_blocks, content_blocks_version, created_at, updated_at, edited_at, depth FROM comment_tree ORDER BY created_at ASC, id ASC", slug, locale, limit, MAX_COMMENT_TREE_DEPTH);
       const nodes = new Map<string, MappedComment>();
       for (const row of rows) nodes.set(row.id, mapComment({ ...row, locale }));
       const roots: MappedComment[] = [];
@@ -170,6 +191,12 @@ export function createSqliteEngagementStore(db: SqliteRunner) {
         if (parentCommentId !== null) {
           const parent = get("SELECT author_id FROM article_comments WHERE id = ? AND article_id = ?", parentCommentId, article.id);
           if (!parent) throw new ArticleInputError("parentCommentId must reference a comment on this article.");
+          // Refused here rather than hidden later: the read path used to stop at
+          // a fixed level, so a deep reply was accepted and then never returned
+          // (#246). A refusal the writer can act on is the honest answer.
+          if (commentDepth(parentCommentId) + 1 > MAX_COMMENT_REPLY_DEPTH) {
+            throw new CommentDepthError();
+          }
           parentAuthorId = parent.author_id;
         }
         const id = randomUUID();

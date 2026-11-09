@@ -3,7 +3,7 @@ import test from "node:test";
 import { randomUUID } from "node:crypto";
 import { createSqliteClient, runSqliteMigrations } from "../../persistence/sqlite.ts";
 import { createSqliteStore } from "../../persistence/sqlite-store.ts";
-import { serializeRestArticle, serializeRestArticles } from "./serializers.ts";
+import { serializeRestArticle, serializeRestArticles, serializeRestComment, serializeRestComments } from "./serializers.ts";
 import type { StoredAuthorProfile, StoredTaxonomy } from "../../application/persistence-ports.ts";
 
 /**
@@ -221,5 +221,79 @@ test("the serializers hand routes a typed projection, not `any`", async () => {
     assert.deepEqual([pageIsNotAny, authorIsNotAny], [false, false]);
     assert.ok(author === null || typeof author === "object");
     assert.ok(Array.isArray(categories));
+  } finally { db.close(); }
+});
+
+/**
+ * The comment tree had the same defect #162 removed from article lists (#246).
+ *
+ * `projectComment` asked for the author of every node *inside* its own recursion,
+ * so a thread of N comments cost N statements — on the synchronous SQLite driver,
+ * N blocks of the event loop while the reader waited. The fix walks the forest
+ * once and asks for the distinct authors in a single batch.
+ *
+ * As with articles, the count is asserted rather than timed: a count is exact,
+ * and it fails loudly if a future edit reintroduces a per-node read.
+ */
+test("a comment thread's statement count does not grow with the thread (#246)", async () => {
+  const { db, store, counter, authorIds, articles } = await seededStore();
+  try {
+    const article = articles[0];
+    const root = await store.createArticleComment({
+      slug: article.slug, locale: "zh-CN", actorId: authorIds[0], content: "根评论",
+    });
+    // A wide, two-level thread by three different authors: the shape that used to
+    // cost one author read per node.
+    const replies = [];
+    for (let index = 0; index < 9; index += 1) {
+      replies.push(await store.createArticleComment({
+        slug: article.slug, locale: "zh-CN", actorId: authorIds[index % authorIds.length],
+        content: `第 ${index} 条回复`, parentCommentId: root.id,
+      }));
+    }
+
+    counter.reset();
+    counter.on();
+    const small = await serializeRestComments(store, [{ ...root, replies: [] }], null);
+    counter.off();
+    const smallCount = counter.prepared;
+
+    counter.reset();
+    counter.on();
+    const full = await serializeRestComments(store, [{ ...root, replies }], null);
+    counter.off();
+
+    // One batch for the distinct authors, whatever the thread size. The old path
+    // prepared one statement per comment here (ten).
+    assert.equal(counter.prepared, smallCount, `thread size changed the statement count: ${smallCount} vs ${counter.prepared}`);
+    assert.ok(counter.prepared <= 2, `expected one batched author read, got ${counter.prepared}`);
+
+    // The output still carries every author, nested ones included.
+    assert.equal(small[0].author?.displayName, "序列化作者0");
+    assert.equal(full[0].replies.length, 9);
+    assert.deepEqual(
+      full[0].replies.map((reply) => reply.author?.displayName),
+      [0, 1, 2, 0, 1, 2, 0, 1, 2].map((index) => `序列化作者${index}`),
+    );
+  } finally { db.close(); }
+});
+
+test("the single-comment path is the batch path with one item (#246)", async () => {
+  const { db, store, counter, authorIds, articles } = await seededStore();
+  try {
+    const article = articles[0];
+    const root = await store.createArticleComment({
+      slug: article.slug, locale: "zh-CN", actorId: authorIds[1], content: "单条评论",
+    });
+    await store.createArticleComment({
+      slug: article.slug, locale: "zh-CN", actorId: authorIds[2], content: "单条回复", parentCommentId: root.id,
+    });
+    const [batched] = await serializeRestComments(store, [root], null);
+    counter.reset();
+    counter.on();
+    const single = await serializeRestComment(store, root, null);
+    counter.off();
+    assert.deepEqual(single, batched, "one comment must project exactly as it does inside a page");
+    assert.ok(counter.prepared <= 2);
   } finally { db.close(); }
 });
