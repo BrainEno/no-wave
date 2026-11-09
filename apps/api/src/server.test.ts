@@ -2358,6 +2358,51 @@ test("REST article comments support public listing and authenticated replies", a
   });
 });
 
+test("REST article comments continue a thread from a cursor and refuse a malformed one", async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const at = "2026-06-01T00:00:00.123Z";
+  const id = "11111111-1111-4111-8111-111111111111";
+  await withServer(async (baseUrl) => {
+    const paged = await fetch(
+      `${baseUrl}/api/v1/articles/poetry-work/comments?limit=5&cursor=${encodeURIComponent(encodeCursor(at, id))}`,
+    );
+    assert.equal(paged.status, 200);
+    assert.deepEqual(await paged.json(), { data: [] });
+    // The store sees the two halves of the sort key, not the client's base64.
+    assert.deepEqual(calls.at(-1), { slug: "poetry-work", locale: "zh-CN", limit: 5, cursor: { at, id } });
+
+    // Without a cursor the request is the first page, exactly as before: no
+    // cursor key at all, so nothing downstream has to treat null and absent
+    // differently.
+    const first = await fetch(`${baseUrl}/api/v1/articles/poetry-work/comments?limit=5`);
+    assert.equal(first.status, 200);
+    assert.deepEqual(calls.at(-1), { slug: "poetry-work", locale: "zh-CN", limit: 5 });
+
+    // A cursor half the API cannot compare is the client's mistake: 400, never a
+    // database error surfacing as 500, and never a store call.
+    for (const bad of [
+      "not-a-cursor",
+      encodeCursor("2026-06-01T00:00:00.123Z", "not-a-uuid"),
+      encodeCursor("2026-06-01T00:00:00Z", id),
+      Buffer.from("", "utf8").toString("base64url"),
+    ]) {
+      const response = await fetch(
+        `${baseUrl}/api/v1/articles/poetry-work/comments?cursor=${encodeURIComponent(bad)}`,
+      );
+      assert.equal(response.status, 400, `cursor ${JSON.stringify(bad)} is rejected`);
+      assert.deepEqual(await response.json(), {
+        error: { code: "BAD_USER_INPUT", message: "Invalid comment cursor." },
+      });
+    }
+    assert.equal(calls.length, 2, "a malformed cursor never reaches the store");
+  }, {
+    env: authEnv,
+    store: {
+      async listArticleComments(args) { calls.push(args); return []; },
+    },
+  });
+});
+
 test("REST article comments normalize Lexical state to a versioned paragraph-only document", async () => {
   const received = [];
   const editorState = {

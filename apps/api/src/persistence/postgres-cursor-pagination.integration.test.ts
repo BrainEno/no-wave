@@ -441,3 +441,147 @@ test("PostgreSQL notification cursors page the inbox backwards, once each", inte
     await sql.unsafe("DELETE FROM notifications WHERE user_id = ANY($1::text[])", [[reader, stranger]]);
   }
 });
+
+test("PostgreSQL comment times are normalized to the cursor's millisecond precision", integrationOptions, async () => {
+  const migration = await readFile(new URL("./migrations/0031_comment_created_at_millisecond_precision.sql", import.meta.url), "utf8");
+  const rollback = new Error("rollback disposable comment migration fixture");
+  const a = "00000000-0000-4000-8000-0000000000b1";
+  const b = "00000000-0000-4000-8000-0000000000b2";
+  await assert.rejects(sql.begin(async (tx) => {
+    // A temporary table with the inherited shape keeps the real schema untouched
+    // while giving the migration the legacy rows it is written for. The two rows
+    // differ only below the millisecond, which is the case a cursor conflates.
+    await tx.unsafe(`CREATE TEMP TABLE article_comments (
+      id uuid PRIMARY KEY,
+      article_id uuid,
+      author_id text NOT NULL,
+      parent_comment_id uuid,
+      content text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      edited_at timestamptz
+    ) ON COMMIT DROP`);
+    // Sub-millisecond values arrive as SQL literals: a bound string is truncated
+    // by some drivers, and these are the values a pre-migration row really holds.
+    await tx.unsafe(`INSERT INTO article_comments (id, author_id, content, created_at) VALUES
+      ('${a}'::uuid, 'legacy-reader', 'first', '2026-06-01T00:00:00.123900Z'::timestamptz),
+      ('${b}'::uuid, 'legacy-reader', 'second', '2026-06-01T00:00:00.123400Z'::timestamptz)`);
+
+    await tx.unsafe(migration);
+
+    const rows = await tx.unsafe("SELECT id, created_at FROM article_comments ORDER BY content");
+    assert.deepEqual(rows.map((row) => new Date(row.created_at).toISOString()), [
+      "2026-06-01T00:00:00.123Z",
+      "2026-06-01T00:00:00.123Z",
+    ], "legacy comment times are truncated to what a cursor can name");
+
+    // The default now agrees with the cursor, so a new comment cannot land
+    // between two names for the same millisecond.
+    await tx.unsafe("INSERT INTO article_comments (id, author_id, content) VALUES ('00000000-0000-4000-8000-0000000000b3'::uuid, 'legacy-reader', 'third')");
+    const [created] = await tx.unsafe(
+      "SELECT created_at = date_trunc('milliseconds', created_at) AS ok FROM article_comments WHERE content = 'third'",
+    );
+    assert.equal(created.ok, true, "the column default has no microseconds");
+
+    // A write that bypasses the application cannot reintroduce the bug.
+    await assert.rejects(tx.unsafe(
+      "INSERT INTO article_comments (id, author_id, content, created_at) VALUES ('00000000-0000-4000-8000-0000000000b4'::uuid, 'legacy-reader', 'fourth', '2026-06-01T00:00:00.123900Z'::timestamptz)",
+    ));
+    throw rollback;
+  }), (error) => error === rollback);
+});
+
+test("PostgreSQL HTTP comment cursors walk a thread across a shared millisecond", integrationOptions, async () => {
+  const suffix = randomUUID().replaceAll("-", "");
+  const authorId = randomUUID();
+  const readerId = randomUUID();
+  const slug = `comment-cursor-${suffix}`;
+  // Two roots share this millisecond; the id breaks the tie, and the page
+  // boundary falls inside it.
+  const shared = "2026-06-01T00:00:00.123Z";
+  await sql.unsafe("INSERT INTO user_profiles (user_id) VALUES ($1)", [authorId]);
+  await sql.unsafe("INSERT INTO user_profile_translations (user_id, locale, display_name) VALUES ($1, 'zh-CN', $2)", [authorId, "Comment Cursor"]);
+  const article = await store.createArticle({
+    authorId, slug, title: `Comment cursor ${suffix}`, summary: "",
+    locale: "zh-CN", contentBlocks: [{ id: "p1", type: "paragraph", text: "Thread body." }], publish: true,
+  });
+  const roots = [];
+  for (const [content, at] of [
+    ["first", "2026-06-01T00:00:00.121Z"],
+    ["second", shared],
+    ["third", shared],
+    ["fourth", "2026-06-01T00:00:00.125Z"],
+  ]) {
+    const root = await store.createArticleComment({ slug, locale: "zh-CN", actorId: readerId, content });
+    await sql.unsafe("UPDATE article_comments SET created_at = $1::timestamptz WHERE id = $2", [at, root.id]);
+    roots.push({ id: root.id, at });
+  }
+  const reply = await store.createArticleComment({
+    slug, locale: "zh-CN", actorId: readerId, content: "a reply", parentCommentId: roots[1].id,
+  });
+  const expected = [...roots]
+    .sort((x, y) => (x.at === y.at ? (x.id < y.id ? -1 : 1) : x.at < y.at ? -1 : 1))
+    .map((root) => root.id);
+
+  try {
+    await withApiServer(async (baseUrl) => {
+      const threadUrl = (cursor = null, limit = 2) =>
+        `${baseUrl}/articles/${slug}/comments?locale=zh-CN&limit=${limit}` +
+        (cursor ? `&cursor=${encodeURIComponent(cursor)}` : "");
+      const walk = async (limit) => {
+        const seen = [];
+        const pages = [];
+        let cursor = null;
+        for (let page = 0; page < 20; page += 1) {
+          const response = await fetch(threadUrl(cursor, limit));
+          assert.equal(response.status, 200);
+          const items = (await response.json()).data;
+          if (items.length === 0) { pages.push(0); return { seen, pages }; }
+          pages.push(items.length);
+          seen.push(...items.map((item) => item.id));
+          const last = items[items.length - 1];
+          cursor = encodeCursor(last.createdAt, last.id);
+        }
+        throw new Error("the walk terminates");
+      };
+
+      const twoAtATime = await walk(2);
+      assert.deepEqual(twoAtATime.pages, [2, 2, 0], "a page counts top-level comments only");
+      assert.deepEqual(twoAtATime.seen, expected, "every root is read once, oldest first");
+      assert.deepEqual(await walk(1).then((result) => result.seen), expected, "a page size of one walks the same order");
+      assert.deepEqual(await walk(100).then((result) => result.seen), expected, "a page larger than the thread returns everything");
+
+      // The reply travels with its root rather than becoming a page of its own.
+      const secondPage = (await (await fetch(threadUrl(encodeCursor(roots[0].at, roots[0].id)))).json()).data;
+      const withReplies = secondPage.find((item) => item.id === roots[1].id);
+      assert.ok(withReplies, "the replied-to root is on the page");
+      assert.deepEqual(withReplies.replies.map((item) => item.id), [reply.id]);
+
+      // Malformed cursors are the client's mistake, answered as one.
+      for (const bad of [
+        "not-a-cursor",
+        encodeCursor("2026-06-01T00:00:00.123Z", "not-a-uuid"),
+        Buffer.from("2026-06-01T00:00:00Z|" + randomUUID()).toString("base64url"),
+      ]) {
+        const response = await fetch(threadUrl(bad));
+        assert.equal(response.status, 400, `cursor ${bad} is rejected`);
+        assert.deepEqual(await response.json(), { error: { code: "BAD_USER_INPUT", message: "Invalid comment cursor." } });
+      }
+
+      // A slug that is not a published work reads as an empty thread, with or
+      // without a cursor: the read path answers "nothing here", not an error.
+      for (const path of [
+        `${baseUrl}/articles/no-such-work-${suffix}/comments?locale=zh-CN`,
+        `${baseUrl}/articles/no-such-work-${suffix}/comments?locale=zh-CN&cursor=${encodeURIComponent(encodeCursor(shared, roots[0].id))}`,
+      ]) {
+        const response = await fetch(path);
+        assert.equal(response.status, 200);
+        assert.deepEqual(await response.json(), { data: [] });
+      }
+    });
+  } finally {
+    await sql.unsafe("DELETE FROM articles WHERE id = $1", [article.id]);
+    await sql.unsafe("DELETE FROM user_profile_translations WHERE user_id = $1", [authorId]);
+    await sql.unsafe("DELETE FROM user_profiles WHERE user_id = $1", [authorId]);
+  }
+});

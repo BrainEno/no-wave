@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   COMMENT_BODY_MAX_BYTES,
   COMMENT_PAGE_LIMIT,
+  COMMENT_PAGE_LIMIT_MAX,
   commentsRequestPath,
   handleArticleCommentsRequest,
   handleCommentUpdateRequest,
@@ -60,6 +61,46 @@ test("the thread is fetched from the documented upstream path, uncacheable", asy
     "the upstream path and page limit must be exactly one implementation",
   );
   assert.match(stub.calls[0]?.url ?? "", new RegExp(`limit=${COMMENT_PAGE_LIMIT}$`));
+});
+
+test("a reader's cursor and page size are forwarded, and a malformed one is refused locally", async () => {
+  const stub = commentsUpstream({ data: [] });
+  const cursor = Buffer.from("2026-06-01T00:00:00.123Z|9f0e3d2a-0000-4000-8000-000000000001").toString("base64url");
+  const forwarded = await handleArticleCommentsRequest(
+    request(`/api/articles/${SLUG}/comments?locale=zh-CN&limit=5&cursor=${encodeURIComponent(cursor)}`, {
+      method: "GET",
+      headers: { host: "no-wave.test" },
+    }),
+    { slug: SLUG },
+    { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+  );
+  assert.equal(forwarded.status, 200);
+  assert.equal(
+    stub.calls[0]?.url,
+    `${API_BASE}/${commentsRequestPath(SLUG, "zh-CN", { limit: 5, cursor })}`,
+    "the page the browser asked for is the page the API is asked for",
+  );
+
+  // Anything the API would refuse is refused here, where the page can say why,
+  // and without an upstream round trip.
+  for (const bad of [
+    `cursor=${encodeURIComponent("not a cursor!")}`,
+    "limit=0",
+    "limit=101",
+    `limit=${COMMENT_PAGE_LIMIT_MAX + 1}`,
+    "limit=abc",
+  ]) {
+    const rejected = await handleArticleCommentsRequest(
+      request(`/api/articles/${SLUG}/comments?locale=zh-CN&${bad}`, {
+        method: "GET",
+        headers: { host: "no-wave.test" },
+      }),
+      { slug: SLUG },
+      { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+    );
+    assert.equal(rejected.status, 400, `${bad} is a local 400`);
+  }
+  assert.equal(stub.calls.length, 1, "only the valid page reached the API");
 });
 
 test("an unconfigured API is a 503 that never reaches the network", async () => {

@@ -416,12 +416,27 @@ export const OPERATIONS: Readonly<Record<string, OperationMetadata>> = Object.fr
 
   "GET articles.comments": {
     summary: "Read the comment tree of a published work",
+    description:
+      "`limit` counts **top-level** comments, not replies: each top-level comment arrives with its whole reply tree, so a page boundary never cuts a conversation in half. The order is oldest first, by `(createdAt, id)`. To read further down a long thread, send `cursor` built from the **last top-level comment** of the page already received: `base64url(\"<createdAt>|<id>\")`, using the `createdAt` exactly as returned. Each page is a plain array with no `nextCursor`; keep requesting while a page is non-empty and stop at the first empty one. A reply posted mid-read is newer than the cursor, so it never shifts the roots the reader has not reached yet: it appears under its own root, or not at all on this pass.",
     security: "optional-session",
     tags: ["comments"],
     pathParams: { slug: "The work's slug." },
-    query: [localeParameter(), limitParameter(50)],
-    errors: [404],
-    response: { description: "Top-level comments with their replies.", data: "Comment", array: true },
+    query: [
+      localeParameter(),
+      limitParameter(50),
+      {
+        name: "cursor",
+        description:
+          "`base64url(\"<createdAt>|<id>\")` of the last top-level comment already received. An empty page is the end of the thread.",
+        schema: { type: "string" },
+      },
+    ],
+    errors: [400],
+    response: {
+      description: "A page of top-level comments, each with its replies.",
+      data: "Comment",
+      array: true,
+    },
   },
 
   "POST articles.comments": {

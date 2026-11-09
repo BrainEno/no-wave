@@ -238,7 +238,21 @@ export type UpsertAuthorProfileInput = {
 };
 export type ToggleArticleLikeInput = { slug: string; actorId: string; locale?: string };
 export type SetArticleLikeInput = ToggleArticleLikeInput & { liked: boolean };
-export type ArticleCommentsInput = { slug: string; locale?: string; limit?: number };
+/**
+ * One page of a comment thread.
+ *
+ * `limit` counts **top-level** comments; a top-level comment arrives with its
+ * whole reply tree, because a page of roots whose replies were cut in half would
+ * be a thread with holes in it. `cursor` is the `(created_at, id)` of the last
+ * top-level comment already shown, in the oldest-first order the thread is read
+ * in — decoded here, because base64 is a transport detail.
+ */
+export type ArticleCommentsInput = {
+  slug: string;
+  locale?: string;
+  limit?: number;
+  cursor?: { at: string; id: string } | null;
+};
 export type CreateArticleCommentInput = {
   slug: string; actorId: string; content: string;
   locale?: string; contentBlocks?: unknown[] | null; contentBlocksVersion?: number;

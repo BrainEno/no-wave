@@ -119,14 +119,36 @@ export function createPostgresEngagementStore(ctx: PostgresStoreContext) {
       });
     },
 
-    async listArticleComments({ slug, locale = "zh-CN", limit = 50 }) {
+    /**
+     * The thread's first page, or the page after a cursor (ADR 0034).
+     *
+     * `limit` counts top-level comments; each arrives with its whole reply tree.
+     * The cursor names the last root already shown and the next page starts
+     * strictly after it, with `id` breaking a tie inside one millisecond.
+     * `date_trunc('milliseconds', …)` is belt and braces — migration 0031 stored
+     * every row at that precision and a CHECK keeps it there — but it is what
+     * makes "the place the cursor names" and "the value compared" the same value,
+     * and it keeps `article_comments_article_created_idx` usable.
+     *
+     * Both halves arrive as nullable parameters and are tested with `IS NULL`, so
+     * one statement serves the first page and every later one.
+     */
+    async listArticleComments({ slug, locale = "zh-CN", limit = 50, cursor = null }) {
       validateArticleSlug(slug);
       validateArticleLocale(locale);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
         throw new ArticleInputError("limit must be an integer between 1 and 100.");
       }
+      const at = cursor === null || cursor === undefined ? null : cursor.at;
+      const afterId = cursor === null || cursor === undefined ? null : cursor.id;
+      if ((at !== null && typeof at !== "string") || (afterId !== null && typeof afterId !== "string")) {
+        throw new ArticleInputError("cursor must be {at, id} or null.");
+      }
       const rows = await sql.unsafe(
-        `WITH RECURSIVE target_article AS (
+        `WITH RECURSIVE page AS (
+          SELECT $4::timestamptz AS at, $5::uuid AS id
+        ),
+        target_article AS (
           SELECT a.id
           FROM articles AS a
           JOIN article_translations AS t ON t.article_id = a.id
@@ -139,6 +161,11 @@ export function createPostgresEngagementStore(ctx: PostgresStoreContext) {
           FROM article_comments AS c
           JOIN target_article AS a ON a.id = c.article_id
           WHERE c.parent_comment_id IS NULL
+            AND (
+              (SELECT at FROM page) IS NULL
+              OR c.created_at > date_trunc('milliseconds', (SELECT at FROM page))
+              OR (c.created_at = date_trunc('milliseconds', (SELECT at FROM page)) AND c.id > (SELECT id FROM page))
+            )
           ORDER BY c.created_at ASC, c.id ASC
           LIMIT $3
         ),
@@ -150,13 +177,13 @@ export function createPostgresEngagementStore(ctx: PostgresStoreContext) {
                  child.created_at, child.updated_at, child.edited_at, parent.depth + 1
           FROM article_comments AS child
           JOIN comment_tree AS parent ON child.parent_comment_id = parent.id
-          WHERE parent.depth < $4
+          WHERE parent.depth < $6
         )
         SELECT id, article_id, author_id, parent_comment_id, content,
                content_blocks, content_blocks_version, created_at, updated_at, edited_at, depth
         FROM comment_tree
         ORDER BY created_at ASC, id ASC`,
-        [slug, locale, limit, MAX_COMMENT_TREE_DEPTH],
+        [slug, locale, limit, at, afterId, MAX_COMMENT_TREE_DEPTH],
       );
       const nodes = new Map();
       for (const row of rows) nodes.set(row.id, mapArticleComment({ ...row, locale }));
