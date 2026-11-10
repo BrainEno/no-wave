@@ -419,7 +419,17 @@ can still be written, and `image-copy-failed` gives the reason. If removing imag
 leaves no valid blocks, the article write fails instead of creating an empty work.
 The provenance record is marked incomplete so another dry run offers an update;
 a retry of the same bundle reuses successfully copied media from the incomplete
-edition and retries missing images. Previously imported works still containing the
+edition and retries missing images. If a signature refresh changes the bundle, the
+plan remains an update: the API cannot know from a URL alone whether the bytes
+changed. On apply it downloads and normalizes again, then reuses the old asset only
+if it belongs to the author and both the normalized bytes and the stored object's
+integrity match. Changed, missing or corrupt objects result in a new asset. This
+saves duplicate media but is still an update, not a claimed skip. Conversely, an
+identical bundle is still skipped without a network read; it cannot detect an object
+whose bytes changed behind the very same URL. For a page with
+more than eight images, reuse the exact bundle across retries while its URLs remain
+valid: a changed signature resets the incomplete checkpoint, so a refreshed bundle
+may need more than one attempt and can fail to finish under the per-request cap. Previously imported works still containing the
 same temporary URLs are also offered an update. As with any import, an update can
 replace edits made in the desk; review the plan before applying. If the source
 signature expires, obtain a fresh bundle before retrying.

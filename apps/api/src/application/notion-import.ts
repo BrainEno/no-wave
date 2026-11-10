@@ -576,11 +576,11 @@ export async function importNotionBundle(input: {
           ? await input.deps.getMyArticle({ articleId: link.articleId, actorId: input.actorId, locale: edition.locale }) : null;
         const mayCopy = !link || !!current;
         if (mayCopy) {
-          // For an incomplete retry of the exact same source, keep media already
-          // copied for each block. Otherwise an eight-image ceiling could never
-          // make progress on a single page with more than eight images.
+          // For an incomplete retry of the exact same source, reuse the local
+          // blocks directly. For a changed source, pass them only as hints: the
+          // copier must download and verify bytes before reusing an asset.
           const previous = new Map<string, string>();
-          if (current && link?.digest === `incomplete:${edition.digest}`) {
+          if (current) {
             let oldBlocks: unknown = current.contentBlocks;
             if (typeof oldBlocks === "string") {
               try { oldBlocks = JSON.parse(oldBlocks); } catch { oldBlocks = null; }
@@ -593,7 +593,10 @@ export async function importNotionBundle(input: {
               }
             }
           }
-          const prepared = await prepareNotionImages(edition, input.copyImage ?? (async () => ({ ok: false, reason: "media storage is not configured" })), previous);
+          const prepared = await prepareNotionImages(
+            edition, input.copyImage ?? (async () => ({ ok: false, reason: "media storage is not configured" })),
+            previous, link?.digest === `incomplete:${edition.digest}`,
+          );
           edition = prepared.edition;
           incomplete = prepared.incomplete;
         }

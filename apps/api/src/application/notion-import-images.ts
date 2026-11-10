@@ -2,7 +2,7 @@ import type { PlannedEdition } from "./notion-bundle.ts";
 import type { InterchangeIssue } from "./notion-interchange.ts";
 
 /** Copy an expiring image into media storage; never include signed URLs in errors. */
-export type NotionImageCopier = (url: string) => Promise<
+export type NotionImageCopier = (url: string, previousSrc?: string) => Promise<
   { ok: true; src: string } | { ok: false; reason: string }
 >;
 
@@ -16,6 +16,7 @@ export async function prepareNotionImages(
   edition: PlannedEdition,
   copy: NotionImageCopier,
   previous: ReadonlyMap<string, string> = new Map(),
+  reuseWithoutFetch = false,
 ): Promise<{ edition: PlannedEdition; incomplete: boolean }> {
   const expiring = new Set(edition.issues.filter((issue) => issue.code === "expiring-image-url").map((issue) => issue.detail));
   if (expiring.size === 0) return { edition, incomplete: false };
@@ -28,7 +29,9 @@ export async function prepareNotionImages(
       continue;
     }
     const existing = typeof block.id === "string" ? previous.get(block.id) : undefined;
-    const result = existing ? { ok: true as const, src: existing } : await copy(block.src);
+    const result = existing && reuseWithoutFetch
+      ? { ok: true as const, src: existing }
+      : await copy(block.src, existing);
     if (result.ok) {
       blocks.push({ ...block, src: result.src });
     } else {

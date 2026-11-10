@@ -531,3 +531,45 @@ test("opening the library does not read work bodies", async () => {
   assert.ok(statements.some((sql) => /article_media_refs/i.test(sql)), "it reads the reference table instead");
   db.close();
 });
+
+test("an upload reuses only the owner's intact media with identical normalized bytes", async () => {
+  const owner = "11111111-1111-4111-8111-111111111111";
+  const other = "22222222-2222-4222-8222-222222222222";
+  const assets = new Map<string, import("./media-assets.ts").MediaAsset>();
+  const objects = new Map<string, Buffer>();
+  let puts = 0;
+  const store = {
+    async createMediaAsset(asset: Omit<import("./media-assets.ts").MediaAsset, "createdAt">) {
+      const row = { ...asset, createdAt: "2026-11-01T00:00:00.000Z" };
+      assets.set(row.id, row);
+      return row;
+    },
+    async getMediaAsset({ id }: { id: string }) { return assets.get(id) ?? null; },
+    async listMediaAssets() { return []; },
+    async deleteUnusedMediaAsset() { return null; },
+    async listMediaScanRows() { return []; },
+    async listReferencesForAssets() { return []; },
+  };
+  const storage = {
+    async putObject({ key, bytes }: { key: string; bytes: Buffer }) { puts++; objects.set(key, bytes); },
+    async getObject(key: string) { const bytes = objects.get(key); if (!bytes) throw new Error("missing"); return bytes; },
+    async deleteObject(key: string) { objects.delete(key); },
+    close() {},
+  };
+  const service = createMediaAssetService({ store, storage });
+  const originalBytes = await pngBuffer();
+  const first = await service.upload({ ownerId: owner, bytes: originalBytes, contentType: "image/png" });
+  const same = await service.upload({ ownerId: owner, bytes: originalBytes, contentType: "image/png", reuseId: first.id });
+  assert.equal(same.id, first.id);
+  assert.equal(puts, 1);
+  const changedBytes = await sharp({ create: { width: 24, height: 18, channels: 4, background: "blue" } }).png().toBuffer();
+  const changed = await service.upload({ ownerId: owner, bytes: changedBytes, contentType: "image/png", reuseId: first.id });
+  assert.notEqual(changed.id, first.id);
+  const foreign = await service.upload({ ownerId: other, bytes: originalBytes, contentType: "image/png", reuseId: first.id });
+  assert.notEqual(foreign.id, first.id, "another author's asset is not reused");
+  objects.set(assets.get(first.id)!.storageKey, Buffer.from("corrupt"));
+  const repaired = await service.upload({ ownerId: owner, bytes: originalBytes, contentType: "image/png", reuseId: first.id });
+  assert.notEqual(repaired.id, first.id, "an unreadable object is not reused");
+  assert.equal(puts, 4);
+  await assert.rejects(service.upload({ ownerId: owner, bytes: originalBytes, contentType: "image/jpeg", reuseId: first.id }), /do not match/);
+});

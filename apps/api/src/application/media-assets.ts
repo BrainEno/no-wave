@@ -387,9 +387,26 @@ export function createMediaAssetService({ store, storage }: {
     throw new TypeError("A configured media object storage adapter is required.");
   }
   return Object.freeze({
-    async upload({ ownerId, bytes, contentType }: { ownerId: string; bytes: Buffer; contentType: string }) {
+    async upload({ ownerId, bytes, contentType, reuseId }: { ownerId: string; bytes: Buffer; contentType: string; reuseId?: string }) {
       if (!isUuid(ownerId)) inputError("The authenticated user identity is invalid.");
       const normalized = await normalizeUploadedImage(bytes, contentType);
+      // Internal callers may offer a prior asset as a hint, never as proof. Only
+      // reuse the author's own asset if both normalized bytes and the stored
+      // object still match; a missing or corrupt object needs a fresh upload.
+      if (reuseId && isUuid(reuseId)) {
+        const existing = await store.getMediaAsset({ id: reuseId });
+        if (existing && existing.ownerId === ownerId && existing.contentType === "image/webp" &&
+            existing.storageKey === `assets/${ownerId}/${existing.id}.webp` &&
+            existing.sha256 === normalized.sha256 && existing.byteSize === normalized.byteSize &&
+            existing.width === normalized.width && existing.height === normalized.height) {
+          let stored: Buffer | null = null;
+          try { stored = await storage.getObject(existing.storageKey); } catch { /* write a fresh object */ }
+          if (stored && stored.byteLength === existing.byteSize && createHash("sha256").update(stored).digest("hex") === existing.sha256) {
+            return { id: existing.id, src: `/api/media/${existing.id}`, contentType: existing.contentType,
+              byteSize: existing.byteSize, width: existing.width, height: existing.height };
+          }
+        }
+      }
       const id = randomUUID();
       const storageKey = `assets/${ownerId}/${id}.webp`;
       try {
