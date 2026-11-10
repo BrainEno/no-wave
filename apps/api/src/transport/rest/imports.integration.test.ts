@@ -482,3 +482,35 @@ test("PostgreSQL repairs an article created before image provenance failed", {
     await sql.end();
   }
 });
+
+test("Markdown conversion imports real articles and keeps filename identity scoped by author", async () => {
+  const { markdownEntriesToBundle } = await import("../../../../../packages/web-ui/src/lib/notion-markdown.ts");
+  const db = createSqliteClient({ filename: ":memory:", enableWal: false });
+  await runSqliteMigrations(db);
+  const server = createApiServer({ store: createSqliteStore(db), env, logger: () => {} });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const post = async (actor: string, apply: boolean) => {
+    const bundle = markdownEntriesToBundle([{ name: "my-work.md", text: "# 标题\n\nPublished: Yes\nTags: 诗歌\n\n正文内容。" }]).bundle;
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/v1/imports/notion`, {
+      method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token(actor)}` }, body: JSON.stringify({ bundle, apply }),
+    });
+    assert.equal(response.status, 200);
+    return (await response.json()).data;
+  };
+  try {
+    const first = await post("markdown-author-one", false);
+    assert.equal(first.summary.create, 1);
+    const written = await post("markdown-author-one", true);
+    assert.equal(written.summary.create, 1);
+    assert.equal((await post("markdown-author-one", true)).summary.skip, 1);
+    assert.equal((await post("markdown-author-two", true)).summary.create, 1);
+    assert.equal(Number(db.prepare("SELECT count(*) AS count FROM articles").get()?.count), 2);
+    const stored = db.prepare("SELECT content_blocks FROM article_translations WHERE title = ? LIMIT 1").get("标题");
+    assert.match(String(stored?.content_blocks), /正文内容/);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    db.close();
+  }
+});

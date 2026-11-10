@@ -351,7 +351,13 @@ export function planNotionSeed(input: {
 
     const edition = (page: NotionBundlePage, locale: string, draft: NotionArticleDraft, issues: InterchangeIssue[]): PlannedEdition => {
       const previous = input.state.pages[page.id];
-      const digest = draftDigest(draft);
+      // A missing Date uses the current time for publication, but that generated
+      // value is not source content. Hashing the clock causes every retry (and
+      // even the dry run and apply) to look different. Explicit dates still
+      // participate in the digest. Translations inherit the primary date.
+      const dateName = input.options?.propertyNames?.date ?? DEFAULT_NOTION_PROPERTY_NAMES.date;
+      const hasDate = !!work.primary.properties[dateName]?.date?.start;
+      const digest = draftDigest(hasDate ? draft : { ...draft, publishedAt: null });
       return {
         pageId: page.id,
         locale,

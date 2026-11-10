@@ -1,5 +1,6 @@
 import { Link } from "@/lib/framework/link.tsx";
 import { useState } from "react";
+import { markdownEntriesToBundle, readMarkdownZip } from "@/lib/notion-markdown.ts";
 import {
   ACTION_LABEL,
   asImportReport,
@@ -60,6 +61,7 @@ export function NotionImport() {
   const [report, setReport] = useState<NotionImportReport | null>(null);
   const [busy, setBusy] = useState<null | "dry-run" | "apply">(null);
   const [error, setError] = useState("");
+  const [warnings, setWarnings] = useState<string[]>([]);
 
   async function send(next: Record<string, unknown>, apply: boolean): Promise<void> {
     setBusy(apply ? "apply" : "dry-run");
@@ -95,27 +97,37 @@ export function NotionImport() {
     }
   }
 
-  async function choose(file: File): Promise<void> {
-    setFileName(file.name);
+  async function choose(files: File[]): Promise<void> {
+    setFileName(files.map((file) => file.name).join("、"));
     setReport(null);
     setError("");
+    setWarnings([]);
     setBundle(null);
     setPageCount(0);
-    let text: string;
+    setBusy("dry-run");
     try {
-      text = await file.text();
-    } catch {
-      setError("这个文件读不出来，请重新选择。");
-      return;
+      if (files.reduce((sum, file) => sum + file.size, 0) > 8 * 1024 * 1024) throw new Error("文件总大小超过 8 MB，请分批导入。");
+      if (files.length === 1 && /\.json$/i.test(files[0]!.name)) {
+        const file = files[0]!;
+        const read = readBundleFile({ text: await file.text(), byteLength: file.size });
+        if (!read.ok) throw new Error(read.message);
+        setBundle(read.bundle); setPageCount(read.pages);
+        await send(read.bundle, false);
+        return;
+      }
+      const entries: { name: string; text: string }[] = [];
+      for (const file of files) {
+        if (/\.md$/i.test(file.name)) entries.push({ name: file.name, text: new TextDecoder("utf-8", { fatal: true }).decode(await file.arrayBuffer()) });
+        else if (/\.zip$/i.test(file.name)) entries.push(...readMarkdownZip(new Uint8Array(await file.arrayBuffer())));
+        else throw new Error(`${file.name}：请选择 Markdown、ZIP，或单个 JSON bundle。`);
+      }
+      const result = markdownEntriesToBundle(entries);
+      setBundle(result.bundle); setPageCount(result.pages); setWarnings(result.warnings);
+      await send(result.bundle, false);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "文件无法读取，请重新选择。 ");
+      setBusy(null);
     }
-    const read = readBundleFile({ text, byteLength: file.size });
-    if (read.ok === false) {
-      setError(read.message);
-      return;
-    }
-    setBundle(read.bundle);
-    setPageCount(read.pages);
-    await send(read.bundle, false);
   }
 
   const outcome = report === null ? null : describeImport(report);
@@ -128,25 +140,27 @@ export function NotionImport() {
         <Link className="nw-btn" href="/write">回到写作台</Link>
       </div>
       <p className="nw-ep">
-        选一个从 Notion 导出的 bundle（JSON 文件）。第一次只是试跑：服务端会把每一页会发生什么算出来，
+        选择 Notion 导出的 Markdown 文件（可多选）或 ZIP 压缩包，也支持原有 JSON bundle。第一次只是试跑：服务端会把每一页会发生什么算出来，
         你先读这份报告，确认之后才写入。写入只发生在你自己名下的作品里 —— 不会改动别人的作品，也不会重建页面之间的关系。
       </p>
       <p className="nw-m">
-        上限 {MAX_MEGABYTES} MB、一次最多 200 页。确认写入时会尝试复制 Notion 托管的图片；无法复制的图片会被移除并在报告中说明，可以重试。一次最多复制 8 张不同图片。
+        上限 {MAX_MEGABYTES} MB、一次最多 200 页。ZIP 内的本地图片目前不会导入，会在下方提示；在线 Notion 图片会尝试复制，失败则移除并报告。一次最多复制 8 张不同图片。未指定 Published 的文章默认为草稿。
       </p>
 
       <div className="nw-import-pick">
-        <label className="nw-btn" htmlFor="notion-bundle-file">选择 bundle 文件</label>
+        <label className="nw-btn" htmlFor="notion-bundle-file">选择文件</label>
         <input
-          accept="application/json,.json"
+          accept=".md,.zip,.json,application/json,application/zip"
+          multiple
+          disabled={busy !== null}
           hidden
           id="notion-bundle-file"
           onChange={(event) => {
-            const file = event.currentTarget.files?.[0];
+            const files = Array.from(event.currentTarget.files ?? []);
             // Cleared so choosing the same file again is still a change event —
             // the second look at a bundle the author just edited is the common case.
             event.currentTarget.value = "";
-            if (file) void choose(file);
+            if (files.length) void choose(files);
           }}
           type="file"
         />
@@ -157,6 +171,7 @@ export function NotionImport() {
 
       {busy === "dry-run" ? <p className="nw-m" role="status">正在试跑，正在读每一页…</p> : null}
       {error !== "" ? <p className="nw-auth-error" role="alert">{error}</p> : null}
+      {warnings.length > 0 ? <div role="status"><p>文件转换提示（请核对后再确认）：</p><ul>{warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul></div> : null}
 
       {report !== null && outcome !== null ? (
         <div className="nw-import-report">
@@ -182,7 +197,7 @@ export function NotionImport() {
                 {page.issues.length > 0 ? (
                   <span className="nw-import-issues">{page.issues.map((issue) => issue.code).join("、")}</span>
                 ) : null}
-                {page.issues.filter((issue) => issue.code === "image-copy-failed").map((issue, index) => (
+                {page.issues.filter((issue) => issue.code !== "expiring-image-url").map((issue, index) => (
                   <small className="nw-import-reason" key={`${issue.code}:${index}`}>{issue.detail}</small>
                 ))}
                 {page.detail !== "" ? <small className="nw-import-reason">{page.detail}</small> : null}

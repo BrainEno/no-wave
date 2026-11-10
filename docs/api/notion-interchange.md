@@ -675,3 +675,41 @@ still has to apply itself.
   plan before anything is written, the confirm button writing it once, the work
   appearing in the desk, and the same file imported twice writing nothing the
   second time.
+
+## Markdown and ZIP export files in the desk
+
+The authoring page also accepts multiple `.md` files or ZIP files, converting
+locally in the browser to the existing bundle and using the same preview and
+explicit confirmation. A single JSON bundle remains supported. This is a desk
+feature, not a new multipart API: `POST /api/v1/imports/notion` still receives
+JSON. No Notion token is needed.
+
+A Markdown file needs an initial `# Title` and a body. Notion's 32-digit page ID
+at the end of the filename is used as its original page identity. For a file
+without that ID, identity is its filename scoped to the signed-in author;
+renaming it is a new import, and two selected files with the same identity are
+refused. Re-import can update a previously imported article, so review the plan.
+Notion page IDs remain globally owned across accounts as before. `English` and
+`Parent item` links are only associated when their target is included in the
+same selection. Standalone pages use the existing `zh-CN` default; linked English
+pages use `en`.
+
+The leading Notion metadata recognizes `Published`, `Date`, `Slug`, `Excerpt`,
+`Tags`, `FeaturedImage`, `English`, `Parent item` and `Rank`. Missing Published
+means draft; absent slug, tags and work type use the existing importer defaults.
+Published pages with no source date use the publication clock; that generated
+time is not part of the source digest. Date affects planning but the existing
+article writer stamps the actual publication time, rather than backdating it.
+`Rank`, unrecognized properties and cover images have no matching article field
+and are reported. Basic Markdown paragraphs, headings, links, marks, lists,
+quotes and code are converted; unsupported structures are flattened and reported.
+
+ZIP parsing is bounded to 8 MiB compressed and 8 MiB extracted Markdown, 200
+Markdown files and 2000 total entries. A request after conversion must also fit
+8 MiB. ZIP64, split or incomplete archives are rejected. Files are never extracted
+to disk. Local or inline images are **omitted with a warning**, even when present
+in the ZIP; they are not yet uploaded. External images remain links; recognized
+Notion-hosted URLs go through the existing bounded image copy path, and signed
+URLs on other hosts are removed. Per-request limits and retry caveats in the
+image section above still apply. The conversion warnings should be reviewed
+before confirming, especially for unsupported Markdown and missing relationships.

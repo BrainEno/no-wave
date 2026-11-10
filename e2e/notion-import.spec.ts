@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { zipSync, strToU8 } from "fflate";
 import { expect, test } from "@playwright/test";
 import { registerThroughForm, uniqueEmail } from "./support/accounts.ts";
 
@@ -130,4 +131,32 @@ test("importing the same file twice writes nothing the second time", async ({ pa
   await expect(page.getByText(/计划：新建 0 件、更新 0 件、跳过 1 页/)).toBeVisible();
   await expect(page.getByText(/没有任何需要写入的内容/)).toBeVisible();
   await expect(page.getByRole("button", { name: /确认导入/ })).toHaveCount(0);
+});
+
+test("multiple Notion Markdown files are previewed before import", async ({ page }) => {
+  await registerThroughForm(page, uniqueEmail("notion-md"), "/write/notion");
+  const id1 = randomUUID().replaceAll("-", "");
+  const id2 = randomUUID().replaceAll("-", "");
+  await page.setInputFiles("#notion-bundle-file", [
+    { name: `第一篇 ${id1}.md`, mimeType: "text/markdown", buffer: Buffer.from("# 第一篇\n\nPublished: No\nTags: 诗歌\n\n第一篇正文") },
+    { name: `第二篇 ${id2}.md`, mimeType: "text/markdown", buffer: Buffer.from("# 第二篇\n\n第二篇正文") },
+  ]);
+  await expect(page.getByText(/计划：新建 2 件/)).toBeVisible();
+  await page.getByRole("button", { name: /确认导入/ }).click();
+  await expect(page.getByText(/已导入：新建 2 件/)).toBeVisible();
+  await page.getByRole("link", { name: "去看写作台" }).click();
+  await expect(page.getByText("第一篇")).toBeVisible();
+  await expect(page.getByText("第二篇")).toBeVisible();
+});
+
+
+test("a ZIP export discovers Markdown articles", async ({ page }) => {
+  await registerThroughForm(page, uniqueEmail("notion-zip"), "/write/notion");
+  const id = randomUUID().replaceAll("-", "");
+  const archive = zipSync({ [`export/压缩文章 ${id}.md`]: strToU8("# 压缩文章\n\n正文来自 ZIP"), "export/readme.txt": strToU8("ignored") });
+  await page.setInputFiles("#notion-bundle-file", { name: "export.zip", mimeType: "application/zip", buffer: Buffer.from(archive) });
+  await expect(page.getByText(/计划：新建 1 件/)).toBeVisible();
+  await expect(page.getByText("压缩文章")).toBeVisible();
+  await page.getByRole("button", { name: /确认导入/ }).click();
+  await expect(page.getByText(/已导入：新建 1 件/)).toBeVisible();
 });
