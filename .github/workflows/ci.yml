@@ -334,7 +334,7 @@ jobs:
         run: |
           set -eu
           STAGE=setup
-          trap 'rc=$?; if [ "$rc" -ne 0 ]; then echo "::error title=container smoke stage::${STAGE}"; for container in api web; do LOG=$(docker logs --tail 12 "$container" 2>&1 | base64 -w0); echo "::error title=container ${container} log base64::${LOG}"; done; fi' EXIT
+          trap 'rc=$?; if [ "$rc" -ne 0 ]; then echo "::error title=container smoke stage::${STAGE}"; for container in api web; do LOG=$(docker logs --tail 40 "$container" 2>&1 | base64 -w0); echo "::error title=container ${container} log base64::${LOG}"; done; fi' EXIT
           docker network create nw-ci
           docker volume create nw-ci-db
           # The API refuses to start on a pending schema. Migrate *before* its
