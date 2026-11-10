@@ -4,35 +4,15 @@ import { markdownEntriesToBundle, readMarkdownZip } from "@/lib/notion-markdown.
 import {
   ACTION_LABEL,
   asImportReport,
+  bundleSelectionPages,
+  selectBundlePages,
   describeImport,
   issueCounts,
   readBundleFile,
   type NotionImportReport,
 } from "@/lib/notion-import.ts";
 
-/**
- * Import a Notion bundle into the author's own works (ADR 0036, phase 4).
- *
- * Three decisions this page makes, and the reasoning matters more than the markup:
- *
- *  1. **The file is read in the browser and sent as text.** A bundle is a
- *     document the author exported, not bytes a server needs to parse for them:
- *     reading it here is what lets the page say "this is not JSON" or "this is a
- *     saved API response" before a megabyte travels, and the API stays the
- *     authority on what a bundle *is*.
- *  2. **Choosing a file starts a dry run, and nothing else.** The author never
- *     has to know that the plan and the write are two requests — they see the
- *     plan first because that is what the page asks the server for, and writing is
- *     a second, explicit press. A dry run reports `applied: false`; the button
- *     only exists while that is true and there is something to write.
- *  3. **The report is shown as the server wrote it.** Page actions, per-page
- *     issues and the reasons a page was refused are the mapping's answers, and a
- *     page that re-worded them could say something the import did not do. Only the
- *     action names are translated, because those are a vocabulary this page owns.
- *
- * It is shared UI (`@bot-thk/web-ui`), so it reaches the router only through
- * `@/lib/framework/*` and names no framework of its own.
- */
+/** Pick source pages first, then preview and apply precisely that selection. */
 
 const MAX_MEGABYTES = 8;
 
@@ -62,10 +42,14 @@ export function NotionImport() {
   const [busy, setBusy] = useState<null | "dry-run" | "apply">(null);
   const [error, setError] = useState("");
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
+  const [plannedBundle, setPlannedBundle] = useState<Record<string, unknown> | null>(null);
 
   async function send(next: Record<string, unknown>, apply: boolean): Promise<void> {
     setBusy(apply ? "apply" : "dry-run");
     setError("");
+    setReport(null);
+    setPlannedBundle(null);
     try {
       const response = await fetch("/api/authoring/notion-import", {
         method: "POST",
@@ -90,6 +74,7 @@ export function NotionImport() {
         return;
       }
       setReport(parsed);
+      if (!apply && !parsed.applied) setPlannedBundle(next);
     } catch {
       setError("网络中断，无法确认导入结果。部分内容可能已写入；请检查写作台，再重新试跑。 ");
     } finally {
@@ -104,6 +89,8 @@ export function NotionImport() {
     setWarnings([]);
     setBundle(null);
     setPageCount(0);
+    setSelected(new Set());
+    setPlannedBundle(null);
     setBusy("dry-run");
     try {
       if (files.reduce((sum, file) => sum + file.size, 0) > 8 * 1024 * 1024) throw new Error("文件总大小超过 8 MB，请分批导入。");
@@ -112,7 +99,7 @@ export function NotionImport() {
         const read = readBundleFile({ text: await file.text(), byteLength: file.size });
         if (!read.ok) throw new Error(read.message);
         setBundle(read.bundle); setPageCount(read.pages);
-        await send(read.bundle, false);
+        setBusy(null);
         return;
       }
       const entries: { name: string; text: string }[] = [];
@@ -123,13 +110,20 @@ export function NotionImport() {
       }
       const result = markdownEntriesToBundle(entries);
       setBundle(result.bundle); setPageCount(result.pages); setWarnings(result.warnings);
-      await send(result.bundle, false);
+      setBusy(null);
     } catch (error) {
       setError(error instanceof Error ? error.message : "文件无法读取，请重新选择。 ");
       setBusy(null);
     }
   }
 
+  function changeSelection(next: ReadonlySet<number>) {
+    setSelected(next);
+    setReport(null);
+    setPlannedBundle(null);
+    setError("");
+  }
+  const choices = bundle === null ? [] : bundleSelectionPages(bundle);
   const outcome = report === null ? null : describeImport(report);
   const issues = report === null ? [] : issueCounts(report);
 
@@ -140,8 +134,8 @@ export function NotionImport() {
         <Link className="nw-btn" href="/write">回到写作台</Link>
       </div>
       <p className="nw-ep">
-        选择 Notion 导出的 Markdown 文件（可多选）或 ZIP 压缩包，也支持原有 JSON bundle。第一次只是试跑：服务端会把每一页会发生什么算出来，
-        你先读这份报告，确认之后才写入。写入只发生在你自己名下的作品里 —— 不会改动别人的作品，也不会重建页面之间的关系。
+        选择 Notion 导出的 Markdown 文件（可多选）或 ZIP 压缩包，也支持原有 JSON bundle。
+        勾选想导入的文章，试跑并检查报告后再确认写入；未勾选的页面不会提交。已有文章可能被更新，请留意试跑结果。
       </p>
       <p className="nw-m">
         上限 {MAX_MEGABYTES} MB、一次最多 200 页。ZIP 内的本地图片目前不会导入，会在下方提示；在线 Notion 图片会尝试复制，失败则移除并报告。一次最多复制 8 张不同图片。未指定 Published 的文章默认为草稿。
@@ -169,9 +163,41 @@ export function NotionImport() {
         </span>
       </div>
 
-      {busy === "dry-run" ? <p className="nw-m" role="status">正在试跑，正在读每一页…</p> : null}
+      {busy === "dry-run" ? <p className="nw-m" role="status">正在读取或试跑所选页面…</p> : null}
       {error !== "" ? <p className="nw-auth-error" role="alert">{error}</p> : null}
       {warnings.length > 0 ? <div role="status"><p>文件转换提示（请核对后再确认）：</p><ul>{warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul></div> : null}
+
+      {bundle !== null && choices.length > 0 ? (
+        <section className="nw-import-selection" aria-labelledby="notion-selection-title">
+          <h2 id="notion-selection-title">选择要导入的文章</h2>
+          <p className="nw-m">已选 {selected.size} / {choices.length} 页。关联的译文请一并选择；更改选择后须重新试跑。</p>
+          <div className="nw-import-select-actions">
+            <button type="button" className="nw-btn" disabled={busy !== null || selected.size === choices.length}
+              onClick={() => changeSelection(new Set(choices.map((page) => page.index)))}>全选</button>
+            <button type="button" className="nw-btn" disabled={busy !== null || selected.size === 0}
+              onClick={() => changeSelection(new Set())}>清空选择</button>
+          </div>
+          <ul className="nw-import-selection-list">
+            {choices.map((page) => (
+              <li key={page.index}>
+                <label className="nw-import-select-page">
+                  <input type="checkbox" checked={selected.has(page.index)} disabled={busy !== null}
+                    onChange={(event) => {
+                      const next = new Set(selected);
+                      if (event.currentTarget.checked) next.add(page.index); else next.delete(page.index);
+                      changeSelection(next);
+                    }} />
+                  <span>{page.title}</span>
+                </label>
+                {page.preview ? <details><summary>查看正文摘录</summary><p className="nw-import-preview">{page.preview}</p></details> : null}
+              </li>
+            ))}
+          </ul>
+          <button className="nw-btn" type="button" disabled={busy !== null || selected.size === 0}
+            onClick={() => void send(selectBundlePages(bundle, selected), false)}>试跑所选文章</button>
+        </section>
+      ) : null}
+      {bundle !== null && choices.length === 0 ? <p className="nw-m">文件中没有可选择的页面。</p> : null}
 
       {report !== null && outcome !== null ? (
         <div className="nw-import-report">
@@ -212,19 +238,19 @@ export function NotionImport() {
             </p>
           ) : null}
 
-          {outcome.canApply && bundle !== null ? (
+          {outcome.canApply && plannedBundle !== null ? (
             <div className="nw-import-confirm">
               <button
                 className="nw-btn"
                 disabled={busy !== null}
-                onClick={() => void send(bundle, true)}
+                onClick={() => void send(plannedBundle, true)}
                 type="button"
               >
                 {busy === "apply" ? "写入中…" : `确认导入（写入 ${outcome.writable} 件作品）`}
               </button>
               <p className="nw-m">
                 试跑没有写入任何内容。写入时状态跟着 bundle 走：「Published」为真的那一页会被直接发表，
-                为假的是草稿；发布日期取那一页的「Date」。确认前请先看清上面每一页的动作。
+                为假的或缺失的是草稿；系统以实际发表时间为准。确认前请先看清上面每一页的动作。
               </p>
             </div>
           ) : null}

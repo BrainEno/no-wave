@@ -679,8 +679,9 @@ still has to apply itself.
 ## Markdown and ZIP export files in the desk
 
 The authoring page also accepts multiple `.md` files or ZIP files, converting
-locally in the browser to the existing bundle and using the same preview and
-explicit confirmation. A single JSON bundle remains supported. This is a desk
+locally in the browser to the existing bundle. The author selects pages before
+the dry run and explicit confirmation; only selected pages are submitted. Changing
+the selection invalidates the plan, so it must be previewed again. A single JSON bundle remains supported. This is a desk
 feature, not a new multipart API: `POST /api/v1/imports/notion` still receives
 JSON. No Notion token is needed.
 
@@ -700,8 +701,9 @@ means draft; absent slug, tags and work type use the existing importer defaults.
 Published pages with no source date use the publication clock; that generated
 time is not part of the source digest. Date affects planning but the existing
 article writer stamps the actual publication time, rather than backdating it.
-`Rank`, unrecognized properties and cover images have no matching article field
-and are reported. Basic Markdown paragraphs, headings, links, marks, lists,
+`Rank` has no matching article field and is ignored without blocking import.
+Unrecognized properties and cover images have no matching article field and are
+reported. Basic Markdown paragraphs, headings, links, marks, lists,
 quotes and code are converted; unsupported structures are flattened and reported.
 
 ZIP parsing is bounded to 8 MiB compressed and 8 MiB extracted Markdown, 200
