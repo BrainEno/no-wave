@@ -66,15 +66,18 @@ export function createSqliteImportStore(db: SqliteRunner) {
       const transactionId = createMigrationTransactionId();
       db.exec("BEGIN IMMEDIATE");
       try {
-        db.prepare(`INSERT INTO external_content_links (provider, external_id, locale, article_id, owner_id, digest, synced_at)
+        const result = db.prepare(`INSERT INTO external_content_links (provider, external_id, locale, article_id, owner_id, digest, synced_at)
            VALUES (?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT (provider, external_id, locale) DO UPDATE SET
              article_id = excluded.article_id,
              owner_id = excluded.owner_id,
              digest = excluded.digest,
-             synced_at = excluded.synced_at`).run(
+             synced_at = excluded.synced_at
+           WHERE external_content_links.owner_id = excluded.owner_id
+             AND external_content_links.article_id = excluded.article_id`).run(
           input.provider, input.externalId, input.locale, input.articleId, input.ownerId, input.digest, input.syncedAt,
         );
+        if (Number(result.changes) !== 1) throw new Error("The Notion page is already linked to another work or account.");
         const row = get(
           "SELECT provider, external_id, locale, article_id, owner_id, digest, synced_at FROM external_content_links WHERE provider = ? AND external_id = ? AND locale = ?",
           input.provider, input.externalId, input.locale,

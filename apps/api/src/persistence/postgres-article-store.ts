@@ -158,6 +158,13 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
       return rows.map(mapArticle);
     },
 
+    async findMyArticleByCreateKey({ actorId, key }: { actorId: string; key: string }) {
+      requiredText("actorId", actorId, 300);
+      requiredText("key", key, 300);
+      const rows = await sql.unsafe("SELECT id FROM articles WHERE author_id = $1 AND idempotency_key_hash = $2 LIMIT 1", [actorId, articleIdempotencyKeyHash(actorId, key)]);
+      return rows[0] ? String(rows[0].id) : null;
+    },
+
     async getMyArticle({ articleId, actorId, locale = "zh-CN" }: { articleId: string; actorId: string; locale?: string }) {
       requiredText("articleId", articleId, 64);
       requiredText("actorId", actorId, 300);
@@ -651,5 +658,5 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
       return readFeaturedArticles(sql, { locale, limit: MAX_FEATURED_ARTICLES, offset: 0 });
     },
 
-  }) satisfies Pick<TypedPersistenceAdapterContract, "listPublishedArticles" | "getPublishedArticle" | "incrementArticleViewCount" | "listMyArticles" | "getMyArticle" | "listMyArticleEditions" | "listMyDeletedArticles" | "createArticle" | "updateArticle" | "deleteArticle" | "restoreArticle" | "purgeExpiredArticles" | "listLikedArticles" | "listRelatedArticles" | "listFollowingArticles" | "listFeaturedArticles" | "setFeaturedArticles">;
+  }) satisfies Pick<TypedPersistenceAdapterContract, "listPublishedArticles" | "getPublishedArticle" | "incrementArticleViewCount" | "listMyArticles" | "getMyArticle" | "findMyArticleByCreateKey" | "listMyArticleEditions" | "listMyDeletedArticles" | "createArticle" | "updateArticle" | "deleteArticle" | "restoreArticle" | "purgeExpiredArticles" | "listLikedArticles" | "listRelatedArticles" | "listFollowingArticles" | "listFeaturedArticles" | "setFeaturedArticles">;
 }

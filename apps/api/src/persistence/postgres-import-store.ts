@@ -80,11 +80,13 @@ export function createPostgresImportStore(sql: PgDatabase) {
              owner_id = excluded.owner_id,
              digest = excluded.digest,
              synced_at = excluded.synced_at
+           WHERE external_content_links.owner_id = excluded.owner_id
+             AND external_content_links.article_id = excluded.article_id
            RETURNING ${SELECT_COLUMNS}`,
           [input.provider, input.externalId, input.locale, input.articleId, input.ownerId, input.digest, input.syncedAt],
         );
         const row = rows[0];
-        if (!row) throw new Error("External content link upsert did not produce a row.");
+        if (!row) throw new Error("The Notion page is already linked to another work or account.");
         await capture.captureInTransaction(tx, createMigrationTransactionId(), [
           {
             entityType: "external_content_links",

@@ -38,6 +38,7 @@ function stubDeps(options: { links?: StoredExternalContentLink[] } = {}) {
   const links = new Map<string, StoredExternalContentLink>();
   for (const link of options.links ?? []) links.set(`${link.externalId}|${link.locale}`, link);
   const articles = new Map<string, StoredArticle>();
+  const createKeys = new Map<string, string>();
   const written: string[] = [];
   const tags: StoredTaxonomy[] = [];
   let nextId = 1;
@@ -63,6 +64,7 @@ function stubDeps(options: { links?: StoredExternalContentLink[] } = {}) {
         publishedAt: input.publish === true ? "2026-10-08T00:00:00.000Z" : null,
       } as StoredArticle;
       articles.set(id, article);
+      if (input.idempotencyKey) createKeys.set(`${input.authorId}|${input.idempotencyKey}`, id);
       written.push(`create ${id} ${slug}`);
       return article;
     },
@@ -81,6 +83,9 @@ function stubDeps(options: { links?: StoredExternalContentLink[] } = {}) {
       articles.set(input.articleId, article);
       written.push(`update ${input.articleId} ${article.slug}`);
       return article;
+    },
+    async findMyArticleByCreateKey({ actorId, key }) {
+      return createKeys.get(`${actorId}|${key}`) ?? null;
     },
     async getMyArticle({ articleId, actorId }) {
       const article = articles.get(articleId);
@@ -392,4 +397,81 @@ test("a failed provenance write reports that the article was already written", a
   assert.equal(report.pages[0]?.articleId, "article-1");
   assert.match(report.pages[0]?.detail ?? "", /article was written.*link could not be saved/);
   assert.equal(deps.articles.size, 1);
+});
+
+test("a missing provenance link is previewed and recovered without creating a duplicate", async () => {
+  const deps = stubDeps();
+  const doc = page("recover-page", "恢复作品", "原文");
+  doc.blocks.push(hostedImage("https://prod-files-secure.s3.amazonaws.com/a?signature=secret") as never);
+  const input = bundle(doc);
+  const saveLink = deps.upsertExternalContentLink;
+  deps.upsertExternalContentLink = async () => { throw new Error("injected link failure"); };
+  let copies = 0;
+  const copyImage = async () => ({ ok: true as const, src: `/api/media/00000000-0000-4000-8000-${String(++copies).padStart(12, "0")}` });
+  const first = await importNotionBundle({ actorId: "author-1", bundle: input, apply: true, deps, copyImage, now: at });
+  assert.equal(first.summary.failed, 1);
+  assert.equal(first.pages[0]?.articleId, "article-1");
+  assert.equal(deps.links.size, 0);
+  deps.upsertExternalContentLink = saveLink;
+  const writes = deps.written.length;
+  const dry = await importNotionBundle({ actorId: "author-1", bundle: input, apply: false, deps, copyImage, now: at });
+  assert.equal(dry.summary.update, 1);
+  assert.equal(dry.pages[0]?.articleId, "article-1");
+  assert.match(dry.pages[0]?.detail ?? "", /recover.*existing edits may be replaced/);
+  assert.equal(deps.written.length, writes, "preview is read-only");
+  assert.equal(copies, 1);
+  const recovered = await importNotionBundle({ actorId: "author-1", bundle: input, apply: true, deps, copyImage, now: at });
+  assert.equal(recovered.summary.update, 1);
+  assert.match(recovered.pages[0]?.detail ?? "", /recovered missing import link/);
+  assert.equal(deps.articles.size, 1);
+  assert.equal([...deps.links.values()][0]?.articleId, "article-1");
+  assert.equal((await importNotionBundle({ actorId: "author-1", bundle: input, apply: false, deps, now: at })).summary.skip, 1);
+});
+
+test("an unlinked tombstone is not recreated or written during recovery", async () => {
+  const deps = stubDeps();
+  const saveLink = deps.upsertExternalContentLink;
+  deps.upsertExternalContentLink = async () => { throw new Error("link failed"); };
+  const input = bundle(page("recover-deleted", "被删除", "正文"));
+  await importNotionBundle({ actorId: "author-1", bundle: input, apply: true, deps, now: at });
+  deps.articles.clear();
+  deps.upsertExternalContentLink = saveLink;
+  const dry = await importNotionBundle({ actorId: "author-1", bundle: input, apply: false, deps, now: at });
+  assert.equal(dry.summary.refused, 1);
+  assert.match(dry.pages[0]?.detail ?? "", /restore/);
+  const applied = await importNotionBundle({ actorId: "author-1", bundle: input, apply: true, deps, now: at });
+  assert.equal(applied.summary.refused, 1);
+  assert.equal(deps.articles.size, 0);
+  assert.equal(deps.links.size, 0);
+});
+
+test("recovery refuses a translation linked to a different work", async () => {
+  const deps = stubDeps();
+  const zh = page("recover-zh", "主文", "正文很长", { English: { type: "relation", relation: [{ id: "recover-en" }] } });
+  const en = page("recover-en", "English", "");
+  delete (en.properties as Record<string, unknown>).Date;
+  en.blocks = [paragraph("English text")];
+  const saveLink = deps.upsertExternalContentLink;
+  deps.upsertExternalContentLink = async () => { throw new Error("link failure"); };
+  const first = await importNotionBundle({ actorId: "author-1", bundle: bundle(zh), apply: true, deps, now: at });
+  assert.equal(first.summary.failed, 1);
+  deps.upsertExternalContentLink = saveLink;
+  deps.links.set("recover-en|en", { provider: "notion", externalId: "recover-en", locale: "en", articleId: "other-work", ownerId: "other", digest: "x", syncedAt: at().toISOString() });
+  const before = deps.written.length;
+  const dry = await importNotionBundle({ actorId: "author-1", bundle: bundle(zh, en), apply: false, deps, now: at });
+  assert.equal(dry.summary.refused, 2);
+  assert.match(dry.pages[0]?.detail ?? "", /translation is linked to a different work or account/);
+  const applied = await importNotionBundle({ actorId: "author-1", bundle: bundle(zh, en), apply: true, deps, now: at });
+  assert.equal(applied.summary.refused, 2);
+  assert.equal(deps.written.length, before);
+  assert.equal(deps.links.size, 1);
+});
+
+test("an invalid create key cannot break a dry run during recovery lookup", async () => {
+  const deps = stubDeps();
+  const keys: string[] = [];
+  deps.findMyArticleByCreateKey = async ({ key }) => { keys.push(key); return null; };
+  const result = await importNotionBundle({ actorId: "author-1", bundle: bundle(page("x".repeat(400), "长标识", "正文"), page("trailing ", "空格标识", "正文")), apply: false, deps, now: at });
+  assert.equal(result.summary.create, 2);
+  assert.deepEqual(keys, []);
 });

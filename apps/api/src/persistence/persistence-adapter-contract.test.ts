@@ -3841,6 +3841,17 @@ const hour = new Date(Date.now() + 3_600_000).toISOString();
       const reread = await runtime.store.getExternalContentLink({ provider: "notion", externalId, locale: "zh-CN" });
       assert.equal(reread?.digest, "b".repeat(16), "the second import updated the row instead of adding one");
 
+      // A concurrent claimant must not replace the owner or retarget the link.
+      const rival = await runtime.store.createArticle({ authorId: other, slug: `import-rival-${suffix}`, title: "其他作品",
+        contentBlocks: [{ id: "block-1", type: "paragraph", text: "正文" }], publish: false });
+      await assert.rejects(async () => runtime.store.upsertExternalContentLink({
+        provider: "notion", externalId, locale: "zh-CN", articleId: rival.id, ownerId: other, digest: "c", syncedAt,
+      }), /already linked/);
+      await assert.rejects(async () => runtime.store.upsertExternalContentLink({
+        provider: "notion", externalId, locale: "zh-CN", articleId: rival.id, ownerId: author, digest: "c", syncedAt,
+      }), /already linked/);
+      assert.equal((await runtime.store.getExternalContentLink({ provider: "notion", externalId, locale: "zh-CN" }))?.articleId, article.id);
+
       // Editions of one work are separate links pointing at the same article.
       const english = await runtime.store.upsertExternalContentLink({
         provider: "notion", externalId: `${externalId}-en`, locale: "en", articleId: article.id,
@@ -3854,6 +3865,46 @@ const hour = new Date(Date.now() + 3_600_000).toISOString();
       assert.equal(await runtime.store.getMyArticle({ articleId: article.id, actorId: other }), null);
       await runtime.store.deleteArticle({ articleId: article.id, actorId: author });
       assert.equal(await runtime.store.getMyArticle({ articleId: article.id, actorId: author }), null, "a tombstone is not an import target");
+    } finally { await runtime.cleanup(undefined, suffix); }
+  });
+
+  test(`${adapterName}: competing page claims never overwrite the winning link`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const externalId = `race-${suffix}`;
+    const authorA = `race-a-${suffix}`;
+    const authorB = `race-b-${suffix}`;
+    const input = { title: "竞态", contentBlocks: [{ id: "p", type: "paragraph", text: "正文" }], publish: false };
+    try {
+      const a = await runtime.store.createArticle({ ...input, authorId: authorA, slug: `race-a-${suffix}` });
+      const b = await runtime.store.createArticle({ ...input, authorId: authorB, slug: `race-b-${suffix}` });
+      const result = await Promise.allSettled([
+        runtime.store.upsertExternalContentLink({ provider: "notion", externalId, locale: "zh-CN", articleId: a.id, ownerId: authorA, digest: "a", syncedAt: "2026-11-03T09:00:00.000Z" }),
+        runtime.store.upsertExternalContentLink({ provider: "notion", externalId, locale: "zh-CN", articleId: b.id, ownerId: authorB, digest: "b", syncedAt: "2026-11-03T09:00:00.000Z" }),
+      ]);
+      assert.equal(result.filter((r) => r.status === "fulfilled").length, 1);
+      assert.equal(result.filter((r) => r.status === "rejected").length, 1);
+      const winner = result.find((r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof runtime.store.upsertExternalContentLink>>> => r.status === "fulfilled");
+      assert.ok(winner);
+      assert.equal((await runtime.store.getExternalContentLink({ provider: "notion", externalId, locale: "zh-CN" }))?.articleId, winner.value.articleId);
+    } finally { await runtime.cleanup(undefined, suffix); }
+  });
+
+  test(`${adapterName}: create-key lookup is author-scoped and finds tombstones`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const author = `recovery-author-${suffix}`;
+    const other = `recovery-other-${suffix}`;
+    const key = `notion-seed:page-${suffix}`;
+    try {
+      const article = await runtime.store.createArticle({ authorId: author, slug: `recovery-${suffix}`, title: "恢复",
+        contentBlocks: [{ id: "p", type: "paragraph", text: "正文" }], publish: false, idempotencyKey: key });
+      assert.equal(await runtime.store.findMyArticleByCreateKey({ actorId: author, key }), article.id);
+      assert.equal(await runtime.store.findMyArticleByCreateKey({ actorId: other, key }), null);
+      assert.equal(await runtime.store.findMyArticleByCreateKey({ actorId: author, key: `${key}-other` }), null);
+      await runtime.store.deleteArticle({ articleId: article.id, actorId: author });
+      assert.equal(await runtime.store.findMyArticleByCreateKey({ actorId: author, key }), article.id);
+      assert.equal(await runtime.store.getMyArticle({ articleId: article.id, actorId: author }), null);
     } finally { await runtime.cleanup(undefined, suffix); }
   });
 
