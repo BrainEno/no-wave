@@ -333,16 +333,20 @@ jobs:
           SMOKE_TIMEOUT_MS: "60000"
         run: |
           set -eu
+          STAGE=setup
+          trap 'rc=$?; if [ "$rc" -ne 0 ]; then echo "::error title=container smoke stage::${STAGE}"; for container in api web; do LOG=$(docker logs --tail 12 "$container" 2>&1 | base64 -w0); echo "::error title=container ${container} log base64::${LOG}"; done; fi' EXIT
           docker network create nw-ci
           docker volume create nw-ci-db
           # The API refuses to start on a pending schema. Migrate *before* its
           # container starts, otherwise it can exit while `docker exec` is still
           # migrating and kill that process. The image itself never migrates on
           # boot; a disposable named volume lets both containers see one DB.
+          STAGE=migration
           echo "Migrating the SQLite volume using the API image"
           docker run --rm -v nw-ci-db:/var/lib/no-wave \
             -e DATABASE_PROVIDER=sqlite -e DATABASE_PATH=/var/lib/no-wave/api.sqlite \
             bot-thk-api:ci node apps/api/src/persistence/migrate.ts
+          STAGE=start-api
           echo "Starting the API against the migrated volume"
           docker run -d --network nw-ci --name api \
             -v nw-ci-db:/var/lib/no-wave \
@@ -350,6 +354,7 @@ jobs:
             -e DATABASE_PROVIDER=sqlite -e DATABASE_PATH=/var/lib/no-wave/api.sqlite \
             -e AUTH_JWT_SECRET=container-image-ci-secret-0123456789abcdef \
             -p 4000:80 bot-thk-api:ci
+          STAGE=start-web
           WEB_START=$(date +%s%3N)
           docker run -d --network nw-ci --name web \
             -e HOST=0.0.0.0 -e PORT=3100 \
@@ -359,6 +364,7 @@ jobs:
 
           # The same HTTP contract GitLab CI runs, with the API pair attached and
           # no local fixtures. It waits for API /health, /ready and Web /healthz.
+          STAGE=smoke
           if ! pnpm test:container-smoke; then
             docker logs api || true
             docker logs web || true
@@ -373,9 +379,11 @@ jobs:
 
           # A free host puts an idle instance to sleep and starts it again on the
           # next request. `docker stop` + `docker start` also exercises SIGTERM.
+          STAGE=restart
           WAKE_START=$(date +%s%3N)
           docker stop web > /dev/null
           docker start web > /dev/null
+          STAGE=smoke
           if ! pnpm test:container-smoke; then
             docker logs api || true
             docker logs web || true
