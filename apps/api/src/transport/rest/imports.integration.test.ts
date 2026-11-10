@@ -292,11 +292,12 @@ test("Notion images are normalized into media storage and remain retryable over 
   const base = `http://127.0.0.1:${address.port}/api/v1`;
   const originalFetch = globalThis.fetch;
   const bytes = await sharp({ create: { width: 3, height: 3, channels: 3, background: "red" } }).png().toBuffer();
+  let imageBytes = bytes;
   let downloaded = 0;
   globalThis.fetch = async (url, init) => {
     if (String(url).startsWith("https://prod-files-secure.s3.amazonaws.com/")) {
       downloaded++;
-      return new Response(new Uint8Array(bytes), { headers: { "content-type": "image/png" } });
+      return new Response(new Uint8Array(imageBytes), { headers: { "content-type": "image/png" } });
     }
     return originalFetch(url, init);
   };
@@ -330,6 +331,29 @@ test("Notion images are normalized into media storage and remain retryable over 
     assert.equal((await post(true)).summary.skip, 1);
     assert.equal(downloaded, 1);
 
+    // A refreshed signature changes the plan, but identical normalized bytes
+    // can reuse the previously owned asset after a real download and check.
+    const refreshed = structuredClone(doc);
+    refreshed.blocks[1] = { ...doc.blocks[1]!, image: { type: "file", file: { url: "https://prod-files-secure.s3.amazonaws.com/image?signature=renewed" }, caption: [] } } as never;
+    const refreshedBundle = notionBundle(refreshed);
+    assert.equal((await post(false, refreshedBundle)).summary.update, 1);
+    assert.equal(downloaded, 1, "preview never downloads");
+    assert.equal((await post(true, refreshedBundle)).summary.update, 1);
+    assert.equal(downloaded, 2);
+    assert.equal(objects.size, 1, "identical normalized image reuses its asset");
+    const refreshedArticle = await store.getMyArticle({ articleId: article.id, actorId: author, locale: "zh-CN" });
+    assert.match(JSON.stringify(refreshedArticle?.contentBlocks), new RegExp(image!.src));
+
+    // The same source path is not proof of unchanged contents. A changed body
+    // with a new signature must create a new asset instead of keeping stale data.
+    imageBytes = await sharp({ create: { width: 3, height: 3, channels: 3, background: "blue" } }).png().toBuffer();
+    refreshed.blocks[1] = { ...doc.blocks[1]!, image: { type: "file", file: { url: "https://prod-files-secure.s3.amazonaws.com/image?signature=third" }, caption: [] } } as never;
+    assert.equal((await post(true, notionBundle(refreshed))).summary.update, 1);
+    assert.equal(objects.size, 2);
+    const changedArticle = await store.getMyArticle({ articleId: article.id, actorId: author, locale: "zh-CN" });
+    assert.doesNotMatch(JSON.stringify(changedArticle?.contentBlocks), new RegExp(image!.src));
+    db.exec("DELETE FROM auth_rate_limits");
+
     const retryDoc = notionPage(`retry-${randomUUID()}`, "第二篇", "保留的正文");
     retryDoc.blocks.push(doc.blocks[1]!);
     const retryBundle = notionBundle(retryDoc);
@@ -343,7 +367,7 @@ test("Notion images are normalized into media storage and remain retryable over 
     storageDown = false;
     assert.equal((await post(true, retryBundle)).summary.update, 1);
     assert.equal((await post(false, retryBundle)).summary.skip, 1);
-    assert.equal(objects.size, 2);
+    assert.equal(objects.size, 3);
 
     const onlyImage = notionPage(`only-image-${randomUUID()}`, "只有图片", "正文");
     onlyImage.blocks.splice(0, onlyImage.blocks.length, doc.blocks[1]!);
@@ -423,8 +447,8 @@ test("PostgreSQL repairs an article created before image provenance failed", {
   doc.blocks.push({ object: "block", id: "image", type: "image", has_children: false,
     image: { type: "file", file: { url: "https://prod-files-secure.s3.amazonaws.com/image?signature=secret" }, caption: [] } } as never);
   const bundle = notionBundle(doc);
-  const post = async (apply: boolean) => {
-    const response = await originalFetch(`${base}/imports/notion`, { method: "POST", headers: { authorization: `Bearer ${token(author)}`, "content-type": "application/json" }, body: JSON.stringify({ bundle, apply }) });
+  const post = async (apply: boolean, chosen = bundle) => {
+    const response = await originalFetch(`${base}/imports/notion`, { method: "POST", headers: { authorization: `Bearer ${token(author)}`, "content-type": "application/json" }, body: JSON.stringify({ bundle: chosen, apply }) });
     const result = await response.json();
     assert.equal(response.status, 200, JSON.stringify(result));
     return result.data;
@@ -442,6 +466,12 @@ test("PostgreSQL repairs an article created before image provenance failed", {
     assert.equal(repaired.summary.update, 1);
     assert.equal(repaired.pages[0].articleId, id);
     assert.equal((await post(false)).summary.skip, 1);
+    assert.equal(objects.size, 1, "recovery verified and reused its prior media");
+    const fresh = structuredClone(doc);
+    fresh.blocks[1] = { ...doc.blocks[1]!, image: { type: "file", file: { url: "https://prod-files-secure.s3.amazonaws.com/image?signature=fresh" }, caption: [] } } as never;
+    assert.equal((await post(false, notionBundle(fresh))).summary.update, 1);
+    assert.equal((await post(true, notionBundle(fresh))).summary.update, 1);
+    assert.equal(objects.size, 1, "refreshed signature does not duplicate identical media");
     const count = await sql.unsafe("SELECT count(*)::int AS n FROM articles WHERE author_id = $1", [author]);
     assert.equal(count[0]?.n, 1);
   } finally {

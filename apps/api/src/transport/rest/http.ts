@@ -472,7 +472,7 @@ export function sendRawImageBodyError(response: ServerResponse, result: Exclude<
 }
 
 export type MediaAssetsPort = {
-  upload(input: { ownerId: string; bytes: Buffer; contentType: string }): Promise<{ id: string; src: string; contentType: string; byteSize: number; width: number; height: number }>;
+  upload(input: { ownerId: string; bytes: Buffer; contentType: string; reuseId?: string }): Promise<{ id: string; src: string; contentType: string; byteSize: number; width: number; height: number }>;
   getPublic(input: { id: string }): Promise<{ id: string; bytes: Buffer; byteSize: number; width: number; height: number; sha256: string; contentType: "image/webp" }>;
   listLibrary(input: { ownerId: string; cursor?: string | null; limit?: number }): Promise<import("../../application/media-assets.ts").MediaLibraryPage>;
   /**

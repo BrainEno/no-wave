@@ -475,3 +475,38 @@ test("an invalid create key cannot break a dry run during recovery lookup", asyn
   assert.equal(result.summary.create, 2);
   assert.deepEqual(keys, []);
 });
+
+test("a refreshed image URL is downloaded again and offers the old asset only as a hint", async () => {
+  const deps = stubDeps();
+  const doc = page("refresh-image", "更新图片", "正文");
+  const imageUrl = "https://prod-files-secure.s3.amazonaws.com/object";
+  doc.blocks.push(hostedImage(`${imageUrl}?X-Amz-Signature=old`) as never);
+  const firstSrc = "/api/media/00000000-0000-4000-8000-000000000001";
+  const newSrc = "/api/media/00000000-0000-4000-8000-000000000002";
+  await importNotionBundle({ actorId: "author-1", bundle: bundle(doc), apply: true, deps, now: at,
+    copyImage: async () => ({ ok: true, src: firstSrc }) });
+  doc.blocks[1] = hostedImage(`${imageUrl}?X-Amz-Signature=new`) as never;
+  const planned = await importNotionBundle({ actorId: "author-1", bundle: bundle(doc), apply: false, deps, now: at });
+  assert.equal(planned.summary.update, 1, "a changed signature is not assumed to mean identical bytes");
+  const hints: (string | undefined)[] = [];
+  const applied = await importNotionBundle({ actorId: "author-1", bundle: bundle(doc), apply: true, deps, now: at,
+    copyImage: async (_url, hint) => { hints.push(hint); return { ok: true, src: newSrc }; } });
+  assert.equal(applied.summary.update, 1);
+  assert.deepEqual(hints, [firstSrc]);
+  assert.match(String([...deps.articles.values()][0]!.contentBlocks), new RegExp(newSrc));
+});
+
+test("a changed image that cannot be fetched is omitted, not replaced by stale media", async () => {
+  const deps = stubDeps();
+  const doc = page("changed-failed", "图片变更", "正文");
+  doc.blocks.push(hostedImage("https://prod-files-secure.s3.amazonaws.com/a?signature=old") as never);
+  await importNotionBundle({ actorId: "author-1", bundle: bundle(doc), apply: true, deps, now: at,
+    copyImage: async () => ({ ok: true, src: "/api/media/00000000-0000-4000-8000-000000000001" }) });
+  doc.blocks[1] = hostedImage("https://prod-files-secure.s3.amazonaws.com/b?signature=new") as never;
+  let receivedHint = false;
+  const result = await importNotionBundle({ actorId: "author-1", bundle: bundle(doc), apply: true, deps, now: at,
+    copyImage: async (_url, hint) => { receivedHint = !!hint; return { ok: false, reason: "expired" }; } });
+  assert.equal(receivedHint, true);
+  assert.ok(result.pages[0]?.issues.some((issue) => issue.code === "image-copy-failed"));
+  assert.doesNotMatch(String([...deps.articles.values()][0]!.contentBlocks), /api\/media/);
+});

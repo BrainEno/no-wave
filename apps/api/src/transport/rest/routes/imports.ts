@@ -77,7 +77,7 @@ const IMPORT_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Object
       // application invokes this only after checking the page's ownership.
       let attempted = 0;
       const copies = new Map<string, Awaited<ReturnType<NotionImageCopier>>>();
-      const copyImage: NotionImageCopier = async (url) => {
+      const copyImage: NotionImageCopier = async (url, previousSrc) => {
         const cached = copies.get(url);
         if (cached) return cached;
         if (!mediaAssets) return { ok: false, reason: "media storage is not configured" };
@@ -86,7 +86,8 @@ const IMPORT_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Object
         const fetched = await fetchNotionImage(url);
         if (!fetched.ok) return fetched;
         try {
-          const asset = await mediaAssets.upload({ ownerId: actorId, bytes: fetched.bytes, contentType: fetched.contentType });
+          const reuseId = /^\/api\/media\/([0-9a-f-]{36})$/i.exec(previousSrc ?? "")?.[1];
+          const asset = await mediaAssets.upload({ ownerId: actorId, bytes: fetched.bytes, contentType: fetched.contentType, ...(reuseId ? { reuseId } : {}) });
           const result = { ok: true as const, src: asset.src };
           copies.set(url, result);
           return result;
