@@ -145,8 +145,9 @@ test("multiple Notion Markdown files are previewed before import", async ({ page
   await page.getByRole("button", { name: /确认导入/ }).click();
   await expect(page.getByText(/已导入：新建 2 件/)).toBeVisible();
   await page.getByRole("link", { name: "去看写作台" }).click();
-  await expect(page.getByText("第一篇")).toBeVisible();
-  await expect(page.getByText("第二篇")).toBeVisible();
+  await expect(page).toHaveURL(/\/write$/);
+  await expect(page.getByText("第一篇", { exact: true })).toBeVisible();
+  await expect(page.getByText("第二篇", { exact: true })).toBeVisible();
 });
 
 
