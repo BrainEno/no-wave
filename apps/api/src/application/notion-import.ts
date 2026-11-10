@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { prepareNotionImages, type NotionImageCopier } from "./notion-import-images.ts";
 import { createArticleWithSlug } from "./article-create.ts";
 import {
@@ -355,6 +356,14 @@ export async function importNotionBundle(input: {
 }): Promise<NotionImportReport> {
   const now = input.now ?? (() => new Date());
   const bundle = parseNotionBundle(input.bundle);
+  // Standalone Markdown files have no global Notion page ID. Namespace their
+  // filename identities by authenticated author, never by a client claim.
+  for (const page of bundle.pages) {
+    if (page.id.startsWith("markdown-file:")) {
+      if (page.id.length > 1500) throw new NotionImportRequestError("Markdown filename is too long.");
+      page.id = `markdown-file:${createHash("sha256").update(JSON.stringify([input.actorId, page.id])).digest("hex")}`;
+    }
+  }
   if (bundle.pages.length > MAX_IMPORT_PAGES) {
     throw new NotionImportRequestError(
       `A bundle may carry at most ${MAX_IMPORT_PAGES} pages; this one carries ${bundle.pages.length}.`,
