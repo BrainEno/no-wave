@@ -33,6 +33,9 @@ function allowedDevHosts(): string[] | true {
  */
 export default defineConfig({
   plugins: [reactRouter()],
+  // The shared UI is compiled into the server bundle. Bundle its ZIP decoder
+  // too: the runtime image does not have web-ui source or its node_modules.
+  ssr: { noExternal: ["fflate"] },
   resolve: {
     alias: [
       { find: /^@\/(.*)$/, replacement: fileURLToPath(new URL("../../packages/web-ui/src/$1", import.meta.url)) },
