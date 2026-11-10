@@ -84,12 +84,12 @@ export function NotionImport() {
       if (parsed === null) {
         // Never pretend a report was shown. The plan is the whole point of the
         // page, and "nothing was written" is the only safe thing to say.
-        setError("导入接口的响应和约定的格式不一样，这一页没有改动，也没有写入任何内容。");
+        setError("导入接口的响应格式不符合约定，无法确认结果；部分内容可能已写入，请检查写作台后重新试跑。");
         return;
       }
       setReport(parsed);
     } catch {
-      setError("网络中断，这次导入没有完成。请重试。");
+      setError("网络中断，无法确认导入结果。部分内容可能已写入；请检查写作台，再重新试跑。 ");
     } finally {
       setBusy(null);
     }
@@ -132,7 +132,7 @@ export function NotionImport() {
         你先读这份报告，确认之后才写入。写入只发生在你自己名下的作品里 —— 不会改动别人的作品，也不会重建页面之间的关系。
       </p>
       <p className="nw-m">
-        上限 {MAX_MEGABYTES} MB、一次最多 200 页；同一个文件重复导入只会得到「跳过」，不会写第二遍。
+        上限 {MAX_MEGABYTES} MB、一次最多 200 页。确认写入时会尝试复制 Notion 托管的图片；无法复制的图片会被移除并在报告中说明，可以重试。一次最多复制 8 张不同图片。
       </p>
 
       <div className="nw-import-pick">
@@ -182,6 +182,9 @@ export function NotionImport() {
                 {page.issues.length > 0 ? (
                   <span className="nw-import-issues">{page.issues.map((issue) => issue.code).join("、")}</span>
                 ) : null}
+                {page.issues.filter((issue) => issue.code === "image-copy-failed").map((issue, index) => (
+                  <small className="nw-import-reason" key={`${issue.code}:${index}`}>{issue.detail}</small>
+                ))}
                 {page.action === "refused" || page.action === "failed"
                   ? <small className="nw-import-reason">{page.detail}</small>
                   : null}

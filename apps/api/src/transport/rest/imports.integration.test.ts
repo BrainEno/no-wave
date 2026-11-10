@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { createHmac, randomUUID } from "node:crypto";
 import test from "node:test";
+import sharp from "sharp";
+import { createMediaAssetService } from "../../application/media-assets.ts";
 import { createApiServer } from "../../server.ts";
 import { createSqliteClient, runSqliteMigrations } from "../../persistence/sqlite.ts";
 import { createSqliteStore } from "../../persistence/sqlite-store.ts";
@@ -261,3 +263,91 @@ for (const provider of ["sqlite", "postgres"] as const) {
     }
   });
 }
+
+
+test("Notion images are normalized into media storage and remain retryable over HTTP", async () => {
+  const db = createSqliteClient({ filename: ":memory:", enableWal: false });
+  await runSqliteMigrations(db);
+  const store = createSqliteStore(db);
+  const objects = new Map<string, Buffer>();
+  let storageDown = false;
+  const storage = {
+    async putObject({ key, bytes }: { key: string; bytes: Buffer }) { if (storageDown) throw new Error("storage unavailable"); objects.set(key, bytes); },
+    async getObject(key: string) { const found = objects.get(key); assert.ok(found); return found; },
+    async deleteObject(key: string) { objects.delete(key); },
+    close() {},
+  };
+  const mediaAssets = createMediaAssetService({ store, storage });
+  const server = createApiServer({ store, env, logger: () => {}, mediaAssets });
+  await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}/api/v1`;
+  const originalFetch = globalThis.fetch;
+  const bytes = await sharp({ create: { width: 3, height: 3, channels: 3, background: "red" } }).png().toBuffer();
+  let downloaded = 0;
+  globalThis.fetch = async (url, init) => {
+    if (String(url).startsWith("https://prod-files-secure.s3.amazonaws.com/")) {
+      downloaded++;
+      return new Response(new Uint8Array(bytes), { headers: { "content-type": "image/png" } });
+    }
+    return originalFetch(url, init);
+  };
+  const author = randomUUID();
+  db.prepare("INSERT INTO auth_accounts (user_id, email, password_hash) VALUES (?, ?, ?)").run(author, "image@example.test", "fixture");
+  const doc = notionPage(`image-page-${randomUUID()}`, "图片作品", "正文");
+  doc.blocks.push({ object: "block", id: "image", type: "image", has_children: false,
+    image: { type: "file", file: { url: "https://prod-files-secure.s3.amazonaws.com/image?signature=secret" }, caption: [] } } as never);
+  const bundle = notionBundle(doc);
+  const post = async (apply: boolean, chosen = bundle) => {
+    const res = await originalFetch(`${base}/imports/notion`, { method: "POST", headers: { authorization: `Bearer ${token(author)}`, "content-type": "application/json" }, body: JSON.stringify({ bundle: chosen, apply }) });
+    const json = await res.json();
+    assert.equal(res.status, 200, JSON.stringify(json));
+    return json.data;
+  };
+  try {
+    assert.equal((await post(false)).summary.create, 1);
+    assert.equal(downloaded, 0);
+    const applied = await post(true);
+    assert.equal(applied.summary.create, 1);
+    assert.equal(downloaded, 1);
+    assert.equal(objects.size, 1, JSON.stringify(applied));
+    const article = await store.getMyArticle({ articleId: applied.pages[0].articleId, actorId: author, locale: "zh-CN" });
+    assert.ok(article);
+    const blocks = typeof article.contentBlocks === "string" ? JSON.parse(article.contentBlocks) : article.contentBlocks;
+    const image = (blocks as { type: string; src: string }[]).find((block) => block.type === "image");
+    assert.match(image?.src ?? "", /^\/api\/media\//);
+    const publicImage = await originalFetch(`${base}/media/${image!.src.split("/").at(-1)}`);
+    assert.equal(publicImage.status, 200);
+    assert.equal(publicImage.headers.get("content-type"), "image/webp");
+    assert.equal((await post(true)).summary.skip, 1);
+    assert.equal(downloaded, 1);
+
+    const retryDoc = notionPage(`retry-${randomUUID()}`, "第二篇", "保留的正文");
+    retryDoc.blocks.push(doc.blocks[1]!);
+    const retryBundle = notionBundle(retryDoc);
+    storageDown = true;
+    const partial = await post(true, retryBundle);
+    assert.equal(partial.summary.create, 1);
+    assert.ok(partial.pages[0].issues.some((issue: { code: string }) => issue.code === "image-copy-failed"));
+    const partialArticle = await store.getMyArticle({ articleId: partial.pages[0].articleId, actorId: author, locale: "zh-CN" });
+    assert.doesNotMatch(JSON.stringify(partialArticle?.contentBlocks), /signature=secret/);
+    assert.equal((await post(false, retryBundle)).summary.update, 1);
+    storageDown = false;
+    assert.equal((await post(true, retryBundle)).summary.update, 1);
+    assert.equal((await post(false, retryBundle)).summary.skip, 1);
+    assert.equal(objects.size, 2);
+
+    const onlyImage = notionPage(`only-image-${randomUUID()}`, "只有图片", "正文");
+    onlyImage.blocks.splice(0, onlyImage.blocks.length, doc.blocks[1]!);
+    storageDown = true;
+    const refusedEmpty = await post(true, notionBundle(onlyImage));
+    assert.equal(refusedEmpty.summary.failed, 1);
+    assert.ok(refusedEmpty.pages[0].issues.some((issue: { code: string }) => issue.code === "image-copy-failed"));
+    assert.equal(refusedEmpty.pages[0].articleId, null);
+  } finally {
+    globalThis.fetch = originalFetch;
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    db.close();
+  }
+});
