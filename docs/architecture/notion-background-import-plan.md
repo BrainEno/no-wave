@@ -29,7 +29,12 @@ importer.
    bound retention and delete them on completion/expiry. Decide and document the
    encryption/key and crash-recovery policy before persisting bundle input; the
    status state machine in `notion-import-job.ts` intentionally stores no bundle.
-   Impose per-owner and global queue/input limits.
+   `notion-import-job-payload.ts` provides an unconnected AES-256-GCM envelope
+   bound to job, owner and expiry; it neither manages keys nor stores or deletes
+   payloads. The 24-hour maximum is an upper bound, not a guarantee that Notion
+   image URLs remain valid that long. Define deployment key provisioning, rotation,
+   loss and deletion/backup policies before enabling durable jobs. Never put a
+   Notion credential in the envelope. Impose per-owner and global queue/input limits.
 2. **Claiming and fencing.** Implement atomic claim, lease renewal and versioned
    compare-and-swap on both databases, including multiple-worker tests. A stale
    lease must not commit article, provenance, or checkpoint writes: the pure state
