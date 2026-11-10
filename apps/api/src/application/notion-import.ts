@@ -1,3 +1,4 @@
+import { prepareNotionImages, type NotionImageCopier } from "./notion-import-images.ts";
 import { createArticleWithSlug } from "./article-create.ts";
 import {
   emptyNotionSeedState,
@@ -348,6 +349,7 @@ export async function importNotionBundle(input: {
   bundle: unknown;
   apply: boolean;
   deps: NotionImportDeps;
+  copyImage?: NotionImageCopier;
   now?: () => Date;
 }): Promise<NotionImportReport> {
   const now = input.now ?? (() => new Date());
@@ -362,6 +364,43 @@ export async function importNotionBundle(input: {
   const firstPass = planNotionSeed({ works, state: emptyNotionSeedState() });
   const links = await readLinks(input.deps, firstPass.works);
   const plan = planNotionSeed({ works, state: stateFromLinks(links) });
+
+  // Imports made before image copying existed can have the same source digest
+  // while still containing temporary URLs. Offer an update, not a false skip.
+  for (const work of plan.works) {
+    for (const edition of [work.primary, ...work.translations]) {
+      const link = links.get(edition.pageId);
+      if (!edition.unchanged || !link || link.ownerId !== input.actorId ||
+          !edition.issues.some((issue) => issue.code === "expiring-image-url")) continue;
+      const article = await input.deps.getMyArticle({ articleId: link.articleId, actorId: input.actorId, locale: edition.locale });
+      let blocks: unknown = article?.contentBlocks;
+      if (typeof blocks === "string") {
+        try { blocks = JSON.parse(blocks); } catch { blocks = null; }
+      }
+      const urls = new Set(edition.issues.filter((issue) => issue.code === "expiring-image-url").map((issue) => issue.detail));
+      // A refreshed Notion signature changes the query but not the object path.
+      const objectKey = (value: string) => {
+        try { const url = new URL(value); return `${url.origin}${url.pathname}`; } catch { return value; }
+      };
+      const objects = new Set([...urls].map(objectKey));
+      if (Array.isArray(blocks)) {
+        const existing = blocks.filter((block: unknown): block is Record<string, unknown> =>
+          typeof block === "object" && block !== null && !Array.isArray(block));
+        if (existing.some((block) => typeof block.src === "string" && objects.has(objectKey(block.src)))) {
+          edition.unchanged = false;
+        } else {
+          // An unchanged edition whose image blocks are already local is not a
+          // loss; don't re-report the source URL as if it had been retained.
+          const imageIds = edition.draft.contentBlocks.filter((block) =>
+            block.type === "image" && typeof block.src === "string" && urls.has(block.src));
+          if (imageIds.length > 0 && imageIds.every((image) => existing.some((block) =>
+            block.id === image.id && typeof block.src === "string" && /^\/api\/media\/[0-9a-f-]{36}$/i.test(block.src)))) {
+            edition.issues = edition.issues.filter((issue) => issue.code !== "expiring-image-url");
+          }
+        }
+      }
+    }
+  }
 
   const pages: NotionImportPageReport[] = [];
   const summary = blank();
@@ -446,9 +485,10 @@ export async function importNotionBundle(input: {
     let workArticleId: string | null = work.primary.unchanged ? (primaryLink?.articleId ?? null) : null;
     let primaryFailed = false;
 
-    for (const edition of [work.primary, ...work.translations]) {
+    for (const originalEdition of [work.primary, ...work.translations]) {
+      let edition = originalEdition;
       const link = links.get(edition.pageId);
-      const isPrimary = edition === work.primary;
+      const isPrimary = originalEdition === work.primary;
       if (edition.unchanged) {
         pages.push({
           externalId: edition.pageId,
@@ -478,7 +518,36 @@ export async function importNotionBundle(input: {
         continue;
       }
 
+      let writtenArticleId: string | null = null;
       try {
+        // Check the link and target before making media side effects. The normal
+        // writer still performs its own checks before committing the article.
+        let incomplete = false;
+        const current = link && link.ownerId === input.actorId
+          ? await input.deps.getMyArticle({ articleId: link.articleId, actorId: input.actorId, locale: edition.locale }) : null;
+        const mayCopy = !link || !!current;
+        if (mayCopy) {
+          // For an incomplete retry of the exact same source, keep media already
+          // copied for each block. Otherwise an eight-image ceiling could never
+          // make progress on a single page with more than eight images.
+          const previous = new Map<string, string>();
+          if (current && link?.digest === `incomplete:${edition.digest}`) {
+            let oldBlocks: unknown = current.contentBlocks;
+            if (typeof oldBlocks === "string") {
+              try { oldBlocks = JSON.parse(oldBlocks); } catch { oldBlocks = null; }
+            }
+            if (Array.isArray(oldBlocks)) {
+              for (const block of oldBlocks as unknown[]) {
+                if (typeof block === "object" && block !== null && "type" in block && block.type === "image" &&
+                    "id" in block && typeof block.id === "string" && "src" in block && typeof block.src === "string" &&
+                    /^\/api\/media\/[0-9a-f-]{36}$/i.test(block.src)) previous.set(block.id, block.src);
+              }
+            }
+          }
+          const prepared = await prepareNotionImages(edition, input.copyImage ?? (async () => ({ ok: false, reason: "media storage is not configured" })), previous);
+          edition = prepared.edition;
+          incomplete = prepared.incomplete;
+        }
         const outcome = await writeEdition({
           actorId: input.actorId,
           deps: input.deps,
@@ -496,13 +565,16 @@ export async function importNotionBundle(input: {
           continue;
         }
         if (outcome.digest !== null && outcome.articleId !== null) {
+          writtenArticleId = outcome.articleId;
           await input.deps.upsertExternalContentLink({
             provider: NOTION_IMPORT_PROVIDER,
             externalId: edition.pageId,
             locale: edition.locale,
             articleId: outcome.articleId,
             ownerId: input.actorId,
-            digest: outcome.digest,
+            // An incomplete import remains linked but must be retried, rather
+            // than being mistaken for a fully copied, unchanged edition.
+            digest: incomplete ? `incomplete:${outcome.digest}` : outcome.digest,
             syncedAt: now().toISOString(),
           });
         }
@@ -520,8 +592,10 @@ export async function importNotionBundle(input: {
           locale: edition.locale,
           action: "failed",
           slug: workSlug ?? edition.slug,
-          articleId: link?.articleId ?? null,
-          detail: error instanceof Error ? error.message : String(error),
+          articleId: writtenArticleId ?? link?.articleId ?? null,
+          detail: writtenArticleId !== null
+            ? "the article was written, but its import link could not be saved; check the writing desk before retrying"
+            : error instanceof Error ? error.message : String(error),
           issues: edition.issues,
         });
         summary.failed += 1;

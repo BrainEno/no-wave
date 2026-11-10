@@ -62,7 +62,10 @@ export function handleAuthoringNotionExport(request: Request): Promise<Response>
  * cases — a dry run is a `200` with `applied: false`, not an error.
  */
 export function handleAuthoringNotionImport(request: Request): Promise<Response> {
-  return handleAuthoringNotionImportRequest(request, apiProxyConfig());
+  const config = apiProxyConfig();
+  // Applying may copy several bounded images into media storage. Preserve an
+  // explicit operator budget, otherwise allow more than an ordinary read.
+  return handleAuthoringNotionImportRequest(request, { ...config, upstreamTimeoutMs: config.upstreamTimeoutMs ?? 90_000 });
 }
 
 export function handleAuthoringRestoreArticle(request: Request, id: string | undefined): Promise<Response> {

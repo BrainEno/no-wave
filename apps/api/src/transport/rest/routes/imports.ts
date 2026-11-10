@@ -3,6 +3,8 @@ import { authenticatedActorId, readJsonObject, sendBadInput, sendJson, sendJsonB
 import { NotionBundleError } from "../../../application/notion-bundle.ts";
 import { MAX_EXPORT_WORKS, NotionExportRequestError, exportNotionBundle } from "../../../application/notion-export.ts";
 import { NotionImportRequestError, importNotionBundle } from "../../../application/notion-import.ts";
+import { fetchNotionImage } from "../../../infrastructure/notion-image-fetch.ts";
+import type { NotionImageCopier } from "../../../application/notion-import-images.ts";
 
 /**
  * A bundle is big on purpose: one page carries up to 200 blocks of up to 20,000
@@ -58,7 +60,7 @@ const IMPORT_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Object
    * actually happened, including the pages it refused and why.
    */
   "imports.notion": async (ctx: RestRouteContext): Promise<void> => {
-    const { request, response, services, env } = ctx;
+    const { request, response, services, env, mediaAssets } = ctx;
     if (!services) { sendUnavailable(response); return; }
 
     const bodyResult = await readJsonObject(request, MAX_NOTION_IMPORT_BYTES);
@@ -71,11 +73,33 @@ const IMPORT_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Object
     try {
       const actorId = await authenticatedActorId(request, services, env);
       if (!actorId) { sendUnauthenticated(response); return; }
+      // Per-request bound and cache. Never fetch a URL for a dry run; the
+      // application invokes this only after checking the page's ownership.
+      let attempted = 0;
+      const copies = new Map<string, Awaited<ReturnType<NotionImageCopier>>>();
+      const copyImage: NotionImageCopier = async (url) => {
+        const cached = copies.get(url);
+        if (cached) return cached;
+        if (!mediaAssets) return { ok: false, reason: "media storage is not configured" };
+        if (attempted >= 8) return { ok: false, reason: "image copy limit reached; retry the import" };
+        attempted += 1;
+        const fetched = await fetchNotionImage(url);
+        if (!fetched.ok) return fetched;
+        try {
+          const asset = await mediaAssets.upload({ ownerId: actorId, bytes: fetched.bytes, contentType: fetched.contentType });
+          const result = { ok: true as const, src: asset.src };
+          copies.set(url, result);
+          return result;
+        } catch {
+          return { ok: false, reason: "image could not be validated or stored" };
+        }
+      };
       const report = await importNotionBundle({
         actorId,
         bundle: bodyResult.value.bundle,
         apply,
         deps: services,
+        copyImage,
       });
       sendJson(response, 200, { data: report });
     } catch (error: unknown) {

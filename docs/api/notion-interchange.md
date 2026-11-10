@@ -393,10 +393,47 @@ rate limit of ten imports per ten minutes per account. Creates still carry
 `Idempotency-Key: notion-seed:<page id>` so a request that dies mid-way can be
 retried without duplicating what it already wrote.
 
-**What it does not do.** It does not fetch anything from Notion (the token stays
-with the client, ADR 0036 decision 3), copy images (`expiring-image-url`,
-`featured-image-not-carried`), carry hierarchy or `Rank`, or delete work that
-vanished from the bundle.
+**What it does not do.** It does not use a Notion token (the token stays with the
+client, ADR 0036 decision 3), carry featured covers, hierarchy or `Rank`, or
+delete work that vanished from the bundle. On apply it does fetch eligible signed
+Notion image URLs from the bundle as described below; it never fetches images in a
+dry run.
+
+### Copying Notion-hosted images
+
+Dry runs report `expiring-image-url` and do not fetch or upload images. On apply,
+image blocks of type `file` are downloaded and passed through the ordinary media
+service, so normal image type, size, dimension and normalization checks apply.
+External image links are left alone. Covers (`FeaturedImage`) still have no home
+in the article contract and are reported as `featured-image-not-carried`.
+
+For SSRF safety only HTTPS URLs for `prod-files-secure.s3.amazonaws.com` and
+`prod-files-secure.s3.us-west-2.amazonaws.com` are fetched; redirects, credentials,
+custom ports and fragments are refused. A download has a four-second deadline,
+an 8 MiB streamed byte limit and must advertise JPEG, PNG or WebP. Errors do not
+include signed URLs. Each apply attempts at most eight distinct downloads; further
+images are omitted and reported, and a later apply can continue.
+
+If an image cannot be copied, the image is removed from that edition, its text
+can still be written, and `image-copy-failed` gives the reason. If removing images
+leaves no valid blocks, the article write fails instead of creating an empty work.
+The provenance record is marked incomplete so another dry run offers an update;
+a retry of the same bundle reuses successfully copied media from the incomplete
+edition and retries missing images. Previously imported works still containing the
+same temporary URLs are also offered an update. As with any import, an update can
+replace edits made in the desk; review the plan before applying. If the source
+signature expires, obtain a fresh bundle before retrying.
+
+Media writes happen before the article write. A failed article write, an interrupted
+request, or changing the bundle between retries can leave unreferenced media in the
+library; they are not automatically deleted. If writing the article succeeds but
+saving its provenance link fails, the report identifies the article and warns the
+writer. A retry may hit the create idempotency conflict because the copied media IDs
+changed; it does not create a duplicate. Check the writing desk before retrying;
+there is currently no automatic repair workflow for a missing link. A network timeout does
+not prove that nothing was written. The web proxy gives this route a longer default timeout, but
+an explicitly configured `API_TIMEOUT_MS` still takes precedence. The seed script
+remains separate and does not copy images.
 
 ### Where the guarantees are tested
 

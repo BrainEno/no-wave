@@ -293,3 +293,103 @@ test("a bundle larger than the page limit is refused", async () => {
   );
   assert.deepEqual(deps.written, []);
 });
+
+const hostedImage = (url: string) => ({ object: "block", id: "img-1", type: "image", has_children: false, image: { type: "file", file: { url }, caption: [] } });
+
+test("images are copied only during apply, and unchanged imports do not upload again", async () => {
+  const deps = stubDeps();
+  const doc = page("image-page", "带图文章", "正文");
+  doc.blocks.push(hostedImage("https://prod-files-secure.s3.amazonaws.com/a?signature=secret") as never);
+  const input = bundle(doc);
+  let copies = 0;
+  const copyImage = async () => { copies++; return { ok: true as const, src: "/api/media/00000000-0000-4000-8000-000000000001" }; };
+  const dry = await importNotionBundle({ actorId: "author-1", bundle: input, apply: false, deps, copyImage, now: at });
+  assert.equal(copies, 0);
+  assert.ok(dry.pages[0]?.issues.some((issue) => issue.code === "expiring-image-url"));
+  const applied = await importNotionBundle({ actorId: "author-1", bundle: input, apply: true, deps, copyImage, now: at });
+  assert.equal(applied.summary.create, 1);
+  assert.equal(copies, 1);
+  assert.ok(!applied.pages[0]?.issues.some((issue) => issue.code === "expiring-image-url"));
+  const article = [...deps.articles.values()][0]!;
+  assert.match(String(article.contentBlocks), /\/api\/media\//);
+  assert.doesNotMatch(String(article.contentBlocks), /signature=secret/);
+  const again = await importNotionBundle({ actorId: "author-1", bundle: input, apply: true, deps, copyImage, now: at });
+  assert.equal(again.summary.skip, 1);
+  assert.ok(!again.pages[0]?.issues.some((issue) => issue.code === "expiring-image-url"));
+  assert.equal(copies, 1);
+});
+
+test("a failed image is dropped and reported, and the same source is retryable", async () => {
+  const deps = stubDeps();
+  const doc = page("retry-image", "有图", "正文");
+  doc.blocks.push(hostedImage("https://prod-files-secure.s3.amazonaws.com/a?signature=secret") as never);
+  const input = bundle(doc);
+  const fail = async () => ({ ok: false as const, reason: "expired" });
+  const result = await importNotionBundle({ actorId: "author-1", bundle: input, apply: true, deps, copyImage: fail, now: at });
+  assert.equal(result.summary.create, 1);
+  assert.ok(result.pages[0]?.issues.some((issue) => issue.code === "image-copy-failed" && issue.detail.includes("expired")));
+  assert.doesNotMatch(String([...deps.articles.values()][0]!.contentBlocks), /signature=secret/);
+  assert.match([...deps.links.values()][0]!.digest, /^incomplete:/);
+  const dry = await importNotionBundle({ actorId: "author-1", bundle: input, apply: false, deps, now: at });
+  assert.equal(dry.summary.update, 1);
+  const success = await importNotionBundle({ actorId: "author-1", bundle: input, apply: true, deps, now: at,
+    copyImage: async () => ({ ok: true, src: "/api/media/00000000-0000-4000-8000-000000000001" }) });
+  assert.equal(success.summary.update, 1);
+  assert.doesNotMatch([...deps.links.values()][0]!.digest, /^incomplete:/);
+});
+
+test("another owner's image is never fetched", async () => {
+  const deps = stubDeps({ links: [{ provider: NOTION_IMPORT_PROVIDER, externalId: "foreign-image", locale: "zh-CN", articleId: "theirs", ownerId: "other", digest: "old", syncedAt: at().toISOString() }] });
+  const doc = page("foreign-image", "别人的", "正文");
+  doc.blocks.push(hostedImage("https://prod-files-secure.s3.amazonaws.com/a?signature=secret") as never);
+  let copies = 0;
+  const result = await importNotionBundle({ actorId: "author-1", bundle: bundle(doc), apply: true, deps, now: at,
+    copyImage: async () => { copies++; return { ok: false, reason: "no" }; } });
+  assert.equal(copies, 0);
+  assert.equal(result.summary.refused, 1);
+});
+
+test("retries reuse previously copied images and finish a partially copied page", async () => {
+  const deps = stubDeps();
+  const doc = page("many-images", "很多图", "正文");
+  for (let i = 0; i < 10; i++) doc.blocks.push({ ...hostedImage(`https://prod-files-secure.s3.amazonaws.com/${i}`), id: `image-${i}` } as never);
+  const input = bundle(doc);
+  let firstCount = 0;
+  const first = await importNotionBundle({ actorId: "author-1", bundle: input, apply: true, deps, now: at,
+    copyImage: async () => (++firstCount > 8 ? { ok: false, reason: "limit" } : { ok: true, src: `/api/media/00000000-0000-4000-8000-${String(firstCount).padStart(12, "0")}` }) });
+  assert.equal(first.summary.create, 1);
+  assert.equal(first.pages[0]!.issues.filter((issue) => issue.code === "image-copy-failed").length, 2);
+  let secondCount = 0;
+  const second = await importNotionBundle({ actorId: "author-1", bundle: input, apply: true, deps, now: at,
+    copyImage: async () => { secondCount++; return { ok: true, src: `/api/media/00000000-0000-4000-8000-${String(8 + secondCount).padStart(12, "0")}` }; } });
+  assert.equal(second.summary.update, 1);
+  assert.equal(secondCount, 2);
+  assert.equal(second.pages[0]!.issues.filter((issue) => issue.code === "image-copy-failed").length, 0);
+  assert.doesNotMatch([...deps.links.values()][0]!.digest, /^incomplete:/);
+});
+
+test("legacy unchanged imports containing temporary image links can be repaired", async () => {
+  const deps = stubDeps();
+  const doc = page("legacy-image", "旧图片", "正文");
+  doc.blocks.push(hostedImage("https://prod-files-secure.s3.amazonaws.com/a?signature=secret") as never);
+  const input = bundle(doc);
+  // Simulate a pre-copy import by injecting the old source as the stored image.
+  await importNotionBundle({ actorId: "author-1", bundle: input, apply: true, deps, now: at,
+    copyImage: async () => ({ ok: true, src: "https://prod-files-secure.s3.amazonaws.com/a?signature=secret" }) });
+  const dry = await importNotionBundle({ actorId: "author-1", bundle: input, apply: false, deps, now: at });
+  assert.equal(dry.summary.update, 1);
+  const applied = await importNotionBundle({ actorId: "author-1", bundle: input, apply: true, deps, now: at,
+    copyImage: async () => ({ ok: true, src: "/api/media/00000000-0000-4000-8000-000000000001" }) });
+  assert.equal(applied.summary.update, 1);
+  assert.match(String([...deps.articles.values()][0]!.contentBlocks), /\/api\/media\//);
+});
+
+test("a failed provenance write reports that the article was already written", async () => {
+  const deps = stubDeps();
+  deps.upsertExternalContentLink = async () => { throw new Error("link store unavailable"); };
+  const report = await importNotionBundle({ actorId: "author-1", bundle: bundle(page("link-error", "作品", "正文")), apply: true, deps, now: at });
+  assert.equal(report.summary.failed, 1);
+  assert.equal(report.pages[0]?.articleId, "article-1");
+  assert.match(report.pages[0]?.detail ?? "", /article was written.*link could not be saved/);
+  assert.equal(deps.articles.size, 1);
+});

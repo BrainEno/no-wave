@@ -95,6 +95,13 @@ already has.**
    expected to fetch the bytes into the site's own media storage (ADR 0028)
    before writing the article.
 
+   The API import now copies eligible Notion-hosted image blocks during an
+   explicit apply, never during a dry run. Failed copies are removed and reported;
+   incomplete imports remain retryable. Server-side fetches use a strict host
+   allowlist, bounded streaming and no redirects. The seed script and featured
+   cover property do not gain image copying; see the limitations and retry rules
+   in [the interchange guide](../../api/notion-interchange.md#copying-notion-hosted-images).
+
 7. **The export is the same bundle in the other direction, and its page ids are
    provenance.** `GET /api/v1/imports/notion/export` answers with a bundle the
    import endpoint accepts, produced by the same mapping — so the two directions

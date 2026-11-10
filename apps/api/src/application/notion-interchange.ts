@@ -106,6 +106,7 @@ export const INTERCHANGE_ISSUE_CODES = Object.freeze([
   "unsupported-block",
   "block-limit-reached",
   "expiring-image-url",
+  "image-copy-failed",
   "link-block-flattened",
   "equation-flattened",
   "callout-flattened",
