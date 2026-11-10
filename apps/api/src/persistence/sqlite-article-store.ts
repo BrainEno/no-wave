@@ -445,6 +445,14 @@ export function createSqliteArticleStore(db: SqliteRunner) {
         .all(actorId, locale, limit).map(mapArticle);
     },
 
+    findMyArticleByCreateKey({ actorId, key }: { actorId: string; key: string }) {
+      requiredText("actorId", actorId, 300);
+      requiredText("key", key, 300);
+      const row = statement("SELECT id FROM articles WHERE author_id = ? AND idempotency_key_hash = ? LIMIT 1")
+        .get(actorId, articleIdempotencyKeyHash(actorId, key));
+      return row ? String(row.id) : null;
+    },
+
     getMyArticle({ articleId, actorId, locale = "zh-CN" }: { articleId: string; actorId: string; locale?: string }) {
       requiredText("articleId", articleId, 64);
       requiredText("actorId", actorId, 300);
@@ -739,5 +747,5 @@ export function createSqliteArticleStore(db: SqliteRunner) {
         return { purged: expired.length };
       });
     },
-  }) satisfies Pick<TypedPersistenceAdapterContract, "listPublishedArticles" | "listFeaturedArticles" | "setFeaturedArticles" | "listFollowingArticles" | "getPublishedArticle" | "incrementArticleViewCount" | "listMyArticles" | "getMyArticle" | "listMyArticleEditions" | "listMyDeletedArticles" | "listLikedArticles" | "listRelatedArticles" | "createArticle" | "updateArticle" | "deleteArticle" | "restoreArticle" | "purgeExpiredArticles">;
+  }) satisfies Pick<TypedPersistenceAdapterContract, "listPublishedArticles" | "listFeaturedArticles" | "setFeaturedArticles" | "listFollowingArticles" | "getPublishedArticle" | "incrementArticleViewCount" | "listMyArticles" | "getMyArticle" | "findMyArticleByCreateKey" | "listMyArticleEditions" | "listMyDeletedArticles" | "listLikedArticles" | "listRelatedArticles" | "createArticle" | "updateArticle" | "deleteArticle" | "restoreArticle" | "purgeExpiredArticles">;
 }

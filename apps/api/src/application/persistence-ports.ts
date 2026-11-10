@@ -26,7 +26,7 @@ import type { MediaAsset, MediaScanRow } from "./media-assets.ts";
  */
 export const persistencePortMethods = Object.freeze({
   content: Object.freeze([
-    "listPublishedArticles", "getPublishedArticle", "listMyArticles", "getMyArticle", "listMyArticleEditions",
+    "listPublishedArticles", "getPublishedArticle", "listMyArticles", "getMyArticle", "findMyArticleByCreateKey", "listMyArticleEditions",
     "createArticle", "updateArticle", "deleteArticle", "restoreArticle",
     "listMyDeletedArticles", "purgeExpiredArticles", "listLikedArticles", "listRelatedArticles",
     "listFollowingArticles", "listFeaturedArticles", "setFeaturedArticles",
@@ -372,6 +372,8 @@ export type ContentPersistencePort = {
    * not a permission.
    */
   getMyArticle(input: { articleId: string; actorId: string; locale?: string }): PersistenceResult<StoredArticle | null>;
+  /** Identify an author's own create, including a tombstone, by its idempotency key. */
+  findMyArticleByCreateKey(input: { actorId: string; key: string }): PersistenceResult<string | null>;
   /**
    * Every edition of one of the author's own works, by its address.
    *

@@ -3,6 +3,7 @@ import { createHmac, randomUUID } from "node:crypto";
 import test from "node:test";
 import sharp from "sharp";
 import { createMediaAssetService } from "../../application/media-assets.ts";
+import { createApplicationServices } from "../../application/services.ts";
 import { createApiServer } from "../../server.ts";
 import { createSqliteClient, runSqliteMigrations } from "../../persistence/sqlite.ts";
 import { createSqliteStore } from "../../persistence/sqlite-store.ts";
@@ -278,7 +279,13 @@ test("Notion images are normalized into media storage and remain retryable over 
     close() {},
   };
   const mediaAssets = createMediaAssetService({ store, storage });
-  const server = createApiServer({ store, env, logger: () => {}, mediaAssets });
+  const services = createApplicationServices({ persistence: store });
+  let failLink = false;
+  const applicationServices = { ...services, async upsertExternalContentLink(input: Parameters<typeof services.upsertExternalContentLink>[0]) {
+    if (failLink) throw new Error("injected provenance failure");
+    return services.upsertExternalContentLink(input);
+  } };
+  const server = createApiServer({ applicationServices, env, logger: () => {}, mediaAssets });
   await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
   const address = server.address();
   assert.ok(address && typeof address === "object");
@@ -345,9 +352,103 @@ test("Notion images are normalized into media storage and remain retryable over 
     assert.equal(refusedEmpty.summary.failed, 1);
     assert.ok(refusedEmpty.pages[0].issues.some((issue: { code: string }) => issue.code === "image-copy-failed"));
     assert.equal(refusedEmpty.pages[0].articleId, null);
+
+    // Start this separate journey with a fresh write-rate bucket.
+    db.exec("DELETE FROM auth_rate_limits");
+    // A create may succeed even if recording provenance fails. The retry must
+    // address that article, not replay the create with a fresh media UUID.
+    storageDown = false;
+    const recoveryDoc = notionPage(`recover-${randomUUID()}`, "丢失的链接", "正文");
+    recoveryDoc.blocks.push(doc.blocks[1]!);
+    const recoveryBundle = notionBundle(recoveryDoc);
+    failLink = true;
+    const failed = await post(true, recoveryBundle);
+    assert.equal(failed.summary.failed, 1);
+    const originalId = failed.pages[0].articleId;
+    assert.ok(originalId);
+    assert.match(failed.pages[0].detail, /article was written/);
+    failLink = false;
+    const before = downloaded;
+    const plan = await post(false, recoveryBundle);
+    assert.equal(plan.summary.update, 1);
+    assert.equal(plan.pages[0].articleId, originalId);
+    assert.match(plan.pages[0].detail, /recover.*existing edits may be replaced/);
+    assert.equal(downloaded, before);
+    const repaired = await post(true, recoveryBundle);
+    assert.equal(repaired.summary.update, 1);
+    assert.equal(repaired.pages[0].articleId, originalId);
+    assert.match(repaired.pages[0].detail, /recovered missing import link/);
+    assert.equal((await post(false, recoveryBundle)).summary.skip, 1);
+    const matches = db.prepare("SELECT count(*) AS n FROM articles WHERE author_id = ? AND idempotency_key_hash IS NOT NULL").get(author);
+    assert.equal(Number(matches?.n), 3, "three successful creates, not a second recovery article");
   } finally {
     globalThis.fetch = originalFetch;
     await new Promise<void>((resolve) => server.close(() => resolve()));
     db.close();
+  }
+});
+
+test("PostgreSQL repairs an article created before image provenance failed", {
+  skip: !process.env.TEST_DATABASE_URL && "Set TEST_DATABASE_URL to run PostgreSQL integration tests.",
+}, async () => {
+  const sql = await createPostgresClient({ connectionString: process.env.TEST_DATABASE_URL, max: 4 });
+  await runMigrations(sql);
+  const store = createPostgresStore(sql);
+  const author = randomUUID();
+  await sql.unsafe("INSERT INTO auth_accounts (user_id, email, password_hash) VALUES ($1, $2, $3)", [author, `${author}@example.test`, "fixture"]);
+  await sql.unsafe("DELETE FROM auth_rate_limits");
+  const objects = new Map<string, Buffer>();
+  const storage = {
+    async putObject({ key, bytes }: { key: string; bytes: Buffer }) { objects.set(key, bytes); },
+    async getObject(key: string) { const value = objects.get(key); assert.ok(value); return value; },
+    async deleteObject(key: string) { objects.delete(key); },
+    close() {},
+  };
+  const services = createApplicationServices({ persistence: store });
+  let failLink = true;
+  const applicationServices = { ...services, async upsertExternalContentLink(input: Parameters<typeof services.upsertExternalContentLink>[0]) {
+    if (failLink) throw new Error("injected failure");
+    return services.upsertExternalContentLink(input);
+  } };
+  const server = createApiServer({ applicationServices, env, logger: () => {}, mediaAssets: createMediaAssetService({ store, storage }) });
+  await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}/api/v1`;
+  const originalFetch = globalThis.fetch;
+  const png = await sharp({ create: { width: 3, height: 3, channels: 3, background: "red" } }).png().toBuffer();
+  globalThis.fetch = async (url, init) => String(url).startsWith("https://prod-files-secure.s3.amazonaws.com/")
+    ? new Response(new Uint8Array(png), { headers: { "content-type": "image/png" } }) : originalFetch(url, init);
+  const doc = notionPage(`recover-${randomUUID()}`, "恢复图文", "正文");
+  doc.blocks.push({ object: "block", id: "image", type: "image", has_children: false,
+    image: { type: "file", file: { url: "https://prod-files-secure.s3.amazonaws.com/image?signature=secret" }, caption: [] } } as never);
+  const bundle = notionBundle(doc);
+  const post = async (apply: boolean) => {
+    const response = await originalFetch(`${base}/imports/notion`, { method: "POST", headers: { authorization: `Bearer ${token(author)}`, "content-type": "application/json" }, body: JSON.stringify({ bundle, apply }) });
+    const result = await response.json();
+    assert.equal(response.status, 200, JSON.stringify(result));
+    return result.data;
+  };
+  try {
+    const failed = await post(true);
+    assert.equal(failed.summary.failed, 1);
+    const id = failed.pages[0].articleId;
+    assert.ok(id);
+    failLink = false;
+    const preview = await post(false);
+    assert.equal(preview.summary.update, 1);
+    assert.equal(preview.pages[0].articleId, id);
+    const repaired = await post(true);
+    assert.equal(repaired.summary.update, 1);
+    assert.equal(repaired.pages[0].articleId, id);
+    assert.equal((await post(false)).summary.skip, 1);
+    const count = await sql.unsafe("SELECT count(*)::int AS n FROM articles WHERE author_id = $1", [author]);
+    assert.equal(count[0]?.n, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await sql.unsafe("DELETE FROM articles WHERE author_id = $1", [author]);
+    await sql.unsafe("DELETE FROM auth_accounts WHERE user_id = $1", [author]);
+    await sql.end();
   }
 });

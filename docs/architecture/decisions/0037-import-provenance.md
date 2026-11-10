@@ -98,6 +98,15 @@ the import is one endpoint that reports per page.**
    There is still no sync engine (ADR 0036), no conflict resolution, and no
    credentials — the client fetches the pages, the server only sees content.
 
+8. **An interrupted create can recover its missing link, but never silently.**
+   The article's author-scoped create key identifies a work created before its
+   provenance write failed. A later dry run reports an update and warns that
+   applying it can replace edits; only apply writes the article and link. Deleted
+   works are refused until restored, and inconsistent translation links block
+   recovery. Link upserts cannot replace a different owner or article, including
+   concurrent claims. A losing claimant may already have an unlinked article;
+   the report identifies it rather than claiming a successful import.
+
 ## Consequences
 
 - **The seed's local state file becomes legacy.** `scripts/notion-seed.ts` still

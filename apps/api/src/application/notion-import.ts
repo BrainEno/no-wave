@@ -88,6 +88,7 @@ export type NotionImportDeps = {
   createArticle(input: ArticleCreateServiceInput): PersistenceResult<StoredArticle>;
   updateArticle(input: ArticleUpdateServiceInput): PersistenceResult<StoredArticle>;
   getMyArticle(input: { articleId: string; actorId: string; locale?: string }): PersistenceResult<StoredArticle | null>;
+  findMyArticleByCreateKey(input: { actorId: string; key: string }): PersistenceResult<string | null>;
   listTaxonomies(input: TaxonomyListInput): PersistenceResult<StoredTaxonomy[]>;
   createTag(input: CreateTagInput): PersistenceResult<StoredTaxonomy>;
   getExternalContentLink(input: ExternalContentLinkKey): PersistenceResult<StoredExternalContentLink | null>;
@@ -363,6 +364,32 @@ export async function importNotionBundle(input: {
   const { works } = groupNotionWorks(bundle.pages);
   const firstPass = planNotionSeed({ works, state: emptyNotionSeedState() });
   const links = await readLinks(input.deps, firstPass.works);
+  const recovered = new Set<string>();
+  const recoveryConflicts = new Set<string>();
+  for (const work of firstPass.works) {
+    const primary = work.primary;
+    if (links.has(primary.pageId)) continue;
+    // The create key is scoped by the verified author. It survives a failure
+    // between creating the work and recording its Notion link, including deletes.
+    const key = idempotencyKeyFor(primary.pageId);
+    // Malformed keys were never valid create keys; do not turn a single bad
+    // page into an exception for the whole bundle while trying to recover it.
+    if (key.length > 300 || key.trim() !== key) continue;
+    const articleId = await input.deps.findMyArticleByCreateKey({ actorId: input.actorId, key });
+    if (!articleId) continue;
+    if (work.translations.some((edition) => {
+      const link = links.get(edition.pageId);
+      return link !== undefined && (link.ownerId !== input.actorId || link.articleId !== articleId);
+    })) {
+      recoveryConflicts.add(primary.pageId);
+      continue;
+    }
+    // In-memory only: a dry run must not repair the link or change the article.
+    // Force an update, never infer that the current article matches the bundle.
+    links.set(primary.pageId, { provider: NOTION_IMPORT_PROVIDER, externalId: primary.pageId,
+      locale: primary.locale, articleId, ownerId: input.actorId, digest: "recovery-pending", syncedAt: "" });
+    recovered.add(primary.pageId);
+  }
   const plan = planNotionSeed({ works, state: stateFromLinks(links) });
 
   // Imports made before image copying existed can have the same source digest
@@ -419,11 +446,22 @@ export async function importNotionBundle(input: {
     summary.refused += 1;
   }
 
-  const allTags = plan.works.flatMap((work) => [work.primary, ...work.translations]).flatMap((edition) => edition.draft.tags);
+  // A recovery conflict refuses the whole work; it must not create its tags.
+  const allTags = plan.works.filter((work) => !recoveryConflicts.has(work.primary.pageId))
+    .flatMap((work) => [work.primary, ...work.translations]).flatMap((edition) => edition.draft.tags);
   const { ids: tagIds, created: createdTags } = await resolveTags(input.deps, input.actorId, allTags, input.apply);
   const tagNote = createdTags.length > 0 ? ` (created tags: ${createdTags.join(", ")})` : "";
 
   for (const work of plan.works) {
+    if (recoveryConflicts.has(work.primary.pageId)) {
+      for (const edition of [work.primary, ...work.translations]) {
+        pages.push({ externalId: edition.pageId, title: edition.draft.title, locale: edition.locale,
+          action: "refused", slug: edition.slug, articleId: null,
+          detail: "cannot recover this work: a translation is linked to a different work or account", issues: edition.issues });
+        summary.refused += 1;
+      }
+      continue;
+    }
     const primaryLink = links.get(work.primary.pageId);
     // The address a work already has, for a report that must not invent one: a
     // link stores the work's id, not its slug (a slug can be renamed in the desk,
@@ -454,6 +492,15 @@ export async function importNotionBundle(input: {
     }
 
     if (!input.apply) {
+      if (recovered.has(work.primary.pageId) && linkedSlug === null) {
+        for (const edition of [work.primary, ...work.translations]) {
+          pages.push({ externalId: edition.pageId, title: edition.draft.title, locale: edition.locale,
+            action: "refused", slug: edition.slug, articleId: primaryLink?.articleId ?? null,
+            detail: "the original work is deleted or its primary edition is unavailable; restore it before retrying", issues: edition.issues });
+          summary.refused += 1;
+        }
+        continue;
+      }
       for (const edition of [work.primary, ...work.translations]) {
         const link = links.get(edition.pageId);
         // A new edition of a work that already exists is written *onto* that work,
@@ -471,7 +518,9 @@ export async function importNotionBundle(input: {
             ? "unchanged since the last import"
             : action === "create"
               ? `would create${tagNote}`
-              : `would update ${target}`,
+              : recovered.has(work.primary.pageId)
+                ? `would update ${target} and recover its missing import link; existing edits may be replaced`
+                : `would update ${target}`,
           issues: edition.issues,
         });
         summary[action] += 1;
@@ -581,6 +630,9 @@ export async function importNotionBundle(input: {
         if (isPrimary) {
           workSlug = outcome.slug;
           workArticleId = outcome.articleId;
+        }
+        if (isPrimary && recovered.has(edition.pageId)) {
+          outcome.report.detail += "; recovered missing import link";
         }
         pages.push(outcome.report);
         summary[outcome.report.action] += 1;

@@ -185,9 +185,7 @@ export function NotionImport() {
                 {page.issues.filter((issue) => issue.code === "image-copy-failed").map((issue, index) => (
                   <small className="nw-import-reason" key={`${issue.code}:${index}`}>{issue.detail}</small>
                 ))}
-                {page.action === "refused" || page.action === "failed"
-                  ? <small className="nw-import-reason">{page.detail}</small>
-                  : null}
+                {page.detail !== "" ? <small className="nw-import-reason">{page.detail}</small> : null}
               </li>
             ))}
           </ul>

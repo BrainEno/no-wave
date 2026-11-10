@@ -428,10 +428,14 @@ Media writes happen before the article write. A failed article write, an interru
 request, or changing the bundle between retries can leave unreferenced media in the
 library; they are not automatically deleted. If writing the article succeeds but
 saving its provenance link fails, the report identifies the article and warns the
-writer. A retry may hit the create idempotency conflict because the copied media IDs
-changed; it does not create a duplicate. Check the writing desk before retrying;
-there is currently no automatic repair workflow for a missing link. A network timeout does
-not prove that nothing was written. The web proxy gives this route a longer default timeout, but
+writer. On the next import, the author-scoped create key finds the original work.
+The dry run offers an update and explicitly warns that existing edits may be
+replaced; only an apply updates the work and saves its missing link. Deleted works
+are refused until restored, and a translation linked to a different work or account
+blocks recovery rather than being silently moved. A conflicting concurrent page claim
+cannot overwrite an existing link. The losing import may already have written an
+unlinked article; its failed report identifies that article for inspection.
+A network timeout does not prove that nothing was written. The web proxy gives this route a longer default timeout, but
 an explicitly configured `API_TIMEOUT_MS` still takes precedence. The seed script
 remains separate and does not copy images.
 
@@ -441,7 +445,8 @@ remains separate and does not copy images.
   dry run touches no writing service; an apply records owner and digest; the same
   bundle twice writes nothing at all; a changed page updates and keeps its address;
   an empty page is refused while the rest lands; another account's page is refused;
-  a deleted work is refused; translations attach to one work; a malformed bundle and
+  a deleted work is refused; missing-link recovery is previewed and remains scoped
+  to the owner; translations attach to one work; a malformed bundle and
   an oversized one are rejected before anything is read.
 - `apps/api/src/transport/rest/imports.integration.test.ts` — real HTTP and a real
   database, on SQLite always and on PostgreSQL when `TEST_DATABASE_URL` is set: the
