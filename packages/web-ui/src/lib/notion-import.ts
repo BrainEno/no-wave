@@ -258,3 +258,34 @@ export function issueCounts(report: NotionImportReport): { code: string; count: 
     .map(([code, count]) => ({ code, count }))
     .sort((left, right) => right.count - left.count || left.code.localeCompare(right.code));
 }
+
+/** The selectable source pages are identified by their position, not a report ID:
+ * the API scopes filename-based Markdown IDs to the authenticated owner and may
+ * omit an invalid translation from the report. Never select from report rows. */
+export function bundleSelectionPages(bundle: Record<string, unknown>): { index: number; title: string; preview: string }[] {
+  if (!Array.isArray(bundle.pages)) return [];
+  return bundle.pages.map((page: unknown, index: number) => {
+    if (!isRecord(page)) return { index, title: `第 ${index + 1} 页`, preview: "" };
+    const properties = isRecord(page.properties) ? Object.values(page.properties) : [];
+    const titleProperty = properties.find((property) => isRecord(property) && property.type === "title");
+    const text = (value: unknown): string => Array.isArray(value) ? value.map((part: unknown) =>
+      isRecord(part) && typeof part.plain_text === "string" ? part.plain_text : "").join("") : "";
+    const title = isRecord(titleProperty) ? text(titleProperty.title).trim() : "";
+    const previews: string[] = [];
+    if (Array.isArray(page.blocks)) for (const block of page.blocks as unknown[]) {
+      if (!isRecord(block) || typeof block.type !== "string" || !isRecord(block[block.type])) continue;
+      const body = block[block.type] as Record<string, unknown>;
+      const bodyText = text(body.rich_text);
+      if (bodyText.trim()) previews.push(bodyText);
+      if (previews.join("\n").length >= 500) break;
+    }
+    const full = previews.join("\n");
+    return { index, title: title || `第 ${index + 1} 页`, preview: full.length > 500 ? `${full.slice(0, 500)}…` : full };
+  });
+}
+
+/** Return exactly the selected source pages, preserving the original order. */
+export function selectBundlePages(bundle: Record<string, unknown>, indices: ReadonlySet<number>): Record<string, unknown> {
+  if (!Array.isArray(bundle.pages)) throw new Error("bundle 缺少 pages 数组。");
+  return { ...bundle, pages: bundle.pages.filter((_page: unknown, index: number) => indices.has(index)) };
+}

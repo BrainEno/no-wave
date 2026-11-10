@@ -9,7 +9,7 @@ const sample = "# 十字星\n\nPublished: Yes\nRank: 1\nSlug: 十字星\nTags: �
 test("Notion Markdown maps into the real import planner", () => {
   const result = markdownEntriesToBundle([{ name: `十字星 ${id}.md`, text: sample }]);
   assert.equal(result.pages, 1);
-  assert.ok(result.warnings.some((w) => w.includes("Rank")));
+  assert.ok(!result.warnings.some((w) => w.includes("Rank")));
   const parsed = parseNotionBundle(result.bundle);
   const plan = planNotionSeed({ works: groupNotionWorks(parsed.pages).works, state: emptyNotionSeedState(), options: { now: () => new Date("2024-01-01T00:00:00Z") } });
   const draft = plan.works[0]!.primary.draft;

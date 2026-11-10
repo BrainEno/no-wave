@@ -643,3 +643,14 @@ mark { background: var(--or); color: #0f0d0c; }
 .nw-compose-hint { margin: 0; }
 .nw-compose-error p { margin: 0 0 6px; }
 .nw-message-author { display: inline-block; margin-top: 14px; text-decoration: underline; text-underline-offset: 3px; }
+
+.nw-import-selection { margin-top: 28px; border-top: 1px solid var(--ink); padding-top: 20px; }
+.nw-import-selection h2 { font: 600 20px/1.5 var(--f-zh); margin: 0; }
+.nw-import-select-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0; }
+.nw-import-selection-list { list-style: none; padding: 0; margin: 0 0 20px; }
+.nw-import-selection-list li { padding: 12px 0; border-bottom: 1px solid color-mix(in srgb, var(--t2) 40%, transparent); }
+.nw-import-select-page { display: flex; align-items: baseline; gap: 12px; cursor: pointer; overflow-wrap: anywhere; }
+.nw-import-select-page input { flex: none; accent-color: var(--ink); }
+.nw-import-selection-list details { margin: 6px 0 0 27px; color: var(--t2); font: 400 13px/1.6 var(--f-zh); }
+.nw-import-selection-list summary { cursor: pointer; }
+.nw-import-preview { white-space: pre-wrap; overflow-wrap: anywhere; }

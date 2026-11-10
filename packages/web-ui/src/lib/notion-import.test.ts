@@ -236,3 +236,14 @@ test("every action the API can report has a Chinese label", () => {
   assert.deepEqual(Object.keys(ACTION_LABEL).sort(), ["create", "failed", "refused", "skip", "update"]);
   for (const label of Object.values(ACTION_LABEL)) assert.ok(label !== "");
 });
+
+test("source selection keeps only checked pages, regardless of report identities", async () => {
+  const { bundleSelectionPages, selectBundlePages } = await import("./notion-import.ts");
+  const first = { id: "markdown-file:a.md", properties: { Name: { type: "title", title: [{ plain_text: "第一篇" }] } }, blocks: [{ type: "paragraph", paragraph: { rich_text: [{ plain_text: "正文" }] } }] };
+  const second = { id: "second", properties: {}, blocks: [] };
+  const bundle = { version: 1, database: { id: "db" }, pages: [first, second] };
+  assert.deepEqual(bundleSelectionPages(bundle), [{ index: 0, title: "第一篇", preview: "正文" }, { index: 1, title: "第 2 页", preview: "" }]);
+  assert.deepEqual(selectBundlePages(bundle, new Set([1])), { ...bundle, pages: [second] });
+  assert.deepEqual(selectBundlePages(bundle, new Set()), { ...bundle, pages: [] });
+  assert.equal(bundle.pages.length, 2);
+});

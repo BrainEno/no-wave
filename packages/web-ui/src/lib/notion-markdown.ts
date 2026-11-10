@@ -51,7 +51,8 @@ function parseEntry(entry: Entry, warnings: string[]): Page | null {
       const ids = [...decoded.matchAll(/\b([a-f0-9]{32})\.md\b/gi)].map((m) => ({ id: canonical(m[1]!.toLowerCase()) }));
       if (ids.length) properties[key] = { type: "relation", relation: ids };
       else warnings.push(`${entry.name}：未识别 ${key} 的页面链接。`);
-    } else if (key === "Rank" && value) warnings.push(`${entry.name}：Rank 没有对应字段，未导入。`);
+    }
+    // Rank is not used by the article model; it is optional and ignored.
   }
   const blocks: Record<string, unknown>[] = [];
   const block = (type: string, data: Record<string, unknown>) => blocks.push({ type, [type]: data });
