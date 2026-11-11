@@ -110,12 +110,12 @@ export function MessagesView({ locale, initialRecipient = "" }: { locale: Locale
   const heading = <SectionHeading zh={ui.eyebrow} latin="Inbox" />;
 
   if (state.kind === "loading") {
-    return <main lang={locale} className="nw-w">{heading}<p className="nw-m nw-thread-note">{ui.loading}</p></main>;
+    return <main id="top" tabIndex={-1} lang={locale} className="nw-w">{heading}<p className="nw-m nw-thread-note">{ui.loading}</p></main>;
   }
 
   if (state.kind === "signed-out") {
     return (
-      <main lang={locale} className="nw-w">
+      <main id="top" tabIndex={-1} lang={locale} className="nw-w">
         {heading}
         <EmptyState
           title={ui.signIn}
@@ -129,7 +129,7 @@ export function MessagesView({ locale, initialRecipient = "" }: { locale: Locale
 
   if (state.kind === "failed") {
     return (
-      <main lang={locale} className="nw-w">
+      <main id="top" tabIndex={-1} lang={locale} className="nw-w">
         {heading}
         <div className="nw-thread-note" role="alert">
           <p>{ui.failed}</p>
@@ -141,7 +141,7 @@ export function MessagesView({ locale, initialRecipient = "" }: { locale: Locale
 
   if (state.rows.length === 0) {
     return (
-      <main lang={locale} className="nw-w">
+      <main id="top" tabIndex={-1} lang={locale} className="nw-w">
         {heading}
         <EmptyState title={ui.empty} body={ui.emptyHint} />
         <StartConversation locale={locale} initialRecipient={initialRecipient} viewerId={viewerId} />
@@ -150,7 +150,7 @@ export function MessagesView({ locale, initialRecipient = "" }: { locale: Locale
   }
 
   return (
-    <main lang={locale} className="nw-w">
+    <main id="top" tabIndex={-1} lang={locale} className="nw-w">
       {heading}
       <p className="nw-m nw-thread-intro">{ui.intro}</p>
       <StartConversation locale={locale} initialRecipient={initialRecipient} viewerId={viewerId} />

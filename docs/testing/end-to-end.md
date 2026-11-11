@@ -16,7 +16,7 @@ that can be asserted more cheaply must be asserted more cheaply.
 | Path | Purpose |
 | --- | --- |
 | `playwright.config.ts` | One chromium project — `web` — one worker; `webServer` starts the API and the **production** build of the Web application. An isolated run starts the API directly, without loading a developer's `.env.local`; targeted runs use `node scripts/dev.ts --api-only`. |
-| `scripts/e2e-runner.ts` | The no-argument `pnpm test:e2e` runs two sequential shards, each with a fresh disposable SQLite database and independent local stack. Explicit Playwright arguments or external E2E URLs retain the targeted/external behavior. |
+| `scripts/e2e-runner.ts` | The no-argument `pnpm test:e2e` runs three sequential shards, each with a fresh disposable SQLite database and independent local stack. Explicit Playwright arguments or external E2E URLs retain the targeted/external behavior. |
 | `e2e/authoring.spec.ts` | Register → write → save draft → publish → read the public page → withdraw it → delete it → restore it from the recycle bin; first-save lost-response replay, edits during an uncertain save, account switching, navigation protection, and English/legacy Traditional Chinese editions across reload and restore |
 | `e2e/devices.spec.ts` | Sign in → read the list of signed-in devices → end the other one → keep reading on this one; end the device you are holding → land on the sign-in page |
 | `e2e/engagement.spec.ts` | Real browser cookies, save and follow persistence, optimistic rollback, private feed isolation, refresh, failed reads and retry, CSRF rejection, late responses during client navigation, and return to the English edition after sign-in |
@@ -80,7 +80,7 @@ journeys in CI are the regression check, and local runs need Chromium installed.
 ```sh
 pnpm test:e2e:install                     # once per machine: downloads the Chromium build
 pnpm build                                # production build of the Web application
-pnpm test:e2e                             # all journeys, two disposable local stacks
+pnpm test:e2e                             # all journeys, three disposable local stacks
 pnpm test:e2e --grep 'save'                # targeted Playwright run (see below)
 ```
 
@@ -110,7 +110,7 @@ DATABASE_PROVIDER=sqlite DATABASE_PATH=/tmp/no-wave-e2e-focused.sqlite AUTH_REGI
 
 The registration override applies only to the disposable API and matches CI.
 A full pass-through run on one stack can exhaust the separate article-creation
-limit; use the no-argument isolated runner or run the two Playwright shards on
+limit; use the no-argument isolated runner or run the three Playwright shards on
 separate freshly migrated stacks.
 
 Browsers are downloaded from `cdn.playwright.dev` into Playwright's cache — not
@@ -123,12 +123,12 @@ Set `E2E_WEB_URL` (default `http://127.0.0.1:3000`) or `E2E_API_BASE_URL`
 
 ## CI
 
-`.github/workflows/ci.yml` has an `e2e` matrix: each of its two shards runs on
+`.github/workflows/ci.yml` has an `e2e` matrix: each of its three shards runs on
 its own runner with a **disposable** SQLite database (`/tmp/no-wave-e2e.sqlite`,
 discarded with the runner). Each builds the Web application, installs Chromium,
-runs its Playwright shard and uploads `playwright-report-1` or
-`playwright-report-2` (traces and screenshots on failure, 7-day retention).
-The aggregate job succeeds only if both shards succeed.
+runs its Playwright shard and uploads `playwright-report-1`, `playwright-report-2` or
+`playwright-report-3` (traces and screenshots on failure, 7-day retention).
+The aggregate job succeeds only if all three shards succeed.
 
 **It is part of `required-checks`** (2026-11-01), so a red browser journey blocks
 a merge. That is the point: this is the only layer that can see the authoring

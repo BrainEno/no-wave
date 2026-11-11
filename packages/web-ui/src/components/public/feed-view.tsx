@@ -111,7 +111,7 @@ export function FeedView({ locale }: { locale: Locale }) {
 
   if (state.kind === "loading") {
     return (
-      <main lang={locale} className="nw-w">
+      <main id="top" tabIndex={-1} lang={locale} className="nw-w">
         <SectionHeading zh={ui.eyebrow} latin="Following" />
         <p className="nw-m nw-feed-note">{ui.loading}</p>
       </main>
@@ -120,7 +120,7 @@ export function FeedView({ locale }: { locale: Locale }) {
 
   if (state.kind === "signed-out") {
     return (
-      <main lang={locale} className="nw-w">
+      <main id="top" tabIndex={-1} lang={locale} className="nw-w">
         <SectionHeading zh={ui.eyebrow} latin="Following" />
         <EmptyState
           title={ui.signIn}
@@ -134,7 +134,7 @@ export function FeedView({ locale }: { locale: Locale }) {
 
   if (state.kind === "failed") {
     return (
-      <main lang={locale} className="nw-w">
+      <main id="top" tabIndex={-1} lang={locale} className="nw-w">
         <SectionHeading zh={ui.eyebrow} latin="Following" />
         <div className="nw-feed-note" role="alert">
           <p>{ui.failed}</p>
@@ -148,7 +148,7 @@ export function FeedView({ locale }: { locale: Locale }) {
 
   if (state.items.length === 0) {
     return (
-      <main lang={locale} className="nw-w">
+      <main id="top" tabIndex={-1} lang={locale} className="nw-w">
         <SectionHeading zh={ui.eyebrow} latin="Following" />
         <EmptyState
           title={ui.empty}
@@ -161,7 +161,7 @@ export function FeedView({ locale }: { locale: Locale }) {
   }
 
   return (
-    <main lang={locale} className="nw-w">
+    <main id="top" tabIndex={-1} lang={locale} className="nw-w">
       <SectionHeading
         zh={ui.eyebrow}
         latin="Following"

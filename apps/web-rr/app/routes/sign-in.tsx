@@ -40,7 +40,7 @@ export const meta: MetaFunction = () => [
 export default function SignInRoute() {
   const { nextPath, mailEnabled } = useLoaderData<typeof loader>();
   return (
-    <main className="nw-w" data-route="sign-in">
+    <main id="top" tabIndex={-1} className="nw-w" data-route="sign-in">
       <SignInForm nextPath={nextPath} mailEnabled={mailEnabled} />
     </main>
   );

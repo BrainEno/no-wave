@@ -28,7 +28,7 @@ export const meta: MetaFunction = () => [
 
 export default function WriteMediaRoute() {
   return (
-    <main className="nw-w nw-head" data-route="write-media">
+    <main id="top" tabIndex={-1} className="nw-w nw-head" data-route="write-media">
       <MediaLibrary />
     </main>
   );

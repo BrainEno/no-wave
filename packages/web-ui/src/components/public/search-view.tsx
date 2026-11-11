@@ -30,7 +30,7 @@ export function SearchPageView({ locale, query, tab, type, works, authors, categ
   ];
 
   return (
-    <main lang={locale} className="nw-w">
+    <main id="top" tabIndex={-1} lang={locale} className="nw-w">
       <header className="nw-head">
         <div className="nw-m" style={{ marginBottom: 8 }}>{ui.search.title} · {q ? ui.search.total(total) : ui.search.intro}</div>
         <form className="nw-sb" action={base} method="get" role="search" aria-label={ui.search.label}>

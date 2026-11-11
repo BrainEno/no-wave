@@ -28,7 +28,7 @@ export function ArchivePageView({ locale, query, page, type, articles, hasNextPa
   const poemAfter = Math.min(3, rows.length - 1);
 
   return (
-    <main lang={locale} className="nw-w">
+    <main id="top" tabIndex={-1} lang={locale} className="nw-w">
       <header className="nw-head">
         <div className="nw-m" style={{ marginBottom: 12 }}>{messages.blogDescription}</div>
         <h1><span className="nw-zh">{ui.archive.title}</span> <i>{ui.archive.titleEn}</i></h1>

@@ -78,7 +78,7 @@ export function ArticlePageView({ article, newer, older, related }: ArticleDetai
     done: ui.reader.done, position: ui.reader.position, unavailable: ui.reader.unavailable };
 
   return (
-    <main lang={locale} className="nw-w">
+    <main id="top" tabIndex={-1} lang={locale} className="nw-w">
       <ReadingProgress label={ui.reader.progress} />
       <header className="nw-rh">
         <Link className="nw-ss" href={archivePath(locale)} style={{ display: "inline-flex", alignItems: "center", minHeight: 44, fontWeight: 700, fontSize: 15 }}>← {ui.reader.back}</Link>
@@ -88,7 +88,7 @@ export function ArticlePageView({ article, newer, older, related }: ArticleDetai
         <div className="nw-by">
           <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
             <div className="nw-avatar" aria-hidden="true">{initial(article.author.displayName)}</div>
-            <div><Link className="nw-zh" href={authorPath(article.author.username, locale)} style={{ fontSize: 20 }}>{article.author.displayName}</Link><div className="nw-m">{ui.reader.by} · {messages.publishedOn} {dateLabel(article.publishedAt, locale)}</div></div>
+            <div><Link className="nw-zh" href={authorPath(article.author.username, locale)} style={{ fontSize: 20, display: "inline-flex", alignItems: "center", minHeight: 44, minWidth: 44 }}>{article.author.displayName}</Link><div className="nw-m">{ui.reader.by} · {messages.publishedOn} {dateLabel(article.publishedAt, locale)}</div></div>
           </div>
           <ReaderBar labels={labels} />
           <ReadAloud blocks={article.contentBlocks} locale={locale} labels={aloud} />

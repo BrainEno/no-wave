@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { isolatedEnvironment, shouldRunIsolated } from "./e2e-runner.ts";
 
-test("a full local run uses two disposable stacks, but targeted or external runs retain Playwright behavior", () => {
+test("a full local run uses three disposable stacks, but targeted or external runs retain Playwright behavior", () => {
   assert.equal(shouldRunIsolated([], {}), true);
   assert.equal(shouldRunIsolated(["--grep", "save"], {}), false);
   assert.equal(shouldRunIsolated([], { E2E_WEB_URL: "https://external.example" }), false);
