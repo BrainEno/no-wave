@@ -349,6 +349,7 @@ jobs:
             -e HOST=0.0.0.0 -e PORT=80 \
             -e DATABASE_PROVIDER=sqlite -e DATABASE_PATH=/var/lib/no-wave/api.sqlite \
             -e AUTH_JWT_SECRET=container-image-ci-secret-0123456789abcdef \
+            -e AUTH_JWT_ISSUER=http://127.0.0.1:4000 -e AUTH_JWT_AUDIENCE=no-wave \
             -p 4000:80 bot-thk-api:ci
           WEB_START=$(date +%s%3N)
           docker run -d --network nw-ci --name web \

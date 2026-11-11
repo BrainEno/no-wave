@@ -30,6 +30,9 @@ test("container CI migrates the shared SQLite volume before starting the API", a
   assert.match(migrateCommand, /(?:^|\s)--rm(?:\s|$)/, "the one-off migration container must be removed");
   assert.match(migrateCommand, /-e\s+DATABASE_PROVIDER=sqlite\b/);
   assert.match(apiCommand, /-e\s+DATABASE_PROVIDER=sqlite\b/);
+  for (const field of ["AUTH_JWT_SECRET", "AUTH_JWT_ISSUER", "AUTH_JWT_AUDIENCE"]) {
+    assert.match(apiCommand, new RegExp(`-e\\s+${field}=[^\\s]+`), `${field} must be set for API readiness`);
+  }
   const mount = (command: string) => command.match(/(?:^|\s)(?:-v|--volume)\s+(\S+)/)?.[1];
   const dbPath = (command: string) => command.match(/(?:^|\s)-e\s+DATABASE_PATH=(\S+)/)?.[1];
   const migrationMount = mount(migrateCommand);

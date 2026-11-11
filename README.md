@@ -215,7 +215,7 @@ pnpm dev
 | --- | --- | --- |
 | `SQLite schema is not current` | Migrations were never applied. | `pnpm db:migrate`. |
 | `AUTH_JWT_SECRET is N bytes` | Empty or short secret. | `pnpm setup:local --force`. |
-| Auth routes return `503` | API started with an invalid secret. | Restart with a valid `.env.local`. |
+| API startup reports `AUTH_JWT_*` or `/ready` reports auth unavailable | Missing or invalid authentication configuration. | Set a secret of at least 32 bytes, issuer and audience (and a valid TTL if configured), then restart. |
 | Port `4000` or `3000` is in use | Another dev process is running. | Stop it, or set `PORT` / `WEB_PORT`. |
 | Web page is empty while API steps pass | Web app is serving fixtures or cannot reach the API. | Check `API_BASE_URL=http://127.0.0.1:4000`, then run `pnpm check:local`. |
 | `pnpm dev` warns about an external database | A Neon/shared URL is exported or stored in `.env.local`. | Unset `DATABASE_URL` / `DATABASE_URL_UNPOOLED` and run `pnpm setup:local --force`. |
