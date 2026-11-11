@@ -306,6 +306,10 @@ declaration values. This is a name-level check across the stylesheets, not a
 proof that a declaration applies to a particular element: browser tests still
 need to verify the cascade, computed styles and contrast.
 
+## Security
+
+See [SECURITY.md](SECURITY.md) for private reporting and dependency checks. Do not publish vulnerability details in an issue.
+
 ## CI
 
 CI runs dependency installation, typecheck, Web/API tests, route smoke, container-image smoke, Playwright e2e, PostgreSQL integration, and the local-chain job (`pnpm dev --check --exit`) in separate stages. Required checks include deterministic SQLite SQL execution budgets for public list, detail and comments, which catch N+1 regressions independently of runner speed. The latency-based performance baseline remains advisory and is not part of the required gate because shared runners are noisy. GitHub Actions is the only supported CI pipeline; the incomplete GitLab pipeline was removed rather than presenting a weaker gate as equivalent. See `.github/workflows/ci.yml`. Pushes to `main` and PRs targeting `main` are checked; a new commit cancels an older run of the same PR, but never a main-branch run. Branches without a PR do not run this workflow.

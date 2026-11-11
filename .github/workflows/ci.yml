@@ -28,6 +28,9 @@ jobs:
           node-version: "24"
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Audit both production and development dependencies; a registry failure
+      # is a failed check, not a reason to silently pass the required gate.
+      - run: pnpm audit --audit-level high
       - run: pnpm test
       - run: pnpm lint:css-vars
       - run: pnpm typecheck

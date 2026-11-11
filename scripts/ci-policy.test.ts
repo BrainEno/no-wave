@@ -28,3 +28,43 @@ test("there is one documented required CI gate, not an incomplete second pipelin
     assert.match(gate, new RegExp(`^      - ${job}$`, "m"), `gate must depend on ${job}`);
   }
 });
+
+test("the required verify job audits all locked dependencies at high severity", () => {
+  const verify = workflow.slice(workflow.indexOf("  verify:"), workflow.indexOf("  postgres-integration:"));
+  const install = verify.indexOf("pnpm install --frozen-lockfile");
+  const audit = verify.indexOf("pnpm audit --audit-level high");
+  assert.ok(install >= 0 && audit > install);
+  const line = verify.split("\n").find((entry) => entry.includes("pnpm audit")) ?? "";
+  assert.doesNotMatch(line, /--prod|--no-optional|\|\||continue-on-error/);
+  const gate = workflow.slice(workflow.indexOf("  required-checks:"));
+  assert.match(gate, /needs\.verify\.result/);
+  assert.match(gate, /\"\$VERIFY_RESULT\"/);
+});
+
+test("CodeQL runs on PRs and main with explicit minimal permissions", () => {
+  const codeql = readFileSync(new URL(".github/workflows/codeql.yml", root), "utf8");
+  assert.match(codeql, /pull_request:\s*\n\s*branches: \["main"\]/);
+  assert.match(codeql, /push:\s*\n\s*branches: \["main"\]/);
+  assert.match(codeql, /contents: read/);
+  assert.match(codeql, /security-events: write/);
+  assert.match(codeql, /github\/codeql-action\/init@v4/);
+  assert.match(codeql, /github\/codeql-action\/analyze@v4/);
+  assert.match(codeql, /languages: javascript-typescript/);
+  assert.doesNotMatch(codeql, /pull_request_target|continue-on-error/);
+});
+
+test("Dependabot groups weekly workspace and action updates", () => {
+  const config = readFileSync(new URL(".github/dependabot.yml", root), "utf8");
+  assert.match(config, /package-ecosystem: npm/);
+  assert.match(config, /package-ecosystem: github-actions/);
+  assert.equal((config.match(/interval: weekly/g) ?? []).length, 2);
+  assert.equal((config.match(/patterns:\s*\n\s*- "\*"/g) ?? []).length, 2);
+});
+
+test("the security policy does not invite public vulnerability disclosure", () => {
+  const policy = readFileSync(new URL("SECURITY.md", root), "utf8");
+  assert.match(policy, /do not put exploit details/i);
+  assert.match(policy, /private vulnerability reporting/i);
+  assert.match(policy, /does not enable it/i);
+  assert.match(policy, /No response or remediation timeline is promised/i);
+});
