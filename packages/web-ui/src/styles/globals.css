@@ -392,7 +392,7 @@ mark { background: var(--or); color: #0f0d0c; }
 .nw-lexical-input a { text-decoration: underline; text-decoration-color: var(--or); text-underline-offset: 3px; }
 .nw-lexical-input pre { overflow-x: auto; padding: 16px; background: var(--ink); color: var(--paper); font: 14px/1.7 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .nw-lexical-input code { font: .85em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-.nw-lexical-placeholder { color: var(--t2); opacity: .7; font: 400 20px/1.9 var(--f-zh); margin: 0; }
+.nw-lexical-placeholder { color: var(--t2); font: 400 20px/1.9 var(--f-zh); margin: 0; }
 .nw-lexical-empty-note { color: var(--t2); font-size: 13px; margin: 10px 0 0; }
 .nw-authoring-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 20px; }
 .nw-authoring-actions .nw-m { flex: 1 1 100%; }

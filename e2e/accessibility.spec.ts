@@ -17,6 +17,7 @@ async function assertNoSeriousAxeViolations(page: Page, description: string): Pr
 }
 
 async function assertTargetSize(locator: Locator, label: string): Promise<void> {
+  await expect(locator.first(), `${label}: at least one visible target`).toBeVisible();
   const count = await locator.count();
   expect(count, `${label}: at least one target`).toBeGreaterThan(0);
   for (let index = 0; index < count; index++) {

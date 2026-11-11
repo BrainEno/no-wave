@@ -1,5 +1,5 @@
 /**
- * Run the complete browser suite against two independent disposable stacks.
+ * Run the complete browser suite against three independent disposable stacks.
  * Article creation is deliberately limited to 30/IP/hour in the real API, so
  * sharing one SQLite file would exhaust the production limit. Explicit CLI
  * arguments or external E2E URLs keep the ordinary Playwright behavior.
@@ -91,7 +91,7 @@ async function main(): Promise<number> {
 
   const directory = await mkdtemp(join(tmpdir(), "no-wave-e2e-"));
   try {
-    for (let shard = 1; shard <= 2; shard += 1) {
+    for (let shard = 1; shard <= 3; shard += 1) {
       const [apiPort, webPort] = await unusedPorts();
       const env = isolatedEnvironment(process.env, {
         databasePath: join(directory, `shard-${shard}.sqlite`),
@@ -99,10 +99,10 @@ async function main(): Promise<number> {
         webPort,
         secret: randomBytes(32).toString("hex"),
       });
-      process.stdout.write(`\nBrowser suite: isolated shard ${shard}/2\n`);
+      process.stdout.write(`\nBrowser suite: isolated shard ${shard}/3\n`);
       const migration = runNode([join(root, "apps/api/src/persistence/migrate.ts")], env);
       if (migration !== 0) return migration;
-      const tests = runNode([playwrightCli, "test", `--shard=${shard}/2`], env);
+      const tests = runNode([playwrightCli, "test", `--shard=${shard}/3`], env);
       if (tests !== 0) return tests;
     }
     return 0;

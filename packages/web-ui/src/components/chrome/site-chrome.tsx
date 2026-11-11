@@ -354,7 +354,13 @@ export function SiteChrome({ children }: { children: ReactNode }) {
 
   return (
     <>
-      <a className="nw-skip" href="#top">{locale === "en" ? "Skip to main content" : "跳到正文"}</a>
+      <a className="nw-skip" href="#top" onClick={(event) => {
+        const main = document.querySelector<HTMLElement>("main#top");
+        if (!main) return;
+        event.preventDefault();
+        main.focus();
+        main.scrollIntoView();
+      }}>{locale === "en" ? "Skip to main content" : "跳到正文"}</a>
       <GrainCanvas />
       <Link className="nw-rail" href={homePath(locale)} aria-label={ui.homeAria}>{ui.rail}</Link>
       <nav className="nw-pill" aria-label={ui.nav.primary} lang={locale}>
