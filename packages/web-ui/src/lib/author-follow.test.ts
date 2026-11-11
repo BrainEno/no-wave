@@ -109,3 +109,12 @@ test("the UI language covers 关注 in both locales", async () => {
     assert.ok(occurrences >= 2, `${key} needs a zh and an en form, saw ${occurrences}`);
   }
 });
+
+
+test("global CSS references defined custom properties", async () => {
+  const css = (await readFile(new URL("../styles/globals.css", import.meta.url), "utf8"))
+    .replace(/\/\*[\s\S]*?\*\//g, "");
+  const definitions = new Set([...css.matchAll(/(--[\w-]+)\s*:/g)].map((match) => match[1]));
+  const references = new Set([...css.matchAll(/var\(\s*(--[\w-]+)/g)].map((match) => match[1]));
+  assert.deepEqual([...references].filter((name) => !definitions.has(name)).sort(), []);
+});

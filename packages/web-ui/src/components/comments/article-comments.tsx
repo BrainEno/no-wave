@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@/lib/framework/link.tsx";
+import { hasUsableSession, SESSION_MARKER_COOKIE } from "@bot-thk/web-http";
+import { sessionMarkerFromCookie } from "@/lib/chrome.ts";
 import type { ReactNode } from "react";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalExtensionComposer } from "@lexical/react/LexicalExtensionComposer";
@@ -303,6 +305,7 @@ function CommentComposer({ resetKey, onSubmit, busy, initialBlocks, submitLabel,
 export function ArticleComments({ slug, locale }: { slug: string; locale: Locale }) {
   const copy = commentCopy(locale);
   const [viewerId, setViewerId] = useState<string | null>(null);
+  const [signedOut, setSignedOut] = useState(false);
   const [comments, setComments] = useState<CommentView[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [busy, setBusy] = useState(false);
@@ -330,8 +333,19 @@ export function ArticleComments({ slug, locale }: { slug: string; locale: Locale
    */
   useEffect(() => {
     let active = true;
+    // The marker only avoids a known-anonymous request. It never proves an
+    // identity: the API must still verify a usable (or forged) marker.
+    if (!hasUsableSession(sessionMarkerFromCookie(document.cookie, SESSION_MARKER_COOKIE))) {
+      setViewerId(null);
+      setSignedOut(true);
+      return () => { active = false; };
+    }
+    setSignedOut(false);
     fetch("/api/authoring/session", { credentials: "same-origin", cache: "no-store" })
-      .then(async (response) => (response.ok ? await response.json().catch(() => null) : null))
+      .then(async (response) => {
+        if (active && response.status === 401) setSignedOut(true);
+        return response.ok ? await response.json().catch(() => null) : null;
+      })
       .then((payload: unknown) => {
         if (!active || !isRecord(payload) || !isRecord(payload.data)) return;
         const id = payload.data.id;
@@ -426,6 +440,7 @@ export function ArticleComments({ slug, locale }: { slug: string; locale: Locale
         </div>
       ) : null}
       <h3>写下你的回应</h3>
+      {signedOut ? <p className="nw-m">请先登录后再发表评论。 <Link href={"/sign-in?next=" + encodeURIComponent("/articles/" + slug)}>前往登录</Link></p> : null}
       <CommentComposer key={resetKey} resetKey={resetKey} onSubmit={submit} busy={busy} />
       {status ? <p role="status" className="nw-auth-status">{status}</p> : null}
       {error && state !== "error" ? <p className="nw-auth-error" role="alert">{error} {error.includes("登录") ? <Link href={"/sign-in?next=" + encodeURIComponent("/articles/" + slug)}>前往登录</Link> : null}</p> : null}
