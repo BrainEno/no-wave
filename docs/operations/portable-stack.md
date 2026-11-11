@@ -242,3 +242,58 @@ first answered request) and starts it again after `docker stop`, which is the
 closest available analogue of a free instance waking up — and, because
 `docker stop` sends SIGTERM, it exercises the server's graceful shutdown on the
 way.
+
+### API container: identity, storage and readiness
+
+The API image runs as `node` (UID/GID 1000 in the upstream image), listens on
+unprivileged port **4000** by default, and probes `GET /ready` on its configured
+`PORT`. A successful HTTP probe changes Docker health to `healthy`; an invalid
+authentication configuration, unavailable persistence, timeout or non-2xx
+response causes the check to fail. The process still requires a migrated schema
+and a valid JWT configuration before startup. Docker health is a signal to the
+orchestrator, not an automatic restart policy.
+
+SQLite defaults to `/var/lib/no-wave/no-wave.sqlite` inside the image. The image
+creates that directory for the non-root user, so Docker initializes a **new named
+volume** with the right ownership. Migrate the database with the same image,
+volume, `DATABASE_PATH` and UID before starting the API; do not run migrations
+as root and leave root-owned files behind. SQLite also needs to create `-wal` and
+`-shm` files, so the directory, not just the database file, must be writable.
+For a bind mount or an existing volume, arrange ownership/permissions for UID
+1000 on the host first. Never solve a permission error by making the database
+world-writable. Back up existing data before changing its ownership or location.
+PostgreSQL deployments do not need a SQLite volume.
+
+Existing deployments that routed traffic to container port 80 must update their
+service/container port and API URLs to 4000 (or deliberately set `PORT` and
+provide a compatible host configuration). The published host port can remain 80
+or 443 at the proxy; it need not match the unprivileged internal port. The CI
+image test runs migrations as `node` against a named volume, checks both image
+and running-process identity, and waits for Docker's health status to become
+`healthy` in addition to the HTTP smoke test.
+
+### Web response compression
+
+The standalone Node Web server negotiates Brotli, gzip or deflate for Vite's
+JavaScript/CSS assets and anonymous, public HTML. It streams compressed bodies
+and sets `Vary: Accept-Encoding`; the public HTML variant also varies by Cookie
+and Authorization. The uncompressed representation remains available to clients
+that do not advertise a supported encoding. Payloads below 1 KiB and already
+compressed responses are left alone. The server honors `Cache-Control:
+no-transform` and never compresses responses carrying `Set-Cookie`, private or
+no-store responses, API responses, or non-success responses.
+
+HTML requested with a Cookie, Authorization header or query string is left
+uncompressed: this avoids mixing per-request or reflected data and secrets in a
+compressed stream. Static JS/CSS are not personalized and remain compressible
+when cookies are present. This conservative policy trades some transfer savings
+for safety; in particular authenticated page loads and searches do not benefit.
+Any proxy or CDN that adds compression must preserve these restrictions as well
+as `Vary` and must not compress an already encoded body. TLS and caching remain
+separate responsibilities of the host.
+
+CI builds and starts the production server and checks raw HTTP bytes for HTML,
+JS and CSS with gzip and Brotli, including decompression and private-response
+exclusions. Additional socket-level tests cover encoding quality values, HEAD,
+small bodies, pre-encoded responses, `Vary`, and streaming. This means a host
+without a compression proxy still delivers the eligible resources compressed.

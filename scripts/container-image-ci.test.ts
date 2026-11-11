@@ -70,3 +70,22 @@ test("the container CI job builds Dockerfiles that exist", async () => {
   const missing = buildFiles.filter((file) => !existsSync(join(root, file)));
   assert.deepEqual(missing, [], "a Dockerfile named in CI must exist");
 });
+
+test("API image and CI require an unprivileged user and working readiness probe", async () => {
+  const dockerfile = await readFile(new URL("../apps/api/Dockerfile", import.meta.url), "utf8");
+  const workflow = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+  assert.match(dockerfile, /^ENV PORT=4000$/m);
+  assert.match(dockerfile, /^ENV DATABASE_PATH=\/var\/lib\/no-wave\/no-wave\.sqlite$/m);
+  assert.match(dockerfile, /chown node:node \/var\/lib\/no-wave/);
+  assert.match(dockerfile, /^USER node$/m);
+  assert.match(dockerfile, /^HEALTHCHECK\b/m);
+  assert.match(dockerfile, /127\.0\.0\.1:.*\/ready/);
+  assert.match(dockerfile, /AbortSignal\.timeout/);
+  assert.match(workflow, /docker image inspect --format '\{\{\.Config.User\}\}' bot-thk-api:ci/);
+  assert.match(workflow, /docker run --rm bot-thk-api:ci id -u/);
+  assert.match(workflow, /docker exec api id -u/);
+  assert.match(workflow, /\.State.Health.Status/);
+  assert.match(workflow, /\[ "\$health" != healthy \]/);
+  assert.match(workflow, /-p 4000:4000 bot-thk-api:ci/);
+  assert.match(workflow, /API_BASE_URL=http:\/\/api:4000/);
+});

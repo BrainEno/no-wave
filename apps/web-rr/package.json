@@ -15,6 +15,7 @@
     "@bot-thk/web-http": "workspace:*",
     "@bot-thk/web-ui": "workspace:*",
     "@react-router/node": "8.5.1",
+    "compression": "1.8.1",
     "gsap": "3.13.0",
     "react": "19.2.9",
     "react-dom": "19.2.9",
@@ -22,6 +23,7 @@
   },
   "devDependencies": {
     "@react-router/dev": "8.5.1",
+    "@types/compression": "1.8.1",
     "@types/node": "24.10.0",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.7",

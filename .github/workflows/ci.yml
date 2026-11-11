@@ -339,6 +339,10 @@ jobs:
           # container starts, otherwise it can exit while `docker exec` is still
           # migrating and kill that process. The image itself never migrates on
           # boot; a disposable named volume lets both containers see one DB.
+          # Check the runtime identity and health contract on the actual image.
+          test "$(docker image inspect --format '{{.Config.User}}' bot-thk-api:ci)" = "node"
+          test "$(docker run --rm bot-thk-api:ci id -u)" != "0"
+          test "$(docker image inspect --format '{{if .Config.Healthcheck}}yes{{end}}' bot-thk-api:ci)" = "yes"
           echo "Migrating the SQLite volume using the API image"
           docker run --rm -v nw-ci-db:/var/lib/no-wave \
             -e DATABASE_PROVIDER=sqlite -e DATABASE_PATH=/var/lib/no-wave/api.sqlite \
@@ -346,15 +350,15 @@ jobs:
           echo "Starting the API against the migrated volume"
           docker run -d --network nw-ci --name api \
             -v nw-ci-db:/var/lib/no-wave \
-            -e HOST=0.0.0.0 -e PORT=80 \
+            -e HOST=0.0.0.0 -e PORT=4000 \
             -e DATABASE_PROVIDER=sqlite -e DATABASE_PATH=/var/lib/no-wave/api.sqlite \
             -e AUTH_JWT_SECRET=container-image-ci-secret-0123456789abcdef \
             -e AUTH_JWT_ISSUER=http://127.0.0.1:4000 -e AUTH_JWT_AUDIENCE=no-wave \
-            -p 4000:80 bot-thk-api:ci
+            -p 4000:4000 bot-thk-api:ci
           WEB_START=$(date +%s%3N)
           docker run -d --network nw-ci --name web \
             -e HOST=0.0.0.0 -e PORT=3100 \
-            -e API_BASE_URL=http://api:80 \
+            -e API_BASE_URL=http://api:4000 \
             -e SITE_URL=http://127.0.0.1:3100 \
             -p 3100:3100 bot-thk-web-rr:ci
 
@@ -365,6 +369,21 @@ jobs:
             docker logs web || true
             exit 1
           fi
+          # Docker's healthcheck is asynchronous, so wait independently of HTTP
+          # smoke and fail if it never reaches healthy or exits prematurely.
+          health=starting
+          for attempt in $(seq 1 30); do
+            health=$(docker inspect --format '{{.State.Health.Status}}' api)
+            [ "$health" = healthy ] && break
+            [ "$health" = unhealthy ] && break
+            sleep 2
+          done
+          if [ "$health" != healthy ]; then
+            echo "::error title=API healthcheck::expected healthy, got $health"
+            docker inspect --format '{{json .State.Health}}' api
+            exit 1
+          fi
+          test "$(docker exec api id -u)" != "0"
           WEB_COLD_MS=$(( $(date +%s%3N) - WEB_START ))
           echo "Web container cold start: ${WEB_COLD_MS} ms (docker run -> shared smoke passed)"
           if [ "$WEB_COLD_MS" -gt 60000 ]; then
