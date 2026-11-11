@@ -185,7 +185,17 @@ jobs:
       # Keep system package and browser downloads separate: their outages need
       # different remedies, and both remain required before running the suite.
       - name: Install Chromium system dependencies
-        run: pnpm exec playwright install-deps chromium
+        run: |
+          if pnpm exec playwright install-deps chromium > /tmp/playwright-deps.log 2>&1; then
+            cat /tmp/playwright-deps.log
+          else
+            cat /tmp/playwright-deps.log
+            # Only fixed error categories enter the annotation; package URLs and
+            # environment values stay out of it. Preserve the failing check.
+            reason=$(grep -Eio 'Could not resolve|Temporary failure resolving|Connection timed out|Connection failed|Network is unreachable|Unable to locate package|no installation candidate|404 Not Found|Hash Sum mismatch|held broken packages|The repository .* is not signed' /tmp/playwright-deps.log | sort -u | tr '\n' ' ' || true)
+            echo "::error title=Chromium system dependencies::${reason:-Installation failed; inspect the job log}"
+            exit 1
+          fi
       - name: Install the Chromium build Playwright drives
         run: pnpm exec playwright install chromium
       - name: Run browser-level shard ${{ matrix.shard }}/3
@@ -476,7 +486,17 @@ jobs:
       - run: node scripts/preflight.cjs
       - run: pnpm install --frozen-lockfile
       - name: Install Chromium system dependencies
-        run: pnpm exec playwright install-deps chromium
+        run: |
+          if pnpm exec playwright install-deps chromium > /tmp/playwright-deps.log 2>&1; then
+            cat /tmp/playwright-deps.log
+          else
+            cat /tmp/playwright-deps.log
+            # Only fixed error categories enter the annotation; package URLs and
+            # environment values stay out of it. Preserve the failing check.
+            reason=$(grep -Eio 'Could not resolve|Temporary failure resolving|Connection timed out|Connection failed|Network is unreachable|Unable to locate package|no installation candidate|404 Not Found|Hash Sum mismatch|held broken packages|The repository .* is not signed' /tmp/playwright-deps.log | sort -u | tr '\n' ' ' || true)
+            echo "::error title=Chromium system dependencies::${reason:-Installation failed; inspect the job log}"
+            exit 1
+          fi
       - name: Install the Chromium build Playwright drives
         run: pnpm exec playwright install chromium
       - run: pnpm test:all
