@@ -30,6 +30,20 @@ function failureMessage(payload: unknown, status: number): string {
   return typeof message === "string" ? message : `导入没有完成（HTTP ${status}）。`;
 }
 
+/** Explain conservative source-identity refusals without exposing private IDs. */
+function importDetail(detail: string): string {
+  const messages: Record<string, string> = {
+    "translation relation requires review before import": "翻译关联需要核对，暂不导入。",
+    "Select all pages referenced by English before importing this work": "请选择 English 关联的所有页面后重新试跑。",
+    "More than two pages are linked as translations; resolve the relation before importing": "有超过两页互相关联为译文，请先在 Notion 中核对关系。",
+    "Parent/sub-item relations are not imported as translations": "父子层级关系不会导入；页面不会被当作译文合并。",
+    "this page already has import provenance in another locale; review the original work and select the matching pages": "该页面此前已作为其他语言导入，请检查原作品并选择对应页面。",
+    "this page is already imported into another account": "该页面已由其他账号导入，无法再次认领。",
+    "the selected pages have conflicting import provenance; review the original works before importing": "所选页面已有的导入来源不一致，请先检查原作品。",
+  };
+  return messages[detail] ?? detail;
+}
+
 function dataOf(payload: unknown): unknown {
   return typeof payload === "object" && payload !== null ? (payload as { data?: unknown }).data : null;
 }
@@ -224,9 +238,9 @@ export function NotionImport() {
                   <span className="nw-import-issues">{page.issues.map((issue) => issue.code).join("、")}</span>
                 ) : null}
                 {page.issues.filter((issue) => issue.code !== "expiring-image-url").map((issue, index) => (
-                  <small className="nw-import-reason" key={`${issue.code}:${index}`}>{issue.detail}</small>
+                  <small className="nw-import-reason" key={`${issue.code}:${index}`}>{importDetail(issue.detail)}</small>
                 ))}
-                {page.detail !== "" ? <small className="nw-import-reason">{page.detail}</small> : null}
+                {page.detail !== "" ? <small className="nw-import-reason">{importDetail(page.detail)}</small> : null}
               </li>
             ))}
           </ul>

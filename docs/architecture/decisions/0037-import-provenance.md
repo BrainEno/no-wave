@@ -71,7 +71,8 @@ the import is one endpoint that reports per page.**
    resource and neither is "an article create".
 
 4. **A translation is added to its work, not created beside it.** The plan groups
-   pages into works first (the `English` relation, then `Parent item`). When the
+   pages into works first using the `English` relation only; `Parent item` and
+   `Sub-item` describe hierarchy and are not treated as translations. When the
    work is new, its primary page creates the article and the other editions are
    written as `PUT`s of that article in their own locale — the same request the
    desk sends when an author adds a language version. Counting an added edition as

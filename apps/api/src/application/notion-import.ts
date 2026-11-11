@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { SUPPORTED_ARTICLE_LOCALES } from "../domain/article.ts";
 import { prepareNotionImages, type NotionImageCopier } from "./notion-import-images.ts";
 import { createArticleWithSlug } from "./article-create.ts";
 import {
@@ -183,19 +184,26 @@ function blank(): NotionImportReport["summary"] {
 async function readLinks(
   deps: NotionImportDeps,
   works: readonly PlannedWork[],
-): Promise<Map<string, StoredExternalContentLink>> {
+): Promise<{ links: Map<string, StoredExternalContentLink>; otherLocales: Set<string> }> {
   const links = new Map<string, StoredExternalContentLink>();
+  const otherLocales = new Set<string>();
   for (const work of works) {
     for (const edition of [work.primary, ...work.translations]) {
-      const link = await deps.getExternalContentLink({
-        provider: NOTION_IMPORT_PROVIDER,
-        externalId: edition.pageId,
-        locale: edition.locale,
-      });
-      if (link) links.set(edition.pageId, link);
+      // The same source page may have been imported previously as a different
+      // locale, e.g. a translation selected without its primary page. Looking
+      // only at the planned locale would incorrectly offer a duplicate create.
+      const found = await Promise.all([...SUPPORTED_ARTICLE_LOCALES].map(async (locale) => ({
+        locale,
+        link: await deps.getExternalContentLink({ provider: NOTION_IMPORT_PROVIDER, externalId: edition.pageId, locale }),
+      })));
+      for (const { locale, link } of found) {
+        if (!link) continue;
+        if (locale === edition.locale) links.set(edition.pageId, link);
+        else otherLocales.add(edition.pageId);
+      }
     }
   }
-  return links;
+  return { links, otherLocales };
 }
 
 /** The planner's second pass: what a previous import already knows. */
@@ -372,7 +380,7 @@ export async function importNotionBundle(input: {
 
   const { works } = groupNotionWorks(bundle.pages);
   const firstPass = planNotionSeed({ works, state: emptyNotionSeedState() });
-  const links = await readLinks(input.deps, firstPass.works);
+  const { links, otherLocales } = await readLinks(input.deps, firstPass.works);
   const recovered = new Set<string>();
   const recoveryConflicts = new Set<string>();
   for (const work of firstPass.works) {
@@ -398,6 +406,22 @@ export async function importNotionBundle(input: {
     links.set(primary.pageId, { provider: NOTION_IMPORT_PROVIDER, externalId: primary.pageId,
       locale: primary.locale, articleId, ownerId: input.actorId, digest: "recovery-pending", syncedAt: "" });
     recovered.add(primary.pageId);
+  }
+  // Refuse the whole work before tags or media side effects when its stored
+  // provenance cannot safely be reconciled with the newly selected grouping.
+  // Never return another owner's article ID in a preview or conflict report.
+  const provenanceConflicts = new Map<string, string>();
+  for (const work of firstPass.works) {
+    const editions = [work.primary, ...work.translations];
+    const linked = editions.map((edition) => links.get(edition.pageId)).filter((link): link is StoredExternalContentLink => !!link);
+    if (editions.some((edition) => otherLocales.has(edition.pageId))) {
+      provenanceConflicts.set(work.primary.pageId, "this page already has import provenance in another locale; review the original work and select the matching pages");
+    } else if (linked.some((link) => link.ownerId !== input.actorId)) {
+      provenanceConflicts.set(work.primary.pageId, "this page is already imported into another account");
+    } else if (new Set(linked.map((link) => link.articleId)).size > 1 ||
+      (!links.has(work.primary.pageId) && linked.length > 0)) {
+      provenanceConflicts.set(work.primary.pageId, "the selected pages have conflicting import provenance; review the original works before importing");
+    }
   }
   const plan = planNotionSeed({ works, state: stateFromLinks(links) });
 
@@ -449,19 +473,29 @@ export async function importNotionBundle(input: {
       action: "refused",
       slug: "",
       articleId: null,
-      detail: "this page cannot become a work",
+      detail: refused.issues.some((issue) => issue.code === "ambiguous-translation-relation" || issue.code === "missing-translation-page")
+        ? "translation relation requires review before import" : "this page cannot become a work",
       issues: refused.issues,
     });
     summary.refused += 1;
   }
 
   // A recovery conflict refuses the whole work; it must not create its tags.
-  const allTags = plan.works.filter((work) => !recoveryConflicts.has(work.primary.pageId))
+  const allTags = plan.works.filter((work) => !recoveryConflicts.has(work.primary.pageId) && !provenanceConflicts.has(work.primary.pageId))
     .flatMap((work) => [work.primary, ...work.translations]).flatMap((edition) => edition.draft.tags);
   const { ids: tagIds, created: createdTags } = await resolveTags(input.deps, input.actorId, allTags, input.apply);
   const tagNote = createdTags.length > 0 ? ` (created tags: ${createdTags.join(", ")})` : "";
 
   for (const work of plan.works) {
+    const provenanceConflict = provenanceConflicts.get(work.primary.pageId);
+    if (provenanceConflict) {
+      for (const edition of [work.primary, ...work.translations]) {
+        pages.push({ externalId: edition.pageId, title: edition.draft.title, locale: edition.locale,
+          action: "refused", slug: "", articleId: null, detail: provenanceConflict, issues: edition.issues });
+        summary.refused += 1;
+      }
+      continue;
+    }
     if (recoveryConflicts.has(work.primary.pageId)) {
       for (const edition of [work.primary, ...work.translations]) {
         pages.push({ externalId: edition.pageId, title: edition.draft.title, locale: edition.locale,

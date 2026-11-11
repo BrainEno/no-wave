@@ -88,6 +88,10 @@ export function parseNotionBundle(value: unknown): NotionBundle {
     };
   });
 
+  if (new Set(parsed.map((page) => page.id)).size !== parsed.length) {
+    throw new NotionBundleError("A Notion bundle must not contain duplicate page IDs.");
+  }
+
   const database = isRecord(value.database)
     ? {
       id: typeof value.database.id === "string" ? value.database.id : "",
@@ -147,7 +151,7 @@ export function groupNotionWorks(
   const neighbours = new Map<string, string[]>();
 
   for (const page of pages) {
-    const linked = [...relationIds(page.properties[relationName]), ...relationIds(page.properties["Parent item"])]
+    const linked = relationIds(page.properties[relationName])
       .filter((id) => byId.has(id) && id !== page.id);
     neighbours.set(page.id, linked);
   }
@@ -182,8 +186,19 @@ export function groupNotionWorks(
         queue.push(next);
       }
     }
+    const workIssues: InterchangeIssue[] = [];
+    if (component.some((member) => relationIds(member.properties["Parent item"]).length > 0 || relationIds(member.properties["Sub-item"]).length > 0)) {
+      workIssues.push({ code: "hierarchy-not-carried", detail: "Parent/sub-item relations are not imported as translations" });
+    }
+    if (component.some((member) => relationIds(member.properties[relationName]).some((id) => id !== member.id && !byId.has(id)))) {
+      workIssues.push({ code: "missing-translation-page", detail: "Select all pages referenced by English before importing this work" });
+    }
+    if (component.length > 2) {
+      workIssues.push({ code: "ambiguous-translation-relation", detail: "More than two pages are linked as translations; resolve the relation before importing" });
+    }
+    issues.push(...workIssues);
     if (component.length === 1) {
-      works.push({ key: page.id, primary: page, translations: [], issues: [] });
+      works.push({ key: page.id, primary: page, translations: [], issues: workIssues });
       continue;
     }
 
@@ -195,10 +210,6 @@ export function groupNotionWorks(
       if (length !== 0) return length;
       return a.id.localeCompare(b.id);
     });
-    const workIssues: InterchangeIssue[] = [];
-    if (component.length > 2) {
-      workIssues.push({ code: "hierarchy-not-carried", detail: `${component.length - 1} linked pages, only one translation is supported` });
-    }
     works.push({
       key: primary!.id,
       primary: primary!,
@@ -209,7 +220,6 @@ export function groupNotionWorks(
         .map((member) => ({ locale: "en", page: member })),
       issues: workIssues,
     });
-    issues.push(...workIssues);
   }
   return { works, issues };
 }
@@ -337,6 +347,12 @@ export function planNotionSeed(input: {
   const refused: SeedPlan["refused"] = [];
 
   for (const work of input.works) {
+    if (work.issues.some((issue) => issue.code === "ambiguous-translation-relation" || issue.code === "missing-translation-page")) {
+      for (const page of [work.primary, ...work.translations.map((translation) => translation.page)]) {
+        refused.push({ pageId: page.id, title: titleOf(page), issues: work.issues });
+      }
+      continue;
+    }
     const primary = articleDraftFromNotionPage({
       page: work.primary as NotionPageLike,
       blocks: work.primary.blocks,
@@ -370,7 +386,7 @@ export function planNotionSeed(input: {
       };
     };
 
-    const plannedPrimary = edition(work.primary, primary.draft.locale, primary.draft, primary.issues);
+    const plannedPrimary = edition(work.primary, primary.draft.locale, primary.draft, [...primary.issues, ...work.issues]);
     const translations: PlannedEdition[] = [];
     for (const translation of work.translations) {
       // A blank English page is not a translation yet (see the mapping's

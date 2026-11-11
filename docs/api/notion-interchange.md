@@ -168,7 +168,7 @@ structure and are not reconstructed from a site that has no such concepts.
 | Notion feature | Why not | Report code |
 | --- | --- | --- |
 | `FeaturedImage` | an article has no cover field; adding one is a contract change with a migration and two client releases | `featured-image-not-carried` |
-| `Parent item` / `Sub-item` | the site has no hierarchy between works (ADR 0016 retired serials for the same reason) | `hierarchy-not-carried` (planned with the import endpoint) |
+| `Parent item` / `Sub-item` | the site has no hierarchy between works (ADR 0016 retired serials for the same reason) | `hierarchy-not-carried` |
 | `Rank` | ordering is a property of a reading surface, not of a work | — |
 | `to_do` state | a published work has no checkbox | `checkbox-state-dropped` |
 | Table cell grids | no table block exists | `table-block-dropped` |
@@ -375,10 +375,12 @@ address (an import never renames anything). The table is migration `0033`
 (`0020` on SQLite); why it exists is
 [ADR 0037](../architecture/decisions/0037-import-provenance.md).
 
-**A work's translations arrive as one work.** `English` and `Parent item`
-relations group pages before anything is written, so the primary page creates the
-article and the other editions are written onto it in their own locale. The report
-counts an added edition as an `update`: one work, one article, one address.
+**A work's translations arrive as one work.** Only an unambiguous `English`
+relation groups two pages. `Parent item` and `Sub-item` express hierarchy, not
+translations; pages are imported separately and the lost hierarchy is reported.
+If an `English` target is missing or more than two pages form a translation group,
+the affected pages are refused before writing. The report counts an added edition
+as an `update`: one work, one article, one address.
 
 **Nothing is deleted, unpublished or claimed twice.** A page linked to another
 account is refused (`this page is already imported into another account`) rather
@@ -633,12 +635,12 @@ for:
 | blocks per page | 200 (`maxBlocks`) | the rest are dropped, and the page says `block-limit-reached` |
 | rate | 10 imports / 10 minutes / account | batch, and show the wait rather than retrying in a loop |
 
-**Split a work's pages together.** The `English` / `Parent item` relations group
-pages *within one bundle*, so a batch boundary that separates a work's primary
-page from its translation leaves the translation to arrive as a work of its own
-in its own locale. Batches are idempotent, so the safe grouping is: one work and
-all of its editions per batch, and as many works per batch as the two ceilings
-allow.
+**Split a work's pages together.** `English` relations group pages *within one
+bundle*. If a selected page points to a missing English page, it is refused. A page
+that has no outgoing relation may still be imported on its own; if it already has
+a provenance link in a different locale, a later import is refused rather than
+creating a duplicate. Include both editions when importing a linked pair. Parent
+and sub-item relations do not group translations.
 
 **Retrying is safe, and cheap.** A dry run is a pure read. An applied import
 records the page id, the work and a digest, so repeating a batch — because a
@@ -690,10 +692,13 @@ at the end of the filename is used as its original page identity. For a file
 without that ID, identity is its filename scoped to the signed-in author;
 renaming it is a new import, and two selected files with the same identity are
 refused. Re-import can update a previously imported article, so review the plan.
-Notion page IDs remain globally owned across accounts as before. `English` and
-`Parent item` links are only associated when their target is included in the
-same selection. Standalone pages use the existing `zh-CN` default; linked English
-pages use `en`.
+Notion page IDs remain globally owned across accounts as before. `English`
+links associate a pair only when both pages are selected. A selected page with a
+missing English target is refused; parent/sub-item links do not merge articles.
+Standalone pages use the existing `zh-CN` default; linked English pages use `en`.
+If existing provenance disagrees with the new grouping or locale, the affected
+work is refused. See the [read-only provenance audit](../architecture/notion-import-provenance-audit.md)
+for historical imports; no existing links are automatically changed.
 
 The leading Notion metadata recognizes `Published`, `Date`, `Slug`, `Excerpt`,
 `Tags`, `FeaturedImage`, `English`, `Parent item` and `Rank`. Missing Published
