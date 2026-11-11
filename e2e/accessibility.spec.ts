@@ -62,6 +62,8 @@ test("navigation and reader controls have 44 pixel touch targets at desktop and 
     await page.setViewportSize({ width, height: 900 });
     await page.goto(`/articles/${slug}`);
     await assertTargetSize(page.locator(".nw-pill a:visible, .nw-pill button:visible"), `navigation ${width}`);
+    await assertTargetSize(page.locator(".nw-rs button"), `reader settings ${width}`);
+    await assertTargetSize(page.getByRole("link", { name: "无浪作者", exact: true }).first(), `author link ${width}`);
     await assertTargetSize(page.locator(".nw-comment-toolbar button"), `comment toolbar ${width}`);
     if (width === 390) {
       await page.getByRole("button", { name: "选单", exact: true }).click();
