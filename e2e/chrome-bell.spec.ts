@@ -97,3 +97,95 @@ test("the writing desk displays multiple kinds of notifications and marks all re
   await expect(inbox).not.toContainText("4 未读");
   await expect(inbox.getByRole("button", { name: "标记已读" })).toHaveCount(0);
 });
+
+/** A paginated API fixture: timestamps deliberately tie, so the UUID is needed. */
+function manyNotifications(count: number) {
+  return Array.from({ length: count }, (_, index) => ({
+    id: `00000000-0000-4000-8000-${(count - index).toString(16).padStart(12, "0")}`,
+    eventKey: `event-${index}`,
+    payload: JSON.stringify({ type: index === count - 1 ? "message.created" : "article.commented", slug: "sample-work", conversationId: "last-thread" }),
+    createdAt: "2026-01-01T00:00:00.000Z",
+    readAt: null as string | null,
+  }));
+}
+
+test("bell loads older notifications with keysets, retries errors and reads items beyond page one", async ({ page }) => {
+  await page.context().addCookies([{ name: "nw_session", value: marker, url: baseUrl }]);
+  const items = manyNotifications(103);
+  let failOnce = true;
+  const cursors: string[] = [];
+  await page.route(pathIs("/api/authoring/notifications/unread-count"), (route) => route.fulfill({ json: { data: items.filter((row) => row.readAt === null).length } }));
+  await page.route(pathIs("/api/authoring/notifications"), (route) => {
+    const cursor = new URL(route.request().url()).searchParams.get("cursor");
+    let start = 0;
+    if (cursor) {
+      cursors.push(cursor);
+      if (failOnce) { failOnce = false; return route.fulfill({ status: 503 }); }
+      const decoded = Buffer.from(cursor, "base64url").toString("utf8");
+      const id = decoded.split("|")[1];
+      start = items.findIndex((row) => row.id === id) + 1;
+      expect(start).toBeGreaterThan(0);
+    }
+    return route.fulfill({ json: { data: items.slice(start, start + 50) } });
+  });
+  await page.route((url) => url.pathname.startsWith("/api/authoring/notifications/") && url.pathname.endsWith("/read"), (route) => {
+    const id = route.request().url().split("/").at(-2);
+    const row = items.find((entry) => entry.id === id);
+    expect(row).toBeTruthy();
+    row!.readAt = "2026-01-02T00:00:00.000Z";
+    return route.fulfill({ json: { data: row } });
+  });
+  await page.route(pathIs("/api/authoring/notifications/read-all"), (route) => {
+    for (const row of items) row.readAt = "2026-01-02T00:00:00.000Z";
+    return route.fulfill({ json: { data: items.length } });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: /通知/ }).click();
+  const panel = page.getByRole("dialog", { name: "通知" });
+  await expect(panel.locator(".nw-np-row")).toHaveCount(50);
+  await expect(panel).toContainText("未读数包含尚未载入的通知");
+  await panel.getByRole("button", { name: "加载更多通知" }).click();
+  await expect(panel.getByRole("alert")).toBeVisible();
+  await expect(panel.locator(".nw-np-row")).toHaveCount(50);
+  await panel.getByRole("button", { name: "加载更多通知" }).click();
+  await expect(panel.locator(".nw-np-row")).toHaveCount(100);
+  expect(cursors[0]).toBe(cursors[1]);
+  await panel.getByRole("button", { name: "加载更多通知" }).click();
+  await expect(panel.locator(".nw-np-row")).toHaveCount(103);
+  await expect(panel.getByRole("button", { name: "加载更多通知" })).toHaveCount(0);
+  await expect(panel.locator('a[href="/messages/last-thread"]')).toBeVisible();
+  await panel.locator(".nw-np-row").last().getByRole("button", { name: "标记已读" }).click();
+  await expect(panel.locator(".nw-np-row").last().getByRole("button", { name: "标记已读" })).toHaveCount(0);
+  await expect(panel.locator(".nw-np-row")).toHaveCount(103);
+  await panel.getByRole("button", { name: "全部标为已读" }).click();
+  await expect(panel.getByRole("button", { name: "标记已读" })).toHaveCount(0);
+  await expect(page.locator(".nw-bdg")).toHaveCount(0);
+});
+
+test("writing desk loads old notifications and marks one without discarding loaded pages", async ({ page }) => {
+  await registerThroughForm(page, uniqueEmail("paged-inbox"), "/write");
+  const items = manyNotifications(52);
+  await page.route(pathIs("/api/authoring/notifications/unread-count"), (route) => route.fulfill({ json: { data: items.filter((row) => row.readAt === null).length } }));
+  await page.route(pathIs("/api/authoring/notifications"), (route) => {
+    const cursor = new URL(route.request().url()).searchParams.get("cursor");
+    return route.fulfill({ json: { data: cursor ? items.slice(50) : items.slice(0, 50) } });
+  });
+  await page.route((url) => url.pathname.startsWith("/api/authoring/notifications/") && url.pathname.endsWith("/read"), (route) => {
+    const id = route.request().url().split("/").at(-2);
+    const row = items.find((entry) => entry.id === id);
+    expect(row).toBeTruthy();
+    row!.readAt = "2026-01-02T00:00:00.000Z";
+    return route.fulfill({ json: { data: row } });
+  });
+  await page.reload();
+  const inbox = page.getByRole("region", { name: "通知" });
+  await expect(inbox).toContainText("52 未读");
+  await expect(inbox.locator(".nw-authoring-inbox-row")).toHaveCount(50);
+  await inbox.getByRole("button", { name: "加载更多通知" }).click();
+  await expect(inbox.locator(".nw-authoring-inbox-row")).toHaveCount(52);
+  await expect(inbox.locator('a[href="/messages/last-thread"]')).toBeVisible();
+  await inbox.locator(".nw-authoring-inbox-row").last().getByRole("button", { name: "标记已读" }).click();
+  await expect(inbox).toContainText("51 未读");
+  await expect(inbox.locator(".nw-authoring-inbox-row")).toHaveCount(52);
+  await expect(inbox.getByRole("button", { name: "加载更多通知" })).toHaveCount(0);
+});

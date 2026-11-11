@@ -3,13 +3,14 @@ import { Link } from "@/lib/framework/link.tsx";
 import { dateLabel } from "@/lib/format.ts";
 import {
   deletionNoticeText,
-  isNotificationItem,
   notificationRows,
   notificationPresentation,
   parseUnreadCount,
   type DeletedArticleNotice,
   type NotificationItem,
 } from "@/lib/chrome.ts";
+
+import { appendNotificationPage, fetchNotificationPage } from "@/lib/notification-pages.ts";
 
 export type { NotificationItem, DeletedArticleNotice } from "@/lib/chrome.ts";
 export { deletionNoticeText } from "@/lib/chrome.ts";
@@ -57,20 +58,19 @@ export function NotificationInbox() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     const [response, countResponse] = await Promise.all([
-      fetch("/api/authoring/notifications", { credentials: "same-origin", cache: "no-store" }),
+      fetchNotificationPage(),
       fetch("/api/authoring/notifications/unread-count", { credentials: "same-origin", cache: "no-store" }),
     ]);
-    const payload: unknown = await response.json().catch(() => null);
     // No session means no inbox; the desk shows its own sign-in panel for that,
     // so this section simply renders nothing rather than a second explanation.
-    if (response.status === 401 || countResponse.status === 401) { setState("ready"); setItems([]); setUnreadCount(0); return; }
-    if (!response.ok || !countResponse.ok) throw new Error(messageOf(payload));
-    const data = typeof payload === "object" && payload !== null && "data" in payload ? (payload as { data?: unknown }).data : null;
-    if (!Array.isArray(data)) throw new Error("通知响应格式不正确。");
-    setItems(data.filter(isNotificationItem));
+    if (response === null || countResponse.status === 401) { setState("ready"); setItems([]); setUnreadCount(0); return; }
+    if (!countResponse.ok) throw new Error("通知暂时无法载入。");
+    setItems(response.items);
+    setNextCursor(response.nextCursor);
     const count = parseUnreadCount(await countResponse.json().catch(() => null));
     if (count === null) throw new Error("未读通知数量格式不正确。");
     setUnreadCount(count);
@@ -95,6 +95,21 @@ export function NotificationInbox() {
     return () => { active = false; };
   }, [reload]);
 
+  async function loadMore() {
+    if (!nextCursor || pending) return;
+    setPending(true);
+    try {
+      const page = await fetchNotificationPage(nextCursor);
+      if (!page) throw new Error("登录已过期，请重新登录。");
+      if (page.nextCursor === nextCursor) throw new Error("通知分页没有前进。");
+      setItems((current) => appendNotificationPage(current, page));
+      setNextCursor(page.nextCursor);
+      setError("");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "通知暂时无法载入。");
+    } finally { setPending(false); }
+  }
+
   async function markRead(id?: string) {
     setPending(true);
     try {
@@ -104,7 +119,13 @@ export function NotificationInbox() {
         cache: "no-store",
       });
       if (!response.ok) throw new Error(messageOf(await response.json().catch(() => null)));
-      await reload();
+      const now = new Date().toISOString();
+      setItems((current) => current.map((item) => (id === undefined || item.id === id) && item.readAt === null ? { ...item, readAt: now } : item));
+      const countResponse = await fetch("/api/authoring/notifications/unread-count", { credentials: "same-origin", cache: "no-store" });
+      const count = countResponse.ok ? parseUnreadCount(await countResponse.json().catch(() => null)) : null;
+      if (count === null) throw new Error("未读通知数量无法刷新。");
+      setUnreadCount(count);
+      setError("");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "标记已读失败，请稍后重试。");
     } finally {
@@ -129,7 +150,7 @@ export function NotificationInbox() {
       {error !== "" ? <p className="nw-auth-error" role="alert">{error}</p> : null}
       {state === "loading" ? <p>载入中…</p> : null}
       {state === "ready" && notices.length === 0 ? <p>{unreadCount > 0 ? "最近没有通知，较早的未读通知可能仍然存在。" : "还没有通知。"}</p> : null}
-      {state === "ready" && items.length >= 50 ? <p>这里只显示最近 50 条通知；未读数包含更早的通知。</p> : null}
+      {state === "ready" && nextCursor ? <p>已载入 {items.length} 条；未读数包含尚未载入的通知。</p> : null}
       {notices.length > 0 ? (
         <ul className="nw-authoring-inbox-list">
           {notices.map(({ item, notice }) => (
@@ -147,6 +168,7 @@ export function NotificationInbox() {
           ))}
         </ul>
       ) : null}
+      {nextCursor ? <button className="nw-btn" type="button" disabled={pending} onClick={() => void loadMore()}>加载更多通知</button> : null}
       {unreadCount > 0 ? (
         <button className="nw-btn" type="button" disabled={pending} onClick={() => void markRead()}>
           全部标为已读
