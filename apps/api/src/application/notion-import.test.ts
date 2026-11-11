@@ -182,6 +182,22 @@ test("a changed page updates the work it already belongs to and keeps its addres
   assert.match(String([...deps.articles.values()][0]?.contentBlocks), /第二版/, "the body is the new one");
 });
 
+// Characterization of a known data-loss risk, not desired behavior. Replace this
+// with a refusal assertion when preview-bound atomic version checks are shipped.
+test("current importer does not protect edits made after a dry run", async () => {
+  const deps = stubDeps();
+  const initial = bundle(page("page-1", "墙壁", "第一版"));
+  const changed = bundle(page("page-1", "墙壁", "来源更新"));
+  await importNotionBundle({ actorId: "author-1", bundle: initial, apply: true, deps, now: at });
+  const dry = await importNotionBundle({ actorId: "author-1", bundle: changed, apply: false, deps, now: at });
+  assert.equal(dry.summary.update, 1);
+  const article = [...deps.articles.values()][0]!;
+  deps.articles.set(article.id, { ...article, contentBlocks: "author edits after preview", updatedAt: "2026-11-04T00:00:00.000Z" });
+  const applied = await importNotionBundle({ actorId: "author-1", bundle: changed, apply: true, deps, now: at });
+  assert.equal(applied.summary.update, 1);
+  assert.doesNotMatch(String(deps.articles.get(article.id)?.contentBlocks), /author edits after preview/);
+});
+
 test("a skipped re-import reports the address the work actually has", async () => {
   const deps = stubDeps();
   const input = { actorId: "author-1", bundle: bundle(page("page-1", "墙壁", "穿透层层墙壁")), apply: true, deps, now: at };

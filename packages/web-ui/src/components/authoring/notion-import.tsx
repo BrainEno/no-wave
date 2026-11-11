@@ -262,6 +262,10 @@ export function NotionImport() {
               >
                 {busy === "apply" ? "写入中…" : `确认导入（写入 ${outcome.writable} 件作品）`}
               </button>
+              <p className="nw-m" role="alert">
+                注意：目前试跑不会锁定目标文章。试跑后其他人或其他窗口的修改可能被导入覆盖；
+                确认前请停止编辑并备份，必要时重新试跑。并发修改仍可能导致覆盖。
+              </p>
               <p className="nw-m">
                 试跑没有写入任何内容。写入时状态跟着 bundle 走：「Published」为真的那一页会被直接发表，
                 为假的或缺失的是草稿；系统以实际发表时间为准。确认前请先看清上面每一页的动作。
