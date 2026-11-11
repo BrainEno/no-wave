@@ -1,3 +1,4 @@
+import { appendNotificationPage, fetchNotificationPage } from "@/lib/notification-pages.ts";
 import { Link } from "@/lib/framework/link.tsx";
 import { usePathname } from "@/lib/framework/navigation.ts";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
@@ -130,6 +131,7 @@ export function SiteChrome({ children }: { children: ReactNode }) {
   const [bellError, setBellError] = useState("");
   const [bellRows, setBellRows] = useState<NotificationRow[]>([]);
   const [bellPending, setBellPending] = useState(false);
+  const [bellCursor, setBellCursor] = useState<string | null>(null);
   const smoother = useRef<ScrollSmoother | null>(null);
   const pageMotion = useRef<{ revert(): void } | null>(null);
   const lastKey = useRef("");
@@ -143,18 +145,17 @@ export function SiteChrome({ children }: { children: ReactNode }) {
     return parseUnreadCount(payload) ?? 0;
   }, [ui.bell.error]);
 
-  const fetchBell = useCallback(async (): Promise<{ unread: number; rows: NotificationRow[] } | null> => {
+  const fetchBell = useCallback(async (): Promise<{ unread: number; rows: NotificationRow[]; cursor: string | null } | null> => {
     const [countResponse, listResponse] = await Promise.all([
       fetch("/api/authoring/notifications/unread-count", readOptions),
-      fetch("/api/authoring/notifications", readOptions),
+      fetchNotificationPage(),
     ]);
-    if (countResponse.status === 401 || listResponse.status === 401) return null;
-    if (!countResponse.ok || !listResponse.ok) throw new Error(ui.bell.error);
-    const [countPayload, listPayload]: unknown[] = await Promise.all([
-      countResponse.json().catch(() => null),
-      listResponse.json().catch(() => null),
-    ]);
-    return { unread: parseUnreadCount(countPayload) ?? 0, rows: notificationRows(listPayload) };
+    if (countResponse.status === 401 || listResponse === null) return null;
+    if (!countResponse.ok) throw new Error(ui.bell.error);
+    const countPayload: unknown = await countResponse.json().catch(() => null);
+    const count = parseUnreadCount(countPayload);
+    if (count === null) throw new Error(ui.bell.error);
+    return { unread: count, rows: notificationRows({ data: listResponse.items }), cursor: listResponse.nextCursor };
   }, [ui.bell.error]);
 
   // Public SSR pages stay cacheable: the non-sensitive marker is read only after
@@ -194,6 +195,7 @@ export function SiteChrome({ children }: { children: ReactNode }) {
         }
         setUnread(data.unread);
         setBellRows(data.rows);
+        setBellCursor(data.cursor);
         setBellError("");
         setBellState("ready");
       } catch (caught) {
@@ -206,38 +208,38 @@ export function SiteChrome({ children }: { children: ReactNode }) {
     return () => { active = false; };
   }, [bellOpen, sessionUsable, fetchBell, ui.bell.error]);
 
+  async function loadMoreBell() {
+    if (!bellCursor || bellPending) return;
+    setBellPending(true);
+    try {
+      const page = await fetchNotificationPage(bellCursor);
+      if (!page) { setSessionUsable(false); setUnread(0); setBellRows([]); setBellCursor(null); return; }
+      if (page.nextCursor === bellCursor) throw new Error(ui.bell.error);
+      setBellRows((current) => notificationRows({ data: appendNotificationPage(current.map((row) => row.item), page) }));
+      setBellCursor(page.nextCursor);
+      setBellError("");
+    } catch (caught) { setBellError(caught instanceof Error ? caught.message : ui.bell.error); }
+    finally { setBellPending(false); }
+  }
+
   async function markBellRead(id?: string) {
     setBellPending(true);
     try {
       const response = await fetch(
         id === undefined ? "/api/authoring/notifications/read-all" : `/api/authoring/notifications/${encodeURIComponent(id)}/read`,
-        {
-          method: id === undefined ? "POST" : "PUT",
-          credentials: "same-origin",
-          cache: "no-store",
-          headers: { origin: window.location.origin },
-        },
+        { method: id === undefined ? "POST" : "PUT", credentials: "same-origin", cache: "no-store" },
       );
-      if (response.status === 401) {
-        setSessionUsable(false); setUnread(0); setBellRows([]); setBellState("idle");
-        return;
-      }
+      if (response.status === 401) { setSessionUsable(false); setUnread(0); setBellRows([]); setBellCursor(null); setBellState("idle"); return; }
       if (!response.ok) throw new Error(ui.bell.error);
-      const data = await fetchBell();
-      if (data === null) {
-        setSessionUsable(false); setUnread(0); setBellRows([]); setBellState("idle");
-        return;
-      }
-      setUnread(data.unread);
-      setBellRows(data.rows);
+      const now = new Date().toISOString();
+      setBellRows((current) => current.map((row) => (id === undefined || row.item.id === id) && row.item.readAt === null
+        ? { ...row, item: { ...row.item, readAt: now } } : row));
+      const count = await fetchUnread();
+      if (count === null) { setSessionUsable(false); setUnread(0); setBellRows([]); setBellCursor(null); setBellState("idle"); return; }
+      setUnread(count);
       setBellError("");
-      setBellState("ready");
-    } catch (caught) {
-      setBellError(caught instanceof Error ? caught.message : ui.bell.error);
-      setBellState("error");
-    } finally {
-      setBellPending(false);
-    }
+    } catch (caught) { setBellError(caught instanceof Error ? caught.message : ui.bell.error); }
+    finally { setBellPending(false); }
   }
 
   // 平滑滚动：阅读页共用一次实例；写作/账户/管理/登录等表单页恢复原生滚动。
@@ -405,7 +407,8 @@ export function SiteChrome({ children }: { children: ReactNode }) {
           {sessionUsable === true && bellState === "loading" ? <p>{ui.bell.loading}</p> : null}
           {sessionUsable === true && bellState === "error" ? <p role="alert">{bellError}</p> : null}
           {sessionUsable === true && bellState === "ready" && bellRows.length === 0 ? <p>{unread > 0 ? (locale === "en" ? "No recent notifications. Older unread notifications may remain." : "最近没有通知，较早的未读通知可能仍然存在。") : `${ui.bell.empty}。`}</p> : null}
-          {sessionUsable === true && bellState === "ready" && bellRows.length >= 50 ? <p>{locale === "en" ? "Showing the 50 most recent notifications; the unread count includes older ones." : "这里只显示最近 50 条通知；未读数包含更早的通知。"}</p> : null}
+          {sessionUsable === true && bellState === "ready" && bellCursor ? <p>{locale === "en" ? `${bellRows.length} loaded; the unread count includes older notifications.` : `已载入 ${bellRows.length} 条；未读数包含尚未载入的通知。`}</p> : null}
+          {sessionUsable === true && bellState === "ready" && bellError ? <p role="alert">{bellError}</p> : null}
           {sessionUsable === true && bellState === "ready" && bellRows.length > 0 ? (
             <ul className="nw-np-list">
               {bellRows.map(({ item, notice }) => (
@@ -419,6 +422,7 @@ export function SiteChrome({ children }: { children: ReactNode }) {
               ))}
             </ul>
           ) : null}
+          {sessionUsable === true && bellState === "ready" && bellCursor ? <button className="nw-btn" type="button" disabled={bellPending} onClick={() => void loadMoreBell()}>{locale === "en" ? "Load more notifications" : "加载更多通知"}</button> : null}
         </div>
       </div>
       <div className="nw-menu" id="nw-menu" hidden={!menuOpen} role="dialog" aria-label={ui.nav.menu} lang={locale}>

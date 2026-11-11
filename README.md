@@ -98,8 +98,8 @@ The structured engineering review, architectural decisions, and roadmap live in 
 
 `DATABASE_PROVIDER` selects the runtime adapter:
 
-- `sqlite` (default) uses Node's built-in SQLite driver and a local file.
-- `postgres` uses the `pg` package, `DATABASE_URL`, and the versioned SQL migrations under `apps/api/migrations/postgres`.
+- `sqlite` (default) uses Node's built-in SQLite driver, a local file, and migrations under `apps/api/src/persistence/migrations/sqlite`.
+- `postgres` uses the `postgres` (postgres.js) package, `DATABASE_URL`, and the versioned SQL migrations under `apps/api/src/persistence/migrations`.
 
 SQLite remains the default for **local development** and single-host installs. **For production/server deployments, PostgreSQL is the recommended provider** while `node:sqlite` remains a release-candidate API. SQLite WAL is not cross-host replication or high availability. See [Persistence provider deployment guidance](docs/deployment/persistence-provider-guidance.md) and [ADR 0010](docs/architecture/decisions/0010-sqlite-first-and-online-provider-cutover.md) for operating boundaries, runtime-upgrade regression requirements, and conditions for revisiting the driver choice.
 
@@ -117,7 +117,7 @@ line, the bounds and the exit codes.
 
 ## Observability
 
-The API emits structured logs at `/metrics`, separate API and Web readiness probes, and article/comment metrics. Internal service configuration is never returned by `/metrics`; see [API observability](docs/operations/api-observability.md). Health and readiness are exercised by the local chain and CI.
+The API writes structured request logs to stdout/stderr and exposes process-local Prometheus metrics at `/metrics`, alongside separate API and Web readiness probes. Internal service configuration is never returned by `/metrics`; see [API observability](docs/operations/api-observability.md). Health and readiness are exercised by the local chain and CI.
 
 ## Local development
 
@@ -262,7 +262,7 @@ pnpm test:all
 
 The runner checks dependencies and Docker before starting, then runs the root
 unit suite, builds and tests the production Web server, runs PostgreSQL integration
-against a new disposable `postgres:17-alpine` container, and runs both isolated
+against a new disposable `postgres:17-alpine` container, and runs three isolated
 SQLite browser shards. It binds PostgreSQL only to a random loopback port and
 removes its own container even on test failure or interruption; it never resets
 `compose.yaml` volumes. It ignores external database and E2E URLs, and executes

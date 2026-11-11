@@ -133,6 +133,8 @@ test("notification presentations cover API event types, unknown payloads, and sa
   const cases = [
     [{ type: "article.commented", slug: "my-work" }, /评论/, "/articles/my-work#nw-comments-title"],
     [{ type: "article.comment_replied", slug: "my-work" }, /回复/, "/articles/my-work#nw-comments-title"],
+    [{ type: "article.commented", slug: "my-work", locale: "en" }, /评论/, "/en/articles/my-work#nw-comments-title"],
+    [{ type: "article.comment_replied", slug: "my-work", locale: "en" }, /回复/, "/en/articles/my-work#nw-comments-title"],
     [{ type: "article.liked", slug: "my-work", locale: "en" }, /喜欢/, "/en/articles/my-work"],
     [{ type: "user.followed", followerId: "user-1" }, /关注/, "/authors/user-1"],
     [{ type: "message.created", conversationId: "conversation-1" }, /私信/, "/messages/conversation-1"],

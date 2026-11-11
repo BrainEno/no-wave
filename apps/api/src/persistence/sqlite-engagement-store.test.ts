@@ -109,5 +109,6 @@ test("SQLite comments notify a shared article/reply recipient only once", async 
     assert.equal(db.prepare("SELECT count(*) AS n FROM notifications WHERE user_id = ?").get("author-1").n, 1);
     const notification = JSON.parse(db.prepare("SELECT payload FROM notifications WHERE user_id = ?").get("author-1").payload);
     assert.equal(notification.type, "article.comment_replied");
+    assert.equal(notification.locale, "en", "the recipient can navigate to the edition that was commented on");
   } finally { db.close(); }
 });

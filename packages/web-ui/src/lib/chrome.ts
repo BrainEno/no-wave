@@ -106,10 +106,11 @@ export function parseNotificationNotice(payload: string): NotificationNotice {
 export function notificationPresentation(notice: NotificationNotice, locale: Locale): { text: string; href: string | null } {
   const en = locale === "en";
   const prefix = en ? "/en" : "";
+  const articlePrefix = "locale" in notice && notice.locale === "en" ? "/en" : "locale" in notice && (notice.locale === "zh-CN" || notice.locale === "zh-TW") ? "" : prefix;
   switch (notice.type) {
     case "article.deleted": return { text: deletionNoticeText(notice, locale), href: null };
-    case "article.commented": return { text: en ? "Someone commented on your work." : "有人评论了你的作品。", href: notice.slug ? `${prefix}/articles/${notice.slug}#nw-comments-title` : null };
-    case "article.comment_replied": return { text: en ? "Someone replied to your comment." : "有人回复了你的评论。", href: notice.slug ? `${prefix}/articles/${notice.slug}#nw-comments-title` : null };
+    case "article.commented": return { text: en ? "Someone commented on your work." : "有人评论了你的作品。", href: notice.slug ? `${articlePrefix}/articles/${notice.slug}#nw-comments-title` : null };
+    case "article.comment_replied": return { text: en ? "Someone replied to your comment." : "有人回复了你的评论。", href: notice.slug ? `${articlePrefix}/articles/${notice.slug}#nw-comments-title` : null };
     case "article.liked": return { text: en ? "Someone liked your work." : "有人喜欢了你的作品。", href: notice.slug ? `${notice.locale === "en" ? "/en" : notice.locale === "zh-CN" || notice.locale === "zh-TW" ? "" : prefix}/articles/${notice.slug}` : null };
     case "user.followed": return { text: en ? "Someone followed you." : "有人关注了你。", href: notice.followerId ? `${prefix}/authors/${encodeURIComponent(notice.followerId)}` : null };
     case "message.created": return { text: en ? "You have a new message." : "你收到一条新私信。", href: notice.conversationId ? `${prefix}/messages/${encodeURIComponent(notice.conversationId)}` : `${prefix}/messages` };
