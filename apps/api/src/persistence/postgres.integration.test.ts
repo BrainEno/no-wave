@@ -1340,3 +1340,35 @@ test("message sending cannot create an orphan outbox event during conversation d
     await sql.unsafe("DELETE FROM conversations WHERE id = $1", [conversation.id]);
   }
 });
+
+test("import revision advances on work, translation and taxonomy changes, not views", integrationOptions, async () => {
+  const id = randomUUID();
+  const tag = randomUUID();
+  const suffix = id.replaceAll("-", "");
+  try {
+    await sql.unsafe("INSERT INTO articles (id, author_id, slug) VALUES ($1, $2, $3)", [id, "revision-test", `rev-${suffix}`]);
+    const revision = async () => BigInt((await sql.unsafe("SELECT import_revision FROM articles WHERE id = $1", [id]))[0].import_revision);
+    let prev = await revision();
+    const advances = async () => { const next = await revision(); assert.ok(next > prev); prev = next; };
+    await sql.unsafe("INSERT INTO article_translations (article_id, locale, title, content_blocks) VALUES ($1, 'en', 'First', '[]'::jsonb)", [id]); await advances();
+    await sql.unsafe("UPDATE article_translations SET title = 'Second' WHERE article_id = $1", [id]); await advances();
+    await sql.unsafe("UPDATE articles SET slug = $2 WHERE id = $1", [id, `revised-${suffix}`]); await advances();
+    await sql.unsafe("INSERT INTO taxonomies (id, kind, slug, created_by) VALUES ($1, 'tag', $2, 'revision-test')", [tag, `rev-${suffix}`]);
+    await sql.unsafe("INSERT INTO article_taxonomies (article_id, taxonomy_id) VALUES ($1, $2)", [id, tag]); await advances();
+    await sql.unsafe("DELETE FROM article_taxonomies WHERE article_id = $1", [id]); await advances();
+    await sql.unsafe("UPDATE articles SET view_count = view_count + 1 WHERE id = $1", [id]);
+    assert.equal(await revision(), prev);
+    await assert.rejects(sql.begin(async (tx) => {
+      await tx.unsafe("UPDATE article_translations SET title = 'Rollback' WHERE article_id = $1", [id]);
+      const rows = await tx.unsafe("SELECT import_revision FROM articles WHERE id = $1", [id]);
+      assert.ok(BigInt(rows[0].import_revision) > prev);
+      throw new Error("test rollback");
+    }), /test rollback/);
+    assert.equal(await revision(), prev);
+    await sql.unsafe("DELETE FROM article_translations WHERE article_id = $1", [id]); await advances();
+    await sql.unsafe("UPDATE articles SET deleted_at = now() WHERE id = $1", [id]); await advances();
+  } finally {
+    await sql.unsafe("DELETE FROM articles WHERE id = $1", [id]);
+    await sql.unsafe("DELETE FROM taxonomies WHERE id = $1", [tag]);
+  }
+});

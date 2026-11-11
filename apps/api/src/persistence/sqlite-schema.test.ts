@@ -177,3 +177,29 @@ test("SQLite domain schema enforces localized JSON arrays and unique message ide
     db.close();
   }
 });
+
+test("import revisions advance for work, translation and taxonomy writes, not views, and roll back", async () => {
+  const db = createSqliteClient({ filename: ":memory:", enableWal: false });
+  try {
+    await runSqliteMigrations(db);
+    db.prepare("INSERT INTO articles (id, author_id, slug) VALUES (?, ?, ?)").run("rev-a", "writer", "rev-a");
+    const revision = () => Number(db.prepare("SELECT import_revision FROM articles WHERE id = ?").get("rev-a")?.import_revision);
+    let prev = revision();
+    const advances = () => { const next = revision(); assert.ok(next > prev); prev = next; };
+    db.prepare("INSERT INTO article_translations (article_id, locale, title, content_blocks) VALUES (?, ?, ?, ?)").run("rev-a", "en", "First", "[]"); advances();
+    db.prepare("UPDATE article_translations SET title = ? WHERE article_id = ?").run("Second", "rev-a"); advances();
+    db.prepare("UPDATE articles SET slug = ? WHERE id = ?").run("rev-b", "rev-a"); advances();
+    db.prepare("INSERT INTO taxonomies (id, kind, slug, created_by) VALUES (?, ?, ?, ?)").run("rev-tag", "tag", "rev-tag", "writer");
+    db.prepare("INSERT INTO article_taxonomies (article_id, taxonomy_id) VALUES (?, ?)").run("rev-a", "rev-tag"); advances();
+    db.prepare("DELETE FROM article_taxonomies WHERE article_id = ?").run("rev-a"); advances();
+    db.prepare("UPDATE articles SET view_count = view_count + 1 WHERE id = ?").run("rev-a");
+    assert.equal(revision(), prev);
+    db.exec("BEGIN");
+    db.prepare("UPDATE article_translations SET title = ? WHERE article_id = ?").run("Rolled back", "rev-a");
+    assert.ok(revision() > prev);
+    db.exec("ROLLBACK");
+    assert.equal(revision(), prev);
+    db.prepare("DELETE FROM article_translations WHERE article_id = ?").run("rev-a"); advances();
+    db.prepare("UPDATE articles SET deleted_at = ? WHERE id = ?").run("2026-11-01T00:00:00Z", "rev-a"); advances();
+  } finally { db.close(); }
+});
