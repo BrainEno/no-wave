@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import test, { mock } from "node:test";
 import { request as httpRequest } from "node:http";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { createApiServer } from "./server.ts";
 import { persistencePortMethods } from "./application/persistence-ports.ts";
 import { createSqliteClient, runSqliteMigrations } from "./persistence/sqlite.ts";
@@ -97,9 +99,9 @@ test("readiness returns 503 when PostgreSQL persistence is not configured", asyn
     assert.equal(response.status, 503);
     assert.match(response.headers.get("cache-control") ?? "", /no-store/i);
     assert.deepEqual(await response.json(), {
-      status: "not_ready", service: "api", persistence: "unavailable",
+      status: "not_ready", service: "api", persistence: "unavailable", auth: "ok",
     });
-  });
+  }, { env: authEnv });
 });
 
 test("readiness succeeds only when persistence health check succeeds", async () => {
@@ -109,10 +111,10 @@ test("readiness succeeds only when persistence health check succeeds", async () 
     const response = await fetch(`${baseUrl}/ready`);
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), {
-      status: "ready", service: "api", persistence: "ok",
+      status: "ready", service: "api", persistence: "ok", auth: "ok",
     });
     assert.equal(checks, 1);
-  }, { store });
+  }, { store, env: authEnv });
 });
 
 test("readiness works when application services are injected directly", async () => {
@@ -122,10 +124,10 @@ test("readiness works when application services are injected directly", async ()
     const response = await fetch(`${baseUrl}/ready`);
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), {
-      status: "ready", service: "api", persistence: "ok",
+      status: "ready", service: "api", persistence: "ok", auth: "ok",
     });
     assert.equal(checks, 1);
-  }, { applicationServices });
+  }, { applicationServices, env: authEnv });
 });
 
 test("readiness hides persistence exceptions and returns service unavailable", async () => {
@@ -136,7 +138,58 @@ test("readiness hides persistence exceptions and returns service unavailable", a
     const body = await response.text();
     assert.match(body, /not_ready/);
     assert.doesNotMatch(body, /credentials/);
-  }, { store });
+  }, { store, env: authEnv });
+});
+
+test("readiness identifies bad auth configuration without leaking values or hiding database status", async () => {
+  for (const env of [
+    { ...authEnv, AUTH_JWT_SECRET: "bad-secret" },
+    { ...authEnv, AUTH_JWT_SECRET: "" },
+    { ...authEnv, AUTH_JWT_ISSUER: "" },
+    { ...authEnv, AUTH_JWT_AUDIENCE: "" },
+    { ...authEnv, AUTH_JWT_MAX_TTL_SECONDS: "invalid" },
+  ]) {
+    await withServer(async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/ready`);
+      assert.equal(response.status, 503);
+      assert.deepEqual(await response.json(), { status: "not_ready", service: "api", persistence: "ok", auth: "unavailable" });
+      assert.equal((await fetch(`${baseUrl}/health`)).status, 200);
+      const protectedResponse = await fetch(`${baseUrl}/api/v1/me`, { headers: { authorization: "Bearer a.b.c" } });
+      assert.equal(protectedResponse.status, 503);
+      const text = await protectedResponse.text();
+      assert.match(text, /SERVICE_UNAVAILABLE/);
+      assert.doesNotMatch(text, /bad-secret|AUTH_JWT/);
+      for (const action of ["register", "login"]) {
+        const auth = await fetch(`${baseUrl}/api/v1/auth/${action}`, {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ email: "reader@example.test", password: "a-valid-password-123" }),
+        });
+        assert.equal(auth.status, 503, action);
+        assert.match(await auth.text(), /SERVICE_UNAVAILABLE/);
+      }
+    }, { env, store: {} });
+  }
+});
+
+test("API process fails before listening when authentication configuration is invalid", () => {
+  const serverPath = fileURLToPath(new URL("./server.ts", import.meta.url));
+  const cases = [
+    [{ AUTH_JWT_SECRET: "short-secret" }, "AUTH_JWT_SECRET", "short-secret"],
+    [{ AUTH_JWT_SECRET: "" }, "AUTH_JWT_SECRET", authEnv.AUTH_JWT_SECRET],
+    [{ AUTH_JWT_ISSUER: "" }, "AUTH_JWT_ISSUER", authEnv.AUTH_JWT_SECRET],
+    [{ AUTH_JWT_AUDIENCE: "" }, "AUTH_JWT_AUDIENCE", authEnv.AUTH_JWT_SECRET],
+    [{ AUTH_JWT_MAX_TTL_SECONDS: "invalid" }, "AUTH_JWT_MAX_TTL_SECONDS", authEnv.AUTH_JWT_SECRET],
+  ] as const;
+  for (const [invalid, field, secret] of cases) {
+    const child = spawnSync(process.execPath, [serverPath], {
+      env: { ...process.env, ...authEnv, ...invalid, PORT: "0", DATABASE_PROVIDER: "sqlite", DATABASE_PATH: ":memory:" },
+      encoding: "utf8", timeout: 15_000,
+    });
+    assert.equal(child.status, 1, `${field}: ${child.stderr} ${child.stdout}`);
+    assert.match(child.stdout + child.stderr, new RegExp(field));
+    assert.doesNotMatch(child.stdout + child.stderr, new RegExp(secret));
+    assert.match(child.stdout + child.stderr, /api_startup_failed/);
+  }
 });
 
 test("legacy GraphQL route is unavailable after the REST-only migration", async () => {

@@ -3,7 +3,7 @@ import { writeStructuredLog } from "../../infrastructure/http-observability.ts";
 import { redactDiagnostic, secretValues } from "../../infrastructure/log-redaction.ts";
 import { COMMENT_DEPTH_LIMIT_MESSAGE } from "../../domain/comment-content.ts";
 import { DomainError, RateLimitError } from "../../domain/errors.ts";
-import { createAuthContext } from "../../security/authentication.ts";
+import { AuthenticationConfigurationError, createAuthContext } from "../../security/authentication.ts";
 import type { ApplicationServices } from "../../application/services.ts";
 
 export const JSON_HEADERS = {
@@ -198,6 +198,10 @@ function describeUnhandledError(error: unknown): { errorName: string; errorMessa
 }
 
 export function sendServiceError(response: ServerResponse, error: unknown): void {
+  if (error instanceof AuthenticationConfigurationError) {
+    sendJson(response, 503, { error: { code: "SERVICE_UNAVAILABLE", message: "Identity is not configured." } });
+    return;
+  }
   const mapped = error instanceof DomainError ? DOMAIN_ERROR_RESPONSES[error.code] : undefined;
   if (mapped) {
     if (error instanceof RateLimitError) response.setHeader("retry-after", String(error.retryAfterSeconds));

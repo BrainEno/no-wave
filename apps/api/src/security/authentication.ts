@@ -6,6 +6,14 @@ const DEFAULT_MAX_ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
 const MAX_CONFIGURABLE_ACCESS_TOKEN_TTL_SECONDS = 24 * 60 * 60;
 const DEFAULT_ACCESS_TOKEN_TYPE = "application/vnd.bot-thk.access+jwt";
 
+/** Configuration failures are distinct from invalid credentials and never carry values. */
+export class AuthenticationConfigurationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AuthenticationConfigurationError";
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -27,11 +35,11 @@ function configuredMaxTokenTtl(env: NodeJS.ProcessEnv): number {
   const raw = env.AUTH_JWT_MAX_TTL_SECONDS;
   if (raw === undefined || raw === "") return DEFAULT_MAX_ACCESS_TOKEN_TTL_SECONDS;
   if (!/^[1-9]\d*$/.test(raw)) {
-    throw new Error("AUTH_JWT_MAX_TTL_SECONDS must be an integer between 60 and 86400.");
+    throw new AuthenticationConfigurationError("AUTH_JWT_MAX_TTL_SECONDS must be an integer between 60 and 86400.");
   }
   const value = Number(raw);
   if (!Number.isSafeInteger(value) || value < 60 || value > MAX_CONFIGURABLE_ACCESS_TOKEN_TTL_SECONDS) {
-    throw new Error("AUTH_JWT_MAX_TTL_SECONDS must be an integer between 60 and 86400.");
+    throw new AuthenticationConfigurationError("AUTH_JWT_MAX_TTL_SECONDS must be an integer between 60 and 86400.");
   }
   return value;
 }
@@ -39,8 +47,8 @@ function configuredMaxTokenTtl(env: NodeJS.ProcessEnv): number {
 /** Resolve the same issuer policy used by verification before issuing tokens. */
 export function accessIssuerConfiguration(env: NodeJS.ProcessEnv): { secret: string; issuer: string; audience: string; ttlSeconds: number } {
   const { AUTH_JWT_SECRET: secret, AUTH_JWT_ISSUER: issuer, AUTH_JWT_AUDIENCE: audience } = env;
-  if (!secret || Buffer.byteLength(secret, "utf8") < 32) throw new Error("AUTH_JWT_SECRET must contain at least 32 bytes.");
-  if (!issuer || !audience) throw new Error("AUTH_JWT_ISSUER and AUTH_JWT_AUDIENCE are required when JWT authentication is enabled.");
+  if (!secret || Buffer.byteLength(secret, "utf8") < 32) throw new AuthenticationConfigurationError("AUTH_JWT_SECRET must contain at least 32 bytes.");
+  if (!issuer || !audience) throw new AuthenticationConfigurationError("AUTH_JWT_ISSUER and AUTH_JWT_AUDIENCE are required when JWT authentication is enabled.");
   return { secret, issuer, audience, ttlSeconds: Math.min(DEFAULT_MAX_ACCESS_TOKEN_TTL_SECONDS, configuredMaxTokenTtl(env)) };
 }
 
@@ -97,15 +105,14 @@ export function verifyBearerToken(
   if (!match || match[1].length > MAX_BEARER_TOKEN_LENGTH) return null;
 
   const secret = env.AUTH_JWT_SECRET;
-  if (typeof secret !== "string" || secret.length === 0) return null;
-  if (Buffer.byteLength(secret, "utf8") < 32) {
-    throw new Error("AUTH_JWT_SECRET must contain at least 32 bytes.");
+  if (typeof secret !== "string" || Buffer.byteLength(secret, "utf8") < 32) {
+    throw new AuthenticationConfigurationError("AUTH_JWT_SECRET must contain at least 32 bytes.");
   }
 
   const issuer = env.AUTH_JWT_ISSUER;
   const audience = env.AUTH_JWT_AUDIENCE;
   if (!issuer || !audience) {
-    throw new Error("AUTH_JWT_ISSUER and AUTH_JWT_AUDIENCE are required when JWT authentication is enabled.");
+    throw new AuthenticationConfigurationError("AUTH_JWT_ISSUER and AUTH_JWT_AUDIENCE are required when JWT authentication is enabled.");
   }
   const maxTokenTtl = configuredMaxTokenTtl(env);
 

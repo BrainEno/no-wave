@@ -8,6 +8,7 @@ import { redactDiagnostic, secretValues } from "./infrastructure/log-redaction.t
 import { createMediaAssetService } from "./application/media-assets.ts";
 import type { ApplicationServices } from "./application/services.ts";
 import { createMediaObjectStorage } from "./infrastructure/media-storage.ts";
+import { accessIssuerConfiguration } from "./security/authentication.ts";
 
 /** REST is the only business HTTP transport exposed by this API. */
 export function createApiServer({
@@ -101,21 +102,21 @@ export function createApiServer({
       return;
     }
     if (request.method === "GET" && request.url === "/ready") {
+      // Evaluate both dependencies independently, but never return config values
+      // or database exceptions to the caller. /health remains a liveness probe.
+      let auth: "ok" | "unavailable" = "ok";
+      let persistence: "ok" | "unavailable" = "ok";
+      try { accessIssuerConfiguration(env); } catch { auth = "unavailable"; }
       try {
         if (!services || typeof services.health !== "function") throw new Error("Persistence is not configured.");
         await services.health();
-        response.writeHead(200, {
-          "content-type": "application/json; charset=utf-8",
-          "cache-control": "no-store",
-        });
-        response.end(JSON.stringify({ status: "ready", service: "api", persistence: "ok" }));
-      } catch {
-        response.writeHead(503, {
-          "content-type": "application/json; charset=utf-8",
-          "cache-control": "no-store",
-        });
-        response.end(JSON.stringify({ status: "not_ready", service: "api", persistence: "unavailable" }));
-      }
+      } catch { persistence = "unavailable"; }
+      const ready = auth === "ok" && persistence === "ok";
+      response.writeHead(ready ? 200 : 503, {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store",
+      });
+      response.end(JSON.stringify({ status: ready ? "ready" : "not_ready", service: "api", persistence, auth }));
       return;
     }
     if (await handleRest(request, response)) return;
@@ -150,6 +151,9 @@ export function createApiServer({
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
   const start = async () => {
     const env = process.env;
+    // Fail before opening database connections or accepting traffic. This emits
+    // only field names and constraints through the redacted startup logger.
+    accessIssuerConfiguration(env);
     const runtime = await createPersistenceRuntime({ env });
     assertPersistenceAdapter(runtime.adapter);
     const observability = createHttpObservability();

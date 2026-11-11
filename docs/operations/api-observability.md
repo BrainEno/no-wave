@@ -14,6 +14,21 @@ The log schema is intentionally allowlisted. It does **not** include the raw req
 
 Both lines exist on purpose: "the access log says 500 and nothing else" is not diagnosable, and a stale schema (`relation "featured_articles" does not exist`) is worth one line. Never log an arbitrary request object, a full stack, or an unredacted exception message.
 
+## Liveness and readiness
+
+`GET /health` is liveness only. `GET /ready` checks both persistence and JWT
+configuration; it returns `200` only when both are ready, otherwise `503` with
+`persistence` and `auth` each set to `ok` or `unavailable`. Responses are
+`no-store` and do not include configuration values or database errors. Mail and
+media are optional and are not covered by this probe.
+
+The standalone API also validates `AUTH_JWT_SECRET` (at least 32 UTF-8 bytes),
+`AUTH_JWT_ISSUER`, `AUTH_JWT_AUDIENCE`, and optional
+`AUTH_JWT_MAX_TTL_SECONDS` before opening the database or listening. Invalid
+configuration exits nonzero with a redacted startup log naming the field. For an
+embedded server, invalid configuration is reported by `/ready`; authenticated
+requests that encounter it receive a sanitized `503`, not a `500`.
+
 ## Prometheus metrics
 
 Enable API metrics explicitly with `API_METRICS_ENABLED=true`, then scrape `GET /metrics` from a trusted monitoring network. The endpoint is disabled by default and returns 404 otherwise. When enabled, the response is plain-text Prometheus exposition format and marked `Cache-Control: no-store`.
