@@ -25,13 +25,13 @@ Security fixes and implementation details that fulfill already-approved behavior
 
 ## Approved architecture change — REST-only API
 
-The product owner has confirmed that GraphQL must be completely removed and REST is the sole business HTTP API. Do not add GraphQL operations. Complete the remaining Web caller migration in a separate Web-focused change, then remove the transitional GraphQL/Yoga runtime and packages. This backend-only provider change does not edit the Web application to avoid conflict with the active UI work.
+The product owner confirmed REST as the sole business HTTP API. The Web callers were migrated and the transitional GraphQL/Yoga runtime removed; do not add new GraphQL operations. See [ADR 0006](../architecture/decisions/0006-rest-only-business-api.md) and [Web route table](../../apps/web-rr/app/routes.ts).
 
 - [x] Record the REST-only decision and require stable `userId` for author identity.
 - [x] Constrain the versioned REST public-content contract to `zh-CN`.
 - [x] Add public author-profile and author-article REST endpoints; filter author articles in persistence before pagination.
 - [x] Add authenticated REST endpoints for listing the current user's articles, creating articles and owner-checked updates; derive actor identity from a verified, non-revoked JWT.
-- [ ] Migrate the Web public-content client and sitemap from GraphQL/fixtures to REST.
+- [x] Migrate the Web public-content client and sitemap from GraphQL/fixtures to REST. Evidence: [public loaders](../../packages/web-ui/src/lib/public-pages.ts), [sitemap](../../apps/web-rr/app/routes/sitemap.xml.ts).
 - [x] Add authenticated REST article create/update/list, profile update, follow/unfollow, explicit article-like state, comment list/create/delete, current-user identity/profile, user search and follower/following list, liked-article/related-article/like-info reads, and current-session revocation routes.
 - [x] Harden JWT verification with a pinned access-token type, required issuance/expiry claims, a bounded maximum TTL and fail-closed session-revocation checks.
 - [x] Add initial self-hosted registration/login, refresh rotation/reuse detection, per-session logout and durable throttling; retain the existing verifier. Production identity gates remain open.
@@ -39,15 +39,15 @@ The product owner has confirmed that GraphQL must be completely removed and REST
 - [x] Record the operation-by-operation field and resolver parity inventory in [REST–GraphQL parity audit](../audit/rest-graphql-parity.md).
 - [x] Add REST taxonomy mutations, conversation lifecycle/message read-send, and notification inbox/read-state operations with equivalent authorization, payload fields and regression tests.
 - [x] Add a CI-enforced GraphQL schema-to-REST operation/route inventory and shared-object field contract test.
-- [ ] Complete Web caller migration and end-to-end verification before removing the transitional GraphQL runtime.
+- [x] Migrate Web callers and exercise critical REST journeys. Evidence: [authoring E2E](../../e2e/authoring.spec.ts), [engagement E2E](../../e2e/engagement.spec.ts).
 - [ ] Select and validate SSE/WebSocket only for concrete real-time needs; keep database/outbox state authoritative.
-- [ ] Remove GraphQL schema, Yoga runtime, dependencies, endpoint/configuration and obsolete tests after the remaining Web caller migrates to REST; no new GraphQL code is permitted.
+- [x] Remove the GraphQL/Yoga runtime and endpoint; no new GraphQL code is permitted. Evidence: [ADR 0006](../architecture/decisions/0006-rest-only-business-api.md), [API routes](../../apps/api/src/transport/rest/routes.ts).
 
 The decision is documented in [ADR 0006](../architecture/decisions/0006-rest-only-business-api.md).
 
 ## Approved editor technology — Lexical
 
-On 2026-10-27, the product owner selected Lexical for both the article editor and comment editor. It is a technology decision only; it does not mean that the editor or upload workflow has been implemented.
+On 2026-10-27, the product owner selected Lexical for both the article editor and comment editor. The technology decision has since been followed by implementation; independent acceptance work remains open.
 
 - [x] Record Lexical as the shared editing engine and define separate article/comment capability profiles.
 - [x] Define and persist the application-owned article rich-text contract version 1, adding inline marks and safe links while retaining version-0 compatibility.
@@ -57,7 +57,7 @@ On 2026-10-27, the product owner selected Lexical for both the article editor an
 - [x] Validate versioned article node types, safe URLs, inline marks, plain-text fallbacks and serialized payload limits on the server.
 - [ ] Implement the article editor, draft recovery and approved image-upload integration.
 - [x] Define and persist the smaller paragraph-only comment rich-text v1 contract with legacy plain-text fallback, safe inline marks/links, REST Lexical ingress, PostgreSQL/SQLite migrations and persistence/security tests.
-- [ ] Implement the comment editor with the approved smaller supported-node set.
+- [x] Implement the comment editor with the approved smaller supported-node set. Evidence: [comment editor](../../packages/web-ui/src/components/comments/article-comments.tsx), [comment session E2E](../../e2e/comment-session.spec.ts).
 - [ ] Add round-trip, malformed-payload, security, Chinese IME, accessibility, keyboard and mobile tests.
 
 See [ADR 0007](../architecture/decisions/0007-lexical-rich-text-editors.md) for the decision and boundaries.
@@ -72,7 +72,7 @@ See [ADR 0007](../architecture/decisions/0007-lexical-rich-text-editors.md) for 
 - [ ] Complete cross-provider contract parity for all domain operations and provider-specific failure behavior.
 - [ ] Implement online change capture, target replay/checkpoints, reconciliation and fenced provider cutover; a configuration-only switch is not a live migration.
 - [ ] Eliminate remaining config/runtime gaps and add API/Web contract checks.
-- [ ] Migrate remaining Web API callers from GraphQL/fixtures to versioned REST, then remove the transitional GraphQL runtime. Do not change the Web application as part of backend-only provider work.
+- [x] Migrate Web API callers from GraphQL/fixtures to versioned REST and remove the transitional GraphQL runtime. Evidence: [Web route table](../../apps/web-rr/app/routes.ts), [API routes](../../apps/api/src/transport/rest/routes.ts).
 
 Exit gate: clean install, typecheck, tests, production build and container smoke are green; Web/API contracts are explicit.
 

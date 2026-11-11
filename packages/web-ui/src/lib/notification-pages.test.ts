@@ -143,3 +143,39 @@ test("real SQLite keyset walk reaches every tied notification without exposing a
     assert.equal(await store.getUnreadNotificationCount({ actorId: "reader-b" }), 1);
   } finally { db.close(); }
 });
+
+test("an exactly full last page asks once more and terminates on an empty response", async () => {
+  const original = globalThis.fetch;
+  const all = page(0, 100);
+  let requests = 0;
+  try {
+    globalThis.fetch = async () => {
+      const start = requests++ * 50;
+      return Response.json({ data: all.slice(start, start + 50) });
+    };
+    let cursor: string | null = null;
+    let result: NotificationItem[] = [];
+    do {
+      const next = await fetchNotificationPage(cursor);
+      assert.ok(next);
+      result = appendNotificationPage(result, next);
+      cursor = next.nextCursor;
+    } while (cursor);
+    assert.equal(requests, 3);
+    assert.deepEqual(result, all);
+  } finally { globalThis.fetch = original; }
+});
+
+test("continuing after a new first-page arrival does not repeat or lose older rows", () => {
+  const original = page(0, 100);
+  const first = parseNotificationPage({ data: original.slice(0, 50) });
+  const second = parseNotificationPage({ data: original.slice(50) });
+  // A newly arrived row belongs ahead of the existing cursor. It should be
+  // obtained on the next refresh, not inserted into this historical walk.
+  const arrival = item(999);
+  const merged = appendNotificationPage(first.items, second);
+  assert.equal(merged.length, 100);
+  assert.ok(!merged.some((row) => row.id === arrival.id));
+  assert.equal(first.nextCursor, notificationCursor(original[49]!));
+  assert.equal(second.nextCursor, notificationCursor(original[99]!));
+});
