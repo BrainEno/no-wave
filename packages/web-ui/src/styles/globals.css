@@ -318,6 +318,10 @@ mark { background: var(--or); color: #0f0d0c; }
 @media print { .nw-rail, .nw-pill, .nw-grain, .nw-np, .nw-menu { display: none !important; } }
 
 
+/* Reserve a full viewport during private-page session checks. The footer must
+   not enter the first screen before authenticated content replaces the shell. */
+.nw-private-page { min-height: 100svh; }
+
 /* ---------- 内容编辑 / Lexical ---------- */
 .nw-auth-panel, .nw-authoring { padding-bottom: 96px; }
 .nw-auth-panel h1, .nw-authoring h1 { max-width: 900px; font-size: clamp(44px, 8vw, 104px); font-weight: 400; line-height: 1.05; }
