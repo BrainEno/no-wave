@@ -32,7 +32,8 @@ jobs:
       # is a failed check, not a reason to silently pass the required gate.
       - run: pnpm audit --audit-level high
       - run: pnpm test
-      - run: pnpm lint:css-vars
+      - run: pnpm lint
+      - run: pnpm format:check
       - run: pnpm typecheck
       - run: pnpm build
       - run: pnpm test:routes

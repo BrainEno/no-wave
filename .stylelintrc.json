@@ -1,0 +1,10 @@
+{
+  "rules": {
+    "color-no-invalid-hex": true,
+    "function-linear-gradient-no-nonstandard-direction": true,
+    "media-feature-name-no-unknown": true,
+    "selector-pseudo-class-no-unknown": true,
+    "selector-pseudo-element-no-unknown": true,
+    "unit-no-unknown": true
+  }
+}
