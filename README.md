@@ -317,3 +317,7 @@ CI runs dependency installation, typecheck, Web/API tests, route smoke, containe
 ## Lexical note
 
 Some documents still use the phrase "portability/content spike" for the historical Web UI. That spike is retired: `apps/web-rr` is the single Web implementation. The design system documents are concept proposals, not a second framework or a deployed second UI.
+
+## License
+
+This project is licensed under the [Apache License, Version 2.0](LICENSE).

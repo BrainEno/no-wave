@@ -292,3 +292,7 @@ SQLite 浏览器测试。PostgreSQL 使用随机本地端口和一次性容器�
 
 普通 `pnpm test` 没有配置 `TEST_DATABASE_URL` 时会跳过 PostgreSQL 集成测试，
 也不运行 Web 行为测试和浏览器测试；不能视为完整测试。完整说明见英文 README。
+
+## 许可证
+
+本项目采用 [Apache License 2.0](LICENSE) 授权。
