@@ -19,7 +19,7 @@
     "@lexical/react": "0.52.0",
     "@lexical/rich-text": "0.52.0",
     "@lexical/selection": "0.52.0",
-    "fflate": "0.8.2",
+    "fflate": "0.8.3",
     "gsap": "3.13.0",
     "lexical": "0.52.0",
     "marked": "15.0.12",
