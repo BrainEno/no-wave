@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createServer, request as httpRequest } from "node:http";
 import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from "node:http";
-import { once } from "node:events";
+import { EventEmitter, once } from "node:events";
 import { after, before, test } from "node:test";
 import { brotliDecompressSync, gunzipSync, inflateSync } from "node:zlib";
 import { compressResponse } from "../compression.ts";
@@ -12,6 +12,8 @@ const script = Buffer.from("export const sample = '" + "javascript ".repeat(400)
 const stylesheet = Buffer.from(".example { color: red; }\n".repeat(400));
 const tiny = Buffer.from("tiny");
 let port: number;
+const streamEvents = new EventEmitter();
+let activeAbortStreams = 0;
 const server = createServer((req, res) => {
   compressResponse(req, res, () => respond(req, res));
 });
@@ -74,6 +76,22 @@ function respond(req: IncomingMessage, res: ServerResponse): void {
     case "/vary-star":
       res.setHeader("Vary", "*");
       break;
+    case "/abort-stream": {
+      activeAbortStreams++;
+      res.writeHead(status, { "Content-Type": type, "Cache-Control": cache });
+      const timer = setInterval(() => {
+        res.write(document);
+        (res as ServerResponse & { flush?: () => void }).flush?.();
+      }, 5);
+      res.once("close", () => {
+        clearInterval(timer);
+        activeAbortStreams--;
+        streamEvents.emit("closed");
+      });
+      res.write(document);
+      (res as ServerResponse & { flush?: () => void }).flush?.();
+      return;
+    }
     case "/stream":
       res.writeHead(status, { "Content-Type": type, "Cache-Control": cache });
       for (let i = 0; i < document.length; i += 97) res.write(document.subarray(i, i + 97));
@@ -220,4 +238,35 @@ test("streamed responses survive compression without buffering or losing chunks"
   const response = await raw("/stream", { headers: { "accept-encoding": "gzip" } });
   assert.equal(response.headers["content-encoding"], "gzip");
   assert.deepEqual(gunzipSync(response.body), document);
+});
+
+
+test("prematurely closed compressed streams release their response and leave the server usable", { timeout: 15_000 }, async () => {
+  // Exercise real TCP disconnects rather than just a mock response. Each stream
+  // continues producing data until the client closes; the server must observe
+  // close and release its producer. The upstream advisory involved premature
+  // closes, but this is a lifecycle regression test, not a heap-leak proof.
+  for (const encoding of ["gzip", "br", "deflate"]) {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const closed = once(streamEvents, "closed");
+      await new Promise<void>((resolve, reject) => {
+        const request = httpRequest({ host: "127.0.0.1", port, path: "/abort-stream", headers: { "accept-encoding": encoding } });
+        request.once("response", (response) => {
+          assert.equal(response.headers["content-encoding"], encoding);
+          response.once("data", () => {
+            response.destroy();
+            resolve();
+          });
+          response.once("error", reject);
+        });
+        request.once("error", reject);
+        request.end();
+      });
+      await closed;
+      assert.equal(activeAbortStreams, 0, `${encoding}: no response remains open`);
+    }
+    const healthy = await raw("/assets/main.js", { headers: { "accept-encoding": encoding } });
+    assert.equal(healthy.status, 200);
+    assert.equal(healthy.headers["content-encoding"], encoding);
+  }
 });

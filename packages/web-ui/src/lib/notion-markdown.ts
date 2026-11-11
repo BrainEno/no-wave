@@ -125,20 +125,33 @@ export function readMarkdownZip(bytes: Uint8Array): Entry[] {
       view.getUint32(end + 12, true) === 0xffffffff || view.getUint32(end + 16, true) === 0xffffffff ||
       view.getUint32(end + 12, true) + view.getUint32(end + 16, true) !== end) throw new Error("ZIP 不完整或格式不受支持。");
   const entries: Entry[] = []; let total = 0; let count = 0;
+  // fflate may catch a callback exception and call ondata again with an error.
+  // Keep our actionable validation failure rather than replacing it with a
+  // generic decompression message on that second call.
+  let validationError: Error | null = null;
   const unzip = new Unzip((file) => {
     if (++count > 2000) throw new Error("ZIP 文件数量过多。");
     if (!/\.md$/i.test(file.name) || /(^|\/)__MACOSX\//.test(file.name)) return;
     if (entries.length >= NOTION_BUNDLE_MAX_PAGES) throw new Error("一次最多导入 200 个 Markdown 文件。");
     const chunks: Uint8Array[] = []; let size = 0;
     file.ondata = (err, chunk, final) => {
-      if (err) throw new Error("ZIP 解压失败或格式不受支持。");
+      if (err) throw validationError ?? new Error("ZIP 解压失败或格式不受支持。");
       size += chunk.length; total += chunk.length;
-      if (total > NOTION_BUNDLE_MAX_BYTES) throw new Error("ZIP 解压后的 Markdown 超过 8 MB，请分批导入。");
+      if (total > NOTION_BUNDLE_MAX_BYTES) {
+        validationError = new Error("ZIP 解压后的 Markdown 超过 8 MB，请分批导入。");
+        throw validationError;
+      }
       chunks.push(chunk);
       if (final) {
         const bytes = new Uint8Array(size); let offset = 0;
         for (const part of chunks) { bytes.set(part, offset); offset += part.length; }
-        entries.push({ name: file.name, text: new TextDecoder("utf-8", { fatal: true }).decode(bytes) });
+        let text: string;
+        try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); }
+        catch {
+          validationError = new Error("ZIP 中的 Markdown 不是有效的 UTF-8 文本。");
+          throw validationError;
+        }
+        entries.push({ name: file.name, text });
       }
     };
     file.start();
