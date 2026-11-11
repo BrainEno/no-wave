@@ -14,6 +14,20 @@ test("anonymous articles skip session probes and signed-in readers can create an
   await expect(page.getByRole("button", { name: "收藏", exact: true })).toBeEnabled();
   expect(probes).toBe(0);
 
+  // An expired marker is anonymous; a forged future marker is only a hint and
+  // still has to be rejected by the session endpoint, not treated as identity.
+  await page.context().addCookies([{ name: "nw_session", value: "1", url: page.url() }]);
+  await page.goto(path);
+  await expect(page.getByText("请先登录后再发表评论。", { exact: false })).toBeVisible();
+  expect(probes).toBe(0);
+  await page.context().addCookies([{ name: "nw_session", value: String(Math.floor(Date.now() / 1000) + 3600), url: page.url() }]);
+  const rejected = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/authoring/session");
+  await page.goto(path);
+  expect((await rejected).status()).toBe(401);
+  await expect(page.getByText("请先登录后再发表评论。", { exact: false })).toBeVisible();
+  await expect(page.getByRole("button", { name: "编辑", exact: true })).toHaveCount(0);
+  await page.context().clearCookies({ name: "nw_session" });
+
   await registerThroughForm(page, uniqueEmail("comment-reader"));
   const before = probes;
   await page.goto(path);
@@ -27,5 +41,5 @@ test("anonymous articles skip session probes and signed-in readers can create an
   await page.getByLabel("评论内容").first().fill("修改后的评论。");
   await page.getByRole("button", { name: "保存修改" }).click();
   await expect(page.getByText("修改后的评论。", { exact: true })).toBeVisible();
-  await expect(page.getByText("已编辑", { exact: true })).toBeVisible();
+  await expect(page.locator(".nw-comment-edited").filter({ hasText: "已编辑" })).toBeVisible();
 });

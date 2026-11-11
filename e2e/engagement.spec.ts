@@ -98,7 +98,7 @@ test("a signed-in reader can save, reload and remove a save", async ({ browser, 
     await expect(other.getByText("1 人收藏", { exact: true })).toBeVisible();
     await notSaved.click();
     await expect(other.getByText("登录后可以收藏作品。", { exact: false })).toBeVisible();
-    await expect(other.getByRole("link", { name: "前往登录" })).toBeVisible();
+    await expect(other.locator(".nw-like-note").getByRole("link", { name: "前往登录" })).toBeVisible();
     await expect(notSaved).toHaveAttribute("aria-pressed", "false");
   } finally { await visitor.close(); }
 
