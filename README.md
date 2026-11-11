@@ -317,8 +317,8 @@ reviewed mechanical formatting change.
 ESLint 9 is used for the current JSX accessibility plugin's declared peer range;
 it is no longer maintained upstream. Move to a supported ESLint release once
 the plugin supports it or a compatible replacement has been evaluated. The
-pinned TypeScript parser currently pulls in a moderate minimatch advisory in
-lint tooling; the CI audit still blocks high and critical advisories.
+Babel-based parser performs syntax-level linting independently of the project
+TypeScript compiler; type checking remains a separate required CI step.
 
 ## CSS token check
 

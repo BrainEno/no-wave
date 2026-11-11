@@ -35,7 +35,11 @@ function lint(
     ],
     { cwd: root, input: source, encoding: "utf8", timeout: 20_000 },
   );
-  assert.equal(run.error, undefined, run.error?.message);
+  assert.equal(
+    run.error,
+    undefined,
+    run.error?.message ?? "lint process failed",
+  );
   assert.ok(run.status === 0 || run.status === 1, run.stderr);
   const results = JSON.parse(run.stdout) as Result[];
   assert.equal(results.length, 1);
@@ -154,7 +158,11 @@ test("invalid stylesheet syntax and unknown units fail stylelint", () => {
         timeout: 20_000,
       },
     );
-    assert.equal(run.error, undefined, run.error?.message);
+    assert.equal(
+      run.error,
+      undefined,
+      run.error?.message ?? "lint process failed",
+    );
     assert.equal(run.status, 2, `${run.stdout}\n${run.stderr}`);
   }
 });

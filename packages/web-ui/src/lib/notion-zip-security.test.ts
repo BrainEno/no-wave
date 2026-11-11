@@ -140,7 +140,7 @@ test("hostile ZIP64 markers fail promptly in a separate process", () => {
     `try { readMarkdownZip(Buffer.from(${JSON.stringify(Buffer.from(copy).toString("base64"))}, "base64")); process.exit(2); }\n` +
     `catch (error) { if (!String(error).includes("ZIP")) process.exit(3); }`;
   const child = spawnSync(process.execPath, ["--input-type=module", "-e", code], { encoding: "utf8", timeout: 5000 });
-  assert.equal(child.error, undefined, child.error?.message);
+  assert.equal(child.error, undefined, child.error?.message ?? "child process failed");
   assert.equal(child.status, 0, child.stderr);
 });
 
