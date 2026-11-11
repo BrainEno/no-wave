@@ -184,22 +184,20 @@ jobs:
         run: pnpm build
       # Keep system package and browser downloads separate: their outages need
       # different remedies, and both remain required before running the suite.
-      - name: Diagnose package source DNS
+      - name: Recover Ubuntu package source DNS if necessary
         run: |
-          for host in archive.ubuntu.com security.ubuntu.com azure.archive.ubuntu.com github.com dns.google cloudflare-dns.com; do
-            if timeout 8 getent ahostsv4 "$host" > /dev/null; then
-              echo "::notice title=DNS probe::${host} resolved"
-            else
-              echo "::notice title=DNS probe::${host} did not resolve"
-            fi
+          # Use the runner's resolver first. If its DNS for Ubuntu archives is
+          # broken, resolve only those exact names over HTTPS on this ephemeral VM.
+          # Apt's signed repository verification remains enabled and mandatory.
+          missing=()
+          for host in archive.ubuntu.com security.ubuntu.com azure.archive.ubuntu.com; do
+            if ! timeout 8 getent ahostsv4 "$host" > /dev/null; then missing+=("$host"); fi
           done
-          for url in 'https://dns.google/resolve?name=archive.ubuntu.com&type=A' 'https://cloudflare-dns.com/dns-query?name=archive.ubuntu.com&type=A'; do
-            if curl --silent --show-error --fail --max-time 8 -H 'accept: application/dns-json' "$url" > /dev/null 2>&1; then
-              echo "::notice title=DNS HTTPS probe::resolver reachable"
-            else
-              echo "::notice title=DNS HTTPS probe::resolver unavailable"
-            fi
-          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            NODE_USE_ENV_PROXY=1 node scripts/ci-ubuntu-dns.ts "${missing[@]}" > /tmp/no-wave-ubuntu-hosts
+            sudo tee -a /etc/hosts < /tmp/no-wave-ubuntu-hosts > /dev/null
+            for host in "${missing[@]}"; do getent ahostsv4 "$host" > /dev/null; done
+          fi
       - name: Install Chromium system dependencies
         run: |
           if pnpm exec playwright install-deps chromium > /tmp/playwright-deps.log 2>&1; then
@@ -505,22 +503,20 @@ jobs:
           cache: pnpm
       - run: node scripts/preflight.cjs
       - run: pnpm install --frozen-lockfile
-      - name: Diagnose package source DNS
+      - name: Recover Ubuntu package source DNS if necessary
         run: |
-          for host in archive.ubuntu.com security.ubuntu.com azure.archive.ubuntu.com github.com dns.google cloudflare-dns.com; do
-            if timeout 8 getent ahostsv4 "$host" > /dev/null; then
-              echo "::notice title=DNS probe::${host} resolved"
-            else
-              echo "::notice title=DNS probe::${host} did not resolve"
-            fi
+          # Use the runner's resolver first. If its DNS for Ubuntu archives is
+          # broken, resolve only those exact names over HTTPS on this ephemeral VM.
+          # Apt's signed repository verification remains enabled and mandatory.
+          missing=()
+          for host in archive.ubuntu.com security.ubuntu.com azure.archive.ubuntu.com; do
+            if ! timeout 8 getent ahostsv4 "$host" > /dev/null; then missing+=("$host"); fi
           done
-          for url in 'https://dns.google/resolve?name=archive.ubuntu.com&type=A' 'https://cloudflare-dns.com/dns-query?name=archive.ubuntu.com&type=A'; do
-            if curl --silent --show-error --fail --max-time 8 -H 'accept: application/dns-json' "$url" > /dev/null 2>&1; then
-              echo "::notice title=DNS HTTPS probe::resolver reachable"
-            else
-              echo "::notice title=DNS HTTPS probe::resolver unavailable"
-            fi
-          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            NODE_USE_ENV_PROXY=1 node scripts/ci-ubuntu-dns.ts "${missing[@]}" > /tmp/no-wave-ubuntu-hosts
+            sudo tee -a /etc/hosts < /tmp/no-wave-ubuntu-hosts > /dev/null
+            for host in "${missing[@]}"; do getent ahostsv4 "$host" > /dev/null; done
+          fi
       - name: Install Chromium system dependencies
         run: |
           if pnpm exec playwright install-deps chromium > /tmp/playwright-deps.log 2>&1; then
