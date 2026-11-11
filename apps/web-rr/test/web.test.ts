@@ -1822,7 +1822,7 @@ test("the production server negotiates compressed HTML, JS and CSS over HTTP", a
 });
 
 test("the production server does not compress private, query-bearing or authenticated HTML", async () => {
-  const cases = [
+  const cases: Array<{ path: string; headers: Record<string, string> }> = [
     { path: "/sign-in?next=%2Faccount", headers: {} },
     { path: "/?q=reflected", headers: {} },
     { path: "/", headers: { cookie: "nw_session=123" } },
