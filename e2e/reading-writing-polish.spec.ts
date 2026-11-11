@@ -84,6 +84,9 @@ test("the editor stays usable on a narrow screen after supporting panels move be
   await expect(page.getByLabel("标题", { exact: true })).toHaveValue("窄屏草稿");
   await expect(page.getByLabel("作品正文")).toContainText("移动设备");
   await expect(page.getByLabel("作品语言")).toHaveValue("zh-CN");
+  await page.getByLabel("摘要", { exact: true }).fill("这是一段独立摘要。");
+  await expect(page.getByLabel("作品正文")).toContainText("移动设备");
+  await expect(page.getByLabel("标题", { exact: true })).toHaveValue("窄屏草稿");
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
   await expect(page.getByRole("heading", { name: /作者资料/ })).toBeVisible();

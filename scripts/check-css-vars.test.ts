@@ -76,3 +76,26 @@ test("current source stylesheets declare all referenced custom properties", () =
   const root = new URL("..", import.meta.url).pathname;
   assert.deepEqual(checkRepository(root), []);
 });
+
+test("custom property uses inside at-rule conditions are checked", () => {
+  const css = [
+    ":root { --valid: 1px }",
+    "@supports (width: var(--valid)) { p { margin: 0 } }",
+    "@supports (width: var(--wrong)) { p { margin: 0 } }",
+  ].join("\n");
+  assert.deepEqual(check(css), [{ path: "example.css", line: 3, name: "--wrong" }]);
+});
+
+test("variable-like text in an at-rule string or URL is ignored", () => {
+  assert.deepEqual(check('@import url("var(--missing).css"); @supports (content: "var(--missing)") { p { color: red } }'), []);
+});
+
+test("a defined token inside a fallback satisfies the static name check", () => {
+  assert.deepEqual(check(":root { --a: red; --b: blue } p { color: var(--a, var(--b)) }"), []);
+});
+
+test("invalid var syntax is not mistaken for a custom-property declaration", () => {
+  // This narrow checker deliberately leaves CSS syntax semantics to a complete
+  // CSS linter; PostCSS can parse function arguments that browsers reject.
+  assert.deepEqual(check("p { color: var(red) }"), []);
+});

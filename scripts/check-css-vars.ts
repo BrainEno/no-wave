@@ -22,19 +22,23 @@ export function undefinedCssVariables(sources: readonly CssSource[]): CssVarProb
       const name = rule.params.trim();
       if (name.startsWith("--")) definitions.add(name);
     });
-    root.walkDecls((declaration) => {
-      if (declaration.prop.startsWith("--")) definitions.add(declaration.prop);
-      // Parsing the value avoids matching strings, comments or url("var(...)").
+    const recordUses = (value: string, line: number) => {
+      // Parsing values avoids matching strings, comments and url("var(...)").
       // The walker also visits nested fallbacks, e.g. var(--a, var(--b)).
-      valueParser(declaration.value).walk((node) => {
+      valueParser(value).walk((node) => {
         if (node.type !== "function") return;
         if (node.value.toLowerCase() === "url") return false;
         if (node.value.toLowerCase() !== "var") return;
         const first = node.nodes.find((child) => child.type !== "space" && child.type !== "comment");
         if (first?.type !== "word" || !first.value.startsWith("--")) return;
-        uses.push({ path: source.path, line: declaration.source?.start?.line ?? 1, name: first.value });
+        uses.push({ path: source.path, line, name: first.value });
       });
+    };
+    root.walkDecls((declaration) => {
+      if (declaration.prop.startsWith("--")) definitions.add(declaration.prop);
+      recordUses(declaration.value, declaration.source?.start?.line ?? 1);
     });
+    root.walkAtRules((rule) => recordUses(rule.params, rule.source?.start?.line ?? 1));
   }
   return uses.filter((use) => !definitions.has(use.name));
 }
