@@ -32,7 +32,7 @@ USER node
 # Probe the actual configured port, independent of curl/wget or external hosts.
 # /ready checks authentication configuration and persistence, not just liveness.
 HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || '4000') + '/ready', {signal: AbortSignal.timeout(2000)}).then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+  CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || '4000') + '/ready', {signal: AbortSignal.timeout(2000), redirect: 'manual'}).then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
 
 EXPOSE 4000
 CMD ["node", "apps/api/src/server.ts"]

@@ -29,6 +29,7 @@ before(async () => {
       return;
     }
     if (nextMode === "hang") return;
+    if (nextStatus >= 300 && nextStatus < 400) res.setHeader("location", "/success");
     res.writeHead(nextStatus, { "content-type": "application/json" });
     res.end(JSON.stringify({ status: nextStatus === 200 ? "ok" : "unavailable" }));
   });
@@ -72,7 +73,7 @@ test("a successful readiness response makes the container probe succeed", async 
 
 test("2xx responses are accepted and readiness failures are rejected", async () => {
   nextMode = "reply";
-  for (const [status, expected] of [[204, 0], [401, 1], [404, 1], [500, 1], [503, 1]] as const) {
+  for (const [status, expected] of [[204, 0], [301, 1], [302, 1], [307, 1], [401, 1], [404, 1], [500, 1], [503, 1]] as const) {
     nextStatus = status;
     observed = [];
     const result = await runProbe();
