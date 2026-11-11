@@ -8,6 +8,8 @@ import {
   grainTileData,
   isNotificationItem,
   notificationRows,
+  parseNotificationNotice,
+  notificationPresentation,
   parseUnreadCount,
   sessionMarkerFromCookie,
   shouldUseSmoothScroll,
@@ -42,7 +44,7 @@ test("unread counts accept only the API's non-negative number envelope", () => {
   assert.equal(parseUnreadCount(null), null);
 });
 
-test("notification rows keep known notices and drop malformed or unknown ones", () => {
+test("notification rows retain unknown and malformed payloads but reject invalid envelopes", () => {
   const item = {
     id: "22222222-2222-4222-8222-222222222222",
     eventKey: "article.deleted",
@@ -57,9 +59,11 @@ test("notification rows keep known notices and drop malformed or unknown ones", 
     { ...item, id: "unknown", payload: JSON.stringify({ type: "message.created" }) },
     { ...item, id: "broken", payload: "not-json" },
   ] });
-  assert.equal(rows.length, 1);
+  assert.equal(rows.length, 3);
   assert.equal(rows[0].item.id, item.id);
   assert.deepEqual(rows[0].notice, notice);
+  assert.equal(rows[1].notice.type, "message.created");
+  assert.equal(rows[2].notice.type, "unknown");
   assert.deepEqual(notificationRows({ data: "not-an-array" }), []);
 });
 
@@ -122,4 +126,43 @@ test("tool and form routes use native scrolling, reading routes keep the smoothe
   for (const path of ["/", "/en", "/articles/some-slug", "/en/articles", "/authors", "/administrator", "/write-up"]) {
     assert.equal(shouldUseSmoothScroll(path), true, path);
   }
+});
+
+
+test("notification presentations cover API event types, unknown payloads, and safe links", () => {
+  const cases = [
+    [{ type: "article.commented", slug: "my-work" }, /评论/, "/articles/my-work#nw-comments-title"],
+    [{ type: "article.comment_replied", slug: "my-work" }, /回复/, "/articles/my-work#nw-comments-title"],
+    [{ type: "article.liked", slug: "my-work", locale: "en" }, /喜欢/, "/en/articles/my-work"],
+    [{ type: "user.followed", followerId: "user-1" }, /关注/, "/authors/user-1"],
+    [{ type: "message.created", conversationId: "conversation-1" }, /私信/, "/messages/conversation-1"],
+    [{ type: "future.event" }, /通知/, "/write"],
+  ] as const;
+  for (const [payload, text, href] of cases) {
+    const parsed = parseNotificationNotice(JSON.stringify(payload));
+    const view = notificationPresentation(parsed, "zh-CN");
+    assert.match(view.text, text);
+    assert.equal(view.href, href);
+    assert.ok(notificationPresentation(parsed, "en").text.length > 0);
+  }
+  assert.equal(notificationPresentation(parseNotificationNotice('{"type":"article.liked","slug":"//evil.test"}'), "en").href, null);
+  assert.equal(notificationPresentation(parseNotificationNotice('{"type":"user.followed","followerId":".."}'), "en").href, null);
+  assert.equal(notificationPresentation(parseNotificationNotice(JSON.stringify(notice)), "en").href, null, "deleted works are no longer publicly reachable");
+});
+
+test("notification types emitted by known API producers have dedicated presentations", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const files = [
+    "application/services.ts",
+    "persistence/sqlite-engagement-store.ts", "persistence/postgres-engagement-store.ts",
+    "persistence/sqlite-profile-store.ts", "persistence/postgres-profile-store.ts",
+    "persistence/sqlite-notification-store.ts", "persistence/postgres-notification-store.ts",
+  ];
+  const emitted = new Set<string>();
+  for (const file of files) {
+    const source = await readFile(new URL(`../../../../apps/api/src/${file}`, import.meta.url), "utf8");
+    for (const match of source.matchAll(/(?:type:\s*|recipients\.set\([^\n]*?,\s*)"((?:article|user|message)\.[a-z_]+)"/g)) emitted.add(match[1]!);
+  }
+  assert.deepEqual([...emitted].sort(), ["article.comment_replied", "article.commented", "article.deleted", "article.liked", "message.created", "user.followed"]);
+  for (const type of emitted) assert.notEqual(parseNotificationNotice(JSON.stringify({ type, articleId: "a", purgesAt: "2999-01-01" })).type, "unknown", type);
 });

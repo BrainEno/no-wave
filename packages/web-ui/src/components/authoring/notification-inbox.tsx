@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "@/lib/framework/link.tsx";
+import { dateLabel } from "@/lib/format.ts";
 import {
   deletionNoticeText,
   isNotificationItem,
-  parseDeletedArticleNotice,
+  notificationRows,
+  notificationPresentation,
+  parseUnreadCount,
   type DeletedArticleNotice,
   type NotificationItem,
 } from "@/lib/chrome.ts";
@@ -55,16 +59,21 @@ export function NotificationInbox() {
   const [pending, setPending] = useState(false);
 
   const reload = useCallback(async () => {
-    const response = await fetch("/api/authoring/notifications", { credentials: "same-origin", cache: "no-store" });
+    const [response, countResponse] = await Promise.all([
+      fetch("/api/authoring/notifications", { credentials: "same-origin", cache: "no-store" }),
+      fetch("/api/authoring/notifications/unread-count", { credentials: "same-origin", cache: "no-store" }),
+    ]);
     const payload: unknown = await response.json().catch(() => null);
     // No session means no inbox; the desk shows its own sign-in panel for that,
     // so this section simply renders nothing rather than a second explanation.
-    if (response.status === 401) { setState("ready"); setItems([]); return; }
-    if (!response.ok) throw new Error(messageOf(payload));
+    if (response.status === 401 || countResponse.status === 401) { setState("ready"); setItems([]); setUnreadCount(0); return; }
+    if (!response.ok || !countResponse.ok) throw new Error(messageOf(payload));
     const data = typeof payload === "object" && payload !== null && "data" in payload ? (payload as { data?: unknown }).data : null;
     if (!Array.isArray(data)) throw new Error("通知响应格式不正确。");
     setItems(data.filter(isNotificationItem));
-    setUnreadCount(data.filter((item): boolean => isNotificationItem(item) && item.readAt === null).length);
+    const count = parseUnreadCount(await countResponse.json().catch(() => null));
+    if (count === null) throw new Error("未读通知数量格式不正确。");
+    setUnreadCount(count);
     setError("");
     setState("ready");
   }, []);
@@ -89,7 +98,7 @@ export function NotificationInbox() {
   async function markRead(id?: string) {
     setPending(true);
     try {
-      const response = await fetch(id === undefined ? "/api/authoring/notifications/read-all" : `/api/authoring/notifications/${id}/read`, {
+      const response = await fetch(id === undefined ? "/api/authoring/notifications/read-all" : `/api/authoring/notifications/${encodeURIComponent(id)}/read`, {
         method: id === undefined ? "POST" : "PUT",
         credentials: "same-origin",
         cache: "no-store",
@@ -112,21 +121,22 @@ export function NotificationInbox() {
     );
   }
 
-  const notices = items
-    .map((item) => ({ item, notice: parseDeletedArticleNotice(item.payload) }))
-    .filter((entry): entry is { item: NotificationItem; notice: DeletedArticleNotice } => entry.notice !== null);
+  const notices = notificationRows({ data: items });
 
   return (
     <section className="nw-authoring-inbox" aria-label="通知">
       <h2>通知{unreadCount > 0 ? `（${unreadCount} 未读）` : ""}</h2>
+      {error !== "" ? <p className="nw-auth-error" role="alert">{error}</p> : null}
       {state === "loading" ? <p>载入中…</p> : null}
-      {state === "ready" && notices.length === 0 ? <p>还没有通知。</p> : null}
+      {state === "ready" && notices.length === 0 ? <p>{unreadCount > 0 ? "最近没有通知，较早的未读通知可能仍然存在。" : "还没有通知。"}</p> : null}
+      {state === "ready" && items.length >= 50 ? <p>这里只显示最近 50 条通知；未读数包含更早的通知。</p> : null}
       {notices.length > 0 ? (
         <ul className="nw-authoring-inbox-list">
           {notices.map(({ item, notice }) => (
             <li className="nw-authoring-inbox-row" key={item.id}>
               <p className={item.readAt === null ? "nw-authoring-inbox-text nw-unread" : "nw-authoring-inbox-text"}>
-                {deletionNoticeText(notice, "zh-CN")}
+                {notificationPresentation(notice, "zh-CN").text}{notificationPresentation(notice, "zh-CN").href ? <> <Link href={notificationPresentation(notice, "zh-CN").href!}>查看</Link></> : null}
+                <time dateTime={item.createdAt}> {dateLabel(item.createdAt, "zh-CN")}</time>
               </p>
               {item.readAt === null ? (
                 <button className="nw-btn" type="button" disabled={pending} onClick={() => void markRead(item.id)}>
