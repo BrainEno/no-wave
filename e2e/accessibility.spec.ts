@@ -57,6 +57,7 @@ test("the first keyboard stop skips navigation to main on home, article and writ
 
 test("navigation and reader controls have 44 pixel touch targets at desktop and mobile widths", async ({ page, request }) => {
   const { slug } = await publishWork(request, `触控阅读 ${Date.now().toString(36)}`, ["无障碍正文。"]);
+  await registerThroughForm(page, uniqueEmail("reader-size"), "/account");
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto(`/articles/${slug}`);
@@ -85,11 +86,12 @@ test("axe finds no serious or critical violations on home, article and writing d
   await page.goto("/");
   await expect(page.locator("main")).toBeVisible();
   await assertNoSeriousAxeViolations(page, "home");
+  await registerThroughForm(page, uniqueEmail("axe-reader"), "/account");
   await page.goto(`/articles/${slug}`);
   await expect(page.getByRole("heading", { name: /无障碍扫描/ })).toBeVisible();
   await expect(page.getByLabel("评论内容")).toBeVisible();
   await assertNoSeriousAxeViolations(page, "article");
-  await registerThroughForm(page, uniqueEmail("axe-desk"), "/write");
+  await page.goto("/write");
   await expect(page.getByLabel("作品正文")).toBeVisible();
   await assertNoSeriousAxeViolations(page, "writing desk");
 });
