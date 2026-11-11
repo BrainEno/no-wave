@@ -182,8 +182,12 @@ jobs:
       # The suite drives the production build, so it has to exist first.
       - name: Build the Web application
         run: pnpm build
+      # Keep system package and browser downloads separate: their outages need
+      # different remedies, and both remain required before running the suite.
+      - name: Install Chromium system dependencies
+        run: pnpm exec playwright install-deps chromium
       - name: Install the Chromium build Playwright drives
-        run: pnpm exec playwright install --with-deps chromium
+        run: pnpm exec playwright install chromium
       - name: Run browser-level shard ${{ matrix.shard }}/3
         run: pnpm test:e2e --shard=${{ matrix.shard }}/3
       - name: Upload the Playwright report
@@ -471,7 +475,10 @@ jobs:
           cache: pnpm
       - run: node scripts/preflight.cjs
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium
+      - name: Install Chromium system dependencies
+        run: pnpm exec playwright install-deps chromium
+      - name: Install the Chromium build Playwright drives
+        run: pnpm exec playwright install chromium
       - run: pnpm test:all
 
   # One gate, so a branch cannot be merged on a partial signal: every job above
