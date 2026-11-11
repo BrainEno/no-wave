@@ -1,3 +1,4 @@
+import { repeatsArticleOpening } from "@/lib/article-standfirst.ts";
 import { Link } from "@/lib/framework/link.tsx";
 import type { ReactNode } from "react";
 import { archivePath, articlePath, authorPath, getMessages, type ArticleContentBlock, type ArticleView, type Locale } from "@/lib/content.ts";
@@ -84,7 +85,7 @@ export function ArticlePageView({ article, newer, older, related }: ArticleDetai
         <Link className="nw-ss" href={archivePath(locale)} style={{ display: "inline-flex", alignItems: "center", minHeight: 44, fontWeight: 700, fontSize: 15 }}>← {ui.reader.back}</Link>
         <div className="nw-m" style={{ marginTop: 8 }}><TypeChip type={article.workType} locale={locale} /> · {dateLabel(article.publishedAt, locale)} · {lengthLabel(length, locale)} · {minutesLabel(readingMinutes(length, locale), locale)}</div>
         <h1 data-reveal>{article.title}</h1>
-        {article.description ? <p className="nw-ep">{article.description}</p> : null}
+        {article.description && !repeatsArticleOpening(article.description, article.contentBlocks) ? <p className="nw-ep">{article.description}</p> : null}
         <div className="nw-by">
           <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
             <div className="nw-avatar" aria-hidden="true">{initial(article.author.displayName)}</div>

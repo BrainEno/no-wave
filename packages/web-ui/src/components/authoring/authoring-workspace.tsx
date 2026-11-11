@@ -88,7 +88,7 @@ function messageOf(payload: unknown): string {
   return "暂时无法载入写作台，请稍后重试。";
 }
 
-export function AuthoringWorkspace() {
+export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
   const [state, setState] = useState<WorkspaceState>("loading");
   const [articles, setArticles] = useState<AuthoringArticle[]>([]);
   const [selected, setSelected] = useState<AuthoringArticle | null>(null);
@@ -405,7 +405,7 @@ export function AuthoringWorkspace() {
           已登录：{account.email} · 邮箱{account.emailVerifiedAt ? "已验证" : "未验证"}
           {/* Verification gates nothing, so the button is an offer, not a
               blocked state: an unverified author can still write and publish. */}
-          {account.emailVerifiedAt ? null : (
+          {account.emailVerifiedAt || !mailEnabled ? null : (
             <>{" "}<button className="nw-btn" type="button" disabled={verificationBusy} onClick={() => void requestVerification()}>
               {verificationBusy ? "发送中…" : "发送验证邮件"}
             </button></>
@@ -415,11 +415,6 @@ export function AuthoringWorkspace() {
       ) : null}
       {error ? <p className="nw-auth-error" role="alert">{error}</p> : null}
       {notice ? <p className="nw-auth-status" role="status">{notice}</p> : null}
-      <AuthorProfilePanel profile={profile} onSave={saveProfile} />
-      {/* The inbox sits above the editor because what it says is about someone
-          else's work: the notice a commenter gets when a work they commented on
-          is deleted is the only way they hear about it at all. */}
-      <NotificationInbox />
       <div className="nw-authoring-grid">
         <aside className="nw-authoring-sidebar" aria-label="我的作品">
           <h2>我的作品（{articles.length}）</h2>
@@ -443,6 +438,9 @@ export function AuthoringWorkspace() {
           />
         </div>
       </div>
+      {/* Keep supporting tools mounted and reachable, without displacing the editor. */}
+      <AuthorProfilePanel profile={profile} onSave={saveProfile} />
+      <NotificationInbox />
       {/* Leaving with an unconfirmed request is a question, not a form: the
           answer is a route decision (`blocker.proceed()`), so it belongs in the
           confirmation dialog rather than in an empty prompt form. */}

@@ -669,6 +669,15 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
         <label className="nw-field-wide">标题
           <input value={title} onChange={(event) => { latest.current.title = event.target.value; setTitle(event.target.value); }} required maxLength={200} />
         </label>
+      </div>
+      <LexicalExtensionComposer extension={extension} contentEditable={null}>
+        <Toolbar onStatus={setStatus} onError={setError} ask={ask} />
+        <div className="nw-lexical-shell">
+          <ContentEditable className="nw-lexical-input" aria-label="作品正文" aria-placeholder="从这里开始写作" placeholder={<p className="nw-lexical-placeholder">从这里开始写作……</p>} />
+        </div>
+        <EditorStatePlugin onChange={onEditorChange} />
+      </LexicalExtensionComposer>
+      <div className="nw-article-fields nw-article-metadata">
         <p className="nw-field-note">作品地址（slug）由系统根据标题自动生成，无需填写。</p>
         <label>作品语言
           <select value={locale} onChange={(event) => { latest.current.locale = event.target.value; setLocale(event.target.value); }}>
@@ -695,13 +704,6 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
           <textarea value={summary} onChange={(event) => { latest.current.summary = event.target.value; setSummary(event.target.value); }} maxLength={2000} placeholder="留空则由系统摘取正文开头自动生成" />
         </label>
       </div>
-      <LexicalExtensionComposer extension={extension} contentEditable={null}>
-        <Toolbar onStatus={setStatus} onError={setError} ask={ask} />
-        <div className="nw-lexical-shell">
-          <ContentEditable className="nw-lexical-input" aria-label="作品正文" aria-placeholder="从这里开始写作" placeholder={<p className="nw-lexical-placeholder">从这里开始写作……</p>} />
-        </div>
-        <EditorStatePlugin onChange={onEditorChange} />
-      </LexicalExtensionComposer>
       <PromptDialog
         open={askKind !== null}
         title={askKind === "link" ? "插入链接" : "插入图片"}

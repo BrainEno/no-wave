@@ -963,6 +963,8 @@ test("a missing public entity is a hard 404 that is titled, no-store and noindex
     // a copy that a shared cache is allowed to keep.
     assert.match(result.body, /<title>404 | 无浪潮<\/title>/, `${pathname} needs a title`);
     assert.match(result.body, /name="robots" content="noindex, nofollow"/);
+    assert.match(result.body, /class="nw-w nw-head nw-error-page" data-error-boundary="404"/);
+    assert.match(result.body, /这一页不存在/);
     assert.match(result.headers.get("cache-control") ?? "", /no-store/, `${pathname} must not be cached`);
   }
 });
@@ -1750,7 +1752,8 @@ test("a stalled content API answers 503 inside the budget and leaves the server 
   assert.equal(stalled.status, 503);
   assert.match(stalled.headers.get("cache-control") ?? "", /no-store/);
   assert.match(stalled.body, /服务暂时不可用/, "the page's own 503 boundary, not a blank error");
-  assert.match(stalled.body, /data-error-boundary="500"/);
+  assert.match(stalled.body, /class="nw-w nw-head nw-error-page" data-error-boundary="500"/);
+  assert.match(stalled.body, /内容暂时无法加载，请稍后重试/);
   // Bounded by the budget, not by a browser or load-balancer timeout.
   assert.ok(elapsed >= 1_000 && elapsed < 10_000, `elapsed ${elapsed} ms outside the configured budget`);
 
