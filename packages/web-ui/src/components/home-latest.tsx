@@ -14,7 +14,7 @@ export function HomeLatest({ items, heading, allLabel, allHref }: { items: Lates
       <div className="nw-list">
         {heading}
         {items.map((item, index) => (
-          <Link key={item.href} className="nw-row" href={item.href} data-reveal="row" onMouseEnter={() => setActive(index)} onFocus={() => setActive(index)} style={{ gridTemplateColumns: "56px 1fr" }}>
+          <Link key={item.href} className="nw-row" href={item.href} data-reveal="row" onMouseEnter={() => setActive(index)} onFocus={() => setActive(index)}>
             <span className="nw-m nw-rn">{item.number}</span>
             <span className="nw-rb"><span className="nw-t">{item.title}</span><span className="nw-m">{item.meta}</span></span>
           </Link>
