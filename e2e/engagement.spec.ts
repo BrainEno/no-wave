@@ -158,6 +158,13 @@ test("following survives navigation and controls the reader's private feed", asy
   await page.goto(authorPath!);
   let button = page.getByRole("button", { name: /^关注 / });
   await expect(button).toBeEnabled();
+  const unfollowedStyle = await button.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return { background: style.backgroundColor, borderStyle: style.borderTopStyle, borderWidth: parseFloat(style.borderTopWidth), height: el.getBoundingClientRect().height };
+  });
+  expect(unfollowedStyle.borderStyle).toBe("solid");
+  expect(unfollowedStyle.borderWidth).toBeGreaterThan(0);
+  expect(unfollowedStyle.height).toBeGreaterThanOrEqual(44);
   const userId = authorPath!.split("/").at(-1);
   const followRoute = `**/api/authoring/users/${userId}/follow?*`;
   let releaseWrite!: () => void;
@@ -201,6 +208,8 @@ test("following survives navigation and controls the reader's private feed", asy
   button = page.getByRole("button", { name: /^已关注 / });
   await expect(button).toHaveAttribute("aria-pressed", "true");
   await expect(button).toBeEnabled();
+  await expect.poll(() => button.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe(unfollowedStyle.background);
+  expect(await button.evaluate((el) => el.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
 
   const origin = new URL(baseURL!).origin;
   const rejected = await page.context().request.delete(`${origin}/api/authoring/users/${userId}/follow?locale=zh-CN`, {
