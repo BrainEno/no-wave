@@ -143,3 +143,15 @@ test("hostile ZIP64 markers fail promptly in a separate process", () => {
   assert.equal(child.error, undefined, child.error?.message);
   assert.equal(child.status, 0, child.stderr);
 });
+
+test("the decompressed size ceiling is inclusive, not one byte too strict", () => {
+  const header = "# Page\n\n";
+  const text = header + "x".repeat(NOTION_BUNDLE_MAX_BYTES - header.length);
+  const entries = readMarkdownZip(archive({ "at-limit.md": strToU8(text) }));
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0]?.text.length, NOTION_BUNDLE_MAX_BYTES);
+});
+
+test("an empty, structurally valid ZIP is not confused with a truncated archive", () => {
+  assert.deepEqual(readMarkdownZip(archive({})), []);
+});
