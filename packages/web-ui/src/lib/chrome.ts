@@ -22,9 +22,16 @@ export type DeletedArticleNotice = {
   purgesAt: string;
 };
 
+export type NotificationNotice =
+  | DeletedArticleNotice
+  | { type: "article.commented" | "article.comment_replied" | "article.liked"; slug: string | null; locale: string | null }
+  | { type: "user.followed"; followerId: string | null }
+  | { type: "message.created"; conversationId: string | null }
+  | { type: "unknown" };
+
 export type NotificationRow = {
   item: NotificationItem;
-  notice: DeletedArticleNotice;
+  notice: NotificationNotice;
 };
 
 export type GrainOffset = readonly [number, number];
@@ -40,7 +47,7 @@ export function isNotificationItem(value: unknown): value is NotificationItem {
     (value.readAt === null || typeof value.readAt === "string");
 }
 
-/** A notice whose shape the chrome does not know is dropped, not shown blank. */
+/** Parse the deletion payload for the retention notice. */
 export function parseDeletedArticleNotice(payload: string): DeletedArticleNotice | null {
   let parsed: unknown;
   try { parsed = JSON.parse(payload); } catch { return null; }
@@ -76,15 +83,43 @@ export function deletionNoticeText(notice: DeletedArticleNotice, locale: Locale 
   return `你评论过的一篇作品已被作者删除，你的评论会在 ${day}（约 ${days} 天后）随作品一起清除。`;
 }
 
+/** Malformed and future payloads remain visible as a generic notification. */
+export function parseNotificationNotice(payload: string): NotificationNotice {
+  const deletion = parseDeletedArticleNotice(payload);
+  if (deletion) return deletion;
+  let parsed: unknown;
+  try { parsed = JSON.parse(payload); } catch { return { type: "unknown" }; }
+  if (!isRecord(parsed)) return { type: "unknown" };
+  const identifier = (value: unknown) => typeof value === "string" && /^[a-zA-Z0-9_-]{1,300}$/.test(value) ? value : null;
+  switch (parsed.type) {
+    case "article.commented":
+    case "article.comment_replied":
+    case "article.liked":
+      return { type: parsed.type, slug: typeof parsed.slug === "string" && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(parsed.slug) && parsed.slug.length <= 160 ? parsed.slug : null, locale: typeof parsed.locale === "string" ? parsed.locale : null };
+    case "user.followed": return { type: parsed.type, followerId: identifier(parsed.followerId) };
+    case "message.created": return { type: parsed.type, conversationId: identifier(parsed.conversationId) };
+    default: return { type: "unknown" };
+  }
+}
+
+/** Only local, validated routes are built from payload fields; never trust a URL in a payload. */
+export function notificationPresentation(notice: NotificationNotice, locale: Locale): { text: string; href: string | null } {
+  const en = locale === "en";
+  const prefix = en ? "/en" : "";
+  switch (notice.type) {
+    case "article.deleted": return { text: deletionNoticeText(notice, locale), href: null };
+    case "article.commented": return { text: en ? "Someone commented on your work." : "有人评论了你的作品。", href: notice.slug ? `${prefix}/articles/${notice.slug}#nw-comments-title` : null };
+    case "article.comment_replied": return { text: en ? "Someone replied to your comment." : "有人回复了你的评论。", href: notice.slug ? `${prefix}/articles/${notice.slug}#nw-comments-title` : null };
+    case "article.liked": return { text: en ? "Someone liked your work." : "有人喜欢了你的作品。", href: notice.slug ? `${notice.locale === "en" ? "/en" : notice.locale === "zh-CN" || notice.locale === "zh-TW" ? "" : prefix}/articles/${notice.slug}` : null };
+    case "user.followed": return { text: en ? "Someone followed you." : "有人关注了你。", href: notice.followerId ? `${prefix}/authors/${encodeURIComponent(notice.followerId)}` : null };
+    case "message.created": return { text: en ? "You have a new message." : "你收到一条新私信。", href: notice.conversationId ? `${prefix}/messages/${encodeURIComponent(notice.conversationId)}` : `${prefix}/messages` };
+    case "unknown": return { text: en ? "You have a notification." : "你收到一条通知。", href: "/write" };
+  }
+}
+
 export function notificationRows(payload: unknown): NotificationRow[] {
   if (!isRecord(payload) || !Array.isArray(payload.data)) return [];
-  const rows: NotificationRow[] = [];
-  for (const value of payload.data) {
-    if (!isNotificationItem(value)) continue;
-    const notice = parseDeletedArticleNotice(value.payload);
-    if (notice !== null) rows.push({ item: value, notice });
-  }
-  return rows;
+  return payload.data.filter(isNotificationItem).map((item) => ({ item, notice: parseNotificationNotice(item.payload) }));
 }
 
 /** The API answers `{ data: number }`; a malformed body is never a badge. */

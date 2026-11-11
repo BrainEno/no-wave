@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { hasUsableSession, SESSION_MARKER_COOKIE } from "@bot-thk/web-http";
 import { dateLabel } from "@/lib/format.ts";
 import {
-  deletionNoticeText,
+  notificationPresentation,
   grainOffsets,
   grainTileData,
   notificationRows,
@@ -350,7 +350,7 @@ export function SiteChrome({ children }: { children: ReactNode }) {
   const navTopics = onHome ? "#topics" : topicsHref;
   const searchHref = locale === "en" ? "/en/search" : "/search";
   const badge = unreadBadge(unread);
-  const unreadRows = bellRows.some((row) => row.item.readAt === null);
+
 
   return (
     <>
@@ -383,7 +383,7 @@ export function SiteChrome({ children }: { children: ReactNode }) {
       <div className="nw-np" id="nw-np" hidden={!bellOpen} role="dialog" aria-label={ui.bell.label} lang={locale}>
         <header>
           <span>{ui.bell.label}</span>
-          {sessionUsable === true && bellState === "ready" && unreadRows ? (
+          {sessionUsable === true && bellState === "ready" && unread > 0 ? (
             <button className="nw-np-mark-all" type="button" disabled={bellPending} onClick={() => void markBellRead()}>{ui.bell.markAllRead}</button>
           ) : null}
           <button type="button" onClick={() => setBellOpen(false)}>{ui.nav.close}</button>
@@ -398,12 +398,13 @@ export function SiteChrome({ children }: { children: ReactNode }) {
           ) : null}
           {sessionUsable === true && bellState === "loading" ? <p>{ui.bell.loading}</p> : null}
           {sessionUsable === true && bellState === "error" ? <p role="alert">{bellError}</p> : null}
-          {sessionUsable === true && bellState === "ready" && bellRows.length === 0 ? <p>{ui.bell.empty}。</p> : null}
+          {sessionUsable === true && bellState === "ready" && bellRows.length === 0 ? <p>{unread > 0 ? (locale === "en" ? "No recent notifications. Older unread notifications may remain." : "最近没有通知，较早的未读通知可能仍然存在。") : `${ui.bell.empty}。`}</p> : null}
+          {sessionUsable === true && bellState === "ready" && bellRows.length >= 50 ? <p>{locale === "en" ? "Showing the 50 most recent notifications; the unread count includes older ones." : "这里只显示最近 50 条通知；未读数包含更早的通知。"}</p> : null}
           {sessionUsable === true && bellState === "ready" && bellRows.length > 0 ? (
             <ul className="nw-np-list">
               {bellRows.map(({ item, notice }) => (
                 <li className="nw-np-row" key={item.id}>
-                  <p className={item.readAt === null ? "nw-np-text nw-np-unread" : "nw-np-text"}>{deletionNoticeText(notice, locale)}</p>
+                  <p className={item.readAt === null ? "nw-np-text nw-np-unread" : "nw-np-text"}>{notificationPresentation(notice, locale).text}{notificationPresentation(notice, locale).href ? <> <Link href={notificationPresentation(notice, locale).href!} onClick={() => setBellOpen(false)}>{locale === "en" ? "View" : "查看"}</Link></> : null}</p>
                   <time className="nw-np-time" dateTime={item.createdAt}>{dateLabel(item.createdAt, locale)}</time>
                   {item.readAt === null ? (
                     <button type="button" disabled={bellPending} onClick={() => void markBellRead(item.id)}>{ui.bell.markRead}</button>

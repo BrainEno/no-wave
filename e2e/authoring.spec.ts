@@ -605,11 +605,10 @@ test("a reader who commented on a deleted work is told so in their own desk", as
   await answerDeskDialog(page, /删除《.*》？/, "确认删除");
   await expect(page.getByRole("status").filter({ hasText: "已删除" })).toContainText(title, { timeout: 45_000 });
 
-  // The author is not notified of their own deletion: the notice exists for the
-  // other side of that event, and a desk that congratulated the author for it
-  // would be noise.
+  // The author receives the reader's comment, but not their own deletion notice.
   const authorInbox = page.getByRole("region", { name: "通知" });
-  await expect(authorInbox).toContainText("还没有通知。", { timeout: 45_000 });
+  await expect(authorInbox).toContainText("有人评论了你的作品。", { timeout: 45_000 });
+  await expect(authorInbox).not.toContainText("你评论过的一篇作品已被作者删除");
 
   // The same screen, the other account.
   await page.context().clearCookies();
