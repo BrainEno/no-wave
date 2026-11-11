@@ -177,3 +177,25 @@ test("historical design names cannot be mistaken for current routes", () => {
   assert.match(design, /不表示存在 `\/submit` 路由或已实现审核/);
   assert.match(design, /`\/articles\/:slug`、`\/write`、`\/messages`/);
 });
+
+test("fenced code blocks with language hints never produce false missing links", () => {
+  const source = [
+    "```markdown",
+    "[inline](not-a-file.md)",
+    "[ref][example]",
+    "[example]: absent.md",
+    "```",
+    "",
+    "[real](real.md)",
+  ].join("\n");
+  const visited: string[] = [];
+  const failures = missingLinks("README.md", source, (path) => { visited.push(path); return true; });
+  assert.deepEqual(failures, []);
+  assert.deepEqual(visited, [resolve(root, "real.md")]);
+});
+
+test("a missing license link is rejected by the same evidence checker", () => {
+  const readme = readFileSync(resolve(root, "README.md"), "utf8");
+  const failures = missingLinks("README.md", readme, (path) => path !== resolve(root, "LICENSE"));
+  assert.equal(failures.filter((failure) => failure.includes("missing LICENSE")).length, 1);
+});
