@@ -343,6 +343,9 @@ jobs:
           SMOKE_TIMEOUT_MS: "60000"
         run: |
           set -eu
+          # Keep the failing shell line visible as an annotation even when a
+          # runner's full logs are unavailable. Do not print environment values.
+          trap 'status=$?; echo "::error title=container smoke::Command failed at shell line $LINENO (exit $status)"; exit "$status"' ERR
           docker network create nw-ci
           docker volume create nw-ci-db
           # The API refuses to start on a pending schema. Migrate *before* its
