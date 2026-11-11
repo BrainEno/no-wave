@@ -22,7 +22,7 @@ test("there is one documented required CI gate, not an incomplete second pipelin
   assert.equal(existsSync(new URL(".gitlab-ci.yml", root)), false);
   const readme = readFileSync(new URL("README.md", root), "utf8");
   assert.match(readme, /only supported CI pipeline/);
-  for (const job of ["verify", "postgres-integration", "local-dev-chain", "react-router-prototype", "portable-stack", "container-image", "e2e"]) {
+  for (const job of ["verify", "postgres-integration", "local-dev-chain", "react-router-prototype", "portable-stack", "container-image", "e2e", "full-local-suite"]) {
     assert.match(workflow, new RegExp(`^  ${job}:`, "m"), `missing job ${job}`);
     const gate = workflow.slice(workflow.indexOf("  required-checks:"));
     assert.match(gate, new RegExp(`^      - ${job}$`, "m"), `gate must depend on ${job}`);

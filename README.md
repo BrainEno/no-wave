@@ -26,6 +26,7 @@ This repository is the independent implementation of BOT THK's Web and API produ
 For everyday development, use a **local database**. This path needs no Docker and does **not** consume Neon quota.
 
 ```sh
+node scripts/preflight.cjs         # before installation; requires Node 24
 corepack enable                    # once, if pnpm is not on your PATH
 pnpm install --frozen-lockfile
 pnpm setup:local                   # writes .env.local: SQLite + a generated JWT secret
@@ -245,6 +246,35 @@ This repository ships one deployment path, not a platform manifest: the two cont
 | `pnpm verify:publish` | Verify writing-desk publish visibility without mail; prints article links. |
 | `pnpm openapi:check` | Prove the checked-in OpenAPI contract (`docs/api/openapi.json`) matches the API's route table. |
 | `pnpm openapi:write` | Regenerate that file after an intentional contract change. |
+
+## Full local test suite
+
+For all local layers in one command, install dependencies and Playwright's Chromium
+once, start Docker Desktop/Engine, then run:
+
+```sh
+node scripts/preflight.cjs
+corepack enable
+pnpm install --frozen-lockfile
+pnpm test:e2e:install
+pnpm test:all
+```
+
+The runner checks dependencies and Docker before starting, then runs the root
+unit suite, builds and tests the production Web server, runs PostgreSQL integration
+against a new disposable `postgres:17-alpine` container, and runs both isolated
+SQLite browser shards. It binds PostgreSQL only to a random loopback port and
+removes its own container even on test failure or interruption; it never resets
+`compose.yaml` volumes. It ignores external database and E2E URLs, and executes
+the root/API test inventories without their `.env` file flags, so it will not
+intentionally run destructive integration tests against your configured database.
+A Docker daemon and permission to pull the image are required; remote Docker
+hosts must make the loopback-published port reachable locally. If cleanup reports
+an error, remove the printed container with `docker rm -f <name>`.
+
+The ordinary `pnpm test` is faster, but PostgreSQL integration tests are skipped
+unless `TEST_DATABASE_URL` is set; it does not run the Web behavior or browser
+suites. A green `pnpm test` alone is not equivalent to `pnpm test:all`.
 
 ## PostgreSQL integration tests
 

@@ -279,3 +279,16 @@ CI 分阶段执行依赖安装、类型检查、Web/API 测试、路由 smoke、
 ## 术语说明
 
 部分历史文档仍把 Web UI 称为“portability/content spike”。该 spike 已退役：`apps/web-rr` 是唯一的 Web 实现。设计系统文档是概念提案，不是第二个框架，也不是另一套已部署的 UI。
+
+
+## 一条命令运行完整测试
+
+先执行 `node scripts/preflight.cjs` 检查 Node 24，再安装依赖、启动 Docker，
+运行 `pnpm test:e2e:install` 安装 Chromium，然后执行 `pnpm test:all`。
+该命令依次运行根测试、生产 Web 测试、隔离 PostgreSQL 集成测试及两组隔离
+SQLite 浏览器测试。PostgreSQL 使用随机本地端口和一次性容器，不使用或删除
+开发者的 compose 数据卷；失败或中断时尝试清理。运行需要可用的 Docker 和
+镜像下载权限。若清理失败，请按输出提示手动移除对应容器。
+
+普通 `pnpm test` 没有配置 `TEST_DATABASE_URL` 时会跳过 PostgreSQL 集成测试，
+也不运行 Web 行为测试和浏览器测试；不能视为完整测试。完整说明见英文 README。
