@@ -464,6 +464,13 @@ function handle(request: IncomingMessage, response: ServerResponse, body: Record
 
   if (url.searchParams.get("query") === MOCK_STALL_QUERY) return;
 
+  // Exercise the distinction between a bad URL and an unavailable upstream.
+  if (method === "GET" && /^\/api\/v1\/(?:articles|categories)\/mock-upstream-failure(?:\/articles)?$/.test(path)) {
+    send(response, 503, { error: { code: "SERVICE_UNAVAILABLE", message: "Mock upstream failure." } });
+    return;
+  }
+
+
   if (method === "GET" && path === "/api/v1/articles") {
     const query = url.searchParams.get("query") ?? "";
     const sort = url.searchParams.get("sort") ?? "latest";

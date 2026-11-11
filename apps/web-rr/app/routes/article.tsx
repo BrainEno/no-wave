@@ -4,7 +4,7 @@ import { articleMetadata } from "@/lib/content.ts";
 import { loadArticleDetailPage } from "@/lib/public-pages.ts";
 import { ArticlePageView } from "@/components/public/article-view.tsx";
 import { PUBLIC_PAGE_HEADERS } from "../lib/http-policy.ts";
-import { entityNotFound, upstreamUnavailable } from "../lib/loader-errors.ts";
+import { entityNotFound, isPublicEntitySlug, upstreamUnavailable } from "../lib/loader-errors.ts";
 import { metaDescriptors, siteUrlFromMatches, titleWithSite } from "../lib/meta.ts";
 import { localeFor } from "../lib/locale.ts";
 
@@ -23,6 +23,7 @@ import { localeFor } from "../lib/locale.ts";
  */
 export async function loader({ params, url }: LoaderFunctionArgs) {
   const locale = localeFor(url);
+  if (!isPublicEntitySlug(params.slug)) throw entityNotFound("article-not-found");
   let page: Awaited<ReturnType<typeof loadArticleDetailPage>>;
   try {
     page = await loadArticleDetailPage({ slug: params.slug ?? "", locale });

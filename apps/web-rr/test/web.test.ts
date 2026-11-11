@@ -4,6 +4,8 @@ import type { ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { createServer } from "node:net";
 import { after, before, test } from "node:test";
+import { validateArticleSlug } from "../../api/src/domain/article.ts";
+import { isPublicEntitySlug } from "../app/lib/loader-errors.ts";
 import {
   MOCK_COMMENT_ID,
   MOCK_CREDENTIALS,
@@ -960,6 +962,59 @@ test("a missing public entity is a hard 404 that is titled, no-store and noindex
     assert.match(result.body, /name="robots" content="noindex, nofollow"/);
     assert.match(result.headers.get("cache-control") ?? "", /no-store/, `${pathname} must not be cached`);
   }
+});
+
+test("canonical public slug validation stays aligned with the API", () => {
+  const cases = ["a", "0", "hello-world", "a".repeat(160), "Hello", "hello_world", "雨季", "hello.html", "a--b", "-hello", "hello-", "a".repeat(161)];
+  for (const slug of cases) {
+    let apiAccepts = true;
+    try { validateArticleSlug(slug); } catch { apiAccepts = false; }
+    assert.equal(isPublicEntitySlug(slug), apiAccepts, slug);
+  }
+  // URLs are not trimmed: even if the write API normalizes surrounding spaces,
+  // a mistyped path must not silently resolve to a different canonical address.
+  assert.equal(isPublicEntitySlug(" hello "), false);
+});
+
+test("invalid article and category slugs are uncached hard 404s without contacting the API", async () => {
+  const invalid = ["Hello-World", "hello_world", "%E9%9B%A8%E5%AD%A3", "hello%20world", "hello.html", "a--b", "-hello", "hello-", "a".repeat(161), "%2Fescape"];
+  for (const prefix of ["/articles/", "/en/articles/", "/categories/", "/en/categories/"]) {
+    for (const slug of invalid) {
+      mockApi.resetRequests();
+      const result = await get(prefix + slug);
+      assert.equal(result.status, 404, prefix + slug);
+      assert.match(result.headers.get("cache-control") ?? "", /no-store/, prefix + slug);
+      assert.match(result.body, /这一页不存在/, prefix + slug);
+      assert.deepEqual(mockApi.requests(), [], `${prefix + slug} must not reach the API`);
+    }
+  }
+});
+
+test("valid slugs still distinguish missing entities from upstream failure", async () => {
+  for (const prefix of ["/articles/", "/en/articles/", "/categories/", "/en/categories/"]) {
+    const missing = await get(prefix + "no-such-work");
+    assert.equal(missing.status, 404, prefix);
+    assert.match(missing.headers.get("cache-control") ?? "", /no-store/);
+    const failure = await get(prefix + "mock-upstream-failure");
+    assert.equal(failure.status, 503, prefix);
+    assert.match(failure.headers.get("cache-control") ?? "", /no-store/);
+    assert.match(failure.body, /内容暂时无法加载/);
+    assert.doesNotMatch(failure.body, /检查 API 服务是否在运行/);
+  }
+});
+
+test("an unreachable content API still answers 503 for valid article and category addresses", async () => {
+  const port = await freePort();
+  await withEnvServer({ API_BASE_URL: `http://127.0.0.1:${port}` }, async (url) => {
+    for (const path of ["/articles/valid-slug", "/categories/valid-slug"]) {
+      const result = await fetch(url + path);
+      assert.equal(result.status, 503, path);
+      assert.match(result.headers.get("cache-control") ?? "", /no-store/);
+      const body = await result.text();
+      assert.match(body, /内容暂时无法加载/);
+      assert.doesNotMatch(body, /检查 API 服务是否在运行/);
+    }
+  });
 });
 
 /* ------------------------------------ Phase 4a: comments, the page after hydration */

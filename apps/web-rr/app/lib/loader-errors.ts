@@ -31,3 +31,11 @@ export function upstreamUnavailable(error: unknown) {
 export function entityNotFound(reason: string) {
   return data({ reason }, { status: 404, headers: PRIVATE_PAGE_HEADERS });
 }
+
+/** Match the public article and taxonomy slug contract before contacting the API.
+ * Do not normalize: a mistyped URL is not a different resource's canonical URL.
+ * Keep this aligned with API validateArticleSlug (160 ASCII characters).
+ */
+export function isPublicEntitySlug(value: unknown): value is string {
+  return typeof value === "string" && value.length <= 160 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
+}
