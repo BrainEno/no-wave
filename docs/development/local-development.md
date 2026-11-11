@@ -369,8 +369,8 @@ the probe's skip semantics cannot silently regress.
   proves that publishing works with mail off, while the recovery flows themselves
   remain uncovered by that probe. The notification worker can be started manually
   with `pnpm --filter @bot-thk/api worker:notifications`.
-- The GitLab pipeline mirrors the GitHub verification stages but does not run the
-  PostgreSQL chain job; the GitHub workflow is authoritative.
+- GitHub Actions is the only supported CI gate; the incomplete GitLab pipeline
+  was removed. Forks using another provider must implement all required jobs.
 - Windows is supported by the scripts (no shell operators in `package.json`, no
   POSIX-only flags), but the documented commands are exercised on Linux/macOS in
   CI.

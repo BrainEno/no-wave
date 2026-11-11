@@ -270,7 +270,7 @@ On Windows PowerShell, set `$env:TEST_DATABASE_URL` before running the same comm
 
 ## CI
 
-CI runs dependency installation, typecheck, Web/API tests, route smoke, container-image smoke, Playwright e2e, PostgreSQL integration, and the local-chain job (`pnpm dev --check --exit`) in separate stages. The GitHub Actions workflow is authoritative; the GitLab pipeline mirrors the verification stages. See `.github/workflows/ci.yml` and `.gitlab-ci.yml`.
+CI runs dependency installation, typecheck, Web/API tests, route smoke, container-image smoke, Playwright e2e, PostgreSQL integration, and the local-chain job (`pnpm dev --check --exit`) in separate stages. GitHub Actions is the only supported CI pipeline; the incomplete GitLab pipeline was removed rather than presenting a weaker gate as equivalent. See `.github/workflows/ci.yml`. Pushes to `main` and PRs targeting `main` are checked; a new commit cancels an older run of the same PR, but never a main-branch run. Branches without a PR do not run this workflow.
 
 ## Lexical note
 

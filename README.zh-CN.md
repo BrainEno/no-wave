@@ -273,7 +273,7 @@ Windows PowerShell 需要先设置 `$env:TEST_DATABASE_URL`，再执行同一命
 <a id="ci"></a>
 ## CI
 
-CI 分阶段执行依赖安装、类型检查、Web/API 测试、路由 smoke、容器镜像 smoke、Playwright e2e、PostgreSQL 集成，以及本地链路任务（`pnpm dev --check --exit`）。GitHub Actions 工作流是权威来源，GitLab 流水线镜像其验证阶段。见 `.github/workflows/ci.yml` 与 `.gitlab-ci.yml`。
+CI 分阶段执行依赖安装、类型检查、Web/API 测试、路由 smoke、容器镜像 smoke、Playwright e2e、PostgreSQL 集成，以及本地链路任务（`pnpm dev --check --exit`）。GitHub Actions 是唯一受支持的 CI；覆盖不完整的 GitLab 流水线已移除，避免误把较弱检查当成同等门禁。见 `.github/workflows/ci.yml`。推送 main 和指向 main 的 PR 会触发检查；同一 PR 的新提交会取消旧运行，不会取消 main 的运行。没有 PR 的分支不会触发该工作流。
 
 <a id="lexical-note"></a>
 ## 术语说明

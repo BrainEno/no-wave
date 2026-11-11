@@ -2,9 +2,15 @@ name: CI
 
 on:
   push:
-    branches: ["**"]
+    branches: ["main"]
   pull_request:
     branches: ["main"]
+
+# PR updates supersede earlier runs for the same PR; main pushes use a
+# separate group and are never cancelled by another branch or PR.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -362,7 +368,7 @@ jobs:
             -e SITE_URL=http://127.0.0.1:3100 \
             -p 3100:3100 bot-thk-web-rr:ci
 
-          # The same HTTP contract GitLab CI runs, with the API pair attached and
+          # The shared HTTP contract, with the API pair attached and
           # no local fixtures. It waits for API /health, /ready and Web /healthz.
           if ! pnpm test:container-smoke; then
             docker logs api || true

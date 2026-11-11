@@ -1,13 +1,9 @@
 /**
- * One container smoke contract for GitHub Actions and GitLab CI.
+ * Container smoke contract for GitHub Actions and local runs.
  *
- * The CI files own Docker (building images, starting them, stopping them). This
- * script owns only the observable HTTP contract, so the copy that used to drift
- * between `.github/workflows/ci.yml` and `.gitlab-ci.yml` has one home.
- *
- * It deliberately imports nothing from the workspace: GitLab copies this file
- * into the Web container, whose runtime image has Node 24 but not the scripts'
- * dev dependencies. Node's built-in `fetch` is enough.
+ * CI owns Docker (building images, starting them, stopping them). This script
+ * owns only the observable HTTP contract. It deliberately imports nothing from
+ * the workspace; Node's built-in `fetch` is enough.
  *
  * Environment:
  *   SMOKE_WEB_URL            Web origin (default http://127.0.0.1:3100).
@@ -89,7 +85,7 @@ async function run(): Promise<void> {
   assert.match(home, /class="nw-footer"/, "the server-rendered footer is missing");
   // This line is the fixture article's title, not static chrome: the GitHub
   // Actions image pair serves a freshly migrated, empty API and must not assert
-  // it. GitLab's single Web image uses the local fixture registry instead.
+  // it. Standalone Web smoke tests may use the local fixture registry instead.
   if (expectFixtures) {
     assert.match(home, /文学作品的数字出版空间/, "the fixture-backed home must render the fixture article");
   }
