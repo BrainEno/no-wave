@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
+import { readdir } from "node:fs/promises";
+import { request as httpRequest } from "node:http";
+import { gunzipSync, brotliDecompressSync } from "node:zlib";
 import { createServer } from "node:net";
 import { after, before, test } from "node:test";
 import { validateArticleSlug } from "../../api/src/domain/article.ts";
@@ -1775,4 +1778,61 @@ test("a malformed API_TIMEOUT_MS fails closed instead of waiting forever", async
     assert.match(await proxied.text(), /SERVICE_UNAVAILABLE/);
     assert.deepEqual(mockApi.requests(), []);
   });
+});
+
+
+/** Raw responses are needed here: fetch transparently inflates encoded bodies. */
+function wire(path: string, headers: Record<string, string> = {}, method = "GET"): Promise<{ status: number; headers: import("node:http").IncomingHttpHeaders; body: Buffer }> {
+  return new Promise((resolve, reject) => {
+    const req = httpRequest(new URL(path, baseUrl), { method, headers }, (res) => {
+      const chunks: Buffer[] = [];
+      res.on("data", (chunk: Buffer) => chunks.push(chunk));
+      res.on("end", () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: Buffer.concat(chunks) }));
+      res.on("error", reject);
+    });
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+test("the production server negotiates compressed HTML, JS and CSS over HTTP", async () => {
+  const assets = await readdir(`${packageDir}build/client/assets`);
+  const script = assets.find((name) => /^entry\.client-.*\.js$/.test(name));
+  const css = assets.find((name) => /^globals-.*\.css$/.test(name));
+  assert.ok(script, "the Vite entry script exists");
+  assert.ok(css, "the built global stylesheet exists");
+  for (const path of ["/", `/assets/${script}`, `/assets/${css}`]) {
+    const plain = await wire(path, { "accept-encoding": "identity" });
+    assert.equal(plain.status, 200, path);
+    assert.equal(plain.headers["content-encoding"], undefined);
+    assert.match(String(plain.headers.vary), /accept-encoding/i);
+    for (const [encoding, decompress] of [["gzip", gunzipSync], ["br", brotliDecompressSync]] as const) {
+      const encoded = await wire(path, { "accept-encoding": encoding });
+      assert.equal(encoded.status, 200, `${path} ${encoding}`);
+      assert.equal(encoded.headers["content-encoding"], encoding, path);
+      assert.match(String(encoded.headers.vary), /accept-encoding/i);
+      const decoded = decompress(encoded.body);
+      if (path === "/") {
+        assert.match(decoded.toString(), /<html/i);
+        assert.match(decoded.toString(), /nw-footer/);
+      } else assert.deepEqual(decoded, plain.body, path);
+      assert.ok(encoded.body.length < decoded.length, `${path} should shrink`);
+    }
+  }
+});
+
+test("the production server does not compress private, query-bearing or authenticated HTML", async () => {
+  const cases = [
+    { path: "/sign-in?next=%2Faccount", headers: {} },
+    { path: "/?q=reflected", headers: {} },
+    { path: "/", headers: { cookie: "nw_session=123" } },
+    { path: "/", headers: { authorization: "Bearer secret" } },
+  ];
+  for (const { path, headers } of cases) {
+    const response = await wire(path, { "accept-encoding": "gzip", ...headers });
+    assert.equal(response.status, 200, path);
+    assert.equal(response.headers["content-encoding"], undefined, path);
+    assert.match(String(response.headers.vary), /accept-encoding/i);
+    assert.match(response.body.toString(), /<html/i);
+  }
 });

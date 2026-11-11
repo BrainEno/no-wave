@@ -271,3 +271,29 @@ or 443 at the proxy; it need not match the unprivileged internal port. The CI
 image test runs migrations as `node` against a named volume, checks both image
 and running-process identity, and waits for Docker's health status to become
 `healthy` in addition to the HTTP smoke test.
+
+### Web response compression
+
+The standalone Node Web server negotiates Brotli, gzip or deflate for Vite's
+JavaScript/CSS assets and anonymous, public HTML. It streams compressed bodies
+and sets `Vary: Accept-Encoding`; the public HTML variant also varies by Cookie
+and Authorization. The uncompressed representation remains available to clients
+that do not advertise a supported encoding. Payloads below 1 KiB and already
+compressed responses are left alone. The server honors `Cache-Control:
+no-transform` and never compresses responses carrying `Set-Cookie`, private or
+no-store responses, API responses, or non-success responses.
+
+HTML requested with a Cookie, Authorization header or query string is left
+uncompressed: this avoids mixing per-request or reflected data and secrets in a
+compressed stream. Static JS/CSS are not personalized and remain compressible
+when cookies are present. This conservative policy trades some transfer savings
+for safety; in particular authenticated page loads and searches do not benefit.
+Any proxy or CDN that adds compression must preserve these restrictions as well
+as `Vary` and must not compress an already encoded body. TLS and caching remain
+separate responsibilities of the host.
+
+CI builds and starts the production server and checks raw HTTP bytes for HTML,
+JS and CSS with gzip and Brotli, including decompression and private-response
+exclusions. Additional socket-level tests cover encoding quality values, HEAD,
+small bodies, pre-encoded responses, `Vary`, and streaming. This means a host
+without a compression proxy still delivers the eligible resources compressed.

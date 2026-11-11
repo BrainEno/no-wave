@@ -70,7 +70,7 @@ RUN pnpm install --frozen-lockfile --prod --filter @bot-thk/web-rr...
 # `@bot-thk/web-http` is consumed as TypeScript source — Node 24 strips the
 # types — so the package body has to travel with the image.
 COPY packages/web-http/src ./packages/web-http/src
-COPY apps/web-rr/server.ts ./apps/web-rr/server.ts
+COPY apps/web-rr/server.ts apps/web-rr/compression.ts ./apps/web-rr/
 COPY --from=build /app/apps/web-rr/build ./apps/web-rr/build
 
 # `server.ts` resolves `RR_BUILD_DIR` / `RR_SERVER_BUILD_DIR` relative to the

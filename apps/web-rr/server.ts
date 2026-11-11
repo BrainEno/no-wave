@@ -7,6 +7,7 @@ import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 import { safeLogPath, writeLogLine } from "@bot-thk/web-http/log";
 import { createRequestListener } from "@react-router/node";
+import { compressResponse } from "./compression.ts";
 
 /**
  * Production server for the prototype: Node.js `http` only — no Vercel service
@@ -182,14 +183,16 @@ const server = createServer((request: IncomingMessage, response: ServerResponse)
     logCompletion();
   });
 
-  serveStatic(request, response)
-    .then((served) => {
-      if (!served) handleRequest(request, response);
-    })
-    .catch(() => {
-      if (!response.headersSent) response.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
-      response.end("Internal Server Error");
-    });
+  compressResponse(request, response, () => {
+    serveStatic(request, response)
+      .then((served) => {
+        if (!served) handleRequest(request, response);
+      })
+      .catch(() => {
+        if (!response.headersSent) response.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
+        response.end("Internal Server Error");
+      });
+  });
 });
 
 server.listen(port, host, () => {

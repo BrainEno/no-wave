@@ -26,6 +26,7 @@
     "mocks/**/*.ts",
     "test/**/*.ts",
     "server.ts",
+    "compression.ts",
     "react-router.config.ts",
     "vite.config.ts"
   ],
