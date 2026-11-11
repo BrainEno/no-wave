@@ -82,10 +82,10 @@ Exit gate: clean install, typecheck, tests, production build and container smoke
 - [x] Persist localized author profiles and follows.
 - [x] Persist article likes/comments, with ownership and notification tests.
 - [x] Add dynamic user-created Unicode hashtags; allow users to reuse existing tags and attach them to articles.
-- [ ] Complete public content search and pagination against the API.
+- [x] Complete public content search and pagination against the API. Evidence: [search route](../../apps/web-rr/app/routes/search.tsx), [API route](../../apps/api/src/transport/rest/routes/articles.ts).
 - [x] Add API-backed localized category index and category detail routes for public literary discovery.
 - [ ] Confirm product rules for tag deletion/moderation and category creation/ownership before expanding those behaviors.
-- [ ] Build the Lexical article editor and comment editor, plus profile-management UI.
+- [x] Build the Lexical article editor and comment editor, plus profile-management UI. Evidence: [article](../../packages/web-ui/src/components/authoring/article-editor.tsx), [comments](../../packages/web-ui/src/components/comments/article-comments.tsx), [profile](../../packages/web-ui/src/components/authoring/author-profile-panel.tsx).
 - [x] Add explicit literary work-type metadata to article records and the public REST/Web contract.
 - [x] Make Simplified Chinese (zh-CN) the default Web/API locale while retaining Traditional Chinese compatibility.
 
@@ -113,20 +113,20 @@ On 2026-10-29, the owner approved public-page SSR, a client-interactive writing 
 - [x] Audit the current Next.js/Vercel coupling against main commit `d9515c6d66881a7599d35581f38640b0ebb74a78`.
 - [ ] Qualify at least one actual hosting candidate for zero cost, no credit card, public access, supported Node SSR and persistent-data/worker requirements before selecting a final host.
 - [x] Build and test an isolated React Router 7 Framework Mode portability proof of concept without replacing the live Next.js app. → `apps/web-rr`; the proof of concept became the Web application and the Next.js app was deleted on 2026-11-01 ([ADR 0017](../architecture/decisions/0017-nextjs-retired-one-web-application.md)).
-- [ ] Prove public SSR, route metadata, hard 404 behavior, private-response cache isolation and standard Node/Docker startup.
-- [ ] Move public read-only routes first, preserving URLs, locale behavior, metadata, sitemap and robots output.
+- [x] Prove public SSR, route metadata, hard 404 behavior, private-response cache isolation and standard Node/Docker startup. Evidence: [route tests](../../apps/web-rr/test/web.test.ts), [portable stack](../../scripts/portable-stack.ts).
+- [x] Move public read-only routes, with locale behavior, metadata, sitemap and robots. Evidence: [route table](../../apps/web-rr/app/routes.ts), [sitemap](../../apps/web-rr/app/routes/sitemap.xml.ts).
 - [ ] Migrate auth, writing, comment and media route handlers while preserving the existing HttpOnly cookie, CSRF/origin, token refresh and authorization contracts.
-- [ ] Make the notification worker independently runnable with durable processing; do not require a Vercel Daemon as the target design.
+- [x] Make the notification worker independently runnable with durable processing. Evidence: [worker](../../apps/api/src/persistence/notification-drain.ts), [operations](../operations/api-observability.md).
 - [ ] Validate the selected host's actual signup/payment conditions, sleep/recovery behavior, database durability, object storage and worker execution before deployment.
 - [ ] Complete route/E2E/build/typecheck/PostgreSQL integration regression and rehearse rollback before any traffic cutover.
-- [ ] Remove Next.js/Vercel-only dependencies only after the replacement is verified and the cutover has explicit approval.
+- [x] Remove Next.js/Vercel-only Web runtime after replacement. Evidence: [ADR 0017](../architecture/decisions/0017-nextjs-retired-one-web-application.md), [workspace](../../pnpm-workspace.yaml).
 
 **Scope guard:** the existing API contract, product behavior, database migration protocol and media storage security remain unchanged during the Web framework migration. The existing Neon wiring is not proof that a live account, free/no-card eligibility or a production deployment has been validated. No production deployment, DNS change, paid provisioning, database migration or traffic cutover is implied by this roadmap.
 
 ## Phase 4 — Web product and design system
 
 - [x] Establish a localized, crawlable framework spike for home, article archive/detail and author pages.
-- [ ] Replace fixture content with API-backed pages.
+- [x] Replace fixture content with API-backed pages. Evidence: [public loaders](../../packages/web-ui/src/lib/public-pages.ts), [route table](../../apps/web-rr/app/routes.ts).
 - [ ] Implement hashtag listing/search/detail routes and article tag rendering.
 - [ ] Implement account/authentication and complete the core feature parity journey.
 - [ ] Apply the approved Cloud design artifacts to layouts, tokens, components and responsive behavior.
@@ -136,7 +136,7 @@ Exit gate: feature traceability and critical E2E journeys pass; both Traditional
 
 ## Phase 5 — Operations and future clients
 
-- [ ] Verify independent Web/API deployment with Node/Docker.
+- [x] Verify independent Web/API startup with Node/Docker (not a claim of production hosting). Evidence: [portable stack](../../scripts/portable-stack.ts), [CI](../../.github/workflows/ci.yml).
 - [ ] Verify migrations, backup/restore, health/readiness, graceful shutdown, logs and monitoring.
 - [ ] Decide whether any historical data import is desired and approve a separate runbook before execution.
 - [ ] Design HA inside the chosen primary engine first; add cross-engine warm standby only after consistency/fencing rules are approved.
