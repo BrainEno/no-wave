@@ -4,7 +4,7 @@ import { loadCategoryDetailPage } from "@/lib/public-pages.ts";
 import { parsePage } from "@/lib/work-types.ts";
 import { CategoryDetailContent } from "@/components/discovery-pages.tsx";
 import { PUBLIC_PAGE_HEADERS } from "../lib/http-policy.ts";
-import { entityNotFound, upstreamUnavailable } from "../lib/loader-errors.ts";
+import { entityNotFound, isPublicEntitySlug, upstreamUnavailable } from "../lib/loader-errors.ts";
 import { localeFor } from "../lib/locale.ts";
 import { titleWithSite } from "../lib/meta.ts";
 
@@ -16,6 +16,7 @@ import { titleWithSite } from "../lib/meta.ts";
  */
 export async function loader({ params, url }: LoaderFunctionArgs) {
   const locale = localeFor(url);
+  if (!isPublicEntitySlug(params.slug)) throw entityNotFound("category-not-found");
 
   let loaded;
   try {

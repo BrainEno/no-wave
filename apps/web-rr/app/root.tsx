@@ -136,7 +136,7 @@ export function ErrorBoundary() {
           <p className="nw-ep">
             {notFound
               ? "链接可能已失效，或作品尚未发布。"
-              : "请求处理失败，请稍后重试。若持续出现，请检查 API 服务是否在运行。"}
+              : "内容暂时无法加载，请稍后重试。"}
           </p>
           <p>
             <a className="nw-btn" href="/">返回首页</a>
