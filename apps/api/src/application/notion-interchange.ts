@@ -120,6 +120,8 @@ export const INTERCHANGE_ISSUE_CODES = Object.freeze([
   "work-type-fallback",
   "featured-image-not-carried",
   "hierarchy-not-carried",
+  "ambiguous-translation-relation",
+  "missing-translation-page",
   /**
    * Export-side: a property of the work that has no Notion property to live in,
    * so a round trip comes back different. Reported rather than dropped, because

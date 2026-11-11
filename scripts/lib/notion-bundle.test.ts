@@ -205,3 +205,7 @@ test("a bundle round-trips through JSON unchanged", () => {
   ]);
   assert.deepEqual(parseNotionBundle(JSON.parse(JSON.stringify(original))), original);
 });
+
+test("a bundle cannot contain duplicate source page identities", () => {
+  assert.throws(() => parseNotionBundle(bundle([page("duplicate", "一"), page("duplicate", "二")])), /duplicate page IDs/);
+});

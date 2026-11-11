@@ -212,3 +212,20 @@ function assertSelectedPages(request: { bundle: { pages: { id: string }[] } } | 
   expect(request).toBeDefined();
   expect(request!.bundle.pages.map((page) => page.id.replaceAll("-", "")).sort()).toEqual([...ids].sort());
 }
+
+test("a selected page with a missing English relation is refused before writing", async ({ page }) => {
+  await registerThroughForm(page, uniqueEmail("notion-related-pick"), "/write/notion");
+  const zh = randomUUID().replaceAll("-", "");
+  const en = randomUUID().replaceAll("-", "");
+  await page.setInputFiles("#notion-bundle-file", [
+    { name: `关联原文 ${zh}.md`, mimeType: "text/markdown", buffer: Buffer.from(`# 关联原文\n\nEnglish: English (English%20${en}.md)\n\n中文正文`) },
+    { name: `English ${en}.md`, mimeType: "text/markdown", buffer: Buffer.from("# English\n\nEnglish text") },
+  ]);
+  await page.getByLabel("关联原文", { exact: true }).check();
+  await page.getByRole("button", { name: "试跑所选文章" }).click();
+  await expect(page.locator(".nw-import-report").getByText(/missing-translation-page/)).toBeVisible();
+  await expect(page.getByRole("button", { name: /确认导入/ })).toHaveCount(0);
+  await page.getByLabel("English", { exact: true }).check();
+  await page.getByRole("button", { name: "试跑所选文章" }).click();
+  await expect(page.getByRole("button", { name: /确认导入/ })).toBeVisible();
+});

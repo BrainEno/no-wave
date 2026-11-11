@@ -453,14 +453,15 @@ test("recovery refuses a translation linked to a different work", async () => {
   en.blocks = [paragraph("English text")];
   const saveLink = deps.upsertExternalContentLink;
   deps.upsertExternalContentLink = async () => { throw new Error("link failure"); };
-  const first = await importNotionBundle({ actorId: "author-1", bundle: bundle(zh), apply: true, deps, now: at });
+  const standaloneZh = page("recover-zh", "主文", "正文很长");
+  const first = await importNotionBundle({ actorId: "author-1", bundle: bundle(standaloneZh), apply: true, deps, now: at });
   assert.equal(first.summary.failed, 1);
   deps.upsertExternalContentLink = saveLink;
   deps.links.set("recover-en|en", { provider: "notion", externalId: "recover-en", locale: "en", articleId: "other-work", ownerId: "other", digest: "x", syncedAt: at().toISOString() });
   const before = deps.written.length;
   const dry = await importNotionBundle({ actorId: "author-1", bundle: bundle(zh, en), apply: false, deps, now: at });
   assert.equal(dry.summary.refused, 2);
-  assert.match(dry.pages[0]?.detail ?? "", /translation is linked to a different work or account/);
+  assert.match(dry.pages[0]?.detail ?? "", /another account|translation is linked to a different work or account/);
   const applied = await importNotionBundle({ actorId: "author-1", bundle: bundle(zh, en), apply: true, deps, now: at });
   assert.equal(applied.summary.refused, 2);
   assert.equal(deps.written.length, before);
@@ -509,4 +510,74 @@ test("a changed image that cannot be fetched is omitted, not replaced by stale m
   assert.equal(receivedHint, true);
   assert.ok(result.pages[0]?.issues.some((issue) => issue.code === "image-copy-failed"));
   assert.doesNotMatch(String([...deps.articles.values()][0]!.contentBlocks), /api\/media/);
+});
+
+test("parent and sub-item pages import separately and disclose lost hierarchy", async () => {
+  const parent = page("parent", "父文章", "父正文");
+  const childA = page("child-a", "子文章甲", "子正文甲", { "Parent item": { type: "relation", relation: [{ id: "parent" }] } });
+  const childB = page("child-b", "子文章乙", "子正文乙", { "Parent item": { type: "relation", relation: [{ id: "parent" }] } });
+  const deps = stubDeps();
+  const result = await importNotionBundle({ actorId: "author-1", bundle: bundle(parent, childA, childB), apply: true, deps, now: at });
+  assert.equal(result.summary.create, 3);
+  assert.equal(deps.articles.size, 3);
+  assert.equal(result.pages.filter((p) => p.issues.some((i) => i.code === "hierarchy-not-carried")).length, 2);
+  assert.ok([...deps.articles.values()].some((article) => article.title === "子文章甲"));
+  assert.ok([...deps.articles.values()].some((article) => article.title === "子文章乙"));
+});
+
+test("ambiguous translation group and missing related page are refused before all writes", async () => {
+  const relation = (...ids: string[]) => ({ type: "relation", relation: ids.map((id) => ({ id })) });
+  const a = page("a", "甲", "正文甲", { English: relation("b", "c"), Tags: { type: "multi_select", multi_select: [{ name: "新标签" }] } });
+  const b = page("b", "乙", "正文乙");
+  const c = page("c", "丙", "正文丙");
+  const deps = stubDeps();
+  for (const apply of [false, true]) {
+    const ambiguous = await importNotionBundle({ actorId: "author-1", bundle: bundle(a, b, c), apply, deps, now: at });
+    assert.equal(ambiguous.summary.refused, 3);
+    assert.ok(ambiguous.pages.every((p) => p.issues.some((issue) => issue.code === "ambiguous-translation-relation")));
+    const missing = await importNotionBundle({ actorId: "author-1", bundle: bundle(a, b), apply, deps, now: at });
+    assert.equal(missing.summary.refused, 2);
+    assert.ok(missing.pages.every((p) => p.issues.some((issue) => issue.code === "missing-translation-page")));
+  }
+  assert.deepEqual(deps.written, []);
+});
+
+test("a source page already linked under another locale cannot be imported as a new work", async () => {
+  const deps = stubDeps({ links: [{ provider: "notion", externalId: "en-page", locale: "en", articleId: "original", ownerId: "author-1", digest: "old", syncedAt: at().toISOString() }] });
+  const selected = bundle(page("en-page", "English title", "English text", { Tags: { type: "multi_select", multi_select: [{ name: "新标签" }] } }));
+  for (const apply of [false, true]) {
+    const report = await importNotionBundle({ actorId: "author-1", bundle: selected, apply, deps, now: at });
+    assert.equal(report.summary.refused, 1);
+    assert.match(report.pages[0]!.detail, /another locale/);
+    assert.equal(report.pages[0]!.articleId, null);
+  }
+  assert.deepEqual(deps.written, []);
+});
+
+test("preview and apply refuse foreign provenance without revealing its article or creating tags", async () => {
+  const deps = stubDeps({ links: [{ provider: "notion", externalId: "foreign-page", locale: "zh-CN", articleId: "secret-work", ownerId: "other", digest: "old", syncedAt: at().toISOString() }] });
+  const selected = bundle(page("foreign-page", "文字", "正文", { Tags: { type: "multi_select", multi_select: [{ name: "新标签" }] } }));
+  for (const apply of [false, true]) {
+    const report = await importNotionBundle({ actorId: "author-1", bundle: selected, apply, deps, now: at });
+    assert.equal(report.summary.refused, 1);
+    assert.equal(report.pages[0]!.articleId, null);
+    assert.ok(!JSON.stringify(report).includes("secret-work"));
+  }
+  assert.deepEqual(deps.written, []);
+});
+
+test("previously linked pages from different works cannot be combined by a new relation", async () => {
+  const deps = stubDeps({ links: [
+    { provider: "notion", externalId: "zh", locale: "zh-CN", articleId: "one", ownerId: "author-1", digest: "old", syncedAt: at().toISOString() },
+    { provider: "notion", externalId: "en", locale: "en", articleId: "two", ownerId: "author-1", digest: "old", syncedAt: at().toISOString() },
+  ] });
+  const zh = page("zh", "标题", "正文", { English: { type: "relation", relation: [{ id: "en" }] } });
+  const en = page("en", "Title", "Body");
+  delete (en.properties as Record<string, unknown>).Date;
+  for (const apply of [false, true]) {
+    const report = await importNotionBundle({ actorId: "author-1", bundle: bundle(zh, en), apply, deps, now: at });
+    assert.equal(report.summary.refused, 2);
+    assert.ok(report.pages.every((p) => p.articleId === null));
+  }
+  assert.deepEqual(deps.written, []);
 });

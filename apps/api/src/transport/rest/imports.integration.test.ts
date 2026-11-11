@@ -514,3 +514,64 @@ test("Markdown conversion imports real articles and keeps filename identity scop
     db.close();
   }
 });
+
+for (const provider of ["sqlite", "postgres"] as const) {
+  test(`selection and provenance conflicts cannot overwrite or duplicate works (${provider})`, {
+    skip: provider === "postgres" && !process.env.TEST_DATABASE_URL && "Set TEST_DATABASE_URL to run PostgreSQL integration tests.",
+  }, async () => {
+    const db = provider === "sqlite" ? createSqliteClient({ filename: ":memory:", enableWal: false }) : null;
+    const sql = provider === "postgres" ? await createPostgresClient({ connectionString: process.env.TEST_DATABASE_URL, max: 4 }) : null;
+    if (db) await runSqliteMigrations(db); else await runMigrations(sql!);
+    const store = db ? createSqliteStore(db) : createPostgresStore(sql!);
+    const author = `selection-${randomUUID()}`;
+    const ids = Array.from({ length: 5 }, () => randomUUID());
+    const server = createApiServer({ store, env, logger: () => {} });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const call = async (pages: ReturnType<typeof notionPage>[], apply: boolean) => {
+      const response = await fetch(`http://127.0.0.1:${address.port}/api/v1/imports/notion`, {
+        method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token(author)}` },
+        body: JSON.stringify({ bundle: notionBundle(...pages), apply }),
+      });
+      assert.equal(response.status, 200);
+      return (await response.json()).data;
+    };
+    const count = async () => db
+      ? Number(db.prepare("SELECT count(*) AS n FROM articles WHERE author_id = ?").get(author)?.n)
+      : Number((await sql!.unsafe("SELECT count(*)::int AS n FROM articles WHERE author_id = $1", [author]))[0]?.n);
+    try {
+      const primary = notionPage(ids[0]!, "原文", "原文内容");
+      const child1 = notionPage(ids[1]!, "子文一", "正文一");
+      const child2 = notionPage(ids[2]!, "子文二", "正文二");
+      for (const child of [child1, child2]) Object.assign(child.properties, { "Parent item": { type: "relation", relation: [{ id: primary.id }] } });
+      const hierarchy = await call([primary, child1, child2], true);
+      assert.equal(hierarchy.summary.create, 3);
+      assert.equal(await count(), 3);
+      assert.equal(hierarchy.pages.filter((p: { issues: { code: string }[] }) => p.issues.some((i) => i.code === "hierarchy-not-carried")).length, 2);
+
+      const zh = notionPage(ids[3]!, "中英原文", "中文正文");
+      const en = notionPage(ids[4]!, "English translation", "English body");
+      Object.assign(zh.properties, { English: { type: "relation", relation: [{ id: en.id }] } });
+      delete (en.properties as Partial<typeof en.properties>).Date;
+      const pair = await call([zh, en], true);
+      assert.equal(pair.summary.create, 1);
+      assert.equal(pair.summary.update, 1);
+      assert.equal(await count(), 4);
+      for (const apply of [false, true]) {
+        const partial = await call([en], apply);
+        assert.equal(partial.summary.refused, 1);
+        assert.match(partial.pages[0].detail, /another locale/);
+        assert.equal(await count(), 4);
+      }
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      if (db) db.close();
+      if (sql) {
+        await sql.unsafe("DELETE FROM external_content_links WHERE owner_id = $1", [author]);
+        await sql.unsafe("DELETE FROM articles WHERE author_id = $1", [author]);
+        await sql.end();
+      }
+    }
+  });
+}

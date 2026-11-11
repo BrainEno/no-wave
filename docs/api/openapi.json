@@ -7419,6 +7419,8 @@
                 "work-type-fallback",
                 "featured-image-not-carried",
                 "hierarchy-not-carried",
+                "ambiguous-translation-relation",
+                "missing-translation-page",
                 "work-type-not-carried",
                 "translation-locale-not-carried"
               ]
