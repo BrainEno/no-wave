@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "@/lib/framework/link.tsx";
 import { useNavigationBlocker } from "@/lib/framework/navigation.ts";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog.tsx";
@@ -143,13 +143,13 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
 
   // Unrelated account/profile requests can also expire while a create is in
   // flight. Do not unmount the editor and lose its pending key in that case.
-  function showSignIn() {
+  const showSignIn = useCallback(() => {
     if (pendingCreateRef.current) {
       setError("登录状态已失效；请在新标签页登录原账户，再返回确认上次保存。");
     } else {
       setState("unauthenticated");
     }
-  }
+  }, []);
 
   useEffect(() => {
     if (!pendingCreate) return;
@@ -163,7 +163,7 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
     if (!pendingCreate && blocker.state === "blocked") blocker.reset();
   }, [pendingCreate, blocker]);
 
-  async function reloadArticles() {
+  const reloadArticles = useCallback(async () => {
     const response = await fetch("/api/authoring/articles?allLocales=true", { credentials: "same-origin", cache: "no-store" });
     const payload: unknown = await response.json().catch(() => null);
     if (response.status === 401) { showSignIn(); return; }
@@ -173,14 +173,14 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
     if (!Array.isArray(data) || !data.every(isArticle)) throw new Error("作品列表响应格式不正确，无法安全显示所有语言版本。");
     setArticles(data);
     setState("ready");
-  }
+  }, [showSignIn]);
 
   /**
    * The recycle bin is loaded separately and never blocks the desk: a failing
    * list of deleted works must not stop the author from writing, so its error is
    * reported inside the section it belongs to.
    */
-  async function reloadDeletedArticles() {
+  const reloadDeletedArticles = useCallback(async () => {
     const response = await fetch("/api/authoring/deleted-articles?allLocales=true", { credentials: "same-origin", cache: "no-store" });
     const payload: unknown = await response.json().catch(() => null);
     if (response.status === 401) { showSignIn(); return; }
@@ -190,21 +190,21 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
     if (!Array.isArray(data) || !data.every(isDeletedArticle)) throw new Error("回收站响应格式不正确，无法安全显示所有语言版本。");
     setDeleted(data);
     setTrashError("");
-  }
+  }, [showSignIn]);
 
   /**
    * The byline is a public fact, so the desk reads it from its own API proxy.
    * A 404 is not an outage: it is the legacy "account without a profile" case,
    * which the panel lets the author repair by saving a pen name.
    */
-  async function reloadProfile() {
+  const reloadProfile = useCallback(async () => {
     const response = await fetch("/api/authoring/profile", { credentials: "same-origin", cache: "no-store" });
     const payload: unknown = await response.json().catch(() => null);
     if (response.status === 401) { showSignIn(); return; }
     if (response.status === 404) { setProfile(null); return; }
     if (!response.ok) throw new Error(messageOf(payload));
     setProfile(parseAuthorProfile(payload));
-  }
+  }, [showSignIn]);
 
   async function saveProfile(displayName: string) {
     const name = normalizeDisplayName(displayName);
@@ -252,7 +252,7 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
     }
     void load();
     return () => { active = false; };
-  }, []);
+  }, [showSignIn, reloadArticles, reloadProfile, reloadDeletedArticles]);
 
   function openNewDocument() {
     if (pendingCreateRef.current) return;

@@ -118,6 +118,8 @@ function SiteFooter({ locale }: { locale: Locale }) {
   );
 }
 
+const readOptions: RequestInit = { credentials: "same-origin", cache: "no-store" };
+
 export function SiteChrome({ children }: { children: ReactNode }) {
   const pathname = usePathname() ?? "/";
   const locale = localeOf(pathname);
@@ -136,7 +138,6 @@ export function SiteChrome({ children }: { children: ReactNode }) {
   const pageMotion = useRef<{ revert(): void } | null>(null);
   const lastKey = useRef("");
 
-  const readOptions: RequestInit = { credentials: "same-origin", cache: "no-store" };
   const fetchUnread = useCallback(async (): Promise<number | null> => {
     const response = await fetch("/api/authoring/notifications/unread-count", readOptions);
     if (response.status === 401) return null;

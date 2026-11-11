@@ -1,6 +1,6 @@
 import { Link } from "@/lib/framework/link.tsx";
 import { useRouter } from "@/lib/framework/navigation.ts";
-import { useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 /**
  * The signed-in account page.
@@ -170,6 +170,37 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
     return () => { active = false; };
   }, [router]);
 
+  /** The session is over: the honest answer is a sign-in page, not an error. */
+  const goToSignIn = useCallback(() => {
+    setState("signed-out");
+    router.replace("/sign-in?next=%2Faccount");
+  }, [router]);
+
+  const refreshDevices = useCallback(async (active: () => boolean = () => true) => {
+    try {
+      const response = await fetch("/api/authoring/sessions", { credentials: "same-origin", cache: "no-store" });
+      const payload: unknown = await response.json().catch(() => null);
+      if (!active()) return;
+      if (response.status === 401) {
+        goToSignIn();
+        return;
+      }
+      if (!response.ok) {
+        setDevicesError("暂时无法载入设备列表，请稍后重试。");
+        return;
+      }
+      const list = deviceListOf(payload);
+      if (!list) {
+        setDevicesError("设备列表响应格式不正确。");
+        return;
+      }
+      setDevices(list);
+      setDevicesError("");
+    } catch {
+      if (active()) setDevicesError("暂时无法连接服务器，请稍后重试。");
+    }
+  }, [goToSignIn]);
+
   // Devices are asked for only once the account is known: a list fetched
   // before then would be a list for nobody.
   useEffect(() => {
@@ -177,7 +208,7 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
     let active = true;
     void refreshDevices(() => active);
     return () => { active = false; };
-  }, [state]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [state, refreshDevices]);
 
   async function requestVerification() {
     setBusy("verification");
@@ -315,37 +346,6 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
       setError("暂时无法连接服务器，请稍后重试。");
     } finally {
       setBusy(null);
-    }
-  }
-
-  /** The session is over: the honest answer is a sign-in page, not an error. */
-  function goToSignIn() {
-    setState("signed-out");
-    router.replace("/sign-in?next=%2Faccount");
-  }
-
-  async function refreshDevices(active = () => true) {
-    try {
-      const response = await fetch("/api/authoring/sessions", { credentials: "same-origin", cache: "no-store" });
-      const payload: unknown = await response.json().catch(() => null);
-      if (!active()) return;
-      if (response.status === 401) {
-        goToSignIn();
-        return;
-      }
-      if (!response.ok) {
-        setDevicesError("暂时无法载入设备列表，请稍后重试。");
-        return;
-      }
-      const list = deviceListOf(payload);
-      if (!list) {
-        setDevicesError("设备列表响应格式不正确。");
-        return;
-      }
-      setDevices(list);
-      setDevicesError("");
-    } catch {
-      if (active()) setDevicesError("暂时无法连接服务器，请稍后重试。");
     }
   }
 

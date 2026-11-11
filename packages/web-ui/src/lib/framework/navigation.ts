@@ -1,4 +1,5 @@
 import { useBlocker, useLocation, useNavigate, useRevalidator } from "react-router";
+import { useMemo } from "react";
 
 /**
  * The navigation hooks half of the seam (`@/lib/framework/navigation.ts`).
@@ -24,17 +25,17 @@ type AppRouter = {
 
 export function useRouter(): AppRouter {
   const navigate = useNavigate();
-  const revalidator = useRevalidator();
-  return {
+  const { revalidate } = useRevalidator();
+  return useMemo(() => ({
     push: (href) => navigate(href),
     replace: (href) => navigate(href, { replace: true }),
-    refresh: () => revalidator.revalidate(),
+    refresh: () => revalidate(),
     back: () => navigate(-1),
     forward: () => navigate(1),
     // React Router prefetches through its own APIs; keep the call site working
     // rather than pretending this does something.
     prefetch: () => {},
-  };
+  }), [navigate, revalidate]);
 }
 
 /** Block client-side navigation while the caller holds an unconfirmed write. */

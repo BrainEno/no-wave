@@ -135,3 +135,30 @@ test("ending the device you are holding signs this browser out, instead of leavi
   const session = await page.request.get("/api/authoring/session");
   expect(session.status(), "the session really is over, not just the page").toBe(401);
 });
+
+test("editing an account form does not repeatedly reload the session or device list", async ({ page }) => {
+  // React effects depend on the navigation adapter. If the adapter changes
+  // identity on every render, typing here re-runs the session/device effects,
+  // even though neither the route nor the account has changed.
+  let sessionRequests = 0;
+  let deviceRequests = 0;
+  page.on("request", (request) => {
+    if (request.method() !== "GET") return;
+    const path = new URL(request.url()).pathname;
+    if (path === "/api/authoring/session") sessionRequests++;
+    if (path === "/api/authoring/sessions") deviceRequests++;
+  });
+  await registerThroughForm(page, uniqueEmail("stable-effects"));
+  const devices = await waitForAccount(page);
+  await expect(devices.locator('[data-device-current="true"]')).toHaveCount(1);
+  const password = page.locator("[data-account-password]").getByLabel("新密码（至少 12 个字符）");
+  const sessionsBefore = sessionRequests;
+  const devicesBefore = deviceRequests;
+  await password.fill("a-long-example-password");
+  await password.fill("another-example-password");
+  await expect(password).toHaveValue("another-example-password");
+  // Negative assertion: give a mistakenly scheduled effect time to issue fetch.
+  await page.waitForTimeout(500);
+  expect(sessionRequests).toBe(sessionsBefore);
+  expect(deviceRequests).toBe(devicesBefore);
+});
