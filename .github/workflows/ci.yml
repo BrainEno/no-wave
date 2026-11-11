@@ -2,9 +2,15 @@ name: CI
 
 on:
   push:
-    branches: ["**"]
+    branches: ["main"]
   pull_request:
     branches: ["main"]
+
+# PR updates supersede earlier runs for the same PR; main pushes use a
+# separate group and are never cancelled by another branch or PR.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -362,7 +368,7 @@ jobs:
             -e SITE_URL=http://127.0.0.1:3100 \
             -p 3100:3100 bot-thk-web-rr:ci
 
-          # The same HTTP contract GitLab CI runs, with the API pair attached and
+          # The shared HTTP contract, with the API pair attached and
           # no local fixtures. It waits for API /health, /ready and Web /healthz.
           if ! pnpm test:container-smoke; then
             docker logs api || true
@@ -424,6 +430,24 @@ jobs:
           docker network rm nw-ci > /dev/null 2>&1 || true
           docker volume rm nw-ci-db > /dev/null 2>&1 || true
 
+  # Exercise the contributor's single full-suite command itself. It owns a
+  # disposable PostgreSQL container and isolated browser stacks, not CI's DBs.
+  full-local-suite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10.20.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+      - run: node scripts/preflight.cjs
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:all
+
   # One gate, so a branch cannot be merged on a partial signal: every job above
   # has to have succeeded, and a skipped job reports as a failure rather than
   # passing by absence.
@@ -447,6 +471,7 @@ jobs:
       - portable-stack
       - container-image
       - e2e
+      - full-local-suite
     runs-on: ubuntu-latest
     steps:
       - name: Require every validation job to succeed
@@ -458,12 +483,13 @@ jobs:
           PORTABLE_STACK_RESULT: ${{ needs.portable-stack.result }}
           CONTAINER_RESULT: ${{ needs.container-image.result }}
           E2E_RESULT: ${{ needs.e2e.result }}
+          FULL_LOCAL_RESULT: ${{ needs.full-local-suite.result }}
         run: |
-          printf 'verify: %s\npostgres-integration: %s\nlocal-dev-chain: %s\nreact-router-prototype: %s\nportable-stack: %s\ncontainer-image: %s\ne2e: %s\n' \
-            "$VERIFY_RESULT" "$POSTGRES_RESULT" "$LOCAL_CHAIN_RESULT" "$PROTOTYPE_RESULT" "$PORTABLE_STACK_RESULT" "$CONTAINER_RESULT" "$E2E_RESULT"
-          for result in "$VERIFY_RESULT" "$POSTGRES_RESULT" "$LOCAL_CHAIN_RESULT" "$PROTOTYPE_RESULT" "$PORTABLE_STACK_RESULT" "$CONTAINER_RESULT" "$E2E_RESULT"; do
+          printf 'verify: %s\npostgres-integration: %s\nlocal-dev-chain: %s\nreact-router-prototype: %s\nportable-stack: %s\ncontainer-image: %s\ne2e: %s\nfull-local-suite: %s\n' \
+            "$VERIFY_RESULT" "$POSTGRES_RESULT" "$LOCAL_CHAIN_RESULT" "$PROTOTYPE_RESULT" "$PORTABLE_STACK_RESULT" "$CONTAINER_RESULT" "$E2E_RESULT" "$FULL_LOCAL_RESULT"
+          for result in "$VERIFY_RESULT" "$POSTGRES_RESULT" "$LOCAL_CHAIN_RESULT" "$PROTOTYPE_RESULT" "$PORTABLE_STACK_RESULT" "$CONTAINER_RESULT" "$E2E_RESULT" "$FULL_LOCAL_RESULT"; do
             if [ "$result" != "success" ]; then
-              echo "::error::verify, postgres-integration, local-dev-chain, react-router-prototype, portable-stack, container-image and e2e must all succeed."
+              echo "::error::verify, postgres-integration, local-dev-chain, react-router-prototype, portable-stack, container-image, e2e and full-local-suite must all succeed."
               exit 1
             fi
           done
