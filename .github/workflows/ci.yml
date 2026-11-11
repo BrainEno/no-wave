@@ -192,7 +192,7 @@ jobs:
             cat /tmp/playwright-deps.log
             # Only fixed error categories enter the annotation; package URLs and
             # environment values stay out of it. Preserve the failing check.
-            reason=$(grep -Eio 'Could not resolve|Temporary failure resolving|Connection timed out|Connection failed|Network is unreachable|Unable to locate package|no installation candidate|404 Not Found|Hash Sum mismatch|held broken packages|The repository .* is not signed' /tmp/playwright-deps.log | sort -u | tr '\n' ' ' || true)
+            reason=$(grep -Eio 'Could not resolve|Temporary failure resolving|Connection timed out|Connection failed|Network is unreachable|Unable to locate package|no installation candidate|404 Not Found|Hash Sum mismatch|held broken packages|is not signed' /tmp/playwright-deps.log | sort -u | tr '\n' ' ' || true)
             echo "::error title=Chromium system dependencies::${reason:-Installation failed; inspect the job log}"
             exit 1
           fi
@@ -493,7 +493,7 @@ jobs:
             cat /tmp/playwright-deps.log
             # Only fixed error categories enter the annotation; package URLs and
             # environment values stay out of it. Preserve the failing check.
-            reason=$(grep -Eio 'Could not resolve|Temporary failure resolving|Connection timed out|Connection failed|Network is unreachable|Unable to locate package|no installation candidate|404 Not Found|Hash Sum mismatch|held broken packages|The repository .* is not signed' /tmp/playwright-deps.log | sort -u | tr '\n' ' ' || true)
+            reason=$(grep -Eio 'Could not resolve|Temporary failure resolving|Connection timed out|Connection failed|Network is unreachable|Unable to locate package|no installation candidate|404 Not Found|Hash Sum mismatch|held broken packages|is not signed' /tmp/playwright-deps.log | sort -u | tr '\n' ' ' || true)
             echo "::error title=Chromium system dependencies::${reason:-Installation failed; inspect the job log}"
             exit 1
           fi
