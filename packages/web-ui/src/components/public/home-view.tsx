@@ -76,7 +76,7 @@ export function HomePageView({ locale, featured, latest, popular, categories }: 
   });
 
   return (
-    <main lang={locale} id="top">
+    <main lang={locale} id="top" tabIndex={-1}>
       <PageLoader label="载入中 · LOADING" />
       <header className="nw-hero" data-hero>
         <img className="nw-hero-bg" src={heroCover.src} alt="" width={heroCover.width} height={heroCover.height} fetchPriority="high" />

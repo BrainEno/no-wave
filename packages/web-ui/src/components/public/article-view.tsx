@@ -78,7 +78,7 @@ export function ArticlePageView({ article, newer, older, related }: ArticleDetai
     done: ui.reader.done, position: ui.reader.position, unavailable: ui.reader.unavailable };
 
   return (
-    <main lang={locale} className="nw-w">
+    <main id="top" tabIndex={-1} lang={locale} className="nw-w">
       <ReadingProgress label={ui.reader.progress} />
       <header className="nw-rh">
         <Link className="nw-ss" href={archivePath(locale)} style={{ display: "inline-flex", alignItems: "center", minHeight: 44, fontWeight: 700, fontSize: 15 }}>← {ui.reader.back}</Link>

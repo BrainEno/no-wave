@@ -34,7 +34,7 @@ export const meta: MetaFunction = () => [
 
 export default function AdminFeaturedRoute() {
   return (
-    <main className="nw-w nw-head" data-route="admin-featured">
+    <main id="top" tabIndex={-1} className="nw-w nw-head" data-route="admin-featured">
       <FeaturedShelfPanel />
     </main>
   );

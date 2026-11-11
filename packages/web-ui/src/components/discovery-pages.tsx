@@ -12,7 +12,7 @@ export function CategoryIndexContent({ locale, categories, query = "", page = 1,
   const ui = getUi(locale);
   const base = locale === "en" ? "/en/categories" : "/categories";
   return (
-    <main lang={locale} className="nw-w">
+    <main id="top" tabIndex={-1} lang={locale} className="nw-w">
       <header className="nw-head">
         <div className="nw-m" style={{ marginBottom: 12 }}>{ui.categories.eyebrow}</div>
         <h1><span className="nw-zh">{ui.nav.topics}</span> <i>Topics</i></h1>
@@ -58,7 +58,7 @@ export function AuthorIndexContent({ locale, authors, query = "", page = 1, hasN
   const ui = getUi(locale);
   const base = locale === "en" ? "/en/authors" : "/authors";
   return (
-    <main lang={locale} className="nw-w">
+    <main id="top" tabIndex={-1} lang={locale} className="nw-w">
       <header className="nw-head">
         <div className="nw-m" style={{ marginBottom: 12 }}>{ui.authors.eyebrow}</div>
         <h1><span className="nw-zh">{ui.authors.title}</span> <i>Authors</i></h1>
@@ -97,7 +97,7 @@ export function CategoryDetailContent({ locale, category, articles, page = 1, ha
   const ui = getUi(locale);
   const base = `${locale === "en" ? "/en/categories" : "/categories"}/${category.slug}`;
   return (
-    <main lang={locale} className="nw-w">
+    <main id="top" tabIndex={-1} lang={locale} className="nw-w">
       <header className="nw-head">
         <Link className="nw-ss" href={locale === "en" ? "/en/categories" : "/categories"} style={{ display: "inline-flex", alignItems: "center", minHeight: 44, fontWeight: 700, fontSize: 15 }}>← {ui.categories.all}</Link>
         <div className="nw-m" style={{ marginTop: 8 }}>{ui.categories.published(category.articleCount)}</div>

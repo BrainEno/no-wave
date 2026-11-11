@@ -26,7 +26,7 @@ export function AuthorPageView({ locale, author, type, page, works }: AuthorPage
   const portrait = pickDefaultCover(author.username);
 
   return (
-    <main lang={locale} className="nw-w">
+    <main id="top" tabIndex={-1} lang={locale} className="nw-w">
       <div className="nw-ah">
         <aside className="nw-ai">
           <img className="nw-pt" src={portrait.src} alt="" width={portrait.width} height={portrait.height} />

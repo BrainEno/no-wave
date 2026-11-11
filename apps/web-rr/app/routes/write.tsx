@@ -25,7 +25,7 @@ export const headers: HeadersFunction = () => PRIVATE_PAGE_HEADERS;
 
 export default function WriteRoute() {
   return (
-    <main className="nw-w nw-head nw-private-page" data-route="write">
+    <main id="top" tabIndex={-1} className="nw-w nw-head nw-private-page" data-route="write">
       <AuthoringWorkspace />
     </main>
   );

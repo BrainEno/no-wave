@@ -257,12 +257,12 @@ export function ThreadView({
   );
 
   if (state.kind === "loading") {
-    return <main lang={locale} className="nw-w"><Shell ui={ui} backHref={backHref} locale={locale}><p className="nw-m nw-thread-note">{ui.threadLoading}</p></Shell></main>;
+    return <main id="top" tabIndex={-1} lang={locale} className="nw-w"><Shell ui={ui} backHref={backHref} locale={locale}><p className="nw-m nw-thread-note">{ui.threadLoading}</p></Shell></main>;
   }
 
   if (state.kind === "signed-out") {
     return (
-      <main lang={locale} className="nw-w">
+      <main id="top" tabIndex={-1} lang={locale} className="nw-w">
         <Shell ui={ui} backHref={backHref} locale={locale}>
           <p className="nw-m nw-thread-note">
             {ui.signIn}{" "}
@@ -277,7 +277,7 @@ export function ThreadView({
 
   if (state.kind === "missing") {
     return (
-      <main lang={locale} className="nw-w">
+      <main id="top" tabIndex={-1} lang={locale} className="nw-w">
         <Shell ui={ui} backHref={backHref} locale={locale}>
           {/* No retry: this is an answer, not a failure. */}
           <p className="nw-m nw-thread-note" role="status">{ui.conversationMissing}</p>
@@ -288,7 +288,7 @@ export function ThreadView({
 
   if (state.kind === "failed") {
     return (
-      <main lang={locale} className="nw-w">
+      <main id="top" tabIndex={-1} lang={locale} className="nw-w">
         <Shell ui={ui} backHref={backHref} locale={locale}>
           <div className="nw-thread-note" role="alert">
             <p>{ui.threadFailed}</p>
@@ -301,7 +301,7 @@ export function ThreadView({
 
   if (state.messages.length === 0) {
     return (
-      <main lang={locale} className="nw-w">
+      <main id="top" tabIndex={-1} lang={locale} className="nw-w">
         <Shell ui={ui} backHref={backHref} locale={locale}>
           <p className="nw-m nw-thread-note">{ui.threadEmpty}</p>
           {composer}
@@ -311,7 +311,7 @@ export function ThreadView({
   }
 
   return (
-    <main lang={locale} className="nw-w">
+    <main id="top" tabIndex={-1} lang={locale} className="nw-w">
       <Shell ui={ui} backHref={backHref} locale={locale}>
         <div className="nw-thread">
           {state.more ? (

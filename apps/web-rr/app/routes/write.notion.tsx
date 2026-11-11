@@ -28,7 +28,7 @@ export const meta: MetaFunction = () => [
 
 export default function WriteNotionRoute() {
   return (
-    <main className="nw-w nw-head" data-route="write-notion">
+    <main id="top" tabIndex={-1} className="nw-w nw-head" data-route="write-notion">
       <NotionImport />
     </main>
   );

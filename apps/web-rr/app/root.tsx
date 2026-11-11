@@ -131,7 +131,7 @@ export function ErrorBoundary() {
     // otherwise the one page a visitor most needs a way out of has none.
     <Document lang="zh-CN" title={titleWithSite(notFound ? "404" : "服务暂时不可用")} robots="noindex, nofollow">
       <SiteChrome>
-        <main className="nw-w" data-error-boundary={notFound ? "404" : "500"}>
+        <main id="top" tabIndex={-1} className="nw-w" data-error-boundary={notFound ? "404" : "500"}>
           <h1 data-reveal>{notFound ? "这一页不存在" : "服务暂时不可用"}</h1>
           <p className="nw-ep">
             {notFound

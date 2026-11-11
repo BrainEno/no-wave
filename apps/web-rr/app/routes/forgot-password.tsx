@@ -36,7 +36,7 @@ export const meta: MetaFunction = () => [
 export default function ForgotPasswordRoute() {
   const { mailEnabled } = useLoaderData<typeof loader>();
   return (
-    <main className="nw-w nw-head" data-route="forgot-password">
+    <main id="top" tabIndex={-1} className="nw-w nw-head" data-route="forgot-password">
       {mailEnabled ? <ForgotPasswordForm /> : <MailDisabledNotice />}
     </main>
   );

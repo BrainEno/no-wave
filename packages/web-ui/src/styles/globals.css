@@ -26,6 +26,11 @@ img { max-width: 100%; }
 .nw-m { font: 400 13px/1.5 var(--f-ss); color: var(--t2); letter-spacing: .02em; font-variant-numeric: tabular-nums; }
 .nw-grain { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 95; pointer-events: none; opacity: .07; mix-blend-mode: multiply; }
 
+/* Keep the first keyboard stop discoverable without covering content at rest. */
+.nw-skip { position: fixed; z-index: 120; top: 8px; left: 8px; padding: 12px 18px; min-height: 44px; background: var(--ink); color: var(--paper); transform: translateY(-200%); }
+.nw-skip:focus { transform: none; outline: 3px solid var(--or); outline-offset: 2px; }
+main:focus { outline: none; }
+
 /* ---------- 平滑滚动容器（仅在 ScrollSmoother 启用时固定） ---------- */
 .nw-smooth #smooth-wrapper { position: fixed; inset: 0; overflow: hidden; }
 #smooth-content { position: relative; }
@@ -42,7 +47,7 @@ img { max-width: 100%; }
 .nw-pill a, .nw-pill button { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 44px; padding: 0 12px; background: none; border: 0; position: relative; }
 .nw-pill a:hover { text-decoration: underline; }
 .nw-pill [aria-current="page"] { font-weight: 700; text-decoration: underline; }
-.nw-pill .nw-lang { min-width: 0; padding: 0 6px; }
+.nw-pill .nw-lang { min-width: 44px; padding: 0 6px; }
 .nw-pill .nw-lang[aria-current="true"] { font-weight: 700; color: var(--or); text-decoration: none; }
 .nw-sep { width: 1px; height: 20px; background: var(--ink); margin: 0 8px; }
 .nw-ic { padding: 0 !important; }
@@ -375,7 +380,7 @@ mark { background: var(--or); color: #0f0d0c; }
 .nw-article-fields .nw-field-wide { grid-column: 1 / -1; }
 .nw-article-fields .nw-field-note { grid-column: 1 / -1; margin: 0; color: var(--t2); font-size: 13px; }
 .nw-lexical-toolbar { display: flex; flex-wrap: wrap; gap: 6px; border: 1px solid var(--ink); padding: 10px; margin-top: 22px; }
-.nw-lexical-toolbar button { min-height: 40px; min-width: 42px; padding: 6px 10px; border: 1px solid var(--ink); background: transparent; font-size: 13px; }
+.nw-lexical-toolbar button { min-height: 44px; min-width: 44px; padding: 6px 10px; border: 1px solid var(--ink); background: transparent; font-size: 13px; }
 .nw-lexical-toolbar button:hover { background: var(--ink); color: var(--paper); }
 .nw-lexical-shell { border: 1px solid var(--ink); border-top: 0; background: color-mix(in srgb, var(--paper) 96%, var(--ink)); }
 .nw-lexical-input { min-height: 420px; padding: clamp(18px, 4vw, 40px); outline: none; line-height: 1.9; font: 400 20px/1.9 var(--f-zh); overflow-wrap: anywhere; }
@@ -408,7 +413,7 @@ mark { background: var(--or); color: #0f0d0c; }
 .nw-comment-section h2 { margin: 0 0 24px; font: 400 clamp(32px, 5vw, 48px)/1.15 var(--f-zh); }
 .nw-comment-form { margin: 24px 0 42px; }
 .nw-comment-toolbar { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px; border: 1px solid var(--ink); }
-.nw-comment-toolbar button { min-height: 40px; padding: 5px 10px; background: transparent; border: 1px solid var(--ink); }
+.nw-comment-toolbar button { min-height: 44px; min-width: 44px; padding: 5px 10px; background: transparent; border: 1px solid var(--ink); }
 .nw-comment-editor { min-height: 150px; padding: 16px; border: 1px solid var(--ink); border-top: 0; outline: none; font: 400 17px/1.8 var(--f-zh); overflow-wrap: anywhere; }
 .nw-comment-editor p { margin: 0 0 12px; }
 .nw-comment-list { display: grid; gap: 22px; }

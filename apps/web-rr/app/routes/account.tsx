@@ -43,7 +43,7 @@ export const meta: MetaFunction = () => [
 export default function AccountRoute() {
   const { mailEnabled } = useLoaderData<typeof loader>();
   return (
-    <main className="nw-w nw-head nw-private-page" data-route="account">
+    <main id="top" tabIndex={-1} className="nw-w nw-head nw-private-page" data-route="account">
       <AccountPanel mailEnabled={mailEnabled} />
     </main>
   );
