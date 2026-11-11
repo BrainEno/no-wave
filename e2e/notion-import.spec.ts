@@ -203,6 +203,7 @@ test("ZIP selection previews and writes only checked pages, and changing it inva
   assertSelectedPages(applied, [ids[0]!, ids[2]!]);
   await page.getByRole("link", { name: "去看写作台" }).click();
   await expect(page).toHaveURL(/\/write$/);
+  await expect(page.locator(".nw-import-report")).toHaveCount(0);
   await expect(page.getByText("保留甲", { exact: true })).toBeVisible();
   await expect(page.getByText("保留乙", { exact: true })).toBeVisible();
   await expect(page.getByText("不导入", { exact: true })).toHaveCount(0);
@@ -223,7 +224,7 @@ test("a selected page with a missing English relation is refused before writing"
   ]);
   await page.getByLabel("关联原文", { exact: true }).check();
   await page.getByRole("button", { name: "试跑所选文章" }).click();
-  await expect(page.locator(".nw-import-report").getByText(/missing-translation-page/)).toBeVisible();
+  await expect(page.locator(".nw-import-report").getByText("missing-translation-page", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /确认导入/ })).toHaveCount(0);
   await page.getByLabel("English", { exact: true }).check();
   await page.getByRole("button", { name: "试跑所选文章" }).click();
