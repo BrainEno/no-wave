@@ -231,7 +231,7 @@ export function createSqliteEngagementStore(db: SqliteRunner) {
         if (article.author_id !== actorId) recipients.set(article.author_id, "article.commented");
         if (parentAuthorId && parentAuthorId !== actorId) recipients.set(parentAuthorId, "article.comment_replied");
         for (const [userId, type] of recipients) {
-          const payload = { type, articleId: article.id, slug, commentId: id, commenterId: actorId, parentCommentId };
+          const payload = { type, articleId: article.id, slug, locale, commentId: id, commenterId: actorId, parentCommentId };
           const notification = notify(userId, type + ":" + id, payload);
           if (notification) changes.push({ entityType: "notifications", entityId: notification.id, operation: "upsert", payload: notification });
         }

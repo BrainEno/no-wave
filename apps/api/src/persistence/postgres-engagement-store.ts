@@ -286,7 +286,7 @@ export function createPostgresEngagementStore(ctx: PostgresStoreContext) {
         if (parentAuthorId && parentAuthorId !== actorId) recipients.set(parentAuthorId, "article.comment_replied");
         for (const [userId, type] of recipients) {
           const payload = {
-            type, articleId: article.id, slug, commentId: comment.id,
+            type, articleId: article.id, slug, locale, commentId: comment.id,
             commenterId: actorId, parentCommentId,
           };
           const notificationId = randomUUID();
