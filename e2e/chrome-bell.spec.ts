@@ -143,6 +143,9 @@ test("bell loads older notifications with keysets, retries errors and reads item
   await page.getByRole("button", { name: /通知/ }).click();
   const panel = page.getByRole("dialog", { name: "通知" });
   await expect(panel.locator(".nw-np-row")).toHaveCount(50);
+  const panelBox = await panel.boundingBox();
+  expect(panelBox).not.toBeNull();
+  expect(panelBox!.y + panelBox!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
   await expect(panel).toContainText("未读数包含尚未载入的通知");
   await panel.getByRole("button", { name: "加载更多通知" }).click();
   await expect(panel.getByRole("alert")).toBeVisible();
