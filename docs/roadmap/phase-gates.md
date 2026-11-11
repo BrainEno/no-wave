@@ -1,6 +1,6 @@
 # New Product Roadmap and Phase Gates
 
-The goal is functional coverage of the previous product through a new implementation, not source-code compatibility. Every phase should preserve verified product capabilities while leaving legacy implementation choices behind.
+The goal is functional coverage of the previous product through a new implementation, not source-code compatibility. Every phase should preserve verified product capabilities while leaving legacy implementation choices behind. See the [evidence review](../audit/2026-11-roadmap-evidence.md) for completed items, remaining gates and review boundaries.
 
 ## Product-decision gate
 
@@ -19,7 +19,7 @@ Security fixes and implementation details that fulfill already-approved behavior
 - [x] Record Next.js App Router as the initial Web framework decision ([ADR 0002](../architecture/decisions/0002-web-framework-evaluation.md)); the current framework target is superseded by [ADR 0012](../architecture/decisions/0012-portable-web-framework-migration.md), which selects React Router 7 Framework Mode.
 - [x] Select SQLite as the default provider for new/local installs, retain PostgreSQL as a supported adapter, and record MongoDB as a future adapter with online change-capture/cutover requirements (ADR 0010).
 - [ ] Complete the feature-by-feature traceability inventory and record unresolved product behavior.
-- [ ] Agree on visual direction from the forthcoming design brief/design artifacts.
+- [x] Agree on visual direction from the design brief/design artifacts. Evidence: [design system](../../packages/web-ui/docs/UI_DESIGN_SYSTEM.md).
 - [x] Select self-hosted API identity and document the initial local issuer contract ([ADR 0008](../architecture/decisions/0008-self-hosted-api-identity.md)).
 - [ ] Complete email verification, recovery, browser storage, operational hardening and Web authentication before production use.
 
@@ -55,7 +55,8 @@ On 2026-10-27, the product owner selected Lexical for both the article editor an
 - [x] Wire the strict adapter into authenticated REST article create/update as a write-only ingress while retaining application-owned content blocks for persistence and read responses; verify accepted rich text and fail-closed cases at the HTTP boundary.
 - [ ] Add registered custom-image node/upload support and preserve additional Lexical metadata only after its application document contract is approved.
 - [x] Validate versioned article node types, safe URLs, inline marks, plain-text fallbacks and serialized payload limits on the server.
-- [ ] Implement the article editor, draft recovery and approved image-upload integration.
+- [x] Implement the article editor and image-upload integration. Evidence: [editor](../../packages/web-ui/src/components/authoring/article-editor.tsx), [authoring E2E](../../e2e/authoring.spec.ts).
+- [ ] Complete durable recovery of unsaved drafts across page refresh or navigation. The editor only offers in-page recovery for an unconfirmed request; it warns the writer not to refresh.
 - [x] Define and persist the smaller paragraph-only comment rich-text v1 contract with legacy plain-text fallback, safe inline marks/links, REST Lexical ingress, PostgreSQL/SQLite migrations and persistence/security tests.
 - [x] Implement the comment editor with the approved smaller supported-node set. Evidence: [comment editor](../../packages/web-ui/src/components/comments/article-comments.tsx), [comment session E2E](../../e2e/comment-session.spec.ts).
 - [ ] Add round-trip, malformed-payload, security, Chinese IME, accessibility, keyboard and mobile tests.
@@ -115,7 +116,7 @@ On 2026-10-29, the owner approved public-page SSR, a client-interactive writing 
 - [x] Build and test an isolated React Router 7 Framework Mode portability proof of concept without replacing the live Next.js app. → `apps/web-rr`; the proof of concept became the Web application and the Next.js app was deleted on 2026-11-01 ([ADR 0017](../architecture/decisions/0017-nextjs-retired-one-web-application.md)).
 - [x] Prove public SSR, route metadata, hard 404 behavior, private-response cache isolation and standard Node/Docker startup. Evidence: [route tests](../../apps/web-rr/test/web.test.ts), [portable stack](../../scripts/portable-stack.ts).
 - [x] Move public read-only routes, with locale behavior, metadata, sitemap and robots. Evidence: [route table](../../apps/web-rr/app/routes.ts), [sitemap](../../apps/web-rr/app/routes/sitemap.xml.ts).
-- [ ] Migrate auth, writing, comment and media route handlers while preserving the existing HttpOnly cookie, CSRF/origin, token refresh and authorization contracts.
+- [x] Migrate auth, writing, comment and media route handlers while preserving the existing HttpOnly cookie, CSRF/origin, token refresh and authorization contracts. Evidence: [retirement decision](../architecture/decisions/0017-nextjs-retired-one-web-application.md), [route table](../../apps/web-rr/app/routes.ts), [HTTP route tests](../../apps/web-rr/test/web.test.ts).
 - [x] Make the notification worker independently runnable with durable processing. Evidence: [worker](../../apps/api/src/persistence/notification-drain.ts), [operations](../operations/api-observability.md).
 - [ ] Validate the selected host's actual signup/payment conditions, sleep/recovery behavior, database durability, object storage and worker execution before deployment.
 - [ ] Complete route/E2E/build/typecheck/PostgreSQL integration regression and rehearse rollback before any traffic cutover.
@@ -128,7 +129,8 @@ On 2026-10-29, the owner approved public-page SSR, a client-interactive writing 
 - [x] Establish a localized, crawlable framework spike for home, article archive/detail and author pages.
 - [x] Replace fixture content with API-backed pages. Evidence: [public loaders](../../packages/web-ui/src/lib/public-pages.ts), [route table](../../apps/web-rr/app/routes.ts).
 - [ ] Implement hashtag listing/search/detail routes and article tag rendering.
-- [ ] Implement account/authentication and complete the core feature parity journey.
+- [x] Implement the account/authentication interfaces. Evidence: [account route](../../apps/web-rr/app/routes/account.tsx), [auth route](../../apps/web-rr/app/routes/sign-in.tsx), [account route tests](../../apps/web-rr/test/web.test.ts).
+- [ ] Complete the core feature parity journey and its independent acceptance.
 - [ ] Apply the approved Cloud design artifacts to layouts, tokens, components and responsive behavior.
 - [ ] Complete SEO, sitemap, accessibility and PWA behavior after data/persistence contracts stabilize.
 

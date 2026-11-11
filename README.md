@@ -117,7 +117,7 @@ line, the bounds and the exit codes.
 
 ## Observability
 
-The API writes structured request logs to stdout/stderr and exposes process-local Prometheus metrics at `/metrics`, alongside separate API and Web readiness probes. Internal service configuration is never returned by `/metrics`; see [API observability](docs/operations/api-observability.md). Health and readiness are exercised by the local chain and CI.
+The API writes structured request logs to stdout/stderr and offers process-local Prometheus metrics at `/metrics` when `API_METRICS_ENABLED=true`; the endpoint returns 404 by default and must be restricted to a trusted monitoring network when enabled. API and Web expose separate readiness probes. Internal service configuration is never returned by `/metrics`; see [API observability](docs/operations/api-observability.md). Health and readiness are exercised by the local chain and CI.
 
 ## Local development
 
