@@ -54,7 +54,11 @@ export function setupPageMotion(): { revert(): void } {
       if (mode === "mask") {
         gsap.from(element, { clipPath: "inset(100% 0 0 0)", duration: 1.2, ease: "power4.out", scrollTrigger: { trigger: element, start: "top 88%" } });
       } else if (mode === "row") {
-        gsap.from(element, { xPercent: index % 2 ? 12 : -12, opacity: 0, duration: 0.9, ease: "power3.out", scrollTrigger: { trigger: element, start: "top 92%" } });
+        // Horizontal transforms on off-screen full-width rows enlarge the
+        // mobile layout viewport and can push fixed navigation outside it.
+        // Keep the reveal, but move vertically on narrow screens.
+        const narrow = window.matchMedia("(max-width: 767px)").matches;
+        gsap.from(element, { ...(narrow ? { y: 24 } : { xPercent: index % 2 ? 12 : -12 }), opacity: 0, duration: 0.9, ease: "power3.out", scrollTrigger: { trigger: element, start: "top 92%" } });
       } else if (mode === "wipe") {
         gsap.from(element, { clipPath: "inset(0 100% 0 0)", x: index % 2 ? 60 : -60, duration: 1, ease: "power3.out", scrollTrigger: { trigger: element, start: "top 94%" } });
       } else {
