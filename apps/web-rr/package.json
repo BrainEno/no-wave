@@ -17,6 +17,7 @@
     "@react-router/node": "8.5.1",
     "compression": "1.8.2",
     "gsap": "3.13.0",
+    "marked": "15.0.12",
     "react": "19.2.9",
     "react-dom": "19.2.9",
     "react-router": "8.5.1"

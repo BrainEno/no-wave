@@ -20,6 +20,9 @@ importers:
       fflate:
         specifier: 0.8.3
         version: 0.8.3
+      marked:
+        specifier: 15.0.12
+        version: 15.0.12
       postcss:
         specifier: 8.5.32
         version: 8.5.32
@@ -69,6 +72,9 @@ importers:
       gsap:
         specifier: 3.13.0
         version: 3.13.0
+      marked:
+        specifier: 15.0.12
+        version: 15.0.12
       react:
         specifier: 19.2.9
         version: 19.2.9

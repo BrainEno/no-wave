@@ -117,7 +117,7 @@ line, the bounds and the exit codes.
 
 ## Observability
 
-The API writes structured request logs to stdout/stderr and exposes process-local Prometheus metrics at `/metrics`, alongside separate API and Web readiness probes. Internal service configuration is never returned by `/metrics`; see [API observability](docs/operations/api-observability.md). Health and readiness are exercised by the local chain and CI.
+The API writes structured request logs to stdout/stderr and offers process-local Prometheus metrics at `/metrics` when `API_METRICS_ENABLED=true`; the endpoint returns 404 by default and must be restricted to a trusted monitoring network when enabled. API and Web expose separate readiness probes. Internal service configuration is never returned by `/metrics`; see [API observability](docs/operations/api-observability.md). Health and readiness are exercised by the local chain and CI.
 
 ## Local development
 
@@ -317,3 +317,7 @@ CI runs dependency installation, typecheck, Web/API tests, route smoke, containe
 ## Lexical note
 
 Some documents still use the phrase "portability/content spike" for the historical Web UI. That spike is retired: `apps/web-rr` is the single Web implementation. The design system documents are concept proposals, not a second framework or a deployed second UI.
+
+## License
+
+This project is licensed under the [Apache License, Version 2.0](LICENSE).

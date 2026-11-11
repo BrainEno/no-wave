@@ -129,3 +129,21 @@ test("no client asset reads the site origin from the environment", () => {
     );
   }
 });
+
+test("SSR build's external packages are declared as Web production dependencies", async () => {
+  // A locally hoisted root devDependency can satisfy an SSR import during
+  // testing, yet the production image installs only the Web workspace. Check
+  // the actual emitted entry, not just imports in the pre-bundled source.
+  const { builtinModules } = await import("node:module");
+  const builtins = new Set(builtinModules.flatMap((name) => [name, `node:${name}`]));
+  const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { dependencies: Record<string, string> };
+  const server = readFileSync(new URL("../build/server/index.js", import.meta.url), "utf8");
+  const imports = [...server.matchAll(/^import\s+.+?\s+from\s+["']([^"']+)["'];?$/gm)].map((match) => match[1]!);
+  assert.ok(imports.length > 0, "the built server entry must contain external imports");
+  for (const specifier of imports) {
+    if (builtins.has(specifier) || specifier.startsWith(".") || specifier.startsWith("/")) continue;
+    const pieces = specifier.split("/");
+    const packageName = specifier.startsWith("@") ? pieces.slice(0, 2).join("/") : pieces[0]!;
+    assert.ok(manifest.dependencies[packageName], `${specifier} is external in the server build but ${packageName} is not a Web runtime dependency`);
+  }
+});

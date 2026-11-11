@@ -68,3 +68,23 @@ test("the security policy does not invite public vulnerability disclosure", () =
   assert.match(policy, /does not enable it/i);
   assert.match(policy, /No response or remediation timeline is promised/i);
 });
+
+test("repository publishes the Apache 2.0 license and links it from both READMEs", () => {
+  const license = readFileSync(new URL("LICENSE", root), "utf8");
+  assert.match(license, /Apache License\s+Version 2\.0, January 2004/);
+  assert.match(license, /TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION/);
+  assert.match(license, /END OF TERMS AND CONDITIONS/);
+  for (const name of ["README.md", "README.zh-CN.md"]) {
+    const readme = readFileSync(new URL(name, root), "utf8");
+    assert.match(readme, /\]\(LICENSE\)/, `${name} must link to the repository license`);
+    assert.match(readme, /Apache License(?:, Version)? 2\.0/);
+  }
+});
+
+test("security reporting guidance is reachable from the main README", () => {
+  const readme = readFileSync(new URL("README.md", root), "utf8");
+  const policy = readFileSync(new URL("SECURITY.md", root), "utf8");
+  assert.match(readme, /\]\(SECURITY\.md\)/);
+  assert.match(policy, /security\/advisories\/new/);
+  assert.match(policy, /do not publish the\s+vulnerability/i);
+});
