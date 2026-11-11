@@ -184,6 +184,22 @@ jobs:
         run: pnpm build
       # Keep system package and browser downloads separate: their outages need
       # different remedies, and both remain required before running the suite.
+      - name: Diagnose package source DNS
+        run: |
+          for host in archive.ubuntu.com security.ubuntu.com azure.archive.ubuntu.com github.com dns.google cloudflare-dns.com; do
+            if timeout 8 getent ahostsv4 "$host" > /dev/null; then
+              echo "::notice title=DNS probe::${host} resolved"
+            else
+              echo "::notice title=DNS probe::${host} did not resolve"
+            fi
+          done
+          for url in 'https://dns.google/resolve?name=archive.ubuntu.com&type=A' 'https://cloudflare-dns.com/dns-query?name=archive.ubuntu.com&type=A'; do
+            if curl --silent --show-error --fail --max-time 8 -H 'accept: application/dns-json' "$url" > /dev/null 2>&1; then
+              echo "::notice title=DNS HTTPS probe::resolver reachable"
+            else
+              echo "::notice title=DNS HTTPS probe::resolver unavailable"
+            fi
+          done
       - name: Install Chromium system dependencies
         run: |
           if pnpm exec playwright install-deps chromium > /tmp/playwright-deps.log 2>&1; then
@@ -489,6 +505,22 @@ jobs:
           cache: pnpm
       - run: node scripts/preflight.cjs
       - run: pnpm install --frozen-lockfile
+      - name: Diagnose package source DNS
+        run: |
+          for host in archive.ubuntu.com security.ubuntu.com azure.archive.ubuntu.com github.com dns.google cloudflare-dns.com; do
+            if timeout 8 getent ahostsv4 "$host" > /dev/null; then
+              echo "::notice title=DNS probe::${host} resolved"
+            else
+              echo "::notice title=DNS probe::${host} did not resolve"
+            fi
+          done
+          for url in 'https://dns.google/resolve?name=archive.ubuntu.com&type=A' 'https://cloudflare-dns.com/dns-query?name=archive.ubuntu.com&type=A'; do
+            if curl --silent --show-error --fail --max-time 8 -H 'accept: application/dns-json' "$url" > /dev/null 2>&1; then
+              echo "::notice title=DNS HTTPS probe::resolver reachable"
+            else
+              echo "::notice title=DNS HTTPS probe::resolver unavailable"
+            fi
+          done
       - name: Install Chromium system dependencies
         run: |
           if pnpm exec playwright install-deps chromium > /tmp/playwright-deps.log 2>&1; then
