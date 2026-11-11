@@ -194,6 +194,10 @@ jobs:
             # environment values stay out of it. Preserve the failing check.
             reason=$(grep -Eio 'Could not resolve|Temporary failure resolving|Connection timed out|Connection failed|Network is unreachable|Unable to locate package|no installation candidate|404 Not Found|Hash Sum mismatch|held broken packages|is not signed' /tmp/playwright-deps.log | sort -u | tr '\n' ' ' || true)
             echo "::error title=Chromium system dependencies::${reason:-Installation failed; inspect the job log}"
+            # Hostnames only, validated against the DNS label alphabet; no URLs
+            # or credentials from package-manager output are published.
+            hosts=$(grep -Eio "(temporary failure resolving|could not resolve) '[a-z0-9.-]+'" /tmp/playwright-deps.log | sed -E "s/.*'([a-zA-Z0-9.-]+)'/\1/" | sort -u | tr '\n' ' ' || true)
+            echo "::error title=Failed DNS hosts::${hosts:-not reported}"
             exit 1
           fi
       - name: Install the Chromium build Playwright drives
@@ -495,6 +499,10 @@ jobs:
             # environment values stay out of it. Preserve the failing check.
             reason=$(grep -Eio 'Could not resolve|Temporary failure resolving|Connection timed out|Connection failed|Network is unreachable|Unable to locate package|no installation candidate|404 Not Found|Hash Sum mismatch|held broken packages|is not signed' /tmp/playwright-deps.log | sort -u | tr '\n' ' ' || true)
             echo "::error title=Chromium system dependencies::${reason:-Installation failed; inspect the job log}"
+            # Hostnames only, validated against the DNS label alphabet; no URLs
+            # or credentials from package-manager output are published.
+            hosts=$(grep -Eio "(temporary failure resolving|could not resolve) '[a-z0-9.-]+'" /tmp/playwright-deps.log | sed -E "s/.*'([a-zA-Z0-9.-]+)'/\1/" | sort -u | tr '\n' ' ' || true)
+            echo "::error title=Failed DNS hosts::${hosts:-not reported}"
             exit 1
           fi
       - name: Install the Chromium build Playwright drives
