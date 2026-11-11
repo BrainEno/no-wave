@@ -93,6 +93,8 @@ test("axe finds no serious or critical violations on home, article and writing d
   await page.goto(`/articles/${slug}`);
   await expect(page.getByRole("heading", { name: /无障碍扫描/ })).toBeVisible();
   await expect(page.getByLabel("评论内容")).toBeVisible();
+  await expect(page.getByRole("button", { name: "A− 减小字号", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "A+ 增大字号", exact: true })).toBeVisible();
   await assertNoSeriousAxeViolations(page, "article");
   await page.goto("/write");
   await expect(page.getByLabel("作品正文")).toBeVisible();

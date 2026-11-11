@@ -50,8 +50,8 @@ export function ReaderBar({ labels }: { labels: BarLabels }) {
 
   return (
     <div className="nw-rs" role="group">
-      <button type="button" aria-label={labels.smaller} onClick={() => change(-2)} disabled={size <= MIN}>A−</button>
-      <button type="button" aria-label={labels.larger} onClick={() => change(2)} disabled={size >= MAX}>A+</button>
+      <button type="button" aria-label={`A− ${labels.smaller}`} onClick={() => change(-2)} disabled={size <= MIN}>A−</button>
+      <button type="button" aria-label={`A+ ${labels.larger}`} onClick={() => change(2)} disabled={size >= MAX}>A+</button>
       <button type="button" aria-label={labels.theme} aria-pressed={dark} onClick={toggleTheme}>{dark ? labels.light : labels.dark}</button>
       <button type="button" onClick={copy}>{labels.copy}</button>
       <span className="nw-sr" role="status" aria-live="polite">{status}</span>
