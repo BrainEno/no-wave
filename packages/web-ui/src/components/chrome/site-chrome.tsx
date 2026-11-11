@@ -364,7 +364,7 @@ export function SiteChrome({ children }: { children: ReactNode }) {
     <>
       <a className="nw-skip" href="#top">{locale === "en" ? "Skip to main content" : "跳到正文"}</a>
       <GrainCanvas />
-      <Link className="nw-rail" href={homePath(locale)} aria-label={ui.homeAria}>{ui.rail}</Link>
+      <Link className="nw-rail" href={homePath(locale)} aria-label={`${ui.rail} — ${ui.homeAria}`}>{ui.rail}</Link>
       <nav className="nw-pill" aria-label={ui.nav.primary} lang={locale}>
         <Link className="nw-nv" href={navSelected}>{ui.nav.selected}</Link>
         <Link className="nw-nv" href={navLatest}>{ui.nav.latest}</Link>
