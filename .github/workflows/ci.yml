@@ -377,7 +377,11 @@ jobs:
 
           # The shared HTTP contract, with the API pair attached and
           # no local fixtures. It waits for API /health, /ready and Web /healthz.
-          if ! pnpm test:container-smoke; then
+          if ! pnpm test:container-smoke > /tmp/container-smoke.log 2>&1; then
+            cat /tmp/container-smoke.log
+            # The smoke script emits a bounded, sanitized JSON error message.
+            # Surface it in check annotations when job log downloads fail.
+            node -e 'const fs = require("fs"); for (const line of fs.readFileSync("/tmp/container-smoke.log", "utf8").split("\n")) { try { const v = JSON.parse(line); if (v.event === "container_smoke_failed") console.log("::error title=container smoke::" + String(v.errorMessage).replaceAll("%", "%25").replaceAll("\r", "%0D").replaceAll("\n", "%0A")); } catch {} }'
             docker logs api || true
             docker logs web || true
             exit 1
@@ -409,7 +413,11 @@ jobs:
           WAKE_START=$(date +%s%3N)
           docker stop web > /dev/null
           docker start web > /dev/null
-          if ! pnpm test:container-smoke; then
+          if ! pnpm test:container-smoke > /tmp/container-smoke.log 2>&1; then
+            cat /tmp/container-smoke.log
+            # The smoke script emits a bounded, sanitized JSON error message.
+            # Surface it in check annotations when job log downloads fail.
+            node -e 'const fs = require("fs"); for (const line of fs.readFileSync("/tmp/container-smoke.log", "utf8").split("\n")) { try { const v = JSON.parse(line); if (v.event === "container_smoke_failed") console.log("::error title=container smoke::" + String(v.errorMessage).replaceAll("%", "%25").replaceAll("\r", "%0D").replaceAll("\n", "%0A")); } catch {} }'
             docker logs api || true
             docker logs web || true
             exit 1
