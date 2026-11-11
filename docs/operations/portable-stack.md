@@ -242,3 +242,32 @@ first answered request) and starts it again after `docker stop`, which is the
 closest available analogue of a free instance waking up — and, because
 `docker stop` sends SIGTERM, it exercises the server's graceful shutdown on the
 way.
+
+### API container: identity, storage and readiness
+
+The API image runs as `node` (UID/GID 1000 in the upstream image), listens on
+unprivileged port **4000** by default, and probes `GET /ready` on its configured
+`PORT`. A successful HTTP probe changes Docker health to `healthy`; an invalid
+authentication configuration, unavailable persistence, timeout or non-2xx
+response causes the check to fail. The process still requires a migrated schema
+and a valid JWT configuration before startup. Docker health is a signal to the
+orchestrator, not an automatic restart policy.
+
+SQLite defaults to `/var/lib/no-wave/no-wave.sqlite` inside the image. The image
+creates that directory for the non-root user, so Docker initializes a **new named
+volume** with the right ownership. Migrate the database with the same image,
+volume, `DATABASE_PATH` and UID before starting the API; do not run migrations
+as root and leave root-owned files behind. SQLite also needs to create `-wal` and
+`-shm` files, so the directory, not just the database file, must be writable.
+For a bind mount or an existing volume, arrange ownership/permissions for UID
+1000 on the host first. Never solve a permission error by making the database
+world-writable. Back up existing data before changing its ownership or location.
+PostgreSQL deployments do not need a SQLite volume.
+
+Existing deployments that routed traffic to container port 80 must update their
+service/container port and API URLs to 4000 (or deliberately set `PORT` and
+provide a compatible host configuration). The published host port can remain 80
+or 443 at the proxy; it need not match the unprivileged internal port. The CI
+image test runs migrations as `node` against a named volume, checks both image
+and running-process identity, and waits for Docker's health status to become
+`healthy` in addition to the HTTP smoke test.
