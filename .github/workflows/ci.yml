@@ -60,22 +60,7 @@ jobs:
           node-version: "24"
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: PostgreSQL integration tests (failure diagnostics)
-        run: |
-          set +e
-          pnpm --filter @bot-thk/api test:integration > /tmp/postgres-integration.log 2>&1
-          result=$?
-          tail -100 /tmp/postgres-integration.log
-          if [ "$result" -ne 0 ]; then
-            python3 - <<'PYCODE'
-          from pathlib import Path
-          text = Path('/tmp/postgres-integration.log').read_text(errors='replace')
-          i = text.rfind('✖ failing tests:')
-          excerpt = (text[i:] if i >= 0 else text[-12000:])[:60000]
-          print('::error::' + excerpt.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A'))
-          PYCODE
-          fi
-          exit "$result"
+      - run: pnpm --filter @bot-thk/api test:integration
 
   # Proves the documented local chain on both persistence providers:
   # migrate -> start the API -> probe it, then build the Web app and probe the
