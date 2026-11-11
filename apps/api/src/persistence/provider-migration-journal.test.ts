@@ -393,3 +393,15 @@ test("a payload carrying a provider-derived column is replayed without it", () =
     /unsupported columns/i,
   );
 });
+
+
+test("article import revisions from whole-row snapshots are never replayed across providers", () => {
+  for (const target of ["sqlite", "postgres"] as const) {
+    const row = { id: "article-1", author_id: "author", slug: "example", status: "draft", import_revision: "123456" };
+    const prepared = prepareMigrationRowPayload(target, "articles", "article-1", row);
+    assert.equal(prepared.columns.includes("import_revision"), false);
+    assert.equal(Object.hasOwn(prepared.payload, "import_revision"), false);
+    assert.equal(prepared.payload.slug, "example");
+    assert.throws(() => prepareMigrationRowPayload(target, "articles", "article-1", { ...row, unexpected: 1 }), /unsupported columns/i);
+  }
+});
