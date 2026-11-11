@@ -997,6 +997,8 @@ test("article comments are threaded, locale-scoped and deletions enforce ownersh
     );
     assert.equal(rootNotice.length, 1);
     assert.equal(replyNotice.length, 1);
+    assert.equal(rootNotice[0].payload.locale, "zh-TW");
+    assert.equal(replyNotice[0].payload.locale, "zh-TW");
     await assert.rejects(
       store.createArticleComment({ slug, locale: "en", actorId: commenterId, content: "Should not work" }),
       { code: "NOT_FOUND" },

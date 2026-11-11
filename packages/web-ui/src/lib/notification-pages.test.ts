@@ -102,3 +102,44 @@ test("failed or malformed responses do not look like an empty inbox", async () =
     await assert.rejects(fetchNotificationPage(), /格式/);
   } finally { globalThis.fetch = original; }
 });
+
+test("real SQLite keyset walk reaches every tied notification without exposing another user", async () => {
+  const { createSqliteClient, runSqliteMigrations } = await import("../../../../apps/api/src/persistence/sqlite.ts");
+  const { createSqliteNotificationStore } = await import("../../../../apps/api/src/persistence/sqlite-notification-store.ts");
+  const db = createSqliteClient({ filename: ":memory:", enableWal: false });
+  await runSqliteMigrations(db);
+  const store = createSqliteNotificationStore(db);
+  try {
+    const ids: string[] = [];
+    for (let index = 0; index < 105; index++) {
+      const created = await store.createNotification({ userId: "reader-a", eventKey: `notice-${index}`, payload: { type: "user.followed" } });
+      db.prepare("UPDATE notifications SET created_at = ? WHERE id = ?").run("2026-01-01T12:00:00.000Z", created.id);
+      ids.push(created.id);
+    }
+    const other = await store.createNotification({ userId: "reader-b", eventKey: "private", payload: { type: "message.created" } });
+    let cursor: string | null = null;
+    let collected: NotificationItem[] = [];
+    let pages = 0;
+    do {
+      const boundary = cursor === null ? null : decodeCursor(cursor);
+      if (cursor !== null) assert.ok(boundary);
+      const raw = await store.listNotifications({ actorId: "reader-a", limit: 50, cursor: boundary });
+      // The HTTP serializer delivers payload as a JSON string.
+      const parsed = parseNotificationPage({ data: raw.map((row) => ({ ...row, payload: JSON.stringify(row.payload) })) });
+      collected = appendNotificationPage(collected, parsed);
+      cursor = parsed.nextCursor;
+      pages++;
+    } while (cursor);
+    assert.equal(pages, 3);
+    assert.equal(collected.length, 105);
+    assert.equal(new Set(collected.map((row) => row.id)).size, 105);
+    assert.deepEqual(collected.map((row) => row.id), ids.sort().reverse());
+    assert.ok(!collected.some((row) => row.id === other.id));
+    assert.equal(await store.getUnreadNotificationCount({ actorId: "reader-a" }), 105);
+    await store.markNotificationRead({ actorId: "reader-a", notificationId: collected[100]!.id });
+    assert.equal(await store.getUnreadNotificationCount({ actorId: "reader-a" }), 104);
+    assert.equal(await store.markAllNotificationsRead({ actorId: "reader-a" }), 104);
+    assert.equal(await store.getUnreadNotificationCount({ actorId: "reader-a" }), 0);
+    assert.equal(await store.getUnreadNotificationCount({ actorId: "reader-b" }), 1);
+  } finally { db.close(); }
+});
