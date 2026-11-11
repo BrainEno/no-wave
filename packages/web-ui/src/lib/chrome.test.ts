@@ -42,7 +42,7 @@ test("unread counts accept only the API's non-negative number envelope", () => {
   assert.equal(parseUnreadCount(null), null);
 });
 
-test("notification rows keep known notices and drop malformed or unknown ones", () => {
+test("notification rows render known and unknown notices while dropping malformed items", () => {
   const item = {
     id: "22222222-2222-4222-8222-222222222222",
     eventKey: "article.deleted",
@@ -57,9 +57,11 @@ test("notification rows keep known notices and drop malformed or unknown ones", 
     { ...item, id: "unknown", payload: JSON.stringify({ type: "message.created" }) },
     { ...item, id: "broken", payload: "not-json" },
   ] });
-  assert.equal(rows.length, 1);
+  assert.equal(rows.length, 2);
   assert.equal(rows[0].item.id, item.id);
-  assert.deepEqual(rows[0].notice, notice);
+  assert.match(rows[0].text, /你评论过的一篇作品/);
+  assert.equal(rows[1].item.id, "unknown");
+  assert.match(rows[1].text, /新通知/);
   assert.deepEqual(notificationRows({ data: "not-an-array" }), []);
 });
 

@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { hasUsableSession, SESSION_MARKER_COOKIE } from "@bot-thk/web-http";
 import { dateLabel } from "@/lib/format.ts";
 import {
-  deletionNoticeText,
   grainOffsets,
   grainTileData,
   notificationRows,
@@ -401,9 +400,9 @@ export function SiteChrome({ children }: { children: ReactNode }) {
           {sessionUsable === true && bellState === "ready" && bellRows.length === 0 ? <p>{ui.bell.empty}。</p> : null}
           {sessionUsable === true && bellState === "ready" && bellRows.length > 0 ? (
             <ul className="nw-np-list">
-              {bellRows.map(({ item, notice }) => (
+              {bellRows.map(({ item, text, href }) => (
                 <li className="nw-np-row" key={item.id}>
-                  <p className={item.readAt === null ? "nw-np-text nw-np-unread" : "nw-np-text"}>{deletionNoticeText(notice, locale)}</p>
+                  <p className={item.readAt === null ? "nw-np-text nw-np-unread" : "nw-np-text"}>{href ? <Link href={href}>{text}</Link> : text}</p>
                   <time className="nw-np-time" dateTime={item.createdAt}>{dateLabel(item.createdAt, locale)}</time>
                   {item.readAt === null ? (
                     <button type="button" disabled={bellPending} onClick={() => void markBellRead(item.id)}>{ui.bell.markRead}</button>

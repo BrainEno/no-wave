@@ -1,14 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  deletionNoticeText,
   isNotificationItem,
-  parseDeletedArticleNotice,
-  type DeletedArticleNotice,
+  notificationRows,
   type NotificationItem,
 } from "@/lib/chrome.ts";
 
-export type { NotificationItem, DeletedArticleNotice } from "@/lib/chrome.ts";
-export { deletionNoticeText } from "@/lib/chrome.ts";
+export type { NotificationItem } from "@/lib/chrome.ts";
 
 /**
  * The notification inbox on the writing desk.
@@ -112,9 +109,7 @@ export function NotificationInbox() {
     );
   }
 
-  const notices = items
-    .map((item) => ({ item, notice: parseDeletedArticleNotice(item.payload) }))
-    .filter((entry): entry is { item: NotificationItem; notice: DeletedArticleNotice } => entry.notice !== null);
+  const notices = notificationRows({ data: items }, "zh-CN");
 
   return (
     <section className="nw-authoring-inbox" aria-label="通知">
@@ -123,10 +118,10 @@ export function NotificationInbox() {
       {state === "ready" && notices.length === 0 ? <p>还没有通知。</p> : null}
       {notices.length > 0 ? (
         <ul className="nw-authoring-inbox-list">
-          {notices.map(({ item, notice }) => (
+          {notices.map(({ item, text, href }) => (
             <li className="nw-authoring-inbox-row" key={item.id}>
               <p className={item.readAt === null ? "nw-authoring-inbox-text nw-unread" : "nw-authoring-inbox-text"}>
-                {deletionNoticeText(notice, "zh-CN")}
+                {href ? <a href={href}>{text}</a> : text}
               </p>
               {item.readAt === null ? (
                 <button className="nw-btn" type="button" disabled={pending} onClick={() => void markRead(item.id)}>
