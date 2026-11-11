@@ -49,7 +49,6 @@ export const FOLLOW_TARGET_MAX_LENGTH = 300;
  * path segment, and the rest is the C0 control range plus DEL — characters that
  * either cannot appear in a URL or mean something else once decoded.
  */
-// eslint-disable-next-line no-control-regex
 const FORBIDDEN_IN_TARGET = /[/\\\u0000-\u001F\u007F]/;
 
 export function isFollowTargetId(value: string): boolean {

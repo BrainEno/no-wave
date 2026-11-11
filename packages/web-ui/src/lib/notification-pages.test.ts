@@ -121,7 +121,7 @@ test("real SQLite keyset walk reaches every tied notification without exposing a
     let collected: NotificationItem[] = [];
     let pages = 0;
     do {
-      const boundary = cursor === null ? null : decodeCursor(cursor);
+      const boundary: ReturnType<typeof decodeCursor> = cursor === null ? null : decodeCursor(cursor);
       if (cursor !== null) assert.ok(boundary);
       const raw = await store.listNotifications({ actorId: "reader-a", limit: 50, cursor: boundary });
       // The HTTP serializer delivers payload as a JSON string.

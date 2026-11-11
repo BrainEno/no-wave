@@ -55,7 +55,7 @@ export function HeroCanvas({ src }: { src: string }) {
     let drawCount = 0;
     const start = performance.now();
     const clamp = (value: number) => Math.max(-1.5, Math.min(1.5, value));
-    const useFallback = () => {
+    const activateFallback = () => {
       ready = false;
       if (frame) cancelAnimationFrame(frame);
       frame = 0;
@@ -63,16 +63,16 @@ export function HeroCanvas({ src }: { src: string }) {
     };
 
     const gl = canvas.getContext("webgl", { antialias: false, alpha: false });
-    if (!gl) { useFallback(); return; }
+    if (!gl) { activateFallback(); return; }
 
     const vertex = compileShader(gl, gl.VERTEX_SHADER, VERTEX_SHADER);
     const fragment = compileShader(gl, gl.FRAGMENT_SHADER, FRAGMENT_SHADER);
     const program = gl.createProgram();
-    if (!vertex || !fragment || !program) { useFallback(); return; }
+    if (!vertex || !fragment || !program) { activateFallback(); return; }
     gl.attachShader(program, vertex);
     gl.attachShader(program, fragment);
     gl.linkProgram(program);
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) { useFallback(); return; }
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) { activateFallback(); return; }
     gl.useProgram(program);
 
     const buffer = gl.createBuffer();
@@ -87,7 +87,7 @@ export function HeroCanvas({ src }: { src: string }) {
       T: uniform("T"), R: uniform("R"), I: uniform("I"), M: uniform("M"),
       MV: uniform("MV"), t: uniform("t"), S: uniform("S"), Rv: uniform("Rv"),
     };
-    if (Object.values(U).some((location) => location === null)) { useFallback(); return; }
+    if (Object.values(U).some((location) => location === null)) { activateFallback(); return; }
 
     const texture = gl.createTexture();
     // 1×1 深色种子纹理：采样永远命中有效数据，避免未初始化纹理。
@@ -120,7 +120,7 @@ export function HeroCanvas({ src }: { src: string }) {
         if (lum < min) min = lum;
         if (lum > max) max = lum;
       }
-      if (max - min < 6) useFallback();
+      if (max - min < 6) activateFallback();
     };
 
     const draw = () => {
@@ -166,7 +166,7 @@ export function HeroCanvas({ src }: { src: string }) {
     const image = new Image();
     image.decoding = "async";
     image.onload = () => {
-      if (!image.naturalWidth || !image.naturalHeight) { useFallback(); return; }
+      if (!image.naturalWidth || !image.naturalHeight) { activateFallback(); return; }
       imageWidth = image.naturalWidth;
       imageHeight = image.naturalHeight;
       gl.bindTexture(gl.TEXTURE_2D, texture);
@@ -181,7 +181,7 @@ export function HeroCanvas({ src }: { src: string }) {
       canvas.dataset.ready = "1";
       startLoop();
     };
-    image.onerror = () => { useFallback(); };
+    image.onerror = () => { activateFallback(); };
     image.src = src;
 
     const onMove = (event: PointerEvent) => {

@@ -23,7 +23,6 @@ type SqliteStatement = ReturnType<DatabaseSync["prepare"]>;
  * `typed-boundaries.test.ts` can exempt it and nothing else: `any` anywhere outside
  * this alias still fails the build.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type SqliteRow = { [column: string]: any };
 
 /** Statement accessors as the slices use them: dynamic rows in, bindings out. */

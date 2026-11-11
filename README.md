@@ -298,6 +298,28 @@ On Windows PowerShell, set `$env:TEST_DATABASE_URL` before running the same comm
 - `POSTGRES_PORT` changes the host port published by `compose.yaml`.
 - Shell exports win over `.env.local`; `.env.local` wins over code defaults. Never put shared, staging, or production credentials in `.env.local`.
 
+## Static checks
+
+`pnpm lint` runs the CSS custom-property check, Stylelint on workspace CSS,
+and ESLint on TypeScript/TSX in apps, packages, scripts and e2e. The current
+rules enforce Hooks ordering/dependencies and accessible alternatives for images,
+as well as a small set of CSS validity rules. Inline ESLint disable directives
+cannot suppress these checks. These rules do not yet include typed unhandled
+Promise analysis or a comprehensive accessibility audit; keep the browser and
+axe tests as well.
+
+`pnpm format:check` currently checks only `eslint.config.ts`, `.stylelintrc.json`
+and `scripts/lint-policy.test.ts`. Run `pnpm format` to format those files.
+This is an incremental formatting rollout, not a claim that the rest of the
+repository already follows Prettier. Expanding its scope needs a separately
+reviewed mechanical formatting change.
+
+ESLint 9 is used for the current JSX accessibility plugin's declared peer range;
+it is no longer maintained upstream. Move to a supported ESLint release once
+the plugin supports it or a compatible replacement has been evaluated. The
+Babel-based parser performs syntax-level linting independently of the project
+TypeScript compiler; type checking remains a separate required CI step.
+
 ## CSS token check
 
 Run `pnpm lint:css-vars` to find custom-property references with no declaration

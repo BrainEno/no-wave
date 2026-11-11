@@ -93,8 +93,27 @@ test("axe finds no serious or critical violations on home, article and writing d
   await page.goto(`/articles/${slug}`);
   await expect(page.getByRole("heading", { name: /无障碍扫描/ })).toBeVisible();
   await expect(page.getByLabel("评论内容")).toBeVisible();
+  await expect(page.getByRole("button", { name: "A− 减小字号", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "A+ 增大字号", exact: true })).toBeVisible();
   await assertNoSeriousAxeViolations(page, "article");
   await page.goto("/write");
   await expect(page.getByLabel("作品正文")).toBeVisible();
   await assertNoSeriousAxeViolations(page, "writing desk");
+});
+
+
+test("the brand rail's accessible name contains its visible text in both locales", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  for (const [path, visible, destination] of [
+    ["/", "无浪潮 · No Wave — 独立文学出版", "首页"],
+    ["/en", "NO WAVE — INDEPENDENT LITERARY PUBLISHING", "home"],
+  ] as const) {
+    await page.goto(path);
+    const rail = page.locator(".nw-rail");
+    await expect(rail).toHaveText(visible);
+    await expect(rail).toHaveAccessibleName(`${visible} — ${path === "/" ? "无浪潮 No Wave 首页" : "No Wave home"}`);
+    await expect(rail).toHaveAttribute("href", path);
+    await expect(rail).toHaveAccessibleName(new RegExp(destination));
+    await assertNoSeriousAxeViolations(page, `brand rail ${path}`);
+  }
 });

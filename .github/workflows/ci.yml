@@ -32,7 +32,8 @@ jobs:
       # is a failed check, not a reason to silently pass the required gate.
       - run: pnpm audit --audit-level high
       - run: pnpm test
-      - run: pnpm lint:css-vars
+      - run: pnpm lint
+      - run: pnpm format:check
       - run: pnpm typecheck
       - run: pnpm build
       - run: pnpm test:routes
@@ -181,8 +182,40 @@ jobs:
       # The suite drives the production build, so it has to exist first.
       - name: Build the Web application
         run: pnpm build
+      # Keep system package and browser downloads separate: their outages need
+      # different remedies, and both remain required before running the suite.
+      - name: Recover Ubuntu package source DNS if necessary
+        run: |
+          # Use the runner's resolver first. If its DNS for Ubuntu archives is
+          # broken, resolve only those exact names over HTTPS on this ephemeral VM.
+          # Apt's signed repository verification remains enabled and mandatory.
+          missing=()
+          for host in archive.ubuntu.com security.ubuntu.com azure.archive.ubuntu.com; do
+            if ! timeout 8 getent ahostsv4 "$host" > /dev/null; then missing+=("$host"); fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            NODE_USE_ENV_PROXY=1 node scripts/ci-ubuntu-dns.ts "${missing[@]}" > /tmp/no-wave-ubuntu-hosts
+            sudo tee -a /etc/hosts < /tmp/no-wave-ubuntu-hosts > /dev/null
+            for host in "${missing[@]}"; do getent ahostsv4 "$host" > /dev/null; done
+          fi
+      - name: Install Chromium system dependencies
+        run: |
+          if pnpm exec playwright install-deps chromium > /tmp/playwright-deps.log 2>&1; then
+            cat /tmp/playwright-deps.log
+          else
+            cat /tmp/playwright-deps.log
+            # Only fixed error categories enter the annotation; package URLs and
+            # environment values stay out of it. Preserve the failing check.
+            reason=$(grep -Eio 'Could not resolve|Temporary failure resolving|Connection timed out|Connection failed|Network is unreachable|Unable to locate package|no installation candidate|404 Not Found|Hash Sum mismatch|held broken packages|is not signed' /tmp/playwright-deps.log | sort -u | tr '\n' ' ' || true)
+            echo "::error title=Chromium system dependencies::${reason:-Installation failed; inspect the job log}"
+            # Hostnames only, validated against the DNS label alphabet; no URLs
+            # or credentials from package-manager output are published.
+            hosts=$(grep -Eio "(temporary failure resolving|could not resolve) '[a-z0-9.-]+'" /tmp/playwright-deps.log | sed -E "s/.*'([a-zA-Z0-9.-]+)'/\1/" | sort -u | tr '\n' ' ' || true)
+            echo "::error title=Failed DNS hosts::${hosts:-not reported}"
+            exit 1
+          fi
       - name: Install the Chromium build Playwright drives
-        run: pnpm exec playwright install --with-deps chromium
+        run: pnpm exec playwright install chromium
       - name: Run browser-level shard ${{ matrix.shard }}/3
         run: pnpm test:e2e --shard=${{ matrix.shard }}/3
       - name: Upload the Playwright report
@@ -470,7 +503,38 @@ jobs:
           cache: pnpm
       - run: node scripts/preflight.cjs
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium
+      - name: Recover Ubuntu package source DNS if necessary
+        run: |
+          # Use the runner's resolver first. If its DNS for Ubuntu archives is
+          # broken, resolve only those exact names over HTTPS on this ephemeral VM.
+          # Apt's signed repository verification remains enabled and mandatory.
+          missing=()
+          for host in archive.ubuntu.com security.ubuntu.com azure.archive.ubuntu.com; do
+            if ! timeout 8 getent ahostsv4 "$host" > /dev/null; then missing+=("$host"); fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            NODE_USE_ENV_PROXY=1 node scripts/ci-ubuntu-dns.ts "${missing[@]}" > /tmp/no-wave-ubuntu-hosts
+            sudo tee -a /etc/hosts < /tmp/no-wave-ubuntu-hosts > /dev/null
+            for host in "${missing[@]}"; do getent ahostsv4 "$host" > /dev/null; done
+          fi
+      - name: Install Chromium system dependencies
+        run: |
+          if pnpm exec playwright install-deps chromium > /tmp/playwright-deps.log 2>&1; then
+            cat /tmp/playwright-deps.log
+          else
+            cat /tmp/playwright-deps.log
+            # Only fixed error categories enter the annotation; package URLs and
+            # environment values stay out of it. Preserve the failing check.
+            reason=$(grep -Eio 'Could not resolve|Temporary failure resolving|Connection timed out|Connection failed|Network is unreachable|Unable to locate package|no installation candidate|404 Not Found|Hash Sum mismatch|held broken packages|is not signed' /tmp/playwright-deps.log | sort -u | tr '\n' ' ' || true)
+            echo "::error title=Chromium system dependencies::${reason:-Installation failed; inspect the job log}"
+            # Hostnames only, validated against the DNS label alphabet; no URLs
+            # or credentials from package-manager output are published.
+            hosts=$(grep -Eio "(temporary failure resolving|could not resolve) '[a-z0-9.-]+'" /tmp/playwright-deps.log | sed -E "s/.*'([a-zA-Z0-9.-]+)'/\1/" | sort -u | tr '\n' ' ' || true)
+            echo "::error title=Failed DNS hosts::${hosts:-not reported}"
+            exit 1
+          fi
+      - name: Install the Chromium build Playwright drives
+        run: pnpm exec playwright install chromium
       - run: pnpm test:all
 
   # One gate, so a branch cannot be merged on a partial signal: every job above

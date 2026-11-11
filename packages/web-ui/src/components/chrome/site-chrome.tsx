@@ -118,6 +118,8 @@ function SiteFooter({ locale }: { locale: Locale }) {
   );
 }
 
+const readOptions: RequestInit = { credentials: "same-origin", cache: "no-store" };
+
 export function SiteChrome({ children }: { children: ReactNode }) {
   const pathname = usePathname() ?? "/";
   const locale = localeOf(pathname);
@@ -136,7 +138,6 @@ export function SiteChrome({ children }: { children: ReactNode }) {
   const pageMotion = useRef<{ revert(): void } | null>(null);
   const lastKey = useRef("");
 
-  const readOptions: RequestInit = { credentials: "same-origin", cache: "no-store" };
   const fetchUnread = useCallback(async (): Promise<number | null> => {
     const response = await fetch("/api/authoring/notifications/unread-count", readOptions);
     if (response.status === 401) return null;
@@ -363,7 +364,7 @@ export function SiteChrome({ children }: { children: ReactNode }) {
     <>
       <a className="nw-skip" href="#top">{locale === "en" ? "Skip to main content" : "跳到正文"}</a>
       <GrainCanvas />
-      <Link className="nw-rail" href={homePath(locale)} aria-label={ui.homeAria}>{ui.rail}</Link>
+      <Link className="nw-rail" href={homePath(locale)} aria-label={`${ui.rail} — ${ui.homeAria}`}>{ui.rail}</Link>
       <nav className="nw-pill" aria-label={ui.nav.primary} lang={locale}>
         <Link className="nw-nv" href={navSelected}>{ui.nav.selected}</Link>
         <Link className="nw-nv" href={navLatest}>{ui.nav.latest}</Link>
