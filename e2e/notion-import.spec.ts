@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { zipSync, strToU8 } from "fflate";
 import { expect, test, type Page } from "@playwright/test";
+import type { NotionImportReport } from "../packages/web-ui/src/lib/notion-import.ts";
 import { registerThroughForm, uniqueEmail } from "./support/accounts.ts";
 
 /**
@@ -267,22 +268,46 @@ test("an edit after preview is preserved and the import asks to preview again", 
 });
 
 
-test("an invalidated plan hides confirmation and a new preview can be confirmed", async ({ page }) => {
+test("an invalidated plan hides confirmation and re-preview submits only the new token", async ({ page }) => {
   await registerThroughForm(page, uniqueEmail("notion-expired"), "/write/notion");
-  await page.setInputFiles("#notion-bundle-file", bundleFile());
-  await selectAllAndPreview(page);
-  // The backend's expiry and authentication rules have real HTTP coverage; here
-  // only the browser's recovery from that rejection needs a controlled response.
-  await page.route("**/api/authoring/notion-import", async (route) => {
-    if (route.request().postDataJSON().apply !== true) { await route.continue(); return; }
-    await route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ error: { code: "IMPORT_PLAN_INVALID" } }) });
+  const file = bundleFile();
+  const source = JSON.parse(file.buffer.toString("utf8")) as typeof BUNDLE;
+  const attempts: unknown[] = [];
+  let previews = 0;
+  // This browser contract test controls both opaque tokens and the rejection so
+  // it can prove that recovery discards the old token. Real expiry/authentication
+  // and successful writes stay in the API suite and real-stack journeys above.
+  // Keeping this response sequence controlled also preserves the unchanged
+  // 20/IP import budget when the complete browser shard shares one database.
+  const report = (applied: boolean): NotionImportReport => ({
+    applied, database: source.database,
+    summary: { create: 1, update: 0, skip: 0, refused: 0, failed: 0 },
+    pages: [{ externalId: source.pages[0]!.id, title: TITLE, locale: "zh-CN", action: "create",
+      slug: "controlled-preview", articleId: applied ? "controlled-work" : null,
+      detail: applied ? "created" : "would create", issues: [] }],
+    ...(!applied ? { planToken: `controlled-preview-${previews}`, planExpiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString() } : {}),
   });
+  await page.route("**/api/authoring/notion-import", async (route) => {
+    const body = route.request().postDataJSON() as { bundle: unknown; apply?: boolean; planToken?: unknown };
+    expect(body.bundle).toEqual(source);
+    if (body.apply === true) {
+      attempts.push(body.planToken);
+      if (attempts.length === 1) {
+        await route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ error: { code: "IMPORT_PLAN_INVALID" } }) });
+        return;
+      }
+    } else previews += 1;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: report(body.apply === true) }) });
+  });
+  await page.setInputFiles("#notion-bundle-file", file);
+  await selectAllAndPreview(page);
   await page.getByRole("button", { name: /确认导入/ }).click();
   await expect(page.getByRole("alert")).toContainText("试跑计划已失效或与当前选择不符");
   await expect(page.getByRole("button", { name: /确认导入/ })).toHaveCount(0);
   await expect(page.getByRole("checkbox")).toBeChecked();
-  await page.unroute("**/api/authoring/notion-import");
   await page.getByRole("button", { name: "试跑所选文章" }).click();
   await page.getByRole("button", { name: /确认导入/ }).click();
   await expect(page.getByText(/已导入：新建 1 件/)).toBeVisible();
+  expect(previews).toBe(2);
+  expect(attempts).toEqual(["controlled-preview-1", "controlled-preview-2"]);
 });
