@@ -31,3 +31,6 @@ data/
 # Notion seed: local run state and captured bundles (content, not code)
 .notion-seed-state.json
 notion-bundle.json
+
+# Reproducible font generator: raw upstream download cache is never shipped.
+.cache/font-sources/

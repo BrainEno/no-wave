@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
-import { unlink, writeFile } from "node:fs/promises";
+import { readFile, unlink, writeFile } from "node:fs/promises";
 import { createServer as createHttpServer } from "node:http";
 import { createServer } from "node:net";
 import { after, before, test } from "node:test";
@@ -265,4 +265,19 @@ test("SIGTERM lets an accepted request finish and then exits cleanly", async () 
   assert.equal(complete.inFlight, 0);
 
   upstream.close();
+});
+
+test("the production distribution serves all original font licenses and copyright notices", async () => {
+  for (const family of ["instrument-serif", "inter-tight", "noto-serif-sc", "noto-sans-sc"]) {
+    const file = `${family}-OFL.txt`;
+    const expected = await readFile(new URL(`../../../packages/web-ui/src/styles/fonts/${file}`, import.meta.url), "utf8");
+    const response = await fetch(`${server.baseUrl}/font-licenses/${file}`);
+    assert.equal(response.status, 200, file);
+    assert.equal(response.headers.get("content-type"), "text/plain; charset=utf-8");
+    assert.equal(response.headers.get("cache-control"), "public, max-age=0, must-revalidate");
+    const text = await response.text();
+    assert.equal(text, expected, `${file}: original upstream license, not a paraphrase`);
+    assert.match(text, /SIL OPEN FONT LICENSE/);
+    assert.match(text, /Copyright/i);
+  }
 });

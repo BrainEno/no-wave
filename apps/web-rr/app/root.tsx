@@ -25,6 +25,9 @@ import { siteUrl } from "./lib/runtime.ts";
  */
 import { SiteChrome } from "@/components/chrome/site-chrome.tsx";
 // The shared stylesheet, emitted as a hashed asset by Vite rather than copied.
+import wordmarkSans from "../../../packages/web-ui/src/styles/fonts/inter-tight-normal-400-700-common.woff2?url";
+import wordmarkItalic from "../../../packages/web-ui/src/styles/fonts/instrument-serif-italic-italic-400-common.woff2?url";
+import fontStyles from "../../../packages/web-ui/src/styles/fonts.css?url";
 import globalStyles from "../../../packages/web-ui/src/styles/globals.css?url";
 
 export const links: LinksFunction = () => [
@@ -36,12 +39,11 @@ export const links: LinksFunction = () => [
   // still ask for /favicon.ico regardless of what is declared here.
   { rel: "icon", href: "/favicon.ico", sizes: "any" },
   { rel: "icon", type: "image/png", href: "/favicon.png", sizes: "256x256" },
-  { rel: "preconnect", href: "https://fonts.googleapis.com" },
-  { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
-  {
-    rel: "stylesheet",
-    href: "https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@400;500;700&family=Noto+Serif+SC:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
-  },
+  // Both are used in the shared wordmark; no CJK/full-family preload fan-out.
+  { rel: "preload", as: "font", type: "font/woff2", crossOrigin: "anonymous", href: wordmarkSans },
+  { rel: "preload", as: "font", type: "font/woff2", crossOrigin: "anonymous", href: wordmarkItalic },
+  // Same-origin Unicode subsets, hashed and cached with the rest of the build.
+  { rel: "stylesheet", href: fontStyles },
   { rel: "stylesheet", href: globalStyles },
 ];
 
