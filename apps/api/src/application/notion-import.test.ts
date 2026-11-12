@@ -1,3 +1,4 @@
+import { ExternalContentConflictError } from "./external-content-conflict.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { NOTION_IMPORT_PROVIDER, importNotionBundle, type NotionImportDeps } from "./notion-import.ts";
@@ -413,6 +414,15 @@ test("a failed provenance write reports that the article was already written", a
   assert.equal(report.pages[0]?.articleId, "article-1");
   assert.match(report.pages[0]?.detail ?? "", /article was written.*link could not be saved/);
   assert.equal(deps.articles.size, 1);
+});
+
+test("a concurrent provenance conflict reports both the conflict and the already written article", async () => {
+  const deps = stubDeps();
+  deps.upsertExternalContentLink = async () => { throw new ExternalContentConflictError(); };
+  const report = await importNotionBundle({ actorId: "author-1", bundle: bundle(page("claim-race", "作品", "正文")), apply: true, deps, now: at });
+  assert.equal(report.summary.failed, 1);
+  assert.equal(report.pages[0]?.articleId, "article-1");
+  assert.match(report.pages[0]?.detail ?? "", /concurrently linked.*article was written.*without its import link/);
 });
 
 test("a missing provenance link is previewed and recovered without creating a duplicate", async () => {

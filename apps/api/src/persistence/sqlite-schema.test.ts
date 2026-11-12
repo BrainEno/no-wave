@@ -203,3 +203,45 @@ test("import revisions advance for work, translation and taxonomy writes, not vi
     db.prepare("UPDATE articles SET deleted_at = ? WHERE id = ?").run("2026-11-01T00:00:00Z", "rev-a"); advances();
   } finally { db.close(); }
 });
+
+test("SQLite rejects direct cross-locale ownership conflicts", async () => {
+  const db = createSqliteClient({ filename: ":memory:", enableWal: false });
+  try {
+    await runSqliteMigrations(db);
+    db.prepare("INSERT INTO articles (id, author_id, slug) VALUES (?, ?, ?)").run("claim-a", "owner-a", "claim-a");
+    db.prepare("INSERT INTO articles (id, author_id, slug) VALUES (?, ?, ?)").run("claim-b", "owner-b", "claim-b");
+    const insert = db.prepare(`INSERT INTO external_content_links
+      (provider, external_id, locale, article_id, owner_id, digest) VALUES (?, ?, ?, ?, ?, ?)`);
+    insert.run("notion", "page", "zh-CN", "claim-a", "owner-a", "a");
+    assert.throws(() => insert.run("notion", "page", "en", "claim-b", "owner-b", "b"));
+    assert.equal(Number(db.prepare("SELECT count(*) AS count FROM external_content_links WHERE external_id = ?").get("page").count), 1);
+  } finally { db.close(); }
+});
+
+test("SQLite owner migration refuses contradictory legacy links without losing them", async () => {
+  const oldMigrations = await mkdtemp(join(tmpdir(), "no-wave-owner-upgrade-"));
+  const db = createSqliteClient({ filename: ":memory:", enableWal: false });
+  try {
+    const migrationDir = new URL("./migrations/sqlite/", import.meta.url);
+    for (const file of await readdir(migrationDir)) {
+      if (/^\d{4}_.*\.sql$/.test(file) && file < "0022_") {
+        await copyFile(new URL(file, migrationDir), join(oldMigrations, file));
+      }
+    }
+    await runSqliteMigrations(db, { directory: oldMigrations });
+    db.prepare("INSERT INTO articles (id, author_id, slug) VALUES (?, ?, ?)").run("old-a", "a", "old-a");
+    db.prepare("INSERT INTO articles (id, author_id, slug) VALUES (?, ?, ?)").run("old-b", "b", "old-b");
+    const insert = db.prepare("INSERT INTO external_content_links (provider, external_id, locale, article_id, owner_id, digest) VALUES (?, ?, ?, ?, ?, ?)");
+    insert.run("notion", "old-page", "zh-CN", "old-a", "a", "a");
+    insert.run("notion", "old-page", "en", "old-b", "b", "b");
+    await assert.rejects(() => runSqliteMigrations(db), /constraint/i);
+    assert.equal(Number(db.prepare("SELECT count(*) AS count FROM external_content_links").get().count), 2);
+    assert.equal(db.prepare("SELECT version FROM api_schema_migrations WHERE version = ?").get("0022_external_content_owner"), undefined);
+    db.prepare("DELETE FROM external_content_links WHERE owner_id = ?").run("b");
+    assert.deepEqual(await runSqliteMigrations(db), ["0022_external_content_owner"]);
+    assert.throws(() => insert.run("notion", "old-page", "en", "old-b", "b", "b"), /already linked/);
+  } finally {
+    db.close();
+    await rm(oldMigrations, { recursive: true, force: true });
+  }
+});

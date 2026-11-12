@@ -1,3 +1,4 @@
+import { ExternalContentConflictError } from "../application/external-content-conflict.ts";
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import { createSqliteProviderMigrationCapture, migrationEntityKey } from "./sqlite-provider-migration-capture.ts";
 import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
@@ -77,7 +78,7 @@ export function createSqliteImportStore(db: SqliteRunner) {
              AND external_content_links.article_id = excluded.article_id`).run(
           input.provider, input.externalId, input.locale, input.articleId, input.ownerId, input.digest, input.syncedAt,
         );
-        if (Number(result.changes) !== 1) throw new Error("The Notion page is already linked to another work or account.");
+        if (Number(result.changes) !== 1) throw new ExternalContentConflictError();
         const row = get(
           "SELECT provider, external_id, locale, article_id, owner_id, digest, synced_at FROM external_content_links WHERE provider = ? AND external_id = ? AND locale = ?",
           input.provider, input.externalId, input.locale,
@@ -90,6 +91,9 @@ export function createSqliteImportStore(db: SqliteRunner) {
         return mapRow(row);
       } catch (error) {
         try { db.exec("ROLLBACK"); } catch { /* preserve the original failure */ }
+        if (error instanceof Error && error.message.includes("The Notion page is already linked to another work or account.")) {
+          throw new ExternalContentConflictError();
+        }
         throw error;
       }
     },

@@ -145,3 +145,30 @@ the import is one endpoint that reports per page.**
   phase 4 — which will read the same table to answer "which page is this work?".
   The Flutter client needs no change: an imported work is an ordinary article, and
   the public read path is asserted in the endpoint's integration test.
+
+## Cross-locale ownership upgrade (issue #270, work in progress)
+
+A page's owner must be the same across all locale rows. PostgreSQL migration 0035
+uses a `btree_gist` exclusion constraint so even concurrent transactions and
+writers bypassing the API are checked. SQLite migration 0022 uses insert/update
+triggers; SQLite serializes writers. Both migrations reject existing inconsistent
+ownership rather than choosing an owner or deleting data. PostgreSQL deployments
+need permission to install the trusted `btree_gist` extension, or an administrator
+must install it ahead of the migration.
+
+Before upgrading, operators can find ambiguous pages using:
+
+```sql
+SELECT provider, external_id, count(DISTINCT owner_id) AS owners
+FROM external_content_links
+GROUP BY provider, external_id
+HAVING count(DISTINCT owner_id) > 1;
+```
+
+Back up the database and resolve each conflicting page with the affected authors
+before retrying the migration. Do not automatically pick a winner: the linked
+articles may contain independent edits. The migration leaves legacy rows intact
+when it fails. The database constraint only protects provenance: today the article
+and its tags are written before the link, so a losing importer may still have a
+work without a link. The report explicitly tells the author to inspect the desk.
+This does not yet provide atomic article/tag/link writes or complete #270.

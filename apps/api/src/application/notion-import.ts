@@ -1,3 +1,4 @@
+import { ExternalContentConflictError } from "./external-content-conflict.ts";
 import { createHash } from "node:crypto";
 import { SUPPORTED_ARTICLE_LOCALES } from "../domain/article.ts";
 import { prepareNotionImages, type NotionImageCopier } from "./notion-import-images.ts";
@@ -692,7 +693,9 @@ export async function importNotionBundle(input: {
           slug: workSlug ?? edition.slug,
           articleId: writtenArticleId ?? link?.articleId ?? null,
           detail: writtenArticleId !== null
-            ? "the article was written, but its import link could not be saved; check the writing desk before retrying"
+            ? error instanceof ExternalContentConflictError
+              ? "this page was concurrently linked to another work or account; the article was written without its import link, so check the writing desk before retrying"
+              : "the article was written, but its import link could not be saved; check the writing desk before retrying"
             : error instanceof Error ? error.message : String(error),
           issues: edition.issues,
         });

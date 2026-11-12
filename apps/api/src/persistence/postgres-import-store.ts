@@ -1,3 +1,4 @@
+import { ExternalContentConflictError } from "../application/external-content-conflict.ts";
 import { createPostgresProviderMigrationCapture, migrationEntityKey } from "./postgres-provider-migration-capture.ts";
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
@@ -71,7 +72,8 @@ export function createPostgresImportStore(sql: PgDatabase) {
       provider: string; externalId: string; locale: string; articleId: string;
       ownerId: string; digest: string; syncedAt: string;
     }) {
-      return sql.begin(async (tx) => {
+      try {
+        return await sql.begin(async (tx) => {
         const rows = await tx.unsafe<ExternalContentLinkRow>(
           `INSERT INTO external_content_links (provider, external_id, locale, article_id, owner_id, digest, synced_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7::timestamptz)
@@ -86,7 +88,7 @@ export function createPostgresImportStore(sql: PgDatabase) {
           [input.provider, input.externalId, input.locale, input.articleId, input.ownerId, input.digest, input.syncedAt],
         );
         const row = rows[0];
-        if (!row) throw new Error("The Notion page is already linked to another work or account.");
+        if (!row) throw new ExternalContentConflictError();
         await capture.captureInTransaction(tx, createMigrationTransactionId(), [
           {
             entityType: "external_content_links",
@@ -96,7 +98,16 @@ export function createPostgresImportStore(sql: PgDatabase) {
           },
         ]);
         return mapLinkRow(row);
-      });
+        });
+      } catch (error: unknown) {
+        // Only translate our ownership constraint; unrelated database failures
+        // must retain their original error and diagnostics.
+        if (typeof error === "object" && error !== null && "code" in error && error.code === "23P01" &&
+            "constraint_name" in error && error.constraint_name === "external_content_links_page_owner_excl") {
+          throw new ExternalContentConflictError();
+        }
+        throw error;
+      }
     },
   }) satisfies Pick<TypedPersistenceAdapterContract, "getExternalContentLink" | "listExternalContentLinks" | "upsertExternalContentLink">;
 }

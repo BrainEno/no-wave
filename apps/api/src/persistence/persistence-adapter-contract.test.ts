@@ -58,6 +58,10 @@ async function sqliteFixture() {
   await runSqliteMigrations(db);
   return {
     store: createSqliteStore(db),
+    async insertLinkDirect(input) {
+      db.prepare("INSERT INTO external_content_links (provider, external_id, locale, article_id, owner_id, digest) VALUES (?, ?, ?, ?, ?, ?)")
+        .run("notion", input.externalId, input.locale, input.articleId, input.ownerId, "digest");
+    },
     async makeOutboxAvailable(eventId) {
       db.prepare("UPDATE outbox_events SET available_at = ? WHERE id = ?").run("2000-01-01T00:00:00.000Z", eventId);
     },
@@ -220,6 +224,10 @@ async function postgresFixture() {
 
   return {
     store: postgresStore,
+    async insertLinkDirect(input) {
+      await postgresSql.unsafe("INSERT INTO external_content_links (provider, external_id, locale, article_id, owner_id, digest) VALUES ($1, $2, $3, $4, $5, $6)",
+        ["notion", input.externalId, input.locale, input.articleId, input.ownerId, "digest"]);
+    },
     async makeOutboxAvailable(eventId) {
       await postgresSql.unsafe("UPDATE outbox_events SET available_at = '2000-01-01T00:00:00Z' WHERE id = $1", [eventId]);
     },
@@ -3887,6 +3895,47 @@ const hour = new Date(Date.now() + 3_600_000).toISOString();
       const winner = result.find((r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof runtime.store.upsertExternalContentLink>>> => r.status === "fulfilled");
       assert.ok(winner);
       assert.equal((await runtime.store.getExternalContentLink({ provider: "notion", externalId, locale: "zh-CN" }))?.articleId, winner.value.articleId);
+    } finally { await runtime.cleanup(undefined, suffix); }
+  });
+
+  test(`${adapterName}: competing cross-locale page claims have one owner`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const externalId = `cross-locale-race-${suffix}`;
+    const authorA = `cross-race-a-${suffix}`;
+    const authorB = `cross-race-b-${suffix}`;
+    const input = { title: "竞态", contentBlocks: [{ id: "p", type: "paragraph", text: "正文" }], publish: false };
+    try {
+      const a = await runtime.store.createArticle({ ...input, authorId: authorA, slug: `cross-race-a-${suffix}` });
+      const b = await runtime.store.createArticle({ ...input, authorId: authorB, slug: `cross-race-b-${suffix}` });
+      const results = await Promise.allSettled([
+        runtime.store.upsertExternalContentLink({ provider: "notion", externalId, locale: "zh-CN", articleId: a.id, ownerId: authorA, digest: "a", syncedAt: "2026-11-03T09:00:00.000Z" }),
+        runtime.store.upsertExternalContentLink({ provider: "notion", externalId, locale: "en", articleId: b.id, ownerId: authorB, digest: "b", syncedAt: "2026-11-03T09:00:00.000Z" }),
+      ]);
+      assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
+      const rejected = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
+      assert.ok(rejected);
+      assert.match(String(rejected.reason), /already linked/i);
+      const links = await Promise.all((["zh-CN", "en"] as const).map((locale) =>
+        runtime.store.getExternalContentLink({ provider: "notion", externalId, locale })));
+      assert.equal(links.filter(Boolean).length, 1);
+    } finally { await runtime.cleanup(undefined, suffix); }
+  });
+
+  test(`${adapterName}: direct SQL cannot assign different owners across locales`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const authorA = `direct-owner-a-${suffix}`;
+    const authorB = `direct-owner-b-${suffix}`;
+    const externalId = `direct-page-${suffix}`;
+    const input = { title: "Direct claim", contentBlocks: [{ id: "p", type: "paragraph", text: "Body" }], publish: false };
+    try {
+      const a = await runtime.store.createArticle({ ...input, authorId: authorA, slug: `direct-a-${suffix}` });
+      const b = await runtime.store.createArticle({ ...input, authorId: authorB, slug: `direct-b-${suffix}` });
+      await runtime.insertLinkDirect({ externalId, locale: "zh-CN", articleId: a.id, ownerId: authorA });
+      await assert.rejects(() => runtime.insertLinkDirect({ externalId, locale: "en", articleId: b.id, ownerId: authorB }));
+      await runtime.insertLinkDirect({ externalId, locale: "en", articleId: a.id, ownerId: authorA });
+      assert.equal((await runtime.store.getExternalContentLink({ provider: "notion", externalId, locale: "en" }))?.ownerId, authorA);
     } finally { await runtime.cleanup(undefined, suffix); }
   });
 
