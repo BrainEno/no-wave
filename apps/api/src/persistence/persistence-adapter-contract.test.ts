@@ -4,7 +4,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { MAX_ARTICLE_OFFSET, MAX_ARTICLE_OFFSET_POPULAR, encodeArticleCursor } from "../domain/article.ts";
 import { DEFAULT_AUTHOR_DISPLAY_NAME } from "../domain/profile.ts";
 import { CommentDepthError, COMMENT_DEPTH_LIMIT_MESSAGE, MAX_COMMENT_REPLY_DEPTH } from "../domain/comment-content.ts";
-import { ArticleInputError, ArticleSlugConflictError, ConversationInputError, IdempotencyConflictError, ConversationAccessError, ArticleAuthorizationError, ArticleNotFoundError, ProfileInputError, ProfileNotFoundError } from "../domain/errors.ts";
+import { ArticleInputError, ArticleSlugConflictError, ImportConflictError, ConversationInputError, IdempotencyConflictError, ConversationAccessError, ArticleAuthorizationError, ArticleNotFoundError, ProfileInputError, ProfileNotFoundError } from "../domain/errors.ts";
 import { createPostgresClient, createPostgresStore } from "./postgres.ts";
 import { runMigrations } from "./migrate.ts";
 import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
@@ -3846,11 +3846,26 @@ const hour = new Date(Date.now() + 3_600_000).toISOString();
         contentBlocks: [{ id: "block-1", type: "paragraph", text: "正文" }], publish: false });
       await assert.rejects(async () => runtime.store.upsertExternalContentLink({
         provider: "notion", externalId, locale: "zh-CN", articleId: rival.id, ownerId: other, digest: "c", syncedAt,
-      }), /already linked/);
+      }), (error: unknown) => {
+        assert.ok(error instanceof ImportConflictError);
+        assert.equal(error.code, "IMPORT_CONFLICT");
+        // SQLite's BEFORE INSERT trigger runs before the guarded PK upsert;
+        // PostgreSQL may deny through that guard instead of the exclusion.
+        assert.match(error.message, /already (owned by another account|linked to another work or account)/);
+        assert.ok(!error.message.includes(author) && !error.message.includes(article.id));
+        return true;
+      });
       await assert.rejects(async () => runtime.store.upsertExternalContentLink({
         provider: "notion", externalId, locale: "zh-CN", articleId: rival.id, ownerId: author, digest: "c", syncedAt,
-      }), /already linked/);
+      }), (error: unknown) => {
+        assert.ok(error instanceof ImportConflictError);
+        assert.equal(error.reason, "provenance");
+        assert.match(error.message, /already linked/);
+        return true;
+      });
       assert.equal((await runtime.store.getExternalContentLink({ provider: "notion", externalId, locale: "zh-CN" }))?.articleId, article.id);
+      assert.deepEqual(await runtime.store.getExternalContentLink({ provider: "notion", externalId, locale: "zh-CN" }), second,
+        "neither a foreign owner nor a retarget attempt may change any field of the original link");
 
       // Editions of one work are separate links pointing at the same article.
       const english = await runtime.store.upsertExternalContentLink({

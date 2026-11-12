@@ -1,6 +1,6 @@
 import { articleIdempotencyKeyHash } from "../application/article-idempotency.ts";
 import { assertNotionImportWorkState, type CommitNotionImportWorkInput, type CommittedNotionImportEdition } from "../application/notion-import-plan.ts";
-import { ArticleSlugConflictError } from "../domain/errors.ts";
+import { ArticleSlugConflictError, ImportConflictError } from "../domain/errors.ts";
 import { createPostgresArticleStore } from "./postgres-article-store.ts";
 import { createPostgresTaxonomyStore } from "./postgres-taxonomy-store.ts";
 import { createPostgresStoreContext } from "./postgres-shared.ts";
@@ -138,33 +138,42 @@ export function createPostgresImportStore(sql: PgDatabase, options: { transactio
       provider: string; externalId: string; locale: string; articleId: string;
       ownerId: string; digest: string; syncedAt: string;
     }) {
-      return sql.begin(async (tx) => {
-        await lockNotionImportPages(tx, [input.externalId]);
-        const rows = await tx.unsafe<ExternalContentLinkRow>(
-          `INSERT INTO external_content_links (provider, external_id, locale, article_id, owner_id, digest, synced_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7::timestamptz)
-           ON CONFLICT (provider, external_id, locale) DO UPDATE SET
-             article_id = excluded.article_id,
-             owner_id = excluded.owner_id,
-             digest = excluded.digest,
-             synced_at = excluded.synced_at
-           WHERE external_content_links.owner_id = excluded.owner_id
-             AND external_content_links.article_id = excluded.article_id
-           RETURNING ${SELECT_COLUMNS}`,
-          [input.provider, input.externalId, input.locale, input.articleId, input.ownerId, input.digest, input.syncedAt],
-        );
-        const row = rows[0];
-        if (!row) throw new Error("The Notion page is already linked to another work or account.");
-        await capture.captureInTransaction(tx, options.transactionId ?? createMigrationTransactionId(), [
-          {
-            entityType: "external_content_links",
-            entityId: migrationEntityKey(input.provider, input.externalId, input.locale),
-            operation: "upsert",
-            payload: row,
-          },
-        ]);
-        return mapLinkRow(row);
-      });
+      try {
+        return await sql.begin(async (tx) => {
+          await lockNotionImportPages(tx, [input.externalId]);
+          const rows = await tx.unsafe<ExternalContentLinkRow>(
+            `INSERT INTO external_content_links (provider, external_id, locale, article_id, owner_id, digest, synced_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7::timestamptz)
+             ON CONFLICT (provider, external_id, locale) DO UPDATE SET
+               article_id = excluded.article_id,
+               owner_id = excluded.owner_id,
+               digest = excluded.digest,
+               synced_at = excluded.synced_at
+             WHERE external_content_links.owner_id = excluded.owner_id
+               AND external_content_links.article_id = excluded.article_id
+             RETURNING ${SELECT_COLUMNS}`,
+            [input.provider, input.externalId, input.locale, input.articleId, input.ownerId, input.digest, input.syncedAt],
+          );
+          const row = rows[0];
+          if (!row) throw new ImportConflictError("provenance");
+          await capture.captureInTransaction(tx, options.transactionId ?? createMigrationTransactionId(), [
+            {
+              entityType: "external_content_links",
+              entityId: migrationEntityKey(input.provider, input.externalId, input.locale),
+              operation: "upsert",
+              payload: row,
+            },
+          ]);
+          return mapLinkRow(row);
+        });
+      } catch (error: unknown) {
+        // Match both the SQLSTATE and our named constraint, not every exclusion.
+        if (typeof error === "object" && error !== null && "code" in error && error.code === "23P01" &&
+            "constraint_name" in error && error.constraint_name === "external_content_links_page_owner_excl") {
+          throw new ImportConflictError("ownership");
+        }
+        throw error;
+      }
     },
   }) satisfies Pick<TypedPersistenceAdapterContract, "getExternalContentLink" | "listExternalContentLinks" | "upsertExternalContentLink" | "getImportPlanGeneration" | "commitNotionImportWork">;
 }

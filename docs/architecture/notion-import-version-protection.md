@@ -104,18 +104,34 @@ database outside these tools, operators must rotate its generation (or signing
 secret) before accepting writes if old previews must be invalidated. This does
 not add live-cutover fencing or prevent split-brain writes.
 
-## Scope relative to #270 and draft #303
+## Database-wide ownership after #305
 
-This workflow serializes competing imports across locales and refuses the loser
-without leaving an unlinked work or conflict-created tags. It does **not** add a
-database-wide cross-locale ownership constraint. A bypassing SQL writer or a
-standalone link upsert can still create the inconsistent ownership described in
-#270. Its database constraint / legacy-conflict migration remains separate; the
-unfinished draft #303 must not be treated as completed by this implementation.
-The operator seed command also remains a separate workflow, not an authenticated
-preview/apply client.
+#305 supplied the atomic preview/apply transaction and serialization described
+above; those protections are retained. #270 additionally requires every existing
+locale row of `(provider, external_id)` to share one owner, even for direct SQL
+and independent connections that ignore the advisory locks.
+
+Migrations **0036 PostgreSQL / 0023 SQLite** add that final database authority.
+PostgreSQL's named `btree_gist` exclusion compares equal provider/page and unequal
+owner; SQLite's INSERT and ownership-key UPDATE triggers run under the engine's
+single-writer semantics. Same-owner multi-locale rows remain valid. Foreign
+ownership takes precedence over a generic locale mismatch in preview, and a late
+ownership violation becomes `refused` with an explicit "another account" reason,
+not raw SQL or apparent success. All of the losing work's transactional writes
+and capture rows roll back. Unrelated database errors remain `failed`.
+
+See [ADR 0037](decisions/0037-import-provenance.md) for exact constraint/error
+identities, legacy-conflict audit and explicit remediation, `btree_gist` privileges
+and table-lock prerequisites. The old draft #303 is not the integration baseline:
+its non-atomic article/link flow must not replace #305's per-work commit. The
+operator seed remains a separate workflow, not a signed preview/apply client.
 
 ## Regression evidence
+
+- `apps/api/src/persistence/notion-page-ownership.integration.test.ts`: real
+  independent full-import and direct-SQL races, both locale winner directions,
+  legacy upgrades, exact provider error translation, eleven rollback stages per
+  provider, late constraint violations and owner-only orphan-media management.
 
 - `apps/api/src/transport/rest/import-version-protection.integration.test.ts`:
   real HTTP and stores on both providers; authenticity/expiry/actor/selection,

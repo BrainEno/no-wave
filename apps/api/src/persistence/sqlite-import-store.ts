@@ -1,6 +1,6 @@
 import { articleIdempotencyKeyHash } from "../application/article-idempotency.ts";
 import { assertNotionImportWorkState, type CommitNotionImportWorkInput, type CommittedNotionImportEdition } from "../application/notion-import-plan.ts";
-import { ArticleSlugConflictError } from "../domain/errors.ts";
+import { ArticleSlugConflictError, ImportConflictError } from "../domain/errors.ts";
 import { createSqliteArticleStore } from "./sqlite-article-store.ts";
 import { createSqliteTaxonomyStore } from "./sqlite-taxonomy-store.ts";
 import { importCreateCandidate, importEditionFields, MAX_AUTO_SLUG_ATTEMPTS, sqliteImportSavepoints } from "./notion-import-transaction.ts";
@@ -58,7 +58,7 @@ export function createSqliteImportStore(db: SqliteRunner, options: { transaction
            AND external_content_links.article_id = excluded.article_id`).run(
         input.provider, input.externalId, input.locale, input.articleId, input.ownerId, input.digest, input.syncedAt,
       );
-      if (Number(result.changes) !== 1) throw new Error("The Notion page is already linked to another work or account.");
+      if (Number(result.changes) !== 1) throw new ImportConflictError("provenance");
       const row = runner.prepare(
         "SELECT provider, external_id, locale, article_id, owner_id, digest, synced_at FROM external_content_links WHERE provider = ? AND external_id = ? AND locale = ?",
       ).get(input.provider, input.externalId, input.locale);
@@ -70,6 +70,9 @@ export function createSqliteImportStore(db: SqliteRunner, options: { transaction
       return mapRow(row);
     } catch (error) {
       try { runner.exec("ROLLBACK"); } catch { /* preserve the original failure */ }
+      // Do not relabel CHECK/FK errors or unrelated triggers as ownership races.
+      if (error instanceof Error && "errcode" in error && error.errcode === 1811 &&
+          error.message === "external_content_links_page_owner_conflict") throw new ImportConflictError("ownership");
       throw error;
     }
   }

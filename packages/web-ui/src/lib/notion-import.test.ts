@@ -7,6 +7,7 @@ import {
   asImportReport,
   describeImport,
   issueCounts,
+  importDetail,
   readBundleFile,
   type NotionImportReport,
 } from "./notion-import.ts";
@@ -263,4 +264,13 @@ test("a preview without its authenticated token cannot be applied", () => {
 test("a wholly rejected apply never claims success, and partial success is explicit", () => {
   assert.match(describeImport(reportOf({ applied: true, summary: { create: 0, update: 0, skip: 0, refused: 1, failed: 0 } })).headline, /^未写入：.*重新试跑/);
   assert.match(describeImport(reportOf({ applied: true, summary: { create: 1, update: 0, skip: 0, refused: 1, failed: 0 } })).headline, /^部分导入：/);
+});
+
+test("ownership conflicts explain cross-locale refusal and retain unused-media guidance in Chinese", () => {
+  const conflict = "This Notion page is already owned by another account. Nothing in this work was written; preview again.";
+  assert.match(importDetail(conflict), /其他账号.*不能跨语言重新认领.*均未写入/);
+  assert.match(importDetail(conflict + " Prepared images may remain in your media library; review and remove unused images."), /媒体库.*删除未使用/);
+  assert.match(importDetail("The Notion page is already linked to another work or account. Nothing in this work was written; preview again."), /其他作品或账号.*均未写入/);
+  assert.match(importDetail("The work or its import provenance changed. Nothing in this work was written; preview again."), /试跑后已变化.*重新试跑/);
+  assert.equal(importDetail("unrecognized safe report detail"), "unrecognized safe report detail");
 });

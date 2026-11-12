@@ -115,10 +115,10 @@ export function assertNotionImportWorkState(input: CommitNotionImportWorkInput, 
   article: { id: string; authorId: string; revision: string; deleted: boolean } | null;
 }): void {
   const expected = input.expected;
-  if (current.generation !== input.generation || input.expiresAt <= Date.now() ||
-      !sameNotionImportLinks(expected.links, current.links) ||
+  if (current.generation !== input.generation || input.expiresAt <= Date.now()) throw new ImportConflictError();
+  if (current.links.some((link) => link.ownerId !== input.actorId)) throw new ImportConflictError("ownership");
+  if (!sameNotionImportLinks(expected.links, current.links) ||
       current.createKeyArticleId !== expected.createKeyArticleId ||
-      current.links.some((link) => link.ownerId !== input.actorId) ||
       (expected.article === null ? current.article !== null :
         current.article === null || current.article.deleted || current.article.authorId !== input.actorId ||
         current.article.id !== expected.article.id || current.article.revision !== expected.article.revision)) {

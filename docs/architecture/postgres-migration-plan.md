@@ -19,6 +19,37 @@ Product behavior changes must be reviewed: when an improvement would change user
 
 API startup does not silently execute migrations. Schema changes run as an explicit release step.
 
+## Notion page-ownership upgrade (0036 PostgreSQL / 0023 SQLite)
+
+These follow the merged #305 revision/plan migrations (0034–0035 PostgreSQL,
+0021–0022 SQLite); do not reuse those numbers or restore an older non-atomic
+importer. The edition primary key remains `(provider, external_id, locale)`, but
+all existing locales of a page must share one owner. PostgreSQL installs the
+named `btree_gist` exclusion and SQLite installs INSERT/UPDATE triggers. The
+rule also applies to standalone direct SQL and transfer/replay target writes.
+
+Before release, use the read-only contradictory-owner audit and explicit operator
+remediation in [ADR 0037](decisions/0037-import-provenance.md#upgrade-prerequisites-and-operator-remediation).
+Do not silently choose an owner or delete works/tags/media. Contradictory rows
+abort the migration and its history row transactionally; retry succeeds only
+after an approved explicit repair. SQLite's runner takes `BEGIN IMMEDIATE` and
+must be able to obtain the write lock within the normal busy timeout.
+
+The PostgreSQL server must provide **`btree_gist` in `public`**. Either give the
+migration role the required database/schema privileges to install it, or have a
+DBA preinstall it there. Keep `public` in the migration search path for the GiST
+operator classes; an installation elsewhere needs DBA review. Runtime API roles
+need no extension-install privileges. Migration 0036 blocks DML while validating
+legacy rows and builds the exclusion under table locks, so budget a maintenance
+window and test on a disposable copy before an approved deployment. Privilege or
+extension failures are real deployment blockers, never a reason to omit the rule.
+
+The portable provenance row and replay schema are unchanged. Migrate the target
+before transfer/replay; the target's constraints must reject invalid provenance.
+The per-work atomic article/tag/media-reference/provenance/journal transaction,
+signed plans and database-local generation from #305 remain in force. This
+upgrade does not implement live cutover or grant deployment approval.
+
 ## Current persistence responsibilities
 
 The provider-independent contract covers conversations/participants/messages, notification inbox and outbox, revoked sessions, article/localized content blocks, user profiles, dynamic taxonomy/tag associations, article likes/comments, and follows. PostgreSQL implements the relational schema; SQLite is the default registered adapter. MongoDB remains unimplemented and must not be represented as a supported switch target yet.

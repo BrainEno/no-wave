@@ -245,10 +245,10 @@ export async function importNotionBundle(input: {
   for (const work of firstPass.works) {
     const editions = [work.primary, ...work.translations];
     const linked = editions.map((edition) => links.get(edition.pageId)).filter((link): link is StoredExternalContentLink => !!link);
-    if (editions.some((edition) => otherLocales.has(edition.pageId))) {
-      provenanceConflicts.set(work.primary.pageId, "this page already has import provenance in another locale; review the original work and select the matching pages");
-    } else if (linked.some((link) => link.ownerId !== input.actorId)) {
+    if (allLinks.some((link) => link.ownerId !== input.actorId && editions.some((edition) => edition.pageId === link.externalId))) {
       provenanceConflicts.set(work.primary.pageId, "this page is already imported into another account");
+    } else if (editions.some((edition) => otherLocales.has(edition.pageId))) {
+      provenanceConflicts.set(work.primary.pageId, "this page already has import provenance in another locale; review the original work and select the matching pages");
     } else if (new Set(linked.map((link) => link.articleId)).size > 1 ||
       (!links.has(work.primary.pageId) && linked.length > 0)) {
       provenanceConflicts.set(work.primary.pageId, "the selected pages have conflicting import provenance; review the original works before importing");
@@ -476,7 +476,7 @@ export async function importNotionBundle(input: {
       }
     } catch (error) {
       const conflict = error instanceof ImportConflictError || error instanceof ArticleVersionConflictError;
-      const detail = conflict ? new ImportConflictError().message :
+      const detail = error instanceof ImportConflictError ? error.message : conflict ? new ImportConflictError().message :
         error instanceof DomainError ? `${error.message} Nothing in this work was written; preview again.` :
         "This work could not be imported. All article, tag and provenance writes were rolled back; preview again.";
       rejectWork(work, detail + (mayHaveCopiedMedia ? " Prepared images may remain in your media library; review and remove unused images." : ""),
