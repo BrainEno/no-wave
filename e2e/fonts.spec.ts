@@ -136,34 +136,37 @@ test("all four original families and the real Instrument Serif italic remain ava
   await assertCustomFont(page, ".nw-wm .nw-it", "Instrument Serif");
 });
 
-// Each cold load gets its own ordinary test deadline and retained measurement.
-// All five are required; never average away one bad run or share a warm cache.
-for (const run of [1, 2, 3, 4, 5]) {
-  test(`cold desktop home ${run}/5 keeps CLS below 0.05 with ordinary motion`, async ({ browser, fontStack }, testInfo) => {
-    const baseURL = fontStack.webBaseUrl;
-    const context = await coldContext(browser, baseURL, "no-preference");
-    try {
-      const page = await context.newPage();
-      await installFontClsProbe(page);
-      await page.goto("/", { waitUntil: "load" });
-      await settleFonts(page);
-      // A defined observation window is the measurement itself, not a sleep to
-      // paper over readiness. Include the end of the real hero entrance motion.
-      await page.evaluate(() => new Promise<void>((resolve) => setTimeout(resolve, 1500)));
-      const cls = await page.evaluate(() => {
-        if (!window.readFontCls) throw new Error("CLS probe was not installed before navigation");
-        return window.readFontCls();
-      });
-      const fonts = await readFontAudit(page);
-      await testInfo.attach(`home-cold-load-${run}-cls.json`, {
-        body: JSON.stringify({ run, cls, transferBytes: fonts.transferBytes }, null, 2), contentType: "application/json",
-      });
-      assertFirstPartyFontAudit(fonts, new URL(baseURL).origin);
-      expect(cls.supported).toBe(true);
-      expect(cls.max, `desktop home cold run ${run}: ${JSON.stringify(cls.shifts)}`).toBeLessThan(0.05);
-    } finally { await context.close(); }
-  });
-}
+// Each cold load gets its own ordinary deadline and retained measurement.
+// All five are required: retries must not turn a bad performance sample green.
+test.describe("five consecutive cold desktop home loads", () => {
+  test.describe.configure({ retries: 0 });
+  for (const run of [1, 2, 3, 4, 5]) {
+    test(`cold desktop home ${run}/5 keeps CLS below 0.05 with ordinary motion`, async ({ browser, fontStack }, testInfo) => {
+      const baseURL = fontStack.webBaseUrl;
+      const context = await coldContext(browser, baseURL, "no-preference");
+      try {
+        const page = await context.newPage();
+        await installFontClsProbe(page);
+        await page.goto("/", { waitUntil: "load" });
+        await settleFonts(page);
+        // A defined observation window is the measurement itself, not a sleep to
+        // paper over readiness. Include the end of the real hero entrance motion.
+        await page.evaluate(() => new Promise<void>((resolve) => setTimeout(resolve, 1500)));
+        const cls = await page.evaluate(() => {
+          if (!window.readFontCls) throw new Error("CLS probe was not installed before navigation");
+          return window.readFontCls();
+        });
+        const fonts = await readFontAudit(page);
+        await testInfo.attach(`home-cold-load-${run}-cls.json`, {
+          body: JSON.stringify({ run, cls, transferBytes: fonts.transferBytes }, null, 2), contentType: "application/json",
+        });
+        assertFirstPartyFontAudit(fonts, new URL(baseURL).origin);
+        expect(cls.supported).toBe(true);
+        expect(cls.max, `desktop home cold run ${run}: ${JSON.stringify(cls.shifts)}`).toBeLessThan(0.05);
+      } finally { await context.close(); }
+    });
+  }
+});
 
 test("blocking every third-party request leaves home, sign-in and article typography unchanged", async ({ browser, request, fontStack }, testInfo) => {
   const baseURL = fontStack.webBaseUrl;
