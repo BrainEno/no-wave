@@ -428,7 +428,8 @@ test("SQLite upgrade preserves historical read counts and refuses unsequenced le
     db.prepare("UPDATE provider_migration_sessions SET status = 'aborted' WHERE session_id = ?").run("active-upgrade");
     assert.deepEqual(
       await runSqliteMigrations(db),
-      ["0017_conversation_read_order", "0018_comment_edits", "0019_article_view_counts", "0020_notion_import_links", "0021_article_import_revision"],
+      (await readdir(source)).filter((name) => /^\d{4}_.*\.sql$/.test(name) && name >= "0017_")
+        .sort().map((name) => name.slice(0, -4)),
     );
     assert.deepEqual(await runSqliteMigrations(db), []);
     const store = createSqliteConversationStore(db);
@@ -484,19 +485,11 @@ test("PostgreSQL upgrades a real legacy schema and preserves existing read state
       assert.equal(versions.length, 0, "a refused upgrade must not be recorded");
       await tx.unsafe("UPDATE provider_migration_sessions SET status = 'aborted' WHERE session_id = 'active-upgrade'");
       // The legacy fixture stops before 0026, so the upgrade applies every
-      // migration after it — discovered from disk, not transcribed, so adding
-      // one is a one-line change here rather than a silent skip.
-      assert.deepEqual((await runMigrations(scoped)).applied, [
-        "0026_conversation_read_order",
-        "0027_searchable_article_body_text",
-        "0028_comment_edits",
-        "0029_search_list_items_and_code",
-        "0030_notification_created_at_millisecond_precision",
-        "0031_comment_created_at_millisecond_precision",
-        "0032_article_view_counts",
-        "0033_notion_import_links",
-        "0034_article_import_revision",
-      ]);
+      // migration after it, discovered from disk rather than transcribed.
+      const remaining = (await readdir(migrations))
+        .filter((name) => /^\d{4}_.*\.sql$/.test(name) && name >= "0026_")
+        .sort().map((name) => name.slice(0, -4));
+      assert.deepEqual((await runMigrations(scoped)).applied, remaining);
       assert.deepEqual((await runMigrations(scoped)).applied, []);
       const afterCounts = await tx.unsafe(`SELECT cp.conversation_id, cp.user_id,
         (SELECT count(*)::int FROM messages m WHERE m.conversation_id = cp.conversation_id AND m.sender_id <> cp.user_id AND m.conversation_sequence > cp.last_read_sequence) AS n
