@@ -82,6 +82,8 @@
 
 规则：中文大字不加负字距（最多 −0.01em），拉丁大字可加到 −0.04em；中文标题字重 ≤ 600，主题大字（≥ 120px）用 500；字体加载用 `font-display: swap`，并保留 PingFang SC / Microsoft YaHei 回退。
 
+实际字体由站点同源的带哈希 WOFF2 提供，不依赖 Google Fonts 在线服务。保持以上四个家族与真实 italic；中文按用途和 Unicode 范围按需分片，保留完整原始可打印字形覆盖。字标为字体交换预留固定行框与字宽，不隐藏文字或禁用动效来降低 CLS。更新文案或字体须同步运行 `pnpm fonts:generate`、离线完整性和浏览器预算守门，详见[第一方字体方案](../../../docs/architecture/first-party-fonts.md)。
+
 ### 3.3 间距、圆角、边框
 
 - 间距基准 4px：`space.1=4, 2=8, 3=12, 4=16, 6=24, 8=32, 10=40, 14=56, 20=80, 30=120`。
@@ -257,7 +259,7 @@
 1. 各页面的设计目标与实际版式仍需逐项比较；路由已经按 [路由表](../../../apps/web-rr/app/routes.ts) 核对。
 2. 关注、通知接口与事件类型见 [通知解析](../src/lib/chrome.ts) 和 [API 路由](../../../apps/api/src/transport/rest/routes/notifications.ts)；未来新增事件需要同步客户端。
 3. 默认封面在服务端渲染（SSR）时的选择逻辑与 CDN 缓存策略。
-4. 字体的实际分发方式（Google Fonts 或自托管子集），中文字体的子集大小对首屏的影响。
+4. 字体分发由[同源字体方案](../../../docs/architecture/first-party-fonts.md)约束；新增文案或字体时须重新生成并通过冷传输、五次首页 CLS 和第三方屏蔽回归。
 5. 成功与警告语义色的最终色值与对比度验证。
 
 

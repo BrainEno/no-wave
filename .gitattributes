@@ -1,0 +1,9 @@
+# Keep generated font data out of the default PR code review; source recipes,
+# verification tests and the original OFL licenses remain visible.
+packages/web-ui/src/styles/fonts/*.woff2 linguist-generated=true
+packages/web-ui/src/styles/fonts/manifest.json linguist-generated=true
+packages/web-ui/src/styles/fonts.css linguist-generated=true
+
+# Original upstream licenses are authenticated byte-for-byte, including their
+# trailing spaces. Never reformat those notices to satisfy a source-code check.
+packages/web-ui/src/styles/fonts/*-OFL.txt whitespace=-blank-at-eol

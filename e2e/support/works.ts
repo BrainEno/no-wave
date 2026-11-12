@@ -41,22 +41,23 @@ export async function publishWork(
   title: string,
   paragraphs: readonly string[],
   locale?: "zh-CN" | "en" | "zh-TW",
+  apiBaseUrl = API_BASE_URL,
 ): Promise<{ email: string; slug: string }> {
   const email = uniqueEmail("work");
-  const registered = await request.post(`${API_BASE_URL}/api/v1/auth/register`, {
+  const registered = await request.post(`${apiBaseUrl}/api/v1/auth/register`, {
     data: { email, password: WORK_PASSWORD },
   });
   expect(registered.status(), `registering ${email}: ${await registered.text()}`).toBe(201);
   const { accessToken } = (await registered.json()).data as { accessToken: string };
-  const headers = { authorization: `Bearer ${accessToken}`, origin: API_BASE_URL };
+  const headers = { authorization: `Bearer ${accessToken}`, origin: apiBaseUrl };
 
-  const profile = await request.put(`${API_BASE_URL}/api/v1/me/profile`, {
+  const profile = await request.put(`${apiBaseUrl}/api/v1/me/profile`, {
     data: { displayName: "无浪作者", bio: "浏览器验证账户。", locale: "zh-CN" },
     headers,
   });
   expect(profile.status(), `creating the author profile: ${await profile.text()}`).toBe(200);
 
-  const created = await request.post(`${API_BASE_URL}/api/v1/articles`, {
+  const created = await request.post(`${apiBaseUrl}/api/v1/articles`, {
     data: { title, editorState: editorState(paragraphs), contentBlocksVersion: 1, publish: true, ...(locale ? { locale } : {}) },
     headers,
   });

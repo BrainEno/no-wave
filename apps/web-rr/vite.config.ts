@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { reactRouter } from "@react-router/dev/vite";
 import { defineConfig } from "vite";
 import { parseAllowedDevOrigins } from "@bot-thk/web-ui/src/lib/dev-origins.ts";
+import { firstPartyFontLicenses } from "./font-licenses.ts";
 
 // Environment contract: the repository-root `.env.local` is the single developer
 // configuration file, and a value already exported in the shell wins over it.
@@ -32,7 +33,12 @@ function allowedDevHosts(): string[] | true {
  * navigation adapter left to alias.
  */
 export default defineConfig({
-  plugins: [reactRouter()],
+  plugins: [reactRouter(), firstPartyFontLicenses()],
+  build: {
+    // Keep even tiny Unicode shards addressable and independently cacheable;
+    // inlining them would hide their transfer cost inside a global stylesheet.
+    assetsInlineLimit: (filePath) => filePath.endsWith(".woff2") ? false : undefined,
+  },
   // The shared UI is compiled into the server bundle. Bundle its ZIP decoder
   // too: the runtime image does not have web-ui source or its node_modules.
   ssr: { noExternal: ["fflate"] },

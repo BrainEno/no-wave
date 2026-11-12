@@ -134,10 +134,23 @@ mark { background: var(--or); color: #0f0d0c; }
 .nw-hero canvas { opacity: 0; transition: opacity .6s; }
 .nw-hero canvas[data-ready] { opacity: 1; }
 .nw-brand { position: absolute; z-index: 2; left: 72px; bottom: 0; display: flex; flex-direction: column; pointer-events: none; }
-.nw-cn { margin: 0 0 6px; font-size: calc(var(--w) * .44); line-height: 1; letter-spacing: -.01em; }
-.nw-wm { margin: 0 0 calc(var(--w) * -.18); font-size: var(--w); line-height: .8; letter-spacing: -.04em; white-space: nowrap; }
+.nw-cn { margin: 0 0 6px; block-size: 1em; font-size: calc(var(--w) * .44); line-height: 1; letter-spacing: -.01em; }
+/* Reserve the wordmark's final line/advance boxes before swap. The original
+   mixed-font inline strut grew with Instrument's descenders and moved the whole
+   brand. Slots use the pinned fonts' advances minus the existing letter-spacing;
+   glyphs, platform fallbacks and the entrance/scatter motion remain unchanged. */
+.nw-cn > i { inline-size: .99em; block-size: 1em; vertical-align: top; }
+.nw-wm { display: flex; align-items: baseline; column-gap: .187em; block-size: .9em; margin: 0 0 calc(var(--w) * -.18); font-size: var(--w); line-height: .8; letter-spacing: -.04em; white-space: nowrap; }
+.nw-wm > span, .nw-wm i { block-size: .8em; }
+.nw-wm > span { display: inline-block; }
 .nw-wm .nw-ss { font-weight: 700; }
+.nw-wm .nw-ss > i:nth-child(1) { inline-size: .6621484375em; }
+.nw-wm .nw-ss > i:nth-child(2) { inline-size: .5410546875em; }
 .nw-wm .nw-it { font-family: var(--f-sf); font-style: italic; font-weight: 400; }
+.nw-wm .nw-it > i:nth-child(1) { inline-size: .613em; }
+.nw-wm .nw-it > i:nth-child(2) { inline-size: .434em; }
+.nw-wm .nw-it > i:nth-child(3) { inline-size: .372em; }
+.nw-wm .nw-it > i:nth-child(4) { inline-size: .308em; }
 .nw-sel {
   /* 原稿的精选舞台：黑底纸字（两种主题下都保持深色台面），不随主题翻转。 */
   --paper: #0f0d0c;
@@ -303,7 +316,7 @@ mark { background: var(--or); color: #0f0d0c; }
   .nw-w { padding: 0 16px; } .nw-sel, .nw-lat, .nw-top, .nw-pop { padding: 72px 16px; }
   .nw-pill { top: max(12px, var(--st)); right: 12px; padding: 0 4px 0 8px; } .nw-pill .nw-nv { display: none; } .nw-mnb { display: inline-flex !important; }
   .nw-np { right: 12px; top: calc(max(12px, var(--st)) + 60px); max-height: calc(100dvh - max(12px, var(--st)) - 72px); }
-  .nw-hero { --w: 36vw; } .nw-brand { left: 12px; } .nw-cn { position: absolute; left: 4px; top: calc(var(--st) + 80px); margin: 0; font-size: 72px; } .nw-wm { font-size: 38vw; } .nw-wm > span { display: block; }
+  .nw-hero { --w: 36vw; } .nw-brand { left: 12px; } .nw-cn { position: absolute; left: 4px; top: calc(var(--st) + 80px); margin: 0; font-size: 72px; } .nw-wm { font-size: 38vw; flex-direction: column; align-items: flex-start; gap: 0; block-size: 1.6em; } .nw-wm > span { display: block; }
   .nw-h2 h2 { font-size: 40px; } .nw-tri { gap: 56px; margin-top: 40px; } .nw-item { width: 100% !important; margin-top: 0 !important; } .nw-item:nth-child(2) { width: 78% !important; margin-left: auto; } .nw-item:nth-child(3) { width: 58% !important; }
   .nw-band { height: 56px; font-size: 26px; }
   .nw-lat .nw-wrap { gap: 40px; } .nw-pic { width: 100%; aspect-ratio: 1 / 1; }
