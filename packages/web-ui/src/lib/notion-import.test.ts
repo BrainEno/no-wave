@@ -34,6 +34,7 @@ function bundleOf(pages: unknown[]): string {
 function reportOf(overrides: Partial<NotionImportReport> = {}): NotionImportReport {
   return {
     applied: false,
+    planToken: "test-preview-token",
     database: { id: "db-1", title: "草稿" },
     summary: { create: 0, update: 0, skip: 0, refused: 0, failed: 0 },
     pages: [],
@@ -246,4 +247,20 @@ test("source selection keeps only checked pages, regardless of report identities
   assert.deepEqual(selectBundlePages(bundle, new Set([1])), { ...bundle, pages: [second] });
   assert.deepEqual(selectBundlePages(bundle, new Set()), { ...bundle, pages: [] });
   assert.equal(bundle.pages.length, 2);
+});
+
+
+test("a preview without its authenticated token cannot be applied", () => {
+  const report = asImportReport({ ...reportOf({ summary: { create: 1, update: 0, skip: 0, refused: 0, failed: 0 } }), planToken: undefined });
+  assert.ok(report);
+  assert.equal(describeImport(report).canApply, false);
+  const bound = asImportReport({ ...report, planToken: "authentic-token", planExpiresAt: "2026-11-12T12:15:00.000Z" });
+  assert.equal(bound?.planToken, "authentic-token");
+  assert.equal(bound?.planExpiresAt, "2026-11-12T12:15:00.000Z");
+  assert.equal(describeImport(bound!).canApply, true);
+});
+
+test("a wholly rejected apply never claims success, and partial success is explicit", () => {
+  assert.match(describeImport(reportOf({ applied: true, summary: { create: 0, update: 0, skip: 0, refused: 1, failed: 0 } })).headline, /^未写入：.*重新试跑/);
+  assert.match(describeImport(reportOf({ applied: true, summary: { create: 1, update: 0, skip: 0, refused: 1, failed: 0 } })).headline, /^部分导入：/);
 });

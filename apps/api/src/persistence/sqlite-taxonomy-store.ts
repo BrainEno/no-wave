@@ -10,7 +10,7 @@ import { isUuid, requiredText } from "../domain/validation.ts";
 import type { TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
 import type { SqliteRow, SqliteRunner } from "./sqlite.ts";
 
-export function createSqliteTaxonomyStore(db: SqliteRunner) {
+export function createSqliteTaxonomyStore(db: SqliteRunner, options: { transactionId?: string } = {}) {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") {
     throw new TypeError("A node:sqlite DatabaseSync connection is required.");
   }
@@ -27,7 +27,7 @@ export function createSqliteTaxonomyStore(db: SqliteRunner) {
 
   const migrationCapture = createSqliteProviderMigrationCapture(db);
   const transaction = <T,>(fn: (transactionId: string) => T): T => {
-    const transactionId = createMigrationTransactionId();
+    const transactionId = options.transactionId ?? createMigrationTransactionId();
     db.exec("BEGIN IMMEDIATE");
     try { const result = fn(transactionId); db.exec("COMMIT"); return result; }
     catch (error) { try { db.exec("ROLLBACK"); } catch {} throw error; }

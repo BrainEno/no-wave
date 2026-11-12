@@ -21,6 +21,8 @@ function failureMessage(payload: unknown, status: number): string {
   const message = typeof payload === "object" && payload !== null
     ? (payload as { error?: { message?: unknown } }).error?.message
     : undefined;
+  const code = typeof payload === "object" && payload !== null ? (payload as { error?: { code?: unknown } }).error?.code : null;
+  if (code === "IMPORT_PLAN_INVALID") return "试跑计划已失效或与当前选择不符，没有执行本次写入。请重新试跑后确认。";
   if (status === 401) return "登录状态已失效，请重新登录后再导入。";
   if (status === 413) return `文件超过 ${MAX_MEGABYTES} MB 的上限，请在 Notion 里分批导出。`;
   if (status === 415) return "这个请求必须是 JSON。";
@@ -32,6 +34,14 @@ function failureMessage(payload: unknown, status: number): string {
 
 /** Explain conservative source-identity refusals without exposing private IDs. */
 function importDetail(detail: string): string {
+  if (detail.startsWith("The work or its import provenance changed.")) {
+    return "作品或导入来源在试跑后已变化，本作品的文章、标签和来源链接均未写入，请重新试跑。" +
+      (detail.includes("media library") ? "已准备的图片可能留在媒体库，请检查并删除未使用的图片。" : "");
+  }
+  if (detail.startsWith("This work could not be imported.")) {
+    return "本作品导入失败，文章、标签和来源链接已全部回滚，请重新试跑。" +
+      (detail.includes("media library") ? "已准备的图片可能留在媒体库，请检查并删除未使用的图片。" : "");
+  }
   const messages: Record<string, string> = {
     "translation relation requires review before import": "翻译关联需要核对，暂不导入。",
     "Select all pages referenced by English before importing this work": "请选择 English 关联的所有页面后重新试跑。",
@@ -60,6 +70,8 @@ export function NotionImport() {
   const [plannedBundle, setPlannedBundle] = useState<Record<string, unknown> | null>(null);
 
   async function send(next: Record<string, unknown>, apply: boolean): Promise<void> {
+    const planToken = apply ? report?.planToken : undefined;
+    if (apply && !planToken) { setError("请先重新试跑，再确认导入。"); return; }
     setBusy(apply ? "apply" : "dry-run");
     setError("");
     setReport(null);
@@ -73,7 +85,7 @@ export function NotionImport() {
         // `apply` is omitted for a dry run rather than sent as `false`: the
         // endpoint's default *is* the dry run, and a body that cannot be
         // misunderstood is worth one fewer key.
-        body: JSON.stringify(apply ? { bundle: next, apply: true } : { bundle: next }),
+        body: JSON.stringify(apply ? { bundle: next, apply: true, planToken } : { bundle: next }),
       });
       const payload: unknown = await response.json().catch(() => null);
       if (response.ok === false) {
@@ -263,8 +275,8 @@ export function NotionImport() {
                 {busy === "apply" ? "写入中…" : `确认导入（写入 ${outcome.writable} 件作品）`}
               </button>
               <p className="nw-m" role="alert">
-                注意：目前试跑不会锁定目标文章。试跑后其他人或其他窗口的修改可能被导入覆盖；
-                确认前请停止编辑并备份，必要时重新试跑。并发修改仍可能导致覆盖。
+                试跑计划在 15 分钟内有效，并绑定当前选择与作品版本。试跑后的编辑或来源变化会由服务器拒绝，
+                请重新试跑后确认；同一作品的所有语言版本会一起写入或回滚，其他作品可独立成功。
               </p>
               <p className="nw-m">
                 试跑没有写入任何内容。写入时状态跟着 bundle 走：「Published」为真的那一页会被直接发表，

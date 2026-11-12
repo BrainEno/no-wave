@@ -296,7 +296,7 @@ export async function handleAuthoringNotionExportRequest(
  * reason the media upload repeats its limit: the proxy holds the bytes while it
  * reads them, so the decision belongs where they arrive rather than one hop later.
  */
-export const AUTHORING_NOTION_IMPORT_MAX_BYTES = 8 * 1024 * 1024;
+export const AUTHORING_NOTION_IMPORT_MAX_BYTES = 8 * 1024 * 1024 + 512 * 1024 + 1024;
 
 /**
  * `POST /api/authoring/notion-import` — import a Notion bundle into the caller's
@@ -333,6 +333,10 @@ export async function handleAuthoringNotionImportRequest(
   }
   if (!isRecord(body.value.bundle)) {
     return notForwarded(errorResponse("BAD_USER_INPUT", "A `bundle` object is required.", 400));
+  }
+
+  if (new TextEncoder().encode(JSON.stringify(body.value.bundle)).byteLength > 8 * 1024 * 1024) {
+    return notForwarded(errorResponse("PAYLOAD_TOO_LARGE", "The bundle exceeds the 8 MB limit.", 413));
   }
 
   return forwardAuthoringRequest(request, "api/v1/imports/notion", "POST", config, body.text);

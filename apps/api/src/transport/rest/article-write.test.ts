@@ -86,3 +86,15 @@ test("an editor state without any text content reports empty content", () => {
   assert.equal(input, null);
   assert.match(error ?? "", /at least one block with text content/);
 });
+
+
+test("conditional updates preserve full bigint revisions and reject malformed versions", () => {
+  const body = createBody({ slug: "existing", publish: true, expectedRevision: "9007199254740993" });
+  assert.equal(normalizeArticleWriteBody(body, true).input?.expectedRevision, "9007199254740993");
+  for (const expectedRevision of [null, 1, "", "01", "-1", "1.0", "1e3", " 1", "9223372036854775808"]) {
+    const result = normalizeArticleWriteBody({ ...body, expectedRevision }, true);
+    assert.equal(result.input, null, JSON.stringify(expectedRevision));
+    assert.match(result.error!, /expectedRevision/);
+  }
+  assert.equal(normalizeArticleWriteBody(body, false).input, null, "create cannot accept an update precondition");
+});

@@ -1,3 +1,5 @@
+import { createNotionImportPlanCodec, type NotionImportPlan } from "./notion-import-plan.ts";
+import { accessIssuerConfiguration } from "../security/authentication.ts";
 import {
   createPersistencePorts,
   type PersistenceAdapterContract,
@@ -57,6 +59,7 @@ export type ArticleCreateServiceInput = ArticleWriteInput & {
   requestedSlug?: string | null;
 };
 export type ArticleUpdateServiceInput = ArticleWriteInput & {
+  expectedRevision?: string;
   articleId: string;
   actorId: string;
   slug: string;
@@ -98,6 +101,8 @@ type ServiceOverrideName =
  */
 export type ApplicationServices<A extends PersistenceAdapterMethods = PersistenceAdapterContract> =
   Omit<FlatPorts<PersistencePorts<A>>, ServiceOverrideName> & {
+    signNotionImportPlan(plan: NotionImportPlan): string;
+    verifyNotionImportPlan(token: unknown): NotionImportPlan;
     createArticle(input: ArticleCreateServiceInput): Promise<StoredArticle>;
     updateArticle(input: ArticleUpdateServiceInput): Promise<StoredArticle>;
     deleteArticle(input: ArticleAuthorInput): Promise<DeletedArticleResult>;
@@ -493,6 +498,8 @@ export function createApplicationServices({
     setFeaturedArticles,
     createTaxonomy,
     deleteTaxonomy,
+    signNotionImportPlan: (plan: NotionImportPlan) => createNotionImportPlanCodec(accessIssuerConfiguration(env).secret).sign(plan),
+    verifyNotionImportPlan: (token: unknown) => createNotionImportPlanCodec(accessIssuerConfiguration(env).secret).verify(token),
     createArticle,
     updateArticle,
     deleteArticle: deleteArticleWithSweep,

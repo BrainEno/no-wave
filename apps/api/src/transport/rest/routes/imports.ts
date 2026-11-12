@@ -4,6 +4,7 @@ import { NotionBundleError } from "../../../application/notion-bundle.ts";
 import { MAX_EXPORT_WORKS, NotionExportRequestError, exportNotionBundle } from "../../../application/notion-export.ts";
 import { NotionImportRequestError, importNotionBundle } from "../../../application/notion-import.ts";
 import { fetchNotionImage } from "../../../infrastructure/notion-image-fetch.ts";
+import { MAX_NOTION_PLAN_TOKEN_BYTES } from "../../../application/notion-import-plan.ts";
 import type { NotionImageCopier } from "../../../application/notion-import-images.ts";
 
 /**
@@ -13,6 +14,7 @@ import type { NotionImageCopier } from "../../../application/notion-import-image
  * not the byte count, is what bounds the work the request can cause.
  */
 export const MAX_NOTION_IMPORT_BYTES = 8 * 1024 * 1024;
+const MAX_NOTION_IMPORT_REQUEST_BYTES = MAX_NOTION_IMPORT_BYTES + MAX_NOTION_PLAN_TOKEN_BYTES + 1024;
 
 /** `apply` is opt-in: a body without it is a dry run, never a write. */
 function readApplyFlag(value: unknown): boolean | null {
@@ -63,12 +65,16 @@ const IMPORT_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Object
     const { request, response, services, env, mediaAssets } = ctx;
     if (!services) { sendUnavailable(response); return; }
 
-    const bodyResult = await readJsonObject(request, MAX_NOTION_IMPORT_BYTES);
+    const bodyResult = await readJsonObject(request, MAX_NOTION_IMPORT_REQUEST_BYTES);
     if (bodyResult.ok === false) { sendJsonBodyError(response, request, bodyResult); return; }
 
     const apply = readApplyFlag(bodyResult.value.apply);
     if (apply === null) { sendBadInput(response, "`apply` must be a boolean when present."); return; }
     if (!("bundle" in bodyResult.value)) { sendBadInput(response, "A `bundle` object is required."); return; }
+    if (Buffer.byteLength(JSON.stringify(bodyResult.value.bundle)) > MAX_NOTION_IMPORT_BYTES) {
+      sendJson(response, 413, { error: { code: "PAYLOAD_TOO_LARGE", message: "The bundle exceeds the 8 MB limit." } });
+      return;
+    }
 
     try {
       const actorId = await authenticatedActorId(request, services, env);
@@ -99,6 +105,7 @@ const IMPORT_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Object
         actorId,
         bundle: bodyResult.value.bundle,
         apply,
+        planToken: bodyResult.value.planToken,
         deps: services,
         copyImage,
       });

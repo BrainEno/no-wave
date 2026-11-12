@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { USER_ROLES, type UserRole } from "../../domain/profile.ts";
 import { lexicalEditorStateToArticleDocument } from "../../domain/lexical-document-adapter.ts";
+import { validateArticleRevision } from "../../domain/article.ts";
 import { ARTICLE_SUMMARY_MAX_LENGTH, summarizeArticleBlocks } from "../../domain/article-summary.ts";
 import { ArticleInputError } from "../../domain/errors.ts";
 import { normalizeCommentContentInput } from "../../domain/comment-content.ts";
@@ -16,6 +17,7 @@ import { isRecord } from "./http.ts";
  * present after validation.
  */
 export type ArticleWriteBody = {
+  expectedRevision?: string;
   title: string;
   locale: "zh-CN" | "zh-TW" | "en";
   contentBlocks: string;
@@ -28,7 +30,7 @@ export type ArticleWriteBody = {
   tagIds?: readonly unknown[];
 };
 /** Updates address a stored article, so the slug and publish flag are mandatory. */
-export type ArticleUpdateBody = ArticleWriteBody & { slug: string; publish: boolean };
+export type ArticleUpdateBody = ArticleWriteBody & { slug: string; publish: boolean; expectedRevision?: string };
 
 /** A profile write body after validation; optional nullable URLs stay optional. */
 export type ProfileWriteBody = {
@@ -49,8 +51,11 @@ export function normalizeArticleWriteBody(
   body: Record<string, unknown>,
   requirePublish: boolean,
 ): { input: ArticleWriteBody | null; error: string | null } {
-  if (Object.keys(body).some((key) => !ARTICLE_WRITE_FIELDS.has(key))) {
+  if (Object.keys(body).some((key) => !ARTICLE_WRITE_FIELDS.has(key) && !(requirePublish && key === "expectedRevision"))) {
     return { input: null, error: "The request contains unsupported fields." };
+  }
+  try { validateArticleRevision(body.expectedRevision); } catch {
+    return { input: null, error: "expectedRevision must be a non-negative decimal bigint string." };
   }
   // Missing locale retains the historical Simplified Chinese default. An
   // explicit locale must pass through unchanged: zh-TW may be a legacy work
@@ -145,6 +150,7 @@ export function normalizeArticleWriteBody(
     contentBlocks: JSON.stringify(contentBlocks),
     summary,
   };
+  if (typeof body.expectedRevision === "string") input.expectedRevision = body.expectedRevision;
   if (requestedSlug.length > 0) {
     // No slug supplied: omit the key entirely so the route generates one
     // instead of forwarding an empty value the domain validator would reject.

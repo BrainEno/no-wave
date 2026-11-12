@@ -230,3 +230,59 @@ test("a selected page with a missing English relation is refused before writing"
   await page.getByRole("button", { name: "试跑所选文章" }).click();
   await expect(page.getByRole("button", { name: /确认导入/ })).toBeVisible();
 });
+
+
+test("an edit after preview is preserved and the import asks to preview again", async ({ page }) => {
+  const file = bundleFile();
+  await registerThroughForm(page, uniqueEmail("notion-conflict"), "/write/notion");
+  await page.setInputFiles("#notion-bundle-file", file);
+  await selectAllAndPreview(page);
+  await expect(page.getByRole("button", { name: /确认导入/ })).toBeVisible();
+  await page.getByRole("button", { name: /确认导入/ }).click();
+  await expect(page.getByText(/已导入：新建 1 件/)).toBeVisible();
+
+  const changed = JSON.parse(file.buffer.toString("utf8")) as typeof BUNDLE;
+  changed.pages[0]!.properties.Page.title = [richText("Notion 中的更新")];
+  await page.setInputFiles("#notion-bundle-file", { ...file, buffer: Buffer.from(JSON.stringify(changed)) });
+  await selectAllAndPreview(page);
+  await expect(page.getByText(/计划：新建 0 件、更新 1 件/)).toBeVisible();
+
+  const list = await page.request.get("/api/authoring/articles?allLocales=true");
+  expect(list.ok()).toBe(true);
+  const article = (await list.json()).data.find((item: { title: string }) => item.title === TITLE);
+  expect(typeof article.revision).toBe("string");
+  const edit = await page.request.put(`/api/authoring/articles/${article.id}`, {
+    headers: { origin: new URL(page.url()).origin },
+    data: { slug: article.slug, title: "另一个窗口的修改", locale: article.locale, publish: false,
+      expectedRevision: article.revision, contentBlocks: [{ id: "p", type: "paragraph", text: "不要覆盖这次编辑。" }] },
+  });
+  expect(edit.ok()).toBe(true);
+  await page.getByRole("button", { name: /确认导入/ }).click();
+  await expect(page.getByText(/^未写入：/)).toBeVisible();
+  await expect(page.getByText(/本作品的文章、标签和来源链接均未写入，请重新试跑/)).toBeVisible();
+  await expect(page.getByRole("button", { name: /确认导入/ })).toHaveCount(0);
+  const kept = (await (await page.request.get("/api/authoring/articles?allLocales=true")).json()).data.find((item: { id: string }) => item.id === article.id);
+  expect(kept.title).toBe("另一个窗口的修改");
+  expect(JSON.stringify(kept.contentBlocks)).toContain("不要覆盖这次编辑。");
+});
+
+
+test("an invalidated plan hides confirmation and a new preview can be confirmed", async ({ page }) => {
+  await registerThroughForm(page, uniqueEmail("notion-expired"), "/write/notion");
+  await page.setInputFiles("#notion-bundle-file", bundleFile());
+  await selectAllAndPreview(page);
+  // The backend's expiry and authentication rules have real HTTP coverage; here
+  // only the browser's recovery from that rejection needs a controlled response.
+  await page.route("**/api/authoring/notion-import", async (route) => {
+    if (route.request().postDataJSON().apply !== true) { await route.continue(); return; }
+    await route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ error: { code: "IMPORT_PLAN_INVALID" } }) });
+  });
+  await page.getByRole("button", { name: /确认导入/ }).click();
+  await expect(page.getByRole("alert")).toContainText("试跑计划已失效或与当前选择不符");
+  await expect(page.getByRole("button", { name: /确认导入/ })).toHaveCount(0);
+  await expect(page.getByRole("checkbox")).toBeChecked();
+  await page.unroute("**/api/authoring/notion-import");
+  await page.getByRole("button", { name: "试跑所选文章" }).click();
+  await page.getByRole("button", { name: /确认导入/ }).click();
+  await expect(page.getByText(/已导入：新建 1 件/)).toBeVisible();
+});
