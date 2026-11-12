@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { NOTION_IMPORT_PROVIDER, importNotionBundle, type NotionImportDeps } from "./notion-import.ts";
+import { NOTION_IMPORT_PROVIDER, importNotionBundle as executeNotionImport, type NotionImportDeps } from "./notion-import.ts";
+import type { ApplicationServices } from "./services.ts";
+import { createArticleWithSlug } from "./article-create.ts";
+import { createNotionImportPlanCodec, sameNotionImportLinks, type CommittedNotionImportEdition } from "./notion-import-plan.ts";
+import { ImportConflictError } from "../domain/errors.ts";
 import type { StoredArticle, StoredExternalContentLink, StoredTaxonomy } from "./persistence-ports.ts";
 
 /**
@@ -12,6 +16,14 @@ import type { StoredArticle, StoredExternalContentLink, StoredTaxonomy } from ".
  * `transport/rest/imports.integration.test.ts`; this file is the place where the
  * behaviour can be stated one clause at a time.
  */
+
+/** Ordinary scenarios explicitly perform the now-required preview/apply round trip.
+ * Conflict/invalid-plan tests call executeNotionImport directly with the original token. */
+async function importNotionBundle(input: Parameters<typeof executeNotionImport>[0]) {
+  if (!input.apply || input.planToken !== undefined) return executeNotionImport(input);
+  const preview = await executeNotionImport({ ...input, apply: false });
+  return executeNotionImport({ ...input, planToken: preview.planToken });
+}
 
 const text = (content: string) => ({ type: "text", plain_text: content, href: null, text: { content, link: null }, annotations: { bold: false, italic: false, underline: false, strikethrough: false, code: false, color: "default" } });
 const paragraph = (content: string) => ({ object: "block", id: "p", type: "paragraph", has_children: false, paragraph: { rich_text: content ? [text(content)] : [], color: "default" } });
@@ -44,7 +56,49 @@ function stubDeps(options: { links?: StoredExternalContentLink[] } = {}) {
   let nextId = 1;
   const slugTaken = new Set<string>();
 
-  const deps: NotionImportDeps & { articles: typeof articles; links: typeof links; written: string[]; tags: StoredTaxonomy[] } = {
+  const codec = createNotionImportPlanCodec("unit-test-import-plan-secret-at-least-thirty-two-bytes");
+  const deps: NotionImportDeps & Pick<ApplicationServices, "createArticle" | "updateArticle" | "listTaxonomies" | "createTag" | "upsertExternalContentLink"> & { articles: typeof articles; links: typeof links; written: string[]; tags: StoredTaxonomy[] } = {
+    getImportPlanGeneration: () => "unit-test-generation",
+    signNotionImportPlan: codec.sign,
+    verifyNotionImportPlan: codec.verify,
+    async commitNotionImportWork(input) {
+      const expected = input.expected;
+      const current = expected.article ? articles.get(expected.article.id) : null;
+      if (!sameNotionImportLinks(expected.links, [...links.values()].filter((link) => expected.sourceIds.includes(link.externalId))) ||
+          (createKeys.get(`${input.actorId}|${expected.createKey}`) ?? null) !== expected.createKeyArticleId ||
+          (expected.article && (!current || current.revision !== expected.article.revision || current.authorId !== input.actorId))) throw new ImportConflictError();
+      const snapshot = { articles: new Map(articles), links: new Map(links), createKeys: new Map(createKeys), tags: [...tags], written: [...written], slugs: new Set(slugTaken), nextId };
+      try {
+        const tagIds = new Map(tags.map((tag) => [tag.name, tag.id]));
+        for (const name of [...new Set(input.editions.flatMap((edition) => edition.tags))]) {
+          if (!tagIds.has(name)) tagIds.set(name, (await deps.createTag({ actorId: input.actorId, name })).id);
+        }
+        let target = expected.article?.id ?? null;
+        const result: CommittedNotionImportEdition[] = [];
+        for (const edition of input.editions) {
+          const fields = { title: edition.title, summary: edition.summary, locale: edition.locale,
+            contentBlocks: JSON.stringify(edition.contentBlocks), contentBlocksVersion: edition.contentBlocksVersion,
+            publish: edition.publish, workType: edition.workType, tagIds: edition.tags.map((tag) => tagIds.get(tag)!) };
+          const created = target === null;
+          const article = target === null ? await createArticleWithSlug((value) => deps.createArticle(value),
+            { ...fields, ...(edition.requestedSlug ? { slug: edition.requestedSlug } : {}) }, input.actorId, expected.createKey) :
+            await deps.updateArticle({ ...fields, articleId: target, actorId: input.actorId, slug: articles.get(target)!.slug });
+          target = article.id;
+          await deps.upsertExternalContentLink({ provider: "notion", externalId: edition.externalId, locale: edition.locale,
+            articleId: article.id, ownerId: input.actorId, digest: edition.digest, syncedAt: edition.syncedAt });
+          result.push({ externalId: edition.externalId, article, created });
+        }
+        return result;
+      } catch (error) {
+        articles.clear(); for (const [key, value] of snapshot.articles) articles.set(key, value);
+        links.clear(); for (const [key, value] of snapshot.links) links.set(key, value);
+        createKeys.clear(); for (const [key, value] of snapshot.createKeys) createKeys.set(key, value);
+        tags.splice(0, tags.length, ...snapshot.tags); written.splice(0, written.length, ...snapshot.written);
+        slugTaken.clear(); for (const slug of snapshot.slugs) slugTaken.add(slug);
+        nextId = snapshot.nextId;
+        throw error;
+      }
+    },
     articles,
     links,
     written,
@@ -56,7 +110,7 @@ function stubDeps(options: { links?: StoredExternalContentLink[] } = {}) {
       while (slugTaken.has(slug)) slug = `${slug}-${nextId}`;
       slugTaken.add(slug);
       const article: StoredArticle = {
-        id, authorId: input.authorId, slug, workType: input.workType ?? "other",
+        id, revision: "1", authorId: input.authorId, slug, workType: input.workType ?? "other",
         status: input.publish === true ? "published" : "draft",
         locale: input.locale ?? "zh-CN", title: input.title, summary: input.summary ?? "",
         contentBlocks: input.contentBlocks as never, contentBlocksVersion: input.contentBlocksVersion ?? 0,
@@ -73,6 +127,7 @@ function stubDeps(options: { links?: StoredExternalContentLink[] } = {}) {
       assert.ok(current, "an update must address a work the stub already has");
       const article: StoredArticle = {
         ...current,
+        revision: String(BigInt(current.revision ?? "0") + 1n),
         title: input.title,
         summary: input.summary ?? "",
         status: input.publish === true ? "published" : "draft",
@@ -182,9 +237,7 @@ test("a changed page updates the work it already belongs to and keeps its addres
   assert.match(String([...deps.articles.values()][0]?.contentBlocks), /第二版/, "the body is the new one");
 });
 
-// Characterization of a known data-loss risk, not desired behavior. Replace this
-// with a refusal assertion when preview-bound atomic version checks are shipped.
-test("current importer does not protect edits made after a dry run", async () => {
+test("an authenticated dry run protects edits made before apply", async () => {
   const deps = stubDeps();
   const initial = bundle(page("page-1", "墙壁", "第一版"));
   const changed = bundle(page("page-1", "墙壁", "来源更新"));
@@ -192,10 +245,10 @@ test("current importer does not protect edits made after a dry run", async () =>
   const dry = await importNotionBundle({ actorId: "author-1", bundle: changed, apply: false, deps, now: at });
   assert.equal(dry.summary.update, 1);
   const article = [...deps.articles.values()][0]!;
-  deps.articles.set(article.id, { ...article, contentBlocks: "author edits after preview", updatedAt: "2026-11-04T00:00:00.000Z" });
-  const applied = await importNotionBundle({ actorId: "author-1", bundle: changed, apply: true, deps, now: at });
-  assert.equal(applied.summary.update, 1);
-  assert.doesNotMatch(String(deps.articles.get(article.id)?.contentBlocks), /author edits after preview/);
+  deps.articles.set(article.id, { ...article, revision: String(BigInt(article.revision!) + 1n), contentBlocks: "author edits after preview", updatedAt: "2026-11-04T00:00:00.000Z" });
+  const applied = await executeNotionImport({ actorId: "author-1", bundle: changed, apply: true, planToken: dry.planToken, deps, now: at });
+  assert.equal(applied.summary.refused, 1);
+  assert.match(String(deps.articles.get(article.id)?.contentBlocks), /author edits after preview/);
 });
 
 test("a skipped re-import reports the address the work actually has", async () => {
@@ -405,14 +458,14 @@ test("legacy unchanged imports containing temporary image links can be repaired"
   assert.match(String([...deps.articles.values()][0]!.contentBlocks), /\/api\/media\//);
 });
 
-test("a failed provenance write reports that the article was already written", async () => {
+test("a failed provenance write rolls back the whole work", async () => {
   const deps = stubDeps();
   deps.upsertExternalContentLink = async () => { throw new Error("link store unavailable"); };
   const report = await importNotionBundle({ actorId: "author-1", bundle: bundle(page("link-error", "作品", "正文")), apply: true, deps, now: at });
   assert.equal(report.summary.failed, 1);
-  assert.equal(report.pages[0]?.articleId, "article-1");
-  assert.match(report.pages[0]?.detail ?? "", /article was written.*link could not be saved/);
-  assert.equal(deps.articles.size, 1);
+  assert.equal(report.pages[0]?.articleId, null);
+  assert.match(report.pages[0]?.detail ?? "", /rolled back/);
+  assert.equal(deps.articles.size, 0);
 });
 
 test("a missing provenance link is previewed and recovered without creating a duplicate", async () => {
@@ -420,15 +473,13 @@ test("a missing provenance link is previewed and recovered without creating a du
   const doc = page("recover-page", "恢复作品", "原文");
   doc.blocks.push(hostedImage("https://prod-files-secure.s3.amazonaws.com/a?signature=secret") as never);
   const input = bundle(doc);
-  const saveLink = deps.upsertExternalContentLink;
-  deps.upsertExternalContentLink = async () => { throw new Error("injected link failure"); };
   let copies = 0;
   const copyImage = async () => ({ ok: true as const, src: `/api/media/00000000-0000-4000-8000-${String(++copies).padStart(12, "0")}` });
   const first = await importNotionBundle({ actorId: "author-1", bundle: input, apply: true, deps, copyImage, now: at });
-  assert.equal(first.summary.failed, 1);
+  assert.equal(first.summary.create, 1);
   assert.equal(first.pages[0]?.articleId, "article-1");
-  assert.equal(deps.links.size, 0);
-  deps.upsertExternalContentLink = saveLink;
+  // Simulate a historical pre-atomic import whose article committed without its link.
+  deps.links.clear();
   const writes = deps.written.length;
   const dry = await importNotionBundle({ actorId: "author-1", bundle: input, apply: false, deps, copyImage, now: at });
   assert.equal(dry.summary.update, 1);
@@ -446,12 +497,10 @@ test("a missing provenance link is previewed and recovered without creating a du
 
 test("an unlinked tombstone is not recreated or written during recovery", async () => {
   const deps = stubDeps();
-  const saveLink = deps.upsertExternalContentLink;
-  deps.upsertExternalContentLink = async () => { throw new Error("link failed"); };
   const input = bundle(page("recover-deleted", "被删除", "正文"));
   await importNotionBundle({ actorId: "author-1", bundle: input, apply: true, deps, now: at });
   deps.articles.clear();
-  deps.upsertExternalContentLink = saveLink;
+  deps.links.clear();
   const dry = await importNotionBundle({ actorId: "author-1", bundle: input, apply: false, deps, now: at });
   assert.equal(dry.summary.refused, 1);
   assert.match(dry.pages[0]?.detail ?? "", /restore/);
@@ -467,12 +516,10 @@ test("recovery refuses a translation linked to a different work", async () => {
   const en = page("recover-en", "English", "");
   delete (en.properties as Record<string, unknown>).Date;
   en.blocks = [paragraph("English text")];
-  const saveLink = deps.upsertExternalContentLink;
-  deps.upsertExternalContentLink = async () => { throw new Error("link failure"); };
   const standaloneZh = page("recover-zh", "主文", "正文很长");
   const first = await importNotionBundle({ actorId: "author-1", bundle: bundle(standaloneZh), apply: true, deps, now: at });
-  assert.equal(first.summary.failed, 1);
-  deps.upsertExternalContentLink = saveLink;
+  assert.equal(first.summary.create, 1);
+  deps.links.clear();
   deps.links.set("recover-en|en", { provider: "notion", externalId: "recover-en", locale: "en", articleId: "other-work", ownerId: "other", digest: "x", syncedAt: at().toISOString() });
   const before = deps.written.length;
   const dry = await importNotionBundle({ actorId: "author-1", bundle: bundle(zh, en), apply: false, deps, now: at });
@@ -578,6 +625,7 @@ test("preview and apply refuse foreign provenance without revealing its article 
     assert.equal(report.summary.refused, 1);
     assert.equal(report.pages[0]!.articleId, null);
     assert.ok(!JSON.stringify(report).includes("secret-work"));
+    if (report.planToken) assert.ok(!JSON.stringify(deps.verifyNotionImportPlan(report.planToken)).includes("secret-work"), "even the decoded signed payload cannot reveal another owner’s work");
   }
   assert.deepEqual(deps.written, []);
 });

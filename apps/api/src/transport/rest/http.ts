@@ -170,6 +170,8 @@ export const DOMAIN_ERROR_RESPONSES: Record<string, RestErrorResponse> = {
   MAIL_DISABLED: { status: 409, code: "MAIL_DISABLED", message: "Account mail is not enabled on this instance." },
   MEDIA_DELETE_DISABLED: { status: 409, code: "MEDIA_DELETE_DISABLED", message: "Deleting images is not enabled on this instance." },
   NOT_FOUND: { status: 404, code: "NOT_FOUND", message: "The requested resource was not found." },
+  ARTICLE_VERSION_CONFLICT: { status: 409, code: "ARTICLE_VERSION_CONFLICT", message: "The work changed. Reload it before saving again." },
+  IMPORT_PLAN_INVALID: { status: 409, code: "IMPORT_PLAN_INVALID", message: "The import preview is missing, invalid or expired. Preview again before applying." },
   CONFLICT: { status: 409, code: "CONFLICT", message: "The request conflicts with the current resource state." },
   // Same status as `CONFLICT`, different answer to "what do I do next": the
   // address belongs to an account already, so the visitor signs in or picks

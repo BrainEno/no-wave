@@ -1,3 +1,4 @@
+import type { CommitNotionImportWorkInput, CommittedNotionImportEdition } from "./notion-import-plan.ts";
 /**
  * Persistence adapter contracts consumed by the application layer.
  *
@@ -66,7 +67,7 @@ export const persistencePortMethods = Object.freeze({
     "issueIdentityToken", "consumeIdentityToken",
     "pruneExpiredIdentityState",
   ] as const),
-  imports: Object.freeze(["getExternalContentLink", "upsertExternalContentLink", "listExternalContentLinks"] as const),
+  imports: Object.freeze(["getExternalContentLink", "upsertExternalContentLink", "listExternalContentLinks", "getImportPlanGeneration", "commitNotionImportWork"] as const),
   rateLimits: Object.freeze(["consumeRateLimit"] as const),
   outbox: Object.freeze([
     "claimOutboxEvents", "markOutboxDelivered", "rescheduleOutboxEvent", "outboxBacklog",
@@ -98,6 +99,8 @@ export type StoredArticle = {
    * room. Kept on the row so a page of works costs no additional read.
    */
   viewCount: number;
+  /** Work-wide database-local revision; authoring reads and writes include it. */
+  revision?: string;
 };
 /** A tombstone in the author's desk, with the cost of its eventual sweep. */
 export type StoredDeletedArticle = StoredArticle & { deletedAt: string; commentCount: number };
@@ -199,8 +202,11 @@ export type CreateArticleInput = {
   contentBlocksVersion?: number; publish?: boolean;
   workType?: string; categoryIds?: readonly unknown[]; tagIds?: readonly unknown[];
   idempotencyKey?: string | null; requestedSlug?: string | null;
+  /** Internal import create: a late idempotency replay is a conflict, not a create. */
+  requireNew?: boolean;
 };
 export type UpdateArticleInput = {
+  expectedRevision?: string;
   articleId: string; actorId: string; slug: string; title: string; contentBlocks: unknown;
   summary?: string; locale?: string;
   contentBlocksVersion?: number; publish?: boolean;
@@ -521,6 +527,8 @@ export type NotificationsPersistencePort = {
  * of the sync engine ADR 0036 refused.
  */
 export type ImportsPersistencePort = {
+  getImportPlanGeneration(): PersistenceResult<string>;
+  commitNotionImportWork(input: CommitNotionImportWorkInput): PersistenceResult<CommittedNotionImportEdition[]>;
   getExternalContentLink(input: ExternalContentLinkKey): PersistenceResult<StoredExternalContentLink | null>;
   upsertExternalContentLink(input: UpsertExternalContentLinkInput): PersistenceResult<StoredExternalContentLink>;
   listExternalContentLinks(input: ExternalContentLinksForArticleInput): PersistenceResult<StoredExternalContentLink[]>;

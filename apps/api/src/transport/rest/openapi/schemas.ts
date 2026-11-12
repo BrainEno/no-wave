@@ -199,6 +199,7 @@ export const SCHEMAS: Readonly<Record<string, JsonSchema>> = Object.freeze({
       "A stored work plus the `author`, `categories` and `tags` the API adds. One id identifies the work; `(id, locale)` identifies one of its translations.",
     properties: {
       id: TEXT,
+      revision: { type: "string", pattern: "^(0|[1-9][0-9]*)$", description: "Database-local work revision as a decimal bigint string. Authoring reads/writes include it; send as expectedRevision on PUT." },
       authorId: TEXT,
       slug: { type: "string", description: "Work-wide address, not per translation." },
       workType: {
@@ -427,6 +428,7 @@ export const SCHEMAS: Readonly<Record<string, JsonSchema>> = Object.freeze({
       "Create: `title` plus exactly one of `contentBlocks` / `editorState`. Update: `slug` and `publish` are mandatory, and an explicit `locale` replaces that translation of the work. Unknown fields are rejected.",
     properties: {
       slug: { type: "string", description: "Optional on create (derived from the title); mandatory on update." },
+      expectedRevision: { type: "string", pattern: "^(0|[1-9][0-9]{0,18})$", description: "PUT only. Compare under the work write lock; an old revision returns 409 ARTICLE_VERSION_CONFLICT without any article/translation/taxonomy changes. Optional for legacy API clients." },
       title: TEXT,
       summary: { type: "string", maxLength: ARTICLE_SUMMARY_MAX_LENGTH, description: "Blank or absent means the server derives one from the body text." },
       locale: { type: "string", enum: LOCALES, description: "Absent keeps the historical `zh-CN` default; a client editing another edition must send its locale." },
@@ -676,7 +678,8 @@ export const SCHEMAS: Readonly<Record<string, JsonSchema>> = Object.freeze({
       "A dry run unless `apply` is `true`. A dry run is a pure read: it creates no works, no tags, and no links, and its `pages` describe what would happen.",
     properties: {
       bundle: ref("NotionBundle"),
-      apply: { type: "boolean", default: false, description: "`true` performs the writes the report describes." },
+      apply: { type: "boolean", default: false, description: "`true` applies this authenticated preview, comparing target/provenance state in the write transaction." },
+      planToken: { type: "string", maxLength: 512 * 1024, description: "Required when apply is true. The unchanged planToken returned by preview for this authenticated actor and exact selected bundle. Expires in 15 minutes; invalid tokens return 409 IMPORT_PLAN_INVALID." },
     },
   },
 
@@ -707,6 +710,8 @@ export const SCHEMAS: Readonly<Record<string, JsonSchema>> = Object.freeze({
       "One line per page. `applied: false` means nothing was written and every action below is a plan.",
     properties: {
       applied: { type: "boolean" },
+      planToken: { type: "string", description: "Authenticated preview token, present only on dry runs. Database-local; do not log it or edit it." },
+      planExpiresAt: TIMESTAMP,
       database: {
         type: "object",
         required: ["id"],

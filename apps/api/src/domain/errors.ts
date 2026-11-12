@@ -121,6 +121,16 @@ export class ArticleInputError extends DomainError {
     super("ArticleInputError", "BAD_USER_INPUT", message);
   }
 }
+/** A conditional write must never replace a version the caller did not read. */
+export class ArticleVersionConflictError extends DomainError {
+  constructor() { super("ArticleVersionConflictError", "ARTICLE_VERSION_CONFLICT", "The work changed. Reload it before saving again."); }
+}
+export class ImportPlanInvalidError extends DomainError {
+  constructor() { super("ImportPlanInvalidError", "IMPORT_PLAN_INVALID", "The import preview is missing, invalid or expired. Preview again before applying."); }
+}
+export class ImportConflictError extends DomainError {
+  constructor() { super("ImportConflictError", "IMPORT_CONFLICT", "The work or its import provenance changed. Nothing in this work was written; preview again."); }
+}
 export class ArticleSlugConflictError extends DomainError {
   constructor(message = "An article with this slug already exists.") {
     super("ArticleSlugConflictError", "CONFLICT", message);

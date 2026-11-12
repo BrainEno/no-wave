@@ -22,6 +22,7 @@ import { articleBlocksToLexicalEditorState, type LexicalEditorStateJson } from "
 
 export type AuthoringArticle = {
   id: string;
+  revision?: string;
   slug: string;
   title: string;
   summary: string;
@@ -325,7 +326,7 @@ function publicArticlePath(article: Pick<AuthoringArticle, "slug" | "locale">): 
 /** Serialize once per attempt; a pending create retains these exact bytes. */
 function saveBody(draft: Draft, target: SaveTarget, article: AuthoringArticle | null): string {
   return JSON.stringify({
-    ...(article ? { slug: article.slug } : {}),
+    ...(article ? { slug: article.slug, ...(article.revision !== undefined ? { expectedRevision: article.revision } : {}) } : {}),
     title: draft.title.trim(),
     summary: draft.summary.trim(),
     locale: draft.locale,
@@ -469,6 +470,7 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
           }
           return;
         }
+        if (code === "ARTICLE_VERSION_CONFLICT") throw new Error("作品已在其他窗口或导入中更新，本次保存未写入。当前草稿仍保留，请先复制备份，再重新打开最新作品进行合并。");
         throw new Error(apiError(payload));
       }
       const data = typeof payload === "object" && payload !== null && "data" in payload ? (payload as { data?: unknown }).data : null;

@@ -5,16 +5,19 @@ import {
   articleIdempotencyReplayMatches,
 } from "../application/article-idempotency.ts";
 import { MEDIA_SRC_PATTERN } from "../application/media-assets.ts";
+import { getMigrationEntitySpec } from "./provider-migration-row-applier.ts";
 import { ARTICLE_MEDIA_REFS_SNAPSHOT, createMigrationTransactionId } from "./provider-migration-journal.ts";
 import { createSqliteProviderMigrationCapture, migrationEntityKey, type CapturedChange } from "./sqlite-provider-migration-capture.ts";
 import {
   ArticleInputError,
+  ArticleVersionConflictError,
   ArticleSlugConflictError,
   IdempotencyConflictError,
   ArticleAuthorizationError,
   ArticleNotFoundError,
 } from "../domain/errors.ts";
 import {
+  validateArticleRevision,
   assertArticleWorkTypeChange,
   assertCreatableArticleWorkType,
   validateArticleLocale,
@@ -32,7 +35,12 @@ import type { SqliteRow, SqliteRunner } from "./sqlite.ts";
  * SQLite implementation of the article/content persistence slice.
  * This is a domain slice composed into the SQLite provider by sqlite-store.ts.
  */
-export function createSqliteArticleStore(db: SqliteRunner) {
+// Only portable columns belong in journal snapshots. In particular, reading a
+// database-local int64 revision through SELECT * would overflow node:sqlite's
+// default number conversion long before SQLite itself exhausts that counter.
+const ARTICLE_JOURNAL_COLUMNS = getMigrationEntitySpec("articles").columns.join(", ");
+
+export function createSqliteArticleStore(db: SqliteRunner, options: { transactionId?: string } = {}) {
   if (!db || typeof db.prepare !== "function" || typeof db.exec !== "function") {
     throw new TypeError("A node:sqlite DatabaseSync connection is required.");
   }
@@ -41,7 +49,7 @@ export function createSqliteArticleStore(db: SqliteRunner) {
 
   const articleColumns = `a.id, a.author_id, a.slug, a.work_type, a.status, t.locale,
            t.title, t.summary, t.content_blocks, t.content_blocks_version, a.created_at, a.updated_at, a.published_at,
-           a.view_count`;
+           a.view_count, CAST(a.import_revision AS TEXT) AS revision`;
   const articleSelect = `
     SELECT ${articleColumns}
     FROM articles a
@@ -69,6 +77,7 @@ export function createSqliteArticleStore(db: SqliteRunner) {
     updatedAt: row.updated_at,
     publishedAt: row.published_at,
     viewCount: Number(row.view_count ?? 0),
+    revision: String(row.revision),
   });
   // The desk's recycle bin reads the same article shape plus the tombstone
   // timestamp and the number of comments that would die with it, so it gets its
@@ -78,7 +87,7 @@ export function createSqliteArticleStore(db: SqliteRunner) {
   // the only irreversible thing the slice can do to a third party.
   const deletedArticleSelect = `
     SELECT a.id, a.author_id, a.slug, a.work_type, a.status, t.locale,
-           t.title, t.summary, t.content_blocks, t.content_blocks_version, a.created_at, a.updated_at, a.published_at, a.view_count, a.deleted_at,
+           t.title, t.summary, t.content_blocks, t.content_blocks_version, a.created_at, a.updated_at, a.published_at, a.view_count, CAST(a.import_revision AS TEXT) AS revision, a.deleted_at,
            (SELECT count(*) FROM article_comments c WHERE c.article_id = a.id) AS comment_count
     FROM articles a
     JOIN article_translations t ON t.article_id = a.id
@@ -105,7 +114,7 @@ export function createSqliteArticleStore(db: SqliteRunner) {
   );
 
   function transaction<T>(work: (transactionId: string) => T): T {
-    const transactionId = createMigrationTransactionId();
+    const transactionId = options.transactionId ?? createMigrationTransactionId();
     db.exec("BEGIN IMMEDIATE");
     try {
       const result = work(transactionId);
@@ -182,7 +191,7 @@ export function createSqliteArticleStore(db: SqliteRunner) {
    * this journal from keeping a work the author just deleted.
    */
   function captureArticleRow(transactionId: string, articleId: string): void {
-    const article = statement("SELECT * FROM articles WHERE id = ?").get(articleId);
+    const article = statement(`SELECT ${ARTICLE_JOURNAL_COLUMNS} FROM articles WHERE id = ?`).get(articleId);
     if (!article) return;
     migrationCapture.captureInTransaction(db, transactionId, [
       { entityType: "articles", entityId: articleId, operation: "upsert", payload: article },
@@ -195,7 +204,7 @@ export function createSqliteArticleStore(db: SqliteRunner) {
     locale: string,
     previousLinks: { taxonomy_id: string }[] = [],
   ): void {
-    const article = statement("SELECT * FROM articles WHERE id = ?").get(articleId);
+    const article = statement(`SELECT ${ARTICLE_JOURNAL_COLUMNS} FROM articles WHERE id = ?`).get(articleId);
     const translation = statement("SELECT * FROM article_translations WHERE article_id = ? AND locale = ?").get(articleId, locale);
     const links = statement("SELECT article_id, taxonomy_id FROM article_taxonomies WHERE article_id = ?").all(articleId);
     const currentIds = new Set<string>(links.map((link) => String(link.taxonomy_id)));
@@ -522,7 +531,7 @@ export function createSqliteArticleStore(db: SqliteRunner) {
       `).all(current.id, current.id, locale, current.author_id, limit).map(mapArticle);
     },
 
-    createArticle({ authorId, slug, title, summary = "", locale = "zh-CN", contentBlocks, contentBlocksVersion = 0, publish = false, workType = "other", categoryIds = [], tagIds = [], idempotencyKey = null, requestedSlug }) {
+    createArticle({ authorId, slug, title, summary = "", locale = "zh-CN", contentBlocks, contentBlocksVersion = 0, publish = false, workType = "other", categoryIds = [], tagIds = [], idempotencyKey = null, requestedSlug, requireNew = false }) {
       requiredText("authorId", authorId, 300);
       const input = normalizeArticleInput({ slug, title, summary, locale, contentBlocks, contentBlocksVersion, publish, workType });
       const categories = normalizeTaxonomyIds("categoryIds", categoryIds, 20) ?? [];
@@ -559,6 +568,7 @@ export function createSqliteArticleStore(db: SqliteRunner) {
           if (keyHash !== null) {
             const existing = db.prepare("SELECT id, slug, request_hash FROM articles WHERE author_id = ? AND idempotency_key_hash = ?").get(authorId, keyHash);
             if (existing) {
+              if (requireNew) throw new ArticleVersionConflictError();
               if (!replayMatches(existing)) throw new IdempotencyConflictError();
               return readArticleAfterWrite(existing.id, input.locale);
             }
@@ -586,6 +596,7 @@ export function createSqliteArticleStore(db: SqliteRunner) {
         if (keyHash !== null && /articles_author_idempotency_key_idx|articles\.idempotency_key_hash/i.test(message)) {
           const existing = db.prepare("SELECT id, slug, request_hash FROM articles WHERE author_id = ? AND idempotency_key_hash = ?").get(authorId, keyHash);
           if (existing) {
+            if (requireNew) throw new ArticleVersionConflictError();
             if (!replayMatches(existing)) throw new IdempotencyConflictError();
             return readArticleAfterWrite(existing.id, input.locale);
           }
@@ -594,17 +605,19 @@ export function createSqliteArticleStore(db: SqliteRunner) {
       }
     },
 
-    updateArticle({ articleId, actorId, slug, title, summary = "", locale = "zh-CN", contentBlocks, contentBlocksVersion = 0, publish = false, workType, categoryIds, tagIds }) {
+    updateArticle({ articleId, actorId, slug, title, summary = "", locale = "zh-CN", contentBlocks, contentBlocksVersion = 0, publish = false, workType, categoryIds, tagIds, expectedRevision }) {
       if (!isUuid(articleId)) throw new ArticleInputError("articleId must be a valid article ID.");
       requiredText("actorId", actorId, 300);
       const input = normalizeArticleInput({ slug, title, summary, locale, contentBlocks, contentBlocksVersion, publish, workType });
+      validateArticleRevision(expectedRevision);
       const categories = normalizeTaxonomyIds("categoryIds", categoryIds, 100);
       const tags = normalizeTaxonomyIds("tagIds", tagIds, 100);
       try {
         return transaction((transactionId) => {
-          const existing = statement("SELECT id, author_id, created_at, deleted_at, work_type FROM articles WHERE id = ?").get(articleId);
+          const existing = statement("SELECT id, author_id, created_at, deleted_at, work_type, CAST(import_revision AS TEXT) AS revision FROM articles WHERE id = ?").get(articleId);
           if (!existing || existing.deleted_at) throw new ArticleNotFoundError("The article was not found.");
           if (existing.author_id !== actorId) throw new ArticleAuthorizationError("Only the article author can update it.");
+          if (expectedRevision !== undefined && existing.revision !== expectedRevision) throw new ArticleVersionConflictError();
           assertArticleWorkTypeChange(existing.work_type, input.workType);
           const previousLinks = statement("SELECT taxonomy_id FROM article_taxonomies WHERE article_id = ?").all(articleId)
             .map((link) => ({ taxonomy_id: String(link.taxonomy_id) }));

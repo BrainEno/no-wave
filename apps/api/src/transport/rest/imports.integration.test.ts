@@ -61,6 +61,19 @@ function notionBundle(...pages: ReturnType<typeof notionPage>[]) {
   return { version: 1, database: { id: "01331af0-b39c-4c76-991c-a2d67804c5ca", title: "Bottom Think" }, pages };
 }
 
+/** Ordinary HTTP journeys now explicitly preview each write; stale-token cases
+ * live in import-version-protection.integration.test.ts and never re-preview. */
+async function previewedImport(url: string, init: RequestInit): Promise<Response> {
+  const body = JSON.parse(String(init.body)) as { bundle?: unknown; apply?: boolean; planToken?: string };
+  if (body.apply === true && body.planToken === undefined) {
+    const preview = await fetch(url, { ...init, body: JSON.stringify({ ...body, apply: false }) });
+    const result = await preview.json();
+    assert.equal(preview.status, 200, JSON.stringify(result));
+    return fetch(url, { ...init, body: JSON.stringify({ ...body, planToken: result.data.planToken }) });
+  }
+  return fetch(url, init);
+}
+
 for (const provider of ["sqlite", "postgres"] as const) {
   test(`a Notion bundle imports into the caller's own works (${provider})`, {
     skip: provider === "postgres" && !process.env.TEST_DATABASE_URL && "Set TEST_DATABASE_URL to run PostgreSQL integration tests.",
@@ -91,7 +104,8 @@ for (const provider of ["sqlite", "postgres"] as const) {
     const base = `http://127.0.0.1:${address.port}/api/v1`;
 
     async function call(path: string, expectedStatus: number, init: RequestInit = {}) {
-      const response = await fetch(base + path, init);
+      const response = path === "/imports/notion" && expectedStatus === 200
+        ? await previewedImport(base + path, init) : await fetch(base + path, init);
       const result = await response.json();
       assert.equal(response.status, expectedStatus, `${init.method ?? "GET"} ${path}: ${JSON.stringify(result)}`);
       return result;
@@ -223,6 +237,9 @@ for (const provider of ["sqlite", "postgres"] as const) {
       assert.deepEqual(repeated.data.bundle, exported.data.bundle);
       assert.equal(await linkCount(), 1, "an export writes no provenance row");
 
+      // A separate preview/apply journey gets a fresh test-only rate bucket.
+      if (db) db.exec("DELETE FROM auth_rate_limits"); else await sql!.unsafe("DELETE FROM auth_rate_limits");
+
       // 8. The bundle is one the import accepts, and it addresses the work it came
       // from rather than creating a second one. The first re-import is an
       // `update` — the digest covers the page's date, and the day this site
@@ -279,12 +296,7 @@ test("Notion images are normalized into media storage and remain retryable over 
     close() {},
   };
   const mediaAssets = createMediaAssetService({ store, storage });
-  const services = createApplicationServices({ persistence: store });
-  let failLink = false;
-  const applicationServices = { ...services, async upsertExternalContentLink(input: Parameters<typeof services.upsertExternalContentLink>[0]) {
-    if (failLink) throw new Error("injected provenance failure");
-    return services.upsertExternalContentLink(input);
-  } };
+  const applicationServices = createApplicationServices({ persistence: store, env });
   const server = createApiServer({ applicationServices, env, logger: () => {}, mediaAssets });
   await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
   const address = server.address();
@@ -308,7 +320,7 @@ test("Notion images are normalized into media storage and remain retryable over 
     image: { type: "file", file: { url: "https://prod-files-secure.s3.amazonaws.com/image?signature=secret" }, caption: [] } } as never);
   const bundle = notionBundle(doc);
   const post = async (apply: boolean, chosen = bundle) => {
-    const res = await originalFetch(`${base}/imports/notion`, { method: "POST", headers: { authorization: `Bearer ${token(author)}`, "content-type": "application/json" }, body: JSON.stringify({ bundle: chosen, apply }) });
+    const res = await previewedImport(`${base}/imports/notion`, { method: "POST", headers: { authorization: `Bearer ${token(author)}`, "content-type": "application/json" }, body: JSON.stringify({ bundle: chosen, apply }) });
     const json = await res.json();
     assert.equal(res.status, 200, JSON.stringify(json));
     return json.data;
@@ -379,19 +391,17 @@ test("Notion images are normalized into media storage and remain retryable over 
 
     // Start this separate journey with a fresh write-rate bucket.
     db.exec("DELETE FROM auth_rate_limits");
-    // A create may succeed even if recording provenance fails. The retry must
-    // address that article, not replay the create with a fresh media UUID.
+    // Simulate a historical pre-atomic import whose provenance was lost.
+    // Recovery must address that article, not create a second media UUID.
     storageDown = false;
     const recoveryDoc = notionPage(`recover-${randomUUID()}`, "丢失的链接", "正文");
     recoveryDoc.blocks.push(doc.blocks[1]!);
     const recoveryBundle = notionBundle(recoveryDoc);
-    failLink = true;
-    const failed = await post(true, recoveryBundle);
-    assert.equal(failed.summary.failed, 1);
-    const originalId = failed.pages[0].articleId;
+    const original = await post(true, recoveryBundle);
+    assert.equal(original.summary.create, 1);
+    const originalId = original.pages[0].articleId;
     assert.ok(originalId);
-    assert.match(failed.pages[0].detail, /article was written/);
-    failLink = false;
+    db.prepare("DELETE FROM external_content_links WHERE article_id = ?").run(originalId);
     const before = downloaded;
     const plan = await post(false, recoveryBundle);
     assert.equal(plan.summary.update, 1);
@@ -428,12 +438,7 @@ test("PostgreSQL repairs an article created before image provenance failed", {
     async deleteObject(key: string) { objects.delete(key); },
     close() {},
   };
-  const services = createApplicationServices({ persistence: store });
-  let failLink = true;
-  const applicationServices = { ...services, async upsertExternalContentLink(input: Parameters<typeof services.upsertExternalContentLink>[0]) {
-    if (failLink) throw new Error("injected failure");
-    return services.upsertExternalContentLink(input);
-  } };
+  const applicationServices = createApplicationServices({ persistence: store, env });
   const server = createApiServer({ applicationServices, env, logger: () => {}, mediaAssets: createMediaAssetService({ store, storage }) });
   await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
   const address = server.address();
@@ -448,17 +453,17 @@ test("PostgreSQL repairs an article created before image provenance failed", {
     image: { type: "file", file: { url: "https://prod-files-secure.s3.amazonaws.com/image?signature=secret" }, caption: [] } } as never);
   const bundle = notionBundle(doc);
   const post = async (apply: boolean, chosen = bundle) => {
-    const response = await originalFetch(`${base}/imports/notion`, { method: "POST", headers: { authorization: `Bearer ${token(author)}`, "content-type": "application/json" }, body: JSON.stringify({ bundle: chosen, apply }) });
+    const response = await previewedImport(`${base}/imports/notion`, { method: "POST", headers: { authorization: `Bearer ${token(author)}`, "content-type": "application/json" }, body: JSON.stringify({ bundle: chosen, apply }) });
     const result = await response.json();
     assert.equal(response.status, 200, JSON.stringify(result));
     return result.data;
   };
   try {
-    const failed = await post(true);
-    assert.equal(failed.summary.failed, 1);
-    const id = failed.pages[0].articleId;
+    const original = await post(true);
+    assert.equal(original.summary.create, 1);
+    const id = original.pages[0].articleId;
     assert.ok(id);
-    failLink = false;
+    await sql.unsafe("DELETE FROM external_content_links WHERE article_id = $1", [id]);
     const preview = await post(false);
     assert.equal(preview.summary.update, 1);
     assert.equal(preview.pages[0].articleId, id);
@@ -493,7 +498,7 @@ test("Markdown conversion imports real articles and keeps filename identity scop
   assert.ok(address && typeof address === "object");
   const post = async (actor: string, apply: boolean) => {
     const bundle = markdownEntriesToBundle([{ name: "my-work.md", text: "# 标题\n\nPublished: Yes\nTags: 诗歌\n\n正文内容。" }]).bundle;
-    const response = await fetch(`http://127.0.0.1:${address.port}/api/v1/imports/notion`, {
+    const response = await previewedImport(`http://127.0.0.1:${address.port}/api/v1/imports/notion`, {
       method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token(actor)}` }, body: JSON.stringify({ bundle, apply }),
     });
     assert.equal(response.status, 200);
@@ -530,7 +535,7 @@ for (const provider of ["sqlite", "postgres"] as const) {
     const address = server.address();
     assert.ok(address && typeof address === "object");
     const call = async (pages: ReturnType<typeof notionPage>[], apply: boolean) => {
-      const response = await fetch(`http://127.0.0.1:${address.port}/api/v1/imports/notion`, {
+      const response = await previewedImport(`http://127.0.0.1:${address.port}/api/v1/imports/notion`, {
         method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token(author)}` },
         body: JSON.stringify({ bundle: notionBundle(...pages), apply }),
       });

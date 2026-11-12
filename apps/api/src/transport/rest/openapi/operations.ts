@@ -427,13 +427,13 @@ export const OPERATIONS: Readonly<Record<string, OperationMetadata>> = Object.fr
     summary: "Import a Notion database bundle into your own works",
     description:
       "The bundle is a Notion export of one database: its pages, their properties and their blocks. Each work becomes an article owned by the caller; a work's other language versions become article translations of the same article.\n\n" +
-      "**A dry run is the default.** Without `apply: true` nothing is written — no works, no tags, no provenance rows — and `pages` describes exactly what a real run would do. Send `apply: true` to perform those writes.\n\n" +
+      "**A dry run is the default.** Without `apply: true` nothing is written — no works, no tags, no provenance rows — and `pages` describes exactly what a real run would do. Send `apply: true` with the preview response’s `planToken` and the exact same bundle to perform those writes. The authenticated plan binds actor, source links, create-key recovery, work revision and database generation for 15 minutes. Missing, altered, expired or mismatched plans return `409 IMPORT_PLAN_INVALID`.\n\n" +
       "**Re-importing is idempotent.** The server records which page each edition came from, together with a digest of the content it produced, so importing the same bundle twice reports `skip` and writes nothing; changed pages update the work they already belong to and keep the address it already has. A page that disappeared from Notion is reported, never deleted here, and a work the author deleted is refused rather than recreated.\n\n" +
-      "Pages that cannot become a work (`empty-body`, `empty-title`, and the other `issues` codes) are reported per page instead of failing the request: an import of forty pages does not fail because one of them is empty. Every write carries `Idempotency-Key: notion-seed:<pageId>`, so a request that dies mid-way can be retried without duplicating what it already created.",
+      "Pages that cannot become a work (`empty-body`, `empty-title`, and the other `issues` codes) are reported per page instead of failing the request: an import of forty pages does not fail because one of them is empty. Each work’s article, editions, tags, provenance and migration-journal changes commit atomically after a locked version comparison. A changed work is `refused` with a request to preview again; unrelated works may succeed. A failed work rolls back. Media preparation precedes the transaction: a late conflict may leave unused images visible/removable in the media library. Preview again after an interrupted request; provenance and create keys prevent duplicate works.",
     security: "session",
     tags: ["imports"],
     requestBody: { schema: "NotionImportRequest", description: "The bundle, and whether to apply it.", required: true },
-    errors: [413, 415],
+    errors: [409, 413, 415],
     response: { status: 200, description: "The per-page report (and, with `apply: true`, what was written).", data: "NotionImportReport" },
   },
 
@@ -892,7 +892,7 @@ export const ERROR_DESCRIPTIONS: Readonly<Record<number, string>> = Object.freez
   401: "No valid, unrevoked bearer token was presented (`UNAUTHENTICATED`).",
   403: "The caller is authenticated but not allowed to do this (`FORBIDDEN`); categories and the featured shelf are editorial.",
   404: "The addressed row does not exist, or is not visible to this caller (`NOT_FOUND`).",
-  409: "Conflict: `IDEMPOTENCY_CONFLICT`, `MAIL_DISABLED`, `MEDIA_DELETE_DISABLED`, or a duplicate unique value.",
+  409: "Conflict: `ARTICLE_VERSION_CONFLICT`, `IMPORT_PLAN_INVALID`, `IDEMPOTENCY_CONFLICT`, `MAIL_DISABLED`, `MEDIA_DELETE_DISABLED`, or a duplicate unique value.",
   413: "The request body is larger than this route accepts (`PAYLOAD_TOO_LARGE`).",
   415: "The request body is not `application/json` (`UNSUPPORTED_MEDIA_TYPE`).",
   503: "A dependency this route needs is unavailable (`SERVICE_UNAVAILABLE`, `MEDIA_STORAGE_UNAVAILABLE`).",

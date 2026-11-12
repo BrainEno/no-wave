@@ -385,3 +385,10 @@ export function normalizeTaxonomyIds(name: string, ids: unknown, max: number): s
   if (new Set(normalized).size !== normalized.length) throw new ArticleInputError(`${name} cannot contain duplicate IDs.`);
   return normalized;
 }
+
+/** Decimal strings preserve the full database bigint, unlike JavaScript numbers. */
+export function validateArticleRevision(revision: unknown): asserts revision is string | undefined {
+  if (revision !== undefined && (typeof revision !== "string" || !/^(0|[1-9]\d{0,18})$/.test(revision) || BigInt(revision) > 9223372036854775807n)) {
+    throw new ArticleInputError("expectedRevision must be a non-negative decimal bigint string.");
+  }
+}

@@ -405,3 +405,10 @@ test("article import revisions from whole-row snapshots are never replayed acros
     assert.throws(() => prepareMigrationRowPayload(target, "articles", "article-1", { ...row, unexpected: 1 }), /unsupported columns/i);
   }
 });
+
+
+test("database-local import plan generations cannot enter provider replay", () => {
+  for (const target of ["sqlite", "postgres"] as const) {
+    assert.throws(() => prepareMigrationRowPayload(target, "import_plan_generation", "1", { singleton: 1, generation: "0".repeat(32) }), /unsupported|not supported/i);
+  }
+});

@@ -1396,3 +1396,29 @@ test("a success response with the wrong language cannot retire an uncertain crea
   expect(attempts[1]).toEqual(attempts[0]);
   expect(JSON.parse(attempts[0].body!).locale).toBe("en");
 });
+
+
+test("a stale editor keeps its draft and cannot overwrite another window's saved revision", async ({ page, request }) => {
+  await registerWriter(page, request);
+  await writeAndSave(page, "条件保存测试", false);
+  await expect(page.getByRole("status").filter({ hasText: "草稿已保存。" })).toBeVisible();
+  const [article] = (await (await page.request.get("/api/authoring/articles")).json()).data;
+  expect(typeof article.revision).toBe("string");
+  const remote = await page.request.put(`/api/authoring/articles/${article.id}`, {
+    headers: { origin: currentOrigin() },
+    data: { slug: article.slug, title: "其他窗口的最新作品", locale: article.locale, publish: false,
+      expectedRevision: article.revision, contentBlocks: [{ id: "remote", type: "paragraph", text: "远端新正文。" }] },
+  });
+  expect(remote.status()).toBe(200);
+  await page.getByLabel("标题").fill("需要保留的本地草稿");
+  await page.getByLabel("作品正文").fill("当前窗口里尚未保存的正文。");
+  const response = page.waitForResponse((result) => result.request().method() === "PUT" && result.url().endsWith(`/api/authoring/articles/${article.id}`));
+  await page.getByRole("button", { name: "保存草稿" }).click();
+  expect((await response).status()).toBe(409);
+  await expect(page.getByRole("alert")).toContainText("当前草稿仍保留，请先复制备份");
+  await expect(page.getByLabel("标题")).toHaveValue("需要保留的本地草稿");
+  await expect(page.getByLabel("作品正文")).toContainText("当前窗口里尚未保存的正文。");
+  const [kept] = (await (await page.request.get("/api/authoring/articles")).json()).data;
+  expect(kept.title).toBe("其他窗口的最新作品");
+  expect(JSON.stringify(kept.contentBlocks)).toContain("远端新正文。");
+});

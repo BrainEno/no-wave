@@ -153,6 +153,8 @@
     "getExternalContentLink",
     "upsertExternalContentLink",
     "listExternalContentLinks",
+    "getImportPlanGeneration",
+    "commitNotionImportWork",
     "consumeRateLimit",
     "claimOutboxEvents",
     "markOutboxDelivered",
@@ -257,7 +259,9 @@
       "methods": [
         "getExternalContentLink",
         "listExternalContentLinks",
-        "upsertExternalContentLink"
+        "upsertExternalContentLink",
+        "getImportPlanGeneration",
+        "commitNotionImportWork"
       ]
     },
     {
@@ -427,7 +431,9 @@
       "methods": [
         "getExternalContentLink",
         "listExternalContentLinks",
-        "upsertExternalContentLink"
+        "upsertExternalContentLink",
+        "getImportPlanGeneration",
+        "commitNotionImportWork"
       ]
     },
     {

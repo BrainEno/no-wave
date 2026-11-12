@@ -6,8 +6,8 @@
  */
 import { randomUUID } from "node:crypto";
 import { articleIdempotencyFingerprint, articleIdempotencyKeyHash, articleIdempotencyReplayMatches } from "../application/article-idempotency.ts";
-import { MAX_FEATURED_ARTICLES, assertArticleWorkTypeChange, assertCreatableArticleWorkType, maxArticleOffset, normalizeArticleInput, normalizeTaxonomyIds, resolveArticleCursor, validateArticleLocale, validateArticleSlug } from "../domain/article.ts";
-import { ArticleAuthorizationError, ArticleInputError, ArticleNotFoundError, ArticleSlugConflictError, IdempotencyConflictError } from "../domain/errors.ts";
+import { MAX_FEATURED_ARTICLES, assertArticleWorkTypeChange, assertCreatableArticleWorkType, maxArticleOffset, validateArticleRevision, normalizeArticleInput, normalizeTaxonomyIds, resolveArticleCursor, validateArticleLocale, validateArticleSlug } from "../domain/article.ts";
+import { ArticleAuthorizationError, ArticleVersionConflictError, ArticleInputError, ArticleNotFoundError, ArticleSlugConflictError, IdempotencyConflictError } from "../domain/errors.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
 import { releasedArticleSlug, stripDeletedSlugSuffix } from "../domain/article-slug.ts";
 import { migrationEntityKey } from "./postgres-provider-migration-capture.ts";
@@ -87,7 +87,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
         : "";
       params.push(limit, offset);
       const rows = await sql.unsafe(
-        `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count,
+        `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count, a.import_revision::text AS revision,
                 t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version,
                 ${popular ? "(SELECT count(*)::int FROM article_likes l WHERE l.article_id = a.id)" : "0"} AS like_count
          FROM articles AS a
@@ -108,7 +108,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
       const normalizedSlug = validateArticleSlug(slug);
       validateArticleLocale(locale);
       const rows = await sql.unsafe(
-        `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count,
+        `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count, a.import_revision::text AS revision,
                 t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version
          FROM articles AS a
          JOIN article_translations AS t ON t.article_id = a.id
@@ -146,7 +146,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
       validateArticleLocale(locale);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
       const rows = await sql.unsafe(
-        `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count,
+        `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count, a.import_revision::text AS revision,
                 t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version
          FROM articles AS a
          JOIN article_translations AS t ON t.article_id = a.id
@@ -173,7 +173,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
       // instead of letting the cast raise a driver error.
       if (!isUuid(articleId)) return null;
       const rows = await sql.unsafe(
-        `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count,
+        `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count, a.import_revision::text AS revision,
                 t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version
          FROM articles AS a
          JOIN article_translations AS t ON t.article_id = a.id
@@ -195,7 +195,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
       validateArticleSlug(slug);
       requiredText("actorId", actorId, 300);
       const rows = await sql.unsafe(
-        `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count,
+        `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count, a.import_revision::text AS revision,
                 t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version
          FROM articles AS a
          JOIN article_translations AS t ON t.article_id = a.id
@@ -216,7 +216,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
       validateArticleLocale(locale);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
       const rows = await sql.unsafe(
-        `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count, a.deleted_at,
+        `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count, a.import_revision::text AS revision, a.deleted_at,
                 t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version,
                 (SELECT count(*) FROM article_comments AS c WHERE c.article_id = a.id) AS comment_count
          FROM articles AS a
@@ -233,7 +233,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
       }));
     },
 
-    async createArticle({ authorId, slug, title, summary = "", locale = "zh-CN", contentBlocks, contentBlocksVersion = 0, publish = false, workType = "other", categoryIds = [], tagIds = [], idempotencyKey = null, requestedSlug }) {
+    async createArticle({ authorId, slug, title, summary = "", locale = "zh-CN", contentBlocks, contentBlocksVersion = 0, publish = false, workType = "other", categoryIds = [], tagIds = [], idempotencyKey = null, requestedSlug, requireNew = false }) {
       requiredText("authorId", authorId, 300);
       const input = normalizeArticleInput({ slug, title, summary, locale, contentBlocks, contentBlocksVersion, publish, workType });
       const selectedCategories = normalizeTaxonomyIds("categoryIds", categoryIds, 20);
@@ -276,6 +276,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
               [authorId, keyHash],
             );
             if (existing) {
+              if (requireNew) throw new ArticleVersionConflictError();
               if (!replayMatches(existing)) {
                 throw new IdempotencyConflictError("The idempotency key was already used for a different article request.");
               }
@@ -301,6 +302,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
               [authorId, keyHash],
             );
             if (!existing) throw new ArticleInputError("The article could not be created; retry the request.");
+            if (requireNew) throw new ArticleVersionConflictError();
             if (!replayMatches(existing)) {
               throw new IdempotencyConflictError("The idempotency key was already used for a different article request.");
             }
@@ -327,7 +329,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
             } },
             ...links.map((link) => ({ entityType: "article_taxonomies", entityId: migrationEntityKey(link.article_id, link.taxonomy_id), operation: "upsert" as const, payload: link })),
           ]);
-          return mapArticle({ ...article, ...translations[0] });
+          return mapArticle({ ...article, ...translations[0], import_revision: articleSnapshot[0].import_revision });
         });
       } catch (error) {
         if (!isUniqueViolation(error)) throw error;
@@ -340,6 +342,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
             [authorId, keyHash],
           );
           if (existing) {
+            if (requireNew) throw new ArticleVersionConflictError();
             if (!replayMatches(existing)) {
               throw new IdempotencyConflictError("The idempotency key was already used for a different article request.");
             }
@@ -350,19 +353,21 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
       }
     },
 
-    async updateArticle({ articleId, actorId, slug, title, summary = "", locale = "zh-CN", contentBlocks, contentBlocksVersion = 0, publish = false, workType = undefined, categoryIds = undefined, tagIds = undefined }) {
+    async updateArticle({ articleId, actorId, slug, title, summary = "", locale = "zh-CN", contentBlocks, contentBlocksVersion = 0, publish = false, workType = undefined, categoryIds = undefined, tagIds = undefined, expectedRevision }) {
 
       if (!isUuid(articleId)) throw new ArticleInputError("articleId must be a valid article ID.");
       requiredText("actorId", actorId, 300);
       const input = normalizeArticleInput({ slug, title, summary, locale, contentBlocks, contentBlocksVersion, publish, workType });
+      validateArticleRevision(expectedRevision);
       const selectedCategories = normalizeTaxonomyIds("categoryIds", categoryIds, 20);
       const selectedTags = normalizeTaxonomyIds("tagIds", tagIds, 50);
       try {
         return await sql.begin(async (tx) => {
           const transactionId = createMigrationTransactionId();
-          const ownership = await tx.unsafe("SELECT author_id, deleted_at, work_type FROM articles WHERE id = $1 FOR UPDATE", [articleId]);
+          const ownership = await tx.unsafe("SELECT author_id, deleted_at, work_type, import_revision::text AS revision FROM articles WHERE id = $1 FOR UPDATE", [articleId]);
           if (!ownership[0] || ownership[0].deleted_at) throw new ArticleNotFoundError();
           if (ownership[0].author_id !== actorId) throw new ArticleAuthorizationError();
+          if (expectedRevision !== undefined && ownership[0].revision !== expectedRevision) throw new ArticleVersionConflictError();
           assertArticleWorkTypeChange(ownership[0].work_type, input.workType);
           const previousLinks = await tx.unsafe("SELECT * FROM article_taxonomies WHERE article_id = $1", [articleId]);
           const rows = await tx.unsafe(
@@ -392,7 +397,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
             ...currentLinks.map((link) => ({ entityType: "article_taxonomies", entityId: migrationEntityKey(link.article_id, link.taxonomy_id), operation: "upsert" as const, payload: link })),
             ...previousLinks.filter((link) => !currentIds.has(migrationEntityKey(link.article_id, link.taxonomy_id))).map((link) => ({ entityType: "article_taxonomies", entityId: migrationEntityKey(link.article_id, link.taxonomy_id), operation: "delete" as const, payload: null })),
           ]);
-          return mapArticle({ ...rows[0], ...translations[0] });
+          return mapArticle({ ...rows[0], ...translations[0], import_revision: articleSnapshot[0].import_revision });
         });
       } catch (error) {
         if (isUniqueViolation(error)) throw new ArticleSlugConflictError();
@@ -468,7 +473,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
         await captureChanges(tx, transactionId, [
           { entityType: "articles", entityId: articleId, operation: "upsert", payload: snapshot[0] },
         ]);
-        return mapArticle({ ...rows[0], ...translations[0] });
+        return mapArticle({ ...rows[0], ...translations[0], import_revision: snapshot[0].import_revision });
       });
     },
 
@@ -529,7 +534,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
         throw new ArticleInputError("limit must be an integer between 1 and 100.");
       }
       const rows = await sql.unsafe(
-        `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count,
+        `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count, a.import_revision::text AS revision,
                 t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version
          FROM article_likes AS likes
          JOIN articles AS a ON a.id = likes.article_id AND a.status = 'published'
@@ -557,7 +562,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
           LIMIT 1
         ),
         candidates AS (
-          SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count,
+          SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count, a.import_revision::text AS revision,
                  t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version,
                  count(DISTINCT candidate_link.taxonomy_id)::int AS shared_taxonomy_count,
                  (a.author_id = target.author_id) AS same_author
@@ -570,7 +575,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
           GROUP BY a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count,
                    t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version, target.author_id
         )
-        SELECT id, author_id, slug, status, created_at, updated_at, published_at, view_count, locale, title, summary, content_blocks, content_blocks_version
+        SELECT id, author_id, slug, status, created_at, updated_at, published_at, view_count, revision, locale, title, summary, content_blocks, content_blocks_version
         FROM candidates
         ORDER BY shared_taxonomy_count DESC, same_author DESC, published_at DESC, id DESC
         LIMIT $3`,
@@ -587,7 +592,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
         throw new ArticleInputError("offset must be an integer between 0 and 100000.");
       }
       const rows = await sql.unsafe(
-        `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count,
+        `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count, a.import_revision::text AS revision,
                 t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version
          FROM articles AS a
          JOIN article_translations AS t ON t.article_id = a.id

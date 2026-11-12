@@ -363,8 +363,23 @@ Content-Type: application/json
 works, no tags, no provenance rows — and `pages` is the plan: one line per page
 with `action` (`create` / `update` / `skip` / `refused` / `failed`), the work's
 `slug` and `articleId` when one exists, a one-line `detail`, and the mapping's
-`issues`. A dry run is what an author should send first, and it is a pure read, so
-it costs nothing to repeat.
+`issues`. A dry run is what an author should send first. It also returns `planToken`
+and `planExpiresAt`: an authenticated snapshot of this actor, the exact selected
+bundle/grouping, target work revision/existence, source links and create-key
+recovery state. It writes no import data and costs nothing to repeat.
+
+**Apply the preview, not a new unprotected plan.** Send the same selected `bundle`,
+`apply: true`, and the unchanged `planToken` returned by the dry run. Plans expire
+after 15 minutes. Missing, tampered, expired, changed-selection, wrong-account or
+pre-cutover tokens return `409 IMPORT_PLAN_INVALID` before import writes. A work
+or source link that changed after preview is `refused`, with a request to preview
+again; unrelated works may still succeed. Comparison and the work's editions,
+tags, media references and provenance writes share one database transaction.
+An edition cannot conflict with its own primary's write. A failure rolls back
+that whole work and its journal rows, not previously committed unrelated works.
+`applied: true` therefore means apply was attempted, not that every page succeeded.
+See [the version-protection design](../architecture/notion-import-version-protection.md)
+for locking, signed-plan and cutover details.
 
 **Re-importing is idempotent, and the memory is the server's.** Each applied
 edition writes `external_content_links` (`provider = "notion"`,
@@ -382,18 +397,20 @@ If an `English` target is missing or more than two pages form a translation grou
 the affected pages are refused before writing. The report counts an added edition
 as an `update`: one work, one article, one address.
 
-**Nothing is deleted, unpublished or claimed twice.** A page linked to another
+**Missing pages are not deleted or reassigned.** A page linked to another
 account is refused (`this page is already imported into another account`) rather
 than copied — a Notion page names one work in the world. A link whose work was
 deleted is refused rather than recreated. A page that cannot become a work
 (`empty-body`, `empty-title`) is refused with its issue codes while the rest of the
 bundle still lands.
 
-**Limits and refusals.** At most 200 pages per bundle (`400` beyond that), an 8 MB
-JSON body (`413`), `application/json` only (`415`), a session (`401`), and a write
-rate limit of ten imports per ten minutes per account. Creates still carry
-`Idempotency-Key: notion-seed:<page id>` so a request that dies mid-way can be
-retried without duplicating what it already wrote.
+**Limits and refusals.** At most 200 pages per bundle (`400` beyond that), an 8 MiB
+serialized bundle (`413`), up to 512 KiB for its plan token plus request-envelope
+overhead, `application/json` only (`415`), a session (`401`), and a rate limit of
+ten imports per ten minutes per account. Creates retain the author-scoped
+`notion-seed:<page id>` create key. After an uncertain response, inspect the desk
+and preview again: committed pages are not duplicated, while an obsolete plan
+never silently becomes a new create or an overwrite.
 
 **What it does not do.** It does not use a Notion token (the token stays with the
 client, ADR 0036 decision 3), carry featured covers, hierarchy or `Rank`, or
@@ -433,20 +450,30 @@ more than eight images, reuse the exact bundle across retries while its URLs rem
 valid: a changed signature resets the incomplete checkpoint, so a refreshed bundle
 may need more than one attempt and can fail to finish under the per-request cap. Previously imported works still containing the
 same temporary URLs are also offered an update. As with any import, an update can
-replace edits made in the desk; review the plan before applying. If the source
-signature expires, obtain a fresh bundle before retrying.
+replace edits that already existed when previewed; review the plan before
+applying. Edits made after that preview are protected by the locked comparison.
+If the source signature expires, obtain a fresh bundle and preview it before
+retrying.
 
 Media writes happen before the article write. A failed article write, an interrupted
 request, or changing the bundle between retries can leave unreferenced media in the
-library; they are not automatically deleted. If writing the article succeeds but
-saving its provenance link fails, the report identifies the article and warns the
-writer. On the next import, the author-scoped create key finds the original work.
-The dry run offers an update and explicitly warns that existing edits may be
-replaced; only an apply updates the work and saves its missing link. Deleted works
-are refused until restored, and a translation linked to a different work or account
-blocks recovery rather than being silently moved. A conflicting concurrent page claim
-cannot overwrite an existing link. The losing import may already have written an
-unlinked article; its failed report identifies that article for inspection.
+library; they are not automatically deleted. A late version/provenance conflict
+or write failure reports that the work was not written/was rolled back and warns
+when prepared images may remain. The media library shows those unused assets and
+allows the owner to remove them. A failed provenance write now rolls back the
+article, all editions, newly created tags and journal rows too; it does not leave
+a newly committed unlinked article.
+
+For historical imports that already lack a provenance link, the author-scoped
+create key finds the original work. The dry run offers an update and explicitly
+warns that existing edits may be replaced; only an apply against that previewed
+revision updates the work and saves its missing link. Deleted works are refused
+until restored, and a translation linked to a different work or account blocks
+recovery rather than being silently moved. Competing imports of the same source,
+including different locales/accounts, serialize and the loser is refused before
+any of its article/tag/link writes commit. This workflow is not a database-wide
+cross-locale ownership constraint: bypassing SQL and standalone link writers are
+still the separate hardening work in #270, not a completed promise from draft #303.
 A network timeout does not prove that nothing was written. The web proxy gives this route a longer default timeout, but
 an explicitly configured `API_TIMEOUT_MS` still takes precedence. The seed script
 remains separate and does not copy images.
@@ -466,6 +493,14 @@ remains separate and does not copy images.
   unauthenticated read** then serves (the same request the web and Flutter clients
   make), the idempotent second run, the update that keeps the slug, the refusal for
   a second account, and the `400`s.
+- `apps/api/src/transport/rest/import-version-protection.integration.test.ts` —
+  both providers reject stale/tampered/expired/wrong-actor/wrong-generation plans;
+  revision and source-link changes cannot be overwritten, including changes
+  during image preparation; independent connections serialize conditional writes
+  and cross-locale source claims; multi-edition/tag/link and journal writes are
+  atomic; real provider transfer invalidates old plans; leftover media can be
+  removed. `e2e/notion-import.spec.ts` and `e2e/authoring.spec.ts` cover the browser
+  confirmation, re-preview and retained-draft conflict behavior.
 - `apps/api/src/persistence/persistence-adapter-contract.test.ts` — the link table
   behaves identically on both providers: one row per page edition, an upsert that
   replaces in place, and `getMyArticle` scoping (an id is not a permission).

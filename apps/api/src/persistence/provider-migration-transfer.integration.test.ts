@@ -39,11 +39,14 @@ test("a SQLite database copies into PostgreSQL and every table reconciles", opti
   const source = await createTransferSourceFixture();
   const target = await isolatedTarget();
   try {
+    const targetGeneration = await createPostgresStore(target).getImportPlanGeneration();
+    assert.notEqual(targetGeneration, await source.store.getImportPlanGeneration());
     const report = await transferProviderData({
       source: { provider: "sqlite", db: source.db },
       target: { provider: "postgres", sql: target },
     });
     assert.equal(report.applied, true);
+    assert.equal(await createPostgresStore(target).getImportPlanGeneration(), targetGeneration, "provider transfer invalidates source-bound previews");
     assert.equal(report.ok, true, `tables that did not reconcile: ${report.tables.filter((table) => !table.matched).map((table) => table.table).join(", ")}`);
     assert.ok(report.tables.every((table) => table.matched), "no table may diverge across engines");
     assert.ok(report.tables.every((table) => table.targetRows === table.sourceRows));

@@ -26,6 +26,7 @@ import { describeEndpoint, formatReport, parseTransferArgs, redactTarget } from 
 test("the transfer plan is exactly the entities the replay applier accepts", () => {
   const planned = [...PROVIDER_TRANSFER_ORDER].sort();
   assert.deepEqual(planned, getSupportedMigrationEntityTypes().sort());
+  assert.ok(!planned.includes("import_plan_generation"));
   // The associations are copied too, but they are not entities: a translation
   // owns its media references, as the journal protocol already says.
   assert.deepEqual(getTransferTables().associations, ["article_media_refs"]);
@@ -35,7 +36,10 @@ test("a SQLite database copies into an empty one and reconciles table by table",
   const source = await createTransferSourceFixture();
   const target = await createEmptySqliteTarget();
   try {
+    const targetGeneration = await target.store.getImportPlanGeneration();
+    assert.notEqual(targetGeneration, await source.store.getImportPlanGeneration());
     const report = await transferProviderData({ source: { provider: "sqlite", db: source.db }, target: { provider: "sqlite", db: target.db } });
+    assert.equal(await target.store.getImportPlanGeneration(), targetGeneration, "copy never adopts the source preview generation");
     assert.equal(report.applied, true);
     assert.equal(report.ok, true, formatReport(report));
     assert.ok(report.tables.every((table) => table.matched), "every table must reconcile");

@@ -40,6 +40,8 @@ export type NotionImportPage = {
 
 export type NotionImportReport = {
   applied: boolean;
+  planToken?: string;
+  planExpiresAt?: string;
   database: { id: string; title: string | null };
   summary: Record<NotionImportAction, number>;
   pages: NotionImportPage[];
@@ -168,6 +170,8 @@ export function asImportReport(value: unknown): NotionImportReport | null {
   const database = isRecord(value.database) ? value.database : {};
   return {
     applied: value.applied,
+    ...(typeof value.planToken === "string" && value.planToken.length > 0 && value.planToken.length <= 512 * 1024 ? { planToken: value.planToken } : {}),
+    ...(typeof value.planExpiresAt === "string" ? { planExpiresAt: value.planExpiresAt } : {}),
     database: {
       id: typeof database.id === "string" ? database.id : "",
       title: typeof database.title === "string" ? database.title : null,
@@ -224,7 +228,9 @@ export function describeImport(report: NotionImportReport): ImportOutcome {
       applied: true,
       writable,
       attention,
-      headline: `已导入：${counts}。`,
+      headline: attention > 0
+        ? `${writable > 0 ? "部分导入" : "未写入"}：${counts}。请检查报告后重新试跑。`
+        : `已导入：${counts}。`,
       // Applying again is a second write of the same bundle, which the server
       // would answer with `skip`; the button is not offered twice.
       canApply: false,
@@ -237,7 +243,7 @@ export function describeImport(report: NotionImportReport): ImportOutcome {
     headline: writable > 0
       ? `计划：${counts}。确认之前不会写入任何内容。`
       : `计划：${counts}。这次没有任何需要写入的内容。`,
-    canApply: writable > 0,
+    canApply: writable > 0 && typeof report.planToken === "string" && report.planToken.length > 0,
   };
 }
 

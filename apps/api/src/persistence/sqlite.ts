@@ -27,6 +27,7 @@ export type SqliteRow = { [column: string]: any };
 
 /** Statement accessors as the slices use them: dynamic rows in, bindings out. */
 export type SqliteRunner = {
+  readonly isTransaction?: boolean;
   exec(sql: string): void;
   close(): void;
   prepare(sql: string): {
