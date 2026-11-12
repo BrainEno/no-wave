@@ -552,7 +552,12 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
           sendUnauthenticated(response);
           return;
         }
-        const article = await services.updateArticle({ ...normalized.input, articleId, actorId, expectedRevision });
+        const article = await services.updateArticle({
+          ...normalized.input,
+          articleId,
+          actorId,
+          ...(expectedRevision !== undefined ? { expectedRevision } : {}),
+        });
         response.setHeader("etag", `"${article.importRevision}"`);
         sendJson(response, 200, { data: await serializeRestArticle(services, article, actorId) });
       } catch (error: unknown) {
