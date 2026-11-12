@@ -441,6 +441,11 @@ export const SCHEMAS: Readonly<Record<string, JsonSchema>> = Object.freeze({
       },
       categoryIds: { type: "array", items: TEXT },
       tagIds: { type: "array", items: TEXT },
+      expectedRevision: {
+        type: "integer",
+        minimum: 0,
+        description: "Conditional write version check against the article's import revision. Rejects with 409 CONFLICT if the article has been modified since it was read.",
+      },
     },
   },
 

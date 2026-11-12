@@ -61,6 +61,7 @@ export type ArticleUpdateServiceInput = ArticleWriteInput & {
   actorId: string;
   slug: string;
   publish: boolean;
+  expectedRevision?: number | null;
 };
 
 /**

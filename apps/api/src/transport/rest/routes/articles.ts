@@ -525,13 +525,35 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
         sendBadInput(response, "Invalid article ID.");
         return;
       }
+      let ifMatchRevision: number | null = null;
+      const rawIfMatch = request.headers["if-match"];
+      if (rawIfMatch !== undefined) {
+        if (typeof rawIfMatch !== "string") {
+          sendBadInput(response, "Invalid If-Match header.");
+          return;
+        }
+        const match = /^(?:W\/)?"?(\d+)"?$/.exec(rawIfMatch.trim());
+        if (!match) {
+          sendBadInput(response, "Invalid If-Match header.");
+          return;
+        }
+        ifMatchRevision = Number(match[1]);
+      }
+      if (ifMatchRevision !== null && normalized.input.expectedRevision !== undefined && normalized.input.expectedRevision !== null) {
+        if (ifMatchRevision !== normalized.input.expectedRevision) {
+          sendBadInput(response, "If-Match header and expectedRevision in body must match.");
+          return;
+        }
+      }
+      const expectedRevision = normalized.input.expectedRevision ?? ifMatchRevision ?? undefined;
       try {
         const actorId = await authenticatedActorId(request, services, env);
         if (!actorId) {
           sendUnauthenticated(response);
           return;
         }
-        const article = await services.updateArticle({ ...normalized.input, articleId, actorId });
+        const article = await services.updateArticle({ ...normalized.input, articleId, actorId, expectedRevision });
+        response.setHeader("etag", `"${article.importRevision}"`);
         sendJson(response, 200, { data: await serializeRestArticle(services, article, actorId) });
       } catch (error: unknown) {
         sendServiceError(response, error);
@@ -554,6 +576,7 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
       if (!article) {
         sendJson(response, 404, { error: { code: "NOT_FOUND", message: "The article was not found." } });
       } else {
+        response.setHeader("etag", `"${article.importRevision}"`);
         sendJson(response, 200, { data: await serializeRestArticle(services, article, viewerId) });
       }
     } catch (error: unknown) {

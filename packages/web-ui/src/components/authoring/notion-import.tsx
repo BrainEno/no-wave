@@ -58,22 +58,30 @@ export function NotionImport() {
   const [warnings, setWarnings] = useState<string[]>([]);
   const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
   const [plannedBundle, setPlannedBundle] = useState<Record<string, unknown> | null>(null);
+  const [plannedToken, setPlannedToken] = useState<string | null>(null);
 
-  async function send(next: Record<string, unknown>, apply: boolean): Promise<void> {
+  async function send(next: Record<string, unknown>, apply: boolean, planToken?: string | null): Promise<void> {
     setBusy(apply ? "apply" : "dry-run");
     setError("");
     setReport(null);
-    setPlannedBundle(null);
+    if (!apply) {
+      setPlannedBundle(null);
+      setPlannedToken(null);
+    }
     try {
+      const bodyPayload: Record<string, unknown> = { bundle: next };
+      if (apply) {
+        bodyPayload.apply = true;
+        if (planToken) {
+          bodyPayload.planToken = planToken;
+        }
+      }
       const response = await fetch("/api/authoring/notion-import", {
         method: "POST",
         headers: { "content-type": "application/json", accept: "application/json" },
         credentials: "same-origin",
         cache: "no-store",
-        // `apply` is omitted for a dry run rather than sent as `false`: the
-        // endpoint's default *is* the dry run, and a body that cannot be
-        // misunderstood is worth one fewer key.
-        body: JSON.stringify(apply ? { bundle: next, apply: true } : { bundle: next }),
+        body: JSON.stringify(bodyPayload),
       });
       const payload: unknown = await response.json().catch(() => null);
       if (response.ok === false) {
@@ -88,7 +96,10 @@ export function NotionImport() {
         return;
       }
       setReport(parsed);
-      if (!apply && !parsed.applied) setPlannedBundle(next);
+      if (!apply && !parsed.applied) {
+        setPlannedBundle(next);
+        setPlannedToken(parsed.planToken ?? null);
+      }
     } catch {
       setError("网络中断，无法确认导入结果。部分内容可能已写入；请检查写作台，再重新试跑。 ");
     } finally {
@@ -105,6 +116,7 @@ export function NotionImport() {
     setPageCount(0);
     setSelected(new Set());
     setPlannedBundle(null);
+    setPlannedToken(null);
     setBusy("dry-run");
     try {
       if (files.reduce((sum, file) => sum + file.size, 0) > 8 * 1024 * 1024) throw new Error("文件总大小超过 8 MB，请分批导入。");
@@ -135,6 +147,7 @@ export function NotionImport() {
     setSelected(next);
     setReport(null);
     setPlannedBundle(null);
+    setPlannedToken(null);
     setError("");
   }
   const choices = bundle === null ? [] : bundleSelectionPages(bundle);
@@ -257,14 +270,13 @@ export function NotionImport() {
               <button
                 className="nw-btn"
                 disabled={busy !== null}
-                onClick={() => void send(plannedBundle, true)}
+                onClick={() => void send(plannedBundle, true, plannedToken)}
                 type="button"
               >
                 {busy === "apply" ? "写入中…" : `确认导入（写入 ${outcome.writable} 件作品）`}
               </button>
-              <p className="nw-m" role="alert">
-                注意：目前试跑不会锁定目标文章。试跑后其他人或其他窗口的修改可能被导入覆盖；
-                确认前请停止编辑并备份，必要时重新试跑。并发修改仍可能导致覆盖。
+              <p className="nw-m" role="status">
+                试跑结果已绑定目标文章版本。若试跑后有其他编辑修改了对应文章，导入将被拒绝以保护现有内容；如遇拒绝，请重新试跑后再确认。
               </p>
               <p className="nw-m">
                 试跑没有写入任何内容。写入时状态跟着 bundle 走：「Published」为真的那一页会被直接发表，

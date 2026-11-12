@@ -126,6 +126,11 @@ export class ArticleSlugConflictError extends DomainError {
     super("ArticleSlugConflictError", "CONFLICT", message);
   }
 }
+export class ArticleConflictError extends DomainError {
+  constructor(message = "The article has been modified since it was read.") {
+    super("ArticleConflictError", "CONFLICT", message);
+  }
+}
 export class ArticleAuthorizationError extends DomainError {
   constructor(message = "You cannot edit this article.") {
     super("ArticleAuthorizationError", "FORBIDDEN", message);

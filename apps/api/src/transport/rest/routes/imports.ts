@@ -70,6 +70,12 @@ const IMPORT_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Object
     if (apply === null) { sendBadInput(response, "`apply` must be a boolean when present."); return; }
     if (!("bundle" in bodyResult.value)) { sendBadInput(response, "A `bundle` object is required."); return; }
 
+    const planToken = bodyResult.value.planToken;
+    if (planToken !== undefined && (typeof planToken !== "string" || planToken.length === 0 || planToken.length > 32768)) {
+      sendBadInput(response, "`planToken` must be a non-empty string when present.");
+      return;
+    }
+
     try {
       const actorId = await authenticatedActorId(request, services, env);
       if (!actorId) { sendUnauthenticated(response); return; }
@@ -95,12 +101,15 @@ const IMPORT_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Object
           return { ok: false, reason: "image could not be validated or stored" };
         }
       };
+      const planSecret = (env?.AUTH_JWT_SECRET ?? env?.JWT_SECRET ?? env?.ADMIN_TOKEN) as string | undefined;
       const report = await importNotionBundle({
         actorId,
         bundle: bodyResult.value.bundle,
         apply,
         deps: services,
         copyImage,
+        planToken: typeof planToken === "string" ? planToken : undefined,
+        planSecret,
       });
       sendJson(response, 200, { data: report });
     } catch (error: unknown) {

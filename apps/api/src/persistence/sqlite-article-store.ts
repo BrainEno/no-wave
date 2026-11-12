@@ -10,6 +10,7 @@ import { createSqliteProviderMigrationCapture, migrationEntityKey, type Captured
 import {
   ArticleInputError,
   ArticleSlugConflictError,
+  ArticleConflictError,
   IdempotencyConflictError,
   ArticleAuthorizationError,
   ArticleNotFoundError,
@@ -41,7 +42,7 @@ export function createSqliteArticleStore(db: SqliteRunner) {
 
   const articleColumns = `a.id, a.author_id, a.slug, a.work_type, a.status, t.locale,
            t.title, t.summary, t.content_blocks, t.content_blocks_version, a.created_at, a.updated_at, a.published_at,
-           a.view_count`;
+           a.view_count, a.import_revision`;
   const articleSelect = `
     SELECT ${articleColumns}
     FROM articles a
@@ -69,6 +70,7 @@ export function createSqliteArticleStore(db: SqliteRunner) {
     updatedAt: row.updated_at,
     publishedAt: row.published_at,
     viewCount: Number(row.view_count ?? 0),
+    importRevision: Number(row.import_revision ?? 0),
   });
   // The desk's recycle bin reads the same article shape plus the tombstone
   // timestamp and the number of comments that would die with it, so it gets its
@@ -78,7 +80,7 @@ export function createSqliteArticleStore(db: SqliteRunner) {
   // the only irreversible thing the slice can do to a third party.
   const deletedArticleSelect = `
     SELECT a.id, a.author_id, a.slug, a.work_type, a.status, t.locale,
-           t.title, t.summary, t.content_blocks, t.content_blocks_version, a.created_at, a.updated_at, a.published_at, a.view_count, a.deleted_at,
+           t.title, t.summary, t.content_blocks, t.content_blocks_version, a.created_at, a.updated_at, a.published_at, a.view_count, a.import_revision, a.deleted_at,
            (SELECT count(*) FROM article_comments c WHERE c.article_id = a.id) AS comment_count
     FROM articles a
     JOIN article_translations t ON t.article_id = a.id
@@ -517,7 +519,7 @@ export function createSqliteArticleStore(db: SqliteRunner) {
         LEFT JOIN article_taxonomies target_link ON target_link.article_id = ?
         LEFT JOIN article_taxonomies candidate_link ON candidate_link.article_id = a.id AND candidate_link.taxonomy_id = target_link.taxonomy_id
         WHERE a.status = 'published' AND a.id <> ? AND t.locale = ?
-        GROUP BY a.id, a.author_id, a.slug, a.work_type, a.status, t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version, a.created_at, a.updated_at, a.published_at, a.view_count
+        GROUP BY a.id, a.author_id, a.slug, a.work_type, a.status, t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version, a.created_at, a.updated_at, a.published_at, a.view_count, a.import_revision
         ORDER BY count(DISTINCT candidate_link.taxonomy_id) DESC, (a.author_id = ?) DESC, a.published_at DESC, a.id DESC LIMIT ?
       `).all(current.id, current.id, locale, current.author_id, limit).map(mapArticle);
     },
@@ -594,17 +596,27 @@ export function createSqliteArticleStore(db: SqliteRunner) {
       }
     },
 
-    updateArticle({ articleId, actorId, slug, title, summary = "", locale = "zh-CN", contentBlocks, contentBlocksVersion = 0, publish = false, workType, categoryIds, tagIds }) {
+    updateArticle({ articleId, actorId, slug, title, summary = "", locale = "zh-CN", contentBlocks, contentBlocksVersion = 0, publish = false, workType, categoryIds, tagIds, expectedRevision }) {
       if (!isUuid(articleId)) throw new ArticleInputError("articleId must be a valid article ID.");
       requiredText("actorId", actorId, 300);
+      if (expectedRevision !== undefined && expectedRevision !== null) {
+        if (typeof expectedRevision !== "number" || !Number.isInteger(expectedRevision) || expectedRevision < 0) {
+          throw new ArticleInputError("expectedRevision must be a non-negative integer.");
+        }
+      }
       const input = normalizeArticleInput({ slug, title, summary, locale, contentBlocks, contentBlocksVersion, publish, workType });
       const categories = normalizeTaxonomyIds("categoryIds", categoryIds, 100);
       const tags = normalizeTaxonomyIds("tagIds", tagIds, 100);
       try {
         return transaction((transactionId) => {
-          const existing = statement("SELECT id, author_id, created_at, deleted_at, work_type FROM articles WHERE id = ?").get(articleId);
+          const existing = statement("SELECT id, author_id, created_at, deleted_at, work_type, import_revision FROM articles WHERE id = ?").get(articleId);
           if (!existing || existing.deleted_at) throw new ArticleNotFoundError("The article was not found.");
           if (existing.author_id !== actorId) throw new ArticleAuthorizationError("Only the article author can update it.");
+          if (expectedRevision !== undefined && expectedRevision !== null) {
+            if (Number(existing.import_revision) !== Number(expectedRevision)) {
+              throw new ArticleConflictError("The article has been modified since it was read.");
+            }
+          }
           assertArticleWorkTypeChange(existing.work_type, input.workType);
           const previousLinks = statement("SELECT taxonomy_id FROM article_taxonomies WHERE article_id = ?").all(articleId)
             .map((link) => ({ taxonomy_id: String(link.taxonomy_id) }));

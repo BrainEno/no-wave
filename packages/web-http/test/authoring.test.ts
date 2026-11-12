@@ -711,6 +711,24 @@ test("applying is one explicit boolean", async () => {
     assert.equal(refused.headers.get("x-authoring-not-forwarded"), "1");
   }
   assert.equal(stub.calls.length, 1, "an ambiguous apply never reaches the API");
+
+  // An invalid planToken is rejected locally
+  for (const planToken of ["", 123, null, {}]) {
+    const badToken = await handleAuthoringNotionImportRequest(
+      importRequest(JSON.stringify({ bundle: BUNDLE, apply: true, planToken })),
+      config,
+    );
+    assert.equal(badToken.status, 400);
+    assert.equal(badToken.headers.get("x-authoring-not-forwarded"), "1");
+  }
+
+  // A valid planToken is forwarded
+  const withToken = await handleAuthoringNotionImportRequest(
+    importRequest(JSON.stringify({ bundle: BUNDLE, apply: true, planToken: "token-123" })),
+    config,
+  );
+  assert.equal(withToken.status, 200);
+  assert.equal(stub.calls[1]?.init?.body, JSON.stringify({ bundle: BUNDLE, apply: true, planToken: "token-123" }));
 });
 
 test("an import is bounded, same-origin, and POST", async () => {

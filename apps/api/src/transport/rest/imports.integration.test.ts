@@ -575,3 +575,111 @@ for (const provider of ["sqlite", "postgres"] as const) {
     }
   });
 }
+
+test("preview-bound import refuses concurrent desk edit and article update honors ETag/If-Match (sqlite)", async () => {
+  const db = createSqliteClient({ filename: ":memory:", enableWal: false });
+  await runSqliteMigrations(db);
+  const store = createSqliteStore(db);
+  const server = createApiServer({ store, env, logger: () => {} });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const author = `author-${randomUUID()}`;
+  const pageId = randomUUID();
+
+  try {
+    // 1. Initial import of page
+    const initialPage = notionPage(pageId, "并发测试", "第一版正文");
+    const initialRes = await fetch(`http://127.0.0.1:${address.port}/api/v1/imports/notion`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token(author)}` },
+      body: JSON.stringify({ bundle: notionBundle(initialPage), apply: true }),
+    });
+    assert.equal(initialRes.status, 200);
+    const initialData = (await initialRes.json()).data;
+    assert.equal(initialData.summary.create, 1);
+    const articleId = initialData.pages[0].articleId;
+    assert.ok(articleId);
+
+    // 2. Read article through GET to check ETag
+    const getRes = await fetch(`http://127.0.0.1:${address.port}/api/v1/articles/${initialData.pages[0].slug}?locale=zh-CN`);
+    assert.equal(getRes.status, 200);
+    const initialEtag = getRes.headers.get("etag");
+    assert.ok(initialEtag, "GET returns an ETag");
+
+    // 3. Dry-run preview of an updated version from Notion
+    const updatedPage = notionPage(pageId, "并发测试", "Notion 第二版");
+    const previewRes = await fetch(`http://127.0.0.1:${address.port}/api/v1/imports/notion`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token(author)}` },
+      body: JSON.stringify({ bundle: notionBundle(updatedPage), apply: false }),
+    });
+    assert.equal(previewRes.status, 200);
+    const previewData = (await previewRes.json()).data;
+    assert.equal(previewData.summary.update, 1);
+    const planToken = previewData.planToken;
+    assert.ok(planToken, "Dry run produces a planToken");
+
+    // 4. In the meantime, the desk updates the article with If-Match
+    const deskUpdateRes = await fetch(`http://127.0.0.1:${address.port}/api/v1/articles/${articleId}`, {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${token(author)}`,
+        "if-match": initialEtag,
+      },
+      body: JSON.stringify({
+        slug: initialData.pages[0].slug,
+        title: "并发测试（写作台编辑）",
+        summary: "写作台修改摘要",
+        locale: "zh-CN",
+        contentBlocks: [{ id: "p1", type: "paragraph", text: "在试跑后写作台直接修改" }],
+        publish: true,
+      }),
+    });
+    assert.equal(deskUpdateRes.status, 200);
+    const deskUpdatedEtag = deskUpdateRes.headers.get("etag");
+    assert.ok(deskUpdatedEtag);
+    assert.notEqual(deskUpdatedEtag, initialEtag);
+
+    // Stale If-Match returns 409
+    const conflictUpdateRes = await fetch(`http://127.0.0.1:${address.port}/api/v1/articles/${articleId}`, {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${token(author)}`,
+        "if-match": initialEtag,
+      },
+      body: JSON.stringify({
+        slug: initialData.pages[0].slug,
+        title: "陈旧更新",
+        summary: "冲突",
+        locale: "zh-CN",
+        contentBlocks: [{ id: "p1", type: "paragraph", text: "测试" }],
+        publish: true,
+      }),
+    });
+    assert.equal(conflictUpdateRes.status, 409);
+
+    // 5. Now try to apply the Notion import using the preview's planToken
+    const applyRes = await fetch(`http://127.0.0.1:${address.port}/api/v1/imports/notion`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token(author)}` },
+      body: JSON.stringify({ bundle: notionBundle(updatedPage), apply: true, planToken }),
+    });
+    assert.equal(applyRes.status, 200);
+    const applyData = (await applyRes.json()).data;
+    assert.equal(applyData.summary.refused, 1, "The import is refused due to modification since preview");
+    assert.equal(applyData.summary.update, 0);
+    assert.match(applyData.pages[0].detail, /modified since preview/);
+
+    // 6. Verify the article in database still holds the desk edit
+    const finalGet = await fetch(`http://127.0.0.1:${address.port}/api/v1/articles/${initialData.pages[0].slug}?locale=zh-CN`);
+    assert.equal(finalGet.status, 200);
+    const finalData = (await finalGet.json()).data;
+    assert.equal(finalData.title, "并发测试（写作台编辑）");
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    db.close();
+  }
+});

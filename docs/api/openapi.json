@@ -413,6 +413,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Conflict: `IDEMPOTENCY_CONFLICT`, `MAIL_DISABLED`, `MEDIA_DELETE_DISABLED`, or a duplicate unique value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -6887,6 +6897,11 @@
             "items": {
               "type": "string"
             }
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Conditional write version check against the article's import revision. Rejects with 409 CONFLICT if the article has been modified since it was read."
           }
         }
       },

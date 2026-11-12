@@ -98,6 +98,8 @@ export type StoredArticle = {
    * room. Kept on the row so a page of works costs no additional read.
    */
   viewCount: number;
+  /** Work-level monotonic revision incremented on work, translation, and taxonomy changes. */
+  importRevision: number;
 };
 /** A tombstone in the author's desk, with the cost of its eventual sweep. */
 export type StoredDeletedArticle = StoredArticle & { deletedAt: string; commentCount: number };
@@ -205,6 +207,7 @@ export type UpdateArticleInput = {
   summary?: string; locale?: string;
   contentBlocksVersion?: number; publish?: boolean;
   workType?: string; categoryIds?: readonly unknown[]; tagIds?: readonly unknown[];
+  expectedRevision?: number | bigint | null;
 };
 export type ArticleAuthorInput = { articleId: string; actorId: string };
 export type RestoreArticleInput = ArticleAuthorInput & { locale?: string };

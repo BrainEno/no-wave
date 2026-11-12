@@ -112,7 +112,7 @@ export async function readArticleForAuthor(
   { articleId, locale }: { articleId: string; locale: string },
 ) {
   const rows = await executor.unsafe(
-    `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count,
+    `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count, a.import_revision,
             t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version
      FROM articles AS a
      JOIN article_translations AS t ON t.article_id = a.id
@@ -190,6 +190,7 @@ export function mapArticle(row: PgRow) {
     updatedAt: isoDateOrNull(row.updated_at),
     publishedAt: isoDateOrNull(row.published_at),
     viewCount: Number(row.view_count ?? 0),
+    importRevision: Number(row.import_revision ?? 0),
   };
 }
 export async function listTaxonomiesFrom(
@@ -307,7 +308,7 @@ export async function readFeaturedArticles(
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
   if (!Number.isInteger(offset) || offset < 0 || offset > 100000) throw new ArticleInputError("offset must be an integer between 0 and 100000.");
   const rows = await executor.unsafe(
-    `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count,
+    `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count, a.import_revision,
             t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version
      FROM articles AS a
      JOIN article_translations AS t ON t.article_id = a.id

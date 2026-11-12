@@ -158,10 +158,12 @@ test("the summary is the API's when it is a count, and the pages' when it is not
     applied: false,
     database: { id: "db-1", title: null },
     pages: [page("create"), page("create"), page("skip")],
+    planToken: "plan-token-xyz",
   });
   assert.ok(fromPages);
   assert.deepEqual(fromPages.summary, { create: 2, update: 0, skip: 1, refused: 0, failed: 0 });
   assert.equal(fromPages.database.title, null);
+  assert.equal(fromPages.planToken, "plan-token-xyz");
 
   const fromApi = asImportReport({
     applied: true,
@@ -170,6 +172,7 @@ test("the summary is the API's when it is a count, and the pages' when it is not
   });
   assert.ok(fromApi);
   assert.equal(fromApi.summary.create, 7);
+  assert.equal(fromApi.planToken, undefined);
 });
 
 test("a plan that would write offers the write, and one that would not does not", () => {

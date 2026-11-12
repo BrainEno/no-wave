@@ -376,7 +376,7 @@ export const OPERATIONS: Readonly<Record<string, OperationMetadata>> = Object.fr
     pathParams: { article: "The work's id." },
     query: [localeParameter("Edition to write. Defaults to `zh-CN`; a client editing another edition must send its locale.")],
     requestBody: { schema: "ArticleWrite", description: "The complete write: `slug` and `publish` are mandatory, `title` and exactly one content field are required.", required: true },
-    errors: [403, 404],
+    errors: [403, 404, 409],
     response: { description: "The stored work.", data: "Article" },
   },
 

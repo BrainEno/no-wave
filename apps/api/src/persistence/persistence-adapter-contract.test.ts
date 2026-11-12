@@ -4,7 +4,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { MAX_ARTICLE_OFFSET, MAX_ARTICLE_OFFSET_POPULAR, encodeArticleCursor } from "../domain/article.ts";
 import { DEFAULT_AUTHOR_DISPLAY_NAME } from "../domain/profile.ts";
 import { CommentDepthError, COMMENT_DEPTH_LIMIT_MESSAGE, MAX_COMMENT_REPLY_DEPTH } from "../domain/comment-content.ts";
-import { ArticleInputError, ArticleSlugConflictError, ConversationInputError, IdempotencyConflictError, ConversationAccessError, ArticleAuthorizationError, ArticleNotFoundError, ProfileInputError, ProfileNotFoundError } from "../domain/errors.ts";
+import { ArticleConflictError, ArticleInputError, ArticleSlugConflictError, ConversationInputError, IdempotencyConflictError, ConversationAccessError, ArticleAuthorizationError, ArticleNotFoundError, ProfileInputError, ProfileNotFoundError } from "../domain/errors.ts";
 import { createPostgresClient, createPostgresStore } from "./postgres.ts";
 import { runMigrations } from "./migrate.ts";
 import { createSqliteClient, runSqliteMigrations } from "./sqlite.ts";
@@ -1235,6 +1235,58 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
         (error) => error instanceof ArticleInputError && /cannot be retyped to it/.test(error.message),
       );
       assert.equal(await runtime.articleWorkType(created.id), "short_story", "the rejected update changed nothing");
+    } finally { await runtime.cleanup(undefined, suffix); }
+  });
+
+  test(`${adapterName}: updateArticle enforces conditional write with expectedRevision`, options, async () => {
+    const runtime = await fixture();
+    const suffix = randomUUID();
+    const slug = `contract-revision-${suffix}`;
+    const authorId = `author-${suffix}`;
+    const contentBlocks = [{ id: "p1", type: "paragraph", text: "Revision test." }];
+    try {
+      const created = await runtime.store.createArticle({
+        authorId, slug, title: "Revision Initial", locale: "zh-CN", contentBlocks, publish: false,
+      });
+      assert.equal(typeof created.importRevision, "number");
+      assert.ok(created.importRevision >= 0, "revision is non-negative");
+      const initialRev = created.importRevision;
+
+      // Invalid expectedRevision formats
+      await assert.rejects(
+        Promise.resolve().then(() => runtime.store.updateArticle({
+          articleId: created.id, actorId: authorId, slug, title: "Bad", locale: "zh-CN", contentBlocks, publish: false, expectedRevision: -1,
+        })),
+        (error) => error instanceof ArticleInputError,
+      );
+
+      // Stale expectedRevision throws ArticleConflictError
+      await assert.rejects(
+        Promise.resolve().then(() => runtime.store.updateArticle({
+          articleId: created.id, actorId: authorId, slug, title: "Conflict", locale: "zh-CN", contentBlocks, publish: false, expectedRevision: initialRev + 999,
+        })),
+        (error) => error instanceof ArticleConflictError && error.code === "CONFLICT",
+      );
+
+      // Matching expectedRevision succeeds and increments revision
+      const updated = await runtime.store.updateArticle({
+        articleId: created.id, actorId: authorId, slug, title: "Revision v1", locale: "zh-CN", contentBlocks, publish: false, expectedRevision: initialRev,
+      });
+      assert.ok(updated.importRevision > initialRev, "import revision incremented");
+
+      // Trying with old revision fails now
+      await assert.rejects(
+        Promise.resolve().then(() => runtime.store.updateArticle({
+          articleId: created.id, actorId: authorId, slug, title: "Revision v1 retry", locale: "zh-CN", contentBlocks, publish: false, expectedRevision: initialRev,
+        })),
+        (error) => error instanceof ArticleConflictError,
+      );
+
+      // Omitting expectedRevision succeeds unconditionally
+      const unconditional = await runtime.store.updateArticle({
+        articleId: created.id, actorId: authorId, slug, title: "Revision v2", locale: "zh-CN", contentBlocks, publish: false,
+      });
+      assert.ok(unconditional.importRevision > updated.importRevision, "import revision incremented unconditionally");
     } finally { await runtime.cleanup(undefined, suffix); }
   });
 

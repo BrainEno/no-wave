@@ -26,6 +26,7 @@ export type ArticleWriteBody = {
   contentBlocksVersion?: number;
   categoryIds?: readonly unknown[];
   tagIds?: readonly unknown[];
+  expectedRevision?: number | null;
 };
 /** Updates address a stored article, so the slug and publish flag are mandatory. */
 export type ArticleUpdateBody = ArticleWriteBody & { slug: string; publish: boolean };
@@ -40,7 +41,7 @@ export type ProfileWriteBody = {
 };
 
 export const ARTICLE_WRITE_FIELDS = new Set([
-  "slug", "title", "summary", "locale", "contentBlocks", "editorState", "contentBlocksVersion", "publish", "workType", "categoryIds", "tagIds",
+  "slug", "title", "summary", "locale", "contentBlocks", "editorState", "contentBlocksVersion", "publish", "workType", "categoryIds", "tagIds", "expectedRevision",
 ]);
 
 export function normalizeArticleWriteBody(body: Record<string, unknown>, requirePublish: true): { input: ArticleUpdateBody | null; error: string | null };
@@ -135,6 +136,13 @@ export function normalizeArticleWriteBody(
     }
   }
 
+  const expectedRevisionValue = body.expectedRevision;
+  if (expectedRevisionValue !== undefined && expectedRevisionValue !== null) {
+    if (typeof expectedRevisionValue !== "number" || !Number.isInteger(expectedRevisionValue) || expectedRevisionValue < 0) {
+      return { input: null, error: "expectedRevision must be a non-negative integer when supplied." };
+    }
+  }
+
   // An empty summary is derived from the beginning of the body text.
   const summary = typeof summaryValue === "string" && summaryValue.trim().length > 0
     ? summaryValue
@@ -156,6 +164,7 @@ export function normalizeArticleWriteBody(
   if (typeof workType === "string") input.workType = workType;
   if (Array.isArray(categoryIds)) input.categoryIds = categoryIds;
   if (Array.isArray(tagIds)) input.tagIds = tagIds;
+  if (typeof expectedRevisionValue === "number") input.expectedRevision = expectedRevisionValue;
   return { input, error: null };
 }
 

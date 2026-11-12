@@ -43,6 +43,7 @@ export type NotionImportReport = {
   database: { id: string; title: string | null };
   summary: Record<NotionImportAction, number>;
   pages: NotionImportPage[];
+  planToken?: string;
 };
 
 export type BundleFileResult =
@@ -174,6 +175,7 @@ export function asImportReport(value: unknown): NotionImportReport | null {
     },
     summary,
     pages,
+    ...(typeof value.planToken === "string" ? { planToken: value.planToken } : {}),
   };
 }
 

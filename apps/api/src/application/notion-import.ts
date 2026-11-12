@@ -1,4 +1,5 @@
-import { createHash } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { ArticleConflictError } from "../domain/errors.ts";
 import { SUPPORTED_ARTICLE_LOCALES } from "../domain/article.ts";
 import { prepareNotionImages, type NotionImageCopier } from "./notion-import-images.ts";
 import { createArticleWithSlug } from "./article-create.ts";
@@ -77,6 +78,8 @@ export type NotionImportReport = {
   database: { id: string; title: string | null };
   summary: Record<NotionImportAction, number>;
   pages: NotionImportPageReport[];
+  /** Signed plan token generated during a dry run, binding actor, bundle, and target work revisions. */
+  planToken?: string;
 };
 
 /**
@@ -109,6 +112,76 @@ export class NotionImportRequestError extends Error {
     super(message);
     this.name = "NotionImportRequestError";
   }
+}
+
+export type PlannedTargetRecord = {
+  targetArticleId: string | null;
+  expectedRevision: number | null;
+  action: NotionImportAction;
+};
+
+export type ImportPlanPayload = {
+  v: 1;
+  actorId: string;
+  bundleHash: string;
+  issuedAt: number;
+  expiresAt: number;
+  targets: Record<string, PlannedTargetRecord>;
+};
+
+function derivePlanSecret(secret: string): Buffer {
+  return createHmac("sha256", secret).update("bot-thk:notion-import-plan:v1").digest();
+}
+
+function timingSafeMatch(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+}
+
+export function createImportPlanToken(payload: ImportPlanPayload, rawSecret: string): string {
+  const key = derivePlanSecret(rawSecret);
+  const data = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+  const signature = createHmac("sha256", key).update(data).digest("base64url");
+  return `${data}.${signature}`;
+}
+
+export function parseImportPlanToken(token: string, rawSecret: string): ImportPlanPayload | null {
+  const dot = token.lastIndexOf(".");
+  if (dot === -1) return null;
+  const data = token.slice(0, dot);
+  const signature = token.slice(dot + 1);
+  const key = derivePlanSecret(rawSecret);
+  const expectedSignature = createHmac("sha256", key).update(data).digest("base64url");
+  if (!timingSafeMatch(signature, expectedSignature)) return null;
+  try {
+    const json = Buffer.from(data, "base64url").toString("utf8");
+    const parsed = JSON.parse(json);
+    if (!parsed || parsed.v !== 1 || typeof parsed.actorId !== "string" || typeof parsed.bundleHash !== "string" || typeof parsed.targets !== "object") {
+      return null;
+    }
+    return parsed as ImportPlanPayload;
+  } catch {
+    return null;
+  }
+}
+
+function computeBundleHash(bundle: unknown): string {
+  const hash = createHash("sha256");
+  if (typeof bundle === "object" && bundle !== null && "pages" in bundle && Array.isArray(bundle.pages)) {
+    for (const page of bundle.pages) {
+      if (typeof page === "object" && page !== null && "id" in page) {
+        hash.update(String((page as { id?: unknown }).id));
+        hash.update("\0");
+        hash.update(JSON.stringify((page as { properties?: unknown }).properties ?? {}));
+        hash.update("\0");
+        hash.update(JSON.stringify((page as { blocks?: unknown }).blocks ?? []));
+        hash.update("\0");
+      }
+    }
+  }
+  return hash.digest("hex");
 }
 
 /**
@@ -229,6 +302,7 @@ type WriteOutcome = {
   articleId: string | null;
   slug: string;
   digest: string | null;
+  newRevision?: number;
 };
 
 /**
@@ -259,8 +333,9 @@ async function writeEdition(args: {
   workSlug: string | null;
   isPrimary: boolean;
   tagIds: readonly string[];
+  expectedRevision?: number | null;
 }): Promise<WriteOutcome> {
-  const { actorId, deps, edition, link, isPrimary, tagIds } = args;
+  const { actorId, deps, edition, link, isPrimary, tagIds, expectedRevision } = args;
   const base: NotionImportPageReport = {
     externalId: edition.pageId,
     title: edition.draft.title,
@@ -307,6 +382,7 @@ async function writeEdition(args: {
       articleId: created.id,
       slug: created.slug,
       digest: edition.digest,
+      newRevision: created.importRevision,
     };
   }
 
@@ -331,18 +407,37 @@ async function writeEdition(args: {
     slug = current.slug;
   }
 
-  const updated = await deps.updateArticle({
-    ...serviceFields(edition, tagIds),
-    articleId: targetId,
-    actorId,
-    slug,
-  });
-  return {
-    report: { ...base, action: "update", slug: updated.slug, articleId: updated.id, detail: "updated" },
-    articleId: updated.id,
-    slug: updated.slug,
-    digest: edition.digest,
-  };
+  try {
+    const updated = await deps.updateArticle({
+      ...serviceFields(edition, tagIds),
+      articleId: targetId,
+      actorId,
+      slug,
+      ...(expectedRevision !== undefined && expectedRevision !== null ? { expectedRevision } : {}),
+    });
+    return {
+      report: { ...base, action: "update", slug: updated.slug, articleId: updated.id, detail: "updated" },
+      articleId: updated.id,
+      slug: updated.slug,
+      digest: edition.digest,
+      newRevision: updated.importRevision,
+    };
+  } catch (error) {
+    if (error instanceof ArticleConflictError) {
+      return {
+        report: {
+          ...base,
+          action: "refused",
+          articleId: targetId,
+          detail: "the article was modified since preview; preview again before retrying",
+        },
+        articleId: targetId,
+        slug: edition.slug,
+        digest: null,
+      };
+    }
+    throw error;
+  }
 }
 
 /**
@@ -361,9 +456,31 @@ export async function importNotionBundle(input: {
   deps: NotionImportDeps;
   copyImage?: NotionImageCopier;
   now?: () => Date;
+  planToken?: string;
+  planSecret?: string;
 }): Promise<NotionImportReport> {
   const now = input.now ?? (() => new Date());
   const bundle = parseNotionBundle(input.bundle);
+  const rawSecret = input.planSecret ?? "notion-import-plan-secret-fallback-at-least-32b";
+  const bundleHash = computeBundleHash(bundle);
+
+  let verifiedPlan: ImportPlanPayload | null = null;
+  if (input.planToken !== undefined) {
+    verifiedPlan = parseImportPlanToken(input.planToken, rawSecret);
+    if (!verifiedPlan) {
+      throw new NotionImportRequestError("The import plan token is invalid or has been tampered with; preview again.");
+    }
+    if (verifiedPlan.actorId !== input.actorId) {
+      throw new NotionImportRequestError("The import plan belongs to another author; preview again.");
+    }
+    if (verifiedPlan.expiresAt < now().getTime()) {
+      throw new NotionImportRequestError("The import plan has expired; preview again.");
+    }
+    if (verifiedPlan.bundleHash !== bundleHash) {
+      throw new NotionImportRequestError("The import bundle has changed since preview; preview again.");
+    }
+  }
+
   // Standalone Markdown files have no global Notion page ID. Namespace their
   // filename identities by authenticated author, never by a client claim.
   for (const page of bundle.pages) {
@@ -464,6 +581,7 @@ export async function importNotionBundle(input: {
 
   const pages: NotionImportPageReport[] = [];
   const summary = blank();
+  const planTargetsMap: Record<string, PlannedTargetRecord> = {};
 
   for (const refused of plan.refused) {
     pages.push({
@@ -544,12 +662,23 @@ export async function importNotionBundle(input: {
         }
         continue;
       }
+      let workExpectedRevision: number | null = null;
+      const targetWorkId = primaryLink?.articleId ?? null;
+      if (targetWorkId !== null) {
+        const targetArticle = await input.deps.getMyArticle({ articleId: targetWorkId, actorId: input.actorId, locale: work.primary.locale });
+        workExpectedRevision = targetArticle?.importRevision ?? null;
+      }
       for (const edition of [work.primary, ...work.translations]) {
         const link = links.get(edition.pageId);
         // A new edition of a work that already exists is written *onto* that work,
         // so it is an update — the same thing the apply path does.
         const target = link?.articleId ?? (edition === work.primary ? null : primaryLink?.articleId ?? null);
         const action: NotionImportAction = edition.unchanged ? "skip" : target === null ? "create" : "update";
+        planTargetsMap[edition.pageId] = {
+          targetArticleId: target,
+          expectedRevision: workExpectedRevision,
+          action,
+        };
         pages.push({
           externalId: edition.pageId,
           title: edition.draft.title,
@@ -571,11 +700,32 @@ export async function importNotionBundle(input: {
       continue;
     }
 
+    if (verifiedPlan) {
+      const plannedPrimary = verifiedPlan.targets[work.primary.pageId];
+      if (plannedPrimary?.action === "create" && primaryLink !== undefined) {
+        for (const edition of [work.primary, ...work.translations]) {
+          pages.push({
+            externalId: edition.pageId,
+            title: edition.draft.title,
+            locale: edition.locale,
+            action: "refused",
+            slug: "",
+            articleId: null,
+            detail: "the work was created concurrently since preview; preview again before retrying",
+            issues: edition.issues,
+          });
+          summary.refused += 1;
+        }
+        continue;
+      }
+    }
+
     // Apply. The primary edition decides the address and the article id;
     // translations inherit both.
     let workSlug: string | null = work.primary.unchanged ? linkedSlug : null;
     let workArticleId: string | null = work.primary.unchanged ? (primaryLink?.articleId ?? null) : null;
     let primaryFailed = false;
+    let currentWorkRevision: number | null | undefined = verifiedPlan?.targets[work.primary.pageId]?.expectedRevision ?? undefined;
 
     for (const originalEdition of [work.primary, ...work.translations]) {
       let edition = originalEdition;
@@ -617,6 +767,21 @@ export async function importNotionBundle(input: {
         let incomplete = false;
         const current = link && link.ownerId === input.actorId
           ? await input.deps.getMyArticle({ articleId: link.articleId, actorId: input.actorId, locale: edition.locale }) : null;
+        if (verifiedPlan && currentWorkRevision !== undefined && currentWorkRevision !== null && current && current.importRevision !== currentWorkRevision) {
+          primaryFailed = isPrimary;
+          pages.push({
+            externalId: edition.pageId,
+            title: edition.draft.title,
+            locale: edition.locale,
+            action: "refused",
+            slug: workSlug ?? edition.slug,
+            articleId: link?.articleId ?? null,
+            detail: "the article was modified since preview; preview again before retrying",
+            issues: edition.issues,
+          });
+          summary.refused += 1;
+          continue;
+        }
         const mayCopy = !link || !!current;
         if (mayCopy) {
           // For an incomplete retry of the exact same source, reuse the local
@@ -652,6 +817,7 @@ export async function importNotionBundle(input: {
           workArticleId,
           tagIds: tagIdsFor(edition, tagIds),
           workSlug: isPrimary ? null : workSlug,
+          expectedRevision: currentWorkRevision,
         });
         if (outcome.report.action === "refused") {
           primaryFailed = isPrimary;
@@ -677,6 +843,11 @@ export async function importNotionBundle(input: {
           workSlug = outcome.slug;
           workArticleId = outcome.articleId;
         }
+        if (outcome.newRevision !== undefined) {
+          currentWorkRevision = outcome.newRevision;
+        } else if (currentWorkRevision !== undefined && currentWorkRevision !== null) {
+          currentWorkRevision += 1;
+        }
         if (isPrimary && recovered.has(edition.pageId)) {
           outcome.report.detail += "; recovered missing import link";
         }
@@ -699,6 +870,19 @@ export async function importNotionBundle(input: {
         summary.failed += 1;
       }
     }
+  }
+
+  if (!input.apply) {
+    const planPayload: ImportPlanPayload = {
+      v: 1,
+      actorId: input.actorId,
+      bundleHash,
+      issuedAt: now().getTime(),
+      expiresAt: now().getTime() + 15 * 60 * 1000,
+      targets: planTargetsMap,
+    };
+    const planToken = createImportPlanToken(planPayload, rawSecret);
+    return { applied: false, database: bundle.database, summary, pages, planToken };
   }
 
   return { applied: input.apply, database: bundle.database, summary, pages };

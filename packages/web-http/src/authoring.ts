@@ -331,6 +331,9 @@ export async function handleAuthoringNotionImportRequest(
   if (body.value.apply !== undefined && typeof body.value.apply !== "boolean") {
     return notForwarded(errorResponse("BAD_USER_INPUT", "`apply` must be a boolean when present.", 400));
   }
+  if (body.value.planToken !== undefined && (typeof body.value.planToken !== "string" || body.value.planToken.length === 0 || body.value.planToken.length > 32768)) {
+    return notForwarded(errorResponse("BAD_USER_INPUT", "`planToken` must be a non-empty string when present.", 400));
+  }
   if (!isRecord(body.value.bundle)) {
     return notForwarded(errorResponse("BAD_USER_INPUT", "A `bundle` object is required.", 400));
   }

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { NOTION_IMPORT_PROVIDER, importNotionBundle, type NotionImportDeps } from "./notion-import.ts";
+import { ArticleConflictError } from "../domain/errors.ts";
+import { NOTION_IMPORT_PROVIDER, NotionImportRequestError, importNotionBundle, type NotionImportDeps } from "./notion-import.ts";
 import type { StoredArticle, StoredExternalContentLink, StoredTaxonomy } from "./persistence-ports.ts";
 
 /**
@@ -62,6 +63,7 @@ function stubDeps(options: { links?: StoredExternalContentLink[] } = {}) {
         contentBlocks: input.contentBlocks as never, contentBlocksVersion: input.contentBlocksVersion ?? 0,
         createdAt: "2026-11-01T00:00:00.000Z", updatedAt: "2026-11-01T00:00:00.000Z",
         publishedAt: input.publish === true ? "2026-10-08T00:00:00.000Z" : null,
+        importRevision: 0,
       } as StoredArticle;
       articles.set(id, article);
       if (input.idempotencyKey) createKeys.set(`${input.authorId}|${input.idempotencyKey}`, id);
@@ -71,6 +73,11 @@ function stubDeps(options: { links?: StoredExternalContentLink[] } = {}) {
     async updateArticle(input) {
       const current = articles.get(input.articleId);
       assert.ok(current, "an update must address a work the stub already has");
+      if (input.expectedRevision !== undefined && input.expectedRevision !== null) {
+        if (BigInt(current.importRevision) !== BigInt(input.expectedRevision)) {
+          throw new ArticleConflictError("The article has been modified since it was read.");
+        }
+      }
       const article: StoredArticle = {
         ...current,
         title: input.title,
@@ -79,6 +86,7 @@ function stubDeps(options: { links?: StoredExternalContentLink[] } = {}) {
         contentBlocks: input.contentBlocks as never,
         slug: input.slug,
         updatedAt: "2026-11-02T00:00:00.000Z",
+        importRevision: current.importRevision + 1,
       } as StoredArticle;
       articles.set(input.articleId, article);
       written.push(`update ${input.articleId} ${article.slug}`);
@@ -182,20 +190,68 @@ test("a changed page updates the work it already belongs to and keeps its addres
   assert.match(String([...deps.articles.values()][0]?.contentBlocks), /第二版/, "the body is the new one");
 });
 
-// Characterization of a known data-loss risk, not desired behavior. Replace this
-// with a refusal assertion when preview-bound atomic version checks are shipped.
-test("current importer does not protect edits made after a dry run", async () => {
+test("preview-bound import refuses to overwrite edits made after a dry run", async () => {
   const deps = stubDeps();
   const initial = bundle(page("page-1", "墙壁", "第一版"));
   const changed = bundle(page("page-1", "墙壁", "来源更新"));
   await importNotionBundle({ actorId: "author-1", bundle: initial, apply: true, deps, now: at });
   const dry = await importNotionBundle({ actorId: "author-1", bundle: changed, apply: false, deps, now: at });
   assert.equal(dry.summary.update, 1);
+  assert.ok(dry.planToken, "dry run generates a planToken");
   const article = [...deps.articles.values()][0]!;
-  deps.articles.set(article.id, { ...article, contentBlocks: "author edits after preview", updatedAt: "2026-11-04T00:00:00.000Z" });
-  const applied = await importNotionBundle({ actorId: "author-1", bundle: changed, apply: true, deps, now: at });
-  assert.equal(applied.summary.update, 1);
-  assert.doesNotMatch(String(deps.articles.get(article.id)?.contentBlocks), /author edits after preview/);
+  deps.articles.set(article.id, {
+    ...article,
+    contentBlocks: "author edits after preview" as never,
+    updatedAt: "2026-11-04T00:00:00.000Z",
+    importRevision: article.importRevision + 1,
+  });
+  const applied = await importNotionBundle({
+    actorId: "author-1",
+    bundle: changed,
+    apply: true,
+    deps,
+    now: at,
+    planToken: dry.planToken,
+  });
+  assert.equal(applied.summary.refused, 1);
+  assert.equal(applied.summary.update, 0);
+  assert.match(applied.pages[0]?.detail ?? "", /modified since preview/);
+  assert.match(String(deps.articles.get(article.id)?.contentBlocks), /author edits after preview/, "concurrent desk edits are preserved");
+});
+
+test("preview plan token rejects modified bundle or expired token", async () => {
+  const deps = stubDeps();
+  const initial = bundle(page("page-1", "墙壁", "第一版"));
+  const changed = bundle(page("page-1", "墙壁", "来源更新"));
+  await importNotionBundle({ actorId: "author-1", bundle: initial, apply: true, deps, now: at });
+  const dry = await importNotionBundle({ actorId: "author-1", bundle: changed, apply: false, deps, now: at });
+  assert.ok(dry.planToken);
+
+  // Bundle modified since preview
+  const different = bundle(page("page-1", "墙壁", "突然又改了"));
+  await assert.rejects(
+    () => importNotionBundle({ actorId: "author-1", bundle: different, apply: true, deps, now: at, planToken: dry.planToken }),
+    (err: unknown) => err instanceof NotionImportRequestError && /changed since preview/.test(err.message),
+  );
+
+  // Tampered token
+  await assert.rejects(
+    () => importNotionBundle({ actorId: "author-1", bundle: changed, apply: true, deps, now: at, planToken: dry.planToken + "tampered" }),
+    (err: unknown) => err instanceof NotionImportRequestError && /invalid or has been tampered with/.test(err.message),
+  );
+
+  // Expired token (16 minutes later)
+  const later = () => new Date(at().getTime() + 16 * 60 * 1000);
+  await assert.rejects(
+    () => importNotionBundle({ actorId: "author-1", bundle: changed, apply: true, deps, now: later, planToken: dry.planToken }),
+    (err: unknown) => err instanceof NotionImportRequestError && /expired/.test(err.message),
+  );
+
+  // Different author
+  await assert.rejects(
+    () => importNotionBundle({ actorId: "author-2", bundle: changed, apply: true, deps, now: at, planToken: dry.planToken }),
+    (err: unknown) => err instanceof NotionImportRequestError && /belongs to another author/.test(err.message),
+  );
 });
 
 test("a skipped re-import reports the address the work actually has", async () => {

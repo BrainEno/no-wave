@@ -86,3 +86,22 @@ test("an editor state without any text content reports empty content", () => {
   assert.equal(input, null);
   assert.match(error ?? "", /at least one block with text content/);
 });
+
+test("expectedRevision must be a non-negative integer when supplied", () => {
+  const valid = normalizeArticleWriteBody(createBody({ slug: "slug-1", publish: true, expectedRevision: 3 }), true);
+  assert.equal(valid.error, null);
+  assert.equal(valid.input?.expectedRevision, 3);
+
+  const zero = normalizeArticleWriteBody(createBody({ slug: "slug-1", publish: true, expectedRevision: 0 }), true);
+  assert.equal(zero.error, null);
+  assert.equal(zero.input?.expectedRevision, 0);
+
+  const negative = normalizeArticleWriteBody(createBody({ slug: "slug-1", publish: true, expectedRevision: -1 }), true);
+  assert.match(negative.error ?? "", /expectedRevision must be a non-negative integer/);
+
+  const float = normalizeArticleWriteBody(createBody({ slug: "slug-1", publish: true, expectedRevision: 1.5 }), true);
+  assert.match(float.error ?? "", /expectedRevision must be a non-negative integer/);
+
+  const stringVal = normalizeArticleWriteBody(createBody({ slug: "slug-1", publish: true, expectedRevision: "1" }), true);
+  assert.match(stringVal.error ?? "", /expectedRevision must be a non-negative integer/);
+});
