@@ -58,6 +58,43 @@ Two defects fell out of the migration rather than being looked for: `listTaxonom
 - `updateArticleComment({ commentId, actorId, content, contentBlocks, contentBlocksVersion, locale })` replaces a comment's text and stamps the new nullable `edited_at`, in one write, under the row lock the delete uses. It never touches `parent_comment_id`, `created_at`, `author_id` or the idempotency columns, and it writes no notification: a correction is not an announcement, and re-notifying on every edit would let an author page a thread at will. A foreign comment is the same authorization error the delete raises, an unknown id is `null` (REST: `404`), and the previous text is not retained — there is no revision history in v1 ([ADR 0031](decisions/0031-comment-edits.md)). The column is part of the portable entity, so a provider-migration replay carries a correction rather than the original wording.
 - `listArticleCommentAuthorIds({ articleId, limit })` returns everyone who has commented on a work, once each, ordered by their first comment and bounded by `limit`. Deleting a work eventually deletes its comments, and those are other people's words: the service layer uses this list to write each commenter one notification naming the date the sweep will remove them. There is no scheduler that could warn them later, so the deletion itself is the only moment the system can reach them; a failure to notify never fails the deletion.
 
+### External import provenance and atomic work commits
+
+- Edition identity is `(provider, external_id, locale)`, but ownership is global
+  to `(provider, external_id)`: all existing locale rows have one `owner_id`.
+  Same-owner multiple locales are valid. Both direct INSERT/ownership-key UPDATE
+  and concurrent independent connections must enforce this in the database, not
+  just through an application preflight or mutex.
+- PostgreSQL migration **0036** uses `btree_gist` and
+  `external_content_links_page_owner_excl` (equal provider/page, unequal owner).
+  SQLite migration **0023** uses INSERT/UPDATE triggers under its ordinary WAL,
+  busy-timeout and single-writer semantics. Legacy contradictory rows fail the
+  migration transaction without changing provenance or adding a success history
+  row. Operator privileges, read-only audit and explicit repair/retry are in
+  [ADR 0037](decisions/0037-import-provenance.md).
+- Keep the existing signed preview and revision comparisons inside the per-work
+  transaction: SQLite synchronous `BEGIN IMMEDIATE`; PostgreSQL sorted page
+  advisory locks and row locks, with child savepoints on both providers. The
+  database ownership rule complements, rather than replaces, those security and
+  stale-state protections. No second transaction architecture is introduced.
+- A work's article/editions, tags/translations/associations, media references,
+  provenance and provider-journal captures are atomic. Late edition, provenance
+  or capture failure leaves no new orphan tag/article/link or losing journal row;
+  pre-existing and shared data must remain untouched. Unrelated works may commit.
+- Only the exact ownership exclusion/trigger violation maps to a typed
+  `ImportConflictError` and clear `refused` report; unrelated exclusions,
+  triggers, CHECK/FK, storage and capture failures stay failures. Do not expose
+  another owner's identity or private work ID in reports or signed tokens.
+- Successful media uploads precede the database transaction. Report leftover
+  assets instead of silently deleting them; the owner can list/remove unused
+  media through existing management, while foreign and referenced/shared assets
+  retain their existing authorization/deletion protection.
+- Real-provider contract coverage is in
+  `persistence/notion-page-ownership.integration.test.ts` alongside the retained
+  `transport/rest/import-version-protection.integration.test.ts`. Independent
+  file-backed SQLite workers and distinct PostgreSQL backends must prove blocking
+  and the single winner, not merely invoke two promises on a shared connection.
+
 ### User-generated hashtags and categories
 
 - Hashtags are data, not a compiled enum or fixed seed list.

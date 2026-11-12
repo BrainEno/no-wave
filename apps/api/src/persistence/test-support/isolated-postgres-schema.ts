@@ -4,7 +4,7 @@ import { createPostgresClient } from "../postgres.ts";
 import type { PgDatabase } from "../postgres-driver.ts";
 
 /** A disposable, fully migrated schema independent of other tests' fixtures. */
-export async function createIsolatedPostgresTestSchema(connectionString: string): Promise<{ sql: PgDatabase; cleanup(): Promise<void> }> {
+export async function createIsolatedPostgresTestSchema(connectionString: string, options: { migrationDirectory?: string } = {}): Promise<{ sql: PgDatabase; cleanup(): Promise<void> }> {
   const admin = await createPostgresClient({ connectionString, max: 1 });
   const schema = `nw_replay_${randomUUID().replaceAll("-", "")}`;
   let isolated: PgDatabase | undefined;
@@ -13,11 +13,12 @@ export async function createIsolatedPostgresTestSchema(connectionString: string)
     // Install the shared extension in public without migrating public tables;
     // dropping this isolated schema must not remove an extension other tests use.
     await admin.unsafe("CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public");
+    await admin.unsafe("CREATE EXTENSION IF NOT EXISTS btree_gist WITH SCHEMA public");
     await admin.unsafe(`CREATE SCHEMA ${schema}`);
     created = true;
     const { default: postgres } = await import("postgres");
     isolated = postgres(connectionString, { max: 8, connection: { search_path: `${schema},public`, application_name: "bot-thk-replay-tests" } });
-    await runMigrations(isolated);
+    await runMigrations(isolated, { directory: options.migrationDirectory });
     const sql = isolated;
     return {
       sql,

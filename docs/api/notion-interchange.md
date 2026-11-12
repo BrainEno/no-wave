@@ -397,9 +397,23 @@ If an `English` target is missing or more than two pages form a translation grou
 the affected pages are refused before writing. The report counts an added edition
 as an `update`: one work, one article, one address.
 
+**Page ownership is global across locales.** Every existing row for
+`(provider, external_id)` shares one owner; changing locale cannot let another
+account claim the page. PostgreSQL migration **0036** enforces this with a named
+`btree_gist` exclusion; SQLite migration **0023** uses database INSERT/UPDATE
+triggers, including for direct SQL and independent concurrent connections.
+Same-owner multi-locale rows are valid, without relaxing the planner's existing
+locale/grouping rules. A losing import is `refused` with an explicit "already
+owned by another account" explanation, not raw SQL or a private owner's/work's
+identity. The entire losing work, including new tags and journal captures, is
+rolled back. Unrelated database failures remain `failed`. Upgrade prerequisites
+and fail-fast historical conflict repair are documented in
+[ADR 0037](../architecture/decisions/0037-import-provenance.md).
+
 **Missing pages are not deleted or reassigned.** A page linked to another
 account is refused (`this page is already imported into another account`) rather
-than copied — a Notion page names one work in the world. A link whose work was
+than copied — a Notion page names one work in the world, regardless of locale.
+A link whose work was
 deleted is refused rather than recreated. A page that cannot become a work
 (`empty-body`, `empty-title`) is refused with its issue codes while the rest of the
 bundle still lands.
@@ -471,15 +485,22 @@ revision updates the work and saves its missing link. Deleted works are refused
 until restored, and a translation linked to a different work or account blocks
 recovery rather than being silently moved. Competing imports of the same source,
 including different locales/accounts, serialize and the loser is refused before
-any of its article/tag/link writes commit. This workflow is not a database-wide
-cross-locale ownership constraint: bypassing SQL and standalone link writers are
-still the separate hardening work in #270, not a completed promise from draft #303.
+any of its article/tag/link writes commit. Migrations 0036 PostgreSQL / 0023
+SQLite additionally enforce the cross-locale owner invariant for bypassing SQL
+and standalone link writers; only the exact ownership violation becomes a clear
+refusal. This extends #305's atomic importer rather than restoring draft #303's
+old non-atomic path.
 A network timeout does not prove that nothing was written. The web proxy gives this route a longer default timeout, but
 an explicitly configured `API_TIMEOUT_MS` still takes precedence. The seed script
 remains separate and does not copy images.
 
 ### Where the guarantees are tested
 
+- `apps/api/src/persistence/notion-page-ownership.integration.test.ts` — real
+  independent SQLite/PostgreSQL full-import and direct-SQL races, INSERT/UPDATE
+  invariants, legacy migration failure/repair/retry, narrow error mapping, eleven
+  whole-work rollback stages per provider and HTTP owner-only orphan-media
+  visibility/removal with shared references protected.
 - `apps/api/src/application/notion-import.test.ts` — decisions against a stub: a
   dry run touches no writing service; an apply records owner and digest; the same
   bundle twice writes nothing at all; a changed page updates and keeps its address;
@@ -652,7 +673,7 @@ credential), and then exactly what the desk does:
 3. client                    build { "version": 1, "database": {…}, "pages": […] }
 4. client → this API         POST /api/v1/imports/notion  { "bundle": … }            ← dry run, writes nothing
 5. client                    show pages[].action / issues / detail to the user
-6. client → this API         POST /api/v1/imports/notion  { "bundle": …, "apply": true }
+6. client → this API         POST /api/v1/imports/notion  { "bundle": …, "apply": true, "planToken": <step 4 token> }
 7. client                    show the report again; it is now what happened
 ```
 

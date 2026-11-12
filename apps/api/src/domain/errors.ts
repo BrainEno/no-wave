@@ -129,7 +129,14 @@ export class ImportPlanInvalidError extends DomainError {
   constructor() { super("ImportPlanInvalidError", "IMPORT_PLAN_INVALID", "The import preview is missing, invalid or expired. Preview again before applying."); }
 }
 export class ImportConflictError extends DomainError {
-  constructor() { super("ImportConflictError", "IMPORT_CONFLICT", "The work or its import provenance changed. Nothing in this work was written; preview again."); }
+  readonly reason: "stale" | "ownership" | "provenance";
+  constructor(reason: "stale" | "ownership" | "provenance" = "stale") {
+    const detail = reason === "ownership" ? "This Notion page is already owned by another account." :
+      reason === "provenance" ? "The Notion page is already linked to another work or account." :
+      "The work or its import provenance changed.";
+    super("ImportConflictError", "IMPORT_CONFLICT", `${detail} Nothing in this work was written; preview again.`);
+    this.reason = reason;
+  }
 }
 export class ArticleSlugConflictError extends DomainError {
   constructor(message = "An article with this slug already exists.") {

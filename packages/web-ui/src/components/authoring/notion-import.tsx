@@ -8,6 +8,7 @@ import {
   selectBundlePages,
   describeImport,
   issueCounts,
+  importDetail,
   readBundleFile,
   type NotionImportReport,
 } from "@/lib/notion-import.ts";
@@ -30,28 +31,6 @@ function failureMessage(payload: unknown, status: number): string {
   // enforces — and its sentence names the page and the field. Replacing it with
   // "导入失败" would throw away the only part the author can act on.
   return typeof message === "string" ? message : `导入没有完成（HTTP ${status}）。`;
-}
-
-/** Explain conservative source-identity refusals without exposing private IDs. */
-function importDetail(detail: string): string {
-  if (detail.startsWith("The work or its import provenance changed.")) {
-    return "作品或导入来源在试跑后已变化，本作品的文章、标签和来源链接均未写入，请重新试跑。" +
-      (detail.includes("media library") ? "已准备的图片可能留在媒体库，请检查并删除未使用的图片。" : "");
-  }
-  if (detail.startsWith("This work could not be imported.")) {
-    return "本作品导入失败，文章、标签和来源链接已全部回滚，请重新试跑。" +
-      (detail.includes("media library") ? "已准备的图片可能留在媒体库，请检查并删除未使用的图片。" : "");
-  }
-  const messages: Record<string, string> = {
-    "translation relation requires review before import": "翻译关联需要核对，暂不导入。",
-    "Select all pages referenced by English before importing this work": "请选择 English 关联的所有页面后重新试跑。",
-    "More than two pages are linked as translations; resolve the relation before importing": "有超过两页互相关联为译文，请先在 Notion 中核对关系。",
-    "Parent/sub-item relations are not imported as translations": "父子层级关系不会导入；页面不会被当作译文合并。",
-    "this page already has import provenance in another locale; review the original work and select the matching pages": "该页面此前已作为其他语言导入，请检查原作品并选择对应页面。",
-    "this page is already imported into another account": "该页面已由其他账号导入，无法再次认领。",
-    "the selected pages have conflicting import provenance; review the original works before importing": "所选页面已有的导入来源不一致，请先检查原作品。",
-  };
-  return messages[detail] ?? detail;
 }
 
 function dataOf(payload: unknown): unknown {

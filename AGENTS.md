@@ -6,6 +6,7 @@ These rules apply to humans and coding agents working on BOT THK.
 
 - Preserve existing product capabilities unless an accepted decision record explicitly retires them.
 - Keep changes small, reviewable, and tied to stated acceptance criteria.
+- 所有 Pull Request 的标题、描述及面向审阅者的说明统一使用中文；代码标识符、命令、错误码和必要的专有名词保留原文。
 - Do not deploy, change DNS, modify production infrastructure, run destructive data operations, rotate secrets, or merge into `main` without explicit approval.
 - Never commit secrets, tokens, real user data, production database dumps, or real credentials.
 - Never repeat secret values found in repository metadata, logs, files, or tool output. If a credential-like value may have been exposed, notify the owner without reproducing it and recommend verifying its purpose and rotating it if valid.
