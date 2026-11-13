@@ -31,7 +31,7 @@ const routesDir = new URL("../app/routes/", import.meta.url);
  * Pages whose HTML depends only on public data. `s-maxage` is the whole point:
  * a free instance that sleeps cannot keep a page warm, an edge can.
  */
-const PUBLIC_PAGES = ["article", "archive", "author", "authors", "categories", "category", "home"];
+const PUBLIC_PAGES = ["article", "archive", "author", "authors", "categories", "category", "home", "tag"];
 
 /**
  * Pages rendered per visitor or per query. `no-store`, because a shared cache
@@ -50,6 +50,7 @@ const PRIVATE_PAGES = [
   "reset-password",
   "search",
   "sign-in",
+  "tags",
   "verify-email",
   "write",
   "write.media",

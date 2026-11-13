@@ -128,7 +128,7 @@ On 2026-10-29, the owner approved public-page SSR, a client-interactive writing 
 
 - [x] Establish a localized, crawlable framework spike for home, article archive/detail and author pages.
 - [x] Replace fixture content with API-backed pages. Evidence: [public loaders](../../packages/web-ui/src/lib/public-pages.ts), [route table](../../apps/web-rr/app/routes.ts).
-- [ ] Implement hashtag listing/search/detail routes and article tag rendering.
+- [x] Implement hashtag listing/search/detail routes and article tag rendering. Evidence: [tag routes](../../apps/web-rr/app/routes/tag.tsx), [tag views](../../packages/web-ui/src/components/public/tag-view.tsx), [real browser journeys](../../e2e/tags.spec.ts), [read-only subscriptions and safety boundary](../architecture/public-tags.md).
 - [x] Implement the account/authentication interfaces. Evidence: [account route](../../apps/web-rr/app/routes/account.tsx), [auth route](../../apps/web-rr/app/routes/sign-in.tsx), [account route tests](../../apps/web-rr/test/web.test.ts).
 - [ ] Complete the core feature parity journey and its independent acceptance.
 - [ ] Apply the approved Cloud design artifacts to layouts, tokens, components and responsive behavior.

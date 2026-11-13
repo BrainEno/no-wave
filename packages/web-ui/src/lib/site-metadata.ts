@@ -1,5 +1,6 @@
 import { archivePath, articlePath, authorPath, homePath, supportedLocales, type ArticleView, type Locale } from "./content.ts";
 import { listPublicArticles } from "./api-content.ts";
+import { tagIndexPath } from "./tag-discovery.ts";
 
 /**
  * Sitemap and robots output, framework-neutral.
@@ -97,6 +98,7 @@ export async function loadSitemapEntries(
   for (const locale of supportedLocales) {
     entries.push({ url: new URL(homePath(locale), baseUrl).toString(), changeFrequency: "daily", priority: 1 });
     entries.push({ url: new URL(archivePath(locale), baseUrl).toString(), changeFrequency: "daily", priority: 0.8 });
+    entries.push({ url: new URL(tagIndexPath(locale), baseUrl).toString(), changeFrequency: "daily", priority: 0.5 });
 
     let offset = 0;
     for (let page = 0; page < maxPages; page += 1) {

@@ -28,6 +28,14 @@ export default [
   route("en/categories", "routes/categories.tsx", { id: "en-categories" }),
   route("categories/:slug", "routes/category.tsx"),
   route("en/categories/:slug", "routes/category.tsx", { id: "en-category" }),
+  route("tags", "routes/tags.tsx"),
+  route("en/tags", "routes/tags.tsx", { id: "en-tags" }),
+  route("tags/:slug", "routes/tag.tsx"),
+  route("en/tags/:slug", "routes/tag.tsx", { id: "en-tag" }),
+  // React Router dynamic segments must occupy the complete segment. The
+  // resource module accepts only feed.atom/feed.xml and privately rejects others.
+  route("tags/:slug/:feed", "routes/tag-feed.ts"),
+  route("en/tags/:slug/:feed", "routes/tag-feed.ts", { id: "en-tag-feed" }),
   route("search", "routes/search.tsx"),
   route("en/search", "routes/search.tsx", { id: "en-search" }),
   // 关注流（#198）：私有页，loader 只按 session marker 决定是否重定向到登录。

@@ -1,4 +1,5 @@
 import { repeatsArticleOpening } from "@/lib/article-standfirst.ts";
+import { ArticleTagLinks } from "@/components/public/tag-view.tsx";
 import { Link } from "@/lib/framework/link.tsx";
 import type { ReactNode } from "react";
 import { archivePath, articlePath, authorPath, getMessages, type ArticleContentBlock, type ArticleView, type Locale } from "@/lib/content.ts";
@@ -101,9 +102,10 @@ export function ArticlePageView({ article, newer, older, related }: ArticleDetai
         <article className="nw-rd" id="nw-article" data-form={poem ? "poem" : "prose"} aria-label={article.title}>
           {article.contentBlocks.map(renderBlock)}
           <span className="nw-end">{ui.reader.end}</span>
-          {article.categories.length || article.tags.length ? (
-            <p className="nw-m" style={{ textAlign: "center", marginTop: 24, textIndent: 0 }}>{[...article.categories, ...article.tags.map((tag) => `#${tag}`)].join(" · ")}</p>
+          {article.categories.length ? (
+            <p className="nw-m" style={{ textAlign: "center", marginTop: 24, textIndent: 0 }}>{article.categories.join(" · ")}</p>
           ) : null}
+          <ArticleTagLinks article={article} locale={locale} />
         </article>
         <aside className="nw-ra" aria-label={ui.reader.toc}>{toc.length >= 2 ? <ReaderToc items={toc} title={ui.reader.toc} /> : null}</aside>
       </div>

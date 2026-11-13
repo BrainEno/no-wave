@@ -278,6 +278,8 @@
 |---|---|---|
 | `/articles` | 发现 / 作品目录 | 类型标签、筛选、排序、分页 |
 | `/articles/:slug` | 作品阅读页 | 版式随作品类型变化 |
+| `/tags`、`/tags/:slug`（含 `/en`） | 公开标签发现 | Unicode 名称、URL 搜索／分页、真实 slug 回链；窄屏长名称可换行 |
+| `/tags/:slug/feed.atom`、`feed.xml`（含 `/en`） | 标签只读订阅 | head alternate 与正文原生链接；沿用 44px 触控目标，无需 JavaScript |
 | 尚无独立讨论页 | 作品讨论页 | 作者回应 / 精读 / 短评三层 |
 | `/authors/:id` | 作者主页 | 简介、代表作、全部作品、相关讨论 |
 | `/write` | 投稿 / 发布 | 写作、发布设置、预览、提交审核 |

@@ -8,7 +8,7 @@ import { promisify } from "node:util";
 import { isolatedEnvironment } from "../../scripts/e2e-runner.ts";
 import { freePort } from "../../scripts/portable-stack.ts";
 
-export type FontStack = { apiBaseUrl: string; webBaseUrl: string; close(): Promise<void> };
+export type FontStack = { apiBaseUrl: string; webBaseUrl: string; databasePath: string; close(): Promise<void> };
 
 /**
  * Performance fixtures must not depend on which other journeys created related
@@ -67,6 +67,6 @@ export async function startFontStack(): Promise<FontStack> {
     start("apps/api/src/server.ts", root, env);
     start("server.ts", join(root, "apps/web-rr"), { ...env, PORT: String(webPort) });
     await Promise.all([ready(`${apiBaseUrl}/ready`), ready(`${webBaseUrl}/healthz`)]);
-    return { apiBaseUrl, webBaseUrl, close };
+    return { apiBaseUrl, webBaseUrl, databasePath: join(directory, "fonts.sqlite"), close };
   } catch (error) { await close(); throw error; }
 }

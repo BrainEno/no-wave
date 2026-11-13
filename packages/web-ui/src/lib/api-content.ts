@@ -1,4 +1,5 @@
 import { resolveUpstreamTimeoutMs, withUpstreamDeadline } from "@bot-thk/web-http";
+import { isTagSlug, type TagReference, type TagView } from "./tag-discovery.ts";
 import type { ArticleContentBlock, ArticleSort, ArticleView, AuthorView, Locale, WorkType } from "./content.ts";
 import {
   defaultLocale,
@@ -19,6 +20,7 @@ export type CategoryView = { slug: string; name: string; description: string; lo
 export type AuthorSummary = AuthorView & { followerCount: number; workCount: number };
 export type ArticleListOptions = { locale?: Locale; query?: string; authorUsername?: string | null; sort?: ArticleSort; limit?: number; offset?: number };
 type CategoryListOptions = { locale?: Locale; query?: string; limit?: number; offset?: number };
+export type TagListOptions = { locale?: Locale; query?: string; limit?: number; offset?: number };
 type AuthorListOptions = { locale?: Locale; query?: string; limit?: number; offset?: number };
 type ApiObject = Record<string, unknown>;
 type ApiPayload = { data?: unknown; error?: unknown };
@@ -35,10 +37,15 @@ type ApiContentClient = {
   listCategories(options?: CategoryListOptions): Promise<CategoryView[]>;
   getCategoryBySlug(slug: string, locale?: Locale): Promise<CategoryView | null>;
   listCategoryArticles(slug: string, locale?: Locale, limit?: number, offset?: number): Promise<ArticleView[]>;
+  listTags(options?: TagListOptions): Promise<TagView[]>;
+  getTagBySlug(slug: string, locale?: Locale): Promise<TagView | null>;
+  listTagArticles(slug: string, locale?: Locale, limit?: number, offset?: number): Promise<ArticleView[] | null>;
 };
 
 const WORK_TYPES = ["novel", "short_story", "poetry", "essay", "criticism", "literary_criticism", "nonfiction", "serial", "other"] as const;
 let legacyGraphqlWarningShown = false;
+// Preserve HTTP absence separately from a malformed successful `data: null`.
+const CONTENT_NOT_FOUND = Symbol("content-not-found");
 
 function isRecord(value: unknown): value is ApiObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -52,6 +59,28 @@ function mapNames(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.map((item): unknown => isRecord(item) ? item.name : undefined)
     .filter((name): name is string => typeof name === "string");
+}
+
+function mapTagReferences(value: unknown): TagReference[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => isRecord(item) && isTagSlug(item.slug) && typeof item.name === "string" && item.name.trim()
+    ? [{ slug: item.slug, name: item.name }] : []);
+}
+
+function mapTag(value: unknown, locale: Locale): TagView {
+  if (!isRecord(value) || !isTagSlug(value.slug) || typeof value.name !== "string" || !value.name.trim() ||
+      !Number.isSafeInteger(value.articleCount) || Number(value.articleCount) < 0 ||
+      (value.description !== undefined && value.description !== null && typeof value.description !== "string") ||
+      (value.locale !== undefined && value.locale !== locale)) {
+    throw new Error("The content API returned an invalid public tag.");
+  }
+  return { slug: value.slug, name: value.name, description: typeof value.description === "string" ? value.description : "",
+    locale, articleCount: Number(value.articleCount) };
+}
+
+function tagResourcePath(slug: string): string {
+  if (!isTagSlug(slug)) throw new Error("Invalid public tag slug.");
+  return `api/v1/tags/${encodeURIComponent(slug)}`;
 }
 
 function isContentBlock(value: unknown): value is ArticleContentBlock {
@@ -184,9 +213,11 @@ function mapArticle(article: unknown, locale: Locale): ArticleView | null {
     workType: isWorkType(article.workType) ? article.workType : "other",
     contentBlocks: parseContentBlocks(article.contentBlocks),
     publishedAt,
+    ...(typeof article.updatedAt === "string" ? { updatedAt: article.updatedAt } : {}),
     author,
     categories: mapNames(article.categories),
     tags: mapNames(article.tags),
+    tagReferences: mapTagReferences(article.tags),
     likeCount: typeof article.likeCount === "number" && Number.isFinite(article.likeCount) ? article.likeCount : 0,
     locale,
     availableLocales: [locale],
@@ -229,7 +260,7 @@ export function createApiContentClient(
       return { status: response.status, ok: true as const, payload: await response.json() };
     });
     if (!result.ok) {
-      if (allowNotFound && result.status === 404) return null;
+      if (allowNotFound && result.status === 404) return CONTENT_NOT_FOUND;
       throw new Error(`Content API request failed with HTTP ${result.status}.`);
     }
     const payload = result.payload;
@@ -292,6 +323,31 @@ export function createApiContentClient(
       const data = await request(`api/v1/categories/${encodeURIComponent(slug)}/articles`, { locale, limit, offset }, true);
       if (!Array.isArray(data)) return [];
       return data.map((article) => mapArticle(article, locale)).filter((article): article is ArticleView => article !== null);
+    },
+    async listTags({ locale = defaultLocale, query = "", limit = 100, offset = 0 }: TagListOptions = {}): Promise<TagView[]> {
+      const data = await request("api/v1/tags", { locale, query, limit, offset });
+      if (!Array.isArray(data)) throw new Error("The content API returned an invalid public tag list.");
+      return data.map((tag) => mapTag(tag, locale));
+    },
+    async getTagBySlug(slug: string, locale: Locale = defaultLocale): Promise<TagView | null> {
+      const data = await request(tagResourcePath(slug), { locale }, true);
+      return data === CONTENT_NOT_FOUND ? null : mapTag(data, locale);
+    },
+    async listTagArticles(slug: string, locale: Locale = defaultLocale, limit = 21, offset = 0): Promise<ArticleView[] | null> {
+      const data = await request(`${tagResourcePath(slug)}/articles`, { locale, limit, offset }, true);
+      if (data === CONTENT_NOT_FOUND) return null;
+      if (!Array.isArray(data)) throw new Error("The content API returned an invalid public tag article list.");
+      return data.map((value) => {
+        // The anonymous API query is authoritative. Refuse, rather than hide, a
+        // contract violation that would accidentally place a draft on this page.
+        if (!isRecord(value) || value.status !== "published") throw new Error("The content API returned a non-public tag article.");
+        if (value.locale !== undefined && value.locale !== locale) throw new Error("The content API returned an inconsistent tag article locale.");
+        if (typeof value.publishedAt !== "string" || !value.publishedAt) throw new Error("The content API returned invalid tag article publication metadata.");
+        if (value.updatedAt !== undefined && value.updatedAt !== null && typeof value.updatedAt !== "string") throw new Error("The content API returned invalid tag article modification metadata.");
+        const article = mapArticle(value, locale);
+        if (!article) throw new Error("The content API returned an invalid public tag article.");
+        return article;
+      });
     },
   });
 }
@@ -362,4 +418,19 @@ export async function getPublicCategory(slug: string, locale: Locale = defaultLo
 export async function listPublicCategoryArticles(slug: string, locale: Locale = defaultLocale, limit = 100, offset = 0): Promise<ArticleView[]> {
   const client = configuredClient();
   return client ? client.listCategoryArticles(slug, locale, limit, offset) : [];
+}
+
+export async function listPublicTags(options: TagListOptions = {}): Promise<TagView[]> {
+  const client = configuredClient();
+  return client ? client.listTags(options) : [];
+}
+
+export async function getPublicTag(slug: string, locale: Locale = defaultLocale): Promise<TagView | null> {
+  const client = configuredClient();
+  return client ? client.getTagBySlug(slug, locale) : null;
+}
+
+export async function listPublicTagArticles(slug: string, locale: Locale = defaultLocale, limit = 21, offset = 0): Promise<ArticleView[] | null> {
+  const client = configuredClient();
+  return client ? client.listTagArticles(slug, locale, limit, offset) : null;
 }
