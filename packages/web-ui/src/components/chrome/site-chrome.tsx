@@ -20,6 +20,7 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { ScrollSmoother } from "gsap/ScrollSmoother";
 import { archivePath, homePath, type Locale } from "@/lib/content.ts";
 import { getUi } from "@/lib/ui-copy.ts";
+import { tagIndexPath } from "@/lib/tag-discovery.ts";
 import { motionState } from "@/lib/motion-state.ts";
 import { setupPageMotion } from "@/components/motion/page-motion.ts";
 
@@ -32,7 +33,10 @@ function alternatePath(pathname: string, locale: Locale): string {
   const target: Locale = locale === "en" ? "zh-CN" : "en";
   const bare = locale === "en" ? (pathname.replace(/^\/en/, "") || "/") : pathname;
   if (/^\/articles\/[^/]+/.test(bare)) return archivePath(target);
-  if (/^\/(authors\/[^/]+|categories(\/[^/]+)?|articles|search)?$/.test(bare) || bare === "/") {
+  // As with an article, a tag's translated identity may not exist. The target
+  // directory is reachable without claiming a translation that was never read.
+  if (/^\/tags\/[^/]+/.test(bare)) return tagIndexPath(target);
+  if (/^\/(authors\/[^/]+|(?:categories|tags)(\/[^/]+)?|articles|search)?$/.test(bare) || bare === "/") {
     return target === "en" ? (bare === "/" ? "/en" : "/en" + bare) : bare;
   }
   return homePath(target);
@@ -110,6 +114,7 @@ function SiteFooter({ locale }: { locale: Locale }) {
           {/* A directory with no way in is a page nobody visits: the footer is
               where the reading index lives, so this is where the authors go. */}
           <Link href={authorsHref}>{ui.nav.authors}</Link>
+          <Link href={tagIndexPath(locale)}>{ui.nav.tags}</Link>
           <Link href={searchHref}>{ui.nav.search}</Link>
         </nav>
         <span>© {new Date().getFullYear()} {ui.footer.rights} · 简 / EN</span>

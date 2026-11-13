@@ -284,6 +284,12 @@ mark { background: var(--or); color: #0f0d0c; }
 .nw-catrow h2 { margin: 0 0 6px; font: 600 40px/1.25 var(--f-zh); }
 .nw-catrow:hover h2 { color: var(--or); }
 .nw-catrow p { margin: 0; font: 400 16px/1.8 var(--f-zh); color: var(--t2); }
+.nw-tag-list { list-style: none; padding: 0; margin: 0; }
+.nw-tag-row > span:nth-child(2) { min-inline-size: 0; overflow-wrap: anywhere; }
+.nw-tag-heading { font-size: clamp(56px, 9vw, 128px); line-height: 1.1; overflow-wrap: anywhere; }
+.nw-tag-back { display: inline-flex; align-items: center; min-height: 44px; font-weight: 700; font-size: 15px; }
+.nw-article-tags { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 16px; margin-top: 24px; }
+.nw-article-tags a, .nw-article-tags span { display: inline-flex; align-items: center; min-block-size: 44px; max-inline-size: 100%; overflow-wrap: anywhere; }
 .nw-sb input[type="search"] { display: block; width: 100%; border: 0; border-bottom: 3px solid var(--ink); background: none; padding: 8px 140px 12px 0; font: 600 clamp(40px, 7vw, 96px)/1.2 var(--f-zh); color: var(--ink); border-radius: 0; }
 .nw-sb input[type="search"]:focus-visible { outline: none; border-bottom-color: var(--or); }
 .nw-sb { position: relative; }

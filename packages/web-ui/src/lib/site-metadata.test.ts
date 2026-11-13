@@ -111,6 +111,16 @@ test("every locale publishes home, archive, article and author URLs, authors onc
   assert.ok(entries.every((entry) => entry.priority === undefined || (entry.priority >= 0 && entry.priority <= 1)));
 });
 
+test("tag directories enter the sitemap without adding taxonomy scans or arbitrary search URLs", async () => {
+  const calls: { locale: Locale; limit: number; offset: number }[] = [];
+  const entries = await loadSitemapEntries({ siteUrl: SITE, listArticles: async (options) => { calls.push(options); return []; } });
+  assert.deepEqual(calls, supportedLocales.map((locale) => ({ locale, limit: 100, offset: 0 })));
+  const tags = entries.filter((entry) => /\/tags$/.test(entry.url));
+  assert.deepEqual(tags.map((entry) => entry.url), [`${SITE}/tags`, `${SITE}/en/tags`]);
+  assert.ok(tags.every((entry) => entry.changeFrequency === "daily"));
+  assert.ok(entries.every((entry) => !entry.url.includes("?")));
+});
+
 test("the site origin is resolved once and the configured value always wins", () => {
   // `configuredSiteUrl()` is the single place a page may learn the deployment
   // origin. Before it existed, the home and archive pages canonicalised against

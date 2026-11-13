@@ -81,6 +81,7 @@ Moderation, analytics and real-time clients remain incomplete. Mail-dependent em
 - The local Web/API chain, the REST API contract tests, and the design-language documents are in place.
 - Identity lifecycle, profile editing, article/comment publishing, notification inbox, moderation role checks, and the Web auth cookie boundary are implemented.
 - Registration creates a default author profile in the same transaction, so a newly published work has a public byline; the writing desk can view and edit the pen name.
+- 标签目录、搜索、详情分页与作品回链已接入真实公开 API；标签页还提供只读 Atom／RSS 订阅。订阅仅包含对应语言最近 20 篇已发表作品，不包含草稿；见 [公开标签方案](docs/architecture/public-tags.md)。
 - The backend identity lifecycle is still an initial one. Mail-dependent verification/recovery are **off by default**, and moderation tools, real-time clients, and external push providers remain incomplete. A hardening pass is still required before a production launch.
 - The current Web UI is the single React Router implementation and is functional; its visual design is still a concept-stage workstream rather than a finished design system.
 - API authentication is Bearer-token based. Web clients authenticate through same-origin Web routes and receive an HttpOnly cookie; browser code does not hold a long-lived token in local storage.

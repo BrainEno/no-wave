@@ -1,3 +1,5 @@
+import type { TagReference } from "./tag-discovery.ts";
+
 export type Locale = "zh-CN" | "zh-TW" | "en";
 export type WorkType = "novel" | "short_story" | "poetry" | "essay" | "criticism" | "literary_criticism" | "nonfiction" | "serial" | "other";
 export type AuthorView = { username: string; displayName: string; bio: string; locale: Locale; availableLocales: Locale[] };
@@ -14,7 +16,11 @@ export type ArticleSort = "latest" | "popular";
 export type ArticleView = {
   slug: string; title: string; description: string; workType: WorkType;
   contentBlocks: ArticleContentBlock[]; publishedAt: string; author: AuthorView;
+  /** Optional public API modification instant; older payloads may omit it. */
+  updatedAt?: string;
   categories: string[]; tags: string[]; locale: Locale; availableLocales: Locale[];
+  /** Additive URL identity; legacy name-only payloads remain readable. */
+  tagReferences?: TagReference[];
   /**
    * How many times the work has been saved, ever — the number behind the
    * "most saved" shelf. The fixture registry has no saves to count, so it is
