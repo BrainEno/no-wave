@@ -14,8 +14,8 @@ export async function tagAuthor(request: APIRequestContext, api: string) {
   const profile = await request.put(`${api}/api/v1/me/profile`, { headers, data: { displayName: "标签作者", bio: "公开标签浏览验证。", locale: "zh-CN" } });
   expect(profile.status(), "creating the public author profile").toBe(200);
   return {
-    async tag(name: string, locale: "zh-CN" | "en" = "zh-CN"): Promise<CreatedTag> {
-      const result = await request.post(`${api}/api/v1/tags`, { headers, data: { name, locale } });
+    async tag(name: string): Promise<CreatedTag> {
+      const result = await request.post(`${api}/api/v1/tags`, { headers, data: { name, locale: "zh-CN" } });
       expect(result.status(), "creating a Unicode hashtag through the existing API").toBe(201);
       const created = (await result.json()).data as CreatedTag;
       expect(typeof created.id).toBe("string");

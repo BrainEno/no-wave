@@ -68,7 +68,9 @@ test("a real published tag subscription parses as XML, escapes author text and e
 
 test("English subscriptions link only the matching locale and never manufacture a Chinese tag translation", async ({ page, request, tagStack }) => {
   const writer = await tagAuthor(request, tagStack.apiBaseUrl);
-  const tag = await writer.tag(`EnglishMemory${tagNonce()}`, "en");
+  // Tag REST writes currently accept zh-CN only. Seed an existing English tag
+  // in this fixture's private database, then publish and read via the real API.
+  const tag = tagStack.seedEnglishTag(`EnglishMemory${tagNonce()}`);
   const title = `An English memory ${tagNonce()}`;
   const published = await writer.work(title, tag, true, { locale: "en", summary: "An English editorial summary." });
   await page.goto(`${tagStack.webBaseUrl}/en/tags/${tag.slug}`);
