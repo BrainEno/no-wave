@@ -56,7 +56,8 @@ test("English feeds use only English resource paths and do not manufacture anoth
   for (const format of ["atom", "rss"] as const) {
     const rendered = renderTagFeed(input({ locale, format, tag: { ...tag, locale, name: "Places & memory" }, articles: [work({ locale })] }));
     assert.equal(rendered.alternate, "https://configured.example/en/tags/stable-theme");
-    assert.ok(rendered.body.includes("https://configured.example/en/articles/remembered-place"));
+    const identity = format === "atom" ? /<entry>\s*<id>([^<]+)<\/id>/ : /<guid isPermaLink="true">([^<]+)<\/guid>/;
+    assert.equal(identity.exec(rendered.body)?.[1], "https://configured.example/en/articles/remembered-place");
     assert.ok(!rendered.body.includes("hreflang"));
     assert.ok(!rendered.body.includes("/zh-TW/"));
   }

@@ -49,7 +49,8 @@ test("the API host and path prefix are not accidentally published as subscriber 
   const response = await handleTagFeedRequest(new Request("https://incoming.example/tags/public-tag/feed.atom"), options, source);
   const body = await response.text();
   assert.equal(response.status, 200);
-  assert.ok(body.includes("https://reader.example/articles/public-article"));
+  const articleId = /<entry>\s*<id>([^<]+)<\/id>/.exec(body)?.[1];
+  assert.equal(articleId, "https://reader.example/articles/public-article");
   assert.ok(!body.includes("independent-api.example"));
   assert.ok(!body.includes("incoming.example"));
   assert.ok(!body.includes("/prefix/"));

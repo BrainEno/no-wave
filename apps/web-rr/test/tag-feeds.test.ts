@@ -90,7 +90,8 @@ test("both English formats retain English API reads and English article permalin
     const response = await get(`/en/tags/${STABLE_TAG_SLUG}/feed.${suffix}`);
     assert.equal(response.status, 200);
     assert.ok(response.body.includes("A renamed theme"));
-    assert.ok(response.body.includes("https://tags.example.test/en/articles/tagged-work-1"));
+    const identity = suffix === "atom" ? /<entry>\s*<id>([^<]+)<\/id>/ : /<guid isPermaLink="true">([^<]+)<\/guid>/;
+    assert.equal(identity.exec(response.body)?.[1], "https://tags.example.test/en/articles/tagged-work-1");
     assert.ok(!response.body.includes("主题作品"));
     assert.ok(api.requests().every(({ query }) => query.locale === "en"));
     assert.equal(api.requests().length, 2);

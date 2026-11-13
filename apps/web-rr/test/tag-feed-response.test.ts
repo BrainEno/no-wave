@@ -162,7 +162,8 @@ test("RSS and English variants cannot reuse another representation's validator",
   assert.equal(rss.status, 200);
   assert.equal(english.status, 200);
   assert.match(rss.headers.get("content-type") ?? "", /^application\/rss\+xml/);
-  assert.ok((await english.text()).includes("https://public.example/en/tags/public-theme"));
+  const englishFeedId = /<id>([^<]+)<\/id>/.exec(await english.text())?.[1];
+  assert.equal(englishFeedId, "https://public.example/en/tags/public-theme");
   assert.notEqual(rss.headers.get("etag"), english.headers.get("etag"));
 });
 
