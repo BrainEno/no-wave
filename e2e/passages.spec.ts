@@ -1,4 +1,5 @@
-import { expect, test, type Browser, type Page } from "@playwright/test";
+import { expect, type Browser, type Page } from "@playwright/test";
+import { test } from "./support/csp-fixture.ts";
 import { publishWork, selectPartOf } from "./support/works.ts";
 import { cancellations, installEngine, spokenTexts } from "./support/speech.ts";
 

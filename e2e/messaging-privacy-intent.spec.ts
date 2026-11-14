@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./support/csp-fixture.ts";
 import { ACTOR_HEADER, conversation, gate, login, register, restorePage, settleUi, unloadBlocked } from "./support/messaging-privacy.ts";
 
 test("concealment cancels an in-flight start without retiring its key or unmounting its failed-history guard", async ({ browser, page, baseURL }) => {

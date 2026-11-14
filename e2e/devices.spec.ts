@@ -1,4 +1,5 @@
-import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
+import { expect, type APIRequestContext, type Locator, type Page } from "@playwright/test";
+import { test } from "./support/csp-fixture.ts";
 import { BROWSER_PASSWORD as PASSWORD, registerThroughForm, uniqueEmail } from "./support/accounts.ts";
 
 /**

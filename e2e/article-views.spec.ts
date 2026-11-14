@@ -1,6 +1,7 @@
 import { expect, type APIRequestContext } from "@playwright/test";
 import { test } from "./support/article-view-stack.ts";
 import { publishWork, uniqueEmail, WORK_PASSWORD } from "./support/works.ts";
+import { openCookieProbe } from "./support/cookie-probe.ts";
 
 const pathFor = (slug: string) => `/api/authoring/articles/${slug}/views?locale=zh-CN`;
 
@@ -114,9 +115,9 @@ test("browser-cookie renewal verifies the author before counting and a revoked s
   expect(login.status()).toBe(200);
   const previousRefresh = (await page.context().cookies()).find(({ name }) => name === "nw_refresh")?.value;
   expect(Boolean(previousRefresh)).toBe(true);
-  // A same-origin inert document avoids background private readers racing the
-  // exact cookie transition under test. The request still uses Chromium's jar.
-  await page.goto("/healthz");
+  // An enforcing, inert HTML probe avoids private readers racing the exact
+  // cookie transition; Chromium still chooses every credential by its Path.
+  await openCookieProbe(page, origin);
   await page.context().clearCookies({ name: "nw_access" });
   const sent = page.waitForRequest((request) => request.url().endsWith(pathFor(slug)) && request.method() === "POST");
   const renewed = await page.evaluate(async (path) => {

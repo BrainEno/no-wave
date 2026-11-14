@@ -263,23 +263,34 @@ function CommentComposer({ resetKey, onSubmit, busy, initialBlocks, submitLabel,
   }, []);
 
   return (
-    <form className="nw-comment-form" onSubmit={(event) => {
-      event.preventDefault();
-      const text = textFromEditorState(editorState).trim();
-      if (!text) { setFormError("评论内容不能为空。"); return; }
-      if (text.length > 5000) { setFormError("评论不能超过 5000 个字符。"); return; }
-      if (editorState.root.children.length < 1 || editorState.root.children.length > 20) {
-        setFormError("评论最多包含 20 个段落。");
-        return;
-      }
-      setFormError("");
-      void onSubmit(editorState);
-    }}>
-      <LexicalExtensionComposer extension={extension} contentEditable={null}>
-        <CommentToolbar onLinkError={setFormError} ask={askForLink} />
-        <ContentEditable className="nw-comment-editor" aria-label="评论内容" aria-placeholder="写下你的回应……" placeholder={<p>写下你的回应……</p>} />
-        <CommentStatePlugin onChange={onChange} />
-      </LexicalExtensionComposer>
+    <>
+      <form className="nw-comment-form" onSubmit={(event) => {
+        event.preventDefault();
+        const text = textFromEditorState(editorState).trim();
+        if (!text) { setFormError("评论内容不能为空。"); return; }
+        if (text.length > 5000) { setFormError("评论不能超过 5000 个字符。"); return; }
+        if (editorState.root.children.length < 1 || editorState.root.children.length > 20) {
+          setFormError("评论最多包含 20 个段落。");
+          return;
+        }
+        setFormError("");
+        void onSubmit(editorState);
+      }}>
+        <LexicalExtensionComposer extension={extension} contentEditable={null}>
+          <CommentToolbar onLinkError={setFormError} ask={askForLink} />
+          <ContentEditable className="nw-comment-editor" aria-label="评论内容" aria-placeholder="写下你的回应……" placeholder={<p>写下你的回应……</p>} />
+          <CommentStatePlugin onChange={onChange} />
+        </LexicalExtensionComposer>
+        {formError ? <p className="nw-auth-error" role="alert">{formError}</p> : null}
+        <div className="nw-authoring-actions">
+          <button className="nw-btn nw-pri" type="submit" disabled={busy}>
+            {busy ? (busyLabel ?? "正在提交…") : (submitLabel ?? "提交评论")}
+          </button>
+          {onCancel ? (
+            <button className="nw-btn" type="button" onClick={onCancel} disabled={busy}>{cancelLabel ?? "取消"}</button>
+          ) : null}
+        </div>
+      </form>
       <PromptDialog
         open={askingLink}
         title="插入链接"
@@ -289,16 +300,7 @@ function CommentComposer({ resetKey, onSubmit, busy, initialBlocks, submitLabel,
         onCancel={() => settleLink(null)}
         onSubmit={(values) => settleLink(values)}
       />
-      {formError ? <p className="nw-auth-error" role="alert">{formError}</p> : null}
-      <div className="nw-authoring-actions">
-        <button className="nw-btn nw-pri" type="submit" disabled={busy}>
-          {busy ? (busyLabel ?? "正在提交…") : (submitLabel ?? "提交评论")}
-        </button>
-        {onCancel ? (
-          <button className="nw-btn" type="button" onClick={onCancel} disabled={busy}>{cancelLabel ?? "取消"}</button>
-        ) : null}
-      </div>
-    </form>
+    </>
   );
 }
 

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { zipSync, strToU8 } from "fflate";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
+import { test } from "./support/csp-fixture.ts";
 import type { NotionImportReport } from "../packages/web-ui/src/lib/notion-import.ts";
 import { registerThroughForm, uniqueEmail } from "./support/accounts.ts";
 
@@ -118,10 +119,16 @@ test("choosing a bundle shows the plan, and only the confirm button writes it", 
   await expect(page.getByText(/已导入：新建 1 件/)).toBeVisible();
   await expect(page.getByRole("button", { name: /确认导入/ })).toHaveCount(0);
 
-  // And the work is the author's, in the desk they already use.
+  // The URL can change before the outgoing report unmounts. Only the desk's
+  // persisted work list and reopening its content prove the import committed.
   await page.getByRole("link", { name: "去看写作台" }).click();
   await expect(page).toHaveURL(/\/write$/);
-  await expect(page.getByText(TITLE)).toBeVisible();
+  const works = page.getByRole("complementary", { name: "我的作品", exact: true });
+  const imported = works.getByRole("button", { name: new RegExp(`^${TITLE} 草稿`) });
+  await expect(imported).toHaveCount(1);
+  await imported.click();
+  await expect(page.getByRole("textbox", { name: "标题", exact: true })).toHaveValue(TITLE);
+  await expect(page.getByRole("textbox", { name: "作品正文", exact: true })).toContainText(BODY);
 });
 
 test("importing the same file twice writes nothing the second time", async ({ page }) => {

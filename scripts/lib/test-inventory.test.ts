@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join, relative, resolve } from "node:path";
+import { parse } from "@babel/parser";
 import test from "node:test";
 
 /**
@@ -117,3 +118,42 @@ test("a test script does not name a file that no longer exists", () => {
   assert.deepEqual(missing, [], `test scripts name files that do not exist:\n${missing.join("\n")}`);
 });
 
+
+test("every browser suite and extended stack is rooted in the enforcing CSP audit fixture", () => {
+  const directory = join(repositoryRoot, "e2e");
+  const fixture = join(directory, "support/csp-fixture.ts");
+  const cache = new Map<string, ReturnType<typeof parse>>();
+  const tree = (file: string) => {
+    if (!cache.has(file)) cache.set(file, parse(readFileSync(file, "utf8"), { sourceType: "module", plugins: ["typescript"] }));
+    return cache.get(file)!;
+  };
+  const reachesAudit = (file: string, seen = new Set<string>()): boolean => {
+    if (file === fixture) return true;
+    if (seen.has(file)) return false;
+    seen.add(file);
+    for (const statement of tree(file).program.body) {
+      if (statement.type !== "ImportDeclaration" || statement.importKind === "type") continue;
+      const importsTest = statement.specifiers.some(specifier => specifier.type === "ImportSpecifier" && specifier.importKind !== "type" &&
+        specifier.imported.type === "Identifier" && specifier.imported.name === "test");
+      if (!importsTest) continue;
+      assert.ok(statement.source.value.startsWith("."), `${relative(repositoryRoot, file)} bypasses the automatic CSP audit`);
+      if (reachesAudit(resolve(file, "..", statement.source.value), seen)) return true;
+    }
+    return false;
+  };
+  const suites = readdirSync(directory).filter(name => name.endsWith(".spec.ts"));
+  assert.ok(suites.length >= 30, "the suite inventory must not pass on an empty directory");
+  for (const suite of suites) assert.equal(reachesAudit(join(directory, suite)), true, suite);
+  for (const file of [...suites.map(name => join(directory, name)), ...readdirSync(join(directory, "support")).filter(name => name.endsWith(".ts")).map(name => join(directory, "support", name))]) {
+    if (file === fixture) continue;
+    for (const statement of tree(file).program.body) {
+      if (statement.type !== "ImportDeclaration" || statement.source.value !== "@playwright/test" || statement.importKind === "type") continue;
+      for (const specifier of statement.specifiers) {
+        assert.equal(specifier.type, "ImportSpecifier", `${file}: namespace/default imports can hide an unaudited test`);
+        if (specifier.type === "ImportSpecifier" && specifier.importKind !== "type" && specifier.imported.type === "Identifier") {
+          assert.notEqual(specifier.imported.name, "test", `${file}: extend csp-fixture rather than the unobserved Playwright base`);
+        }
+      }
+    }
+  }
+});

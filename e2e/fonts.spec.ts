@@ -1,4 +1,5 @@
-import { expect, test as base, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { expect, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { test as base } from "./support/csp-fixture.ts";
 import {
   assertCustomFont,
   assertFirstPartyFontAudit,

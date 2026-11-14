@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
+import { test } from "./support/csp-fixture.ts";
 import { registerThroughForm, uniqueEmail } from "./support/accounts.ts";
 import { interceptNotifications } from "./support/notification-api.ts";
 

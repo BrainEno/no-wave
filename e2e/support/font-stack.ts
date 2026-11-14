@@ -15,7 +15,7 @@ export type FontStack = { apiBaseUrl: string; webBaseUrl: string; databasePath: 
  * articles first. Use the same real production build/API, but a private SQLite
  * database and ephemeral ports, never a mocked/truncated reader response.
  */
-export async function startFontStack(): Promise<FontStack> {
+export async function startFontStack(options: { mediaEndpoint?: string } = {}): Promise<FontStack> {
   const root = fileURLToPath(new URL("../../", import.meta.url));
   const directory = await mkdtemp(join(tmpdir(), "no-wave-fonts-"));
   const children: ChildProcess[] = [];
@@ -26,6 +26,11 @@ export async function startFontStack(): Promise<FontStack> {
   while (webPort === apiPort) webPort = await freePort();
   const env = isolatedEnvironment(process.env, { apiPort, webPort,
     databasePath: join(directory, "fonts.sqlite"), secret: randomBytes(32).toString("hex"), clientAddressSecret: randomBytes(32).toString("hex") });
+  if (options.mediaEndpoint) Object.assign(env, {
+    MEDIA_S3_ENDPOINT: options.mediaEndpoint, MEDIA_S3_BUCKET: "browser-security-fixture", MEDIA_S3_REGION: "us-east-1",
+    MEDIA_S3_ACCESS_KEY_ID: "fixture-only-access-key", MEDIA_S3_SECRET_ACCESS_KEY: "fixture-only-not-a-production-secret",
+    MEDIA_S3_FORCE_PATH_STYLE: "true",
+  });
   const apiBaseUrl = `http://127.0.0.1:${apiPort}`;
   const webBaseUrl = `http://127.0.0.1:${webPort}`;
 

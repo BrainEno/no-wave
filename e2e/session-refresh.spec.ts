@@ -1,7 +1,9 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./support/csp-fixture.ts";
 import { DatabaseSync } from "node:sqlite";
 import { startFontStack } from "./support/font-stack.ts";
 import { uniqueEmail, WORK_PASSWORD } from "./support/works.ts";
+import { openCookieProbe } from "./support/cookie-probe.ts";
 
 test("the browser's different cookie Paths still join explicit and automatic refresh into one generation", async ({ page }) => {
   const stack = await startFontStack();
@@ -16,7 +18,7 @@ test("the browser's different cookie Paths still join explicit and automatic ref
     expect(access.path).toBe("/api/authoring");
     expect(refresh.path).toBe("/api");
     expect(access.httpOnly && refresh.httpOnly).toBe(true);
-    await page.goto(`${origin}/healthz`);
+    await openCookieProbe(page, origin);
     // A stale bearer is sent to authoring, but Chromium omits it from auth by
     // Path. No JavaScript handles or supplies either real credential.
     await page.context().addCookies([{ ...access, value: "expired-fixture-access" }]);
@@ -69,7 +71,7 @@ test("a refresh-only browser burst restores the HttpOnly access cookie without r
     const registered = await page.context().request.post(`${origin}/api/auth/register`, { headers: { origin }, data: { email: uniqueEmail("refresh-expiry"), password: WORK_PASSWORD } });
     expect(registered.status()).toBe(201);
     const original = (await page.context().cookies()).find(({ name }) => name === "nw_refresh")!;
-    await page.goto(`${origin}/healthz`);
+    await openCookieProbe(page, origin);
     await page.context().clearCookies({ name: "nw_access" });
     const sent = page.waitForRequest((request) => request.url().endsWith("/api/authoring/session"));
     const responses = await page.evaluate(async () => Promise.all([
@@ -114,7 +116,7 @@ test("a real 429 keeps browser cookies intact, exposes Retry-After and can recov
       expect(added[0]!.attempts).toBe(1);
       expect(Number(database.prepare("UPDATE auth_rate_limits SET attempts = 120 WHERE key = ?").run(String(added[0]!.key)).changes)).toBe(1);
     } finally { database.close(); }
-    await page.goto(`${origin}/healthz`);
+    await openCookieProbe(page, origin);
     await page.context().clearCookies({ name: "nw_access" });
     const responses = await page.evaluate(async () => Promise.all([
       fetch("/api/authoring/session", { credentials: "same-origin", cache: "no-store" }),

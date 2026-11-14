@@ -9,6 +9,7 @@ import { safeLogPath, writeLogLine } from "@bot-thk/web-http/log";
 import { createRequestListener } from "@react-router/node";
 import { compressResponse } from "./compression.ts";
 import { createWebClientAddressBridge } from "@bot-thk/web-http/client-address";
+import { browserSecurityHeaders } from "./document-security.ts";
 
 /**
  * Production server for the prototype: Node.js `http` only — no Vercel service
@@ -113,7 +114,9 @@ async function serveStatic(request: IncomingMessage, response: ServerResponse): 
 }
 
 const build = (await import(serverBuildDir)) as unknown as Parameters<typeof createRequestListener>[0]["build"];
-const handleRequest = createRequestListener({ build, mode: process.env.NODE_ENV ?? "production" });
+// This executable serves the compiled distribution, not Vite development.
+// Keep Router's terminal error sanitization even if a host mislabels NODE_ENV.
+const handleRequest = createRequestListener({ build, mode: "production" });
 
 /**
  * How long an accepted request may still run after a stop signal.
@@ -144,6 +147,11 @@ function serveHealthCheck(response: ServerResponse): void {
 }
 
 const server = createServer((request: IncomingMessage, response: ServerResponse) => {
+  // Establish the fail-closed baseline before health, shutdown, malformed URL,
+  // static-file or framework handling. HTML replaces only the resource CSP with
+  // its sealed script hashes; media/feed resource policies remain intact.
+  for (const [name, value] of Object.entries(browserSecurityHeaders(clientAddressBridge.isSecure(request)))) response.setHeader(name, value);
+  response.setHeader("cache-control", "no-store");
   const method = request.method ?? "GET";
   const target = request.url ?? "/";
   if (shuttingDown) {

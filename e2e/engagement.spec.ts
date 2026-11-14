@@ -1,4 +1,5 @@
-import { expect, test, type BrowserContext } from "@playwright/test";
+import { expect, type BrowserContext } from "@playwright/test";
+import { test } from "./support/csp-fixture.ts";
 import { editorState, publishWork, uniqueEmail, WORK_PASSWORD } from "./support/works.ts";
 
 /** These journeys use the real cookie jar, Web resource routes, API and SQLite.

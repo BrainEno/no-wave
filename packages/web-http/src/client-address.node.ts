@@ -3,9 +3,15 @@ import { createHmac } from "node:crypto";
 import { BlockList, isIP } from "node:net";
 import type { IncomingMessage } from "node:http";
 
-type AddressRequest = Pick<IncomingMessage, "socket" | "headers">;
+type AddressRequest = { headers: IncomingMessage["headers"]; socket: Pick<IncomingMessage["socket"], "remoteAddress"> & { encrypted?: boolean } };
 type ClientScope = Readonly<{ address: string; secret: string; now: () => number }>;
 const scopes = new AsyncLocalStorage<ClientScope | null>();
+const secureTransports = new AsyncLocalStorage<boolean>();
+
+/** Native ingress evidence only: never infer TLS from a Fetch URL or browser header. */
+export function currentWebRequestIsSecure(): boolean {
+  return secureTransports.getStore() === true;
+}
 const ADDRESS = "x-nw-client-address";
 const PROOF = "x-nw-client-address-proof";
 
@@ -73,6 +79,25 @@ export function createWebClientAddressBridge(env: NodeJS.ProcessEnv, now: () => 
   const secret = signingSecret(env.BFF_CLIENT_ADDRESS_SECRET);
   const hops = proxyHops(env.WEB_TRUSTED_PROXY_HOPS);
   const peers = trustedPeers(env.WEB_TRUSTED_PROXY_PEERS, hops);
+  function isSecure(request: AddressRequest): boolean {
+    const nativeTls = (request.socket as typeof request.socket & { encrypted?: boolean })?.encrypted === true;
+    const peer = normalizedAddress(request.socket?.remoteAddress ?? "");
+    if (!peer || hops === 0 || !peers.check(peer, isIP(peer) === 4 ? "ipv4" : "ipv6")) return nativeTls;
+    // Only an explicitly named ingress can describe the browser-facing scheme.
+    // The protocol suffix must align with the same complete, trusted address
+    // chain as attribution; neither Forwarded nor SITE_URL is transport proof.
+    const forwarded = request.headers["x-forwarded-for"];
+    const addresses = Array.isArray(forwarded) ? forwarded.join(",") : forwarded;
+    const protocol = request.headers["x-forwarded-proto"];
+    if (!addresses || addresses.length > 8192 || typeof protocol !== "string" || protocol.length > 8192) return false;
+    const entries = addresses.split(","), protocols = protocol.split(",");
+    if (entries.length < hops || protocols.length < hops) return false;
+    const suffix = entries.slice(-hops).map(normalizedAddress);
+    if (suffix.some(address => address === null) || suffix.slice(1).some(address => !peers.check(address!, isIP(address!) === 4 ? "ipv4" : "ipv6"))) return false;
+    const schemes = protocols.slice(-hops).map(value => value.trim().toLowerCase());
+    if (schemes.some(value => value !== "http" && value !== "https")) return false;
+    return schemes[0] === "https";
+  }
   function clientAddress(request: AddressRequest): string | null {
     const peer = normalizedAddress(request.socket?.remoteAddress ?? "");
     if (!peer || hops === 0 || !peers.check(peer, isIP(peer) === 4 ? "ipv4" : "ipv6")) return peer;
@@ -92,10 +117,13 @@ export function createWebClientAddressBridge(env: NodeJS.ProcessEnv, now: () => 
   return Object.freeze({
     enabled: secret !== null,
     trustedProxyHops: hops,
+    isSecure,
     run<T>(request: AddressRequest, work: () => T): T {
       const address = clientAddress(request);
-      // Even a disabled/missing-identity scope shadows an outer server scope.
-      return scopes.run(secret && address ? Object.freeze({ address, secret, now }) : null, work);
+      // Transport evidence is independent of whether BFF address signing is on.
+      // A nested HTTP/disabled ingress must shadow an outer HTTPS scope too.
+      return secureTransports.run(isSecure(request), () =>
+        scopes.run(secret && address ? Object.freeze({ address, secret, now }) : null, work));
     },
   });
 }

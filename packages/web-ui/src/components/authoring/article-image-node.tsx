@@ -22,6 +22,11 @@ export class ArticleImageNode extends DecoratorNode<ReactElement> {
 
   static getType(): string { return "image"; }
 
+  // The persisted article contract stores images as blocks. DecoratorNode's
+  // inline default otherwise nests an upload inside a paragraph, which the
+  // real API correctly rejects when the author tries to save the image.
+  isInline(): false { return false; }
+
   static clone(node: ArticleImageNode): ArticleImageNode {
     return new ArticleImageNode(node.__src, node.__alt, node.__caption, node.__key);
   }

@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./support/csp-fixture.ts";
 import { publishWork } from "./support/works.ts";
 
 // Exercise scroll-triggered off-screen rows, not just the reduced-motion branch.

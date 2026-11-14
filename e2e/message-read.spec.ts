@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { expect, test, type BrowserContext } from "@playwright/test";
+import { expect, type BrowserContext } from "@playwright/test";
+import { test } from "./support/csp-fixture.ts";
 import { uniqueEmail } from "./support/accounts.ts";
 
 async function register(context: BrowserContext, origin: string): Promise<string> {

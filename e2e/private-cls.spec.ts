@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./support/csp-fixture.ts";
 import { registerThroughForm, uniqueEmail } from "./support/accounts.ts";
 
 test("private pages reserve the first screen and keep CLS below 0.1 across five loads", async ({ page }) => {

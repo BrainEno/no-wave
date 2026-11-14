@@ -1,4 +1,5 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
+import { test } from "./support/csp-fixture.ts";
 import { registerThroughForm, uniqueEmail } from "./support/accounts.ts";
 import { editorState, publishWork, WORK_PASSWORD } from "./support/works.ts";
 

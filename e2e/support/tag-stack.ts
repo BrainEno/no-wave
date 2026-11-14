@@ -1,4 +1,4 @@
-import { test as base } from "@playwright/test";
+import { test as base } from "./csp-fixture.ts";
 import { createSqliteClient } from "../../apps/api/src/persistence/sqlite.ts";
 import { createSqliteTaxonomyStore } from "../../apps/api/src/persistence/sqlite-taxonomy-store.ts";
 import { startFontStack, type FontStack } from "./font-stack.ts";

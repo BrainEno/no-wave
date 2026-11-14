@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./support/csp-fixture.ts";
 
 /**
  * A browser without WebGL used to have its React-owned hero canvas removed by

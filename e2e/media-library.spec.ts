@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./support/csp-fixture.ts";
 import { registerThroughForm, uniqueEmail } from "./support/accounts.ts";
 
 /**
@@ -14,10 +15,9 @@ import { registerThroughForm, uniqueEmail } from "./support/accounts.ts";
  * between "you have no images" and "this deployment cannot accept images", and
  * the second one sends an author looking for uploads that were never stored.
  *
- * The journeys that would need object storage — an image appearing in the grid,
- * an orphan badge on one nothing uses, 删除 taking it away — are not here,
- * because this suite runs without an S3-compatible bucket. They are the part
- * that stays manual until a deployment has one.
+ * This file intentionally keeps the unconfigured-deployment journey. The
+ * successful upload/editor/library path lives in media-security.spec.ts with
+ * the real API and a disposable S3 wire fixture; deletion remains disabled.
  */
 
 test("an anonymous visitor is sent to sign in, and pointed back afterwards", async ({ page }) => {
