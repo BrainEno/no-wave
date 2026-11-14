@@ -22,6 +22,7 @@ function fixture(count = 3) {
   const items = rows(count);
   const calls: { kind: "count" | "page" | "mark"; signal: AbortSignal; cursor?: string | null; id?: string }[] = [];
   const transport: NotificationTransport = {
+    async actor() { return "notification-test-reader"; },
     async count(signal) { calls.push({ kind: "count", signal }); return items.filter((item) => item.readAt === null).length; },
     async page(cursor, signal) {
       calls.push({ kind: "page", signal, cursor });
@@ -296,7 +297,7 @@ test("an explicit first-page refresh supersedes an older-page read rather than s
   const f = await ready(52);
   const original = f.transport.page;
   const older = deferred<NotificationPage>(), started = deferred<void>();
-  f.transport.page = async (cursor, signal) => { if (cursor) { started.resolve(); return older.promise; } return original(cursor, signal); };
+  f.transport.page = async (cursor, signal, actor) => { if (cursor) { started.resolve(); return older.promise; } return original(cursor, signal, actor); };
   const paging = f.controller.loadMore();
   await started.promise;
   f.items.unshift(...rows(1, 2000));

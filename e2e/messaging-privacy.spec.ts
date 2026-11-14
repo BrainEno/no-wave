@@ -89,8 +89,12 @@ for (const screen of ["inbox", "thread"] as const) {
       await expect(content).toContainText(body);
       await input.fill(original);
       let identityReads = 0, historyReads = 0, writes = 0;
+      let identityUnavailable = true;
       await page.route("**/api/authoring/session", async (route) => {
-        if (++identityReads === 1) await route.fulfill({ status: 503, json: { error: { code: "UNAVAILABLE" } } });
+        identityReads++;
+        // The bell verifies independently too: an outage cannot be consumed by
+        // whichever private surface wins the first-request race.
+        if (identityUnavailable) await route.fulfill({ status: 503, json: { error: { code: "UNAVAILABLE" } } });
         else await route.continue();
       });
       page.on("request", (request) => {
@@ -104,15 +108,16 @@ for (const screen of ["inbox", "thread"] as const) {
       await expect(input).toHaveCount(0);
       await expect(page.locator(".nw-mark-read")).toHaveCount(0);
       await settleUi(page);
-      expect(identityReads).toBe(1);
+      expect(identityReads, "one verification per independent messaging and notification owner").toBe(2);
       expect(historyReads, "a post-boundary failure must not start unbound private reads").toBe(0);
       expect(writes).toBe(0);
+      identityUnavailable = false;
       const nextRead = page.waitForRequest((request) => request.url().includes("/api/authoring/inbox") && request.method() === "GET");
       await page.getByRole("button", { name: english ? "Confirm account again" : "重新确认账户", exact: true }).click();
       expect((await nextRead).headers()[ACTOR_HEADER]).toBe(author.id);
       await expect(content).toContainText(body);
       await expect(input).toHaveValue(original);
-      expect(identityReads).toBe(2);
+      expect(identityReads, "only the explicit messaging retry rechecks identity").toBe(3);
       expect(historyReads).toBe(1);
       expect(writes).toBe(0);
     } finally { await separate.close(); }
@@ -155,7 +160,7 @@ test("pagehide clears the English thread DOM synchronously and no background eve
     release.release();
     await expect(page.locator(".nw-msg-body")).toHaveText(body);
     await expect(page.getByLabel("Write a message")).toHaveValue("This private draft is not part of a browser snapshot.");
-    expect(checks).toBe(1);
+    expect(checks, "messaging and notifications both verify after pageshow").toBe(2);
     const storage = await page.evaluate(() => JSON.stringify({ local: Object.entries(localStorage), session: Object.entries(sessionStorage) }));
     expect(storage).not.toContain(body);
     expect(storage).not.toContain("This private draft is not part of a browser snapshot.");

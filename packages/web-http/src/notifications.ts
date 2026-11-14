@@ -1,5 +1,5 @@
 import type { ApiProxyConfig } from "./api.ts";
-import { forwardAuthoringRequest } from "./forward.ts";
+import { forwardAuthoringRequest, type ForwardMethod } from "./forward.ts";
 import { errorResponse } from "./http.ts";
 import { isSameOriginMutation } from "./policy.ts";
 
@@ -22,6 +22,30 @@ import { isSameOriginMutation } from "./policy.ts";
 /** Notification ids are UUIDs; the shape is checked before proxying. */
 export const NOTIFICATION_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/** An optional restriction on a server-verified account, never authentication. */
+export const NOTIFICATION_EXPECTED_ACTOR_HEADER = "x-expected-notification-actor";
+
+function expectedNotificationActor(request: Request): { actorId?: string; response?: Response } {
+  const raw = request.headers.get(NOTIFICATION_EXPECTED_ACTOR_HEADER);
+  if (raw === null) return {};
+  const invalid = () => ({ response: errorResponse("BAD_USER_INPUT", "Invalid expected notification account.", 400) });
+  // A single URI component preserves non-UUID IDs without accepting duplicate
+  // headers coalesced with commas. Decode exactly once; percent is valid in IDs.
+  if (raw.length > 3600 || !/^(?:[A-Za-z0-9_.!~*'()-]|%[0-9a-f]{2})+$/i.test(raw)) return invalid();
+  let actorId: string;
+  try { actorId = decodeURIComponent(raw); } catch { return invalid(); }
+  if (!actorId || actorId.length > 300 || actorId.trim() !== actorId || /[\u0000-\u001f\u007f]/u.test(actorId)) return invalid();
+  return { actorId };
+}
+
+function forwardNotification(request: Request, path: string, method: ForwardMethod, config: ApiProxyConfig): Promise<Response> {
+  const expected = expectedNotificationActor(request);
+  if (expected.response) return Promise.resolve(expected.response);
+  // The shared forwarder verifies /me with the resource's bearer and repeats
+  // verification after rotation. It never forwards this browser-only header.
+  return forwardAuthoringRequest(request, path, method, config, undefined, undefined, expected.actorId);
+}
 
 /** The inbox shows at most this many notices; the API paginates the rest. */
 export const NOTIFICATIONS_LIMIT = 50;
@@ -104,7 +128,7 @@ export async function handleNotificationsRequest(
     }
     limit = parsed;
   }
-  return forwardAuthoringRequest(request, notificationsPath(limit, rawCursor), "GET", config);
+  return forwardNotification(request, notificationsPath(limit, rawCursor), "GET", config);
 }
 
 /** `GET /api/notifications/unread-count` — how many of them are still unread. */
@@ -116,7 +140,7 @@ export async function handleNotificationsUnreadCountRequest(
   if (method === null) {
     return errorResponse("METHOD_NOT_ALLOWED", "Only GET is supported for the unread count.", 405);
   }
-  return forwardAuthoringRequest(request, notificationsUnreadCountPath(), "GET", config);
+  return forwardNotification(request, notificationsUnreadCountPath(), "GET", config);
 }
 
 /**
@@ -136,7 +160,7 @@ export async function handleNotificationsReadAllRequest(
   if (rejectCrossOrigin(request)) {
     return errorResponse("ORIGIN_REJECTED", "The request origin was rejected.", 403);
   }
-  return forwardAuthoringRequest(request, notificationsReadAllPath(), "POST", config);
+  return forwardNotification(request, notificationsReadAllPath(), "POST", config);
 }
 
 /**
@@ -161,5 +185,5 @@ export async function handleNotificationReadRequest(
   if (!NOTIFICATION_ID_PATTERN.test(params.id)) {
     return errorResponse("BAD_USER_INPUT", "Invalid notification ID.", 400);
   }
-  return forwardAuthoringRequest(request, notificationReadPath(params.id), "PUT", config);
+  return forwardNotification(request, notificationReadPath(params.id), "PUT", config);
 }

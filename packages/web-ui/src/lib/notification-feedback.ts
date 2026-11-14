@@ -6,6 +6,7 @@ export function notificationProblemText(problem: NotificationProblem, locale: Lo
   const en = locale === "en";
   switch (problem) {
     case "unauthenticated": return en ? "Your session has expired. Sign in again." : "登录已过期，请重新登录。";
+    case "account-changed": return en ? "Your account changed. Refresh notifications to confirm the current account. Read actions will not be repeated." : "账户已变更，请刷新通知确认账户。";
     case "invalid-response": return en ? "The notification response was invalid. Refresh to try again." : "通知响应格式不正确，请刷新通知重试。";
     case "timeout": return en ? "Notifications timed out. Refresh to try again." : "通知载入超时，请刷新通知重试。";
     case "stalled-page": return en ? "The notification page did not advance. Refresh to try again." : "通知分页没有前进，请刷新通知重试。";

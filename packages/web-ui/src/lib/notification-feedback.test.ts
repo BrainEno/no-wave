@@ -43,7 +43,7 @@ test("unknown and stale counts are honest; loading shells do not pretend to have
 });
 
 test("every failure has localized, non-diagnostic recovery copy", () => {
-  const problems: NotificationProblem[] = ["unauthenticated", "unavailable", "invalid-response", "timeout", "cancelled", "stalled-page"];
+  const problems: NotificationProblem[] = ["unauthenticated", "account-changed", "unavailable", "invalid-response", "timeout", "cancelled", "stalled-page"];
   for (const problem of problems) {
     const zh = notificationProblemText(problem, "zh-CN"), en = notificationProblemText(problem, "en");
     assert.ok(zh.length > 0 && en.length > 0 && zh !== en);

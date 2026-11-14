@@ -250,8 +250,12 @@ test("unverifiable identity leaves history and draft readable but disables every
     });
     expect(sent.status()).toBe(201);
     let reads = 0;
+    let identityUnavailable = true;
     await page.route("**/api/authoring/session", async (route) => {
-      if (++reads === 1) await route.fulfill({ json: { data: {} } });
+      reads++;
+      // Both the thread and notification shell verify; fail the identity
+      // service until the explicit retry, rather than one arbitrary caller.
+      if (identityUnavailable) await route.fulfill({ json: { data: {} } });
       else await route.continue();
     });
     const writes: string[] = [];
@@ -265,6 +269,8 @@ test("unverifiable identity leaves history and draft readable but disables every
     await expect(page.getByRole("button", { name: "发送", exact: true })).toBeDisabled();
     await expect(page.getByRole("button", { name: "将全部标为已读", exact: true })).toBeDisabled();
     expect(writes).toHaveLength(0);
+    expect(reads, "one initial verification each for messaging and notifications").toBe(2);
+    identityUnavailable = false;
     await page.getByRole("button", { name: "重新确认账户", exact: true }).click();
     await expect(page.getByRole("button", { name: "发送", exact: true })).toBeEnabled();
     await expect(page.getByRole("button", { name: "将全部标为已读", exact: true })).toBeEnabled();
@@ -272,7 +278,7 @@ test("unverifiable identity leaves history and draft readable but disables every
     await page.getByRole("button", { name: "发送", exact: true }).click();
     await expect(page.locator(".nw-msg-body").getByText("Draft that must not leave before account verification.", { exact: true })).toHaveCount(1);
     expect(writes).toEqual([author.id]);
-    expect(reads).toBe(2);
+    expect(reads, "only the explicit messaging retry rechecks identity").toBe(3);
     const storage = await page.evaluate(() => JSON.stringify({ local: Object.entries(localStorage), session: Object.entries(sessionStorage) }));
     expect(storage).not.toContain("Draft that must not leave before account verification.");
     expect(storage).not.toContain("Existing private history.");
