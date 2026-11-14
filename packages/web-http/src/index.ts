@@ -162,6 +162,7 @@ export {
   MESSAGES_DEFAULT_LIMIT,
   MESSAGE_BODY_MAX_CHARS,
   MESSAGE_WRITE_MAX_BYTES,
+  MESSAGING_EXPECTED_ACTOR_HEADER,
   conversationPath,
   conversationReadPath,
   handleConversationMessagesRequest,

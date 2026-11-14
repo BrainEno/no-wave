@@ -95,6 +95,10 @@ function zh() {
       restoreMessage: "恢复原文", sendInvalid: "消息未被接受，请检查内容和对话状态。",
       sendTooLong: "消息不能超过 20000 字符，请精简后再发送。",
       sendSignIn: "请在新标签页登录原账户，然后回来重试。",
+      accountLoading: "正在确认当前账户…", accountFailed: "暂时无法确认当前账户，请重试。", accountRetry: "重新确认账户",
+      pendingTitle: "请求尚未确认",
+      pendingLeave: "对话或消息可能已经保存。离开后将丢失本页的重试标识；请先检查原账户的收件箱，以免重复发送。",
+      leave: "仍要离开", stay: "留在此页",
     },
     feed: {
       eyebrow: "关注流", title: "你关注的作者", intro: "这里按时间排列你关注的作者新发表的作品。",
@@ -230,6 +234,10 @@ function en(): UiCopy {
       restoreMessage: "Restore message", sendInvalid: "The message was not accepted. Check its content and the conversation.",
       sendTooLong: "Messages can be at most 20,000 characters. Please shorten this one.",
       sendSignIn: "Sign in to the same account in a new tab, then return here to retry.",
+      accountLoading: "Confirming the current account…", accountFailed: "The current account could not be confirmed. Please retry.", accountRetry: "Confirm account again",
+      pendingTitle: "Request not yet confirmed",
+      pendingLeave: "The conversation or message may already be saved. Leaving loses this page's retry key. Check the original account's inbox before sending again to avoid duplicates.",
+      leave: "Leave anyway", stay: "Stay here",
     },
     feed: {
       eyebrow: "FOLLOWING", title: "Authors you follow", intro: "New work from the authors you follow, newest first.",

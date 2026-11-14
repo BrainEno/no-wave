@@ -4,6 +4,7 @@ import type { Locale } from "@/lib/content.ts";
 import { getUi } from "@/lib/ui-copy.ts";
 import { EmptyState, SectionHeading } from "@/components/ui/parts.tsx";
 import { StartConversation } from "@/components/public/start-conversation.tsx";
+import { MessagingActorNotice, useMessagingActor } from "@/components/public/messaging-controls.tsx";
 
 /**
  * 私信收件箱 — the read half of messages (#198).
@@ -43,7 +44,8 @@ const INBOX_LIMIT = 50;
 export function MessagesView({ locale, initialRecipient = "" }: { locale: Locale; initialRecipient?: string }) {
   const ui = getUi(locale).messages;
   const [state, setState] = useState<InboxState>({ kind: "loading" });
-  const [viewerId, setViewerId] = useState("");
+  const actor = useMessagingActor();
+  const viewerId = actor.id;
   const generation = useRef(0);
 
   const load = useCallback(async () => {
@@ -84,29 +86,6 @@ export function MessagesView({ locale, initialRecipient = "" }: { locale: Locale
     return () => { generation.current += 1; };
   }, [load]);
 
-  // Who "you" are. Read separately because it is decoration: a row that cannot
-  // be attributed to somebody still renders, it just shows the id it has.
-  // A failure here must not take the inbox down with it.
-  useEffect(() => {
-    let active = true;
-    void (async () => {
-      try {
-        const response = await fetch("/api/authoring/session", {
-          credentials: "same-origin",
-          cache: "no-store",
-          headers: { accept: "application/json" },
-        });
-        if (!active || !response.ok) return;
-        const payload: unknown = await response.json().catch(() => null);
-        const id = readViewerId(payload);
-        if (active && id) setViewerId(id);
-      } catch {
-        // Not an error worth showing: the inbox is still the inbox.
-      }
-    })();
-    return () => { active = false; };
-  }, []);
-
   const heading = <SectionHeading zh={ui.eyebrow} latin="Inbox" />;
 
   if (state.kind === "loading") {
@@ -144,6 +123,7 @@ export function MessagesView({ locale, initialRecipient = "" }: { locale: Locale
       <main id="top" tabIndex={-1} lang={locale} className="nw-w">
         {heading}
         <EmptyState title={ui.empty} body={ui.emptyHint} />
+        <MessagingActorNotice actor={actor} locale={locale} />
         <StartConversation locale={locale} initialRecipient={initialRecipient} viewerId={viewerId} />
       </main>
     );
@@ -153,6 +133,7 @@ export function MessagesView({ locale, initialRecipient = "" }: { locale: Locale
     <main id="top" tabIndex={-1} lang={locale} className="nw-w">
       {heading}
       <p className="nw-m nw-thread-intro">{ui.intro}</p>
+      <MessagingActorNotice actor={actor} locale={locale} />
       <StartConversation locale={locale} initialRecipient={initialRecipient} viewerId={viewerId} />
       <div>
         {state.rows.map((row) => {
@@ -177,15 +158,6 @@ export function MessagesView({ locale, initialRecipient = "" }: { locale: Locale
       </div>
     </main>
   );
-}
-
-/** The signed-in account's id, or `""` when the payload does not carry one. */
-function readViewerId(payload: unknown): string {
-  if (typeof payload !== "object" || payload === null) return "";
-  const data = (payload as { data?: unknown }).data;
-  if (typeof data !== "object" || data === null) return "";
-  const id = (data as { id?: unknown }).id;
-  return typeof id === "string" ? id : "";
 }
 
 /**

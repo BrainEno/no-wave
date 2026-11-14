@@ -1,63 +1,31 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Link } from "@/lib/framework/link.tsx";
 import type { Locale } from "@/lib/content.ts";
 import { getUi } from "@/lib/ui-copy.ts";
+import { useMessagingWrite } from "@/components/public/messaging-controls.tsx";
 
-type ReadState = "idle" | "marking" | "marked" | "signed-out" | "missing" | "unconfirmed";
-
-/**
- * The API marks every message received up to the time it handles the request;
- * it does not take a last-seen cursor. Make that an explicit, explained action
- * instead of silently marking a possibly incomplete page as read on mount.
- */
-export function MarkConversationRead({ locale, conversationId }: { locale: Locale; conversationId: string }) {
+/** Mark-all is explicit and account-bound, never silently retried or given a create key. */
+export function MarkConversationRead({ locale, conversationId, viewerId }: { locale: Locale; conversationId: string; viewerId: string }) {
   const ui = getUi(locale).messages;
-  const [state, setState] = useState<ReadState>("idle");
-  const inFlight = useRef(false);
-  const active = useRef(false);
-  useEffect(() => {
-    active.current = true;
-    return () => { active.current = false; };
-  }, []);
-
+  const { controller, snapshot } = useMessagingWrite({ kind: "read", conversationId });
+  const [marked, setMarked] = useState(false);
+  const problem = snapshot.problem;
+  const state = snapshot.busy ? "marking" : marked ? "marked" : problem === null ? "idle"
+    : problem === "unauthenticated" || problem === "account-changed" ? "signed-out" : problem === "missing" ? "missing" : "unconfirmed";
   const hintId = `nw-mark-read-hint-${conversationId}`;
   const target = `${locale === "zh-CN" ? "" : `/${locale}`}/messages/${conversationId}`;
 
   async function markRead() {
-    if (inFlight.current) return;
-    inFlight.current = true;
-    setState("marking");
-    try {
-      const response = await fetch(`/api/authoring/inbox/${encodeURIComponent(conversationId)}/read`, {
-        method: "PUT",
-        credentials: "same-origin",
-        cache: "no-store",
-        headers: { accept: "application/json" },
-      });
-      if (!active.current) return;
-      if (response.status === 401) { setState("signed-out"); return; }
-      if (response.status === 403 || response.status === 404) { setState("missing"); return; }
-      if (!response.ok) { setState("unconfirmed"); return; }
-      const payload: unknown = await response.json().catch(() => null);
-      if (!active.current) return;
-      if (typeof payload !== "object" || payload === null || (payload as { data?: unknown }).data !== true) {
-        setState("unconfirmed");
-        return;
-      }
-      setState("marked");
-    } catch {
-      // A lost response may follow a committed write; a retry covers everything
-      // received by the later attempt, too. Never silently retry here.
-      if (active.current) setState("unconfirmed");
-    } finally {
-      inFlight.current = false;
-    }
+    if (snapshot.busy) return;
+    setMarked(false);
+    const receipt = await controller.attempt("", viewerId);
+    if (receipt?.kind === "read") setMarked(true);
   }
 
   return (
     <div className="nw-mark-read">
       <p className="nw-m nw-mark-read-hint" id={hintId}>{ui.markReadHint}</p>
-      <button type="button" className="nw-thread-btn" aria-describedby={hintId} disabled={state === "marking"} onClick={() => void markRead()}>
+      <button type="button" className="nw-thread-btn" aria-describedby={hintId} disabled={state === "marking" || !viewerId} onClick={() => void markRead()}>
         {state === "marking" ? ui.markingRead : ui.markRead}
       </button>
       {state === "marked" ? <p className="nw-m nw-mark-read-status" role="status">{ui.markReadSuccess}</p> : null}
