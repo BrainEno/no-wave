@@ -1,4 +1,4 @@
-import { test as base } from "@playwright/test";
+import { test as base } from "./csp-fixture.ts";
 import { startFontStack, type FontStack } from "./font-stack.ts";
 
 // Attribution journeys need two actors on ONE real NAT, but must not spend the

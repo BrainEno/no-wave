@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./support/csp-fixture.ts";
 
 /**
  * The reduced-motion default in playwright.config.ts is a test harness choice,

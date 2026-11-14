@@ -152,6 +152,21 @@ XFF unchanged and call that an appending ingress. `/0`, hostnames, zone IDs,
 more than 32 entries and over-4096-character lists are rejected at startup.
 A container port mapping does not itself establish a forwarding header or a hop.
 
+The same reviewed ingress list also gates **HSTS**, even with BFF signing disabled.
+Append a matching `http`/`https` observation to `X-Forwarded-Proto` at every
+trusted hop; the selected protocol and address suffix must both be complete.
+For two hops a visitor TLS connection followed by internal HTTP is represented
+as `X-Forwarded-For: <visitor>, <first-proxy>` and
+`X-Forwarded-Proto: https, http`. Every intermediate address and the socket peer
+must be explicitly trusted. Arbitrary browser prefixes, `Forwarded`, Host and
+`SITE_URL=https:…` do not establish TLS. Unknown/malformed evidence cannot grant
+HSTS, and internal proxy TLS does not prove the visitor used HTTPS. If an ingress
+cannot provide this contract, set HSTS at the reviewed TLS terminator instead of
+broadening peer trust. The app sends `max-age=31536000`, without preload or
+includeSubDomains. This is separate from the unchanged Secure-cookie contract.
+See [ADR 0039](../architecture/decisions/0039-browser-security-policy.md) for
+hash-based CSP, the 8 MiB / 6 s HTML buffer and its first-byte latency tradeoff.
+
 Unknown peers and malformed/incomplete/oversized chains fall back to the Web
 socket. Browser-written `Forwarded`, `X-Real-IP`, XFF prefixes and private bridge
 headers are not relayed as authority. Every upstream call gets a fresh,

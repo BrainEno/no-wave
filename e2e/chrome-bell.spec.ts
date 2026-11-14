@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./support/csp-fixture.ts";
 import { registerThroughForm, uniqueEmail } from "./support/accounts.ts";
 
 const baseUrl = process.env.E2E_WEB_URL ?? "http://127.0.0.1:3000";

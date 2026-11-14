@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { zipSync, strToU8 } from "fflate";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
+import { test } from "./support/csp-fixture.ts";
 import type { NotionImportReport } from "../packages/web-ui/src/lib/notion-import.ts";
 import { registerThroughForm, uniqueEmail } from "./support/accounts.ts";
 

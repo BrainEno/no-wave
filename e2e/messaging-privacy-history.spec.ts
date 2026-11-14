@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./support/csp-fixture.ts";
 import { ACTOR_HEADER, conversation, gate, login, register, restorePage, settleUi } from "./support/messaging-privacy.ts";
 
 test("a late older page that ignores abort cannot prepend into a recovered thread", async ({ browser, page, baseURL }) => {

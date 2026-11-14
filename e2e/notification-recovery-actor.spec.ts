@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./support/csp-fixture.ts";
 import { gate, restorePage, settleUi } from "./support/messaging-privacy.ts";
 import { NOTIFICATION_ACTOR_HEADER, loginNotificationAccount, notificationAccounts, openNotificationSurfaces, unreadNotifications } from "./support/notification-privacy.ts";
 

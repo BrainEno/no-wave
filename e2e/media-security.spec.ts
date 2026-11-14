@@ -1,0 +1,71 @@
+import { expect } from "@playwright/test";
+import { test } from "./support/media-stack.ts";
+import { registerThroughForm, uniqueEmail } from "./support/accounts.ts";
+
+test("real image upload, normalized WebP, editor save and library fetch work under enforcing CSP", async ({ browser, mediaStack }) => {
+  const context = await browser.newContext({ baseURL: mediaStack.webBaseUrl, reducedMotion: "reduce" });
+  try {
+    const page = await context.newPage();
+    const editor = page.getByRole("region", { name: "作品编辑器" });
+    await registerThroughForm(page, uniqueEmail("csp-upload"), "/write");
+    await expect(page.getByRole("toolbar", { name: "富文本格式" })).toBeVisible();
+    await page.getByLabel("标题", { exact: true }).fill("安全头下的真实图片上传");
+    await page.getByLabel("作品正文").fill("这张图片通过真实 API、重编码和对象存储适配器，不能只返回一个假地址。");
+    const input = await page.evaluate(() => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 48; canvas.height = 32;
+      const painter = canvas.getContext("2d")!;
+      painter.fillStyle = "#c23836";
+      painter.fillRect(0, 0, 48, 32);
+      return canvas.toDataURL("image/png").split(",")[1]!;
+    });
+    const uploaded = page.waitForResponse(response => new URL(response.url()).pathname === "/api/authoring/media" && response.request().method() === "POST");
+    await page.getByLabel("选择要上传的图片").setInputFiles({ name: "security.png", mimeType: "image/png", buffer: Buffer.from(input, "base64") });
+    const dialog = page.getByRole("dialog", { name: "插入图片" });
+    await dialog.getByLabel("替代文本", { exact: true }).fill("无浪安全测试红色色块");
+    await dialog.getByLabel("图片说明").fill("由服务器重编码为 WebP 的 48×32 图片");
+    await dialog.getByRole("button", { name: "上传并插入" }).click();
+    const upload = await uploaded;
+    expect(upload.status()).toBe(201);
+    expect(upload.headers()["x-content-type-options"]).toBe("nosniff");
+    expect(upload.headers()["cache-control"]).toContain("no-store");
+    const asset = (await upload.json()).data as { id: string; src: string; width: number; height: number };
+    expect(asset.src).toMatch(/^\/api\/media\/[0-9a-f-]{36}$/);
+    expect([asset.width, asset.height]).toEqual([48, 32]);
+    await expect(editor.getByRole("status")).toContainText("图片已上传并插入正文。");
+    const image = page.getByLabel("作品正文").getByRole("img", { name: "无浪安全测试红色色块" });
+    await expect(image).toBeVisible();
+    await expect.poll(() => image.evaluate(element => (element as HTMLImageElement).naturalWidth)).toBe(48);
+    expect(mediaStack.objects.size).toBe(1);
+    const object = [...mediaStack.objects.values()][0]!;
+    expect(object.bytes.subarray(0, 4).toString()).toBe("RIFF");
+    expect(object.bytes.subarray(8, 12).toString()).toBe("WEBP");
+    expect(mediaStack.requests.some(request => request.method === "PUT")).toBe(true);
+    expect(mediaStack.requests.some(request => request.method === "GET")).toBe(true);
+
+    const saved = page.waitForResponse(response => new URL(response.url()).pathname === "/api/authoring/articles" && response.request().method() === "POST");
+    await page.getByRole("button", { name: "保存草稿", exact: true }).click();
+    const saveResponse = await saved;
+    expect(saveResponse.status(), await saveResponse.text()).toBe(201);
+    await expect(editor.getByRole("status")).toContainText("草稿已保存");
+    await page.getByRole("link", { name: "媒体库", exact: true }).click();
+    await expect(page.getByRole("heading", { name: /媒体库/ })).toBeVisible();
+    await expect(page.getByText("这个部署没有配置图片存储")).toHaveCount(0);
+    await expect(page.getByText("48×32")).toBeVisible();
+    await expect(page.getByText("正在被使用：《安全头下的真实图片上传》（草稿）", { exact: true })).toBeVisible();
+    const preview = page.locator(`img[src="${asset.src}"]`);
+    await expect(preview).toBeVisible();
+    await expect.poll(() => preview.evaluate(element => (element as HTMLImageElement).naturalHeight)).toBe(32);
+    const fetched = await page.request.get(asset.src);
+    expect(fetched.status()).toBe(200);
+    expect(fetched.headers()["content-type"]).toContain("image/webp");
+    expect(fetched.headers()["x-content-type-options"]).toBe("nosniff");
+    expect(Buffer.compare(await fetched.body(), object.bytes)).toBe(0);
+    const library = await page.request.get("/api/authoring/media");
+    expect(library.status()).toBe(200);
+    const item = (await library.json()).data.items[0] as { id: string; orphan: boolean; referencedBy: { state: string }[] };
+    expect(item.id).toBe(asset.id);
+    expect(item.orphan).toBe(false);
+    expect(item.referencedBy[0]?.state).toBe("draft");
+  } finally { await context.close(); }
+});

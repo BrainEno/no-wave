@@ -113,7 +113,10 @@ export function PromptDialog({
             "aria-invalid": ownError ? ("true" as const) : undefined,
             "aria-describedby": ownError ? errorId : field.hint ? `${inputId}-hint` : undefined,
             onChange: (event: { currentTarget: { value: string } }) => {
-              setValues((current) => ({ ...current, [field.name]: event.currentTarget.value }));
+              // React clears currentTarget after dispatch, before a deferred
+              // updater may run (the image metadata dialog exercises this).
+              const value = event.currentTarget.value;
+              setValues((current) => ({ ...current, [field.name]: value }));
               if (errorField === field.name) {
                 setError("");
                 setErrorField("");

@@ -1,4 +1,5 @@
-import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { expect, type APIRequestContext, type Page } from "@playwright/test";
+import { test } from "./support/csp-fixture.ts";
 
 /**
  * Authoring journey, end to end in a real browser — twice.

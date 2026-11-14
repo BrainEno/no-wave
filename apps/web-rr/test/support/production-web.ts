@@ -22,8 +22,12 @@ export async function startProductionWeb(environment: Record<string, string>) {
     cwd: new URL("../../", import.meta.url),
     env: { ...process.env, NODE_ENV: "production", HOST: "0.0.0.0", PORT: String(port),
       API_SERVICE_URL: "", API_GRAPHQL_URL: "", ...environment },
-    stdio: "ignore",
+    stdio: ["ignore", "pipe", "pipe"],
   });
+  let output = "";
+  const capture = (chunk: Buffer) => { output = (output + chunk.toString()).slice(-128_000); };
+  app.stdout?.on("data", capture);
+  app.stderr?.on("data", capture);
   let spawnError: Error | undefined;
   app.once("error", (error) => { spawnError = error; });
   const close = async () => {
@@ -42,7 +46,7 @@ export async function startProductionWeb(environment: Record<string, string>) {
       try {
         const ready = await fetch(`${origin}/healthz`, { signal: AbortSignal.timeout(1000) });
         await ready.body?.cancel();
-        if (ready.ok) return { origin, close };
+        if (ready.ok) return { origin, close, output: () => output, signal: (signal: NodeJS.Signals) => app.kill(signal) };
       } catch { /* Startup probe only; assertions are never retried. */ }
       await delay(50);
     }

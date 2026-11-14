@@ -82,6 +82,41 @@ Do not repeat the same assertion at every layer. Each layer should catch a diffe
 - Do not set a blanket 100% coverage requirement. Establish a baseline after the initial test suite exists and use coverage as a diagnostic, not the goal.
 - CI should run formatting/lint, typecheck, relevant tests, contract generation/checks and production builds. Security/dependency checks should be added with actionable failure policies.
 
+### Browser security policy
+
+All browser suites import `test` from `e2e/support/csp-fixture.ts`, directly or
+through a stack fixture. The inventory guard follows those imports and rejects
+an unobserved Playwright base. The automatic fixture checks every navigated HTML
+policy and records `securitypolicyviolation` events before application code runs,
+including secondary contexts, previous documents and closed tabs. Each test
+attaches `csp-audit.json`; ordinary journeys require **zero** violations. Deliberate
+attack tests alone declare exact directive/blocked-target/count expectations,
+which must actually occur and may not swallow unrelated failures.
+
+`media-security.spec.ts` covers successful PNG upload through the real BFF/API,
+WebP normalization, metadata persistence, S3 adapter and a disposable local S3
+wire endpoint. It then saves the editor document and reads the library/image.
+The separate unconfigured-storage test remains a 503 UX test, not upload evidence.
+Lexical, GSAP normal-motion, first-party fonts and speech journeys all use the same
+production enforcing CSP. See [ADR 0039](../architecture/decisions/0039-browser-security-policy.md)
+for bounded HTML collection and the intentional first-byte latency tradeoff.
+
+Web transport tests also use verified real TLS sockets and a TLS-terminating
+loopback ingress. Their ephemeral certificate/key is generated with **OpenSSL**
+(the Ubuntu CI prerequisite), never checked in, and removed immediately; TLS
+verification is not disabled. HTTP and HTTPS traverse the same production Web
+server so HSTS, failure responses and Secure-cookie issuance can be compared.
+Production needs no OpenSSL command or additional certificate service.
+Cookie-transition browser tests use an explicitly synthetic inert HTML probe
+with an actual production document's enforcing policy: `/healthz` is JSON with
+`default-src 'none'`, not an application fetch harness. This preserves real
+Chromium cookie selection and all auth assertions without mounting background
+private readers or weakening the health response's CSP.
+The article hydration regression holds the client entry, focuses the actual SSR
+main with the keyboard, then releases hydration and verifies DOM identity and
+focus. It guards against invalid nested forms causing a client re-render under
+an otherwise valid CSP, rather than masking focus failures with sleeps.
+
 ## Performance baseline
 
 A behavior test says "this endpoint returns the right page". It does not say whether
