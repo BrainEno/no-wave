@@ -1,56 +1,48 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { flushSync } from "react-dom";
 import { useNavigationBlocker } from "@/lib/framework/navigation.ts";
+import { Link } from "@/lib/framework/link.tsx";
 import { getUi } from "@/lib/ui-copy.ts";
 import type { Locale } from "@/lib/content.ts";
 import { createMessagingController, type MessagingController } from "@/lib/messaging-intent.ts";
-import { createMessagingTransport, MessagingRequestError, type MessagingTarget } from "@/lib/messaging-transport.ts";
+import type { MessagingTarget } from "@/lib/messaging-transport.ts";
+import { createMessagingPrivacy, bindMessagingPrivacyWrite, type MessagingPrivacy } from "@/lib/messaging-privacy.ts";
+import { bindMessagingPrivacyRecovery } from "@/lib/messaging-privacy-recovery.ts";
 import { bindMessagingUnload } from "@/lib/messaging-leave.ts";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog.tsx";
 
-type ActorState = { id: string; status: "loading" | "ready" | "failed" };
-
-/** Identity is pinned to this mounted private screen, not re-read behind a pending intent. */
+/** Reverification may revoke display; it must never silently replace the pinned account. */
 export function useMessagingActor() {
-  const [transport] = useState(createMessagingTransport);
-  const [actor, setActor] = useState<ActorState>({ id: "", status: "loading" });
-  const request = useRef<AbortController | null>(null);
-  const pinned = useRef("");
-  const load = useCallback(async () => {
-    if (pinned.current) return;
-    request.current?.abort();
-    const next = new AbortController();
-    request.current = next;
-    setActor({ id: "", status: "loading" });
-    try {
-      const id = await transport.actor(next.signal);
-      if (request.current !== next) return;
-      pinned.current = id;
-      setActor({ id, status: "ready" });
-    } catch (error: unknown) {
-      if (request.current !== next || error instanceof MessagingRequestError && error.code === "cancelled") return;
-      setActor({ id: "", status: "failed" });
-    }
-  }, [transport]);
-  useEffect(() => {
-    void load();
-    return () => { const old = request.current; request.current = null; old?.abort(); };
-  }, [load]);
-  return { ...actor, retry: load };
+  const [privacy] = useState(createMessagingPrivacy);
+  const snapshot = useSyncExternalStore(privacy.subscribe, privacy.getSnapshot, privacy.getServerSnapshot);
+  useEffect(() => bindMessagingPrivacyRecovery(privacy, {
+    window, document, visible: () => document.visibilityState === "visible", flush: flushSync,
+  }), [privacy]);
+  return { ...snapshot, privacy, retry: privacy.check, currentId: privacy.currentId };
 }
+export type MessagingActor = ReturnType<typeof useMessagingActor>;
 
-export function MessagingActorNotice({ actor, locale }: { actor: ReturnType<typeof useMessagingActor>; locale: Locale }) {
+export function MessagingActorNotice({ actor, locale, signInHref = "/sign-in" }: { actor: MessagingActor; locale: Locale; signInHref?: string }) {
   const ui = getUi(locale).messages;
   if (actor.status === "ready") return null;
-  return actor.status === "failed" ? (
-    <p className="nw-m nw-compose-error" role="alert">{ui.accountFailed}{" "}
+  if (actor.status === "loading" || actor.status === "hidden") {
+    return <p className="nw-m nw-compose-hint" role="status">{actor.status === "hidden" ? ui.accountHidden : ui.accountLoading}</p>;
+  }
+  const changed = actor.status === "changed";
+  const signedOut = actor.status === "signed-out";
+  return (
+    <p className="nw-m nw-compose-error" role="alert">
+      {changed ? ui.accountChanged : signedOut ? ui.signIn : ui.accountFailed}{" "}
+      {changed || signedOut ? <Link target="_blank" rel="noopener noreferrer" href={signInHref}>{getUi(locale).reader.saveSignInAction}</Link> : null}{" "}
       <button type="button" className="nw-compose-retry" onClick={() => void actor.retry()}>{ui.accountRetry}</button>
     </p>
-  ) : <p className="nw-m nw-compose-hint" role="status">{ui.accountLoading}</p>;
+  );
 }
 
-export function useMessagingWrite(target: MessagingTarget) {
+export function useMessagingWrite(target: MessagingTarget, privacy: MessagingPrivacy) {
   const [controller] = useState(() => createMessagingController(target));
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getServerSnapshot);
+  useEffect(() => bindMessagingPrivacyWrite(privacy, controller), [privacy, controller]);
   useEffect(() => () => controller.cancel(), [controller]);
   return { controller, snapshot };
 }

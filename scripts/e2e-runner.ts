@@ -1,5 +1,5 @@
 /**
- * Run the complete browser suite against three independent disposable stacks.
+ * Run the complete browser suite against four independent disposable stacks.
  * Article creation is deliberately limited to 30/IP/hour in the real API, so
  * sharing one SQLite file would exhaust the production limit. Explicit CLI
  * arguments or external E2E URLs keep the ordinary Playwright behavior.
@@ -12,6 +12,8 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { INHERITED_VARIABLES } from "./portable-stack.ts";
+
+export const E2E_SHARD_COUNT = 4;
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const playwrightCli = fileURLToPath(import.meta.resolve("@playwright/test/cli"));
@@ -93,7 +95,7 @@ async function main(): Promise<number> {
 
   const directory = await mkdtemp(join(tmpdir(), "no-wave-e2e-"));
   try {
-    for (let shard = 1; shard <= 3; shard += 1) {
+    for (let shard = 1; shard <= E2E_SHARD_COUNT; shard += 1) {
       const [apiPort, webPort] = await unusedPorts();
       const env = isolatedEnvironment(process.env, {
         databasePath: join(directory, `shard-${shard}.sqlite`),
@@ -101,10 +103,10 @@ async function main(): Promise<number> {
         webPort,
         secret: randomBytes(32).toString("hex"),
       });
-      process.stdout.write(`\nBrowser suite: isolated shard ${shard}/3\n`);
+      process.stdout.write(`\nBrowser suite: isolated shard ${shard}/${E2E_SHARD_COUNT}\n`);
       const migration = runNode([join(root, "apps/api/src/persistence/migrate.ts")], env);
       if (migration !== 0) return migration;
-      const tests = runNode([playwrightCli, "test", `--shard=${shard}/3`], env);
+      const tests = runNode([playwrightCli, "test", `--shard=${shard}/${E2E_SHARD_COUNT}`], env);
       if (tests !== 0) return tests;
     }
     return 0;

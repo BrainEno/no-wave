@@ -263,7 +263,7 @@ pnpm test:all
 
 The runner checks dependencies and Docker before starting, then runs the root
 unit suite, builds and tests the production Web server, runs PostgreSQL integration
-against a new disposable `postgres:17-alpine` container, and runs three isolated
+against a new disposable `postgres:17-alpine` container, and runs four isolated
 SQLite browser shards. It binds PostgreSQL only to a random loopback port and
 removes its own container even on test failure or interruption; it never resets
 `compose.yaml` volumes. It ignores external database and E2E URLs, and executes

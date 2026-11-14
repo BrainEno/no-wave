@@ -2,12 +2,15 @@ import { useState } from "react";
 import { Link } from "@/lib/framework/link.tsx";
 import type { Locale } from "@/lib/content.ts";
 import { getUi } from "@/lib/ui-copy.ts";
-import { useMessagingWrite } from "@/components/public/messaging-controls.tsx";
+import type { useMessagingWrite, MessagingActor } from "@/components/public/messaging-controls.tsx";
 
 /** Mark-all is explicit and account-bound, never silently retried or given a create key. */
-export function MarkConversationRead({ locale, conversationId, viewerId }: { locale: Locale; conversationId: string; viewerId: string }) {
+export function MarkConversationRead({ locale, conversationId, actor, writer }: {
+  locale: Locale; conversationId: string; actor: MessagingActor; writer: ReturnType<typeof useMessagingWrite>;
+}) {
   const ui = getUi(locale).messages;
-  const { controller, snapshot } = useMessagingWrite({ kind: "read", conversationId });
+  const viewerId = actor.id;
+  const { controller, snapshot } = writer;
   const [marked, setMarked] = useState(false);
   const problem = snapshot.problem;
   const state = snapshot.busy ? "marking" : marked ? "marked" : problem === null ? "idle"
@@ -18,7 +21,7 @@ export function MarkConversationRead({ locale, conversationId, viewerId }: { loc
   async function markRead() {
     if (snapshot.busy) return;
     setMarked(false);
-    const receipt = await controller.attempt("", viewerId);
+    const receipt = await controller.attempt("", actor.currentId());
     if (receipt?.kind === "read") setMarked(true);
   }
 

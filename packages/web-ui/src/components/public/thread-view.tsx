@@ -3,6 +3,7 @@ import { Link } from "@/lib/framework/link.tsx";
 import type { Locale } from "@/lib/content.ts";
 import { getUi } from "@/lib/ui-copy.ts";
 import { dateLabel } from "@/lib/format.ts";
+import { apiErrorCode } from "@/lib/api-error.ts";
 import type { MessagingController } from "@/lib/messaging-intent.ts";
 import { MessagingActorNotice, MessagingPendingGuard, useMessagingActor, useMessagingWrite } from "@/components/public/messaging-controls.tsx";
 import { SectionHeading } from "@/components/ui/parts.tsx";
@@ -51,12 +52,17 @@ export function ThreadView({
   conversationId: string;
 }) {
   const ui = getUi(locale).messages;
-  const [state, setState] = useState<ThreadState>({ kind: "loading" });
+  const [loaded, setLoaded] = useState<{ epoch: number; state: ThreadState }>({ epoch: -1, state: { kind: "loading" } });
   const [loadingOlder, setLoadingOlder] = useState(false);
   const actor = useMessagingActor();
   const viewerId = actor.id;
+  const privacy = actor.privacy;
+  const currentId = actor.currentId;
+  const state: ThreadState = loaded.epoch === actor.epoch ? loaded.state : { kind: "loading" };
   const [draft, setDraft] = useState("");
-  const { controller: write, snapshot: writeState } = useMessagingWrite({ kind: "reply", conversationId });
+  const { controller: write, snapshot: writeState } = useMessagingWrite({ kind: "reply", conversationId }, privacy);
+  // Keep the original explicit read intent even while private history is hidden.
+  const readWriter = useMessagingWrite({ kind: "read", conversationId }, privacy);
   const sending = writeState.busy;
   const problem = writeState.problem;
   const sendError = problem === null ? "none" : problem === "account-changed" || problem === "unauthenticated" ? "signed-out"
@@ -65,7 +71,14 @@ export function ThreadView({
 
   const load = useCallback(
     async (before: string | null, prepend: boolean) => {
+      const lease = privacy.beginRead();
+      if (!lease) return;
       const mine = ++generation.current;
+      const setState = (next: ThreadState | ((previous: ThreadState) => ThreadState)) => setLoaded((previous) => {
+        if (mine !== generation.current || !privacy.accepts(lease.epoch)) return previous;
+        const ownState: ThreadState = previous.epoch === lease.epoch ? previous.state : { kind: "loading" };
+        return { epoch: lease.epoch, state: typeof next === "function" ? next(ownState) : next };
+      });
       if (prepend) setLoadingOlder(true);
       else setState({ kind: "loading" });
 
@@ -74,14 +87,24 @@ export function ThreadView({
       }`;
       try {
         const response = await fetch(query, {
-          headers: { accept: "application/json" },
+          headers: lease.headers,
           credentials: "same-origin",
           cache: "no-store",
+          redirect: "error",
+          signal: lease.signal,
         });
-        if (mine !== generation.current) return;
+        if (mine !== generation.current || !lease.current()) return;
 
         if (response.status === 401) {
           setState({ kind: "signed-out" });
+          lease.fail("unauthenticated");
+          return;
+        }
+        if (response.status === 409) {
+          const payload: unknown = await response.json().catch(() => null);
+          if (mine !== generation.current || !lease.current()) return;
+          if (apiErrorCode(payload) === "ACCOUNT_CHANGED") lease.fail("account-changed");
+          else setState({ kind: "failed" });
           return;
         }
         // 404 and 403 both mean "this is not yours to read". Neither is a
@@ -96,7 +119,7 @@ export function ThreadView({
         }
 
         const payload: unknown = await response.json().catch(() => null);
-        if (mine !== generation.current) return;
+        if (mine !== generation.current || !lease.current()) return;
         const page = readMessages(payload);
         if (page === null) {
           setState({ kind: "failed" });
@@ -110,29 +133,33 @@ export function ThreadView({
           return { kind: "ready", messages: page, more: page.length === PAGE_SIZE, cursor: page[0]?.id ?? null };
         });
       } catch {
-        if (mine === generation.current) setState({ kind: "failed" });
+        if (mine === generation.current && lease.current()) setState({ kind: "failed" });
       } finally {
-        if (mine === generation.current) setLoadingOlder(false);
+        if (mine === generation.current && lease.current()) setLoadingOlder(false);
+        lease.finish();
       }
     },
-    [conversationId],
+    [conversationId, privacy],
   );
 
   useEffect(() => {
-    void load(null, false);
+    if (actor.readable) void load(null, false);
+    else { setLoaded({ epoch: actor.epoch, state: { kind: "loading" } }); setLoadingOlder(false); }
     return () => { generation.current += 1; };
-  }, [load]);
+  }, [load, actor.readable, actor.epoch]);
 
   const send = useCallback(async () => {
-    const receipt = await write.attempt(draft, viewerId);
+    const epoch = privacy.getSnapshot().epoch;
+    const receipt = await write.attempt(draft, currentId());
     if (receipt?.kind !== "reply") return;
     const created = receipt.message;
     setDraft("");
-    setState((previous) => {
-      if (previous.kind !== "ready" || previous.messages.some((message) => message.id === created.id)) return previous;
-      return { ...previous, messages: [...previous.messages, created] };
+    if (!privacy.accepts(epoch)) return;
+    setLoaded((previous) => {
+      if (!privacy.accepts(epoch) || previous.epoch !== epoch || previous.state.kind !== "ready" || previous.state.messages.some((message) => message.id === created.id)) return previous;
+      return { epoch, state: { ...previous.state, messages: [...previous.state.messages, created] } };
     });
-  }, [write, draft, viewerId]);
+  }, [write, draft, currentId, privacy]);
 
   const backHref = `${locale === "zh-CN" ? "" : `/${locale}`}/messages`;
 
@@ -185,6 +212,14 @@ export function ThreadView({
       </form>
     </>
   );
+
+  if (!actor.readable) {
+    return <main id="top" tabIndex={-1} lang={locale} className="nw-w">
+      <Shell ui={ui} backHref={backHref} locale={locale} controller={write}>
+        <MessagingActorNotice actor={actor} locale={locale} signInHref={`/sign-in?next=${encodeURIComponent(`${backHref}/${conversationId}`)}`} />
+      </Shell>
+    </main>;
+  }
 
   if (state.kind === "loading") {
     return <main id="top" tabIndex={-1} lang={locale} className="nw-w"><Shell ui={ui} backHref={backHref} locale={locale} controller={write}><p className="nw-m nw-thread-note">{ui.threadLoading}</p></Shell></main>;
@@ -270,7 +305,7 @@ export function ThreadView({
             </article>
           ))}
         </div>
-        <MarkConversationRead key={conversationId} locale={locale} conversationId={conversationId} viewerId={viewerId} />
+        <MarkConversationRead key={conversationId} locale={locale} conversationId={conversationId} actor={actor} writer={readWriter} />
         {composer}
       </Shell>
     </main>

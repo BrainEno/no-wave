@@ -3,18 +3,20 @@ import { Link } from "@/lib/framework/link.tsx";
 import { useRouter } from "@/lib/framework/navigation.ts";
 import { getUi } from "@/lib/ui-copy.ts";
 import type { Locale } from "@/lib/content.ts";
-import { MessagingPendingGuard, useMessagingWrite } from "@/components/public/messaging-controls.tsx";
+import { MessagingPendingGuard, useMessagingWrite, type MessagingActor } from "@/components/public/messaging-controls.tsx";
 
 /** Start a one-to-one conversation; the API still authenticates and adds the actor. */
-export function StartConversation({ locale, initialRecipient, viewerId }: {
+export function StartConversation({ locale, initialRecipient, actor, visible }: {
   locale: Locale;
   initialRecipient: string;
-  viewerId: string;
+  actor: MessagingActor;
+  visible: boolean;
 }) {
   const ui = getUi(locale).messages;
   const router = useRouter();
+  const viewerId = actor.id;
   const [recipient, setRecipient] = useState(initialRecipient);
-  const { controller, snapshot } = useMessagingWrite({ kind: "start" });
+  const { controller, snapshot } = useMessagingWrite({ kind: "start" }, actor.privacy);
   const busy = snapshot.busy;
   const problem = snapshot.problem;
   const error = problem === null ? "none" : problem === "account-changed" || problem === "unauthenticated" ? "signed-out"
@@ -22,13 +24,14 @@ export function StartConversation({ locale, initialRecipient, viewerId }: {
   const inboxHref = locale === "zh-CN" ? "/messages" : `/${locale}/messages`;
 
   async function start() {
-    const receipt = await controller.attempt(recipient, viewerId);
-    if (receipt?.kind === "start") router.push(`${inboxHref}/${encodeURIComponent(receipt.conversationId)}`);
+    const epoch = actor.privacy.getSnapshot().epoch;
+    const receipt = await controller.attempt(recipient, actor.currentId());
+    if (receipt?.kind === "start" && actor.privacy.accepts(epoch)) router.push(`${inboxHref}/${encodeURIComponent(receipt.conversationId)}`);
   }
 
   return (
     <>
-      <form className="nw-compose" onSubmit={(event) => { event.preventDefault(); void start(); }}>
+      {visible ? <form className="nw-compose" onSubmit={(event) => { event.preventDefault(); void start(); }}>
         <h2 className="nw-compose-title">{ui.startTitle}</h2>
         <label className="nw-m nw-compose-label" htmlFor="nw-recipient">{ui.recipientLabel}</label>
         <input id="nw-recipient" className="nw-compose-input" type="text" value={recipient}
@@ -60,7 +63,7 @@ export function StartConversation({ locale, initialRecipient, viewerId }: {
           </div>
         ) : null}
         {snapshot.intent && !busy ? <button type="button" className="nw-compose-retry" onClick={() => controller.discard()}>{ui.discardPending}</button> : null}
-      </form>
+      </form> : null}
       <MessagingPendingGuard controller={controller} locale={locale} />
     </>
   );
