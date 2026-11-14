@@ -130,6 +130,12 @@ export function createPostgresIdentityStore(sql: PgDatabase) {
         return true;
       });
     },
+    async findIdentityRefreshSession({ refreshHash }) {
+      if (typeof refreshHash !== "string" || !/^[0-9a-f]{64}$/.test(refreshHash)) return null;
+      const rows = await sql.unsafe(`SELECT s.id FROM auth_refresh_tokens t JOIN auth_sessions s ON s.id = t.session_id
+        WHERE t.token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > clock_timestamp()`, [refreshHash]);
+      return rows[0] ? { sessionId: rows[0].id } : null;
+    },
     async rotateIdentityRefresh({ refreshHash, nextRefreshHash, accessTokenId, issuedAt, accessExpiresAt }) {
       return sql.begin(async (tx) => {
         const transactionId = createMigrationTransactionId();
@@ -519,5 +525,5 @@ export function createPostgresIdentityStore(sql: PgDatabase) {
         return { allowed: Number(rows[0].attempts) <= limit, resetAt: new Date(rows[0].reset_at).toISOString() };
       });
     },
-  }) satisfies Pick<TypedPersistenceAdapterContract, "createIdentityAccount" | "findIdentityAccount" | "createIdentitySession" | "rotateIdentityRefresh" | "revokeIdentityRefresh" | "revokeSession" | "issueIdentityToken" | "consumeIdentityToken" | "replaceIdentityPassword" | "listIdentitySessions" | "revokeIdentitySession" | "revokeIdentitySessions" | "markIdentityEmailVerified" | "findIdentityAccountByUserId" | "setIdentityEmail" | "findIdentityCredentials" | "pruneExpiredIdentityState" | "consumeRateLimit">;
+  }) satisfies Pick<TypedPersistenceAdapterContract, "createIdentityAccount" | "findIdentityAccount" | "createIdentitySession" | "findIdentityRefreshSession" | "rotateIdentityRefresh" | "revokeIdentityRefresh" | "revokeSession" | "issueIdentityToken" | "consumeIdentityToken" | "replaceIdentityPassword" | "listIdentitySessions" | "revokeIdentitySession" | "revokeIdentitySessions" | "markIdentityEmailVerified" | "findIdentityAccountByUserId" | "setIdentityEmail" | "findIdentityCredentials" | "pruneExpiredIdentityState" | "consumeRateLimit">;
 }

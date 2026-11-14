@@ -9,32 +9,9 @@ import {
 } from "./api.ts";
 import { accessTokenFrom, clearedTokenCookieHeaders, refreshTokenFrom, tokenCookieHeaders, type TokenSet } from "./cookies.ts";
 import { NO_STORE, errorResponse } from "./http.ts";
-import { isTokenEnvelope, setIdempotencyKeyHeader } from "./policy.ts";
+import { setIdempotencyKeyHeader } from "./policy.ts";
 import { parseRetryAfterSeconds } from "./retry-after.ts";
-import { InMemoryRefreshCoordinator, refreshCoordinatorKey, type RefreshCoordinator } from "./refresh-coordinator.ts";
-
-/**
- * Concurrent 401s must agree on one rotation (ADR 0025). Production requests
- * share the process-wide coordinator. A caller that injects its own `fetchImpl`
- * is talking to a different upstream transport, so it gets its own ledger —
- * rotation results never cross transports, and an injected test transport is
- * isolated from every other one. `config.refreshCoordinator` is the explicit
- * override a multi-instance deployment uses for a shared implementation.
- */
-const processRefreshCoordinator = new InMemoryRefreshCoordinator();
-const transportRefreshCoordinators = new WeakMap<FetchImpl, RefreshCoordinator>();
-
-function coordinatorFor(config: ApiProxyConfig): RefreshCoordinator {
-  if (config.refreshCoordinator) return config.refreshCoordinator;
-  const transport = config.fetchImpl;
-  if (!transport) return processRefreshCoordinator;
-  let scoped = transportRefreshCoordinators.get(transport);
-  if (!scoped) {
-    scoped = new InMemoryRefreshCoordinator();
-    transportRefreshCoordinators.set(transport, scoped);
-  }
-  return scoped;
-}
+import { isRefreshFailure, refreshFailureResponse, resolveSessionRefresh } from "./session-refresh.ts";
 
 /**
  * Authenticated API forwarder for the browser-facing authoring/session/media
@@ -209,21 +186,19 @@ export async function forwardAuthoringRequest(
     } else {
       // Retry exactly once: a refresh loop would hammer the identity service and
       // could replay a mutation more than once. Every request carrying this same
-      // stale credential pair joins one rotation instead of consuming the token
+      // refresh credential joins one rotation instead of consuming the token
       // again — a second presentation would revoke the whole session family.
-      const key = await refreshCoordinatorKey(base, refreshToken, accessToken);
-      const refreshAttempt = await coordinatorFor(config).resolve(
-        key,
-        () => upgradeSession(fetchImpl, base, refreshToken, timeoutMs, config.clientAddressHeaders),
-      );
-      if (refreshAttempt) {
+      const refreshAttempt = await resolveSessionRefresh(refreshToken, config, timeoutMs);
+      if (refreshAttempt && !isRefreshFailure(refreshAttempt)) {
         rotated = refreshAttempt;
         accessToken = refreshAttempt.accessToken;
         const retried = await guardedCall(accessToken);
         if (retried instanceof Response) reply = retried;
         else upstream = retried;
+      } else if (isRefreshFailure(refreshAttempt) && refreshAttempt.status === 429) {
+        reply = refreshFailureResponse(refreshAttempt);
       } else {
-        if (refreshAttempt === null) {
+        if (refreshAttempt === null || (isRefreshFailure(refreshAttempt) && (refreshAttempt.status === 400 || refreshAttempt.status === 401))) {
           // A rejected refresh token means the session is over: clear it instead of
           // leaving the browser to retry with a credential the API already refused.
           clearCookies = true;
@@ -273,57 +248,4 @@ export async function forwardAuthoringRequest(
  */
 export function forwardViewerRead(request: Request, path: string, config: ApiProxyConfig = {}): Promise<Response> {
   return forwardAuthoringRequest(request, path, "GET", config, undefined, undefined, undefined, true);
-}
-
-/**
- * Refresh the session.
- *
- * Returns the rotated token set on success, `null` when the refresh token was
- * definitively rejected (the caller must clear cookies), and `undefined` when the
- * refresh failed in a way that proves nothing about the session (network error or
- * 5xx), where the original 401 must simply be passed through.
- */
-async function upgradeSession(
-  fetchImpl: FetchImpl,
-  base: string,
-  refreshToken: string,
-  timeoutMs: number,
-  clientAddressHeaders?: ApiProxyConfig["clientAddressHeaders"],
-): Promise<TokenSet | null | undefined> {
-  let result: BufferedUpstream;
-  try {
-    // The rotation has its own budget. A timeout here (like a network failure)
-    // proves nothing about the session, so the original 401 is passed through
-    // instead of clearing a credential that may still be valid upstream.
-    result = await withUpstreamDeadline(timeoutMs, async (signal) => {
-      const target = apiUrl(base, "api/v1/auth/refresh");
-      const headers = new Headers({ accept: "application/json", "content-type": "application/json; charset=utf-8" });
-      applyClientAddressHeaders(headers, target, "POST", clientAddressHeaders);
-      const response = await fetchImpl(target, {
-        method: "POST",
-        headers,
-        redirect: "error",
-        body: JSON.stringify({ refreshToken }),
-        cache: "no-store",
-        signal,
-      });
-      return {
-        status: response.status,
-        contentType: response.headers.get("content-type"),
-        text: await response.text(),
-        retryAfter: response.headers.get("retry-after"),
-      };
-    });
-  } catch {
-    return undefined;
-  }
-  let payload: unknown = null;
-  try {
-    payload = JSON.parse(result.text) as unknown;
-  } catch {
-    payload = null;
-  }
-  if (result.status >= 200 && result.status <= 299 && isTokenEnvelope(payload)) return payload.data;
-  if (result.status === 400 || result.status === 401) return null;
-  return undefined;
 }

@@ -13,6 +13,7 @@ import { clearedTokenCookieHeaders, refreshTokenFrom, tokenCookieHeaders } from 
 import { errorResponse, isRecord, jsonResponse, safeApiError } from "./http.ts";
 import { isSameOriginMutation, isTokenEnvelope } from "./policy.ts";
 import { parseRetryAfterSeconds } from "./retry-after.ts";
+import { isRefreshFailure, refreshFailureResponse, resolveSessionRefresh } from "./session-refresh.ts";
 
 /**
  * Sign-in / register / refresh / logout proxy, framework-neutral.
@@ -120,6 +121,13 @@ export async function handleAuthRequest(
     }
     if (!refreshToken) {
       return errorResponse("UNAUTHENTICATED", "Please sign in again.", 401);
+    }
+    if (action === "refresh") {
+      const outcome = await resolveSessionRefresh(refreshToken, config, timeoutMs);
+      if (isRefreshFailure(outcome)) return refreshFailureResponse(outcome);
+      if (outcome === null) return errorResponse("UNAUTHENTICATED", "Please sign in again.", 401);
+      if (outcome === undefined) return errorResponse("SERVICE_UNAVAILABLE", "The API service could not be reached.", 502);
+      return jsonResponse({ data: { tokenType: "Bearer", accessExpiresAt: outcome.accessExpiresAt } }, 200, tokenCookieHeaders(request, outcome));
     }
     body = JSON.stringify({ refreshToken });
   }

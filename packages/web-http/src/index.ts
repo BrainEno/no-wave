@@ -63,6 +63,7 @@ export {
   refreshCoordinatorKey,
   type InMemoryRefreshCoordinatorOptions,
   type RefreshCoordinator,
+  type RefreshFailure,
   type RefreshOutcome,
 } from "./refresh-coordinator.ts";
 export { NO_STORE, errorResponse, isRecord, jsonResponse, safeApiError } from "./http.ts";

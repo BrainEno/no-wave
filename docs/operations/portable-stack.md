@@ -185,9 +185,21 @@ No configuration has been applied to a live deployment by this change.
 explicit value (including empty to disable) is supplied. Their API and Web roles
 receive the same key with zero proxy hops; the worker never receives it. Isolated
 browser fixtures likewise generate a separate key and discard any inherited
-proxy policy. Separate session/user refresh buckets, automatic-refresh 429
-propagation and cross-instance refresh coordination remain open (#314/#318/#324).
-See [ADR 0027](../architecture/decisions/0027-client-address-behind-a-proxy.md).
+proxy policy. Live refresh credentials use database-confirmed stable-session
+120/15-minute buckets; unknown credentials keep the 120/IP/15-minute fallback.
+Explicit and automatic BFF refresh share the same process-local ledger even
+when the access cookie is omitted, and propagate 429/normalized Retry-After
+without clearing cookies. These complete the remaining #314/#324 refresh work;
+no production rate is raised.
+
+**Multi-replica warning:** the default ledger is in-memory in one Web process.
+The explicit `ApiProxyConfig.refreshCoordinator` port is not an installed
+external service or an environment toggle. Review stable session routing or
+provide an external atomic coordinator/result store before multiple Web replicas
+serve the same refresh generation; test claim loss/outage and protect token
+results. This change does **not** implement or close #318 and does not authorize
+a rollout. See [ADR 0025](../architecture/decisions/0025-browser-session-refresh-protocol.md)
+and [ADR 0027](../architecture/decisions/0027-client-address-behind-a-proxy.md).
 
 ## The probe
 

@@ -74,14 +74,14 @@ test("the result ledger is bounded", async () => {
   assert.equal(calls, 1);
 });
 
-test("the ledger key is a digest, not a credential, and separates every input", async () => {
+test("the ledger key separates upstream and refresh credential, never an expiring access cookie", async () => {
   const base = await refreshCoordinatorKey("https://api.example.test", TOKENS.refreshToken, TOKENS.accessToken);
   assert.match(base, /^[0-9a-f]{64}$/);
   assert.equal(base.includes(TOKENS.refreshToken), false);
   assert.equal(base.includes(TOKENS.accessToken), false);
   assert.notEqual(base, await refreshCoordinatorKey("https://other.example.test", TOKENS.refreshToken, TOKENS.accessToken));
   assert.notEqual(base, await refreshCoordinatorKey("https://api.example.test", "x".repeat(43), TOKENS.accessToken));
-  assert.notEqual(base, await refreshCoordinatorKey("https://api.example.test", TOKENS.refreshToken, undefined));
+  assert.equal(base, await refreshCoordinatorKey("https://api.example.test", TOKENS.refreshToken, undefined));
   assert.equal(base, await refreshCoordinatorKey("https://api.example.test", TOKENS.refreshToken, TOKENS.accessToken));
 });
 
@@ -142,3 +142,43 @@ test("a 5xx-style undefined answer is settled for in-flight waiters but not reus
   assert.equal(calls, 2, "the next caller after a 5xx rotates instead of replaying the 5xx");
 });
 
+test("typed refresh failures use refusal or transient TTLs according to evidence, not their truthiness", async () => {
+  for (const status of [400, 401, 403, 408, 422, 429, 500, 502, 504]) {
+    let clock = 1000, calls = 0;
+    const coordinator = new InMemoryRefreshCoordinator({ now: () => clock, reuseMs: 5000, transientMs: 250 });
+    const failure = { kind: "failed" as const, status, code: "FIXTURE_ERROR", message: "Safe error.", retryAfterSeconds: status === 429 ? 60 : null };
+    const rotate = async () => { calls++; return failure; };
+    const first = await coordinator.resolve("generation", rotate);
+    assert.equal(first, failure);
+    clock += 249;
+    assert.equal(await coordinator.resolve("generation", rotate), failure);
+    assert.equal(calls, 1, `${status} siblings must share a burst`);
+    clock++;
+    const next = await coordinator.resolve("generation", async () => { calls++; return ROTATED; });
+    if (status === 400 || status === 401) {
+      assert.equal(next, failure, "only definitive credential refusal belongs to the long window");
+      assert.equal(calls, 1);
+      clock += 4750;
+      assert.equal(await coordinator.resolve("generation", async () => { calls++; return ROTATED; }), ROTATED);
+      assert.equal(calls, 2);
+    } else {
+      assert.equal(next, ROTATED, `${status} is not a permanently rejected credential`);
+      assert.equal(calls, 2);
+    }
+  }
+});
+
+test("zero transient retention still shares a pending typed 429 without retaining a failed credential", async () => {
+  const coordinator = new InMemoryRefreshCoordinator({ reuseMs: 5000, transientMs: 0 });
+  let finish!: () => void, calls = 0;
+  const waiting = new Promise<void>((resolve) => { finish = resolve; });
+  const failure = { kind: "failed" as const, status: 429, code: "RATE_LIMITED", message: "Retry later.", retryAfterSeconds: 30 };
+  const rotate = async () => { calls++; await waiting; return failure; };
+  const first = coordinator.resolve("generation", rotate);
+  const second = coordinator.resolve("generation", rotate);
+  finish();
+  assert.deepEqual(await Promise.all([first, second]), [failure, failure]);
+  assert.equal(calls, 1);
+  assert.equal(await coordinator.resolve("generation", async () => { calls++; return ROTATED; }), ROTATED);
+  assert.equal(calls, 2);
+});
