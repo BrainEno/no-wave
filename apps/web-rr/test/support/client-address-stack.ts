@@ -58,11 +58,26 @@ export function callFrom(origin: string, peer: string, path: string, {
 
 /** An actual ingress: append the peer we observed and connect from its named address. */
 export async function startEdge(webOrigin: string) {
+  const destination = new URL(webOrigin);
+  if (destination.protocol !== "http:" || destination.hostname !== "127.0.0.1" || destination.username || destination.password || destination.pathname !== "/" || destination.search || destination.hash) {
+    throw new RangeError("The ingress fixture requires a loopback HTTP origin.");
+  }
   const edge = createServer((request, response) => {
+    const path = request.url ?? "/";
+    // Accept only origin-form. A URL resolved against a base can replace its
+    // host when this public socket receives an absolute/network-path target.
+    if (!/^\/(?!\/)[^\\\s]*$/.test(path)) {
+      response.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
+      response.end("Bad Request");
+      return;
+    }
     const peer = request.socket.remoteAddress?.replace(/^::ffff:/, "") ?? "";
     const incoming = request.headers["x-forwarded-for"];
     const previous = Array.isArray(incoming) ? incoming.join(", ") : incoming;
-    const upstream = httpRequest(new URL(request.url ?? "/", webOrigin), {
+    // The connection authority is fixed at composition; path and browser Host
+    // never participate in choosing its hostname or port.
+    const upstream = httpRequest({
+      hostname: "127.0.0.1", port: destination.port || "80", path,
       method: request.method, localAddress: EDGE_PEER, agent: false,
       headers: { ...request.headers, "x-forwarded-for": previous ? `${previous}, ${peer}` : peer },
     }, (upstreamResponse) => {
