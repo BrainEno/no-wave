@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { isolatedEnvironment, shouldRunIsolated } from "./e2e-runner.ts";
 
-test("a full local run uses three disposable stacks, but targeted or external runs retain Playwright behavior", () => {
+test("a full local run uses four disposable stacks, but targeted or external runs retain Playwright behavior", () => {
   assert.equal(shouldRunIsolated([], {}), true);
   assert.equal(shouldRunIsolated(["--grep", "save"], {}), false);
   assert.equal(shouldRunIsolated([], { E2E_WEB_URL: "https://external.example" }), false);
@@ -54,4 +54,18 @@ test("CI shards and local disposable stacks use the same finite multi-account re
   assert.equal(environment.AUTH_REGISTER_IP_LIMIT, "80", "new independent account-switch journeys exceed the old 60/IP fixture budget");
   assert.match(e2eJob, new RegExp(`AUTH_REGISTER_IP_LIMIT: "${environment.AUTH_REGISTER_IP_LIMIT}"`));
   assert.doesNotMatch(e2eJob, /continue-on-error|AUTH_REGISTER_IP_LIMIT: "9999"/);
+});
+
+test("the full browser inventory has four isolated rate-limit domains in both CI and the local runner", async () => {
+  const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+  const e2eJob = workflow.slice(workflow.indexOf("  e2e:"), workflow.indexOf("  react-router-prototype:"));
+  const shards = e2eJob.match(/shard: \[([^\]]+)\]/)?.[1].split(",").map(Number);
+  assert.deepEqual(shards, [1, 2, 3, 4], "131 journeys put more than 30 real article writes in the first of three file-level shards");
+  assert.match(e2eJob, /pnpm test:e2e --shard=\$\{\{ matrix\.shard \}\}\/4/);
+  const runner = await import("./e2e-runner.ts");
+  assert.equal("E2E_SHARD_COUNT" in runner && runner.E2E_SHARD_COUNT, 4);
+  const source = readFileSync(new URL("./e2e-runner.ts", import.meta.url), "utf8");
+  assert.match(source, /shard <= E2E_SHARD_COUNT/);
+  assert.match(source, /--shard=\$\{shard\}\/\$\{E2E_SHARD_COUNT\}/);
+  assert.doesNotMatch(e2eJob, /ARTICLE_CREATE.*LIMIT|continue-on-error/);
 });

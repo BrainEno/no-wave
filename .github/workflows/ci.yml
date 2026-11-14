@@ -135,10 +135,11 @@ jobs:
     runs-on: ubuntu-latest
     # Each shard has its own runner and SQLite database. A single shared stack
     # exhausts the real API's 30/IP/hour article-creation budget; do not relax it.
+    # Four stacks keep the expanded file-level groups inside that real budget.
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4]
     # The job is part of `required-checks` (2026-11-01), so a hang would block
     # merges for the six hours GitHub's default allows. Cold, the job is about
     # five minutes — install, build, Chromium download and a two-minute suite —
@@ -214,8 +215,8 @@ jobs:
           fi
       - name: Install the Chromium build Playwright drives
         run: pnpm exec playwright install chromium
-      - name: Run browser-level shard ${{ matrix.shard }}/3
-        run: pnpm test:e2e --shard=${{ matrix.shard }}/3
+      - name: Run browser-level shard ${{ matrix.shard }}/4
+        run: pnpm test:e2e --shard=${{ matrix.shard }}/4
       - name: Upload the Playwright report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7

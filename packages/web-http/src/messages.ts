@@ -114,7 +114,9 @@ export async function handleInboxRequest(
   if (limit === null) {
     return errorResponse("BAD_USER_INPUT", "Invalid limit query parameter.", 400);
   }
-  return forwardAuthoringRequest(request, inboxPath(limit), "GET", config);
+  const expected = expectedMessagingActor(request);
+  if (expected.response) return expected.response;
+  return forwardAuthoringRequest(request, inboxPath(limit), "GET", config, undefined, undefined, expected.actorId);
 }
 
 /**
@@ -137,7 +139,9 @@ export async function handleConversationRequest(
   if (!isConversationId(params.conversationId)) {
     return errorResponse("BAD_USER_INPUT", "Invalid conversation ID.", 400);
   }
-  return forwardAuthoringRequest(request, conversationPath(params.conversationId), "GET", config);
+  const expected = expectedMessagingActor(request);
+  if (expected.response) return expected.response;
+  return forwardAuthoringRequest(request, conversationPath(params.conversationId), "GET", config, undefined, undefined, expected.actorId);
 }
 
 /**
@@ -175,11 +179,16 @@ export async function handleConversationMessagesRequest(
     return errorResponse("BAD_USER_INPUT", "The message cursor must not be empty.", 400);
   }
 
+  const expected = expectedMessagingActor(request);
+  if (expected.response) return expected.response;
   return forwardAuthoringRequest(
     request,
     messagesPath(params.conversationId, limit, before),
     "GET",
     config,
+    undefined,
+    undefined,
+    expected.actorId,
   );
 }
 
