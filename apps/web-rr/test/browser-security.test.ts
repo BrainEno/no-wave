@@ -5,6 +5,7 @@ import { after, before, test } from "node:test";
 import { startMockRestApi } from "../mocks/rest-api.ts";
 import { startProductionWeb } from "./support/production-web.ts";
 import { callFrom, EDGE_PEER, FIRST_CLIENT } from "./support/client-address-stack.ts";
+import { htmlScripts, inlineScriptText } from "./support/html-scripts.ts";
 
 let api: Awaited<ReturnType<typeof startMockRestApi>>;
 let web: Awaited<ReturnType<typeof startProductionWeb>>;
@@ -32,10 +33,10 @@ function documentPolicy(headers: Headers, html: string): string[] {
   assert.doesNotMatch(script, /unsafe-inline|unsafe-eval|nonce-|https:|\*/);
   assert.equal(headers.get("content-security-policy-report-only"), null, "the policy must actually enforce");
   const hashes: string[] = [];
-  for (const match of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
-    if (/\bsrc\s*=/i.test(match[1]!)) continue;
-    assert.match(match[1]!, /\bnonce="[A-Za-z0-9_-]{32}"/, "framework scripts have render-local provenance");
-    const digest = createHash("sha256").update(match[2]!.replace(/\r\n?/g, "\n")).digest("base64");
+  for (const node of htmlScripts(html)) {
+    if (node.attrs.some(attribute => attribute.name === "src")) continue;
+    assert.match(node.attrs.find(attribute => attribute.name === "nonce")?.value ?? "", /^[A-Za-z0-9_-]{32}$/, "framework scripts have render-local provenance");
+    const digest = createHash("sha256").update(inlineScriptText(node)).digest("base64");
     assert.ok(script.includes(`'sha256-${digest}'`), "every actual inline framework script is authorized by its exact bytes");
     hashes.push(digest);
   }
@@ -115,8 +116,8 @@ test("immutable JS, CSS, fonts and icons have nosniff and restrictive standalone
 test("fresh render markers differ but never become reusable browser nonce credentials", async () => {
   const [first, second] = await Promise.all([fetch(web.origin + "/"), fetch(web.origin + "/")]);
   const [left, right] = await Promise.all([first.text(), second.text()]);
-  const leftMarker = /<script[^>]*nonce="([A-Za-z0-9_-]{32})"/.exec(left)?.[1];
-  const rightMarker = /<script[^>]*nonce="([A-Za-z0-9_-]{32})"/.exec(right)?.[1];
+  const leftMarker = htmlScripts(left)[0]?.attrs.find(attribute => attribute.name === "nonce")?.value;
+  const rightMarker = htmlScripts(right)[0]?.attrs.find(attribute => attribute.name === "nonce")?.value;
   assert.ok(leftMarker);
   assert.ok(rightMarker);
   assert.notEqual(leftMarker, rightMarker);

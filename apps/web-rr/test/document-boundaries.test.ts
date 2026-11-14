@@ -9,6 +9,7 @@ import { pathToFileURL } from "node:url";
 import { after, before, test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { startProductionWeb } from "./support/production-web.ts";
+import { htmlScripts, inlineScriptText } from "./support/html-scripts.ts";
 
 let directory: string;
 let web: Awaited<ReturnType<typeof startProductionWeb>>;
@@ -55,9 +56,9 @@ function protectedDocument(response: Response, html: string) {
   const policy = response.headers.get("content-security-policy") ?? "";
   assert.match(policy, /frame-ancestors 'none'/);
   assert.doesNotMatch(policy.split(";").find(value => value.trim().startsWith("script-src ")) ?? "", /unsafe-inline|unsafe-eval|nonce-/);
-  for (const match of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
-    if (/\bsrc=/.test(match[1]!)) continue;
-    assert.ok(policy.includes(`'sha256-${createHash("sha256").update(match[2]!).digest("base64")}'`));
+  for (const node of htmlScripts(html)) {
+    if (node.attrs.some(attribute => attribute.name === "src")) continue;
+    assert.ok(policy.includes(`'sha256-${createHash("sha256").update(inlineScriptText(node)).digest("base64")}'`));
   }
 }
 
@@ -72,7 +73,7 @@ test("an internally streamed Suspense completion waits before headers and hashes
   assert.ok(firstByte < 5000);
   protectedDocument(response, html);
   assert.match(response.headers.get("cache-control") ?? "", /public, s-maxage=60/);
-  assert.ok([...html.matchAll(/<script/g)].length >= 4, "exercise the late React/Suspense script, not just Scripts");
+  assert.ok(htmlScripts(html).length >= 4, "exercise the late React/Suspense script, not just Scripts");
 });
 
 test("an oversized real render returns only a protected no-store error, never its partial public shell", async () => {

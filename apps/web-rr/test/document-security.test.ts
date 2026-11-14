@@ -51,6 +51,20 @@ test("HTML5 parsing respects case, quoted tag delimiters, duplicate attributes a
   assert.deepEqual(documentScriptHashes(`<script type="application/ld+json">{"name":"data"}</script>`, nonce), []);
 });
 
+test("valid HTML end-tag whitespace cannot hide a following untrusted script from provenance checks", async () => {
+  const nonce = marker(), source = "window.safeBoot='boundary';", attack = "window.afterEndTag=true;";
+  for (const endTag of ["</script >", "</SCRIPT\t>", "</script\n>", "</script/>"]) {
+    const html = `<script data-note=">" nonce="${nonce}">${source}${endTag}`;
+    assert.deepEqual(documentScriptHashes(html, nonce), [hash(source)], endTag);
+    const response = await seal(html, nonce);
+    assert.equal(await response.text(), html, "sealing must preserve the bytes the browser parses");
+    assert.ok(response.headers.get("content-security-policy")!.includes(hash(source)));
+    assert.ok(!response.headers.get("content-security-policy")!.includes(hash(attack)));
+    await assert.rejects(seal(`${html}<script>${attack}</script>`, nonce),
+      (error: unknown) => error instanceof DocumentSecurityError && error.code === "UNTRUSTED_INLINE_SCRIPT");
+  }
+});
+
 test("hashes use browser-normalized line endings, replacement characters and complete UTF-8 text", () => {
   const nonce = marker(), raw = "// 中文𠀀\r\nwindow.name='a\rb\0c';";
   assert.deepEqual(documentScriptHashes(script(nonce, raw), nonce), [hash("// 中文𠀀\nwindow.name='a\nb�c';")]);
