@@ -28,8 +28,8 @@ from a code change.
 
 ## Slice ownership
 
-The port table declares 90 methods; each provider's slices own
-89 of them (all but `health`) plus the 6 media
+The port table declares 91 methods; each provider's slices own
+90 of them (all but `health`) plus the 6 media
 methods. `health` and PostgreSQL's optional `transaction` are composed by the entry point.
 
 | Provider | Slice | Factory | Methods |
@@ -37,7 +37,7 @@ methods. `health` and PostgreSQL's optional `transaction` are composed by the en
 | postgres | `postgres-article-store.ts` | `createPostgresArticleStore` | 18 |
 | postgres | `postgres-conversation-store.ts` | `createPostgresConversationStore` | 9 |
 | postgres | `postgres-engagement-store.ts` | `createPostgresEngagementStore` | 8 |
-| postgres | `postgres-identity-store.ts` | `createPostgresIdentityStore` | 18 |
+| postgres | `postgres-identity-store.ts` | `createPostgresIdentityStore` | 19 |
 | postgres | `postgres-import-store.ts` | `createPostgresImportStore` | 5 |
 | postgres | `postgres-media-store.ts` | `createPostgresMediaStore` | 6 |
 | postgres | `postgres-notification-store.ts` | `createPostgresNotificationStore` | 7 |
@@ -48,7 +48,7 @@ methods. `health` and PostgreSQL's optional `transaction` are composed by the en
 | sqlite | `sqlite-article-store.ts` | `createSqliteArticleStore` | 18 |
 | sqlite | `sqlite-conversation-store.ts` | `createSqliteConversationStore` | 9 |
 | sqlite | `sqlite-engagement-store.ts` | `createSqliteEngagementStore` | 8 |
-| sqlite | `sqlite-identity-store.ts` | `createSqliteIdentityStore` | 18 |
+| sqlite | `sqlite-identity-store.ts` | `createSqliteIdentityStore` | 19 |
 | sqlite | `sqlite-import-store.ts` | `createSqliteImportStore` | 5 |
 | sqlite | `sqlite-media-store.ts` | `createSqliteMediaStore` | 6 |
 | sqlite | `sqlite-notification-store.ts` | `createSqliteNotificationStore` | 7 |
@@ -64,7 +64,7 @@ methods. `health` and PostgreSQL's optional `transaction` are composed by the en
 - `sqlite-article-store.ts`: `listPublishedArticles`, `listFeaturedArticles`, `setFeaturedArticles`, `listFollowingArticles`, `getPublishedArticle`, `incrementArticleViewCount`, `listMyArticles`, `getMyArticle`, `findMyArticleByCreateKey`, `listMyArticleEditions`, `listMyDeletedArticles`, `listLikedArticles`, `listRelatedArticles`, `createArticle`, `updateArticle`, `deleteArticle`, `restoreArticle`, `purgeExpiredArticles`
 - `sqlite-conversation-store.ts`: `createConversation`, `updateConversationParticipants`, `deleteConversation`, `markConversationAsRead`, `listConversationMessages`, `getConversation`, `listConversations`, `persistMessage`, `listConversationParticipantIds`
 - `sqlite-engagement-store.ts`: `getArticleLikeInfo`, `toggleArticleLike`, `setArticleLike`, `listArticleComments`, `createArticleComment`, `updateArticleComment`, `deleteArticleComment`, `listArticleCommentAuthorIds`
-- `sqlite-identity-store.ts`: `createIdentityAccount`, `findIdentityAccount`, `createIdentitySession`, `rotateIdentityRefresh`, `revokeIdentityRefresh`, `revokeSession`, `issueIdentityToken`, `consumeIdentityToken`, `replaceIdentityPassword`, `listIdentitySessions`, `revokeIdentitySession`, `revokeIdentitySessions`, `markIdentityEmailVerified`, `findIdentityAccountByUserId`, `setIdentityEmail`, `findIdentityCredentials`, `pruneExpiredIdentityState`, `consumeRateLimit`
+- `sqlite-identity-store.ts`: `createIdentityAccount`, `findIdentityAccount`, `createIdentitySession`, `findIdentityRefreshSession`, `rotateIdentityRefresh`, `revokeIdentityRefresh`, `revokeSession`, `issueIdentityToken`, `consumeIdentityToken`, `replaceIdentityPassword`, `listIdentitySessions`, `revokeIdentitySession`, `revokeIdentitySessions`, `markIdentityEmailVerified`, `findIdentityAccountByUserId`, `setIdentityEmail`, `findIdentityCredentials`, `pruneExpiredIdentityState`, `consumeRateLimit`
 - `sqlite-import-store.ts`: `getExternalContentLink`, `listExternalContentLinks`, `upsertExternalContentLink`, `getImportPlanGeneration`, `commitNotionImportWork`
 - `sqlite-media-store.ts`: `createMediaAsset`, `getMediaAsset`, `listMediaAssets`, `listMediaScanRows`, `listReferencesForAssets`, `deleteUnusedMediaAsset`
 - `sqlite-notification-store.ts`: `deliverMessageNotifications`, `listNotifications`, `getUnreadNotificationCount`, `markAllNotificationsRead`, `markNotificationRead`, `createNotification`, `createNotifications`
@@ -78,7 +78,7 @@ methods. `health` and PostgreSQL's optional `transaction` are composed by the en
 - `postgres-article-store.ts`: `listPublishedArticles`, `getPublishedArticle`, `incrementArticleViewCount`, `listMyArticles`, `getMyArticle`, `findMyArticleByCreateKey`, `listMyArticleEditions`, `listMyDeletedArticles`, `createArticle`, `updateArticle`, `deleteArticle`, `restoreArticle`, `purgeExpiredArticles`, `listLikedArticles`, `listRelatedArticles`, `listFollowingArticles`, `listFeaturedArticles`, `setFeaturedArticles`
 - `postgres-conversation-store.ts`: `createConversation`, `getConversation`, `updateConversationParticipants`, `deleteConversation`, `markConversationAsRead`, `listConversationMessages`, `listConversations`, `persistMessage`, `listConversationParticipantIds`
 - `postgres-engagement-store.ts`: `getArticleLikeInfo`, `toggleArticleLike`, `setArticleLike`, `listArticleComments`, `createArticleComment`, `updateArticleComment`, `deleteArticleComment`, `listArticleCommentAuthorIds`
-- `postgres-identity-store.ts`: `createIdentityAccount`, `findIdentityAccount`, `createIdentitySession`, `rotateIdentityRefresh`, `revokeIdentityRefresh`, `revokeSession`, `issueIdentityToken`, `consumeIdentityToken`, `replaceIdentityPassword`, `listIdentitySessions`, `revokeIdentitySession`, `revokeIdentitySessions`, `markIdentityEmailVerified`, `findIdentityAccountByUserId`, `setIdentityEmail`, `findIdentityCredentials`, `pruneExpiredIdentityState`, `consumeRateLimit`
+- `postgres-identity-store.ts`: `createIdentityAccount`, `findIdentityAccount`, `createIdentitySession`, `findIdentityRefreshSession`, `rotateIdentityRefresh`, `revokeIdentityRefresh`, `revokeSession`, `issueIdentityToken`, `consumeIdentityToken`, `replaceIdentityPassword`, `listIdentitySessions`, `revokeIdentitySession`, `revokeIdentitySessions`, `markIdentityEmailVerified`, `findIdentityAccountByUserId`, `setIdentityEmail`, `findIdentityCredentials`, `pruneExpiredIdentityState`, `consumeRateLimit`
 - `postgres-import-store.ts`: `getExternalContentLink`, `listExternalContentLinks`, `upsertExternalContentLink`, `getImportPlanGeneration`, `commitNotionImportWork`
 - `postgres-media-store.ts`: `createMediaAsset`, `getMediaAsset`, `listMediaScanRows`, `listReferencesForAssets`, `listMediaAssets`, `deleteUnusedMediaAsset`
 - `postgres-notification-store.ts`: `listNotifications`, `getUnreadNotificationCount`, `markAllNotificationsRead`, `markNotificationRead`, `createNotification`, `createNotifications`, `deliverMessageNotifications`

@@ -119,11 +119,29 @@ is the contract.
 
 ## Abuse controls and deployment limitations
 
-Fixed-window counters are shared through the database and keyed by a domain-separated HMAC, not raw email/IP. Validated registration is limited to 20 attempts per client address and five per email per hour; login to 60 per address and five per email per 15 minutes; refresh and logout each to 120 per address per 15 minutes. Both successful and failed attempts consume quota. The address defaults to the socket; arbitrary browser-written `X-Forwarded-For`, `Forwarded`, `X-Real-IP` and private bridge headers cannot select a bucket.
+Fixed-window counters are shared through the database and keyed by a domain-separated HMAC, not raw email/IP/session IDs. Validated registration remains limited to 20 attempts per client address and five per email per hour; login to 60 per address and five per email per 15 minutes; logout to 120 per address per 15 minutes. Both successful and failed attempts consume quota. The address defaults to the socket; arbitrary browser-written `X-Forwarded-For`, `Forwarded`, `X-Real-IP` and private bridge headers cannot select a bucket.
 
-For Web BFF deployments, set the same **separate** `BFF_CLIENT_ADDRESS_SECRET` on Web and API, keep API `TRUSTED_PROXY_HOPS=0`, and configure Web `WEB_TRUSTED_PROXY_HOPS`/`WEB_TRUSTED_PROXY_PEERS` only for reviewed appending proxies. Web signs each actual upstream method/path/query/address with a short-lived HMAC; API verification supplies `ctx.clientAddress` uniformly to identity, write quotas and anonymous view dedupe. Missing, malformed or stale proofs fall back to the socket. Without this configuration the BFF's visitors still share a bucket; a healthy process alone does not prove attribution works. The older positional `TRUSTED_PROXY_HOPS` policy remains available only when the bridge is disabled. See [ADR 0027](decisions/0027-client-address-behind-a-proxy.md) and the [role-specific deployment examples](../operations/portable-stack.md#visitor-address-provenance).
+Refresh is 120 attempts per 15 minutes **per database-confirmed live session**
+(`refresh:session`). Before charging quota, a read-only exact-hash lookup joins
+`auth_refresh_tokens` to an unrevoked, unexpired `auth_sessions` row. The stable
+session ID, not a token generation, JWT/access ID, claimed user/session field or
+IP, selects the HMAC bucket. Different sessions—even 121 sessions of one account
+on one NAT—have independent budgets; changing IP or rotating tokens cannot reset
+one device's budget. Unknown, revoked and expired credentials instead use the
+bounded `refresh:ip` 120/address/15-minute bucket. Random token spraying never
+allocates an attacker-chosen per-token counter. No limit is raised.
 
-Require TLS/trusted transport between tiers, keep the key and proof headers out of logs, and synchronize Web/API/database clocks (proof skew is bounded to 30 seconds). The bridge grants no actor or resource permission and does not add per-session refresh quotas, fix automatic-refresh 429 propagation, or provide volumetric/distributed-abuse protection. No production limit is increased.
+Consumed hashes of a still-live family resolve to that same stable quota. This
+metadata is **not authentication** and has no lock/grace semantics: rotation
+still rechecks under its existing transaction/session lock and a reused token
+still revokes the family atomically. Revocation between lookup and rotation
+fails authentication. Lookup failure fails closed, not into a token-selected
+bucket. A 429 is raised before rotation, so it does not spend the credential or
+revoke the family. SQLite and PostgreSQL share this port and behavior.
+
+For Web BFF deployments, set the same **separate** `BFF_CLIENT_ADDRESS_SECRET` on Web and API, keep API `TRUSTED_PROXY_HOPS=0`, and configure Web `WEB_TRUSTED_PROXY_HOPS`/`WEB_TRUSTED_PROXY_PEERS` only for reviewed appending proxies. Web signs each actual upstream method/path/query/address with a short-lived HMAC; API verification supplies `ctx.clientAddress` uniformly to identity, write quotas and anonymous view dedupe. Missing, malformed or stale proofs fall back to the socket. Without this configuration the BFF's visitors still share address-based quotas (including the unknown-refresh fallback); live-session refresh buckets remain independent. A healthy process alone does not prove attribution works. The older positional `TRUSTED_PROXY_HOPS` policy remains available only when the bridge is disabled. See [ADR 0027](decisions/0027-client-address-behind-a-proxy.md) and the [role-specific deployment examples](../operations/portable-stack.md#visitor-address-provenance).
+
+Require TLS/trusted transport between tiers, keep the key and proof headers out of logs, and synchronize Web/API/database clocks (proof skew is bounded to 30 seconds). The bridge grants no actor or resource permission and provides no volumetric/distributed-abuse protection. Session refresh quotas are database-owned, independent of this address proof. Both explicit and automatic BFF refresh propagate a sanitized 429 plus normalized Retry-After without clearing cookies; see [ADR 0025](decisions/0025-browser-session-refresh-protocol.md). Cross-replica refresh coordination remains an external deployment responsibility (#318). No production limit is increased.
 
 Email is a login identifier, as in the historical registration flow, and it can now be **verified** — see [ADR 0014](decisions/0014-password-recovery-and-email-verification.md). Verification records that an address was reachable; it **gates nothing**, so an unverified address still signs in, publishes and comments. Do not read `emailVerifiedAt` as an authorization signal.
 

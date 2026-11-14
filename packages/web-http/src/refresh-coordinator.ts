@@ -1,23 +1,21 @@
 import type { TokenSet } from "./policy.ts";
+import { apiUrl } from "./api.ts";
 
 /**
- * One rotation, shared by every concurrent 401 that carries the same stale
- * credentials (ADR 0025).
+ * One rotation shared by explicit and 401-triggered callers of one refresh
+ * generation (ADR 0025). The API has no replay grace window; this ledger keeps
+ * concurrent BFF requests from consuming the same credential twice.
  *
- * The API deliberately has no refresh grace window: presenting an already
- * consumed refresh token revokes the whole session family. The BFF therefore
- * has to make sure its own parallel requests never present the same token
- * twice. This module owns only *when* `rotate()` runs; the HTTP call, the
- * cookie writing and the identity layer stay where they were.
+ * The ledger decides only when rotation runs. session-refresh.ts owns its HTTP
+ * outcome; each route retains its own cookie, retry and error-response policy.
  */
 
-/**
- * A `TokenSet` means rotation succeeded, `null` means the credential was
- * definitively refused, and `undefined` means a transient failure that proves
- * nothing about the session. The three answers are `forward.ts`'s existing
- * contract, kept verbatim so every waiter behaves like the first caller.
- */
-export type RefreshOutcome = TokenSet | null | undefined;
+/** Shared wire failure, sanitized before entering a coordinator/result store. */
+export type RefreshFailure = Readonly<{
+  kind: "failed"; status: number; code: string; message: string; retryAfterSeconds: number | null;
+}>;
+/** null/undefined remain supported for existing injected coordinators. */
+export type RefreshOutcome = TokenSet | null | undefined | RefreshFailure;
 
 export type RefreshCoordinator = {
   /** Perform `rotate()` at most once per key within a short reuse window. */
@@ -25,19 +23,19 @@ export type RefreshCoordinator = {
 };
 
 /** Domain separation, so a digest can never collide with another protocol's. */
-const KEY_DOMAIN = "no-wave/refresh/v1";
+const KEY_DOMAIN = "no-wave/refresh/v2";
 
 /**
- * The ledger key is a digest, never the credential itself. Including the stale
- * access token means a caller must present the same pair to reuse a rotation;
- * including the API origin keeps two upstreams from sharing an outcome.
+ * The rotation credential and actual upstream endpoint identify a generation.
+ * Access is deliberately excluded: its browser expiry/Path differs from refresh.
+ * The optional third argument is retained for source compatibility, not identity.
  */
 export async function refreshCoordinatorKey(
   base: string,
   refreshToken: string,
-  accessToken: string | undefined,
+  _legacyAccessToken?: string,
 ): Promise<string> {
-  const material = `${KEY_DOMAIN}\0${base}\0${refreshToken}\0${accessToken ?? ""}`;
+  const material = JSON.stringify([KEY_DOMAIN, apiUrl(base, "api/v1/auth/refresh"), refreshToken]);
   const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(material));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
@@ -51,8 +49,8 @@ export type InMemoryRefreshCoordinatorOptions = {
    */
   reuseMs?: number;
   /**
-   * How long a **transient** failure (`undefined`) stays reusable — the "no
-   * answer, try again" case.
+   * How long a transient failure (429, outage, malformed success, or legacy
+   * `undefined`) stays reusable — the "no answer, try again" case.
    *
    * It is deliberately much shorter than `reuseMs` (#244). Two requests whose
    * 401s landed together are one burst and must share one answer even if the
@@ -101,7 +99,7 @@ export class InMemoryRefreshCoordinator implements RefreshCoordinator {
     this.expire(now);
     const cached = this.settled.get(key);
     if (cached) {
-      const ttl = cached.outcome === undefined ? this.transientMs : this.reuseMs;
+      const ttl = this.ttl(cached.outcome);
       if (ttl > 0 && now - cached.at < ttl) return cached.outcome;
     }
     const inFlight = this.pending.get(key);
@@ -140,9 +138,16 @@ export class InMemoryRefreshCoordinator implements RefreshCoordinator {
     return outcome;
   }
 
+  private ttl(outcome: RefreshOutcome): number {
+    // A 429 is backoff, never evidence that the credential is dead. As with
+    // outages, share the burst briefly; Retry-After governs browser backoff.
+    const failed = outcome && "kind" in outcome && outcome.kind === "failed";
+    return outcome === undefined || (failed && outcome.status !== 400 && outcome.status !== 401) ? this.transientMs : this.reuseMs;
+  }
+
   private expire(now: number): void {
     for (const [key, entry] of this.settled) {
-      const ttl = entry.outcome === undefined ? this.transientMs : this.reuseMs;
+      const ttl = this.ttl(entry.outcome);
       if (now - entry.at < ttl) continue;
       this.settled.delete(key);
     }

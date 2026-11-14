@@ -97,6 +97,8 @@ export type IdentityStore = {
   findIdentityAccount(input: { email: string }): Promise<{ userId: string; passwordHash: string } | null>;
   /** Create a session only while the account still has the credentials just verified. */
   createIdentitySession(session: IdentitySession, proof: { email: string; passwordHash: string }): Promise<boolean>;
+  /** Quota metadata only; rotation must still recheck/revoke atomically. Includes consumed hashes of live families. */
+  findIdentityRefreshSession(input: { refreshHash: string }): Promise<{ sessionId: string } | null>;
   rotateIdentityRefresh(input: { refreshHash: string; nextRefreshHash: string; accessTokenId: string; issuedAt: string; accessExpiresAt: string }): Promise<Rotation>;
   revokeIdentityRefresh(input: { refreshHash: string }): Promise<unknown>;
   consumeRateLimit(input: { key: string; limit: number; windowSeconds: number }): Promise<{ allowed: boolean; resetAt: string }>;
@@ -324,11 +326,14 @@ export function createIdentityService({ store, env, mailer = null, onMailDeliver
       requireOnly(body, ["refreshToken"]);
       const token = tokenInput(body.refreshToken);
       const config = configuration(env);
-      await limitTokenRequest("refresh", ip, config.secret);
+      const currentHash = refreshHash(token);
+      const session = await store.findIdentityRefreshSession({ refreshHash: currentHash });
+      if (session) await consume("refresh:session", session.sessionId, 120, WINDOW_SECONDS, config.secret);
+      else await limitTokenRequest("refresh", ip, config.secret);
       const issuedAt = Math.floor(Date.now() / 1000);
       const nextRefresh = randomRefresh();
       const accessTokenId = randomUUID();
-      const result = await store.rotateIdentityRefresh({ refreshHash: refreshHash(token), nextRefreshHash: refreshHash(nextRefresh),
+      const result = await store.rotateIdentityRefresh({ refreshHash: currentHash, nextRefreshHash: refreshHash(nextRefresh),
         accessTokenId, issuedAt: timestamp(issuedAt), accessExpiresAt: timestamp(issuedAt + config.ttlSeconds) });
       if (result.status !== "rotated") throw new IdentityAuthenticationError();
       return tokens({ userId: result.userId, sessionId: result.sessionId, accessTokenId, issuedAt, accessExpiresAt: result.accessExpiresAt,

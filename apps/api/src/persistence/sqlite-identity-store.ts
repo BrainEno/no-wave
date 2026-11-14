@@ -110,6 +110,12 @@ export function createSqliteIdentityStore(db: SqliteRunner) {
         return true;
       });
     },
+    async findIdentityRefreshSession({ refreshHash }) {
+      if (typeof refreshHash !== "string" || !/^[0-9a-f]{64}$/.test(refreshHash)) return null;
+      const row = get(`SELECT s.id FROM auth_refresh_tokens t JOIN auth_sessions s ON s.id = t.session_id
+        WHERE t.token_hash = ? AND s.revoked_at IS NULL AND julianday(s.expires_at) > julianday('now')`, refreshHash);
+      return row ? { sessionId: row.id } : null;
+    },
     async rotateIdentityRefresh({ refreshHash, nextRefreshHash, accessTokenId, issuedAt, accessExpiresAt }) {
       return transaction((transactionId) => {
         const token = get("SELECT session_id, used_at FROM auth_refresh_tokens WHERE token_hash = ?", refreshHash);
@@ -409,5 +415,5 @@ export function createSqliteIdentityStore(db: SqliteRunner) {
         return { allowed: Number(row.attempts) <= limit, resetAt: row.reset_at };
       });
     },
-  }) satisfies Pick<TypedPersistenceAdapterContract, "createIdentityAccount" | "findIdentityAccount" | "createIdentitySession" | "rotateIdentityRefresh" | "revokeIdentityRefresh" | "revokeSession" | "issueIdentityToken" | "consumeIdentityToken" | "replaceIdentityPassword" | "listIdentitySessions" | "revokeIdentitySession" | "revokeIdentitySessions" | "markIdentityEmailVerified" | "findIdentityAccountByUserId" | "setIdentityEmail" | "findIdentityCredentials" | "pruneExpiredIdentityState" | "consumeRateLimit">;
+  }) satisfies Pick<TypedPersistenceAdapterContract, "createIdentityAccount" | "findIdentityAccount" | "createIdentitySession" | "findIdentityRefreshSession" | "rotateIdentityRefresh" | "revokeIdentityRefresh" | "revokeSession" | "issueIdentityToken" | "consumeIdentityToken" | "replaceIdentityPassword" | "listIdentitySessions" | "revokeIdentitySession" | "revokeIdentitySessions" | "markIdentityEmailVerified" | "findIdentityAccountByUserId" | "setIdentityEmail" | "findIdentityCredentials" | "pruneExpiredIdentityState" | "consumeRateLimit">;
 }

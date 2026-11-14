@@ -140,9 +140,12 @@ Genuinely anonymous visitors skip the identity check and dedupe by trusted
 address; authenticated visitors dedupe by verified actor and authors do not
 self-increment. Neither cookie scope nor backend ownership is widened.
 
-This fixes #322 and the related view-cookie omission, **not all of #314**. Separate
-session/user refresh buckets, the 121-session acceptance case and automatic-
-refresh 429/Retry-After behavior remain follow-up work. Refresh coordinator keys,
-explicit-refresh single-flight and cross-instance coordination (#324/#318) also
-remain unchanged. IP separation is not a defense against many legitimate users
-behind one NAT or against distributed volumetric abuse.
+The original address change fixed #322 and the related view-cookie omission.
+The #314/#324 follow-up now uses database-confirmed stable-session refresh
+buckets (including the 121-session same-NAT case), keeps unknown credentials
+IP-limited, and relays automatic/explicit refresh 429 with normalized Retry-After
+without clearing cookies. Both BFF entries share one access-independent refresh
+ledger; see [ADR 0025](0025-browser-session-refresh-protocol.md) and the
+[quota contract](../api-authentication.md#abuse-controls-and-deployment-limitations).
+This is still only process-local coordination: **#318 remains open**. Address
+attribution is not a defense against distributed volumetric abuse.
