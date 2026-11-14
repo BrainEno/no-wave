@@ -1,5 +1,6 @@
 import { createPersistenceRuntime } from "../infrastructure/persistence-runtime.ts";
 import { runOutboxDrain } from "./outbox-drain.ts";
+import { resolveOutboxRetryPolicy } from "./outbox-retry-policy.ts";
 import { createMessageNotificationDelivery } from "./message-notification-delivery.ts";
 
 /**
@@ -36,7 +37,11 @@ function integerSetting(name: string, fallback: number, min: number, max: number
 
 const batchLimit = integerSetting("OUTBOX_BATCH_LIMIT", 25, 1, 100);
 const leaseSeconds = integerSetting("OUTBOX_LEASE_SECONDS", 60, 1, 3600);
-const retryDelaySeconds = integerSetting("OUTBOX_RETRY_DELAY_SECONDS", 30, 1, 86400);
+const retryPolicy = resolveOutboxRetryPolicy({
+  retryDelaySeconds: integerSetting("OUTBOX_RETRY_DELAY_SECONDS", 30, 1, 86400),
+  maxRetryDelaySeconds: integerSetting("OUTBOX_MAX_RETRY_DELAY_SECONDS", 86400, 1, 86400),
+  maxAttempts: integerSetting("OUTBOX_MAX_ATTEMPTS", 8, 1, 100),
+});
 const deadlineMs = integerSetting("OUTBOX_DRAIN_DEADLINE_MS", 10_000, 1, 600_000);
 const maxBatches = integerSetting("OUTBOX_DRAIN_MAX_BATCHES", 20, 1, 1000);
 
@@ -65,14 +70,14 @@ async function runDrain() {
 
     writeDrainLog("info", "outbox_drain_started", {
       provider: runtime.provider,
-      batchLimit, leaseSeconds, retryDelaySeconds, deadlineMs, maxBatches,
+      batchLimit, leaseSeconds, ...retryPolicy, deadlineMs, maxBatches,
     });
     const result = await runOutboxDrain({
       store,
       deliver,
       batchLimit,
       leaseSeconds,
-      retryDelaySeconds,
+      ...retryPolicy,
       deadlineMs,
       maxBatches,
       onDeliveryFailure: (failure) => writeDrainLog(

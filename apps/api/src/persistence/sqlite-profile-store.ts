@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
-import { createSqliteProviderMigrationCapture, migrationEntityKey } from "./sqlite-provider-migration-capture.ts";
+import { createSqliteProviderMigrationCapture, migrationEntityKey, type CapturedChange } from "./sqlite-provider-migration-capture.ts";
 import {
   ProfileInputError,
   ProfileNotFoundError,
@@ -296,16 +296,20 @@ export function createSqliteProfileStore(db: SqliteRunner) {
         );
         if (inserted.changes === 1) {
           const payload = { type: "user.followed", followerId: actorId };
-          const eventKey = "user.followed:" + actorId + ":" + randomUUID();
-          run(
-            "INSERT INTO notifications (id, user_id, event_key, payload, payload_hash) VALUES (?, ?, ?, ?, ?) ON CONFLICT (user_id, event_key) DO NOTHING",
-            randomUUID(), targetUserId, eventKey, JSON.stringify(payload), requestHash(payload),
+          const eventKey = "engagement:v1:follow:" + actorId;
+          const notificationId = randomUUID();
+          const created = run(
+            "INSERT INTO notifications (id,user_id,event_key,payload,payload_hash) SELECT ?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM notifications WHERE user_id=? AND json_extract(payload,'$.type')='user.followed' AND json_extract(payload,'$.followerId')=?) ON CONFLICT (user_id,event_key) DO NOTHING",
+            notificationId, targetUserId, eventKey, JSON.stringify(payload), requestHash(payload), targetUserId, actorId,
           );
-          const notification = one("SELECT * FROM notifications WHERE user_id = ? AND event_key = ?", targetUserId, eventKey);
-          migrationCapture.captureInTransaction(db, transactionId, [
+          const changes: CapturedChange[] = [
             { entityType: "user_follows", entityId: migrationEntityKey(actorId, targetUserId), operation: "upsert", payload: one("SELECT * FROM user_follows WHERE follower_id = ? AND followed_id = ?", actorId, targetUserId) },
-            { entityType: "notifications", entityId: notification.id, operation: "upsert", payload: notification },
-          ]);
+          ];
+          if (created.changes === 1) changes.push({
+            entityType: "notifications", entityId: notificationId, operation: "upsert",
+            payload: one("SELECT * FROM notifications WHERE id=?", notificationId),
+          });
+          migrationCapture.captureInTransaction(db, transactionId, changes);
         }
         return inserted.changes === 1;
       });

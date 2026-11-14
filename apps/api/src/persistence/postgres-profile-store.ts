@@ -177,12 +177,15 @@ export function createPostgresProfileStore(ctx: PostgresStoreContext) {
           const followRows = await tx.unsafe("SELECT * FROM user_follows WHERE follower_id = $1 AND followed_id = $2", [actorId, targetUserId]);
           changes.push({ entityType: "user_follows", entityId: migrationEntityKey(actorId, targetUserId), operation: "upsert", payload: followRows[0] });
           const payload = { type: "user.followed", followerId: actorId };
-          const eventKey = `user.followed:${actorId}:${randomUUID()}`;
+          const eventKey = `engagement:v1:follow:${actorId}`;
+          const notificationId = randomUUID();
           await tx.unsafe(
-            "INSERT INTO notifications (id, user_id, event_key, payload, payload_hash) VALUES ($1, $2, $3, $4::jsonb, $5) ON CONFLICT (user_id, event_key) DO NOTHING",
-            [randomUUID(), targetUserId, eventKey, payload, requestHash(payload)],
+            "INSERT INTO notifications (id,user_id,event_key,payload,payload_hash) SELECT $1,$2,$3,$4::jsonb,$5 " +
+            "WHERE NOT EXISTS (SELECT 1 FROM notifications WHERE user_id=$2 AND payload->>'type'='user.followed' AND payload->>'followerId'=$6) " +
+            "ON CONFLICT (user_id,event_key) DO NOTHING",
+            [notificationId, targetUserId, eventKey, payload, requestHash(payload), actorId],
           );
-          const notificationRows = await tx.unsafe("SELECT * FROM notifications WHERE user_id = $1 AND event_key = $2", [targetUserId, eventKey]);
+          const notificationRows = await tx.unsafe("SELECT * FROM notifications WHERE id=$1", [notificationId]);
           if (notificationRows[0]) changes.push({ entityType: "notifications", entityId: notificationRows[0].id, operation: "upsert", payload: notificationRows[0] });
         }
         await captureChanges(tx, transactionId, changes);

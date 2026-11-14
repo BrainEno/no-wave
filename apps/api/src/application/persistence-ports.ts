@@ -171,7 +171,7 @@ export type StoredOutboxEvent = {
   id: string; event_key: string; event_type: string; aggregate_id: string;
   payload: unknown; attempts: number; available_at: string; lease_token: string;
 };
-export type OutboxBacklog = { pendingEvents: number; oldestPendingAgeMs: number };
+export type OutboxBacklog = { pendingEvents: number; deadLetterEvents: number; oldestPendingAgeMs: number };
 export type RateLimitResult = { allowed: boolean; resetAt: string };
 export type DeletedArticleResult = { id: string; deletedAt: string };
 export type PurgedArticlesResult = { purged: number };
@@ -344,9 +344,9 @@ export type DeliverMessageNotificationsInput = {
   eventKey: string; messageId: string; conversationId: string; senderId: string;
 };
 export type RevokeSessionInput = { sessionId: string; expiresAt: string | Date };
-export type ClaimOutboxEventsInput = { limit?: number; leaseSeconds?: number };
+export type ClaimOutboxEventsInput = { limit?: number; leaseSeconds?: number; maxAttempts?: number };
 export type MarkOutboxDeliveredInput = { eventId: string; leaseToken: string };
-export type RescheduleOutboxEventInput = MarkOutboxDeliveredInput & { delaySeconds?: number };
+export type RescheduleOutboxEventInput = MarkOutboxDeliveredInput & { delaySeconds?: number; maxAttempts?: number };
 export type ListMediaAssetsInput = {
   ownerId: string; cursor: { at: string; id: string } | null; limit: number;
 };

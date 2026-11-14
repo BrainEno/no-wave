@@ -272,7 +272,7 @@ test("SQLite migration replayer applies source transactions atomically, resumes,
       id: "outbox-replay-1", event_key: "replay-outbox-1", event_type: "replay.test",
       aggregate_id: "article-replay-1", payload: JSON.stringify({ operation: "replay", nested: [1, 2] }),
       attempts: 0, available_at: "2026-01-01T00:00:00.000Z", created_at: "2026-01-01T00:00:00.000Z",
-      delivered_at: null, lease_token: null,
+      delivered_at: null, lease_token: null, dead_lettered_at: null,
     });
     append("notification-delete", "source-tx-delete", "notifications", "notification-replay-1", "delete", null);
 

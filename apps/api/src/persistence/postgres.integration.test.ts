@@ -299,7 +299,7 @@ test("outbox worker marks successful delivery and leases failed events for retry
       store,
       deliver: async (event) => deliveredEvents.push(event.event_key),
     });
-    assert.deepEqual(success, { claimed: 1, delivered: 1, failed: 0 });
+    assert.deepEqual(success, { claimed: 1, delivered: 1, failed: 0, deadLettered: 0 });
     assert.deepEqual(deliveredEvents, [`message:${successMessage.id}`]);
     const deliveredRows = await sql.unsafe(
       "SELECT delivered_at, attempts FROM outbox_events WHERE event_key = $1",
@@ -316,7 +316,7 @@ test("outbox worker marks successful delivery and leases failed events for retry
       retryDelaySeconds: 60,
       deliver: async () => { throw new Error("simulated delivery failure"); },
     });
-    assert.deepEqual(failure, { claimed: 1, delivered: 0, failed: 1 });
+    assert.deepEqual(failure, { claimed: 1, delivered: 0, failed: 1, deadLettered: 0 });
     const failedRows = await sql.unsafe(
       "SELECT delivered_at, attempts, available_at > now() AS deferred FROM outbox_events WHERE event_key = $1",
       [`message:${failedMessage.id}`],
@@ -440,7 +440,7 @@ test("REST messages recover an interrupted notification delivery without duplica
     await createMessageNotificationDelivery({ store })(abandoned);
     await sql.unsafe("UPDATE outbox_events SET available_at = '2000-01-01Z' WHERE id = $1", [abandoned.id]);
     const recovery = await dispatchOutboxBatch({ store, limit: 1, deliver: createMessageNotificationDelivery({ store }) });
-    assert.deepEqual(recovery, { claimed: 1, delivered: 1, failed: 0 });
+    assert.deepEqual(recovery, { claimed: 1, delivered: 1, failed: 0, deadLettered: 0 });
     assert.equal(await store.markOutboxDelivered({ eventId: abandoned.id, leaseToken: abandoned.lease_token }), false);
 
     const inboxResponse = await fetch(`${baseUrl}/me/notifications`, { headers: auth(recipient) });
@@ -952,7 +952,8 @@ test("article likes are idempotent per user and only target published localized 
       "SELECT id, payload FROM notifications WHERE user_id = $1 AND payload->>'articleId' = $2 AND payload->>'type' = 'article.liked'",
       [ownerId, published.id],
     );
-    assert.equal(likeNotices.length, 3);
+    assert.equal(likeNotices.length, 2, "undoing and repeating a like cannot create a third notification");
+    assert.deepEqual(new Set(likeNotices.map(row => row.payload.actorId)), new Set([likerId, otherId]));
   } finally {
     if (draft) await sql.unsafe("DELETE FROM articles WHERE id = $1", [draft.id]);
     if (published) {
