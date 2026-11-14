@@ -380,6 +380,8 @@ for (const [index, article] of ARTICLES.entries()) {
 function articlePayload(article: MockArticle, locale: "zh-CN" | "en") {
   return {
     slug: article.slug,
+    locale,
+    status: "published",
     title: article.title[locale],
     summary: article.summary[locale],
     workType: article.workType,
@@ -500,6 +502,11 @@ function handle(request: IncomingMessage, response: ServerResponse, body: Record
       author.displayName.toLocaleLowerCase().includes(query) ||
       author.userId.toLocaleLowerCase().includes(query));
     send(response, 200, { data: paginated(matched, url) });
+    return;
+  }
+
+  if (method === "GET" && path === "/api/v1/tags") {
+    send(response, 200, { data: [] });
     return;
   }
 

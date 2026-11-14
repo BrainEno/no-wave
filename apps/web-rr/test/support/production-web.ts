@@ -40,7 +40,7 @@ export async function startProductionWeb(environment: Record<string, string>) {
       if (spawnError) throw new Error("Production test process could not start.");
       if (app.exitCode !== null) throw new Error(`Production test process exited ${app.exitCode}.`);
       try {
-        const ready = await fetch(`${origin}/robots.txt`, { signal: AbortSignal.timeout(1000) });
+        const ready = await fetch(`${origin}/healthz`, { signal: AbortSignal.timeout(1000) });
         await ready.body?.cancel();
         if (ready.ok) return { origin, close };
       } catch { /* Startup probe only; assertions are never retried. */ }
