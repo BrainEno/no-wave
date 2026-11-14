@@ -633,7 +633,10 @@ test("a reader who commented on a deleted work is told so in their own desk", as
     inbox.getByRole("button", { name: "标记已读", exact: true }),
     `the notice must stop asking to be read:\n${await pageDigest(page)}`,
   ).toHaveCount(0, { timeout: 45_000 });
-  await expect(inbox).not.toContainText("未读");
+  await expect(inbox.getByRole("heading", { name: "通知", exact: true })).toBeVisible();
+  await expect(inbox).toContainText("已载入 1 条，其中 0 条未读；全收件箱 0 条未读。");
+  await expect(inbox.getByRole("button", { name: "全部标为已读", exact: true })).toHaveCount(0);
+  await expect(page.locator(".nw-bdg")).toHaveCount(0);
   // Read, not erased: the notice stays until the API's own retention takes it.
   await expect(inbox).toContainText(/你评论过的一篇作品已被作者删除/);
 });
