@@ -10,6 +10,7 @@ import {
   type SitemapEntry,
 } from "./site-metadata.ts";
 import { supportedLocales, type ArticleView, type Locale } from "./content.ts";
+import type { SitemapSource, SitemapArticle, SitemapPageOptions } from "./sitemap-catalog.ts";
 
 /**
  * Sitemap/robots output is a public contract: search engines consume it and both
@@ -88,13 +89,19 @@ const SITEMAP_ARTICLES: Record<string, ArticleView[]> = {
   ],
 };
 
-function fixtureLister(options: { locale: Locale; limit: number; offset: number }): Promise<ArticleView[]> {
+function fixtureLister(options: SitemapPageOptions): Promise<SitemapArticle[]> {
   const all = SITEMAP_ARTICLES[options.locale] ?? [];
-  return Promise.resolve(all.slice(options.offset, options.offset + options.limit));
+  return Promise.resolve(all.slice(options.offset, options.offset + options.limit).map((article) => ({ ...article, locale: options.locale })));
 }
+const source: SitemapSource = {
+  listArticles: fixtureLister,
+  async listAuthors({ locale }) { return [{ username: "writer", locale }]; },
+  async listCategories() { return []; },
+  async listTags() { return []; },
+};
 
 test("every locale publishes home, archive, article and author URLs, authors once", async () => {
-  const entries = await loadSitemapEntries({ siteUrl: SITE, listArticles: fixtureLister });
+  const entries = await loadSitemapEntries({ siteUrl: SITE, source });
   const urls = entries.map((entry) => entry.url);
 
   for (const locale of supportedLocales) {
@@ -111,12 +118,15 @@ test("every locale publishes home, archive, article and author URLs, authors onc
   assert.ok(entries.every((entry) => entry.priority === undefined || (entry.priority >= 0 && entry.priority <= 1)));
 });
 
-test("tag directories enter the sitemap without adding taxonomy scans or arbitrary search URLs", async () => {
-  const calls: { locale: Locale; limit: number; offset: number }[] = [];
-  const entries = await loadSitemapEntries({ siteUrl: SITE, listArticles: async (options) => { calls.push(options); return []; } });
-  assert.deepEqual(calls, supportedLocales.map((locale) => ({ locale, limit: 100, offset: 0 })));
+test("tag directories remain canonical while every empty catalog uses one bounded discovery page", async () => {
+  const calls: { kind: string; locale: Locale; limit: number; offset: number }[] = [];
+  const list = (kind: string) => async ({ locale, limit, offset }: SitemapPageOptions) => { calls.push({ kind, locale, limit, offset }); return []; };
+  const entries = await loadSitemapEntries({ siteUrl: SITE, source: {
+    listArticles: list("articles"), listAuthors: list("authors"), listCategories: list("categories"), listTags: list("tags"),
+  } });
+  assert.deepEqual(calls, supportedLocales.flatMap((locale) => ["articles", "authors", "categories", "tags"].map((kind) => ({ kind, locale, limit: 100, offset: 0 }))));
   const tags = entries.filter((entry) => /\/tags$/.test(entry.url));
-  assert.deepEqual(tags.map((entry) => entry.url), [`${SITE}/tags`, `${SITE}/en/tags`]);
+  assert.deepEqual(tags.map((entry) => entry.url).sort(), [`${SITE}/tags`, `${SITE}/en/tags`].sort());
   assert.ok(tags.every((entry) => entry.changeFrequency === "daily"));
   assert.ok(entries.every((entry) => !entry.url.includes("?")));
 });
@@ -131,7 +141,7 @@ test("the site origin is resolved once and the configured value always wins", ()
     delete process.env.SITE_URL;
     assert.equal(configuredSiteUrl(), "https://example.invalid");
     process.env.SITE_URL = "https://no-wave.example/";
-    assert.equal(configuredSiteUrl(), "https://no-wave.example/");
+    assert.equal(configuredSiteUrl(), "https://no-wave.example");
     // Blank configuration must fall back rather than produce `undefined` URLs.
     process.env.SITE_URL = "   ";
     assert.equal(configuredSiteUrl(), "https://example.invalid");
@@ -152,10 +162,10 @@ test("the retired NEXT_PUBLIC_SITE_URL still configures the origin, and SITE_URL
   try {
     delete process.env.SITE_URL;
     process.env.NEXT_PUBLIC_SITE_URL = "https://legacy.example/";
-    assert.equal(configuredSiteUrl(), "https://legacy.example/");
+    assert.equal(configuredSiteUrl(), "https://legacy.example");
 
     process.env.SITE_URL = "https://current.example/";
-    assert.equal(configuredSiteUrl(), "https://current.example/");
+    assert.equal(configuredSiteUrl(), "https://current.example");
   } finally {
     for (const name of names) {
       const value = previous.get(name);

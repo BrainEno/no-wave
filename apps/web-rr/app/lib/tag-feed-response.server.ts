@@ -5,26 +5,10 @@ import { loadTagDetailPage, type TagPageSource } from "../../../../packages/web-
 import { parseTagFeedFormat, renderTagFeed, tagFeedPath } from "../../../../packages/web-ui/src/lib/tag-feed.ts";
 import { PRIVATE_PAGE_HEADERS, PUBLIC_PAGE_HEADERS } from "./http-policy.ts";
 
-type FeedOptions = { slug?: string; format?: string; locale: Locale; siteUrl: string };
+import { matchesResourceEtag as matchesFeedEtag } from "./resource-etag.server.ts";
+export { matchesResourceEtag as matchesFeedEtag } from "./resource-etag.server.ts";
 
-/** GET/HEAD use weak comparison, but a malformed whole field is not a valid match. */
-export function matchesFeedEtag(value: string | null, expected: string): boolean {
-  if (!value || value.length > 8192) return false;
-  const field = value.replace(/^[ \t]+|[ \t]+$/g, "");
-  if (field === "*") return true;
-  const token = /[ \t]*(?:W\/)?("[\x21\x23-\x7e\x80-\xff]*")[ \t]*(,|$)/y;
-  const target = expected.replace(/^W\//, "");
-  let matched = false;
-  let index = 0;
-  while (index < field.length) {
-    token.lastIndex = index;
-    const part = token.exec(field);
-    if (!part || token.lastIndex <= index || (part[2] === "," && token.lastIndex === field.length)) return false;
-    matched ||= part[1] === target;
-    index = token.lastIndex;
-  }
-  return matched;
-}
+type FeedOptions = { slug?: string; format?: string; locale: Locale; siteUrl: string };
 
 function failure(request: Request, status: number): Response {
   const headers = new Headers({ ...PRIVATE_PAGE_HEADERS, "Content-Type": "text/plain; charset=utf-8",

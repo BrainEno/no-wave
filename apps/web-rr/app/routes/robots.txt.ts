@@ -1,13 +1,12 @@
-import { renderRobotsTxt } from "@/lib/site-metadata.ts";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
+import { handleCrawlRequest } from "../lib/crawl-response.server.ts";
 import { siteUrl } from "../lib/runtime.ts";
 
-/** `GET /robots.txt` — resource route, built from the shared sitemap/robots builder. */
-export async function loader() {
-  return new Response(renderRobotsTxt(siteUrl()), {
-    status: 200,
-    headers: {
-      "content-type": "text/plain; charset=utf-8",
-      "cache-control": "public, max-age=0, s-maxage=3600",
-    },
-  });
+/** No API read: crawler policy remains available during a catalog outage. */
+export function loader({ request }: LoaderFunctionArgs) {
+  return handleCrawlRequest(request, "robots", { siteUrl });
+}
+
+export function action({ request }: ActionFunctionArgs) {
+  return handleCrawlRequest(request, "robots", { siteUrl });
 }
