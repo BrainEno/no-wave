@@ -164,6 +164,22 @@ scheduler, which this API does not run.
   explicitly discard also loses the key. After that, inspect the original account's works in a new
   tab before creating again. Durable recovery across reloads needs a separate privacy/storage design.
 
+### Messaging clients
+
+The Web conversation and reply composers now pin their verified page account and
+send `X-Expected-Messaging-Actor` to the same-origin proxy. The proxy compares
+`/me` using the very token it will use for the write and rechecks after a refresh;
+a different account receives `409 ACCOUNT_CHANGED` without a replay. Mark-all
+uses the same restrictive check but remains an explicit, bodyless action, not a
+keyed create. Legacy callers without this optional proxy-only header retain the
+existing API authorization contract.
+
+The pending intent keeps its original account, destination, serialized body and
+key through ambiguous outcomes. Navigation/unload warnings and cancellation
+fences protect it while the page is mounted, not across a crash or forced close.
+See [messaging intent safety](messaging-intent-safety.md) for response validation,
+limits, failure behavior and the executable acceptance entry points.
+
 ## Adding a new mutation
 
 1. Classify it: non-idempotent create, convergent state-setting, or monotonic delete.

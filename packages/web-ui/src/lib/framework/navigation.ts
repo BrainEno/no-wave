@@ -39,6 +39,6 @@ export function useRouter(): AppRouter {
 }
 
 /** Block client-side navigation while the caller holds an unconfirmed write. */
-export function useNavigationBlocker(when: boolean) {
+export function useNavigationBlocker(when: boolean | (() => boolean)) {
   return useBlocker(when);
 }

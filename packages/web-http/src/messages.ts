@@ -22,6 +22,23 @@ import { isSameOriginMutation } from "./policy.ts";
 export const CONVERSATION_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+/** A restrictive same-origin precondition, never a source of authenticated identity. */
+export const MESSAGING_EXPECTED_ACTOR_HEADER = "x-expected-messaging-actor";
+
+function expectedMessagingActor(request: Request): { actorId?: string; response?: Response } {
+  const raw = request.headers.get(MESSAGING_EXPECTED_ACTOR_HEADER);
+  if (raw === null) return {};
+  const invalid = () => ({ response: errorResponse("BAD_USER_INPUT", "Invalid expected messaging account.", 400) });
+  // Encode IDs as one URI component, just as the article actor precondition
+  // does. This preserves Unicode/percent/space IDs without accepting a comma-
+  // coalesced duplicate header or silently dropping a malformed precondition.
+  if (raw.length > 3600 || !/^(?:[A-Za-z0-9_.!~*'()-]|%[0-9a-f]{2})+$/i.test(raw)) return invalid();
+  let actorId: string;
+  try { actorId = decodeURIComponent(raw); } catch { return invalid(); }
+  if (!actorId || actorId.length > 300 || actorId.trim() !== actorId || /[\u0000-\u001f\u007f]/u.test(actorId)) return invalid();
+  return { actorId };
+}
+
 /** The inbox page size the API defaults to, and its ceiling. */
 export const INBOX_DEFAULT_LIMIT = 50;
 export const MESSAGES_DEFAULT_LIMIT = 100;
@@ -193,7 +210,9 @@ export async function handleConversationReadRequest(
   if (!isConversationId(params.conversationId)) {
     return errorResponse("BAD_USER_INPUT", "Invalid conversation ID.", 400);
   }
-  return forwardAuthoringRequest(request, conversationReadPath(params.conversationId), "PUT", config);
+  const expected = expectedMessagingActor(request);
+  if (expected.response) return expected.response;
+  return forwardAuthoringRequest(request, conversationReadPath(params.conversationId), "PUT", config, undefined, undefined, expected.actorId);
 }
 
 /**
@@ -408,6 +427,8 @@ export async function handleSendMessageRequest(
   if (!isConversationId(params.conversationId)) {
     return errorResponse("BAD_USER_INPUT", "Invalid conversation ID.", 400);
   }
+  const expected = expectedMessagingActor(request);
+  if (expected.response) return expected.response;
 
   const payload = await readLimitedJson(request, MESSAGE_WRITE_MAX_BYTES);
   if (!payload.ok) return payload.response;
@@ -424,6 +445,8 @@ export async function handleSendMessageRequest(
     "POST",
     config,
     parsed.json,
+    undefined,
+    expected.actorId,
   );
 }
 
@@ -441,6 +464,8 @@ export async function handleStartConversationRequest(
 ): Promise<Response> {
   const refused = preflight(request);
   if (refused) return refused;
+  const expected = expectedMessagingActor(request);
+  if (expected.response) return expected.response;
 
   const payload = await readLimitedJson(request, MESSAGE_WRITE_MAX_BYTES);
   if (!payload.ok) return payload.response;
@@ -451,5 +476,5 @@ export async function handleStartConversationRequest(
   const key = requireIdempotencyKey(request);
   if (!key.ok) return key.response;
 
-  return forwardAuthoringRequest(request, "api/v1/conversations", "POST", config, parsed.json);
+  return forwardAuthoringRequest(request, "api/v1/conversations", "POST", config, parsed.json, undefined, expected.actorId);
 }

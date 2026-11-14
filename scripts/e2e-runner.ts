@@ -38,7 +38,9 @@ export function isolatedEnvironment(base: NodeJS.ProcessEnv, options: IsolatedOp
     AUTH_JWT_SECRET: options.secret,
     AUTH_JWT_ISSUER: api,
     AUTH_JWT_AUDIENCE: "no-wave-e2e",
-    AUTH_REGISTER_IP_LIMIT: "60",
+    // Independent multi-account safety journeys can register 64 users in one
+    // shard. This finite fixture budget matches CI, not the API default (20).
+    AUTH_REGISTER_IP_LIMIT: "80",
     API_BASE_URL: api,
     E2E_API_BASE_URL: api,
     E2E_WEB_URL: web,

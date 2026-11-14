@@ -3,8 +3,8 @@ import { Link } from "@/lib/framework/link.tsx";
 import type { Locale } from "@/lib/content.ts";
 import { getUi } from "@/lib/ui-copy.ts";
 import { dateLabel } from "@/lib/format.ts";
-import { MESSAGE_BODY_MAX_CHARS } from "@bot-thk/web-http";
-import { IDEMPOTENCY_KEY_HEADER, intentForAttempt, type PendingIntent } from "@/lib/idempotency-key.ts";
+import type { MessagingController } from "@/lib/messaging-intent.ts";
+import { MessagingActorNotice, MessagingPendingGuard, useMessagingActor, useMessagingWrite } from "@/components/public/messaging-controls.tsx";
 import { SectionHeading } from "@/components/ui/parts.tsx";
 import { MarkConversationRead } from "@/components/public/mark-conversation-read.tsx";
 
@@ -53,13 +53,15 @@ export function ThreadView({
   const ui = getUi(locale).messages;
   const [state, setState] = useState<ThreadState>({ kind: "loading" });
   const [loadingOlder, setLoadingOlder] = useState(false);
-  const [viewerId, setViewerId] = useState("");
+  const actor = useMessagingActor();
+  const viewerId = actor.id;
   const [draft, setDraft] = useState("");
-  const [sending, setSending] = useState(false);
-  const [sendError, setSendError] = useState<"none" | "failed" | "invalid" | "conflict" | "changed" | "too-long" | "signed-out">("none");
+  const { controller: write, snapshot: writeState } = useMessagingWrite({ kind: "reply", conversationId });
+  const sending = writeState.busy;
+  const problem = writeState.problem;
+  const sendError = problem === null ? "none" : problem === "account-changed" || problem === "unauthenticated" ? "signed-out"
+    : problem === "invalid" || problem === "missing" ? "invalid" : problem === "changed" || problem === "conflict" || problem === "too-long" ? problem : "failed";
   const generation = useRef(0);
-  const pending = useRef<PendingIntent | null>(null);
-  const inFlight = useRef(false);
 
   const load = useCallback(
     async (before: string | null, prepend: boolean) => {
@@ -122,148 +124,76 @@ export function ThreadView({
   }, [load]);
 
   const send = useCallback(async () => {
-    if (inFlight.current) return;
-    const text = draft.trim();
-    if (text === "") return;
-    if (text.length > MESSAGE_BODY_MAX_CHARS) {
-      setSendError("too-long");
-      return;
-    }
-
-    const payload = JSON.stringify({ body: text });
-    let intent: PendingIntent | null;
-    try {
-      intent = intentForAttempt(pending.current, payload);
-    } catch {
-      setSendError("failed");
-      return;
-    }
-    if (!intent) {
-      setSendError("changed");
-      return;
-    }
-    pending.current = intent;
-    inFlight.current = true;
-    setSending(true);
-    setSendError("none");
-    try {
-      const response = await fetch(`/api/authoring/inbox/${encodeURIComponent(conversationId)}/messages`, {
-        method: "POST",
-        credentials: "same-origin",
-        cache: "no-store",
-        headers: {
-          accept: "application/json",
-          "content-type": "application/json",
-          [IDEMPOTENCY_KEY_HEADER]: intent.key,
-        },
-        body: intent.payload,
-      });
-      if (response.status === 401) { setSendError("signed-out"); return; }
-      if (response.status === 409) { setSendError("conflict"); return; }
-      if (response.status === 400) { setSendError("invalid"); return; }
-      if (!response.ok) { setSendError("failed"); return; }
-
-      const created = readSentMessage(await response.json().catch(() => null));
-      if (created === null || created.body !== text) {
-        // The write may have succeeded even if its response cannot be displayed.
-        setSendError("failed");
-        return;
-      }
-      pending.current = null;
-      setDraft("");
-      setState((previous) => {
-        if (previous.kind !== "ready" || previous.messages.some((message) => message.id === created.id)) return previous;
-        return { ...previous, messages: [...previous.messages, created] };
-      });
-    } catch {
-      // The request may have been stored even though its response was lost.
-      setSendError("failed");
-    } finally {
-      inFlight.current = false;
-      setSending(false);
-    }
-  }, [conversationId, draft]);
-
-  // Who "you" are — decoration only. A failure leaves messages attributed by id
-  // rather than taking the conversation down.
-  useEffect(() => {
-    let active = true;
-    void (async () => {
-      try {
-        const response = await fetch("/api/authoring/session", {
-          credentials: "same-origin",
-          cache: "no-store",
-          headers: { accept: "application/json" },
-        });
-        if (!active || !response.ok) return;
-        const payload: unknown = await response.json().catch(() => null);
-        const id = readViewerId(payload);
-        if (active && id) setViewerId(id);
-      } catch {
-        // The conversation is still readable without it.
-      }
-    })();
-    return () => { active = false; };
-  }, []);
+    const receipt = await write.attempt(draft, viewerId);
+    if (receipt?.kind !== "reply") return;
+    const created = receipt.message;
+    setDraft("");
+    setState((previous) => {
+      if (previous.kind !== "ready" || previous.messages.some((message) => message.id === created.id)) return previous;
+      return { ...previous, messages: [...previous.messages, created] };
+    });
+  }, [write, draft, viewerId]);
 
   const backHref = `${locale === "zh-CN" ? "" : `/${locale}`}/messages`;
 
   const composer = (
-    <form className="nw-compose" onSubmit={(event) => { event.preventDefault(); void send(); }}>
-      <label className="nw-m nw-compose-label" htmlFor="nw-compose-body">{ui.compose}</label>
-      <textarea
-        id="nw-compose-body"
-        className="nw-compose-box"
-        value={draft}
-        onChange={(event) => { setDraft(event.target.value); setSendError("none"); }}
-        placeholder={ui.placeholder}
-        rows={3}
-        disabled={sending}
-      />
-      <div className="nw-compose-actions">
-        <button type="submit" className="nw-thread-btn" disabled={sending || draft.trim() === ""}>
-          {sending ? ui.sending : ui.send}
-        </button>
-        {sendError === "failed" ? (
-          <p className="nw-m nw-compose-error" role="alert">{ui.sendFailed}{" "}
-            <button type="button" className="nw-compose-retry" onClick={() => void send()}>{ui.sendRetry}</button>
-          </p>
-        ) : null}
-        {sendError === "too-long" ? <p className="nw-m nw-compose-error" role="alert">{ui.sendTooLong}</p> : null}
-        {sendError === "invalid" ? <p className="nw-m nw-compose-error" role="alert">{ui.sendInvalid}</p> : null}
-        {sendError === "signed-out" ? (
-          <p className="nw-m nw-compose-error" role="alert">{ui.sendSignIn}{" "}
-            <Link target="_blank" rel="noopener noreferrer" href={`/sign-in?next=${encodeURIComponent(`${backHref}/${conversationId}`)}`}>
-              {getUi(locale).reader.saveSignInAction}
-            </Link>
-          </p>
-        ) : null}
-      </div>
-      {sendError === "changed" || sendError === "conflict" ? (
-        <div className="nw-m nw-compose-error" role="alert">
-          <p>{sendError === "changed" ? ui.sendChanged : ui.sendConflict}</p>
-          {sendError === "changed" ? (
-            <button type="button" className="nw-compose-retry" onClick={() => {
-              if (!pending.current) return;
-              const original = JSON.parse(pending.current.payload) as { body: string };
-              setDraft(original.body);
-              setSendError("none");
-            }}>{ui.restoreMessage}</button>
-          ) : null}{" "}
-          <button type="button" className="nw-compose-retry" onClick={() => { pending.current = null; setSendError("none"); }}>{ui.discardPending}</button>
+    <>
+      <MessagingActorNotice actor={actor} locale={locale} />
+      <form className="nw-compose" onSubmit={(event) => { event.preventDefault(); void send(); }}>
+        <label className="nw-m nw-compose-label" htmlFor="nw-compose-body">{ui.compose}</label>
+        <textarea
+          id="nw-compose-body"
+          className="nw-compose-box"
+          value={draft}
+          onChange={(event) => { setDraft(event.target.value); write.dismissProblem(); }}
+          placeholder={ui.placeholder}
+          rows={3}
+          disabled={sending}
+        />
+        <div className="nw-compose-actions">
+          <button type="submit" className="nw-thread-btn" disabled={sending || draft.trim() === "" || !viewerId}>
+            {sending ? ui.sending : ui.send}
+          </button>
+          {sendError === "failed" ? (
+            <p className="nw-m nw-compose-error" role="alert">{ui.sendFailed}{" "}
+              <button type="button" className="nw-compose-retry" onClick={() => void send()}>{ui.sendRetry}</button>
+            </p>
+          ) : null}
+          {sendError === "too-long" ? <p className="nw-m nw-compose-error" role="alert">{ui.sendTooLong}</p> : null}
+          {sendError === "invalid" ? <p className="nw-m nw-compose-error" role="alert">{ui.sendInvalid}</p> : null}
+          {sendError === "signed-out" ? (
+            <p className="nw-m nw-compose-error" role="alert">{ui.sendSignIn}{" "}
+              <Link target="_blank" rel="noopener noreferrer" href={`/sign-in?next=${encodeURIComponent(`${backHref}/${conversationId}`)}`}>
+                {getUi(locale).reader.saveSignInAction}
+              </Link>
+            </p>
+          ) : null}
         </div>
-      ) : null}
-    </form>
+        {sendError === "changed" || sendError === "conflict" ? (
+          <div className="nw-m nw-compose-error" role="alert">
+            <p>{sendError === "changed" ? ui.sendChanged : ui.sendConflict}</p>
+            {sendError === "changed" ? (
+              <button type="button" className="nw-compose-retry" onClick={() => {
+                const original = write.getSnapshot().intent;
+                if (original) setDraft(original.value);
+                write.dismissProblem();
+              }}>{ui.restoreMessage}</button>
+            ) : null}
+          </div>
+        ) : null}
+        {writeState.intent && !sending ? <button type="button" className="nw-compose-retry" onClick={() => write.discard()}>{ui.discardPending}</button> : null}
+      </form>
+    </>
   );
 
   if (state.kind === "loading") {
-    return <main id="top" tabIndex={-1} lang={locale} className="nw-w"><Shell ui={ui} backHref={backHref} locale={locale}><p className="nw-m nw-thread-note">{ui.threadLoading}</p></Shell></main>;
+    return <main id="top" tabIndex={-1} lang={locale} className="nw-w"><Shell ui={ui} backHref={backHref} locale={locale} controller={write}><p className="nw-m nw-thread-note">{ui.threadLoading}</p></Shell></main>;
   }
 
   if (state.kind === "signed-out") {
     return (
       <main id="top" tabIndex={-1} lang={locale} className="nw-w">
-        <Shell ui={ui} backHref={backHref} locale={locale}>
+        <Shell ui={ui} backHref={backHref} locale={locale} controller={write}>
           <p className="nw-m nw-thread-note">
             {ui.signIn}{" "}
             <Link href={`/sign-in?next=${encodeURIComponent(`${backHref}/${conversationId}`)}`}>
@@ -278,7 +208,7 @@ export function ThreadView({
   if (state.kind === "missing") {
     return (
       <main id="top" tabIndex={-1} lang={locale} className="nw-w">
-        <Shell ui={ui} backHref={backHref} locale={locale}>
+        <Shell ui={ui} backHref={backHref} locale={locale} controller={write}>
           {/* No retry: this is an answer, not a failure. */}
           <p className="nw-m nw-thread-note" role="status">{ui.conversationMissing}</p>
         </Shell>
@@ -289,7 +219,7 @@ export function ThreadView({
   if (state.kind === "failed") {
     return (
       <main id="top" tabIndex={-1} lang={locale} className="nw-w">
-        <Shell ui={ui} backHref={backHref} locale={locale}>
+        <Shell ui={ui} backHref={backHref} locale={locale} controller={write}>
           <div className="nw-thread-note" role="alert">
             <p>{ui.threadFailed}</p>
             <button type="button" className="nw-thread-btn" onClick={() => void load(null, false)}>{ui.retry}</button>
@@ -302,7 +232,7 @@ export function ThreadView({
   if (state.messages.length === 0) {
     return (
       <main id="top" tabIndex={-1} lang={locale} className="nw-w">
-        <Shell ui={ui} backHref={backHref} locale={locale}>
+        <Shell ui={ui} backHref={backHref} locale={locale} controller={write}>
           <p className="nw-m nw-thread-note">{ui.threadEmpty}</p>
           {composer}
         </Shell>
@@ -312,7 +242,7 @@ export function ThreadView({
 
   return (
     <main id="top" tabIndex={-1} lang={locale} className="nw-w">
-      <Shell ui={ui} backHref={backHref} locale={locale}>
+      <Shell ui={ui} backHref={backHref} locale={locale} controller={write}>
         <div className="nw-thread">
           {state.more ? (
             <div className="nw-thread-more">
@@ -340,7 +270,7 @@ export function ThreadView({
             </article>
           ))}
         </div>
-        <MarkConversationRead key={conversationId} locale={locale} conversationId={conversationId} />
+        <MarkConversationRead key={conversationId} locale={locale} conversationId={conversationId} viewerId={viewerId} />
         {composer}
       </Shell>
     </main>
@@ -351,11 +281,13 @@ function Shell({
   ui,
   backHref,
   locale,
+  controller,
   children,
 }: {
   ui: ReturnType<typeof getUi>["messages"];
   backHref: string;
   locale: Locale;
+  controller: MessagingController;
   children: React.ReactNode;
 }) {
   return (
@@ -363,17 +295,9 @@ function Shell({
       <SectionHeading zh={ui.title} latin="Conversation" />
       <Link className="nw-m nw-thread-back" href={backHref}>← {ui.back}</Link>
       <div lang={locale}>{children}</div>
+      <MessagingPendingGuard controller={controller} locale={locale} />
     </>
   );
-}
-
-/** The signed-in account's id, or `""` when the payload does not carry one. */
-function readViewerId(payload: unknown): string {
-  if (typeof payload !== "object" || payload === null) return "";
-  const data = (payload as { data?: unknown }).data;
-  if (typeof data !== "object" || data === null) return "";
-  const id = (data as { id?: unknown }).id;
-  return typeof id === "string" ? id : "";
 }
 
 /**
@@ -404,16 +328,4 @@ function readMessages(payload: unknown): Message[] | null {
   }
   if (data.length > 0 && messages.length === 0) return null;
   return messages;
-}
-
-/** A successful replay is a success too; malformed responses retain the key. */
-function readSentMessage(payload: unknown): Message | null {
-  if (typeof payload !== "object" || payload === null) return null;
-  const data = (payload as { data?: unknown }).data;
-  if (typeof data !== "object" || data === null) return null;
-  const record = data as Record<string, unknown>;
-  if (typeof record.id !== "string" || !record.id || typeof record.body !== "string" ||
-      typeof record.senderId !== "string" || !record.senderId || typeof record.createdAt !== "string" ||
-      !Number.isFinite(Date.parse(record.createdAt))) return null;
-  return { id: record.id, senderId: record.senderId, body: record.body, createdAt: record.createdAt };
 }
