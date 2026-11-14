@@ -17,13 +17,14 @@ export class MigrationJournalError extends Error {
 // This is a replay wire contract, not a database migration number. Older
 // sessions may have checkpointed translations without media references or
 // identity-token replacements without deletions. Resuming them cannot repair
-// those already-applied rows or safely establish credential state.
-export const MIGRATION_REPLAY_SCHEMA_VERSION = "media-identity-snapshots-v2";
+// those already-applied rows or safely establish credential state. V3 also
+// carries terminal outbox state: an older snapshot must never revive a poison row.
+export const MIGRATION_REPLAY_SCHEMA_VERSION = "notification-integrity-v3";
 // Journal-only metadata on a translation upsert; this is never a SQL column.
 export const ARTICLE_MEDIA_REFS_SNAPSHOT = "__migration_article_media_refs";
 export function assertMigrationReplaySchema(schemaVersion: unknown): void {
   if (schemaVersion !== MIGRATION_REPLAY_SCHEMA_VERSION) {
-    throw new MigrationJournalError("INCOMPATIBLE_SCHEMA", "The replay schema version is incompatible; a new session and coordinated media and identity baseline are required.");
+    throw new MigrationJournalError("INCOMPATIBLE_SCHEMA", "The replay schema version is incompatible; a new session and coordinated media, identity and outbox baseline are required.");
   }
 }
 

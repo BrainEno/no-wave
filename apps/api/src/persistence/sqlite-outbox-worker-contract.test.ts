@@ -37,7 +37,7 @@ test("worker rejects invalid settings before claiming or delivering events", asy
     await assert.rejects(dispatchOutboxBatch({ store, deliver, ...invalid }), TypeError);
   }
   assert.equal(claims, 0);
-  assert.deepEqual(await dispatchOutboxBatch({ store, deliver }), { claimed: 0, delivered: 0, failed: 0 });
+  assert.deepEqual(await dispatchOutboxBatch({ store, deliver }), { claimed: 0, delivered: 0, failed: 0, deadLettered: 0 });
   assert.equal(claims, 1);
 });
 
@@ -52,7 +52,7 @@ test("composed SQLite adapter dispatches a message outbox event and marks it del
       leaseSeconds: 30,
     });
 
-    assert.deepEqual(result, { claimed: 1, delivered: 1, failed: 0 });
+    assert.deepEqual(result, { claimed: 1, delivered: 1, failed: 0, deadLettered: 0 });
     assert.equal(delivered.length, 1);
     assert.equal(delivered[0].event_key, `message:${message.id}`);
     assert.equal(delivered[0].event_type, "message.created");
@@ -83,7 +83,7 @@ test("composed SQLite adapter preserves failed deliveries, schedules retries, an
       onDeliveryFailure: (failure) => failures.push(failure),
     });
 
-    assert.deepEqual(result, { claimed: 1, delivered: 0, failed: 1 });
+    assert.deepEqual(result, { claimed: 1, delivered: 0, failed: 1, deadLettered: 0 });
     const row = db.prepare("SELECT id, event_key, attempts, available_at, delivered_at FROM outbox_events WHERE event_key = ?").get(`message:${message.id}`);
     assert.ok(row);
     assert.equal(row.attempts, 1);
@@ -95,6 +95,8 @@ test("composed SQLite adapter preserves failed deliveries, schedules retries, an
       attempts: 1,
       errorName: "Error",
       retryScheduled: true,
+      deadLettered: false,
+      retryDelaySeconds: 30,
       retryScheduleErrorName: null,
     }]);
     assert.ok(!JSON.stringify(failures).includes(rawFailure), "failure diagnostics must not expose exception messages");
@@ -115,7 +117,7 @@ test("outbox failure observers cannot interrupt retry recovery", async () => {
       retryDelaySeconds: 30,
       onDeliveryFailure: () => { throw new Error("logger failed"); },
     });
-    assert.deepEqual(result, { claimed: 1, delivered: 0, failed: 1 });
+    assert.deepEqual(result, { claimed: 1, delivered: 0, failed: 1, deadLettered: 0 });
     const row = db.prepare("SELECT attempts, delivered_at FROM outbox_events").get();
     assert.equal(row.attempts, 1);
     assert.equal(row.delivered_at, null);

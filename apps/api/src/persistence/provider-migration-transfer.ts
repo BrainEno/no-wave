@@ -505,7 +505,12 @@ async function writeRow(
   mediaRefs: Map<string, string[]>,
 ): Promise<void> {
   const entityId = entityIdFor(spec, row);
-  const input: Record<string, unknown> = { ...row };
+  // Unlike a journal capture, a direct PostgreSQL snapshot still holds Date
+  // objects. SQLite treats an object argument as named bindings, not a timestamp.
+  // Normalize before validation too, so terminal timestamps remain portable.
+  const input: Record<string, unknown> = Object.fromEntries(
+    Object.entries(row).map(([column, value]) => [column, value instanceof Date ? value.toISOString() : value]),
+  );
   if (table === "article_translations") {
     // The journal's reserved key: the applier validates that a translation
     // carries its *complete* reference snapshot, exactly as replay requires.

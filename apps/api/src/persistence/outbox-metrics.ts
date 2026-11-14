@@ -8,6 +8,7 @@ export function createOutboxMetrics() {
   let batchFailures = 0;
   let backlogReadFailures = 0;
   let pendingEvents = 0;
+  let deadLetterEvents = 0;
   let oldestPendingAgeMs = 0;
   let backlogSampledAt = 0;
   const batchDuration = { count: 0, sum: 0, buckets: HISTOGRAM_BUCKETS_MS.map(() => 0) };
@@ -36,11 +37,13 @@ export function createOutboxMetrics() {
     observeBatchDuration(durationMs);
   }
 
-  function recordBacklog({ pendingEvents: pending, oldestPendingAgeMs: oldestAge }: {
+  function recordBacklog({ pendingEvents: pending, deadLetterEvents: dead, oldestPendingAgeMs: oldestAge }: {
     pendingEvents: number;
+    deadLetterEvents: number;
     oldestPendingAgeMs: number;
   }): void {
     pendingEvents = Number.isSafeInteger(pending) && pending >= 0 ? pending : 0;
+    deadLetterEvents = Number.isSafeInteger(dead) && dead >= 0 ? dead : 0;
     oldestPendingAgeMs = Number.isFinite(oldestAge) ? Math.max(0, oldestAge) : 0;
     backlogSampledAt = Date.now();
   }
@@ -59,7 +62,7 @@ export function createOutboxMetrics() {
       "# HELP api_outbox_events_delivered_total Outbox events successfully marked delivered.",
       "# TYPE api_outbox_events_delivered_total counter",
       `api_outbox_events_delivered_total ${delivered}`,
-      "# HELP api_outbox_events_failed_total Outbox event deliveries that scheduled a retry.",
+      "# HELP api_outbox_events_failed_total Outbox delivery failures, including retries, dead letters and lost leases.",
       "# TYPE api_outbox_events_failed_total counter",
       `api_outbox_events_failed_total ${failed}`,
       "# HELP api_outbox_batch_failures_total Unexpected outbox batch or database failures.",
@@ -68,10 +71,13 @@ export function createOutboxMetrics() {
       "# HELP api_outbox_backlog_read_failures_total Failed attempts to refresh the outbox backlog snapshot.",
       "# TYPE api_outbox_backlog_read_failures_total counter",
       `api_outbox_backlog_read_failures_total ${backlogReadFailures}`,
-      "# HELP api_outbox_pending_events Undelivered outbox rows at the most recent successful sample.",
+      "# HELP api_outbox_pending_events Nonterminal outbox rows, including delayed retries and live leases, at the most recent successful sample.",
       "# TYPE api_outbox_pending_events gauge",
       `api_outbox_pending_events ${pendingEvents}`,
-      "# HELP api_outbox_oldest_pending_age_seconds Age of the oldest undelivered event at the most recent successful sample.",
+      "# HELP api_outbox_dead_letter_events Persisted dead-letter rows excluded from delivery at the most recent successful sample.",
+      "# TYPE api_outbox_dead_letter_events gauge",
+      `api_outbox_dead_letter_events ${deadLetterEvents}`,
+      "# HELP api_outbox_oldest_pending_age_seconds Age of the oldest nonterminal event at the most recent successful sample.",
       "# TYPE api_outbox_oldest_pending_age_seconds gauge",
       `api_outbox_oldest_pending_age_seconds ${(oldestPendingAgeMs / 1000).toFixed(3)}`,
       "# HELP api_outbox_backlog_sample_timestamp_seconds Unix timestamp of the most recent successful backlog sample.",

@@ -38,7 +38,7 @@ const entities: Record<string, EntitySpec> = {
   conversation_participants: { table: "conversation_participants", primaryKey: ["conversation_id", "user_id"], columns: ["conversation_id", "user_id", "joined_at", "left_at", "last_read_at", "last_read_sequence"], requiredColumns: ["last_read_sequence"] },
   messages: { table: "messages", primaryKey: ["id"], columns: ["id", "conversation_id", "sender_id", "body", "idempotency_key", "request_hash", "created_at", "conversation_sequence"], requiredColumns: ["conversation_sequence"] },
   notifications: { table: "notifications", primaryKey: ["id"], columns: ["id", "user_id", "event_key", "payload", "payload_hash", "created_at", "read_at"], jsonColumns: ["payload"] },
-  outbox_events: { table: "outbox_events", primaryKey: ["id"], columns: ["id", "event_key", "event_type", "aggregate_id", "payload", "attempts", "available_at", "created_at", "delivered_at", "lease_token"], jsonColumns: ["payload"] },
+  outbox_events: { table: "outbox_events", primaryKey: ["id"], columns: ["id", "event_key", "event_type", "aggregate_id", "payload", "attempts", "available_at", "created_at", "delivered_at", "lease_token", "dead_lettered_at"], jsonColumns: ["payload"], requiredKeys: ["dead_lettered_at"] },
   revoked_sessions: { table: "revoked_sessions", primaryKey: ["session_id"], columns: ["session_id", "revoked_at", "expires_at"], requiredColumns: ["revoked_at", "expires_at"] },
   auth_accounts: { table: "auth_accounts", primaryKey: ["user_id"], columns: ["user_id", "email", "password_hash", "created_at", "email_verified_at"], requiredColumns: ["email", "password_hash", "created_at"], requiredKeys: ["email_verified_at"] },
   auth_sessions: { table: "auth_sessions", primaryKey: ["id"], columns: ["id", "user_id", "expires_at", "revoked_at", "created_at"], requiredColumns: ["user_id", "expires_at", "created_at"], requiredKeys: ["revoked_at"] },
@@ -98,6 +98,7 @@ const sensitiveTimestamps: Record<string, readonly string[]> = {
   auth_rate_limits: ["reset_at"],
   revoked_sessions: ["revoked_at", "expires_at"],
   featured_articles: ["created_at"],
+  outbox_events: ["dead_lettered_at"],
 };
 const sensitiveText: Record<string, readonly string[]> = {
   auth_accounts: ["email", "password_hash"],

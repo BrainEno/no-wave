@@ -48,7 +48,8 @@ Current in-process metrics:
 The notification worker is a separate process. Enable its dedicated Prometheus listener with `OUTBOX_METRICS_PORT=9100`; `OUTBOX_METRICS_HOST` defaults to `127.0.0.1` and should only be changed to a reachable interface when the scrape network is restricted. The optional endpoint exposes:
 
 - `api_outbox_events_claimed_total`, `api_outbox_events_delivered_total`, `api_outbox_events_failed_total`: delivery results.
-- `api_outbox_pending_events`, `api_outbox_oldest_pending_age_seconds`: backlog depth and age, sampled every `OUTBOX_METRICS_REFRESH_INTERVAL_MS` milliseconds (default 5000).
+- `api_outbox_pending_events`, `api_outbox_oldest_pending_age_seconds`: nonterminal backlog depth and age (including delayed retries and live leases), sampled every `OUTBOX_METRICS_REFRESH_INTERVAL_MS` milliseconds (default 5000).
+- `api_outbox_dead_letter_events`: durable quarantined rows excluded from pending depth and age. Alert when this is nonzero; inspect the cause before approving a replay. A successful sample replaces both gauges together; a failed read preserves both last-known values.
 - `api_outbox_batch_duration_ms_{bucket,sum,count}`, `api_outbox_batch_failures_total`, `api_outbox_backlog_read_failures_total`: worker duration and observability/dispatch failures.
 
 The worker metrics listener is disabled unless a nonzero port is configured. For container or remote scraping, set `OUTBOX_METRICS_HOST` deliberately and enforce a private network policy; the listener has no authentication and must not be exposed to the public Internet.

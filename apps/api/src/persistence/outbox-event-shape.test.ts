@@ -34,6 +34,7 @@ test("PostgreSQL outbox leasing normalizes the driver's timestamptz Date into th
   };
   const transaction = {
     async unsafe(query: string) {
+      if (query.includes("SET dead_lettered_at")) return [];
       if (query.includes("RETURNING")) return [driverRow];
       if (query.includes("SELECT * FROM outbox_events")) return [{ ...driverRow }];
       return [];

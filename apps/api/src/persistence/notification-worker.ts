@@ -1,6 +1,7 @@
 import { createServer, type Server } from "node:http";
 import { createPersistenceRuntime } from "../infrastructure/persistence-runtime.ts";
 import { dispatchOutboxBatch } from "./outbox-worker.ts";
+import { resolveOutboxRetryPolicy } from "./outbox-retry-policy.ts";
 import { createMessageNotificationDelivery } from "./message-notification-delivery.ts";
 import { createOutboxMetrics } from "./outbox-metrics.ts";
 
@@ -17,7 +18,11 @@ function integerSetting(name: string, fallback: number, min: number, max: number
 const pollIntervalMs = integerSetting("OUTBOX_POLL_INTERVAL_MS", 1000, 100, 60000);
 const batchLimit = integerSetting("OUTBOX_BATCH_LIMIT", 25, 1, 100);
 const leaseSeconds = integerSetting("OUTBOX_LEASE_SECONDS", 60, 1, 3600);
-const retryDelaySeconds = integerSetting("OUTBOX_RETRY_DELAY_SECONDS", 30, 1, 86400);
+const retryPolicy = resolveOutboxRetryPolicy({
+  retryDelaySeconds: integerSetting("OUTBOX_RETRY_DELAY_SECONDS", 30, 1, 86400),
+  maxRetryDelaySeconds: integerSetting("OUTBOX_MAX_RETRY_DELAY_SECONDS", 86400, 1, 86400),
+  maxAttempts: integerSetting("OUTBOX_MAX_ATTEMPTS", 8, 1, 100),
+});
 // Worker metrics are opt-in and bind only to loopback by default.
 const metricsPort = integerSetting("OUTBOX_METRICS_PORT", 0, 0, 65535);
 const metricsHost = process.env.OUTBOX_METRICS_HOST ?? "127.0.0.1";
@@ -119,7 +124,7 @@ async function runWorker() {
     const deliver = createMessageNotificationDelivery({ store });
     writeWorkerLog("info", "worker_started", {
       provider: runtime.provider,
-      pollIntervalMs, batchLimit, leaseSeconds, retryDelaySeconds,
+      pollIntervalMs, batchLimit, leaseSeconds, ...retryPolicy,
       metricsEnabled: metricsPort > 0,
     });
     let lastMetricsRefreshAt = Date.now();
@@ -131,7 +136,7 @@ async function runWorker() {
           deliver,
           limit: batchLimit,
           leaseSeconds,
-          retryDelaySeconds,
+          ...retryPolicy,
           onDeliveryFailure: (failure) => writeWorkerLog(
             failure.retryScheduled && !failure.retryScheduleErrorName ? "warn" : "error",
             "outbox_event_failed",

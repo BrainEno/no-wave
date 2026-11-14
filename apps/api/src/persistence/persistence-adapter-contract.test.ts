@@ -430,7 +430,7 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
         limit: 10,
         leaseSeconds: 30,
       });
-      assert.deepEqual(result, { claimed: 1, delivered: 1, failed: 0 });
+      assert.deepEqual(result, { claimed: 1, delivered: 1, failed: 0, deadLettered: 0 });
       assert.equal(delivered.length, 1);
       assert.equal(delivered[0].event_key, `message:${message.id}`);
       assert.equal(await runtime.store.markOutboxDelivered({ eventId: delivered[0].id, leaseToken: delivered[0].lease_token }), false);
@@ -664,7 +664,7 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
             if (outcome === "failure") throw new Error("simulated stale delivery failure");
           },
         });
-        assert.deepEqual(result, { claimed: 1, delivered: 0, failed: 1 });
+        assert.deepEqual(result, { claimed: 1, delivered: 0, failed: 1, deadLettered: 0 });
         assert.ok(newerLease);
         assert.equal(await runtime.outboxAvailableAt(newerLease.id), new Date(newerLease.available_at).toISOString());
         assert.equal(await runtime.store.markOutboxDelivered({ eventId: newerLease.id, leaseToken: newerLease.lease_token }), true);
@@ -696,7 +696,7 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
         deliver: async () => { [otherWorkerEvent] = await runtime.store.claimOutboxEvents({ limit: 1 }); },
       });
       assert.ok(otherWorkerEvent, "the next event should remain available to another worker");
-      assert.deepEqual(result, { claimed: 1, delivered: 1, failed: 0 });
+      assert.deepEqual(result, { claimed: 1, delivered: 1, failed: 0, deadLettered: 0 });
       assert.equal(await runtime.store.markOutboxDelivered({ eventId: otherWorkerEvent.id, leaseToken: otherWorkerEvent.lease_token }), true);
     } finally {
       await runtime.cleanup(conversationId);
@@ -733,7 +733,7 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
           throw new Error("simulated transient inbox failure");
         },
       });
-      assert.deepEqual(firstAttempt, { claimed: 1, delivered: 0, failed: 1 });
+      assert.deepEqual(firstAttempt, { claimed: 1, delivered: 0, failed: 1, deadLettered: 0 });
       assert.equal((await runtime.store.listNotifications({ actorId: firstRecipient })).length, 1);
       assert.equal((await runtime.store.listNotifications({ actorId: secondRecipient })).length, 0);
       assert.equal((await runtime.store.listNotifications({ actorId: sender })).length, 0);
@@ -748,7 +748,7 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
           await createMessageNotificationDelivery({ store: runtime.store })(event);
         },
       });
-      assert.deepEqual(retry, { claimed: 1, delivered: 1, failed: 0 });
+      assert.deepEqual(retry, { claimed: 1, delivered: 1, failed: 0, deadLettered: 0 });
       assert.equal(retryEvent.attempts, 2);
       assert.notEqual(retryEvent.lease_token, firstEvent.lease_token);
       for (const recipient of [firstRecipient, secondRecipient]) {
@@ -913,7 +913,7 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
           await createMessageNotificationDelivery({ store: runtime.store })(event);
         },
       });
-      assert.deepEqual(result, { claimed: 1, delivered: 1, failed: 0 });
+      assert.deepEqual(result, { claimed: 1, delivered: 1, failed: 0, deadLettered: 0 });
       // Retrying an already committed delivery must remain safe.
       await createMessageNotificationDelivery({ store: runtime.store })(deliveredEvent);
       for (const user of [owner, remaining, joinedLater]) {

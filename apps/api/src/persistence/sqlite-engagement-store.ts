@@ -92,13 +92,17 @@ export function createSqliteEngagementStore(db: SqliteRunner) {
   }
 
   function notify(userId: string, eventKey: string, payload: unknown): SqliteRow | undefined {
-    run("INSERT INTO notifications (id, user_id, event_key, payload, payload_hash) VALUES (?, ?, ?, ?, ?) ON CONFLICT (user_id, event_key) DO NOTHING", randomUUID(), userId, eventKey, JSON.stringify(payload), requestHash(payload));
-    return get("SELECT * FROM notifications WHERE user_id = ? AND event_key = ?", userId, eventKey);
+    const id = randomUUID();
+    const inserted = run("INSERT INTO notifications (id, user_id, event_key, payload, payload_hash) VALUES (?, ?, ?, ?, ?) ON CONFLICT (user_id, event_key) DO NOTHING", id, userId, eventKey, JSON.stringify(payload), requestHash(payload));
+    return inserted.changes === 1 ? get("SELECT * FROM notifications WHERE id = ?", id) : undefined;
   }
   function insertLikeNotification(article: SqliteRow, slug: string, locale: string, actorId: string) {
     if (article.author_id === actorId) return;
+    // Recognize legacy randomized keys by business identity without changing
+    // any stored notification, payload, created time or read watermark.
+    if (get("SELECT id FROM notifications WHERE user_id=? AND json_extract(payload,'$.type')='article.liked' AND json_extract(payload,'$.articleId')=? AND json_extract(payload,'$.actorId')=? LIMIT 1", article.author_id, article.id, actorId)) return;
     const payload = { type: "article.liked", articleId: article.id, slug, actorId, locale };
-    return notify(article.author_id, "article.liked:" + article.id + ":" + actorId + ":" + randomUUID(), payload);
+    return notify(article.author_id, "engagement:v1:like:" + article.id + ":" + actorId, payload);
   }
 
   return Object.freeze({

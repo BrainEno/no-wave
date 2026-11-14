@@ -57,10 +57,12 @@ export function createPostgresEngagementStore(ctx: PostgresStoreContext) {
             if (article.author_id !== actorId) {
             const payload = { type: "article.liked", articleId, slug, actorId, locale };
             const notificationId = randomUUID();
-            const eventKey = `article.liked:${articleId}:${actorId}:${randomUUID()}`;
+            const eventKey = `engagement:v1:like:${articleId}:${actorId}`;
             await tx.unsafe(
-              "INSERT INTO notifications (id, user_id, event_key, payload, payload_hash) VALUES ($1, $2, $3, $4::jsonb, $5) ON CONFLICT (user_id, event_key) DO NOTHING",
-              [notificationId, article.author_id, eventKey, payload, requestHash(payload)],
+              "INSERT INTO notifications (id,user_id,event_key,payload,payload_hash) SELECT $1,$2,$3,$4::jsonb,$5 " +
+              "WHERE NOT EXISTS (SELECT 1 FROM notifications WHERE user_id=$2 AND payload->>'type'='article.liked' AND payload->>'articleId'=$6 AND payload->>'actorId'=$7) " +
+              "ON CONFLICT (user_id,event_key) DO NOTHING",
+              [notificationId, article.author_id, eventKey, payload, requestHash(payload), article.id, actorId],
             );
             const notificationRows = await tx.unsafe("SELECT * FROM notifications WHERE id = $1", [notificationId]);
             if (notificationRows[0]) changes.push({ entityType: "notifications", entityId: notificationId, operation: "upsert", payload: notificationRows[0] });
@@ -101,10 +103,12 @@ export function createPostgresEngagementStore(ctx: PostgresStoreContext) {
             if (article.author_id !== actorId) {
             const payload = { type: "article.liked", articleId: article.id, slug, actorId, locale };
             const notificationId = randomUUID();
-            const eventKey = `article.liked:${article.id}:${actorId}:${randomUUID()}`;
+            const eventKey = `engagement:v1:like:${article.id}:${actorId}`;
             await tx.unsafe(
-              "INSERT INTO notifications (id, user_id, event_key, payload, payload_hash) VALUES ($1, $2, $3, $4::jsonb, $5) ON CONFLICT (user_id, event_key) DO NOTHING",
-              [notificationId, article.author_id, eventKey, payload, requestHash(payload)],
+              "INSERT INTO notifications (id,user_id,event_key,payload,payload_hash) SELECT $1,$2,$3,$4::jsonb,$5 " +
+              "WHERE NOT EXISTS (SELECT 1 FROM notifications WHERE user_id=$2 AND payload->>'type'='article.liked' AND payload->>'articleId'=$6 AND payload->>'actorId'=$7) " +
+              "ON CONFLICT (user_id,event_key) DO NOTHING",
+              [notificationId, article.author_id, eventKey, payload, requestHash(payload), article.id, actorId],
             );
             const notificationRows = await tx.unsafe("SELECT * FROM notifications WHERE id = $1", [notificationId]);
             if (notificationRows[0]) changes.push({ entityType: "notifications", entityId: notificationId, operation: "upsert", payload: notificationRows[0] });

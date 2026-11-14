@@ -1,4 +1,5 @@
 import { dispatchOutboxBatch } from "./outbox-worker.ts";
+import { resolveOutboxRetryPolicy } from "./outbox-retry-policy.ts";
 
 /**
  * One bounded drain of the transactional outbox.
@@ -37,6 +38,7 @@ export type OutboxDrainResult = {
   claimed: number;
   delivered: number;
   failed: number;
+  deadLettered: number;
   stopReason: OutboxDrainStopReason;
   durationMs: number;
   /** Error class of a batch-level failure, if the drain stopped because of one. */
@@ -49,6 +51,8 @@ export type OutboxDrainOptions = {
   batchLimit?: number;
   leaseSeconds?: number;
   retryDelaySeconds?: number;
+  maxRetryDelaySeconds?: number;
+  maxAttempts?: number;
   /** Wall-clock budget for the whole invocation. */
   deadlineMs?: number;
   /** Maximum number of batches, independent of the clock. */
@@ -67,7 +71,7 @@ function integerSetting(name: string, value: number, min: number, max: number): 
 export async function runOutboxDrain(options: OutboxDrainOptions): Promise<OutboxDrainResult> {
   const batchLimit = integerSetting("batchLimit", options.batchLimit ?? 25, 1, 100);
   const leaseSeconds = integerSetting("leaseSeconds", options.leaseSeconds ?? 60, 1, 3600);
-  const retryDelaySeconds = integerSetting("retryDelaySeconds", options.retryDelaySeconds ?? 30, 1, 86400);
+  const retryPolicy = resolveOutboxRetryPolicy(options);
   const deadlineMs = integerSetting("deadlineMs", options.deadlineMs ?? 10_000, 1, 600_000);
   const maxBatches = integerSetting("maxBatches", options.maxBatches ?? 20, 1, 1000);
   const now = options.now ?? Date.now;
@@ -77,6 +81,7 @@ export async function runOutboxDrain(options: OutboxDrainOptions): Promise<Outbo
   let claimed = 0;
   let delivered = 0;
   let failed = 0;
+  let deadLettered = 0;
   let stopReason: OutboxDrainStopReason = "empty";
   let errorName: string | null = null;
 
@@ -96,13 +101,14 @@ export async function runOutboxDrain(options: OutboxDrainOptions): Promise<Outbo
         deliver: options.deliver,
         limit: batchLimit,
         leaseSeconds,
-        retryDelaySeconds,
+        ...retryPolicy,
         onDeliveryFailure: options.onDeliveryFailure,
       });
       batches += 1;
       claimed += result.claimed;
       delivered += result.delivered;
       failed += result.failed;
+      deadLettered += result.deadLettered;
       if (result.claimed === 0) {
         stopReason = "empty";
         break;
@@ -116,5 +122,5 @@ export async function runOutboxDrain(options: OutboxDrainOptions): Promise<Outbo
     }
   }
 
-  return { batches, claimed, delivered, failed, stopReason, errorName, durationMs: now() - startedAt };
+  return { batches, claimed, delivered, failed, deadLettered, stopReason, errorName, durationMs: now() - startedAt };
 }
