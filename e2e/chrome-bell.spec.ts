@@ -28,6 +28,7 @@ function pathIs(path: string) {
  */
 test("a signed-in bell shows the real unread count and can mark notices read", async ({ page }) => {
   await page.context().addCookies([{ name: "nw_session", value: marker, url: baseUrl }]);
+  await page.route(pathIs("/api/authoring/session"), (route) => route.fulfill({ json: { data: { id: "notification-bell-fixture-reader" } } }));
   let read = false;
 
   await page.route(pathIs("/api/authoring/notifications/unread-count"), async (route) => {
@@ -112,6 +113,7 @@ function manyNotifications(count: number) {
 
 test("bell loads older notifications with keysets, retries errors and reads items beyond page one", async ({ page }) => {
   await page.context().addCookies([{ name: "nw_session", value: marker, url: baseUrl }]);
+  await page.route(pathIs("/api/authoring/session"), (route) => route.fulfill({ json: { data: { id: "notification-bell-fixture-reader" } } }));
   const items = manyNotifications(103);
   let failOnce = true;
   const cursors: string[] = [];

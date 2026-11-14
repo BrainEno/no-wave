@@ -6,6 +6,7 @@ import type { NotificationItem } from "./chrome.ts";
 
 const row: NotificationItem = { id: "11111111-1111-4111-8111-111111111111", eventKey: "event-one", payload: '{"type":"future.notice"}', createdAt: "2026-11-01T00:00:00.000Z", readAt: null };
 const signal = () => new AbortController().signal;
+const ACTOR = "notification-test-reader";
 const problem = (code: string) => (error: unknown) => error instanceof NotificationRequestError && error.code === code;
 
 test("notification transport uses only private same-origin endpoints and fixed request options", async () => {
@@ -17,12 +18,12 @@ test("notification transport uses only private same-origin endpoints and fixed r
     if (url.endsWith("/read")) return Response.json({ data: { ...row, readAt: "2026-11-02T00:00:00.000Z" } });
     return Response.json({ data: [row] });
   } });
-  assert.equal(await client.count(signal()), 7);
-  assert.deepEqual((await client.page(null, signal())).items, [row]);
+  assert.equal(await client.count(signal(), ACTOR), 7);
+  assert.deepEqual((await client.page(null, signal(), ACTOR)).items, [row]);
   const cursor = notificationCursor(row);
-  await client.page(cursor, signal());
-  assert.equal((await client.mark(row.id, signal()) as NotificationItem).readAt, "2026-11-02T00:00:00.000Z");
-  assert.equal(await client.mark(undefined, signal()), 4);
+  await client.page(cursor, signal(), ACTOR);
+  assert.equal((await client.mark(row.id, signal(), ACTOR) as NotificationItem).readAt, "2026-11-02T00:00:00.000Z");
+  assert.equal(await client.mark(undefined, signal(), ACTOR), 4);
   assert.deepEqual(requests.map(({ init }) => init.method), ["GET", "GET", "GET", "PUT", "POST"]);
   assert.equal(requests[1]!.url, "/api/authoring/notifications?limit=50");
   assert.equal(new URL(requests[2]!.url, "https://local.invalid").searchParams.get("cursor"), cursor);
@@ -32,7 +33,7 @@ test("notification transport uses only private same-origin endpoints and fixed r
     assert.equal(init.credentials, "same-origin");
     assert.equal(init.cache, "no-store");
     assert.equal(init.redirect, "error");
-    assert.deepEqual(Object.fromEntries(new Headers(init.headers)), { accept: "application/json" });
+    assert.deepEqual(Object.fromEntries(new Headers(init.headers)), { accept: "application/json", "x-expected-notification-actor": ACTOR });
     assert.equal(init.body, undefined);
     assert.ok(init.signal instanceof AbortSignal);
   }
@@ -41,15 +42,15 @@ test("notification transport uses only private same-origin endpoints and fixed r
 test("counts require the API envelope and exact non-negative safe integers, not rounded badges", async () => {
   for (const value of [0, 1, 100, Number.MAX_SAFE_INTEGER]) {
     const client = createNotificationTransport({ fetchImpl: async () => Response.json({ data: value }) });
-    assert.equal(await client.count(signal()), value);
+    assert.equal(await client.count(signal(), ACTOR), value);
   }
   for (const value of [-1, 0.5, "4", true, null, {}, Number.MAX_SAFE_INTEGER + 1]) {
     const client = createNotificationTransport({ fetchImpl: async () => Response.json({ data: value }) });
-    await assert.rejects(client.count(signal()), problem("invalid-response"));
+    await assert.rejects(client.count(signal(), ACTOR), problem("invalid-response"));
   }
   for (const payload of [5, [], {}, { data: 5, error: { code: "INTERNAL" } }]) {
     const client = createNotificationTransport({ fetchImpl: async () => Response.json(payload) });
-    await assert.rejects(client.count(signal()), problem("invalid-response"));
+    await assert.rejects(client.count(signal(), ACTOR), problem("invalid-response"));
   }
 });
 
@@ -63,16 +64,16 @@ test("all rows need usable cursor identities and real millisecond timestamps, ev
   ];
   for (const bad of badRows) {
     const client = createNotificationTransport({ fetchImpl: async () => Response.json({ data: [bad] }) });
-    await assert.rejects(client.page(null, signal()), problem("invalid-response"));
+    await assert.rejects(client.page(null, signal(), ACTOR), problem("invalid-response"));
   }
   const client = createNotificationTransport({ fetchImpl: async () => Response.json({ data: [row, row] }) });
-  await assert.rejects(client.page(null, signal()), problem("invalid-response"));
+  await assert.rejects(client.page(null, signal(), ACTOR), problem("invalid-response"));
 });
 
 test("a future or malformed payload stays readable and does not turn a real row into a short page", async () => {
   for (const payload of ['{"type":"a.future.kind","url":"https://outside.invalid"}', "not-json", "null"]) {
     const client = createNotificationTransport({ fetchImpl: async () => Response.json({ data: [{ ...row, payload }] }) });
-    const page = await client.page(null, signal());
+    const page = await client.page(null, signal(), ACTOR);
     assert.equal(page.items.length, 1);
     assert.equal(page.items[0]!.payload, payload);
   }
@@ -81,41 +82,41 @@ test("a future or malformed payload stays readable and does not turn a real row 
 test("a full valid page has the API-compatible continuation; oversize and malformed pages are errors", async () => {
   const rows = Array.from({ length: 50 }, (_, index) => ({ ...row, id: `10000000-0000-4000-8000-${(50 - index).toString(16).padStart(12, "0")}` }));
   const client = createNotificationTransport({ fetchImpl: async () => Response.json({ data: rows }) });
-  assert.equal((await client.page(null, signal())).nextCursor, notificationCursor(rows[49]!));
+  assert.equal((await client.page(null, signal(), ACTOR)).nextCursor, notificationCursor(rows[49]!));
   for (const data of [rows.concat(row), null, {}, [null]]) {
     const invalid = createNotificationTransport({ fetchImpl: async () => Response.json({ data }) });
-    await assert.rejects(invalid.page(null, signal()), problem("invalid-response"));
+    await assert.rejects(invalid.page(null, signal(), ACTOR), problem("invalid-response"));
   }
 });
 
 test("mutation acknowledgements are not inferred from HTTP 200 or from a changed-row count", async () => {
   for (const data of [null, 1, { ...row }, { ...row, id: "22222222-2222-4222-8222-222222222222", readAt: "2026-11-02T00:00:00.000Z" }]) {
     const client = createNotificationTransport({ fetchImpl: async () => Response.json({ data }) });
-    await assert.rejects(client.mark(row.id, signal()), problem("invalid-response"));
+    await assert.rejects(client.mark(row.id, signal(), ACTOR), problem("invalid-response"));
   }
   for (const data of ["3", -1, 0.5, {}, null]) {
     const client = createNotificationTransport({ fetchImpl: async () => Response.json({ data }) });
-    await assert.rejects(client.mark(undefined, signal()), problem("invalid-response"));
+    await assert.rejects(client.mark(undefined, signal(), ACTOR), problem("invalid-response"));
   }
   const zero = createNotificationTransport({ fetchImpl: async () => Response.json({ data: 0 }) });
-  assert.equal(await zero.mark(undefined, signal()), 0, "an idempotent mark-all is a valid acknowledgement, not an unread total");
+  assert.equal(await zero.mark(undefined, signal(), ACTOR), 0, "an idempotent mark-all is a valid acknowledgement, not an unread total");
 });
 
 test("invalid notification IDs, cursors and already-cancelled calls never reach fetch", async () => {
   let reads = 0;
   const client = createNotificationTransport({ fetchImpl: async () => { reads++; return Response.json({ data: 0 }); } });
-  for (const id of ["..", "//outside.invalid", "", `${row.id}/read`, "x".repeat(1000)]) await assert.rejects(client.mark(id, signal()), problem("invalid-response"));
-  for (const cursor of ["", "has space", "?user=other", "x".repeat(513)]) await assert.rejects(client.page(cursor, signal()), problem("invalid-response"));
+  for (const id of ["..", "//outside.invalid", "", `${row.id}/read`, "x".repeat(1000)]) await assert.rejects(client.mark(id, signal(), ACTOR), problem("invalid-response"));
+  for (const cursor of ["", "has space", "?user=other", "x".repeat(513)]) await assert.rejects(client.page(cursor, signal(), ACTOR), problem("invalid-response"));
   const cancelled = new AbortController();
   cancelled.abort();
-  await assert.rejects(client.count(cancelled.signal), problem("cancelled"));
+  await assert.rejects(client.count(cancelled.signal, ACTOR), problem("cancelled"));
   assert.equal(reads, 0);
 });
 
 test("unauthenticated replies have their own signal and never expose an upstream diagnostic", async () => {
   for (const status of [401, 403, 404, 429, 500, 503]) {
     const client = createNotificationTransport({ fetchImpl: async () => Response.json({ error: { message: "synthetic-private-diagnostic" } }, { status }) });
-    await assert.rejects(client.count(signal()), (error: unknown) => {
+    await assert.rejects(client.count(signal(), ACTOR), (error: unknown) => {
       assert.ok(error instanceof NotificationRequestError);
       assert.equal(error.code, status === 401 ? "unauthenticated" : "unavailable");
       assert.doesNotMatch(error.message, /synthetic-private-diagnostic/);
@@ -134,7 +135,7 @@ test("HTML, broken JSON, error envelopes and invalid UTF-8 cannot become success
   ];
   for (const response of responses) {
     const client = createNotificationTransport({ fetchImpl: async () => response() });
-    await assert.rejects(client.count(signal()), problem("invalid-response"));
+    await assert.rejects(client.count(signal(), ACTOR), problem("invalid-response"));
   }
 });
 
@@ -145,10 +146,10 @@ test("decoded bytes are bounded even if Content-Length lies, and oversized strea
     cancel() { cancelled = true; },
   });
   const client = createNotificationTransport({ fetchImpl: async () => new Response(body, { headers: { "content-type": "application/json", "content-length": "1" } }) });
-  await assert.rejects(client.count(signal()), problem("invalid-response"));
+  await assert.rejects(client.count(signal(), ACTOR), problem("invalid-response"));
   assert.equal(cancelled, true);
   const declared = createNotificationTransport({ fetchImpl: async () => new Response('{"data":0}', { headers: { "content-type": "application/json", "content-length": String(NOTIFICATION_BODY_LIMIT + 1) } }) });
-  await assert.rejects(declared.count(signal()), problem("invalid-response"));
+  await assert.rejects(declared.count(signal(), ACTOR), problem("invalid-response"));
 });
 
 test("UTF-8 split across chunks remains valid within the body budget", async () => {
@@ -158,7 +159,7 @@ test("UTF-8 split across chunks remains valid within the body budget", async () 
     controller.close();
   } });
   const client = createNotificationTransport({ fetchImpl: async () => new Response(stream, { headers: { "content-type": "application/json; charset=utf-8" } }) });
-  assert.equal((await client.page(null, signal())).items[0]!.payload, "新通知𠀀");
+  assert.equal((await client.page(null, signal(), ACTOR)).items[0]!.payload, "新通知𠀀");
 });
 
 test("a hung transport has a real deadline even if it ignores AbortSignal", { timeout: 1000 }, async () => {
@@ -167,7 +168,7 @@ test("a hung transport has a real deadline even if it ignores AbortSignal", { ti
     requestSignal = init.signal as AbortSignal;
     return new Promise<Response>(() => {});
   } });
-  await assert.rejects(client.count(signal()), problem("timeout"));
+  await assert.rejects(client.count(signal(), ACTOR), problem("timeout"));
   assert.equal(requestSignal?.aborted, true);
 });
 
@@ -176,7 +177,7 @@ test("caller cancellation interrupts an uncooperative request before the normal 
   let started!: () => void;
   const ready = new Promise<void>((resolve) => { started = resolve; });
   const client = createNotificationTransport({ timeoutMs: 500, fetchImpl: async () => { started(); return new Promise<Response>(() => {}); } });
-  const request = client.count(controller.signal);
+  const request = client.count(controller.signal, ACTOR);
   await ready;
   controller.abort();
   await assert.rejects(request, problem("cancelled"));
@@ -191,7 +192,7 @@ test("cancelling a stalled body releases its reader rather than waiting for JSON
     const stream = new ReadableStream<Uint8Array>({ start() { opened(); }, cancel() { cancelled = true; } });
     return new Response(stream, { headers: { "content-type": "application/json" } });
   } });
-  const request = client.count(controller.signal);
+  const request = client.count(controller.signal, ACTOR);
   await ready;
   await Promise.resolve();
   controller.abort();

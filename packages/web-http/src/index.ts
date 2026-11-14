@@ -179,6 +179,7 @@ export {
   parseParticipantIds,
 } from "./messages.ts";
 export {
+  NOTIFICATION_EXPECTED_ACTOR_HEADER,
   NOTIFICATION_ID_PATTERN,
   NOTIFICATIONS_LIMIT,
   handleNotificationReadRequest,

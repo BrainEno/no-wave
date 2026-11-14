@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { hasUsableSession, SESSION_MARKER_COOKIE } from "@bot-thk/web-http";
 import { usePathname } from "@/lib/framework/navigation.ts";
 import { sessionMarkerFromCookie } from "@/lib/chrome.ts";
@@ -15,6 +16,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     window, document,
     visible: () => document.visibilityState === "visible",
     hasSessionHint: () => hasUsableSession(sessionMarkerFromCookie(document.cookie, SESSION_MARKER_COOKIE)),
+    flush: flushSync,
   }), [controller, pathname]);
   return <NotificationContext.Provider value={controller}>{children}</NotificationContext.Provider>;
 }
