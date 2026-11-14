@@ -1,18 +1,19 @@
-import { expect, test, type APIRequestContext } from "@playwright/test";
+import { expect, type APIRequestContext } from "@playwright/test";
+import { test } from "./support/article-view-stack.ts";
 import { publishWork, uniqueEmail, WORK_PASSWORD } from "./support/works.ts";
 
-const api = process.env.E2E_API_BASE_URL ?? "http://127.0.0.1:4000";
 const pathFor = (slug: string) => `/api/authoring/articles/${slug}/views?locale=zh-CN`;
 
 /** Assert durable state, not the body of a fire-and-forget fetch the UI never drains. */
-async function persistedViews(request: APIRequestContext, slug: string): Promise<number> {
+async function persistedViews(request: APIRequestContext, slug: string, api: string): Promise<number> {
   const response = await request.get(`${api}/api/v1/articles/${slug}?locale=zh-CN`);
   expect(response.status()).toBe(200);
   return (await response.json()).data.viewCount;
 }
 
-test("an author's mounted reading page sends its scoped cookie and cannot increment its own work", async ({ page, request, baseURL }) => {
-  const { email, slug } = await publishWork(request, `作者自阅 ${Date.now().toString(36)}`, ["作者自己的阅读不应计入。"]);
+test("an author's mounted reading page sends its scoped cookie and cannot increment its own work", async ({ page, request, baseURL, readingStack }) => {
+  const api = readingStack.apiBaseUrl;
+  const { email, slug } = await publishWork(request, `作者自阅 ${Date.now().toString(36)}`, ["作者自己的阅读不应计入。"], undefined, api);
   const origin = new URL(baseURL!).origin;
   const login = await page.context().request.post(`${origin}/api/auth/login`, { headers: { origin }, data: { email, password: WORK_PASSWORD } });
   expect(login.status()).toBe(200);
@@ -30,7 +31,7 @@ test("an author's mounted reading page sends its scoped cookie and cannot increm
   expect(pageHeaders.cookie ?? "").not.toContain("nw_refresh=");
   const response = await beacon;
   expect(response.status()).toBe(200);
-  expect(await persistedViews(request, slug)).toBe(0);
+  expect(await persistedViews(request, slug, api)).toBe(0);
   const headers = await response.request().allHeaders();
   expect(headers.cookie ?? "").toContain("nw_access=");
   expect(headers.cookie ?? "").toContain("nw_refresh=");
@@ -44,15 +45,16 @@ test("an author's mounted reading page sends its scoped cookie and cannot increm
   const repeat = page.waitForResponse((response) => response.url().endsWith(pathFor(slug)) && response.request().method() === "POST");
   await page.reload();
   expect((await repeat).status()).toBe(200);
-  expect(await persistedViews(request, slug)).toBe(0);
+  expect(await persistedViews(request, slug, api)).toBe(0);
   expect((await page.context().cookies()).find(({ name }) => name === "nw_refresh")?.value === refresh).toBe(true);
   const exposed = await page.evaluate(() => document.cookie);
   expect(exposed).not.toContain("nw_access=");
   expect(exposed).not.toContain("nw_refresh=");
 });
 
-test("two signed-in readers on the same NAT count separately while anonymous readers still dedupe by address", async ({ browser, request, baseURL }) => {
-  const { slug } = await publishWork(request, `同网不同读者 ${Date.now().toString(36)}`, ["共享出口地址不是共享账户。"]);
+test("two signed-in readers on the same NAT count separately while anonymous readers still dedupe by address", async ({ browser, request, baseURL, readingStack }) => {
+  const api = readingStack.apiBaseUrl;
+  const { slug } = await publishWork(request, `同网不同读者 ${Date.now().toString(36)}`, ["共享出口地址不是共享账户。"], undefined, api);
   const origin = new URL(baseURL!).origin;
   const first = await browser.newContext({ baseURL: origin });
   const second = await browser.newContext({ baseURL: origin });
@@ -69,11 +71,11 @@ test("two signed-in readers on the same NAT count separately while anonymous rea
       const response = await beacon;
       expect(response.status()).toBe(200);
       expect((await response.request().allHeaders()).cookie ?? "").toContain("nw_access=");
-      expect(await persistedViews(request, slug)).toBe(index + 1);
+      expect(await persistedViews(request, slug, api)).toBe(index + 1);
       const repeated = page.waitForResponse((reply) => reply.url().endsWith(pathFor(slug)) && reply.request().method() === "POST");
       await page.reload();
       expect((await repeated).status()).toBe(200);
-      expect(await persistedViews(request, slug)).toBe(index + 1);
+      expect(await persistedViews(request, slug, api)).toBe(index + 1);
     }
     const firstIdentity = await first.request.get("/api/authoring/session");
     const secondIdentity = await second.request.get("/api/authoring/session");
@@ -86,11 +88,11 @@ test("two signed-in readers on the same NAT count separately while anonymous rea
     const viewed = await anonymousView;
     expect(viewed.status()).toBe(200);
     expect((await viewed.request().allHeaders()).cookie ?? "").not.toContain("nw_access=");
-    expect(await persistedViews(request, slug)).toBe(3);
+    expect(await persistedViews(request, slug, api)).toBe(3);
     const anonymousRepeat = visitor.waitForResponse((response) => response.url().endsWith(pathFor(slug)) && response.request().method() === "POST");
     await visitor.reload();
     expect((await anonymousRepeat).status()).toBe(200);
-    expect(await persistedViews(request, slug)).toBe(3);
+    expect(await persistedViews(request, slug, api)).toBe(3);
     const detail = await request.get(`${api}/api/v1/articles/${slug}?locale=zh-CN`);
     expect(detail.status()).toBe(200);
     expect((await detail.json()).data.viewCount).toBe(3);
@@ -98,14 +100,15 @@ test("two signed-in readers on the same NAT count separately while anonymous rea
     const onceMore = reloadFirst.waitForResponse((response) => response.url().endsWith(pathFor(slug)) && response.request().method() === "POST");
     await reloadFirst.reload();
     expect((await onceMore).status()).toBe(200);
-    expect(await persistedViews(request, slug)).toBe(3);
+    expect(await persistedViews(request, slug, api)).toBe(3);
   } finally {
     await Promise.all([first.close(), second.close(), anonymous.close()]);
   }
 });
 
-test("browser-cookie renewal verifies the author before counting and a revoked session never degrades to anonymous success", async ({ page, request, baseURL }) => {
-  const { email, slug } = await publishWork(request, `过期身份阅读 ${Date.now().toString(36)}`, ["续期和撤销都不能创造匿名自阅。"]);
+test("browser-cookie renewal verifies the author before counting and a revoked session never degrades to anonymous success", async ({ page, request, baseURL, readingStack }) => {
+  const api = readingStack.apiBaseUrl;
+  const { email, slug } = await publishWork(request, `过期身份阅读 ${Date.now().toString(36)}`, ["续期和撤销都不能创造匿名自阅。"], undefined, api);
   const origin = new URL(baseURL!).origin;
   const login = await page.context().request.post(`${origin}/api/auth/login`, { headers: { origin }, data: { email, password: WORK_PASSWORD } });
   expect(login.status()).toBe(200);
