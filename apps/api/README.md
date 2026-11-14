@@ -184,10 +184,22 @@ Author profiles are stored with shared account-level avatar/website fields and p
 
 ## Client address behind a proxy (ADR 0027)
 
-Every per-IP decision in the API — the write rate-limit buckets, `login` /
-`register` / `refresh` attempt limits, and the address recorded for a session —
-uses the TCP peer address by default, and ignores `X-Forwarded-For`, because a
-header the client controls must never choose its own bucket.
+Every per-IP decision in the API — write rate-limit buckets, `login` /
+`register` / `refresh` attempts and anonymous article-view dedupe — uses the TCP
+peer by default. An arbitrary forwarding header must never choose its own bucket.
+
+**Web BFF deployment:** configure the same separate `BFF_CLIENT_ADDRESS_SECRET`
+on Web and API, and keep API `TRUSTED_PROXY_HOPS=0`. The Web resolves socket and
+explicitly named proxy provenance and signs each upstream request. The API uses
+that address only after bounded proof verification; absent/bad proofs fall back
+to the socket, never legacy XFF. Keys must be 32–512 non-whitespace ASCII
+characters; use at least 32 random bytes encoded as hex, not the JWT key. Web
+`WEB_TRUSTED_PROXY_HOPS` defaults to 0; nonzero requires a bounded
+`WEB_TRUSTED_PROXY_PEERS` IP/CIDR list covering the observed and intermediate
+proxies. See [deployment examples](../../docs/operations/portable-stack.md#visitor-address-provenance).
+
+The positional policy below is retained **only with the bridge disabled**.
+Nonzero API hops together with a bridge key fail startup.
 
 On a deployment with a reverse proxy, a platform router or a container ingress in
 front of the API, the socket peer **is** that proxy: every visitor then shares one
@@ -196,7 +208,7 @@ are in front of the API instead of trusting the header wholesale:
 
 | Variable | Default | Bounds | Meaning |
 | --- | --- | --- | --- |
-| `TRUSTED_PROXY_HOPS` | `0` | 0–5 | How many proxies in front of this process. `1` for a single ingress (Render, Fly, nginx, `docker run -p`), `2` for a CDN in front of an ingress |
+| `TRUSTED_PROXY_HOPS` | `0` | 0–5 | Legacy direct-API mode only: the number of reviewed, non-bypassable appending proxies; `1` for one ingress, `2` for a CDN plus ingress |
 
 The address is read that many entries from the **right** of the chain, which is the
 one the outermost trusted proxy appended; anything a client writes to the left of

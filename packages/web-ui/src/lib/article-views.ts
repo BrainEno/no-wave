@@ -21,7 +21,7 @@
 
 /** The proxy path the beacon posts to. Same-origin, so the session cookie rides along. */
 export function articleViewBeaconPath(slug: string, locale: string): string {
-  return `/api/articles/${encodeURIComponent(slug)}/views?locale=${encodeURIComponent(locale)}`;
+  return `/api/authoring/articles/${encodeURIComponent(slug)}/views?locale=${encodeURIComponent(locale)}`;
 }
 
 export type ViewBeacon = (slug: string, locale: string) => Promise<void>;

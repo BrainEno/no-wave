@@ -2,113 +2,147 @@
 
 - Status: Accepted
 - Date: 2026-11-07
-- Relates to: audit F-21 ([full review 2026-11-02](../../audit/full-review-2026-11-02.md));
-  ADR 0011 ([persistent write rate limits](0011-persistent-api-write-rate-limits.md));
-  [API authentication contract](../api-authentication.md)
+- Updated: 2026-11-12 — authenticated Web BFF address bridge (#322)
+- Relates to: ADR 0011 ([persistent write rate limits](0011-persistent-api-write-rate-limits.md));
+  [API authentication contract](../api-authentication.md); #314, #322, #323
 
 ## Context
 
-Every per-client decision in the API reads one string:
+All per-IP API decisions use `ctx.clientAddress`: identity-attempt windows,
+persistent write quotas, and anonymous article-view deduplication. Addresses are
+throttling/telemetry inputs, never authentication or resource ownership. The
+session-list API does not store or return visitor addresses.
 
-- the `ip` half of every write rate-limit policy (ADR 0011);
-- the `login`, `register`, `refresh` and `logout` attempt windows in the identity
-  service;
-- the address recorded and shown for each session in `GET /api/v1/me/sessions`.
-
-That string came from `request.socket.remoteAddress`, and `X-Forwarded-For` was
-deliberately ignored. The reasoning was sound: the header is written by the
-client, and a client that can choose its bucket has no bucket at all.
-
-The reasoning is only sound on a host where the process sees the visitor. On
-every deployment this project actually has — Render, Fly, a container behind
-nginx, a Vercel container behind the platform router — the socket peer is **the
-proxy**. Everything above degrades quietly rather than loudly:
-
-| Decision | Behind a proxy, with the peer as the client |
-| --- | --- |
-| Write limits | one shared IP bucket for every visitor: one noisy client throttles everyone |
-| Login / register / refresh | one shared attempt window: an attacker can exhaust it and lock out the site, or hide inside it |
-| Session list | every device says it is at the same address |
-
-None of these fail a request, log a warning or appear in a metric. The limits are
-simply not in force, and the deployment looks healthy.
+A socket identifies the immediate caller. In a browser → Web BFF → API deployment,
+that caller is the Web server, not the visitor. Merely increasing the API's
+`TRUSTED_PROXY_HOPS` cannot recover a header the BFF never sent. Every anonymous
+reader then shares a bucket, and one client can exhaust another's login/create
+allowance. Blindly relaying a browser's forwarding headers fixes isolation by
+letting attackers choose their own buckets, which is not a fix.
 
 ## Decision
 
-### 1. The socket peer stays the default, and the header stays ignored
+### 1. Direct and legacy API deployments remain compatible
 
-`TRUSTED_PROXY_HOPS` is `0` unless an operator sets it. At `0` the behaviour is
-exactly what it was: `X-Forwarded-For` is never read. A deployment that does not
-have a proxy cannot acquire this bug by upgrading, and a client can never name its
-own bucket.
+Without `BFF_CLIENT_ADDRESS_SECRET`, the API keeps the original policy:
 
-### 2. The operator names the number of proxies, not the header
+- `TRUSTED_PROXY_HOPS` defaults to `0`; ignore all forwarded address headers and
+  use the normalized TCP peer.
+- An explicit integer `1`–`5` selects that many XFF entries from the right.
+  This legacy positional policy is only safe when network controls prevent
+  bypassing the declared chain and every proxy appends/overwrites correctly.
+- Missing/short/invalid selected entries fall back to the socket. Invalid hop
+  configuration fails startup; no address means the one `unknown` bucket.
 
-`TRUSTED_PROXY_HOPS` is an integer from `0` to `5`:
+A container port mapping alone is **not** evidence that a trustworthy XFF chain
+exists. Do not infer a hop count from a hosting brand or from an incoming header.
 
-- `1` — one proxy between the visitor and this process (Render, Fly, nginx,
-  `docker run -p`, a Kubernetes ingress whose own peer address is not exposed);
-- `2` — two, e.g. a CDN in front of an ingress.
+### 2. Resolve visitor provenance at the Web socket boundary
 
-The address is taken **that many entries from the right** of the forwarded chain.
-That position is the one the outermost trusted proxy appended; every entry to its
-left is whatever the client (or an untrusted hop) wrote, and is ignored. An
-attacker who prepends a thousand addresses does not move the position.
+The Web production listener and Vite development middleware use the same policy:
 
-### 3. An unusable configuration fails at startup
+| Input | Default | Validation |
+| --- | --- | --- |
+| `WEB_TRUSTED_PROXY_HOPS` | `0` | integer `0`–`5` |
+| `WEB_TRUSTED_PROXY_PEERS` | empty | at most 32 comma-separated literal IPs/CIDRs, at most 4096 characters; no `/0`, hostnames or zone IDs |
 
-An empty value means "not configured" (`0`). Anything that is not an integer in
-range — `true`, `1.5`, `-1`, `6` — throws a `RangeError` while the server is being
-composed, so the process does not start. Silently falling back to `0` would leave
-the operator believing the proxy is handled while every visitor shares a bucket:
-the exact state this ADR exists to end.
+At zero hops, browser-written XFF, `Forwarded`, `X-Real-IP` and private bridge
+headers have no authority. For nonzero hops a named peer list is mandatory. The
+observed socket must match that list; otherwise use the socket even if a chain
+was supplied. Select from the right, normalize the full selected suffix, and
+require **every intermediate proxy** in that suffix to match the peer list too.
+The selected visitor need not be a proxy. An incomplete, malformed or over-8192-
+character chain falls back to the socket, not a more specific untrusted entry.
 
-### 4. A chain shorter than the configuration is not trusted
+Requiring the intermediate peers matters: someone reaching only the last of two
+configured proxies must not provide the missing earlier hop themselves. Extra
+left-hand entries never move the selected trusted position. Operators still need
+a reviewed topology, tightly scoped peer ranges and an appending/overwriting
+policy on each edge; naming a large network is not a substitute for that review.
 
-If fewer forwarded entries arrive than the configured number of hops, the request
-did not come through the described infrastructure. The socket peer is used. The
-rule everywhere is the same: when the configuration and the request disagree, take
-the safer of the two, never the more specific one.
+Canonicalization removes source ports, converts IPv4-mapped IPv6 to IPv4 and
+normalizes IPv6 spelling. Unknown socket identity never becomes a browser claim.
 
-### 5. The address is normalized, and "unknown" is one honest bucket
+### 3. Carry only authenticated, per-upstream metadata into the API
 
-`::ffff:192.0.2.10` becomes `192.0.2.10`, and a source port appended by a proxy
-(`192.0.2.10:51234`, `[2001:db8::1]:443`) is removed, so the same client is the
-same bucket whatever shape its address arrived in. A request that cannot be
-attributed at all is `unknown` — one shared bucket, which is the honest answer for
-"we do not know", and the placeholder the API already used.
+Set the **same**, separately generated `BFF_CLIENT_ADDRESS_SECRET` on Web and API.
+Unset/empty disables the bridge. A configured value must be 32–512 non-whitespace
+ASCII characters; invalid values fail startup without printing their contents.
+Use at least 32 random bytes encoded as hex, distinct from the JWT key and from
+other deployments' bridge keys. The secret is never transmitted.
 
-### 6. The resolution happens once, in the request context
+The Web replaces, rather than forwards, these private request headers:
 
-`clientAddressFor()` runs in `createRestHandler`, and routes read
-`ctx.clientAddress`. No route derives an address of its own, so the forward-header
-policy cannot drift between the rate limiter, the identity service and the session
-list.
+- `x-nw-client-address`: one canonical IP;
+- `x-nw-client-address-proof`: `v1.<integer epoch seconds>.<lowercase HMAC-SHA256 hex>`.
 
-## Consequences
+The HMAC input is the JSON array
+`["no-wave:bff-client-address:v1", seconds, uppercaseMethod, exactPathAndQuery, canonicalAddress]`.
+Every actual identity call, resource call, viewer/actor guard, automatic refresh,
+retry and public-media request gets a proof for its own target. Redirects are
+refused (`redirect: "error"`) so metadata, bearer credentials or identity bodies
+cannot follow an upstream redirect to a different origin.
 
-- A deployment behind a proxy has to set one variable. The value is documented in
-  [`apps/api/README.md`](../../../apps/api/README.md) and the ADR is the reasoning;
-  without it, the deployment keeps the old (wrong) behaviour rather than a guessed
-  one.
-- Setting it **higher** than the real number of proxies is a self-inflicted
-  vulnerability: the trusted position then lands on an entry a client controls. The
-  bound of 5 is not a safety guarantee; the number has to describe the deployment.
-- The address is not authentication. It is a throttling key and a display string;
-  nothing authorizes on it, and a misconfigured hop count cannot grant access —
-  it can only misattribute a bucket.
-- `TRUSTED_PROXY_HOPS` does not make the API trust `X-Forwarded-Proto` or
-  `X-Forwarded-Host`. Redirect and origin decisions still come from configuration
-  (`AUTH_IDENTITY_BASE_URL`, the Web tier's dev-origin allowlist), not from
-  headers.
-- The Web tier does **not** forward the visitor's address to the API today
-  (`packages/web-http/src/forward.ts` sends `accept`, the bearer token and the
-  idempotency key). In the BFF deployment the API therefore charges the Web
-  server, and the anonymous write bucket is shared no matter what
-  `TRUSTED_PROXY_HOPS` says; the setting applies to deployments where the
-  visitor's address reaches the API itself — a direct API deployment behind one
-  proxy. Forwarding from the Web tier is a separate change, because it raises the
-  same question one tier earlier (which proxy may the Web server believe) and is
-  not implied here.
-- This does not add the session-scoped `refresh` bucket that audit F-21 also
-  lists. That is a separate limit on a separate key and it is not implied here.
+The API validates the version, canonical address, bounded scalar header shape,
+method, exact raw path/query and ±30-second clock skew, then compares MAC bytes
+with `timingSafeEqual`. Duplicate, missing, stale, mismatched or malformed proofs
+fall back to the normalized **socket**, never XFF. In bridge mode
+`TRUSTED_PROXY_HOPS` **must be `0`**, enforced at startup. Otherwise a failed proof
+could recover authority through the older unauthenticated proxy path.
+
+The resolver assigns `ctx.clientAddress` once; identity, write-limit and view
+services consume the same result. No domain policy or production quota changes.
+
+### 4. Keep request scope and Node module identity intact
+
+One server-only `AsyncLocalStorage` scope holds immutable address/key/clock input.
+A disabled or unknown inner scope shadows its parent. Concurrent requests,
+awaits, nested invocations and exceptions cannot select a global “current visitor.”
+`web-http` accepts an explicit header-provider callback and reads no environment
+or framework context from its browser-safe entry point.
+
+The Node-only package subpath is explicitly externalized for **both** Vite SSR
+resolution and the production Rolldown build. Vite configuration loads the native
+entry for dev ingress too. Bundling another copy of this module creates another
+storage instance: unit signatures would pass while actual production requests
+silently fell back to the BFF socket. Real production and dev TCP tests protect
+this boundary; Node 24 loads the external TypeScript entry in the runtime image.
+
+### 5. Failure and deployment policy are explicit
+
+- Neither end configured: legacy behavior, including a shared BFF peer bucket.
+- Only one end configured, different keys, stale clocks or unusable proof: socket
+  fallback; this is conservative but **not correct visitor isolation**. Health
+  checks alone cannot establish correct attribution. Verify two real clients.
+- Invalid configured secret, Web trust policy, or nonzero legacy API hops in
+  bridge mode: fail startup, with no secret value in the diagnostic.
+- An outbound signing/transport failure becomes the existing sanitized 502/504;
+  do not send a mutation with partially assembled provenance.
+- Keep TLS/trusted private transport between tiers, synchronize clocks, and do
+  not expose/log either proof header. A proof is a short-lived address claim,
+  not a nonce or body signature: it is replayable for the same method/path/query
+  during its validity window if stolen, and grants no actor/resource permission.
+- Key replacement needs an approved coordinated rollout. There is no dual-key
+  grace period; mismatched instances fall back to the socket. This ADR neither
+  rotates any key nor authorizes a deployment.
+
+See [portable stack operations](../../operations/portable-stack.md#visitor-address-provenance)
+for role-specific examples and verification.
+
+## Reading identity and remaining scope
+
+The browser view beacon uses `/api/authoring/articles/:slug/views` so the
+`HttpOnly` access cookie scoped to `/api/authoring` is actually sent (#323). The
+old route remains for compatibility. With either session credential present,
+verify `/me` before the bodyless view mutation, including after renewal. An
+expired/revoked author must not silently become an anonymous successful view.
+Genuinely anonymous visitors skip the identity check and dedupe by trusted
+address; authenticated visitors dedupe by verified actor and authors do not
+self-increment. Neither cookie scope nor backend ownership is widened.
+
+This fixes #322 and the related view-cookie omission, **not all of #314**. Separate
+session/user refresh buckets, the 121-session acceptance case and automatic-
+refresh 429/Retry-After behavior remain follow-up work. Refresh coordinator keys,
+explicit-refresh single-flight and cross-instance coordination (#324/#318) also
+remain unchanged. IP separation is not a defense against many legitimate users
+behind one NAT or against distributed volumetric abuse.

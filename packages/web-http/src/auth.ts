@@ -1,6 +1,7 @@
 import {
   UpstreamTimeoutError,
   apiUrl,
+  applyClientAddressHeaders,
   readPayload,
   resolveUpstreamTimeoutMs,
   withUpstreamDeadline,
@@ -126,7 +127,7 @@ export async function handleAuthRequest(
   const fetchImpl = config.fetchImpl ?? fetch;
   let upstream: Response;
   try {
-    upstream = await callAuthApi(fetchImpl, apiUrl(base, `api/v1/auth/${action}`), body, timeoutMs);
+    upstream = await callAuthApi(fetchImpl, apiUrl(base, `api/v1/auth/${action}`), body, timeoutMs, config.clientAddressHeaders);
   } catch (error) {
     return errorResponse(
       error instanceof UpstreamTimeoutError ? "UPSTREAM_TIMEOUT" : "SERVICE_UNAVAILABLE",
@@ -187,7 +188,7 @@ async function handleIdentityAction(
   const fetchImpl = config.fetchImpl ?? fetch;
   let upstream: Response;
   try {
-    upstream = await callAuthApi(fetchImpl, apiUrl(base, `api/v1/auth/${action}`), parsed.text, timeoutMs);
+    upstream = await callAuthApi(fetchImpl, apiUrl(base, `api/v1/auth/${action}`), parsed.text, timeoutMs, config.clientAddressHeaders);
   } catch (error) {
     return errorResponse(
       error instanceof UpstreamTimeoutError ? "UPSTREAM_TIMEOUT" : "SERVICE_UNAVAILABLE",
@@ -219,11 +220,14 @@ async function handleIdentityAction(
  * request open. Authentication payloads are small, and the proxies read them in
  * full anyway.
  */
-async function callAuthApi(fetchImpl: FetchImpl, url: string, body: string, timeoutMs: number): Promise<Response> {
+async function callAuthApi(fetchImpl: FetchImpl, url: string, body: string, timeoutMs: number, clientAddressHeaders?: ApiProxyConfig["clientAddressHeaders"]): Promise<Response> {
+  const headers = new Headers({ accept: "application/json", "content-type": "application/json; charset=utf-8" });
+  applyClientAddressHeaders(headers, url, "POST", clientAddressHeaders);
   return withUpstreamDeadline(timeoutMs, async (signal) => {
     const response = await fetchImpl(url, {
       method: "POST",
-      headers: { accept: "application/json", "content-type": "application/json; charset=utf-8" },
+      headers,
+      redirect: "error",
       body,
       cache: "no-store",
       signal,

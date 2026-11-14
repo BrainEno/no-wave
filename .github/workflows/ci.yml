@@ -158,6 +158,9 @@ jobs:
       # the VM the job ran on.
       DATABASE_PATH: /tmp/no-wave-e2e.sqlite
       AUTH_JWT_SECRET: local-development-ci-secret-0123456789abcdef
+      BFF_CLIENT_ADDRESS_SECRET: ci-fixture-only-bff-address-key-not-a-production-secret
+      TRUSTED_PROXY_HOPS: "0"
+      WEB_TRUSTED_PROXY_HOPS: "0"
       AUTH_JWT_ISSUER: http://localhost:4000
       AUTH_JWT_AUDIENCE: no-wave
       # Independent multi-account/account-switch journeys now need up to 64
@@ -397,6 +400,8 @@ jobs:
             -v nw-ci-db:/var/lib/no-wave \
             -e HOST=0.0.0.0 -e PORT=4000 \
             -e DATABASE_PROVIDER=sqlite -e DATABASE_PATH=/var/lib/no-wave/api.sqlite \
+            -e BFF_CLIENT_ADDRESS_SECRET=ci-fixture-only-bff-address-key-not-a-production-secret \
+            -e TRUSTED_PROXY_HOPS=0 \
             -e AUTH_JWT_SECRET=container-image-ci-secret-0123456789abcdef \
             -e AUTH_JWT_ISSUER=http://127.0.0.1:4000 -e AUTH_JWT_AUDIENCE=no-wave \
             -p 4000:4000 bot-thk-api:ci
@@ -404,6 +409,8 @@ jobs:
           docker run -d --network nw-ci --name web \
             -e HOST=0.0.0.0 -e PORT=3100 \
             -e API_BASE_URL=http://api:4000 \
+            -e BFF_CLIENT_ADDRESS_SECRET=ci-fixture-only-bff-address-key-not-a-production-secret \
+            -e WEB_TRUSTED_PROXY_HOPS=0 \
             -e SITE_URL=http://127.0.0.1:3100 \
             -p 3100:3100 bot-thk-web-rr:ci
 

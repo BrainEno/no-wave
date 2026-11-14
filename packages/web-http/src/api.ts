@@ -27,7 +27,19 @@ export type ApiProxyConfig = {
    * for injected transports, one per transport).
    */
   refreshCoordinator?: RefreshCoordinator;
+  /** Server-owned request context only; never construct this from browser headers. */
+  clientAddressHeaders?: (target: string, method: string) => HeadersInit;
 };
+
+/** Only the two private metadata fields may be supplied by a server adapter. */
+export function applyClientAddressHeaders(headers: Headers, target: string, method: string, provider: ApiProxyConfig["clientAddressHeaders"]): void {
+  if (!provider) return;
+  const metadata = new Headers(provider(target, method));
+  for (const name of ["x-nw-client-address", "x-nw-client-address-proof"]) {
+    const value = metadata.get(name);
+    if (value !== null) headers.set(name, value);
+  }
+}
 
 /** Join an API origin and a relative path, tolerating a trailing slash on either. */
 export function apiUrl(base: string, path: string): string {

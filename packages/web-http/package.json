@@ -7,7 +7,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./policy": "./src/policy.ts",
-    "./log": "./src/log.ts"
+    "./log": "./src/log.ts",
+    "./client-address": "./src/client-address.node.ts"
   },
   "scripts": {
     "test": "node --test test/*.test.ts",

@@ -25,7 +25,7 @@ export async function startFontStack(): Promise<FontStack> {
   let webPort = await freePort();
   while (webPort === apiPort) webPort = await freePort();
   const env = isolatedEnvironment(process.env, { apiPort, webPort,
-    databasePath: join(directory, "fonts.sqlite"), secret: randomBytes(32).toString("hex") });
+    databasePath: join(directory, "fonts.sqlite"), secret: randomBytes(32).toString("hex"), clientAddressSecret: randomBytes(32).toString("hex") });
   const apiBaseUrl = `http://127.0.0.1:${apiPort}`;
   const webBaseUrl = `http://127.0.0.1:${webPort}`;
 

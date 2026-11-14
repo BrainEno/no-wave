@@ -52,5 +52,9 @@ export async function handleArticleViewRequest(
   if (!VIEW_SLUG_PATTERN.test(params.slug) || !(VIEW_LOCALES as readonly string[]).includes(locale)) {
     return errorResponse("BAD_USER_INPUT", "Invalid article slug or locale.", 400);
   }
-  return forwardAuthoringRequest(request, articleViewPath(params.slug, locale), "POST", config);
+  // Optional authentication affects dedupe and author self-view exclusion. The
+  // API accepts anonymous views, so an expired bearer would otherwise become a
+  // successful anonymous write rather than triggering session renewal. Verify
+  // an existing session before this bodyless mutation; anonymous readers skip it.
+  return forwardAuthoringRequest(request, articleViewPath(params.slug, locale), "POST", config, undefined, undefined, undefined, true);
 }

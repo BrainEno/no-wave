@@ -48,6 +48,7 @@ export function secretValues(env: NodeJS.ProcessEnv = process.env): string[] {
     "MEDIA_S3_SECRET_ACCESS_KEY",
     "AWS_SECRET_ACCESS_KEY",
     "OUTBOX_DRAIN_SECRET",
+    "BFF_CLIENT_ADDRESS_SECRET",
   ];
   const values: string[] = [];
   for (const name of names) {

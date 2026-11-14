@@ -60,6 +60,9 @@ export const PORTABLE_VARIABLES = [
   "DATABASE_URL",
   "DATABASE_URL_UNPOOLED",
   "AUTH_JWT_SECRET",
+  "BFF_CLIENT_ADDRESS_SECRET",
+  "TRUSTED_PROXY_HOPS",
+  "WEB_TRUSTED_PROXY_HOPS",
   "AUTH_JWT_ISSUER",
   "AUTH_JWT_AUDIENCE",
   "API_BASE_URL",
@@ -122,6 +125,8 @@ export type StackOptions = {
   siteUrl: string;
   /** At least 32 bytes. The API refuses to start with a short one. */
   jwtSecret: string;
+  /** Optional shared Web/API provenance key; distinct from the JWT key. */
+  clientAddressSecret?: string;
   /** Repository root, so every path is resolved from the checkout, not the cwd. */
   repositoryRoot: string;
   /** Start the long-lived notification worker (PostgreSQL only). */
@@ -153,7 +158,8 @@ export function portableStackEnvironment(
   }
 
   if (role === "api") {
-    return { ...common, PORT: String(options.apiPort), HOST: "127.0.0.1" };
+    return { ...common, PORT: String(options.apiPort), HOST: "127.0.0.1",
+      ...(options.clientAddressSecret ? { BFF_CLIENT_ADDRESS_SECRET: options.clientAddressSecret, TRUSTED_PROXY_HOPS: "0" } : {}) };
   }
   if (role === "worker") {
     // The worker talks to the database only; it never listens (metrics stay off
@@ -165,6 +171,7 @@ export function portableStackEnvironment(
     PORT: String(options.webPort),
     HOST: "127.0.0.1",
     API_BASE_URL: `http://127.0.0.1:${options.apiPort}`,
+    ...(options.clientAddressSecret ? { BFF_CLIENT_ADDRESS_SECRET: options.clientAddressSecret, WEB_TRUSTED_PROXY_HOPS: "0" } : {}),
     SITE_URL: options.siteUrl,
   };
 }
@@ -776,6 +783,7 @@ export async function defaultOptions(overrides: Partial<StackOptions> = {}): Pro
       : {}),
     siteUrl: overrides.siteUrl ?? "http://127.0.0.1:3100",
     jwtSecret: secret,
+    clientAddressSecret: overrides.clientAddressSecret ?? process.env.BFF_CLIENT_ADDRESS_SECRET ?? randomBytes(32).toString("hex"),
     repositoryRoot: overrides.repositoryRoot ?? repositoryRoot(),
     ...(overrides.worker !== undefined ? { worker: overrides.worker } : {}),
   };

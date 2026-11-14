@@ -77,6 +77,9 @@ is not allowed to be the reason it works.
 | `DATABASE_URL` | all | the DSN, when configured |
 | `DATABASE_URL_UNPOOLED` | all | the same DSN (pooler-neutral) |
 | `AUTH_JWT_SECRET` | all | see below |
+| `BFF_CLIENT_ADDRESS_SECRET` | API, Web only | explicit value, or a separate random key generated once per run; empty disables |
+| `TRUSTED_PROXY_HOPS` | API | `0` when the bridge is enabled |
+| `WEB_TRUSTED_PROXY_HOPS` | Web | `0` when the bridge is enabled (this command has no external ingress) |
 | `AUTH_JWT_ISSUER` | all | the Web origin the command chose |
 | `AUTH_JWT_AUDIENCE` | all | `no-wave` |
 | `PORT` | API, Web | the reserved port for that role |
@@ -84,8 +87,8 @@ is not allowed to be the reason it works.
 | `API_BASE_URL` | Web | `http://127.0.0.1:<api port>` |
 | `SITE_URL` | Web | `http://127.0.0.1:<web port>` |
 
-`DATABASE_URL`, `DATABASE_PATH` and `AUTH_JWT_SECRET` are read from your
-environment first; the rest are derived. Because every name above must appear in
+`DATABASE_URL`, `DATABASE_PATH`, `AUTH_JWT_SECRET` and
+`BFF_CLIENT_ADDRESS_SECRET` are read from your environment first; the rest are derived. Because every name above must appear in
 `.env.example`, `scripts/portable-stack.test.ts` fails when the command starts
 relying on an undocumented variable — the documentation is a tested property,
 not a promise.
@@ -121,6 +124,70 @@ warning: the stack starts, and no session survives a restart. A supplied secret
 shorter than 32 characters is replaced too, because the API refuses short ones.
 Set `AUTH_JWT_SECRET` (or run `pnpm setup:local`) when you want sessions to
 outlive the command.
+
+## Visitor address provenance
+
+A browser → Web BFF → API chain needs an authenticated address bridge; the API's
+socket alone identifies the Web server. This is opt-in for separately managed
+processes. Use the same server-only `BFF_CLIENT_ADDRESS_SECRET` on Web and API,
+generated independently of `AUTH_JWT_SECRET` (at least 32 random bytes encoded as
+hex; accepted configuration length 32–512 non-whitespace ASCII characters).
+Supply it through your host's secret facility, not a public build variable.
+Neither the key nor proof headers belong in request/debug logs.
+
+For a **directly observed Web visitor**:
+
+| Role | Configuration |
+| --- | --- |
+| Web | `BFF_CLIENT_ADDRESS_SECRET` from the secret facility; `WEB_TRUSTED_PROXY_HOPS=0`; existing `API_BASE_URL` |
+| API | the same `BFF_CLIENT_ADDRESS_SECRET`; `TRUSTED_PROXY_HOPS=0` |
+
+For **one reviewed appending ingress before Web**, keep the API configuration
+above, set Web `WEB_TRUSTED_PROXY_HOPS=1` and
+`WEB_TRUSTED_PROXY_PEERS=<literal ingress IP or narrowly scoped CIDR>`. For two
+proxies use `2` and name both the observed socket peer and the intermediate
+proxy. Every intermediate must match. Each proxy must append the peer it actually
+observed or safely overwrite incoming forwarding input. Never copy an incoming
+XFF unchanged and call that an appending ingress. `/0`, hostnames, zone IDs,
+more than 32 entries and over-4096-character lists are rejected at startup.
+A container port mapping does not itself establish a forwarding header or a hop.
+
+Unknown peers and malformed/incomplete/oversized chains fall back to the Web
+socket. Browser-written `Forwarded`, `X-Real-IP`, XFF prefixes and private bridge
+headers are not relayed as authority. Every upstream call gets a fresh,
+method/path/query-bound HMAC. In bridge mode the API refuses nonzero legacy
+`TRUSTED_PROXY_HOPS`; otherwise an invalid proof could recover authority via XFF.
+The dev CLI and production Node entry use the same socket policy. The runtime
+container already includes the native `web-http` source entry; configure keys at
+runtime, not while building assets.
+
+**Verify behavior before exposure:** from two real source addresses through the
+actual ingress, read one article anonymously: each address contributes once,
+repeating either does not. Check the persisted API counter. Exhaust one client's
+login/create IP quota and prove another remains independent, without increasing
+any production quota; moving an account to another IP must not reset its user
+quota. Repeat with forged forwarding/private headers and overlapping requests.
+The regression suite uses real TCP `localAddress` peers, a real appending edge,
+production and dev Web processes, the API and persistent SQLite data. Browser
+coverage uses Chromium's actual cookie jar for author self-views and different
+logged-in readers sharing one NAT; it does not manually forge their Cookie header.
+
+**Failure/rollout:** with neither side configured, the old BFF peer bucket remains.
+One configured side, mismatched keys, stale clocks (more than 30 seconds), or bad
+proofs also fall back to the API socket: `/healthz` may still succeed, so it is not
+proof of attribution. Invalid configured key/trust policy fails startup without
+printing the value. Synchronize Web/API clocks and use TLS/trusted private
+transport. An approved key change must coordinate both tiers; there is no
+multi-key grace period. Keys grant provenance only, never login or ownership.
+No configuration has been applied to a live deployment by this change.
+
+`pnpm stack:check`/`stack:start` generate one separate per-run bridge key unless an
+explicit value (including empty to disable) is supplied. Their API and Web roles
+receive the same key with zero proxy hops; the worker never receives it. Isolated
+browser fixtures likewise generate a separate key and discard any inherited
+proxy policy. Separate session/user refresh buckets, automatic-refresh 429
+propagation and cross-instance refresh coordination remain open (#314/#318/#324).
+See [ADR 0027](../architecture/decisions/0027-client-address-behind-a-proxy.md).
 
 ## The probe
 

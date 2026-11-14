@@ -553,6 +553,7 @@ async function main(): Promise<void> {
         // siteUrl must match the Web origin the browser will address.
         siteUrl: `http://127.0.0.1:${webPort}`,
         jwtSecret: randomBytes(48).toString("hex"),
+        clientAddressSecret: randomBytes(32).toString("hex"),
         repositoryRoot: repositoryRoot(),
       };
       stack = await startPortableStack(options);

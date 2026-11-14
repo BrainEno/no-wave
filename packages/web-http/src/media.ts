@@ -1,6 +1,7 @@
 import {
   UpstreamTimeoutError,
   apiUrl,
+  applyClientAddressHeaders,
   resolveUpstreamTimeoutMs,
   withUpstreamDeadline,
   type ApiProxyConfig,
@@ -99,9 +100,12 @@ export async function handlePublicMediaRequest(
     // keep the connection. An abort surfaces as a read failure, so the signal is
     // checked explicitly instead of being reported as bad bytes.
     ({ upstream, bytes } = await withUpstreamDeadline(timeoutMs, async (signal) => {
-      const response = await fetchImpl(apiUrl(base, `api/v1/media/${encodeURIComponent(id)}`), {
+      const target = apiUrl(base, `api/v1/media/${encodeURIComponent(id)}`);
+      applyClientAddressHeaders(headers, target, "GET", config.clientAddressHeaders);
+      const response = await fetchImpl(target, {
         method: "GET",
         headers,
+        redirect: "error",
         cache: "no-store",
         signal,
       });
