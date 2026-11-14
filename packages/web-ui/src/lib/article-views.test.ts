@@ -12,9 +12,9 @@ import { articleViewBeaconPath, createViewBeacon } from "./article-views.ts";
  * a browser.
  */
 test("the beacon posts to the proxy path with the work and the edition", () => {
-  assert.equal(articleViewBeaconPath("portable-web-foundation", "zh-CN"), "/api/articles/portable-web-foundation/views?locale=zh-CN");
+  assert.equal(articleViewBeaconPath("portable-web-foundation", "zh-CN"), "/api/authoring/articles/portable-web-foundation/views?locale=zh-CN");
   // The slug is encoded, so a malformed one cannot escape the route segment.
-  assert.equal(articleViewBeaconPath("a b", "en"), "/api/articles/a%20b/views?locale=en");
+  assert.equal(articleViewBeaconPath("a b", "en"), "/api/authoring/articles/a%20b/views?locale=en");
 });
 
 test("one page load sends one beacon per work and edition", async () => {

@@ -18,6 +18,10 @@ test("the isolated stack cannot inherit a developer's database, mail, media or p
     LD_LIBRARY_PATH: "/tmp/libs",
     DATABASE_URL: "postgres://external.example/production",
     AUTH_REGISTER_IP_LIMIT: "9999",
+    BFF_CLIENT_ADDRESS_SECRET: "must-not-be-inherited",
+    WEB_TRUSTED_PROXY_HOPS: "5",
+    WEB_TRUSTED_PROXY_PEERS: "0.0.0.0/0",
+    TRUSTED_PROXY_HOPS: "5",
     API_BASE_URL: "https://external.example",
     API_PORT: "9999",
     MAIL_HOST: "mail.example",
@@ -27,6 +31,7 @@ test("the isolated stack cannot inherit a developer's database, mail, media or p
     apiPort: 41234,
     webPort: 41235,
     secret: "test-secret-with-at-least-thirty-two-bytes",
+    clientAddressSecret: "test-only-bff-client-address-key-different-from-jwt",
   });
   assert.equal(environment.DATABASE_PROVIDER, "sqlite");
   assert.equal(environment.DATABASE_PATH, "/tmp/disposable-e2e.sqlite");
@@ -40,6 +45,11 @@ test("the isolated stack cannot inherit a developer's database, mail, media or p
   assert.equal(environment.E2E_WEB_URL, "http://127.0.0.1:41235");
   assert.equal(environment.E2E_ISOLATED_STACK, "1");
   assert.equal(environment.AUTH_REGISTER_IP_LIMIT, "80");
+  assert.equal(environment.BFF_CLIENT_ADDRESS_SECRET, "test-only-bff-client-address-key-different-from-jwt");
+  assert.notEqual(environment.BFF_CLIENT_ADDRESS_SECRET, environment.AUTH_JWT_SECRET);
+  assert.equal(environment.WEB_TRUSTED_PROXY_HOPS, "0");
+  assert.equal(environment.TRUSTED_PROXY_HOPS, "0");
+  assert.equal(environment.WEB_TRUSTED_PROXY_PEERS, undefined);
   assert.equal(environment.PLAYWRIGHT_BROWSERS_PATH, "/tmp/browsers");
   assert.equal(environment.LD_LIBRARY_PATH, "/tmp/libs");
 });
@@ -50,6 +60,7 @@ test("CI shards and local disposable stacks use the same finite multi-account re
   const environment = isolatedEnvironment({}, {
     databasePath: "/tmp/disposable-budget.sqlite", apiPort: 41234, webPort: 41235,
     secret: "test-secret-with-at-least-thirty-two-bytes",
+    clientAddressSecret: "test-only-bff-client-address-key-different-from-jwt",
   });
   assert.equal(environment.AUTH_REGISTER_IP_LIMIT, "80", "new independent account-switch journeys exceed the old 60/IP fixture budget");
   assert.match(e2eJob, new RegExp(`AUTH_REGISTER_IP_LIMIT: "${environment.AUTH_REGISTER_IP_LIMIT}"`));

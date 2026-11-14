@@ -1,6 +1,7 @@
 import {
   UpstreamTimeoutError,
   apiUrl,
+  applyClientAddressHeaders,
   resolveUpstreamTimeoutMs,
   withUpstreamDeadline,
   type ApiProxyConfig,
@@ -92,16 +93,20 @@ async function callApi(
   contentType: string,
   idempotencyKey: string | null,
   timeoutMs: number,
+  clientAddressHeaders?: ApiProxyConfig["clientAddressHeaders"],
 ): Promise<BufferedUpstream> {
   const headers = new Headers({ accept: "application/json" });
   if (body !== undefined) headers.set("content-type", contentType);
   if (token) headers.set("authorization", `Bearer ${token}`);
   setIdempotencyKeyHeader(headers, idempotencyKey);
+  const target = apiUrl(base, path);
+  applyClientAddressHeaders(headers, target, method, clientAddressHeaders);
   return withUpstreamDeadline(timeoutMs, async (signal) => {
-    const response = await fetchImpl(apiUrl(base, path), {
+    const response = await fetchImpl(target, {
       method,
       headers,
       ...(body === undefined ? {} : { body }),
+      redirect: "error",
       cache: "no-store",
       signal,
     });
@@ -159,7 +164,7 @@ export async function forwardAuthoringRequest(
   const verifyViewer = verifyViewerIfPresent && Boolean(accessToken || refreshToken);
   async function guardedCall(token: string | undefined): Promise<BufferedUpstream | Response> {
     if (expectedActorId !== undefined || verifyViewer) {
-      const identity = await callApi(fetchImpl, apiBase, "api/v1/me", "GET", undefined, token, contentType, null, timeoutMs);
+      const identity = await callApi(fetchImpl, apiBase, "api/v1/me", "GET", undefined, token, contentType, null, timeoutMs, config.clientAddressHeaders);
       if (identity.status < 200 || identity.status > 299) {
         return new Response(identity.text, {
           status: identity.status,
@@ -189,6 +194,7 @@ export async function forwardAuthoringRequest(
       contentType,
       request.headers.get("idempotency-key"),
       timeoutMs,
+      config.clientAddressHeaders,
     );
   }
 
@@ -208,7 +214,7 @@ export async function forwardAuthoringRequest(
       const key = await refreshCoordinatorKey(base, refreshToken, accessToken);
       const refreshAttempt = await coordinatorFor(config).resolve(
         key,
-        () => upgradeSession(fetchImpl, base, refreshToken, timeoutMs),
+        () => upgradeSession(fetchImpl, base, refreshToken, timeoutMs, config.clientAddressHeaders),
       );
       if (refreshAttempt) {
         rotated = refreshAttempt;
@@ -282,6 +288,7 @@ async function upgradeSession(
   base: string,
   refreshToken: string,
   timeoutMs: number,
+  clientAddressHeaders?: ApiProxyConfig["clientAddressHeaders"],
 ): Promise<TokenSet | null | undefined> {
   let result: BufferedUpstream;
   try {
@@ -289,9 +296,13 @@ async function upgradeSession(
     // proves nothing about the session, so the original 401 is passed through
     // instead of clearing a credential that may still be valid upstream.
     result = await withUpstreamDeadline(timeoutMs, async (signal) => {
-      const response = await fetchImpl(apiUrl(base, "api/v1/auth/refresh"), {
+      const target = apiUrl(base, "api/v1/auth/refresh");
+      const headers = new Headers({ accept: "application/json", "content-type": "application/json; charset=utf-8" });
+      applyClientAddressHeaders(headers, target, "POST", clientAddressHeaders);
+      const response = await fetchImpl(target, {
         method: "POST",
-        headers: { accept: "application/json", "content-type": "application/json; charset=utf-8" },
+        headers,
+        redirect: "error",
         body: JSON.stringify({ refreshToken }),
         cache: "no-store",
         signal,

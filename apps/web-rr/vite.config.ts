@@ -4,6 +4,7 @@ import { reactRouter } from "@react-router/dev/vite";
 import { defineConfig } from "vite";
 import { parseAllowedDevOrigins } from "@bot-thk/web-ui/src/lib/dev-origins.ts";
 import { firstPartyFontLicenses } from "./font-licenses.ts";
+import { clientAddressIngress } from "./client-address-ingress.ts";
 
 // Environment contract: the repository-root `.env.local` is the single developer
 // configuration file, and a value already exported in the shell wins over it.
@@ -33,7 +34,7 @@ function allowedDevHosts(): string[] | true {
  * navigation adapter left to alias.
  */
 export default defineConfig({
-  plugins: [reactRouter(), firstPartyFontLicenses()],
+  plugins: [clientAddressIngress(), reactRouter(), firstPartyFontLicenses()],
   build: {
     // Keep even tiny Unicode shards addressable and independently cacheable;
     // inlining them would hide their transfer cost inside a global stylesheet.
@@ -42,6 +43,14 @@ export default defineConfig({
   // The shared UI is compiled into the server bundle. Bundle its ZIP decoder
   // too: the runtime image does not have web-ui source or its node_modules.
   ssr: { noExternal: ["fflate"] },
+  // React Router 8 uses environment-level resolution. Keep the Node ingress and
+  // SSR on one module/AsyncLocalStorage instance, not an inlined copy per build.
+  environments: { ssr: {
+    resolve: { external: ["@bot-thk/web-http/client-address"] },
+    // Node 24 loads this TypeScript package entry directly; do not let the
+    // bundler's ordinary TS-source inlining create a second request store.
+    build: { rolldownOptions: { external: ["@bot-thk/web-http/client-address"] } },
+  } },
   resolve: {
     alias: [
       { find: /^@\/(.*)$/, replacement: fileURLToPath(new URL("../../packages/web-ui/src/$1", import.meta.url)) },

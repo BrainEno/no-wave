@@ -110,6 +110,7 @@ route("api/authoring/notifications/:id/read", "routes/api.authoring.notification
   route("api/authoring/articles/:slug/comments", "routes/api.articles.comments.ts", { id: "authoring-article-comments" }),
   route("api/authoring/comments/:id", "routes/api.comments.$id.ts", { id: "authoring-comment" }),
   route("api/authoring/articles/:slug/like", "routes/api.articles.$slug.like.ts", { id: "authoring-article-like" }),
+  route("api/authoring/articles/:slug/views", "routes/api.articles.$slug.views.ts", { id: "authoring-article-views" }),
   route("api/authoring/authors/:userId", "routes/api.authors.$userId.ts", { id: "authoring-author-profile" }),
   route("api/authoring/users/:userId/follow", "routes/api.users.$userId.follow.ts", { id: "authoring-user-follow" }),
   route("api/authoring/feed", "routes/api.feed.ts", { id: "authoring-feed" }),

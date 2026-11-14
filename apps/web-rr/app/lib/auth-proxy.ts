@@ -1,5 +1,5 @@
 import { handleAuthRequest } from "@bot-thk/web-http";
-import { apiBaseUrl } from "./runtime.ts";
+import { apiProxyConfig } from "./runtime.ts";
 
 /**
  * React Router binding for the shared HTTP seam.
@@ -10,5 +10,5 @@ import { apiBaseUrl } from "./runtime.ts";
  * same package the same way.
  */
 export async function handleAuth(request: Request, action: string | undefined): Promise<Response> {
-  return handleAuthRequest(request, action, { apiBaseUrl: apiBaseUrl() });
+  return handleAuthRequest(request, action, apiProxyConfig());
 }

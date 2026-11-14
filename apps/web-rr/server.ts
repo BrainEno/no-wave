@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { safeLogPath, writeLogLine } from "@bot-thk/web-http/log";
 import { createRequestListener } from "@react-router/node";
 import { compressResponse } from "./compression.ts";
+import { createWebClientAddressBridge } from "@bot-thk/web-http/client-address";
 
 /**
  * Production server for the prototype: Node.js `http` only — no Vercel service
@@ -21,6 +22,7 @@ import { compressResponse } from "./compression.ts";
 // Repository-root `.env.local`, same contract as the Next.js app: shell values win.
 const rootEnvFile = fileURLToPath(new URL("../../.env.local", import.meta.url));
 if (existsSync(rootEnvFile)) process.loadEnvFile(rootEnvFile);
+const clientAddressBridge = createWebClientAddressBridge(process.env);
 
 const buildDir = resolve(process.env.RR_BUILD_DIR ?? "build/client");
 const serverBuildDir = resolve(process.env.RR_SERVER_BUILD_DIR ?? "build/server/index.js");
@@ -183,7 +185,7 @@ const server = createServer((request: IncomingMessage, response: ServerResponse)
     logCompletion();
   });
 
-  compressResponse(request, response, () => {
+  clientAddressBridge.run(request, () => compressResponse(request, response, () => {
     serveStatic(request, response)
       .then((served) => {
         if (!served) handleRequest(request, response);
@@ -192,11 +194,12 @@ const server = createServer((request: IncomingMessage, response: ServerResponse)
         if (!response.headersSent) response.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
         response.end("Internal Server Error");
       });
-  });
+  }));
 });
 
 server.listen(port, host, () => {
   writeLogLine("server_listening", { host, port, pid: process.pid, node: process.version, buildDir });
+  writeLogLine("client_address_forwarding_configured", { enabled: clientAddressBridge.enabled, trustedProxyHops: clientAddressBridge.trustedProxyHops });
 });
 
 function stop(signal: string): void {

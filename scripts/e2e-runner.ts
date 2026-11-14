@@ -22,7 +22,7 @@ export function shouldRunIsolated(args: readonly string[], env: NodeJS.ProcessEn
   return args.length === 0 && !env.E2E_WEB_URL && !env.E2E_API_BASE_URL;
 }
 
-type IsolatedOptions = { databasePath: string; apiPort: number; webPort: number; secret: string };
+type IsolatedOptions = { databasePath: string; apiPort: number; webPort: number; secret: string; clientAddressSecret: string };
 
 export function isolatedEnvironment(base: NodeJS.ProcessEnv, options: IsolatedOptions): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
@@ -38,6 +38,9 @@ export function isolatedEnvironment(base: NodeJS.ProcessEnv, options: IsolatedOp
     DATABASE_PROVIDER: "sqlite",
     DATABASE_PATH: options.databasePath,
     AUTH_JWT_SECRET: options.secret,
+    BFF_CLIENT_ADDRESS_SECRET: options.clientAddressSecret,
+    TRUSTED_PROXY_HOPS: "0",
+    WEB_TRUSTED_PROXY_HOPS: "0",
     AUTH_JWT_ISSUER: api,
     AUTH_JWT_AUDIENCE: "no-wave-e2e",
     // Independent multi-account safety journeys can register 64 users in one
@@ -102,6 +105,7 @@ async function main(): Promise<number> {
         apiPort,
         webPort,
         secret: randomBytes(32).toString("hex"),
+        clientAddressSecret: randomBytes(32).toString("hex"),
       });
       process.stdout.write(`\nBrowser suite: isolated shard ${shard}/${E2E_SHARD_COUNT}\n`);
       const migration = runNode([join(root, "apps/api/src/persistence/migrate.ts")], env);

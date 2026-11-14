@@ -207,3 +207,26 @@ test("a supplied AUTH_JWT_SECRET is used as given", () => {
   assert.notEqual(resolveJwtSecret({ AUTH_JWT_SECRET: "too-short" }, () => {}), "too-short");
 });
 
+test("the bridge key is shared only by the API/Web roles and never inherited by a worker", () => {
+  const key = "portable-fixture-only-address-key-distinct-from-jwt";
+  const options = baseOptions({ clientAddressSecret: key });
+  const api = portableStackEnvironment(options, "api");
+  const web = portableStackEnvironment(options, "web");
+  const worker = portableStackEnvironment(options, "worker");
+  assert.equal(api.BFF_CLIENT_ADDRESS_SECRET, key);
+  assert.equal(web.BFF_CLIENT_ADDRESS_SECRET, key);
+  assert.notEqual(web.BFF_CLIENT_ADDRESS_SECRET, web.AUTH_JWT_SECRET);
+  assert.equal(api.TRUSTED_PROXY_HOPS, "0");
+  assert.equal(web.WEB_TRUSTED_PROXY_HOPS, "0");
+  assert.equal(api.WEB_TRUSTED_PROXY_HOPS, undefined);
+  assert.equal(web.TRUSTED_PROXY_HOPS, undefined);
+  assert.equal(worker.BFF_CLIENT_ADDRESS_SECRET, undefined);
+  assert.equal(worker.WEB_TRUSTED_PROXY_HOPS, undefined);
+  assert.equal(worker.TRUSTED_PROXY_HOPS, undefined);
+  for (const role of ["api", "web", "worker"] as const) {
+    const disabled = portableStackEnvironment(baseOptions({ clientAddressSecret: "" }), role);
+    assert.equal(disabled.BFF_CLIENT_ADDRESS_SECRET, undefined);
+    assert.equal(disabled.TRUSTED_PROXY_HOPS, undefined);
+    assert.equal(disabled.WEB_TRUSTED_PROXY_HOPS, undefined);
+  }
+});
