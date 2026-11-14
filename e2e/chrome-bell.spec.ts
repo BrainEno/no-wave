@@ -38,7 +38,7 @@ test("a signed-in bell shows the real unread count and can mark notices read", a
       { type: "article.comment_replied", slug: "sample-work" }, { type: "article.liked", slug: "sample-work" },
       { type: "user.followed", followerId: "author-123" }, { type: "message.created", conversationId: "thread-123" },
       { type: "future.type" }];
-    const items = payloads.map((payload, index) => ({ ...notification, id: `notice-${index}`, payload: JSON.stringify(payload), readAt: read ? "2026-01-02T00:00:00.000Z" : null }));
+    const items = payloads.map((payload, index) => ({ ...notification, id: `30000000-0000-4000-8000-${(index + 1).toString(16).padStart(12, "0")}`, payload: JSON.stringify(payload), readAt: read ? "2026-01-02T00:00:00.000Z" : null }));
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: items }) });
   });
   await page.route(pathIs("/api/authoring/notifications/read-all"), async (route) => {
@@ -47,7 +47,8 @@ test("a signed-in bell shows the real unread count and can mark notices read", a
   });
   await page.route((url) => url.pathname.startsWith("/api/authoring/notifications/") && url.pathname.endsWith("/read"), async (route) => {
     read = true;
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: notification }) });
+    const id = new URL(route.request().url()).pathname.split("/").at(-2);
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { ...notification, id, readAt: "2026-01-02T00:00:00.000Z" } }) });
   });
 
   await page.goto("/");
@@ -86,7 +87,7 @@ test("the writing desk displays multiple kinds of notifications and marks all re
   const payloads = [{ type: "article.commented", slug: "sample-work" }, { type: "user.followed", followerId: "writer-1" },
     { type: "message.created", conversationId: "thread-1" }, { type: "future.event" }];
   await page.route(pathIs("/api/authoring/notifications/unread-count"), (route) => route.fulfill({ json: { data: read ? 0 : 4 } }));
-  await page.route(pathIs("/api/authoring/notifications"), (route) => route.fulfill({ json: { data: payloads.map((payload, i) => ({ ...notification, id: `item-${i}`, payload: JSON.stringify(payload), readAt: read ? "2026-01-02T00:00:00.000Z" : null })) } }));
+  await page.route(pathIs("/api/authoring/notifications"), (route) => route.fulfill({ json: { data: payloads.map((payload, i) => ({ ...notification, id: `40000000-0000-4000-8000-${(i + 1).toString(16).padStart(12, "0")}`, payload: JSON.stringify(payload), readAt: read ? "2026-01-02T00:00:00.000Z" : null })) } }));
   await page.route(pathIs("/api/authoring/notifications/read-all"), (route) => { read = true; return route.fulfill({ json: { data: 4 } }); });
   await page.reload();
   const inbox = page.getByRole("region", { name: "通知" });
