@@ -1,4 +1,5 @@
 import { Link } from "@/lib/framework/link.tsx";
+import { useNotificationActions } from "@/components/chrome/notification-provider.tsx";
 import { useRouter } from "@/lib/framework/navigation.ts";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 
@@ -118,6 +119,7 @@ function revokedCount(payload: unknown): number {
 
 export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
   const router = useRouter();
+  const notifications = useNotificationActions();
   const [state, setState] = useState<State>("checking");
   const [account, setAccount] = useState<Account | null>(null);
   const [error, setError] = useState("");
@@ -143,6 +145,7 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
         if (response.status === 401) {
           // Not an error: the session is over, and the honest thing to do is to
           // send the visitor somewhere they can start a new one.
+          void notifications.connect(false);
           setState("signed-out");
           router.replace("/sign-in?next=%2Faccount");
           return;
@@ -168,13 +171,14 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
       }
     })();
     return () => { active = false; };
-  }, [router]);
+  }, [router, notifications]);
 
   /** The session is over: the honest answer is a sign-in page, not an error. */
   const goToSignIn = useCallback(() => {
+    void notifications.connect(false);
     setState("signed-out");
     router.replace("/sign-in?next=%2Faccount");
-  }, [router]);
+  }, [router, notifications]);
 
   const refreshDevices = useCallback(async (active: () => boolean = () => true) => {
     try {
@@ -428,6 +432,7 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
   }
 
   async function signOut() {
+    const finishSessionChange = notifications.beginSessionChange();
     setBusy("logout");
     setError("");
     try {
@@ -442,6 +447,8 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
       // Logout is local first: the cookies are cleared by the proxy even when
       // the API is unreachable, so a network failure must not keep the visitor
       // on a page that says they are signed in.
+    } finally {
+      finishSessionChange();
     }
     router.replace("/");
     router.refresh();

@@ -1,4 +1,5 @@
 import { Link } from "@/lib/framework/link.tsx";
+import { useNotificationActions } from "@/components/chrome/notification-provider.tsx";
 import { useState, type FormEvent } from "react";
 import { useRouter } from "@/lib/framework/navigation.ts";
 import { apiErrorCode } from "@/lib/api-error.ts";
@@ -24,6 +25,7 @@ type SignInFormProps = {
 
 export function SignInForm({ nextPath, mailEnabled, locale = "zh-CN" }: SignInFormProps) {
   const router = useRouter();
+  const notifications = useNotificationActions();
   const ui = getUi(locale);
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
@@ -34,6 +36,7 @@ export function SignInForm({ nextPath, mailEnabled, locale = "zh-CN" }: SignInFo
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const finishSessionChange = notifications.beginSessionChange();
     setBusy(true);
     setError("");
     setStatus("");
@@ -53,12 +56,15 @@ export function SignInForm({ nextPath, mailEnabled, locale = "zh-CN" }: SignInFo
         if (apiErrorCode(payload) === "EMAIL_TAKEN") setMode("login");
         throw new Error(signInFailureMessage(payload, locale, response.headers.get("retry-after")));
       }
+      finishSessionChange();
+      void notifications.connect(true);
       setStatus(signInSuccessMessage(nextPath, mode, locale));
       router.replace(nextPath);
       router.refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : ui.auth.failed);
     } finally {
+      finishSessionChange();
       setBusy(false);
     }
   }

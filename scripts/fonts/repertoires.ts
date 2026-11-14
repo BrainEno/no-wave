@@ -32,6 +32,7 @@ export async function applicationRepertoires(root: string): Promise<Repertoires>
   const sources = await Promise.all([
     "packages/web-ui/src/components/chrome/site-chrome.tsx",
     "packages/web-ui/src/components/auth/sign-in-form.tsx",
+    "packages/web-ui/src/lib/notification-feedback.ts",
   ].map(async (path) => literalCjkText(await readFile(join(root, path), "utf8"))));
   const readerSources = await Promise.all([
     "packages/web-ui/src/components/comments/article-comments.tsx",

@@ -6,6 +6,7 @@ import { ArticleEditor, type AuthoringArticle } from "./article-editor.tsx";
 import { AuthorProfilePanel } from "./author-profile-panel.tsx";
 import { normalizeDisplayName, parseAuthorProfile, type AuthorProfile } from "@/lib/author-profile.ts";
 import { NotificationInbox } from "./notification-inbox.tsx";
+import { useNotificationActions } from "@/components/chrome/notification-provider.tsx";
 import { AUTHORING_LOCALES, isAuthoringLocale } from "@bot-thk/web-http";
 
 type WorkspaceState = "loading" | "unauthenticated" | "ready" | "error";
@@ -89,6 +90,7 @@ function messageOf(payload: unknown): string {
 }
 
 export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
+  const notifications = useNotificationActions();
   const [state, setState] = useState<WorkspaceState>("loading");
   const [articles, setArticles] = useState<AuthoringArticle[]>([]);
   const [selected, setSelected] = useState<AuthoringArticle | null>(null);
@@ -144,12 +146,13 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
   // Unrelated account/profile requests can also expire while a create is in
   // flight. Do not unmount the editor and lose its pending key in that case.
   const showSignIn = useCallback(() => {
+    void notifications.connect(false);
     if (pendingCreateRef.current) {
       setError("登录状态已失效；请在新标签页登录原账户，再返回确认上次保存。");
     } else {
       setState("unauthenticated");
     }
-  }, []);
+  }, [notifications]);
 
   useEffect(() => {
     if (!pendingCreate) return;
@@ -336,9 +339,11 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
 
   async function signOut() {
     if (pendingCreateRef.current) return;
+    const finishSessionChange = notifications.beginSessionChange();
     try {
       await fetch("/api/auth/logout", { method: "POST", headers: { "content-type": "application/json" }, credentials: "same-origin", cache: "no-store", body: "{}" });
     } finally {
+      finishSessionChange();
       if (pendingCreateRef.current) {
         showSignIn();
       } else {

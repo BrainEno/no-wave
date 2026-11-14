@@ -1,19 +1,16 @@
-import { appendNotificationPage, fetchNotificationPage } from "@/lib/notification-pages.ts";
+import { NotificationProvider, useNotifications } from "./notification-provider.tsx";
+import { notificationEntries } from "@/lib/notification-controller.ts";
+import { notificationProblemText, notificationSummary } from "@/lib/notification-feedback.ts";
 import { Link } from "@/lib/framework/link.tsx";
 import { usePathname } from "@/lib/framework/navigation.ts";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { hasUsableSession, SESSION_MARKER_COOKIE } from "@bot-thk/web-http";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { dateLabel } from "@/lib/format.ts";
 import {
   notificationPresentation,
   grainOffsets,
   grainTileData,
-  notificationRows,
-  parseUnreadCount,
-  sessionMarkerFromCookie,
   shouldUseSmoothScroll,
   unreadBadge,
-  type NotificationRow,
 } from "@/lib/chrome.ts";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
@@ -123,130 +120,31 @@ function SiteFooter({ locale }: { locale: Locale }) {
   );
 }
 
-const readOptions: RequestInit = { credentials: "same-origin", cache: "no-store" };
-
 export function SiteChrome({ children }: { children: ReactNode }) {
+  return <NotificationProvider><SiteChromeContent>{children}</SiteChromeContent></NotificationProvider>;
+}
+
+function SiteChromeContent({ children }: { children: ReactNode }) {
   const pathname = usePathname() ?? "/";
   const locale = localeOf(pathname);
   const ui = getUi(locale);
   const smoothEnabled = shouldUseSmoothScroll(pathname);
   const [bellOpen, setBellOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [sessionUsable, setSessionUsable] = useState<boolean | null>(null);
-  const [unread, setUnread] = useState(0);
-  const [bellState, setBellState] = useState<"idle" | "loading" | "ready" | "error">("idle");
-  const [bellError, setBellError] = useState("");
-  const [bellRows, setBellRows] = useState<NotificationRow[]>([]);
-  const [bellPending, setBellPending] = useState(false);
-  const [bellCursor, setBellCursor] = useState<string | null>(null);
+  const { controller, snapshot } = useNotifications(bellOpen);
+  const sessionUsable = snapshot.session === "unknown" ? null : snapshot.session === "active";
+  const unread = snapshot.unread ?? 0;
+  const bellState = snapshot.loaded ? "ready" : snapshot.status;
+  const bellError = snapshot.error ? notificationProblemText(snapshot.error, locale) : "";
+  const bellRows = notificationEntries(snapshot);
+  const bellPending = snapshot.pending !== null;
+  const bellCursor = snapshot.nextCursor;
+  const summary = notificationSummary(snapshot, locale);
+  const loadMoreBell = () => controller.loadMore();
+  const markBellRead = (id?: string) => controller.markRead(id);
   const smoother = useRef<ScrollSmoother | null>(null);
   const pageMotion = useRef<{ revert(): void } | null>(null);
   const lastKey = useRef("");
-
-  const fetchUnread = useCallback(async (): Promise<number | null> => {
-    const response = await fetch("/api/authoring/notifications/unread-count", readOptions);
-    if (response.status === 401) return null;
-    if (!response.ok) throw new Error(ui.bell.error);
-    const payload: unknown = await response.json().catch(() => null);
-    return parseUnreadCount(payload) ?? 0;
-  }, [ui.bell.error]);
-
-  const fetchBell = useCallback(async (): Promise<{ unread: number; rows: NotificationRow[]; cursor: string | null } | null> => {
-    const [countResponse, listResponse] = await Promise.all([
-      fetch("/api/authoring/notifications/unread-count", readOptions),
-      fetchNotificationPage(),
-    ]);
-    if (countResponse.status === 401 || listResponse === null) return null;
-    if (!countResponse.ok) throw new Error(ui.bell.error);
-    const countPayload: unknown = await countResponse.json().catch(() => null);
-    const count = parseUnreadCount(countPayload);
-    if (count === null) throw new Error(ui.bell.error);
-    return { unread: count, rows: notificationRows({ data: listResponse.items }), cursor: listResponse.nextCursor };
-  }, [ui.bell.error]);
-
-  // Public SSR pages stay cacheable: the non-sensitive marker is read only after
-  // hydration, and every byte of inbox data still comes from the API behind the
-  // access-token cookie.
-  useEffect(() => {
-    setSessionUsable(null);
-    const marker = sessionMarkerFromCookie(document.cookie, SESSION_MARKER_COOKIE);
-    setSessionUsable(hasUsableSession(marker));
-  }, [pathname]);
-
-  useEffect(() => {
-    if (sessionUsable !== true) return;
-    let active = true;
-    void (async () => {
-      try {
-        const count = await fetchUnread();
-        if (!active) return;
-        if (count === null) { setSessionUsable(false); setUnread(0); setBellRows([]); return; }
-        setUnread(count);
-      } catch { if (active) setUnread(0); }
-    })();
-    return () => { active = false; };
-  }, [sessionUsable, pathname, fetchUnread]);
-
-  useEffect(() => {
-    if (!bellOpen || sessionUsable !== true) return;
-    let active = true;
-    setBellState("loading");
-    void (async () => {
-      try {
-        const data = await fetchBell();
-        if (!active) return;
-        if (data === null) {
-          setSessionUsable(false); setUnread(0); setBellRows([]); setBellState("idle");
-          return;
-        }
-        setUnread(data.unread);
-        setBellRows(data.rows);
-        setBellCursor(data.cursor);
-        setBellError("");
-        setBellState("ready");
-      } catch (caught) {
-        if (active) {
-          setBellError(caught instanceof Error ? caught.message : ui.bell.error);
-          setBellState("error");
-        }
-      }
-    })();
-    return () => { active = false; };
-  }, [bellOpen, sessionUsable, fetchBell, ui.bell.error]);
-
-  async function loadMoreBell() {
-    if (!bellCursor || bellPending) return;
-    setBellPending(true);
-    try {
-      const page = await fetchNotificationPage(bellCursor);
-      if (!page) { setSessionUsable(false); setUnread(0); setBellRows([]); setBellCursor(null); return; }
-      if (page.nextCursor === bellCursor) throw new Error(ui.bell.error);
-      setBellRows((current) => notificationRows({ data: appendNotificationPage(current.map((row) => row.item), page) }));
-      setBellCursor(page.nextCursor);
-      setBellError("");
-    } catch (caught) { setBellError(caught instanceof Error ? caught.message : ui.bell.error); }
-    finally { setBellPending(false); }
-  }
-
-  async function markBellRead(id?: string) {
-    setBellPending(true);
-    try {
-      const response = await fetch(
-        id === undefined ? "/api/authoring/notifications/read-all" : `/api/authoring/notifications/${encodeURIComponent(id)}/read`,
-        { method: id === undefined ? "POST" : "PUT", credentials: "same-origin", cache: "no-store" },
-      );
-      if (response.status === 401) { setSessionUsable(false); setUnread(0); setBellRows([]); setBellCursor(null); setBellState("idle"); return; }
-      if (!response.ok) throw new Error(ui.bell.error);
-      const now = new Date().toISOString();
-      setBellRows((current) => current.map((row) => (id === undefined || row.item.id === id) && row.item.readAt === null
-        ? { ...row, item: { ...row.item, readAt: now } } : row));
-      const count = await fetchUnread();
-      if (count === null) { setSessionUsable(false); setUnread(0); setBellRows([]); setBellCursor(null); setBellState("idle"); return; }
-      setUnread(count);
-      setBellError("");
-    } catch (caught) { setBellError(caught instanceof Error ? caught.message : ui.bell.error); }
-    finally { setBellPending(false); }
-  }
 
   // 平滑滚动：阅读页共用一次实例；写作/账户/管理/登录等表单页恢复原生滚动。
   useEffect(() => {
@@ -339,12 +237,8 @@ export function SiteChrome({ children }: { children: ReactNode }) {
   }, [smoothEnabled]);
 
   useEffect(() => {
-    setBellOpen(false); setMenuOpen(false); setBellState("idle");
-    setBellRows([]); setBellError(""); setBellPending(false);
+    setBellOpen(false); setMenuOpen(false);
   }, [pathname]);
-  useEffect(() => {
-    if (sessionUsable === false) setUnread(0);
-  }, [sessionUsable]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { setBellOpen(false); setMenuOpen(false); } };
     window.addEventListener("keydown", onKey);
@@ -394,9 +288,10 @@ export function SiteChrome({ children }: { children: ReactNode }) {
         </button>
         <button className="nw-mnb" type="button" style={{ fontWeight: 700 }} aria-expanded={menuOpen} aria-controls="nw-menu" onClick={() => { setMenuOpen(true); setBellOpen(false); }}>{ui.nav.menu}</button>
       </nav>
-      <div className="nw-np" id="nw-np" hidden={!bellOpen} role="dialog" aria-label={ui.bell.label} lang={locale}>
+      <div className="nw-np" id="nw-np" hidden={!bellOpen} role="dialog" aria-label={ui.bell.label} lang={locale} aria-busy={bellPending}>
         <header>
           <span>{ui.bell.label}</span>
+          {sessionUsable === true ? <button type="button" disabled={bellPending} onClick={() => void controller.refresh()}>{locale === "en" ? "Refresh notifications" : "刷新通知"}</button> : null}
           {sessionUsable === true && bellState === "ready" && unread > 0 ? (
             <button className="nw-np-mark-all" type="button" disabled={bellPending} onClick={() => void markBellRead()}>{ui.bell.markAllRead}</button>
           ) : null}
@@ -412,16 +307,16 @@ export function SiteChrome({ children }: { children: ReactNode }) {
           ) : null}
           {sessionUsable === true && bellState === "loading" ? <p>{ui.bell.loading}</p> : null}
           {sessionUsable === true && bellState === "error" ? <p role="alert">{bellError}</p> : null}
-          {sessionUsable === true && bellState === "ready" && bellRows.length === 0 ? <p>{unread > 0 ? (locale === "en" ? "No recent notifications. Older unread notifications may remain." : "最近没有通知，较早的未读通知可能仍然存在。") : `${ui.bell.empty}。`}</p> : null}
-          {sessionUsable === true && bellState === "ready" && bellCursor ? <p>{locale === "en" ? `${bellRows.length} loaded; the unread count includes older notifications.` : `已载入 ${bellRows.length} 条；未读数包含尚未载入的通知。`}</p> : null}
+          {sessionUsable === true && bellState === "ready" && bellRows.length === 0 ? <p>{unread > 0 ? (locale === "en" ? "Unread notifications remain. Refresh to retrieve the latest list." : "尚有未读通知，请刷新以取得最新列表。") : `${ui.bell.empty}。`}</p> : null}
+          {sessionUsable === true && summary ? <p>{summary}</p> : null}
           {sessionUsable === true && bellState === "ready" && bellError ? <p role="alert">{bellError}</p> : null}
           {sessionUsable === true && bellState === "ready" && bellRows.length > 0 ? (
             <ul className="nw-np-list">
-              {bellRows.map(({ item, notice }) => (
+              {bellRows.map(({ item, notice, read }) => (
                 <li className="nw-np-row" key={item.id}>
-                  <p className={item.readAt === null ? "nw-np-text nw-np-unread" : "nw-np-text"}>{notificationPresentation(notice, locale).text}{notificationPresentation(notice, locale).href ? <> <Link href={notificationPresentation(notice, locale).href!} onClick={() => setBellOpen(false)}>{locale === "en" ? "View" : "查看"}</Link></> : null}</p>
+                  <p className={!read ? "nw-np-text nw-np-unread" : "nw-np-text"}>{notificationPresentation(notice, locale).text}{notificationPresentation(notice, locale).href ? <> <Link href={notificationPresentation(notice, locale).href!} onClick={() => setBellOpen(false)}>{locale === "en" ? "View" : "查看"}</Link></> : null}</p>
                   <time className="nw-np-time" dateTime={item.createdAt}>{dateLabel(item.createdAt, locale)}</time>
-                  {item.readAt === null ? (
+                  {!read ? (
                     <button type="button" disabled={bellPending} onClick={() => void markBellRead(item.id)}>{ui.bell.markRead}</button>
                   ) : null}
                 </li>

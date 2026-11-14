@@ -54,10 +54,10 @@ const CLIENT_COMPONENTS: readonly ClientComponent[] = [
   // else until a file is chosen, so an HTML check would see a heading and a
   // button and pass; the sentinel is the request only this panel makes.
   { component: "NotionImport", sentinel: "/api/authoring/notion-import", page: "write/notion" },
-  // The desk's inbox. It is the only screen that can show a reader the notice a
-  // deletion wrote them, and it renders nothing until it has fetched — so if it
-  // is missing from the bundle, the desk still looks complete.
-  { component: "NotificationInbox", sentinel: "/api/authoring/notifications/read-all", page: "write" },
+  // The inbox must ship its own rows, not merely the shared transport that is
+  // also reachable from the bell. A network-path sentinel cannot prove that
+  // the desk's notification component survived tree-shaking.
+  { component: "NotificationInbox", sentinel: "nw-authoring-inbox-row", page: "write" },
   // The site shell, rendered by root.tsx on **every** page, and the easiest to
   // lose: with no shell a page still has a title, a status and a canonical URL,
   // so every HTTP-level check passes on a page the visitor cannot navigate away
