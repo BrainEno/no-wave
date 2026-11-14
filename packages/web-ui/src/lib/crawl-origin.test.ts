@@ -49,9 +49,9 @@ test("the XML protocol entry ceiling is enforced before formatting the document"
 });
 
 test("valid UTF-8 locations remain text, and literal XML delimiters cannot become markup", () => {
-  const xml = renderSitemapXml([{ url: `${SITE}/?q=𠀀&other="<script>"` }]);
-  assert.match(xml, /𠀀&amp;other=&quot;&lt;script&gt;&quot;/);
-  assert.doesNotMatch(xml, /<script>/);
+  const xml = renderSitemapXml([{ url: `${SITE}/?q=𠀀&other="<script>"&upper="<SCRIPT>"` }]);
+  assert.match(xml, /𠀀&amp;other=&quot;&lt;script&gt;&quot;&amp;upper=&quot;&lt;SCRIPT&gt;&quot;/);
+  assert.doesNotMatch(xml, /<script>/i);
   assert.equal((xml.match(/<loc>/g) ?? []).length, 1);
 });
 
