@@ -157,8 +157,12 @@ test("multiple Notion Markdown files are previewed before import", async ({ page
   await expect(page.getByText(/已导入：新建 2 件/)).toBeVisible();
   await page.getByRole("link", { name: "去看写作台" }).click();
   await expect(page).toHaveURL(/\/write$/);
-  await expect(page.getByText("第一篇", { exact: true })).toBeVisible();
-  await expect(page.getByText("第二篇", { exact: true })).toBeVisible();
+  // A client-side URL change may overlap the outgoing import report. Only
+  // persisted entries in the desk's own work list prove this import succeeded.
+  const works = page.getByRole("complementary", { name: "我的作品", exact: true });
+  await expect(works.getByRole("button", { name: /^第一篇 草稿/ })).toBeVisible();
+  await expect(works.getByRole("button", { name: /^第二篇 草稿/ })).toBeVisible();
+  await expect(works.getByRole("button", { name: /^(第一篇|第二篇) 草稿/ })).toHaveCount(2);
 });
 
 
