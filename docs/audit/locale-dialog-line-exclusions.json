@@ -1,0 +1,459 @@
+{
+  "base": "cb437926913c4249e20e53125450ca6c13ebfcbf",
+  "rules": [
+    {
+      "file": "apps/web-rr/app/routes/notifications.tsx",
+      "fragments": [
+        {
+          "line": 11,
+          "text": "export function loader({ request, url }: LoaderFunctionArgs) {"
+        },
+        {
+          "line": 21,
+          "text": "export const meta: MetaFunction<typeof loader> = ({ loaderData }) => ["
+        },
+        {
+          "line": 22,
+          "text": "{ title: loaderData?.locale === \"en\" ? \"Notifications | No Wave\" : \"通知 | 无浪潮\" },"
+        },
+        {
+          "line": 26,
+          "text": "export default function NotificationsRoute() {"
+        },
+        {
+          "line": 28,
+          "text": "const copy = notificationInboxCopy(locale);"
+        },
+        {
+          "line": 30,
+          "text": "<main id=\"top\" tabIndex={-1} className=\"nw-w nw-head nw-private-page\" data-route=\"notifications\">"
+        },
+        {
+          "line": 31,
+          "text": "<header><h1>{copy.title}</h1><p>{copy.introduction}</p></header>"
+        }
+      ],
+      "reason": "路由/组件声明样板、私有页面静态容器、标题及介绍文案；只保留参数归一化和真实 Inbox 接线。"
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/authoring-workspace.tsx",
+      "fragments": [
+        {
+          "line": 448,
+          "text": "<NotificationInbox locale=\"zh-CN\" />"
+        }
+      ],
+      "reason": "为既有默认中文 Inbox 显式标注同一 locale，不是新增行为。"
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/notification-inbox.tsx",
+      "fragments": [
+        {
+          "line": 16,
+          "text": "export function NotificationInbox({ locale = \"zh-CN\", fullPage = false }: { locale?: Locale; fullPage?: boolean }) {"
+        },
+        {
+          "line": 28,
+          "text": "const labelId = useId();"
+        },
+        {
+          "line": 29,
+          "text": "const helpId = useId();"
+        },
+        {
+          "line": 30,
+          "text": "const filterId = useId();"
+        },
+        {
+          "line": 32,
+          "text": "const unread = snapshot.unread;"
+        },
+        {
+          "line": 33,
+          "text": "const unreadLabel = unread !== null && unread > 0 ? locale === \"en\" ? ` (${unread} unread)` : `（${unread} 未读）` : \"\";"
+        },
+        {
+          "line": 39,
+          "text": "<h2 id={labelId}>{copy.title}{unreadLabel}</h2>"
+        },
+        {
+          "line": 41,
+          "text": "<nav className=\"nw-inbox-filters\" aria-label={copy.filters}>"
+        },
+        {
+          "line": 42,
+          "text": "<span>{copy.statusFilter}</span>"
+        },
+        {
+          "line": 45,
+          "text": "<label htmlFor={filterId}>{copy.kindFilter}</label>"
+        },
+        {
+          "line": 54,
+          "text": "<p className=\"nw-m\">{copy.loadedOnly}</p>"
+        },
+        {
+          "line": 55,
+          "text": "<p className=\"nw-m\" id={helpId}>{copy.keyboard} {copy.timezone}</p>"
+        },
+        {
+          "line": 56,
+          "text": "</> : null}"
+        },
+        {
+          "line": 58,
+          "text": "<p role=\"status\">{selectionText}</p>"
+        },
+        {
+          "line": 61,
+          "text": "</aside> : null}"
+        },
+        {
+          "line": 62,
+          "text": "{model.problem ? <p className=\"nw-auth-error\" role=\"alert\">{model.problem}</p> : null}"
+        },
+        {
+          "line": 65,
+          "text": "{snapshot.session === \"active\" ? <button className=\"nw-btn\" type=\"button\" data-inbox-focus-fallback"
+        },
+        {
+          "line": 67,
+          "text": "{model.emptyText ? <p>{model.emptyText}</p> : null}"
+        },
+        {
+          "line": 68,
+          "text": "{model.summary ? <p>{model.summary}</p> : null}"
+        },
+        {
+          "line": 70,
+          "text": "{model.rows.length > 0 ? ("
+        },
+        {
+          "line": 72,
+          "text": "{model.rows.map((row, index) => ("
+        },
+        {
+          "line": 76,
+          "text": "<p className={row.read ? \"nw-authoring-inbox-text\" : \"nw-authoring-inbox-text nw-unread\"}>"
+        },
+        {
+          "line": 77,
+          "text": "{row.text}{row.href ? <> <Link href={row.href}>{copy.view}</Link></> : null}"
+        },
+        {
+          "line": 78,
+          "text": "<time dateTime={row.dateTime ?? undefined}> {row.date}</time>"
+        },
+        {
+          "line": 86,
+          "text": "{snapshot.session === \"active\" && snapshot.nextCursor ? <button className=\"nw-btn\" type=\"button\""
+        },
+        {
+          "line": 88,
+          "text": "{model.remainder ? <p className=\"nw-m\">{model.remainder}</p> : null}"
+        }
+      ],
+      "reason": "逐项排除旧 Inbox 渲染/计数/告警/循环的语义搬移、展示文案、静态可访问标签及 useId 样板、闭合片段；保留新筛选、选择、状态门禁及焦点操作接线。"
+    },
+    {
+      "file": "packages/web-ui/src/components/chrome/site-chrome.tsx",
+      "fragments": [
+        {
+          "line": 114,
+          "text": "const pathname = location.pathname;"
+        },
+        {
+          "line": 123,
+          "text": "const { bellOpen, menuOpen } = overlays;"
+        },
+        {
+          "line": 276,
+          "text": "{sessionUsable === true ? <button type=\"button\" data-overlay-focus-key=\"refresh\" disabled={bellPending} onClick={() => void controller.refresh()}>{locale === \"en\" ? \"Refresh notifications\" : \"刷新通知\"}</button> : null}"
+        },
+        {
+          "line": 278,
+          "text": "<button className=\"nw-np-mark-all\" data-overlay-focus-key=\"mark-all\" type=\"button\" disabled={bellPending} onClick={() => void markBellRead()}>{ui.bell.markAllRead}</button>"
+        },
+        {
+          "line": 303,
+          "text": "<button type=\"button\" data-overlay-action=\"mark\" disabled={bellPending} onClick={() => void markBellRead(item.id)}>{ui.bell.markRead}</button>"
+        },
+        {
+          "line": 309,
+          "text": "{sessionUsable === true && bellState === \"ready\" && bellCursor ? <button className=\"nw-btn\" data-overlay-focus-key=\"more\" type=\"button\" disabled={bellPending} onClick={() => void loadMoreBell()}>{locale === \"en\" ? \"Load more notifications\" : \"加载更多通知\"}</button> : null}"
+        }
+      ],
+      "reason": "pathname/状态解构搬移及只增加静态 focus-key/action 属性的原有按钮；新生命周期与动态目的地行为另计。"
+    },
+    {
+      "file": "packages/web-ui/src/lib/chrome.ts",
+      "fragments": [
+        {
+          "line": 108,
+          "text": "export function notificationPresentation(notice: NotificationNotice, locale: Locale, notificationId?: string): { text: string; href: string | null } {"
+        },
+        {
+          "line": 119,
+          "text": "case \"unknown\": {"
+        }
+      ],
+      "reason": "既有 presentation 函数签名和 unknown case 标签，不重复计算；只计新 locator/href 及原生滚动入口。"
+    },
+    {
+      "file": "packages/web-ui/src/lib/framework/navigation.ts",
+      "fragments": [
+        {
+          "line": 18,
+          "text": "export function usePageLocation(): { pathname: string; search: string; hash: string; key: string } {"
+        },
+        {
+          "line": 19,
+          "text": "const { pathname, search, hash, key } = useLocation();"
+        },
+        {
+          "line": 20,
+          "text": "return { pathname, search, hash, key };"
+        }
+      ],
+      "reason": "单纯转发 React Router useLocation 的框架薄包装，不作为功能增量。"
+    },
+    {
+      "file": "packages/web-ui/src/lib/locale-navigation.ts",
+      "fragments": [
+        {
+          "line": 9,
+          "text": "export function localeOf(pathname: string): Locale {"
+        },
+        {
+          "line": 37,
+          "text": "if (parts.length === 0) return { page: \"home\", bare: \"/\", exact: true };"
+        },
+        {
+          "line": 41,
+          "text": "case \"articles\": return { page: \"archive\", bare, exact: true };"
+        },
+        {
+          "line": 43,
+          "text": "case \"categories\": return { page: \"categories\", bare, exact: true };"
+        },
+        {
+          "line": 44,
+          "text": "case \"tags\": return { page: \"tags\", bare, exact: true };"
+        },
+        {
+          "line": 45,
+          "text": "case \"search\": return { page: \"search\", bare, exact: true };"
+        },
+        {
+          "line": 54,
+          "text": "case \"authors\": return { page: \"author\", bare, exact: true };"
+        },
+        {
+          "line": 55,
+          "text": "case \"categories\": return { page: \"category\", bare, exact: true };"
+        }
+      ],
+      "reason": "localeOf 仅搬移；既有首页/归档/分类/标签/搜索/作者详情匹配不重计，新验证/查询保留规则另计。"
+    },
+    {
+      "file": "packages/web-ui/src/lib/locale-query.ts",
+      "fragments": [
+        {
+          "line": 53,
+          "text": "case \"comments\":"
+        },
+        {
+          "line": 54,
+          "text": "case \"likes\":"
+        },
+        {
+          "line": 55,
+          "text": "case \"follows\":"
+        },
+        {
+          "line": 56,
+          "text": "case \"messages\":"
+        },
+        {
+          "line": 66,
+          "text": "case \"archive\":"
+        },
+        {
+          "line": 71,
+          "text": "case \"authors\":"
+        },
+        {
+          "line": 72,
+          "text": "case \"categories\":"
+        },
+        {
+          "line": 73,
+          "text": "case \"tags\":"
+        },
+        {
+          "line": 77,
+          "text": "case \"author\":"
+        },
+        {
+          "line": 81,
+          "text": "case \"category\":"
+        },
+        {
+          "line": 82,
+          "text": "case \"tag\":"
+        },
+        {
+          "line": 85,
+          "text": "case \"search\":"
+        },
+        {
+          "line": 93,
+          "text": "case \"notifications\":"
+        }
+      ],
+      "reason": "只有 case 标签而无独立操作的分支行不计，实际白名单保存/拒绝操作才计。"
+    },
+    {
+      "file": "packages/web-ui/src/lib/notification-inbox-model.ts",
+      "fragments": [
+        {
+          "line": 20,
+          "text": "let params: URLSearchParams;"
+        },
+        {
+          "line": 48,
+          "text": "case \"article.deleted\":"
+        },
+        {
+          "line": 86,
+          "text": "const notice = parseNotificationNotice(item.payload);"
+        },
+        {
+          "line": 87,
+          "text": "const presentation = notificationPresentation(notice, locale, item.id);"
+        },
+        {
+          "line": 101,
+          "text": "loaded: seen.size, visible: rows.length,"
+        }
+      ],
+      "reason": "无初始值的类型占位、空 case 标签及从既有 notificationEntries/Inbox 搬来的 payload 解析和 presentation 调用。 loaded/visible 两个返回字段尚无生产消费点，从严扣除此行（筛选结果和 loaded/global 摘要规则仍分别计数）。"
+    },
+    {
+      "file": "packages/web-ui/src/lib/overlay-focus-memory.ts",
+      "fragments": [
+        {
+          "line": 70,
+          "text": "remember, candidate,"
+        }
+      ],
+      "reason": "返回既有局部方法名的对象短写，不计接口包装。"
+    },
+    {
+      "file": "packages/web-ui/src/lib/overlay-focus.ts",
+      "fragments": [
+        {
+          "line": 1,
+          "text": "const CANDIDATES = ["
+        },
+        {
+          "line": 2,
+          "text": "\"a[href]\", \"area[href]\", \"button\", \"input:not([type=hidden])\", \"select\", \"textarea\","
+        },
+        {
+          "line": 3,
+          "text": "\"summary\", \"iframe\", \"[tabindex]\", '[contenteditable=\"true\"]', \"audio[controls]\", \"video[controls]\","
+        },
+        {
+          "line": 4,
+          "text": "].join(\",\");"
+        },
+        {
+          "line": 27,
+          "text": "const radio = element as HTMLInputElement;"
+        },
+        {
+          "line": 56,
+          "text": "let dialogs: NodeListOf<Element>;"
+        }
+      ],
+      "reason": "静态候选选择器数据表、仅为类型收窄的别名和无初始值的类型占位不计。"
+    },
+    {
+      "file": "packages/web-ui/src/lib/overlay-lifecycle.ts",
+      "fragments": [
+        {
+          "line": 24,
+          "text": "let releaseIsolation: (() => void) | undefined;"
+        },
+        {
+          "line": 25,
+          "text": "let releaseScroll: (() => void) | undefined;"
+        },
+        {
+          "line": 26,
+          "text": "let releaseNative: (() => void) | undefined;"
+        },
+        {
+          "line": 103,
+          "text": "}, listener);"
+        }
+      ],
+      "reason": "仅声明回收函数类型的占位和监听器调用闭合片段不计。"
+    },
+    {
+      "file": "packages/web-ui/src/lib/use-chrome-overlays.ts",
+      "fragments": [
+        {
+          "line": 146,
+          "text": "return { bellOpen: active === \"bell\", menuOpen: active === \"menu\", bellTrigger, menuTrigger, bellPanel, menuPanel, toggle, dismiss, onLanguageNavigate };"
+        }
+      ],
+      "reason": "聚合返回绑定的薄接口行不计（其中派生布尔值也从严扣除）。"
+    },
+    {
+      "file": "packages/web-ui/src/lib/use-notification-inbox.ts",
+      "fragments": [
+        {
+          "line": 48,
+          "text": "}, [controller]);"
+        },
+        {
+          "line": 57,
+          "text": "}, [locale, filters.view, filters.kind]);"
+        },
+        {
+          "line": 138,
+          "text": "}, [controller, locale, filters]);"
+        },
+        {
+          "line": 163,
+          "text": "return { root, run, onKeyDown, onFocusCapture, activeRowId,"
+        }
+      ],
+      "reason": "Hook 闭合依赖数组和返回绑定短写不计；回调内真实生命周期、身份及新意图保护另计。"
+    },
+    {
+      "file": "packages/web-ui/src/lib/use-notification-selection.ts",
+      "fragments": [
+        {
+          "line": 31,
+          "text": "}, [controller, snapshot.actorId, root, selected]);"
+        },
+        {
+          "line": 50,
+          "text": "let unsubscribe: (() => void) | undefined;"
+        },
+        {
+          "line": 107,
+          "text": "}, [controller, root, selected, requestKey, requestOwner]);"
+        },
+        {
+          "line": 109,
+          "text": "return jump;"
+        }
+      ],
+      "reason": "Hook 依赖数组、无初始化的订阅类型占位和返回局部方法的包装行不计。"
+    }
+  ]
+}

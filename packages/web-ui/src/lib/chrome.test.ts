@@ -138,7 +138,7 @@ test("notification presentations cover API event types, unknown payloads, and sa
     [{ type: "article.liked", slug: "my-work", locale: "en" }, /喜欢/, "/en/articles/my-work"],
     [{ type: "user.followed", followerId: "user-1" }, /关注/, "/authors/user-1"],
     [{ type: "message.created", conversationId: "conversation-1" }, /私信/, "/messages/conversation-1"],
-    [{ type: "future.event" }, /通知/, "/write"],
+    [{ type: "future.event" }, /通知/, "/notifications"],
   ] as const;
   for (const [payload, text, href] of cases) {
     const parsed = parseNotificationNotice(JSON.stringify(payload));

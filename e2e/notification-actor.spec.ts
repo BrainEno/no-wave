@@ -25,6 +25,9 @@ for (const action of ["all", "one"] as const) {
       await settleUi(page);
       expect(submitted).toEqual([{ actor: accounts.original.id, body: null }]);
       await inbox.getByRole("button", { name: "刷新通知", exact: true }).click();
+      await expect(bell).toBeHidden();
+      await expect(inbox.locator(`a[href="/authors/${accounts.original.id}"]`)).toBeVisible();
+      await page.getByRole("button", { name: /^通知/ }).click();
       for (const surface of [inbox, bell]) {
         await expect(surface.locator(`a[href="/authors/${accounts.original.id}"]`)).toBeVisible();
         await expect(surface.locator(`a[href="/authors/${accounts.replacement.id}"]`)).toHaveCount(0);

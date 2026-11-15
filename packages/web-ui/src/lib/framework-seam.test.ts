@@ -72,7 +72,7 @@ test("both halves of the seam exist and are implemented with the router", () => 
 
 test("the seam exports what the components ask of it", () => {
   assert.deepEqual(exportedFunctions(join(packageRoot, "src/lib/framework/link.tsx")), ["Link"]);
-  assert.deepEqual(exportedFunctions(join(packageRoot, "src/lib/framework/navigation.ts")), ["useNavigationBlocker", "usePathname", "useRouter"]);
+  assert.deepEqual(exportedFunctions(join(packageRoot, "src/lib/framework/navigation.ts")), ["useNavigationBlocker", "usePageLocation", "usePathname", "useRouter"]);
 });
 
 /**

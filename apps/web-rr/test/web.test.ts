@@ -1252,6 +1252,8 @@ test("every private page answers no-store, sign-in included", async () => {
     "/write/notion",
     "/feed",
     "/messages",
+    "/notifications",
+    "/en/notifications",
     "/account",
     "/admin/featured",
   ];

@@ -57,7 +57,7 @@ test("all public documents enforce hashed scripts without giving up shared HTML 
 
 test("authenticated private shells enforce the same CSP and remain data-free and no-store", async () => {
   const cookie = `nw_session=${Math.floor(Date.now() / 1000) + 3600}`;
-  for (const path of ["/account", "/write", "/write/media", "/messages", "/admin/featured", "/tags"]) {
+  for (const path of ["/account", "/write", "/write/media", "/messages", "/notifications", "/en/notifications", "/admin/featured", "/tags"]) {
     const response: Response = await fetch(web.origin + path, { headers: { cookie }, redirect: "manual" });
     assert.equal(response.status, 200, path);
     const html = await response.text();
