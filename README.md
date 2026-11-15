@@ -31,7 +31,7 @@ corepack enable                    # once, if pnpm is not on your PATH
 pnpm install --frozen-lockfile
 pnpm setup:local                   # writes .env.local: SQLite + a generated JWT secret
 pnpm db:migrate                    # creates apps/api/data/no-wave.sqlite
-pnpm dev                           # API :4000 + Web :3000
+pnpm dev                           # API :4000 + worker health :4001 + Web :3000
 ```
 
 The API publishes its own contract at <http://localhost:4000/api/v1/openapi.json>; [docs/api/openapi.md](docs/api/openapi.md) explains the document and walks through register → publish → read with `curl`.
@@ -118,7 +118,7 @@ line, the bounds and the exit codes.
 
 ## Observability
 
-The API writes structured request logs to stdout/stderr and offers process-local Prometheus metrics at `/metrics` when `API_METRICS_ENABLED=true`; the endpoint returns 404 by default and must be restricted to a trusted monitoring network when enabled. API and Web expose separate readiness probes. Internal service configuration is never returned by `/metrics`; see [API observability](docs/operations/api-observability.md). Health and readiness are exercised by the local chain and CI.
+The API writes structured request logs to stdout/stderr and offers process-local Prometheus metrics at `/metrics` when `API_METRICS_ENABLED=true`; the endpoint returns 404 by default and must be restricted to a trusted monitoring network when enabled. API, independent worker and Web expose separate operational probes. Internal service configuration is never returned by `/metrics`; see [API observability](docs/operations/api-observability.md). Health and readiness are exercised by the local chain and CI.
 
 ## Local development
 
@@ -147,13 +147,13 @@ Use this path unless you specifically need PostgreSQL provider parity.
    pnpm db:migrate
    ```
 
-4. Start both processes:
+4. Start the three supervised processes:
 
    ```sh
    pnpm dev
    ```
 
-   `pnpm dev` starts both processes, reachable at `http://127.0.0.1:4000` (API) and `http://127.0.0.1:3000` (Web). It waits for both readiness gates and stops both with one `Ctrl+C`. It also prints which database it selected. `pnpm dev --check` runs the connectivity probe as soon as both are ready; `pnpm check:local` does the same in a second terminal.
+   `pnpm dev` starts API (`:4000`), an independent notification worker (`:4001/ready`) and Web (`:3000`) on one persistence configuration. It gates and monitors readiness, preserves hot reload and stops every role with one `Ctrl+C`. Unexpected exit or a sustained readiness outage stops the whole chain rather than leaving a half-stack. `pnpm dev --check` adds the connectivity probe; `pnpm check:local` runs it in a second terminal. See the [notification worker contract](docs/operations/notification-worker.md).
 
 5. Verify the chain:
 
@@ -241,8 +241,8 @@ This repository ships one deployment path, not a platform manifest: the two cont
 | `pnpm test` | Run the root unit and API contract test list. |
 | `pnpm test:routes` | Route-level Web smoke checks. |
 | `pnpm build` | Build the React Router Web app. |
-| `pnpm dev --api-only` / `--web-only` | Start one process, for example when the API runs in a container. |
-| `pnpm dev --check --exit` | Probe, then stop both processes; used by CI. |
+| `pnpm dev --api-only` / `--web-only` | `--api-only` starts API + worker; `--web-only` starts Web against an externally managed API/worker. |
+| `pnpm dev --check --exit` | Probe, then stop every supervised process; used by CI. |
 | `pnpm check:local --read-only` | Verify the chain without write probes. |
 | `pnpm verify:publish` | Verify writing-desk publish visibility without mail; prints article links. |
 | `pnpm openapi:check` | Prove the checked-in OpenAPI contract (`docs/api/openapi.json`) matches the API's route table. |

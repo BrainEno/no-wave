@@ -16,6 +16,7 @@
  */
 import assert from "node:assert/strict";
 import { setTimeout as delay } from "node:timers/promises";
+import { runNotificationDeliverySmoke } from "./notification-delivery-smoke.ts";
 
 const webUrl = normalizeBase(process.env.SMOKE_WEB_URL ?? "http://127.0.0.1:3100");
 const apiUrlValue = process.env.SMOKE_API_URL?.trim();
@@ -78,6 +79,13 @@ async function run(): Promise<void> {
     await waitForStatus(`${apiUrl}/ready`, 200);
   }
   await waitForStatus(`${webUrl}/healthz`, 200);
+  if (process.env.SMOKE_NOTIFICATIONS === "true") {
+    if (!apiUrl || !process.env.SMOKE_WORKER_URL) throw new Error("Notification smoke requires API and independent worker origins.");
+    const workerUrl = normalizeBase(process.env.SMOKE_WORKER_URL);
+    await waitForStatus(`${workerUrl}/health`, 200);
+    await waitForStatus(`${workerUrl}/ready`, 200);
+    console.log(JSON.stringify(await runNotificationDeliverySmoke({ apiUrl, workerUrl })));
+  }
 
   const home = await request(`${webUrl}/`, 200);
   assert.match(home, /lang="zh-CN"/, "the default home must declare Simplified Chinese");

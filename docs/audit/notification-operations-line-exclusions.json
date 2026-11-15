@@ -1,0 +1,505 @@
+{
+  "base": "d7ee85f4de274462fae7ba70d027567d18d507d0",
+  "rules": [
+    {
+      "file": "apps/api/src/infrastructure/api-readiness.ts",
+      "reason": "原 API /ready 的 JWT 可用性判定，只搬入新的有界依赖控制器；不把旧认证行为重计。",
+      "fragments": [
+        {
+          "line": 115,
+          "text": "let auth: ApiReadiness[\"auth\"] = \"ok\";"
+        },
+        {
+          "line": 116,
+          "text": "try { accessIssuerConfiguration(env); } catch { auth = \"unavailable\"; }"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/service-settings.ts",
+      "reason": "原 worker integerSetting 的签名、取值及等价上下界检查属于提取；仅严格十进制词法拒绝（原实现接受 1e3/0x100/空白）是新增行为。",
+      "fragments": [
+        {
+          "line": 1,
+          "text": "export function integerSetting(env: NodeJS.ProcessEnv, name: string, fallback: number, min: number, max: number): number {"
+        },
+        {
+          "line": 2,
+          "text": "const raw = env[name];"
+        },
+        {
+          "line": 6,
+          "text": "if (!Number.isSafeInteger(value) || value < min || value > max) {"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/persistence/notification-worker.ts",
+      "reason": "旧 worker 主入口的封装/参数化、原有重试及 metrics 参数绑定、原批次调用/失败日志/成功日志与等价单调计时改写，全部排除。 另扣旧 store 别名、空批次 idle 分支和纯 run/reporter helper 外壳。",
+      "fragments": [
+        {
+          "line": 73,
+          "text": "export async function runNotificationWorkerProcess(env: NodeJS.ProcessEnv = process.env): Promise<number> {"
+        },
+        {
+          "line": 74,
+          "text": "const setting = (name: string, fallback: number, min: number, max: number) => integerSetting(env, name, fallback, min, max);"
+        },
+        {
+          "line": 75,
+          "text": "const pollIntervalMs = setting(\"OUTBOX_POLL_INTERVAL_MS\", 1000, 100, 60_000);"
+        },
+        {
+          "line": 76,
+          "text": "const batchLimit = setting(\"OUTBOX_BATCH_LIMIT\", 25, 1, 100);"
+        },
+        {
+          "line": 77,
+          "text": "const leaseSeconds = setting(\"OUTBOX_LEASE_SECONDS\", 60, 1, 3600);"
+        },
+        {
+          "line": 79,
+          "text": "retryDelaySeconds: setting(\"OUTBOX_RETRY_DELAY_SECONDS\", 30, 1, 86400),"
+        },
+        {
+          "line": 80,
+          "text": "maxRetryDelaySeconds: setting(\"OUTBOX_MAX_RETRY_DELAY_SECONDS\", 86400, 1, 86400),"
+        },
+        {
+          "line": 81,
+          "text": "maxAttempts: setting(\"OUTBOX_MAX_ATTEMPTS\", 8, 1, 100),"
+        },
+        {
+          "line": 83,
+          "text": "const metricsPort = setting(\"OUTBOX_METRICS_PORT\", 0, 0, 65535);"
+        },
+        {
+          "line": 84,
+          "text": "const metricsHost = env.OUTBOX_METRICS_HOST ?? \"127.0.0.1\";"
+        },
+        {
+          "line": 85,
+          "text": "const metricsRefreshIntervalMs = setting(\"OUTBOX_METRICS_REFRESH_INTERVAL_MS\", 5000, 1000, 60_000);"
+        },
+        {
+          "line": 158,
+          "text": "const run = async () => {"
+        },
+        {
+          "line": 181,
+          "text": "const store = acquired.adapter;"
+        },
+        {
+          "line": 202,
+          "text": "writeWorkerLog(\"info\", \"worker_started\", { provider: acquired.provider, pollIntervalMs, batchLimit, leaseSeconds,"
+        },
+        {
+          "line": 212,
+          "text": "result = await dispatchOutboxBatch({ store, deliver, limit: batchLimit, leaseSeconds, ...retryPolicy,"
+        },
+        {
+          "line": 214,
+          "text": "onDeliveryFailure: failure => writeWorkerLog(failure.retryScheduled && !failure.retryScheduleErrorName ? \"warn\" : \"error\", \"outbox_event_failed\", failure),"
+        },
+        {
+          "line": 224,
+          "text": "metrics.recordBatch(result, performance.now() - startedAt);"
+        },
+        {
+          "line": 230,
+          "text": "if (result.claimed > 0) writeWorkerLog(result.failed > 0 ? \"warn\" : \"info\", \"outbox_batch_completed\", result);"
+        },
+        {
+          "line": 231,
+          "text": "if (result.claimed === 0) await idle();"
+        },
+        {
+          "line": 241,
+          "text": "try { await run(); }"
+        },
+        {
+          "line": 257,
+          "text": "export function reportWorkerStartupFailure(error: unknown): void {"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/server.ts",
+      "reason": "旧 API 主入口封装、适配器/媒体/服务创建、原 listen 调用及启动失败脱敏日志的提取或等价重排，不计为新功能。 另扣与基线 worker listen helper 语义重复的 error/listening Promise 适配和入口返回引用。",
+      "fragments": [
+        {
+          "line": 121,
+          "text": "\"content-type\": \"application/json; charset=utf-8\", \"cache-control\": \"no-store\","
+        },
+        {
+          "line": 157,
+          "text": "return server;"
+        },
+        {
+          "line": 173,
+          "text": "export async function runApiProcess(env: NodeJS.ProcessEnv = process.env): Promise<Server> {"
+        },
+        {
+          "line": 231,
+          "text": "assertPersistenceAdapter(acquired.adapter);"
+        },
+        {
+          "line": 233,
+          "text": "mediaStorage = createMediaObjectStorage(env);"
+        },
+        {
+          "line": 234,
+          "text": "const mediaAssets = mediaStorage ? createMediaAssetService({ store: acquired.adapter, storage: mediaStorage }) : null;"
+        },
+        {
+          "line": 236,
+          "text": "persistence: acquired.adapter, env,"
+        },
+        {
+          "line": 244,
+          "text": "server = createApiServer({ env, applicationServices: services, observability, mediaAssets });"
+        },
+        {
+          "line": 245,
+          "text": "const running = server;"
+        },
+        {
+          "line": 247,
+          "text": "const error = (failure: Error) => { running.off(\"listening\", listening); reject(failure); };"
+        },
+        {
+          "line": 248,
+          "text": "const listening = () => { running.off(\"error\", error); resolve(); };"
+        },
+        {
+          "line": 249,
+          "text": "running.once(\"error\", error);"
+        },
+        {
+          "line": 250,
+          "text": "running.once(\"listening\", listening);"
+        },
+        {
+          "line": 251,
+          "text": "running.listen(port, host);"
+        },
+        {
+          "line": 266,
+          "text": "writeStructuredLog({ ...describePersistenceRuntime({ provider: acquired.provider }), host, port: actualPort });"
+        },
+        {
+          "line": 267,
+          "text": "return running;"
+        },
+        {
+          "line": 276,
+          "text": "export function reportApiStartupFailure(error: unknown): void {"
+        },
+        {
+          "line": 277,
+          "text": "const errorName = error instanceof Error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name) ? error.name : \"Error\";"
+        },
+        {
+          "line": 278,
+          "text": "const errorMessage = error instanceof Error ? redactDiagnostic(error.message, { secrets: secretValues() }) : null;"
+        },
+        {
+          "line": 279,
+          "text": "writeStructuredLog({ level: \"error\", event: \"api_startup_failed\", errorName, ...(errorMessage ? { errorMessage } : {}) });"
+        }
+      ]
+    },
+    {
+      "file": "scripts/dev.ts",
+      "reason": "原有 banner/错误输出封装、API/Web 端口预检的表格化、原 Web argv/env 和连通性探针/报告只是整理或搬移，不计数。",
+      "fragments": [
+        {
+          "line": 25,
+          "text": "const info = (message: string) => process.stdout.write(`${message}\\n`);"
+        },
+        {
+          "line": 26,
+          "text": "const error = (message: string) => process.stderr.write(`error   ${message}\\n`);"
+        },
+        {
+          "line": 29,
+          "text": "return new Promise(resolvePromise => {"
+        },
+        {
+          "line": 38,
+          "text": "for (const issue of issues) info(`error   ${issue.message}\\n        -> ${issue.remedy}`);"
+        },
+        {
+          "line": 41,
+          "text": "export async function runDev(): Promise<void> {"
+        },
+        {
+          "line": 44,
+          "text": "if (!parsed.args) { error(parsed.error!); process.exitCode = 2; return; }"
+        },
+        {
+          "line": 50,
+          "text": "info(\"No Wave local development\\n=========================\");"
+        },
+        {
+          "line": 51,
+          "text": "info(`environment  ${loaded ? \".env.local loaded\" : \"no .env.local (using process env and defaults)\"}`);"
+        },
+        {
+          "line": 52,
+          "text": "info(`persistence  ${config.persistence.description}`);"
+        },
+        {
+          "line": 54,
+          "text": "info(\"warn   The configured PostgreSQL host is external; API and worker will both write to that database.\");"
+        },
+        {
+          "line": 55,
+          "text": "info(\"        -> Use SQLite or `pnpm db:up`; `pnpm setup:local --force` generates local-only configuration.\");"
+        },
+        {
+          "line": 58,
+          "text": "if (!node.supported) info(`warn   ${node.message} Use Node.js 24.x, the runtime pinned by package.json and CI.`);"
+        },
+        {
+          "line": 60,
+          "text": "if (blocking.length) {"
+        },
+        {
+          "line": 62,
+          "text": "info(\"Nothing was started. Fix the errors above and run `pnpm dev` again.\");"
+        },
+        {
+          "line": 67,
+          "text": "const listeners = ["
+        },
+        {
+          "line": 68,
+          "text": "...(startApi ? ["
+        },
+        {
+          "line": 69,
+          "text": "{ name: \"API\", variable: \"PORT\", ...config.api },"
+        },
+        {
+          "line": 72,
+          "text": "...(startWeb ? [{ name: \"Web\", variable: \"WEB_PORT\", ...config.web }] : []),"
+        },
+        {
+          "line": 75,
+          "text": "for (const listener of listeners) {"
+        },
+        {
+          "line": 82,
+          "text": "if (!await isPortFree(listener.host, listener.port)) {"
+        },
+        {
+          "line": 83,
+          "text": "error(`Port ${listener.port} for ${listener.name} is unavailable; stop the other listener or change ${listener.variable}.`);"
+        },
+        {
+          "line": 87,
+          "text": "info(`${listener.name.padEnd(20)} ${listener.listenBaseUrl}`);"
+        },
+        {
+          "line": 90,
+          "text": "if (startApi && startWeb && webApiOrigin !== config.api.listenBaseUrl) {"
+        },
+        {
+          "line": 91,
+          "text": "info(`warn   Web will use API_BASE_URL (${webApiOrigin}), not the API started at ${config.api.listenBaseUrl}.`);"
+        },
+        {
+          "line": 92,
+          "text": "info(\"        -> Unset API_BASE_URL to wire the local processes together.\");"
+        },
+        {
+          "line": 102,
+          "text": "const shared = { ...process.env, PORT: String(config.api.port), HOST: config.api.host };"
+        },
+        {
+          "line": 103,
+          "text": "const api = supervisor.launch({ role: \"api\", label: \"API\", cwd: apiPackageDirectory,"
+        },
+        {
+          "line": 123,
+          "text": "args: [resolveWebBuildCli(repositoryRoot), \"dev\", \"--port\", String(config.web.port), \"--host\", config.web.host],"
+        },
+        {
+          "line": 124,
+          "text": "env: { ...process.env, PORT: String(config.web.port), API_BASE_URL: webApiOrigin } });"
+        },
+        {
+          "line": 125,
+          "text": "await supervisor.waitForHttp(web, `${config.web.listenBaseUrl}/`, READY_TIMEOUT_MS, \"ready\");"
+        },
+        {
+          "line": 129,
+          "text": "info(\"\\nReady.\");"
+        },
+        {
+          "line": 130,
+          "text": "if (startWeb) info(`  open       ${config.web.listenBaseUrl}`);"
+        },
+        {
+          "line": 132,
+          "text": "info(`  API        ${config.api.listenBaseUrl}/api/v1/health`);"
+        },
+        {
+          "line": 133,
+          "text": "info(`  readiness  ${config.api.listenBaseUrl}/ready`);"
+        },
+        {
+          "line": 136,
+          "text": "info(`  diagnose   pnpm check:local${apiOnly ? \" --api-only\" : \"\"}`);"
+        },
+        {
+          "line": 137,
+          "text": "info(\"  stop       Ctrl+C\\n\");"
+        },
+        {
+          "line": 140,
+          "text": "runLocalChecks({ apiBaseUrl: webApiOrigin, webBaseUrl: config.web.listenBaseUrl, apiOnly, readOnly: false, timeoutMs: 15_000 }),"
+        },
+        {
+          "line": 144,
+          "text": "info(formatReport(outcome.results, { apiBaseUrl: webApiOrigin, webBaseUrl: apiOnly ? undefined : config.web.listenBaseUrl, apiOnly }));"
+        },
+        {
+          "line": 145,
+          "text": "if (outcome.failed > 0 && !exit) info(\"The connectivity probe failed; services remain supervised for diagnosis.\");"
+        }
+      ]
+    },
+    {
+      "file": "scripts/lib/dev-supervisor.ts",
+      "reason": "原 spawn/子进程列表、readline 输出与 SIGINT/SIGTERM 注册、原等待函数外壳的提取不计数；只计新故障判定/进程树/取消/持续监督实现。 原有启动/发信号 helper 的新外壳与停止日志也保守扣除。",
+      "fragments": [
+        {
+          "line": 46,
+          "text": "function launch(config: Launch): DevChild {"
+        },
+        {
+          "line": 49,
+          "text": "const child = spawn(processExecutable, config.args, { cwd: config.cwd, env: config.env,"
+        },
+        {
+          "line": 54,
+          "text": "children.push(item);"
+        },
+        {
+          "line": 79,
+          "text": "createInterface({ input: stream }).on(\"line\", line => {"
+        },
+        {
+          "line": 80,
+          "text": "output(item.role, line);"
+        },
+        {
+          "line": 112,
+          "text": "function signalAll(signal: NodeJS.Signals): void {"
+        },
+        {
+          "line": 134,
+          "text": "if (children.some(childAlive)) info(\"Stopping API, notification worker and web together…\");"
+        },
+        {
+          "line": 150,
+          "text": "function onSignal(): void { void stop(0); }"
+        },
+        {
+          "line": 151,
+          "text": "process.once(\"SIGINT\", onSignal);"
+        },
+        {
+          "line": 152,
+          "text": "process.once(\"SIGTERM\", onSignal);"
+        },
+        {
+          "line": 154,
+          "text": "async function waitForHttp(item: DevChild, url: string, timeoutMs: number, description: string): Promise<void> {"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/http-lifecycle.ts",
+      "reason": "保守扣除与基线 apps/web-rr/server.ts 已有拒新请求 503、Retry-After/close 响应、请求计数、closeAllConnections 及停止状态赋值语义重复的片段；新 socket 跟踪、双事件幂等释放、资源清理/后台 drain 的绝对期限和诚实报告仍独立审计。",
+      "fragments": [
+        {
+          "line": 48,
+          "text": "if (draining || stopped) {"
+        },
+        {
+          "line": 49,
+          "text": "const body = JSON.stringify({ error: { code: \"SERVICE_UNAVAILABLE\", message: \"The service is shutting down.\" } });"
+        },
+        {
+          "line": 50,
+          "text": "response.writeHead(503, { \"content-type\": \"application/json; charset=utf-8\", \"cache-control\": \"no-store\","
+        },
+        {
+          "line": 51,
+          "text": "\"x-content-type-options\": \"nosniff\", \"retry-after\": \"1\", connection: \"close\", \"content-length\": Buffer.byteLength(body) });"
+        },
+        {
+          "line": 52,
+          "text": "response.end(request.method === \"HEAD\" ? undefined : body);"
+        },
+        {
+          "line": 55,
+          "text": "active += 1;"
+        },
+        {
+          "line": 60,
+          "text": "active = Math.max(0, active - 1);"
+        },
+        {
+          "line": 82,
+          "text": "server?.closeAllConnections();"
+        },
+        {
+          "line": 92,
+          "text": "draining = true;"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/worker-health.ts",
+      "fragments": [
+        {
+          "line": 48,
+          "text": "function listen(): Promise<number | null> {"
+        },
+        {
+          "line": 51,
+          "text": "if (!config.enabled) return null;"
+        },
+        {
+          "line": 52,
+          "text": "await new Promise<void>((resolve, reject) => {"
+        },
+        {
+          "line": 53,
+          "text": "const failed = (error: Error) => { server.off(\"listening\", ready); reject(error); };"
+        },
+        {
+          "line": 54,
+          "text": "const ready = () => { server.off(\"error\", failed); resolve(); };"
+        },
+        {
+          "line": 55,
+          "text": "server.once(\"error\", failed);"
+        },
+        {
+          "line": 56,
+          "text": "server.once(\"listening\", ready);"
+        },
+        {
+          "line": 57,
+          "text": "server.listen(config.port, config.host);"
+        }
+      ],
+      "reason": "健康监听器的 error/listening Promise 适配是基线 notification-worker.ts 的 listen helper 的等价复用；改名及调用参数适配不计数，只保留新的探针处理和可选健康端口/实际端口契约。"
+    }
+  ]
+}

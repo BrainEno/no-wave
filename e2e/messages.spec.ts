@@ -158,3 +158,39 @@ test("start and reply safely after lost responses, including edits and sign-in",
     await recipientContext.close();
   }
 });
+
+
+test("a browser-sent message produces one durable notification in the recipient UI through the independent worker", async ({ browser, page, baseURL }) => {
+  const origin = new URL(baseURL!).origin;
+  const recipient = await browser.newContext({ baseURL: origin });
+  try {
+    const recipientId = await register(recipient, origin);
+    await register(page.context(), origin);
+    await page.goto(`/messages?to=${encodeURIComponent(recipientId)}`);
+    await page.getByRole("button", { name: "发起对话", exact: true }).click();
+    await page.waitForURL("**/messages/*");
+    const conversationPath = new URL(page.url()).pathname;
+    await page.getByLabel("写一条消息").fill("Only the intended recipient sees this durable message");
+    await page.getByRole("button", { name: "发送", exact: true }).click();
+    await expect(page.locator(".nw-msg-body")).toContainText("Only the intended recipient");
+
+    // No notification route interception and no direct database/drain calls:
+    // the same persistent worker used by the stack must finish delivery.
+    const recipientPage = await recipient.newPage();
+    await recipientPage.goto("/write");
+    const inbox = recipientPage.getByRole("region", { name: "通知", exact: true });
+    const notification = inbox.locator(`.nw-authoring-inbox-row:has(a[href="${conversationPath}"])`);
+    await expect(async () => {
+      await inbox.getByRole("button", { name: "刷新通知", exact: true }).click();
+      await expect(notification).toHaveCount(1, { timeout: 500 });
+    }).toPass({ timeout: 10_000 });
+    await notification.getByRole("button", { name: "标记已读", exact: true }).click();
+    await expect(notification.getByRole("button", { name: "标记已读", exact: true })).toHaveCount(0);
+    await recipientPage.reload();
+    await expect(notification).toHaveCount(1);
+    await expect(notification.getByRole("button", { name: "标记已读", exact: true })).toHaveCount(0);
+    await notification.getByRole("link").click();
+    await recipientPage.waitForURL(`**${conversationPath}`);
+    await expect(recipientPage.locator(".nw-msg-body")).toContainText("Only the intended recipient");
+  } finally { await recipient.close(); }
+});

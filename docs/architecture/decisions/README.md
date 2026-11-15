@@ -46,6 +46,7 @@ which of two `0011`s meant what.
 | [0037](0037-import-provenance.md) | An import remembers where each edition came from, in the database | Accepted | 2026-11-09 |
 | [0038](0038-notification-integrity.md) | Engagement notifications have a lifetime identity and outbox retries have a terminal state | Accepted | 2026-11-12 |
 | [0039](0039-browser-security-policy.md) | 浏览器脚本使用可信 SSR 内容哈希，传输安全只接受原生入口证据 | Accepted | 2026-11-12 |
+| [0040](0040-notification-service-operations.md) | 通知投递使用独立进程角色，探针与资源关停必须有界 | Accepted | 2026-11-12 |
 The status column carries the leading word of each file's `- Status:` line —
 read the file for the qualifier ("Superseded by ADR 0012", "Accepted as the
 initial direction").

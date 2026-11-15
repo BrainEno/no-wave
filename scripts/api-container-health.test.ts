@@ -111,3 +111,19 @@ test("an invalid port fails closed without exposing environment values", async (
   assert.equal(result.code, 1);
   assert.doesNotMatch(result.stdout + result.stderr, /test-private-value/);
 });
+
+test("the same image's worker role probes its independent readiness port instead of the API", async () => {
+  nextMode = "reply";
+  nextStatus = 200;
+  observed = [];
+  const result = await runProbe({ SERVICE_ROLE: "notification-worker", OUTBOX_HEALTH_PORT: String(port), PORT: "invalid-api-port" });
+  assert.equal(result.code, 0);
+  assert.deepEqual(observed, ["GET /ready"]);
+});
+
+test("an unrecognized role cannot silently pass the API healthcheck", async () => {
+  nextMode = "reply";
+  nextStatus = 200;
+  const result = await runProbe({ SERVICE_ROLE: "typo-worker" });
+  assert.equal(result.code, 1);
+});

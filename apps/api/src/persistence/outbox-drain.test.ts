@@ -240,3 +240,21 @@ test("a SQLite deployment turns a persisted message into a real notification", a
   // Drained: a second run has nothing left to do.
   assert.equal((await store.outboxBacklog()).pendingEvents, 0);
 });
+
+test("shutdown cancellation prevents new claims but still settles work whose lease was already acquired", async () => {
+  const controller = new AbortController();
+  const original = endlessStore(10);
+  let claims = 0, delivered = 0, settled = 0;
+  const store: Store = { ...original, async claimOutboxEvents(input) {
+    claims += 1;
+    const rows = await original.claimOutboxEvents(input);
+    controller.abort(); // SIGTERM while the claim query is completing.
+    return rows;
+  }, async markOutboxDelivered(input) { settled += 1; return original.markOutboxDelivered(input); } };
+  const result = await dispatchOutboxBatch({ store, signal: controller.signal, deliver: async () => { delivered += 1; } });
+  assert.deepEqual(result, { claimed: 1, delivered: 1, failed: 0, deadLettered: 0 });
+  assert.equal(claims, 1); assert.equal(delivered, 1); assert.equal(settled, 1);
+  const stopped = await dispatchOutboxBatch({ store, signal: controller.signal, deliver: async () => { assert.fail("a stopped worker must not deliver new work"); } });
+  assert.deepEqual(stopped, { claimed: 0, delivered: 0, failed: 0, deadLettered: 0 });
+  assert.equal(claims, 1);
+});

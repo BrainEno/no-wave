@@ -81,6 +81,10 @@ WORKDIR /app/apps/web-rr
 # The server writes nothing to disk, so it does not need to run as root.
 USER node
 
+# Local process liveness only: no API dependency, redirects or external tools.
+HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || '3100') + '/healthz', {signal: AbortSignal.timeout(2000), redirect: 'manual'}).then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+
 EXPOSE 3100
 
 # The only entry a deployment needs to know. `PORT` and `HOST` come from the

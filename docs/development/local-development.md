@@ -1,7 +1,7 @@
 # Local development and local verification
 
 This document is the contract for running the whole product on one machine: a
-database, the REST API, the Web app, and a script that proves the three are
+database, the REST API, a notification worker, the Web app, and scripts that prove they are
 actually connected. It also records why the tooling looks the way it does, and
 which gaps in the previous setup it closes.
 
@@ -26,7 +26,7 @@ pnpm setup:local          # writes .env.local with a generated 48-byte JWT secre
 
 # SQLite (default)
 pnpm db:migrate           # create apps/api/data/no-wave.sqlite
-pnpm dev                  # API :4000 + Web :3000, with readiness gates
+pnpm dev                  # API :4000 + worker health :4001 + Web :3000, readiness-gated
                           # (why 3000 and not the package's 3100: see Ports below)
 
 # or PostgreSQL in Docker
@@ -47,7 +47,8 @@ layer, so the first `[FAIL]` identifies the broken layer.
 
 | Process | Port | Where it comes from |
 | --- | --- | --- |
-| API | **4000** | `PORT`. The API's own default is 4000 too, so a bare `node apps/api/src/index.ts` lands in the same place. |
+| API | **4000** | `PORT`. The API's own default is 4000 too, so a bare `node apps/api/src/service.ts` lands in the same place. |
+| Worker health | **4001** | `OUTBOX_HEALTH_PORT`; loopback by default, `/health` and `/ready` only. |
 | Web, through the chain | **3000** | `WEB_PORT`, set explicitly for the child process by `pnpm dev` / `dev:web` / `stack:start`. `check:local` probes `:3000`. |
 | Web, run inside the package | **3100** | `apps/web-rr/vite.config.ts` and `apps/web-rr/server.ts` default to 3100 when `PORT` is unset — `pnpm --filter @no-wave/web-rr dev`, and the same default as the container image. |
 
@@ -69,7 +70,7 @@ Each row was reproduced on the commit this document was written against
 | G1 | No local PostgreSQL orchestration. The README asked for a hand-written `docker run`, a manual `pg_isready` loop and a hand-typed `TEST_DATABASE_URL`. | Every developer invented their own container, port and database name. | `compose.yaml` + `pnpm db:up/db:down/db:reset`; the volume also creates `bot_thk_test`. |
 | G2 | `.env.example` set `DATABASE_PROVIDER=postgres` with an empty `DATABASE_URL`, contradicting the SQLite-first default (ADR 0010). | Copying the template made the API exit at startup with `DATABASE_URL is required when DATABASE_PROVIDER=postgres.` | Template is SQLite-first, PostgreSQL is a documented switch, and `pnpm setup:local` writes a valid file. |
 | G3 | A repository-root `.env.local` was read by the API but ignored by the Web app (Next.js only read `.env*` from `apps/web`). | `API_BASE_URL` set "in the project env" had no effect on the Web app, which silently kept rendering fixtures. | `apps/web-rr/vite.config.ts` loads the same root file via `process.loadEnvFile`, with the same precedence rules as the API. |
-| G4 | No single command for the API. Root `pnpm dev` started only the Web app. | Two terminals, two working directories, and an easy way to forget the API entirely. | `pnpm dev` starts both with readiness gates; `dev:api` / `dev:web` start one. |
+| G4 | No single command for the API. Root `pnpm dev` started only the Web app. | Two terminals, two working directories, and an easy way to forget the API entirely. | `pnpm dev` starts API/worker/Web with readiness gates; `dev:api` includes the worker, `dev:web` starts only Web. |
 | G5 | `AUTH_JWT_SECRET` shorter than 32 bytes or absent was only reported as `503 SERVICE_UNAVAILABLE` / "Identity is not configured." on auth routes. | Sign-in looked like an outage on a fresh clone; the message names neither the variable nor the length. | `evaluateAuthSecret` blocks `pnpm dev` before any process starts, with the exact remedy. |
 | G6 | No way to test the chain. `pnpm test:routes` covers the Web app in fixture mode only. | "It works" was a manual browser opinion. | `pnpm check:local` (10 probes) and `pnpm dev --check`. |
 | G7 | The publish precondition was hidden. | An account without a profile returned `author: null`, so the public article 404s and the Web page 404s. | Registration now creates a default profile in the same transaction; the probe verifies it and the writing desk can edit the pen name. |
@@ -104,7 +105,9 @@ compose.yaml                 the only containerised piece: PostgreSQL 17
 scripts/docker/postgres-init/one-shot SQL that creates bot_thk_test
 scripts/lib/local-dev-config.ts   pure config/argument/secret logic (unit tested)
 scripts/setup-local.ts       generate .env.local (idempotent, mode 0600)
-scripts/dev.ts               start API + Web, readiness gates, one Ctrl+C
+scripts/dev.ts               start API + worker + Web on one persistence config
+scripts/lib/dev-supervisor.ts process-tree cleanup, watch failure and recovery supervision
+scripts/lib/dev-service-probe.ts bounded role-aware readiness checks
 scripts/local-dev-check.ts   layered HTTP probe, PASS/FAIL/SKIP report
 tsconfig.scripts.json        typechecks scripts/ (also repairs two pre-existing strict errors)
 ```
@@ -115,18 +118,16 @@ A developer should not have to know that the API and the Web app load
 configuration differently. The contract is:
 
 1. A variable exported in the shell always wins.
-2. `<repo>/.env.local` is the local file for both processes.
+2. `<repo>/.env.local` is the local file inherited by all three dev roles. Standalone API/worker/drain package commands additionally read `.env` first as a lower-priority fallback.
 3. The root file is what the docs and scripts use; the Web app reads it once, at
    dev-server start, through `apps/web-rr/vite.config.ts`.
 4. Defaults live in code (`apps/api` and `scripts/lib/local-dev-config.ts`).
 
-`node --env-file-if-exists` (API) and `process.loadEnvFile` (Web) both refuse to
-overwrite variables that already exist, so the precedence above is a property of
-the runtime, not something each script re-implements.
+Shell exports win over env files. For repeated Node `--env-file-if-exists` flags, the later file wins, so package commands list `.env` before `.env.local`; `process.loadEnvFile` preserves existing environment values. The orchestrator loads `.env.local` once before spawning every dev role.
 
 ### 4.2 Only the database runs in a container
 
-The API and Web app run as native Node processes:
+The API, notification worker and Web app run as native Node processes:
 
 - hot reload, real file paths in stack traces, normal debugger attachment;
 - no image rebuild per edit, so the inner loop stays in seconds;
@@ -146,7 +147,7 @@ the integration-test database.
 
 ### 4.3 The tooling talks over HTTP, never by importing app code
 
-`scripts/*` never imports `apps/api` or `apps/web-rr` modules. Consequences:
+Runtime dev tooling and HTTP probes do not import application modules; integration test fixtures may import migration helpers for disposable databases. Consequences:
 
 - the same probe verifies a SQLite file, a Docker PostgreSQL, a containerised API
   on another port, or staging (`--api-url`, `--web-url`);
@@ -164,13 +165,12 @@ it also tests the production path.
 `pnpm dev` refuses to start when it can predict a broken run:
 
 - `AUTH_JWT_SECRET` missing or shorter than 32 bytes;
-- port already in use (`PORT`, `WEB_PORT`);
+- occupied or colliding service ports (`PORT`, `OUTBOX_HEALTH_PORT`, `WEB_PORT`);
+- process-private SQLite (`:memory:`), which cannot be shared with the worker;
+- invalid `DEV_RECOVERY_TIMEOUT_MS` (1000–120000 ms, default 15000);
 - `API_BASE_URL` pointing somewhere other than the API it is about to start.
 
-After startup it watches for the API's structured `api_startup_failed` event, so
-a failed migration or an unreachable PostgreSQL stops the command in under a
-second instead of waiting for a readiness timeout. `node --watch` keeps a crashed
-API process alive, which is why the log event, not the exit code, is the signal.
+Startup failures, unexpected child exit (even exit 0) and crashed applications behind Node watch mode stop all peers with a nonzero command status. Startup HTTP gates verify API/worker role identity, cap JSON at 8 KiB and bound both headers and body reads. After readiness, an observed gap is reported immediately; hot reload or transient failures have `DEV_RECOVERY_TIMEOUT_MS` to recover, otherwise the whole chain stops. A requested stop waits for durable cleanup, then force-terminates any remaining process tree within its bounded budget. Vite's observed CLI shutdown exit 143 is accepted only for that child, not for unsuccessful API/worker cleanup. Each API/worker also has `SERVICE_STARTUP_TIMEOUT_MS` (30000 by default), so a wedged initial database acquisition fails and tears down the chain instead of waiting forever.
 
 ### 4.5 Writes are explicit
 
@@ -211,10 +211,10 @@ or deleting `apps/api/data/` (SQLite) is the documented reset.
 | `pnpm setup:local --print` | Print the file to stdout without writing. |
 | `pnpm db:up` / `db:down` / `db:reset` | Postgres 17 up (waiting for healthy), stop keeping data, stop and delete the volume. |
 | `pnpm db:migrate` | Apply migrations for `DATABASE_PROVIDER` (explicit step, no auto-migrate). |
-| `pnpm dev` | API (`node --watch`) + Web dev server, readiness-gated. |
-| `pnpm dev --api-only` / `--web-only` | Start one process (e.g. API in Docker, Web on the host). |
-| `pnpm dev --check` | Run the connectivity probe once both are ready. |
-| `pnpm dev --check --exit` | Probe, then stop both processes and exit with the probe result (CI, scripts). |
+| `pnpm dev` | API + independent worker (`node --watch`) + Web dev server, readiness-gated and supervised. |
+| `pnpm dev --api-only` / `--web-only` | API + worker only / Web only (external API/worker). |
+| `pnpm dev --check` | Run the connectivity probe once all selected roles are ready. |
+| `pnpm dev --check --exit` | Probe, then stop all supervised processes and exit with the probe result (CI, scripts). |
 | `pnpm check:local` | Probe an already running chain. |
 | `pnpm verify:publish` | One-shot publishing-visibility check on a disposable stack; no mail service. |
 | `pnpm verify:publish --keep` | Keep the stack and article links open until Ctrl+C. |
@@ -226,7 +226,8 @@ or deleting `apps/api/data/` (SQLite) is the documented reset.
 Environment knobs: `HOST`, `PORT`, `WEB_HOST`, `WEB_PORT`, `DATABASE_PROVIDER`,
 `DATABASE_URL`, `DATABASE_PATH`, `DATABASE_AUTO_MIGRATE`, `AUTH_JWT_*`,
 `AUTH_REGISTER_IP_LIMIT`, `ARTICLE_TOMBSTONE_RETENTION_DAYS`, `API_BASE_URL`,
-`API_TIMEOUT_MS` (see
+`OUTBOX_HEALTH_HOST`, `OUTBOX_HEALTH_PORT`, `DEV_RECOVERY_TIMEOUT_MS`,
+`SHUTDOWN_GRACE_MS`, `SHUTDOWN_CLEANUP_MS`, `API_TIMEOUT_MS` (see
 [upstream timeouts](../architecture/web-upstream-timeouts.md)),
 `WEB_DEV_ALLOWED_ORIGINS`, `TEST_DATABASE_URL`, `POSTGRES_PORT` (compose host
 port). Every one is documented in `.env.example`.
@@ -348,7 +349,7 @@ the probe's skip semantics cannot silently regress.
 | Auth routes return `503 SERVICE_UNAVAILABLE` without a startup error | The API is running with a missing/short secret (the REST layer masks it). | Restart with a valid secret; `pnpm dev` now checks this. |
 | `DATABASE_URL is required when DATABASE_PROVIDER=postgres.` | PostgreSQL selected without a URL. | `pnpm db:up` and set `DATABASE_URL`, or switch to SQLite. |
 | `SQLite schema is not current` | Never migrated after checkout. | `pnpm db:migrate`. |
-| `Port 4000 is already in use` | A previous API/Web process is still running. | Stop it, or change `PORT` / `WEB_PORT`. |
+| `Port ... is unavailable` | A previous API/worker/Web process is still running. | Stop it, or change `PORT` / `OUTBOX_HEALTH_PORT` / `WEB_PORT`. |
 | The dev server refuses a second start | One dev server per app directory. | Stop the other one; do not run two `pnpm dev`s. |
 | `web-render` fails, API steps pass | The Web app is serving fixtures (`API_BASE_URL` unset) or cannot reach the API. | Set `API_BASE_URL=http://127.0.0.1:4000` in the root `.env.local`, restart `pnpm dev`. |
 | Page loads unstyled from another device | The dev server's host allowlist. | Add the hostname to `WEB_DEV_ALLOWED_ORIGINS`. |
@@ -374,3 +375,17 @@ the probe's skip semantics cannot silently regress.
 - Windows is supported by the scripts (no shell operators in `package.json`, no
   POSIX-only flags), but the documented commands are exercised on Linux/macOS in
   CI.
+
+## 9. Durable notification verification
+
+The default dev chain is tested against real SQLite and PostgreSQL by
+`scripts/dev-notifications.test.ts`: three roles, one persisted message, an
+identical idempotent retry, recipient-only notification within 2 seconds of the
+commit acknowledgement, anonymous denial and complete process/port shutdown.
+`pnpm test:notification-delivery` repeats the HTTP delivery contract against an
+already running **disposable** stack (`SMOKE_API_URL`, optional
+`SMOKE_WORKER_URL`); it creates three accounts and a private conversation, so do
+not point it at production. Container CI uses the same HTTP probe, not a fake
+in-process drain. [ADR 0040](../architecture/decisions/0040-notification-service-operations.md)
+and the [worker runbook](../operations/notification-worker.md) define health,
+backlog thresholds, bounded shutdown and same-image role dispatch.

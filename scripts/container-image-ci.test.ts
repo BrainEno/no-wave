@@ -89,3 +89,28 @@ test("API image and CI require an unprivileged user and working readiness probe"
   assert.match(workflow, /-p 4000:4000 bot-thk-api:ci/);
   assert.match(workflow, /API_BASE_URL=http:\/\/api:4000/);
 });
+
+test("the required image smoke runs a separate worker from the API image against the migrated shared database", async () => {
+  const workflow = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+  const normalized = workflow.replace(/\\\r?\n\s*/g, " ");
+  const worker = normalized.split("\n").find(line => /docker run .*--name\s+worker\b/.test(line));
+  assert.ok(worker, "an actual worker container, not a one-shot fake drain, is required");
+  assert.match(worker, /SERVICE_ROLE=notification-worker/);
+  assert.match(worker, /bot-thk-api:ci\s*$/);
+  assert.match(worker, /-v nw-ci-db:\/var\/lib\/no-wave/);
+  assert.match(worker, /DATABASE_PATH=\/var\/lib\/no-wave\/api\.sqlite/);
+  assert.match(worker, /OUTBOX_HEALTH_HOST=0\.0\.0\.0/);
+  assert.match(workflow, /SMOKE_NOTIFICATIONS:\s*"true"/);
+  assert.match(workflow, /SMOKE_WORKER_URL:\s*http:\/\/127\.0\.0\.1:4001/);
+  assert.match(workflow, /docker stop worker/);
+  assert.match(workflow, /docker start worker/);
+  assert.match(workflow, /docker rm -f api worker web/);
+});
+
+test("the Web runtime image declares a bounded dependency-free healthcheck", async () => {
+  const dockerfile = await readFile(new URL("../apps/web-rr/Dockerfile", import.meta.url), "utf8");
+  assert.match(dockerfile, /^HEALTHCHECK\b/m);
+  assert.match(dockerfile, /127\.0\.0\.1:.*\/healthz/);
+  assert.match(dockerfile, /AbortSignal\.timeout\(2000\)/);
+  assert.match(dockerfile, /redirect: 'manual'/);
+});

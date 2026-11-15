@@ -16,11 +16,29 @@ Both lines exist on purpose: "the access log says 500 and nothing else" is not d
 
 ## Liveness and readiness
 
-`GET /health` is liveness only. `GET /ready` checks both persistence and JWT
-configuration; it returns `200` only when both are ready, otherwise `503` with
-`persistence` and `auth` each set to `ok` or `unavailable`. Responses are
-`no-store` and do not include configuration values or database errors. Mail and
-media are optional and are not covered by this probe.
+`GET`/`HEAD /health` is liveness only. `/ready` additionally checks persistence
+health (`true`), JWT configuration and notification backlog availability/age;
+query strings do not change either route. It returns 200 only when all are ready,
+otherwise 503 with `persistence`, `auth` and a `notifications` summary. Default
+oldest-pending threshold is 120 seconds; dead letters are separate. Dependency
+reads are coalesced (one in flight per dependency), waited at most 500 ms and
+cached one second by default. A stuck read cannot launch a query storm or hide a
+liveness response. Late results do not grant readiness or replace the last trusted
+sample; a new timely attempt must recover it. The owned query stays single-flight
+after timeout. Closing readiness releases pending probe responses and cancels
+not-yet-entered driver reads. Responses are `no-store`, with no configuration values,
+identities, payloads or database errors. Mail/media remain optional.
+
+API request/header/keep-alive defaults are explicitly 60/15/5 seconds, with a
+receive-timeout sweep no longer than one second. Shutdown has one absolute
+8-second budget including a reserved 2-second resource close. Slow clients are
+forcibly detached at the drain deadline and reported as `forced`, not silently
+called graceful. Failed/timed-out resource cleanup exits nonzero. Signal
+handling also covers provider acquisition before listen. Bootstrap has its own
+`SERVICE_STARTUP_TIMEOUT_MS` (default 30000, range 100–120000); expiry requests the
+same bounded stop and exits nonzero even if a pool arrives during cleanup.
+The timer is cancelled after listen or before requested shutdown. See
+[ADR 0040](../architecture/decisions/0040-notification-service-operations.md).
 
 The standalone API also validates `AUTH_JWT_SECRET` (at least 32 UTF-8 bytes),
 `AUTH_JWT_ISSUER`, `AUTH_JWT_AUDIENCE`, and optional
@@ -29,11 +47,20 @@ configuration exits nonzero with a redacted startup log naming the field. For an
 embedded server, invalid configuration is reported by `/ready`; authenticated
 requests that encounter it receive a sanitized `503`, not a `500`.
 
+`api_readiness_inflight_reads` and
+`api_readiness_oldest_inflight_read_seconds` distinguish a hung owned query from
+an idle healthy dependency. Timeouts count as dependency failures once per read,
+while `api_readiness_probe_timeouts_total` counts waiting HTTP probes.
+
 ## Prometheus metrics
 
 Enable API metrics explicitly with `API_METRICS_ENABLED=true`, then scrape `GET /metrics` from a trusted monitoring network. The endpoint is disabled by default and returns 404 otherwise. When enabled, the response is plain-text Prometheus exposition format and marked `Cache-Control: no-store`.
 
 Current in-process metrics:
+
+- `api_readiness_available`, `api_notification_backlog_available`: readiness and dependency availability (zero is not proof of an empty queue).
+- `api_notification_pending_events`, `api_notification_dead_letter_events`, `api_notification_oldest_pending_age_seconds`, `api_notification_backlog_sample_timestamp_seconds`, `api_notification_backlog_max_age_seconds`: last-good backlog and configured threshold.
+- `api_readiness_dependency_reads_total`, `api_readiness_dependency_failures_total`, `api_readiness_probe_timeouts_total`: bounded probe/coalescing outcomes.
 
 - `api_http_requests_total{method,route,status}`: completed request counter.
 - `api_http_request_duration_ms_{bucket,sum,count}`: HTTP duration histogram in milliseconds.
@@ -51,6 +78,8 @@ The notification worker is a separate process. Enable its dedicated Prometheus l
 - `api_outbox_pending_events`, `api_outbox_oldest_pending_age_seconds`: nonterminal backlog depth and age (including delayed retries and live leases), sampled every `OUTBOX_METRICS_REFRESH_INTERVAL_MS` milliseconds (default 5000).
 - `api_outbox_dead_letter_events`: durable quarantined rows excluded from pending depth and age. Alert when this is nonzero; inspect the cause before approving a replay. A successful sample replaces both gauges together; a failed read preserves both last-known values.
 - `api_outbox_batch_duration_ms_{bucket,sum,count}`, `api_outbox_batch_failures_total`, `api_outbox_backlog_read_failures_total`: worker duration and observability/dispatch failures.
+
+The worker additionally reports `notification_worker_backlog_available`, sample age/timestamp, monotonic current pending age and a freshness budget. Sampling is nonblocking/single-flight with a default 500 ms reporting deadline; late or invalid results cannot replace the last trusted counts. Scrapes never start a database query.
 
 The worker metrics listener is disabled unless a nonzero port is configured. For container or remote scraping, set `OUTBOX_METRICS_HOST` deliberately and enforce a private network policy; the listener has no authentication and must not be exposed to the public Internet.
 

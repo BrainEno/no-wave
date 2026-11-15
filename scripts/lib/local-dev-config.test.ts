@@ -220,3 +220,19 @@ test("probe identities are valid and unique per run", () => {
   // Article slugs must satisfy ^[a-z0-9]+(?:-[a-z0-9]+)*$.
   assert.match(first.slug, /^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 });
+
+test("API-side dev config reserves a worker listener and rejects process-private SQLite or invalid recovery budgets", () => {
+  const base = { AUTH_JWT_SECRET: "fixture-local-secret-with-at-least-32-bytes" };
+  const config = resolveLocalDevConfig(base);
+  assert.deepEqual(config.worker, { host: "127.0.0.1", port: 4001, listenBaseUrl: "http://127.0.0.1:4001" });
+  assert.equal(config.supervision.recoveryTimeoutMs, 15_000);
+  assert.equal(resolveLocalDevConfig({ ...base, OUTBOX_HEALTH_PORT: "4101", OUTBOX_HEALTH_HOST: "0.0.0.0" }).worker.port, 4101);
+  assert.ok(resolveLocalDevConfig({ ...base, OUTBOX_HEALTH_PORT: "0" }).issues.some(issue => issue.code === "INVALID_WORKER_PORT"));
+  assert.ok(resolveLocalDevConfig({ ...base, DATABASE_PATH: ":memory:" }).issues.some(issue => issue.code === "WORKER_REQUIRES_DURABLE_DB"));
+  for (const value of ["999", "120001", "1.5", "1e4", "private-recovery-canary"]) {
+    const result = resolveLocalDevConfig({ ...base, DEV_RECOVERY_TIMEOUT_MS: value });
+    assert.ok(result.issues.some(issue => issue.code === "INVALID_DEV_RECOVERY_TIMEOUT"));
+    assert.doesNotMatch(JSON.stringify(result.issues), /private-recovery-canary/);
+  }
+  assert.equal(resolveLocalDevConfig({ ...base, DEV_RECOVERY_TIMEOUT_MS: "90000" }).supervision.recoveryTimeoutMs, 90_000);
+});

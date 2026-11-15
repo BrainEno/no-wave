@@ -375,6 +375,8 @@ jobs:
           SMOKE_WEB_URL: http://127.0.0.1:3100
           SMOKE_API_URL: http://127.0.0.1:4000
           SMOKE_EXPECT_FIXTURES: "false"
+          SMOKE_NOTIFICATIONS: "true"
+          SMOKE_WORKER_URL: http://127.0.0.1:4001
           SMOKE_TIMEOUT_MS: "60000"
         run: |
           set -eu
@@ -405,6 +407,14 @@ jobs:
             -e AUTH_JWT_SECRET=container-image-ci-secret-0123456789abcdef \
             -e AUTH_JWT_ISSUER=http://127.0.0.1:4000 -e AUTH_JWT_AUDIENCE=no-wave \
             -p 4000:4000 bot-thk-api:ci
+          echo "Starting the independent notification worker from the same API image"
+          docker run -d --network nw-ci --name worker \
+            -v nw-ci-db:/var/lib/no-wave \
+            -e DATABASE_PROVIDER=sqlite -e DATABASE_PATH=/var/lib/no-wave/api.sqlite \
+            -e SERVICE_ROLE=notification-worker \
+            -e OUTBOX_HEALTH_HOST=0.0.0.0 -e OUTBOX_HEALTH_PORT=4001 \
+            -p 4001:4001 bot-thk-api:ci
+          test "$(docker image inspect --format '{{if .Config.Healthcheck}}yes{{end}}' bot-thk-web-rr:ci)" = "yes"
           WEB_START=$(date +%s%3N)
           docker run -d --network nw-ci --name web \
             -e HOST=0.0.0.0 -e PORT=3100 \
@@ -422,6 +432,7 @@ jobs:
             # Surface it in check annotations when job log downloads fail.
             node -e 'const fs = require("fs"); for (const line of fs.readFileSync("/tmp/container-smoke.log", "utf8").split("\n")) { try { const v = JSON.parse(line); if (v.event === "container_smoke_failed") console.log("::error title=container smoke::" + String(v.errorMessage).replaceAll("%", "%25").replaceAll("\r", "%0D").replaceAll("\n", "%0A")); } catch {} }'
             docker logs api || true
+            docker logs worker || true
             docker logs web || true
             # CI containers use only test configuration. Restrict the annotation
             # to a short runtime error class/code, not arbitrary log payloads.
@@ -432,18 +443,21 @@ jobs:
           fi
           # Docker's healthcheck is asynchronous, so wait independently of HTTP
           # smoke and fail if it never reaches healthy or exits prematurely.
-          health=starting
-          for attempt in $(seq 1 30); do
-            health=$(docker inspect --format '{{.State.Health.Status}}' api)
-            [ "$health" = healthy ] && break
-            [ "$health" = unhealthy ] && break
-            sleep 2
+          for name in api worker web; do
+            health=starting
+            for attempt in $(seq 1 30); do
+              health=$(docker inspect --format '{{.State.Health.Status}}' "$name")
+              [ "$health" = healthy ] && break
+              [ "$health" = unhealthy ] && break
+              sleep 2
+            done
+            if [ "$health" != healthy ]; then
+              echo "::error title=container healthcheck::$name expected healthy, got $health"
+              docker inspect --format '{{json .State.Health}}' "$name"
+              exit 1
+            fi
+            test "$(docker exec "$name" id -u)" != "0"
           done
-          if [ "$health" != healthy ]; then
-            echo "::error title=API healthcheck::expected healthy, got $health"
-            docker inspect --format '{{json .State.Health}}' api
-            exit 1
-          fi
           test "$(docker exec api id -u)" != "0"
           WEB_COLD_MS=$(( $(date +%s%3N) - WEB_START ))
           echo "Web container cold start: ${WEB_COLD_MS} ms (docker run -> shared smoke passed)"
@@ -457,12 +471,16 @@ jobs:
           WAKE_START=$(date +%s%3N)
           docker stop web > /dev/null
           docker start web > /dev/null
+          docker stop worker > /dev/null
+          test "$(docker inspect --format '{{.State.ExitCode}}' worker)" = "0"
+          docker start worker > /dev/null
           if ! pnpm test:container-smoke > /tmp/container-smoke.log 2>&1; then
             cat /tmp/container-smoke.log
             # The smoke script emits a bounded, sanitized JSON error message.
             # Surface it in check annotations when job log downloads fail.
             node -e 'const fs = require("fs"); for (const line of fs.readFileSync("/tmp/container-smoke.log", "utf8").split("\n")) { try { const v = JSON.parse(line); if (v.event === "container_smoke_failed") console.log("::error title=container smoke::" + String(v.errorMessage).replaceAll("%", "%25").replaceAll("\r", "%0D").replaceAll("\n", "%0A")); } catch {} }'
             docker logs api || true
+            docker logs worker || true
             docker logs web || true
             # CI containers use only test configuration. Restrict the annotation
             # to a short runtime error class/code, not arbitrary log payloads.
@@ -474,13 +492,18 @@ jobs:
           WAKE_MS=$(( $(date +%s%3N) - WAKE_START ))
           echo "Start again from stopped: shared smoke passed in ${WAKE_MS} ms (SIGTERM was handled by the server)."
 
-          echo "Both images build and serve: API health/ready and the React Router home page, 404, malformed URL and site shell."
+          # Exercise the running API's own bounded SIGTERM path too; cleanup
+          # below is only a safety net, not evidence of graceful service exit.
+          docker stop api worker web > /dev/null
+          test "$(docker inspect --format '{{.State.ExitCode}}' api)" = "0"
+          test "$(docker inspect --format '{{.State.ExitCode}}' worker)" = "0"
+          echo "Both images serve three healthy nonroot roles, deliver one recipient notification for an idempotent message, and stop cleanly."
           echo "::notice title=container-image timing::Web container cold start ${WEB_COLD_MS} ms (docker run -> shared smoke passed); start again from stopped ${WAKE_MS} ms."
       - name: Diagnose failed containers
         if: ${{ failure() }}
         run: |
           # Print only state and logs, not container config or environment.
-          for name in api web; do
+          for name in api worker web; do
             if docker inspect "$name" > /dev/null 2>&1; then
               docker inspect --format '{{.Name}} status={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} error={{.State.Error}}' "$name" || true
               docker logs --tail 80 "$name" || true
@@ -490,7 +513,7 @@ jobs:
       - name: Stop the containers
         if: ${{ !cancelled() }}
         run: |
-          docker rm -f api web > /dev/null 2>&1 || true
+          docker rm -f api worker web > /dev/null 2>&1 || true
           docker network rm nw-ci > /dev/null 2>&1 || true
           docker volume rm nw-ci-db > /dev/null 2>&1 || true
 

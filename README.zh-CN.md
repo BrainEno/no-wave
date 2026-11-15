@@ -33,7 +33,7 @@ corepack enable                    # 只需一次；当 pnpm 不在 PATH 时执�
 pnpm install --frozen-lockfile
 pnpm setup:local                   # 生成 .env.local：SQLite + 随机的 JWT secret
 pnpm db:migrate                    # 创建 apps/api/data/no-wave.sqlite
-pnpm dev                           # API :4000 + Web :3000
+pnpm dev                           # API :4000 + worker 探针 :4001 + Web :3000
 ```
 
 在另一个终端验证整条链路：
@@ -116,7 +116,7 @@ Neon 生产分支的 PostgreSQL URL、私有媒体存储与服务开通见 [Neon
 <a id="observability"></a>
 ## 可观测性
 
-API 在 `/metrics` 输出结构化指标，并提供独立的 API/Web 就绪探针，以及文章、评论指标。`/metrics` 不会返回内部服务配置；见 [API 可观测性](docs/operations/api-observability.md)。健康检查与就绪检查会由本地链路和 CI 覆盖。
+API 在 `/metrics` 输出结构化指标，并提供独立的 API/worker/Web 运维探针，以及文章、评论指标。`/metrics` 不会返回内部服务配置；见 [API 可观测性](docs/operations/api-observability.md)。健康检查与就绪检查会由本地链路和 CI 覆盖。
 
 <a id="local-development"></a>
 ## 本地开发
@@ -146,13 +146,13 @@ API 在 `/metrics` 输出结构化指标，并提供独立的 API/Web 就绪探�
    pnpm db:migrate
    ```
 
-4. 启动两个进程：
+4. 启动三个受监督进程：
 
    ```sh
    pnpm dev
    ```
 
-   `pnpm dev` 会启动两个进程，分别可通过 `http://127.0.0.1:4000`（API）与 `http://127.0.0.1:3000`（Web）访问；它会等待两者就绪，并可用一次 `Ctrl+C` 同时停止。它也会打印当前选中的数据库。`pnpm dev --check` 会在两者就绪后立即跑连通性探针；`pnpm check:local` 则适合在第二个终端执行。
+   `pnpm dev` 会启动 API（`:4000`）、独立通知 worker（就绪探针 `:4001/ready`）与 Web（`:3000`），API/worker 共享同一持久化配置。它等待三个角色就绪，保留热重载，并用一次 `Ctrl+C` 停止整套进程；任一角色意外退出或持续失去就绪都会联动停止，不留下半套服务。`pnpm dev --check` 会额外跑连通性探针；`pnpm check:local` 可在第二个终端执行。详见 [通知 worker 运行契约](docs/operations/notification-worker.md)。
 
 5. 验证链路：
 
@@ -241,8 +241,8 @@ pnpm dev
 | `pnpm test` | 运行根级单元测试与 API 契约测试列表。 |
 | `pnpm test:routes` | Web 路由级 smoke 检查。 |
 | `pnpm build` | 构建 React Router Web 应用。 |
-| `pnpm dev --api-only` / `--web-only` | 只启动一个进程，例如 API 已跑在容器中时。 |
-| `pnpm dev --check --exit` | 探针完成后停止两个进程；CI 使用。 |
+| `pnpm dev --api-only` / `--web-only` | `--api-only` 启动 API + worker；`--web-only` 只启动 Web（外部 API/worker 由外部管理）。 |
+| `pnpm dev --check --exit` | 探针完成后停止全部受监督进程；CI 使用。 |
 | `pnpm check:local --read-only` | 不写入数据，只验证链路。 |
 | `pnpm verify:publish` | 无邮箱服务验证写作台发布可见性，并打印文章链接。 |
 
