@@ -145,3 +145,14 @@ test("selected notice states distinguish filters, unloaded history and unavailab
   }
   assert.equal(notificationSelectionState(state, [selectedId], null), null);
 });
+
+test("an empty recent page may report a confirmed zero global unread total without inventing rows or a failed write", () => {
+  const before = { ...snapshot(), items: [], unread: 5 };
+  const confirmed = { ...before, unread: 0 };
+  assert.equal(inboxActionFeedback(before, confirmed, { kind: "mark" }, "en", all), "No unread notifications remain.");
+  assert.equal(inboxActionFeedback(before, confirmed, { kind: "mark" }, "zh-CN", all), "收件箱已没有未读通知。");
+  assert.match(inboxActionFeedback(before, before, { kind: "mark" }, "en", all)!, /not fully confirmed/);
+  assert.match(inboxActionFeedback(before, { ...confirmed, error: "unavailable" }, { kind: "mark" }, "en", all)!, /not fully confirmed/);
+  assert.equal(inboxActionFeedback(before, { ...confirmed, actorId: "replacement" }, { kind: "mark" }, "en", all), null);
+  assert.equal(confirmed.items.length, 0);
+});

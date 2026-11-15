@@ -22,6 +22,8 @@
 - 异步按钮禁用/移除时记忆语义行及 action，而非陈旧的数字索引。请求、导航提交与下一帧之间，指针、键盘、滚轮、触摸滚动、视口或窗口变化都可以撤销待执行的焦点操作；未完成任务在路由、身份或组件生命周期变化时回收。
 - 选择定位以本次 URL 意图的已验证 actor 为起点，同账户路由重验证的暂空状态不误判为换号；即使账户替换发生在首帧前，也不会自动跟随新 actor。新账户需要显式 Jump。
 
+近期列表为空但服务端全局未读数已确认归零时，反馈真实的“已没有未读通知”，不再误报写入失败；错误、pending 和换号门禁仍优先，不补造任何行或 readAt。此边界先由单元 RED 复现，再验证真实浏览器中的 controller/UI 反馈。
+
 ## 有效生产行审计
 
 复现命令（Node.js 24、仓库冻结依赖）：
@@ -34,7 +36,7 @@ node docs/audit/locale-dialog-lines.ts
 - 自动剔除空白、注释、纯标点、imports、类型、全库基线已有的规范化行和本轮重复片段。
 - 测试、审计/验证脚本、文档、配置、CSS、翻译字典、静态 JSX-only 文案以及字体等生成物不参与计数。
 - 再经独立的逐行语义复核，以 `locale-dialog-line-exclusions.json` 精确扣除搬移、改名、薄包装、静态标签、无初始化的类型占位等；额外扣除了尚无生产消费点的 model.loaded/visible 返回字段。行号和原文必须同时匹配，否则脚本失败。
-- 最终 **894 个候选 − 91 个语义扣除 = 803 行有效生产代码**。逐文件行号、源码 SHA-256 与总数见 `locale-dialog-line-count.json`；不使用新增测试或字体文件凑数。
+- 最终 **895 个候选 − 91 个语义扣除 = 804 行有效生产代码**。逐文件行号、源码 SHA-256 与总数见 `locale-dialog-line-count.json`；不使用新增测试或字体文件凑数。
 
 ## 已执行验证
 
@@ -42,11 +44,11 @@ node docs/audit/locale-dialog-lines.ts
 
 | 检查 | 通过 | 失败 | 跳过 | 说明 |
 | --- | ---: | ---: | ---: | --- |
-| 根 `pnpm test` | 2063 | 0 | 445 | 此入口未设置 `TEST_DATABASE_URL`；PostgreSQL 合同另行实跑 |
+| 根 `pnpm test` | 2064 | 0 | 445 | 此入口未设置 `TEST_DATABASE_URL`；PostgreSQL 合同另行实跑 |
 | API `test:integration`，真实 PostgreSQL 17.9 | 675 | 0 | 0 | 临时独立测试库/隔离 schema，不是模拟 PG |
 | API `test:unit` | 563 | 0 | 0 | 原有 API 行为完整保留 |
 | Web 全套，连接真实 PG | 276 | 0 | 0 | 包含私有 shell、HTTP/cache、账户与共享刷新 |
-| 5 个通知/焦点浏览器 spec | 44 | 0 | 0 | Chromium；焦点、locale、同步及真实账户切换/隔离 |
+| 5 个通知/焦点浏览器 spec | 45 | 0 | 0 | Chromium；焦点、locale、同步及真实账户切换/隔离 |
 | portable-stack / SQLite | 9 | 0 | 1 | 唯一 skip 为 PG 专属 outbox drain |
 | portable-stack / PostgreSQL + worker | 10 | 0 | 0 | 真实 worker/drain 与全链路 HTTP |
 
@@ -54,7 +56,7 @@ node docs/audit/locale-dialog-lines.ts
 
 选择定位、异步/导航提交到 paint 的意图间隙、返回铃铛后的反向 Tab、CSS 优先级所有权均先由真实浏览器复现 RED，再修复并合并复测；未删除隐私、actor header、读状态或重试次数断言。旧安全测试在框外操作后先验证非模态铃铛关闭，再于授权恢复后重新打开；隐藏 DOM 的清理仍保留断言。`pagehide(persisted)` 用合成事件验证同步清理，不能据此声称命中了真实 BFCache。
 
-全量 182 条浏览器用例、容器镜像与 `required-checks` 以本轮最终提交的 CI 结果为准。当前环境没有 Docker，因此未运行本地 Docker 容器镜像验证及依赖 Docker 的 `pnpm test:all` 总入口；没有用本地部分绿替代最终 CI。分支保护设置 API 为 403，也不视为免除 required checks。
+全量 183 条浏览器用例、容器镜像与 `required-checks` 以本轮最终提交的 CI 结果为准。当前环境没有 Docker，因此未运行本地 Docker 容器镜像验证及依赖 Docker 的 `pnpm test:all` 总入口；没有用本地部分绿替代最终 CI。分支保护设置 API 为 403，也不视为免除 required checks。
 
 ## 字体、依赖与安全审查
 

@@ -311,9 +311,9 @@
     },
     {
       "file": "packages/web-ui/src/lib/notification-inbox-model.ts",
-      "sha256": "2fb90e11833295db379aa4084dea11ba9a4a219cc29e3927b88b8220a697f954",
-      "changed": 136,
-      "executableCandidateLines": 82,
+      "sha256": "e69d06316780d893596b7cbd7e5fb1ba718c7df7395b1f0a45ef7af8fe37cff5",
+      "changed": 137,
+      "executableCandidateLines": 83,
       "semanticExclusions": [
         20,
         48,
@@ -321,7 +321,7 @@
         87,
         101
       ],
-      "executableNewLines": 77,
+      "executableNewLines": 78,
       "lines": [
         9,
         10,
@@ -399,7 +399,8 @@
         129,
         131,
         132,
-        133
+        133,
+        134
       ]
     },
     {
@@ -1100,9 +1101,9 @@
       ]
     }
   ],
-  "candidates": 894,
+  "candidates": 895,
   "semanticDeductions": 91,
-  "total": 803,
+  "total": 804,
   "minimum": 800,
   "satisfied": true
 }

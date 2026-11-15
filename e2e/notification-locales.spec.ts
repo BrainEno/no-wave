@@ -299,3 +299,20 @@ test("new outside input after a navigation commit cancels the chrome's queued de
     expect(api.calls.filter(call => call.method !== "GET")).toHaveLength(0);
   } finally { await releaseFrames(); }
 });
+
+test("an empty recent inbox confirms a successful whole-inbox read from the authoritative total", async ({ page, baseURL }) => {
+  const api = await fixture(page, baseURL!);
+  api.items.splice(0);
+  api.countBody({ data: 5 });
+  await page.goto("/en/notifications");
+  const inbox = page.getByRole("region", { name: "Notifications", exact: true });
+  await expect(inbox).toContainText("Unread notifications remain.");
+  api.countBody({ data: 0 });
+  await inbox.getByRole("button", { name: "Mark all read", exact: true }).click();
+  await expect(inbox.getByRole("status")).toHaveText("No unread notifications remain.");
+  await expect(inbox.getByRole("button", { name: "Mark all read", exact: true })).toHaveCount(0);
+  await expect(inbox.getByRole("alert")).toHaveCount(0);
+  await expect(inbox.locator(".nw-authoring-inbox-row")).toHaveCount(0);
+  expect(api.calls.filter(call => call.method !== "GET")).toHaveLength(1);
+  expect(api.calls.find(call => call.method === "POST")?.path).toBe("/api/authoring/notifications/read-all");
+});

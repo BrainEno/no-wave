@@ -128,6 +128,7 @@ export function inboxActionFeedback(before: NotificationSnapshot, after: Notific
   if (action.id !== undefined) {
     return after.items.some(row => row.item.id === action.id && row.read) ? copy.marked : copy.failed;
   }
+  if (after.unread === 0) return copy.noneUnread;
   const previouslyUnread = before.items.filter(row => !row.read);
   const confirmed = new Map(after.items.map(row => [row.item.id, row.read]));
   return previouslyUnread.length > 0 && previouslyUnread.every(row => confirmed.get(row.item.id) === true) ? copy.markedAll : copy.failed;
