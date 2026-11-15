@@ -35,6 +35,7 @@ export const MIN_AUTH_SECRET_BYTES = 32;
 
 export const DEFAULT_API_PORT = 4000;
 export const DEFAULT_WEB_PORT = 3000;
+export const DEFAULT_WORKER_HEALTH_PORT = 4001;
 export const DEFAULT_LISTEN_HOST = "0.0.0.0";
 export const DEFAULT_LOOPBACK_HOST = "127.0.0.1";
 export const DEFAULT_SQLITE_PATH = "data/no-wave.sqlite";
@@ -55,6 +56,8 @@ export type LocalDevConfig = {
    */
   api: { host: string; port: number; listenBaseUrl: string; baseUrl: string };
   web: { host: string; port: number; listenBaseUrl: string; baseUrl: string };
+  worker: { host: string; port: number; listenBaseUrl: string };
+  supervision: { recoveryTimeoutMs: number };
   persistence: { provider: string; description: string; external: boolean };
   auth: { configuredBytes: number };
   issues: LocalDevIssue[];
@@ -232,6 +235,15 @@ export function resolveLocalDevConfig(env: NodeJS.ProcessEnv = process.env): Loc
 
   const apiHost = nonEmpty(env.HOST) ?? DEFAULT_LISTEN_HOST;
   const webHost = nonEmpty(env.WEB_HOST) ?? DEFAULT_LISTEN_HOST;
+  const workerPort = parsePort(nonEmpty(env.OUTBOX_HEALTH_PORT), DEFAULT_WORKER_HEALTH_PORT, "OUTBOX_HEALTH_PORT");
+  if (workerPort.issue) issues.push({ ...workerPort.issue, code: "INVALID_WORKER_PORT" });
+  const workerHost = nonEmpty(env.OUTBOX_HEALTH_HOST) ?? DEFAULT_LOOPBACK_HOST;
+  const recoveryInput = nonEmpty(env.DEV_RECOVERY_TIMEOUT_MS) ?? "15000";
+  const recoveryTimeoutMs = Number(recoveryInput);
+  if (!/^\d+$/.test(recoveryInput) || !Number.isSafeInteger(recoveryTimeoutMs) || recoveryTimeoutMs < 1000 || recoveryTimeoutMs > 120_000) {
+    issues.push({ code: "INVALID_DEV_RECOVERY_TIMEOUT", message: "DEV_RECOVERY_TIMEOUT_MS is not a bounded recovery deadline.",
+      remedy: "Use an integer between 1000 and 120000 milliseconds; the default is 15000." });
+  }
   const configuredApiBaseUrl = nonEmpty(env.API_BASE_URL);
   const configuredWebBaseUrl = nonEmpty(env.WEB_BASE_URL);
 
@@ -243,6 +255,9 @@ export function resolveLocalDevConfig(env: NodeJS.ProcessEnv = process.env): Loc
   let description: string;
   if (provider === "sqlite") {
     const configuredPath = nonEmpty(env.DATABASE_PATH) ?? DEFAULT_SQLITE_PATH;
+    if (configuredPath === ":memory:") issues.push({ code: "WORKER_REQUIRES_DURABLE_DB",
+      message: "An in-memory SQLite database cannot be shared by the API and notification worker.",
+      remedy: "Use a file in DATABASE_PATH (for example data/no-wave.sqlite), then run `pnpm db:migrate`." });
     const absolutePath = configuredPath === ":memory:" ? configuredPath : resolve(apiPackageDirectory, configuredPath);
     // A repository-relative path is enough to find the file and avoids leaking
     // the developer's home directory into copied terminal output.
@@ -270,6 +285,8 @@ export function resolveLocalDevConfig(env: NodeJS.ProcessEnv = process.env): Loc
       listenBaseUrl: loopbackBaseUrl(webPort.port),
       baseUrl: configuredWebBaseUrl ?? loopbackBaseUrl(webPort.port),
     },
+    worker: { host: workerHost, port: workerPort.port, listenBaseUrl: loopbackBaseUrl(workerPort.port) },
+    supervision: { recoveryTimeoutMs },
     persistence: { provider, description, external },
     auth: { configuredBytes: auth.bytes },
     issues,

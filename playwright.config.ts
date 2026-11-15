@@ -45,7 +45,7 @@ export default defineConfig({
   // The suite runs against the production build, not the dev server: a cold CI
   // runner needs longer to compile than a test should wait, and the production
   // server is what readers actually use. The API side is the same process
-  // `pnpm dev --api-only` starts. A developer who already has `pnpm dev`
+  // `pnpm dev --api-only` starts, including its independent worker. A developer who already has `pnpm dev`
   // running keeps it — nothing is started twice.
   webServer: [
     {
@@ -58,6 +58,15 @@ export default defineConfig({
       stderr: "pipe",
       timeout: 240_000,
     },
+    // Isolated browser shards bypass dev.ts to exclude .env.local. They must
+    // still consume their own durable outbox, not quietly leave messages queued.
+    ...(isolatedStack ? [{
+      command: "node apps/api/src/persistence/notification-worker.ts",
+      wait: { stdout: /"event":"worker_ready"/ },
+      stdout: "pipe" as const,
+      stderr: "pipe" as const,
+      timeout: 30_000,
+    }] : []),
     {
       // The application's own production server: plain Node.js, no platform
       // adapter (`apps/web-rr/server.ts`). It only needs somewhere to listen.

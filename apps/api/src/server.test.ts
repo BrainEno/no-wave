@@ -53,7 +53,7 @@ function signedToken(sub) {
 }
 
 function completeFakeAdapter(overrides = {}) {
-  const adapter = { async health() { return true; } };
+  const adapter = { async health() { return true; }, async outboxBacklog() { return { pendingEvents: 0, deadLetterEvents: 0, oldestPendingAgeMs: 0 }; } };
   for (const methods of Object.values(persistencePortMethods)) {
     for (const method of methods) {
       if (typeof adapter[method] !== "function") {
@@ -100,6 +100,7 @@ test("readiness returns 503 when PostgreSQL persistence is not configured", asyn
     assert.match(response.headers.get("cache-control") ?? "", /no-store/i);
     assert.deepEqual(await response.json(), {
       status: "not_ready", service: "api", persistence: "unavailable", auth: "ok",
+      notifications: { status: "unavailable", pendingEvents: null, deadLetterEvents: null, oldestPendingAgeMs: null, sampledAt: null },
     });
   }, { env: authEnv });
 });
@@ -110,8 +111,11 @@ test("readiness succeeds only when persistence health check succeeds", async () 
   await withServer(async (baseUrl) => {
     const response = await fetch(`${baseUrl}/ready`);
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), {
+    const body = await response.json();
+    assert.match(body.notifications.sampledAt, /^\d{4}-\d{2}-\d{2}T/);
+    assert.deepEqual(body, {
       status: "ready", service: "api", persistence: "ok", auth: "ok",
+      notifications: { status: "ok", pendingEvents: 0, deadLetterEvents: 0, oldestPendingAgeMs: 0, sampledAt: body.notifications.sampledAt },
     });
     assert.equal(checks, 1);
   }, { store, env: authEnv });
@@ -119,12 +123,16 @@ test("readiness succeeds only when persistence health check succeeds", async () 
 
 test("readiness works when application services are injected directly", async () => {
   let checks = 0;
-  const applicationServices = { async health() { checks += 1; return true; } };
+  const applicationServices = { async health() { checks += 1; return true; },
+    async outboxBacklog() { return { pendingEvents: 0, deadLetterEvents: 0, oldestPendingAgeMs: 0 }; } };
   await withServer(async (baseUrl) => {
     const response = await fetch(`${baseUrl}/ready`);
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), {
+    const body = await response.json();
+    assert.match(body.notifications.sampledAt, /^\d{4}-\d{2}-\d{2}T/);
+    assert.deepEqual(body, {
       status: "ready", service: "api", persistence: "ok", auth: "ok",
+      notifications: { status: "ok", pendingEvents: 0, deadLetterEvents: 0, oldestPendingAgeMs: 0, sampledAt: body.notifications.sampledAt },
     });
     assert.equal(checks, 1);
   }, { applicationServices, env: authEnv });
@@ -152,7 +160,10 @@ test("readiness identifies bad auth configuration without leaking values or hidi
     await withServer(async (baseUrl) => {
       const response = await fetch(`${baseUrl}/ready`);
       assert.equal(response.status, 503);
-      assert.deepEqual(await response.json(), { status: "not_ready", service: "api", persistence: "ok", auth: "unavailable" });
+      const body = await response.json();
+      assert.match(body.notifications.sampledAt, /^\d{4}-\d{2}-\d{2}T/);
+      assert.deepEqual(body, { status: "not_ready", service: "api", persistence: "ok", auth: "unavailable",
+        notifications: { status: "ok", pendingEvents: 0, deadLetterEvents: 0, oldestPendingAgeMs: 0, sampledAt: body.notifications.sampledAt } });
       assert.equal((await fetch(`${baseUrl}/health`)).status, 200);
       const protectedResponse = await fetch(`${baseUrl}/api/v1/me`, { headers: { authorization: "Bearer a.b.c" } });
       assert.equal(protectedResponse.status, 503);

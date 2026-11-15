@@ -27,11 +27,12 @@ export type DispatchOutboxBatchInput = {
   maxRetryDelaySeconds?: number;
   maxAttempts?: number;
   onDeliveryFailure?: ((failure: OutboxDeliveryFailure) => void) | null;
+  signal?: AbortSignal;
 };
 
 export async function dispatchOutboxBatch({
   store, deliver, limit = 25, leaseSeconds = 60,
-  retryDelaySeconds, maxRetryDelaySeconds, maxAttempts, onDeliveryFailure = null,
+  retryDelaySeconds, maxRetryDelaySeconds, maxAttempts, onDeliveryFailure = null, signal,
 }: DispatchOutboxBatchInput) {
   if (!store || typeof store.claimOutboxEvents !== "function" ||
       typeof store.markOutboxDelivered !== "function" || typeof store.rescheduleOutboxEvent !== "function") {
@@ -42,7 +43,7 @@ export async function dispatchOutboxBatch({
   if (!Number.isInteger(leaseSeconds) || leaseSeconds < 1 || leaseSeconds > 3600) throw new TypeError("leaseSeconds must be an integer between 1 and 3600.");
   const policy = resolveOutboxRetryPolicy({ retryDelaySeconds, maxRetryDelaySeconds, maxAttempts });
   let claimed = 0, delivered = 0, failed = 0, deadLettered = 0;
-  while (claimed < limit) {
+  while (claimed < limit && !signal?.aborted) {
     // Claim just before delivery so later events do not expire waiting in a batch.
     const [event] = await store.claimOutboxEvents({ limit: 1, leaseSeconds, maxAttempts: policy.maxAttempts });
     if (!event) break;
