@@ -8,7 +8,8 @@
     ".": "./src/index.ts",
     "./policy": "./src/policy.ts",
     "./log": "./src/log.ts",
-    "./client-address": "./src/client-address.node.ts"
+    "./client-address": "./src/client-address.node.ts",
+    "./refresh-runtime": "./src/refresh-runtime.node.ts"
   },
   "scripts": {
     "test": "node --test test/*.test.ts",

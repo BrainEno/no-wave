@@ -87,34 +87,22 @@ export function signAccessToken({
 
 /**
  * Verify a compact access JWT signed with HS256 using a server-only secret.
- * Tokens require the access-token type, issuer, audience, iat, exp, sub and jti.
+ * Tokens require the access-token type, issuer, audience, iat, exp, sub, sid and jti.
  * Access-token lifetime is bounded even if the trusted issuer accidentally
  * emits an excessively long expiry. Revocation is checked by the caller.
- *
- * `sessionId` is null for a token issued before `sid` existed. Callers that use
- * it to identify a session must treat that as "unknown" — never as a value that
- * happens to look like one.
+ * Missing legacy session identities are no longer accepted after their bounded
+ * migration window; verification uses the issuer's exact lifetime ceiling.
  */
 export function verifyBearerToken(
   request: Request,
   env: NodeJS.ProcessEnv = process.env,
   nowSeconds = Math.floor(Date.now() / 1000),
-): { id: string; sessionId: string | null; accessTokenId: string; sessionExpiresAt: number } | null {
+): { id: string; sessionId: string; accessTokenId: string; sessionExpiresAt: number } | null {
   const authorization = request.headers.get("authorization");
   const match = typeof authorization === "string" ? BEARER_PREFIX.exec(authorization) : null;
   if (!match || match[1].length > MAX_BEARER_TOKEN_LENGTH) return null;
 
-  const secret = env.AUTH_JWT_SECRET;
-  if (typeof secret !== "string" || Buffer.byteLength(secret, "utf8") < 32) {
-    throw new AuthenticationConfigurationError("AUTH_JWT_SECRET must contain at least 32 bytes.");
-  }
-
-  const issuer = env.AUTH_JWT_ISSUER;
-  const audience = env.AUTH_JWT_AUDIENCE;
-  if (!issuer || !audience) {
-    throw new AuthenticationConfigurationError("AUTH_JWT_ISSUER and AUTH_JWT_AUDIENCE are required when JWT authentication is enabled.");
-  }
-  const maxTokenTtl = configuredMaxTokenTtl(env);
+  const { secret, issuer, audience, ttlSeconds: maxTokenTtl } = accessIssuerConfiguration(env);
 
   const parts = match[1].split(".");
   if (parts.length !== 3 || parts.some((part) => part.length === 0)) return null;
@@ -162,16 +150,13 @@ export function verifyBearerToken(
   if (typeof claims.sub !== "string" || claims.sub.length === 0 || claims.sub.trim() !== claims.sub) return null;
   if (typeof claims.jti !== "string" || claims.jti.length === 0 || claims.jti.trim() !== claims.jti) return null;
 
-  // Identity and revocable session IDs are opaque: never silently normalize them.
-  const sessionId = typeof claims.sid === "string" && claims.sid.length > 0 && claims.sid.trim() === claims.sid
-    ? claims.sid
-    : null;
-  return { id: claims.sub, sessionId, accessTokenId: claims.jti, sessionExpiresAt: claims.exp };
+  if (typeof claims.sid !== "string" || claims.sid.length === 0 || claims.sid.trim() !== claims.sid) return null;
+  return { id: claims.sub, sessionId: claims.sid, accessTokenId: claims.jti, sessionExpiresAt: claims.exp };
 }
 
 export function createAuthContext(
   request: Request,
   env: NodeJS.ProcessEnv = process.env,
-): { user: { id: string; sessionId: string | null; accessTokenId: string; sessionExpiresAt: number } | null } {
+): { user: { id: string; sessionId: string; accessTokenId: string; sessionExpiresAt: number } | null } {
   return { user: verifyBearerToken(request, env) };
 }

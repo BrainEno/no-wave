@@ -17,9 +17,15 @@ export type RefreshFailure = Readonly<{
 /** null/undefined remain supported for existing injected coordinators. */
 export type RefreshOutcome = TokenSet | null | undefined | RefreshFailure;
 
+/** Server-owned metadata; an aborted waiter must never cancel its shared owner.
+ * `timeoutMs` is an optional waiter budget, NOT the upstream HTTP timeout.
+ * `endpoint` is the canonical URL from apiUrl, used to bind shared namespaces.
+ */
+export type RefreshCoordinatorContext = Readonly<{ signal?: AbortSignal; timeoutMs?: number; endpoint?: string }>;
+
 export type RefreshCoordinator = {
   /** Perform `rotate()` at most once per key within a short reuse window. */
-  resolve(key: string, rotate: () => Promise<RefreshOutcome>): Promise<RefreshOutcome>;
+  resolve(key: string, rotate: () => Promise<RefreshOutcome>, context?: RefreshCoordinatorContext): Promise<RefreshOutcome>;
 };
 
 /** Domain separation, so a digest can never collide with another protocol's. */
@@ -76,7 +82,7 @@ const DEFAULT_MAX_ENTRIES = 1_024;
  */
 const DEFAULT_TRANSIENT_MS = 250;
 
-/** The shipped coordinator: a single-flight promise plus a short result ledger. */
+/** The single-process default: a promise plus a short in-memory result ledger. */
 export class InMemoryRefreshCoordinator implements RefreshCoordinator {
   private readonly pending = new Map<string, Promise<RefreshOutcome>>();
   private readonly settled = new Map<string, { at: number; outcome: RefreshOutcome }>();

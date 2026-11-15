@@ -10,6 +10,8 @@ import { createRequestListener } from "@react-router/node";
 import { compressResponse } from "./compression.ts";
 import { createWebClientAddressBridge } from "@bot-thk/web-http/client-address";
 import { browserSecurityHeaders } from "./document-security.ts";
+import { createWebRefreshRuntime } from "./refresh/runtime.ts";
+import { createRefreshMetricsHandler } from "./refresh/metrics-handler.ts";
 
 /**
  * Production server for the prototype: Node.js `http` only — no Vercel service
@@ -24,6 +26,8 @@ import { browserSecurityHeaders } from "./document-security.ts";
 const rootEnvFile = fileURLToPath(new URL("../../.env.local", import.meta.url));
 if (existsSync(rootEnvFile)) process.loadEnvFile(rootEnvFile);
 const clientAddressBridge = createWebClientAddressBridge(process.env);
+const refreshMetrics = createRefreshMetricsHandler(process.env);
+const refreshRuntime = await createWebRefreshRuntime(process.env, sample => writeLogLine("web_refresh_coordination", sample));
 
 const buildDir = resolve(process.env.RR_BUILD_DIR ?? "build/client");
 const serverBuildDir = resolve(process.env.RR_SERVER_BUILD_DIR ?? "build/server/index.js");
@@ -165,11 +169,19 @@ const server = createServer((request: IncomingMessage, response: ServerResponse)
     response.end("Shutting down");
     return;
   }
+  if (refreshMetrics(request, response, () => refreshRuntime.metrics())) return;
   if (target === "/healthz" || target.startsWith("/healthz?")) {
     // Deliberately not logged: a host probes this every few seconds, and health
     // checks would otherwise be the loudest and least interesting line in the
     // drain — enough of them to bury the requests that actually matter.
     serveHealthCheck(response);
+    return;
+  }
+
+  if (target === "/readyz" || target.startsWith("/readyz?")) {
+    const readiness = refreshRuntime.readiness();
+    response.writeHead(readiness.ready ? 200 : 503, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex" });
+    response.end(JSON.stringify(readiness));
     return;
   }
 
@@ -193,7 +205,7 @@ const server = createServer((request: IncomingMessage, response: ServerResponse)
     logCompletion();
   });
 
-  clientAddressBridge.run(request, () => compressResponse(request, response, () => {
+  clientAddressBridge.run(request, () => refreshRuntime.run(() => compressResponse(request, response, () => {
     serveStatic(request, response)
       .then((served) => {
         if (!served) handleRequest(request, response);
@@ -202,10 +214,11 @@ const server = createServer((request: IncomingMessage, response: ServerResponse)
         if (!response.headersSent) response.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
         response.end("Internal Server Error");
       });
-  }));
+  })));
 });
 
 server.listen(port, host, () => {
+  writeLogLine("web_refresh_coordination_configured", { mode: refreshRuntime.mode });
   writeLogLine("server_listening", { host, port, pid: process.pid, node: process.version, buildDir });
   writeLogLine("client_address_forwarding_configured", { enabled: clientAddressBridge.enabled, trustedProxyHops: clientAddressBridge.trustedProxyHops });
 });
@@ -221,24 +234,26 @@ function stop(signal: string): void {
   server.close();
   server.closeIdleConnections();
 
+  let finishing = false;
   const finish = (forced: boolean): void => {
-    writeLogLine("server_shutdown_complete", {
-      signal,
-      inFlight,
-      durationMs: Date.now() - startedAt,
-      forced,
-    });
-    if (forced) {
-      // The grace window expired: cut the rest rather than let the platform do
-      // it less politely.
-      server.closeAllConnections();
-      process.exit(0);
-    }
+    if (finishing) return;
+    finishing = true;
     server.closeAllConnections();
-    process.exitCode = 0;
-    // Nothing should keep the loop alive now; if something does, do not hang
-    // the deployment on it.
-    setTimeout(() => process.exit(0), 500).unref();
+    let settled = false;
+    const complete = (coordinationDrained: boolean): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(cleanupDeadline);
+      writeLogLine("server_shutdown_complete", { signal, inFlight, durationMs: Date.now() - startedAt,
+        forced, coordinationDrained });
+      process.exitCode = coordinationDrained ? 0 : 1;
+      if (forced || !coordinationDrained) process.exit(process.exitCode);
+      setTimeout(() => process.exit(0), 500).unref();
+    };
+    // Closing the coordination pool shares the original absolute HTTP budget.
+    const remaining = Math.max(1, SHUTDOWN_GRACE_MS - (Date.now() - startedAt));
+    const cleanupDeadline = setTimeout(() => complete(false), remaining);
+    void refreshRuntime.close().then(complete, () => complete(false));
   };
 
   if (inFlight === 0) {

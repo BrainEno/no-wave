@@ -5,6 +5,7 @@ import { defineConfig } from "vite";
 import { parseAllowedDevOrigins } from "@bot-thk/web-ui/src/lib/dev-origins.ts";
 import { firstPartyFontLicenses } from "./font-licenses.ts";
 import { clientAddressIngress } from "./client-address-ingress.ts";
+import { refreshCoordinationIngress } from "./refresh-ingress.ts";
 
 // Environment contract: the repository-root `.env.local` is the single developer
 // configuration file, and a value already exported in the shell wins over it.
@@ -34,7 +35,7 @@ function allowedDevHosts(): string[] | true {
  * navigation adapter left to alias.
  */
 export default defineConfig({
-  plugins: [clientAddressIngress(), reactRouter(), firstPartyFontLicenses()],
+  plugins: [clientAddressIngress(), refreshCoordinationIngress(), reactRouter(), firstPartyFontLicenses()],
   build: {
     // Keep even tiny Unicode shards addressable and independently cacheable;
     // inlining them would hide their transfer cost inside a global stylesheet.
@@ -46,10 +47,10 @@ export default defineConfig({
   // React Router 8 uses environment-level resolution. Keep the Node ingress and
   // SSR on one module/AsyncLocalStorage instance, not an inlined copy per build.
   environments: { ssr: {
-    resolve: { external: ["@bot-thk/web-http/client-address"] },
+    resolve: { external: ["@bot-thk/web-http/client-address", "@bot-thk/web-http/refresh-runtime"] },
     // Node 24 loads this TypeScript package entry directly; do not let the
     // bundler's ordinary TS-source inlining create a second request store.
-    build: { rolldownOptions: { external: ["@bot-thk/web-http/client-address"] } },
+    build: { rolldownOptions: { external: ["@bot-thk/web-http/client-address", "@bot-thk/web-http/refresh-runtime"] } },
   } },
   resolve: {
     alias: [

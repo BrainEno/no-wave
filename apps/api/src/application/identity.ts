@@ -212,14 +212,8 @@ export function createIdentityService({ store, env, mailer = null, onMailDeliver
   onMailDelivery?: MailDeliveryObserver | null;
 }) {
   const delivery: IdentityMailer | null = mailer ?? resolveIdentityMailer(env);
-  let rateOperations = 0;
   async function consume(scope: string, subject: string, limit: number, windowSeconds: number, secret: string): Promise<void> {
-    // Opportunistic bounded cleanup; no detached work can outlive the request.
-    rateOperations += 1;
-    if (rateOperations >= 128) {
-      rateOperations = 0;
-      await store.pruneExpiredIdentityState();
-    }
+    // Expired state is swept by the explicit maintenance runner, never by an identity request.
     const result = await store.consumeRateLimit({ key: rateKey(secret, scope, subject), limit, windowSeconds });
     if (!result.allowed) {
       const wait = Math.ceil((new Date(result.resetAt).getTime() - Date.now()) / 1000);

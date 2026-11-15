@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-11-01
+- Amended: 2026-11-12 — #319, end the bounded no-`sid` compatibility window
 - Fixes: #129 (a password change can sign out the session that made it) and #132 (a 500 can leave the
   new password behind with the old sessions still signed in)
 
@@ -41,9 +42,25 @@ alongside `jti`. `verifyBearerToken` returns both:
 - `sessionId` (`sid`) — the session the token was minted from. It is what "spare the session that
   proved it knew the old password" needs.
 
-A token minted before `sid` existed is still accepted; its `sessionId` is `null`, which a caller
-must read as *unknown*, never as a value that might match something. `changePassword` then spares
-nothing: the safe direction, bounded by the access token's own lifetime.
+The original decision temporarily accepted tokens without `sid`, returning an unknown
+`sessionId` and sparing no session. **The 2026-11-12 amendment explicitly retires that
+compatibility**, rather than silently changing it: missing, empty, non-string or
+whitespace-normalized `sid` now fails authentication. `jti` is never a fallback.
+
+Issuer and verifier now use the same effective maximum lifetime:
+`min(900, AUTH_JWT_MAX_TTL_SECONDS)` seconds. The configuration parser still accepts
+60–86400 for configuration compatibility, but values above 900 cannot authorize
+longer-lived tokens. This closes the previous 15-minute issuer / 24-hour verifier
+policy split, not a claim that a signature/key compromise has been demonstrated.
+
+More than the former maximum 24-hour lifetime has elapsed since the 2026-11-01
+self-hosted issuer began issuing `sid`. Self-hosted sessions can refresh normally;
+there is no database migration or new forced family revocation. An independently
+operated issuer that **still** emits no `sid` or lifetimes over the effective ceiling
+must be updated and allowed to drain its old access tokens before a deployment.
+Otherwise those access tokens deliberately receive 401 and a fresh login/token
+exchange may be necessary. This amendment is a recorded compatibility change,
+not proof that any external issuer has already migrated.
 
 **One port method.** `replaceIdentityPassword({ userId, passwordHash, exceptSessionId })` replaces
 `setIdentityPassword` and `revokeIdentitySessions`. Inside a single transaction, and in this order:
@@ -64,8 +81,9 @@ guarantee (end a device now, write no credential) and got port methods of its ow
 
 ## Consequences
 
-- No client change. The token format gained a claim; existing tokens still verify, and the route
-  surface, status codes and response bodies are unchanged.
+- No browser contract change. Current issuer tokens still verify. The amendment
+  intentionally rejects the obsolete no-`sid` shape and over-ceiling external
+  tokens; the route surface, status codes and response bodies are unchanged.
 - `PUT /api/v1/me/session` (logout) now blacklists the **token** id. It did so before by accident,
   because the token id was what `verifyBearerToken` handed out under the name `sessionId`.
 - The password-change response still carries `revokedSessions`; it is now the count the transaction
@@ -75,6 +93,8 @@ guarantee (end a device now, write no credential) and got port methods of its ow
   providers that a replacement spares the named session, that a reset spares none, and that a
   replacement whose write violates `NOT NULL` leaves every session signed in and the old credential
   in place; the identity service asserts one call, not two, and that a refused call changes nothing.
-- Additive migration, none needed: `sid` is a claim, not a column. Deploying is a restart, and no
-  user is signed out — a token without `sid` keeps working to the end of its own TTL, which is at
-  most `AUTH_JWT_MAX_TTL_SECONDS`.
+- No schema migration: `sid` is a claim, not a column. Before any separately
+  authorized deployment, review independent issuers as described above. Tests
+  explicitly reject missing/malformed `sid`, 901-second and 24-hour access
+  tokens, and accept a correctly signed 900-second token even with a legacy
+  `AUTH_JWT_MAX_TTL_SECONDS=86400` setting.

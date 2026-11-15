@@ -28,7 +28,9 @@
     "server.ts",
     "compression.ts",
     "react-router.config.ts",
-    "vite.config.ts"
+    "vite.config.ts",
+    "refresh/**/*.ts",
+    "refresh-ingress.ts"
   ],
   "exclude": ["node_modules", "build"]
 }

@@ -188,7 +188,7 @@ export async function forwardAuthoringRequest(
       // could replay a mutation more than once. Every request carrying this same
       // refresh credential joins one rotation instead of consuming the token
       // again — a second presentation would revoke the whole session family.
-      const refreshAttempt = await resolveSessionRefresh(refreshToken, config, timeoutMs);
+      const refreshAttempt = await resolveSessionRefresh(refreshToken, config, timeoutMs, request.signal);
       if (refreshAttempt && !isRefreshFailure(refreshAttempt)) {
         rotated = refreshAttempt;
         accessToken = refreshAttempt.accessToken;

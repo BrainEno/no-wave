@@ -41,12 +41,12 @@ function unavailableRefresh(error: unknown): RefreshFailure {
  * the browser automatically omits one at its Path/expiry boundary while still
  * presenting the very same one-time refresh credential.
  */
-export async function resolveSessionRefresh(refreshToken: string, config: ApiProxyConfig, timeoutMs: number): Promise<RefreshOutcome> {
+export async function resolveSessionRefresh(refreshToken: string, config: ApiProxyConfig, timeoutMs: number, signal?: AbortSignal): Promise<RefreshOutcome> {
   const base = config.apiBaseUrl;
   if (!base) return { kind: "failed", status: 503, code: "SERVICE_UNAVAILABLE", message: "The API service is not configured.", retryAfterSeconds: null };
   try {
     const key = await refreshCoordinatorKey(base, refreshToken);
-    return await coordinatorFor(config).resolve(key, () => rotate(refreshToken, base, config, timeoutMs));
+    return await coordinatorFor(config).resolve(key, () => rotate(refreshToken, base, config, timeoutMs), { signal, endpoint: apiUrl(base, "api/v1/auth/refresh") });
   } catch (error) {
     // An unavailable external coordinator is not permission to rotate without
     // its lock. Fail closed, without exposing driver/configuration diagnostics.
