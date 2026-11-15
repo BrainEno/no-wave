@@ -1,6 +1,7 @@
 # Scheduled maintenance — the one-shot cleanup run
 
 - Date: 2026-11-07
+- Amended: 2026-11-12 — #316 removes identity cleanup from request paths
 - Code: `apps/api/src/persistence/maintenance.ts` (entry point), `apps/api/src/application/maintenance.ts` (the run), `apps/api/src/application/background-tasks.ts` (failure reporting)
 - Related: audit finding F-22 in [full review 2026-11-02](../audit/full-review-2026-11-02.md); [notification worker](notification-worker.md) for the one-shot-process pattern this follows; [API observability](api-observability.md) for the counter
 
@@ -147,10 +148,17 @@ Persistent=true
 
 Nothing in the repository installs any of these; pick one for the deployment.
 
-**The opportunistic sweeps stay.** The write-path triggers (every 128 rate-limit
-checks, every 32 article writes) still run, bounded and now reported. They are a
-supplement, not the trigger: a host that has not installed this job yet still
-cleans up whenever it happens to be busy.
+**Identity cleanup has no request-path fallback (#316).** The old identity
+trigger every 128 authentication rate checks is removed: an unavailable or slow
+prune must not turn login or refresh into a 500/slow request. Hashed throttle
+keys, thresholds and rate decisions are unchanged. Schedule and monitor this
+command before a separately authorized rollout; a busy API or notification
+worker is not a substitute. Expired identity rows may accumulate without the
+job. A failed run exits nonzero with a sanitized task/error class and is retried
+by the scheduler, never by replaying the authentication request.
+
+The distinct article-write opportunistic sweep remains unchanged. This amendment
+does not move article purging, loosen its predicates or install any cron job.
 
 ## 6. What this run does not do
 

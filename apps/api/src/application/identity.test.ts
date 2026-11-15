@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import test from "node:test";
 import { createIdentityService } from "./identity.ts";
+import { runMaintenance } from "./maintenance.ts";
 import { createLogMailer, resolveIdentityMailer } from "./identity-mailer.ts";
 import { SmtpError } from "../infrastructure/smtp-client.ts";
 import {
@@ -27,7 +28,7 @@ test("login fails closed when the verified account state changes before session 
   assert.deepEqual(seenProof, { email, passwordHash }, "the adapter must recheck the exact verified credentials");
 });
 
-test("identity maintenance is periodically invoked without exposing throttle subjects", async () => {
+test("identity requests never run maintenance or expose throttle subjects", async () => {
   const keys = [];
   let cleanups = 0;
   const service = createIdentityService({
@@ -40,7 +41,7 @@ test("identity maintenance is periodically invoked without exposing throttle sub
   });
   const refreshToken = randomBytes(32).toString("base64url");
   for (let i = 0; i < 128; i += 1) await service.logout({ refreshToken }, "192.0.2.123");
-  assert.equal(cleanups, 1);
+  assert.equal(cleanups, 0, "maintenance belongs to its explicit runner, not the 128th request");
   assert.equal(keys.length, 128);
   assert.ok(keys.every((key) => /^[0-9a-f]{64}$/.test(key)));
   assert.equal(new Set(keys).size, 1);
@@ -824,4 +825,31 @@ test("a stale-address token issuance does not send an invalid link", async () =>
   assert.deepEqual(await service.requestPasswordReset({ email: "owner@example.test" }, "192.0.2.10"), { ok: true });
   assert.deepEqual(await service.requestEmailVerification("user-1", "192.0.2.10"), { ok: true, alreadyVerified: false });
   assert.equal(mail.sent.length, 0);
+});
+
+
+test("cleanup failure is absent from login/refresh; explicit maintenance reports it exactly once", async () => {
+  const password = "fixture-maintenance-password-9824";
+  const passwordHash = await hashPassword(password);
+  let pruneCalls = 0;
+  const store = {
+    async consumeRateLimit() { return { allowed: true, resetAt: new Date(Date.now() + 60000).toISOString() }; },
+    async revokeIdentityRefresh() {},
+    async findIdentityAccount() { return { userId: "fixture-user", passwordHash }; },
+    async createIdentitySession() { return true; },
+    async findIdentityRefreshSession() { return { sessionId: "fixture-session" }; },
+    async rotateIdentityRefresh(input) { return { status: "rotated", userId: "fixture-user", sessionId: "fixture-session", accessExpiresAt: input.accessExpiresAt, refreshExpiresAt: new Date(Date.now() + 86400000).toISOString() }; },
+    async pruneExpiredIdentityState() { pruneCalls++; const error = new Error("private-maintenance-canary"); error.name = "FixtureCleanupError"; throw error; },
+  };
+  const service = createIdentityService({ store, env: identityEnv });
+  const refreshToken = randomBytes(32).toString("base64url");
+  for (let i = 0; i < 127; i++) await service.logout({ refreshToken }, "192.0.2.24");
+  assert.equal((await service.login({ email: "fixture@example.test", password }, "192.0.2.24")).tokenType, "Bearer");
+  assert.equal((await service.refresh({ refreshToken }, "192.0.2.24")).tokenType, "Bearer");
+  assert.equal(pruneCalls, 0);
+  const failures = [];
+  const report = await runMaintenance({ store, onBackgroundFailure: failure => failures.push(failure) });
+  assert.equal(pruneCalls, 1); assert.equal(report.ok, false);
+  assert.deepEqual(failures, [{ task: "identity-prune", errorName: "FixtureCleanupError" }]);
+  assert.ok(!JSON.stringify(report).includes("private-maintenance-canary"));
 });

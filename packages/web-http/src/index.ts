@@ -63,6 +63,7 @@ export {
   refreshCoordinatorKey,
   type InMemoryRefreshCoordinatorOptions,
   type RefreshCoordinator,
+  type RefreshCoordinatorContext,
   type RefreshFailure,
   type RefreshOutcome,
 } from "./refresh-coordinator.ts";

@@ -123,7 +123,7 @@ export async function handleAuthRequest(
       return errorResponse("UNAUTHENTICATED", "Please sign in again.", 401);
     }
     if (action === "refresh") {
-      const outcome = await resolveSessionRefresh(refreshToken, config, timeoutMs);
+      const outcome = await resolveSessionRefresh(refreshToken, config, timeoutMs, request.signal);
       if (isRefreshFailure(outcome)) return refreshFailureResponse(outcome);
       if (outcome === null) return errorResponse("UNAUTHENTICATED", "Please sign in again.", 401);
       if (outcome === undefined) return errorResponse("SERVICE_UNAVAILABLE", "The API service could not be reached.", 502);

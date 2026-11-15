@@ -125,24 +125,19 @@ test("issued access tokens satisfy the existing verifier and respect the configu
   assert.throws(() => accessIssuerConfiguration({ ...env, AUTH_JWT_SECRET: "short" }), /at least 32 bytes/);
 });
 
-/**
- * A token minted before tokens carried a session id is still accepted — it is
- * only its own lifetime that is at stake — but it must not be able to name a
- * session it cannot prove: `sessionId` is null, and a caller that spares "the
- * session that made this request" has to see that as unknown rather than as a
- * value that might match something.
- */
-test("a token without a session id is accepted, and says it has no session", () => {
-  const legacy = { ...validClaims };
-  delete legacy.sid;
-  const verified = verifyBearerToken(requestWithToken(token(legacy)), env, now);
-  assert.equal(verified?.id, "user-123", "the token itself is still good");
-  assert.equal(verified?.sessionId, null, "a session that cannot be named is not guessed at");
-  assert.equal(verified?.accessTokenId, "token-123", "and revocation still knows which token this is");
+test("access verification never accepts a lifetime longer than this service can issue", () => {
+  const permissive = { ...env, AUTH_JWT_MAX_TTL_SECONDS: "86400" };
+  assert.equal(accessIssuerConfiguration(permissive).ttlSeconds, 900);
+  assert.equal(verifyBearerToken(requestWithToken(token({ ...validClaims, iat: now, exp: now + 901 })), permissive, now), null);
+  assert.equal(verifyBearerToken(requestWithToken(token({ ...validClaims, iat: now, exp: now + 86400 })), permissive, now), null);
+  assert.equal(verifyBearerToken(requestWithToken(token({ ...validClaims, iat: now, exp: now + 900 })), permissive, now)?.sessionId, "session-123");
+});
 
-  for (const malformed of ["", "  ", " session-123 ", 42, null, {}]) {
-    const claims = { ...validClaims, sid: malformed };
-    assert.equal(verifyBearerToken(requestWithToken(token(claims)), env, now)?.sessionId, null,
-      `a session id of ${JSON.stringify(malformed)} is not a session id`);
+test("access verification rejects missing or malformed session identity after the migration window", () => {
+  const legacy = { ...validClaims }; delete legacy.sid;
+  assert.equal(verifyBearerToken(requestWithToken(token(legacy)), env, now), null);
+  for (const sid of ["", "  ", " session-123 ", 42, null, {}]) {
+    assert.equal(verifyBearerToken(requestWithToken(token({ ...validClaims, sid })), env, now), null,
+      `a session id of ${JSON.stringify(sid)} cannot authenticate`);
   }
 });

@@ -23,7 +23,7 @@ Do not make the new verifier accept missing issuer/audience or silently fall bac
 
 1. Remove access/refresh token values from legacy logs; log only event names and non-sensitive correlation IDs.
 2. Agree on a stable issuer and API audience and define whether access tokens are shared between services or exchanged for API-specific tokens.
-3. Update the trusted issuer to issue tokens with `iss`, `aud`, `sub`, `exp`, and the selected signing algorithm. Use a high-entropy secret of at least 32 bytes if HS256 remains the chosen algorithm. Prefer asymmetric signing if multiple services need verification without token-minting capability.
+3. Update the trusted issuer to issue tokens with `iss`, `aud`, `sub`, `sid`, `jti`, integer `iat`/`exp`, the exact access-token header type, and the selected signing algorithm. Access lifetime must not exceed `min(900, AUTH_JWT_MAX_TTL_SECONDS)` seconds; the 2026-11-12 ADR 0018 amendment no longer accepts missing `sid` or longer external tokens. Use a high-entropy secret of at least 32 bytes if HS256 remains the chosen algorithm. Prefer asymmetric signing if multiple services need verification without token-minting capability.
 4. Decide how `tokenVersion` or another revocation/session mechanism will be checked. Signature and expiry alone do not invalidate a token after a user's session is revoked.
 5. Add contract tests using issuer-produced fixtures and a negative compatibility test for the old token format.
 6. Roll out only after issuer and API configuration are provisioned through secret management and end-to-end tests pass. Never place production secrets in repository files or CI logs.

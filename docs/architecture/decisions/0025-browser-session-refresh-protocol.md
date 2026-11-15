@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-11-04
-- Amended: 2026-11-12 — #324 and the remaining refresh behavior in #314
+- Amended: 2026-11-12 — #324/#314; #318 adds a real shared PostgreSQL coordinator
 - Relates to: #161, #183; [ADR 0012](0012-portable-web-framework-migration.md),
   [ADR 0014](0014-password-recovery-and-email-verification.md),
   [API authentication contract](../api-authentication.md)
@@ -133,31 +133,73 @@ window still reaches the API and can require a new login.
 
 ### 3. Cross-instance is a deployment contract, not a silent assumption
 
-The shipped coordinator is `InMemoryRefreshCoordinator`, scoped to one Web
-process. Production requests share that one instance; a caller that injects its
-own `fetchImpl` gets a separate ledger, so rotation results never cross
-transports. `ApiProxyConfig.refreshCoordinator` is an explicit port so a
-deployment can supply a shared implementation (a distributed lock plus a
-short-TTL result value) without touching the request path. A test pins the
-boundary: two in-memory coordinators are two processes and do not share a
-rotation. The shared implementation must use atomic claims and a short-TTL result,
-protect token values, and handle lease/failure ownership; the v2 key and typed
-outcomes are its protocol, not an implementation of a distributed lock. The
-React Router app does not gain a shared external store through an environment
-flag in this change. **#318 remains open.**
+`InMemoryRefreshCoordinator` remains the single-process default. Native Node
+ingress injects **one coordinator through AsyncLocalStorage** for every BFF/SSR
+request; Vite's external server entry and the production build use that exact
+module instance. Missing context in a declared shared topology fails 503 rather
+than selecting a second memory ledger. `ApiProxyConfig.refreshCoordinator` stays
+a portable injected port: the HTTP package gains no PostgreSQL driver.
 
-**A deployment running more than one Web instance must do one of the following:**
+A deployment must declare its actual `WEB_INSTANCE_COUNT`. A count above one with
+`WEB_REFRESH_COORDINATOR=memory` (including the default) **refuses startup** in
+both development and production. Sticky routing is no longer a supported bypass
+for a declared replica set: crashes/restarts and cookie changes can defeat it.
+Use `WEB_REFRESH_COORDINATOR=postgres` with one shared database, namespace and
+32-byte encryption key. An environment variable alone is not the implementation:
+`apps/web-rr/refresh/` supplies the following protocol.
 
-1. route every request of a browser session to the same Web process (sticky
-   routing keyed on a digest of `nw_refresh`), so the in-memory coordinator is
-   sufficient; or
-2. inject a coordinator whose claim and result are shared across instances.
+1. An explicit `pnpm web:refresh migrate` installs the two Web-owned tables;
+   startup performs no DDL. Replicas verify the key fingerprint, protocol policy,
+   immediate primary key, persistent/WAL-logged table/column/privilege contract,
+   and absence of RLS or enabled application rewrite hooks. Read-only replicas,
+   UNLOGGED tables, schema drift and a wrong key refuse readiness/startup.
+2. A short PostgreSQL transaction serializes each namespace's claim and capacity
+   using a transaction advisory lock. It commits a random owner and durable
+   pending marker **before** calling HTTP. `synchronous_commit=on` is forced
+   locally, even when the role/database default is asynchronous. The lock is
+   not held across HTTP. The first actual canonical refresh endpoint binds a
+   separate fingerprint in the namespace policy: another DNS/base-path alias
+   cannot silently create disjoint generation keys and spend the same token.
+3. The owner alone invokes the callback. Completion is fenced by namespace,
+   generation, owner, pending state and database-clock work deadline. Siblings
+   read one result. A short result is AES-256-GCM encrypted with a fresh nonce;
+   namespace/key/owner/result expiry are authenticated data. No raw token is
+   stored in a coordination row, notification, metric or log.
+4. Successful rotations and definitive 400/401 refusals live at most 5 seconds
+   (and never beyond access expiry). A definitive 429 or other non-500 refusal
+   lives 250 ms, then can retry through a new claim. A timeout, 5xx, malformed
+   success, thrown callback, abandoned owner or uncertain completion retains a
+   **no-replay fence for 30 days plus 60 seconds**. After its short failure
+   result expires, the answer is `503 REFRESH_UNCERTAIN`; sign in again. An expired
+   work deadline is **never** permission to steal a claim or retry a possibly
+   consumed credential. A generic coordination outage/capacity/deadline fails
+   503, never uncoordinated rotation.
+5. LISTEN/NOTIFY contains only namespace/hash wake hints, emitted in the result
+   transaction. Subscriptions are established before claims; reconnect wakes
+   waiters. Hints are bounded/throttled and never authoritative. A missed hint
+   falls back to bounded polling at most every 250 ms.
+6. Per-process request/per-key waiter, pending callback, real driver-concurrency,
+   queue and database namespace-entry bounds are enforced. An aborted waiter
+   releases only that request, not the shared owner. Late timed-out callbacks
+   and database promises retain their admission slots until actual settlement.
+   API-call deadlines start at HTTP, not before the coordination queue. A circuit
+   breaker backs off a failed store and admits one recovery probe, without a
+   memory fallback. Sweeping removes only expired rows in bounded batches.
+7. `/readyz` reports a cached, freshness-bounded dependency check; `/healthz`
+   stays cheap liveness. A separately authenticated, optional metrics endpoint
+   exports fixed-label counters and aggregate storage gauges. HTTP drain and
+   coordinator/pool cleanup share a bounded shutdown budget. See the
+   [operator runbook](../../operations/web-refresh-coordination.md) for limits,
+   migration privileges, recovery, rollout and **unsafe rollback** restrictions.
 
-With neither, concurrent explicit/automatic requests landing on different processes can still replay
-the old token. This is documented, not hidden behind a best-effort lock. Sticky
-routing by the *refresh* cookie (not by source IP) is what keeps a rotation and
-all its retries on one process; session cookies are rewritten by every response,
-so after the first response the browser converges on the new generation.
+This requires a direct/session-capable PostgreSQL connection supporting
+transactions, advisory locks and LISTEN/NOTIFY, and durable database recovery.
+An asynchronous failover that loses acknowledged claims, an old restored
+snapshot, changing namespaces/keys, or deleting pending/uncertain rows can allow
+replay. Do not treat a fresh empty ledger as a recovery strategy. A full database
+write authority remains trusted; encryption protects stored result values, not
+against a compromised Web runtime/key. No API identity rows or one-time refresh
+semantics are changed by this store. The API itself may remain SQLite.
 
 ### 4. The top bar is a state machine, not a cache of identity
 
@@ -189,8 +231,10 @@ bell never writes identity from the marker: a 401 anywhere moves the state to
   replay. Losing the winner's response can still require a new login.
 - **Marker is forgeable.** The consequence is a data-free shell plus one 401.
   It must never be promoted into an authorization signal.
-- **One Web instance is the supported default.** Multi-instance requires the
-  deployment choice in §3; no shared store is shipped in this change.
+- **One Web instance remains the default.** Multi-instance requires the shared
+  PostgreSQL implementation and explicit topology declaration in §3. The process
+  cannot discover an operator's undeclared replicas. This is not public-hosting
+  qualification or deployment authorization (#331).
 
 ## Consequences
 
@@ -209,7 +253,8 @@ bell never writes identity from the marker: a 401 anywhere moves the state to
   See the [authentication quota contract](../api-authentication.md#abuse-controls-and-deployment-limitations).
 - The original decision fixed #161/#183. The amendment fixes the access-cookie
   split and explicit bypass in #324 and completes #314 refresh 429 propagation.
-  It does not implement or close cross-replica coordination (#318).
+  The #318 amendment additionally implements cross-replica coordination; this
+  does not change replay detection in the API or authorize a deployment.
 
 ## Verification map
 
@@ -232,3 +277,11 @@ bell never writes identity from the marker: a 401 anywhere moves the state to
   across real HTTP/API/providers, not an injected fetch/coordinator.
 - `e2e/session-refresh.spec.ts`: actual Chromium Path/HttpOnly jar, concurrent
   explicit/automatic calls and durable 429 recovery with an unspent credential.
+
+- `refresh-shared.integration.test.ts`: real PostgreSQL atomic capacity, encrypted
+  outcomes, abandoned/overdue owners, wrong-key and schema/durability rejection,
+  endpoint-alias binding and API/coordination budget separation.
+- `refresh-shared-web.test.ts`: separate production Web OS processes against the
+  real API on both identity providers; a winner killed after API commit cannot
+  cause its sibling to replay. The required PostgreSQL CI job builds the Web
+  bundle and explicitly runs both shared suites with a real database.

@@ -391,7 +391,7 @@ test("REST messages recover an interrupted notification delivery without duplica
     const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
     const now = Math.floor(Date.now() / 1000);
     const unsigned = `${encode({ alg: "HS256", typ: "application/vnd.bot-thk.access+jwt" })}.${encode({
-      sub, iss: env.AUTH_JWT_ISSUER, aud: env.AUTH_JWT_AUDIENCE, iat: now, exp: now + 60, jti: `session-${sub}`,
+      sub, iss: env.AUTH_JWT_ISSUER, aud: env.AUTH_JWT_AUDIENCE, iat: now, exp: now + 60, sid: `session-${sub}`, jti: `token-${sub}`,
     })}`;
     return `${unsigned}.${createHmac("sha256", secret).update(unsigned).digest("base64url")}`;
   };

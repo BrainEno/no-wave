@@ -71,6 +71,8 @@ jobs:
           node-version: "24"
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Required real multi-Web refresh tests use the production server bundle.
+      - run: pnpm --filter @bot-thk/web-rr build
       - run: pnpm --filter @bot-thk/api test:integration
 
   # Proves the documented local chain on both persistence providers:

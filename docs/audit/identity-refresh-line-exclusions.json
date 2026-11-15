@@ -1,0 +1,153 @@
+{
+  "base": "a2e4aacc68758da939b59d83329503b150937a97",
+  "rules": [
+    {
+      "file": "apps/api/src/security/authentication.ts",
+      "fragments": [
+        {
+          "line": 154,
+          "text": "return { id: claims.sub, sessionId: claims.sid, accessTokenId: claims.jti, sessionExpiresAt: claims.exp };"
+        }
+      ],
+      "reason": "保守扣除原验证结果对象的等价返回；新增 sid 拒绝和统一 TTL 校验另计。"
+    },
+    {
+      "file": "apps/web-rr/refresh-ingress.ts",
+      "fragments": [
+        {
+          "line": 5,
+          "text": "export function refreshCoordinationIngress(): Plugin {"
+        },
+        {
+          "line": 7,
+          "text": "name: \"refresh-coordination-ingress\","
+        },
+        {
+          "line": 9,
+          "text": "async configureServer(server) {"
+        },
+        {
+          "line": 11,
+          "text": "const { createWebRefreshRuntime } = createRequire(import.meta.url)(\"./refresh/runtime.ts\") as typeof import(\"./refresh/runtime.ts\");"
+        }
+      ],
+      "reason": "沿用 client-address-ingress 的插件注册/原生装载结构，不把重命名的入口样板重计。仅计新增运行时初始化、注入和清理。"
+    },
+    {
+      "file": "apps/web-rr/refresh/errors.ts",
+      "fragments": [
+        {
+          "line": 6,
+          "text": "export class RefreshCoordinationError extends Error {"
+        },
+        {
+          "line": 8,
+          "text": "constructor(code: CoordinationFailureCode) {"
+        },
+        {
+          "line": 10,
+          "text": "this.name = \"RefreshCoordinationError\";"
+        }
+      ],
+      "reason": "保守扣除与现有错误适配器同形的类、构造器及名称样板；固定安全错误内容/分类映射才是新增行为。"
+    },
+    {
+      "file": "apps/web-rr/refresh/settings.ts",
+      "fragments": [
+        {
+          "line": 1,
+          "text": "export const REFRESH_REUSE_MS = 5_000;"
+        },
+        {
+          "line": 2,
+          "text": "export const REFRESH_TRANSIENT_MS = 250;"
+        }
+      ],
+      "reason": "原内存协议已经采用 5 秒与 250 ms，抽成共享策略常量不算新实现。"
+    },
+    {
+      "file": "apps/web-rr/refresh/result-codec.ts",
+      "fragments": [
+        {
+          "line": 38,
+          "text": "export function isTransientRefreshOutcome(value: RefreshOutcome): value is RefreshFailure {"
+        },
+        {
+          "line": 39,
+          "text": "return value !== null && value !== undefined && \"kind\" in value && value.kind === \"failed\" && value.status !== 400 && value.status !== 401;"
+        }
+      ],
+      "reason": "保守扣除原内存 ttl 对 400/401 与其他失败的同义分类，不能靠 helper 形式重计。新的 5xx 不确定性长期栅栏分类另计。"
+    },
+    {
+      "file": "apps/web-rr/refresh/runtime.ts",
+      "fragments": [
+        {
+          "line": 61,
+          "text": "} else coordinator = new InMemoryRefreshCoordinator();"
+        }
+      ],
+      "reason": "保留原有单进程默认实现，不把内存协调器重新装配计作新增能力。"
+    },
+    {
+      "file": "packages/web-http/src/refresh-runtime.node.ts",
+      "fragments": [
+        {
+          "line": 4,
+          "text": "const requestCoordinator = new AsyncLocalStorage<RefreshCoordinator>();"
+        },
+        {
+          "line": 12,
+          "text": "export function withRefreshCoordinator<Value>(coordinator: RefreshCoordinator, work: () => Value): Value {"
+        },
+        {
+          "line": 13,
+          "text": "return requestCoordinator.run(coordinator, work);"
+        }
+      ],
+      "reason": "保守扣除现有原生 client-address AsyncLocalStorage 桥接的同形薄包装；新拓扑上下文缺失时失败关闭等判断另计。"
+    },
+    {
+      "file": "apps/web-rr/refresh/command.ts",
+      "fragments": [
+        {
+          "line": 39,
+          "text": "for (const relative of [\"../../../.env.local\", \"../../../.env\"]) {"
+        },
+        {
+          "line": 40,
+          "text": "const path = fileURLToPath(new URL(relative, import.meta.url));"
+        },
+        {
+          "line": 41,
+          "text": "if (existsSync(path)) process.loadEnvFile(path);"
+        },
+        {
+          "line": 47,
+          "text": "if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) await main();"
+        }
+      ],
+      "reason": "沿用现有维护命令的环境装载及直接执行 guard 惯用片段，路径调整不重计。"
+    },
+    {
+      "file": "apps/web-rr/server.ts",
+      "fragments": [
+        {
+          "line": 247,
+          "text": "writeLogLine(\"server_shutdown_complete\", { signal, inFlight, durationMs: Date.now() - startedAt,"
+        }
+      ],
+      "reason": "既有停机完成日志的等价前缀移入回调；只计新增协调排空字段和有界资源清理判断。"
+    },
+    {
+      "file": "packages/web-http/src/session-refresh.ts",
+      "fragments": [
+        {
+          "line": 44,
+          "text": "export async function resolveSessionRefresh(refreshToken: string, config: ApiProxyConfig, timeoutMs: number, signal?: AbortSignal): Promise<RefreshOutcome> {"
+        }
+      ],
+      "reason": "已有函数仅扩展签名不计可执行开发行；实际取消信号与端点注入调用另计。"
+    }
+  ]
+}

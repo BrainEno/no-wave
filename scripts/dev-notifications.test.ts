@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
 import { once } from "node:events";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { createServer } from "node:net";
+import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -13,12 +13,58 @@ import { createSqliteClient, runSqliteMigrations } from "../apps/api/src/persist
 import { createIsolatedPostgresTestSchema } from "../apps/api/src/persistence/test-support/isolated-postgres-schema.ts";
 import { runNotificationDeliverySmoke } from "./notification-delivery-smoke.ts";
 
-async function freePort(): Promise<number> {
-  const server = createServer(); server.listen(0, "0.0.0.0"); await once(server, "listening");
-  const address = server.address(); assert.ok(address && typeof address !== "string");
-  await new Promise<void>(resolve => server.close(() => resolve()));
-  return address.port;
+// Hold the whole tuple so the kernel cannot reissue one role's port to another.
+// The later handoff to the real processes can still race an unrelated listener.
+async function freeServicePorts(createReservation: () => Server = createServer): Promise<[number, number, number]> {
+  const reservations: Server[] = [];
+  const ports: number[] = [];
+  try {
+    for (let role = 0; role < 3; role += 1) {
+      const server = createReservation(); reservations.push(server);
+      server.listen(0, "0.0.0.0"); await once(server, "listening");
+      const address = server.address(); assert.ok(address && typeof address !== "string");
+      ports.push(address.port);
+    }
+    return [ports[0]!, ports[1]!, ports[2]!];
+  } finally {
+    await Promise.all(reservations.filter(server => server.listening).map(server =>
+      new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()))));
+  }
 }
+
+test("the dev fixture holds all three service ports until allocation is complete", async () => {
+  const reservations: Server[] = [];
+  const heldBeforeAllocation: number[] = [];
+  const ports = await freeServicePorts(() => {
+    heldBeforeAllocation.push(reservations.filter(server => server.listening).length);
+    const server = createServer(); reservations.push(server); return server;
+  });
+  assert.deepEqual(heldBeforeAllocation, [0, 1, 2], "a released ephemeral port may be reassigned to another role");
+  assert.equal(new Set(ports).size, 3);
+  assert.ok(reservations.every(server => !server.listening), "all fixture reservations must be released before startup");
+});
+
+test("a failed dev fixture allocation releases every earlier reservation", async () => {
+  const reservations: Server[] = [];
+  await assert.rejects(freeServicePorts(() => {
+    if (reservations.length === 2) throw new Error("fixture allocation failed");
+    const server = createServer(); reservations.push(server); return server;
+  }), /fixture allocation failed/);
+  assert.equal(reservations.length, 2);
+  assert.ok(reservations.every(server => !server.listening));
+});
+
+function startupDiagnostics(output: string): string {
+  return output.split("\n").filter(line => /error|failed|unavailable|exited|stopping/i.test(line))
+    .slice(-20).join("\n").replace(/fixture-only-[a-z0-9-]+/gi, "[redacted fixture secret]");
+}
+
+test("dev startup diagnostics retain the port failure without echoing fixture secrets", () => {
+  const diagnostics = startupDiagnostics("No Wave local development\nerror   Port 12345 is unavailable.\nerror   fixture-only-diagnostic-canary\n");
+  assert.match(diagnostics, /Port 12345 is unavailable/);
+  assert.match(diagnostics, /\[redacted fixture secret\]/);
+  assert.doesNotMatch(diagnostics, /fixture-only|No Wave local development/);
+});
 
 for (const provider of ["sqlite", "postgres"] as const) {
   test(`${provider}: the default dev command starts API, worker and Web, delivering an idempotent private message within two seconds`, {
@@ -35,7 +81,7 @@ for (const provider of ["sqlite", "postgres"] as const) {
     } else {
       const db = createSqliteClient({ filename }); await runSqliteMigrations(db); db.close();
     }
-    const apiPort = await freePort(), workerPort = await freePort(), webPort = await freePort();
+    const [apiPort, workerPort, webPort] = await freeServicePorts();
     const apiUrl = `http://127.0.0.1:${apiPort}`, workerUrl = `http://127.0.0.1:${workerPort}`, webUrl = `http://127.0.0.1:${webPort}`;
     const child = spawn(process.execPath, [fileURLToPath(new URL("./dev.ts", import.meta.url))], {
       env: { PATH: process.env.PATH, HOME: process.env.HOME, NODE_NO_WARNINGS: "1", ...database,
@@ -51,7 +97,7 @@ for (const provider of ["sqlite", "postgres"] as const) {
     try {
       const startupDeadline = Date.now() + 40_000;
       while (!output.includes("Ready.") && Date.now() < startupDeadline && child.exitCode === null) await delay(30);
-      assert.ok(output.includes("Ready."), "the real default dev orchestrator must finish startup");
+      assert.ok(output.includes("Ready."), "the real default dev orchestrator must finish startup; diagnostics:\n" + startupDiagnostics(output));
       assert.equal((await fetch(webUrl + "/")).status, 200);
       const outcome = await runNotificationDeliverySmoke({ apiUrl, workerUrl, deliveryDeadlineMs: 2000 });
       assert.equal(outcome.event, "notification_delivery_smoke_passed");
@@ -80,7 +126,7 @@ for (const fault of ["api", "worker", "web", "worker-stalled"] as const) {
     const directory = await mkdtemp(join(tmpdir(), "nw-dev-fault-"));
     const filename = join(directory, "fault.sqlite");
     const db = createSqliteClient({ filename }); await runSqliteMigrations(db); db.close();
-    const apiPort = await freePort(), workerPort = await freePort(), webPort = await freePort();
+    const [apiPort, workerPort, webPort] = await freeServicePorts();
     const child = spawn(process.execPath, [fileURLToPath(new URL("./dev.ts", import.meta.url))], {
       env: { PATH: process.env.PATH, HOME: process.env.HOME, NODE_NO_WARNINGS: "1",
         DATABASE_PROVIDER: "sqlite", DATABASE_PATH: filename,
@@ -98,7 +144,7 @@ for (const fault of ["api", "worker", "web", "worker-stalled"] as const) {
     try {
       const deadline = performance.now() + 40_000;
       while (!output.includes("Ready.") && performance.now() < deadline && child.exitCode === null) await delay(30);
-      assert.ok(output.includes("Ready."), "all real roles must be ready before injecting a fault");
+      assert.ok(output.includes("Ready."), "all real roles must be ready before injecting a fault; diagnostics:\n" + startupDiagnostics(output));
       const { stdout } = await promisify(execFile)("ps", ["-eo", "pid=,ppid="]);
       const processes = stdout.trim().split("\n").map(line => {
         const [pid, parent] = line.trim().split(/\s+/).map(Number); return { pid: pid!, parent: parent! };

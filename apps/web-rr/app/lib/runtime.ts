@@ -1,6 +1,7 @@
 import { createApiContentClient, resolveApiBaseUrl } from "@/lib/api-content.ts";
 import { resolveUpstreamTimeoutMs, type ApiProxyConfig } from "@bot-thk/web-http";
 import { upstreamClientAddressHeaders } from "@bot-thk/web-http/client-address";
+import { requestRefreshCoordinator } from "@bot-thk/web-http/refresh-runtime";
 
 /**
  * Server-only runtime wiring.
@@ -57,7 +58,7 @@ export function requireContentClient() {
  * happens in one place instead of two.
  */
 export function apiProxyConfig(): ApiProxyConfig {
-  return { apiBaseUrl: optionalApiBaseUrl(), upstreamTimeoutMs: process.env.API_TIMEOUT_MS, clientAddressHeaders: upstreamClientAddressHeaders };
+  return { apiBaseUrl: optionalApiBaseUrl(), upstreamTimeoutMs: process.env.API_TIMEOUT_MS, clientAddressHeaders: upstreamClientAddressHeaders, refreshCoordinator: requestRefreshCoordinator() };
 }
 
 /**

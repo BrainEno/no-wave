@@ -14,6 +14,12 @@ async function freePort(): Promise<number> {
   return address.port;
 }
 
+/** Fixed startup categories only: captured output may contain fixture canaries. */
+export function productionStartupDiagnostics(output: string): string {
+  const categories = ["EADDRINUSE", "ENOENT", "ERR_MODULE_NOT_FOUND", "ERR_REQUIRE_ASYNC_MODULE", "ECONNREFUSED"];
+  return categories.filter(code => new RegExp(`\\b${code}\\b`).test(output)).join(",") || "unclassified";
+}
+
 /** Shared production process: no dev server, fixed port or inherited public API binding. */
 export async function startProductionWeb(environment: Record<string, string>) {
   const port = await freePort();
@@ -42,7 +48,7 @@ export async function startProductionWeb(environment: Record<string, string>) {
     const deadline = Date.now() + 20_000;
     while (Date.now() < deadline) {
       if (spawnError) throw new Error("Production test process could not start.");
-      if (app.exitCode !== null) throw new Error(`Production test process exited ${app.exitCode}.`);
+      if (app.exitCode !== null) throw new Error(`Production test process exited ${app.exitCode} (${productionStartupDiagnostics(output)}).`);
       try {
         const ready = await fetch(`${origin}/healthz`, { signal: AbortSignal.timeout(1000) });
         await ready.body?.cancel();
@@ -50,7 +56,7 @@ export async function startProductionWeb(environment: Record<string, string>) {
       } catch { /* Startup probe only; assertions are never retried. */ }
       await delay(50);
     }
-    throw new Error("Production test process did not become ready.");
+    throw new Error(`Production test process did not become ready (${productionStartupDiagnostics(output)}).`);
   } catch (error) {
     await close();
     throw error;
