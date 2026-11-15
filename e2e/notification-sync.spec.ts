@@ -15,10 +15,18 @@ async function signedInDesk(page: Page, count = 3) {
   return { api, inbox, bell };
 }
 
-test("marking one desk notification also updates the open bell and its badge", async ({ page }) => {
+/** #330: outside actions close the non-modal panel; its store stays mounted. */
+async function reopenAfterOutsideAction(page: Page) {
+  await expect(page.locator("#nw-np")).toBeHidden();
+  await page.getByRole("button", { name: /^通知/ }).click();
+  await expect(page.getByRole("dialog", { name: "通知", exact: true })).toBeVisible();
+}
+
+test("marking one desk notification closes the panel but updates its mounted store and badge", async ({ page }) => {
   const { inbox, bell } = await signedInDesk(page);
   await inbox.locator(".nw-authoring-inbox-row").first().getByRole("button", { name: "标记已读", exact: true }).click();
   await expect(inbox.getByRole("button", { name: "标记已读", exact: true })).toHaveCount(2);
+  await reopenAfterOutsideAction(page);
   await expect(bell.getByRole("button", { name: "标记已读", exact: true })).toHaveCount(2);
   await expect(page.locator(".nw-bdg")).toHaveText("2");
 });
@@ -37,6 +45,7 @@ test("a rejected read leaves both unread lists intact and never displays an upst
   api.failWrites(503);
   await inbox.locator(".nw-authoring-inbox-row").first().getByRole("button", { name: "标记已读", exact: true }).click();
   await expect(inbox.getByRole("alert")).toContainText("刷新通知");
+  await reopenAfterOutsideAction(page);
   await expect(bell.getByRole("alert")).toBeVisible();
   for (const view of [inbox, bell]) {
     await expect(view.getByRole("button", { name: "标记已读", exact: true })).toHaveCount(3);
@@ -44,7 +53,12 @@ test("a rejected read leaves both unread lists intact and never displays an upst
   }
   await expect(page.locator(".nw-bdg")).toHaveText("3");
   api.failWrites(200);
-  await inbox.locator(".nw-authoring-inbox-row").first().getByRole("button", { name: "标记已读", exact: true }).click();
+  // The expanded error panel can cover the desk's first row. Keyboard focus is
+  // an outside interaction too; do not force a click through the floating UI.
+  await inbox.locator(".nw-authoring-inbox-row").first().getByRole("button", { name: "标记已读", exact: true }).focus();
+  await expect(bell).toBeHidden();
+  await page.keyboard.press("Enter");
+  await reopenAfterOutsideAction(page);
   await expect(bell.getByRole("button", { name: "标记已读", exact: true })).toHaveCount(2);
 });
 
@@ -53,6 +67,7 @@ test("an accepted write with a failed total refresh stays visibly stale, then re
   api.failCounts(503);
   await inbox.locator(".nw-authoring-inbox-row").first().getByRole("button", { name: "标记已读", exact: true }).click();
   await expect(inbox.getByRole("alert")).toBeVisible();
+  await reopenAfterOutsideAction(page);
   await expect(bell.getByRole("button", { name: "标记已读", exact: true })).toHaveCount(2);
   await expect(page.locator(".nw-bdg")).toHaveText("3");
   await expect(inbox).toContainText("上次确认的值");
@@ -69,6 +84,7 @@ test("a 401 on either half of refresh removes private rows and the badge from bo
   await inbox.getByRole("button", { name: "刷新通知", exact: true }).click();
   await expect(page.locator(".nw-authoring-inbox-row, .nw-np-row")).toHaveCount(0);
   await expect(page.locator(".nw-bdg")).toHaveCount(0);
+  await reopenAfterOutsideAction(page);
   await expect(bell.getByRole("link", { name: /登录/ })).toBeVisible();
   await expect(bell.getByRole("button", { name: "全部标为已读", exact: true })).toHaveCount(0);
 });
@@ -82,6 +98,7 @@ test("returning online reconciles an errored feed from the first page without po
   api.failLists(200);
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
   await expect(inbox.locator(".nw-authoring-inbox-row")).toHaveCount(4);
+  await reopenAfterOutsideAction(page);
   await expect(bell.locator(".nw-np-row")).toHaveCount(4);
   await expect(page.locator(".nw-bdg")).toHaveText("4");
   await expect(bell.locator('a[href="/messages/returned-online"]')).toBeVisible();
@@ -106,6 +123,7 @@ test("shared pagination labels loaded and global unread counts, and a read beyon
   await expect(bell).toContainText("未读数包含尚未载入的通知");
   await inbox.getByRole("button", { name: "加载更多通知", exact: true }).click();
   await expect(inbox.locator(".nw-authoring-inbox-row")).toHaveCount(52);
+  await reopenAfterOutsideAction(page);
   await expect(bell.locator(".nw-np-row")).toHaveCount(52);
   await bell.locator(".nw-np-row").last().getByRole("button", { name: "标记已读", exact: true }).click();
   await expect(inbox).toContainText("已载入 52 条，其中 51 条未读；全收件箱 51 条未读");
@@ -126,6 +144,7 @@ test("logout clears the mounted bell and desk before the logout network request 
     await page.keyboard.press("Enter");
     await expect(page.locator(".nw-authoring-inbox-row, .nw-np-row")).toHaveCount(0);
     await expect(page.locator(".nw-bdg")).toHaveCount(0);
+    await reopenAfterOutsideAction(page);
     await expect(bell.getByRole("link", { name: /登录/ })).toBeVisible();
   } finally { release(); }
 });
@@ -136,6 +155,7 @@ test("an empty recent page with an authoritative unread total still offers mark-
   api.countBody({ data: 3 });
   await inbox.getByRole("button", { name: "刷新通知", exact: true }).click();
   await expect(inbox).toContainText("尚有未读通知，请刷新以取得最新列表");
+  await reopenAfterOutsideAction(page);
   await expect(bell).toContainText("已载入 0 条，其中 0 条未读；全收件箱 3 条未读");
   await expect(bell.getByRole("button", { name: "全部标为已读", exact: true })).toBeEnabled();
   api.countBody({ data: 0 });
@@ -176,6 +196,7 @@ test("an older page cannot repopulate either surface after recovery replaces a s
     });
     await page.evaluate(() => window.dispatchEvent(new Event("online")));
     await expect(inbox.locator(".nw-authoring-inbox-row")).toHaveCount(1);
+    await reopenAfterOutsideAction(page);
     await expect(bell.locator(".nw-np-row")).toHaveCount(1);
     oldPage.release();
     await oldPage.finished;

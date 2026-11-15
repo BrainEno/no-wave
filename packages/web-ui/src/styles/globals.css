@@ -76,6 +76,7 @@ main:focus { outline: none; }
 .nw-np .nw-np-row button { min-height: 44px; padding: 0 12px; border: 1px solid var(--ink); background: none; color: var(--ink); font: 600 12px var(--f-ss); }
 .nw-np .nw-np-row button:disabled { opacity: .5; }
 .nw-menu { position: fixed; inset: 0; z-index: 85; background: #0f0d0c; color: #f2eee6; padding: calc(88px + var(--st)) 24px 32px; display: flex; flex-direction: column; gap: 4px; }
+.nw-menu { overflow-y: auto; overscroll-behavior: contain; }
 .nw-menu a { font: 600 clamp(48px, 14vw, 88px)/1.15 var(--f-zh); }
 .nw-menu > button { position: absolute; top: max(16px, var(--st)); right: 16px; min-height: 44px; padding: 0 16px; border: 1px solid #f2eee6; background: none; }
 
@@ -389,6 +390,15 @@ mark { background: var(--or); color: #0f0d0c; }
 /* An unread notice is the only reason the inbox exists, so it carries a mark
    that survives the reader's colour preferences. */
 .nw-authoring-inbox-text.nw-unread { font-weight: 700; box-shadow: inset 4px 0 var(--or); padding-left: 12px; }
+.nw-inbox-selection { width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px; border: 1px solid var(--t2); }
+.nw-inbox-selection > p { flex-basis: 100%; margin: 0; }
+.nw-inbox-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; width: 100%; }
+.nw-inbox-filters .nw-btn { padding-inline: 16px; }
+.nw-inbox-filters [aria-current="page"] { background: var(--ink); color: var(--paper); }
+.nw-inbox-filters select { width: auto; max-width: 100%; }
+.nw-inbox-day { flex-basis: 100%; margin: 0; font-size: 18px; }
+.nw-inbox-feedback { min-height: 1.5em; margin: 0; font-size: 14px; }
+.nw-authoring-inbox-row:focus-visible { outline: 2px solid var(--or); outline-offset: 2px; }
 .nw-authoring-trash { margin-top: clamp(32px, 5vw, 72px); padding-top: 24px; border-top: 1px solid var(--ink); display: grid; gap: 10px; }
 .nw-authoring-trash h2 { margin: 0; font-size: 18px; }
 .nw-authoring-trash-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 12px; border: 1px solid var(--t2); overflow-wrap: anywhere; }

@@ -445,7 +445,7 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
       </div>
       {/* Keep supporting tools mounted and reachable, without displacing the editor. */}
       <AuthorProfilePanel profile={profile} onSave={saveProfile} />
-      <NotificationInbox />
+      <NotificationInbox locale="zh-CN" />
       {/* Leaving with an unconfirmed request is a question, not a form: the
           answer is a route decision (`blocker.proceed()`), so it belongs in the
           confirmation dialog rather than in an empty prompt form. */}

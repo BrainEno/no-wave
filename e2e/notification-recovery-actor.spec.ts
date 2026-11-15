@@ -182,13 +182,19 @@ test("a stale explicit refresh clears on conflict before a second deliberate rea
     await inbox.getByRole("button", { name: "刷新通知", exact: true }).click();
     await conflict;
     await expect(page.locator(privateDom)).toHaveCount(0);
-    for (const surface of [inbox, bell]) await expect(surface.getByRole("alert")).toContainText("账户已变更");
+    await expect(bell).toBeHidden();
+    await expect(inbox.getByRole("alert")).toContainText("账户已变更");
+    // An outside refresh closes the non-modal bell. Check its hidden projection
+    // without reopening it: opening an unloaded feed is itself a deliberate read.
+    await expect(page.locator('#nw-np [role="alert"]')).toContainText("账户已变更");
     await settleUi(page);
     expect(checks, "a failed read cannot silently retry against a different recipient").toBe(0);
     expect(actors.length).toBeGreaterThan(0);
     expect(actors.every((actor) => actor === accounts.original.id)).toBe(true);
     actors.length = 0;
-    await bell.getByRole("button", { name: "刷新通知", exact: true }).click();
+    await inbox.getByRole("button", { name: "刷新通知", exact: true }).click();
+    await expect(inbox.locator(`a[href="/authors/${accounts.original.id}"]`)).toBeVisible();
+    await page.getByRole("button", { name: /^通知/ }).click();
     for (const surface of [inbox, bell]) {
       await expect(surface.locator(`a[href="/authors/${accounts.original.id}"]`)).toBeVisible();
       await expect(surface.getByRole("alert")).toHaveCount(0);

@@ -47,6 +47,7 @@ const PRIVATE_PAGES = [
   "forgot-password",
   "messages",
   "messages.$id",
+  "notifications",
   "reset-password",
   "search",
   "sign-in",

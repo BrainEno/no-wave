@@ -1,3 +1,5 @@
+import { notificationSelectionId } from "./notification-selection.ts";
+import { notificationInboxPath } from "./locale-navigation.ts";
 import type { Locale } from "./content.ts";
 
 /**
@@ -103,7 +105,7 @@ export function parseNotificationNotice(payload: string): NotificationNotice {
 }
 
 /** Only local, validated routes are built from payload fields; never trust a URL in a payload. */
-export function notificationPresentation(notice: NotificationNotice, locale: Locale): { text: string; href: string | null } {
+export function notificationPresentation(notice: NotificationNotice, locale: Locale, notificationId?: string): { text: string; href: string | null } {
   const en = locale === "en";
   const prefix = en ? "/en" : "";
   const articlePrefix = "locale" in notice && notice.locale === "en" ? "/en" : "locale" in notice && (notice.locale === "zh-CN" || notice.locale === "zh-TW") ? "" : prefix;
@@ -114,7 +116,10 @@ export function notificationPresentation(notice: NotificationNotice, locale: Loc
     case "article.liked": return { text: en ? "Someone liked your work." : "有人喜欢了你的作品。", href: notice.slug ? `${notice.locale === "en" ? "/en" : notice.locale === "zh-CN" || notice.locale === "zh-TW" ? "" : prefix}/articles/${notice.slug}` : null };
     case "user.followed": return { text: en ? "Someone followed you." : "有人关注了你。", href: notice.followerId ? `${prefix}/authors/${encodeURIComponent(notice.followerId)}` : null };
     case "message.created": return { text: en ? "You have a new message." : "你收到一条新私信。", href: notice.conversationId ? `${prefix}/messages/${encodeURIComponent(notice.conversationId)}` : `${prefix}/messages` };
-    case "unknown": return { text: en ? "You have a notification." : "你收到一条通知。", href: "/write" };
+    case "unknown": {
+      const selected = notificationSelectionId(notificationId);
+      return { text: en ? "You have a notification." : "你收到一条通知。", href: notificationInboxPath(locale) + (selected ? `?notice=${selected}` : "") };
+    }
   }
 }
 
@@ -169,7 +174,7 @@ export function grainOffsets(size: number, count = 16, random: () => number = Ma
 
 const NATIVE_SCROLL_PREFIXES = [
   "/write", "/account", "/admin", "/sign-in",
-  "/forgot-password", "/reset-password", "/verify-email",
+  "/forgot-password", "/reset-password", "/verify-email", "/notifications",
 ] as const;
 
 /**

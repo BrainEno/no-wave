@@ -14,6 +14,12 @@ export function usePathname(): string {
   return useLocation().pathname;
 }
 
+/** A URL-level change matters to panels even when only search/hash changed. */
+export function usePageLocation(): { pathname: string; search: string; hash: string; key: string } {
+  const { pathname, search, hash, key } = useLocation();
+  return { pathname, search, hash, key };
+}
+
 type AppRouter = {
   push(href: string): void;
   replace(href: string): void;

@@ -43,6 +43,8 @@ export default [
   route("en/feed", "routes/feed.tsx", { id: "en-feed" }),
   // 私信读侧（#198）：与 /feed 同样的私有页模式——loader 只按 session marker
   // 决定是否重定向，内容由浏览器带着自己的 cookie 去取。
+  route("notifications", "routes/notifications.tsx"),
+  route("en/notifications", "routes/notifications.tsx", { id: "en-notifications" }),
   route("messages", "routes/messages.tsx"),
   route("en/messages", "routes/messages.tsx", { id: "en-messages" }),
   route("messages/:id", "routes/messages.$id.tsx"),

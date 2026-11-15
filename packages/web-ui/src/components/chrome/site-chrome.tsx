@@ -1,9 +1,11 @@
+import { useChromeOverlays } from "@/lib/use-chrome-overlays.ts";
+import { alternatePath, localeDestination, localeOf, notificationInboxPath } from "@/lib/locale-navigation.ts";
 import { NotificationProvider, useNotifications } from "./notification-provider.tsx";
 import { notificationEntries } from "@/lib/notification-controller.ts";
 import { notificationProblemText, notificationSummary } from "@/lib/notification-feedback.ts";
 import { Link } from "@/lib/framework/link.tsx";
-import { usePathname } from "@/lib/framework/navigation.ts";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { usePageLocation, usePathname } from "@/lib/framework/navigation.ts";
+import { useEffect, useRef, type ReactNode } from "react";
 import { dateLabel } from "@/lib/format.ts";
 import {
   notificationPresentation,
@@ -15,29 +17,12 @@ import {
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { ScrollSmoother } from "gsap/ScrollSmoother";
-import { archivePath, homePath, type Locale } from "@/lib/content.ts";
+import { homePath, type Locale } from "@/lib/content.ts";
 import { getUi } from "@/lib/ui-copy.ts";
 import { tagIndexPath } from "@/lib/tag-discovery.ts";
 import { motionState } from "@/lib/motion-state.ts";
 import { setupPageMotion } from "@/components/motion/page-motion.ts";
 
-function localeOf(pathname: string): Locale {
-  return pathname === "/en" || pathname.startsWith("/en/") ? "en" : "zh-CN";
-}
-
-/** 语言切换：优先进入对应页面；作品详情的译文不一定存在，因此回到对应语言的作品列表。 */
-function alternatePath(pathname: string, locale: Locale): string {
-  const target: Locale = locale === "en" ? "zh-CN" : "en";
-  const bare = locale === "en" ? (pathname.replace(/^\/en/, "") || "/") : pathname;
-  if (/^\/articles\/[^/]+/.test(bare)) return archivePath(target);
-  // As with an article, a tag's translated identity may not exist. The target
-  // directory is reachable without claiming a translation that was never read.
-  if (/^\/tags\/[^/]+/.test(bare)) return tagIndexPath(target);
-  if (/^\/(authors\/[^/]+|(?:categories|tags)(\/[^/]+)?|articles|search)?$/.test(bare) || bare === "/") {
-    return target === "en" ? (bare === "/" ? "/en" : "/en" + bare) : bare;
-  }
-  return homePath(target);
-}
 
 const icon = {
   search: <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-4-4" /></svg>,
@@ -125,12 +110,17 @@ export function SiteChrome({ children }: { children: ReactNode }) {
 }
 
 function SiteChromeContent({ children }: { children: ReactNode }) {
-  const pathname = usePathname() ?? "/";
+  const location = usePageLocation();
+  const pathname = location.pathname;
   const locale = localeOf(pathname);
+  const locationHref = pathname + location.search + location.hash;
+  const alternateHref = alternatePath(locationHref, locale);
+  const sameLanguage = localeDestination(locationHref, locale);
+  const currentHref = sameLanguage.exact ? sameLanguage.href : pathname;
   const ui = getUi(locale);
   const smoothEnabled = shouldUseSmoothScroll(pathname);
-  const [bellOpen, setBellOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const overlays = useChromeOverlays(location);
+  const { bellOpen, menuOpen } = overlays;
   const { controller, snapshot } = useNotifications(bellOpen);
   const sessionUsable = snapshot.session === "unknown" ? null : snapshot.session === "active";
   const unread = snapshot.unread ?? 0;
@@ -236,14 +226,6 @@ function SiteChromeContent({ children }: { children: ReactNode }) {
     return () => wrapper.removeEventListener("scroll", keepAtZero);
   }, [smoothEnabled]);
 
-  useEffect(() => {
-    setBellOpen(false); setMenuOpen(false);
-  }, [pathname]);
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { setBellOpen(false); setMenuOpen(false); } };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
 
   const other: Locale = locale === "en" ? "zh-CN" : "en";
   const current = (prefix: string) => (pathname === prefix || pathname.startsWith(prefix + "/") ? "page" : undefined);
@@ -279,25 +261,26 @@ function SiteChromeContent({ children }: { children: ReactNode }) {
         <Link className="nw-nv" href="/account" aria-current={current("/account")}>{ui.nav.account}</Link>
         <Link className="nw-nv" href={navTopics} aria-current={onHome ? undefined : current(topicsHref)}>{ui.nav.topics}</Link>
         <span className="nw-sep nw-nv" aria-hidden="true" />
-        <Link className="nw-nv nw-lang" href={locale === "en" ? alternatePath(pathname, locale) : pathname} lang="zh-CN" aria-current={locale === "zh-CN" ? "true" : undefined}>简</Link>
+        <Link className="nw-nv nw-lang" onClick={overlays.onLanguageNavigate} href={locale === "en" ? alternateHref : currentHref} lang="zh-CN" aria-current={locale === "zh-CN" ? "true" : undefined}>简</Link>
         <span className="nw-nv" aria-hidden="true">/</span>
-        <Link className="nw-nv nw-lang" href={locale === "en" ? pathname : alternatePath(pathname, locale)} lang="en" aria-current={locale === "en" ? "true" : undefined}>EN</Link>
+        <Link className="nw-nv nw-lang" onClick={overlays.onLanguageNavigate} href={locale === "en" ? currentHref : alternateHref} lang="en" aria-current={locale === "en" ? "true" : undefined}>EN</Link>
         <Link className="nw-ic" href={searchHref} aria-label={ui.nav.search}>{icon.search}</Link>
-        <button className="nw-ic" type="button" aria-label={badge ? `${ui.bell.label}，${badge} ${ui.bell.unread}` : ui.bell.label} aria-expanded={bellOpen} aria-controls="nw-np" onClick={() => { setBellOpen((value) => !value); setMenuOpen(false); }}>
+        <button className="nw-ic" ref={overlays.bellTrigger} type="button" aria-haspopup="dialog" aria-label={badge ? `${ui.bell.label}，${badge} ${ui.bell.unread}` : ui.bell.label} aria-expanded={bellOpen} aria-controls="nw-np" onClick={() => overlays.toggle("bell")}>
           {icon.bell}{badge ? <span className="nw-bdg" aria-live="polite">{badge}</span> : null}
         </button>
-        <button className="nw-mnb" type="button" style={{ fontWeight: 700 }} aria-expanded={menuOpen} aria-controls="nw-menu" onClick={() => { setMenuOpen(true); setBellOpen(false); }}>{ui.nav.menu}</button>
+        <button className="nw-mnb" ref={overlays.menuTrigger} type="button" aria-haspopup="dialog" style={{ fontWeight: 700 }} aria-expanded={menuOpen} aria-controls="nw-menu" onClick={() => overlays.toggle("menu")}>{ui.nav.menu}</button>
       </nav>
-      <div className="nw-np" id="nw-np" hidden={!bellOpen} role="dialog" aria-label={ui.bell.label} lang={locale} aria-busy={bellPending}>
+      <div className="nw-np" ref={overlays.bellPanel} tabIndex={-1} id="nw-np" hidden={!bellOpen} role="dialog" aria-label={ui.bell.label} lang={locale} aria-busy={bellPending}>
         <header>
           <span>{ui.bell.label}</span>
-          {sessionUsable === true ? <button type="button" disabled={bellPending} onClick={() => void controller.refresh()}>{locale === "en" ? "Refresh notifications" : "刷新通知"}</button> : null}
+          {sessionUsable === true ? <button type="button" data-overlay-focus-key="refresh" disabled={bellPending} onClick={() => void controller.refresh()}>{locale === "en" ? "Refresh notifications" : "刷新通知"}</button> : null}
           {sessionUsable === true && bellState === "ready" && unread > 0 ? (
-            <button className="nw-np-mark-all" type="button" disabled={bellPending} onClick={() => void markBellRead()}>{ui.bell.markAllRead}</button>
+            <button className="nw-np-mark-all" data-overlay-focus-key="mark-all" type="button" disabled={bellPending} onClick={() => void markBellRead()}>{ui.bell.markAllRead}</button>
           ) : null}
-          <button type="button" onClick={() => setBellOpen(false)}>{ui.nav.close}</button>
+          <button type="button" data-overlay-initial-focus data-overlay-focus-key="close" onClick={() => overlays.dismiss()}>{ui.nav.close}</button>
         </header>
         <div className="nw-np-body">
+          <Link className="nw-btn" data-overlay-focus-key="inbox" href={notificationInboxPath(locale)}>{locale === "en" ? "Open notification inbox" : "打开通知收件箱"}</Link>
           {sessionUsable === null ? <p>{ui.bell.loading}</p> : null}
           {sessionUsable === false ? (
             <>
@@ -313,21 +296,21 @@ function SiteChromeContent({ children }: { children: ReactNode }) {
           {sessionUsable === true && bellState === "ready" && bellRows.length > 0 ? (
             <ul className="nw-np-list">
               {bellRows.map(({ item, notice, read }) => (
-                <li className="nw-np-row" key={item.id}>
-                  <p className={!read ? "nw-np-text nw-np-unread" : "nw-np-text"}>{notificationPresentation(notice, locale).text}{notificationPresentation(notice, locale).href ? <> <Link href={notificationPresentation(notice, locale).href!} onClick={() => setBellOpen(false)}>{locale === "en" ? "View" : "查看"}</Link></> : null}</p>
+                <li className="nw-np-row" data-notification-id={item.id} key={item.id}>
+                  <p className={!read ? "nw-np-text nw-np-unread" : "nw-np-text"}>{notificationPresentation(notice, locale, item.id).text}{notificationPresentation(notice, locale, item.id).href ? <> <Link data-overlay-action="view" href={notificationPresentation(notice, locale, item.id).href!}>{locale === "en" ? "View" : "查看"}</Link></> : null}</p>
                   <time className="nw-np-time" dateTime={item.createdAt}>{dateLabel(item.createdAt, locale)}</time>
                   {!read ? (
-                    <button type="button" disabled={bellPending} onClick={() => void markBellRead(item.id)}>{ui.bell.markRead}</button>
+                    <button type="button" data-overlay-action="mark" disabled={bellPending} onClick={() => void markBellRead(item.id)}>{ui.bell.markRead}</button>
                   ) : null}
                 </li>
               ))}
             </ul>
           ) : null}
-          {sessionUsable === true && bellState === "ready" && bellCursor ? <button className="nw-btn" type="button" disabled={bellPending} onClick={() => void loadMoreBell()}>{locale === "en" ? "Load more notifications" : "加载更多通知"}</button> : null}
+          {sessionUsable === true && bellState === "ready" && bellCursor ? <button className="nw-btn" data-overlay-focus-key="more" type="button" disabled={bellPending} onClick={() => void loadMoreBell()}>{locale === "en" ? "Load more notifications" : "加载更多通知"}</button> : null}
         </div>
       </div>
-      <div className="nw-menu" id="nw-menu" hidden={!menuOpen} role="dialog" aria-label={ui.nav.menu} lang={locale}>
-        <button type="button" onClick={() => setMenuOpen(false)}>{ui.nav.close}</button>
+      <div className="nw-menu" ref={overlays.menuPanel} tabIndex={-1} id="nw-menu" hidden={!menuOpen} role="dialog" aria-modal={menuOpen ? "true" : undefined} aria-label={ui.nav.menu} lang={locale}>
+        <button type="button" data-overlay-initial-focus data-overlay-focus-key="close" onClick={() => overlays.dismiss()}>{ui.nav.close}</button>
         <Link href={homePath(locale)}>{ui.nav.home}</Link>
         <Link href={navSelected}>{ui.nav.selected}</Link>
         <Link href={navLatest}>{ui.nav.latest}</Link>
@@ -335,7 +318,7 @@ function SiteChromeContent({ children }: { children: ReactNode }) {
         <Link href="/account">{ui.nav.account}</Link>
         <Link href={navTopics}>{ui.nav.topics}</Link>
         <Link href={searchHref}>{ui.nav.search}</Link>
-        <Link href={alternatePath(pathname, locale)} lang={other} aria-label={ui.nav.language}>{other === "en" ? "English" : "简体中文"}</Link>
+        <Link href={alternateHref} lang={other} aria-label={ui.nav.language}>{other === "en" ? "English" : "简体中文"}</Link>
       </div>
       <div id="smooth-wrapper">
         <div id="smooth-content">
