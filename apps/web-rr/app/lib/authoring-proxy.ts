@@ -1,4 +1,8 @@
 import {
+  handleArticleCatalogueRequest,
+  handleCatalogueArticleRequest,
+  handleCatalogueEditionsRequest,
+  handleCatalogueRestoreRequest,
   handleAuthoringArticleRequest,
   handleAuthoringArticlesRequest,
   handleAuthoringDeletedArticlesRequest,
@@ -70,4 +74,17 @@ export function handleAuthoringNotionImport(request: Request): Promise<Response>
 
 export function handleAuthoringRestoreArticle(request: Request, id: string | undefined): Promise<Response> {
   return handleAuthoringRestoreRequest(request, { id: id ?? "" }, apiProxyConfig());
+}
+
+export function handleAuthoringCatalogue(request: Request): Promise<Response> {
+  return handleArticleCatalogueRequest(request, apiProxyConfig());
+}
+export function handleAuthoringCatalogueArticle(request: Request, id: string | undefined): Promise<Response> {
+  return handleCatalogueArticleRequest(request, { id: id ?? "" }, apiProxyConfig());
+}
+export function handleAuthoringCatalogueEditions(request: Request, id: string | undefined): Promise<Response> {
+  return handleCatalogueEditionsRequest(request, { id: id ?? "" }, apiProxyConfig());
+}
+export function handleAuthoringCatalogueRestore(request: Request, id: string | undefined): Promise<Response> {
+  return handleCatalogueRestoreRequest(request, { id: id ?? "" }, apiProxyConfig());
 }

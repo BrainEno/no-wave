@@ -215,3 +215,5 @@ export {
   type TokenSet,
 } from "./policy.ts";
 export type { CookieOptions } from "./cookies.ts";
+
+export { handleArticleCatalogueRequest, handleCatalogueArticleRequest, handleCatalogueRestoreRequest, handleCatalogueEditionsRequest } from "./catalogue.ts";

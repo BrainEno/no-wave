@@ -1,3 +1,4 @@
+import { CATALOGUE_ROUTE_IDS } from "./routes/catalogue.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -26,6 +27,7 @@ import { IMPORT_ROUTE_IDS } from "./routes/imports.ts";
 
 const GROUPS: readonly { name: string; ids: readonly string[] }[] = [
   { name: "auth", ids: AUTH_ROUTE_IDS },
+  { name: "catalogue", ids: CATALOGUE_ROUTE_IDS },
   { name: "media", ids: MEDIA_ROUTE_IDS },
   { name: "health", ids: HEALTH_ROUTE_IDS },
   { name: "openapi", ids: OPENAPI_ROUTE_IDS },
@@ -70,6 +72,7 @@ test("route ids are grouped where a reader would look for them", () => {
   const byGroup = new Map(GROUPS.map((group) => [group.name, new Set(group.ids)]));
   const expectations: readonly [string, readonly string[]][] = [
     ["health", ["health"]],
+    ["catalogue", ["me.article-catalogue", "me.article-catalogue-item", "me.article-catalogue-editions"]],
     ["openapi", ["openapi"]],
     ["auth", ["auth"]],
     ["media", ["media.item", "me.media", "me.media.item"]],

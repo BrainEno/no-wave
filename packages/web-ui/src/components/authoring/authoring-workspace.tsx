@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "@/lib/framework/link.tsx";
-import { useNavigationBlocker } from "@/lib/framework/navigation.ts";
+import { useNavigationBlocker, usePageLocation } from "@/lib/framework/navigation.ts";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog.tsx";
 import { bindWritingUnload, canLeaveWriting, type WritingGuard, type WritingLeaveToken } from "@/lib/writing-session.ts";
 import { ArticleEditor, type AuthoringArticle } from "./article-editor.tsx";
@@ -8,10 +8,12 @@ import { AuthorProfilePanel } from "./author-profile-panel.tsx";
 import { normalizeDisplayName, parseAuthorProfile, type AuthorProfile } from "@/lib/author-profile.ts";
 import { NotificationInbox } from "./notification-inbox.tsx";
 import { useNotificationActions } from "@/components/chrome/notification-provider.tsx";
+import { CatalogueDocumentReader } from "@/lib/authoring-catalogue-open.ts";
+import { parseCatalogueOpenIntent, type CatalogueOpenIntent } from "@/lib/authoring-catalogue.ts";
 import { AUTHORING_LOCALES, isAuthoringLocale } from "@bot-thk/web-http";
 
 type WorkspaceState = "loading" | "unauthenticated" | "ready" | "error";
-type DocumentAction = { kind: "new" } | { kind: "open"; article: AuthoringArticle } | { kind: "sign-out" };
+type DocumentAction = { kind: "catalogue"; intent: CatalogueOpenIntent } | { kind: "new" } | { kind: "open"; article: AuthoringArticle } | { kind: "sign-out" };
 type DocumentLeave = { token: WritingLeaveToken; action: DocumentAction };
 
 /**
@@ -94,6 +96,12 @@ function messageOf(payload: unknown): string {
 
 export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
   const notifications = useNotificationActions();
+  const pageLocation = usePageLocation();
+  const [catalogueReader] = useState(() => new CatalogueDocumentReader());
+  const [catalogueLoading, setCatalogueLoading] = useState(false);
+  const [catalogueIntent, setCatalogueIntent] = useState<CatalogueOpenIntent | null>(null);
+  const catalogueRequest = useRef(0);
+  const catalogueRouteApproval = useRef<(WritingLeaveToken & { search: string }) | null>(null);
   const [state, setState] = useState<WorkspaceState>("loading");
   const [articles, setArticles] = useState<AuthoringArticle[]>([]);
   const [selected, setSelected] = useState<AuthoringArticle | null>(null);
@@ -153,12 +161,15 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
     setPendingCreate(value);
   }
 
-  function selectArticle(article: AuthoringArticle | null) {
+  const selectArticle = useCallback((article: AuthoringArticle | null) => {
     selectedRef.current = article;
     setSelected(article);
-  }
+  }, []);
 
-  function switchEditor(prefix: string) {
+  const switchEditor = useCallback((prefix: string) => {
+    catalogueRequest.current++;
+    catalogueReader.cancel();
+    setCatalogueLoading(false);
     const key = `${prefix}-${++editorRevision.current}`;
     // Update synchronously: an older request can finish before React renders.
     editorKeyRef.current = key;
@@ -166,7 +177,7 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
     setGuard(guardRef.current);
     setLeave(null);
     setEditorKey(key);
-  }
+  }, [catalogueReader]);
 
   // Unrelated account/profile requests can also expire while a create is in
   // flight. Do not unmount the editor and lose its pending key in that case.
@@ -285,7 +296,49 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
     return () => { active = false; };
   }, [showSignIn, reloadArticles, reloadProfile, reloadDeletedArticles]);
 
+  const openCatalogueDocument = useCallback(async (intent: CatalogueOpenIntent, token: WritingLeaveToken) => {
+    if (intent.actor !== viewerId || !canLeaveWriting(token, editorKeyRef.current, guardRef.current, pendingCreateRef.current)) {
+      setNotice("账户、文稿或保存状态已变化，未读取目录所选版本；请重新选择。");
+      return;
+    }
+    const request = ++catalogueRequest.current;
+    setCatalogueLoading(true);
+    setError("");
+    try {
+      const article = await catalogueReader.read(intent, () => request === catalogueRequest.current &&
+        canLeaveWriting(token, editorKeyRef.current, guardRef.current, pendingCreateRef.current));
+      if (request !== catalogueRequest.current) return;
+      if (!article) { setNotice("读取期间文稿或保存状态已变化，目录响应没有替换当前输入；可手动重新打开。"); return; }
+      selectArticle(article);
+      switchEditor(`catalogue-${editionKey(article)}`);
+      setNotice(`已从全量目录打开《${article.title}》 · ${localeLabel(article.locale)}。保存仍使用原作品及修订，不会新建副本。`);
+    } catch (caught) {
+      if (request === catalogueRequest.current) setError(caught instanceof Error ? caught.message : "目录作品读取失败，编辑区未改变。");
+    } finally {
+      if (request === catalogueRequest.current) setCatalogueLoading(false);
+    }
+  }, [catalogueReader, selectArticle, switchEditor, viewerId]);
+
+  useEffect(() => {
+    if (state !== "ready" || !viewerId) return;
+    const cleanup = () => { catalogueRequest.current++; catalogueReader.cancel(); };
+    let intent: CatalogueOpenIntent | null;
+    try { intent = parseCatalogueOpenIntent(pageLocation.search); }
+    catch (caught) { setError(caught instanceof Error ? caught.message : "目录链接无效。"); setCatalogueIntent(null); return cleanup; }
+    setCatalogueIntent(intent);
+    const approval = catalogueRouteApproval.current;
+    catalogueRouteApproval.current = null;
+    if (!intent) return cleanup;
+    if (intent.actor !== viewerId) { setError("目录链接属于另一登录账户，请返回全部作品目录重新选择；当前编辑区未改变。"); return cleanup; }
+    const token = { editorKey: editorKeyRef.current, revision: guardRef.current.revision };
+    if (pendingCreateRef.current) setNotice("上次保存尚未确认，目录链接没有切换文稿。请先核对保存，再手动打开所选版本。");
+    else if (guardRef.current.dirty && !(approval && approval.search === pageLocation.search && canLeaveWriting(approval, editorKeyRef.current, guardRef.current, false))) setLeave({ token, action: { kind: "catalogue", intent } });
+    else void openCatalogueDocument(intent, token);
+    return cleanup;
+  }, [catalogueReader, openCatalogueDocument, pageLocation.key, pageLocation.search, state, viewerId]);
+
   function performDocumentAction(action: DocumentAction, token: WritingLeaveToken) {
+    if (action.kind === "catalogue") { void openCatalogueDocument(action.intent, token); return; }
     if (action.kind === "sign-out") { void signOut(token); return; }
     selectArticle(action.kind === "open" ? action.article : null);
     switchEditor(action.kind === "open" ? `work-${editionKey(action.article)}` : "new");
@@ -440,6 +493,7 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
         <h1><span className="nw-zh">写作台</span> <i>Authoring</i></h1>
         <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
           {/* The images an author has uploaded, and which of them nothing uses. */}
+          <Link className="nw-btn" href="/write/library">全部作品目录</Link>
           <Link className="nw-btn" href="/write/media">媒体库</Link>
           {/* Notion as an interchange format (ADR 0036): bring a bundle in. */}
           <Link className="nw-btn" href="/write/notion">从 Notion 导入</Link>
@@ -462,11 +516,13 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
       ) : null}
       {error ? <p className="nw-auth-error" role="alert">{error}</p> : null}
       {notice ? <p className="nw-auth-status" role="status">{notice}</p> : null}
+      {catalogueLoading ? <p role="status">正在核对目录所选作品的精确语言版本；继续输入或新建会使本次读取失效……</p> : null}
+      {catalogueIntent ? <div className="nw-authoring-actions"><button className="nw-btn" type="button" disabled={pendingCreate || catalogueLoading} onClick={() => requestDocumentAction({ kind: "catalogue", intent: catalogueIntent })}>重新读取目录所选版本</button>{catalogueLoading ? <button className="nw-btn" type="button" onClick={() => { catalogueRequest.current++; catalogueReader.cancel(); setCatalogueLoading(false); }}>取消目录读取</button> : null}</div> : null}
       <div className="nw-authoring-grid">
         <aside className="nw-authoring-sidebar" aria-label="我的作品">
           <h2>我的作品（{articles.length}）</h2>
           <button className="nw-btn nw-pri" type="button" disabled={pendingCreate} onClick={openNewDocument}>新建作品 +</button>
-          <p className="nw-m">显示各语言最近 100 个版本；同一作品的不同语言分别列出。</p>
+          <p className="nw-m">显示各语言最近 100 个版本；同一作品的不同语言分别列出。更早作品请到<Link href="/write/library">全部作品目录</Link>按元数据检索。</p>
           {articles.length === 0 ? <p className="nw-m">还没有草稿或已发布作品。</p> : articles.map((article) => (
             <button className="nw-authoring-article" key={editionKey(article)} type="button" disabled={pendingCreate} aria-current={selected && editionKey(selected) === editionKey(article) ? "true" : undefined} onClick={() => openDocument(article)}>
               <span>{article.title}</span>
@@ -505,7 +561,10 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
           if (!token || token.editorKey !== editorKeyRef.current || token.revision !== guardRef.current.revision || token.pending !== pendingCreateRef.current) {
             blocker.reset();
             setNotice("文稿或保存状态已变化，请重新发起导航并确认。");
-          } else blocker.proceed();
+          } else {
+            if (blocker.location.pathname === pageLocation.pathname) catalogueRouteApproval.current = { editorKey: token.editorKey, revision: token.revision, search: blocker.location.search };
+            blocker.proceed();
+          }
         }}
       />
       <ConfirmDialog
@@ -519,6 +578,7 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
       />
       <section className="nw-authoring-trash" aria-label="回收站">
         <h2>回收站（{deleted.length}）</h2>
+        <p className="nw-m">这里只列出最近的已删除版本；<Link href="/write/library">到全量目录筛选回收站</Link>可分页核对更早作品并在还原前确认全部语言的影响。</p>
         {trashError ? <p className="nw-auth-error" role="alert">{trashError}</p> : null}
         {deleted.length === 0 && !trashError
           ? <p className="nw-m">没有已删除的作品。</p>

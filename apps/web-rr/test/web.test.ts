@@ -1225,6 +1225,32 @@ test("the Notion import page is private, renders its panel, and is gated the sam
   assert.match(signedIn.headers.get("cache-control") ?? "", /no-store/);
 });
 
+test("the catalogue shell is private/noindex and does not SSR private terms or metadata", async () => {
+  const anonymous = await get("/write/library");
+  assert.equal(anonymous.status, 302);
+  assert.equal(anonymous.headers.get("location"), "/sign-in?next=%2Fwrite%2Flibrary");
+  assert.match(anonymous.headers.get("cache-control") ?? "", /no-store/);
+  const signedIn = await get("/write/library", { cookie: `nw_session=${Math.floor(Date.now() / 1000) + 3600}` });
+  assert.equal(signedIn.status, 200);
+  assert.match(signedIn.body, /data-route="write-library"/);
+  assert.match(signedIn.body, /作品目录/);
+  assert.match(signedIn.body, /noindex/);
+  assert.match(signedIn.headers.get("cache-control") ?? "", /no-store/);
+});
+
+test("catalogue resource routes reach guarded private handlers rather than a page or a 404", async () => {
+  for (const path of ["/api/authoring/catalogue", `/api/authoring/catalogue/${MOCK_DELETED_ARTICLE_ID}?locale=en`, `/api/authoring/catalogue/${MOCK_DELETED_ARTICLE_ID}/editions?scope=trash`]) {
+    const response = await get(path, { cookie: DESK_COOKIE });
+    assert.equal(response.status, 400, path);
+    assert.match(response.headers.get("cache-control") ?? "", /no-store/);
+    assert.match(response.headers.get("x-robots-tag") ?? "", /noindex/);
+    assert.equal(JSON.parse(response.body).error.code, "BAD_USER_INPUT");
+  }
+  const response = await post(`/api/authoring/catalogue/${MOCK_DELETED_ARTICLE_ID}/restore?locale=en`, "", { cookie: DESK_COOKIE, origin: "https://evil.test" });
+  assert.equal(response.status, 403);
+  assert.equal(JSON.parse(response.body).error.code, "ORIGIN_REJECTED");
+});
+
 test("the writing desk renders its shared client component, privately", async () => {
   const result = await get("/write");
   assert.equal(result.status, 200);
@@ -1249,6 +1275,7 @@ test("every private page answers no-store, sign-in included", async () => {
     "/search?q=%E6%8A%B5%E6%8A%97",
     "/write",
     "/write/media",
+    "/write/library",
     "/write/notion",
     "/feed",
     "/messages",

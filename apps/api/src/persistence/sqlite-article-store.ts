@@ -1,3 +1,4 @@
+import { readArticleCatalogue, readCatalogueEditions } from "./article-catalogue-query.ts";
 import { randomUUID } from "node:crypto";
 import {
   articleIdempotencyFingerprint,
@@ -257,6 +258,12 @@ export function createSqliteArticleStore(db: SqliteRunner, options: { transactio
   };
 
   return Object.freeze({
+    listMyCatalogueEditions(input) {
+      return readCatalogueEditions(input, "sqlite", query => db.prepare(query.text).all(...query.values));
+    },
+    listMyArticleCatalogue(input) {
+      return readArticleCatalogue(input, "sqlite", query => db.prepare(query.text).all(...query.values));
+    },
   /**
    * Every article body, as raw JSON text, for the media reference scan (ADR 0022).
    *
@@ -760,5 +767,5 @@ export function createSqliteArticleStore(db: SqliteRunner, options: { transactio
         return { purged: expired.length };
       });
     },
-  }) satisfies Pick<TypedPersistenceAdapterContract, "listPublishedArticles" | "listFeaturedArticles" | "setFeaturedArticles" | "listFollowingArticles" | "getPublishedArticle" | "incrementArticleViewCount" | "listMyArticles" | "getMyArticle" | "findMyArticleByCreateKey" | "listMyArticleEditions" | "listMyDeletedArticles" | "listLikedArticles" | "listRelatedArticles" | "createArticle" | "updateArticle" | "deleteArticle" | "restoreArticle" | "purgeExpiredArticles">;
+  }) satisfies Pick<TypedPersistenceAdapterContract, "listMyArticleCatalogue" | "listMyCatalogueEditions" | "listPublishedArticles" | "listFeaturedArticles" | "setFeaturedArticles" | "listFollowingArticles" | "getPublishedArticle" | "incrementArticleViewCount" | "listMyArticles" | "getMyArticle" | "findMyArticleByCreateKey" | "listMyArticleEditions" | "listMyDeletedArticles" | "listLikedArticles" | "listRelatedArticles" | "createArticle" | "updateArticle" | "deleteArticle" | "restoreArticle" | "purgeExpiredArticles">;
 }

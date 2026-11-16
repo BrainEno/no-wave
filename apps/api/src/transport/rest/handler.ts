@@ -85,6 +85,11 @@ export function createRestHandler({
     const mediaAlias = MEDIA_APPLICATION_PATH.exec(url.pathname);
     if (mediaAlias) url = new URL(`/api/v1/media/${mediaAlias[1]}${url.search}`, url.origin);
     if (url.pathname !== "/api/v1" && !url.pathname.startsWith("/api/v1/")) return false;
+    // Private catalogue refusals (including repeated query fields and 405s)
+    // are as unindexable as successful reads, before a route body can run.
+    if (url.pathname === "/api/v1/me/article-catalogue" || url.pathname.startsWith("/api/v1/me/article-catalogue/")) {
+      response.setHeader("x-robots-tag", "noindex, nofollow");
+    }
 
     // Every current REST query parameter is scalar. Reject duplicates rather
     // than silently accepting URLSearchParams' first-value interpretation.

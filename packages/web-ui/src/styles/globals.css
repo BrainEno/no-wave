@@ -475,6 +475,70 @@ mark { background: var(--or); color: #0f0d0c; }
   .nw-lexical-input { min-height: 320px; font-size: 18px; }
 }
 
+/* ---------- 私有作品目录：轻量检索、版本核对和元数据索引 ---------- */
+.nw-catalogue { max-width: 1080px; margin-inline: auto; }
+.nw-catalogue header > p { max-width: 760px; }
+.nw-catalogue h2 { font-size: 24px; margin-block: 24px 16px; }
+.nw-catalogue h3 { font-size: 20px; overflow-wrap: anywhere; }
+.nw-catalogue-filters { margin-block: 32px; }
+.nw-catalogue fieldset { min-width: 0; border: 1px solid var(--t2); padding: 20px; }
+.nw-catalogue legend { padding-inline: 8px; font-weight: 700; }
+.nw-catalogue label:not(.nw-writing-check) { display: grid; gap: 8px; font-size: 14px; }
+.nw-catalogue input:not([type="checkbox"]), .nw-catalogue select { min-width: 0; width: 100%; min-height: 44px; padding: 8px 10px; border: 1px solid var(--ink); color: inherit; background: var(--paper); font: inherit; }
+.nw-catalogue-filter-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; margin-block: 20px; }
+.nw-catalogue button:disabled { opacity: .5; cursor: not-allowed; }
+.nw-catalogue .nw-authoring-actions { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.nw-catalogue .nw-authoring-actions .nw-btn { min-height: 44px; }
+.nw-catalogue-export { margin-block: 20px; padding: 16px 0; border-block: 1px dashed var(--t2); }
+.nw-catalogue-export p { max-width: 800px; font-size: 14px; }
+.nw-catalogue-export > details { margin-block: 16px; }
+.nw-catalogue-export-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px 20px; margin-bottom: 20px; }
+.nw-catalogue-export-order { max-width: 320px; margin-top: 20px; }
+.nw-catalogue-export-preview, .nw-catalogue-export-protection { max-height: 360px; overflow-y: auto; scrollbar-gutter: stable; padding-left: 24px; }
+.nw-catalogue-export-preview li { border-top: 1px solid var(--t2); }
+.nw-catalogue-export-preview dt { font-weight: 700; margin-top: 12px; }
+.nw-catalogue-export-preview dd { margin: 4px 0 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.nw-catalogue-export-protection li { margin-block: 12px; overflow-wrap: anywhere; }
+.nw-catalogue-list, .nw-catalogue-coverage { list-style: none; padding: 0; }
+.nw-catalogue-list > li { border-top: 1px solid var(--ink); padding-block: 24px; }
+.nw-catalogue-row-top { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; font-size: 13px; }
+.nw-catalogue-row-top label { min-height: 44px; }
+.nw-catalogue-summary { max-width: 850px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.nw-catalogue-dates { display: flex; flex-wrap: wrap; gap: 12px 28px; font-size: 12px; color: var(--t2); margin-block: 18px; }
+.nw-catalogue-dates dt { font-weight: 700; margin-bottom: 4px; }
+.nw-catalogue-dates dd { margin: 0; }
+.nw-catalogue-inspection { margin-top: 40px; padding: 20px; border: 2px solid var(--ink); scroll-margin-top: 100px; }
+.nw-catalogue-coverage { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+.nw-catalogue-coverage > li { min-width: 0; border-top: 1px solid var(--t2); }
+.nw-catalogue-coverage p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.nw-catalogue-comparison dt { margin-top: 20px; font-weight: 700; }
+.nw-catalogue-comparison dd { margin: 12px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.nw-catalogue-comparison del { display: block; text-decoration-thickness: 2px; }
+.nw-catalogue-comparison ins { display: block; text-decoration: underline double; text-underline-offset: 3px; }
+.nw-catalogue-comparison small { display: block; margin-top: 8px; }
+.nw-catalogue-selection { margin-block: 20px; border-block: 1px solid var(--t2); }
+.nw-catalogue-selection summary { min-height: 44px; padding-block: 12px; overflow-wrap: anywhere; }
+.nw-catalogue-chosen { padding-left: 24px; max-height: 360px; overflow-y: auto; scrollbar-gutter: stable; }
+.nw-catalogue-chosen li { padding-block: 10px; overflow-wrap: anywhere; }
+.nw-catalogue-chosen .nw-btn { margin: 8px 12px; }
+.nw-catalogue-review { border-top: 1px solid var(--t2); }
+.nw-catalogue-review > p { max-width: 850px; }
+.nw-catalogue-review-results { padding-left: 24px; max-height: 640px; overflow-y: auto; scrollbar-gutter: stable; }
+.nw-catalogue-review-results > li { padding-bottom: 12px; border-top: 1px solid var(--t2); }
+.nw-catalogue-review-version h4 { margin-block: 16px 8px; font-size: 16px; }
+.nw-catalogue-review-version dt { font-weight: 700; }
+.nw-catalogue-review-version dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.nw-catalogue-review-version dd p { padding: 8px 12px; border-left: 2px solid var(--t2); }
+@media (max-width: 767px) {
+  .nw-catalogue-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .nw-catalogue-coverage { grid-template-columns: 1fr; }
+  .nw-catalogue fieldset, .nw-catalogue-inspection { padding: 12px; }
+  .nw-catalogue .nw-authoring-actions .nw-btn { white-space: normal; max-width: 100%; overflow-wrap: anywhere; }
+}
+@media (max-width: 420px) {
+  .nw-catalogue-filter-grid { grid-template-columns: 1fr; }
+}
+
 /* ---------- 媒体图片节点与评论 ---------- */
 .nw-lexical-image-host { display: block; max-width: 100%; }
 .nw-lexical-image { margin: 24px 0; }

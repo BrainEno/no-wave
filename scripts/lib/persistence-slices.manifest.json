@@ -74,6 +74,8 @@
     "listPublishedArticles",
     "getPublishedArticle",
     "listMyArticles",
+    "listMyArticleCatalogue",
+    "listMyCatalogueEditions",
     "getMyArticle",
     "findMyArticleByCreateKey",
     "listMyArticleEditions",
@@ -177,6 +179,8 @@
       "file": "postgres-article-store.ts",
       "factory": "createPostgresArticleStore",
       "methods": [
+        "listMyArticleCatalogue",
+        "listMyCatalogueEditions",
         "listPublishedArticles",
         "getPublishedArticle",
         "incrementArticleViewCount",
@@ -350,6 +354,8 @@
       "file": "sqlite-article-store.ts",
       "factory": "createSqliteArticleStore",
       "methods": [
+        "listMyArticleCatalogue",
+        "listMyCatalogueEditions",
         "listPublishedArticles",
         "listFeaturedArticles",
         "setFeaturedArticles",

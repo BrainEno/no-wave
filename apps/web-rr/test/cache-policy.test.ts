@@ -56,6 +56,7 @@ const PRIVATE_PAGES = [
   "verify-email",
   "write",
   "write.media",
+  "write.library",
   "write.notion",
 ];
 
