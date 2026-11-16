@@ -43,7 +43,13 @@ export function applyClientAddressHeaders(headers: Headers, target: string, meth
 
 /** Join an API origin and a relative path, tolerating a trailing slash on either. */
 export function apiUrl(base: string, path: string): string {
-  return new URL(path.replace(/^\/+/, ""), `${base.replace(/\/+$/, "")}/`).toString();
+  // Scan each edge once: an unanchored trailing-slash regex can backtrack
+  // quadratically through a long slash run followed by a non-slash.
+  let baseEnd = base.length;
+  while (baseEnd > 0 && base.charCodeAt(baseEnd - 1) === 47) baseEnd--;
+  let pathStart = 0;
+  while (pathStart < path.length && path.charCodeAt(pathStart) === 47) pathStart++;
+  return new URL(path.slice(pathStart), `${base.slice(0, baseEnd)}/`).toString();
 }
 
 export async function readPayload(response: Response): Promise<unknown> {
