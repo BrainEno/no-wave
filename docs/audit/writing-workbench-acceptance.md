@@ -24,17 +24,17 @@
 node docs/audit/writing-workbench-lines.ts > docs/audit/writing-workbench-lines.json
 ```
 
-本轮固定基线下，**933 候选 − 106 项语义扣除 = 827 行有效新增生产功能代码 / 12 个文件**，不把测试、文档、配置或生成物算进 800 行门槛。精确行号与源码 SHA-256 见 [结果](writing-workbench-lines.json)，逐片段扣除理由见 [语义排除表](writing-workbench-line-exclusions.json)。
+本轮固定基线下，**933 候选 − 108 项语义扣除 = 825 行有效新增生产功能代码 / 12 个文件**，不把测试、文档、配置或生成物算进 800 行门槛。精确行号与源码 SHA-256 见 [结果](writing-workbench-lines.json)，逐片段扣除理由见 [语义排除表](writing-workbench-line-exclusions.json)。
 
 | 不重叠分组 | 有效行 |
 | --- | ---: |
 | 会话、ArticleEditor 与 Workspace 的实质保护 | 137 |
 | 文稿检查与章节统计模型 | 133 |
 | Lexical 查找替换与锚点模型 | 51 |
-| 本机备份、块差异与选择性恢复模型 | 261 |
+| 本机备份、块差异与选择性恢复模型 | 259 |
 | 离线引用模型与筛选/定位面板 | 79 |
 | 文稿工具交互与恢复选择面板 | 166 |
-| **合计** | **827** |
+| **合计** | **825** |
 
 方法先按 Git 固定基线识别变更行，再用 AST 排除注释、空白/标点、imports、type/interface、类型标注和静态 JSX；去除基线所有生产 TS/TSX 已有的规范化行、重复新增片段。最后另行复核展示字典/状态/片段、旧监听搬移、组件包装、依赖尾部、通用下载锚点、既有阅读查找的循环导航/片段和安全正则，保守扣除。CSS、审计脚本、所有测试（包括下面的 worker 测试修正）均为零计数。
 
@@ -46,6 +46,7 @@ node docs/audit/writing-workbench-lines.ts > docs/audit/writing-workbench-lines.
 - `LinkExtension` 只注册普通 link，因此本机文件拒绝未注册的 autolink，不能把它留给 Lexical 解析时才失败。
 - 500000 字符的代码块可能包含 250000 段反引号。旧的参数展开求最大值会栈溢出，现用迭代计算 Markdown 围栏长度，保持原始代码字节。
 - 新增展开面板的 axe/桌面与 375px 手机验收，覆盖查找结果、长引用地址和备份控件，要求无 serious/critical 违规、无横向溢出、可见按钮至少 44px 高。查找定位按钮的可访问名称必须包含可见文字，不能只在折叠面板上验收。
+- 新增 dirty 提示后，媒体安全 E2E 的无过滤 `status` 定位会同时命中两个合法状态节点；改为按原有操作文案定位，并增加上传后 dirty/保存后清脏断言，不减少真实上传、WebP、CSP、归属引用与取回内容的验证。
 - 既有多语言 E2E 原来直接丢弃取消保存后的语言编辑，以及尚未收到保存响应的输入；现在显式取消/确认新的离开警告，增加“确认切换不产生翻译写入”断言。保留原有语言独立性、回收站、删除及旧请求不能替换新编辑器的全部断言。
 - 固定基线 CI 的 PostgreSQL worker 用例曾在 `worker_ready` 后立即断言 `idle`，实际可合法处于首次异步 `delivering`。仅修正测试同步：有界等待首次批次完成且进入 idle，再验证原来的 ready=200、持久通知、60 秒等待被 SIGTERM 打断、退出码、预算、清理和隐私断言；不改 worker 生产实现，不放宽或跳过断言。
 

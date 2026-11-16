@@ -212,7 +212,7 @@
     },
     {
       "file": "packages/web-ui/src/components/authoring/writing-tools.tsx",
-      "sha256": "661ee2a8f8edbe2750cfb387bdbe164bd962a2fc81f646ec451cbeaec07cef45",
+      "sha256": "9a417e57e3b76fc28fc2f6c622463a32ff8cc61417bbd81ec47f390670520177",
       "changed": 307,
       "executableCandidateLines": 192,
       "semanticExclusions": [
@@ -420,9 +420,10 @@
       "executableCandidateLines": 157,
       "semanticExclusions": [
         13,
-        14
+        14,
+        142
       ],
-      "executableNewLines": 155,
+      "executableNewLines": 154,
       "lines": [
         6,
         7,
@@ -521,7 +522,6 @@
         139,
         140,
         141,
-        142,
         145,
         146,
         147,
@@ -587,9 +587,10 @@
       "changed": 156,
       "executableCandidateLines": 94,
       "semanticExclusions": [
-        21
+        21,
+        52
       ],
-      "executableNewLines": 93,
+      "executableNewLines": 92,
       "lines": [
         23,
         24,
@@ -612,7 +613,6 @@
         49,
         50,
         51,
-        52,
         56,
         57,
         58,
@@ -1065,8 +1065,8 @@
     }
   ],
   "candidates": 933,
-  "semanticDeductions": 106,
-  "total": 827,
+  "semanticDeductions": 108,
+  "total": 825,
   "minimum": 800,
   "satisfied": true
 }

@@ -23,7 +23,7 @@ function InspectionPanel({ inspection, draft, navigate }: { inspection: WritingI
     {inspection.limited ? <p role="alert">检查达到范围上限，仅显示部分结果；查找替换在完整检查前不可用。</p> : null}
     <h3>文稿大纲</h3>
     {sections.length ? <ol className="nw-writing-outline" aria-label="文稿大纲">{sections.map(item => <li key={item.path.join(".")} data-level={item.level}>
-      <button type="button" onClick={() => navigate(item.path)}><span className="nw-m">H{item.level}</span> {item.title}</button><small>本节 {item.characters} 字符 · {item.minutes} 分钟 · {item.images} 张图片（含下级标题）</small>
+      <button type="button" onClick={() => navigate(item.path)}><span className="nw-m">H{item.level}</span> {item.title}</button><small>本节 {item.characters} 字符 · {item.words} 词组 · {item.minutes} 分钟 · {item.images} 张图片（含下级标题）</small>
     </li>)}</ol> : <p>正文还没有二至四级标题，可用格式工具栏添加。</p>}
     <WritingReferencesPanel draft={draft} navigate={navigate} />
     <h3>发布前检查（{inspection.issues.length}）</h3>
@@ -200,7 +200,7 @@ function BackupPanel({ draft, read, apply, locked }: ActionProps) {
   const needsRemoteConsent = remoteCount > 0 && selected.includes("editorState");
   const missingBlocks = selected.includes("editorState") && bodyMode === "append" && !bodyBlocks.length;
   return <section aria-label="本机备份与恢复">
-    <p>文件包含当前标题、摘要、语言、类型和正文，不含账户、作品地址、发布状态或版本凭据。仅手动下载/读取，不会自动存到浏览器，也不会上传备份文件。</p>
+    <p>JSON 备份包含当前标题、摘要、语言、类型和正文，不附加账户、作品地址、发布状态或版本凭据。纯文本和 Markdown 仅导出标题与正文。仅手动下载/读取，不会自动存到浏览器，也不会上传备份文件。</p>
     <p className="nw-m">备份文件未加密，请妥善保管；不包含图片原文件。恢复图片后仍需服务端验证媒体权限。浏览器崩溃或强制退出时，离开提醒无法保证生效。</p>
     <div className="nw-authoring-actions">
       <button className="nw-btn" type="button" onClick={() => download("json")}>下载 JSON 文稿备份</button>

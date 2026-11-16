@@ -510,6 +510,26 @@
           "text": "before: block.text.slice(Math.max(0, start - 32), start), after: block.text.slice(end, end + 32) });"
         }
       ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-backup.ts",
+      "reason": "最终消费链复核：此附带元数据目前不被生产交互使用，不将仅供模型/测试的返回字段计入有效功能。",
+      "fragments": [
+        {
+          "line": 142,
+          "text": "remoteImages: (backup.draft.editorState?.root.children ?? []).filter(node => node.type === \"image\" && typeof node.src === \"string\" && !node.src.startsWith(\"/\")).length };"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-compare.ts",
+      "reason": "最终消费链复核：此附带元数据目前不被生产交互使用，不将仅供模型/测试的返回字段计入有效功能。",
+      "fragments": [
+        {
+          "line": 52,
+          "text": "textEqual: before === after,"
+        }
+      ]
     }
   ]
 }
