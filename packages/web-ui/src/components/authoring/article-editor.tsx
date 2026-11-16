@@ -11,6 +11,8 @@ import { $createHeadingNode, $createQuoteNode, RichTextExtension } from "@lexica
 import { $setBlocksType } from "@lexical/selection";
 import { $createParagraphNode, $getSelection, $insertNodes, $isRangeSelection, defineExtension, FORMAT_TEXT_COMMAND, REDO_COMMAND, UNDO_COMMAND, type ElementNode } from "lexical";
 import { ArticleImageNode, $createArticleImageNode } from "./article-image-node.tsx";
+import { WritingTools } from "./writing-tools.tsx";
+import { WritingSession, type WritingDraft, type WritingGuard } from "@/lib/writing-session.ts";
 import { PromptDialog, type PromptDialogField } from "@/components/ui/prompt-dialog.tsx";
 import { useConfirm } from "@/components/ui/confirm-dialog.tsx";
 import { AUTHORING_ARTICLE_ID_PATTERN, AUTHORING_EXPECTED_ACTOR_HEADER, AUTHORING_NOT_FORWARDED_HEADER, isAuthoringLocale } from "@bot-thk/web-http";
@@ -41,6 +43,7 @@ type ArticleEditorProps = {
   onSaved(article: AuthoringArticle): void;
   onDeleted(article: AuthoringArticle): void;
   onPendingChange(pending: boolean): void;
+  onGuardChange(guard: WritingGuard): void;
 };
 
 const extensionDependencies = [
@@ -63,9 +66,14 @@ const editorTheme = {
 
 function EditorStatePlugin({ onChange }: { onChange(state: LexicalEditorStateJson): void }) {
   const [editor] = useLexicalComposerContext();
-  useEffect(() => editor.registerUpdateListener(({ editorState }) => {
-    onChange(editorState.toJSON() as LexicalEditorStateJson);
-  }), [editor, onChange]);
+  useEffect(() => {
+    // Synchronize the hydrated runtime before tools capture exact node paths.
+    // Lexical adds defaults and merges adjacent text during its initial parse.
+    onChange(editor.getEditorState().toJSON() as LexicalEditorStateJson);
+    return editor.registerUpdateListener(({ editorState }) => {
+      onChange(editorState.toJSON() as LexicalEditorStateJson);
+    });
+  }, [editor, onChange]);
   return null;
 }
 
@@ -307,13 +315,7 @@ function collectPlainText(value: unknown): string {
 }
 
 type SaveTarget = "draft" | "publish";
-type Draft = {
-  title: string;
-  summary: string;
-  locale: string;
-  workType: WorkType;
-  editorState: LexicalEditorStateJson | null;
-};
+type Draft = WritingDraft;
 type PendingCreate = PendingIntent & { target: SaveTarget; mayHaveCommitted: boolean };
 type LocaleChangeSave = { target: SaveTarget; article: AuthoringArticle; body: string; locale: string };
 
@@ -344,7 +346,7 @@ function errorCode(payload: unknown): string | null {
     typeof (error as { code?: unknown }).code === "string" ? (error as { code: string }).code : null;
 }
 
-export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPendingChange }: ArticleEditorProps) {
+export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPendingChange, onGuardChange }: ArticleEditorProps) {
   const [initialState] = useState<LexicalEditorStateJson | null>(() => {
     try { return articleBlocksToLexicalEditorState(article?.contentBlocks); }
     catch { return null; }
@@ -371,6 +373,24 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
   // Fields remain editable during a request. Keep their latest values outside
   // a stale async closure so success never claims later edits were saved.
   const latest = useRef<Draft>({ title, summary, locale, workType, editorState });
+  const [session] = useState(() => new WritingSession(latest.current));
+  const [guard, setGuard] = useState(session.getSnapshot());
+  const guardCallback = useRef(onGuardChange);
+  useEffect(() => { guardCallback.current = onGuardChange; }, [onGuardChange]);
+  const reportGuard = useCallback((next = session.update(latest.current)) => {
+    setGuard(next);
+    guardCallback.current(next);
+  }, [session]);
+  const getDraft = useCallback(() => latest.current, []);
+  const changeDraft = useCallback((next: Draft) => {
+    latest.current = next;
+    setTitle(next.title);
+    setSummary(next.summary);
+    setLocale(next.locale);
+    setWorkType(next.workType);
+    setEditorState(next.editorState);
+    reportGuard();
+  }, [reportGuard]);
   // One dialog, whichever the toolbar asked for. The resolver is held in a ref
   // rather than state: it is not rendered, and recreating it would drop the
   // pending promise.
@@ -399,8 +419,9 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
 
   const onEditorChange = useCallback((next: LexicalEditorStateJson) => {
     latest.current.editorState = next;
-    setEditorState(next);
-  }, []);
+    setEditorState(previous => JSON.stringify(previous) === JSON.stringify(next) ? previous : next);
+    reportGuard();
+  }, [reportGuard]);
 
   function clearPending() {
     pending.current = null;
@@ -485,6 +506,7 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
         }
         throw new Error("API 响应格式不正确，作品可能已保存，请刷新列表核对。");
       }
+      if (currentArticle && data.id !== currentArticle.id) throw new Error("保存响应不属于当前作品，请核对服务器版本；当前输入仍保留。");
       const hasLaterEdits = saveBody(latest.current, target, currentArticle) !== body;
       const hasOtherAction = !!create && blockedTarget.current !== null && blockedTarget.current !== target;
       const replayed = create?.mayHaveCommitted === true;
@@ -492,6 +514,11 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
         created.current = data;
         clearPending();
       }
+      if (replayed) {
+        try {
+          reportGuard(session.acknowledge({ title: data.title, summary: data.summary, locale: data.locale, workType: data.workType, editorState: articleBlocksToLexicalEditorState(data.contentBlocks) }));
+        } catch { /* An unsupported current server version cannot acknowledge this editor. */ }
+      } else reportGuard(session.acknowledge(JSON.parse(body) as Draft));
       onSaved(data);
       // A replay returns the *current* resource, which another tab may have
       // changed after the original create. Do not say this editor's snapshot
@@ -669,20 +696,22 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
     <section className="nw-article-editor" aria-label="作品编辑器">
       <div className="nw-article-fields">
         <label className="nw-field-wide">标题
-          <input value={title} onChange={(event) => { latest.current.title = event.target.value; setTitle(event.target.value); }} required maxLength={200} />
+          <input value={title} onChange={(event) => { latest.current.title = event.target.value; setTitle(event.target.value); reportGuard(); }} required maxLength={200} />
         </label>
       </div>
+      {guard.dirty ? <p className="nw-writing-save-state" role="status">有未保存的修改；离开或切换作品前请保存，或下载本机文稿备份。</p> : null}
       <LexicalExtensionComposer extension={extension} contentEditable={null}>
         <Toolbar onStatus={setStatus} onError={setError} ask={ask} />
         <div className="nw-lexical-shell">
           <ContentEditable className="nw-lexical-input" aria-label="作品正文" aria-placeholder="从这里开始写作" placeholder={<p className="nw-lexical-placeholder">从这里开始写作……</p>} />
         </div>
         <EditorStatePlugin onChange={onEditorChange} />
+        <WritingTools draft={{ title, summary, locale, workType, editorState }} getDraft={getDraft} onChange={changeDraft} locked={hasPending} />
       </LexicalExtensionComposer>
       <div className="nw-article-fields nw-article-metadata">
         <p className="nw-field-note">作品地址（slug）由系统根据标题自动生成，无需填写。</p>
         <label>作品语言
-          <select value={locale} onChange={(event) => { latest.current.locale = event.target.value; setLocale(event.target.value); }}>
+          <select value={locale} onChange={(event) => { latest.current.locale = event.target.value; setLocale(event.target.value); reportGuard(); }}>
             {/* Keep the stored retired option even while the author is trying
                 another selection, so they can return without losing edits. */}
             {article && retiredLocales[article.locale] ? <option value={article.locale}>{retiredLocales[article.locale]}</option> : null}
@@ -690,7 +719,7 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
           </select>
         </label>
         <label>作品类型
-          <select value={workType} onChange={(event) => { latest.current.workType = event.target.value as WorkType; setWorkType(event.target.value as WorkType); }}>
+          <select value={workType} onChange={(event) => { latest.current.workType = event.target.value as WorkType; setWorkType(event.target.value as WorkType); reportGuard(); }}>
             {/* An existing `serial` work keeps its type in the list, or opening
                 it would silently retype it on the next save — the compatibility
                 half of #196. The option is present only because the work already
@@ -703,7 +732,7 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
         </label>
         {article ? <p className="nw-field-note">更改作品语言会写入该语言版本，已有版本可能被覆盖；发布状态和删除作用于所有版本。</p> : null}
         <label className="nw-field-wide">摘要
-          <textarea value={summary} onChange={(event) => { latest.current.summary = event.target.value; setSummary(event.target.value); }} maxLength={2000} placeholder="留空则由系统摘取正文开头自动生成" />
+          <textarea value={summary} onChange={(event) => { latest.current.summary = event.target.value; setSummary(event.target.value); reportGuard(); }} maxLength={2000} placeholder="留空则由系统摘取正文开头自动生成" />
         </label>
       </div>
       <PromptDialog

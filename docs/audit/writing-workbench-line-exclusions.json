@@ -1,0 +1,515 @@
+{
+  "base": "1aecb065ce29f354bee6c36ebca52761d349c59b",
+  "rules": [
+    {
+      "file": "packages/web-ui/src/components/authoring/article-editor.tsx",
+      "reason": "既有组件签名/依赖尾部变化、仅状态文字与工具组件 props 接线，保守不计新增功能。",
+      "fragments": [
+        {
+          "line": 76,
+          "text": "}, [editor, onChange]);"
+        },
+        {
+          "line": 349,
+          "text": "export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPendingChange, onGuardChange }: ArticleEditorProps) {"
+        },
+        {
+          "line": 702,
+          "text": "{guard.dirty ? <p className=\"nw-writing-save-state\" role=\"status\">有未保存的修改；离开或切换作品前请保存，或下载本机文稿备份。</p> : null}"
+        },
+        {
+          "line": 709,
+          "text": "<WritingTools draft={{ title, summary, locale, workType, editorState }} getDraft={getDraft} onChange={changeDraft} locked={hasPending} />"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/authoring-workspace.tsx",
+      "reason": "既有切换/同作品判断的语义搬移、包装方法/签名、单纯接线与确认文案，不以重构或展示满足门槛。",
+      "fragments": [
+        {
+          "line": 288,
+          "text": "function performDocumentAction(action: DocumentAction, token: WritingLeaveToken) {"
+        },
+        {
+          "line": 290,
+          "text": "selectArticle(action.kind === \"open\" ? action.article : null);"
+        },
+        {
+          "line": 291,
+          "text": "switchEditor(action.kind === \"open\" ? `work-${editionKey(action.article)}` : \"new\");"
+        },
+        {
+          "line": 297,
+          "text": "if (action.kind === \"open\" && selectedRef.current && editionKey(selectedRef.current) === editionKey(action.article)) return;"
+        },
+        {
+          "line": 313,
+          "text": "function openNewDocument() { requestDocumentAction({ kind: \"new\" }); }"
+        },
+        {
+          "line": 314,
+          "text": "function openDocument(article: AuthoringArticle) { requestDocumentAction({ kind: \"open\", article }); }"
+        },
+        {
+          "line": 378,
+          "text": "async function signOut(token: WritingLeaveToken) {"
+        },
+        {
+          "line": 449,
+          "text": "<p className=\"nw-ep\" style={{ marginTop: 18 }}>保存成功的草稿与发布状态由 API 持久化；未保存输入只保留在本页，请保存或下载本机备份。</p>"
+        },
+        {
+          "line": 485,
+          "text": "onGuardChange={(guard) => changeGuard(guard, editorKey)}"
+        },
+        {
+          "line": 497,
+          "text": "title={pendingCreate ? \"上次保存尚未确认\" : \"离开未保存的文稿？\"}"
+        },
+        {
+          "line": 498,
+          "text": "description={pendingCreate ? \"作品可能已经创建。离开后本页的重试标识和未保存的编辑会丢失，再次保存可能产生重复作品。\" : \"当前修改尚未保存，离开后会丢失。建议先取消并保存，或在文稿工具中下载本机备份。\"}"
+        },
+        {
+          "line": 515,
+          "text": "confirmLabel={leave?.action.kind === \"sign-out\" ? \"放弃修改并退出\" : \"放弃修改并切换\"}"
+        },
+        {
+          "line": 518,
+          "text": "onConfirm={confirmDocumentAction}"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-references-panel.tsx",
+      "reason": "展示字典、引用统计/地址/状态文字及纯列表展示不计；仅保留筛选、受控展开与实际定位交互。",
+      "fragments": [
+        {
+          "line": 6,
+          "text": "const ISSUES: Record<WritingReferenceIssue, string> = {"
+        },
+        {
+          "line": 7,
+          "text": "\"unsafe-url\": \"地址无效或不安全，已隐藏原地址，请重新插入。\","
+        },
+        {
+          "line": 8,
+          "text": "\"empty-label\": \"缺少链接文字或图片替代文本。\","
+        },
+        {
+          "line": 9,
+          "text": "\"insecure-http\": \"使用 HTTP 地址，HTTPS 页面可能无法安全载入图片；建议核对。\","
+        },
+        {
+          "line": 10,
+          "text": "\"ambiguous-label\": \"相同链接文字指向不同地址，请确认没有错贴。\","
+        },
+        {
+          "line": 11,
+          "text": "\"label-truncated\": \"描述过长，此处只显示前 180 字符。\","
+        },
+        {
+          "line": 23,
+          "text": "<p>纳入清单 {audit.total} 处引用，按地址合并为 {audit.groups.length} 组。只显示地址，不会打开链接或探测图片，也不能据此确认媒体归属或链接可用性。</p>"
+        },
+        {
+          "line": 28,
+          "text": "{audit.limited ? <p role=\"alert\">核对清单达到检查上限（最多 200 组、1000 处引用），此处不是完整结果。</p> : null}"
+        },
+        {
+          "line": 29,
+          "text": "<ol aria-label=\"链接与图片核对清单\">{groups.map((group, index) => <li key={`${group.kind}-${group.url}-${index}`}>"
+        },
+        {
+          "line": 30,
+          "text": "<h4>{group.kind === \"link\" ? \"链接\" : \"图片\"} · {group.external ? \"外部地址\" : \"站内地址\"} · {group.occurrences.length} 处</h4>"
+        },
+        {
+          "line": 31,
+          "text": "<p><code>{group.url ?? \"（无效地址，原值已隐藏）\"}</code></p>"
+        },
+        {
+          "line": 32,
+          "text": "<p>文字：{group.labels.join(\" / \") || \"（空）\"}</p>"
+        },
+        {
+          "line": 33,
+          "text": "{group.issues.length ? <ul>{group.issues.map(issue => <li key={issue}>{ISSUES[issue]}</li>)}</ul> : null}"
+        },
+        {
+          "line": 35,
+          "text": "定位第 {index + 1} 组第 {occurrenceIndex + 1} 处引用{occurrence.caption ? `：${occurrence.caption}` : \"\"}"
+        },
+        {
+          "line": 37,
+          "text": "{group.occurrences.length > 50 ? <p>此组只显示前 50 处定位入口；重复引用均已计入总数。</p> : null}"
+        },
+        {
+          "line": 39,
+          "text": "{!groups.length ? <p>当前筛选条件下没有引用。</p> : null}"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-restore-preview.tsx",
+      "reason": "静态标签和差异片段/计数/行状态展示保守全扣；实际比较算法、选择集合与恢复方式交互另计。",
+      "fragments": [
+        {
+          "line": 6,
+          "text": "const LABELS = { title: \"标题\", summary: \"摘要\", locale: \"作品语言\", workType: \"作品类型\" };"
+        },
+        {
+          "line": 7,
+          "text": "const CHANGE_LABELS: Record<WritingBlockDifference[\"kind\"], string> = { same: \"相同\", changed: \"内容变化\", added: \"备份独有\", removed: \"仅当前有\", moved: \"位置变化\" };"
+        },
+        {
+          "line": 9,
+          "text": "function DifferenceText({ difference }: { difference: WritingTextDifference }) {"
+        },
+        {
+          "line": 10,
+          "text": "return <span className=\"nw-writing-difference\">"
+        },
+        {
+          "line": 11,
+          "text": "{difference.prefix}"
+        },
+        {
+          "line": 12,
+          "text": "{difference.removed ? <del aria-label=\"当前内容\">{difference.removed}</del> : null}"
+        },
+        {
+          "line": 13,
+          "text": "{difference.inserted ? <ins aria-label=\"备份内容\">{difference.inserted}</ins> : null}"
+        },
+        {
+          "line": 14,
+          "text": "{difference.suffix}"
+        },
+        {
+          "line": 15,
+          "text": "{difference.truncated ? <small>（片段达到 1200 字符上限，可能另有变化，请核对原稿和文件）</small> : null}"
+        },
+        {
+          "line": 38,
+          "text": "return <section aria-label=\"备份差异与正文恢复方式\">"
+        },
+        {
+          "line": 39,
+          "text": "{comparison.fields.length ? <dl className=\"nw-writing-field-diff\">{comparison.fields.map(item => <div key={item.field}>"
+        },
+        {
+          "line": 40,
+          "text": "<dt>{LABELS[item.field]}</dt><dd><DifferenceText difference={item.difference} /></dd>"
+        },
+        {
+          "line": 43,
+          "text": "{comparison.limited ? <p role=\"alert\">文稿超出差异检查范围，无法生成完整块对比；请缩小文稿或先导出人工核对。</p> : <>"
+        },
+        {
+          "line": 44,
+          "text": "<p>正文：{comparison.counts.same} 块相同 · {comparison.counts.changed} 块变化 · {comparison.counts.added} 块备份独有 · {comparison.counts.removed} 块仅当前有 · {comparison.counts.moved} 块位置变化</p>"
+        },
+        {
+          "line": 55,
+          "text": "<p>仅按备份顺序追加所选 {blocks.length} 块，不删除当前内容；相同块也可显式勾选，可能形成重复段落。</p>"
+        },
+        {
+          "line": 57,
+          "text": "<ol className=\"nw-writing-block-diff\" aria-label=\"正文块差异\">{rows.map((row, index) => <li key={`${row.currentIndex}-${row.backupIndex}-${index}`}>"
+        },
+        {
+          "line": 58,
+          "text": "<p>{CHANGE_LABELS[row.kind]} · {row.blockType} · 当前{row.currentIndex === null ? \"无\" : `第 ${row.currentIndex + 1} 块`} / 备份{row.backupIndex === null ? \"无\" : `第 ${row.backupIndex + 1} 块`}</p>"
+        },
+        {
+          "line": 62,
+          "text": "{row.formatChanged ? <p>文字相同，但格式、链接、图片地址或块属性有变化。</p> : null}"
+        },
+        {
+          "line": 63,
+          "text": "<DifferenceText difference={row.difference} />"
+        },
+        {
+          "line": 65,
+          "text": "{!rows.length ? <p>没有不同的正文块。</p> : null}"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-tools.tsx",
+      "reason": "纯统计/状态/片段展示、标签字典及组件包装接线不计；下载锚点的通用既有模式也保守扣除，不重计原有阅读清单下载模式。",
+      "fragments": [
+        {
+          "line": 13,
+          "text": "const FIELD_LABELS: Record<WritingField, string> = { title: \"标题\", summary: \"摘要\", locale: \"作品语言\", workType: \"作品类型\", editorState: \"正文（含格式）\" };"
+        },
+        {
+          "line": 20,
+          "text": "return <section aria-label=\"文稿检查与大纲\">"
+        },
+        {
+          "line": 21,
+          "text": "<p className=\"nw-m\">{statistics.characters.toLocaleString()} 个非空白字符 · {statistics.words.toLocaleString()} 个词组 · 预计阅读 {statistics.minutes} 分钟</p>"
+        },
+        {
+          "line": 22,
+          "text": "<p className=\"nw-m\">{statistics.blocks} 个内容块 · {statistics.images} 张图片 · {statistics.links} 处链接 · {statistics.codeBlocks} 个代码块。阅读统计不含代码和图片描述，仅供参考。</p>"
+        },
+        {
+          "line": 23,
+          "text": "{inspection.limited ? <p role=\"alert\">检查达到范围上限，仅显示部分结果；查找替换在完整检查前不可用。</p> : null}"
+        },
+        {
+          "line": 28,
+          "text": "<WritingReferencesPanel draft={draft} navigate={navigate} />"
+        },
+        {
+          "line": 29,
+          "text": "<h3>发布前检查（{inspection.issues.length}）</h3>"
+        },
+        {
+          "line": 31,
+          "text": "{inspection.issues.length ? <ul className=\"nw-writing-issues\">{inspection.issues.map((issue, index) => <li key={`${issue.code}-${index}`}>"
+        },
+        {
+          "line": 32,
+          "text": "<span>{issue.severity === \"error\" ? \"需处理：\" : \"建议：\"}{issue.message}</span>"
+        },
+        {
+          "line": 78,
+          "text": "return <section aria-label=\"正文查找替换\">"
+        },
+        {
+          "line": 90,
+          "text": "{preview.more ? <p role=\"alert\">仅预览前 200 处匹配；未显示的匹配不会被替换。可缩小查询范围或分批操作。</p> : null}"
+        },
+        {
+          "line": 99,
+          "text": "<span>{match.before}<mark>{match.text}</mark>{match.after}<span className=\"nw-writing-result\"> → {replacement || \"（删除）\"}</span></span>"
+        },
+        {
+          "line": 105,
+          "text": "{stale ? <p role=\"alert\">预览已过期，文稿内容或字段已改变；请重新预览。</p> : null}"
+        },
+        {
+          "line": 106,
+          "text": "{locked ? <p>上次创建请求尚未确认，暂不能应用替换；原请求和当前输入均保留。</p> : null}"
+        },
+        {
+          "line": 107,
+          "text": "{message ? <p role=\"status\">{message}</p> : null}"
+        },
+        {
+          "line": 141,
+          "text": "const link = document.createElement(\"a\");"
+        },
+        {
+          "line": 142,
+          "text": "link.href = url;"
+        },
+        {
+          "line": 145,
+          "text": "document.body.append(link);"
+        },
+        {
+          "line": 146,
+          "text": "try { link.click(); } finally { link.remove(); }"
+        },
+        {
+          "line": 202,
+          "text": "return <section aria-label=\"本机备份与恢复\">"
+        },
+        {
+          "line": 212,
+          "text": "{reading ? <p role=\"status\">正在读取本地文件……</p> : null}"
+        },
+        {
+          "line": 213,
+          "text": "{preview ? <div className=\"nw-writing-restore\" aria-label=\"文稿恢复预览\">"
+        },
+        {
+          "line": 215,
+          "text": "<p>备份时间：{new Date(preview.backup.createdAt).toLocaleString()} · {restoredInspection?.statistics.characters} 个正文字符 · {restoredInspection?.statistics.images} 张图片</p>"
+        },
+        {
+          "line": 216,
+          "text": "<p>备份标题：{preview.backup.draft.title || \"（空标题）\"}</p>"
+        },
+        {
+          "line": 217,
+          "text": "<p>备份摘要：{preview.backup.draft.summary || \"（空摘要）\"}</p>"
+        },
+        {
+          "line": 218,
+          "text": "<p>备份语言：{preview.backup.draft.locale} · 类型：{preview.backup.draft.workType}</p>"
+        },
+        {
+          "line": 220,
+          "text": "<pre>{restoredInspection?.blocks.map(block => block.text).join(\"\\n\").slice(0, 1200) || \"（没有文字正文）\"}</pre>"
+        },
+        {
+          "line": 223,
+          "text": "{FIELD_LABELS[field]}（{preview.changedFields.includes(field) ? \"与当前不同\" : \"与当前相同\"}）"
+        },
+        {
+          "line": 229,
+          "text": "{stale ? <p role=\"alert\">恢复预览已过期，文稿已改变；请重新选择备份文件。</p> : null}"
+        },
+        {
+          "line": 230,
+          "text": "{locked ? <p>上次创建请求尚未确认，暂不能应用恢复；仍可下载当前输入的备份。</p> : null}"
+        },
+        {
+          "line": 232,
+          "text": "{message ? <p role=\"status\">{message}</p> : null}"
+        },
+        {
+          "line": 300,
+          "text": "{panel === \"inspection\" && inspection ? <InspectionPanel inspection={inspection} draft={draft} navigate={navigate} /> : null}"
+        },
+        {
+          "line": 301,
+          "text": "{panel === \"replacement\" ? <ReplacementPanel draft={draft} read={read} apply={apply} locked={locked} navigate={navigateMatch} /> : null}"
+        },
+        {
+          "line": 302,
+          "text": "{panel === \"backup\" ? <BackupPanel draft={draft} read={read} apply={apply} locked={locked} /> : null}"
+        },
+        {
+          "line": 303,
+          "text": "{message ? <p role=\"status\">{message}</p> : null}"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/article-editor.tsx",
+      "reason": "二次独立语义复核：旧监听注册仅从表达式改为 return，以及 hook 依赖尾部不是额外功能，不计。",
+      "fragments": [
+        {
+          "line": 73,
+          "text": "return editor.registerUpdateListener(({ editorState }) => {"
+        },
+        {
+          "line": 383,
+          "text": "}, [session]);"
+        },
+        {
+          "line": 393,
+          "text": "}, [reportGuard]);"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/authoring-workspace.tsx",
+      "reason": "二次复核：仅依赖数组尾部，不单独计功能行。",
+      "fragments": [
+        {
+          "line": 190,
+          "text": "}, [blocker.state]);"
+        },
+        {
+          "line": 195,
+          "text": "}, [guarded, blocker]);"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-references-panel.tsx",
+      "reason": "二次复核：纯组件签名，不按拆组件增加功能计数。",
+      "fragments": [
+        {
+          "line": 14,
+          "text": "export function WritingReferencesPanel({ draft, navigate }: { draft: WritingDraft; navigate(path: WritingPath): void }) {"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-restore-preview.tsx",
+      "reason": "二次复核：纯组件签名，不按拆组件增加功能计数。",
+      "fragments": [
+        {
+          "line": 19,
+          "text": "export function WritingRestorePreview({ current, preview, mode, onMode, blocks, onBlocks, disabled }: {"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-tools.tsx",
+      "reason": "二次复核：组件包装/仅展示的解构不计；循环上/下一匹配的通用算法与基线 nextReadingMatch 相同，不重计历史查找能力。",
+      "fragments": [
+        {
+          "line": 17,
+          "text": "function InspectionPanel({ inspection, draft, navigate }: { inspection: WritingInspection; draft: WritingDraft; navigate(path: WritingPath): void }) {"
+        },
+        {
+          "line": 18,
+          "text": "const { statistics } = inspection;"
+        },
+        {
+          "line": 38,
+          "text": "function ReplacementPanel({ draft, read, apply, locked, navigate }: ActionProps & { navigate(match: WritingMatch, source: string): void }) {"
+        },
+        {
+          "line": 64,
+          "text": "function move(direction: -1 | 1) {"
+        },
+        {
+          "line": 65,
+          "text": "if (!preview?.matches.length) return;"
+        },
+        {
+          "line": 66,
+          "text": "const count = preview.matches.length;"
+        },
+        {
+          "line": 67,
+          "text": "locate(active < 0 ? direction === 1 ? 0 : count - 1 : (active + direction + count) % count);"
+        },
+        {
+          "line": 111,
+          "text": "function BackupPanel({ draft, read, apply, locked }: ActionProps) {"
+        },
+        {
+          "line": 236,
+          "text": "export function WritingTools({ draft, getDraft, onChange, locked }: ToolsProps) {"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-backup.ts",
+      "reason": "二次复核：控制字符及 UUID 媒体路径正则沿用既有安全约束，保守不按重新声明计新增。",
+      "fragments": [
+        {
+          "line": 13,
+          "text": "const INVALID_TEXT = /[\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\u007f\\p{Cs}]/u;"
+        },
+        {
+          "line": 14,
+          "text": "const MEDIA_PATH = /^\\/api\\/media\\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-compare.ts",
+      "reason": "二次复核：Intl.Segmenter 能力检测与基线 reader-find 相同，仅变量更名不计。",
+      "fragments": [
+        {
+          "line": 21,
+          "text": "const segmenter = typeof Intl.Segmenter === \"function\" ? new Intl.Segmenter(undefined, { granularity: \"grapheme\" }) : null;"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-replace.ts",
+      "reason": "二次复核：匹配前后截取片段与基线阅读查找相同，窗口长度变化不计。",
+      "fragments": [
+        {
+          "line": 42,
+          "text": "before: block.text.slice(Math.max(0, start - 32), start), after: block.text.slice(end, end + 32) });"
+        }
+      ]
+    }
+  ]
+}

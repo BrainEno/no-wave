@@ -426,6 +426,47 @@ mark { background: var(--or); color: #0f0d0c; }
 .nw-lexical-empty-note { color: var(--t2); font-size: 13px; margin: 10px 0 0; }
 .nw-authoring-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 20px; }
 .nw-authoring-actions .nw-m { flex: 1 1 100%; }
+.nw-writing-save-state { margin: 12px 0 0; color: var(--t2); font-size: 13px; }
+.nw-writing-tools { margin-top: 16px; border: 1px solid var(--ink); font-size: 14px; overflow-wrap: anywhere; }
+.nw-writing-tools summary { padding: 14px; cursor: pointer; }
+.nw-writing-tools-body { padding: 0 clamp(12px, 3vw, 24px) 20px; border-top: 1px solid var(--ink); }
+.nw-writing-tools h3 { margin-top: 24px; font-size: 17px; }
+.nw-writing-tools .nw-btn { min-height: 44px; padding-inline: 14px; font-size: 13px; }
+.nw-writing-tools [aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.nw-writing-tools :is(button, input, summary):focus-visible { outline: 3px solid var(--or); outline-offset: 3px; }
+.nw-writing-inputs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 12px; }
+.nw-writing-inputs label, .nw-writing-file { display: grid; gap: 8px; margin: 16px 0; }
+.nw-writing-inputs input { min-width: 0; min-height: 44px; padding: 10px; border: 1px solid var(--ink); background: transparent; }
+.nw-writing-check { display: flex; align-items: baseline; gap: 10px; margin-block: 12px; }
+.nw-writing-check input { flex: 0 0 auto; width: 20px; height: 20px; accent-color: var(--or); }
+.nw-writing-check span { min-width: 0; white-space: pre-wrap; }
+.nw-writing-outline { list-style: none; padding-left: 0; }
+.nw-writing-outline li[data-level="3"] { margin-left: 18px; }
+.nw-writing-outline li[data-level="4"] { margin-left: 36px; }
+.nw-writing-outline button { min-height: 44px; text-align: left; border: 0; background: transparent; text-decoration: underline; text-underline-offset: 4px; }
+.nw-writing-outline small { display: block; color: var(--t2); margin-bottom: 8px; }
+.nw-writing-matches [aria-current="true"] { box-shadow: inset 3px 0 var(--or); padding-left: 10px; }
+.nw-writing-difference { white-space: pre-wrap; overflow-wrap: anywhere; }
+.nw-writing-difference del { text-decoration-thickness: 2px; }
+.nw-writing-difference ins { text-decoration: underline double; text-underline-offset: 3px; }
+.nw-writing-difference small { display: block; margin-top: 8px; color: var(--t2); }
+.nw-writing-block-diff { max-height: 480px; overflow-y: auto; padding-left: 24px; }
+.nw-writing-block-diff > li { border-top: 1px solid var(--t2); padding-block: 12px; }
+.nw-writing-field-diff dd { margin-left: 0; }
+.nw-writing-field-diff dt { margin-top: 12px; font-weight: 700; }
+.nw-writing-references { margin-top: 24px; border-block: 1px solid var(--t2); }
+.nw-writing-references summary { padding-left: 0; }
+.nw-writing-references > ol { max-height: 480px; overflow-y: auto; padding-left: 24px; }
+.nw-writing-references h4 { font-size: 15px; }
+.nw-writing-file select { width: 100%; min-height: 44px; padding: 8px; color: inherit; border: 1px solid var(--ink); background: var(--paper); }
+.nw-writing-issues { padding-left: 20px; }
+.nw-writing-issues li { margin-block: 12px; }
+.nw-writing-issues button { margin-left: 10px; }
+.nw-writing-matches { max-height: 420px; overflow-y: auto; padding-left: 28px; scrollbar-gutter: stable; }
+.nw-writing-matches mark { background: var(--or); color: var(--ink); }
+.nw-writing-result { display: block; color: var(--t2); }
+.nw-writing-restore pre { max-height: 240px; overflow: auto; white-space: pre-wrap; padding: 12px; border: 1px solid var(--t2); }
+.nw-writing-restore fieldset { min-width: 0; margin-block: 18px; padding: 12px; border: 1px solid var(--t2); }
 @media (max-width: 767px) {
   .nw-auth-panel h1, .nw-authoring h1 { font-size: 48px; }
   .nw-authoring-grid { grid-template-columns: 1fr; }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "@/lib/framework/link.tsx";
 import { useNavigationBlocker } from "@/lib/framework/navigation.ts";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog.tsx";
+import { bindWritingUnload, canLeaveWriting, type WritingGuard, type WritingLeaveToken } from "@/lib/writing-session.ts";
 import { ArticleEditor, type AuthoringArticle } from "./article-editor.tsx";
 import { AuthorProfilePanel } from "./author-profile-panel.tsx";
 import { normalizeDisplayName, parseAuthorProfile, type AuthorProfile } from "@/lib/author-profile.ts";
@@ -10,6 +11,8 @@ import { useNotificationActions } from "@/components/chrome/notification-provide
 import { AUTHORING_LOCALES, isAuthoringLocale } from "@bot-thk/web-http";
 
 type WorkspaceState = "loading" | "unauthenticated" | "ready" | "error";
+type DocumentAction = { kind: "new" } | { kind: "open"; article: AuthoringArticle } | { kind: "sign-out" };
+type DocumentLeave = { token: WritingLeaveToken; action: DocumentAction };
 
 /**
  * A tombstone, as the desk sees it: the work the author deleted, when it was
@@ -124,7 +127,26 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
   const [viewerId, setViewerId] = useState<string | null>(null);
   const [pendingCreate, setPendingCreate] = useState(false);
   const pendingCreateRef = useRef(false);
-  const blocker = useNavigationBlocker(pendingCreate);
+  const [guard, setGuard] = useState<WritingGuard>({ dirty: false, revision: 0 });
+  const guardRef = useRef(guard);
+  const [leave, setLeave] = useState<DocumentLeave | null>(null);
+  const routeLeave = useRef<(WritingLeaveToken & { pending: boolean }) | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
+  const signingOutRef = useRef(false);
+  const shouldBlock = useCallback(() => pendingCreateRef.current || guardRef.current.dirty, []);
+  const blocker = useNavigationBlocker(shouldBlock);
+  const guarded = pendingCreate || guard.dirty;
+
+  function changeGuard(value: WritingGuard, sourceKey: string) {
+    if (editorKeyRef.current !== sourceKey) return;
+    guardRef.current = value;
+    setGuard(value);
+    if (!value.dirty) setLeave(null);
+  }
+
+  function leaveToken(): WritingLeaveToken {
+    return { editorKey: editorKeyRef.current, revision: guardRef.current.revision };
+  }
 
   function changePendingCreate(value: boolean) {
     pendingCreateRef.current = value;
@@ -140,6 +162,9 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
     const key = `${prefix}-${++editorRevision.current}`;
     // Update synchronously: an older request can finish before React renders.
     editorKeyRef.current = key;
+    guardRef.current = { dirty: false, revision: 0 };
+    setGuard(guardRef.current);
+    setLeave(null);
     setEditorKey(key);
   }
 
@@ -149,22 +174,25 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
     void notifications.connect(false);
     if (pendingCreateRef.current) {
       setError("登录状态已失效；请在新标签页登录原账户，再返回确认上次保存。");
+    } else if (guardRef.current.dirty) {
+      setError("登录状态已失效，当前未保存输入仍保留；请先下载本机备份，在新标签页登录原账户后再保存。");
     } else {
       setState("unauthenticated");
     }
   }, [notifications]);
 
+  useEffect(() => bindWritingUnload(shouldBlock, window), [shouldBlock]);
+
   useEffect(() => {
-    if (!pendingCreate) return;
-    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [pendingCreate]);
+    if (blocker.state === "blocked" && !routeLeave.current) {
+      routeLeave.current = { editorKey: editorKeyRef.current, revision: guardRef.current.revision, pending: pendingCreateRef.current };
+    } else if (blocker.state !== "blocked") routeLeave.current = null;
+  }, [blocker.state]);
 
   useEffect(() => {
     // The save may finish while a client-side navigation dialog is open.
-    if (!pendingCreate && blocker.state === "blocked") blocker.reset();
-  }, [pendingCreate, blocker]);
+    if (!guarded && blocker.state === "blocked") blocker.reset();
+  }, [guarded, blocker]);
 
   const reloadArticles = useCallback(async () => {
     const response = await fetch("/api/authoring/articles?allLocales=true", { credentials: "same-origin", cache: "no-store" });
@@ -257,23 +285,33 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
     return () => { active = false; };
   }, [showSignIn, reloadArticles, reloadProfile, reloadDeletedArticles]);
 
-  function openNewDocument() {
-    if (pendingCreateRef.current) return;
-    selectArticle(null);
-    switchEditor("new");
+  function performDocumentAction(action: DocumentAction, token: WritingLeaveToken) {
+    if (action.kind === "sign-out") { void signOut(token); return; }
+    selectArticle(action.kind === "open" ? action.article : null);
+    switchEditor(action.kind === "open" ? `work-${editionKey(action.article)}` : "new");
     setNotice("");
   }
 
-  function openDocument(article: AuthoringArticle) {
+  function requestDocumentAction(action: DocumentAction) {
     if (pendingCreateRef.current) return;
-    // Re-clicking the open edition must not discard unsaved edits. A different
-    // edition of the same id must remount, even after the current save changed
-    // its locale and left the old editor key in place.
-    if (selectedRef.current && editionKey(selectedRef.current) === editionKey(article)) return;
-    selectArticle(article);
-    switchEditor(`work-${editionKey(article)}`);
-    setNotice("");
+    if (action.kind === "open" && selectedRef.current && editionKey(selectedRef.current) === editionKey(action.article)) return;
+    const token = leaveToken();
+    if (guardRef.current.dirty) setLeave({ token, action });
+    else performDocumentAction(action, token);
   }
+
+  function confirmDocumentAction() {
+    if (!leave) return;
+    setLeave(null);
+    if (!canLeaveWriting(leave.token, editorKeyRef.current, guardRef.current, pendingCreateRef.current)) {
+      setNotice("文稿或保存状态已变化，请重新确认离开；当前输入仍保留。");
+      return;
+    }
+    performDocumentAction(leave.action, leave.token);
+  }
+
+  function openNewDocument() { requestDocumentAction({ kind: "new" }); }
+  function openDocument(article: AuthoringArticle) { requestDocumentAction({ kind: "open", article }); }
 
   /**
    * A deleted work is gone from the desk, so the editor is reset to a new
@@ -337,14 +375,18 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
     }
   }
 
-  async function signOut() {
-    if (pendingCreateRef.current) return;
+  async function signOut(token: WritingLeaveToken) {
+    if (signingOutRef.current || !canLeaveWriting(token, editorKeyRef.current, guardRef.current, pendingCreateRef.current)) return;
+    signingOutRef.current = true;
+    setSigningOut(true);
     const finishSessionChange = notifications.beginSessionChange();
     try {
       await fetch("/api/auth/logout", { method: "POST", headers: { "content-type": "application/json" }, credentials: "same-origin", cache: "no-store", body: "{}" });
     } finally {
       finishSessionChange();
-      if (pendingCreateRef.current) {
+      signingOutRef.current = false;
+      setSigningOut(false);
+      if (!canLeaveWriting(token, editorKeyRef.current, guardRef.current, pendingCreateRef.current)) {
         showSignIn();
       } else {
         selectArticle(null);
@@ -401,10 +443,10 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
           <Link className="nw-btn" href="/write/media">媒体库</Link>
           {/* Notion as an interchange format (ADR 0036): bring a bundle in. */}
           <Link className="nw-btn" href="/write/notion">从 Notion 导入</Link>
-          <button className="nw-btn" type="button" disabled={pendingCreate} onClick={() => void signOut()}>退出登录</button>
+          <button className="nw-btn" type="button" disabled={pendingCreate || signingOut} onClick={() => requestDocumentAction({ kind: "sign-out" })}>退出登录</button>
         </div>
       </div>
-      <p className="nw-ep" style={{ marginTop: 18 }}>草稿与发布状态由 API 持久化；关闭页面后，可从作品列表继续编辑。</p>
+      <p className="nw-ep" style={{ marginTop: 18 }}>保存成功的草稿与发布状态由 API 持久化；未保存输入只保留在本页，请保存或下载本机备份。</p>
       {account ? (
         <p className="nw-auth-status" role="status">
           已登录：{account.email} · 邮箱{account.emailVerifiedAt ? "已验证" : "未验证"}
@@ -440,6 +482,7 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
             onSaved={(article) => void afterSave(article, editorKey)}
             onDeleted={(article) => void afterDelete(article, editorKey)}
             onPendingChange={changePendingCreate}
+            onGuardChange={(guard) => changeGuard(guard, editorKey)}
           />
         </div>
       </div>
@@ -451,12 +494,28 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
           confirmation dialog rather than in an empty prompt form. */}
       <ConfirmDialog
         open={blocker.state === "blocked"}
-        title="上次保存尚未确认"
-        description="作品可能已经创建。离开后本页的重试标识和未保存的编辑会丢失，再次保存可能产生重复作品。"
+        title={pendingCreate ? "上次保存尚未确认" : "离开未保存的文稿？"}
+        description={pendingCreate ? "作品可能已经创建。离开后本页的重试标识和未保存的编辑会丢失，再次保存可能产生重复作品。" : "当前修改尚未保存，离开后会丢失。建议先取消并保存，或在文稿工具中下载本机备份。"}
         confirmLabel="仍要离开"
         tone="danger"
         onCancel={() => { if (blocker.state === "blocked") blocker.reset(); }}
-        onConfirm={() => { if (blocker.state === "blocked") blocker.proceed(); }}
+        onConfirm={() => {
+          if (blocker.state !== "blocked") return;
+          const token = routeLeave.current;
+          if (!token || token.editorKey !== editorKeyRef.current || token.revision !== guardRef.current.revision || token.pending !== pendingCreateRef.current) {
+            blocker.reset();
+            setNotice("文稿或保存状态已变化，请重新发起导航并确认。");
+          } else blocker.proceed();
+        }}
+      />
+      <ConfirmDialog
+        open={leave !== null}
+        title="放弃未保存的修改？"
+        description="当前修改尚未保存，继续会丢失这些输入。您可以取消，先保存或下载本机文稿备份。"
+        confirmLabel={leave?.action.kind === "sign-out" ? "放弃修改并退出" : "放弃修改并切换"}
+        tone="danger"
+        onCancel={() => setLeave(null)}
+        onConfirm={confirmDocumentAction}
       />
       <section className="nw-authoring-trash" aria-label="回收站">
         <h2>回收站（{deleted.length}）</h2>
