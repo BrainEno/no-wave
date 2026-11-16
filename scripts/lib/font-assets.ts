@@ -80,20 +80,23 @@ export function expandUnicodeRange(value: string): number[] {
 
 /** Common chrome/auth glyphs are shared; less common scripts load in small shards. */
 export function partitionCharacters(all: readonly number[], common: readonly number[], size = 128,
-  options: { reading?: readonly number[]; readingId?: "reading" | "interface"; priority?: readonly number[] } = {}): { id: string; points: number[] }[] {
+  options: { reading?: readonly number[]; readingId?: "reading" | "interface"; deferred?: readonly number[]; priority?: readonly number[] } = {}): { id: string; points: number[] }[] {
   if (!Number.isInteger(size) || size < 1 || size > 4096) throw new Error("Invalid font shard size.");
   const repertoire = scalars(all);
   const preferred = new Set(scalars(common));
   const first = repertoire.filter((point) => preferred.has(point));
   const readingSet = new Set(scalars(options.reading ?? []));
   const reading = repertoire.filter((point) => !preferred.has(point) && readingSet.has(point));
+  const deferredSet = new Set(scalars(options.deferred ?? []));
+  const deferred = repertoire.filter((point) => !preferred.has(point) && !readingSet.has(point) && deferredSet.has(point));
   const priority = options.priority ?? [];
   scalars(priority); // Validate while preserving the public priority order.
   const ranks = new Map([...new Set(priority)].map((point, index) => [point, index]));
-  const rest = repertoire.filter((point) => !preferred.has(point) && !readingSet.has(point))
+  const rest = repertoire.filter((point) => !preferred.has(point) && !readingSet.has(point) && !deferredSet.has(point))
     .sort((a, b) => (ranks.get(a) ?? Infinity) - (ranks.get(b) ?? Infinity) || a - b);
   const result = first.length ? [{ id: "common", points: first }] : [];
   if (reading.length) result.push({ id: options.readingId ?? "reading", points: reading });
+  if (deferred.length) result.push({ id: "reader-tools", points: deferred });
   for (let index = 0; index < rest.length; index += size) {
     result.push({ id: String(index / size).padStart(4, "0"), points: rest.slice(index, index + size).sort((a, b) => a - b) });
   }

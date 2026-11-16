@@ -174,7 +174,7 @@ export function grainOffsets(size: number, count = 16, random: () => number = Ma
 
 const NATIVE_SCROLL_PREFIXES = [
   "/write", "/account", "/admin", "/sign-in",
-  "/forgot-password", "/reset-password", "/verify-email", "/notifications",
+  "/forgot-password", "/reset-password", "/verify-email", "/notifications", "/reading-list",
 ] as const;
 
 /**

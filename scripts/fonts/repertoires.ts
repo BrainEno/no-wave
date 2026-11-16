@@ -26,7 +26,26 @@ export function literalCjkText(source: string): string {
   return fragments.join("").match(CJK_TEXT)?.join("") ?? "";
 }
 
-export type Repertoires = { sans: number[]; readerUi: number[]; serif: number[]; upper: number[]; reading: number[]; priority: number[] };
+/** Static extraction avoids importing browser-only types into the Node builder. */
+function chineseLabels(source: string, keys: readonly string[]): string {
+  const ast = parse(source, { sourceType: "module", plugins: ["typescript"] });
+  const remaining = new Set(keys);
+  const labels: string[] = [];
+  for (const statement of ast.program.body) {
+    if (statement.type !== "VariableDeclaration") continue;
+    for (const declaration of statement.declarations) {
+      if (declaration.id.type !== "Identifier" || declaration.id.name !== "zh" || declaration.init?.type !== "ObjectExpression") continue;
+      for (const property of declaration.init.properties) {
+        if (property.type !== "ObjectProperty" || property.key.type !== "Identifier" || property.value.type !== "StringLiteral") continue;
+        if (remaining.delete(property.key.name)) labels.push(property.value.value);
+      }
+    }
+  }
+  if (remaining.size) throw new Error(`Reading UI needs static Chinese labels for its initial font shard: ${[...remaining].join(", ")}`);
+  return labels.join("");
+}
+
+export type Repertoires = { sans: number[]; readerUi: number[]; readerDeferred: number[]; serif: number[]; upper: number[]; reading: number[]; priority: number[] };
 
 export async function applicationRepertoires(root: string): Promise<Repertoires> {
   const sources = await Promise.all([
@@ -40,18 +59,29 @@ export async function applicationRepertoires(root: string): Promise<Repertoires>
     "packages/web-ui/src/components/reader/reader-tools.tsx",
     "packages/web-ui/src/components/reader/read-aloud.tsx",
   ].map(async (path) => literalCjkText(await readFile(join(root, path), "utf8"))));
+  const shelfDictionary = await readFile(join(root, "packages/web-ui/src/lib/reading-shelf-copy.ts"), "utf8");
+  const findDictionary = await readFile(join(root, "packages/web-ui/src/lib/reader-find-copy.ts"), "utf8");
+  const toolSources = await Promise.all([
+    "packages/web-ui/src/components/reader/article-reading-list.tsx",
+    "packages/web-ui/src/components/reader/reader-find.tsx",
+    "packages/web-ui/src/components/reader/reading-list.tsx",
+    "packages/web-ui/src/components/reader/reading-shelf-transfer.tsx",
+  ].map(async (path) => literalCjkText(await readFile(join(root, path), "utf8"))));
   const strings = (value: unknown): string => typeof value === "string" ? value :
     typeof value === "object" && value !== null ? Object.values(value).map(strings).join("") : "";
   const ui = getUi("zh-CN");
-  const chromeCopy = strings([ui.brand, ui.rail, ui.nav, ui.bell, ui.footer]);
-  const readerCopy = strings(ui.reader);
+  const chromeCopy = strings([ui.brand, ui.rail, ui.nav, ui.bell, ui.footer, chineseLabels(shelfDictionary, ["title"])]);
+  // Closed article tools do not need list management, backup or result prose.
+  const initialTools = chineseLabels(shelfDictionary, ["loading", "save", "savedAlready", "open"]) + chineseLabels(findDictionary, ["toggle"]);
+  const readerCopy = strings(ui.reader) + initialTools;
   const data = JSON.parse(await readFile(new URL("./noto-reading-priority.json", import.meta.url), "utf8")) as { groups: Record<string, string> };
   const groups = Object.values(data.groups).map((range) => expandUnicodeRange(range).filter((point) => point >= 0x3400 && point <= 0x9fff));
   return {
     // UI copy changes automatically update its core; auth prose and display
     // titles do not force the serif to carry every unrelated notification word.
-    sans: [...ASCII, ...PUNCTUATION, ...codepoints(literalCjkText(`const copy = ${JSON.stringify(chromeCopy)};`) + sources.join(""))],
+    sans: [...ASCII, ...PUNCTUATION, ...codepoints("←→"), ...codepoints(literalCjkText(`const copy = ${JSON.stringify(chromeCopy)};`) + sources.join(""))],
     readerUi: codepoints(literalCjkText(`const copy = ${JSON.stringify(readerCopy)};`) + readerSources.join("")),
+    readerDeferred: codepoints(literalCjkText(shelfDictionary) + literalCjkText(findDictionary) + toolSources.join("")),
     serif: [...ASCII, ...PUNCTUATION, ...codepoints(sources[1]!)],
     upper: UPPER_SERIF,
     // Published general-usage priorities, never tailored to an E2E article.
@@ -67,7 +97,7 @@ export function fontPartitions(all: readonly number[], source: FontSource, weigh
     return partitionCharacters(all, weight === "400" ? repertoire.serif : repertoire.upper, 32,
       { reading: weight === "400" ? repertoire.reading : [], priority: repertoire.priority });
   }
-  if (source.family === "Noto Sans SC") return partitionCharacters(all, repertoire.sans, 32, { reading: repertoire.readerUi, readingId: "interface", priority: repertoire.priority });
+  if (source.family === "Noto Sans SC") return partitionCharacters(all, repertoire.sans, 32, { reading: repertoire.readerUi, readingId: "interface", deferred: repertoire.readerDeferred, priority: repertoire.priority });
   return partitionCharacters(all, LATIN_COMMON_CODEPOINTS, 128);
 }
 

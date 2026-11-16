@@ -22,6 +22,10 @@ import { getUi } from "@/lib/ui-copy.ts";
 import { tagIndexPath } from "@/lib/tag-discovery.ts";
 import { motionState } from "@/lib/motion-state.ts";
 import { setupPageMotion } from "@/components/motion/page-motion.ts";
+import { ReadingShelfProvider } from "@/components/reader/reading-shelf-provider.tsx";
+import { readingListPath } from "@/lib/reading-shelf.ts";
+import { readingShelfCopy } from "@/lib/reading-shelf-copy.ts";
+import { READER_SCROLL_EVENT, readerScrollRequest } from "@/lib/reader-location.ts";
 
 
 const icon = {
@@ -97,6 +101,7 @@ function SiteFooter({ locale }: { locale: Locale }) {
               where the reading index lives, so this is where the authors go. */}
           <Link href={authorsHref}>{ui.nav.authors}</Link>
           <Link href={tagIndexPath(locale)}>{ui.nav.tags}</Link>
+          <Link href={readingListPath(locale)}>{readingShelfCopy(locale).title}</Link>
           <Link href={searchHref}>{ui.nav.search}</Link>
         </nav>
         <span>© {new Date().getFullYear()} {ui.footer.rights} · 简 / EN</span>
@@ -106,7 +111,7 @@ function SiteFooter({ locale }: { locale: Locale }) {
 }
 
 export function SiteChrome({ children }: { children: ReactNode }) {
-  return <NotificationProvider><SiteChromeContent>{children}</SiteChromeContent></NotificationProvider>;
+  return <NotificationProvider><ReadingShelfProvider><SiteChromeContent>{children}</SiteChromeContent></ReadingShelfProvider></NotificationProvider>;
 }
 
 function SiteChromeContent({ children }: { children: ReactNode }) {
@@ -156,6 +161,23 @@ function SiteChromeContent({ children }: { children: ReactNode }) {
       document.documentElement.classList.remove("nw-smooth");
     };
   }, [smoothEnabled]);
+
+  // Reader locations are deliberate, immediate jumps, including inside transformed content.
+  useEffect(() => {
+    const locate = (event: Event) => {
+      const request = readerScrollRequest(event);
+      const instance = smoother.current;
+      if (!request || request.handled || !instance) return;
+      const box = request.element.getBoundingClientRect();
+      if (box.height <= 0 || box.width <= 0) return;
+      const destination = instance.scrollTop() + box.top + box.height * request.fraction - request.line;
+      instance.scrollTop(Math.max(0, destination));
+      request.handled = true;
+      ScrollTrigger.update();
+    };
+    window.addEventListener(READER_SCROLL_EVENT, locate);
+    return () => window.removeEventListener(READER_SCROLL_EVENT, locate);
+  }, []);
 
   // 页面级动效：路径或查询串变化后重新绑定
   useEffect(() => {
@@ -212,18 +234,31 @@ function SiteChromeContent({ children }: { children: ReactNode }) {
     return () => document.removeEventListener("click", onClick, true);
   }, []);
 
-  // 平滑容器只允许 transform 位移：任何原生滚动（scrollIntoView、焦点找回、
-  // 浏览器锚点跳转）都会钳位内容，立刻归零。
+  // Transfer native reveal/focus scrolling into the transform owner before focusin resets
+  // the wrapper. Resetting alone moves a button between pointerdown and pointerup, losing clicks.
   useEffect(() => {
     if (!smoothEnabled) return;
     const wrapper = document.getElementById("smooth-wrapper");
     if (!wrapper) return;
-    const keepAtZero = () => {
-      if (wrapper.scrollTop !== 0) wrapper.scrollTop = 0;
+    const transferNativeScroll = () => {
+      const instance = smoother.current;
+      if (!instance) return;
+      const offset = wrapper.scrollTop;
+      if (offset !== 0) {
+        wrapper.scrollTop = 0;
+        instance.scrollTop(Math.max(0, instance.scrollTop() + offset));
+        ScrollTrigger.update();
+      }
       if (wrapper.scrollLeft !== 0) wrapper.scrollLeft = 0;
     };
-    wrapper.addEventListener("scroll", keepAtZero, { passive: true });
-    return () => wrapper.removeEventListener("scroll", keepAtZero);
+    wrapper.addEventListener("scroll", transferNativeScroll, { passive: true });
+    wrapper.addEventListener("pointerdown", transferNativeScroll, true);
+    wrapper.addEventListener("focusin", transferNativeScroll, true);
+    return () => {
+      wrapper.removeEventListener("scroll", transferNativeScroll);
+      wrapper.removeEventListener("pointerdown", transferNativeScroll, true);
+      wrapper.removeEventListener("focusin", transferNativeScroll, true);
+    };
   }, [smoothEnabled]);
 
 
@@ -317,6 +352,7 @@ function SiteChromeContent({ children }: { children: ReactNode }) {
         <Link href="/write">{ui.nav.write}</Link>
         <Link href="/account">{ui.nav.account}</Link>
         <Link href={navTopics}>{ui.nav.topics}</Link>
+        <Link href={readingListPath(locale)}>{readingShelfCopy(locale).title}</Link>
         <Link href={searchHref}>{ui.nav.search}</Link>
         <Link href={alternateHref} lang={other} aria-label={ui.nav.language}>{other === "en" ? "English" : "简体中文"}</Link>
       </div>

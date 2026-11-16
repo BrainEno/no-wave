@@ -13,6 +13,8 @@ import { PassageAnnotations } from "@/components/reader/passage-annotations.tsx"
 import { ArticleComments } from "@/components/comments/article-comments.tsx";
 import { ArticleLike } from "@/components/public/article-like.tsx";
 import { ArticleViewBeacon } from "@/components/public/article-view-beacon.tsx";
+import { ArticleReadingList } from "@/components/reader/article-reading-list.tsx";
+import { ReaderFind } from "@/components/reader/reader-find.tsx";
 import { SectionHeading, TypeChip, WorkRow } from "@/components/ui/parts.tsx";
 
 /**
@@ -96,6 +98,9 @@ export function ArticlePageView({ article, newer, older, related }: ArticleDetai
           <ReadAloud blocks={article.contentBlocks} locale={locale} labels={aloud} />
         </div>
       </header>
+
+      <ArticleReadingList article={article} />
+      <ReaderFind key={`${locale}:${article.slug}`} locale={locale} edition={`${locale}:${article.slug}`} />
 
       <div className="nw-rg">
         <div />

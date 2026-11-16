@@ -1,7 +1,7 @@
 import { homePath, type Locale } from "./content.ts";
 import { localeQuery } from "./locale-query.ts";
 
-export type LocalePage = "home" | "article" | "tag" | "archive" | "authors" | "author" | "categories" | "category" | "tags" | "search" | "feed" | "messages" | "conversation" | "notifications";
+export type LocalePage = "home" | "article" | "tag" | "archive" | "authors" | "author" | "categories" | "category" | "tags" | "search" | "feed" | "messages" | "conversation" | "notifications" | "reading-list";
 export type LocaleDestination = Readonly<{ href: string; page: LocalePage; exact: boolean }>;
 const LOCAL_ORIGIN = "https://navigation.no-wave.invalid";
 const SEGMENT_LIMIT = 300;
@@ -46,6 +46,7 @@ function pageFor(parts: readonly string[], sameLocale: boolean): { page: LocaleP
       case "feed": return { page: "feed", bare, exact: true };
       case "messages": return { page: "messages", bare, exact: true };
       case "notifications": return { page: "notifications", bare, exact: true };
+      case "reading-list": return { page: "reading-list", bare, exact: true };
       default: return null;
     }
   }

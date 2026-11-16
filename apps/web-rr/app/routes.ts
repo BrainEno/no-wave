@@ -38,6 +38,8 @@ export default [
   route("en/tags/:slug/:feed", "routes/tag-feed.ts", { id: "en-tag-feed" }),
   route("search", "routes/search.tsx"),
   route("en/search", "routes/search.tsx", { id: "en-search" }),
+  route("reading-list", "routes/reading-list.tsx"),
+  route("en/reading-list", "routes/reading-list.tsx", { id: "en-reading-list" }),
   // 关注流（#198）：私有页，loader 只按 session marker 决定是否重定向到登录。
   route("feed", "routes/feed.tsx"),
   route("en/feed", "routes/feed.tsx", { id: "en-feed" }),

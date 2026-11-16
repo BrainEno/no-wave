@@ -694,3 +694,45 @@ mark { background: var(--or); color: #0f0d0c; }
 .nw-import-selection-list details { margin: 6px 0 0 27px; color: var(--t2); font: 400 13px/1.6 var(--f-zh); }
 .nw-import-selection-list summary { cursor: pointer; }
 .nw-import-preview { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* 本机清单与正文定位；所有颜色复用阅读器的纸/墨/强调色。 */
+.nw-reading-entry, .nw-reader-find { max-width: 640px; margin: 0 auto 24px; padding: 20px 0; border-top: 1px solid var(--ink); }
+.nw-reading-actions, .nw-reading-options, .nw-shelf-filters, .nw-shelf-bulk { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.nw-reading-actions button, .nw-reading-options button, .nw-shelf-bulk button, .nw-reading-list button, .nw-reader-find button { min-height: 44px; }
+.nw-reading-options { margin-top: 18px; }
+.nw-reading-options > p { flex-basis: 100%; margin: 0; }
+.nw-reading-check { display: inline-flex; gap: 8px; align-items: center; }
+.nw-reading-entry select, .nw-reading-list select, .nw-reading-list input[type="search"], .nw-reader-find input[type="search"] { max-width: 100%; min-width: 0; min-height: 44px; padding: 8px 10px; border: 1px solid var(--ink); background: var(--paper); color: var(--ink); }
+.nw-reader-find form { margin-top: 18px; }
+.nw-reader-find label, .nw-shelf-filters label, .nw-shelf-bulk label { display: flex; flex-direction: column; gap: 6px; }
+.nw-reader-find .nw-reading-actions label { display: inline-flex; flex-direction: row; align-items: center; }
+.nw-reader-find input[type="search"] { width: 100%; }
+.nw-find-excerpt { overflow-wrap: anywhere; }
+.nw-find-excerpt mark { color: var(--ink); background: color-mix(in srgb, var(--or) 40%, var(--paper)); }
+::highlight(nw-reader-find) { color: var(--ink); background-color: color-mix(in srgb, var(--or) 35%, var(--paper)); }
+::highlight(nw-reader-find-current) { color: var(--paper); background-color: var(--ink); }
+.nw-rd [data-block]:focus-visible { outline: 2px solid var(--or); outline-offset: 6px; }
+.nw-reading-list { padding-bottom: 100px; overflow-wrap: anywhere; }
+.nw-reading-list > header { max-width: 44rem; margin-bottom: 32px; }
+.nw-reading-list > header h1 { font: 500 clamp(36px, 7vw, 64px)/1.2 var(--f-zh); margin: 0 0 20px; }
+.nw-shelf-filters { align-items: flex-end; margin: 24px 0; }
+.nw-shelf-filters label:first-child { flex: 1 1 16rem; }
+.nw-shelf-bulk { padding: 16px 0; border-block: 1px solid var(--t2); }
+.nw-shelf-bulk > span { flex-basis: 100%; font-size: 14px; }
+.nw-shelf-rows { list-style: none; margin: 0 0 24px; padding: 0; }
+.nw-shelf-rows > li { display: flex; align-items: center; gap: 20px; padding: 24px 0; border-bottom: 1px solid var(--t2); }
+.nw-shelf-select { display: flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
+.nw-shelf-work { flex: 1; min-width: 0; }
+.nw-shelf-work h3 { margin: 0 0 8px; font: 600 24px/1.4 var(--f-zh); }
+.nw-shelf-work h3 a { display: inline-flex; align-items: center; min-height: 44px; }
+.nw-shelf-work p { margin: 4px 0 0; }
+.nw-shelf-transfer { margin: 40px 0; padding: 24px 0; border-block: 1px solid var(--ink); }
+.nw-shelf-transfer input[type="file"] { display: block; max-width: 100%; min-height: 44px; }
+.nw-shelf-preview { margin-top: 24px; padding: 18px; border: 1px solid var(--t2); }
+.nw-shelf-preview ul { max-height: 18rem; overflow: auto; }
+@media (max-width: 640px) {
+  .nw-shelf-rows > li { flex-wrap: wrap; gap: 12px; }
+  .nw-shelf-work { flex-basis: calc(100% - 60px); }
+  .nw-shelf-rows > li > label:not(.nw-shelf-select) { margin-left: 56px; }
+  .nw-reading-actions .nw-btn { padding-inline: 14px; }
+}

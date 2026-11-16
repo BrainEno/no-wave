@@ -5,7 +5,7 @@ import { parse } from "@babel/parser";
 import { alternatePath, localeOf } from "./locale-navigation.ts";
 import { notificationPresentation } from "./chrome.ts";
 
-for (const path of ["/authors", "/feed", "/messages", "/messages/thread-17"]) {
+for (const path of ["/authors", "/feed", "/messages", "/messages/thread-17", "/reading-list"]) {
   test(`locale toggle keeps the same registered page in both directions: ${path}`, () => {
     assert.equal(alternatePath(path, "zh-CN"), `/en${path}`);
     assert.equal(alternatePath(`/en${path}`, "en"), path);
