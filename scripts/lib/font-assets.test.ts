@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { fontPartitions, literalCjkText, verifyFontRecipe, type Repertoires } from "../fonts/repertoires.ts";
+import { applicationRepertoires, fontPartitions, literalCjkText, verifyFontRecipe, type Repertoires } from "../fonts/repertoires.ts";
 import { FONT_SOURCES, fontSourceReceipt } from "../fonts/font-sources.ts";
 import {
   assertSubsetCoverage,
@@ -251,7 +251,7 @@ test("shaping closure may retain original mirror mappings, but missing or invent
 
 test("font roles keep reader UI out of auth and avoid a second reading shard for display weights", () => {
   const all = codepoints("A无浪潮阅读登录");
-  const repertoire: Repertoires = { sans: codepoints("A登录"), readerUi: codepoints("登录阅读"),
+  const repertoire: Repertoires = { sans: codepoints("A登录"), readerUi: codepoints("登录阅读"), readerDeferred: [],
     serif: codepoints("A登录"), upper: codepoints("无浪潮"), reading: codepoints("无浪潮阅读"), priority: [] };
   const sans = FONT_SOURCES.find((source) => source.id === "noto-sans-sc")!;
   const serif = FONT_SOURCES.find((source) => source.id === "noto-serif-sc")!;
@@ -274,4 +274,32 @@ test("an old recipe cannot pass by preserving only its combined glyph coverage",
   const second = data.faces.find((face) => face.source === "noto-sans-sc" && face.file.endsWith("interface.woff2"))!;
   [first.unicodeRange, second.unicodeRange] = [second.unicodeRange, first.unicodeRange];
   await assert.rejects(verifyFontRecipe(data, new URL("../..", import.meta.url).pathname), /Stale font recipe/);
+});
+
+
+test("standalone reading-tool dictionaries enter UI shards without forcing deferred prose into the initial article interface", async () => {
+  const repertoire = await applicationRepertoires(new URL("../..", import.meta.url).pathname);
+  const available = new Set([...repertoire.sans, ...repertoire.readerUi, ...repertoire.readerDeferred]);
+  for (const file of ["reading-shelf-copy.ts", "reader-find-copy.ts"]) {
+    const source = await readFile(new URL(`../../packages/web-ui/src/lib/${file}`, import.meta.url), "utf8");
+    for (const point of codepoints(literalCjkText(source))) assert.ok(available.has(point), `${file}: ${String.fromCodePoint(point)} must be in a UI shard`);
+  }
+  for (const point of codepoints("阅读清单←→")) assert.ok(repertoire.sans.includes(point), "shared navigation labels and arrows belong to the common UI shard");
+  const initial = new Set([...repertoire.sans, ...repertoire.readerUi]);
+  for (const point of codepoints("正在读取本机清单加入阅读打开已在中在本文查找")) assert.ok(initial.has(point), "closed tools must not need the deferred prose");
+  assert.ok(repertoire.readerDeferred.includes("糊".codePointAt(0)!));
+  assert.ok(!initial.has("糊".codePointAt(0)!), "an expanded-tools error must not inflate the initial interface");
+});
+
+
+test("deferred reader-tool prose has its own disjoint shard and does not inflate the initial interface", () => {
+  const all = codepoints("ABCDEF");
+  const shards = partitionCharacters(all, codepoints("AB"), 1, {
+    reading: codepoints("BC"), readingId: "interface", deferred: codepoints("ACDE"),
+  });
+  assert.deepEqual(shards, [
+    { id: "common", points: codepoints("AB") }, { id: "interface", points: codepoints("C") },
+    { id: "reader-tools", points: codepoints("DE") }, { id: "0000", points: codepoints("F") },
+  ]);
+  assert.deepEqual(shards.flatMap(shard => shard.points).sort((a, b) => a - b), all);
 });

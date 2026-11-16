@@ -38,11 +38,11 @@ Vite 的 `first-party-font-licenses` 插件把四份完整许可证复制到构�
 | --- | --- |
 | Instrument Serif 400 normal / italic | 常用 Latin 与标点共享块，其余原始 Latin 字形分片 |
 | Inter Tight 400–700 | 常用 Latin 与标点共享变量字体，其余文字按 Unicode 范围请求 |
-| Noto Sans SC 400–700 | 外壳／登录文案核心，阅读工具／评论文案独立 interface 块；其余 32 字形叶片 |
+| Noto Sans SC 400–700 | 外壳／登录文案核心，文章初始工具／评论文案独立 interface 块，展开工具与清单管理文案使用延迟 reader-tools 块；其余 32 字形叶片 |
 | Noto Serif SC 400 | 登录／注册文案核心、公共常用字 reading 块、其余 32 字形叶片 |
 | Noto Serif SC 500–700 | 小型展示标题核心、其余 32 字形叶片；不因一个 600 字重标题下载第二份完整 reading 块 |
 
-UI 核心字表来自 `ui-copy.ts` 的外壳文案、站点外壳和登录组件；interface 字表另读阅读工具与评论组件，避免登录页为未展示的阅读界面下载字体。使用已有 Babel 生态的构建期解析器，排除注释与标识符，正确处理字符串转义和模板片段。新 UI 文案改变配方时，离线检查提示重新生成，而不是静默漂移。分片间的 CSS `unicode-range` 不重叠；字体实际 cmap 可保留 HarfBuzz 排版闭包需要的原始映射（例如数学镜像符号），但不能缺少声明的字符或引入上游不存在的字符。
+UI 核心字表来自 `ui-copy.ts` 的外壳文案、站点外壳、共用的阅读清单导航标题／方向箭头和登录组件；interface 字表另读原有阅读工具、评论组件与新工具的初始可见标签。独立的 `reading-shelf-copy.ts` / `reader-find-copy.ts` 字典及其组件进入延迟 `reader-tools` 字表，按 common → interface → reader-tools → 普通叶片的优先顺序去重。这样不会遗漏提取到字典的控件，也不会让关闭的查找框、备份预览或错误提示把整套清单文案压进每篇文章的初始字体包；登录页不为未展示的阅读界面下载字体。静态提取同时避免 Node 构建脚本间接引入依赖 DOM 类型的阅读模块。使用已有 Babel 生态的构建期解析器，排除注释与标识符，正确处理字符串转义和模板片段。新 UI 文案改变配方时，离线检查提示重新生成，而不是静默漂移。分片间的 CSS `unicode-range` 不重叠；字体实际 cmap 可保留 HarfBuzz 排版闭包需要的原始映射（例如数学镜像符号），但不能缺少声明的字符或引入上游不存在的字符。
 
 原始非控制字符覆盖为 Instrument Serif 每个样式 333、Inter Tight 2,504、Noto Serif SC 30,928、Noto Sans SC 30,890。清单固定各来源的覆盖数量及排序后码点的 SHA-256，逐个字重检查完整覆盖；不能通过删掉生僻字或遗漏一个字重来让预算通过。
 

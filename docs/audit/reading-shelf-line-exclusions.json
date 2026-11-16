@@ -1,0 +1,443 @@
+{
+  "base": "ba5c73b1915e74fe7a444f85f31755b1adc834af",
+  "rules": [
+    {
+      "file": "apps/web-rr/app/routes/reading-list.tsx",
+      "reason": "路由/标题接线与页面包装按配置和展示保守排除，不用它们满足功能行门槛。",
+      "fragments": [
+        {
+          "line": 10,
+          "text": "export function loader({ url }: LoaderFunctionArgs) {"
+        },
+        {
+          "line": 11,
+          "text": "return { locale: localeFor(url) };"
+        },
+        {
+          "line": 15,
+          "text": "{ title: titleWithSite(readingShelfCopy(loaderData?.locale ?? \"zh-CN\").title) },"
+        },
+        {
+          "line": 18,
+          "text": "export default function ReadingListRoute() {"
+        },
+        {
+          "line": 19,
+          "text": "return <ReadingListPage {...useLoaderData<typeof loader>()} />;"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/chrome/site-chrome.tsx",
+      "reason": "导航链接与 Provider 包装接线保守不计；只核算新增滚动协调行为。",
+      "fragments": [
+        {
+          "line": 104,
+          "text": "<Link href={readingListPath(locale)}>{readingShelfCopy(locale).title}</Link>"
+        },
+        {
+          "line": 114,
+          "text": "return <NotificationProvider><ReadingShelfProvider><SiteChromeContent>{children}</SiteChromeContent></ReadingShelfProvider></NotificationProvider>;"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/reader/article-reading-list.tsx",
+      "reason": "字典选择、静态标签、选项及纯状态文字展示不计；保留写入、许可、续读及错误处理控制流。",
+      "fragments": [
+        {
+          "line": 19,
+          "text": "const copy = readingShelfCopy(metadata.locale);"
+        },
+        {
+          "line": 35,
+          "text": "<section className=\"nw-reading-entry\" aria-label={copy.title}>"
+        },
+        {
+          "line": 38,
+          "text": "<Link href={readingListPath(metadata.locale)}>{copy.open} →</Link>"
+        },
+        {
+          "line": 41,
+          "text": "{snapshot.status === \"loading\" ? <p className=\"nw-m\">{copy.loading}</p> : null}"
+        },
+        {
+          "line": 43,
+          "text": "{snapshot.status === \"ready\" && !canWrite ? <p role=\"status\">{copy.readOnly}</p> : null}"
+        },
+        {
+          "line": 47,
+          "text": "<option value=\"later\">{copy.later}</option><option value=\"reading\">{copy.reading}</option><option value=\"finished\">{copy.finished}</option>"
+        },
+        {
+          "line": 53,
+          "text": "<p className=\"nw-m\">{copy.rememberHint}</p>"
+        },
+        {
+          "line": 58,
+          "text": "{feedback ? <p role={failed ? \"alert\" : \"status\"}>{feedback}</p> : null}"
+        },
+        {
+          "line": 59,
+          "text": "{position.feedback ? <p role={position.failed ? \"alert\" : \"status\"}>{position.feedback}</p> : null}"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/reader/reader-find.tsx",
+      "reason": "固定注册名/初值、字典选择及纯提示/摘录展示不计。",
+      "fragments": [
+        {
+          "line": 9,
+          "text": "const EMPTY: ReadingFindResult = { matches: [], moreMatches: false, limitedText: false, invalidQuery: false, unavailable: false };"
+        },
+        {
+          "line": 10,
+          "text": "const ALL_PAINT = \"nw-reader-find\";"
+        },
+        {
+          "line": 11,
+          "text": "const ACTIVE_PAINT = \"nw-reader-find-current\";"
+        },
+        {
+          "line": 16,
+          "text": "const copy = readerFindCopy(locale);"
+        },
+        {
+          "line": 186,
+          "text": "<p className=\"nw-m\">{copy.hint}</p>"
+        },
+        {
+          "line": 192,
+          "text": "<p role=\"status\">{result.unavailable ? copy.unsupported : busy ? copy.searching : ready && query.trim() ? result.invalidQuery ? copy.invalid : result.matches.length ? copy.count(result.matches.length) : copy.none : \"\"}</p>"
+        },
+        {
+          "line": 193,
+          "text": "{result.moreMatches && ready ? <p>{copy.more}</p> : null}"
+        },
+        {
+          "line": 194,
+          "text": "{result.limitedText && ready ? <p>{copy.limited}</p> : null}"
+        },
+        {
+          "line": 195,
+          "text": "{!paintSupported ? <p>{copy.noPaint}</p> : null}"
+        },
+        {
+          "line": 196,
+          "text": "{ready && current ? <p className=\"nw-find-excerpt\">…{current.before}<mark>{current.text}</mark>{current.after}…</p> : null}"
+        },
+        {
+          "line": 203,
+          "text": "{feedback ? <p role=\"status\">{feedback}</p> : null}"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/reader/reading-list.tsx",
+      "reason": "页面/分组包装、选项与本地化结果数量/空态文字等展示不计；分页、筛选、选择、提交和焦点逻辑单独保留。",
+      "fragments": [
+        {
+          "line": 18,
+          "text": "const copy = readingShelfCopy(locale);"
+        },
+        {
+          "line": 134,
+          "text": "<main id=\"top\" tabIndex={-1} className=\"nw-w nw-head nw-reading-list\" data-route=\"reading-list\" lang={locale}>"
+        },
+        {
+          "line": 135,
+          "text": "<header><h1>{copy.title}</h1><p>{copy.intro}</p><p className=\"nw-m\">{copy.privacy}</p></header>"
+        },
+        {
+          "line": 136,
+          "text": "{snapshot.status === \"loading\" ? <p role=\"status\">{copy.loading}</p> : null}"
+        },
+        {
+          "line": 139,
+          "text": "{snapshot.invalid ? <p role=\"alert\">{copy.invalid(snapshot.invalid)}</p> : null}"
+        },
+        {
+          "line": 140,
+          "text": "<div className=\"nw-shelf-filters\" role=\"search\" aria-label={copy.query}>"
+        },
+        {
+          "line": 143,
+          "text": "<option value=\"all\">{copy.allEditions}</option><option value=\"zh-CN\">{copy.chinese}</option><option value=\"en\">{copy.english}</option>"
+        },
+        {
+          "line": 146,
+          "text": "<option value=\"recent\">{copy.recent}</option><option value=\"saved\">{copy.savedSort}</option><option value=\"title\">{copy.titleSort}</option><option value=\"progress\">{copy.progressSort}</option>"
+        },
+        {
+          "line": 150,
+          "text": "<div className=\"nw-reading-actions\" role=\"group\" aria-label={copy.status}>"
+        },
+        {
+          "line": 153,
+          "text": "<section aria-label={copy.entries}>"
+        },
+        {
+          "line": 155,
+          "text": "<p role=\"status\">{copy.total(filtered.length, snapshot.entries.length)}</p>"
+        },
+        {
+          "line": 156,
+          "text": "<p className=\"nw-m\">{copy.keyboard}</p>"
+        },
+        {
+          "line": 157,
+          "text": "<div className=\"nw-shelf-bulk\" role=\"group\" aria-label={copy.bulkApply}>"
+        },
+        {
+          "line": 160,
+          "text": "<span>{copy.selected(selection.size)}</span>"
+        },
+        {
+          "line": 167,
+          "text": "{snapshot.status === \"ready\" && !filtered.length ? <p>{snapshot.entries.length ? copy.noMatches : copy.empty} <Link href={archivePath(locale)}>{copy.browse}</Link></p> : null}"
+        },
+        {
+          "line": 171,
+          "text": "const editionLabel = record.locale === \"en\" ? copy.english : copy.chinese;"
+        },
+        {
+          "line": 172,
+          "text": "return <li key={identity} data-shelf-id={identity}>"
+        },
+        {
+          "line": 178,
+          "text": "}}><option value=\"later\">{copy.later}</option><option value=\"reading\">{copy.reading}</option><option value=\"finished\">{copy.finished}</option></select></label>"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/reader/reading-shelf-transfer.tsx",
+      "reason": "固定下载名、包装、选项与预览标签展示不计；读取/校验/预览约束/导入/下载及回收逻辑保留。",
+      "fragments": [
+        {
+          "line": 72,
+          "text": "anchor.download = \"no-wave-reading-list.json\";"
+        },
+        {
+          "line": 109,
+          "text": "<section className=\"nw-shelf-transfer\" aria-label={copy.transfer}>"
+        },
+        {
+          "line": 110,
+          "text": "<h2>{copy.transfer}</h2>"
+        },
+        {
+          "line": 111,
+          "text": "<p>{copy.importHint}</p>"
+        },
+        {
+          "line": 120,
+          "text": "{busy ? <p role=\"status\">{copy.loading}</p> : null}"
+        },
+        {
+          "line": 122,
+          "text": "<div className=\"nw-shelf-preview\" aria-label={copy.preview} role=\"region\">"
+        },
+        {
+          "line": 123,
+          "text": "<h3>{copy.preview}</h3>"
+        },
+        {
+          "line": 128,
+          "text": "}}><option value=\"keep\">{copy.keep}</option><option value=\"replace\">{copy.replace}</option></select></label>"
+        },
+        {
+          "line": 129,
+          "text": "{plan?.ok ? <p>{copy.previewCounts(plan.added, plan.replaced, plan.kept)}</p> : <p role=\"alert\">{shelfProblemText(plan?.code ?? \"entry\", locale)}</p>}"
+        },
+        {
+          "line": 130,
+          "text": "<ul>{incoming.map(entry => <li key={shelfIdentity(entry)}>{entry.title} · {entry.author} · {entry.locale === \"en\" ? copy.english : copy.chinese}</li>)}</ul>"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/chrome.ts",
+      "reason": "原生滚动路由表属于配置增量，不计功能行。",
+      "fragments": [
+        {
+          "line": 177,
+          "text": "\"/forgot-password\", \"/reset-password\", \"/verify-email\", \"/notifications\", \"/reading-list\","
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/locale-navigation.ts",
+      "reason": "静态路由映射不计功能行。",
+      "fragments": [
+        {
+          "line": 49,
+          "text": "case \"reading-list\": return { page: \"reading-list\", bare, exact: true };"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/reader-find.ts",
+      "reason": "容量/查询上限常量按配置保守排除，实际边界检查和映射算法才计数。",
+      "fragments": [
+        {
+          "line": 8,
+          "text": "const FIND_TEXT_LIMIT = 200_000;"
+        },
+        {
+          "line": 9,
+          "text": "const FIND_MATCH_LIMIT = 200;"
+        },
+        {
+          "line": 10,
+          "text": "const FIND_QUERY_LIMIT = 100;"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/reader-location.ts",
+      "reason": "固定事件名不计；临时 tabindex/blur 焦点模式与既有 overlay-focus 的等价部分保守扣除，新增释放/滚动协调行为保留。",
+      "fragments": [
+        {
+          "line": 1,
+          "text": "export const READER_SCROLL_EVENT = \"nw:reader-scroll\";"
+        },
+        {
+          "line": 24,
+          "text": "export function focusReadingBlock(element: HTMLElement): () => void {"
+        },
+        {
+          "line": 31,
+          "text": "element.addEventListener(\"blur\", release, { once: true });"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/reading-position.ts",
+      "reason": "容量常量和已有通用对象/数字/空白规范化模式的等价部分保守扣除。",
+      "fragments": [
+        {
+          "line": 7,
+          "text": "const MAX_BLOCK_TEXT = 1_000_000;"
+        },
+        {
+          "line": 8,
+          "text": "const MAX_QUOTE = 96;"
+        },
+        {
+          "line": 9,
+          "text": "const object = (value: unknown): value is Record<string, unknown> => typeof value === \"object\" && value !== null && !Array.isArray(value);"
+        },
+        {
+          "line": 10,
+          "text": "const finite = (value: unknown): value is number => typeof value === \"number\" && Number.isFinite(value);"
+        },
+        {
+          "line": 12,
+          "text": "export function readingText(text: string): string {"
+        },
+        {
+          "line": 13,
+          "text": "return text.replace(/\\s+/gu, \" \").trim();"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/reading-shelf-actions.ts",
+      "reason": "固定初始快照按配置保守排除。",
+      "fragments": [
+        {
+          "line": 5,
+          "text": "const EMPTY: ShelfActionSnapshot = Object.freeze({ writable: false, pending: 0 });"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/reading-shelf-backup.ts",
+      "reason": "备份容量常量按配置保守排除。",
+      "fragments": [
+        {
+          "line": 3,
+          "text": "export const SHELF_BACKUP_BYTES = 1_048_576;"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/reading-shelf-store.ts",
+      "reason": "固定 namespace、初始快照和容量常量按配置保守排除。",
+      "fragments": [
+        {
+          "line": 5,
+          "text": "export const SHELF_STORAGE_PREFIX = \"nw-reading-list-v1:\";"
+        },
+        {
+          "line": 11,
+          "text": "const EMPTY: ShelfSnapshot = Object.freeze({ status: \"loading\", entries: Object.freeze([]), invalid: 0, stamp: \"\" });"
+        },
+        {
+          "line": 12,
+          "text": "const MAX_STORAGE_KEYS = 10_000;"
+        },
+        {
+          "line": 13,
+          "text": "const MAX_RECORD_BYTES = 8192;"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/reading-shelf.ts",
+      "reason": "固定限制/默认值/已有作品类型表与通用对象、字符串、令牌、时间戳校验等价辅助模式保守扣除。",
+      "fragments": [
+        {
+          "line": 5,
+          "text": "export const SHELF_LIMIT = 200;"
+        },
+        {
+          "line": 14,
+          "text": "export const DEFAULT_SHELF_FILTERS: ShelfFilters = { query: \"\", state: \"all\", edition: \"all\", sort: \"recent\" };"
+        },
+        {
+          "line": 15,
+          "text": "const workTypes = new Set<string>(knownWorkTypes);"
+        },
+        {
+          "line": 16,
+          "text": "const MAX_TIMESTAMP = 8_640_000_000_000_000;"
+        },
+        {
+          "line": 17,
+          "text": "const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;"
+        },
+        {
+          "line": 31,
+          "text": "function plainObject(value: unknown): value is Record<string, unknown> {"
+        },
+        {
+          "line": 35,
+          "text": "function text(value: unknown, maximum: number): value is string {"
+        },
+        {
+          "line": 36,
+          "text": "return typeof value === \"string\" && value.trim().length > 0 && value.length <= maximum && !/[\\u0000-\\u001f\\u007f]/u.test(value);"
+        },
+        {
+          "line": 39,
+          "text": "export function shelfToken(value: unknown): value is string {"
+        },
+        {
+          "line": 40,
+          "text": "return typeof value === \"string\" && /^[A-Za-z0-9_-]{1,100}$/.test(value);"
+        },
+        {
+          "line": 43,
+          "text": "export function shelfTimestamp(value: unknown): value is number {"
+        },
+        {
+          "line": 44,
+          "text": "return typeof value === \"number\" && Number.isSafeInteger(value) && value >= 0 && value <= MAX_TIMESTAMP;"
+        }
+      ]
+    }
+  ]
+}
