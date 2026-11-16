@@ -76,6 +76,31 @@ const ERROR_RESPONSE: JsonSchema = {
 export const SCHEMAS: Readonly<Record<string, JsonSchema>> = Object.freeze({
   Error: ERROR_RESPONSE,
 
+  ArticleCatalogueEntry: {
+    type: "object", required: ["id", "slug", "title", "summary", "locale", "status", "workType", "createdAt", "updatedAt", "deletedAt"],
+    properties: {
+      id: TEXT, slug: TEXT, title: TEXT, summary: TEXT, locale: { type: "string", enum: LOCALES },
+      status: { type: "string", enum: ["draft", "published"] }, workType: { type: "string", enum: supportedArticleWorkTypes },
+      createdAt: TIMESTAMP, updatedAt: TIMESTAMP, deletedAt: NULLABLE_TIMESTAMP,
+    },
+    description: "Own-work metadata only. No body, identity, revision, taxonomy or engagement projections.",
+  },
+  ArticleCataloguePage: {
+    type: "object", required: ["items", "total", "works", "facets", "nextCursor"],
+    properties: {
+      items: { type: "array", maxItems: 50, items: ref("ArticleCatalogueEntry") },
+      total: { type: "integer", minimum: 0, description: "Matching language editions, before the cursor." },
+      works: { type: "integer", minimum: 0, description: "Distinct matching works, before the cursor." },
+      nextCursor: nullable(TEXT),
+      facets: { type: "array", items: {
+        type: "object", required: ["locale", "status", "workType", "count"],
+        properties: { locale: { type: "string", enum: LOCALES }, status: { type: "string", enum: ["draft", "published"] },
+          workType: { type: "string", enum: supportedArticleWorkTypes }, count: { type: "integer", minimum: 0 } },
+      } },
+    },
+    description: "Facets apply scope, literal search and date range, before locale/status/type filters. Three bounded metadata statements; not a cross-statement or cross-request snapshot.",
+  },
+
   Health: {
     type: "object",
     required: ["status", "service", "version"],

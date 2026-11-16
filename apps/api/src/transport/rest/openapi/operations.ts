@@ -544,6 +544,39 @@ export const OPERATIONS: Readonly<Record<string, OperationMetadata>> = Object.fr
     response: { description: "Related published works.", data: "Article", array: true },
   },
 
+  "GET me.article-catalogue": {
+    summary: "Search and page the signed-in author's complete lightweight catalogue",
+    description: "Closed query vocabulary; repeated or unknown fields are rejected. Case-sensitive literal title/summary search. Updated sort uses work deletion time for trash and the selected translation row update time for active work; created sort uses that translation row creation time, oldest first. UTC day boundaries are inclusive. The cursor is actor/filter-bound, not authorization. Concurrent edits may move rows; restart to refresh.",
+    security: "session", tags: ["articles"],
+    query: [
+      { name: "scope", description: "Active work or recycle bin.", schema: { type: "string", enum: ["active", "trash"], default: "active" } },
+      { name: "q", description: "Literal, case-sensitive title/summary substring.", schema: { type: "string", maxLength: 120 } },
+      { name: "locale", description: "One language or all editions.", schema: { type: "string", enum: ["all", ...LOCALES], default: "all" } },
+      { name: "status", description: "Publication state.", schema: { type: "string", enum: ["all", "draft", "published"], default: "all" } },
+      { name: "workType", description: "Stored literary type, including retired types; all by default.", schema: { type: "string" } },
+      { name: "sort", description: "Recent activity or oldest creation, with id and locale tie breakers.", schema: { type: "string", enum: ["updated", "created"], default: "updated" } },
+      { name: "from", description: "First UTC activity/creation day, YYYY-MM-DD.", schema: { type: "string", format: "date" } },
+      { name: "until", description: "Last UTC activity/creation day, YYYY-MM-DD.", schema: { type: "string", format: "date" } },
+      limitParameter(20, 50),
+      { name: "cursor", description: "Opaque seek witness; do not reuse after changing account or filters.", schema: { type: "string", maxLength: 1024 } },
+    ],
+    response: { description: "A metadata page, matching counts and pre-filter facets.", data: "ArticleCataloguePage" },
+  },
+  "GET me.article-catalogue-editions": {
+    summary: "All existing lightweight language editions of one owned work",
+    description: "At most three entries, independent of catalogue search filters. Publication/type are work-wide; title/summary and timestamps belong to each edition. Another account, wrong active/trash scope, or missing work answers the same 404.",
+    security: "session", tags: ["articles"], pathParams: { id: "Own article UUID." }, errors: [404],
+    query: [{ name: "scope", description: "Active or deleted work.", schema: { type: "string", enum: ["active", "trash"], default: "active" } }],
+    response: { description: "Complete metadata-only language coverage for this work.", data: "ArticleCatalogueEntry", array: true },
+  },
+  "GET me.article-catalogue-item": {
+    summary: "Open one explicitly requested own editable language edition",
+    description: "Other authors' IDs, missing editions, tombstones and nonexistent IDs all answer 404. No implicit language fallback.",
+    security: "session", tags: ["articles"], pathParams: { id: "Own article UUID." },
+    query: [{ ...localeParameter(), required: true }], errors: [404],
+    response: { description: "The requested own work, including its body and revision for editing.", data: "Article" },
+  },
+
   "GET me.articles": {
     summary: "The signed-in author's own work, drafts included",
     description:

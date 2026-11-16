@@ -1,0 +1,407 @@
+{
+  "base": "81bd4b7bcb82b48ad28e15542072f8f6119a29fc",
+  "rules": [
+    {
+      "file": "apps/api/src/domain/article-catalogue.ts",
+      "reason": "通用抛错包装与仅声明 unknown 的占位，不以 helper 命名或类型占位计功能行。",
+      "fragments": [
+        {
+          "line": 32,
+          "text": "function invalid(): never { throw new ArticleInputError(\"Invalid article catalogue query or cursor. Restart the catalogue with valid filters.\"); }"
+        },
+        {
+          "line": 95,
+          "text": "let raw: unknown;"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/persistence/article-catalogue-query.ts",
+      "reason": "语言清单复用了分页 SELECT 已计数的同一元数据投影，保守扣除重复字段列举；仍核算新增所有权、范围、上限与取数语义。",
+      "fragments": [
+        {
+          "line": 95,
+          "text": "const text = `SELECT a.id, a.slug, a.work_type, a.status, t.created_at, t.updated_at, a.deleted_at, t.locale, t.title, t.summary"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/transport/rest/routes/catalogue.ts",
+      "reason": "路由注册标识清单属于接线，保守不计。",
+      "fragments": [
+        {
+          "line": 8,
+          "text": "export const CATALOGUE_ROUTE_IDS = Object.freeze([\"me.article-catalogue\", \"me.article-catalogue-item\", \"me.article-catalogue-editions\"]);"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-http/src/catalogue.ts",
+      "reason": "不把 noindex 包装器的函数拆分与现有 privateError/forwardPrivateRequest 转发重复计数；新增私有头语句及实际参数/身份边界另计。",
+      "fragments": [
+        {
+          "line": 7,
+          "text": "function catalogueResponse(response: Response): Response {"
+        },
+        {
+          "line": 11,
+          "text": "function errorResponse(code: string, message: string, status: number): Response {"
+        },
+        {
+          "line": 12,
+          "text": "return catalogueResponse(privateError(code, message, status));"
+        },
+        {
+          "line": 14,
+          "text": "async function forwardAuthoringRequest(...args: Parameters<typeof forwardPrivateRequest>): Promise<Response> {"
+        },
+        {
+          "line": 15,
+          "text": "return catalogueResponse(await forwardPrivateRequest(...args));"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/authoring-catalogue.tsx",
+      "reason": "字典选择、effect 依赖闭合、纯容器及仅提示/计数/已有元数据展示保守扣除；不以增加展示行满足门槛。交互、失效保护、导出和资源回收另计。",
+      "fragments": [
+        {
+          "line": 25,
+          "text": "const labels = getMessages(\"zh-CN\").workTypeLabels;"
+        },
+        {
+          "line": 53,
+          "text": "}, [state.retryAt]);"
+        },
+        {
+          "line": 89,
+          "text": "return <section className=\"nw-authoring nw-catalogue\" aria-label=\"全量作品目录\">"
+        },
+        {
+          "line": 113,
+          "text": "{remaining > 0 ? <p role=\"status\">请求受限，请等待 {remaining} 秒后手动重试；不会自动发送请求。</p> : null}"
+        },
+        {
+          "line": 115,
+          "text": "{state.notice ? <p role=\"status\">{state.notice}</p> : null}"
+        },
+        {
+          "line": 120,
+          "text": "{busy ? <p role=\"status\">{state.restoring ? \"正在还原整部作品，请勿重复提交……\" : \"正在读取目录元数据……\"}</p> : null}"
+        },
+        {
+          "line": 121,
+          "text": "{formChanged ? <p role=\"status\">筛选已修改、尚未提交。下方仍是上次请求的结果，暂不能执行条目操作。</p> : null}"
+        },
+        {
+          "line": 122,
+          "text": "<section aria-label=\"目录结果\" aria-busy={busy}>"
+        },
+        {
+          "line": 124,
+          "text": "<h2>{state.filters.scope === \"trash\" ? \"回收站\" : \"在用作品\"} · {state.page.total} 个语言版本 / {state.page.works} 部作品</h2>"
+        },
+        {
+          "line": 125,
+          "text": "{state.filters.scope === \"trash\" ? <p>回收站沿用服务器的保留策略；已永久清除的作品不在这里，只有尚未清除的作品可还原。还原将影响同一作品的全部已有语言并设为草稿，不会自动重新发布。</p> : null}"
+        },
+        {
+          "line": 126,
+          "text": "{state.status === \"failed\" ? <p>以下是保留的上次结果，不表示当前服务器状态；先刷新核对后再操作。</p> : null}"
+        },
+        {
+          "line": 133,
+          "text": "<p>已选 {state.selected.length} / {CATALOGUE_SELECTION_LIMIT} 个语言版本。翻页保留选择，已提交的筛选或账户变更会清空。下载的是所选条目上次读取的快照，可在下方明确发起只读核对。</p>"
+        },
+        {
+          "line": 138,
+          "text": "<h3>{entry.title}</h3><p className=\"nw-catalogue-summary\">{entry.summary || \"（没有摘要）\"}</p>"
+        },
+        {
+          "line": 139,
+          "text": "<dl className=\"nw-catalogue-dates\"><div><dt>版本创建</dt><dd><time dateTime={entry.createdAt}>{catalogueDate(entry.createdAt)} UTC</time></dd></div><div><dt>版本更新</dt><dd><time dateTime={entry.updatedAt}>{catalogueDate(entry.updatedAt)} UTC</time></dd></div>{entry.deletedAt ? <div><dt>作品删除</dt><dd><time dateTime={entry.deletedAt}>{catalogueDate(entry.deletedAt)} UTC</time></dd></div> : null}</dl>"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/authoring-workspace.tsx",
+      "reason": "既有 selectArticle/switchEditor 的 useCallback 包装、依赖尾部、类型占位、进度提示与既有 blocker.proceed 搬移不重复计；仅核算新增精确读取、live leave-token 及目标 search 绑定。",
+      "fragments": [
+        {
+          "line": 164,
+          "text": "const selectArticle = useCallback((article: AuthoringArticle | null) => {"
+        },
+        {
+          "line": 169,
+          "text": "const switchEditor = useCallback((prefix: string) => {"
+        },
+        {
+          "line": 180,
+          "text": "}, [catalogueReader]);"
+        },
+        {
+          "line": 320,
+          "text": "}, [catalogueReader, selectArticle, switchEditor, viewerId]);"
+        },
+        {
+          "line": 325,
+          "text": "let intent: CatalogueOpenIntent | null;"
+        },
+        {
+          "line": 338,
+          "text": "}, [catalogueReader, openCatalogueDocument, pageLocation.key, pageLocation.search, state, viewerId]);"
+        },
+        {
+          "line": 519,
+          "text": "{catalogueLoading ? <p role=\"status\">正在核对目录所选作品的精确语言版本；继续输入或新建会使本次读取失效……</p> : null}"
+        },
+        {
+          "line": 566,
+          "text": "blocker.proceed();"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/catalogue-versions.tsx",
+      "reason": "语言名称/日期展示包装、依赖尾部、纯容器与已有元数据/提示展示保守扣除；完整语言覆盖、选择、对照交互与受限差异结果另计。",
+      "fragments": [
+        {
+          "line": 6,
+          "text": "export const catalogueLocaleLabel = (locale: string): string => locale === \"zh-CN\" ? \"简体中文\" : locale === \"zh-TW\" ? \"繁體中文\" : \"English\";"
+        },
+        {
+          "line": 7,
+          "text": "export function catalogueDate(value: string): string {"
+        },
+        {
+          "line": 8,
+          "text": "return new Intl.DateTimeFormat(\"zh-CN\", { dateStyle: \"medium\", timeStyle: \"short\", timeZone: \"UTC\" }).format(new Date(value));"
+        },
+        {
+          "line": 19,
+          "text": "}, [inspection.editions, leftLocale, rightLocale]);"
+        },
+        {
+          "line": 20,
+          "text": "return <section className=\"nw-catalogue-inspection\" aria-label=\"语言版本预览\">"
+        },
+        {
+          "line": 22,
+          "text": "{inspection.status === \"loading\" ? <p role=\"status\">正在单独核对本作品全部语言，不受目录筛选影响……</p> : null}"
+        },
+        {
+          "line": 27,
+          "text": "<h3>{catalogueLocaleLabel(locale)} · {entry ? \"已有版本\" : \"尚无版本\"}</h3>"
+        },
+        {
+          "line": 29,
+          "text": "<p>{entry.title}</p><p className=\"nw-m\">{entry.summary || \"（没有摘要）\"}</p>"
+        },
+        {
+          "line": 30,
+          "text": "<p className=\"nw-m\">版本更新：{catalogueDate(entry.updatedAt)} UTC</p>"
+        },
+        {
+          "line": 41,
+          "text": "<dt>{field === \"title\" ? \"标题\" : \"摘要\"} · {difference.textEqual ? \"相同\" : \"不同\"}</dt>"
+        },
+        {
+          "line": 43,
+          "text": "{difference.truncated ? <small>片段超过 1200 字符，仅显示部分；完整文字见上方版本摘要。</small> : null}</dd>"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/catalogue-export.tsx",
+      "reason": "纯 section 包装和导出数值/预览提示文案不计；列规则、预览计算、安全披露和实际下载控制另计。",
+      "fragments": [
+        {
+          "line": 25,
+          "text": "return <section className=\"nw-catalogue-export\" aria-label=\"CSV 导出预检\">"
+        },
+        {
+          "line": 39,
+          "text": "<p>将导出 {prepared.report.editions} 个语言版本 / {prepared.report.works} 部作品，{prepared.report.columns.length} 列，UTF-8 含 BOM 共 {new Intl.NumberFormat(\"zh-CN\").format(prepared.report.bytes)} 字节。</p>"
+        },
+        {
+          "line": 40,
+          "text": "<h3>导出预览（前 {prepared.report.preview.length} 个所选版本）</h3>"
+        },
+        {
+          "line": 41,
+          "text": "<p>下方显示安全处理后的单元格，长字段仅截断预览。CSV 将包含全部 {prepared.report.editions} 个所选版本，完整字段不因预览截断。</p>"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/catalogue-selection.tsx",
+      "reason": "静态字典、纯容器、差异元数据/状态/时间/说明的展示保守扣除，避免将提示与行展开重复计算；只读队列、显式采纳、筛选及逐条移除交互另计。",
+      "fragments": [
+        {
+          "line": 7,
+          "text": "const FIELD_LABELS = { title: \"标题\", summary: \"摘要\", slug: \"作品地址\", status: \"发布状态\", workType: \"作品类型\", createdAt: \"版本创建时间\", updatedAt: \"版本更新时间\", deletedAt: \"删除时间\" };"
+        },
+        {
+          "line": 8,
+          "text": "const STATUS_LABELS = { waiting: \"尚未核对\", checking: \"正在核对\", ready: \"已读取完整语言清单\", unavailable: \"本次范围内无法确认\", failed: \"读取失败\" };"
+        },
+        {
+          "line": 18,
+          "text": "return <section className=\"nw-catalogue-review-version\" aria-label={`${catalogueLocaleLabel(difference.before.locale)}核对结果`}>"
+        },
+        {
+          "line": 19,
+          "text": "<h4>{catalogueLocaleLabel(difference.before.locale)} · {difference.kind === \"changed\" ? \"存在元数据差异\" : difference.kind === \"unchanged\" ? \"与选择时相同\" : \"所选语言未能确认\"}</h4>"
+        },
+        {
+          "line": 21,
+          "text": "<dt>{FIELD_LABELS[field]}</dt><dd><p><strong>选择时：</strong>{reviewValue(field, difference.before)}</p><p><strong>本次核对：</strong>{reviewValue(field, difference.current!)}</p></dd>"
+        },
+        {
+          "line": 76,
+          "text": "return <section className=\"nw-catalogue-selection\" aria-label=\"所选版本核对\">"
+        },
+        {
+          "line": 78,
+          "text": "<summary>核对所选清单：{selected.length} 个版本 / {chosenWorks} 部作品</summary>"
+        },
+        {
+          "line": 81,
+          "text": "<span>《{entry.title}》 · {catalogueLocaleLabel(entry.locale)} · {visibleKeys.has(catalogueEntryKey(entry)) ? \"当前页可见\" : \"在其他已浏览页面\"}</span>"
+        },
+        {
+          "line": 87,
+          "text": "<p>可选步骤：再次读取所选作品的轻量语言清单，比较选择时的快照。每次最多 {CATALOGUE_REVIEW_WORK_LIMIT} 部独立作品，逐部读取，不取正文、不写作品、不自动重试。</p>"
+        },
+        {
+          "line": 93,
+          "text": "{remaining ? <p role=\"status\">核对请求受限，至少等待 {remaining} 秒后手动继续；其余作品没有继续请求。</p> : null}"
+        },
+        {
+          "line": 94,
+          "text": "{state.error ? <p role={state.status === \"invalid\" ? \"status\" : \"alert\"}>{state.error}</p> : null}"
+        },
+        {
+          "line": 96,
+          "text": "{state.status !== \"idle\" && state.status !== \"invalid\" ? <p role=\"status\">已读取 {completedWorks} / {state.works.length} 部作品；{changed} 个所选版本有差异，{unchanged} 个相同，{Math.max(0, selected.length - changed - unchanged)} 个尚未确认。选择尚未被自动更改。</p> : null}"
+        },
+        {
+          "line": 100,
+          "text": "<details><summary>《{work.title}》 · {STATUS_LABELS[work.status]}</summary>"
+        },
+        {
+          "line": 101,
+          "text": "{work.checkedAt ? <p className=\"nw-m\">本次读取：{catalogueDate(work.checkedAt)} UTC。只代表该请求时的元数据。</p> : null}"
+        },
+        {
+          "line": 102,
+          "text": "{work.error ? <p>{work.error}</p> : null}"
+        },
+        {
+          "line": 104,
+          "text": "{work.editions.length > work.differences.length ? <p>此作品另有 {work.editions.length - work.differences.length} 个已有语言未被选择，没有自动加入导出。</p> : null}"
+        },
+        {
+          "line": 107,
+          "text": "{!shown.length ? <p>没有符合“差异或未确认”的作品。</p> : null}"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/authoring-catalogue-controller.ts",
+      "reason": "类外壳、与既有控制器相同的 external-store 订阅/发布样板及仅声明的类型占位不计新产品功能。",
+      "fragments": [
+        {
+          "line": 18,
+          "text": "export class CatalogueController {"
+        },
+        {
+          "line": 35,
+          "text": "getSnapshot = (): CatalogueState => this.state;"
+        },
+        {
+          "line": 36,
+          "text": "subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };"
+        },
+        {
+          "line": 37,
+          "text": "private publish(patch: Partial<CatalogueState>) {"
+        },
+        {
+          "line": 38,
+          "text": "this.state = { ...this.state, ...patch };"
+        },
+        {
+          "line": 39,
+          "text": "for (const listener of this.listeners) listener();"
+        },
+        {
+          "line": 168,
+          "text": "let filters: CatalogueFilters;"
+        },
+        {
+          "line": 219,
+          "text": "let entries: CatalogueEntry[];"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/authoring-catalogue-open.ts",
+      "reason": "仅类声明外壳不计功能行。",
+      "fragments": [
+        {
+          "line": 10,
+          "text": "export class CatalogueDocumentReader {"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/authoring-catalogue-review.ts",
+      "reason": "类声明和与目录/既有控制器相同的快照/发布外壳不重复计；新增有界核对与采纳规则另计。",
+      "fragments": [
+        {
+          "line": 75,
+          "text": "export class CatalogueReviewController {"
+        },
+        {
+          "line": 91,
+          "text": "getSnapshot = (): CatalogueReviewState => this.state;"
+        },
+        {
+          "line": 93,
+          "text": "private publish(patch: Partial<CatalogueReviewState>) {"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/authoring-catalogue.ts",
+      "reason": "通用抛错包装、与 API 日期校验语义重复的客户端 helper 以及纯 CSV 标签字典不计；格式、安全处理与导出列约束另计。",
+      "fragments": [
+        {
+          "line": 19,
+          "text": "function invalidPage(): never { throw new Error(\"目录响应不完整或格式不正确，请刷新核对；未修改任何作品。\"); }"
+        },
+        {
+          "line": 53,
+          "text": "function validDay(value: string): boolean {"
+        },
+        {
+          "line": 54,
+          "text": "return /^[1-9]\\d{3}-\\d{2}-\\d{2}$/.test(value) && value < \"9999-12-31\" && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;"
+        },
+        {
+          "line": 96,
+          "text": "export const CATALOGUE_CSV_LABELS = {"
+        },
+        {
+          "line": 97,
+          "text": "title: \"标题\", locale: \"语言\", status: \"发布状态\", workType: \"作品类型\", summary: \"摘要\", slug: \"作品地址\","
+        },
+        {
+          "line": 98,
+          "text": "createdAt: \"创建时间 UTC\", updatedAt: \"更新时间 UTC\", deletedAt: \"删除时间 UTC\","
+        }
+      ]
+    }
+  ]
+}

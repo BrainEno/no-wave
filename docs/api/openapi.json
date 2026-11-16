@@ -3224,6 +3224,368 @@
         ]
       }
     },
+    "/api/v1/me/article-catalogue": {
+      "get": {
+        "tags": [
+          "articles"
+        ],
+        "summary": "Search and page the signed-in author's complete lightweight catalogue",
+        "operationId": "me.article-catalogue.get",
+        "responses": {
+          "200": {
+            "description": "A metadata page, matching counts and pre-filter facets.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ArticleCataloguePage"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request: `BAD_USER_INPUT` for a query or body the contract does not allow, `BAD_INPUT` for discovery paging misuse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid, unrevoked bearer token was presented (`UNAUTHENTICATED`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Closed query vocabulary; repeated or unknown fields are rejected. Case-sensitive literal title/summary search. Updated sort uses work deletion time for trash and the selected translation row update time for active work; created sort uses that translation row creation time, oldest first. UTC day boundaries are inclusive. The cursor is actor/filter-bound, not authorization. Concurrent edits may move rows; restart to refresh.",
+        "parameters": [
+          {
+            "name": "scope",
+            "in": "query",
+            "required": false,
+            "description": "Active work or recycle bin.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "trash"
+              ],
+              "default": "active"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Literal, case-sensitive title/summary substring.",
+            "schema": {
+              "type": "string",
+              "maxLength": 120
+            }
+          },
+          {
+            "name": "locale",
+            "in": "query",
+            "required": false,
+            "description": "One language or all editions.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "all",
+                "zh-CN",
+                "zh-TW",
+                "en"
+              ],
+              "default": "all"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "Publication state.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "all",
+                "draft",
+                "published"
+              ],
+              "default": "all"
+            }
+          },
+          {
+            "name": "workType",
+            "in": "query",
+            "required": false,
+            "description": "Stored literary type, including retired types; all by default.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "description": "Recent activity or oldest creation, with id and locale tie breakers.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "updated",
+                "created"
+              ],
+              "default": "updated"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "First UTC activity/creation day, YYYY-MM-DD.",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "description": "Last UTC activity/creation day, YYYY-MM-DD.",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Page size, 1–50. Defaults to 20.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "Opaque seek witness; do not reuse after changing account or filters.",
+            "schema": {
+              "type": "string",
+              "maxLength": 1024
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/me/article-catalogue/{id}": {
+      "get": {
+        "tags": [
+          "articles"
+        ],
+        "summary": "Open one explicitly requested own editable language edition",
+        "operationId": "me.article-catalogue-item.get",
+        "responses": {
+          "200": {
+            "description": "The requested own work, including its body and revision for editing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Article"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request: `BAD_USER_INPUT` for a query or body the contract does not allow, `BAD_INPUT` for discovery paging misuse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid, unrevoked bearer token was presented (`UNAUTHENTICATED`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The addressed row does not exist, or is not visible to this caller (`NOT_FOUND`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Other authors' IDs, missing editions, tombstones and nonexistent IDs all answer 404. No implicit language fallback.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Own article UUID.",
+            "schema": {
+              "type": "string",
+              "maxLength": 300
+            }
+          },
+          {
+            "name": "locale",
+            "in": "query",
+            "required": true,
+            "description": "Language edition to read. Defaults to `zh-CN` when absent.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "zh-CN",
+                "zh-TW",
+                "en"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/me/article-catalogue/{id}/editions": {
+      "get": {
+        "tags": [
+          "articles"
+        ],
+        "summary": "All existing lightweight language editions of one owned work",
+        "operationId": "me.article-catalogue-editions.get",
+        "responses": {
+          "200": {
+            "description": "Complete metadata-only language coverage for this work.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ArticleCatalogueEntry"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request: `BAD_USER_INPUT` for a query or body the contract does not allow, `BAD_INPUT` for discovery paging misuse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid, unrevoked bearer token was presented (`UNAUTHENTICATED`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The addressed row does not exist, or is not visible to this caller (`NOT_FOUND`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "At most three entries, independent of catalogue search filters. Publication/type are work-wide; title/summary and timestamps belong to each edition. Another account, wrong active/trash scope, or missing work answers the same 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Own article UUID.",
+            "schema": {
+              "type": "string",
+              "maxLength": 300
+            }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "required": false,
+            "description": "Active or deleted work.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "trash"
+              ],
+              "default": "active"
+            }
+          }
+        ]
+      }
+    },
     "/api/v1/me/articles": {
       "get": {
         "tags": [
@@ -5847,6 +6209,171 @@
             }
           }
         }
+      },
+      "ArticleCatalogueEntry": {
+        "type": "object",
+        "required": [
+          "id",
+          "slug",
+          "title",
+          "summary",
+          "locale",
+          "status",
+          "workType",
+          "createdAt",
+          "updatedAt",
+          "deletedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "locale": {
+            "type": "string",
+            "enum": [
+              "zh-CN",
+              "zh-TW",
+              "en"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "published"
+            ]
+          },
+          "workType": {
+            "type": "string",
+            "enum": [
+              "novel",
+              "short_story",
+              "poetry",
+              "essay",
+              "criticism",
+              "literary_criticism",
+              "nonfiction",
+              "serial",
+              "other"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "deletedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "description": "Own-work metadata only. No body, identity, revision, taxonomy or engagement projections."
+      },
+      "ArticleCataloguePage": {
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "works",
+          "facets",
+          "nextCursor"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "$ref": "#/components/schemas/ArticleCatalogueEntry"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Matching language editions, before the cursor."
+          },
+          "works": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Distinct matching works, before the cursor."
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "facets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "locale",
+                "status",
+                "workType",
+                "count"
+              ],
+              "properties": {
+                "locale": {
+                  "type": "string",
+                  "enum": [
+                    "zh-CN",
+                    "zh-TW",
+                    "en"
+                  ]
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "draft",
+                    "published"
+                  ]
+                },
+                "workType": {
+                  "type": "string",
+                  "enum": [
+                    "novel",
+                    "short_story",
+                    "poetry",
+                    "essay",
+                    "criticism",
+                    "literary_criticism",
+                    "nonfiction",
+                    "serial",
+                    "other"
+                  ]
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        },
+        "description": "Facets apply scope, literal search and date range, before locale/status/type filters. Three bounded metadata statements; not a cross-statement or cross-request snapshot."
       },
       "Health": {
         "type": "object",

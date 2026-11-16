@@ -1,3 +1,4 @@
+import { handleCatalogueRoutes } from "./catalogue.ts";
 import type { RestRouteGroup } from "./context.ts";
 import { handleAuthRoutes } from "./auth.ts";
 import { handleMediaRoutes } from "./media.ts";
@@ -32,6 +33,7 @@ export const REST_ROUTE_GROUPS: readonly RestRouteGroup[] = Object.freeze([
   handleNotificationRoutes,
   handleConversationRoutes,
   handleArticleRoutes,
+  handleCatalogueRoutes,
   handleAuthorRoutes,
   handleTaxonomyRoutes,
   handleImportRoutes,

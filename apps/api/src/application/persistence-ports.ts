@@ -1,3 +1,4 @@
+import type { ArticleCatalogueInput, ArticleCataloguePage, ArticleCatalogueEditionsInput, ArticleCatalogueEntry } from "../domain/article-catalogue.ts";
 import type { CommitNotionImportWorkInput, CommittedNotionImportEdition } from "./notion-import-plan.ts";
 /**
  * Persistence adapter contracts consumed by the application layer.
@@ -27,7 +28,7 @@ import type { MediaAsset, MediaScanRow } from "./media-assets.ts";
  */
 export const persistencePortMethods = Object.freeze({
   content: Object.freeze([
-    "listPublishedArticles", "getPublishedArticle", "listMyArticles", "getMyArticle", "findMyArticleByCreateKey", "listMyArticleEditions",
+    "listPublishedArticles", "getPublishedArticle", "listMyArticles", "listMyArticleCatalogue", "listMyCatalogueEditions", "getMyArticle", "findMyArticleByCreateKey", "listMyArticleEditions",
     "createArticle", "updateArticle", "deleteArticle", "restoreArticle",
     "listMyDeletedArticles", "purgeExpiredArticles", "listLikedArticles", "listRelatedArticles",
     "listFollowingArticles", "listFeaturedArticles", "setFeaturedArticles",
@@ -364,6 +365,8 @@ export type ReferencesForAssetsInput = { assetIds: readonly string[] };
 
 /** Article content, publication, author desks and the featured shelf. */
 export type ContentPersistencePort = {
+  listMyArticleCatalogue(input: ArticleCatalogueInput): PersistenceResult<ArticleCataloguePage>;
+  listMyCatalogueEditions(input: ArticleCatalogueEditionsInput): PersistenceResult<ArticleCatalogueEntry[]>;
   listPublishedArticles(input?: ListPublishedArticlesInput): PersistenceResult<StoredArticle[]>;
   getPublishedArticle(input: ArticleBySlugInput): PersistenceResult<StoredArticle | null>;
   listMyArticles(input: AuthorArticlesInput): PersistenceResult<StoredArticle[]>;

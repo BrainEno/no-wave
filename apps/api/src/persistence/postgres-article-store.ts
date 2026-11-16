@@ -1,3 +1,4 @@
+import { readArticleCatalogue, readCatalogueEditions } from "./article-catalogue-query.ts";
 /**
  * PostgreSQL persistence slice: Article content, publication, author desks and the featured shelf.
  *
@@ -49,6 +50,12 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
     return releasedArticleSlug(slug, articleId, `-${Math.random().toString(36).slice(2, 8)}`);
   };
   return Object.freeze({
+    listMyCatalogueEditions(input) {
+      return readCatalogueEditions(input, "postgres", query => sql.unsafe(query.text, query.values));
+    },
+    listMyArticleCatalogue(input) {
+      return readArticleCatalogue(input, "postgres", query => sql.unsafe(query.text, query.values));
+    },
     async listPublishedArticles({ locale = "zh-CN", query = "", authorId = null, sort = "latest", limit = 20, offset = 0, cursor = null } = {}) {
       validateArticleLocale(locale);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
@@ -663,5 +670,5 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
       return readFeaturedArticles(sql, { locale, limit: MAX_FEATURED_ARTICLES, offset: 0 });
     },
 
-  }) satisfies Pick<TypedPersistenceAdapterContract, "listPublishedArticles" | "getPublishedArticle" | "incrementArticleViewCount" | "listMyArticles" | "getMyArticle" | "findMyArticleByCreateKey" | "listMyArticleEditions" | "listMyDeletedArticles" | "createArticle" | "updateArticle" | "deleteArticle" | "restoreArticle" | "purgeExpiredArticles" | "listLikedArticles" | "listRelatedArticles" | "listFollowingArticles" | "listFeaturedArticles" | "setFeaturedArticles">;
+  }) satisfies Pick<TypedPersistenceAdapterContract, "listMyArticleCatalogue" | "listMyCatalogueEditions" | "listPublishedArticles" | "getPublishedArticle" | "incrementArticleViewCount" | "listMyArticles" | "getMyArticle" | "findMyArticleByCreateKey" | "listMyArticleEditions" | "listMyDeletedArticles" | "createArticle" | "updateArticle" | "deleteArticle" | "restoreArticle" | "purgeExpiredArticles" | "listLikedArticles" | "listRelatedArticles" | "listFollowingArticles" | "listFeaturedArticles" | "setFeaturedArticles">;
 }
