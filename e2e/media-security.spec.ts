@@ -32,7 +32,8 @@ test("real image upload, normalized WebP, editor save and library fetch work und
     const asset = (await upload.json()).data as { id: string; src: string; width: number; height: number };
     expect(asset.src).toMatch(/^\/api\/media\/[0-9a-f-]{36}$/);
     expect([asset.width, asset.height]).toEqual([48, 32]);
-    await expect(editor.getByRole("status")).toContainText("图片已上传并插入正文。");
+    await expect(editor.getByRole("status").filter({ hasText: "图片已上传并插入正文。" })).toBeVisible();
+    await expect(editor.getByRole("status").filter({ hasText: "有未保存的修改" })).toBeVisible();
     const image = page.getByLabel("作品正文").getByRole("img", { name: "无浪安全测试红色色块" });
     await expect(image).toBeVisible();
     await expect.poll(() => image.evaluate(element => (element as HTMLImageElement).naturalWidth)).toBe(48);
@@ -47,7 +48,8 @@ test("real image upload, normalized WebP, editor save and library fetch work und
     await page.getByRole("button", { name: "保存草稿", exact: true }).click();
     const saveResponse = await saved;
     expect(saveResponse.status(), await saveResponse.text()).toBe(201);
-    await expect(editor.getByRole("status")).toContainText("草稿已保存");
+    await expect(editor.getByRole("status").filter({ hasText: "草稿已保存" })).toBeVisible();
+    await expect(editor.getByRole("status").filter({ hasText: "有未保存的修改" })).toHaveCount(0);
     await page.getByRole("link", { name: "媒体库", exact: true }).click();
     await expect(page.getByRole("heading", { name: /媒体库/ })).toBeVisible();
     await expect(page.getByText("这个部署没有配置图片存储")).toHaveCount(0);

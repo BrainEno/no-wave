@@ -1233,6 +1233,16 @@ test("English and historical Traditional Chinese editions remain discoverable, e
   await languageWarning.getByRole("button", { name: "取消" }).click();
   expect(translationWrites).toBe(1);
   await shelf.getByRole("button", { name: /同一作品的中文译本/ }).click();
+  // Cancelling a translation save leaves the locale edit unsaved. Switching
+  // editions must now ask before discarding it, without weakening the existing
+  // translation-content and work-level deletion assertions below.
+  const leaveWarning = page.getByRole("dialog", { name: "放弃未保存的修改？" });
+  await expect(leaveWarning).toBeVisible();
+  await leaveWarning.getByRole("button", { name: "取消" }).click();
+  await expect(page.getByLabel("作品正文")).toContainText("And later editing.");
+  await shelf.getByRole("button", { name: /同一作品的中文译本/ }).click();
+  await leaveWarning.getByRole("button", { name: "放弃修改并切换" }).click();
+  expect(translationWrites, "discarding local input cannot save or overwrite a translation").toBe(1);
   await expect(page.getByLabel("作品语言")).toHaveValue("zh-CN");
   await expect(page.getByLabel("作品正文")).toContainText("独立的中文正文。");
 
@@ -1325,6 +1335,8 @@ test("English and historical Traditional Chinese editions remain discoverable, e
   await page.getByRole("button", { name: "保存草稿" }).click();
   await committed;
   await shelf.getByRole("button", { name: /編輯後的繁體中文作品/ }).click();
+  await expect(leaveWarning).toBeVisible();
+  await leaveWarning.getByRole("button", { name: "放弃修改并切换" }).click();
   await expect(page.getByLabel("作品语言")).toHaveValue("zh-TW");
   release();
   expect((await oldSave).status()).toBe(200);
