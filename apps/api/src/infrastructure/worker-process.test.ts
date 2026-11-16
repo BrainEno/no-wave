@@ -60,9 +60,16 @@ for (const provider of integrityProviders) {
     const origin = `http://127.0.0.1:${port}`;
     try {
       await waitFor(async () => worker.records().some(row => row.event === "worker_ready") ? true : null);
-      const ready = await fetch(origin + "/ready?private-query-canary");
-      assert.equal(ready.status, 200);
-      const body = await ready.json();
+      // worker_ready means the role can serve readiness, not that its first
+      // asynchronous PostgreSQL delivery has already reached the idle poll.
+      // Observe that exact state before testing SIGTERM from a sixty-second
+      // idle wait; keep all readiness, delivery and shutdown assertions below.
+      const body = await waitFor(async () => {
+        const ready = await fetch(origin + "/ready?private-query-canary");
+        assert.equal(ready.status, 200);
+        const candidate = await ready.json();
+        return candidate.phase === "idle" && candidate.completedBatches >= 1 ? candidate : null;
+      });
       assert.equal(body.service, "notification-worker");
       assert.equal(body.phase, "idle");
       assert.ok(body.completedBatches >= 1);
