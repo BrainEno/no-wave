@@ -280,6 +280,7 @@ function SiteChromeContent({ children }: { children: ReactNode }) {
     <>
       <a className="nw-skip" href="#top">{locale === "en" ? "Skip to main content" : "跳到正文"}</a>
       <GrainCanvas />
+      <header>
       <Link className="nw-rail" href={homePath(locale)} aria-label={`${ui.rail} — ${ui.homeAria}`}>{ui.rail}</Link>
       <nav className="nw-pill" aria-label={ui.nav.primary} lang={locale}>
         <Link className="nw-nv" href={navSelected}>{ui.nav.selected}</Link>
@@ -305,6 +306,7 @@ function SiteChromeContent({ children }: { children: ReactNode }) {
         </button>
         <button className="nw-mnb" ref={overlays.menuTrigger} type="button" aria-haspopup="dialog" style={{ fontWeight: 700 }} aria-expanded={menuOpen} aria-controls="nw-menu" onClick={() => overlays.toggle("menu")}>{ui.nav.menu}</button>
       </nav>
+      </header>
       <div className="nw-np" ref={overlays.bellPanel} tabIndex={-1} id="nw-np" hidden={!bellOpen} role="dialog" aria-label={ui.bell.label} lang={locale} aria-busy={bellPending}>
         <header>
           <span>{ui.bell.label}</span>

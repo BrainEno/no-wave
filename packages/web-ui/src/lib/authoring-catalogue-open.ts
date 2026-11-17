@@ -6,6 +6,14 @@ export type CatalogueEditableArticle = Omit<CatalogueEntry, "deletedAt"> & {
   revision: string; contentBlocks: unknown[]; contentBlocksVersion: number; publishedAt: string | null;
 };
 
+export class CatalogueReadError extends Error {
+  readonly kind: "account-changed" | "unauthenticated" | "missing" | "limited";
+  readonly retryAt: number;
+  constructor(kind: CatalogueReadError["kind"], message: string, retryAt = 0) {
+    super(message); this.name = "CatalogueReadError"; this.kind = kind; this.retryAt = retryAt;
+  }
+}
+
 /** Detail reads never choose a document by themselves: the workspace supplies its live leave-token predicate. */
 export class CatalogueDocumentReader {
   private version = 0;
@@ -22,7 +30,7 @@ export class CatalogueDocumentReader {
     const version = this.version;
     const current = () => version === this.version && stillCurrent();
     if (!current()) return null;
-    if (Date.now() < this.retryAt) throw new Error("仍在请求等待期，请稍后手动重新读取目录所选版本。");
+    if (Date.now() < this.retryAt) throw new CatalogueReadError("limited", "仍在请求等待期，请稍后手动重新读取目录所选版本。", this.retryAt);
     this.abort = new AbortController();
     try {
       const response = await this.fetcher(`/api/authoring/catalogue/${encodeURIComponent(intent.id)}?locale=${encodeURIComponent(intent.locale)}`, {
@@ -33,13 +41,13 @@ export class CatalogueDocumentReader {
       const payload: unknown = await response.json().catch(() => null);
       if (!current()) return null;
       if (!response.ok) {
-        if (apiErrorCode(payload) === "ACCOUNT_CHANGED") throw new Error("目录链接属于另一登录账户，编辑区未改变。请返回目录确认当前账户。");
-        if (response.status === 401) throw new Error("登录已失效，未打开作品。请在新标签页重新登录原账户后重试。");
-        if (response.status === 404) throw new Error("所选语言版本不可编辑，可能已删除、已移动或不属于当前账户；没有回退到其他语言。");
+        if (apiErrorCode(payload) === "ACCOUNT_CHANGED") throw new CatalogueReadError("account-changed", "目录链接属于另一登录账户，编辑区未改变。请返回目录确认当前账户。");
+        if (response.status === 401) throw new CatalogueReadError("unauthenticated", "登录已失效，未打开作品。请在新标签页重新登录原账户后重试。");
+        if (response.status === 404) throw new CatalogueReadError("missing", "所选语言版本不可编辑，可能已删除、已移动或不属于当前账户；没有回退到其他语言。");
         if (response.status === 429) {
           const seconds = parseRetryAfterSeconds(response.headers.get("retry-after")) ?? 1;
           this.retryAt = Date.now() + seconds * 1000;
-          throw new Error(`请求受限，请等待 ${seconds} 秒后手动重试。`);
+          throw new CatalogueReadError("limited", `请求受限，请等待 ${seconds} 秒后手动重试。`, this.retryAt);
         }
         throw new Error("暂时无法打开目录作品，当前编辑区未改变，请手动重试。");
       }

@@ -1,0 +1,789 @@
+{
+  "base": "e53904a2e6d3ae8aab38d10f18542b64c52a6581",
+  "rules": [
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-collection-comparison.tsx",
+      "reason": "旧单篇差异文字/字段/块展示语义不重计；显示字典、计数别名、纯容器、标题、状态和元数据展示也扣除。新配对、懒装载、筛选与控件交互另计。",
+      "fragments": [
+        {
+          "line": 5,
+          "text": "const FIELDS = { title: \"标题\", summary: \"摘要\", locale: \"语言\", workType: \"类型\" };"
+        },
+        {
+          "line": 6,
+          "text": "const CHANGES = { same: \"相同\", changed: \"文本或属性变化\", added: \"仅右侧有\", removed: \"仅左侧有\", moved: \"位置变化\" };"
+        },
+        {
+          "line": 7,
+          "text": "function Span({ difference }: { difference: WritingTextDifference }) {"
+        },
+        {
+          "line": 8,
+          "text": "return <span className=\"nw-writing-difference\">{difference.prefix}{difference.removed ? <del aria-label=\"左侧内容\">{difference.removed}</del> : null}{difference.inserted ? <ins aria-label=\"右侧内容\">{difference.inserted}</ins> : null}{difference.suffix}{difference.truncated ? <small>（片段达到字素安全上限，可能另有变化，请检查完整文件）</small> : null}</span>;"
+        },
+        {
+          "line": 13,
+          "text": "const counts = result.comparison.counts;"
+        },
+        {
+          "line": 14,
+          "text": "return <section aria-label={`配对差异：${result.left.entry.backup.draft.title}与${result.right.entry.backup.draft.title}`}>"
+        },
+        {
+          "line": 15,
+          "text": "<h3>左：《{result.left.entry.backup.draft.title}》 / 右：《{result.right.entry.backup.draft.title}》</h3>"
+        },
+        {
+          "line": 16,
+          "text": "<p>{result.equivalent ? \"按现有文稿语义等价；备份时间不同不算正文变化。\" : \"存在字段、正文或格式差异。\"}不推测哪个更新，不自动合并。</p>"
+        },
+        {
+          "line": 17,
+          "text": "{result.comparison.fields.length ? <dl>{result.comparison.fields.map(item => <div key={item.field}><dt>{FIELDS[item.field]}</dt><dd><Span difference={item.difference} /></dd></div>)}</dl> : <p>标题、摘要、语言、类型相同。</p>}"
+        },
+        {
+          "line": 18,
+          "text": "{result.comparison.limited ? <p role=\"alert\">正文超过差异计算预算，不能把未展示部分读作相同。</p> : <>"
+        },
+        {
+          "line": 19,
+          "text": "<p>正文：{counts.same} 块相同，{counts.changed} 块变化，{counts.added} 块仅右侧，{counts.removed} 块仅左侧，{counts.moved} 块位置变化。</p>"
+        },
+        {
+          "line": 21,
+          "text": "<ol className=\"nw-writing-block-diff\" aria-label=\"离线配对正文差异\">{rows.map((row, index) => <li key={`${row.currentIndex}-${row.backupIndex}-${index}`}>"
+        },
+        {
+          "line": 22,
+          "text": "<p>{CHANGES[row.kind]} · 左 {row.currentIndex === null ? \"无\" : row.currentIndex + 1} / 右 {row.backupIndex === null ? \"无\" : row.backupIndex + 1}</p>"
+        },
+        {
+          "line": 23,
+          "text": "{row.formatChanged ? <p>文字相同，但格式、链接、图片地址或其他块属性不同。</p> : null}"
+        },
+        {
+          "line": 24,
+          "text": "<Span difference={row.difference} />"
+        },
+        {
+          "line": 45,
+          "text": "return <section className=\"nw-collection-comparison\" aria-label=\"两份备份明确配对核对\">"
+        },
+        {
+          "line": 54,
+          "text": "<p>已有 {pairs.length} 对；左侧未配对 {unpaired.filter(row => row.slot === \"left\").length} 篇，右侧未配对 {unpaired.filter(row => row.slot === \"right\").length} 篇。</p>"
+        },
+        {
+          "line": 56,
+          "text": "{status !== \"idle\" ? <p role=\"status\">已核对 {results.length} / {pairs.length} 对。{status === \"running\" ? \"处理中……\" : status === \"complete\" ? \"全部明确配对已核对完成。\" : \"已停止，当前片段不是完整核对结果。\"}</p> : null}"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-collection-document.tsx",
+      "reason": "依赖尾部、纯容器、旧元数据/检查计数/节点标签与单篇引用结果展示不计；只读定位、节选、按需审计与控件另计。",
+      "fragments": [
+        {
+          "line": 21,
+          "text": "}, [path]);"
+        },
+        {
+          "line": 25,
+          "text": "}, [target]);"
+        },
+        {
+          "line": 26,
+          "text": "return <section className=\"nw-collection-document\" aria-label={`只读文稿《${row.entry.backup.draft.title}》`}>"
+        },
+        {
+          "line": 27,
+          "text": "<h3>{row.entry.backup.draft.title || \"（无标题）\"}</h3>"
+        },
+        {
+          "line": 28,
+          "text": "<p>{row.entry.backup.draft.summary || \"（没有摘要）\"}</p>"
+        },
+        {
+          "line": 29,
+          "text": "<p>{catalogueLocaleLabel(row.entry.backup.draft.locale)} · 文件内 {row.entry.group} · 备份时间 {catalogueDate(row.entry.backup.createdAt)} UTC</p>"
+        },
+        {
+          "line": 30,
+          "text": "<dl className=\"nw-collection-statistics\"><div><dt>文字字符</dt><dd>{inspection.statistics.characters}</dd></div><div><dt>正文块</dt><dd>{inspection.statistics.blocks}</dd></div><div><dt>图片地址</dt><dd>{inspection.statistics.images}</dd></div><div><dt>链接</dt><dd>{inspection.statistics.links}</dd></div></dl>"
+        },
+        {
+          "line": 32,
+          "text": "{inspection.limited ? <p role=\"alert\">检查达到预算，以下视图不完整；请使用原始备份核对。</p> : null}"
+        },
+        {
+          "line": 35,
+          "text": "<p className=\"nw-m\">{block.kind} · 节点 {block.path.map(index => index + 1).join(\".\")}</p>"
+        },
+        {
+          "line": 41,
+          "text": "{references ? <><p>已检查 {references.total} 处引用，按地址合并 {references.groups.length} 组。{references.limited ? \"达到扫描上限，结果不完整。\" : \"\"}</p><ul className=\"nw-collection-references\">{references.groups.map((group, index) => <li key={`${group.kind}-${index}`}><strong>{group.kind === \"image\" ? \"图片\" : \"链接\"}</strong><code>{group.url ?? \"危险地址已隐藏\"}</code><p>{group.labels.join(\" / \") || \"（没有描述）\"}</p><p>{group.issues.length ? `需核对：${group.issues.join(\"、\")}` : \"仅通过地址格式检查，不代表可达或拥有权限\"}</p></li>)}</ul></> : null}"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-collection-export-panel.tsx",
+      "reason": "依赖闭合、既有倒计时时钟做法、纯容器和只读进度/错误/计数/摘要展示扣除，下载实时授权和回收逻辑另计。",
+      "fragments": [
+        {
+          "line": 27,
+          "text": "}, [queue, download, source.actor, source.selected, source.filters.scope, disabled]);"
+        },
+        {
+          "line": 30,
+          "text": "const tick = () => setClock(Date.now()); tick();"
+        },
+        {
+          "line": 41,
+          "text": "return <section className=\"nw-collection-export\" aria-label=\"正文集合备份\">"
+        },
+        {
+          "line": 53,
+          "text": "{state.plan ? <p role=\"status\">已完整读取 {state.completed} / {state.plan.selected.length} 个所选版本。{running && state.completed === state.plan.selected.length ? \"正在生成 SHA-256 集合摘要……\" : running ? \"逐篇读取中；没有并行或自动重试。\" : \"各篇为各自读取时的版本，不是跨请求快照。\"}</p> : null}"
+        },
+        {
+          "line": 54,
+          "text": "{remaining > 0 ? <p role=\"status\">请求受限，至少等待 {remaining} 秒后手动继续。</p> : null}"
+        },
+        {
+          "line": 55,
+          "text": "{state.error ? <p role=\"alert\">{state.error}</p> : null}"
+        },
+        {
+          "line": 57,
+          "text": "{state.progress.length ? <ol>{state.progress.map(item => <li key={item.key}>《{item.title}》 · {catalogueLocaleLabel(item.locale)} · {item.changedFields.length ? `与选择时有 ${item.changedFields.length} 项元数据不同，集合采用本次读取值` : \"已核对所选版本\"}</li>)}</ol> : null}"
+        },
+        {
+          "line": 58,
+          "text": "{state.prepared ? <div className=\"nw-collection-ready\"><p>完整集合：{state.prepared.collection.entries.length} 篇 / {new Set(state.prepared.collection.entries.map(entry => entry.group)).size} 组，实际 {new Intl.NumberFormat(\"zh-CN\").format(state.prepared.bytes)} 字节。</p><code>{state.prepared.collection.digest}</code><p>SHA-256 用于检查意外损坏，不是来源签名或所有权证明。下载当下还会核验实际会话与当前选择。正文只暂存在本页内存，不写入浏览器存储。</p></div> : null}"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-collection-references.tsx",
+      "reason": "提示字典、纯容器、状态/计数以及已有地址/描述/主机/风险提示的文字展示不以扩展页面凑数。实际聚合、过滤、取消和使用处导航另计。",
+      "fragments": [
+        {
+          "line": 6,
+          "text": "const issueLabels = { \"unsafe-url\": \"不安全地址（已隐藏）\", \"empty-label\": \"缺少描述\", \"insecure-http\": \"未加密 HTTP\", \"ambiguous-label\": \"相同可见链接文字指向不同地址\", \"label-truncated\": \"描述仅显示节选\" };"
+        },
+        {
+          "line": 17,
+          "text": "return <section className=\"nw-collection-reference-inventory\" aria-label=\"集合图片与链接依赖\">"
+        },
+        {
+          "line": 24,
+          "text": "{state.referenceStatus === \"running\" ? <p role=\"status\">逐篇生成引用清单；换文件或改选会废弃旧结果……</p> : null}"
+        },
+        {
+          "line": 25,
+          "text": "{state.referenceStatus === \"cancelled\" ? <p role=\"status\">引用检查已停止，没有接纳部分清单。</p> : null}"
+        },
+        {
+          "line": 26,
+          "text": "{error ? <p role=\"alert\">{error}</p> : null}"
+        },
+        {
+          "line": 28,
+          "text": "<p role=\"status\">已列出 {report.total} 处 / {report.groups.length} 个地址组，检查 {report.scanned} / {report.documents} 篇，另有 {report.remaining} 篇未检查。{report.limited ? \"达到 200 组 / 1000 处或单篇预算，结果不完整；请缩小明确选择范围。\" : \"指定范围扫描完成；这不是联网可用性验证。\"}</p>"
+        },
+        {
+          "line": 29,
+          "text": "{report.incomplete.length ? <p>仅部分检查的条目：{report.incomplete.join(\"、\")}</p> : null}"
+        },
+        {
+          "line": 36,
+          "text": "<p>当前显示 {groups.length} / {report.groups.length} 个地址组。只筛显示，不重扫、不改变选择；来源筛选仍保留同地址的全部使用处。</p>"
+        },
+        {
+          "line": 38,
+          "text": "<h3>{group.kind === \"image\" ? \"图片\" : \"链接\"} · {group.uses.length} 处 / {new Set(group.uses.map(use => use.rowId)).size} 篇</h3>"
+        },
+        {
+          "line": 39,
+          "text": "<code>{group.url ?? \"危险地址已隐藏\"}</code><p>{group.host ? `外部主机：${group.host}` : \"站内地址或已隐藏地址\"}</p>"
+        },
+        {
+          "line": 40,
+          "text": "<p>{group.issues.length ? group.issues.map(issue => issueLabels[issue]).join(\"；\") : \"未发现格式提示，不表示可达或拥有权限\"}</p>"
+        },
+        {
+          "line": 42,
+          "text": "<p>{use.rowId} · {rows.find(row => row.id === use.rowId)?.entry.backup.draft.title || \"（无标题）\"} · 节点 {use.path.map(part => part + 1).join(\".\")}</p>"
+        },
+        {
+          "line": 43,
+          "text": "<p>{use.label || \"（没有描述）\"}{use.caption ? ` / ${use.caption}` : \"\"}</p>"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-collection-review.tsx",
+      "reason": "仅成功提示、标签展示帮助器、纯容器、状态/计数、已有元数据的列表投影和消息显示不计。新计划显式应用、导出意图/隐私选择与清理另计。",
+      "fragments": [
+        {
+          "line": 15,
+          "text": "const label = (id: string) => `${id} · ${rows.find(row => row.id === id)?.entry.backup.draft.title || \"（无标题）\"}`;"
+        },
+        {
+          "line": 26,
+          "text": "setMessage(\"本机核对计划已交给浏览器；仅含文件摘要与局部选择/配对，不含文稿或文件名。\");"
+        },
+        {
+          "line": 35,
+          "text": "setMessage(`无正文 ${format.toUpperCase()} 核对报告已交给浏览器。${includeLabels ? \"已按明确勾选包含标题和文件名，请作为私密文件保管。\" : \"没有包含标题或文件名。\"}`);"
+        },
+        {
+          "line": 43,
+          "text": "return <section className=\"nw-collection-review\" aria-label=\"本机核对计划与报告\">"
+        },
+        {
+          "line": 54,
+          "text": "{state.reviewLoading ? <p role=\"status\">正在校验核对计划，尚未改变任何选择或配对……</p> : null}"
+        },
+        {
+          "line": 55,
+          "text": "{preview ? <div className=\"nw-collection-plan-preview\" aria-label=\"核对计划应用预览\">"
+        },
+        {
+          "line": 56,
+          "text": "<h3>将覆盖当前本机选择/配对</h3><p>选择 {preview.plan.selected.length} 篇，配对 {preview.plan.pairs.length} 对；原文件摘要已匹配。预览后改选/改配对/换文件会使本预览失效。不会改正文或服务器作品。</p>"
+        },
+        {
+          "line": 57,
+          "text": "<ul aria-label=\"计划中的明确选择\">{preview.plan.selected.map(id => <li key={id}>{label(id)}</li>)}</ul>"
+        },
+        {
+          "line": 58,
+          "text": "<ul aria-label=\"计划中的明确配对\">{preview.plan.pairs.map(pair => <li key={`${pair.left}|${pair.right}`}>{label(pair.left)} ↔ {label(pair.right)}</li>)}</ul>"
+        },
+        {
+          "line": 65,
+          "text": "{message ? <p role=\"status\">{message}</p> : null}{error ? <p role=\"alert\">{error}</p> : null}"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-collection-search.tsx",
+      "reason": "纯容器、状态/计数/跳过说明与元数据投影扣除；匹配片段高亮复用旧字面查找预览展示，也不重复计。查询控件、受限扫描与带结果见证的定位另计。",
+      "fragments": [
+        {
+          "line": 8,
+          "text": "return <section className=\"nw-collection-search\" aria-label=\"跨文稿正文检索\">"
+        },
+        {
+          "line": 19,
+          "text": "{state.searchStatus === \"running\" ? <p role=\"status\">正在逐篇检索；换文件、改条件或改选会取消旧结果……</p> : null}"
+        },
+        {
+          "line": 20,
+          "text": "{state.searchStatus === \"cancelled\" ? <p role=\"status\">检索已停止，未将部分结果当作完整结果。</p> : null}"
+        },
+        {
+          "line": 22,
+          "text": "<p role=\"status\">找到 {result.matches.length} 处，已检查 {result.scanned} / {result.total} 篇；还有 {result.remaining} 篇未检查。{result.limited ? \"达到检索预算或存在无法检查的文稿，结果不完整，请缩小来源/块范围后重试。\" : \"已完成指定范围内的检索。\"}</p>"
+        },
+        {
+          "line": 23,
+          "text": "{result.skipped.length ? <ul>{result.skipped.map(item => <li key={item.rowId}>{item.rowId} 未检查：{item.reason}</li>)}</ul> : null}"
+        },
+        {
+          "line": 25,
+          "text": "const row = rows.find(item => item.id === hit.rowId);"
+        },
+        {
+          "line": 26,
+          "text": "return <li key={hit.id}><p>{row?.slot === \"left\" ? \"左侧\" : \"右侧\"} · {row?.entry.backup.draft.title || \"（无标题）\"} · {hit.rowId}</p>"
+        },
+        {
+          "line": 27,
+          "text": "<p className=\"nw-collection-search-context\">{hit.match.before}<mark>{hit.match.text}</mark>{hit.match.after}</p>"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-collections.tsx",
+      "reason": "依赖闭合、只为展示的隐藏计数/文字字典、成功提示、纯容器、来源/条目/预检结果的已有元数据展示以及纯子组件接线扣除。新文件生命周期/选择/下载保护/焦点/交互另计。",
+      "fragments": [
+        {
+          "line": 34,
+          "text": "const hiddenSelected = state.selected.filter(key => !visible.some(row => row.id === key)).length;"
+        },
+        {
+          "line": 40,
+          "text": "}, [controller, download]);"
+        },
+        {
+          "line": 43,
+          "text": "}, [focused]);"
+        },
+        {
+          "line": 59,
+          "text": "setDownloadMessage(format === \"json\" ? \"单篇 JSON 已交给浏览器，可在写作工具中重新预览恢复；没有保存或发布。\" : \"交换格式已交给浏览器，格式或元数据可能丢失，完整恢复仍需 JSON。\");"
+        },
+        {
+          "line": 68,
+          "text": "setDownloadMessage(\"所选子集合已交给浏览器。文件含私密正文且未加密，请妥善保管。\");"
+        },
+        {
+          "line": 87,
+          "text": "return <section className=\"nw-authoring nw-collections\" aria-label=\"本机文稿集合工具\">"
+        },
+        {
+          "line": 93,
+          "text": "const label = slot === \"left\" ? \"左侧\" : \"右侧\";"
+        },
+        {
+          "line": 94,
+          "text": "return <section className=\"nw-collection-slot\" key={slot} aria-label={`${label}集合来源`}>"
+        },
+        {
+          "line": 95,
+          "text": "<h2>{label}文件</h2>"
+        },
+        {
+          "line": 98,
+          "text": "{source.name ? <p className=\"nw-collection-filename\">本机文件：{source.name}</p> : null}"
+        },
+        {
+          "line": 99,
+          "text": "{source.status === \"reading\" || source.status === \"checking\" ? <p role=\"status\">{source.status === \"reading\" ? `正在读取 ${source.percent}%` : \"正在严格检查结构与 SHA-256，尚未接纳任何条目……\"}</p> : null}"
+        },
+        {
+          "line": 100,
+          "text": "{source.error ? <p role=\"alert\">{source.error}</p> : null}"
+        },
+        {
+          "line": 101,
+          "text": "{source.opened ? <><p role=\"status\">{source.opened.prepared.collection.entries.length} 篇 / {new Set(source.opened.prepared.collection.entries.map(entry => entry.group)).size} 组。{source.opened.source === \"collection\" ? \"集合结构与所附 SHA-256 均已校验。\" : \"旧单篇格式仅通过结构校验；原文件没有集合摘要，本机生成的新摘要不证明原文件完整性。\"}</p><p>集合时间 {catalogueDate(source.opened.prepared.collection.createdAt)} UTC</p><details><summary>{label}集合摘要</summary><code className=\"nw-collection-digest\">{source.opened.prepared.collection.digest}</code></details></> : null}"
+        },
+        {
+          "line": 106,
+          "text": "{downloadMessage ? <p role=\"status\">{downloadMessage}</p> : null}"
+        },
+        {
+          "line": 119,
+          "text": "<p>显示 {visible.length} / {rows.length} 篇；子集合已选 {state.selected.length} / 20 篇，其中 {hiddenSelected} 篇被当前筛选隐藏。筛选不会自动勾选、取消或改变导出顺序。</p>"
+        },
+        {
+          "line": 123,
+          "text": "<h3>{row.entry.backup.draft.title || \"（无标题）\"}</h3><p>{catalogueLocaleLabel(row.entry.backup.draft.locale)} · {labels[row.entry.backup.draft.workType]}</p><p>{row.entry.backup.draft.summary || \"（没有摘要）\"}</p>"
+        },
+        {
+          "line": 126,
+          "text": "{!visible.length ? <p>没有符合本机筛选的文稿，文件和原有明确选择仍保留。</p> : null}"
+        },
+        {
+          "line": 128,
+          "text": "<WritingCollectionSearch controller={controller} state={state} rows={rows} locate={locateSearch} />"
+        },
+        {
+          "line": 133,
+          "text": "{state.preparing ? <p role=\"status\">正在生成本机子集合与摘要；改选或换文件会废弃旧结果……</p> : null}"
+        },
+        {
+          "line": 134,
+          "text": "{state.prepared ? <><p role=\"status\">准备完成：{state.prepared.prepared.collection.entries.length} 篇 / {state.prepared.plan.groups} 组，实际 {new Intl.NumberFormat(\"zh-CN\").format(state.prepared.prepared.bytes)} 字节。</p><p>{state.prepared.plan.equivalents.length ? `有 ${state.prepared.plan.equivalents.length} 组文稿按现有语义相同（忽略备份时间），未自动删除任何一篇。可返回清单自行取消选择。` : \"未发现完全等价的所选文稿；不代表没有局部重复。\"}</p><code className=\"nw-collection-digest\">{state.prepared.prepared.collection.digest}</code></> : null}"
+        },
+        {
+          "line": 137,
+          "text": "<WritingCollectionReferences key={`references:${witness}`} controller={controller} state={state} rows={rows} inspect={inspectReference} />"
+        },
+        {
+          "line": 138,
+          "text": "<WritingCollectionReview key={`review:${witness}`} controller={controller} state={state} rows={rows} />"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-collection-browser.ts",
+      "reason": "通用下载环境构造器的参数赋值包装不作为单独功能。",
+      "fragments": [
+        {
+          "line": 55,
+          "text": "constructor(environment: DownloadEnvironment = browserDownload) { this.environment = environment; }"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-collection-controller.ts",
+      "reason": "泛型 store getter/publish 壳、只转调的 getter/cancel 包装，以及引用扫描与检索共享的异步运行/取消模板保守扣除，不把方法拆分与字段改名重复计数。各独立意图、文件/选择/结果见证、范围与新业务调用另计。",
+      "fragments": [
+        {
+          "line": 44,
+          "text": "getSnapshot = (): CollectionWorkbenchState => this.state;"
+        },
+        {
+          "line": 46,
+          "text": "private publish(patch: Partial<CollectionWorkbenchState>) {"
+        },
+        {
+          "line": 59,
+          "text": "getVisibleRows() { return filterCollectionRows(collectionRows(this.getSources()), this.state.filters, this.state.selected); }"
+        },
+        {
+          "line": 116,
+          "text": "cancelPreparation() { this.invalidatePrepared(); }"
+        },
+        {
+          "line": 229,
+          "text": "cancelReviewPlan() { this.invalidateReview(); }"
+        },
+        {
+          "line": 248,
+          "text": "private invalidateReferences() {"
+        },
+        {
+          "line": 249,
+          "text": "this.referenceAbort?.abort(); this.referenceAbort = null;"
+        },
+        {
+          "line": 250,
+          "text": "this.publish({ referenceStatus: \"idle\", references: null });"
+        },
+        {
+          "line": 256,
+          "text": "cancelReferences() {"
+        },
+        {
+          "line": 258,
+          "text": "this.publish({ referenceStatus: \"cancelled\", references: null });"
+        },
+        {
+          "line": 260,
+          "text": "async inspectReferences(): Promise<void> {"
+        },
+        {
+          "line": 261,
+          "text": "this.invalidateReferences();"
+        },
+        {
+          "line": 262,
+          "text": "const abort = new AbortController(); this.referenceAbort = abort;"
+        },
+        {
+          "line": 263,
+          "text": "const current = () => this.referenceAbort === abort && !abort.signal.aborted;"
+        },
+        {
+          "line": 264,
+          "text": "this.publish({ referenceStatus: \"running\", error: \"\" });"
+        },
+        {
+          "line": 269,
+          "text": "if (current()) this.publish({ referenceStatus: \"cancelled\", error: error instanceof Error ? error.message : \"本机引用检查失败。\" });"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-collection-export.ts",
+      "reason": "通用 options 赋值/store getter/publish 壳与纯类型占位不计，具体 reader 和串行完整集合/身份/限流/授权规则另计。",
+      "fragments": [
+        {
+          "line": 40,
+          "text": "constructor(options: ExportOptions) {"
+        },
+        {
+          "line": 41,
+          "text": "this.options = options;"
+        },
+        {
+          "line": 44,
+          "text": "getSnapshot = (): CollectionExportState => this.state;"
+        },
+        {
+          "line": 46,
+          "text": "private publish(patch: Partial<CollectionExportState>) {"
+        },
+        {
+          "line": 65,
+          "text": "let plan: ExportPlan;"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-collection-index.ts",
+      "reason": "单篇格式选择、调用现有 JSON/文本/Markdown/便携文件名的包装与旧单篇下载语义重复，整段不重计。",
+      "fragments": [
+        {
+          "line": 89,
+          "text": "export function collectionSingleDownload(row: CollectionRow, format: \"json\" | \"text\" | \"markdown\"): CollectionArtifact {"
+        },
+        {
+          "line": 90,
+          "text": "if (![\"json\", \"text\", \"markdown\"].includes(format)) throw new Error(\"不支持的单篇导出格式。\");"
+        },
+        {
+          "line": 91,
+          "text": "const backup = parseWritingBackup(JSON.stringify(row.entry.backup));"
+        },
+        {
+          "line": 92,
+          "text": "const text = format === \"json\" ? createWritingBackup(backup.draft, new Date(backup.createdAt)) : exportWritingText(backup.draft, format);"
+        },
+        {
+          "line": 93,
+          "text": "const extension = format === \"json\" ? \"json\" : format === \"text\" ? \"txt\" : \"md\";"
+        },
+        {
+          "line": 94,
+          "text": "return { text, name: writingDownloadName(backup.draft.title, extension, new Date(backup.createdAt)), mime: format === \"json\" ? \"application/json;charset=utf-8\" : \"text/plain;charset=utf-8\" };"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-collection-references.ts",
+      "reason": "链接描述规范化与既有单篇引用审计相同，不以扩展到跨文稿再次计该算法。",
+      "fragments": [
+        {
+          "line": 42,
+          "text": "const label = occurrence.label.normalize(\"NFKC\").replace(/\\s+/gu, \" \").toLocaleLowerCase();"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-collection-review.ts",
+      "reason": "时间、精确 record 形状包装与通用 UTF-8 字节计算属已存在/本轮已计验证语义；扣除复制帮助器和裸字节计算，仅核算新计划/报告的字段、版本、摘要、预算、绑定与状态规则。",
+      "fragments": [
+        {
+          "line": 36,
+          "text": "function reviewDate(date: unknown): string {"
+        },
+        {
+          "line": 37,
+          "text": "if (typeof date !== \"string\" || !/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString() !== date) throw new Error(\"核对计划时间无效。\");"
+        },
+        {
+          "line": 38,
+          "text": "return date;"
+        },
+        {
+          "line": 40,
+          "text": "function reviewRecord(value: unknown, fields: readonly string[]): Record<string, unknown> {"
+        },
+        {
+          "line": 41,
+          "text": "if (!value || typeof value !== \"object\" || Array.isArray(value) || Object.keys(value).length !== fields.length || fields.some(key => !Object.hasOwn(value, key))) throw new Error(\"核对计划字段缺失、未知或结构无效。\");"
+        },
+        {
+          "line": 52,
+          "text": "const bytes = new TextEncoder().encode(text).byteLength;"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-collection-search.ts",
+      "reason": "AbortError 包装与本轮集合 active 等价，函数拆分/改文案不重复计。",
+      "fragments": [
+        {
+          "line": 19,
+          "text": "function abortSearch(signal?: AbortSignal) {"
+        },
+        {
+          "line": 20,
+          "text": "if (signal?.aborted) throw new DOMException(\"正文检索已停止。\", \"AbortError\");"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-collection.ts",
+      "reason": "旧时间验证、通用抛错包装与原型键静态清单保守扣除；新集合形状/计数/语言分组/完整性及取消预算另计。",
+      "fragments": [
+        {
+          "line": 15,
+          "text": "const FORBIDDEN_KEYS = new Set([\"__proto__\", \"prototype\", \"constructor\"]);"
+        },
+        {
+          "line": 17,
+          "text": "function invalid(message: string): never { throw new Error(`集合校验失败：${message}`); }"
+        },
+        {
+          "line": 27,
+          "text": "if (typeof value !== \"string\" || !/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/.test(value) ||"
+        },
+        {
+          "line": 28,
+          "text": "!Number.isFinite(Date.parse(value)) || new Date(value).toISOString() !== value) invalid(\"创建时间无效。\");"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-backup.ts",
+      "reason": "原有文件名 normalize 和尾部截断/兜底语义原样保留，不重计；只算以双向线性扫描替代危险后缀正则的新增实现。",
+      "fragments": [
+        {
+          "line": 222,
+          "text": "const normalized = title.normalize(\"NFKD\").replace(/\\p{M}/gu, \"\").replace(/[^A-Za-z0-9_-]+/g, \"-\");"
+        },
+        {
+          "line": 226,
+          "text": "const safe = normalized.slice(start, end).slice(0, 60) || \"no-wave-manuscript\";"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/authoring-catalogue-open.ts",
+      "reason": "404 分支在队列仍为普通失败，此处结构化命名不独立计为新用户能力；新账户拒绝与限流 carry 的错误语义另计。",
+      "fragments": [
+        {
+          "line": 46,
+          "text": "if (response.status === 404) throw new CatalogueReadError(\"missing\", \"所选语言版本不可编辑，可能已删除、已移动或不属于当前账户；没有回退到其他语言。\");"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-collection-comparison.tsx",
+      "reason": "第二次独立语义复审：排除旧单篇差异的相同块筛选/控件与展示函数壳、重复未配对计算、纯 state 别名和原有 ArrayBuffer 类型检查的搬移；不把跨页面复用或改写错误路径重计为功能。",
+      "fragments": [
+        {
+          "line": 10,
+          "text": "function PairResult({ result }: { result: CollectionPairResult }) {"
+        },
+        {
+          "line": 12,
+          "text": "const rows = result.comparison.rows.filter(row => showSame || row.kind !== \"same\");"
+        },
+        {
+          "line": 20,
+          "text": "<label className=\"nw-writing-check\"><input type=\"checkbox\" checked={showSame} onChange={event => setShowSame(event.target.checked)} />显示此配对中的相同内容块</label>"
+        },
+        {
+          "line": 43,
+          "text": "const unpaired = rows.filter(row => !pairs.some(pair => pair.left === row.id || pair.right === row.id));"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-collection-references.tsx",
+      "reason": "第二次独立语义复审：排除旧单篇差异的相同块筛选/控件与展示函数壳、重复未配对计算、纯 state 别名和原有 ArrayBuffer 类型检查的搬移；不把跨页面复用或改写错误路径重计为功能。",
+      "fragments": [
+        {
+          "line": 10,
+          "text": "const report = state.references;"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-collection-review.tsx",
+      "reason": "第二次独立语义复审：排除旧单篇差异的相同块筛选/控件与展示函数壳、重复未配对计算、纯 state 别名和原有 ArrayBuffer 类型检查的搬移；不把跨页面复用或改写错误路径重计为功能。",
+      "fragments": [
+        {
+          "line": 14,
+          "text": "const preview = state.reviewPreview;"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-collection-search.tsx",
+      "reason": "第二次独立语义复审：排除旧单篇差异的相同块筛选/控件与展示函数壳、重复未配对计算、纯 state 别名和原有 ArrayBuffer 类型检查的搬移；不把跨页面复用或改写错误路径重计为功能。",
+      "fragments": [
+        {
+          "line": 7,
+          "text": "const result = state.searchResult;"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-collection-browser.ts",
+      "reason": "第二次独立语义复审：排除旧单篇差异的相同块筛选/控件与展示函数壳、重复未配对计算、纯 state 别名和原有 ArrayBuffer 类型检查的搬移；不把跨页面复用或改写错误路径重计为功能。",
+      "fragments": [
+        {
+          "line": 24,
+          "text": "if (!(reader.result instanceof ArrayBuffer)) { fail(new Error(\"文件读取结果无效。\")); return; }"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-collections.tsx",
+      "reason": "最终复审再扣除重复 clearAll 包装与只包围已有条目展示的条件/列表容器；交互控件和输入/下载见证另计。",
+      "fragments": [
+        {
+          "line": 85,
+          "text": "function clearAll() { controller.clear(); download.release(); setFocused(null); setDownloadMessage(\"\"); setDownloadError(\"\"); }"
+        },
+        {
+          "line": 107,
+          "text": "{rows.length ? <>"
+        },
+        {
+          "line": 121,
+          "text": "<ol className=\"nw-collection-rows\" aria-label=\"本机文稿条目\">{visible.map(row => <li key={row.id}>"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-collection-references.tsx",
+      "reason": "只有报告存在时才展示的纯条件容器，不作为有效功能行。",
+      "fragments": [
+        {
+          "line": 27,
+          "text": "{report ? <>"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-collection-search.tsx",
+      "reason": "只有结果存在时才展示的纯条件容器，不作为有效功能行。",
+      "fragments": [
+        {
+          "line": 21,
+          "text": "{result ? <>"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-collection-browser.ts",
+      "reason": "pagehide/BFCache 的通用清除/解绑模式在旧目录与写作工具已有，保守排除整个通用绑定器，仅计本轮本机文件状态失效及同步 DOM 清除的具体接线。",
+      "fragments": [
+        {
+          "line": 82,
+          "text": "export function bindCollectionPrivacy(window: EventTarget, clear: () => void, flush: (work: () => void) => void): () => void {"
+        },
+        {
+          "line": 83,
+          "text": "const hide = () => flush(clear);"
+        },
+        {
+          "line": 84,
+          "text": "const show = (event: Event) => { if (\"persisted\" in event && event.persisted === true) flush(clear); };"
+        },
+        {
+          "line": 86,
+          "text": "window.addEventListener(\"pageshow\", show);"
+        },
+        {
+          "line": 87,
+          "text": "return () => { window.removeEventListener(\"pagehide\", hide); window.removeEventListener(\"pageshow\", show); };"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-collection-review.ts",
+      "reason": "最终保守排重：同一 SHA-256 形状正则的改名、旧严格时间帮助器的声明壳，以及将原先内联 BOM 清除提成局部变量都不视为新功能。",
+      "fragments": [
+        {
+          "line": 26,
+          "text": "const REVIEW_DIGEST = /^[a-f0-9]{64}$/;"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-collection.ts",
+      "reason": "最终保守排重：同一 SHA-256 形状正则的改名、旧严格时间帮助器的声明壳，以及将原先内联 BOM 清除提成局部变量都不视为新功能。",
+      "fragments": [
+        {
+          "line": 26,
+          "text": "function timestamp(value: unknown): string {"
+        },
+        {
+          "line": 67,
+          "text": "const input = text.replace(/^\\ufeff/, \"\");"
+        }
+      ]
+    }
+  ]
+}

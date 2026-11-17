@@ -219,6 +219,10 @@ export function exportWritingText(draft: WritingDraft, format: "text" | "markdow
 export function writingDownloadName(title: string, extension: "json" | "txt" | "md", now = new Date()): string {
   // Portable ASCII avoids browsers/filesystems dropping non-ASCII download
   // names to a bare "download"; the full original title stays inside the file.
-  const safe = title.normalize("NFKD").replace(/\p{M}/gu, "").replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "no-wave-manuscript";
+  const normalized = title.normalize("NFKD").replace(/\p{M}/gu, "").replace(/[^A-Za-z0-9_-]+/g, "-");
+  let start = 0, end = normalized.length;
+  while (start < end && normalized.charCodeAt(start) === 45) start++;
+  while (end > start && normalized.charCodeAt(end - 1) === 45) end--;
+  const safe = normalized.slice(start, end).slice(0, 60) || "no-wave-manuscript";
   return `${safe}-${now.toISOString().slice(0, 10)}.${extension}`;
 }

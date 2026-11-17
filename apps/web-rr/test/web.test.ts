@@ -1868,3 +1868,17 @@ test("the production server does not compress private, query-bearing or authenti
     assert.match(response.body.toString(), /<html/i);
   }
 });
+
+test("the local collection tool is a protected empty shell without account authority or file-URL auto-loading", async () => {
+  const response = await get("/write/collections");
+  assert.equal(response.status, 200);
+  assert.match(response.body, /data-route="write-collections"/);
+  assert.match(response.body, /本机文稿集合/);
+  assert.match(response.body, /noindex/);
+  assert.match(response.headers.get("cache-control") ?? "", /no-store/);
+  const query = await get("/write/collections?file=https%3A%2F%2Fattacker.test%2FPRIVATE-FILE-URL");
+  assert.equal(query.status, 302);
+  assert.equal(query.headers.get("location"), "/write/collections");
+  assert.match(query.headers.get("cache-control") ?? "", /no-store/);
+  assert.doesNotMatch(query.body, /PRIVATE-FILE-URL/);
+});

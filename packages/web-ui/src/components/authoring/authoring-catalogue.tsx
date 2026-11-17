@@ -9,6 +9,7 @@ import { getMessages } from "@/lib/content.ts";
 import { workTypes } from "@/lib/work-types.ts";
 import { catalogueSelectionFingerprint } from "@/lib/authoring-catalogue-review.ts";
 import type { CatalogueExport } from "@/lib/authoring-catalogue-export.ts";
+import { WritingCollectionExportPanel } from "./writing-collection-export-panel.tsx";
 import { CatalogueExportPanel } from "./catalogue-export.tsx";
 import { CatalogueSelection } from "./catalogue-selection.tsx";
 import { CatalogueVersions, catalogueDate, catalogueLocaleLabel } from "./catalogue-versions.tsx";
@@ -90,7 +91,7 @@ export function AuthoringCatalogue() {
     <header className="nw-authoring-header">
       <p className="nw-kicker">PRIVATE / 作品管理</p><h1>作品目录</h1>
       <p>按语言版本浏览全部自己的作品，不限最近 100 条；先检索元数据，需要编辑时才读取所选版本正文。</p>
-      <div className="nw-authoring-actions"><Link className="nw-btn" href="/write">返回写作台</Link><Link className="nw-btn" href="/write/media">图片库</Link></div>
+      <div className="nw-authoring-actions"><Link className="nw-btn" href="/write">返回写作台</Link><Link className="nw-btn" href="/write/media">图片库</Link><Link className="nw-btn" href="/write/collections">本机集合工具</Link></div>
     </header>
     <form className="nw-catalogue-filters" aria-label="目录筛选" onSubmit={event => { event.preventDefault(); submit(); }}>
       <fieldset disabled={state.restoring || checkingExport}>
@@ -131,6 +132,7 @@ export function AuthoringCatalogue() {
           <button className="nw-btn" type="button" disabled={!state.selected.length || state.restoring} onClick={() => controller.clearSelection()}>清除选择</button>
         </div>
         <p>已选 {state.selected.length} / {CATALOGUE_SELECTION_LIMIT} 个语言版本。翻页保留选择，已提交的筛选或账户变更会清空。下载的是所选条目上次读取的快照，可在下方明确发起只读核对。</p>
+        <WritingCollectionExportPanel catalogue={controller} disabled={unavailable || formChanged || checkingExport} />
         <CatalogueExportPanel selected={state.selected} disabled={unavailable || formChanged || checkingExport} onDownload={report => { void exportSelection(report); }} />
         {state.actor ? <CatalogueSelection actor={state.actor} scope={state.filters.scope} selected={state.selected} visible={state.page.items} disabled={unavailable || formChanged} onRemove={key => controller.removeSelection(key)} onApply={(actor, fingerprint, entries) => controller.adoptReviewedSelection(actor, fingerprint, entries)} onAccountRefused={controller.refuseAccount} onRateLimited={controller.respectReadCooldown} /> : null}
         {state.page.items.length ? <ul className="nw-catalogue-list" aria-label="目录条目">{state.page.items.map(entry => <li key={catalogueEntryKey(entry)}>
