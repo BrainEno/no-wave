@@ -1,3 +1,4 @@
+import { publicContentSource } from "../lib/runtime.ts";
 import { useLoaderData } from "react-router";
 import type { HeadersFunction, LoaderFunctionArgs, MetaFunction } from "react-router";
 import type { Locale } from "@/lib/content.ts";
@@ -16,7 +17,7 @@ import { titleWithSite } from "../lib/meta.ts";
  * results depend on an arbitrary query string, so a shared cache would only
  * collect low-hit-rate entries.
  */
-export async function loader({ url }: LoaderFunctionArgs) {
+export async function loader({ request, url }: LoaderFunctionArgs) {
   const locale = localeFor(url);
   try {
     return await loadSearchPage({
@@ -24,7 +25,7 @@ export async function loader({ url }: LoaderFunctionArgs) {
       query: (url.searchParams.get("q") ?? "").slice(0, 100),
       tab: parseTab(url.searchParams.get("tab") ?? undefined),
       type: parseWorkType(url.searchParams.get("type") ?? undefined),
-    });
+    }, publicContentSource(request));
   } catch (error: unknown) {
     throw upstreamUnavailable(error);
   }

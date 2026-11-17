@@ -1,15 +1,5 @@
 import type { ArticleView, AuthorView, Locale, WorkType } from "./content.ts";
-import {
-  getPublicArticle,
-  getPublicCategory,
-  listPublicArticles,
-  listPublicAuthors,
-  listPublicCategories,
-  listPublicFeatured,
-  listPublicCategoryArticles,
-  type AuthorSummary,
-  type CategoryView,
-} from "./api-content.ts";
+import { fixturePublicContent, type PublicContentSource, type AuthorSummary, type CategoryView } from "./api-content.ts";
 import { PAGE_SIZE, paginate } from "./work-types.ts";
 
 /**
@@ -61,7 +51,7 @@ export type ArchivePageData = {
 };
 
 export async function loadArchivePage(
-  options: { locale: Locale; query?: string; page?: number; type?: WorkType | null },
+  options: { locale: Locale; query?: string; page?: number; type?: WorkType | null }, source: PublicContentSource = fixturePublicContent,
 ): Promise<ArchivePageData> {
   const locale = options.locale;
   const query = options.query ?? "";
@@ -70,13 +60,13 @@ export async function loadArchivePage(
 
   if (type) {
     // API 暂无作品类型参数：在最新 100 篇匹配作品中筛选并分页
-    const matches = (await listPublicArticles({ locale, query, limit: ARCHIVE_TYPE_SCAN_LIMIT }))
+    const matches = (await source.listPublicArticles({ locale, query, limit: ARCHIVE_TYPE_SCAN_LIMIT }))
       .filter((article) => article.workType === type);
     const { visible, hasNextPage } = paginate(matches, page);
     return { locale, query, page, type, articles: visible, hasNextPage };
   }
 
-  const results = await listPublicArticles({ locale, query, limit: PAGE_SIZE + 1, offset: (page - 1) * PAGE_SIZE });
+  const results = await source.listPublicArticles({ locale, query, limit: PAGE_SIZE + 1, offset: (page - 1) * PAGE_SIZE });
   return {
     locale,
     query,
@@ -97,9 +87,9 @@ export type AuthorPageData = {
 
 /** Sorted newest first; type filtering and pagination stay in the view. */
 export async function loadAuthorPage(
-  options: { locale: Locale; author: AuthorView; type?: WorkType | null; page?: number },
+  options: { locale: Locale; author: AuthorView; type?: WorkType | null; page?: number }, source: PublicContentSource = fixturePublicContent,
 ): Promise<AuthorPageData> {
-  const works = (await listPublicArticles({
+  const works = (await source.listPublicArticles({
     locale: options.locale,
     authorUsername: options.author.username,
     limit: AUTHOR_WORKS_LIMIT,
@@ -138,7 +128,7 @@ export type SearchPageData = {
  * 500.
  */
 export async function loadSearchPage(
-  options: { locale: Locale; query: string; tab?: SearchTab; type?: WorkType | null },
+  options: { locale: Locale; query: string; tab?: SearchTab; type?: WorkType | null }, source: PublicContentSource = fixturePublicContent,
 ): Promise<SearchPageData> {
   const locale = options.locale;
   const query = options.query ?? "";
@@ -147,9 +137,9 @@ export async function loadSearchPage(
   const q = query.trim();
   const [works, authors, categories] = q
     ? await Promise.all([
-      listPublicArticles({ locale, query: q, limit: SEARCH_WORKS_LIMIT }),
-      listPublicAuthors({ locale, query: q, limit: SEARCH_AUTHOR_LIMIT }).catch((): AuthorSummary[] => []),
-      listPublicCategories({ locale, query: q, limit: SEARCH_CATEGORY_LIMIT }).catch((): CategoryView[] => []),
+      source.listPublicArticles({ locale, query: q, limit: SEARCH_WORKS_LIMIT }),
+      source.listPublicAuthors({ locale, query: q, limit: SEARCH_AUTHOR_LIMIT }).catch((): AuthorSummary[] => []),
+      source.listPublicCategories({ locale, query: q, limit: SEARCH_CATEGORY_LIMIT }).catch((): CategoryView[] => []),
     ])
     : [[] as ArticleView[], [] as AuthorSummary[], [] as CategoryView[]];
   return { locale, query, tab, type, works, authors, categories };
@@ -171,13 +161,13 @@ export type AuthorIndexData = {
  * directory is a link somebody can send.
  */
 export async function loadAuthorIndexPage(
-  options: { locale: Locale; query?: string; page?: number },
+  options: { locale: Locale; query?: string; page?: number }, source: PublicContentSource = fixturePublicContent,
 ): Promise<AuthorIndexData> {
   const locale = options.locale;
   const query = options.query ?? "";
   const page = options.page ?? 1;
   const offset = (page - 1) * AUTHOR_PAGE_SIZE;
-  const results = await listPublicAuthors({ locale, query, limit: AUTHOR_PAGE_SIZE + 1, offset });
+  const results = await source.listPublicAuthors({ locale, query, limit: AUTHOR_PAGE_SIZE + 1, offset });
   return { locale, query, page, authors: results.slice(0, AUTHOR_PAGE_SIZE), hasNextPage: results.length > AUTHOR_PAGE_SIZE };
 }
 
@@ -190,13 +180,13 @@ export type CategoryIndexData = {
 };
 
 export async function loadCategoryIndexPage(
-  options: { locale: Locale; query?: string; page?: number },
+  options: { locale: Locale; query?: string; page?: number }, source: PublicContentSource = fixturePublicContent,
 ): Promise<CategoryIndexData> {
   const locale = options.locale;
   const query = options.query ?? "";
   const page = options.page ?? 1;
   const offset = (page - 1) * CATEGORY_PAGE_SIZE;
-  const results = await listPublicCategories({ locale, query, limit: CATEGORY_PAGE_SIZE + 1, offset });
+  const results = await source.listPublicCategories({ locale, query, limit: CATEGORY_PAGE_SIZE + 1, offset });
   return { locale, query, page, categories: results.slice(0, CATEGORY_PAGE_SIZE), hasNextPage: results.length > CATEGORY_PAGE_SIZE };
 }
 
@@ -217,14 +207,14 @@ export type CategoryDetailData = {
  * 404 is expressed.
  */
 export async function loadCategoryDetailPage(
-  options: { locale: Locale; slug: string; page?: number },
+  options: { locale: Locale; slug: string; page?: number }, source: PublicContentSource = fixturePublicContent,
 ): Promise<CategoryDetailData> {
   const locale = options.locale;
   const page = options.page ?? 1;
   const offset = (page - 1) * CATEGORY_PAGE_SIZE;
   const [category, results] = await Promise.all([
-    getPublicCategory(options.slug, locale),
-    listPublicCategoryArticles(options.slug, locale, CATEGORY_PAGE_SIZE + 1, offset),
+    source.getPublicCategory(options.slug, locale),
+    source.listPublicCategoryArticles(options.slug, locale, CATEGORY_PAGE_SIZE + 1, offset),
   ]);
   return {
     locale,
@@ -261,12 +251,12 @@ export type HomePageData = {
  * than take the page with it: an empty editorial shelf falls back to the newest
  * works, an empty "most saved" row is simply not rendered.
  */
-export async function loadHomePage(options: { locale: Locale }): Promise<HomePageData> {
+export async function loadHomePage(options: { locale: Locale }, source: PublicContentSource = fixturePublicContent): Promise<HomePageData> {
   const [featured, latest, popular, categories] = await Promise.all([
-    listPublicFeatured({ locale: options.locale, limit: HOME_FEATURED_LIMIT }).catch((): ArticleView[] => []),
-    listPublicArticles({ locale: options.locale, sort: "latest", limit: HOME_LATEST_LIMIT }),
-    listPublicArticles({ locale: options.locale, sort: "popular", limit: HOME_POPULAR_LIMIT }).catch((): ArticleView[] => []),
-    listPublicCategories({ locale: options.locale, limit: HOME_CATEGORY_LIMIT }).catch((): CategoryView[] => []),
+    source.listPublicFeatured({ locale: options.locale, limit: HOME_FEATURED_LIMIT }).catch((): ArticleView[] => []),
+    source.listPublicArticles({ locale: options.locale, sort: "latest", limit: HOME_LATEST_LIMIT }),
+    source.listPublicArticles({ locale: options.locale, sort: "popular", limit: HOME_POPULAR_LIMIT }).catch((): ArticleView[] => []),
+    source.listPublicCategories({ locale: options.locale, limit: HOME_CATEGORY_LIMIT }).catch((): CategoryView[] => []),
   ]);
   return { locale: options.locale, featured, latest, popular, categories };
 }
@@ -302,11 +292,11 @@ export type ArticleDetailPageData = {
 export async function loadArticleDetailPage(options: {
   slug: string;
   locale: Locale;
-}): Promise<ArticleDetailPageData | null> {
+}, source: PublicContentSource = fixturePublicContent): Promise<ArticleDetailPageData | null> {
   const { slug, locale } = options;
-  const article = await getPublicArticle(slug, locale);
+  const article = await source.getPublicArticle(slug, locale);
   if (!article) return null;
-  const everything = await listPublicArticles({ locale, limit: ARTICLE_SCAN_LIMIT })
+  const everything = await source.listPublicArticles({ locale, limit: ARTICLE_SCAN_LIMIT })
     .then((items) => [...items].sort((a, b) => b.publishedAt.localeCompare(a.publishedAt)))
     .catch((): ArticleView[] => []);
   const position = everything.findIndex((candidate) => candidate.slug === article.slug);

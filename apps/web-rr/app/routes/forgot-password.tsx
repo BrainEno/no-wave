@@ -4,7 +4,7 @@ import type { HeadersFunction, MetaFunction } from "react-router";
 // app answers from `app/framework/link.tsx`.
 import { ForgotPasswordForm } from "@/components/auth/forgot-password-form.tsx";
 import { MailDisabledNotice } from "@/components/auth/mail-disabled-notice.tsx";
-import { isMailEnabled } from "@/lib/mail-feature.ts";
+import { mailEnabled } from "../lib/runtime.ts";
 import { titleWithSite } from "../lib/meta.ts";
 import { PRIVATE_PAGE_HEADERS } from "../lib/http-policy.ts";
 
@@ -19,7 +19,7 @@ import { PRIVATE_PAGE_HEADERS } from "../lib/http-policy.ts";
  * that trap has no framework-shaped fix to copy.
  */
 export async function loader() {
-  return { mailEnabled: isMailEnabled() };
+  return { mailEnabled: mailEnabled() };
 }
 
 /**

@@ -1,5 +1,6 @@
 import type { ActionFunctionArgs } from "react-router";
-import { handleAuthoringRestoreArticle } from "../lib/authoring-proxy.ts";
+import { handleAuthoringRestoreRequest } from "@bot-thk/web-http";
+import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**
  * `POST /api/authoring/articles/:id/restore` — resource route, no component.
@@ -9,5 +10,5 @@ import { handleAuthoringRestoreArticle } from "../lib/authoring-proxy.ts";
  * write already uses.
  */
 export async function action({ request, params }: ActionFunctionArgs) {
-  return handleAuthoringRestoreArticle(request, params.id);
+  return handleAuthoringRestoreRequest(request, { id: params.id ?? "" }, apiProxyConfig());
 }

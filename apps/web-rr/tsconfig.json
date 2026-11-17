@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["dom", "dom.iterable", "es2022"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "es2022"
+    ],
     "module": "esnext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
@@ -13,10 +17,18 @@
     "resolveJsonModule": true,
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
-    "rootDirs": [".", "./.react-router/types"],
-    "types": ["node", "vite/client"],
+    "rootDirs": [
+      ".",
+      "./.react-router/types"
+    ],
+    "types": [
+      "node",
+      "vite/client"
+    ],
     "paths": {
-      "@/*": ["../../packages/web-ui/src/*"]
+      "@/*": [
+        "../../packages/web-ui/src/*"
+      ]
     }
   },
   "include": [
@@ -30,7 +42,13 @@
     "react-router.config.ts",
     "vite.config.ts",
     "refresh/**/*.ts",
-    "refresh-ingress.ts"
+    "refresh-ingress.ts",
+    "upstream/**/*.ts",
+    "upstream-ingress.ts",
+    "operations/**/*.ts"
   ],
-  "exclude": ["node_modules", "build"]
+  "exclude": [
+    "node_modules",
+    "build"
+  ]
 }

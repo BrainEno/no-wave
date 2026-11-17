@@ -217,3 +217,12 @@ export {
 export type { CookieOptions } from "./cookies.ts";
 
 export { handleArticleCatalogueRequest, handleCatalogueArticleRequest, handleCatalogueRestoreRequest, handleCatalogueEditionsRequest } from "./catalogue.ts";
+
+export { UpstreamTransport, upstreamTransportFor, type UpstreamRequestOptions, type UpstreamTransportOptions } from "./upstream.ts";
+export { UpstreamAdmission, type AdmissionLimits, type AdmissionSnapshot, type UpstreamLane } from "./upstream-admission.ts";
+export { UpstreamBusyError, UpstreamCancelledError, UpstreamResponseError, upstreamFailureResponse } from "./upstream-errors.ts";
+export { API_RESPONSE_MAX_BYTES, AUTH_RESPONSE_MAX_BYTES, EXPORT_RESPONSE_MAX_BYTES, bufferedResponse,
+  bufferUpstreamResponse, upstreamJsonText, upstreamJsonPayload, type BufferedApiResponse } from "./upstream-response.ts";
+export { UpstreamTelemetry, type UpstreamKind, type UpstreamSample, type UpstreamObserver } from "./upstream-telemetry.ts";
+
+export { WebRequestAdmission, type IncomingRequestInfo, type RequestAdmissionSettings } from "./request-admission.ts";

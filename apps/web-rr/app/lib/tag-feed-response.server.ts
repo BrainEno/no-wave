@@ -20,7 +20,7 @@ function failure(request: Request, status: number): Response {
 }
 
 /** No viewer/session read and no process-local cache. The anonymous API owns visibility. */
-export async function handleTagFeedRequest(request: Request, options: FeedOptions, source?: TagPageSource): Promise<Response> {
+export async function handleTagFeedRequest(request: Request, options: FeedOptions, source?: TagPageSource | (() => TagPageSource)): Promise<Response> {
   if (request.method !== "GET" && request.method !== "HEAD") return failure(request, 405);
   const format = parseTagFeedFormat(options.format);
   if (!isTagSlug(options.slug) || !format) return failure(request, 404);
@@ -31,7 +31,7 @@ export async function handleTagFeedRequest(request: Request, options: FeedOption
       Location: tagFeedPath(options.slug, options.locale, format), "X-Robots-Tag": "noindex, follow" } });
   }
   try {
-    const loaded = await loadTagDetailPage({ locale: options.locale, slug: options.slug, page: 1 }, source);
+    const loaded = await loadTagDetailPage({ locale: options.locale, slug: options.slug, page: 1 }, typeof source === "function" ? source() : source);
     if (!loaded.tag) return failure(request, 404);
     const rendered = renderTagFeed({ ...loaded, tag: loaded.tag, siteUrl: options.siteUrl, format });
     // Compression can change wire bytes; this is deliberately a weak validator

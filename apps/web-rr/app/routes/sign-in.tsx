@@ -4,7 +4,7 @@ import type { HeadersFunction, LoaderFunctionArgs, MetaFunction } from "react-ro
 // which this app answers from `app/framework/navigation.ts`.
 import { SignInForm } from "@/components/auth/sign-in-form.tsx";
 import { safeRedirectPath } from "@/lib/authoring-proxy-policy.ts";
-import { isMailEnabled } from "@/lib/mail-feature.ts";
+import { mailEnabled } from "../lib/runtime.ts";
 import { PRIVATE_PAGE_HEADERS } from "../lib/http-policy.ts";
 
 /**
@@ -17,7 +17,7 @@ import { PRIVATE_PAGE_HEADERS } from "../lib/http-policy.ts";
 export async function loader({ url }: LoaderFunctionArgs) {
   // Read at request time, not build time: switching mail on must not require a
   // rebuild.
-  return { nextPath: safeRedirectPath(url.searchParams.get("next") ?? "/account"), mailEnabled: isMailEnabled() };
+  return { nextPath: safeRedirectPath(url.searchParams.get("next") ?? "/account"), mailEnabled: mailEnabled() };
 }
 
 /**

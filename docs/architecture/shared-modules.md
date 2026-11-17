@@ -1,0 +1,38 @@
+# 开发前先查：公共模块索引
+
+最后核对：2026-11-12。此页是导航，不取代各模块的测试与 ADR。
+Web 已按 [ADR 0012](decisions/0012-portable-web-framework-migration.md) / [0017](decisions/0017-nextjs-retired-one-web-application.md)
+收敛为 React Router Framework Mode；当前版本看 `apps/web-rr/package.json`，不重新开展框架选型。
+
+## 检索规则
+
+1. 从下面的职责检索符号、调用者和测试，再决定复用、扩展或新建。
+2. PR 写明查过的模块，以及不复用时的语义差异；相同名字不保证相同策略。
+3. 不因“去重”扩大信任：API 仍负责授权、媒体归属、原子导入和持久业务事实。
+4. 新的跨路由策略优先放共享边界，框架路由只适配参数与注入配置。
+
+| 需要做什么 | 先查这里 | 不能越过的边界 |
+| --- | --- | --- |
+| BFF 认证、账户、写作、目录、通知、消息 | [web-http](../../packages/web-http/README.md) 的 `src/index.ts`、对应 handler/test | Cookie-only；Origin / actor / revision 不在路由里重写 |
+| BFF 路由写法 | [模板与校验顺序](bff-routes.md) | 不恢复 app-local proxy 包装层 |
+| 期限、响应字节、排队、熔断、下载 | `packages/web-http/src/upstream*.ts`；[运行边界](web-upstream-timeouts.md) | 无自动 mutation retry；不是 API 限流或授权 |
+| 入站 JSON / 上传 | `packages/web-http/src/body.ts`、`request-admission.ts` | 路由自身小限额仍生效；不放宽 API 限额 |
+| 会话轮换协调 | `packages/web-http/src/refresh-coordinator.ts`、`apps/web-rr/refresh/` | [ADR 0025](decisions/0025-browser-session-refresh-protocol.md)；不确定代次不能重放 |
+| Web 入口、配置、SSR 数据源 | [web-rr](../../apps/web-rr/README.md)、`app/lib/runtime.ts` | 环境读取、Node 驱动和运维凭据不进浏览器 |
+| UI 控件、样式、文案 | [web-ui](../../packages/web-ui/README.md)、`src/components/ui/parts.tsx`、`src/lib/ui-copy.ts` | 优先既有交互/无障碍语义，不只复制外观 |
+| 写作状态、目录、集合与备份 | `web-ui/src/lib/writing-*.ts`、`authoring-catalogue-*.ts` | 保留未保存编辑、修订冲突、恢复和跨账户保护 |
+| 通知与消息浏览器传输 | `web-ui/src/lib/notification-transport.ts`、`messaging-transport.ts` 及 actor/controller 模块 | 既有取消、幂等、限流恢复；不重复计入新增功能 |
+| 公共内容、标签、feed、sitemap、SEO | `web-ui/src/lib/{api-content,public-pages,tag-pages,tag-feed,site-metadata,sitemap-catalog}.ts` | 显式 source/config；已配置 API 失败不得冒充 fixtures |
+| API 运维设置、生命周期 | `apps/api/src/infrastructure/{service-settings,service-operations,http-lifecycle}.ts` | 验证范围且不输出原始设置；Web 不导入 API 实现 |
+| API 业务与持久层 | `apps/api/src/application/`、`domain/`、`persistence/`；[API README](../../apps/api/README.md) | 业务事务与所有权由后端/数据库执行 |
+
+示例检索：`rg 'forwardAuthoringRequest|handle.*Request' packages/web-http/src apps/web-rr/app/routes`，
+再读对应测试。花括号路径表示检索分组，不是一个名为花括号的文件。
+
+## 明示的服务端例外
+
+Web 刷新协调可选直接访问 PostgreSQL，只存 Web 运维 ledger，不存文章、媒体、
+身份模型或 API 数据副本。单 Web 进程默认 memory；多实例必须按 ADR 0025 声明拓扑。
+迁移、备份、密钥与 fence 的转移独立于 API provider transfer；见
+[刷新运维](../operations/web-refresh-coordination.md)和[转移规程](../deployment/provider-transfer-runbook.md#web-refresh-ledger-is-a-separate-operational-store)。
+该例外不授权客户端包持有数据库驱动，也不解决 ADR 0026 的 moderation 发布门禁。

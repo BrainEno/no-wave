@@ -286,7 +286,7 @@ export async function handleAuthoringNotionExportRequest(
   // no-store policy and any rotated session cookie, and both are kept.
   const headers = new Headers(upstream.headers);
   headers.set("content-disposition", 'attachment; filename="notion-bundle.json"');
-  return new Response(await upstream.text(), { status: upstream.status, headers });
+  return new Response(upstream.body, { status: upstream.status, headers });
 }
 
 /**
@@ -339,7 +339,8 @@ export async function handleAuthoringNotionImportRequest(
     return notForwarded(errorResponse("PAYLOAD_TOO_LARGE", "The bundle exceeds the 8 MB limit.", 413));
   }
 
-  return forwardAuthoringRequest(request, "api/v1/imports/notion", "POST", config, body.text);
+  return forwardAuthoringRequest(request, "api/v1/imports/notion", "POST",
+    { ...config, upstreamTimeoutMs: config.upstreamTimeoutMs ?? 90_000 }, body.text);
 }
 
 /**

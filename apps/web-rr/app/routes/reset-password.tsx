@@ -2,7 +2,7 @@ import { useLoaderData } from "react-router";
 import type { HeadersFunction, LoaderFunctionArgs, MetaFunction } from "react-router";
 import { ResetPasswordForm } from "@/components/auth/reset-password-form.tsx";
 import { MailDisabledNotice } from "@/components/auth/mail-disabled-notice.tsx";
-import { isMailEnabled } from "@/lib/mail-feature.ts";
+import { mailEnabled } from "../lib/runtime.ts";
 import { titleWithSite } from "../lib/meta.ts";
 import { PRIVATE_PAGE_HEADERS } from "../lib/http-policy.ts";
 
@@ -23,7 +23,7 @@ export async function loader({ url }: LoaderFunctionArgs) {
   const token = url.searchParams.get("token")?.trim() ?? "";
   // A reset link can only have arrived by mail, so with mail off there is no
   // token to redeem and the form would only ever answer "invalid link".
-  return { token, mailEnabled: isMailEnabled() };
+  return { token, mailEnabled: mailEnabled() };
 }
 
 /**

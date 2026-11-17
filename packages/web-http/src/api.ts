@@ -8,6 +8,8 @@
  * adapter.
  */
 import type { RefreshCoordinator } from "./refresh-coordinator.ts";
+import type { UpstreamTransport } from "./upstream.ts";
+import { UpstreamCancelledError } from "./upstream-errors.ts";
 
 export type FetchImpl = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -15,6 +17,8 @@ export type ApiProxyConfig = {
   /** Absolute HTTP(S) API origin, already validated by the caller. */
   apiBaseUrl?: string | undefined;
   fetchImpl?: FetchImpl;
+  /** Shared process admission/byte budgets. Do not also supply a fetch override. */
+  upstreamTransport?: UpstreamTransport;
   /**
    * Budget in milliseconds for one upstream call, covering connection,
    * response headers and (for buffered calls) the whole body. Defaults to
@@ -137,38 +141,57 @@ function invalidTimeout(): RangeError {
  * An abort observed by `run` becomes `UpstreamTimeoutError`; any other failure
  * keeps its own identity, because a refused connection is not a timeout.
  */
+export type DeadlineCheckpoint = () => void;
+
 export async function withUpstreamDeadline<T>(
   timeoutMs: number,
-  run: (signal: AbortSignal) => Promise<T>,
+  run: (signal: AbortSignal, checkpoint: DeadlineCheckpoint) => Promise<T>,
+  callerSignal?: AbortSignal,
 ): Promise<T> {
   const timeout = resolveUpstreamTimeoutMs(timeoutMs);
+  if (callerSignal?.aborted) throw new UpstreamCancelledError();
   const controller = new AbortController();
-  // Never `unref` this timer: it is the deadline the caller is waiting on, and
-  // an unref'd timer lets the event loop exit with that promise still pending.
-  // It is cleared in `finally`, so it does not outlive the call either.
-  const timer = setTimeout(() => controller.abort(), timeout);
-  const operation = run(controller.signal);
+  const deadlineAt = performance.now() + timeout;
+  let termination: "timeout" | "cancelled" | undefined;
+  let rejectAborted: (reason: Error) => void = () => {};
+  const aborted = new Promise<never>((_, reject) => { rejectAborted = reject; });
+  const abort = (reason: "timeout" | "cancelled") => {
+    if (termination) return;
+    termination = reason;
+    // Reject before dispatching the signal: a cooperating stream may resolve
+    // synchronously from cancel(), but that is not a successful response.
+    rejectAborted(reason === "timeout" ? new UpstreamTimeoutError(timeout) : new UpstreamCancelledError());
+    controller.abort(reason === "timeout" ? new UpstreamTimeoutError(timeout) : new UpstreamCancelledError());
+  };
+  const onCallerAbort = () => abort("cancelled");
+  // Timers may be starved by already-resolved microtasks or JSON work. A
+  // monotonic checkpoint forbids late success and, when used before dispatch,
+  // forbids a queued write from starting after its absolute budget expired.
+  const checkpoint: DeadlineCheckpoint = () => {
+    if (callerSignal?.aborted) onCallerAbort();
+    else if (performance.now() >= deadlineAt) abort("timeout");
+    if (termination === "timeout") throw new UpstreamTimeoutError(timeout);
+    if (termination === "cancelled") throw new UpstreamCancelledError();
+  };
+  const timer = setTimeout(() => abort("timeout"), timeout);
+  callerSignal?.addEventListener("abort", onCallerAbort, { once: true });
+  // Promise.resolve also captures a synchronous throw from an injected port.
+  const operation = Promise.resolve().then(() => {
+    checkpoint();
+    return run(controller.signal, checkpoint);
+  });
   try {
-    return await Promise.race([
-      operation,
-      new Promise<never>((_, reject) => {
-        controller.signal.addEventListener("abort", () => reject(new UpstreamTimeoutError(timeout)), { once: true });
-      }),
-    ]);
+    if (callerSignal?.aborted) onCallerAbort();
+    const value = await Promise.race([operation, aborted]);
+    checkpoint();
+    return value;
   } catch (error) {
-    // A cooperating transport usually rejects with its own abort error on the
-    // very same tick the timer fires, and that can win the race. Once the
-    // deadline has passed, the caller's answer is a timeout whatever shape the
-    // transport used to say "aborted".
-    if (controller.signal.aborted && !(error instanceof UpstreamTimeoutError)) {
-      throw new UpstreamTimeoutError(timeout);
-    }
+    if (termination === "timeout") throw new UpstreamTimeoutError(timeout);
+    if (termination === "cancelled") throw new UpstreamCancelledError();
     throw error;
   } finally {
     clearTimeout(timer);
-    // When the deadline won the race, `operation` may still reject later (an
-    // aborted request does). Attach a handler so that late failure is not an
-    // unhandled rejection; the caller already has the timeout.
-    operation.catch(() => {});
+    callerSignal?.removeEventListener("abort", onCallerAbort);
+    void operation.catch(() => {});
   }
 }

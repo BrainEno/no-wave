@@ -2,6 +2,9 @@
 
 These rules apply to humans and coding agents working on BOT THK.
 
+- Last checked: 2026-11-12.
+- Architecture references: [ADR 0012](docs/architecture/decisions/0012-portable-web-framework-migration.md), [0017](docs/architecture/decisions/0017-nextjs-retired-one-web-application.md), [0025](docs/architecture/decisions/0025-browser-session-refresh-protocol.md); unresolved release gates in [0026](docs/architecture/decisions/0026-moderation-reports-and-appeals.md) still apply.
+
 ## Product and safety boundaries
 
 - Preserve existing product capabilities unless an accepted decision record explicitly retires them.
@@ -21,6 +24,7 @@ These rules apply to humans and coding agents working on BOT THK.
 3. State the intended behavior, acceptance criteria, risk level, and smallest likely change boundary.
 4. Identify the appropriate verification level before coding.
 5. Check whether code is generated and locate its source of truth before editing it.
+6. Search the [shared-module index](docs/architecture/shared-modules.md), implementations, callers and tests before adding a helper or policy. In the PR, name what you searched and why any new implementation is semantically different. BFF routes follow the [shared-handler template](docs/architecture/bff-routes.md).
 
 ## Behavior-first development and selective TDD
 
@@ -46,11 +50,12 @@ These rules apply to humans and coding agents working on BOT THK.
 ## Architecture boundaries
 
 - The intended structure is a workspace monorepo with independently deployable applications.
-- The web framework is not selected until the documented framework spike is evaluated.
+- The shipped Web framework is React Router Framework Mode (ADR 0012/0017), currently React Router 8; `apps/web-rr` is the only Web application and `packages/web-ui` owns shared UI. The framework spike is historical, not an open selection gate.
 - The API is the source of truth for domain rules, authorization, message/notification persistence and user identity.
 - Keep domain/application rules out of UI components and framework-specific route handlers.
 - Shared packages may contain API contracts, generated operation types, truly cross-platform validation and platform-neutral utilities.
 - Database models, JWT internals, server secrets and server-only services must not leak into client packages.
+- The optional Web-server PostgreSQL refresh ledger is an accepted operational exception (ADR 0025), not API/domain persistence. It owns only coordination/fence state, stays out of web-ui/browser bundles, and requires its own migration, least-privilege credentials, backup and safe recovery plan. See the [refresh runbook](docs/operations/web-refresh-coordination.md) and [provider-transfer boundary](docs/deployment/provider-transfer-runbook.md#web-refresh-ledger-is-a-separate-operational-store). Single-process Web still defaults to memory.
 - Real-time transports are delivery mechanisms, not the source of truth for persisted messages or notifications.
 - Persist business facts before best-effort push or real-time delivery.
 - Start with a modular monolith for the API. Do not create microservices without a demonstrated need.
@@ -68,7 +73,7 @@ These rules apply to humans and coding agents working on BOT THK.
 - Add dependencies only for a stated need. Check maintenance, license, security, runtime/bundle impact and portability.
 - Pin the runtime and package manager; use one lockfile.
 - Avoid overlapping state/cache libraries unless an ADR explains the need.
-- Do not scaffold framework-specific production code before the framework decision is accepted.
+- Keep framework-specific adapters inside `apps/web-rr`; extend accepted React Router integration without reopening the historical spike or copying shared HTTP/UI policy into routes.
 
 ## Completion report
 

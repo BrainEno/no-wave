@@ -131,46 +131,13 @@ test("tag directories remain canonical while every empty catalog uses one bounde
   assert.ok(entries.every((entry) => !entry.url.includes("?")));
 });
 
-test("the site origin is resolved once and the configured value always wins", () => {
-  // `configuredSiteUrl()` is the single place a page may learn the deployment
-  // origin. Before it existed, the home and archive pages canonicalised against
-  // the fixture constant while the article and author pages used the
-  // configured one — the same page set disagreeing about its own origin.
-  const previous = process.env.SITE_URL;
-  try {
-    delete process.env.SITE_URL;
-    assert.equal(configuredSiteUrl(), "https://example.invalid");
-    process.env.SITE_URL = "https://no-wave.example/";
-    assert.equal(configuredSiteUrl(), "https://no-wave.example");
-    // Blank configuration must fall back rather than produce `undefined` URLs.
-    process.env.SITE_URL = "   ";
-    assert.equal(configuredSiteUrl(), "https://example.invalid");
-  } finally {
-    if (previous === undefined) delete process.env.SITE_URL;
-    else process.env.SITE_URL = previous;
-  }
+test("the site origin is resolved from explicit inputs with stable empty defaults", () => {
+  assert.equal(configuredSiteUrl(), "https://example.invalid");
+  assert.equal(configuredSiteUrl({ siteUrl: "https://no-wave.example/" }), "https://no-wave.example");
+  assert.equal(configuredSiteUrl({ siteUrl: "   " }), "https://example.invalid");
 });
 
-test("the retired NEXT_PUBLIC_SITE_URL still configures the origin, and SITE_URL wins", () => {
-  // Deployments set the Next.js-era name in a dashboard this repository cannot
-  // edit, so a hard rename would empty every canonical URL on the next deploy.
-  // The new name takes precedence, which is what makes migration order
-  // irrelevant: add `SITE_URL` whenever convenient, the old one keeps working
-  // until then.
-  const names = ["SITE_URL", "NEXT_PUBLIC_SITE_URL"] as const;
-  const previous = new Map(names.map((name) => [name, process.env[name]]));
-  try {
-    delete process.env.SITE_URL;
-    process.env.NEXT_PUBLIC_SITE_URL = "https://legacy.example/";
-    assert.equal(configuredSiteUrl(), "https://legacy.example");
-
-    process.env.SITE_URL = "https://current.example/";
-    assert.equal(configuredSiteUrl(), "https://current.example");
-  } finally {
-    for (const name of names) {
-      const value = previous.get(name);
-      if (value === undefined) delete process.env[name];
-      else process.env[name] = value;
-    }
-  }
+test("the retired site name remains an explicit compatibility input and the current name wins", () => {
+  assert.equal(configuredSiteUrl({ legacySiteUrl: "https://legacy.example/" }), "https://legacy.example");
+  assert.equal(configuredSiteUrl({ siteUrl: "https://current.example/", legacySiteUrl: "https://legacy.example/" }), "https://current.example");
 });

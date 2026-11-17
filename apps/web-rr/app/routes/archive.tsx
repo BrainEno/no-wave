@@ -1,3 +1,4 @@
+import { publicContentSource } from "../lib/runtime.ts";
 import { useLoaderData } from "react-router";
 import type { HeadersFunction, LoaderFunctionArgs, MetaFunction } from "react-router";
 import { archiveMetadata } from "@/lib/content.ts";
@@ -17,7 +18,7 @@ import { metaDescriptors, siteUrlFromMatches } from "../lib/meta.ts";
  * shared package, so no route can drift from another —
  * they would have to drift in the shared module.
  */
-export async function loader({ url }: LoaderFunctionArgs) {
+export async function loader({ request, url }: LoaderFunctionArgs) {
   const locale = localeFor(url);
   try {
     return await loadArchivePage({
@@ -25,7 +26,7 @@ export async function loader({ url }: LoaderFunctionArgs) {
       query: url.searchParams.get("q") ?? "",
       page: parsePage(url.searchParams.get("page") ?? undefined),
       type: parseWorkType(url.searchParams.get("type") ?? undefined),
-    });
+    }, publicContentSource(request));
   } catch (error: unknown) {
     throw upstreamUnavailable(error);
   }

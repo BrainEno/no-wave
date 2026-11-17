@@ -201,6 +201,15 @@ write authority remains trusted; encryption protects stored result values, not
 against a compromised Web runtime/key. No API identity rows or one-time refresh
 semantics are changed by this store. The API itself may remain SQLite.
 
+This is an explicit server-only operational-storage exception, not permission to
+put API models or database clients in `packages/web-ui` or browser code. The Web
+ledger has independent DDL, credentials, durable backups and restoration/fence
+obligations. API `db:transfer` excludes it; follow the
+[separate-store transfer boundary](../../deployment/provider-transfer-runbook.md#web-refresh-ledger-is-a-separate-operational-store)
+before moving either service's database. It remains optional for a single Web
+process, and neither an accepted exception nor a passing test authorizes a
+production topology/credential change.
+
 ### 4. The top bar is a state machine, not a cache of identity
 
 After hydration `SiteChrome` reads `nw_session` from `document.cookie`:

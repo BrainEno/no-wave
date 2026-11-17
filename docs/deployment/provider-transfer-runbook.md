@@ -151,6 +151,42 @@ backup and losing every write the target accepted since — a data-loss decision
 not an operator step. ADR 0010 lists reverse change capture and a controlled
 maintenance window as the accepted options, and neither is implemented.
 
+## Web refresh ledger is a separate operational store
+
+[ADR 0025](../architecture/decisions/0025-browser-session-refresh-protocol.md) permits
+an optional, **Web-server-only** PostgreSQL coordinator. This is not an API
+persistence provider: the API may stay on SQLite while multiple Web replicas use
+`WEB_REFRESH_DATABASE_URL`. `pnpm db:transfer` does **not** migrate or reconcile
+`web_refresh_coordinator_policy` / `web_refresh_coordination`, even if an operator
+placed them in the same physical cluster. Never claim the API transfer copied
+this anti-replay ledger.
+
+Before a provider cutover or restore, inventory both DSNs and the Web replica
+count separately. Keep Web ledger credentials, namespace, encryption key and
+policies under independent secret/backup management. Use a dedicated runtime
+role with the minimum privileges in the [refresh runbook](../operations/web-refresh-coordination.md#3-显式迁移与最小权限),
+not the API owner's DDL role. Normal Web startup verifies schema and never runs DDL.
+Explicitly run `pnpm web:refresh migrate`, `check`, `status` on an approved target
+before starting replicas; this only provisions/verifies schema, **not a data copy**.
+
+For an API-only transfer, retain the existing durable ledger and prove readiness
+and coordinated login/refresh afterwards. For a ledger host/schema/key move,
+stop and drain **all** Web replicas and in-flight refresh work first, and obtain
+a separately reviewed backup/restore and cutover plan that preserves **every
+unexpired pending/uncertain fence** plus its policy/key identity. A backup contains
+encrypted credential results and needs restricted storage and retention; do not
+print rows or put dumps into Git. A restored old snapshot, an empty replacement,
+a changed namespace/key or a manual fence deletion can replay already consumed
+credentials. Do not improvise SQL copy, clean pending rows, fall back to memory,
+or roll back to a Web build that does not understand the ledger. No automated
+safe ledger migration/re-encryption is supplied by the API provider-transfer tool.
+
+The default single Web process remains `memory`; this document does not assume
+production replicas or authorize enabling PostgreSQL, changing deployments,
+restoring databases or invalidating user sessions. Rehearsal must include the
+real PostgreSQL / separate Web OS-process tests and an explicit rollback review;
+local unit tests, `/healthz` or an API row-count match are not that evidence.
+
 ## What this does not do
 
 - **No online cutover.** No change capture, no watermark, no writer fence, no

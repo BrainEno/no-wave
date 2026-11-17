@@ -1,0 +1,10 @@
+{
+  "base": "420f37cff589f3a26c62caa14bedf9cc54560be0",
+  "certificateSha256": "d3844eddb55ff368154a11afcb57320e7323a462893fc739edd5ebc165ea2d2f",
+  "method": "Independent Node 24 type erasure + Espree JavaScript tokenizer + exact source hashes and git additions; second baseline runtime-fragment and new-fragment deduplication; semantic decisions remain explicit in the primary exclusion ledger.",
+  "claimed": 811,
+  "runtimeConfirmed": 811,
+  "failures": [],
+  "minimum": 800,
+  "satisfied": true
+}

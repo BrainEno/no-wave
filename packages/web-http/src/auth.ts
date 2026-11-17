@@ -1,12 +1,9 @@
 import {
-  UpstreamTimeoutError,
   apiUrl,
   applyClientAddressHeaders,
   readPayload,
   resolveUpstreamTimeoutMs,
-  withUpstreamDeadline,
   type ApiProxyConfig,
-  type FetchImpl,
 } from "./api.ts";
 import { readLimitedJson } from "./body.ts";
 import { clearedTokenCookieHeaders, refreshTokenFrom, tokenCookieHeaders } from "./cookies.ts";
@@ -14,6 +11,9 @@ import { errorResponse, isRecord, jsonResponse, safeApiError } from "./http.ts";
 import { isSameOriginMutation, isTokenEnvelope } from "./policy.ts";
 import { parseRetryAfterSeconds } from "./retry-after.ts";
 import { isRefreshFailure, refreshFailureResponse, resolveSessionRefresh } from "./session-refresh.ts";
+import { upstreamTransportFor } from "./upstream.ts";
+import { bufferedResponse } from "./upstream-response.ts";
+import { upstreamFailureResponse } from "./upstream-errors.ts";
 
 /**
  * Sign-in / register / refresh / logout proxy, framework-neutral.
@@ -132,19 +132,11 @@ export async function handleAuthRequest(
     body = JSON.stringify({ refreshToken });
   }
 
-  const fetchImpl = config.fetchImpl ?? fetch;
   let upstream: Response;
   try {
-    upstream = await callAuthApi(fetchImpl, apiUrl(base, `api/v1/auth/${action}`), body, timeoutMs, config.clientAddressHeaders);
+    upstream = await callAuthApi(config, apiUrl(base, `api/v1/auth/${action}`), body, timeoutMs, request.signal);
   } catch (error) {
-    return errorResponse(
-      error instanceof UpstreamTimeoutError ? "UPSTREAM_TIMEOUT" : "SERVICE_UNAVAILABLE",
-      error instanceof UpstreamTimeoutError
-        ? "The API service did not answer in time."
-        : "The API service could not be reached.",
-      error instanceof UpstreamTimeoutError ? 504 : 502,
-      action === "logout" ? clearedTokenCookieHeaders(request) : [],
-    );
+    return upstreamFailureResponse(error, action === "logout" ? clearedTokenCookieHeaders(request) : []);
   }
 
   const payload = await readPayload(upstream);
@@ -193,18 +185,11 @@ async function handleIdentityAction(
   const parsed = await readLimitedJson(request, LOGIN_BODY_LIMIT_BYTES);
   if (!parsed.ok) return parsed.response;
 
-  const fetchImpl = config.fetchImpl ?? fetch;
   let upstream: Response;
   try {
-    upstream = await callAuthApi(fetchImpl, apiUrl(base, `api/v1/auth/${action}`), parsed.text, timeoutMs, config.clientAddressHeaders);
+    upstream = await callAuthApi(config, apiUrl(base, `api/v1/auth/${action}`), parsed.text, timeoutMs, request.signal);
   } catch (error) {
-    return errorResponse(
-      error instanceof UpstreamTimeoutError ? "UPSTREAM_TIMEOUT" : "SERVICE_UNAVAILABLE",
-      error instanceof UpstreamTimeoutError
-        ? "The API service did not answer in time."
-        : "The API service could not be reached.",
-      error instanceof UpstreamTimeoutError ? 504 : 502,
-    );
+    return upstreamFailureResponse(error);
   }
 
   const payload = await readPayload(upstream);
@@ -228,23 +213,9 @@ async function handleIdentityAction(
  * request open. Authentication payloads are small, and the proxies read them in
  * full anyway.
  */
-async function callAuthApi(fetchImpl: FetchImpl, url: string, body: string, timeoutMs: number, clientAddressHeaders?: ApiProxyConfig["clientAddressHeaders"]): Promise<Response> {
+async function callAuthApi(config: ApiProxyConfig, url: string, body: string, timeoutMs: number, signal: AbortSignal): Promise<Response> {
   const headers = new Headers({ accept: "application/json", "content-type": "application/json; charset=utf-8" });
-  applyClientAddressHeaders(headers, url, "POST", clientAddressHeaders);
-  return withUpstreamDeadline(timeoutMs, async (signal) => {
-    const response = await fetchImpl(url, {
-      method: "POST",
-      headers,
-      redirect: "error",
-      body,
-      cache: "no-store",
-      signal,
-    });
-    const buffered = await response.arrayBuffer();
-    return new Response(buffered.byteLength === 0 ? null : buffered, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: response.headers,
-    });
-  });
+  applyClientAddressHeaders(headers, url, "POST", config.clientAddressHeaders);
+  const response = await upstreamTransportFor(config).request(url, { method: "POST", headers, body }, { kind: "auth", timeoutMs, signal, responseType: "json-success" });
+  return bufferedResponse(response);
 }

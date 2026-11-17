@@ -1,7 +1,7 @@
 /**
  * What a visitor is told when they ask for something this site cannot mail.
  *
- * Its own module on purpose: `mail-feature.ts` reads `process.env`, and a client
+ * Its own module on purpose: `mail-feature.ts` evaluates the server-supplied switch, and a client
  * component that imported it would break the React Router build, where nothing
  * polyfills `process` in the browser. The copy has no such dependency, so both
  * tiers can share one wording from anywhere.

@@ -1,0 +1,1381 @@
+{
+  "base": "420f37cff589f3a26c62caa14bedf9cc54560be0",
+  "rules": [
+    {
+      "file": "apps/web-rr/app/lib/runtime.ts",
+      "fragments": [
+        {
+          "line": 13,
+          "text": "let fallbackUpstream: ReturnType<typeof createWebUpstreamRuntime> | undefined;"
+        },
+        {
+          "line": 14,
+          "text": "export function upstreamTransport() {"
+        },
+        {
+          "line": 15,
+          "text": "const scoped = requestUpstreamTransport();"
+        },
+        {
+          "line": 16,
+          "text": "if (scoped) return scoped;"
+        },
+        {
+          "line": 17,
+          "text": "fallbackUpstream ??= createWebUpstreamRuntime(process.env);"
+        },
+        {
+          "line": 18,
+          "text": "return fallbackUpstream.transport;"
+        },
+        {
+          "line": 30,
+          "text": "return resolveApiBaseUrl({ explicitUrl: process.env.API_BASE_URL,"
+        },
+        {
+          "line": 31,
+          "text": "serviceUrl: process.env.API_SERVICE_URL, legacyGraphqlUrl: process.env.API_GRAPHQL_URL });"
+        },
+        {
+          "line": 64,
+          "text": "return createApiContentClient({ endpoint, timeoutMs: apiTimeoutMs(), upstreamTransport: upstreamTransport() });"
+        },
+        {
+          "line": 77,
+          "text": "return { apiBaseUrl: optionalApiBaseUrl(), upstreamTimeoutMs: process.env.API_TIMEOUT_MS, clientAddressHeaders: upstreamClientAddressHeaders, refreshCoordinator: requestRefreshCoordinator(), upstreamTransport: upstreamTransport() };"
+        },
+        {
+          "line": 93,
+          "text": "return configuredSiteUrl({ siteUrl: process.env.SITE_URL, legacySiteUrl: process.env.NEXT_PUBLIC_SITE_URL });"
+        },
+        {
+          "line": 97,
+          "text": "export function publicContentSource(request?: Request) {"
+        },
+        {
+          "line": 99,
+          "text": "return createPublicContentSource(endpoint ? createApiContentClient({ endpoint, timeoutMs: apiTimeoutMs(),"
+        },
+        {
+          "line": 100,
+          "text": "upstreamTransport: upstreamTransport(), signal: request?.signal }) : null);"
+        },
+        {
+          "line": 103,
+          "text": "export function publicTagSource(request?: Request) {"
+        },
+        {
+          "line": 104,
+          "text": "const source = publicContentSource(request);"
+        },
+        {
+          "line": 105,
+          "text": "return { listTags: source.listPublicTags, getTag: source.getPublicTag, listArticles: source.listPublicTagArticles };"
+        },
+        {
+          "line": 108,
+          "text": "export function publicSitemapSource(request?: Request) {"
+        },
+        {
+          "line": 110,
+          "text": "return endpoint ? createApiSitemapSource({ endpoint, timeoutMs: apiTimeoutMs(), upstreamTransport: upstreamTransport(), signal: request?.signal }) : createFixtureSitemapSource();"
+        },
+        {
+          "line": 113,
+          "text": "export function loadPublicSitemap(siteUrl: string, request?: Request) {"
+        },
+        {
+          "line": 114,
+          "text": "return loadSitemapEntries({ siteUrl, source: publicSitemapSource(request), signal: request?.signal });"
+        },
+        {
+          "line": 117,
+          "text": "export function mailEnabled(): boolean {"
+        },
+        {
+          "line": 118,
+          "text": "return resolveMailEnabled({ MAIL_ENABLED: process.env.MAIL_ENABLED });"
+        }
+      ],
+      "reason": "显式配置／source 注入、调用接线或既有 helper 搬移；本轮即使提供实际价值也保守不计新增功能。"
+    },
+    {
+      "file": "apps/web-rr/app/lib/tag-feed-response.server.ts",
+      "fragments": [
+        {
+          "line": 23,
+          "text": "export async function handleTagFeedRequest(request: Request, options: FeedOptions, source?: TagPageSource | (() => TagPageSource)): Promise<Response> {"
+        },
+        {
+          "line": 34,
+          "text": "const loaded = await loadTagDetailPage({ locale: options.locale, slug: options.slug, page: 1 }, typeof source === \"function\" ? source() : source);"
+        }
+      ],
+      "reason": "显式配置／source 注入、调用接线或既有 helper 搬移；本轮即使提供实际价值也保守不计新增功能。"
+    },
+    {
+      "file": "apps/web-rr/app/routes/account.tsx",
+      "fragments": [
+        {
+          "line": 33,
+          "text": "return { mailEnabled: mailEnabled() };"
+        }
+      ],
+      "reason": "显式配置／source 注入、调用接线或既有 helper 搬移；本轮即使提供实际价值也保守不计新增功能。"
+    },
+    {
+      "file": "apps/web-rr/app/routes/api.auth.ts",
+      "fragments": [
+        {
+          "line": 11,
+          "text": "return handleAuthRequest(request, params.action, apiProxyConfig());"
+        }
+      ],
+      "reason": "显式配置／source 注入、调用接线或既有 helper 搬移；本轮即使提供实际价值也保守不计新增功能。"
+    },
+    {
+      "file": "apps/web-rr/app/routes/api.authoring.articles.$id.restore.ts",
+      "fragments": [
+        {
+          "line": 13,
+          "text": "return handleAuthoringRestoreRequest(request, { id: params.id ?? \"\" }, apiProxyConfig());"
+        }
+      ],
+      "reason": "显式配置／source 注入、调用接线或既有 helper 搬移；本轮即使提供实际价值也保守不计新增功能。"
+    },
+    {
+      "file": "apps/web-rr/app/routes/api.authoring.articles.$id.ts",
+      "fragments": [
+        {
+          "line": 13,
+          "text": "return handleAuthoringArticleRequest(request, { id: params.id ?? \"\" }, apiProxyConfig());"
+        }
+      ],
+      "reason": "显式配置／source 注入、调用接线或既有 helper 搬移；本轮即使提供实际价值也保守不计新增功能。"
+    },
+    {
+      "file": "apps/web-rr/app/routes/api.authoring.catalogue.$id.editions.ts",
+      "fragments": [
+        {
+          "line": 5,
+          "text": "export function loader({ request, params }: LoaderFunctionArgs) { return handleCatalogueEditionsRequest(request, { id: params.id ?? \"\" }, apiProxyConfig()); }"
+        },
+        {
+          "line": 6,
+          "text": "export function action({ request, params }: ActionFunctionArgs) { return handleCatalogueEditionsRequest(request, { id: params.id ?? \"\" }, apiProxyConfig()); }"
+        }
+      ],
+      "reason": "显式配置／source 注入、调用接线或既有 helper 搬移；本轮即使提供实际价值也保守不计新增功能。"
+    },
+    {
+      "file": "apps/web-rr/app/routes/api.authoring.catalogue.$id.restore.ts",
+      "fragments": [
+        {
+          "line": 5,
+          "text": "export function loader({ request, params }: LoaderFunctionArgs) { return handleCatalogueRestoreRequest(request, { id: params.id ?? \"\" }, apiProxyConfig()); }"
+        },
+        {
+          "line": 6,
+          "text": "export function action({ request, params }: ActionFunctionArgs) { return handleCatalogueRestoreRequest(request, { id: params.id ?? \"\" }, apiProxyConfig()); }"
+        }
+      ],
+      "reason": "显式配置／source 注入、调用接线或既有 helper 搬移；本轮即使提供实际价值也保守不计新增功能。"
+    },
+    {
+      "file": "apps/web-rr/app/routes/api.authoring.catalogue.$id.ts",
+      "fragments": [
+        {
+          "line": 5,
+          "text": "export function loader({ request, params }: LoaderFunctionArgs) { return handleCatalogueArticleRequest(request, { id: params.id ?? \"\" }, apiProxyConfig()); }"
+        },
+        {
+          "line": 6,
+          "text": "export function action({ request, params }: ActionFunctionArgs) { return handleCatalogueArticleRequest(request, { id: params.id ?? \"\" }, apiProxyConfig()); }"
+        }
+      ],
+      "reason": "显式配置／source 注入、调用接线或既有 helper 搬移；本轮即使提供实际价值也保守不计新增功能。"
+    },
+    {
+      "file": "apps/web-rr/app/routes/api.authoring.catalogue.ts",
+      "fragments": [
+        {
+          "line": 5,
+          "text": "export function loader({ request }: LoaderFunctionArgs) { return handleArticleCatalogueRequest(request, apiProxyConfig()); }"
+        },
+        {
+          "line": 6,
+          "text": "export function action({ request }: ActionFunctionArgs) { return handleArticleCatalogueRequest(request, apiProxyConfig()); }"
+        }
+      ],
+      "reason": "显式配置／source 注入、调用接线或既有 helper 搬移；本轮即使提供实际价值也保守不计新增功能。"
+    },
+    {
+      "file": "apps/web-rr/app/routes/api.authoring.email-verification.ts",
+      "fragments": [
+        {
+          "line": 13,
+          "text": "return handleAccountEmailVerificationRequest(request, apiProxyConfig());"
+        }
+      ],
+      "reason": "显式配置／source 注入、调用接线或既有 helper 搬移；本轮即使提供实际价值也保守不计新增功能。"
+    },
+    {
+      "file": "apps/web-rr/app/routes/api.authoring.email.ts",
+      "fragments": [
+        {
+          "line": 13,
+          "text": "return handleAccountEmailChangeRequest(request, apiProxyConfig());"
+        }
+      ],
+      "reason": "显式配置／source 注入、调用接线或既有 helper 搬移；本轮即使提供实际价值也保守不计新增功能。"
+    },
+    {
+      "file": "apps/web-rr/app/routes/api.authoring.notifications.$id.read.ts",
+      "fragments": [
+        {
+          "line": 12,
+          "text": "return handleNotificationReadRequest(request, { id: params.id ?? \"\" }, apiProxyConfig());"
+        }
+      ],
+      "reason": "显式配置／source 注入、调用接线或既有 helper 搬移；本轮即使提供实际价值也保守不计新增功能。"
+    },
+    {
+      "file": "apps/web-rr/app/routes/api.authoring.notion-import.ts",
+      "fragments": [
+        {
+          "line": 14,
+          "text": "return handleAuthoringNotionImportRequest(request, apiProxyConfig());"
+        }
+      ],
+      "reason": "显式配置／source 注入、调用接线或既有 helper 搬移；本轮即使提供实际价值也保守不计新增功能。"
+    },
+    {
+      "file": "apps/web-rr/app/routes/api.authoring.password.ts",
+      "fragments": [
+        {
+          "line": 13,
+          "text": "return handleAccountPasswordChangeRequest(request, apiProxyConfig());"
+        }
+      ],
+      "reason": "显式配置／source 注入、调用接线或既有 helper 搬移；本轮即使提供实际价值也保守不计新增功能。"
+    },
+    {
+      "file": "apps/web-rr/app/routes/api.authoring.sessions.$id.ts",
+      "fragments": [
+        {
+          "line": 12,
+          "text": "return handleAccountSessionEndRequest(request, { sessionId: String(params.id ?? \"\") }, apiProxyConfig());"
+        }
+      ],
+      "reason": "显式配置／source 注入、调用接线或既有 helper 搬移；本轮即使提供实际价值也保守不计新增功能。"
+    },
+    {
+      "file": "apps/web-rr/app/routes/api.authoring.sessions.ts",
+      "fragments": [
+        {
+          "line": 13,
+          "text": "return handleAccountSessionsRequest(request, apiProxyConfig());"
+        },
+        {
+          "line": 17,
+          "text": "return handleAccountOtherSessionsEndRequest(request, apiProxyConfig());"
+        }
+      ],
+      "reason": "显式配置／source 注入、调用接线或既有 helper 搬移；本轮即使提供实际价值也保守不计新增功能。"
+    },
+    {
+      "file": "apps/web-rr/app/routes/archive.tsx",
+      "fragments": [
+        {
+          "line": 29,
+          "text": "}, publicContentSource(request));"
+        }
+      ],
+      "reason": "显式配置／source 注入、调用接线或既有 helper 搬移；本轮即使提供实际价值也保守不计新增功能。"
+    },
+    {
+      "file": "apps/web-rr/app/routes/article.tsx",
+      "fragments": [
+        {
+          "line": 30,
+          "text": "page = await loadArticleDetailPage({ slug: params.slug ?? \"\", locale }, publicContentSource(request));"
+        }
+      ],
+      "reason": "显式配置／source 注入、调用接线或既有 helper 搬移；本轮即使提供实际价值也保守不计新增功能。"
+    },
+    {
+      "file": "apps/web-rr/app/routes/author.tsx",
+      "fragments": [
+        {
+          "line": 26,
+          "text": "author = await publicContentSource(request).getPublicAuthor(params.username ?? \"\", locale);"
+        }
+      ],
+      "reason": "显式配置／source 注入、调用接线或既有 helper 搬移；本轮即使提供实际价值也保守不计新增功能。"
+    },
+    {
+      "file": "apps/web-rr/app/routes/home.tsx",
+      "fragments": [
+        {
+          "line": 25,
+          "text": "return await loadHomePage({ locale }, publicContentSource(request));"
+        }
+      ],
+      "reason": "显式配置／source 注入、调用接线或既有 helper 搬移；本轮即使提供实际价值也保守不计新增功能。"
+    },
+    {
+      "file": "apps/web-rr/app/routes/reset-password.tsx",
+      "fragments": [
+        {
+          "line": 26,
+          "text": "return { token, mailEnabled: mailEnabled() };"
+        }
+      ],
+      "reason": "显式配置／source 注入、调用接线或既有 helper 搬移；本轮即使提供实际价值也保守不计新增功能。"
+    },
+    {
+      "file": "apps/web-rr/app/routes/sign-in.tsx",
+      "fragments": [
+        {
+          "line": 20,
+          "text": "return { nextPath: safeRedirectPath(url.searchParams.get(\"next\") ?? \"/account\"), mailEnabled: mailEnabled() };"
+        }
+      ],
+      "reason": "显式配置／source 注入、调用接线或既有 helper 搬移；本轮即使提供实际价值也保守不计新增功能。"
+    },
+    {
+      "file": "apps/web-rr/app/routes/sitemap.xml.ts",
+      "fragments": [
+        {
+          "line": 7,
+          "text": "return handleCrawlRequest(request, \"sitemap\", { siteUrl, loadEntries: origin => loadPublicSitemap(origin, request) });"
+        }
+      ],
+      "reason": "显式配置／source 注入、调用接线或既有 helper 搬移；本轮即使提供实际价值也保守不计新增功能。"
+    },
+    {
+      "file": "apps/web-rr/app/routes/tag-feed.ts",
+      "fragments": [
+        {
+          "line": 8,
+          "text": "return handleTagFeedRequest(request, { slug: params.slug, format: params.feed === \"feed.atom\" ? \"atom\" : params.feed === \"feed.xml\" ? \"xml\" : undefined, locale: localeFor(url), siteUrl: siteUrl() }, () => publicTagSource(request));"
+        }
+      ],
+      "reason": "显式配置／source 注入、调用接线或既有 helper 搬移；本轮即使提供实际价值也保守不计新增功能。"
+    },
+    {
+      "file": "apps/web-rr/app/routes/tag.tsx",
+      "fragments": [
+        {
+          "line": 17,
+          "text": "loaded = await loadTagDetailPage({ locale: localeFor(url), slug: params.slug, page: tagPage(url.searchParams.get(\"page\") ?? undefined) }, publicTagSource(request));"
+        }
+      ],
+      "reason": "显式配置／source 注入、调用接线或既有 helper 搬移；本轮即使提供实际价值也保守不计新增功能。"
+    },
+    {
+      "file": "apps/web-rr/app/routes/tags.tsx",
+      "fragments": [
+        {
+          "line": 14,
+          "text": "return await loadTagIndexPage({ locale: localeFor(url), query: url.searchParams.get(\"q\") ?? \"\", page: tagPage(url.searchParams.get(\"page\") ?? undefined) }, publicTagSource(request));"
+        }
+      ],
+      "reason": "显式配置／source 注入、调用接线或既有 helper 搬移；本轮即使提供实际价值也保守不计新增功能。"
+    },
+    {
+      "file": "apps/web-rr/app/routes/write.tsx",
+      "fragments": [
+        {
+          "line": 27,
+          "text": "export function loader() { return { mailEnabled: mailEnabled() }; }"
+        }
+      ],
+      "reason": "显式配置／source 注入、调用接线或既有 helper 搬移；本轮即使提供实际价值也保守不计新增功能。"
+    },
+    {
+      "file": "packages/web-ui/src/lib/api-content.ts",
+      "fragments": [
+        {
+          "line": 120,
+          "text": "config: { explicitUrl?: string; serviceUrl?: string; legacyGraphqlUrl?: string } = {},"
+        },
+        {
+          "line": 233,
+          "text": "{ endpoint, fetchImpl, timeoutMs, upstreamTransport, signal }: {"
+        },
+        {
+          "line": 248,
+          "text": "const response = await upstreamTransportFor({ fetchImpl, upstreamTransport }).request(buildApiUrl(endpoint, path, query), {"
+        },
+        {
+          "line": 249,
+          "text": "method: \"GET\", headers: { accept: \"application/json\" }, credentials: \"omit\","
+        },
+        {
+          "line": 250,
+          "text": "}, { kind: \"content\", timeoutMs: budget, signal, responseType: \"json\" });"
+        },
+        {
+          "line": 251,
+          "text": "const result = { status: response.status, ok: response.status >= 200 && response.status <= 299,"
+        },
+        {
+          "line": 252,
+          "text": "payload: response.status >= 200 && response.status <= 299 ? upstreamJsonPayload(response) : null };"
+        },
+        {
+          "line": 351,
+          "text": "export function createPublicContentSource(client: ApiContentClient | null) {"
+        },
+        {
+          "line": 352,
+          "text": "async function listPublicArticles(options: ArticleListOptions = {}): Promise<ArticleView[]> {"
+        },
+        {
+          "line": 363,
+          "text": "async function listPublicFeatured(options: { locale?: Locale; limit?: number } = {}): Promise<ArticleView[]> {"
+        },
+        {
+          "line": 367,
+          "text": "async function getPublicArticle(slug: string, locale: Locale = defaultLocale): Promise<ArticleView | null> {"
+        },
+        {
+          "line": 371,
+          "text": "async function getPublicAuthor(username: string, locale: Locale = defaultLocale): Promise<AuthorView | null> {"
+        },
+        {
+          "line": 382,
+          "text": "async function listPublicAuthors(options: AuthorListOptions = {}): Promise<AuthorSummary[]> {"
+        },
+        {
+          "line": 386,
+          "text": "async function listPublicCategories(options: CategoryListOptions = {}): Promise<CategoryView[]> {"
+        },
+        {
+          "line": 390,
+          "text": "async function getPublicCategory(slug: string, locale: Locale = defaultLocale): Promise<CategoryView | null> {"
+        },
+        {
+          "line": 394,
+          "text": "async function listPublicCategoryArticles(slug: string, locale: Locale = defaultLocale, limit = 100, offset = 0): Promise<ArticleView[]> {"
+        },
+        {
+          "line": 398,
+          "text": "async function listPublicTags(options: TagListOptions = {}): Promise<TagView[]> {"
+        },
+        {
+          "line": 402,
+          "text": "async function getPublicTag(slug: string, locale: Locale = defaultLocale): Promise<TagView | null> {"
+        },
+        {
+          "line": 406,
+          "text": "async function listPublicTagArticles(slug: string, locale: Locale = defaultLocale, limit = 21, offset = 0): Promise<ArticleView[] | null> {"
+        },
+        {
+          "line": 410,
+          "text": "return Object.freeze({ listPublicArticles, listPublicFeatured, getPublicArticle, getPublicAuthor, listPublicAuthors, listPublicCategories, getPublicCategory, listPublicCategoryArticles, listPublicTags, getPublicTag, listPublicTagArticles });"
+        },
+        {
+          "line": 415,
+          "text": "export const fixturePublicContent = createPublicContentSource(null);"
+        },
+        {
+          "line": 416,
+          "text": "export const { listPublicArticles, listPublicFeatured, getPublicArticle, getPublicAuthor, listPublicAuthors, listPublicCategories, getPublicCategory, listPublicCategoryArticles, listPublicTags, getPublicTag, listPublicTagArticles } = fixturePublicContent;"
+        }
+      ],
+      "reason": "显式配置／source 注入、调用接线或既有 helper 搬移；本轮即使提供实际价值也保守不计新增功能。"
+    },
+    {
+      "file": "packages/web-ui/src/lib/mail-feature.ts",
+      "fragments": [
+        {
+          "line": 26,
+          "text": "export function isMailEnabled(env: Record<string, string | undefined> = {}): boolean {"
+        }
+      ],
+      "reason": "显式配置／source 注入、调用接线或既有 helper 搬移；本轮即使提供实际价值也保守不计新增功能。"
+    },
+    {
+      "file": "packages/web-ui/src/lib/public-pages.ts",
+      "fragments": [
+        {
+          "line": 54,
+          "text": "options: { locale: Locale; query?: string; page?: number; type?: WorkType | null }, source: PublicContentSource = fixturePublicContent,"
+        },
+        {
+          "line": 63,
+          "text": "const matches = (await source.listPublicArticles({ locale, query, limit: ARCHIVE_TYPE_SCAN_LIMIT }))"
+        },
+        {
+          "line": 69,
+          "text": "const results = await source.listPublicArticles({ locale, query, limit: PAGE_SIZE + 1, offset: (page - 1) * PAGE_SIZE });"
+        },
+        {
+          "line": 90,
+          "text": "options: { locale: Locale; author: AuthorView; type?: WorkType | null; page?: number }, source: PublicContentSource = fixturePublicContent,"
+        },
+        {
+          "line": 92,
+          "text": "const works = (await source.listPublicArticles({"
+        },
+        {
+          "line": 131,
+          "text": "options: { locale: Locale; query: string; tab?: SearchTab; type?: WorkType | null }, source: PublicContentSource = fixturePublicContent,"
+        },
+        {
+          "line": 140,
+          "text": "source.listPublicArticles({ locale, query: q, limit: SEARCH_WORKS_LIMIT }),"
+        },
+        {
+          "line": 141,
+          "text": "source.listPublicAuthors({ locale, query: q, limit: SEARCH_AUTHOR_LIMIT }).catch((): AuthorSummary[] => []),"
+        },
+        {
+          "line": 142,
+          "text": "source.listPublicCategories({ locale, query: q, limit: SEARCH_CATEGORY_LIMIT }).catch((): CategoryView[] => []),"
+        },
+        {
+          "line": 164,
+          "text": "options: { locale: Locale; query?: string; page?: number }, source: PublicContentSource = fixturePublicContent,"
+        },
+        {
+          "line": 170,
+          "text": "const results = await source.listPublicAuthors({ locale, query, limit: AUTHOR_PAGE_SIZE + 1, offset });"
+        },
+        {
+          "line": 189,
+          "text": "const results = await source.listPublicCategories({ locale, query, limit: CATEGORY_PAGE_SIZE + 1, offset });"
+        },
+        {
+          "line": 210,
+          "text": "options: { locale: Locale; slug: string; page?: number }, source: PublicContentSource = fixturePublicContent,"
+        },
+        {
+          "line": 216,
+          "text": "source.getPublicCategory(options.slug, locale),"
+        },
+        {
+          "line": 217,
+          "text": "source.listPublicCategoryArticles(options.slug, locale, CATEGORY_PAGE_SIZE + 1, offset),"
+        },
+        {
+          "line": 254,
+          "text": "export async function loadHomePage(options: { locale: Locale }, source: PublicContentSource = fixturePublicContent): Promise<HomePageData> {"
+        },
+        {
+          "line": 256,
+          "text": "source.listPublicFeatured({ locale: options.locale, limit: HOME_FEATURED_LIMIT }).catch((): ArticleView[] => []),"
+        },
+        {
+          "line": 257,
+          "text": "source.listPublicArticles({ locale: options.locale, sort: \"latest\", limit: HOME_LATEST_LIMIT }),"
+        },
+        {
+          "line": 258,
+          "text": "source.listPublicArticles({ locale: options.locale, sort: \"popular\", limit: HOME_POPULAR_LIMIT }).catch((): ArticleView[] => []),"
+        },
+        {
+          "line": 259,
+          "text": "source.listPublicCategories({ locale: options.locale, limit: HOME_CATEGORY_LIMIT }).catch((): CategoryView[] => []),"
+        },
+        {
+          "line": 295,
+          "text": "}, source: PublicContentSource = fixturePublicContent): Promise<ArticleDetailPageData | null> {"
+        },
+        {
+          "line": 297,
+          "text": "const article = await source.getPublicArticle(slug, locale);"
+        },
+        {
+          "line": 299,
+          "text": "const everything = await source.listPublicArticles({ locale, limit: ARTICLE_SCAN_LIMIT })"
+        }
+      ],
+      "reason": "显式配置／source 注入、调用接线或既有 helper 搬移；本轮即使提供实际价值也保守不计新增功能。"
+    },
+    {
+      "file": "packages/web-ui/src/lib/site-metadata.ts",
+      "fragments": [
+        {
+          "line": 33,
+          "text": "export function configuredSiteUrl(config: { siteUrl?: string; legacySiteUrl?: string } = {}): string {"
+        },
+        {
+          "line": 34,
+          "text": "return siteOrigin(config.siteUrl ?? config.legacySiteUrl);"
+        },
+        {
+          "line": 113,
+          "text": "}, options.signal);"
+        }
+      ],
+      "reason": "显式配置／source 注入、调用接线或既有 helper 搬移；本轮即使提供实际价值也保守不计新增功能。"
+    },
+    {
+      "file": "packages/web-ui/src/lib/sitemap-catalog.ts",
+      "fragments": [
+        {
+          "line": 49,
+          "text": "export function createApiSitemapSource({ endpoint, fetchImpl, timeoutMs, upstreamTransport, signal: requestSignal }: {"
+        },
+        {
+          "line": 61,
+          "text": "const signal = options.signal && requestSignal ? AbortSignal.any([options.signal, requestSignal]) : options.signal ?? requestSignal;"
+        },
+        {
+          "line": 62,
+          "text": "const response = await upstreamTransportFor({ fetchImpl, upstreamTransport }).request(url.toString(), {"
+        },
+        {
+          "line": 64,
+          "text": "}, { kind: \"crawl\", timeoutMs: budget, maxBytes: SITEMAP_API_BODY_LIMIT, signal, responseType: \"json\" });"
+        },
+        {
+          "line": 65,
+          "text": "if (response.status < 200 || response.status > 299) throw new Error(\"Sitemap catalog API is unavailable.\");"
+        },
+        {
+          "line": 66,
+          "text": "const payload = upstreamJsonPayload(response);"
+        },
+        {
+          "line": 113,
+          "text": "export function configuredSitemapSource(config: { endpoint?: string; timeoutMs?: number | string | null; fetchImpl?: FetchCatalog } = {}): SitemapSource {"
+        },
+        {
+          "line": 114,
+          "text": "const endpoint = resolveApiBaseUrl({ explicitUrl: config.endpoint });"
+        },
+        {
+          "line": 115,
+          "text": "return endpoint ? createApiSitemapSource({ ...config, endpoint }) : createFixtureSitemapSource();"
+        }
+      ],
+      "reason": "显式配置／source 注入、调用接线或既有 helper 搬移；本轮即使提供实际价值也保守不计新增功能。"
+    },
+    {
+      "file": "apps/web-rr/operations/metrics-handler.ts",
+      "fragments": [
+        {
+          "line": 8,
+          "text": "export function createProtectedMetricsHandler(env: Readonly<Record<string, string | undefined>>, options: MetricsOptions):"
+        },
+        {
+          "line": 10,
+          "text": "const token = env[options.credentialName];"
+        },
+        {
+          "line": 11,
+          "text": "if (token !== undefined && !TOKEN_PATTERN.test(token)) throw new Error(`${options.credentialName} must be a separate opaque operations credential.`);"
+        },
+        {
+          "line": 12,
+          "text": "if (token && options.disallowedCredentials.some(secret => secret === token)) {"
+        },
+        {
+          "line": 13,
+          "text": "throw new Error(`${options.credentialName} must not reuse an application credential.`);"
+        },
+        {
+          "line": 15,
+          "text": "const digest = (value: string) => createHash(\"sha256\").update(`no-wave/${options.path}/v1\\0`).update(value).digest();"
+        },
+        {
+          "line": 21,
+          "text": "if (target.split(\"?\")[0] !== options.path) return false;"
+        },
+        {
+          "line": 28,
+          "text": "if (target !== options.path) return refuse(400, \"Query parameters are not accepted.\");"
+        },
+        {
+          "line": 39,
+          "text": "if (Buffer.byteLength(body, \"utf8\") > options.outputLimit) return refuse(503, \"Metrics unavailable\");"
+        }
+      ],
+      "reason": "从既有 refresh metrics 端点抽取的通用保护及接线，参数化、命名和跨密钥配置不重计历史交付。"
+    },
+    {
+      "file": "apps/web-rr/refresh/metrics-handler.ts",
+      "fragments": [
+        {
+          "line": 4,
+          "text": "export function createRefreshMetricsHandler(env: NodeJS.ProcessEnv) {"
+        },
+        {
+          "line": 5,
+          "text": "return createProtectedMetricsHandler(env, { path: \"/internal/refresh-metrics\", credentialName: \"WEB_REFRESH_METRICS_TOKEN\", outputLimit: 16_384,"
+        },
+        {
+          "line": 6,
+          "text": "disallowedCredentials: [env.WEB_UPSTREAM_METRICS_TOKEN, env.WEB_REFRESH_ENCRYPTION_KEY, env.AUTH_JWT_SECRET, env.BFF_CLIENT_ADDRESS_SECRET] });"
+        }
+      ],
+      "reason": "从既有 refresh metrics 端点抽取的通用保护及接线，参数化、命名和跨密钥配置不重计历史交付。"
+    },
+    {
+      "file": "apps/web-rr/upstream/settings.ts",
+      "fragments": [
+        {
+          "line": 3,
+          "text": "export function webIntegerSetting(env: Readonly<Record<string, string | undefined>>, name: string, fallback: number, min: number, max: number): number {"
+        },
+        {
+          "line": 6,
+          "text": "if (!/^[0-9]+$/.test(raw)) throw new Error(`${name} must be a bounded whole number.`);"
+        },
+        {
+          "line": 8,
+          "text": "if (!Number.isSafeInteger(value) || value < min || value > max) throw new Error(`${name} must be between ${min} and ${max}.`);"
+        },
+        {
+          "line": 13,
+          "text": "export function resolveWebUpstreamSettings(env: Readonly<Record<string, string | undefined>>): AdmissionLimits {"
+        },
+        {
+          "line": 15,
+          "text": "concurrency: webIntegerSetting(env, \"WEB_UPSTREAM_CONCURRENCY\", 8, 1, 32),"
+        },
+        {
+          "line": 16,
+          "text": "queue: webIntegerSetting(env, \"WEB_UPSTREAM_QUEUE\", 32, 0, 128),"
+        },
+        {
+          "line": 17,
+          "text": "queueTimeoutMs: webIntegerSetting(env, \"WEB_UPSTREAM_QUEUE_TIMEOUT_MS\", 250, 1, 5000),"
+        }
+      ],
+      "reason": "新参数默认值／解析、runtime 工厂接线与运维路由配置，不计配置类代码。"
+    },
+    {
+      "file": "apps/web-rr/upstream/runtime.ts",
+      "fragments": [
+        {
+          "line": 6,
+          "text": "export function createWebUpstreamRuntime(env: Readonly<Record<string, string | undefined>>, fetchImpl?: FetchImpl) {"
+        },
+        {
+          "line": 7,
+          "text": "const telemetry = new UpstreamTelemetry();"
+        },
+        {
+          "line": 8,
+          "text": "const transport = new UpstreamTransport({ admission: resolveWebUpstreamSettings(env), fetchImpl, observer: sample => telemetry.observe(sample) });"
+        },
+        {
+          "line": 10,
+          "text": "transport,"
+        },
+        {
+          "line": 11,
+          "text": "run<Value>(work: () => Value): Value { return withUpstreamTransport(transport, work); },"
+        },
+        {
+          "line": 12,
+          "text": "metrics(): string { return telemetry.render(transport.snapshot(), transport.circuitSnapshot()); },"
+        },
+        {
+          "line": 13,
+          "text": "close(timeoutMs?: number): Promise<boolean> { return transport.close(timeoutMs); },"
+        }
+      ],
+      "reason": "新参数默认值／解析、runtime 工厂接线与运维路由配置，不计配置类代码。"
+    },
+    {
+      "file": "apps/web-rr/upstream/metrics-handler.ts",
+      "fragments": [
+        {
+          "line": 3,
+          "text": "export function createUpstreamMetricsHandler(env: Readonly<Record<string, string | undefined>>) {"
+        },
+        {
+          "line": 4,
+          "text": "return createProtectedMetricsHandler(env, { path: \"/internal/upstream-metrics\", credentialName: \"WEB_UPSTREAM_METRICS_TOKEN\", outputLimit: 32_768,"
+        },
+        {
+          "line": 5,
+          "text": "disallowedCredentials: [env.WEB_REFRESH_METRICS_TOKEN, env.WEB_REFRESH_ENCRYPTION_KEY, env.AUTH_JWT_SECRET, env.BFF_CLIENT_ADDRESS_SECRET] });"
+        }
+      ],
+      "reason": "新参数默认值／解析、runtime 工厂接线与运维路由配置，不计配置类代码。"
+    },
+    {
+      "file": "apps/web-rr/upstream/intake.ts",
+      "fragments": [
+        {
+          "line": 12,
+          "text": "const requestTimeout = webIntegerSetting(env, \"WEB_REQUEST_TIMEOUT_MS\", 60_000, 1000, 120_000);"
+        },
+        {
+          "line": 13,
+          "text": "const headersTimeout = webIntegerSetting(env, \"WEB_HEADERS_TIMEOUT_MS\", 15_000, 1000, 120_000);"
+        },
+        {
+          "line": 14,
+          "text": "if (headersTimeout > requestTimeout) throw new Error(\"WEB_HEADERS_TIMEOUT_MS must not exceed WEB_REQUEST_TIMEOUT_MS.\");"
+        },
+        {
+          "line": 15,
+          "text": "const keepAliveTimeout = webIntegerSetting(env, \"WEB_KEEP_ALIVE_TIMEOUT_MS\", 5000, 100, 60_000);"
+        },
+        {
+          "line": 16,
+          "text": "const admission = new WebRequestAdmission({"
+        },
+        {
+          "line": 17,
+          "text": "concurrency: webIntegerSetting(env, \"WEB_REQUEST_CONCURRENCY\", 56, 1, 256),"
+        },
+        {
+          "line": 18,
+          "text": "bodyBudgetBytes: webIntegerSetting(env, \"WEB_REQUEST_BODY_BUDGET_BYTES\", 64 * 1024 * 1024, 9 * 1024 * 1024, 128 * 1024 * 1024),"
+        },
+        {
+          "line": 21,
+          "text": "httpOptions: { requestTimeout, headersTimeout, keepAliveTimeout, connectionsCheckingInterval: 1000 },"
+        },
+        {
+          "line": 22,
+          "text": "stop: () => admission.stop(),"
+        },
+        {
+          "line": 23,
+          "text": "metrics: () => admission.metrics(),"
+        },
+        {
+          "line": 24,
+          "text": "snapshot: () => admission.snapshot(),"
+        }
+      ],
+      "reason": "只配置／读取进程参数、默认值与 factory 返回设置；不算行为实现。"
+    },
+    {
+      "file": "apps/web-rr/upstream-ingress.ts",
+      "fragments": [
+        {
+          "line": 5,
+          "text": "export function upstreamIngress(): Plugin {"
+        },
+        {
+          "line": 7,
+          "text": "name: \"upstream-boundary-ingress\","
+        },
+        {
+          "line": 10,
+          "text": "const { createWebUpstreamRuntime } = createRequire(import.meta.url)(\"./upstream/runtime.ts\") as typeof import(\"./upstream/runtime.ts\");"
+        },
+        {
+          "line": 11,
+          "text": "const runtime = createWebUpstreamRuntime(process.env);"
+        },
+        {
+          "line": 12,
+          "text": "const { createWebIntake } = createRequire(import.meta.url)(\"./upstream/intake.ts\") as typeof import(\"./upstream/intake.ts\");"
+        }
+      ],
+      "reason": "插件声明、名称、动态导入和工厂配置接线；保留实际 intake/lifecycle 调用作行为审阅。"
+    },
+    {
+      "file": "apps/web-rr/server.ts",
+      "fragments": [
+        {
+          "line": 33,
+          "text": "const intake = createWebIntake(process.env);"
+        },
+        {
+          "line": 34,
+          "text": "const upstreamRuntime = createWebUpstreamRuntime(process.env);"
+        },
+        {
+          "line": 35,
+          "text": "const upstreamMetrics = createUpstreamMetricsHandler(process.env);"
+        },
+        {
+          "line": 159,
+          "text": "const server = createServer(intake.httpOptions, (request: IncomingMessage, response: ServerResponse) => {"
+        },
+        {
+          "line": 217,
+          "text": "clientAddressBridge.run(request, () => refreshRuntime.run(() => upstreamRuntime.run(() => compressResponse(request, response, () => {"
+        }
+      ],
+      "reason": "构造与进程配置接线，不计新增运行时功能。"
+    },
+    {
+      "file": "packages/web-http/src/api.ts",
+      "fragments": [
+        {
+          "line": 149,
+          "text": "callerSignal?: AbortSignal,"
+        },
+        {
+          "line": 156,
+          "text": "let rejectAborted: (reason: Error) => void = () => {};"
+        },
+        {
+          "line": 173,
+          "text": "if (termination === \"timeout\") throw new UpstreamTimeoutError(timeout);"
+        },
+        {
+          "line": 195,
+          "text": "void operation.catch(() => {});"
+        }
+      ],
+      "reason": "参数纯类型行、无动作占位器与既有 timeout/late rejection 保护改写，不重计历史逻辑。"
+    },
+    {
+      "file": "packages/web-http/src/auth.ts",
+      "fragments": [
+        {
+          "line": 139,
+          "text": "return upstreamFailureResponse(error, action === \"logout\" ? clearedTokenCookieHeaders(request) : []);"
+        },
+        {
+          "line": 192,
+          "text": "return upstreamFailureResponse(error);"
+        },
+        {
+          "line": 216,
+          "text": "async function callAuthApi(config: ApiProxyConfig, url: string, body: string, timeoutMs: number, signal: AbortSignal): Promise<Response> {"
+        },
+        {
+          "line": 218,
+          "text": "applyClientAddressHeaders(headers, url, \"POST\", config.clientAddressHeaders);"
+        }
+      ],
+      "reason": "既有 helper 签名、client-address 与错误映射抽取；边界实现只在共享 transport 中计一次。"
+    },
+    {
+      "file": "packages/web-http/src/authoring.ts",
+      "fragments": [
+        {
+          "line": 342,
+          "text": "return forwardAuthoringRequest(request, \"api/v1/imports/notion\", \"POST\","
+        },
+        {
+          "line": 343,
+          "text": "{ ...config, upstreamTimeoutMs: config.upstreamTimeoutMs ?? 90_000 }, body.text);"
+        }
+      ],
+      "reason": "既有 90 秒 import override 默认行为还原与拆行，不算新增功能。"
+    },
+    {
+      "file": "packages/web-http/src/session-refresh.ts",
+      "fragments": [
+        {
+          "line": 75,
+          "text": "method: \"POST\", headers, body: JSON.stringify({ refreshToken }),"
+        },
+        {
+          "line": 79,
+          "text": "const ok = response.status >= 200 && response.status <= 299;"
+        },
+        {
+          "line": 80,
+          "text": "if (ok && isTokenEnvelope(payload)) return payload.data;"
+        },
+        {
+          "line": 81,
+          "text": "if (ok) return { kind: \"failed\", status: 502, code: \"INVALID_AUTH_RESPONSE\", message: \"The API returned an invalid authentication response.\", retryAfterSeconds: null };"
+        }
+      ],
+      "reason": "既有刷新 request body 和 token/status 判定，替换 Response 数据结构不算新功能。"
+    },
+    {
+      "file": "packages/web-http/src/request-admission.ts",
+      "fragments": [
+        {
+          "line": 10,
+          "text": "const REFUSALS: readonly RequestRefusalReason[] = [\"request-capacity\", \"body-capacity\", \"body-limit\", \"framing\", \"closing\"];"
+        },
+        {
+          "line": 11,
+          "text": "const SESSION_CONCURRENCY = 8;"
+        },
+        {
+          "line": 12,
+          "text": "const SESSION_BODY_BYTES = 4096;"
+        },
+        {
+          "line": 40,
+          "text": "this.concurrency = options.concurrency ?? 56;"
+        },
+        {
+          "line": 41,
+          "text": "this.bodyBudgetBytes = options.bodyBudgetBytes ?? 64 * 1024 * 1024;"
+        },
+        {
+          "line": 42,
+          "text": "this.maxBodyBytes = options.maxBodyBytes ?? AUTHORING_NOTION_IMPORT_MAX_BYTES;"
+        },
+        {
+          "line": 106,
+          "text": "const descriptors = ["
+        },
+        {
+          "line": 107,
+          "text": "[\"active\", \"active\", \"Accepted HTTP exchanges still owning capacity.\"],"
+        },
+        {
+          "line": 108,
+          "text": "[\"body_reserved_bytes\", \"reservedBytes\", \"Conservative incoming body reservations until exchange completion.\"],"
+        },
+        {
+          "line": 109,
+          "text": "[\"peak_active\", \"peakActive\", \"Highest concurrent accepted HTTP exchanges.\"],"
+        },
+        {
+          "line": 110,
+          "text": "[\"peak_body_bytes\", \"peakBytes\", \"Highest simultaneous reserved incoming body bytes.\"],"
+        },
+        {
+          "line": 111,
+          "text": "[\"concurrency\", \"concurrency\", \"Maximum accepted HTTP exchanges for this lane.\"],"
+        },
+        {
+          "line": 112,
+          "text": "[\"body_budget_bytes\", \"bodyBudgetBytes\", \"Maximum incoming body reservations for this lane.\"],"
+        }
+      ],
+      "reason": "固定 label／默认容量设置及静态协议描述项不自动视为新增功能。"
+    },
+    {
+      "file": "packages/web-http/src/upstream-admission.ts",
+      "fragments": [
+        {
+          "line": 3,
+          "text": "export const ADMISSION_WAIT_BUCKETS_MS = [1, 10, 50, 100, 250, 1000, 5000] as const;"
+        },
+        {
+          "line": 38,
+          "text": "constructor(data: AdmissionLimits = { concurrency: 8, queue: 32, queueTimeoutMs: 250 }) {"
+        },
+        {
+          "line": 39,
+          "text": "this.lanes = {"
+        },
+        {
+          "line": 40,
+          "text": "data: { limits: limits(data), active: 0, waiters: [], started: new Set(), wait: this.emptyWait(), cancellation: emptyCancellationMetrics() },"
+        },
+        {
+          "line": 41,
+          "text": "auth: { limits: { concurrency: 2, queue: 8, queueTimeoutMs: 250 }, active: 0, waiters: [], started: new Set(), wait: this.emptyWait(), cancellation: emptyCancellationMetrics() },"
+        },
+        {
+          "line": 42,
+          "text": "bulk: { limits: { concurrency: 1, queue: 2, queueTimeoutMs: 250 }, active: 0, waiters: [], started: new Set(), wait: this.emptyWait(), cancellation: emptyCancellationMetrics() },"
+        }
+      ],
+      "reason": "固定 histogram buckets 与默认 lane 容量配置；默认数值本身不计功能。"
+    },
+    {
+      "file": "packages/web-http/src/upstream-circuit.ts",
+      "fragments": [
+        {
+          "line": 18,
+          "text": "this.threshold = options.threshold ?? 5;"
+        },
+        {
+          "line": 19,
+          "text": "this.cooldownMs = options.cooldownMs ?? 2000;"
+        }
+      ],
+      "reason": "默认熔断参数设置，不自动计为新功能。"
+    },
+    {
+      "file": "packages/web-http/src/upstream-response.ts",
+      "fragments": [
+        {
+          "line": 5,
+          "text": "export const API_RESPONSE_MAX_BYTES = 8 * 1024 * 1024;"
+        },
+        {
+          "line": 6,
+          "text": "export const AUTH_RESPONSE_MAX_BYTES = 64 * 1024;"
+        },
+        {
+          "line": 14,
+          "text": "export const EXPORT_RESPONSE_MAX_BYTES = 2 * 1024 * 1024 * 1024;"
+        }
+      ],
+      "reason": "仅响应限额常数定义；已有 8 MiB 媒体限额不重算，新的 byte 检查在执行处计。"
+    },
+    {
+      "file": "packages/web-http/src/upstream-telemetry.ts",
+      "fragments": [
+        {
+          "line": 6,
+          "text": "export const UPSTREAM_KINDS = [\"api\", \"auth\", \"media\", \"content\", \"crawl\", \"export\"] as const;"
+        },
+        {
+          "line": 7,
+          "text": "export const UPSTREAM_OUTCOMES = [\"ok\", \"http_error\", \"timeout\", \"cancelled\", \"too_large\", \"invalid_response\", \"network\", \"capacity\", \"queue_timeout\", \"closing\", \"circuit_open\"] as const;"
+        },
+        {
+          "line": 12,
+          "text": "const BUCKETS = [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 120] as const;"
+        }
+      ],
+      "reason": "固定枚举和 histogram 边界定义；不按配置／静态标签凑数。"
+    },
+    {
+      "file": "packages/web-http/src/body.ts",
+      "fragments": [
+        {
+          "line": 5,
+          "text": "export const DEFAULT_REQUEST_BODY_TIMEOUT_MS = 30_000;"
+        },
+        {
+          "line": 8,
+          "text": "function declaredLengthFailure(request: Request, maximumBytes: number, tooLargeMessage: string): StreamReadFailure | null {"
+        },
+        {
+          "line": 10,
+          "text": "if (declared === null) return null;"
+        },
+        {
+          "line": 11,
+          "text": "if (!/^\\d+$/.test(declared)) return { ok: false, reason: \"unreadable\", response: errorResponse(\"BAD_USER_INPUT\", \"Invalid Content-Length.\", 400) };"
+        },
+        {
+          "line": 12,
+          "text": "if (Number(declared) > maximumBytes) return { ok: false, reason: \"too-large\", response: errorResponse(\"PAYLOAD_TOO_LARGE\", tooLargeMessage, 413) };"
+        },
+        {
+          "line": 17,
+          "text": "const declared = declaredLengthFailure(request, maximumBytes, tooLargeMessage);"
+        },
+        {
+          "line": 18,
+          "text": "if (declared) return declared;"
+        },
+        {
+          "line": 46,
+          "text": "export async function readLimitedJson(request: Request, maximumBytes: number, options: RequestBodyOptions = {}): Promise<JsonBodyResult> {"
+        },
+        {
+          "line": 97,
+          "text": "signal?: AbortSignal,"
+        },
+        {
+          "line": 163,
+          "text": "options: RequestBodyOptions = {},"
+        },
+        {
+          "line": 165,
+          "text": "return readIncomingBody(request, maximumBytes, tooLargeMessage, \"The request body must not be empty.\", \"The request body could not be read.\", options);"
+        }
+      ],
+      "reason": "默认配置、纯参数类型、既有 Content-Length 检查搬移及 wrapper 接线；不重计原有 bytes 读者功能。"
+    },
+    {
+      "file": "packages/web-http/src/forward.ts",
+      "fragments": [
+        {
+          "line": 85,
+          "text": "callerSignal: AbortSignal,"
+        },
+        {
+          "line": 92,
+          "text": "applyClientAddressHeaders(headers, target, method, config.clientAddressHeaders);"
+        },
+        {
+          "line": 99,
+          "text": "if (response.status >= 500) return { ...common, contentType: \"application/json; charset=utf-8\","
+        },
+        {
+          "line": 100,
+          "text": "text: JSON.stringify({ error: { code: \"SERVICE_UNAVAILABLE\", message: \"The API service is temporarily unavailable.\" } }) };"
+        },
+        {
+          "line": 108,
+          "text": "method, headers, ...(body === undefined ? {} : { body }),"
+        },
+        {
+          "line": 113,
+          "text": "status: buffered.status,"
+        },
+        {
+          "line": 118,
+          "text": "retryAfter: buffered.headers.get(\"retry-after\"),"
+        }
+      ],
+      "reason": "纯 signal 类型参数、既有 client-address/request/返回字段接线，以及与普通分支等价的 5xx 静态脱敏分支，避免重复计数。"
+    },
+    {
+      "file": "packages/web-http/src/media.ts",
+      "fragments": [
+        {
+          "line": 102,
+          "text": "upstream = bufferedResponse(buffered);"
+        },
+        {
+          "line": 103,
+          "text": "bytes = buffered.bytes;"
+        },
+        {
+          "line": 104,
+          "text": "if (upstream.ok && bytes.byteLength === 0) throw new MediaBodyFailure(\"empty\");"
+        },
+        {
+          "line": 107,
+          "text": "if (error instanceof UpstreamResponseError) error = new MediaBodyFailure(error.reason === \"too-large\" ? \"too-large\" : \"unreadable\");"
+        }
+      ],
+      "reason": "既有媒体 bytes/空体/过量错误映射转接到新 buffer 结构，不重计既有媒体保护。"
+    },
+    {
+      "file": "packages/web-http/src/upstream-response.ts",
+      "fragments": [
+        {
+          "line": 85,
+          "text": "const result = { status: response.status, statusText: response.statusText, headers: new Headers(response.headers) };"
+        },
+        {
+          "line": 114,
+          "text": "const bytes = new Uint8Array(size);"
+        },
+        {
+          "line": 116,
+          "text": "for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }"
+        },
+        {
+          "line": 117,
+          "text": "return { ...result, bytes };"
+        }
+      ],
+      "reason": "既有 auth/body 元数据、字节分配与拼接循环的等价实现／压行，不以改名、搬移或重新排版计数。"
+    },
+    {
+      "file": "packages/web-http/src/upstream-errors.ts",
+      "fragments": [
+        {
+          "line": 38,
+          "text": "return errorResponse(\"UPSTREAM_TIMEOUT\", \"The API service did not answer in time.\", 504, cookies);"
+        },
+        {
+          "line": 52,
+          "text": "return errorResponse(\"SERVICE_UNAVAILABLE\", \"The API service could not be reached.\", 502, cookies);"
+        }
+      ],
+      "reason": "原有 504 timeout 与 502 网络错误分支抽出共享函数，不重计历史交付。"
+    },
+    {
+      "file": "packages/web-http/src/api.ts",
+      "fragments": [
+        {
+          "line": 148,
+          "text": "run: (signal: AbortSignal, checkpoint: DeadlineCheckpoint) => Promise<T>,"
+        }
+      ],
+      "reason": "第二条独立路径（Node 原生 TS 擦除 + Espree）识别的历史 runtime 等价片段；包括改类型的参数、通用方法签名及 return，不计重复功能。"
+    },
+    {
+      "file": "packages/web-http/src/body.ts",
+      "fragments": [
+        {
+          "line": 27,
+          "text": "return body;"
+        },
+        {
+          "line": 107,
+          "text": "let onAbort: (() => void) | undefined;"
+        }
+      ],
+      "reason": "第二条独立路径（Node 原生 TS 擦除 + Espree）识别的历史 runtime 等价片段；包括改类型的参数、通用方法签名及 return，不计重复功能。"
+    },
+    {
+      "file": "packages/web-http/src/request-admission.ts",
+      "fragments": [
+        {
+          "line": 39,
+          "text": "constructor(options: RequestAdmissionSettings = {}) {"
+        },
+        {
+          "line": 94,
+          "text": "snapshot() {"
+        },
+        {
+          "line": 103,
+          "text": "metrics(): string {"
+        }
+      ],
+      "reason": "第二条独立路径（Node 原生 TS 擦除 + Espree）识别的历史 runtime 等价片段；包括改类型的参数、通用方法签名及 return，不计重复功能。"
+    },
+    {
+      "file": "packages/web-http/src/upstream-admission.ts",
+      "fragments": [
+        {
+          "line": 60,
+          "text": "return new Promise<UpstreamLease>((resolve, reject) => {"
+        },
+        {
+          "line": 135,
+          "text": "snapshot(): AdmissionSnapshot {"
+        },
+        {
+          "line": 181,
+          "text": "return new Promise<boolean>(resolve => {"
+        }
+      ],
+      "reason": "第二条独立路径（Node 原生 TS 擦除 + Espree）识别的历史 runtime 等价片段；包括改类型的参数、通用方法签名及 return，不计重复功能。"
+    },
+    {
+      "file": "packages/web-http/src/upstream-circuit.ts",
+      "fragments": [
+        {
+          "line": 17,
+          "text": "constructor(options: CircuitOptions = {}) {"
+        },
+        {
+          "line": 71,
+          "text": "snapshot(): CircuitSnapshot {"
+        }
+      ],
+      "reason": "第二条独立路径（Node 原生 TS 擦除 + Espree）识别的历史 runtime 等价片段；包括改类型的参数、通用方法签名及 return，不计重复功能。"
+    },
+    {
+      "file": "packages/web-http/src/upstream-errors.ts",
+      "fragments": [
+        {
+          "line": 9,
+          "text": "constructor(reason: UpstreamBodyFailure) {"
+        }
+      ],
+      "reason": "第二条独立路径（Node 原生 TS 擦除 + Espree）识别的历史 runtime 等价片段；包括改类型的参数、通用方法签名及 return，不计重复功能。"
+    },
+    {
+      "file": "packages/web-http/src/upstream-telemetry.ts",
+      "fragments": [
+        {
+          "line": 41,
+          "text": "observe(sample: UpstreamSample): void {"
+        }
+      ],
+      "reason": "第二条独立路径（Node 原生 TS 擦除 + Espree）识别的历史 runtime 等价片段；包括改类型的参数、通用方法签名及 return，不计重复功能。"
+    },
+    {
+      "file": "packages/web-http/src/upstream.ts",
+      "fragments": [
+        {
+          "line": 42,
+          "text": "constructor(options: UpstreamTransportOptions = {}) {"
+        }
+      ],
+      "reason": "第二条独立路径（Node 原生 TS 擦除 + Espree）识别的历史 runtime 等价片段；包括改类型的参数、通用方法签名及 return，不计重复功能。"
+    },
+    {
+      "file": "packages/web-http/src/body.ts",
+      "fragments": [
+        {
+          "line": 98,
+          "text": "checkpoint: DeadlineCheckpoint = () => {},"
+        }
+      ],
+      "reason": "仅新增参数的兼容性 no-op 默认值，不单独计配置／纯参数声明。"
+    }
+  ]
+}

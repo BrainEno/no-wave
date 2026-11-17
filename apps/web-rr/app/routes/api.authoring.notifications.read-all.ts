@@ -1,5 +1,6 @@
 import type { ActionFunctionArgs } from "react-router";
-import { handleNotificationsReadAll } from "../lib/notifications-proxy.ts";
+import { handleNotificationsReadAllRequest } from "@bot-thk/web-http";
+import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**
  * `POST /api/authoring/notifications/read-all` — resource route, no component.
@@ -8,5 +9,5 @@ import { handleNotificationsReadAll } from "../lib/notifications-proxy.ts";
  * the same check and the same order as every other mutation on the desk.
  */
 export async function action({ request }: ActionFunctionArgs) {
-  return handleNotificationsReadAll(request);
+  return handleNotificationsReadAllRequest(request, apiProxyConfig());
 }

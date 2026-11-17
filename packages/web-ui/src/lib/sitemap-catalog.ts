@@ -1,4 +1,4 @@
-import { resolveUpstreamTimeoutMs, withUpstreamDeadline } from "@bot-thk/web-http";
+import { resolveUpstreamTimeoutMs, upstreamTransportFor, upstreamJsonPayload, type UpstreamTransport } from "@bot-thk/web-http";
 import { resolveApiBaseUrl } from "./api-content.ts";
 import { listArticles as listFixtureArticles, supportedLocales } from "./content.ts";
 import { feedTimestamp } from "./feed-text.ts";
@@ -45,42 +45,9 @@ function validatePage({ locale, limit, offset, signal }: SitemapPageOptions): vo
       !Number.isInteger(offset) || offset < 0 || offset > (SITEMAP_MAX_PAGES - 1) * SITEMAP_PAGE_SIZE) throw new RangeError("Invalid sitemap catalog page.");
 }
 
-/** Bound decoded response bytes, not a potentially compressed or dishonest Content-Length. */
-async function readCatalog(response: Response, signal: AbortSignal): Promise<unknown> {
-  const declared = response.headers.get("content-length");
-  if (!/^application\/json(?:\s*;|$)/i.test(response.headers.get("content-type") ?? "") ||
-      (declared !== null && /^\d+$/.test(declared) && Number(declared) > SITEMAP_API_BODY_LIMIT) || !response.body) {
-    await response.body?.cancel();
-    throw invalid();
-  }
-  const reader = response.body.getReader();
-  const cancel = () => { void reader.cancel().catch(() => {}); };
-  signal.addEventListener("abort", cancel, { once: true });
-  const decoder = new TextDecoder("utf-8", { fatal: true });
-  const parts: string[] = [];
-  let bytes = 0;
-  try {
-    signal.throwIfAborted();
-    while (true) {
-      const next = await reader.read();
-      signal.throwIfAborted();
-      if (next.done) break;
-      bytes += next.value.byteLength;
-      if (bytes > SITEMAP_API_BODY_LIMIT) throw new Error("Sitemap catalog body exceeds its byte limit.");
-      parts.push(decoder.decode(next.value, { stream: true }));
-    }
-    parts.push(decoder.decode());
-    return JSON.parse(parts.join("")) as unknown;
-  } finally {
-    signal.removeEventListener("abort", cancel);
-    await reader.cancel().catch(() => {});
-    reader.releaseLock();
-  }
-}
-
 /** Strict crawl-only projections: ordinary reader pages retain their existing compatibility policy. */
-export function createApiSitemapSource({ endpoint, fetchImpl = fetch, timeoutMs }: {
-  endpoint: string; fetchImpl?: FetchCatalog; timeoutMs?: number | string | null;
+export function createApiSitemapSource({ endpoint, fetchImpl, timeoutMs, upstreamTransport, signal: requestSignal }: {
+  endpoint: string; fetchImpl?: FetchCatalog; timeoutMs?: number | string | null; upstreamTransport?: UpstreamTransport; signal?: AbortSignal;
 }): SitemapSource {
   const configured = resolveApiBaseUrl({ explicitUrl: endpoint });
   if (!configured) throw new Error("A sitemap catalog API endpoint is required.");
@@ -91,15 +58,12 @@ export function createApiSitemapSource({ endpoint, fetchImpl = fetch, timeoutMs 
     const url = new URL(`api/v1/${collection}`, base);
     for (const [key, value] of Object.entries({ locale: options.locale, limit: options.limit, offset: options.offset })) url.searchParams.set(key, String(value));
     if (collection === "articles") url.searchParams.set("sort", "latest");
-    const payload = await withUpstreamDeadline(budget, async (deadline) => {
-      const signal = options.signal ? AbortSignal.any([options.signal, deadline]) : deadline;
-      signal.throwIfAborted();
-      const response = await fetchImpl(url.toString(), { method: "GET", headers: { accept: "application/json" },
-        cache: "no-store", credentials: "omit", redirect: "error", signal });
-      signal.throwIfAborted();
-      if (!response.ok) { await response.body?.cancel(); throw new Error("Sitemap catalog API is unavailable."); }
-      return readCatalog(response, signal);
-    });
+    const signal = options.signal && requestSignal ? AbortSignal.any([options.signal, requestSignal]) : options.signal ?? requestSignal;
+    const response = await upstreamTransportFor({ fetchImpl, upstreamTransport }).request(url.toString(), {
+      method: "GET", headers: { accept: "application/json" }, credentials: "omit",
+    }, { kind: "crawl", timeoutMs: budget, maxBytes: SITEMAP_API_BODY_LIMIT, signal, responseType: "json" });
+    if (response.status < 200 || response.status > 299) throw new Error("Sitemap catalog API is unavailable.");
+    const payload = upstreamJsonPayload(response);
     options.signal?.throwIfAborted();
     if (!record(payload) || (payload.error !== undefined && payload.error !== null) || !Array.isArray(payload.data) || payload.data.length > options.limit) throw invalid();
     return payload.data;
@@ -146,7 +110,7 @@ export function createFixtureSitemapSource(): SitemapSource {
   };
 }
 
-export function configuredSitemapSource(): SitemapSource {
-  const endpoint = resolveApiBaseUrl();
-  return endpoint ? createApiSitemapSource({ endpoint, timeoutMs: process.env.API_TIMEOUT_MS }) : createFixtureSitemapSource();
+export function configuredSitemapSource(config: { endpoint?: string; timeoutMs?: number | string | null; fetchImpl?: FetchCatalog } = {}): SitemapSource {
+  const endpoint = resolveApiBaseUrl({ explicitUrl: config.endpoint });
+  return endpoint ? createApiSitemapSource({ ...config, endpoint }) : createFixtureSitemapSource();
 }

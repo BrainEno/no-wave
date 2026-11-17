@@ -46,13 +46,13 @@ cannot turn recovery into an enumeration oracle. The Web app reads the same
 variable and stops showing the pages and buttons that lead here, so the two
 tiers cannot disagree about what this deployment can do. Unset, empty and
 unrecognised values all mean off. See
-[Account mail: off until you switch it on](../docs/operations/mail-setup.md) for
+[Account mail: off until you switch it on](../../docs/operations/mail-setup.md) for
 the whole procedure: what off does, how to switch it on once a relay exists, and
 which log line tells you which state you are in.
 
 Outbound mail goes through the `IdentityMailer` port (`apps/api/src/application/identity-mailer.ts`). Its default implementation writes a structured log line and, by default, **not the link** — a log line that can reset a password is a password reset waiting to be read; set `AUTH_IDENTITY_MAIL_LOG_LINK=1` to include it during local development, and `AUTH_IDENTITY_BASE_URL` for the public origin the links point at.
 
-To actually deliver, point the API at an SMTP **submission** relay — `MAIL_SMTP_HOST` plus `MAIL_FROM` are enough; without them the log mailer stays in place. It is generic submission rather than a provider SDK ([ADR 0015](../docs/architecture/decisions/0015-transactional-mail-over-a-generic-smtp-relay.md)): Brevo, Resend, SMTP2GO and a mailbox host are all the same code with different environment variables. TLS is mandatory by default — a relay that does not advertise STARTTLS is refused before any credential is sent, and an unrecognized `MAIL_SMTP_SECURITY` value falls back to `starttls`, never to plaintext.
+To actually deliver, point the API at an SMTP **submission** relay — `MAIL_SMTP_HOST` plus `MAIL_FROM` are enough; without them the log mailer stays in place. It is generic submission rather than a provider SDK ([ADR 0015](../../docs/architecture/decisions/0015-transactional-mail-over-a-generic-smtp-relay.md)): Brevo, Resend, SMTP2GO and a mailbox host are all the same code with different environment variables. TLS is mandatory by default — a relay that does not advertise STARTTLS is refused before any credential is sent, and an unrecognized `MAIL_SMTP_SECURITY` value falls back to `starttls`, never to plaintext.
 
 | Variable | Meaning |
 | --- | --- |
@@ -65,7 +65,7 @@ To actually deliver, point the API at an SMTP **submission** relay — `MAIL_SMT
 | `MAIL_FROM` | envelope sender and `From` header |
 | `MAIL_FROM_NAME` | optional display name (encoded when it is not ASCII) |
 
-A delivery failure is recorded as `api_identity_mail_deliveries_total{…,outcome="failed"}` and logged as `identity_mail_failed` with the purpose and the error code — never the address — and never fails the request: the token is already stored, so the user can simply ask for a new link. Because the request answers `202` either way, that counter is the only thing that can tell an operator recovery is broken; see [alerting on account mail](../docs/operations/api-observability.md#alerting-on-account-mail).
+A delivery failure is recorded as `api_identity_mail_deliveries_total{…,outcome="failed"}` and logged as `identity_mail_failed` with the purpose and the error code — never the address — and never fails the request: the token is already stored, so the user can simply ask for a new link. Because the request answers `202` either way, that counter is the only thing that can tell an operator recovery is broken; see [alerting on account mail](../../docs/operations/api-observability.md#alerting-on-account-mail).
 
 One retry is attempted, and only for a failure that happened **before** the relay could have accepted anything (a refused connection, a DNS miss, a connect timeout). Once the server has opened its mouth — a rejected credential, a rejected recipient, a lost reply to `DATA` — the failure is final: retrying a message the relay may already have queued is how one reset link becomes two mails. The retry shares a total budget with the first attempt (`MAIL_SMTP_DELIVERY_DEADLINE_MS`, default 2000 ms, capped at 10 000), so a relay that hangs for ten seconds is not asked twice.
 
@@ -214,7 +214,7 @@ The address is read that many entries from the **right** of the chain, which is 
 one the outermost trusted proxy appended; anything a client writes to the left of
 it cannot move that position. A chain shorter than the configured number of hops
 is not trusted and falls back to the peer, and an invalid value refuses to start
-the process. See [ADR 0027](../docs/architecture/decisions/0027-client-address-behind-a-proxy.md).
+the process. See [ADR 0027](../../docs/architecture/decisions/0027-client-address-behind-a-proxy.md).
 
 ## Integration tests
 

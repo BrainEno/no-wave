@@ -1,5 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { handleAuthoringNotionImport } from "../lib/authoring-proxy.ts";
+import { handleAuthoringNotionImportRequest } from "@bot-thk/web-http";
+import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**
  * `POST /api/authoring/notion-import` — resource route, no component.
@@ -10,7 +11,7 @@ import { handleAuthoringNotionImport } from "../lib/authoring-proxy.ts";
  * the plan an author reads came from the same code path as the write they confirm.
  */
 export async function action({ request }: ActionFunctionArgs) {
-  return handleAuthoringNotionImport(request);
+  return handleAuthoringNotionImportRequest(request, apiProxyConfig());
 }
 
 /**
@@ -22,5 +23,5 @@ export async function action({ request }: ActionFunctionArgs) {
  * check lives in exactly one place.
  */
 export async function loader({ request }: LoaderFunctionArgs) {
-  return handleAuthoringNotionImport(request);
+  return handleAuthoringNotionImportRequest(request, apiProxyConfig());
 }

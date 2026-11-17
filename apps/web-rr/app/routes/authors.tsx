@@ -1,3 +1,4 @@
+import { publicContentSource } from "../lib/runtime.ts";
 import { useLoaderData } from "react-router";
 import type { HeadersFunction, LoaderFunctionArgs, MetaFunction } from "react-router";
 import type { Locale } from "@/lib/content.ts";
@@ -19,14 +20,14 @@ import { titleWithSite } from "../lib/meta.ts";
  * `q` and `page` are both in the URL, so a filtered or paged directory is a link
  * a reader can send to somebody.
  */
-export async function loader({ url }: LoaderFunctionArgs) {
+export async function loader({ request, url }: LoaderFunctionArgs) {
   const locale = localeFor(url);
   try {
     return await loadAuthorIndexPage({
       locale,
       query: (url.searchParams.get("q") ?? "").slice(0, 200),
       page: parsePage(url.searchParams.get("page") ?? undefined),
-    });
+    }, publicContentSource(request));
   } catch (error: unknown) {
     throw upstreamUnavailable(error);
   }

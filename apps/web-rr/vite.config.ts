@@ -6,6 +6,7 @@ import { parseAllowedDevOrigins } from "@bot-thk/web-ui/src/lib/dev-origins.ts";
 import { firstPartyFontLicenses } from "./font-licenses.ts";
 import { clientAddressIngress } from "./client-address-ingress.ts";
 import { refreshCoordinationIngress } from "./refresh-ingress.ts";
+import { upstreamIngress } from "./upstream-ingress.ts";
 
 // Environment contract: the repository-root `.env.local` is the single developer
 // configuration file, and a value already exported in the shell wins over it.
@@ -35,7 +36,7 @@ function allowedDevHosts(): string[] | true {
  * navigation adapter left to alias.
  */
 export default defineConfig({
-  plugins: [clientAddressIngress(), refreshCoordinationIngress(), reactRouter(), firstPartyFontLicenses()],
+  plugins: [clientAddressIngress(), refreshCoordinationIngress(), upstreamIngress(), reactRouter(), firstPartyFontLicenses()],
   build: {
     // Keep even tiny Unicode shards addressable and independently cacheable;
     // inlining them would hide their transfer cost inside a global stylesheet.
@@ -46,11 +47,13 @@ export default defineConfig({
   ssr: { noExternal: ["fflate"] },
   // React Router 8 uses environment-level resolution. Keep the Node ingress and
   // SSR on one module/AsyncLocalStorage instance, not an inlined copy per build.
+  // The main entry stays native too: transport exceptions must have the exact
+  // same class identity in handlers and ingress, including UPSTREAM_BUSY/504.
   environments: { ssr: {
-    resolve: { external: ["@bot-thk/web-http/client-address", "@bot-thk/web-http/refresh-runtime"] },
+    resolve: { external: ["@bot-thk/web-http", "@bot-thk/web-http/client-address", "@bot-thk/web-http/refresh-runtime", "@bot-thk/web-http/upstream-runtime"] },
     // Node 24 loads this TypeScript package entry directly; do not let the
     // bundler's ordinary TS-source inlining create a second request store.
-    build: { rolldownOptions: { external: ["@bot-thk/web-http/client-address", "@bot-thk/web-http/refresh-runtime"] } },
+    build: { rolldownOptions: { external: ["@bot-thk/web-http", "@bot-thk/web-http/client-address", "@bot-thk/web-http/refresh-runtime", "@bot-thk/web-http/upstream-runtime"] } },
   } },
   resolve: {
     alias: [
@@ -60,7 +63,7 @@ export default defineConfig({
   // Deliberately no `define` for `process.env.*`: server-rendered metadata must
   // read the runtime environment of the process that serves the page (canonical
   // URLs differ per deployment), so these values must not be frozen at build time.
-  // The reused helpers only touch `process.env` on server-only code paths.
+  // Shared UI helpers receive explicit values from app/lib/runtime.ts.
   server: { host: "0.0.0.0", port: Number(process.env.PORT ?? 3100), allowedHosts: allowedDevHosts() },
   preview: { host: "0.0.0.0", port: Number(process.env.PORT ?? 3100) },
 });

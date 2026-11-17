@@ -2,7 +2,7 @@ import { redirect, useLoaderData, type LoaderFunctionArgs } from "react-router";
 import type { HeadersFunction, MetaFunction } from "react-router";
 import { AccountPanel } from "@/components/auth/account-panel.tsx";
 import { SESSION_MARKER_COOKIE, hasUsableSession, sessionMarkerFrom } from "@bot-thk/web-http";
-import { isMailEnabled } from "@/lib/mail-feature.ts";
+import { mailEnabled } from "../lib/runtime.ts";
 import { PRIVATE_PAGE_HEADERS } from "../lib/http-policy.ts";
 
 /**
@@ -30,7 +30,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   if (!hasUsableSession(sessionMarkerFrom(request))) {
     throw redirect("/sign-in?next=%2Faccount", { headers: PRIVATE_HEADERS });
   }
-  return { mailEnabled: isMailEnabled() };
+  return { mailEnabled: mailEnabled() };
 }
 
 export const headers: HeadersFunction = () => PRIVATE_HEADERS;

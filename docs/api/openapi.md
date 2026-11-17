@@ -115,7 +115,7 @@ Deliberately outside the document's scope:
 - **Rate limits.** Write throttling is per account and per TCP peer with buckets
   defined in `apps/api/src/application/rate-limit.ts`; the numbers are operational
   settings, not part of the contract. See
-  [ADR 0011](../architecture/decisions/0011-write-rate-limit-policies.md).
+  [ADR 0011](../architecture/decisions/0011-persistent-api-write-rate-limits.md).
 - **The block schema of a body.** `contentBlocks` is described as an array of
   objects because the block contract is versioned and owned by the domain; a copy
   here would be a third definition of it. The write rules are on the

@@ -10,7 +10,7 @@ const article = {
   author: { userId: "writer", displayName: "作者", bio: "" }, categories: [], tags: [tag],
 };
 function reply(payload: unknown, status = 200) {
-  return { ok: status >= 200 && status < 300, status, async json() { return payload; } };
+  return Response.json(payload, { status });
 }
 function clientFor(data: unknown, status = 200) {
   return createApiContentClient({ endpoint: "https://api.example.test", fetchImpl: async () => reply({ data }, status) });
@@ -45,9 +45,9 @@ test("tag detail retains persisted identity even when its display name has chang
 
 test("only an HTTP 404 maps to missing tag identity or a missing article collection", async () => {
   let jsonReads = 0;
-  const client = createApiContentClient({ endpoint: "https://api.example.test", fetchImpl: async () => ({
-    ok: false, status: 404, async json() { jsonReads += 1; throw new Error("A missing response body is irrelevant."); },
-  }) });
+  const client = createApiContentClient({ endpoint: "https://api.example.test", fetchImpl: async () => new Response(new ReadableStream({
+    pull(controller) { jsonReads++; controller.error(new Error("A missing response body is irrelevant.")); },
+  }, { highWaterMark: 0 }), { status: 404 }) });
   assert.equal(await client.getTagBySlug("missing"), null);
   assert.equal(await client.listTagArticles("missing"), null);
   assert.equal(jsonReads, 0);
@@ -135,19 +135,15 @@ test("HTTP failures and error envelopes surface without forwarding upstream diag
 
 test("the tag request deadline includes a JSON body that never finishes", async () => {
   const keepAlive = setTimeout(() => undefined, 1000);
-  const client = createApiContentClient({ endpoint: "https://api.example.test", timeoutMs: 20, fetchImpl: async () => ({
-    ok: true, status: 200, json: () => new Promise<unknown>(() => undefined),
-  }) });
+  const client = createApiContentClient({ endpoint: "https://api.example.test", timeoutMs: 20,
+    fetchImpl: async () => new Response(new ReadableStream<Uint8Array>({}), { headers: { "content-type": "application/json" } }) });
   try { await assert.rejects(client.listTags(), UpstreamTimeoutError); }
   finally { clearTimeout(keepAlive); }
 });
 
 test("an unconfigured instance never invents tags or performs a network request", async () => {
-  const keys = ["API_BASE_URL", "API_SERVICE_URL", "API_GRAPHQL_URL"] as const;
-  const saved = keys.map((key) => process.env[key]);
   const originalFetch = globalThis.fetch;
   let calls = 0;
-  for (const key of keys) delete process.env[key];
   globalThis.fetch = async () => { calls += 1; throw new Error("Unexpected network request."); };
   try {
     assert.deepEqual(await listPublicTags(), []);
@@ -156,9 +152,5 @@ test("an unconfigured instance never invents tags or performs a network request"
     assert.equal(calls, 0);
   } finally {
     globalThis.fetch = originalFetch;
-    for (const [index, key] of keys.entries()) {
-      const value = saved[index];
-      if (value === undefined) delete process.env[key]; else process.env[key] = value;
-    }
   }
 });

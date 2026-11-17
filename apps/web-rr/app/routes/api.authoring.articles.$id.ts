@@ -1,5 +1,6 @@
 import type { ActionFunctionArgs } from "react-router";
-import { handleAuthoringArticle } from "../lib/authoring-proxy.ts";
+import { handleAuthoringArticleRequest } from "@bot-thk/web-http";
+import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**
  * `PUT /api/authoring/articles/:id` — resource route, no component.
@@ -9,5 +10,5 @@ import { handleAuthoringArticle } from "../lib/authoring-proxy.ts";
  * every press of the button.
  */
 export async function action({ request, params }: ActionFunctionArgs) {
-  return handleAuthoringArticle(request, params.id);
+  return handleAuthoringArticleRequest(request, { id: params.id ?? "" }, apiProxyConfig());
 }

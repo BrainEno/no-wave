@@ -1,5 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { handleAuthoringArticles } from "../lib/authoring-proxy.ts";
+import { handleAuthoringArticlesRequest } from "@bot-thk/web-http";
+import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**
  * `GET`/`POST /api/authoring/articles` — resource route, no component.
@@ -9,9 +10,9 @@ import { handleAuthoringArticles } from "../lib/authoring-proxy.ts";
  * cannot drift between the two frameworks.
  */
 export async function loader({ request }: LoaderFunctionArgs) {
-  return handleAuthoringArticles(request);
+  return handleAuthoringArticlesRequest(request, apiProxyConfig());
 }
 
 export async function action({ request }: ActionFunctionArgs) {
-  return handleAuthoringArticles(request);
+  return handleAuthoringArticlesRequest(request, apiProxyConfig());
 }

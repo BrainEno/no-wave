@@ -2,7 +2,7 @@ import { useLoaderData } from "react-router";
 import type { HeadersFunction, LoaderFunctionArgs, MetaFunction } from "react-router";
 import { VerifyEmailPanel } from "@/components/auth/verify-email-panel.tsx";
 import { MailDisabledNotice } from "@/components/auth/mail-disabled-notice.tsx";
-import { isMailEnabled } from "@/lib/mail-feature.ts";
+import { mailEnabled } from "../lib/runtime.ts";
 import { titleWithSite } from "../lib/meta.ts";
 import { PRIVATE_PAGE_HEADERS } from "../lib/http-policy.ts";
 
@@ -19,7 +19,7 @@ import { PRIVATE_PAGE_HEADERS } from "../lib/http-policy.ts";
  */
 export async function loader({ url }: LoaderFunctionArgs) {
   const token = url.searchParams.get("token")?.trim() ?? "";
-  return { token, mailEnabled: isMailEnabled() };
+  return { token, mailEnabled: mailEnabled() };
 }
 
 /** Private: the URL carries a single-use token until it is spent. */

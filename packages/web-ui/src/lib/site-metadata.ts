@@ -30,11 +30,11 @@ export function siteOrigin(siteUrl: string | undefined): string {
 }
 
 /** SITE_URL wins; keep the retired deployment name as a runtime compatibility alias. */
-export function configuredSiteUrl(): string {
-  return siteOrigin(process.env.SITE_URL ?? process.env.NEXT_PUBLIC_SITE_URL);
+export function configuredSiteUrl(config: { siteUrl?: string; legacySiteUrl?: string } = {}): string {
+  return siteOrigin(config.siteUrl ?? config.legacySiteUrl);
 }
 
-export type SitemapOptions = { siteUrl?: string; maxPages?: number; timeoutMs?: number; source?: SitemapSource };
+export type SitemapOptions = { siteUrl?: string; maxPages?: number; timeoutMs?: number; source?: SitemapSource; signal?: AbortSignal };
 
 /**
  * Four independent, sequential scans per public locale. Each has at most 50
@@ -110,7 +110,7 @@ export async function loadSitemapEntries(options: SitemapOptions = {}): Promise<
     // Directory reach/order may change without the URL set changing. Sorting
     // gives the same representation (and validator) for the same crawl facts.
     return [...entries.values()].sort((left, right) => left.url < right.url ? -1 : left.url > right.url ? 1 : 0);
-  });
+  }, options.signal);
 }
 
 function escapeXml(value: string): string {

@@ -1,5 +1,5 @@
 import { useLoaderData, type HeadersFunction, type MetaFunction } from "react-router";
-import { isMailEnabled } from "@/lib/mail-feature.ts";
+import { mailEnabled } from "../lib/runtime.ts";
 // Unmodified shared client component: it fetches /api/authoring/session and
 // /api/authoring/articles after it hydrates, both served by this app now.
 import { AuthoringWorkspace } from "@/components/authoring/authoring-workspace.tsx";
@@ -24,7 +24,7 @@ export const meta: MetaFunction = () => [
  */
 export const headers: HeadersFunction = () => PRIVATE_PAGE_HEADERS;
 
-export function loader() { return { mailEnabled: isMailEnabled() }; }
+export function loader() { return { mailEnabled: mailEnabled() }; }
 
 export default function WriteRoute() {
   const { mailEnabled } = useLoaderData<typeof loader>();

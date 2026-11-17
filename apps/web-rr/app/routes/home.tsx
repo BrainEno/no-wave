@@ -1,3 +1,4 @@
+import { publicContentSource } from "../lib/runtime.ts";
 import { useLoaderData } from "react-router";
 import type { HeadersFunction, LoaderFunctionArgs, MetaFunction } from "react-router";
 import { homeMetadata, type Locale } from "@/lib/content.ts";
@@ -18,10 +19,10 @@ import { metaDescriptors, siteUrlFromMatches } from "../lib/meta.ts";
  * which is why the tests below assert server-rendered structure and not
  * animation.
  */
-export async function loader({ url }: LoaderFunctionArgs) {
+export async function loader({ request, url }: LoaderFunctionArgs) {
   const locale = localeFor(url);
   try {
-    return await loadHomePage({ locale });
+    return await loadHomePage({ locale }, publicContentSource(request));
   } catch (error: unknown) {
     throw upstreamUnavailable(error);
   }

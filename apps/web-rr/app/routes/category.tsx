@@ -1,3 +1,4 @@
+import { publicContentSource } from "../lib/runtime.ts";
 import { data, useLoaderData } from "react-router";
 import type { HeadersFunction, LoaderFunctionArgs, MetaFunction } from "react-router";
 import { loadCategoryDetailPage } from "@/lib/public-pages.ts";
@@ -14,7 +15,7 @@ import { titleWithSite } from "../lib/meta.ts";
  * The category and its article page are fetched together: one round trip on the
  * happy path, and an unknown slug still answers 404 before any HTML is sent.
  */
-export async function loader({ params, url }: LoaderFunctionArgs) {
+export async function loader({ request, params, url }: LoaderFunctionArgs) {
   const locale = localeFor(url);
   if (!isPublicEntitySlug(params.slug)) throw entityNotFound("category-not-found");
 
@@ -24,7 +25,7 @@ export async function loader({ params, url }: LoaderFunctionArgs) {
       locale,
       slug: params.slug ?? "",
       page: parsePage(url.searchParams.get("page") ?? undefined),
-    });
+    }, publicContentSource(request));
   } catch (error: unknown) {
     throw upstreamUnavailable(error);
   }
