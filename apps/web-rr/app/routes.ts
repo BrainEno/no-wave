@@ -62,6 +62,7 @@ export default [
   route("verify-email", "routes/verify-email.tsx"),
   route("write", "routes/write.tsx"),
   route("write/library", "routes/write.library.tsx"),
+  route("write/collections", "routes/write.collections.tsx"),
   route("write/media", "routes/write.media.tsx"),
   route("write/notion", "routes/write.notion.tsx"),
   route("account", "routes/account.tsx"),

@@ -494,6 +494,7 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
         <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
           {/* The images an author has uploaded, and which of them nothing uses. */}
           <Link className="nw-btn" href="/write/library">全部作品目录</Link>
+          <Link className="nw-btn" href="/write/collections">本机集合工具</Link>
           <Link className="nw-btn" href="/write/media">媒体库</Link>
           {/* Notion as an interchange format (ADR 0036): bring a bundle in. */}
           <Link className="nw-btn" href="/write/notion">从 Notion 导入</Link>

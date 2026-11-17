@@ -57,6 +57,7 @@ const PRIVATE_PAGES = [
   "write",
   "write.media",
   "write.library",
+  "write.collections",
   "write.notion",
 ];
 

@@ -841,3 +841,43 @@ mark { background: var(--or); color: #0f0d0c; }
   .nw-shelf-rows > li > label:not(.nw-shelf-select) { margin-left: 56px; }
   .nw-reading-actions .nw-btn { padding-inline: 14px; }
 }
+
+/* 本机集合工作台只渲染文字；窄屏与长摘要/校验码仍使用原生滚动。 */
+.nw-collections { overflow-wrap: anywhere; }
+.nw-collection-export, .nw-collection-subset, .nw-collection-comparison { margin: 28px 0; padding-block: 20px; border-block: 1px solid var(--ink); }
+.nw-collection-export summary, .nw-collections summary { min-height: 44px; cursor: pointer; padding-block: 10px; }
+.nw-collection-ready, .nw-collection-inspection { margin-block: 20px; padding: 20px; border: 1px solid var(--t2); min-width: 0; }
+.nw-collection-ready code, .nw-collection-digest { display: block; overflow-wrap: anywhere; white-space: pre-wrap; }
+.nw-collection-slots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; margin-block: 28px; }
+.nw-collection-slot { min-width: 0; padding: 18px; border: 1px solid var(--t2); }
+.nw-collection-slot input[type="file"] { box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; }
+.nw-collection-filename { overflow-wrap: anywhere; }
+.nw-collection-filter-grid, .nw-collection-pair-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: 16px; align-items: end; margin-block: 20px; }
+.nw-collection-filter-grid label, .nw-collection-pair-form label, .nw-collection-format { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.nw-collection-filter-grid .nw-writing-check { flex-direction: row; align-items: center; }
+.nw-collections select, .nw-collections input[type="search"] { box-sizing: border-box; min-width: 0; width: 100%; max-width: 100%; min-height: 44px; padding: 9px 12px; border: 1px solid var(--ink); color: var(--ink); background: var(--paper); }
+.nw-collection-format { max-width: 34rem; margin-block: 18px; }
+.nw-collection-rows { padding: 0; list-style: none; margin-block: 20px; }
+.nw-collection-rows > li { min-width: 0; padding-block: 20px; border-bottom: 1px solid var(--t2); }
+.nw-collections .nw-btn, .nw-collection-export .nw-btn { white-space: normal; min-height: 44px; }
+.nw-collection-statistics { display: flex; flex-wrap: wrap; gap: 16px 32px; margin-block: 20px; }
+.nw-collection-statistics dd { margin: 4px 0 0; }
+.nw-collection-blocks > li { margin-block: 16px; padding: 12px; scroll-margin-top: 100px; }
+.nw-collection-blocks p, .nw-collection-blocks pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.nw-collection-blocks pre { max-width: 100%; overflow-x: auto; }
+.nw-collection-references code { display: block; max-width: 100%; overflow-wrap: anywhere; white-space: pre-wrap; }
+.nw-collection-comparison .nw-writing-block-diff { max-height: 45rem; overflow: auto; }
+@media (max-width: 640px) {
+  .nw-collection-slots { grid-template-columns: minmax(0, 1fr); }
+  .nw-collection-ready, .nw-collection-inspection, .nw-collection-slot { padding: 14px; }
+  .nw-collection-inspection ol { padding-left: 20px; }
+}
+
+.nw-collection-search, .nw-collection-review, .nw-collection-reference-inventory {
+  margin-top: 32px; border-top: 1px solid var(--ink); padding-top: 24px; min-width: 0;
+}
+.nw-collection-search-results { display: grid; gap: 20px; padding-left: 24px; }
+.nw-collection-search-context, .nw-collection-plan-preview { overflow-wrap: anywhere; white-space: pre-wrap; }
+.nw-collection-plan-preview { padding: 16px; border: 1px solid var(--ink); margin: 20px 0; }
+.nw-collections mark { color: var(--ink); background: color-mix(in srgb, var(--or) 25%, var(--paper)); }
+.nw-collection-reference-inventory > .nw-authoring-actions > label { display: grid; gap: 8px; }
