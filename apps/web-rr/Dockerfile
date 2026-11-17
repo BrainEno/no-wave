@@ -72,6 +72,8 @@ RUN pnpm install --frozen-lockfile --prod --filter @bot-thk/web-rr...
 COPY packages/web-http/src ./packages/web-http/src
 COPY apps/web-rr/server.ts apps/web-rr/compression.ts apps/web-rr/document-security.ts ./apps/web-rr/
 COPY apps/web-rr/refresh ./apps/web-rr/refresh
+COPY apps/web-rr/upstream ./apps/web-rr/upstream
+COPY apps/web-rr/operations ./apps/web-rr/operations
 COPY --from=build /app/apps/web-rr/build ./apps/web-rr/build
 
 # `server.ts` resolves `RR_BUILD_DIR` / `RR_SERVER_BUILD_DIR` relative to the

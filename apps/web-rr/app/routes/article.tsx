@@ -1,3 +1,4 @@
+import { publicContentSource } from "../lib/runtime.ts";
 import { useLoaderData } from "react-router";
 import type { HeadersFunction, LoaderFunctionArgs, MetaFunction } from "react-router";
 import { articleMetadata } from "@/lib/content.ts";
@@ -21,12 +22,12 @@ import { localeFor } from "../lib/locale.ts";
  * the shared `loadArticleDetailPage`, and `ArticlePageView` is the shared view,
  * interactive parts included.
  */
-export async function loader({ params, url }: LoaderFunctionArgs) {
+export async function loader({ request, params, url }: LoaderFunctionArgs) {
   const locale = localeFor(url);
   if (!isPublicEntitySlug(params.slug)) throw entityNotFound("article-not-found");
   let page: Awaited<ReturnType<typeof loadArticleDetailPage>>;
   try {
-    page = await loadArticleDetailPage({ slug: params.slug ?? "", locale });
+    page = await loadArticleDetailPage({ slug: params.slug ?? "", locale }, publicContentSource(request));
   } catch (error: unknown) {
     throw upstreamUnavailable(error);
   }

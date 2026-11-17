@@ -85,7 +85,8 @@ test("unauthenticated, forbidden, missing and failing upstream answers pass thro
     const { calls, config } = upstream(body, status);
     const response = await handleConversationReadRequest(request({ cookie: null }), { conversationId: CONVERSATION }, config);
     assert.equal(response.status, status);
-    assert.deepEqual(await response.json(), body);
+    assert.deepEqual(await response.json(), status >= 500
+      ? { error: { code: "SERVICE_UNAVAILABLE", message: "The API service is temporarily unavailable." } } : body);
     assertNoStore(response);
     assert.equal(calls.length, 1);
   }

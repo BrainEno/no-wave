@@ -1,5 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { handleAuthoringFeatured } from "../lib/authoring-proxy.ts";
+import { handleAuthoringFeaturedRequest } from "@bot-thk/web-http";
+import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**
  * `GET`/`PUT /api/authoring/featured` — resource route, no component.
@@ -10,9 +11,9 @@ import { handleAuthoringFeatured } from "../lib/authoring-proxy.ts";
  * that serve the same contract.
  */
 export async function loader({ request }: LoaderFunctionArgs) {
-  return handleAuthoringFeatured(request);
+  return handleAuthoringFeaturedRequest(request, apiProxyConfig());
 }
 
 export async function action({ request }: ActionFunctionArgs) {
-  return handleAuthoringFeatured(request);
+  return handleAuthoringFeaturedRequest(request, apiProxyConfig());
 }

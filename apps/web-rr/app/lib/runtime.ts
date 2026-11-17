@@ -1,18 +1,34 @@
-import { createApiContentClient, resolveApiBaseUrl } from "@/lib/api-content.ts";
+import { createApiContentClient, createPublicContentSource, resolveApiBaseUrl } from "@bot-thk/web-ui/src/lib/api-content.ts";
 import { resolveUpstreamTimeoutMs, type ApiProxyConfig } from "@bot-thk/web-http";
 import { upstreamClientAddressHeaders } from "@bot-thk/web-http/client-address";
 import { requestRefreshCoordinator } from "@bot-thk/web-http/refresh-runtime";
+import { requestUpstreamTransport } from "@bot-thk/web-http/upstream-runtime";
+import { createApiSitemapSource, createFixtureSitemapSource } from "@bot-thk/web-ui/src/lib/sitemap-catalog.ts";
+import { configuredSiteUrl, loadSitemapEntries } from "@bot-thk/web-ui/src/lib/site-metadata.ts";
+import { isMailEnabled as resolveMailEnabled } from "@bot-thk/web-ui/src/lib/mail-feature.ts";
+import { createWebUpstreamRuntime } from "../../upstream/runtime.ts";
+
+// Native scripts may call a loader without ingress; keep their capacity bounded
+// too. Normal production and Vite requests always use their ingress-owned port.
+let fallbackUpstream: ReturnType<typeof createWebUpstreamRuntime> | undefined;
+export function upstreamTransport() {
+  const scoped = requestUpstreamTransport();
+  if (scoped) return scoped;
+  fallbackUpstream ??= createWebUpstreamRuntime(process.env);
+  return fallbackUpstream.transport;
+}
 
 /**
  * Server-only runtime wiring.
  *
- * `resolveApiBaseUrl` comes from `@bot-thk/web-http`, so the documented
- * precedence (`API_BASE_URL`, then the transitional Vercel `API_SERVICE_URL`)
+ * `resolveApiBaseUrl` is a pure shared UI resolver, so the documented
+ * precedence (`API_BASE_URL`, legacy `API_GRAPHQL_URL`, then `API_SERVICE_URL`)
  * and the same URL validation hold here. Nothing
  * here reads a Vercel-specific binding unless that variable is explicitly set.
  */
 export function apiBaseUrl(): string | undefined {
-  return resolveApiBaseUrl();
+  return resolveApiBaseUrl({ explicitUrl: process.env.API_BASE_URL,
+    serviceUrl: process.env.API_SERVICE_URL, legacyGraphqlUrl: process.env.API_GRAPHQL_URL });
 }
 
 /**
@@ -45,7 +61,7 @@ export function apiTimeoutMs(): number {
 export function requireContentClient() {
   const endpoint = apiBaseUrl();
   if (!endpoint) throw new Error("API_BASE_URL must be configured to read API-backed content.");
-  return createApiContentClient({ endpoint, timeoutMs: apiTimeoutMs() });
+  return createApiContentClient({ endpoint, timeoutMs: apiTimeoutMs(), upstreamTransport: upstreamTransport() });
 }
 
 /**
@@ -58,7 +74,7 @@ export function requireContentClient() {
  * happens in one place instead of two.
  */
 export function apiProxyConfig(): ApiProxyConfig {
-  return { apiBaseUrl: optionalApiBaseUrl(), upstreamTimeoutMs: process.env.API_TIMEOUT_MS, clientAddressHeaders: upstreamClientAddressHeaders, refreshCoordinator: requestRefreshCoordinator() };
+  return { apiBaseUrl: optionalApiBaseUrl(), upstreamTimeoutMs: process.env.API_TIMEOUT_MS, clientAddressHeaders: upstreamClientAddressHeaders, refreshCoordinator: requestRefreshCoordinator(), upstreamTransport: upstreamTransport() };
 }
 
 /**
@@ -74,6 +90,30 @@ export function apiProxyConfig(): ApiProxyConfig {
  * changing it needs a restart, not a rebuild.
  */
 export function siteUrl(): string {
-  const configured = process.env.SITE_URL ?? process.env.NEXT_PUBLIC_SITE_URL;
-  return configured?.trim() || "https://example.invalid";
+  return configuredSiteUrl({ siteUrl: process.env.SITE_URL, legacySiteUrl: process.env.NEXT_PUBLIC_SITE_URL });
+}
+
+/** No ambient configuration in the shared UI, and no mutable global content client. */
+export function publicContentSource(request?: Request) {
+  const endpoint = apiBaseUrl();
+  return createPublicContentSource(endpoint ? createApiContentClient({ endpoint, timeoutMs: apiTimeoutMs(),
+    upstreamTransport: upstreamTransport(), signal: request?.signal }) : null);
+}
+
+export function publicTagSource(request?: Request) {
+  const source = publicContentSource(request);
+  return { listTags: source.listPublicTags, getTag: source.getPublicTag, listArticles: source.listPublicTagArticles };
+}
+
+export function publicSitemapSource(request?: Request) {
+  const endpoint = apiBaseUrl();
+  return endpoint ? createApiSitemapSource({ endpoint, timeoutMs: apiTimeoutMs(), upstreamTransport: upstreamTransport(), signal: request?.signal }) : createFixtureSitemapSource();
+}
+
+export function loadPublicSitemap(siteUrl: string, request?: Request) {
+  return loadSitemapEntries({ siteUrl, source: publicSitemapSource(request), signal: request?.signal });
+}
+
+export function mailEnabled(): boolean {
+  return resolveMailEnabled({ MAIL_ENABLED: process.env.MAIL_ENABLED });
 }

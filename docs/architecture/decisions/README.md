@@ -60,3 +60,9 @@ A `Date` is when a decision was written, not when it became the latest word. A
 decision that is replaced keeps its number and date and gains a `Superseded by`
 status; a decision that was renumbered keeps its original date too — 0028 was
 filed as a second `0011` on 2026-10-29 and renumbered on 2026-11-07.
+
+The root Markdown evidence check (`scripts/doc-evidence.test.ts`) additionally
+checks local file links in **all versioned Markdown**, including links from an
+ADR to roadmaps or operations. New unignored Markdown is included before commit;
+node_modules, build outputs and ignored verification artifacts are not evidence.
+It validates target files, not whether every fragment heading exists.

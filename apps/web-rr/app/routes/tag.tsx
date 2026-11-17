@@ -1,3 +1,4 @@
+import { publicTagSource } from "../lib/runtime.ts";
 import { useLoaderData } from "react-router";
 import type { HeadersFunction, LoaderFunctionArgs, MetaFunction } from "react-router";
 import { TagDetailView } from "@/components/public/tag-view.tsx";
@@ -9,11 +10,11 @@ import { entityNotFound, upstreamUnavailable } from "../lib/loader-errors.ts";
 import { localeFor } from "../lib/locale.ts";
 import { metaDescriptors, siteUrlFromMatches } from "../lib/meta.ts";
 
-export async function loader({ params, url }: LoaderFunctionArgs) {
+export async function loader({ request, params, url }: LoaderFunctionArgs) {
   if (!isTagSlug(params.slug)) throw entityNotFound("tag-not-found");
   let loaded;
   try {
-    loaded = await loadTagDetailPage({ locale: localeFor(url), slug: params.slug, page: tagPage(url.searchParams.get("page") ?? undefined) });
+    loaded = await loadTagDetailPage({ locale: localeFor(url), slug: params.slug, page: tagPage(url.searchParams.get("page") ?? undefined) }, publicTagSource(request));
   } catch (error: unknown) {
     throw upstreamUnavailable(error);
   }

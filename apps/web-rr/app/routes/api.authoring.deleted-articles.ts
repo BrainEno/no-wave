@@ -1,5 +1,6 @@
 import type { LoaderFunctionArgs } from "react-router";
-import { handleAuthoringDeletedArticles } from "../lib/authoring-proxy.ts";
+import { handleAuthoringDeletedArticlesRequest } from "@bot-thk/web-http";
+import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**
  * `GET /api/authoring/deleted-articles` — resource route, no component.
@@ -9,5 +10,5 @@ import { handleAuthoringDeletedArticles } from "../lib/authoring-proxy.ts";
  * route cannot drift from the other routes that serve the same contract.
  */
 export async function loader({ request }: LoaderFunctionArgs) {
-  return handleAuthoringDeletedArticles(request);
+  return handleAuthoringDeletedArticlesRequest(request, apiProxyConfig());
 }

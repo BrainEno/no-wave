@@ -20,10 +20,8 @@ function fixture(scenario: Scenario = {}) {
     const collection = url.pathname.endsWith("/articles");
     if (collection && scenario.stalledFetch) return new Promise<never>(() => {});
     const status = collection ? scenario.articleStatus ?? 200 : scenario.identityStatus ?? 200;
-    return { status, ok: status >= 200 && status < 300, async json() {
-      if (collection && scenario.stalledBody) return new Promise<never>(() => {});
-      return { data: collection ? scenario.articles ?? [article] : scenario.identity ?? tag };
-    } };
+    if (collection && scenario.stalledBody) return new Response(new ReadableStream<Uint8Array>({}), { status, headers: { "content-type": "application/json" } });
+    return Response.json({ data: collection ? scenario.articles ?? [article] : scenario.identity ?? tag }, { status });
   } });
   const source: TagPageSource = { listTags: client.listTags, getTag: client.getTagBySlug, listArticles: client.listTagArticles };
   return { source, calls };

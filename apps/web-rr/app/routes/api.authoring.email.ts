@@ -1,5 +1,6 @@
 import type { ActionFunctionArgs } from "react-router";
-import { handleAccountEmailChange } from "../lib/account-proxy.ts";
+import { handleAccountEmailChangeRequest } from "@bot-thk/web-http";
+import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**
  * `PUT /api/authoring/email` — resource route, no component.
@@ -9,5 +10,5 @@ import { handleAccountEmailChange } from "../lib/account-proxy.ts";
  * new address and the password that proves the change is the owner's.
  */
 export async function action({ request }: ActionFunctionArgs) {
-  return handleAccountEmailChange(request);
+  return handleAccountEmailChangeRequest(request, apiProxyConfig());
 }

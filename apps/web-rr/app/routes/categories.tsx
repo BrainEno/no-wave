@@ -1,3 +1,4 @@
+import { publicContentSource } from "../lib/runtime.ts";
 import { useLoaderData } from "react-router";
 import type { HeadersFunction, LoaderFunctionArgs, MetaFunction } from "react-router";
 import type { Locale } from "@/lib/content.ts";
@@ -16,14 +17,14 @@ import { titleWithSite } from "../lib/meta.ts";
  * reuses it unmodified — the only migration work was moving the data access
  * into `loadCategoryIndexPage`.
  */
-export async function loader({ url }: LoaderFunctionArgs) {
+export async function loader({ request, url }: LoaderFunctionArgs) {
   const locale = localeFor(url);
   try {
     return await loadCategoryIndexPage({
       locale,
       query: url.searchParams.get("q") ?? "",
       page: parsePage(url.searchParams.get("page") ?? undefined),
-    });
+    }, publicContentSource(request));
   } catch (error: unknown) {
     throw upstreamUnavailable(error);
   }

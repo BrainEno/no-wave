@@ -1,5 +1,6 @@
 import type { LoaderFunctionArgs } from "react-router";
-import { handleAuthoringNotionExport } from "../lib/authoring-proxy.ts";
+import { handleAuthoringNotionExportRequest } from "@bot-thk/web-http";
+import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**
  * `GET /api/authoring/notion-export` — resource route, no component.
@@ -9,5 +10,5 @@ import { handleAuthoringNotionExport } from "../lib/authoring-proxy.ts";
  * and the token handling, exactly like the other authoring routes.
  */
 export async function loader({ request }: LoaderFunctionArgs) {
-  return handleAuthoringNotionExport(request);
+  return handleAuthoringNotionExportRequest(request, apiProxyConfig());
 }

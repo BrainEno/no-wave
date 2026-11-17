@@ -1,5 +1,6 @@
 import type { ActionFunctionArgs } from "react-router";
-import { handleAccountPasswordChange } from "../lib/account-proxy.ts";
+import { handleAccountPasswordChangeRequest } from "@bot-thk/web-http";
+import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**
  * `PUT /api/authoring/password` — resource route, no component.
@@ -9,5 +10,5 @@ import { handleAccountPasswordChange } from "../lib/account-proxy.ts";
  * two credentials the visitor typed.
  */
 export async function action({ request }: ActionFunctionArgs) {
-  return handleAccountPasswordChange(request);
+  return handleAccountPasswordChangeRequest(request, apiProxyConfig());
 }

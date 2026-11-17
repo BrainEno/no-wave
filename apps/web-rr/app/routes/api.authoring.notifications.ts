@@ -1,5 +1,6 @@
 import type { LoaderFunctionArgs } from "react-router";
-import { handleNotifications } from "../lib/notifications-proxy.ts";
+import { handleNotificationsRequest } from "@bot-thk/web-http";
+import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**
  * `GET /api/authoring/notifications` — resource route, no component.
@@ -10,5 +11,5 @@ import { handleNotifications } from "../lib/notifications-proxy.ts";
  * route cannot drift from the other routes that serve the same contract.
  */
 export async function loader({ request }: LoaderFunctionArgs) {
-  return handleNotifications(request);
+  return handleNotificationsRequest(request, apiProxyConfig());
 }

@@ -1,5 +1,6 @@
 import type { ActionFunctionArgs } from "react-router";
-import { handleAuth } from "../lib/auth-proxy.ts";
+import { handleAuthRequest } from "@bot-thk/web-http";
+import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**
  * Resource route adapter: the entire behavior lives in the framework-neutral
@@ -7,7 +8,7 @@ import { handleAuth } from "../lib/auth-proxy.ts";
  * (and later reusable) without React Router.
  */
 export async function action({ request, params }: ActionFunctionArgs) {
-  return handleAuth(request, params.action);
+  return handleAuthRequest(request, params.action, apiProxyConfig());
 }
 
 export async function loader() {

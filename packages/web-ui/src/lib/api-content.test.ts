@@ -5,37 +5,13 @@ import { createApiContentClient, listPublicFeatured, resolveApiBaseUrl } from ".
 
 type CapturedRequest = { url: string; init: RequestInit | undefined };
 
-const API_ENVIRONMENT_KEYS = ["API_BASE_URL", "API_SERVICE_URL", "API_GRAPHQL_URL"] as const;
-
-/**
- * `pnpm test` loads `.env.local`, and `pnpm setup:local` normally puts
- * API_BASE_URL there. A unit test that claims "no API configured" must remove
- * that ambient configuration and prove it never reaches the network.
- */
+/** The standalone fixture source never consults deployment configuration. */
 async function withUnconfiguredApi(run: () => Promise<void>): Promise<void> {
-  const saved = new Map<string, string | undefined>();
-  for (const key of API_ENVIRONMENT_KEYS) {
-    saved.set(key, process.env[key]);
-    delete process.env[key];
-  }
   const originalFetch = globalThis.fetch;
   let networkCalls = 0;
-  globalThis.fetch = (async () => {
-    networkCalls += 1;
-    throw new Error("An unconfigured API must not fetch.");
-  }) as unknown as typeof globalThis.fetch;
-  try {
-    assert.equal(resolveApiBaseUrl({}), undefined);
-    await run();
-    assert.equal(networkCalls, 0);
-  } finally {
-    globalThis.fetch = originalFetch;
-    for (const key of API_ENVIRONMENT_KEYS) {
-      const value = saved.get(key);
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
-  }
+  globalThis.fetch = async () => { networkCalls++; throw new Error("An unconfigured API must not fetch."); };
+  try { await run(); assert.equal(networkCalls, 0); }
+  finally { globalThis.fetch = originalFetch; }
 }
 
 const article = {
@@ -56,8 +32,8 @@ const article = {
   tags: [{ name: "Web" }],
 };
 
-function response(data: unknown, status = 200): { ok: boolean; status: number; json(): Promise<unknown> } {
-  return { ok: status >= 200 && status < 300, status, async json() { return data; } };
+function response(data: unknown, status = 200): Response {
+  return Response.json(data, { status });
 }
 
 function captureFetch(

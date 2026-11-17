@@ -1,5 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { handleAuthoringCatalogueArticle } from "../lib/authoring-proxy.ts";
+import { handleCatalogueArticleRequest } from "@bot-thk/web-http";
+import { apiProxyConfig } from "../lib/runtime.ts";
 
-export function loader({ request, params }: LoaderFunctionArgs) { return handleAuthoringCatalogueArticle(request, params.id); }
-export function action({ request, params }: ActionFunctionArgs) { return handleAuthoringCatalogueArticle(request, params.id); }
+export function loader({ request, params }: LoaderFunctionArgs) { return handleCatalogueArticleRequest(request, { id: params.id ?? "" }, apiProxyConfig()); }
+export function action({ request, params }: ActionFunctionArgs) { return handleCatalogueArticleRequest(request, { id: params.id ?? "" }, apiProxyConfig()); }

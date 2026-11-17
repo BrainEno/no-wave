@@ -1,5 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { handleAccountOtherSessionsEnd, handleAccountSessions } from "../lib/account-proxy.ts";
+import { handleAccountOtherSessionsEndRequest, handleAccountSessionsRequest } from "@bot-thk/web-http";
+import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**
  * `GET /api/authoring/sessions` — resource route, no component.
@@ -9,9 +10,9 @@ import { handleAccountOtherSessionsEnd, handleAccountSessions } from "../lib/acc
  * *other* device, so it is gated as a write is.
  */
 export async function loader({ request }: LoaderFunctionArgs) {
-  return handleAccountSessions(request);
+  return handleAccountSessionsRequest(request, apiProxyConfig());
 }
 
 export async function action({ request }: ActionFunctionArgs) {
-  return handleAccountOtherSessionsEnd(request);
+  return handleAccountOtherSessionsEndRequest(request, apiProxyConfig());
 }

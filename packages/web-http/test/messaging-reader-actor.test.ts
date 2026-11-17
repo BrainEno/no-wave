@@ -62,7 +62,8 @@ for (const surface of surfaces) {
       const stub = stubFetch({ "api/v1/conversations": () => json(payload, status) });
       const response = await handle(surface, request(null), { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl });
       assert.equal(response.status, status);
-      assert.deepEqual(await response.json(), payload);
+      assert.deepEqual(await response.json(), status >= 500
+        ? { error: { code: "SERVICE_UNAVAILABLE", message: "The API service is temporarily unavailable." } } : payload);
       assertNoStore(response);
       assert.equal(stub.calls.length, 1);
       assert.equal(stub.calls[0].url, `${API_BASE}${path(surface)}`);

@@ -1,5 +1,6 @@
 import type { LoaderFunctionArgs } from "react-router";
-import { handleAuthoringSession } from "../lib/authoring-proxy.ts";
+import { handleAuthoringSessionRequest } from "@bot-thk/web-http";
+import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**
  * `GET /api/authoring/session` — resource route, no component.
@@ -10,5 +11,5 @@ import { handleAuthoringSession } from "../lib/authoring-proxy.ts";
  * would look migrated and be dead.
  */
 export async function loader({ request }: LoaderFunctionArgs) {
-  return handleAuthoringSession(request);
+  return handleAuthoringSessionRequest(request, apiProxyConfig());
 }

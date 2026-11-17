@@ -9,9 +9,7 @@ const article = { slug: "public-work", title: "公开的作品", status: "publis
   contentBlocks: [], publishedAt: "2026-10-01T00:00:00.000Z", updatedAt: "2026-11-02T12:00:00.000Z",
   author: { userId: "writer", displayName: "作者", bio: "只属于作者页面的介绍" }, tags: [tag], categories: [] };
 function clientFor(value: unknown) {
-  return createApiContentClient({ endpoint: "https://independent-api.example", fetchImpl: async () => ({
-    ok: true, status: 200, async json() { return { data: value }; },
-  }) });
+  return createApiContentClient({ endpoint: "https://independent-api.example", fetchImpl: async () => Response.json({ data: value }) });
 }
 
 test("tag article projection retains the API modification instant separately from its publication instant", async () => {

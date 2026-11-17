@@ -23,7 +23,7 @@
  */
 export const MAIL_ENABLED_VALUES: readonly string[] = Object.freeze(["true", "1", "yes", "on"]);
 
-export function isMailEnabled(env: Record<string, string | undefined> = process.env): boolean {
+export function isMailEnabled(env: Record<string, string | undefined> = {}): boolean {
   const raw = typeof env.MAIL_ENABLED === "string" ? env.MAIL_ENABLED.trim().toLowerCase() : "";
   return MAIL_ENABLED_VALUES.includes(raw);
 }

@@ -1,7 +1,7 @@
+import { publicContentSource } from "../lib/runtime.ts";
 import { data, useLoaderData } from "react-router";
 import type { HeadersFunction, LoaderFunctionArgs, MetaFunction } from "react-router";
 import { authorMetadata } from "@/lib/content.ts";
-import { getPublicAuthor } from "@/lib/api-content.ts";
 import { loadAuthorPage } from "@/lib/public-pages.ts";
 import { parsePage, parseWorkType } from "@/lib/work-types.ts";
 import { AuthorPageView } from "@/components/public/author-view.tsx";
@@ -18,12 +18,12 @@ import { metaDescriptors, siteUrlFromMatches, titleWithSite } from "../lib/meta.
  * 404. The two API calls (author, then their works) are sequential because the
  * second is meaningless without the first.
  */
-export async function loader({ params, url }: LoaderFunctionArgs) {
+export async function loader({ request, params, url }: LoaderFunctionArgs) {
   const locale = localeFor(url);
 
   let author;
   try {
-    author = await getPublicAuthor(params.username ?? "", locale);
+    author = await publicContentSource(request).getPublicAuthor(params.username ?? "", locale);
   } catch (error: unknown) {
     throw upstreamUnavailable(error);
   }
@@ -37,7 +37,7 @@ export async function loader({ params, url }: LoaderFunctionArgs) {
       author,
       page: parsePage(url.searchParams.get("page") ?? undefined),
       type: parseWorkType(url.searchParams.get("type") ?? undefined),
-    });
+    }, publicContentSource(request));
   } catch (error: unknown) {
     throw upstreamUnavailable(error);
   }

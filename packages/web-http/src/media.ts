@@ -3,14 +3,15 @@ import {
   apiUrl,
   applyClientAddressHeaders,
   resolveUpstreamTimeoutMs,
-  withUpstreamDeadline,
   type ApiProxyConfig,
-  type FetchImpl,
 } from "./api.ts";
-import { readLimitedBytes, readLimitedStream } from "./body.ts";
+import { readLimitedBytes } from "./body.ts";
 import { errorResponse } from "./http.ts";
 import { isSameOriginMutation } from "./policy.ts";
 import { forwardAuthoringRequest } from "./forward.ts";
+import { upstreamTransportFor } from "./upstream.ts";
+import { bufferedResponse } from "./upstream-response.ts";
+import { UpstreamBusyError, UpstreamCancelledError, UpstreamResponseError, upstreamFailureResponse } from "./upstream-errors.ts";
 
 function methodOf(request: Request, allowed: readonly string[]): string | null {
   const method = request.method.toUpperCase();
@@ -91,36 +92,19 @@ export async function handlePublicMediaRequest(
     return errorResponse("SERVICE_UNAVAILABLE", "The media service is not configured correctly.", 503);
   }
 
-  const fetchImpl: FetchImpl = config.fetchImpl ?? fetch;
   let upstream: Response;
   let bytes: Uint8Array<ArrayBuffer> | undefined;
   try {
-    // Headers *and* body share one budget. The byte ceiling already bounds how
-    // much is read; the deadline bounds how long a partly delivered object may
-    // keep the connection. An abort surfaces as a read failure, so the signal is
-    // checked explicitly instead of being reported as bad bytes.
-    ({ upstream, bytes } = await withUpstreamDeadline(timeoutMs, async (signal) => {
-      const target = apiUrl(base, `api/v1/media/${encodeURIComponent(id)}`);
-      applyClientAddressHeaders(headers, target, "GET", config.clientAddressHeaders);
-      const response = await fetchImpl(target, {
-        method: "GET",
-        headers,
-        redirect: "error",
-        cache: "no-store",
-        signal,
-      });
-      // A conditional hit or an error status has no object to bound: the status
-      // is mapped below, and there is nothing to read.
-      if (response.status === 304 || !response.ok) {
-        await response.body?.cancel().catch(() => {});
-        return { upstream: response, bytes: undefined };
-      }
-      const body = await readLimitedStream(response.body, MEDIA_MAX_BYTES);
-      if (signal.aborted) throw new UpstreamTimeoutError(timeoutMs);
-      if (body.ok === false) throw new MediaBodyFailure(body.reason);
-      return { upstream: response, bytes: body.bytes };
-    }));
+    const target = apiUrl(base, `api/v1/media/${encodeURIComponent(id)}`);
+    applyClientAddressHeaders(headers, target, "GET", config.clientAddressHeaders);
+    const buffered = await upstreamTransportFor(config).request(target, { method: "GET", headers },
+      { kind: "media", maxBytes: MEDIA_MAX_BYTES, timeoutMs, signal: request.signal });
+    upstream = bufferedResponse(buffered);
+    bytes = buffered.bytes;
+    if (upstream.ok && bytes.byteLength === 0) throw new MediaBodyFailure("empty");
   } catch (error) {
+    if (error instanceof UpstreamBusyError || error instanceof UpstreamCancelledError) return upstreamFailureResponse(error);
+    if (error instanceof UpstreamResponseError) error = new MediaBodyFailure(error.reason === "too-large" ? "too-large" : "unreadable");
     if (error instanceof UpstreamTimeoutError) {
       return errorResponse("UPSTREAM_TIMEOUT", "The media service did not answer in time.", 504);
     }

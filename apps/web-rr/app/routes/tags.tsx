@@ -1,3 +1,4 @@
+import { publicTagSource } from "../lib/runtime.ts";
 import { useLoaderData } from "react-router";
 import type { HeadersFunction, LoaderFunctionArgs, MetaFunction } from "react-router";
 import { TagIndexView } from "@/components/public/tag-view.tsx";
@@ -8,9 +9,9 @@ import { upstreamUnavailable } from "../lib/loader-errors.ts";
 import { localeFor } from "../lib/locale.ts";
 import { metaDescriptors, siteUrlFromMatches } from "../lib/meta.ts";
 
-export async function loader({ url }: LoaderFunctionArgs) {
+export async function loader({ request, url }: LoaderFunctionArgs) {
   try {
-    return await loadTagIndexPage({ locale: localeFor(url), query: url.searchParams.get("q") ?? "", page: tagPage(url.searchParams.get("page") ?? undefined) });
+    return await loadTagIndexPage({ locale: localeFor(url), query: url.searchParams.get("q") ?? "", page: tagPage(url.searchParams.get("page") ?? undefined) }, publicTagSource(request));
   } catch (error: unknown) {
     throw upstreamUnavailable(error);
   }

@@ -1,5 +1,6 @@
 import type { ActionFunctionArgs } from "react-router";
-import { handleNotificationRead } from "../lib/notifications-proxy.ts";
+import { handleNotificationReadRequest } from "@bot-thk/web-http";
+import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**
  * `PUT /api/authoring/notifications/:id/read` — resource route, no component.
@@ -8,5 +9,5 @@ import { handleNotificationRead } from "../lib/notifications-proxy.ts";
  * the status code cannot be used to probe which notification ids exist.
  */
 export async function action({ request, params }: ActionFunctionArgs) {
-  return handleNotificationRead(request, params.id);
+  return handleNotificationReadRequest(request, { id: params.id ?? "" }, apiProxyConfig());
 }

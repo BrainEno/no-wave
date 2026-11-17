@@ -11,7 +11,7 @@ stopped one step short: the mailer was a port (`IdentityMailer`) whose only
 implementation wrote a structured log line. The reason was ADR 0012 — no
 provider-specific code until a hosting candidate has passed the zero-cost/no-card
 gate. That gate has now been asked of mail itself and passes on published terms
-for Brevo (see [hosting qualification §6](../roadmap/hosting-qualification.md)):
+for Brevo (see [hosting qualification §6](../../roadmap/hosting-qualification.md)):
 300 emails/day, no payment method, no expiry.
 
 So the last mile is allowed, and the question is which shape it takes:

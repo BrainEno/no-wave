@@ -1,12 +1,12 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { handleCrawlRequest } from "../lib/crawl-response.server.ts";
-import { siteUrl } from "../lib/runtime.ts";
+import { loadPublicSitemap, siteUrl } from "../lib/runtime.ts";
 
 /** One bounded, anonymous public sitemap, with shared GET/HEAD/cache/error semantics. */
 export function loader({ request }: LoaderFunctionArgs) {
-  return handleCrawlRequest(request, "sitemap", { siteUrl });
+  return handleCrawlRequest(request, "sitemap", { siteUrl, loadEntries: origin => loadPublicSitemap(origin, request) });
 }
 
 export function action({ request }: ActionFunctionArgs) {
-  return handleCrawlRequest(request, "sitemap", { siteUrl });
+  return handleCrawlRequest(request, "sitemap", { siteUrl, loadEntries: origin => loadPublicSitemap(origin, request) });
 }

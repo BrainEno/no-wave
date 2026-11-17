@@ -1,4 +1,4 @@
-import { resolveUpstreamTimeoutMs, withUpstreamDeadline } from "@bot-thk/web-http";
+import { resolveUpstreamTimeoutMs, upstreamTransportFor, upstreamJsonPayload, type FetchImpl, type UpstreamTransport } from "@bot-thk/web-http";
 import { isTagSlug, type TagReference, type TagView } from "./tag-discovery.ts";
 import type { ArticleContentBlock, ArticleSort, ArticleView, AuthorView, Locale, WorkType } from "./content.ts";
 import {
@@ -24,11 +24,9 @@ export type TagListOptions = { locale?: Locale; query?: string; limit?: number; 
 type AuthorListOptions = { locale?: Locale; query?: string; limit?: number; offset?: number };
 type ApiObject = Record<string, unknown>;
 type ApiPayload = { data?: unknown; error?: unknown };
-type JsonResponse = { ok: boolean; status: number; json(): Promise<unknown> };
-type FetchImpl = (input: string, init?: RequestInit) => Promise<JsonResponse>;
 type QueryValues = Record<string, string | number>;
 
-type ApiContentClient = {
+export type ApiContentClient = {
   listArticles(options?: ArticleListOptions): Promise<ArticleView[]>;
   listFeaturedArticles(options?: { locale?: Locale; limit?: number }): Promise<ArticleView[]>;
   getArticleBySlug(slug: string, locale?: Locale): Promise<ArticleView | null>;
@@ -119,11 +117,7 @@ function normalizeHttpUrl(value: string, name: string): string {
  * as a GraphQL transport; callers are migrated to the versioned REST API.
  */
 export function resolveApiBaseUrl(
-  config: { explicitUrl?: string; serviceUrl?: string; legacyGraphqlUrl?: string } = {
-    explicitUrl: process.env.API_BASE_URL,
-    serviceUrl: process.env.API_SERVICE_URL,
-    legacyGraphqlUrl: process.env.API_GRAPHQL_URL,
-  },
+  config: { explicitUrl?: string; serviceUrl?: string; legacyGraphqlUrl?: string } = {},
 ): string | undefined {
   const explicitUrl = config.explicitUrl?.trim();
   if (explicitUrl) return normalizeHttpUrl(explicitUrl, "API_BASE_URL");
@@ -236,7 +230,9 @@ function mapCategory(category: unknown): CategoryView | null {
 }
 
 export function createApiContentClient(
-  { endpoint, fetchImpl = fetch, timeoutMs }: { endpoint?: string; fetchImpl?: FetchImpl; timeoutMs?: number | string | null } = {},
+  { endpoint, fetchImpl, timeoutMs, upstreamTransport, signal }: {
+    endpoint?: string; fetchImpl?: FetchImpl; timeoutMs?: number | string | null; upstreamTransport?: UpstreamTransport; signal?: AbortSignal;
+  } = {},
 ): ApiContentClient {
   // Resolved once, at construction: a malformed budget is a deployment error and
   // must fail here rather than turn the first page request into an unbounded
@@ -249,16 +245,11 @@ export function createApiContentClient(
     // Everything — connection, headers and the JSON body — happens under one
     // deadline. Without it a hung content API pins the SSR request that reads it,
     // and every request that arrives behind it waits on the same stalled socket.
-    const result = await withUpstreamDeadline(budget, async (signal) => {
-      const response = await fetchImpl(buildApiUrl(endpoint, path, query), {
-        method: "GET",
-        headers: { accept: "application/json" },
-        cache: "no-store",
-        signal,
-      });
-      if (!response.ok) return { status: response.status, ok: false as const, payload: null };
-      return { status: response.status, ok: true as const, payload: await response.json() };
-    });
+    const response = await upstreamTransportFor({ fetchImpl, upstreamTransport }).request(buildApiUrl(endpoint, path, query), {
+      method: "GET", headers: { accept: "application/json" }, credentials: "omit",
+    }, { kind: "content", timeoutMs: budget, signal, responseType: "json" });
+    const result = { status: response.status, ok: response.status >= 200 && response.status <= 299,
+      payload: response.status >= 200 && response.status <= 299 ? upstreamJsonPayload(response) : null };
     if (!result.ok) {
       if (allowNotFound && result.status === 404) return CONTENT_NOT_FOUND;
       throw new Error(`Content API request failed with HTTP ${result.status}.`);
@@ -352,22 +343,13 @@ export function createApiContentClient(
   });
 }
 
-function configuredClient(): ApiContentClient | null {
-  const endpoint = resolveApiBaseUrl();
-  // `API_TIMEOUT_MS` sits next to the origin it bounds: the same page loader that
-  // discovers `API_BASE_URL` here also resolves the budget, so an explicit client
-  // and an environment-configured one cannot drift apart. An invalid value throws
-  // here and becomes the page's own 503, never an unbounded wait.
-  return endpoint ? createApiContentClient({ endpoint, timeoutMs: process.env.API_TIMEOUT_MS }) : null;
-}
-
 /**
- * Public pages use REST whenever API_BASE_URL / API_SERVICE_URL is configured.
- * The local fixture registry remains the explicit fallback when no API endpoint
- * is configured; live API failures are surfaced instead of silently using fixtures.
+ * Bind one explicit API client (or null for the fixture-only mode). The app
+ * resolves configuration per request; shared code never discovers a deployment.
+ * A configured client's failure must not turn into fixture content.
  */
-export async function listPublicArticles(options: ArticleListOptions = {}): Promise<ArticleView[]> {
-  const client = configuredClient();
+export function createPublicContentSource(client: ApiContentClient | null) {
+async function listPublicArticles(options: ArticleListOptions = {}): Promise<ArticleView[]> {
   return client ? client.listArticles(options) : listFixtureArticles(options);
 }
 
@@ -378,18 +360,15 @@ export async function listPublicArticles(options: ArticleListOptions = {}): Prom
  * array is the honest answer, and the home page says so instead of quietly
  * presenting the newest works as if somebody had chosen them.
  */
-export async function listPublicFeatured(options: { locale?: Locale; limit?: number } = {}): Promise<ArticleView[]> {
-  const client = configuredClient();
+async function listPublicFeatured(options: { locale?: Locale; limit?: number } = {}): Promise<ArticleView[]> {
   return client ? client.listFeaturedArticles(options) : [];
 }
 
-export async function getPublicArticle(slug: string, locale: Locale = defaultLocale): Promise<ArticleView | null> {
-  const client = configuredClient();
+async function getPublicArticle(slug: string, locale: Locale = defaultLocale): Promise<ArticleView | null> {
   return client ? client.getArticleBySlug(slug, locale) : getArticleBySlug(slug, locale);
 }
 
-export async function getPublicAuthor(username: string, locale: Locale = defaultLocale): Promise<AuthorView | null> {
-  const client = configuredClient();
+async function getPublicAuthor(username: string, locale: Locale = defaultLocale): Promise<AuthorView | null> {
   return client ? client.getAuthorByUsername(username, locale) : getAuthorByUsername(username, locale);
 }
 
@@ -400,37 +379,38 @@ export async function getPublicAuthor(username: string, locale: Locale = default
  * authors is a property of the instance running the site, so with no API
  * configured the honest answer is an empty one — the page says so.
  */
-export async function listPublicAuthors(options: AuthorListOptions = {}): Promise<AuthorSummary[]> {
-  const client = configuredClient();
+async function listPublicAuthors(options: AuthorListOptions = {}): Promise<AuthorSummary[]> {
   return client ? client.listAuthors(options) : [];
 }
 
-export async function listPublicCategories(options: CategoryListOptions = {}): Promise<CategoryView[]> {
-  const client = configuredClient();
+async function listPublicCategories(options: CategoryListOptions = {}): Promise<CategoryView[]> {
   return client ? client.listCategories(options) : [];
 }
 
-export async function getPublicCategory(slug: string, locale: Locale = defaultLocale): Promise<CategoryView | null> {
-  const client = configuredClient();
+async function getPublicCategory(slug: string, locale: Locale = defaultLocale): Promise<CategoryView | null> {
   return client ? client.getCategoryBySlug(slug, locale) : null;
 }
 
-export async function listPublicCategoryArticles(slug: string, locale: Locale = defaultLocale, limit = 100, offset = 0): Promise<ArticleView[]> {
-  const client = configuredClient();
+async function listPublicCategoryArticles(slug: string, locale: Locale = defaultLocale, limit = 100, offset = 0): Promise<ArticleView[]> {
   return client ? client.listCategoryArticles(slug, locale, limit, offset) : [];
 }
 
-export async function listPublicTags(options: TagListOptions = {}): Promise<TagView[]> {
-  const client = configuredClient();
+async function listPublicTags(options: TagListOptions = {}): Promise<TagView[]> {
   return client ? client.listTags(options) : [];
 }
 
-export async function getPublicTag(slug: string, locale: Locale = defaultLocale): Promise<TagView | null> {
-  const client = configuredClient();
+async function getPublicTag(slug: string, locale: Locale = defaultLocale): Promise<TagView | null> {
   return client ? client.getTagBySlug(slug, locale) : null;
 }
 
-export async function listPublicTagArticles(slug: string, locale: Locale = defaultLocale, limit = 21, offset = 0): Promise<ArticleView[] | null> {
-  const client = configuredClient();
+async function listPublicTagArticles(slug: string, locale: Locale = defaultLocale, limit = 21, offset = 0): Promise<ArticleView[] | null> {
   return client ? client.listTagArticles(slug, locale, limit, offset) : null;
 }
+
+  return Object.freeze({ listPublicArticles, listPublicFeatured, getPublicArticle, getPublicAuthor, listPublicAuthors, listPublicCategories, getPublicCategory, listPublicCategoryArticles, listPublicTags, getPublicTag, listPublicTagArticles });
+}
+
+export type PublicContentSource = ReturnType<typeof createPublicContentSource>;
+/** Explicit fixture defaults for standalone views/tests, never environment driven. */
+export const fixturePublicContent = createPublicContentSource(null);
+export const { listPublicArticles, listPublicFeatured, getPublicArticle, getPublicAuthor, listPublicAuthors, listPublicCategories, getPublicCategory, listPublicCategoryArticles, listPublicTags, getPublicTag, listPublicTagArticles } = fixturePublicContent;

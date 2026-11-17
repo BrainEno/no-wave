@@ -229,7 +229,7 @@ test("only the thread's own methods are proxied", async () => {
   assert.deepEqual(stub.calls, []);
 });
 
-test("an upstream failure keeps its status and its own error envelope", async () => {
+test("upstream failures keep their status and client errors, but redact server diagnostics", async () => {
   const clientError = stubFetch({
     "api/v1/articles/": () => json({ error: { code: "BAD_USER_INPUT", message: "Comment is empty." } }, 400),
   });
@@ -242,11 +242,7 @@ test("an upstream failure keeps its status and its own error envelope", async ()
   assertNoStore(bad);
   assert.deepEqual(await bad.json(), { error: { code: "BAD_USER_INPUT", message: "Comment is empty." } });
 
-  // Documented, not fixed: `forwardAuthoringRequest` relays the upstream body
-  // verbatim, so a 5xx from the API reaches the browser with whatever detail the
-  // API put in it. Sanitizing it belongs in the shared forwarder and would change
-  // every proxied route at once — an owner decision, recorded in
-  // docs/roadmap/public-ssr-migration.md, not a side effect of this slice.
+  // The shared boundary now sanitizes server errors for every resource family.
   const serverError = stubFetch({
     "api/v1/articles/": () => json({ error: { code: "INTERNAL", message: "upstream exploded" } }, 500),
   });
@@ -255,7 +251,7 @@ test("an upstream failure keeps its status and its own error envelope", async ()
     fetchImpl: serverError.fetchImpl,
   });
   assert.equal(broken.status, 500);
-  assert.deepEqual(await broken.json(), { error: { code: "INTERNAL", message: "upstream exploded" } });
+  assert.deepEqual(await broken.json(), { error: { code: "SERVICE_UNAVAILABLE", message: "The API service is temporarily unavailable." } });
 });
 
 test("an unreachable API is a 502 that never leaks the failure detail", async () => {

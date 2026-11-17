@@ -12,6 +12,9 @@ import { createWebClientAddressBridge } from "@bot-thk/web-http/client-address";
 import { browserSecurityHeaders } from "./document-security.ts";
 import { createWebRefreshRuntime } from "./refresh/runtime.ts";
 import { createRefreshMetricsHandler } from "./refresh/metrics-handler.ts";
+import { createWebUpstreamRuntime } from "./upstream/runtime.ts";
+import { createUpstreamMetricsHandler } from "./upstream/metrics-handler.ts";
+import { createWebIntake } from "./upstream/intake.ts";
 
 /**
  * Production server for the prototype: Node.js `http` only — no Vercel service
@@ -27,6 +30,9 @@ const rootEnvFile = fileURLToPath(new URL("../../.env.local", import.meta.url));
 if (existsSync(rootEnvFile)) process.loadEnvFile(rootEnvFile);
 const clientAddressBridge = createWebClientAddressBridge(process.env);
 const refreshMetrics = createRefreshMetricsHandler(process.env);
+const intake = createWebIntake(process.env);
+const upstreamRuntime = createWebUpstreamRuntime(process.env);
+const upstreamMetrics = createUpstreamMetricsHandler(process.env);
 const refreshRuntime = await createWebRefreshRuntime(process.env, sample => writeLogLine("web_refresh_coordination", sample));
 
 const buildDir = resolve(process.env.RR_BUILD_DIR ?? "build/client");
@@ -150,7 +156,7 @@ function serveHealthCheck(response: ServerResponse): void {
   response.end(JSON.stringify({ status: "ok" }));
 }
 
-const server = createServer((request: IncomingMessage, response: ServerResponse) => {
+const server = createServer(intake.httpOptions, (request: IncomingMessage, response: ServerResponse) => {
   // Establish the fail-closed baseline before health, shutdown, malformed URL,
   // static-file or framework handling. HTML replaces only the resource CSP with
   // its sealed script hashes; media/feed resource policies remain intact.
@@ -170,6 +176,7 @@ const server = createServer((request: IncomingMessage, response: ServerResponse)
     return;
   }
   if (refreshMetrics(request, response, () => refreshRuntime.metrics())) return;
+  if (upstreamMetrics(request, response, () => upstreamRuntime.metrics() + intake.metrics())) return;
   if (target === "/healthz" || target.startsWith("/healthz?")) {
     // Deliberately not logged: a host probes this every few seconds, and health
     // checks would otherwise be the loudest and least interesting line in the
@@ -184,6 +191,8 @@ const server = createServer((request: IncomingMessage, response: ServerResponse)
     response.end(JSON.stringify(readiness));
     return;
   }
+
+  if (intake.handle(request, response)) return;
 
   const startedAt = Date.now();
   inFlight += 1;
@@ -205,7 +214,7 @@ const server = createServer((request: IncomingMessage, response: ServerResponse)
     logCompletion();
   });
 
-  clientAddressBridge.run(request, () => refreshRuntime.run(() => compressResponse(request, response, () => {
+  clientAddressBridge.run(request, () => refreshRuntime.run(() => upstreamRuntime.run(() => compressResponse(request, response, () => {
     serveStatic(request, response)
       .then((served) => {
         if (!served) handleRequest(request, response);
@@ -214,7 +223,7 @@ const server = createServer((request: IncomingMessage, response: ServerResponse)
         if (!response.headersSent) response.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
         response.end("Internal Server Error");
       });
-  })));
+  }))));
 });
 
 server.listen(port, host, () => {
@@ -226,6 +235,7 @@ server.listen(port, host, () => {
 function stop(signal: string): void {
   if (shuttingDown) return;
   shuttingDown = true;
+  intake.stop();
   const startedAt = Date.now();
   writeLogLine("server_shutdown_started", { signal, inFlight });
 
@@ -253,7 +263,8 @@ function stop(signal: string): void {
     // Closing the coordination pool shares the original absolute HTTP budget.
     const remaining = Math.max(1, SHUTDOWN_GRACE_MS - (Date.now() - startedAt));
     const cleanupDeadline = setTimeout(() => complete(false), remaining);
-    void refreshRuntime.close().then(complete, () => complete(false));
+    void Promise.all([refreshRuntime.close(), upstreamRuntime.close(remaining)]).then(
+      results => complete(results.every(Boolean)), () => complete(false));
   };
 
   if (inFlight === 0) {

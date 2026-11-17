@@ -1,19 +1,18 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { marked } from "marked";
 
-/** The four audited documents: relative Markdown links are executable evidence. */
+/** All versioned Markdown, plus new unignored documents in the current change. */
 const root = fileURLToPath(new URL("..", import.meta.url));
-const documents = [
-  "README.md",
-  "docs/audit/feature-traceability.md",
-  "docs/audit/2026-11-roadmap-evidence.md",
-  "docs/roadmap/phase-gates.md",
-  "packages/web-ui/docs/UI_DESIGN_SYSTEM.md",
-];
+export function repositoryMarkdown(): string[] {
+  const paths = execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "*.md"], { cwd: root, encoding: "utf8" });
+  return [...new Set(paths.split("\0").filter(path => path.endsWith(".md") && existsSync(resolve(root, path))))].sort();
+}
+const documents = repositoryMarkdown();
 
 /**
  * Check Markdown links and images using the same parser as the Markdown importer.
@@ -52,7 +51,7 @@ export function missingLinks(document: string, content: string, exists: (path: s
   return failures;
 }
 
-test("the audited documents link to existing repository evidence", () => {
+test("all repository Markdown documents link to existing repository evidence", () => {
   const failures = documents.flatMap((document) => missingLinks(document, readFileSync(resolve(root, document), "utf8"), existsSync));
   assert.deepEqual(failures, []);
 });
@@ -198,4 +197,13 @@ test("a missing license link is rejected by the same evidence checker", () => {
   const readme = readFileSync(resolve(root, "README.md"), "utf8");
   const failures = missingLinks("README.md", readme, (path) => path !== resolve(root, "LICENSE"));
   assert.equal(failures.filter((failure) => failure.includes("missing LICENSE")).length, 1);
+});
+
+test("a bad link in a previously unlisted document fails the full-repository check", () => {
+  const document = "apps/api/README.md";
+  assert.ok(documents.includes(document));
+  const source = readFileSync(resolve(root, document), "utf8") + "\n[intentional regression](not-present-regression.md)\n";
+  const failures = missingLinks(document, source, existsSync);
+  assert.ok(failures.some(failure => failure.includes(`${document}:`) && failure.includes("not-present-regression.md")));
+  assert.ok(documents.includes("AGENTS.md") && documents.includes("docs/architecture/decisions/0014-password-recovery-and-email-verification.md"));
 });
