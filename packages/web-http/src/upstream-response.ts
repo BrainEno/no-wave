@@ -25,6 +25,13 @@ export type BufferedApiResponse = {
 
 /** Cancellation must never wait for a broken stream's cancel promise. */
 export function cancelUpstreamBody(response: Response, track?: CancellationObserver): void {
+  if (response.body?.locked) {
+    // No reader means no cancellation or completion receipt. A failed adapter
+    // must not turn another reader's live stream into replacement capacity.
+    // Only replacing this transport/process can recover such opaque ownership.
+    track?.(new Promise<void>(() => {}));
+    return;
+  }
   cancelUpstreamRead(response.body, track);
 }
 
@@ -85,7 +92,11 @@ export async function bufferUpstreamResponse(response: Response, maxBytes: numbe
   const result = { status: response.status, statusText: response.statusText, headers: new Headers(response.headers) };
   if (!response.body) return { ...result, bytes: new Uint8Array(0) };
   let reader: ReadableStreamDefaultReader<Uint8Array>;
-  try { reader = response.body.getReader(); } catch { throw new UpstreamResponseError("unreadable"); }
+  try { reader = response.body.getReader(); }
+  catch {
+    cancelUpstreamBody(response, track);
+    throw new UpstreamResponseError("unreadable");
+  }
   let cancelRead: (() => void) | undefined;
   const cancelled = new Promise<never>((_, reject) => {
     cancelRead = () => {

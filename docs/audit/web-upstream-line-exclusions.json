@@ -1231,19 +1231,19 @@
       "file": "packages/web-http/src/upstream-response.ts",
       "fragments": [
         {
-          "line": 85,
+          "line": 92,
           "text": "const result = { status: response.status, statusText: response.statusText, headers: new Headers(response.headers) };"
         },
         {
-          "line": 114,
+          "line": 125,
           "text": "const bytes = new Uint8Array(size);"
         },
         {
-          "line": 116,
+          "line": 127,
           "text": "for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }"
         },
         {
-          "line": 117,
+          "line": 128,
           "text": "return { ...result, bytes };"
         }
       ],

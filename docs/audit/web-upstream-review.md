@@ -29,7 +29,9 @@ ADR 0026 未解决的发布门禁保持关闭，没有实现 moderation/report/a
 2. **有限隔离容量**：data/auth/bulk FIFO；request intake 预留原始 body 内存并持有到
    整个 exchange 结束。满载、关停、排队过期与熔断失败关闭，不做自动 mutation retry。
 3. **真实物理所有权**：忽略 abort 的 fetch 不提前归还槽；cancel receipt 未确认的 body
-   也不提前归还。调用者不等待失控 cancel；有限 drain 明确报告未排空。
+   也不提前归还。已被其他 reader 锁定的异常响应没有取消凭据，保守保留未知所有权，
+   不能把锁冲突当作源确认；修复适配器并替换 transport／进程才能恢复。
+   调用者不等待失控 cancel；有限 drain 明确报告未排空。
 4. **响应验证**：用途字节 fence、严格 UTF-8/JSON、提前拒绝已声明非 JSON 的成功文档，
    5xx 脱敏；业务 4xx 恢复字段保留。原生 fetch 保留编码前 headers，因此 gzip 的
    Content-Length 不误当 decoded 长度；无编码声明和实际 decoded bytes 仍分别检查。
@@ -54,7 +56,7 @@ ADR 0026 未解决的发布门禁保持关闭，没有实现 moderation/report/a
 
 ## 独立有效新增行复核
 
-**811 行新增生产功能**；不是 Git 总增量，也不包含测试。
+**812 行新增生产功能**；不是 Git 总增量，也不包含测试。
 证据分为三个互相约束的层次，不冒称另有独立人工审阅者：
 
 - [主计算器](web-upstream-lines.ts)：从固定基线取 Git 实际新增行，Babel 检查运行 token；
@@ -68,7 +70,7 @@ ADR 0026 未解决的发布门禁保持关闭，没有实现 moderation/report/a
   改类型的参数、通用方法声明和等价 return，不能以另一份同源计数冒充独立复核。
 
 [逐文件/逐行证书](web-upstream-lines.json)与[独立运行时确认](web-upstream-runtime-check.json)
-固定本轮源文件 hashes。两条路径都确认 811；任何源码、排除行或基线改变都须重算。
+固定本轮源文件 hashes。两条路径都确认 812；任何源码、排除行或基线改变都须重算。
 这不重新计算 PR 363 的 806 行，也不计算 continue_tags 或任何历史交付。
 
 ```sh

@@ -34,7 +34,10 @@ export class UpstreamBodyStream {
     this.maxBytes = maxBytes;
     this.validator = validateJson ? new StreamingJsonValidator() : undefined;
     try { this.reader = response.body?.getReader(); }
-    catch { throw new UpstreamResponseError("unreadable"); }
+    catch {
+      cancelUpstreamBody(response, track);
+      throw new UpstreamResponseError("unreadable");
+    }
     this.finished = new Promise<number>((resolve, reject) => { this.resolveFinished = resolve; this.rejectFinished = reject; });
     this.onAbort = () => this.fail(signal.reason instanceof UpstreamTimeoutError
       ? new UpstreamTimeoutError(signal.reason.timeoutMs) : new UpstreamCancelledError());

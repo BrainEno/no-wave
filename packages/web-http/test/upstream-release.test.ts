@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { UpstreamTransport } from "../src/upstream.ts";
 import { UpstreamTimeoutError } from "../src/api.ts";
-import { UpstreamResponseError } from "../src/upstream-errors.ts";
+import { UpstreamBusyError, UpstreamResponseError } from "../src/upstream-errors.ts";
 import { UpstreamTelemetry, type UpstreamSample } from "../src/upstream-telemetry.ts";
 
 const tick = () => new Promise<void>(resolve => setImmediate(resolve));
@@ -80,3 +80,39 @@ test("a rejected source cancellation is observed once per physical operation wit
   assert.equal(transport.snapshot().data.cancellation.rejected, 1);
   assert.equal(await transport.close(), true);
 });
+
+for (const mode of ["buffered", "bulk"] as const) {
+  for (const rejection of ["locked-reader", "media-type", "declared-length"] as const) {
+    test(`${mode} ${rejection} cannot report an already-locked source as physically drained`, async t => {
+      let cancelCalls = 0, fetchCalls = 0;
+      const source = new ReadableStream<Uint8Array>({ cancel() { cancelCalls++; } }, { highWaterMark: 0 });
+      const response = new Response(source, { headers: {
+        "content-type": rejection === "media-type" ? "text/html" : "application/json",
+        ...(rejection === "declared-length" ? { "content-length": "100" } : {}),
+      } });
+      // A broken fetch adapter handed us another owner's reader. Neither a
+      // rejected stream.cancel() nor a failed getReader() proves it has ended.
+      const owner = response.body!.getReader();
+      t.after(async () => { await owner.cancel(); owner.releaseLock(); });
+      const transport = new UpstreamTransport({ admission: { concurrency: 1, queue: 0, queueTimeoutMs: 10 },
+        fetchImpl: async () => { fetchCalls++; return response; } });
+      const operation = mode === "buffered"
+        ? transport.request("https://api.test/locked", {}, { responseType: "json", maxBytes: 10 })
+        : transport.openStream("https://api.test/locked", {}, { maxBytes: 10 });
+      await assert.rejects(operation, UpstreamResponseError);
+      await tick();
+      const lane = transport.snapshot()[mode === "buffered" ? "data" : "bulk"];
+      assert.equal(lane.active, 1, "unknown source ownership must not create replacement capacity");
+      assert.equal(lane.detached, 1);
+      assert.equal(lane.cancelling, 1);
+      assert.equal(lane.cancellation.acknowledged, 0);
+      assert.equal(lane.cancellation.rejected, 0, "no cancellation was delivered to the locked source");
+      assert.equal(cancelCalls, 0);
+      if (mode === "buffered") {
+        await assert.rejects(transport.request("https://api.test/replacement"), UpstreamBusyError);
+        assert.equal(fetchCalls, 1);
+      }
+      assert.equal(await transport.close(10), false);
+    });
+  }
+}
