@@ -25,6 +25,7 @@
     "react-router": "8.5.1"
   },
   "devDependencies": {
+    "@bot-thk/glob-match": "workspace:*",
     "@react-router/dev": "8.5.1",
     "@types/compression": "1.8.1",
     "@types/node": "26.6.6",

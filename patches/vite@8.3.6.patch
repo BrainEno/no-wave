@@ -1,0 +1,13 @@
+diff --git a/dist/node/chunks/node.js b/dist/node/chunks/node.js
+index f60f0b5227c69d4676884a4ff7fb1f40c660d074..6d2574e8689ec2f9b858fa764b621dd52fa0d872 100644
+--- a/dist/node/chunks/node.js
++++ b/dist/node/chunks/node.js
+@@ -32478,5 +32478,3 @@ function assetPlugin(config) {
+-			filter: { id: [
+-				urlRE$1,
+-				DEFAULT_ASSETS_RE,
+-				...makeIdFiltersToMatchWithQuery(config.rawAssetsInclude).map((v) => typeof v === "string" ? pm.makeRe(v, { dot: true }) : v)
+-			] },
++			// Custom globs use the non-recursive JS matcher below. They cannot be
++			// serialized as regex filters; keep the native fast path for defaults.
++			filter: config.rawAssetsInclude.length ? undefined : { id: [urlRE$1, DEFAULT_ASSETS_RE] },

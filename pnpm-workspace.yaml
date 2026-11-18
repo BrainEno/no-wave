@@ -1,6 +1,22 @@
 packages:
-  - "apps/*"
-  - "packages/*"
+  - apps/*
+  - packages/*
 
 onlyBuiltDependencies:
   - esbuild
+
+overrides:
+  picomatch: workspace:@bot-thk/glob-match@*
+
+packageExtensions:
+  playwright@1.65.0:
+    dependencies:
+      '@bot-thk/glob-match': workspace:*
+  prettier@3.10.0:
+    dependencies:
+      '@bot-thk/glob-match': workspace:*
+
+patchedDependencies:
+  playwright@1.65.0: patches/playwright@1.65.0.patch
+  prettier@3.10.0: patches/prettier@3.10.0.patch
+  vite@8.3.6: patches/vite@8.3.6.patch

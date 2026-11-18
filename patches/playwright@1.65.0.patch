@@ -1,0 +1,17 @@
+diff --git a/lib/matchers/expect.js b/lib/matchers/expect.js
+index dc4c8218368e6a78f37709bcaf4dc8be395084f5..3bf3561723e049ea85d56e28ede88805ee68081e 100644
+--- a/lib/matchers/expect.js
++++ b/lib/matchers/expect.js
+@@ -8788,10 +8788,2 @@ var require_picomatch = __commonJS({
+-    var pico = require_picomatch();
+-    var utils2 = require_utils();
+-    function picomatch(glob, options, returnState = false) {
+-      if (options && (options.windows === null || options.windows === void 0)) {
+-        options = { ...options, windows: utils2.isWindows() };
+-      }
+-      return pico(glob, options, returnState);
+-    }
+-    Object.assign(picomatch, pico);
+-    module2.exports = picomatch;
++    // Use the independently implemented engine, including for bundled callers.
++    module2.exports = require("@bot-thk/glob-match");
