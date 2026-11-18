@@ -1,8 +1,9 @@
 name: CI
 
 on:
+  # Run the complete gates before opening a PR from an Arena working branch.
   push:
-    branches: ["main"]
+    branches: ["main", "arena/**"]
   pull_request:
     branches: ["main"]
 

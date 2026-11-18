@@ -11,6 +11,7 @@ import { handleArticleRoutes } from "./articles.ts";
 import { handleAuthorRoutes } from "./authors.ts";
 import { handleTaxonomyRoutes } from "./taxonomies.ts";
 import { handleImportRoutes } from "./imports.ts";
+import { handleNotionJobRoutes } from "./notion-jobs.ts";
 import { enforceWriteRateLimit } from "./write-rate-limit.ts";
 
 /**
@@ -37,4 +38,5 @@ export const REST_ROUTE_GROUPS: readonly RestRouteGroup[] = Object.freeze([
   handleAuthorRoutes,
   handleTaxonomyRoutes,
   handleImportRoutes,
+  handleNotionJobRoutes,
 ]);

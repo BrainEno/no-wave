@@ -184,6 +184,9 @@ export async function importNotionBundle(input: {
   deps: NotionImportDeps;
   copyImage?: NotionImageCopier;
   now?: () => Date;
+  /** Internal job hooks. Fail closed; they may not retry or suppress a work commit. */
+  beforeWork?: () => Promise<void>;
+  onProgress?: (pages: readonly NotionImportPageReport[]) => Promise<void>;
 }): Promise<NotionImportReport> {
   const now = input.now ?? (() => new Date());
   const hash = notionBundleHash(input.bundle);
@@ -319,7 +322,10 @@ export async function importNotionBundle(input: {
     }
   };
 
+  if (input.apply) await input.onProgress?.(pages);
   for (const work of plan.works) {
+    if (input.apply) await input.beforeWork?.();
+    try {
     const expected = acceptedPlan?.works.find((candidate) => candidate.key === work.primary.pageId);
     const transactionBase = expected && acceptedPlan ? { actorId: input.actorId, generation: acceptedPlan.generation,
       expiresAt: acceptedPlan.expiresAt, expected } : null;
@@ -481,6 +487,9 @@ export async function importNotionBundle(input: {
         "This work could not be imported. All article, tag and provenance writes were rolled back; preview again.";
       rejectWork(work, detail + (mayHaveCopiedMedia ? " Prepared images may remain in your media library; review and remove unused images." : ""),
         conflict ? "refused" : "failed", expected?.article?.id ?? null, preparedEditions);
+    }
+    } finally {
+      if (input.apply) await input.onProgress?.(pages);
     }
   }
 

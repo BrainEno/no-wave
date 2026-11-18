@@ -26,6 +26,8 @@ export class HttpCollectionAdmission {
   private readonly queue: Waiter[] = [];
   private readonly rejected: Record<Reason, number> = { full: 0, timeout: 0, cancelled: 0, closing: 0 };
   private stopping = false;
+  private drained?: Promise<void>;
+  private resolveDrain?: () => void;
 
   constructor(limits: Limits) {
     if (!Number.isSafeInteger(limits.active) || limits.active < 1 || limits.active > 32 ||
@@ -77,6 +79,7 @@ export class HttpCollectionAdmission {
     this.active.add(state);
     const release = () => {
       if (!state.handlerDone || !state.socketDone || !this.active.delete(state)) return;
+      if (this.stopping && this.active.size === 0) this.resolveDrain?.();
       while (!this.stopping && this.active.size < this.limits.active && this.queue.length) this.settle(this.queue[0]!);
     };
     const socketDone = () => {
@@ -95,6 +98,14 @@ export class HttpCollectionAdmission {
     if (this.stopping) return;
     this.stopping = true;
     for (const waiter of [...this.queue]) this.settle(waiter, "closing");
+  }
+
+  /** One shared settlement promise; no polling or premature physical-slot release. */
+  drain(): Promise<void> {
+    this.stop();
+    if (!this.active.size) return Promise.resolve();
+    this.drained ??= new Promise<void>(resolve => { this.resolveDrain = resolve; });
+    return this.drained;
   }
 
   renderMetrics(): string {

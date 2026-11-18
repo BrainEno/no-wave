@@ -46,3 +46,11 @@ test("input size, expiry, key and encoded envelope are bounded", () => {
   assert.deepEqual(cipher.open(sealed, expected, 10), Buffer.alloc(0));
   assert.throws(() => cipher.open({ ...sealed, nonce: "A".repeat(100) }, expected, 10));
 });
+
+test("the full legal 8 MiB ciphertext round trips without a recursive regular-expression stack", () => {
+  const cipher = createNotionJobPayloadCipher(randomBytes(32));
+  const plaintext = Buffer.alloc(MAX_NOTION_JOB_PAYLOAD_BYTES, 120);
+  const sealed = cipher.seal(plaintext, context, 10);
+  assert.deepEqual(cipher.open(sealed, expected, 10), plaintext);
+  assert.throws(() => cipher.open({ ...sealed, ciphertext: sealed.ciphertext.slice(0, -1) + "!" }, expected, 10));
+});

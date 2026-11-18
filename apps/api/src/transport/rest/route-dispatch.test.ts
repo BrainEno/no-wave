@@ -14,6 +14,7 @@ import { MEDIA_ROUTE_IDS } from "./routes/media.ts";
 import { NOTIFICATION_ROUTE_IDS } from "./routes/notifications.ts";
 import { TAXONOMY_ROUTE_IDS } from "./routes/taxonomies.ts";
 import { IMPORT_ROUTE_IDS } from "./routes/imports.ts";
+import { NOTION_JOB_ROUTE_IDS } from "./routes/notion-jobs.ts";
 
 /**
  * Dispatch coverage.
@@ -38,6 +39,7 @@ const GROUPS: readonly { name: string; ids: readonly string[] }[] = [
   { name: "authors", ids: AUTHOR_ROUTE_IDS },
   { name: "taxonomies", ids: TAXONOMY_ROUTE_IDS },
   { name: "imports", ids: IMPORT_ROUTE_IDS },
+  { name: "notion-jobs", ids: NOTION_JOB_ROUTE_IDS },
 ];
 
 test("every declared route is claimed by exactly one group", () => {
@@ -72,6 +74,7 @@ test("route ids are grouped where a reader would look for them", () => {
   const byGroup = new Map(GROUPS.map((group) => [group.name, new Set(group.ids)]));
   const expectations: readonly [string, readonly string[]][] = [
     ["health", ["health"]],
+    ["notion-jobs", ["imports.notion.jobs", "imports.notion.jobs.item"]],
     ["catalogue", ["me.article-catalogue", "me.article-catalogue-item", "me.article-catalogue-editions"]],
     ["openapi", ["openapi"]],
     ["auth", ["auth"]],

@@ -1,3 +1,4 @@
+import { NOTION_JOB_STATES } from "../../../application/notion-durable-jobs.ts";
 import { ARTICLE_SUMMARY_MAX_LENGTH } from "../../../domain/article-summary.ts";
 import {
   SUPPORTED_ARTICLE_LOCALES,
@@ -644,6 +645,36 @@ export const SCHEMAS: Readonly<Record<string, JsonSchema>> = Object.freeze({
           },
         },
       },
+    },
+  },
+
+  NotionJobRequest: {
+    type: "object", required: ["bundle", "planToken"],
+    properties: { bundle: ref("NotionBundle"), planToken: { type: "string", maxLength: 524288 } },
+  },
+  NotionJobStatus: {
+    type: "object", required: ["id", "state", "completed", "total", "createdAt", "updatedAt", "expiresAt", "retainUntil", "report", "recovery"],
+    properties: {
+      id: { type: "string", format: "uuid" }, state: { type: "string", enum: [...NOTION_JOB_STATES] },
+      completed: { type: "integer", minimum: 0, maximum: MAX_IMPORT_PAGES }, total: { type: "integer", minimum: 0, maximum: MAX_IMPORT_PAGES },
+      createdAt: { type: "integer", description: "Database-clock Unix milliseconds." },
+      updatedAt: { type: "integer" }, expiresAt: { type: "integer", description: "The original preview expiry; never extended by workers." },
+      retainUntil: { type: "integer", description: "Status retention deadline in Unix milliseconds; reads/maintenance remove expired statuses." },
+      recovery: { type: "string", enum: ["none", "preview-again", "review-media-and-preview"] },
+      report: nullable(ref("NotionJobReport")),
+    },
+  },
+  NotionJobReport: {
+    type: "object", required: ["summary", "pages"],
+    properties: {
+      summary: { type: "object", required: ["create", "update", "skip", "refused", "failed"], properties:
+        Object.fromEntries(["create", "update", "skip", "refused", "failed"].map(action => [action, { type: "integer", minimum: 0, maximum: MAX_IMPORT_PAGES }])) },
+      pages: { type: "array", maxItems: MAX_IMPORT_PAGES, items: { type: "object", required: ["ordinal", "action", "locale", "articleId", "issueCodes"], properties: {
+        ordinal: { type: "integer", minimum: 1, maximum: MAX_IMPORT_PAGES, description: "One-based report order, not original bundle page order. No source title/id is retained." },
+        action: { type: "string", enum: ["create", "update", "skip", "refused", "failed"] },
+        locale: { type: "string", enum: ["zh-CN", "zh-TW", "en", ""] }, articleId: nullable({ type: "string", format: "uuid" }),
+        issueCodes: { type: "array", uniqueItems: true, items: { type: "string", enum: [...INTERCHANGE_ISSUE_CODES] } },
+      } } },
     },
   },
 

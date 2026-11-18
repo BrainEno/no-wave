@@ -158,6 +158,17 @@
     "listExternalContentLinks",
     "getImportPlanGeneration",
     "commitNotionImportWork",
+    "findMyNotionImportJobRequest",
+    "readNextNotionImportJobInput",
+    "enqueueNotionImportJob",
+    "getMyNotionImportJob",
+    "listMyNotionImportJobs",
+    "cancelNotionImportJob",
+    "claimNotionImportJob",
+    "heartbeatNotionImportJob",
+    "finishNotionImportJob",
+    "sweepNotionImportJobs",
+    "notionImportJobBacklog",
     "consumeRateLimit",
     "claimOutboxEvents",
     "markOutboxDelivered",
@@ -295,6 +306,24 @@
         "createNotification",
         "createNotifications",
         "deliverMessageNotifications"
+      ]
+    },
+    {
+      "provider": "postgres",
+      "file": "postgres-notion-jobs-store.ts",
+      "factory": "createPostgresNotionJobsStore",
+      "methods": [
+        "findMyNotionImportJobRequest",
+        "readNextNotionImportJobInput",
+        "enqueueNotionImportJob",
+        "getMyNotionImportJob",
+        "listMyNotionImportJobs",
+        "cancelNotionImportJob",
+        "claimNotionImportJob",
+        "heartbeatNotionImportJob",
+        "finishNotionImportJob",
+        "sweepNotionImportJobs",
+        "notionImportJobBacklog"
       ]
     },
     {
@@ -470,6 +499,24 @@
         "markNotificationRead",
         "createNotification",
         "createNotifications"
+      ]
+    },
+    {
+      "provider": "sqlite",
+      "file": "sqlite-notion-jobs-store.ts",
+      "factory": "createSqliteNotionJobsStore",
+      "methods": [
+        "findMyNotionImportJobRequest",
+        "readNextNotionImportJobInput",
+        "enqueueNotionImportJob",
+        "getMyNotionImportJob",
+        "listMyNotionImportJobs",
+        "cancelNotionImportJob",
+        "claimNotionImportJob",
+        "heartbeatNotionImportJob",
+        "finishNotionImportJob",
+        "sweepNotionImportJobs",
+        "notionImportJobBacklog"
       ]
     },
     {

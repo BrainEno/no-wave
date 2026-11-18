@@ -97,6 +97,8 @@ route("api/authoring/notifications/:id/read", "routes/api.authoring.notification
   // own client; the export is a download, so the browser needs a URL it can follow.
   route("api/authoring/notion-export", "routes/api.authoring.notion-export.ts"),
   route("api/authoring/notion-import", "routes/api.authoring.notion-import.ts"),
+  route("api/authoring/notion-jobs", "routes/api.authoring.notion-jobs.ts"),
+  route("api/authoring/notion-jobs/:id", "routes/api.authoring.notion-job.ts"),
   route("api/articles/:slug/comments", "routes/api.articles.comments.ts"),
   // 评论编辑（ADR 0031）：单条评论按 id 寻址，和按 slug 寻址的评论区分开登记。
   route("api/comments/:id", "routes/api.comments.$id.ts"),

@@ -7,6 +7,7 @@
 
 - `src/index.ts`：公开 handler 和配置/transport 类型；资源路由直接调用。
 - `auth.ts`、`account.ts`、`authoring.ts`、`catalogue.ts`：身份、账户、写作与目录。
+- `notion-jobs.ts`：默认关闭队列的 Cookie-only 提交／查询／取消资源边界；无 UI 切换，原 key 可只读找回回执，条件状态等待有界。
 - `notifications.ts`、`messages.ts`、`comments.ts` 等：共享认证、actor/viewer 和资源代理。
 - `forward.ts`：Cookie-only bearer、同 token `/me`、一次协调刷新、轮换 cookies 和 4xx 恢复数据。
 - `body.ts`：入站声明/实际字节、严格 UTF-8、浏览器取消与有限等待。

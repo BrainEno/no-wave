@@ -1,3 +1,4 @@
+import type { NotionJobFence } from "./notion-durable-jobs.ts";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { ImportConflictError, ImportPlanInvalidError } from "../domain/errors.ts";
 import type { StoredArticle, StoredExternalContentLink } from "./persistence-ports.ts";
@@ -45,6 +46,8 @@ export type CommitNotionImportWorkInput = {
   expiresAt: number;
   expected: NotionImportWorkExpectation;
   editions: NotionImportEditionWrite[];
+  /** Internal execution fence, never accepted from an HTTP request. */
+  jobFence?: NotionJobFence;
 };
 export type CommittedNotionImportEdition = { externalId: string; article: StoredArticle; created: boolean };
 

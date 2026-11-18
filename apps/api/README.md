@@ -28,6 +28,19 @@ All business write routes under `/api/v1` use the shared persistent rate-limit p
 
 The existing registration/login/refresh/logout policies remain separately stricter. Rate-limit state is stored using the same atomic persistent counter contract on SQLite and PostgreSQL, so counters are not limited to a single API process. Exceeded limits return `429 RATE_LIMITED` and a positive `Retry-After` number of seconds. Authentication writes still fail closed if JWT configuration is missing or invalid.
 
+## 默认关闭的 durable Notion import jobs
+
+#331 的有限审阅切片：认证 start/list/status/cancel、原幂等键回执查询、外部 key ring
+加密，以及独立 `pnpm --filter @bot-thk/api jobs:notion drain|inspect|check|sweep`。
+不改变同步导入／UI，不保存 Notion 凭据，不自动刷新输入或重放崩溃后的 mutation。
+过期 running 只能 interrupted；进度不是完整 checkpoint，作者须检查作品和媒体并重新预览。
+状态查询的短等待有独立物理查询上限，不是导入执行器。源／目标有活跃 job 时拒绝 provider transfer。
+
+默认 `NOTION_IMPORT_JOBS_ENABLED=false`；新 admission/drain 需要明确开启与外部密钥。
+完整操作、容量、轮换／恢复和未完成发布门禁见[操作规程](../../docs/operations/notion-import-jobs.md)
+与 [ADR 0041（Proposed）](../../docs/architecture/decisions/0041-default-off-notion-import-jobs.md)。
+此代码不授权生产启用、自动调度、merge 或部署，整个 #331 仍未完成。
+
 ## Versioned REST API
 
 The versioned REST transport exposes business endpoints under `/api/v1`, with JSON responses and `Cache-Control: no-store`. Unknown legacy paths, including `/graphql`, return a sanitized JSON `404 NOT_FOUND` response.

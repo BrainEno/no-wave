@@ -28,8 +28,8 @@ from a code change.
 
 ## Slice ownership
 
-The port table declares 93 methods; each provider's slices own
-92 of them (all but `health`) plus the 6 media
+The port table declares 104 methods; each provider's slices own
+103 of them (all but `health`) plus the 6 media
 methods. `health` and PostgreSQL's optional `transaction` are composed by the entry point.
 
 | Provider | Slice | Factory | Methods |
@@ -41,6 +41,7 @@ methods. `health` and PostgreSQL's optional `transaction` are composed by the en
 | postgres | `postgres-import-store.ts` | `createPostgresImportStore` | 5 |
 | postgres | `postgres-media-store.ts` | `createPostgresMediaStore` | 6 |
 | postgres | `postgres-notification-store.ts` | `createPostgresNotificationStore` | 7 |
+| postgres | `postgres-notion-jobs-store.ts` | `createPostgresNotionJobsStore` | 11 |
 | postgres | `postgres-outbox-store.ts` | `createPostgresOutboxStore` | 4 |
 | postgres | `postgres-profile-store.ts` | `createPostgresProfileStore` | 11 |
 | postgres | `postgres-session-store.ts` | `createPostgresSessionStore` | 1 |
@@ -52,6 +53,7 @@ methods. `health` and PostgreSQL's optional `transaction` are composed by the en
 | sqlite | `sqlite-import-store.ts` | `createSqliteImportStore` | 5 |
 | sqlite | `sqlite-media-store.ts` | `createSqliteMediaStore` | 6 |
 | sqlite | `sqlite-notification-store.ts` | `createSqliteNotificationStore` | 7 |
+| sqlite | `sqlite-notion-jobs-store.ts` | `createSqliteNotionJobsStore` | 11 |
 | sqlite | `sqlite-outbox-store.ts` | `createSqliteOutboxStore` | 4 |
 | sqlite | `sqlite-profile-store.ts` | `createSqliteProfileStore` | 11 |
 | sqlite | `sqlite-session-store.ts` | `createSqliteSessionStore` | 2 |
@@ -68,6 +70,7 @@ methods. `health` and PostgreSQL's optional `transaction` are composed by the en
 - `sqlite-import-store.ts`: `getExternalContentLink`, `listExternalContentLinks`, `upsertExternalContentLink`, `getImportPlanGeneration`, `commitNotionImportWork`
 - `sqlite-media-store.ts`: `createMediaAsset`, `getMediaAsset`, `listMediaAssets`, `listMediaScanRows`, `listReferencesForAssets`, `deleteUnusedMediaAsset`
 - `sqlite-notification-store.ts`: `deliverMessageNotifications`, `listNotifications`, `getUnreadNotificationCount`, `markAllNotificationsRead`, `markNotificationRead`, `createNotification`, `createNotifications`
+- `sqlite-notion-jobs-store.ts`: `findMyNotionImportJobRequest`, `readNextNotionImportJobInput`, `enqueueNotionImportJob`, `getMyNotionImportJob`, `listMyNotionImportJobs`, `cancelNotionImportJob`, `claimNotionImportJob`, `heartbeatNotionImportJob`, `finishNotionImportJob`, `sweepNotionImportJobs`, `notionImportJobBacklog`
 - `sqlite-outbox-store.ts`: `claimOutboxEvents`, `markOutboxDelivered`, `rescheduleOutboxEvent`, `outboxBacklog`
 - `sqlite-profile-store.ts`: `getAuthorProfile`, `getAuthorProfilesByIds`, `getUserRole`, `setUserRole`, `searchAuthors`, `searchUsers`, `listFollowing`, `listFollowers`, `followUser`, `unfollowUser`, `upsertAuthorProfile`
 - `sqlite-session-store.ts`: `revokeSession`, `isSessionRevoked`
@@ -82,6 +85,7 @@ methods. `health` and PostgreSQL's optional `transaction` are composed by the en
 - `postgres-import-store.ts`: `getExternalContentLink`, `listExternalContentLinks`, `upsertExternalContentLink`, `getImportPlanGeneration`, `commitNotionImportWork`
 - `postgres-media-store.ts`: `createMediaAsset`, `getMediaAsset`, `listMediaScanRows`, `listReferencesForAssets`, `listMediaAssets`, `deleteUnusedMediaAsset`
 - `postgres-notification-store.ts`: `listNotifications`, `getUnreadNotificationCount`, `markAllNotificationsRead`, `markNotificationRead`, `createNotification`, `createNotifications`, `deliverMessageNotifications`
+- `postgres-notion-jobs-store.ts`: `findMyNotionImportJobRequest`, `readNextNotionImportJobInput`, `enqueueNotionImportJob`, `getMyNotionImportJob`, `listMyNotionImportJobs`, `cancelNotionImportJob`, `claimNotionImportJob`, `heartbeatNotionImportJob`, `finishNotionImportJob`, `sweepNotionImportJobs`, `notionImportJobBacklog`
 - `postgres-outbox-store.ts`: `claimOutboxEvents`, `markOutboxDelivered`, `rescheduleOutboxEvent`, `outboxBacklog`
 - `postgres-profile-store.ts`: `getAuthorProfile`, `getAuthorProfilesByIds`, `getUserRole`, `setUserRole`, `searchAuthors`, `searchUsers`, `listFollowing`, `listFollowers`, `followUser`, `unfollowUser`, `upsertAuthorProfile`
 - `postgres-session-store.ts`: `isSessionRevoked`

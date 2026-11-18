@@ -1,0 +1,985 @@
+{
+  "base": "5d69cd9ea37a7d2da60f99f1b645cfe35a090640",
+  "rules": [
+    {
+      "file": "apps/api/src/application/persistence-ports.ts",
+      "reason": "契约/schema、provider/facade/路由接线或薄资源适配，整文件保守不计。",
+      "fragments": [
+        {
+          "line": 1,
+          "text": "import type { NotionJobsPersistencePort } from \"./notion-durable-jobs.ts\";"
+        },
+        {
+          "line": 73,
+          "text": "notionJobs: Object.freeze([\"findMyNotionImportJobRequest\", \"readNextNotionImportJobInput\", \"enqueueNotionImportJob\", \"getMyNotionImportJob\", \"listMyNotionImportJobs\", \"cancelNotionImportJob\", \"claimNotionImportJob\", \"heartbeatNotionImportJob\", \"finishNotionImportJob\", \"sweepNotionImportJobs\", \"notionImportJobBacklog\"] as const),"
+        },
+        {
+          "line": 632,
+          "text": "& NotionJobsPersistencePort"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/rate-limit.ts",
+      "reason": "契约/schema、provider/facade/路由接线或薄资源适配，整文件保守不计。",
+      "fragments": [
+        {
+          "line": 74,
+          "text": "\"POST imports.notion.jobs\": { endpoint: \"import.notion\", windowSeconds: 600, ipLimit: 20, userLimit: 10 },"
+        },
+        {
+          "line": 75,
+          "text": "\"DELETE imports.notion.jobs.item\": { endpoint: \"import.notion.cancel\", windowSeconds: 60, ipLimit: 120, userLimit: 30 },"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/services.ts",
+      "reason": "契约/schema、provider/facade/路由接线或薄资源适配，整文件保守不计。",
+      "fragments": [
+        {
+          "line": 495,
+          "text": "...ports.notionJobs,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/persistence/postgres.ts",
+      "reason": "契约/schema、provider/facade/路由接线或薄资源适配，整文件保守不计。",
+      "fragments": [
+        {
+          "line": 1,
+          "text": "import { createPostgresNotionJobsStore } from \"./postgres-notion-jobs-store.ts\";"
+        },
+        {
+          "line": 67,
+          "text": "const notionJobs = createPostgresNotionJobsStore(sql);"
+        },
+        {
+          "line": 88,
+          "text": "[\"notifications\", notifications], [\"outbox\", outbox], [\"media\", media], [\"imports\", imports], [\"notionJobs\", notionJobs],"
+        },
+        {
+          "line": 106,
+          "text": "...notionJobs,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/persistence/sqlite-store.ts",
+      "reason": "契约/schema、provider/facade/路由接线或薄资源适配，整文件保守不计。",
+      "fragments": [
+        {
+          "line": 1,
+          "text": "import { createSqliteNotionJobsStore } from \"./sqlite-notion-jobs-store.ts\";"
+        },
+        {
+          "line": 45,
+          "text": "const notionJobs = createSqliteNotionJobsStore(db);"
+        },
+        {
+          "line": 57,
+          "text": "[\"outbox\", outbox], [\"media\", media], [\"imports\", imports], [\"notionJobs\", notionJobs], [\"operations\", operations],"
+        },
+        {
+          "line": 73,
+          "text": "...notionJobs,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/server.ts",
+      "reason": "契约/schema、provider/facade/路由接线或薄资源适配，整文件保守不计。",
+      "fragments": [
+        {
+          "line": 19,
+          "text": "import { notionJobSettings } from \"./infrastructure/notion-job-settings.ts\";"
+        },
+        {
+          "line": 23,
+          "text": "const apiRuntimes = new WeakMap<Server, { lifecycle: ReturnType<typeof createHttpLifecycle>; readiness: ReturnType<typeof createApiReadiness>; collections: HttpCollectionAdmission; closeImportRequests(): void; drainImportRequests(): Promise<void> }>();"
+        },
+        {
+          "line": 163,
+          "text": "apiRuntimes.set(server, { lifecycle, readiness, collections, closeImportRequests: handleRest.close, drainImportRequests: handleRest.drain });"
+        },
+        {
+          "line": 164,
+          "text": "server.once(\"close\", () => { readiness.close(); handleRest.close(); });"
+        },
+        {
+          "line": 175,
+          "text": "runtime.closeImportRequests();"
+        },
+        {
+          "line": 180,
+          "text": "], signal, async () => { await Promise.all([runtime.collections.drain(), runtime.drainImportRequests()]); });"
+        },
+        {
+          "line": 185,
+          "text": "notionJobSettings(env);"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/transport/rest/openapi/document.ts",
+      "reason": "契约/schema、provider/facade/路由接线或薄资源适配，整文件保守不计。",
+      "fragments": [
+        {
+          "line": 72,
+          "text": "function idempotencyParameter(mode: OperationMetadata[\"idempotency\"]): ReadonlyArray<Record<string, unknown>> {"
+        },
+        {
+          "line": 78,
+          "text": "required: mode === \"required\" || mode === \"notion-job\","
+        },
+        {
+          "line": 80,
+          "text": "mode === \"notion-job-lookup\""
+        },
+        {
+          "line": 81,
+          "text": "? \"Optional read-only selector: use the original request key to recover its status (zero or one array item) without a valid plan or an enabled admission key. Cannot be combined with query parameters. Does not enqueue or replay anything.\""
+        },
+        {
+          "line": 82,
+          "text": ": mode === \"notion-job\""
+        },
+        {
+          "line": 83,
+          "text": "? \"Required: 16–128 ASCII letters/digits/underscore/hyphen. While the preview is valid, the same owner/key and exact bundle/plan return the same status; a different request is 409 IMPORT_JOB_IDEMPOTENCY_CONFLICT. After expiry, read status/list.\""
+        },
+        {
+          "line": 84,
+          "text": ": mode === \"required\""
+        },
+        {
+          "line": 87,
+          "text": "schema: mode === \"notion-job\" || mode === \"notion-job-lookup\""
+        },
+        {
+          "line": 88,
+          "text": "? { type: \"string\", minLength: 16, maxLength: 128, pattern: \"^[A-Za-z0-9_-]{16,128}$\" }"
+        },
+        {
+          "line": 89,
+          "text": ": { type: \"string\", minLength: 1, maxLength: 300, pattern: \"^\\\\S(?:.*\\\\S)?$\" },"
+        },
+        {
+          "line": 132,
+          "text": "if (metadata.notModified) responses[\"304\"] = {"
+        },
+        {
+          "line": 133,
+          "text": "description: \"The caller's strong job ETag still matches. No response body; Cache-Control: no-store; Retry-After: 2 while active.\","
+        },
+        {
+          "line": 134,
+          "text": "headers: { ETag: { schema: { type: \"string\" } }, \"Cache-Control\": { schema: { const: \"no-store\" } } },"
+        },
+        {
+          "line": 135,
+          "text": "};"
+        },
+        {
+          "line": 163,
+          "text": "...(metadata.headers ?? []).map(parameter => ({ ...parameter, in: \"header\", required: parameter.required ?? false })),"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/transport/rest/openapi/operations.ts",
+      "reason": "契约/schema、provider/facade/路由接线或薄资源适配，整文件保守不计。",
+      "fragments": [
+        {
+          "line": 83,
+          "text": "readonly headers?: readonly QueryParameter[];"
+        },
+        {
+          "line": 84,
+          "text": "readonly notModified?: boolean;"
+        },
+        {
+          "line": 92,
+          "text": "readonly idempotency?: \"optional\" | \"required\" | \"notion-job\" | \"notion-job-lookup\";"
+        },
+        {
+          "line": 447,
+          "text": "\"POST imports.notion.jobs\": {"
+        },
+        {
+          "line": 448,
+          "text": "summary: \"Queue one approved Notion import without holding the HTTP connection\","
+        },
+        {
+          "line": 449,
+          "text": "description: \"Opt-in; disabled by default (409 IMPORT_JOBS_DISABLED). Requires the unchanged bundle and its authentic, unexpired preview plan. The separate finite drain command performs the existing importer; the API never executes or schedules queued import work. Idempotency is owner-scoped while the plan is valid; after expiry use list/status, never blindly submit a new key. Signed URLs and plan are encrypted with a separately provisioned key. The original 8 MiB/200-page/eight-image bounds and per-work revision/ownership checks remain. Capacity refusal is 429 IMPORT_QUEUE_FULL. A running job whose lease expires becomes interrupted, never automatically retried. This is not live sync or image checkpoint resume.\","
+        },
+        {
+          "line": 450,
+          "text": "security: \"session\", tags: [\"imports\"], idempotency: \"notion-job\","
+        },
+        {
+          "line": 451,
+          "text": "requestBody: { schema: \"NotionJobRequest\", required: true, description: \"Only bundle and planToken; no actor, credentials or lease.\" },"
+        },
+        {
+          "line": 452,
+          "text": "errors: [409, 413, 415, 429, 503],"
+        },
+        {
+          "line": 453,
+          "text": "response: { status: 202, description: \"The durable status; Location names the owner-scoped resource. Retry-After: 2 while active.\", data: \"NotionJobStatus\" },"
+        },
+        {
+          "line": 454,
+          "text": "},"
+        },
+        {
+          "line": 455,
+          "text": "\"GET imports.notion.jobs\": {"
+        },
+        {
+          "line": 456,
+          "text": "summary: \"List your own retained Notion import jobs\","
+        },
+        {
+          "line": 457,
+          "text": "description: \"Newest first, at most 20. Contains only bounded status facts and sanitized report ordinals, not source page ids, titles, content, error details, signed URLs or leases. Still available when admission is disabled. Status expires 24 hours after the input deadline. To recover a lost submission response after preview expiry or admission shutdown, supply the original Idempotency-Key header instead of a query: the array then contains only that owner/key match (zero or one). A key selector cannot be mixed with limit.\","
+        },
+        {
+          "line": 458,
+          "text": "security: \"session\", tags: [\"imports\"], query: [limitParameter(20, 20)], idempotency: \"notion-job-lookup\","
+        },
+        {
+          "line": 459,
+          "text": "response: { description: \"Your jobs only.\", data: \"NotionJobStatus\", array: true },"
+        },
+        {
+          "line": 460,
+          "text": "},"
+        },
+        {
+          "line": 461,
+          "text": "\"GET imports.notion.jobs.item\": {"
+        },
+        {
+          "line": 462,
+          "text": "summary: \"Read one of your Notion import jobs\","
+        },
+        {
+          "line": 463,
+          "text": "description: \"A missing job and another owner's job are indistinguishable 404s. No query parameters. Retry-After: 2 while active. completed is the last acknowledged report checkpoint, NOT proof that later works were not committed if the process crashed. Preview again and inspect your works/media after interruption. A strong ETag enables conditional reads: matching If-None-Match returns bodyless 304. Prefer: wait=0..5 optionally waits for change (only if the ETag matches); maximum five seconds, no SSE or scheduler. All responses stay no-store. At most 16 owner/job wait groups, four subscribers per group and two physical status reads are admitted; abandoned reads retain their slot until physical completion. A stuck/full status path returns 503 with Retry-After and must not trigger import replay.\","
+        },
+        {
+          "line": 464,
+          "text": "security: \"session\", tags: [\"imports\"], pathParams: { jobId: \"The server-issued UUID of your job.\" }, errors: [404, 503], notModified: true,"
+        },
+        {
+          "line": 465,
+          "text": "headers: ["
+        },
+        {
+          "line": 466,
+          "text": "{ name: \"If-None-Match\", description: \"One strong ETag from your previous status response. No wildcard, weak ETag or list.\", schema: { type: \"string\", pattern: '^\"[A-Za-z0-9_-]{43}\"$' } },"
+        },
+        {
+          "line": 467,
+          "text": "{ name: \"Prefer\", description: \"Optional bounded conditional wait. Status remains owner-scoped and private.\", schema: { type: \"string\", pattern: \"^wait=[0-5]$\" } },"
+        },
+        {
+          "line": 468,
+          "text": "],"
+        },
+        {
+          "line": 469,
+          "text": "response: { description: \"Sanitized durable progress.\", data: \"NotionJobStatus\" },"
+        },
+        {
+          "line": 470,
+          "text": "},"
+        },
+        {
+          "line": 471,
+          "text": "\"DELETE imports.notion.jobs.item\": {"
+        },
+        {
+          "line": 472,
+          "text": "summary: \"Cancel a queued or running Notion import job\","
+        },
+        {
+          "line": 473,
+          "text": "description: \"Idempotent. Deletes encrypted input and fences subsequent work transactions; waits for an already admitted transaction to settle. Does not undo earlier works or silently delete prepared media. Terminal jobs keep their state. Status remains readable when admission is disabled.\","
+        },
+        {
+          "line": 474,
+          "text": "security: \"session\", tags: [\"imports\"], pathParams: { jobId: \"The server-issued UUID of your job.\" }, errors: [404, 429],"
+        },
+        {
+          "line": 475,
+          "text": "response: { description: \"The resulting status, with explicit recovery instructions.\", data: \"NotionJobStatus\" },"
+        },
+        {
+          "line": 476,
+          "text": "},"
+        },
+        {
+          "line": 969,
+          "text": "429: \"Rate or import queue capacity limit reached (`RATE_LIMITED`, `IMPORT_QUEUE_FULL`); observe Retry-After.\","
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/transport/rest/openapi/schemas.ts",
+      "reason": "契约/schema、provider/facade/路由接线或薄资源适配，整文件保守不计。",
+      "fragments": [
+        {
+          "line": 1,
+          "text": "import { NOTION_JOB_STATES } from \"../../../application/notion-durable-jobs.ts\";"
+        },
+        {
+          "line": 651,
+          "text": "NotionJobRequest: {"
+        },
+        {
+          "line": 652,
+          "text": "type: \"object\", required: [\"bundle\", \"planToken\"],"
+        },
+        {
+          "line": 653,
+          "text": "properties: { bundle: ref(\"NotionBundle\"), planToken: { type: \"string\", maxLength: 524288 } },"
+        },
+        {
+          "line": 654,
+          "text": "},"
+        },
+        {
+          "line": 655,
+          "text": "NotionJobStatus: {"
+        },
+        {
+          "line": 656,
+          "text": "type: \"object\", required: [\"id\", \"state\", \"completed\", \"total\", \"createdAt\", \"updatedAt\", \"expiresAt\", \"retainUntil\", \"report\", \"recovery\"],"
+        },
+        {
+          "line": 657,
+          "text": "properties: {"
+        },
+        {
+          "line": 658,
+          "text": "id: { type: \"string\", format: \"uuid\" }, state: { type: \"string\", enum: [...NOTION_JOB_STATES] },"
+        },
+        {
+          "line": 659,
+          "text": "completed: { type: \"integer\", minimum: 0, maximum: MAX_IMPORT_PAGES }, total: { type: \"integer\", minimum: 0, maximum: MAX_IMPORT_PAGES },"
+        },
+        {
+          "line": 660,
+          "text": "createdAt: { type: \"integer\", description: \"Database-clock Unix milliseconds.\" },"
+        },
+        {
+          "line": 661,
+          "text": "updatedAt: { type: \"integer\" }, expiresAt: { type: \"integer\", description: \"The original preview expiry; never extended by workers.\" },"
+        },
+        {
+          "line": 662,
+          "text": "retainUntil: { type: \"integer\", description: \"Status retention deadline in Unix milliseconds; reads/maintenance remove expired statuses.\" },"
+        },
+        {
+          "line": 663,
+          "text": "recovery: { type: \"string\", enum: [\"none\", \"preview-again\", \"review-media-and-preview\"] },"
+        },
+        {
+          "line": 664,
+          "text": "report: nullable(ref(\"NotionJobReport\")),"
+        },
+        {
+          "line": 665,
+          "text": "},"
+        },
+        {
+          "line": 666,
+          "text": "},"
+        },
+        {
+          "line": 667,
+          "text": "NotionJobReport: {"
+        },
+        {
+          "line": 668,
+          "text": "type: \"object\", required: [\"summary\", \"pages\"],"
+        },
+        {
+          "line": 669,
+          "text": "properties: {"
+        },
+        {
+          "line": 670,
+          "text": "summary: { type: \"object\", required: [\"create\", \"update\", \"skip\", \"refused\", \"failed\"], properties:"
+        },
+        {
+          "line": 671,
+          "text": "Object.fromEntries([\"create\", \"update\", \"skip\", \"refused\", \"failed\"].map(action => [action, { type: \"integer\", minimum: 0, maximum: MAX_IMPORT_PAGES }])) },"
+        },
+        {
+          "line": 672,
+          "text": "pages: { type: \"array\", maxItems: MAX_IMPORT_PAGES, items: { type: \"object\", required: [\"ordinal\", \"action\", \"locale\", \"articleId\", \"issueCodes\"], properties: {"
+        },
+        {
+          "line": 673,
+          "text": "ordinal: { type: \"integer\", minimum: 1, maximum: MAX_IMPORT_PAGES, description: \"One-based report order, not original bundle page order. No source title/id is retained.\" },"
+        },
+        {
+          "line": 674,
+          "text": "action: { type: \"string\", enum: [\"create\", \"update\", \"skip\", \"refused\", \"failed\"] },"
+        },
+        {
+          "line": 675,
+          "text": "locale: { type: \"string\", enum: [\"zh-CN\", \"zh-TW\", \"en\", \"\"] }, articleId: nullable({ type: \"string\", format: \"uuid\" }),"
+        },
+        {
+          "line": 676,
+          "text": "issueCodes: { type: \"array\", uniqueItems: true, items: { type: \"string\", enum: [...INTERCHANGE_ISSUE_CODES] } },"
+        },
+        {
+          "line": 677,
+          "text": "} } },"
+        },
+        {
+          "line": 678,
+          "text": "},"
+        },
+        {
+          "line": 679,
+          "text": "},"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/transport/rest/routes.ts",
+      "reason": "契约/schema、provider/facade/路由接线或薄资源适配，整文件保守不计。",
+      "fragments": [
+        {
+          "line": 129,
+          "text": "{ id: \"imports.notion.jobs\", methods: [\"GET\", \"POST\"], segments: [literal(\"imports\"), literal(\"notion\"), literal(\"jobs\")] },"
+        },
+        {
+          "line": 130,
+          "text": "{ id: \"imports.notion.jobs.item\", methods: [\"GET\", \"DELETE\"], segments: [literal(\"imports\"), literal(\"notion\"), literal(\"jobs\"), param(\"jobId\")] },"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/transport/rest/routes/context.ts",
+      "reason": "契约/schema、provider/facade/路由接线或薄资源适配，整文件保守不计。",
+      "fragments": [
+        {
+          "line": 1,
+          "text": "import type { NotionJobPoller } from \"../../../application/notion-job-poll.ts\";"
+        },
+        {
+          "line": 3,
+          "text": "import type { NotionJobService } from \"../../../application/notion-job-service.ts\";"
+        },
+        {
+          "line": 34,
+          "text": "readonly notionJobs: NotionJobService | null;"
+        },
+        {
+          "line": 35,
+          "text": "readonly notionPoller: NotionJobPoller | null;"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/transport/rest/routes/index.ts",
+      "reason": "契约/schema、provider/facade/路由接线或薄资源适配，整文件保守不计。",
+      "fragments": [
+        {
+          "line": 14,
+          "text": "import { handleNotionJobRoutes } from \"./notion-jobs.ts\";"
+        },
+        {
+          "line": 41,
+          "text": "handleNotionJobRoutes,"
+        }
+      ]
+    },
+    {
+      "file": "apps/web-rr/app/routes/api.authoring.notion-job.ts",
+      "reason": "契约/schema、provider/facade/路由接线或薄资源适配，整文件保守不计。",
+      "fragments": [
+        {
+          "line": 1,
+          "text": "import type { ActionFunctionArgs, LoaderFunctionArgs } from \"react-router\";"
+        },
+        {
+          "line": 2,
+          "text": "import { handleNotionJobRequest } from \"@bot-thk/web-http\";"
+        },
+        {
+          "line": 3,
+          "text": "import { apiProxyConfig } from \"../lib/runtime.ts\";"
+        },
+        {
+          "line": 5,
+          "text": "export function loader({ request, params }: LoaderFunctionArgs) {"
+        },
+        {
+          "line": 6,
+          "text": "return handleNotionJobRequest(request, { id: params.id ?? \"\" }, apiProxyConfig());"
+        },
+        {
+          "line": 7,
+          "text": "}"
+        },
+        {
+          "line": 8,
+          "text": "export function action({ request, params }: ActionFunctionArgs) {"
+        },
+        {
+          "line": 9,
+          "text": "return handleNotionJobRequest(request, { id: params.id ?? \"\" }, apiProxyConfig());"
+        },
+        {
+          "line": 10,
+          "text": "}"
+        }
+      ]
+    },
+    {
+      "file": "apps/web-rr/app/routes/api.authoring.notion-jobs.ts",
+      "reason": "契约/schema、provider/facade/路由接线或薄资源适配，整文件保守不计。",
+      "fragments": [
+        {
+          "line": 1,
+          "text": "import type { ActionFunctionArgs, LoaderFunctionArgs } from \"react-router\";"
+        },
+        {
+          "line": 2,
+          "text": "import { handleNotionJobsRequest } from \"@bot-thk/web-http\";"
+        },
+        {
+          "line": 3,
+          "text": "import { apiProxyConfig } from \"../lib/runtime.ts\";"
+        },
+        {
+          "line": 5,
+          "text": "export function loader({ request }: LoaderFunctionArgs) {"
+        },
+        {
+          "line": 6,
+          "text": "return handleNotionJobsRequest(request, apiProxyConfig());"
+        },
+        {
+          "line": 7,
+          "text": "}"
+        },
+        {
+          "line": 8,
+          "text": "export function action({ request }: ActionFunctionArgs) {"
+        },
+        {
+          "line": 9,
+          "text": "return handleNotionJobsRequest(request, apiProxyConfig());"
+        },
+        {
+          "line": 10,
+          "text": "}"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-http/src/index.ts",
+      "reason": "契约/schema、provider/facade/路由接线或薄资源适配，整文件保守不计。",
+      "fragments": [
+        {
+          "line": 230,
+          "text": "export { handleNotionJobsRequest, handleNotionJobRequest } from \"./notion-jobs.ts\";"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/notion-durable-jobs.ts",
+      "reason": "静态错误文案和响应码表，不计生产功能行。",
+      "fragments": [
+        {
+          "line": 52,
+          "text": "const ERRORS = {"
+        },
+        {
+          "line": 53,
+          "text": "IMPORT_STATUS_BUSY: [503, \"Import status capacity is unavailable. Retry later.\"],"
+        },
+        {
+          "line": 54,
+          "text": "IMPORT_STATUS_UNAVAILABLE: [503, \"Import status is unavailable. Retry the status read; do not restart the import.\"],"
+        },
+        {
+          "line": 55,
+          "text": "IMPORT_QUEUE_FULL: [429, \"Import job capacity is unavailable. Try later; do not change your idempotency key to retry.\"],"
+        },
+        {
+          "line": 56,
+          "text": "IMPORT_JOB_INPUT_INVALID: [400, \"The import job input or Idempotency-Key is invalid. Supply only a bundle and its preview plan; never send a Notion credential.\"],"
+        },
+        {
+          "line": 57,
+          "text": "IMPORT_JOB_IDEMPOTENCY_CONFLICT: [409, \"This idempotency key belongs to a different import job request.\"],"
+        },
+        {
+          "line": 58,
+          "text": "IMPORT_JOB_LEASE_LOST: [409, \"The import job is no longer running under this lease. Review your works and media, then preview again.\"],"
+        },
+        {
+          "line": 59,
+          "text": "IMPORT_JOBS_DISABLED: [409, \"Durable import jobs are not enabled on this instance. Synchronous import remains available.\"],"
+        },
+        {
+          "line": 60,
+          "text": "} as const;"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/persistence/notion-job-command.ts",
+      "reason": "静态 CLI 帮助文字，不计。",
+      "fragments": [
+        {
+          "line": 16,
+          "text": "const HELP = `Usage: pnpm --filter @bot-thk/api jobs:notion [drain|inspect|check|sweep|--help]"
+        },
+        {
+          "line": 18,
+          "text": "drain    Run at most NOTION_IMPORT_DRAIN_MAX_JOBS (1..10, default 1) sequentially."
+        },
+        {
+          "line": 19,
+          "text": "Requires explicit NOTION_IMPORT_JOBS_ENABLED=true, the external encryption"
+        },
+        {
+          "line": 20,
+          "text": "key and the API authentication configuration. No Notion credential."
+        },
+        {
+          "line": 21,
+          "text": "check    Read-only decryption/signature/generation check of at most 32 active inputs."
+        },
+        {
+          "line": 22,
+          "text": "Requires external keys and authentication settings, not enablement."
+        },
+        {
+          "line": 23,
+          "text": "Quiesce admissions and drain processes first; emits only aggregate facts."
+        },
+        {
+          "line": 24,
+          "text": "inspect  Read aggregate queue counts/age/bytes only; no key or authentication setup."
+        },
+        {
+          "line": 25,
+          "text": "sweep    Expire queued/running input and delete old statuses; no decryption key."
+        },
+        {
+          "line": 26,
+          "text": "An expired running lease is interrupted, NEVER retried."
+        },
+        {
+          "line": 28,
+          "text": "All operations use the configured API database and require current migrations."
+        },
+        {
+          "line": 29,
+          "text": "No migration, key generation/rotation, deployment or media deletion is automatic."
+        },
+        {
+          "line": 30,
+          "text": "Default cooperative drain deadline: 300000ms (1000..900000). Cancellation stops"
+        },
+        {
+          "line": 31,
+          "text": "admitting work and waits for physical operations; it is not a hard process kill."
+        },
+        {
+          "line": 32,
+          "text": "Keep a separately bounded host termination budget and inspect interrupted jobs."
+        },
+        {
+          "line": 33,
+          "text": "`;"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/persistence/sqlite-notion-jobs-store.ts",
+      "reason": "通用 BEGIN/COMMIT/ROLLBACK 包装，与既有 adapter 事务模式相同，保守排除。",
+      "fragments": [
+        {
+          "line": 27,
+          "text": "function transaction<T>(work: () => T): T {"
+        },
+        {
+          "line": 28,
+          "text": "db.exec(\"BEGIN IMMEDIATE\");"
+        },
+        {
+          "line": 29,
+          "text": "try {"
+        },
+        {
+          "line": 30,
+          "text": "const result = work();"
+        },
+        {
+          "line": 31,
+          "text": "db.exec(\"COMMIT\");"
+        },
+        {
+          "line": 32,
+          "text": "return result;"
+        },
+        {
+          "line": 33,
+          "text": "} catch (error) {"
+        },
+        {
+          "line": 34,
+          "text": "try { db.exec(\"ROLLBACK\"); } catch { /* preserve the original error */ }"
+        },
+        {
+          "line": 35,
+          "text": "throw error;"
+        },
+        {
+          "line": 36,
+          "text": "}"
+        },
+        {
+          "line": 37,
+          "text": "}"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-http/src/notion-jobs.ts",
+      "reason": "薄同源 helper 包装，复用既有 policy，不再计同一功能。",
+      "fragments": [
+        {
+          "line": 10,
+          "text": "const invalid = () => errorResponse(\"BAD_USER_INPUT\", \"Invalid import job request. Use only a bundle and its signed preview plan.\", 400);"
+        },
+        {
+          "line": 11,
+          "text": "function sameOrigin(request: Request): boolean {"
+        },
+        {
+          "line": 12,
+          "text": "return isSameOriginMutation(request.url, request.headers.get(\"origin\"), request.headers.get(\"host\"));"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-http/src/notion-jobs.ts",
+      "reason": "沿用同步 authoring handler 的 expected actor 解码/校验片段，排除语义复制。",
+      "fragments": [
+        {
+          "line": 32,
+          "text": "if (expected !== null) {"
+        },
+        {
+          "line": 33,
+          "text": "try { expectedActorId = decodeURIComponent(expected); } catch { return invalid(); }"
+        },
+        {
+          "line": 34,
+          "text": "if (!expectedActorId || expectedActorId.length > 200 || /[\\u0000-\\u001f\\u007f]/.test(expectedActorId)) return invalid();"
+        },
+        {
+          "line": 35,
+          "text": "}"
+        },
+        {
+          "line": 36,
+          "text": "const body = await readLimitedJson(request, AUTHORING_NOTION_IMPORT_MAX_BYTES);"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/persistence/notion-job-command.ts",
+      "reason": "沿用同步 Notion import 的下载/媒体上传接线；安全责任保留，但不重计旧能力。",
+      "fragments": [
+        {
+          "line": 91,
+          "text": "const fetched = await fetchNotionImage(url);"
+        },
+        {
+          "line": 92,
+          "text": "if (controller.signal.aborted) throw new NotionJobError(\"IMPORT_JOB_LEASE_LOST\");"
+        },
+        {
+          "line": 93,
+          "text": "if (!fetched.ok) return fetched;"
+        },
+        {
+          "line": 94,
+          "text": "try {"
+        },
+        {
+          "line": 95,
+          "text": "const reuseId = /^\\/api\\/media\\/([0-9a-f-]{36})$/i.exec(previousSrc ?? \"\")?.[1];"
+        },
+        {
+          "line": 96,
+          "text": "const asset = await media.upload({ ownerId, bytes: fetched.bytes, contentType: fetched.contentType,"
+        },
+        {
+          "line": 97,
+          "text": "...(reuseId ? { reuseId } : {}) });"
+        },
+        {
+          "line": 98,
+          "text": "return { ok: true, src: asset.src };"
+        },
+        {
+          "line": 99,
+          "text": "} catch { return { ok: false, reason: \"image could not be validated or stored\" }; }"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/notion-durable-jobs.ts",
+      "reason": "独立 Node 运行时类型擦除核对：historical-runtime-fragment；已交付/本轮重复的运行时片段或仅类型/标点，不计。",
+      "fragments": [
+        {
+          "line": 63,
+          "text": "constructor(code: keyof typeof ERRORS) {"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/notion-job-check.ts",
+      "reason": "独立 Node 运行时类型擦除核对：historical-runtime-fragment；已交付/本轮重复的运行时片段或仅类型/标点，不计。",
+      "fragments": [
+        {
+          "line": 26,
+          "text": "let payload: NotionJobPayload;"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/notion-job-check.ts",
+      "reason": "独立 Node 运行时类型擦除核对：historical-runtime-fragment；已交付/本轮重复的运行时片段或仅类型/标点，不计。",
+      "fragments": [
+        {
+          "line": 74,
+          "text": "function stopped(): boolean {"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/notion-job-poll.ts",
+      "reason": "独立 Node 运行时类型擦除核对：historical-runtime-fragment；已交付/本轮重复的运行时片段或仅类型/标点，不计。",
+      "fragments": [
+        {
+          "line": 27,
+          "text": "const groups = new Map<string, Group>();"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/notion-job-poll.ts",
+      "reason": "独立 Node 运行时类型擦除核对：historical-runtime-fragment；已交付/本轮重复的运行时片段或仅类型/标点，不计。",
+      "fragments": [
+        {
+          "line": 28,
+          "text": "const queued: Group[] = [];"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/notion-job-poll.ts",
+      "reason": "独立 Node 运行时类型擦除核对：historical-runtime-fragment；已交付/本轮重复的运行时片段或仅类型/标点，不计。",
+      "fragments": [
+        {
+          "line": 124,
+          "text": "return new Promise<Result>((resolve, reject) => {"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/persistence/notion-job-command.ts",
+      "reason": "独立 Node 运行时类型擦除核对：historical-runtime-fragment；已交付/本轮重复的运行时片段或仅类型/标点，不计。",
+      "fragments": [
+        {
+          "line": 57,
+          "text": "let runtime: Awaited<ReturnType<typeof createPersistenceRuntime>> | null = null;"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/persistence/notion-job-command.ts",
+      "reason": "独立 Node 运行时类型擦除核对：historical-runtime-fragment；已交付/本轮重复的运行时片段或仅类型/标点，不计。",
+      "fragments": [
+        {
+          "line": 58,
+          "text": "let storage: ReturnType<typeof createMediaObjectStorage> = null;"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/persistence/postgres-notion-jobs-store.ts",
+      "reason": "独立 Node 运行时类型擦除核对：erased-or-trivia；已交付/本轮重复的运行时片段或仅类型/标点，不计。",
+      "fragments": [
+        {
+          "line": 182,
+          "text": "} satisfies NotionJobsPersistencePort;"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/transport/rest/routes/notion-jobs.ts",
+      "reason": "独立 Node 运行时类型擦除核对：historical-runtime-fragment；已交付/本轮重复的运行时片段或仅类型/标点，不计。",
+      "fragments": [
+        {
+          "line": 30,
+          "text": "let status;"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-http/src/forward.ts",
+      "reason": "独立 Node 运行时类型擦除核对：duplicate-runtime-fragment；已交付/本轮重复的运行时片段或仅类型/标点，不计。",
+      "fragments": [
+        {
+          "line": 215,
+          "text": "conditional,"
+        }
+      ]
+    },
+    {
+      "file": "apps/web-rr/app/routes.ts",
+      "reason": "薄路由注册接线，不计新生产功能。",
+      "fragments": [
+        {
+          "line": 100,
+          "text": "route(\"api/authoring/notion-jobs\", \"routes/api.authoring.notion-jobs.ts\"),"
+        },
+        {
+          "line": 101,
+          "text": "route(\"api/authoring/notion-jobs/:id\", \"routes/api.authoring.notion-job.ts\"),"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/persistence/provider-migration-transfer.ts",
+      "reason": "新增转移拒绝的静态错误文案本身不计功能；实际拒绝逻辑另计。",
+      "fragments": [
+        {
+          "line": 71,
+          "text": "ACTIVE_IMPORT_JOBS: \"Cancel or finish local Notion import jobs, sweep expired jobs, then quiesce both databases before transfer.\","
+        }
+      ]
+    }
+  ]
+}

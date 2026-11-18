@@ -1,3 +1,5 @@
+import { assertPostgresNotionJobFence } from "./postgres-notion-jobs-store.ts";
+import { NotionJobError } from "../application/notion-durable-jobs.ts";
 import { articleIdempotencyKeyHash } from "../application/article-idempotency.ts";
 import { assertNotionImportWorkState, type CommitNotionImportWorkInput, type CommittedNotionImportEdition } from "../application/notion-import-plan.ts";
 import { ArticleSlugConflictError, ImportConflictError } from "../domain/errors.ts";
@@ -60,6 +62,10 @@ export function createPostgresImportStore(sql: PgDatabase, options: { transactio
 
     async commitNotionImportWork(input: CommitNotionImportWorkInput): Promise<CommittedNotionImportEdition[]> {
       return sql.begin(async (tx) => {
+        if (input.jobFence) {
+          if (input.jobFence.ownerId !== input.actorId) throw new NotionJobError("IMPORT_JOB_LEASE_LOST");
+          await assertPostgresNotionJobFence(tx, input.jobFence);
+        }
         const expected = input.expected;
         // Claims of an absent page/locale cannot be row-locked. All adapter link
         // writers take the same sorted page locks before looking or inserting.
@@ -109,6 +115,7 @@ export function createPostgresImportStore(sql: PgDatabase, options: { transactio
             articleId, ownerId: input.actorId, digest: edition.digest, syncedAt: edition.syncedAt });
           committed.push({ externalId: edition.externalId, article, created });
         }
+        if (input.jobFence) await assertPostgresNotionJobFence(tx, input.jobFence);
         return committed;
       });
     },

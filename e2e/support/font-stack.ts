@@ -8,14 +8,14 @@ import { promisify } from "node:util";
 import { isolatedEnvironment } from "../../scripts/e2e-runner.ts";
 import { freePort } from "../../scripts/portable-stack.ts";
 
-export type FontStack = { apiBaseUrl: string; webBaseUrl: string; databasePath: string; close(): Promise<void> };
+export type FontStack = { apiBaseUrl: string; webBaseUrl: string; databasePath: string; close(): Promise<void>; drainNotionJobs(): Promise<string> };
 
 /**
  * Performance fixtures must not depend on which other journeys created related
  * articles first. Use the same real production build/API, but a private SQLite
  * database and ephemeral ports, never a mocked/truncated reader response.
  */
-export async function startFontStack(options: { mediaEndpoint?: string } = {}): Promise<FontStack> {
+export async function startFontStack(options: { mediaEndpoint?: string; notionJobs?: boolean } = {}): Promise<FontStack> {
   const root = fileURLToPath(new URL("../../", import.meta.url));
   const directory = await mkdtemp(join(tmpdir(), "no-wave-fonts-"));
   const children: ChildProcess[] = [];
@@ -26,6 +26,10 @@ export async function startFontStack(options: { mediaEndpoint?: string } = {}): 
   while (webPort === apiPort) webPort = await freePort();
   const env = isolatedEnvironment(process.env, { apiPort, webPort,
     databasePath: join(directory, "fonts.sqlite"), secret: randomBytes(32).toString("hex"), clientAddressSecret: randomBytes(32).toString("hex") });
+  if (options.notionJobs) Object.assign(env, {
+    NOTION_IMPORT_JOBS_ENABLED: "true", NOTION_IMPORT_JOB_KEY: randomBytes(32).toString("base64"),
+    NOTION_IMPORT_DRAIN_MAX_JOBS: "1", NOTION_IMPORT_DRAIN_DEADLINE_MS: "10000",
+  });
   if (options.mediaEndpoint) Object.assign(env, {
     MEDIA_S3_ENDPOINT: options.mediaEndpoint, MEDIA_S3_BUCKET: "browser-security-fixture", MEDIA_S3_REGION: "us-east-1",
     MEDIA_S3_ACCESS_KEY_ID: "fixture-only-access-key", MEDIA_S3_SECRET_ACCESS_KEY: "fixture-only-not-a-production-secret",
@@ -72,6 +76,11 @@ export async function startFontStack(options: { mediaEndpoint?: string } = {}): 
     start("apps/api/src/server.ts", root, env);
     start("server.ts", join(root, "apps/web-rr"), { ...env, PORT: String(webPort) });
     await Promise.all([ready(`${apiBaseUrl}/ready`), ready(`${webBaseUrl}/healthz`)]);
-    return { apiBaseUrl, webBaseUrl, databasePath: join(directory, "fonts.sqlite"), close };
+    return { apiBaseUrl, webBaseUrl, databasePath: join(directory, "fonts.sqlite"), close,
+      async drainNotionJobs() {
+        const result = await promisify(execFile)(process.execPath, ["apps/api/src/persistence/notion-job-command.ts", "drain"], { cwd: root, env, timeout: 20_000 });
+        return result.stdout;
+      },
+    };
   } catch (error) { await close(); throw error; }
 }

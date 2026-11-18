@@ -69,18 +69,24 @@ function queryParameters(parameters: readonly QueryParameter[] | undefined): Rea
   }));
 }
 
-function idempotencyParameter(mode: "optional" | "required" | undefined): ReadonlyArray<Record<string, unknown>> {
+function idempotencyParameter(mode: OperationMetadata["idempotency"]): ReadonlyArray<Record<string, unknown>> {
   if (mode === undefined) return [];
   return [
     {
       name: "Idempotency-Key",
       in: "header",
-      required: mode === "required",
+      required: mode === "required" || mode === "notion-job",
       description:
-        mode === "required"
+        mode === "notion-job-lookup"
+          ? "Optional read-only selector: use the original request key to recover its status (zero or one array item) without a valid plan or an enabled admission key. Cannot be combined with query parameters. Does not enqueue or replay anything."
+          : mode === "notion-job"
+          ? "Required: 16–128 ASCII letters/digits/underscore/hyphen. While the preview is valid, the same owner/key and exact bundle/plan return the same status; a different request is 409 IMPORT_JOB_IDEMPOTENCY_CONFLICT. After expiry, read status/list."
+          : mode === "required"
           ? "Required. A replay with the same key and the same request returns the row the first attempt stored; the same key with a different request is `409 IDEMPOTENCY_CONFLICT`."
           : "Optional. With it, a retry with the same key and the same request returns the row the first attempt stored; without it there is no replay protection.",
-      schema: { type: "string", minLength: 1, maxLength: 300, pattern: "^\\S(?:.*\\S)?$" },
+      schema: mode === "notion-job" || mode === "notion-job-lookup"
+        ? { type: "string", minLength: 16, maxLength: 128, pattern: "^[A-Za-z0-9_-]{16,128}$" }
+        : { type: "string", minLength: 1, maxLength: 300, pattern: "^\\S(?:.*\\S)?$" },
     },
   ];
 }
@@ -123,6 +129,10 @@ function responseFor(metadata: OperationMetadata): Record<string, unknown> {
 function responsesFor(metadata: OperationMetadata): Record<string, unknown> {
   const responses: Record<string, unknown> = {};
   responses[String(metadata.response.status ?? 200)] = responseFor(metadata);
+  if (metadata.notModified) responses["304"] = {
+    description: "The caller's strong job ETag still matches. No response body; Cache-Control: no-store; Retry-After: 2 while active.",
+    headers: { ETag: { schema: { type: "string" } }, "Cache-Control": { schema: { const: "no-store" } } },
+  };
 
   // `optional-session` operations answer anonymously, so a 401 would be a lie.
   const statuses = new Set<number>([400, ...(metadata.security === "session" ? [401] : []), ...(metadata.errors ?? [])]);
@@ -150,6 +160,7 @@ function operationFor(route: RestRoute, method: HttpMethod, metadata: OperationM
   const parameters = [
     ...pathParameters(route, metadata),
     ...queryParameters(metadata.query),
+    ...(metadata.headers ?? []).map(parameter => ({ ...parameter, in: "header", required: parameter.required ?? false })),
     ...idempotencyParameter(metadata.idempotency),
   ];
   if (parameters.length > 0) operation.parameters = parameters;

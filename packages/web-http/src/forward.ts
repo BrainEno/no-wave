@@ -23,6 +23,10 @@ import { articleCollectionLimits } from "./article-collection-policy.ts";
  * when the API answers 401, and clears the cookies when the refresh token is
  * rejected. Tokens are never returned to the browser.
  */
+type JobConditionals = { etag?: string; prefer?: string };
+const JOB_STATUS_PATH = /^api\/v1\/imports\/notion\/jobs\/[0-9a-f-]{36}$/i;
+const JOB_ETAG = /^"[A-Za-z0-9_-]{43}"$/;
+
 export type ForwardMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 /**
@@ -48,6 +52,8 @@ type BufferedUpstream = {
    */
   retryAfter: string | null;
   stream?: ReadableStream<Uint8Array> | null;
+  etag?: string | null;
+  location?: string | null;
 };
 
 /** The `data` field of a `{ data: ... }` envelope, or `null` when unusable. */
@@ -84,8 +90,13 @@ async function callApi(
   idempotencyKey: string | null,
   timeoutMs: number,
   callerSignal: AbortSignal,
+  conditional?: JobConditionals,
 ): Promise<BufferedUpstream> {
   const headers = new Headers({ accept: "application/json" });
+  if (method === "GET" && JOB_STATUS_PATH.test(path)) {
+    if (conditional?.etag && JOB_ETAG.test(conditional.etag)) headers.set("if-none-match", conditional.etag);
+    if (conditional?.prefer && /^wait=[0-5]$/.test(conditional.prefer)) headers.set("prefer", conditional.prefer);
+  }
   if (body !== undefined) headers.set("content-type", contentType);
   if (token) headers.set("authorization", `Bearer ${token}`);
   setIdempotencyKeyHeader(headers, idempotencyKey);
@@ -120,6 +131,8 @@ async function callApi(
       ? JSON.stringify({ error: { code: "SERVICE_UNAVAILABLE", message: "The API service is temporarily unavailable." } })
       : buffered.status === 401 ? unauthorizedText(buffered) : upstreamJsonText(buffered),
     retryAfter: buffered.headers.get("retry-after"),
+    etag: method === "GET" && JOB_STATUS_PATH.test(path) ? buffered.headers.get("etag") : null,
+    location: method === "POST" && path === "api/v1/imports/notion/jobs" ? buffered.headers.get("location") : null,
   };
 }
 
@@ -132,6 +145,7 @@ export async function forwardAuthoringRequest(
   contentType = "application/json; charset=utf-8",
   expectedActorId?: string,
   verifyViewerIfPresent = false,
+  conditional?: JobConditionals,
 ): Promise<Response> {
   const base = config.apiBaseUrl;
   if (!base) {
@@ -198,6 +212,7 @@ export async function forwardAuthoringRequest(
       request.headers.get("idempotency-key"),
       timeoutMs,
       request.signal,
+      conditional,
     );
   }
 
@@ -251,6 +266,9 @@ export async function forwardAuthoringRequest(
     // left the browser with no way to back off except guessing (#244).
     const retryAfterSeconds = parseRetryAfterSeconds(upstream.retryAfter);
     if (retryAfterSeconds !== null) headers.set("retry-after", String(retryAfterSeconds));
+    if (upstream.etag && JOB_ETAG.test(upstream.etag)) headers.set("etag", upstream.etag);
+    const jobLocation = /^\/api\/v1\/imports\/notion\/jobs\/([0-9a-f-]{36})$/i.exec(upstream.location ?? "");
+    if (jobLocation && upstream.status === 202) headers.set("location", `/api/authoring/notion-jobs/${jobLocation[1]}`);
     response = new Response([204, 205, 304].includes(upstream.status) ? null : upstream.stream ?? upstream.text, { status: upstream.status, headers });
   } else {
     response = errorResponse("SERVICE_UNAVAILABLE", "The API service could not be reached.", 502);

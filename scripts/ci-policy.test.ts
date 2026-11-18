@@ -5,11 +5,11 @@ import test from "node:test";
 const root = new URL("..", import.meta.url);
 const workflow = readFileSync(new URL(".github/workflows/ci.yml", root), "utf8");
 
-test("CI avoids duplicate branch pushes but covers PRs and main", () => {
+test("CI covers PRs, main and explicit Arena pre-PR verification branches", () => {
   const triggers = workflow.slice(workflow.indexOf("on:"), workflow.indexOf("concurrency:"));
-  assert.match(triggers, /push:\s*\n\s*branches: \["main"\]/);
+  assert.match(triggers, /push:\s*\n\s*branches: \["main", "arena\/\*\*"\]/);
   assert.match(triggers, /pull_request:\s*\n\s*branches: \["main"\]/);
-  assert.doesNotMatch(triggers, /\*\*/);
+  assert.equal((triggers.match(/\*\*/g) ?? []).length, 1, "only the explicit Arena namespace may use a wildcard");
 });
 
 test("PR runs cancel only older runs in their own PR group", () => {
@@ -41,10 +41,10 @@ test("the required verify job audits all locked dependencies at high severity", 
   assert.match(gate, /\"\$VERIFY_RESULT\"/);
 });
 
-test("CodeQL runs on PRs and main with explicit minimal permissions", () => {
+test("CodeQL covers the same pre-PR Arena branches with explicit minimal permissions", () => {
   const codeql = readFileSync(new URL(".github/workflows/codeql.yml", root), "utf8");
   assert.match(codeql, /pull_request:\s*\n\s*branches: \["main"\]/);
-  assert.match(codeql, /push:\s*\n\s*branches: \["main"\]/);
+  assert.match(codeql, /push:\s*\n\s*branches: \["main", "arena\/\*\*"\]/);
   assert.match(codeql, /contents: read/);
   assert.match(codeql, /security-events: write/);
   assert.match(codeql, /github\/codeql-action\/init@v4/);

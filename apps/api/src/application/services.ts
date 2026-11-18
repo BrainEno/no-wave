@@ -492,6 +492,7 @@ export function createApplicationServices({
     ...ports.rateLimits,
     ...ports.outbox,
     ...ports.imports,
+    ...ports.notionJobs,
     ...ports.operations,
     isEditor,
     assignUserRole,

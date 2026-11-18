@@ -71,6 +71,8 @@ const POLICIES: Readonly<Record<string, WriteRateLimitPolicy>> = Object.freeze({
   // far too few for a loop. The report is what makes retrying rarely necessary:
   // a failed page is named, so the fix is a new bundle, not another attempt.
   "POST imports.notion": { endpoint: "import.notion", windowSeconds: 600, ipLimit: 20, userLimit: 10 },
+  "POST imports.notion.jobs": { endpoint: "import.notion", windowSeconds: 600, ipLimit: 20, userLimit: 10 },
+  "DELETE imports.notion.jobs.item": { endpoint: "import.notion.cancel", windowSeconds: 60, ipLimit: 120, userLimit: 30 },
   "POST conversations": { endpoint: "conversation.create", windowSeconds: 60, ipLimit: 120, userLimit: 60 },
   "POST conversations.messages": { endpoint: "message.send", windowSeconds: 60, ipLimit: 120, userLimit: 30 },
   "PATCH conversations.participants": { endpoint: "conversation.participants.update", windowSeconds: 60, ipLimit: 120, userLimit: 60 },
