@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
@@ -88,18 +89,34 @@ test("nested HTTP and untrusted ingresses shadow HTTPS instead of inheriting ano
 });
 
 test("parallel native, trusted-proxy and forged requests do not leak TLS authority or attribution", async () => {
+  const secret = "fixture-only-transport-proof-secret-at-least-32-characters";
+  const started = 1_800_000_000_000;
+  let now = started;
   const bridge = createWebClientAddressBridge({ WEB_TRUSTED_PROXY_HOPS: "1", WEB_TRUSTED_PROXY_PEERS: "10.40.0.0/24",
-    BFF_CLIENT_ADDRESS_SECRET: "fixture-only-transport-proof-secret-at-least-32-characters" });
+    BFF_CLIENT_ADDRESS_SECRET: secret }, () => now);
+  const signed = (address: string, at: number) => {
+    const seconds = Math.floor(at / 1000);
+    const signature = createHmac("sha256", secret)
+      .update(JSON.stringify(["no-wave:bff-client-address:v1", seconds, "GET", "/api/v1/articles", address])).digest("hex");
+    return { "x-nw-client-address": address, "x-nw-client-address-proof": `v1.${seconds}.${signature}` };
+  };
   const results = await Promise.all(Array.from({ length: 18 }, async (_, index) => {
     const secure = index % 3 !== 2;
     const native = index % 3 === 0;
+    const address = native ? "203.0.113.8" : index % 3 === 1 ? "203.0.113.9" : "192.0.2.1";
     const input = native ? request("203.0.113.8", {}, true) : request(index % 3 === 1 ? "10.40.0.1" : "192.0.2.1", directHeaders);
     return bridge.run(input, async () => {
       const before = upstreamClientAddressHeaders("https://api.example.test/api/v1/articles", "GET");
+      assert.deepEqual(before, signed(address, started));
       await delay(index % 4);
       assert.equal(currentWebRequestIsSecure(), secure);
-      assert.deepEqual(upstreamClientAddressHeaders("https://api.example.test/api/v1/articles", "GET"), before);
-      assert.equal(before["x-nw-client-address"], native ? "203.0.113.8" : index % 3 === 1 ? "203.0.113.9" : "192.0.2.1");
+      // Scope identity stays constant, but a fresh upstream call must re-sign
+      // at its own second. Force that boundary rather than racing wall time.
+      now += 1000;
+      const after = upstreamClientAddressHeaders("https://api.example.test/api/v1/articles", "GET");
+      assert.deepEqual(after, signed(address, now));
+      assert.notEqual(after["x-nw-client-address-proof"], before["x-nw-client-address-proof"]);
+      assert.equal(before["x-nw-client-address"], address);
       return currentWebRequestIsSecure();
     });
   }));

@@ -172,6 +172,24 @@ node docs/audit/verify-article-collection-lines.ts
 缩小到 `--prod`、降低 severity 或放宽 required gate。[#368](https://github.com/BrainEno/no-wave/issues/368)
 单独跟踪上游修复或需完整兼容性验证的替代方案，这不算本轮新增生产功能。
 
-因此，本轮代码与可执行验证已提交，但 **required CI 验收未完成**。
+### 第二轮发现并修复的既有测试时序缺陷（生产计数 0）
+
+仅文档提交 `fd02c23ca1740d19a58fbbcda6ec088e717847eb` 的
+[第二轮 CI](https://github.com/BrainEno/no-wave/actions/runs/44283083908) 实际为 **14 success / 3 failure**：
+verify、full-local-suite 和 required-checks 失败，四个浏览器分片、PostgreSQL、Web、容器、双 stack 和 CodeQL 均通过。
+full-local-suite 的具体失败由 GitHub 测试注释确认，不归咎为未知环境错误：
+`transport-security.test.ts` 的 18 个并发 ingress 用例，在前后两个上游调用跨过整秒时，
+把应当刷新时间戳的合法 HMAC 与旧 HMAC 作全值相等比较。这一测试在指定基线与第二轮之间没有改动。
+
+- 先对原用例注入每次前进一秒的墙钟，确定性复现 **1 fail**，不是盲目重跑失败 job。
+- 修正只使用 bridge 既有的 clock 注入点，不改任何生产签名、信任、TLS 或到期逻辑。
+  18 个并发请求继续验证 native / trusted-proxy / forged 三类 TLS 和地址隔离；
+  现在每个后续调用都强制跨秒，分别独立计算并严格比较前后完整 HMAC，并明确要求签名刷新。
+  没有删除签名字段、放宽相等比较、固定旧签名或扩大时间窗口。
+- 相同跨秒复现变为 **1 pass**；TLS、地址上下文、代理与 API verifier 集中验证 **45 pass / 0 fail / 0 skip**。
+- 修正后的最新根测试重跑为 **2373 pass / 0 fail / 450 skip**，总数仍为 2823。
+  450 个跳过不充当通过；生产代码及行数证书未变，仍为双路径确认的 **802 行**。
+
+因此，本轮代码与可执行验证已提交，但 **required CI 验收未完成**，最终修正 head 仍须单独检查。
 #366 / #356 / #353 暂不关闭，以免把尚未合并且受 gate 阻塞的实现误报成正式解决。
 没有合并、部署、生产数据操作或依赖审计豁免。
