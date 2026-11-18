@@ -100,6 +100,10 @@ jobs 和停机缺少物理 drain。对应修复后的回归已实际通过。
 失败不隐藏：早期根分组有 7 项 schema/route/契约清单不匹配，已修复并完整重跑为零；
 第一次完整 Web 有 3 项 `ERR_MODULE_NOT_FOUND`（验证命令并行重建同一 build 目录），
 串行 `pnpm test:web` 后 281/0/18，没有删除／跳过／减弱这些测试。
+首轮远端新浏览器场景也实际失败：夹具只设置 access cookie，缺少既有 private shell
+的 session marker，实际重定向登录页。修正为调用真实 BFF register 取得三种正确
+scope 的 cookies，并增加 URL／cookie 名称／凭据不进入响应体断言；没有放宽页面门禁。
+该失败 head 不作为通过证据，最终 head 必须重新通过所有远端 jobs 后才创建 PR。
 
 ## 远端发布前门禁与未授权事项
 

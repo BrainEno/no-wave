@@ -15,9 +15,18 @@ test("an author's browser queues encrypted input through Cookie-only resources, 
       expect(response.status()).toBe(201);
       return (await response.json()).data.accessToken as string;
     };
-    const accessToken = await register(), foreignToken = await register();
-    await page.context().addCookies([{ name: "nw_access", value: accessToken, url: stack.webBaseUrl, httpOnly: true, sameSite: "Lax" }]);
+    // Use the real BFF registration, which installs both scoped credentials and
+    // the non-authoritative session marker required by existing private shells.
+    const registered = await page.request.post(`${stack.webBaseUrl}/api/auth/register`, {
+      headers: { origin: stack.webBaseUrl },
+      data: { email: `notion-owner-${randomUUID()}@example.test`, password: "Disposable browser jobs 5932!" },
+    });
+    expect(registered.status()).toBe(201);
+    expect(await registered.text()).not.toMatch(/accessToken|refreshToken/);
+    expect((await page.context().cookies()).map(cookie => cookie.name)).toEqual(expect.arrayContaining(["nw_access", "nw_refresh", "nw_session"]));
+    const foreignToken = await register();
     expect((await page.goto(`${stack.webBaseUrl}/write/notion`))?.status()).toBe(200);
+    await expect(page).toHaveURL(`${stack.webBaseUrl}/write/notion`);
     await expect(page.getByRole("heading", { name: /从 Notion 导入/ })).toBeVisible();
     const requestKey = randomUUID();
     const started = await page.evaluate(async ({ requestKey, sourceId }) => {
