@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { BackgroundFailure } from "../application/background-tasks.ts";
+import { HttpCollectionObservability, observeCollectionResponse } from "./http-collection-observability.ts";
 
 const HISTOGRAM_BUCKETS_MS = Object.freeze([5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000]);
 const TRACEPARENT_PATTERN = /^00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$/i;
@@ -154,6 +155,7 @@ export function createHttpObservability({
   const mail = new Map<string, MailMetric>();
   const backgroundFailures = new Map<string, BackgroundFailureMetric>();
   let activeRequests = 0;
+  const collections = new HttpCollectionObservability();
 
   function log(record: Omit<LogRecord, "timestamp" | "component">): void {
     try {
@@ -289,6 +291,7 @@ export function createHttpObservability({
   }
 
   function beginRequest(request: IncomingMessage, response: ServerResponse) {
+    observeCollectionResponse(response, collections.observe);
     const requestId = randomUUID();
     const traceId = traceIdFor(request);
     const method = safeMethod(request.method);
@@ -466,7 +469,7 @@ export function createHttpObservability({
       lines.push(`api_identity_mail_delivery_duration_ms_sum{purpose="${metric.purpose}",outcome="${metric.outcome}"} ${metric.duration.sum.toFixed(3)}`);
       lines.push(`api_identity_mail_delivery_duration_ms_count{purpose="${metric.purpose}",outcome="${metric.outcome}"} ${metric.duration.count}`);
     }
-    return lines.join("\n") + "\n";
+    return lines.join("\n") + "\n" + collections.render();
   }
 
   return Object.freeze({ beginRequest, observePersistenceOperation, observeMailDelivery, observeBackgroundFailure, renderMetrics });

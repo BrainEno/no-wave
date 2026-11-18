@@ -2,7 +2,7 @@ import type { RestRouteContext, RestRouteHandler } from "./context.ts";
 import { decodeUserId, optionalViewerId, parseLocale, parseArticlePagination, parsePagination, parseQuery, parseSort, sendBadInput, sendJson, sendServiceError, sendUnavailable } from "../http.ts";
 import { describeArticlePageRefusal, maxArticleOffset } from "../../../domain/article.ts";
 import { AUTHOR_OFFSET_MAX } from "../../../domain/profile.ts";
-import { serializeRestArticles } from "../serializers.ts";
+import { articleReadOptions, parseArticleListView, sendRestArticleCollection } from "../article-collection.ts";
 
 /**
  * Public author profile, author-article and author-directory routes.
@@ -50,8 +50,9 @@ const AUTHOR_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Object
     const locale = parseLocale(url);
     const query = parseQuery(url);
     const sort = parseSort(url);
+    const view = parseArticleListView(url);
     const pagination = parseArticlePagination(url, 20, maxArticleOffset(sort ?? "latest"), sort ?? "latest");
-    if (!userId || !locale || query === null || sort === null || !pagination) {
+    if (!userId || !locale || query === null || sort === null || !pagination || !view) {
       const requested = Number(url.searchParams.get("offset") ?? "0");
       sendBadInput(
         response,
@@ -72,8 +73,8 @@ const AUTHOR_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Object
       const page = pagination.kind === "cursor"
         ? { limit: pagination.limit, cursor: pagination.cursor }
         : { limit: pagination.limit, offset: pagination.offset };
-      const articles = await services.listPublishedArticles({ authorId: userId, locale, query, sort, ...page });
-      sendJson(response, 200, { data: await serializeRestArticles(services, articles, viewerId) });
+      const articles = await services.listPublishedArticles({ authorId: userId, locale, query, sort, ...page, ...articleReadOptions(response, view) });
+      await sendRestArticleCollection(response, services, articles, viewerId, { view });
     } catch (error: unknown) {
       sendServiceError(response, error);
     }

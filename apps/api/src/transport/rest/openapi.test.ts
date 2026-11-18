@@ -99,6 +99,28 @@ test("every documented path routes back to the table it was generated from", () 
   }
 });
 
+test("only public article collections advertise explicit card views; detail and authoring still require full bodies", () => {
+  const projected = ["GET articles", "GET articles.related", "GET featured", "GET tags.articles", "GET categories.articles", "GET authors.articles"];
+  for (const [key, operation] of Object.entries(OPERATIONS)) {
+    const view = operation.query?.find(parameter => parameter.name === "view");
+    assert.equal(Boolean(view), projected.includes(key), key);
+    if (view) {
+      assert.deepEqual(view.schema, { type: "string", enum: ["full", "card"], default: "full" });
+      assert.equal(operation.response.data, "ArticleListEntry");
+    }
+  }
+  assert.deepEqual(SCHEMAS.ArticleListEntry!.oneOf, [{ $ref: "#/components/schemas/Article" }, { $ref: "#/components/schemas/ArticleCard" }]);
+  const full = SCHEMAS.Article!, card = SCHEMAS.ArticleCard!;
+  assert.ok((full.required as string[]).includes("contentBlocks"));
+  assert.ok(!(card.required as string[]).includes("contentBlocks"));
+  assert.ok((card.required as string[]).includes("contentProjection"));
+  assert.ok((card.required as string[]).includes("reading"));
+  assert.deepEqual(card.not, { required: ["contentBlocks"] });
+  assert.ok(!Object.hasOwn(card.properties as object, "contentBlocks"));
+  assert.equal(OPERATIONS["GET articles.item"]!.response.data, "Article");
+  assert.equal(OPERATIONS["GET me.articles"]!.response.data, "Article");
+});
+
 test("the contract endpoint is itself a route", () => {
   const resolution = resolveRestRoute(OPENAPI_PATH, "GET");
   assert.equal(resolution.kind === "matched" ? resolution.id : null, "openapi");

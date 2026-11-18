@@ -1,3 +1,4 @@
+import { UpstreamByteBuffer } from "./upstream-byte-buffer.ts";
 import type { DeadlineCheckpoint } from "./api.ts";
 import type { CancellationObserver } from "./upstream-release.ts";
 import { UpstreamCancelledError, UpstreamResponseError } from "./upstream-errors.ts";
@@ -105,8 +106,7 @@ export async function bufferUpstreamResponse(response: Response, maxBytes: numbe
     };
     signal.addEventListener("abort", cancelRead, { once: true });
   });
-  const chunks: Uint8Array[] = [];
-  let size = 0;
+  const storage = new UpstreamByteBuffer(maxBytes, checkpoint);
   let complete = false;
   try {
     throwIfCancelled(signal);
@@ -117,20 +117,16 @@ export async function bufferUpstreamResponse(response: Response, maxBytes: numbe
       throwIfCancelled(signal);
       if (next.done) { complete = true; break; }
       if (!(next.value instanceof Uint8Array)) throw new UpstreamResponseError("unreadable");
-      if (next.value.byteLength > maxBytes - size) throw new UpstreamResponseError("too-large");
-      size += next.value.byteLength;
-      if (next.value.byteLength) chunks.push(next.value.slice());
-      if (progress) progress.bytes = size;
+      storage.append(next.value);
+      if (progress) progress.bytes = storage.size;
     }
-    const bytes = new Uint8Array(size);
-    let offset = 0;
-    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
-    return { ...result, bytes };
+    return { ...result, bytes: storage.take() };
   } catch (error) {
     if (signal.aborted) throw new UpstreamCancelledError();
     if (error instanceof UpstreamResponseError) throw error;
     throw new UpstreamResponseError("unreadable");
   } finally {
+    storage.clear();
     if (cancelRead) signal.removeEventListener("abort", cancelRead);
     if (!complete) cancelUpstreamRead(reader, track);
     reader.releaseLock();

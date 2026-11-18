@@ -152,11 +152,16 @@ const beforeParameter = (): QueryParameter => ({
   schema: { type: "string" },
 });
 
-const ARTICLE_PAGE = [queryParameter(), sortParameter(), limitParameter(20), offsetParameter(MAX_ARTICLE_OFFSET, "`sort=popular` stops at 10,000 because its ranking changes while it is read."), cursorParameter(), localeParameter()];
+const articleViewParameter = (): QueryParameter => ({
+  name: "view", description: "Absent or full returns complete bodies. Explicit card omits contentBlocks and includes contentProjection=card and reading metadata, without changing ordering, pagination, visibility or locale. Detail/authoring reads always remain full.",
+  schema: { type: "string", enum: ["full", "card"], default: "full" },
+});
+
+const ARTICLE_PAGE = [articleViewParameter(), queryParameter(), sortParameter(), limitParameter(20), offsetParameter(MAX_ARTICLE_OFFSET, "`sort=popular` stops at 10,000 because its ranking changes while it is read."), cursorParameter(), localeParameter()];
 
 const TAXONOMY_PAGE = [queryParameter(), limitParameter(100), offsetParameter(MAX_TAXONOMY_OFFSET), localeParameter()];
 
-const TAXONOMY_ARTICLES_PAGE = [limitParameter(20), offsetParameter(MAX_TAXONOMY_OFFSET), localeParameter()];
+const TAXONOMY_ARTICLES_PAGE = [articleViewParameter(), limitParameter(20), offsetParameter(MAX_TAXONOMY_OFFSET), localeParameter()];
 
 /* -------------------------------------------------------------------------- */
 /* Operations                                                                  */
@@ -341,7 +346,7 @@ export const OPERATIONS: Readonly<Record<string, OperationMetadata>> = Object.fr
     security: "optional-session",
     tags: ["articles"],
     query: ARTICLE_PAGE,
-    response: { description: "Published works, newest or most-saved first.", data: "Article", array: true },
+    response: { description: "Published works, newest or most-saved first.", data: "ArticleListEntry", array: true },
   },
 
   "POST articles": {
@@ -539,9 +544,9 @@ export const OPERATIONS: Readonly<Record<string, OperationMetadata>> = Object.fr
     security: "optional-session",
     tags: ["articles"],
     pathParams: { slug: "The work's slug." },
-    query: [localeParameter(), limitParameter(6, 50)],
+    query: [articleViewParameter(), localeParameter(), limitParameter(6, 50)],
     errors: [404],
-    response: { description: "Related published works.", data: "Article", array: true },
+    response: { description: "Related published works.", data: "ArticleListEntry", array: true },
   },
 
   "GET me.article-catalogue": {
@@ -616,8 +621,8 @@ export const OPERATIONS: Readonly<Record<string, OperationMetadata>> = Object.fr
     summary: "The editorial shelf",
     security: "optional-session",
     tags: ["articles"],
-    query: [localeParameter(), limitParameter(20, MAX_FEATURED_ARTICLES), offsetParameter(MAX_ARTICLE_OFFSET)],
-    response: { description: "The shelf in editorial order.", data: "Article", array: true },
+    query: [articleViewParameter(), localeParameter(), limitParameter(20, MAX_FEATURED_ARTICLES), offsetParameter(MAX_ARTICLE_OFFSET)],
+    response: { description: "The shelf in editorial order.", data: "ArticleListEntry", array: true },
   },
 
   "PUT featured": {
@@ -668,7 +673,7 @@ export const OPERATIONS: Readonly<Record<string, OperationMetadata>> = Object.fr
     pathParams: { slug: "The tag's slug." },
     query: TAXONOMY_ARTICLES_PAGE,
     errors: [404],
-    response: { description: "Published works with this tag.", data: "Article", array: true },
+    response: { description: "Published works with this tag.", data: "ArticleListEntry", array: true },
   },
 
   "GET categories": {
@@ -696,7 +701,7 @@ export const OPERATIONS: Readonly<Record<string, OperationMetadata>> = Object.fr
     pathParams: { slug: "The category's slug." },
     query: TAXONOMY_ARTICLES_PAGE,
     errors: [404],
-    response: { description: "Published works in this category.", data: "Article", array: true },
+    response: { description: "Published works in this category.", data: "ArticleListEntry", array: true },
   },
 
   "POST taxonomies": {
@@ -746,7 +751,7 @@ export const OPERATIONS: Readonly<Record<string, OperationMetadata>> = Object.fr
     tags: ["authors"],
     pathParams: { userId: "The author's stable user id." },
     query: ARTICLE_PAGE,
-    response: { description: "That author's published work.", data: "Article", array: true },
+    response: { description: "That author's published work.", data: "ArticleListEntry", array: true },
   },
 
   "GET media.item": {

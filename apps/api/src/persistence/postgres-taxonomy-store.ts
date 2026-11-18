@@ -1,3 +1,4 @@
+import { readPostgresArticlePage } from "./article-page-reader.ts";
 /**
  * PostgreSQL persistence slice: User-generated hashtags and editorial categories.
  *
@@ -47,13 +48,13 @@ export function createPostgresTaxonomyStore(ctx: PostgresStoreContext) {
       return rows[0] ? mapTaxonomy(rows[0]) : null;
     },
 
-    async listTaxonomyArticles({ kind, slug, locale = "zh-CN", limit = 20, offset = 0 }) {
+    async listTaxonomyArticles({ kind, slug, locale = "zh-CN", limit = 20, offset = 0, projection, signal }) {
       validateTaxonomyKind(kind);
       validateArticleSlug(slug);
       validateArticleLocale(locale);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
       if (!Number.isInteger(offset) || offset < 0 || offset > 1000000) throw new ArticleInputError("offset must be an integer between 0 and 1000000.");
-      const rows = await sql.unsafe(
+      return readPostgresArticlePage(sql,
         `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count,
                 at.locale, at.title, at.summary, at.content_blocks, at.content_blocks_version
          FROM taxonomies AS tax
@@ -65,8 +66,8 @@ export function createPostgresTaxonomyStore(ctx: PostgresStoreContext) {
          ORDER BY a.published_at DESC, a.id DESC
          LIMIT $4 OFFSET $5`,
         [kind, slug, locale, limit, offset],
+        mapArticle, { limit, projection, signal },
       );
-      return rows.map(mapArticle);
     },
 
     async listArticleTaxonomies({ articleId, kind, locale = "zh-CN" }) {

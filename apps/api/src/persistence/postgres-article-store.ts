@@ -1,3 +1,4 @@
+import { readPostgresArticlePage } from "./article-page-reader.ts";
 import { readArticleCatalogue, readCatalogueEditions } from "./article-catalogue-query.ts";
 /**
  * PostgreSQL persistence slice: Article content, publication, author desks and the featured shelf.
@@ -56,7 +57,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
     listMyArticleCatalogue(input) {
       return readArticleCatalogue(input, "postgres", query => sql.unsafe(query.text, query.values));
     },
-    async listPublishedArticles({ locale = "zh-CN", query = "", authorId = null, sort = "latest", limit = 20, offset = 0, cursor = null } = {}) {
+    async listPublishedArticles({ locale = "zh-CN", query = "", authorId = null, sort = "latest", limit = 20, offset = 0, cursor = null, projection, signal } = {}) {
       validateArticleLocale(locale);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
       if (typeof query !== "string" || query.length > 200) throw new ArticleInputError("query must be a string no longer than 200 characters.");
@@ -93,7 +94,7 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
               OR (a.published_at = date_trunc('milliseconds', $${cursorAtParam}::timestamptz) AND a.id < $${params.push(keyset.id)}::uuid))`
         : "";
       params.push(limit, offset);
-      const rows = await sql.unsafe(
+      return readPostgresArticlePage(sql,
         `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count, a.import_revision::text AS revision,
                 t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version,
                 ${popular ? "(SELECT count(*)::int FROM article_likes l WHERE l.article_id = a.id)" : "0"} AS like_count
@@ -107,8 +108,8 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
          ORDER BY ${popular ? "like_count DESC, a.published_at DESC, a.id DESC" : "a.published_at DESC, a.id DESC"}
          LIMIT $${params.length - 1} OFFSET $${params.length}`,
         params,
+        mapArticle, { limit, projection, signal },
       );
-      return rows.map(mapArticle);
     },
 
     async getPublishedArticle({ slug, locale = "zh-CN" }) {
@@ -554,13 +555,13 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
       return rows.map(mapArticle);
     },
 
-    async listRelatedArticles({ slug, locale = "zh-CN", limit = 6 }: { slug: string; locale?: string; limit?: number } = { slug: "" }) {
+    async listRelatedArticles({ slug, locale = "zh-CN", limit = 6, projection, signal }) {
       validateArticleSlug(slug);
       validateArticleLocale(locale);
       if (!Number.isInteger(limit) || limit < 1 || limit > 50) {
         throw new ArticleInputError("limit must be an integer between 1 and 50.");
       }
-      const rows = await sql.unsafe(
+      return readPostgresArticlePage(sql,
         `WITH target AS (
           SELECT a.id, a.author_id
           FROM articles AS a
@@ -587,8 +588,8 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
         ORDER BY shared_taxonomy_count DESC, same_author DESC, published_at DESC, id DESC
         LIMIT $3`,
         [slug, locale, limit],
+        mapArticle, { limit, projection, signal },
       );
-      return rows.map(mapArticle);
     },
 
     async listFollowingArticles({ actorId, locale = "zh-CN", limit = 20, offset = 0 }) {

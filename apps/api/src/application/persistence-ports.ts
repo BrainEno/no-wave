@@ -92,6 +92,7 @@ export type StoredArticle = {
   id: string; authorId: string; slug: string; workType: string; status: string;
   locale: string; title: string; summary: string; contentBlocks: unknown;
   contentBlocksVersion: number;
+  readingPreview?: { locale: string; length: number; poemLines: string[] };
   createdAt: string | null; updatedAt: string | null; publishedAt: string | null;
   /**
    * How many distinct readers have opened it (ADR 0035).
@@ -189,14 +190,15 @@ export type PurgedArticlesResult = { purged: number };
  * the store (paging, locale defaults, cursors) remain optional.
  */
 export type PublishedArticleSort = "latest" | "popular";
-export type ListPublishedArticlesInput = {
+export type ArticleReadProjection = { projection?: "full" | "card"; signal?: AbortSignal };
+export type ListPublishedArticlesInput = ArticleReadProjection & {
   locale?: string; query?: string; authorId?: string | null; sort?: PublishedArticleSort;
   limit?: number; offset?: number; cursor?: unknown;
 };
 export type ArticleBySlugInput = { slug: string; locale?: string };
 export type ArticleForViewerInput = { slug: string; locale?: string; actorId?: string | null };
 export type AuthorArticlesInput = { actorId: string; locale?: string; limit?: number };
-export type ArticleListPageInput = { locale?: string; limit?: number; offset?: number };
+export type ArticleListPageInput = ArticleReadProjection & { locale?: string; limit?: number; offset?: number };
 export type CreateArticleInput = {
   authorId: string; slug: string; title: string; contentBlocks: unknown;
   summary?: string; locale?: string;
@@ -216,7 +218,7 @@ export type UpdateArticleInput = {
 export type ArticleAuthorInput = { articleId: string; actorId: string };
 export type RestoreArticleInput = ArticleAuthorInput & { locale?: string };
 export type PurgeExpiredArticlesInput = { retentionDays?: number; now?: Date | string; limit?: number };
-export type RelatedArticlesInput = { slug: string; locale?: string; limit?: number };
+export type RelatedArticlesInput = ArticleReadProjection & { slug: string; locale?: string; limit?: number };
 export type FollowingArticlesInput = { actorId: string; locale?: string; limit?: number; offset?: number };
 export type SetFeaturedArticlesInput = {
   actorId: string; articleIds: string[]; actorIsEditor?: boolean; locale?: string;
@@ -225,7 +227,7 @@ export type TaxonomyListInput = {
   kind: string; locale?: string; query?: string; limit?: number; offset?: number;
 };
 export type TaxonomyBySlugInput = { kind: string; slug: string; locale?: string };
-export type TaxonomyArticlesInput = TaxonomyBySlugInput & { limit?: number; offset?: number };
+export type TaxonomyArticlesInput = TaxonomyBySlugInput & ArticleReadProjection & { limit?: number; offset?: number };
 export type ArticleTaxonomiesInput = { articleId: string; kind: string; locale?: string };
 /**
  * A page's worth of taxonomies in one round trip (#162).

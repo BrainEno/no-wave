@@ -1,0 +1,1135 @@
+{
+  "base": "7c3b2c355f63442bba49d4678520aada6271eb7e",
+  "rules": [
+    {
+      "file": "apps/api/src/transport/rest/openapi/operations.ts",
+      "fragments": [
+        {
+          "line": 155,
+          "text": "const articleViewParameter = (): QueryParameter => ({"
+        },
+        {
+          "line": 156,
+          "text": "name: \"view\", description: \"Absent or full returns complete bodies. Explicit card omits contentBlocks and includes contentProjection=card and reading metadata, without changing ordering, pagination, visibility or locale. Detail/authoring reads always remain full.\","
+        },
+        {
+          "line": 157,
+          "text": "schema: { type: \"string\", enum: [\"full\", \"card\"], default: \"full\" },"
+        },
+        {
+          "line": 160,
+          "text": "const ARTICLE_PAGE = [articleViewParameter(), queryParameter(), sortParameter(), limitParameter(20), offsetParameter(MAX_ARTICLE_OFFSET, \"`sort=popular` stops at 10,000 because its ranking changes while it is read.\"), cursorParameter(), localeParameter()];"
+        },
+        {
+          "line": 164,
+          "text": "const TAXONOMY_ARTICLES_PAGE = [articleViewParameter(), limitParameter(20), offsetParameter(MAX_TAXONOMY_OFFSET), localeParameter()];"
+        },
+        {
+          "line": 349,
+          "text": "response: { description: \"Published works, newest or most-saved first.\", data: \"ArticleListEntry\", array: true },"
+        },
+        {
+          "line": 547,
+          "text": "query: [articleViewParameter(), localeParameter(), limitParameter(6, 50)],"
+        },
+        {
+          "line": 549,
+          "text": "response: { description: \"Related published works.\", data: \"ArticleListEntry\", array: true },"
+        },
+        {
+          "line": 624,
+          "text": "query: [articleViewParameter(), localeParameter(), limitParameter(20, MAX_FEATURED_ARTICLES), offsetParameter(MAX_ARTICLE_OFFSET)],"
+        },
+        {
+          "line": 625,
+          "text": "response: { description: \"The shelf in editorial order.\", data: \"ArticleListEntry\", array: true },"
+        },
+        {
+          "line": 676,
+          "text": "response: { description: \"Published works with this tag.\", data: \"ArticleListEntry\", array: true },"
+        },
+        {
+          "line": 704,
+          "text": "response: { description: \"Published works in this category.\", data: \"ArticleListEntry\", array: true },"
+        },
+        {
+          "line": 754,
+          "text": "response: { description: \"That author's published work.\", data: \"ArticleListEntry\", array: true },"
+        }
+      ],
+      "reason": "OpenAPI 静态契约、描述与 schema；不计生产功能行。"
+    },
+    {
+      "file": "apps/api/src/transport/rest/openapi/schemas.ts",
+      "fragments": [
+        {
+          "line": 76,
+          "text": "const ARTICLE = {"
+        },
+        {
+          "line": 256,
+          "text": "Article: ARTICLE,"
+        },
+        {
+          "line": 257,
+          "text": "ArticleCard: {"
+        },
+        {
+          "line": 258,
+          "text": "...ARTICLE,"
+        },
+        {
+          "line": 259,
+          "text": "required: [...ARTICLE.required.filter(name => name !== \"contentBlocks\"), \"contentProjection\", \"reading\"],"
+        },
+        {
+          "line": 260,
+          "text": "description: \"Explicit list-only view=card projection. Never an authoring body or a replacement for full detail. Reading length excludes code, images/captions and quote attribution; English counts words, Chinese counts non-whitespace UTF-16 code units.\","
+        },
+        {
+          "line": 261,
+          "text": "not: { required: [\"contentBlocks\"] },"
+        },
+        {
+          "line": 263,
+          "text": "...Object.fromEntries(Object.entries(ARTICLE.properties).filter(([name]) => name !== \"contentBlocks\")),"
+        },
+        {
+          "line": 264,
+          "text": "contentProjection: { type: \"string\", const: \"card\" },"
+        },
+        {
+          "line": 265,
+          "text": "reading: { type: \"object\", required: [\"locale\", \"length\", \"poemLines\"], properties: {"
+        },
+        {
+          "line": 266,
+          "text": "locale: { type: \"string\", enum: LOCALES }, length: { type: \"integer\", minimum: 0 },"
+        },
+        {
+          "line": 267,
+          "text": "poemLines: { type: \"array\", maxItems: 2, items: { type: \"string\", minLength: 1, maxLength: 20000 }, description: \"First paragraph's first two trimmed, nonempty lines; no later-paragraph fallback.\" },"
+        },
+        {
+          "line": 271,
+          "text": "ArticleListEntry: { oneOf: [ref(\"Article\"), ref(\"ArticleCard\")] },"
+        }
+      ],
+      "reason": "OpenAPI 静态契约、描述与 schema；不计生产功能行。"
+    },
+    {
+      "file": "packages/web-ui/src/components/public/archive-view.tsx",
+      "fragments": [
+        {
+          "line": 27,
+          "text": "const poemLines = poem ? articlePoemLines(poem) : [];"
+        },
+        {
+          "line": 78,
+          "text": "<div className=\"nw-m\">{article.author.displayName} · {lengthLabel(articleReadingLength(article, locale), locale)}</div>"
+        }
+      ],
+      "reason": "UI 篇幅/诗行 helper 接线与 JSX 展示；本轮全部保守排除。"
+    },
+    {
+      "file": "packages/web-ui/src/components/public/author-view.tsx",
+      "fragments": [
+        {
+          "line": 66,
+          "text": "<span className=\"nw-m\"><TypeChip type={article.workType} locale={locale} /> {lengthLabel(articleReadingLength(article, locale), locale)}</span>"
+        }
+      ],
+      "reason": "UI 篇幅/诗行 helper 接线与 JSX 展示；本轮全部保守排除。"
+    },
+    {
+      "file": "packages/web-ui/src/components/ui/parts.tsx",
+      "fragments": [
+        {
+          "line": 27,
+          "text": "const length = lengthLabel(articleReadingLength(article, locale), locale);"
+        },
+        {
+          "line": 28,
+          "text": "const lines = articlePoemLines(article);"
+        },
+        {
+          "line": 29,
+          "text": "const excerpt = article.workType === \"poetry\" && lines.length ? lines.join(\" / \") : article.description;"
+        }
+      ],
+      "reason": "UI 篇幅/诗行 helper 接线与 JSX 展示；本轮全部保守排除。"
+    },
+    {
+      "file": "apps/api/src/server.ts",
+      "fragments": [
+        {
+          "line": 22,
+          "text": "const apiRuntimes = new WeakMap<Server, { lifecycle: ReturnType<typeof createHttpLifecycle>; readiness: ReturnType<typeof createApiReadiness>; collections: HttpCollectionAdmission }>();"
+        },
+        {
+          "line": 65,
+          "text": "const collections = new HttpCollectionAdmission(httpCollectionAdmissionSettings(env));"
+        },
+        {
+          "line": 67,
+          "text": "collectionAdmission: collections,"
+        },
+        {
+          "line": 78,
+          "text": "const collectionOutput = jsonCollectionOutputSettings(env);"
+        },
+        {
+          "line": 82,
+          "text": "configureJsonCollectionOutput(response, collectionOutput);"
+        },
+        {
+          "line": 121,
+          "text": "response.end(observability.renderMetrics() + collections.renderMetrics() + await readiness.renderMetrics());"
+        },
+        {
+          "line": 162,
+          "text": "apiRuntimes.set(server, { lifecycle, readiness, collections });"
+        },
+        {
+          "line": 173,
+          "text": "runtime.collections.stop();"
+        },
+        {
+          "line": 184,
+          "text": "jsonCollectionOutputSettings(env);"
+        },
+        {
+          "line": 185,
+          "text": "collectionReadTimeout(env);"
+        },
+        {
+          "line": 186,
+          "text": "httpCollectionAdmissionSettings(env);"
+        }
+      ],
+      "reason": "签名扩充、参数转交、旧 SQL/序列化调用搬移或组合层接线；不重复计底层新行为。"
+    },
+    {
+      "file": "apps/api/src/infrastructure/http-observability.ts",
+      "fragments": [
+        {
+          "line": 158,
+          "text": "const collections = new HttpCollectionObservability();"
+        },
+        {
+          "line": 294,
+          "text": "observeCollectionResponse(response, collections.observe);"
+        },
+        {
+          "line": 472,
+          "text": "return lines.join(\"\\n\") + \"\\n\" + collections.render();"
+        }
+      ],
+      "reason": "签名扩充、参数转交、旧 SQL/序列化调用搬移或组合层接线；不重复计底层新行为。"
+    },
+    {
+      "file": "apps/api/src/persistence/postgres-article-store.ts",
+      "fragments": [
+        {
+          "line": 60,
+          "text": "async listPublishedArticles({ locale = \"zh-CN\", query = \"\", authorId = null, sort = \"latest\", limit = 20, offset = 0, cursor = null, projection, signal } = {}) {"
+        },
+        {
+          "line": 97,
+          "text": "return readPostgresArticlePage(sql,"
+        },
+        {
+          "line": 111,
+          "text": "mapArticle, { limit, projection, signal },"
+        },
+        {
+          "line": 558,
+          "text": "async listRelatedArticles({ slug, locale = \"zh-CN\", limit = 6, projection, signal }) {"
+        }
+      ],
+      "reason": "签名扩充、参数转交、旧 SQL/序列化调用搬移或组合层接线；不重复计底层新行为。"
+    },
+    {
+      "file": "apps/api/src/persistence/postgres-shared.ts",
+      "fragments": [
+        {
+          "line": 307,
+          "text": "{ locale = \"zh-CN\", limit = 20, offset = 0, projection, signal }: { locale?: string; limit?: number; offset?: number } & ArticleReadProjection = {},"
+        },
+        {
+          "line": 312,
+          "text": "return readPostgresArticlePage(executor,"
+        }
+      ],
+      "reason": "签名扩充、参数转交、旧 SQL/序列化调用搬移或组合层接线；不重复计底层新行为。"
+    },
+    {
+      "file": "apps/api/src/persistence/postgres-taxonomy-store.ts",
+      "fragments": [
+        {
+          "line": 51,
+          "text": "async listTaxonomyArticles({ kind, slug, locale = \"zh-CN\", limit = 20, offset = 0, projection, signal }) {"
+        }
+      ],
+      "reason": "签名扩充、参数转交、旧 SQL/序列化调用搬移或组合层接线；不重复计底层新行为。"
+    },
+    {
+      "file": "apps/api/src/persistence/sqlite-article-store.ts",
+      "fragments": [
+        {
+          "line": 282,
+          "text": "listPublishedArticles({ locale = \"zh-CN\", query = \"\", authorId = null, sort = \"latest\", limit = 20, offset = 0, cursor = null, projection, signal } = {}) {"
+        },
+        {
+          "line": 324,
+          "text": "return readSqliteArticlePage(statement((popular ? articleSelectWithLikeCount : articleSelect) + `"
+        },
+        {
+          "line": 340,
+          "text": "`), [locale, needle, needle, needle, needle, needle, needle, authorId, authorId,"
+        },
+        {
+          "line": 341,
+          "text": "...(keyset ? [keyset.publishedAt, keyset.publishedAt, keyset.id] : []), limit, offset], mapArticle, { limit, projection, signal });"
+        },
+        {
+          "line": 351,
+          "text": "listFeaturedArticles({ locale = \"zh-CN\", limit = 20, offset = 0, projection, signal } = {}) {"
+        },
+        {
+          "line": 355,
+          "text": "return readSqliteArticlePage(featuredSelect, [locale, limit, offset], mapArticle, { limit, projection, signal });"
+        },
+        {
+          "line": 526,
+          "text": "listRelatedArticles({ slug, locale = \"zh-CN\", limit = 6, projection, signal }) {"
+        },
+        {
+          "line": 532,
+          "text": "return readSqliteArticlePage(statement(articleSelect + `"
+        },
+        {
+          "line": 538,
+          "text": "`), [current.id, current.id, locale, current.author_id, limit], mapArticle, { limit, projection, signal });"
+        }
+      ],
+      "reason": "签名扩充、参数转交、旧 SQL/序列化调用搬移或组合层接线；不重复计底层新行为。"
+    },
+    {
+      "file": "apps/api/src/persistence/sqlite-taxonomy-store.ts",
+      "fragments": [
+        {
+          "line": 91,
+          "text": "listTaxonomyArticles({ kind, slug, locale = \"zh-CN\", limit = 20, offset = 0, projection, signal }) {"
+        },
+        {
+          "line": 95,
+          "text": "return readSqliteArticlePage(db.prepare(`"
+        },
+        {
+          "line": 105,
+          "text": "`), [locale, locale, kind, slug, limit, offset], (r) => ({"
+        },
+        {
+          "line": 112,
+          "text": "}), { limit, projection, signal });"
+        }
+      ],
+      "reason": "签名扩充、参数转交、旧 SQL/序列化调用搬移或组合层接线；不重复计底层新行为。"
+    },
+    {
+      "file": "apps/api/src/transport/rest/routes/articles.ts",
+      "fragments": [
+        {
+          "line": 56,
+          "text": "collectionReadBudgetFor(response)?.checkpoint();"
+        },
+        {
+          "line": 58,
+          "text": "await sendRestArticleCollection(response, services, articles, actorId);"
+        },
+        {
+          "line": 84,
+          "text": "const pages = await settledReads(locales.map((locale) => () => services.listMyArticles({ actorId, locale, limit })));"
+        },
+        {
+          "line": 88,
+          "text": "await sendRestArticleCollection(response, services, articles, actorId, { meta: locales.length === 1 ? undefined : { locales } });"
+        },
+        {
+          "line": 146,
+          "text": "const view = parseArticleListView(url);"
+        },
+        {
+          "line": 147,
+          "text": "if (!pagination || !view) {"
+        },
+        {
+          "line": 153,
+          "text": "const articles = await services.listFeaturedArticles({ locale, ...pagination, ...articleReadOptions(response, view) });"
+        },
+        {
+          "line": 154,
+          "text": "await sendRestArticleCollection(response, services, articles, viewerId, { view });"
+        },
+        {
+          "line": 226,
+          "text": "if (!locale || query === null || sort === null || !pagination || !view) {"
+        },
+        {
+          "line": 244,
+          "text": "const articles = await services.listPublishedArticles({ locale, query, sort, ...page, ...articleReadOptions(response, view) });"
+        },
+        {
+          "line": 260,
+          "text": "if (!slug || !locale || limit === null || !view) {"
+        },
+        {
+          "line": 266,
+          "text": "const articles = await services.listRelatedArticles({ slug, locale, limit, ...articleReadOptions(response, view) });"
+        },
+        {
+          "line": 591,
+          "text": "const pages = await settledReads(locales.map((locale) => () => services.listMyDeletedArticles({ actorId, locale, limit })));"
+        }
+      ],
+      "reason": "签名扩充、参数转交、旧 SQL/序列化调用搬移或组合层接线；不重复计底层新行为。"
+    },
+    {
+      "file": "apps/api/src/transport/rest/routes/authors.ts",
+      "fragments": [
+        {
+          "line": 55,
+          "text": "if (!userId || !locale || query === null || sort === null || !pagination || !view) {"
+        },
+        {
+          "line": 76,
+          "text": "const articles = await services.listPublishedArticles({ authorId: userId, locale, query, sort, ...page, ...articleReadOptions(response, view) });"
+        }
+      ],
+      "reason": "签名扩充、参数转交、旧 SQL/序列化调用搬移或组合层接线；不重复计底层新行为。"
+    },
+    {
+      "file": "apps/api/src/transport/rest/routes/taxonomies.ts",
+      "fragments": [
+        {
+          "line": 101,
+          "text": "if (!slug || !locale || !pagination || !view) {"
+        },
+        {
+          "line": 112,
+          "text": "const articles = await services.listTaxonomyArticles({ kind: \"category\", slug, locale, ...pagination, ...articleReadOptions(response, view) });"
+        },
+        {
+          "line": 162,
+          "text": "const articles = await services.listTaxonomyArticles({ kind: \"tag\", slug, locale, ...pagination, ...articleReadOptions(response, view) });"
+        }
+      ],
+      "reason": "签名扩充、参数转交、旧 SQL/序列化调用搬移或组合层接线；不重复计底层新行为。"
+    },
+    {
+      "file": "apps/web-rr/app/lib/runtime.ts",
+      "fragments": [
+        {
+          "line": 100,
+          "text": "upstreamTransport: upstreamTransport(), signal: request?.signal, articleProjection: \"card\" }) : null);"
+        }
+      ],
+      "reason": "签名扩充、参数转交、旧 SQL/序列化调用搬移或组合层接线；不重复计底层新行为。"
+    },
+    {
+      "file": "packages/web-ui/src/lib/sitemap-catalog.ts",
+      "fragments": [
+        {
+          "line": 60,
+          "text": "if (collection === \"articles\") { url.searchParams.set(\"sort\", \"latest\"); url.searchParams.set(\"view\", \"card\"); }"
+        }
+      ],
+      "reason": "签名扩充、参数转交、旧 SQL/序列化调用搬移或组合层接线；不重复计底层新行为。"
+    },
+    {
+      "file": "apps/api/src/application/article-reading.ts",
+      "fragments": [
+        {
+          "line": 4,
+          "text": "function record(value: unknown): value is Record<string, unknown> {"
+        },
+        {
+          "line": 16,
+          "text": "case \"quote\": return [requiredString(block.text)];"
+        },
+        {
+          "line": 19,
+          "text": "return block.items.map(requiredString);"
+        },
+        {
+          "line": 21,
+          "text": "case \"code\": return [];"
+        },
+        {
+          "line": 32,
+          "text": "let firstParagraph: string | undefined;"
+        },
+        {
+          "line": 34,
+          "text": "for (const text of readableTexts(block)) length += locale === \"en\" ? (text.match(/\\S+/g)?.length ?? 0) : text.replace(/\\s/g, \"\").length;"
+        },
+        {
+          "line": 35,
+          "text": "if (firstParagraph === undefined && record(block) && block.type === \"paragraph\") firstParagraph = requiredString(block.text);"
+        },
+        {
+          "line": 37,
+          "text": "const poemLines = firstParagraph?.split(/\\r?\\n/).map(line => line.trim()).filter(Boolean).slice(0, 2) ?? [];"
+        }
+      ],
+      "reason": "通用 record 声明、未初始化绑定与从既有 UI 保持不变的阅读文字/首段诗行算法；后端执行位置变化不重复计。"
+    },
+    {
+      "file": "apps/api/src/infrastructure/http-collection-admission.ts",
+      "fragments": [
+        {
+          "line": 4,
+          "text": "export function httpCollectionAdmissionSettings(env: NodeJS.ProcessEnv) {"
+        },
+        {
+          "line": 5,
+          "text": "return Object.freeze({ active: integerSetting(env, \"API_COLLECTION_CONCURRENCY\", 4, 1, 32),"
+        },
+        {
+          "line": 6,
+          "text": "queued: integerSetting(env, \"API_COLLECTION_QUEUE\", 16, 0, 128),"
+        },
+        {
+          "line": 7,
+          "text": "waitMs: integerSetting(env, \"API_COLLECTION_QUEUE_TIMEOUT_MS\", 250, 1, 5000) });"
+        },
+        {
+          "line": 102,
+          "text": "const lines = [`# TYPE api_http_collection_active gauge`, `api_http_collection_active ${this.active.size}`,"
+        },
+        {
+          "line": 103,
+          "text": "`# TYPE api_http_collection_queued gauge`, `api_http_collection_queued ${this.queue.length}`,"
+        },
+        {
+          "line": 104,
+          "text": "`# TYPE api_http_collection_detached gauge`, `api_http_collection_detached ${detached}`,"
+        },
+        {
+          "line": 105,
+          "text": "\"# TYPE api_http_collection_admission_rejections_total counter\"];"
+        }
+      ],
+      "reason": "容量默认设置及指标静态声明/标签；运行时拒绝、物理所有权与动态指标另计。"
+    },
+    {
+      "file": "apps/api/src/infrastructure/http-collection-observability.ts",
+      "fragments": [
+        {
+          "line": 21,
+          "text": "const VIEWS = [\"full\", \"card\"] as const;"
+        },
+        {
+          "line": 22,
+          "text": "const OUTCOMES = [\"finished\", \"cancelled\", \"failed\"] as const;"
+        },
+        {
+          "line": 23,
+          "text": "const SECONDS = [0.001, 0.01, 0.1, 1, 5, 10, 30, 120] as const;"
+        },
+        {
+          "line": 26,
+          "text": "const increment = (left: number, by = 1) => Math.min(Number.MAX_SAFE_INTEGER, left + by);"
+        },
+        {
+          "line": 27,
+          "text": "const nonnegativeInteger = (value: number) => Number.isSafeInteger(value) && value >= 0;"
+        },
+        {
+          "line": 61,
+          "text": "const describe = (metric: string, type: \"counter\" | \"gauge\" | \"histogram\", help: string) => lines.push(`# HELP ${metric} ${help}`, `# TYPE ${metric} ${type}`);"
+        },
+        {
+          "line": 62,
+          "text": "describe(\"api_http_collection_responses_total\", \"counter\", \"Collection writers ending in socket finish, downstream close or encoding/socket failure.\");"
+        },
+        {
+          "line": 65,
+          "text": "[\"items\", \"items\", \"Items fully written before the writer ended; not proof the peer consumed them.\"],"
+        },
+        {
+          "line": 66,
+          "text": "[\"json_bytes\", \"bytes\", \"JSON bytes accepted by the native writer before finish or failure, excluding HTTP headers.\"],"
+        },
+        {
+          "line": 67,
+          "text": "[\"chunks\", \"chunks\", \"Bounded JSON chunks accepted by the native writer.\"],"
+        },
+        {
+          "line": 68,
+          "text": "[\"backpressure\", \"pressure\", \"Writes that crossed the native socket high-water mark.\"],"
+        },
+        {
+          "line": 69,
+          "text": "[\"drain_wait_seconds\", \"wait\", \"Seconds spent waiting for drain or downstream close, not database acquisition.\"],"
+        },
+        {
+          "line": 70,
+          "text": "] as const) {"
+        },
+        {
+          "line": 74,
+          "text": "describe(\"api_http_collection_largest_chunk_bytes\", \"gauge\", \"Largest JSON chunk ever emitted by this process; not whole-page resident memory.\");"
+        },
+        {
+          "line": 76,
+          "text": "const metric = \"api_http_collection_write_duration_seconds\";"
+        },
+        {
+          "line": 77,
+          "text": "describe(metric, \"histogram\", \"Time from writer start to finish/close/failure, including socket backpressure.\");"
+        },
+        {
+          "line": 82,
+          "text": "describe(\"api_http_collection_invalid_samples_total\", \"counter\", \"Malformed collection observations discarded without affecting responses.\");"
+        }
+      ],
+      "reason": "固定枚举/buckets、HELP 文本/描述表及已有计数/非负数模板；不按静态标签、文字或通用复制凑数。"
+    },
+    {
+      "file": "apps/api/src/transport/rest/article-collection.ts",
+      "fragments": [
+        {
+          "line": 47,
+          "text": "export async function sendRestArticleCollection(response: ServerResponse, services: RestServices, articles: readonly StoredArticle[], viewerId: string | null, options: { view?: ArticleListView; meta?: unknown } = {}): Promise<void> {"
+        },
+        {
+          "line": 50,
+          "text": "const data = await serializeRestArticles(services, articles, viewerId);"
+        },
+        {
+          "line": 52,
+          "text": "await sendJsonCollection(response, data, { view: options.view, meta: options.meta,"
+        },
+        {
+          "line": 53,
+          "text": "...(options.view === \"card\" ? { project: articleCardProjection } : {}) });"
+        }
+      ],
+      "reason": "既有 batched serializer 的公共 wrapper 与 writer 参数接线；具体流式 writer/投影行为在实现处计。"
+    },
+    {
+      "file": "apps/api/src/transport/rest/json-collection-budget.ts",
+      "fragments": [
+        {
+          "line": 5,
+          "text": "const MAX_ITEM_BYTES = 8 * 1024 * 1024;"
+        },
+        {
+          "line": 6,
+          "text": "const MAX_ENVELOPE_BYTES = 64 * 1024;"
+        },
+        {
+          "line": 7,
+          "text": "const MAX_ITEMS = 300;"
+        },
+        {
+          "line": 11,
+          "text": "export function jsonCollectionOutputSettings(env: NodeJS.ProcessEnv): JsonCollectionLimits {"
+        },
+        {
+          "line": 12,
+          "text": "return Object.freeze({ timeoutMs: integerSetting(env, \"API_COLLECTION_WRITE_TIMEOUT_MS\", 120_000, 100, 600_000) });"
+        }
+      ],
+      "reason": "限额常数和 env 默认设置；只计之后实际执行的期限与字节边界。"
+    },
+    {
+      "file": "apps/api/src/transport/rest/json-collection.ts",
+      "fragments": [
+        {
+          "line": 24,
+          "text": "let failure: Error | undefined;"
+        },
+        {
+          "line": 25,
+          "text": "let wake: (() => void) | undefined;"
+        },
+        {
+          "line": 38,
+          "text": "let first: Generator<Buffer> | undefined;"
+        },
+        {
+          "line": 39,
+          "text": "let metadata: Generator<Buffer> | undefined;"
+        }
+      ],
+      "reason": "只有类型/未初始化绑定的声明，不当作独立功能。"
+    },
+    {
+      "file": "packages/web-http/src/article-collection-policy.ts",
+      "fragments": [
+        {
+          "line": 13,
+          "text": "let defaultLimit: number;"
+        }
+      ],
+      "reason": "只有类型/未初始化绑定的声明，不当作独立功能。"
+    },
+    {
+      "file": "packages/web-http/src/forward.ts",
+      "fragments": [
+        {
+          "line": 96,
+          "text": "const transport = upstreamTransportFor(config);"
+        },
+        {
+          "line": 99,
+          "text": ": await transport.openStream(target, { method, headers }, { kind: \"export\", timeoutMs, signal: callerSignal });"
+        }
+      ],
+      "reason": "既有 transport 提取以及原 bulk 下载调用重排；不计拆行/搬移。"
+    },
+    {
+      "file": "packages/web-http/src/upstream-collection-telemetry.ts",
+      "fragments": [
+        {
+          "line": 4,
+          "text": "const MODES = [\"parsed\", \"forwarded\"] as const;"
+        },
+        {
+          "line": 5,
+          "text": "const BYTE_BUCKETS = [0, 1024, 65536, 262144, 1048576, 2097152, 4194304, 8388608] as const;"
+        },
+        {
+          "line": 8,
+          "text": "function histogram(): ByteHistogram { return { count: 0, sum: 0, buckets: BYTE_BUCKETS.map(() => 0) }; }"
+        },
+        {
+          "line": 9,
+          "text": "const add = (left: number, right = 1) => Math.min(Number.MAX_SAFE_INTEGER, left + right);"
+        },
+        {
+          "line": 10,
+          "text": "function observe(values: ByteHistogram, bytes: number): void {"
+        },
+        {
+          "line": 11,
+          "text": "values.count = add(values.count);"
+        },
+        {
+          "line": 12,
+          "text": "values.sum = add(values.sum, bytes);"
+        },
+        {
+          "line": 13,
+          "text": "for (let index = 0; index < BYTE_BUCKETS.length; index++) if (bytes <= BYTE_BUCKETS[index]!) values.buckets[index] = add(values.buckets[index]!);"
+        },
+        {
+          "line": 37,
+          "text": "const describe = (name: string, type: \"counter\" | \"histogram\", help: string) => lines.push(`# HELP ${name} ${help}`, `# TYPE ${name} ${type}`);"
+        },
+        {
+          "line": 38,
+          "text": "describe(\"web_upstream_collection_requests_total\", \"counter\", \"Collection operations by consumption mode and public outcome; physical leases are reported separately.\");"
+        },
+        {
+          "line": 41,
+          "text": "[\"items\", \"items\", \"Complete item frames observed, including items preceding an invalid or cancelled EOF.\"],"
+        },
+        {
+          "line": 42,
+          "text": "[\"envelope_bytes\", \"envelope\", \"Non-item bytes observed while framing collection envelopes.\"],"
+        },
+        {
+          "line": 43,
+          "text": "[\"validated_eof\", \"eof\", \"Collection operations whose UTF-8, JSON and envelope reached a validated EOF.\"],"
+        },
+        {
+          "line": 49,
+          "text": "[\"largest_item\", \"largest\", \"Largest individual item frame per collection operation, excluding rejected excess.\"],"
+        },
+        {
+          "line": 50,
+          "text": "[\"peak_capture\", \"capture\", \"Peak owned byte-slab capacity per decoder, excluding adapter chunks and caller-owned projected results.\"],"
+        },
+        {
+          "line": 53,
+          "text": "describe(metric, \"histogram\", help);"
+        }
+      ],
+      "reason": "固定指标枚举/buckets、HELP 描述和已有 histogram 累加模板；新集合样本验证及动态累计另计。"
+    },
+    {
+      "file": "packages/web-http/src/upstream-response.ts",
+      "fragments": [
+        {
+          "line": 123,
+          "text": "return { ...result, bytes: storage.take() };"
+        }
+      ],
+      "reason": "旧 buffered response 元数据返回表达式的等价重排；不计为新功能。"
+    },
+    {
+      "file": "packages/web-http/src/upstream-stream.ts",
+      "fragments": [
+        {
+          "line": 28,
+          "text": "constructor(response: Response, maxBytes: number, signal: AbortSignal, validateJson: boolean | UpstreamStreamValidator = false, track?: CancellationObserver, checkpoint: DeadlineCheckpoint = () => {}) {"
+        }
+      ],
+      "reason": "构造函数仅扩充类型以注入 validator；类型本身不计新增功能。"
+    },
+    {
+      "file": "packages/web-http/src/upstream.ts",
+      "fragments": [
+        {
+          "line": 195,
+          "text": "let mappingFailure: { error: unknown } | undefined;"
+        },
+        {
+          "line": 229,
+          "text": "let expose!: (value: { response: Response; payload: () => Record<string, unknown> | null }) => void;"
+        },
+        {
+          "line": 232,
+          "text": "const callerSignal = AbortSignal.any([this.shutdown.signal, options.signal, init.signal].filter((value): value is AbortSignal => value !== undefined && value !== null));"
+        },
+        {
+          "line": 243,
+          "text": "const lease = await this.admission.acquire(\"data\", signal);"
+        },
+        {
+          "line": 248,
+          "text": "permit = this.circuit.enter(\"data\");"
+        },
+        {
+          "line": 249,
+          "text": "const source = await this.fetchImpl(url, { ...init, redirect: \"error\", cache: \"no-store\", signal });"
+        },
+        {
+          "line": 250,
+          "text": "requireTimelyResponse(source, checkpoint, release.track);"
+        },
+        {
+          "line": 251,
+          "text": "status = source.status;"
+        },
+        {
+          "line": 254,
+          "text": "const value = source.headers.get(name);"
+        },
+        {
+          "line": 258,
+          "text": "if (!isUpstreamJsonType(source.headers.get(\"content-type\"))) {"
+        },
+        {
+          "line": 259,
+          "text": "cancelUpstreamBody(source, release.track);"
+        },
+        {
+          "line": 279,
+          "text": "const buffered = await bufferUpstreamResponse(source, API_RESPONSE_MAX_BYTES, signal, release.track, progress, checkpoint);"
+        },
+        {
+          "line": 280,
+          "text": "upstreamJsonPayload(buffered);"
+        },
+        {
+          "line": 290,
+          "text": "permit?.report(signal.aborted ? signal.reason instanceof UpstreamTimeoutError ? \"failure\" : \"neutral\" : error instanceof UpstreamCancelledError || error instanceof UpstreamBusyError ? \"neutral\" : \"failure\");"
+        },
+        {
+          "line": 292,
+          "text": "} finally { release.finish(); }"
+        },
+        {
+          "line": 295,
+          "text": "const failure = this.stopping && !physicalLease && !options.signal?.aborted && !init.signal?.aborted ? new UpstreamBusyError(\"closing\") : error;"
+        },
+        {
+          "line": 301,
+          "text": "observeUpstream(this.observer, { kind, outcome, durationMs: Math.max(0, performance.now() - startedAt),"
+        },
+        {
+          "line": 302,
+          "text": "bytes: download?.bytes() ?? progress.bytes, ...(status === undefined ? {} : { status }),"
+        }
+      ],
+      "reason": "未初始化绑定或与旧 request/openStream 相同的 fetch/headers/lease/错误/统计生命周期片段，仅替换变量名不重复计。"
+    },
+    {
+      "file": "packages/web-ui/src/lib/api-content.ts",
+      "fragments": [
+        {
+          "line": 197,
+          "text": "function mapArticle(article: unknown, locale: Locale, allowPreview = false): ArticleView | null {"
+        },
+        {
+          "line": 238,
+          "text": "{ endpoint, fetchImpl, timeoutMs, upstreamTransport, signal, articleProjection = \"full\" }: {"
+        },
+        {
+          "line": 247,
+          "text": "async function request(path: string, query: QueryValues = {}, allowNotFound = false, project?: (value: unknown) => ArticleView | null): Promise<unknown | null> {"
+        },
+        {
+          "line": 254,
+          "text": "const transport = upstreamTransportFor({ fetchImpl, upstreamTransport });"
+        },
+        {
+          "line": 256,
+          "text": "const init: RequestInit = { method: \"GET\", headers: { accept: \"application/json\" }, credentials: \"omit\" };"
+        },
+        {
+          "line": 293,
+          "text": "return mappedArticles(await request(path, { locale, query, limit, offset, ...(sort ? { sort } : {}) }, false, articleMapper(locale)));"
+        },
+        {
+          "line": 302,
+          "text": "return mappedArticles(await request(\"api/v1/featured\", { locale, limit }, false, articleMapper(locale)));"
+        },
+        {
+          "line": 331,
+          "text": "return mappedArticles(await request(`api/v1/categories/${encodeURIComponent(slug)}/articles`, { locale, limit, offset }, true, articleMapper(locale)));"
+        }
+      ],
+      "reason": "参数声明、既有请求组装拆行、列表路由 helper 接线；不计类型/移动/重复。"
+    },
+    {
+      "file": "packages/web-ui/src/lib/article-preview.ts",
+      "fragments": [
+        {
+          "line": 21,
+          "text": "const paragraph = article.contentBlocks.find(block => block.type === \"paragraph\");"
+        },
+        {
+          "line": 23,
+          "text": "poemLines: paragraph?.type === \"paragraph\" ? firstLines(paragraph.text, 2) : [] };"
+        },
+        {
+          "line": 36,
+          "text": "return paragraph?.type === \"paragraph\" ? firstLines(paragraph.text, 2) : [];"
+        }
+      ],
+      "reason": "既有首段摘句选择与 firstLines 算法的搬移；保留功能但不重算。"
+    },
+    {
+      "file": "apps/api/src/persistence/article-page-reader.ts",
+      "fragments": [
+        {
+          "line": 31,
+          "text": "const output: StoredArticle[] = [];"
+        }
+      ],
+      "reason": "第二条独立路径（Node 原生 TS 擦除 + Espree）识别的历史 runtime 等价片段；包括类型改动、通用方法声明、空容器和等价 return，不重复计算。"
+    },
+    {
+      "file": "apps/api/src/transport/rest/json-collection-budget.ts",
+      "fragments": [
+        {
+          "line": 25,
+          "text": "constructor(reason: JsonCollectionBoundaryError[\"reason\"]) {"
+        }
+      ],
+      "reason": "第二条独立路径（Node 原生 TS 擦除 + Espree）识别的历史 runtime 等价片段；包括类型改动、通用方法声明、空容器和等价 return，不重复计算。"
+    },
+    {
+      "file": "apps/api/src/transport/rest/json-collection-budget.ts",
+      "fragments": [
+        {
+          "line": 125,
+          "text": "dispose(): void {"
+        }
+      ],
+      "reason": "第二条独立路径（Node 原生 TS 擦除 + Espree）识别的历史 runtime 等价片段；包括类型改动、通用方法声明、空容器和等价 return，不重复计算。"
+    },
+    {
+      "file": "apps/api/src/transport/rest/json-encoding.ts",
+      "fragments": [
+        {
+          "line": 71,
+          "text": "const stack: Frame[] = [];"
+        }
+      ],
+      "reason": "第二条独立路径（Node 原生 TS 擦除 + Espree）识别的历史 runtime 等价片段；包括类型改动、通用方法声明、空容器和等价 return，不重复计算。"
+    },
+    {
+      "file": "packages/web-http/src/collection-json.ts",
+      "fragments": [
+        {
+          "line": 51,
+          "text": "constructor(options: CollectionDecoderOptions<T> = {}) {"
+        }
+      ],
+      "reason": "第二条独立路径（Node 原生 TS 擦除 + Espree）识别的历史 runtime 等价片段；包括类型改动、通用方法声明、空容器和等价 return，不重复计算。"
+    },
+    {
+      "file": "packages/web-http/src/collection-stream-gate.ts",
+      "fragments": [
+        {
+          "line": 79,
+          "text": "this.output!.close();"
+        }
+      ],
+      "reason": "第二条独立路径（Node 原生 TS 擦除 + Espree）识别的历史 runtime 等价片段；包括类型改动、通用方法声明、空容器和等价 return，不重复计算。"
+    },
+    {
+      "file": "packages/web-http/src/collection-stream-gate.ts",
+      "fragments": [
+        {
+          "line": 84,
+          "text": "private fail(error: unknown): void {"
+        }
+      ],
+      "reason": "第二条独立路径（Node 原生 TS 擦除 + Espree）识别的历史 runtime 等价片段；包括类型改动、通用方法声明、空容器和等价 return，不重复计算。"
+    },
+    {
+      "file": "packages/web-http/src/upstream.ts",
+      "fragments": [
+        {
+          "line": 231,
+          "text": "const headersReady = new Promise<{ response: Response; payload: () => Record<string, unknown> | null }>((resolve, reject) => { expose = resolve; refuse = reject; });"
+        }
+      ],
+      "reason": "第二条独立路径（Node 原生 TS 擦除 + Espree）识别的历史 runtime 等价片段；包括类型改动、通用方法声明、空容器和等价 return，不重复计算。"
+    },
+    {
+      "file": "apps/api/src/transport/rest/handler.ts",
+      "fragments": [
+        {
+          "line": 27,
+          "text": "const ARTICLE_COLLECTION_READS = new Set([\"articles\", \"articles.related\", \"featured\", \"authors.articles\", \"tags.articles\", \"categories.articles\","
+        },
+        {
+          "line": 28,
+          "text": "\"me.articles\", \"me.deleted-articles\", \"me.liked-articles\", \"me.feed\"]);"
+        },
+        {
+          "line": 46,
+          "text": "collectionAdmission = null,"
+        },
+        {
+          "line": 81,
+          "text": "const readTimeoutMs = collectionReadTimeout(env);"
+        },
+        {
+          "line": 143,
+          "text": "let collectionLease: CollectionReadLease | undefined;"
+        },
+        {
+          "line": 155,
+          "text": "const readBudget = isCollectionRead ? new CollectionReadBudget(response, readTimeoutMs) : undefined;"
+        }
+      ],
+      "reason": "路由 id 静态清单、可选配置/未初始化绑定及新 budget 组合接线；只计 admission/期限内部执行行为。"
+    },
+    {
+      "file": "apps/api/src/transport/rest/collection-read-budget.ts",
+      "fragments": [
+        {
+          "line": 6,
+          "text": "export function collectionReadTimeout(env: NodeJS.ProcessEnv): number {"
+        },
+        {
+          "line": 8,
+          "text": "return integerSetting(env, \"API_COLLECTION_READ_TIMEOUT_MS\", 120_000, 100, 600_000);"
+        }
+      ],
+      "reason": "读取期限的 env 默认设置；只计实际过期、取消、转交及迟到读取检查。"
+    },
+    {
+      "file": "apps/api/src/application/settled-reads.ts",
+      "fragments": [
+        {
+          "line": 12,
+          "text": "let failure: { error: unknown } | undefined;"
+        }
+      ],
+      "reason": "只有类型/未初始化绑定的声明，不当作独立功能。"
+    },
+    {
+      "file": "apps/api/src/transport/rest/serializers.ts",
+      "fragments": [
+        {
+          "line": 178,
+          "text": "const [profilesByLocale, categoriesByLocale, tagsByLocale] = await settledReads(["
+        },
+        {
+          "line": 179,
+          "text": "() => settledReads(localesUsed.map((locale) => () =>"
+        },
+        {
+          "line": 181,
+          "text": "? {} as Record<string, StoredAuthorProfile>"
+        },
+        {
+          "line": 182,
+          "text": ": services.getAuthorProfilesByIds({ userIds: authorIds, locale, viewerId }))),"
+        },
+        {
+          "line": 185,
+          "text": "? {} as Record<string, StoredTaxonomy[]>"
+        },
+        {
+          "line": 186,
+          "text": ": services.listArticlesTaxonomies({ articleIds, kind: \"category\", locale }))),"
+        },
+        {
+          "line": 190,
+          "text": ": services.listArticlesTaxonomies({ articleIds, kind: \"tag\", locale }))),"
+        }
+      ],
+      "reason": "旧三批 metadata 查询改用物理 settle 屏障的接线；查询本身和类型/空表重排不重复计。"
+    },
+    {
+      "file": "apps/api/src/application/settled-reads.ts",
+      "fragments": [
+        {
+          "line": 19,
+          "text": "return results as ReadResults<T>;"
+        }
+      ],
+      "reason": "第二条独立路径再次识别的历史/新增 runtime 等价片段；包括泛型 return、通用 complete/dispose/expire 方法声明，不重复计算。"
+    },
+    {
+      "file": "apps/api/src/transport/rest/collection-read-budget.ts",
+      "fragments": [
+        {
+          "line": 82,
+          "text": "complete(): void {"
+        },
+        {
+          "line": 97,
+          "text": "dispose(): void {"
+        }
+      ],
+      "reason": "第二条独立路径再次识别的历史/新增 runtime 等价片段；包括泛型 return、通用 complete/dispose/expire 方法声明，不重复计算。"
+    },
+    {
+      "file": "apps/api/src/transport/rest/json-collection-budget.ts",
+      "fragments": [
+        {
+          "line": 78,
+          "text": "private expire(): JsonCollectionBoundaryError {"
+        }
+      ],
+      "reason": "第二条独立路径再次识别的历史/新增 runtime 等价片段；包括泛型 return、通用 complete/dispose/expire 方法声明，不重复计算。"
+    },
+    {
+      "file": "apps/api/src/transport/rest/json-encoding.ts",
+      "fragments": [
+        {
+          "line": 36,
+          "text": "let escaped: string | undefined;"
+        },
+        {
+          "line": 88,
+          "text": "const object = value as JsonObject;"
+        }
+      ],
+      "reason": "未初始化类型绑定和仅为索引类型收窄而建立的对象别名，不当作新增功能。"
+    }
+  ]
+}

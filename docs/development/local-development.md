@@ -2,8 +2,8 @@
 
 This document is the contract for running the whole product on one machine: a
 database, the REST API, a notification worker, the Web app, and scripts that prove they are
-actually connected. It also records why the tooling looks the way it does, and
-which gaps in the previous setup it closes.
+actually connected. For previous gaps and their original reproduction, see
+[the archived development-chain history](../audit/local-development-history.md).
 
 Scope: developer machines only. Nothing here is a deployment procedure. See
 [the portable stack](../operations/portable-stack.md) — the same processes, built
@@ -47,10 +47,10 @@ layer, so the first `[FAIL]` identifies the broken layer.
 
 | Process | Port | Where it comes from |
 | --- | --- | --- |
-| API | **4000** | `PORT`. The API's own default is 4000 too, so a bare `node apps/api/src/service.ts` lands in the same place. |
+| API | **4000** | `PORT`. The API's own default is 4000 too, so a bare `node apps/api/src/server.ts` lands in the same place. |
 | Worker health | **4001** | `OUTBOX_HEALTH_PORT`; loopback by default, `/health` and `/ready` only. |
 | Web, through the chain | **3000** | `WEB_PORT`, set explicitly for the child process by `pnpm dev` / `dev:web` / `stack:start`. `check:local` probes `:3000`. |
-| Web, run inside the package | **3100** | `apps/web-rr/vite.config.ts` and `apps/web-rr/server.ts` default to 3100 when `PORT` is unset — `pnpm --filter @no-wave/web-rr dev`, and the same default as the container image. |
+| Web, run inside the package | **3100** | `apps/web-rr/vite.config.ts` and `apps/web-rr/server.ts` default to 3100 when `PORT` is unset — `pnpm --filter @bot-thk/web-rr dev`, and the same default as the container image. |
 
 The split is deliberate (ADR 0017): the orchestrated chain kept the 3000 every
 document, probe and `WEB_DEV_ALLOWED_ORIGINS` value already used, while the
@@ -60,44 +60,7 @@ explicitly, so which port you get depends on how you started the server, not on
 what is in `.env.local` — `WEB_PORT=3000` in the chain does not change the
 package default.
 
-## 2. What was missing before
-
-Each row was reproduced on the commit this document was written against
-(`9f4da47`), not inferred from the code.
-
-| # | Gap | How it showed up | Now |
-| --- | --- | --- | --- |
-| G1 | No local PostgreSQL orchestration. The README asked for a hand-written `docker run`, a manual `pg_isready` loop and a hand-typed `TEST_DATABASE_URL`. | Every developer invented their own container, port and database name. | `compose.yaml` + `pnpm db:up/db:down/db:reset`; the volume also creates `bot_thk_test`. |
-| G2 | `.env.example` set `DATABASE_PROVIDER=postgres` with an empty `DATABASE_URL`, contradicting the SQLite-first default (ADR 0010). | Copying the template made the API exit at startup with `DATABASE_URL is required when DATABASE_PROVIDER=postgres.` | Template is SQLite-first, PostgreSQL is a documented switch, and `pnpm setup:local` writes a valid file. |
-| G3 | A repository-root `.env.local` was read by the API but ignored by the Web app (Next.js only read `.env*` from `apps/web`). | `API_BASE_URL` set "in the project env" had no effect on the Web app, which silently kept rendering fixtures. | `apps/web-rr/vite.config.ts` loads the same root file via `process.loadEnvFile`, with the same precedence rules as the API. |
-| G4 | No single command for the API. Root `pnpm dev` started only the Web app. | Two terminals, two working directories, and an easy way to forget the API entirely. | `pnpm dev` starts API/worker/Web with readiness gates; `dev:api` includes the worker, `dev:web` starts only Web. |
-| G5 | `AUTH_JWT_SECRET` shorter than 32 bytes or absent was only reported as `503 SERVICE_UNAVAILABLE` / "Identity is not configured." on auth routes. | Sign-in looked like an outage on a fresh clone; the message names neither the variable nor the length. | `evaluateAuthSecret` blocks `pnpm dev` before any process starts, with the exact remedy. |
-| G6 | No way to test the chain. `pnpm test:routes` covers the Web app in fixture mode only. | "It works" was a manual browser opinion. | `pnpm check:local` (10 probes) and `pnpm dev --check`. |
-| G7 | The publish precondition was hidden. | An account without a profile returned `author: null`, so the public article 404s and the Web page 404s. | Registration now creates a default profile in the same transaction; the probe verifies it and the writing desk can edit the pen name. |
-| G8 | An empty database and a missing API look identical in the UI (both render an empty site). | Hours lost to "the frontend is not connecting". | The probe asserts the API title appears in the server-rendered HTML. |
-| G9 | Next.js only serves dev assets to trusted hostnames. | Opening the dev server from a phone or a preview proxy produced an unstyled page. | `WEB_DEV_ALLOWED_ORIGINS` -> `allowedDevOrigins`. |
-| G10 | The local chain was not exercised in CI. | Regressions in the wiring were only found by developers. | A `local-dev-chain` CI job boots SQLite *and* PostgreSQL legs through the same scripts. |
-| G11 | `DATABASE_PATH` is resolved against the API's working directory, not the repository root. | `data/no-wave.sqlite` could land in two different places depending on how the API was started. | The dev banner prints the resolved repository-relative path, without leaking the developer's home directory. |
-
-## 3. Defect found while verifying the chain
-
-The new probe failed its Web auth step with `403 ORIGIN_REJECTED` even though the
-request was same-origin. Root cause: the dev server builds `request.url` from the
-hostname it was started with, so `--host 0.0.0.0` (and the
-Web image's `HOSTNAME=0.0.0.0`) produces `http://0.0.0.0:3000/...`, while the
-browser sends `Origin: http://127.0.0.1:3000`. `isSameOriginMutation` compared
-against the first value and therefore rejected every legitimate sign-in,
-logout, authoring write, media upload and comment mutation for any hostname other
-than the listen address.
-
-Fix: compare the browser `Origin` against the request's `Host` header (the
-authority the browser actually addressed), falling back to `request.url` when the
-header is missing or malformed. The comparison remains exact origin equality —
-scheme, host and port — so a foreign origin, a different port or a scheme
-downgrade is still rejected. See
-`packages/web-ui/src/lib/authoring-proxy-policy.ts` and its regression test.
-
-## 4. How the pieces are organised, and why
+## 2. How the pieces are organised, and why
 
 ```
 package.json                 pnpm entry points; no shell-specific syntax, so they work in PowerShell
@@ -109,10 +72,10 @@ scripts/dev.ts               start API + worker + Web on one persistence config
 scripts/lib/dev-supervisor.ts process-tree cleanup, watch failure and recovery supervision
 scripts/lib/dev-service-probe.ts bounded role-aware readiness checks
 scripts/local-dev-check.ts   layered HTTP probe, PASS/FAIL/SKIP report
-tsconfig.scripts.json        typechecks scripts/ (also repairs two pre-existing strict errors)
+tsconfig.scripts.json        typechecks scripts/
 ```
 
-### 4.1 One environment file, one source of truth
+### 2.1 One environment file, one source of truth
 
 A developer should not have to know that the API and the Web app load
 configuration differently. The contract is:
@@ -125,7 +88,7 @@ configuration differently. The contract is:
 
 Shell exports win over env files. For repeated Node `--env-file-if-exists` flags, the later file wins, so package commands list `.env` before `.env.local`; `process.loadEnvFile` preserves existing environment values. The orchestrator loads `.env.local` once before spawning every dev role.
 
-### 4.2 Only the database runs in a container
+### 2.2 Only the database runs in a container
 
 The API, notification worker and Web app run as native Node processes:
 
@@ -145,7 +108,7 @@ per ADR 0010, and it is the fastest way to get a working API; PostgreSQL is a
 one-flag switch for developers who need provider parity, connection settings or
 the integration-test database.
 
-### 4.3 The tooling talks over HTTP, never by importing app code
+### 2.3 The tooling talks over HTTP, never by importing app code
 
 Runtime dev tooling and HTTP probes do not import application modules; integration test fixtures may import migration helpers for disposable databases. Consequences:
 
@@ -160,7 +123,7 @@ rather than a direct SQL check in the script. That is the better boundary: the
 API's own readiness endpoint is the contract the platform relies on, so testing
 it also tests the production path.
 
-### 4.4 Failure messages come before failures
+### 2.4 Failure messages come before failures
 
 `pnpm dev` refuses to start when it can predict a broken run:
 
@@ -172,7 +135,7 @@ it also tests the production path.
 
 Startup failures, unexpected child exit (even exit 0) and crashed applications behind Node watch mode stop all peers with a nonzero command status. Startup HTTP gates verify API/worker role identity, cap JSON at 8 KiB and bound both headers and body reads. After readiness, an observed gap is reported immediately; hot reload or transient failures have `DEV_RECOVERY_TIMEOUT_MS` to recover, otherwise the whole chain stops. A requested stop waits for durable cleanup, then force-terminates any remaining process tree within its bounded budget. Vite's observed CLI shutdown exit 143 is accepted only for that child, not for unsuccessful API/worker cleanup. Each API/worker also has `SERVICE_STARTUP_TIMEOUT_MS` (30000 by default), so a wedged initial database acquisition fails and tears down the chain instead of waiting forever.
 
-### 4.5 Writes are explicit
+### 2.5 Writes are explicit
 
 `pnpm check:local` creates a disposable account and a published article, then
 reads them back anonymously and through the Web app. Registration itself now
@@ -186,7 +149,7 @@ Use `--read-only` to skip those steps. The probe never deletes anything, so
 probe rows accumulate in a development database; `pnpm db:reset` (PostgreSQL)
 or deleting `apps/api/data/` (SQLite) is the documented reset.
 
-### 4.6 What was deliberately not added
+### 2.6 What was deliberately not added
 
 - **CORS on the API.** Browsers never call the API origin directly: public pages
   are server-rendered, and every browser mutation goes to a same-origin Web route
@@ -202,7 +165,7 @@ or deleting `apps/api/data/` (SQLite) is the documented reset.
 - **Seeded demo content.** The probe's own write path covers the read-back
   assertion, and a fixture set would need its own maintenance contract.
 
-## 5. Command reference
+## 3. Command reference
 
 | Command | Effect |
 | --- | --- |
@@ -232,7 +195,7 @@ Environment knobs: `HOST`, `PORT`, `WEB_HOST`, `WEB_PORT`, `DATABASE_PROVIDER`,
 `WEB_DEV_ALLOWED_ORIGINS`, `TEST_DATABASE_URL`, `POSTGRES_PORT` (compose host
 port). Every one is documented in `.env.example`.
 
-## 6. What the probe asserts
+## 4. What the probe asserts
 
 | Step | Endpoint | Proves |
 | --- | --- | --- |
@@ -251,7 +214,7 @@ The numbering is the debugging order: fix the lowest failing layer first. A 503
 on `auth-register` while `api-ready` passes is almost always the JWT secret; a
 `web-render` failure while the API steps pass is almost always `API_BASE_URL`.
 
-### 6.1 Publishing visibility without mail
+### 4.1 Publishing visibility without mail
 
 Email verification does **not** gate publishing: `authoring-workspace.tsx`
 offers the verification button, but an unverified account can still write and
@@ -290,7 +253,7 @@ keep the SQLite file. To verify an existing chain instead of starting one, pass
 `/api/v1/auth/verify-email`, `/api/v1/auth/forgot-password` or
 `/api/v1/me/email-verification`.
 
-## 7. PostgreSQL locally
+## 5. PostgreSQL locally
 
 ```sh
 pnpm db:up                  # postgres:17-alpine, health check, bot_thk_dev + bot_thk_test
@@ -304,9 +267,9 @@ databases:
 
 - `bot_thk_dev` — what the API uses (`DATABASE_URL`);
 - `bot_thk_test` — reserved for the integration tests. Uncomment
-  `TEST_DATABASE_URL` in `.env.local` to make `pnpm test` run the PostgreSQL
-  suites; both `pnpm test` and `pnpm --filter @bot-thk/api test:integration` read
-  `.env.local` for it.
+  `TEST_DATABASE_URL` in `.env.local` for `pnpm --filter @bot-thk/api test:integration`,
+  which reads that file. The root `pnpm test` deliberately does not load env
+  files; export `TEST_DATABASE_URL` explicitly to include PostgreSQL there.
 
 The credentials are throwaway local values. Never point `.env.local` at a shared,
 staging or production database: the probe writes data. `pnpm setup:local --postgres`
@@ -318,7 +281,7 @@ points to an external host. If that happens, unset both variables and regenerate
 `DATABASE_URL_UNPOOLED` is for deployment migrations (for example Neon's direct
 connection), not for the local development loop. Leave it unset locally.
 
-## 8. Verification levels
+## 6. Verification levels
 
 | Level | Command | Runtime | Needs Docker |
 | --- | --- | --- | --- |
@@ -341,7 +304,7 @@ publish path is part of the required-checks gate.
 `packages/web-ui/src/lib/dev-origins.test.ts`) on every run, so the environment rules and
 the probe's skip semantics cannot silently regress.
 
-## 9. Troubleshooting
+## 7. Troubleshooting
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
@@ -361,7 +324,7 @@ the probe's skip semantics cannot silently regress.
 | `image upload returns 503` | `MEDIA_S3_*` is not configured. | Expected; see [Web authoring operations](../operations/web-authoring.md). |
 | `test:integration` fails with `Media materialization audit encountered unsupported or oversized data.` (`INVALID_DATA`) | The PostgreSQL cluster was initialised with `server_encoding = SQL_ASCII` — a hand-rolled `initdb` without `--encoding`, unlike `postgres:17-alpine`. The media audit and comparison refuse to decode rows they cannot prove are UTF-8. | Re-create the cluster with `initdb --encoding=UTF8 --locale=C`, or use `pnpm db:up`. Check with `SHOW server_encoding`. |
 
-## 10. Known limits
+## 8. Known limits
 
 - `pnpm check:local` asserts the *chain*, not the UI: layout, motion, WebGL and
   accessibility still need a human or a browser test.

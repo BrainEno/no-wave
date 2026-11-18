@@ -19,6 +19,8 @@ COPY apps/api/package.json ./apps/api/package.json
 COPY apps/web-rr/package.json ./apps/web-rr/package.json
 COPY packages/web-http/package.json ./packages/web-http/package.json
 COPY packages/web-ui/package.json ./packages/web-ui/package.json
+COPY packages/glob-match/package.json ./packages/glob-match/package.json
+COPY patches ./patches
 
 RUN pnpm install --frozen-lockfile --prod --filter @bot-thk/api
 

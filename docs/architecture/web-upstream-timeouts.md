@@ -87,6 +87,58 @@ intake 满载返回私有 `503 WEB_BUSY`，关闭该连接；上游满载/排队
   默认最多 128 层（构造允许 1–256），不保留 keys、值或整棵对象树。
   这不是 import schema/签名验证，不宣称对任意不可信 bundle 完成业务验收。
 
+### 4.1 合法文章集合例外（#366）
+
+普通缓冲仍为 8 MiB，不用扩大该值承接整页全文。公开文章、作者/分类/标签作品、精选、
+相关作品以及 BFF 的既有作者/收藏/关注流集合，使用受限的增量 envelope：默认至多 100 项，
+由路由合法 limit 收紧；仅作者多语言集合可到 300 项。每项至多 8 MiB decoded bytes，
+非 item 的 envelope 累计至多 64 KiB；因此总字节 fence 从项数推导，不使用 bulk lane。
+非法参数仍由 API 拒绝，不用 fallback、减少行数或丢正文换取成功。
+
+解析器逐项 JSON.parse 和投影，fatal UTF-8、完整 JSON、唯一 envelope key、项数/字节和 EOF
+全部成功才暴露结果。失败清空结果，不返回“前几项成功”。复制的 64 KiB 惰性 slabs 防止
+一字节碎片制造数百万数组对象，也避免适配器复用 Buffer 后篡改已捕获字节。
+flatten 时仍有一份额外紧凑副本；解码字符串、JSON 对象与调用者保留的结果另计，
+这不是 Node RSS 上限或 full 客户端零内存保证。
+
+SSR 显式请求 `view=card`；API 返回 `contentProjection=card` 与 `reading`，省去正文但保留
+阅读长度及第一段前两条非空诗行。SQLite iterate / PostgreSQL 单行 callback cursor 先投影再
+保留下一个结果；取消检查在行之间让出事件循环。PG callback 模式等待驱动游标收尾并移除
+abort 监听器。默认/full 客户端、详情与写作读取仍是全文；不能拿 card 冒充 detail。
+归档、作者、标签 feed 和 sitemap 使用 card，语言、顺序、分页、公开性和真实修改时间不变。
+
+API 原生服务另有文章 GET 集合容量池：默认 4 active / 16 queued / 250 ms 排队；
+`API_COLLECTION_CONCURRENCY` 1–32、`API_COLLECTION_QUEUE` 0–128、
+`API_COLLECTION_QUEUE_TIMEOUT_MS` 1–5000。满载/排队到期返回私有 `503 COLLECTION_BUSY`、
+Retry-After 1；身份、health、detail 和所有 mutation 不经过该池。
+槽须等 handler 与 native response **都**结束：客户端先断开、持久层未确认结束时，
+`api_http_collection_detached` 保持非零，不能靠超时创建无限替代查询。关闭服务拒绝队列，
+不伪称未知数据库工作已结束。该池不是跨实例全局限流或全页内存预留。
+
+获得槽之后的初始读取与 batched metadata 还有独立读取期限：
+`API_COLLECTION_READ_TIMEOUT_MS` 默认 120000，范围 100–600000 ms，显式空值拒绝启动。
+超时在 headers 前回答私有 `504 COLLECTION_READ_TIMEOUT`，并中止合作的 card cursor；
+未合作的 DB 工作仍占 active/detached 槽，直到真实结束。读取返回后的 checkpoint 禁止再启动
+文章/metadata 查询。并发 metadata 或多语言读取即使一项先失败，也等待所有已启动分支 settle，
+不以 `Promise.all` 的提前 reject 假装物理资源已归还；保持原输入顺序、原始首个失败且不重试。
+这只覆盖集合 GET，独立于身份、详情、mutation 和后续 writer 的期限；同步 CPU 仍不可抢占。
+
+API writer 输出至多 64 KiB 一块，等待 drain 后才继续遍历下一项；单项 8 MiB、envelope
+64 KiB 的生产 fence 同样检查实际 UTF-8，未提高任何文章/导入业务限额。
+`API_COLLECTION_WRITE_TIMEOUT_MS` 默认 120000、范围 100–600000 ms，只覆盖编码、drain 与
+finish，不包含之前的 DB 获取；既有 API 入站和 Web 上游期限独立。超时/编码错误若发生在
+headers 前由既有脱敏错误策略回答；headers 后 destroy 不完整 JSON，不能补第二个 envelope。
+该保护是协作式 checkpoint，不承诺抢占同步 getter/编码 CPU。
+
+BFF 在确认合法 `data` 数组前只预读至多一个 envelope 加一块 64 KiB segment，避免仅有
+headers 或停滞前缀就提交成功。之后 HWM 0、按需求重放/转发；晚期 EOF 错误只能中止流。
+逻辑期限和真实取消 receipt 仍由原 transport 管理；不新增 mutation retry。
+
+新增固定标签指标包括 `web_upstream_collection_*` 的 parsed/forwarded、items、envelope、
+validated EOF、最大 item 与捕获峰值，以及 API 的完成/取消/失败、实际 accepted bytes、chunks、
+drain 等待与 writer duration。native finish 不是对端已消费全部字节的证明；writer duration
+不是 DB 端到端耗时。所有指标不包含正文、账号、URL 或错误原文。
+
 ## 5. 固定 lane 熔断与重试边界
 
 每 lane 连续 5 次网络/期限/损坏响应/5xx 失败后开启，默认冷却 2 秒。

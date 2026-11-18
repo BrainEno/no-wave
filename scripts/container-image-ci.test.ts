@@ -114,3 +114,20 @@ test("the Web runtime image declares a bounded dependency-free healthcheck", asy
   assert.match(dockerfile, /AbortSignal\.timeout\(2000\)/);
   assert.match(dockerfile, /redirect: 'manual'/);
 });
+
+test("frozen image installs include the genuine workspace glob engine and all pinned patches", async () => {
+  const api = await readFile("apps/api/Dockerfile", "utf8");
+  const web = await readFile("apps/web-rr/Dockerfile", "utf8");
+  const webStages = web.split(/^FROM \S+ AS (?:build|runtime)\s*$/m).slice(1);
+  assert.equal(webStages.length, 2, "both Web build and runtime stages must be checked");
+  for (const stage of [api, ...webStages]) {
+    const install = stage.indexOf("RUN pnpm install --frozen-lockfile");
+    assert.ok(install > 0, "the stage must still use frozen installs");
+    const beforeInstall = stage.slice(0, install);
+    assert.match(beforeInstall, /COPY packages\/glob-match\/package\.json \.\/packages\/glob-match\//);
+    assert.match(beforeInstall, /COPY patches \.\/patches/);
+  }
+  assert.match(webStages[0]!.split("RUN pnpm --filter @bot-thk/web-rr build")[0]!, /COPY packages\/glob-match \.\/packages\/glob-match/);
+  assert.match(webStages[1]!.split(/^CMD /m)[0]!, /COPY packages\/glob-match\/src \.\/packages\/glob-match\/src/);
+  for (const patch of ["vite@8.3.6", "prettier@3.10.0", "playwright@1.65.0"]) assert.ok(existsSync(`patches/${patch}.patch`));
+});

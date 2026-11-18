@@ -2,7 +2,8 @@ import { Link } from "@/lib/framework/link.tsx";
 import { archivePath, articlePath, authorPath, getMessages, type AuthorView, type Locale, type WorkType } from "@/lib/content.ts";
 import { dateLabel, pad } from "@/lib/format.ts";
 import { pickDefaultCover } from "@/lib/covers.ts";
-import { lengthLabel, textLength } from "@/lib/reading.ts";
+import { lengthLabel } from "@/lib/reading.ts";
+import { articleReadingLength } from "@/lib/article-preview.ts";
 import { paginate } from "@/lib/work-types.ts";
 import { getUi } from "@/lib/ui-copy.ts";
 import { EmptyState, hrefWith, Pager, SectionHeading, TypeChip, TypeTabs } from "@/components/ui/parts.tsx";
@@ -62,7 +63,7 @@ export function AuthorPageView({ locale, author, type, page, works }: AuthorPage
                   <Link key={article.slug} className="nw-cr" href={articlePath(article.slug, locale)}>
                     <span className="nw-m">{dateLabel(article.publishedAt, locale)}</span>
                     <span className="nw-zh">{article.title}</span>
-                    <span className="nw-m"><TypeChip type={article.workType} locale={locale} /> {lengthLabel(textLength(article.contentBlocks, locale), locale)}</span>
+                    <span className="nw-m"><TypeChip type={article.workType} locale={locale} /> {lengthLabel(articleReadingLength(article, locale), locale)}</span>
                   </Link>
                 ))}
                 <Pager locale={locale} page={page} hasNextPage={hasNextPage} hrefFor={(next) => hrefWith(base, { type, page: next })} />

@@ -1,3 +1,4 @@
+import { readSqliteArticlePage } from "./article-page-reader.ts";
 import { randomUUID } from "node:crypto";
 import { createMigrationTransactionId } from "./provider-migration-journal.ts";
 import { createSqliteProviderMigrationCapture, migrationEntityKey, type CapturedChange } from "./sqlite-provider-migration-capture.ts";
@@ -87,11 +88,11 @@ export function createSqliteTaxonomyStore(db: SqliteRunner, options: { transacti
       validateTaxonomyKind(kind); validateArticleSlug(slug); validateArticleLocale(locale);
       return taxonomyForLocale("tax.kind = ? AND tax.slug = ? AND COALESCE(requested.name, fallback.name) IS NOT NULL LIMIT 1", [kind, slug], locale);
     },
-    listTaxonomyArticles({ kind, slug, locale = "zh-CN", limit = 20, offset = 0 }) {
+    listTaxonomyArticles({ kind, slug, locale = "zh-CN", limit = 20, offset = 0, projection, signal }) {
       validateTaxonomyKind(kind); validateArticleSlug(slug); validateArticleLocale(locale);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
       if (!Number.isInteger(offset) || offset < 0 || offset > 1000000) throw new ArticleInputError("offset must be an integer between 0 and 1000000.");
-      return all(`
+      return readSqliteArticlePage(db.prepare(`
         SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count,
           at.locale, at.title, at.summary, at.content_blocks, at.content_blocks_version
         FROM taxonomies tax
@@ -101,14 +102,14 @@ export function createSqliteTaxonomyStore(db: SqliteRunner, options: { transacti
         JOIN article_translations at ON at.article_id = a.id AND at.locale = ?
         WHERE tax.kind = ? AND tax.slug = ?
         ORDER BY a.published_at DESC, a.id DESC LIMIT ? OFFSET ?
-      `, locale, locale, kind, slug, limit, offset).map((r) => ({
+      `), [locale, locale, kind, slug, limit, offset], (r) => ({
         id:r.id, authorId:r.author_id, slug:r.slug, workType:r.work_type ?? "other",
         status:r.status, locale:r.locale, title:r.title, summary:r.summary,
         contentBlocks:JSON.parse(r.content_blocks),
         contentBlocksVersion: Number(r.content_blocks_version ?? 0),
         createdAt:r.created_at, updatedAt:r.updated_at, publishedAt:r.published_at,
         viewCount: Number(r.view_count ?? 0),
-      }));
+      }), { limit, projection, signal });
     },
     listArticleTaxonomies({ articleId, kind, locale = "zh-CN" }) {
       if (!isUuid(articleId)) throw new ArticleInputError("articleId must be a valid article ID.");

@@ -6,10 +6,11 @@
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
-import { readFile, readdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { INHERITED_VARIABLES } from "./portable-stack.ts";
+import { discoverTests, nodeTestArguments, TEST_GROUPS, type TestGroup } from "./lib/test-discovery.ts";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 export type CommandResult = { code: number; stdout: string; stderr: string };
@@ -33,6 +34,11 @@ export function testArguments(script: string): string[] {
   const tokens = script.trim().split(/\s+/);
   if (tokens.shift() !== "node") throw new Error("Test script must start with node.");
   const args = tokens.filter((token) => !token.startsWith("--env-file-if-exists="));
+  const discovery = args.length === 2 && ["scripts/test.ts", "../../scripts/test.ts"].includes(args[0]!);
+  if (discovery) {
+    if (!(TEST_GROUPS as readonly string[]).includes(args[1]!)) throw new Error("Unsupported discovery group.");
+    return nodeTestArguments(args[1] as TestGroup, root);
+  }
   if (!args.includes("--test") || args.some((token) => /[;&|`$<>*]/.test(token))) {
     throw new Error("Unsupported test script syntax; update test-all's safe inventory parser.");
   }
@@ -174,7 +180,7 @@ async function main(): Promise<void> {
   const { chromium } = await import("@playwright/test");
   const rootPackage = JSON.parse(await readFile(join(root, "package.json"), "utf8")) as { scripts: { test: string } };
   const apiPackage = JSON.parse(await readFile(join(root, "apps/api/package.json"), "utf8")) as { scripts: { "test:integration": string } };
-  const webTests = (await readdir(join(root, "apps/web-rr/test"))).filter((name) => name.endsWith(".test.ts")).sort().map((name) => `test/${name}`);
+  const webTests = discoverTests("web", root).map(file => resolve(root, file));
   const controller = new AbortController();
   const interrupt = () => controller.abort();
   process.once("SIGINT", interrupt);

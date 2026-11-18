@@ -73,6 +73,42 @@ const ERROR_RESPONSE: JsonSchema = {
   },
 };
 
+const ARTICLE = {
+    type: "object",
+    required: ["id", "authorId", "slug", "workType", "status", "locale", "title", "summary", "contentBlocks", "contentBlocksVersion", "viewCount"],
+    description:
+      "A stored work plus the `author`, `categories` and `tags` the API adds. One id identifies the work; `(id, locale)` identifies one of its translations.",
+    properties: {
+      id: TEXT,
+      revision: { type: "string", pattern: "^(0|[1-9][0-9]*)$", description: "Database-local work revision as a decimal bigint string. Authoring reads/writes include it; send as expectedRevision on PUT." },
+      authorId: TEXT,
+      slug: { type: "string", description: "Work-wide address, not per translation." },
+      workType: {
+        type: "string",
+        enum: [...supportedArticleWorkTypes],
+        description: "`serial` is retired: it can be read and saved but not chosen for new work.",
+      },
+      status: { type: "string", enum: ["draft", "published"] },
+      locale: { type: "string", enum: LOCALES },
+      title: TEXT,
+      summary: { type: "string", maxLength: ARTICLE_SUMMARY_MAX_LENGTH },
+      contentBlocks: CONTENT_BLOCKS,
+      contentBlocksVersion: { type: "integer", enum: [0, 1] },
+      createdAt: NULLABLE_TIMESTAMP,
+      updatedAt: NULLABLE_TIMESTAMP,
+      publishedAt: NULLABLE_TIMESTAMP,
+      viewCount: {
+        type: "integer",
+        minimum: 0,
+        description:
+          "Readers who opened the work, counted once per reader per UTC day and never the author's own visits (ADR 0035). Work-wide, not per translation.",
+      },
+      author: nullable(ref("AuthorProfile")),
+      categories: { type: "array", items: ref("Taxonomy") },
+      tags: { type: "array", items: ref("Taxonomy") },
+    },
+  };
+
 export const SCHEMAS: Readonly<Record<string, JsonSchema>> = Object.freeze({
   Error: ERROR_RESPONSE,
 
@@ -217,41 +253,22 @@ export const SCHEMAS: Readonly<Record<string, JsonSchema>> = Object.freeze({
     },
   },
 
-  Article: {
-    type: "object",
-    required: ["id", "authorId", "slug", "workType", "status", "locale", "title", "summary", "contentBlocks", "contentBlocksVersion", "viewCount"],
-    description:
-      "A stored work plus the `author`, `categories` and `tags` the API adds. One id identifies the work; `(id, locale)` identifies one of its translations.",
+  Article: ARTICLE,
+  ArticleCard: {
+    ...ARTICLE,
+    required: [...ARTICLE.required.filter(name => name !== "contentBlocks"), "contentProjection", "reading"],
+    description: "Explicit list-only view=card projection. Never an authoring body or a replacement for full detail. Reading length excludes code, images/captions and quote attribution; English counts words, Chinese counts non-whitespace UTF-16 code units.",
+    not: { required: ["contentBlocks"] },
     properties: {
-      id: TEXT,
-      revision: { type: "string", pattern: "^(0|[1-9][0-9]*)$", description: "Database-local work revision as a decimal bigint string. Authoring reads/writes include it; send as expectedRevision on PUT." },
-      authorId: TEXT,
-      slug: { type: "string", description: "Work-wide address, not per translation." },
-      workType: {
-        type: "string",
-        enum: [...supportedArticleWorkTypes],
-        description: "`serial` is retired: it can be read and saved but not chosen for new work.",
-      },
-      status: { type: "string", enum: ["draft", "published"] },
-      locale: { type: "string", enum: LOCALES },
-      title: TEXT,
-      summary: { type: "string", maxLength: ARTICLE_SUMMARY_MAX_LENGTH },
-      contentBlocks: CONTENT_BLOCKS,
-      contentBlocksVersion: { type: "integer", enum: [0, 1] },
-      createdAt: NULLABLE_TIMESTAMP,
-      updatedAt: NULLABLE_TIMESTAMP,
-      publishedAt: NULLABLE_TIMESTAMP,
-      viewCount: {
-        type: "integer",
-        minimum: 0,
-        description:
-          "Readers who opened the work, counted once per reader per UTC day and never the author's own visits (ADR 0035). Work-wide, not per translation.",
-      },
-      author: nullable(ref("AuthorProfile")),
-      categories: { type: "array", items: ref("Taxonomy") },
-      tags: { type: "array", items: ref("Taxonomy") },
+      ...Object.fromEntries(Object.entries(ARTICLE.properties).filter(([name]) => name !== "contentBlocks")),
+      contentProjection: { type: "string", const: "card" },
+      reading: { type: "object", required: ["locale", "length", "poemLines"], properties: {
+        locale: { type: "string", enum: LOCALES }, length: { type: "integer", minimum: 0 },
+        poemLines: { type: "array", maxItems: 2, items: { type: "string", minLength: 1, maxLength: 20000 }, description: "First paragraph's first two trimmed, nonempty lines; no later-paragraph fallback." },
+      } },
     },
   },
+  ArticleListEntry: { oneOf: [ref("Article"), ref("ArticleCard")] },
 
   DeletedArticle: {
     description: "A tombstone in the author's recycle bin: the work plus when it was deleted and what its removal will sweep.",

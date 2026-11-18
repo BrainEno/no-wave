@@ -27,6 +27,8 @@ COPY apps/api/package.json ./apps/api/package.json
 COPY packages/web-ui/package.json ./packages/web-ui/package.json
 COPY apps/web-rr/package.json ./apps/web-rr/package.json
 COPY packages/web-http/package.json ./packages/web-http/package.json
+COPY packages/glob-match/package.json ./packages/glob-match/package.json
+COPY patches ./patches
 
 # The build needs devDependencies (vite, @react-router/dev), so NODE_ENV is set
 # only after this step: pnpm reads NODE_ENV=production as `--prod`.
@@ -41,6 +43,7 @@ RUN pnpm install --frozen-lockfile --filter @bot-thk/web-rr...
 
 COPY packages/web-http ./packages/web-http
 COPY packages/web-ui ./packages/web-ui
+COPY packages/glob-match ./packages/glob-match
 COPY apps/web-rr ./apps/web-rr
 
 ENV NODE_ENV=production
@@ -64,12 +67,16 @@ COPY apps/api/package.json ./apps/api/package.json
 COPY packages/web-ui/package.json ./packages/web-ui/package.json
 COPY apps/web-rr/package.json ./apps/web-rr/package.json
 COPY packages/web-http/package.json ./packages/web-http/package.json
+COPY packages/glob-match/package.json ./packages/glob-match/package.json
+COPY patches ./patches
 
 RUN pnpm install --frozen-lockfile --prod --filter @bot-thk/web-rr...
 
 # `@bot-thk/web-http` is consumed as TypeScript source — Node 24 strips the
 # types — so the package body has to travel with the image.
 COPY packages/web-http/src ./packages/web-http/src
+# Workspace selection includes the build adapter's dependency importer too.
+COPY packages/glob-match/src ./packages/glob-match/src
 COPY apps/web-rr/server.ts apps/web-rr/compression.ts apps/web-rr/document-security.ts ./apps/web-rr/
 COPY apps/web-rr/refresh ./apps/web-rr/refresh
 COPY apps/web-rr/upstream ./apps/web-rr/upstream

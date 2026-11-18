@@ -16,6 +16,8 @@ export type ArticleSort = "latest" | "popular";
 export type ArticleView = {
   slug: string; title: string; description: string; workType: WorkType;
   contentBlocks: ArticleContentBlock[]; publishedAt: string; author: AuthorView;
+  /** Explicit list-only projection; never supplied to the full article renderer. */
+  listPreview?: { locale: Locale; length: number; poemLines: string[] };
   /** Optional public API modification instant; older payloads may omit it. */
   updatedAt?: string;
   categories: string[]; tags: string[]; locale: Locale; availableLocales: Locale[];

@@ -5,6 +5,8 @@ import { API_RESPONSE_MAX_BYTES, AUTH_RESPONSE_MAX_BYTES, EXPORT_RESPONSE_MAX_BY
   cancelUpstreamBody, requireTimelyResponse, isUpstreamJsonType, upstreamJsonPayload, type BufferedApiResponse } from "./upstream-response.ts";
 import { UpstreamRelease } from "./upstream-release.ts";
 import { UpstreamBodyStream } from "./upstream-stream.ts";
+import { CollectionJsonDecoder, type CollectionLimits } from "./collection-json.ts";
+import { CollectionStreamGate } from "./collection-stream-gate.ts";
 import { UpstreamCircuit, type CircuitOptions, type CircuitPermit } from "./upstream-circuit.ts";
 import { UpstreamTimeoutError } from "./api.ts";
 import { UPSTREAM_KINDS, observeUpstream, upstreamOutcome, type UpstreamKind, type UpstreamObserver, type UpstreamOutcome } from "./upstream-telemetry.ts";
@@ -17,6 +19,8 @@ export type UpstreamRequestOptions = {
   responseType?: "json" | "json-success" | "bytes";
 };
 export type UpstreamTransportOptions = { fetchImpl?: FetchImpl; admission?: AdmissionLimits; observer?: UpstreamObserver; circuit?: CircuitOptions };
+export type UpstreamCollectionOptions = CollectionLimits & { kind?: "content" | "api"; timeoutMs?: number | string | null; signal?: AbortSignal; preflight?: boolean };
+export type ParsedCollectionResponse = { status: number; headers: Headers; payload: Record<string, unknown> | null };
 
 function laneFor(kind: UpstreamKind): UpstreamLane {
   return kind === "auth" ? "auth" : kind === "export" ? "bulk" : "data";
@@ -182,6 +186,121 @@ export class UpstreamTransport {
       observeUpstream(this.observer, { kind, outcome: streamOutcome,
         durationMs: Math.max(0, performance.now() - streamingStartedAt), bytes: download?.bytes() ?? 0,
         ...(responseStatus === undefined ? {} : { status: responseStatus }) });
+    });
+    return headersReady;
+  }
+
+  /** Consume incrementally under the data lease; only projected items survive. */
+  async readCollection<T = unknown>(url: string, init: RequestInit = {}, options: UpstreamCollectionOptions = {}, project?: (item: unknown, index: number) => T): Promise<ParsedCollectionResponse> {
+    let mappingFailure: { error: unknown } | undefined;
+    const map = (item: unknown, index: number) => {
+      try { return project ? project(item, index) : item as T; }
+      catch (error) { mappingFailure = { error }; throw new UpstreamResponseError("invalid-json"); }
+    };
+    try {
+      const { response, payload } = await this.collectionStream(url, init, { kind: "content", ...options }, true, map);
+      if (!response.ok) {
+        await response.body?.cancel();
+        return { status: response.status, headers: response.headers, payload: null };
+      }
+      const reader = response.body?.getReader();
+      if (reader) {
+        try { while (!(await reader.read()).done) { /* The decoder owns each bounded item, not this drain. */ } }
+        finally { reader.releaseLock(); }
+      }
+      return { status: response.status, headers: response.headers, payload: payload() };
+    } catch (error) {
+      if (mappingFailure) throw mappingFailure.error;
+      throw error;
+    }
+  }
+
+  /** A collection is not a bulk export: it competes in the ordinary data lane. */
+  async openCollection(url: string, init: RequestInit = {}, options: UpstreamCollectionOptions = {}): Promise<Response> {
+    return (await this.collectionStream(url, init, options, false)).response;
+  }
+
+  private async collectionStream<T>(url: string, init: RequestInit, options: UpstreamCollectionOptions, retainItems: boolean, project?: (item: unknown, index: number) => T): Promise<{ response: Response; payload: () => Record<string, unknown> | null }> {
+    const kind = options.kind ?? "api";
+    if (kind !== "api" && kind !== "content") throw new RangeError("Invalid upstream collection category.");
+    const timeoutMs = resolveUpstreamTimeoutMs(options.timeoutMs);
+    let checkpoint = () => {};
+    const decoder = new CollectionJsonDecoder({ ...options, retainItems, requireDataArray: !retainItems, project, checkpoint: () => checkpoint() });
+    let expose!: (value: { response: Response; payload: () => Record<string, unknown> | null }) => void;
+    let refuse!: (error: unknown) => void;
+    const headersReady = new Promise<{ response: Response; payload: () => Record<string, unknown> | null }>((resolve, reject) => { expose = resolve; refuse = reject; });
+    const callerSignal = AbortSignal.any([this.shutdown.signal, options.signal, init.signal].filter((value): value is AbortSignal => value !== undefined && value !== null));
+    const startedAt = performance.now();
+    const progress = { bytes: 0 };
+    let download: UpstreamBodyStream | undefined;
+    let physicalLease: UpstreamLease | undefined;
+    let permit: CircuitPermit | undefined;
+    let outcome: UpstreamOutcome = "network";
+    let status: number | undefined;
+    const lifecycle = withUpstreamDeadline(timeoutMs, async (signal, check) => {
+      checkpoint = check;
+      if (this.stopping) throw new UpstreamBusyError("closing");
+      const lease = await this.admission.acquire("data", signal);
+      physicalLease = lease;
+      const release = new UpstreamRelease(rejected => { permit?.release(); lease.release(rejected); }, lease.cancelling);
+      try {
+        checkpoint();
+        permit = this.circuit.enter("data");
+        const source = await this.fetchImpl(url, { ...init, redirect: "error", cache: "no-store", signal });
+        requireTimelyResponse(source, checkpoint, release.track);
+        status = source.status;
+        const headers = new Headers({ "cache-control": "no-store, max-age=0" });
+        for (const name of ["content-type", "retry-after"]) {
+          const value = source.headers.get(name);
+          if (value !== null) headers.set(name, value);
+        }
+        if (source.ok && ![204, 205].includes(status)) {
+          if (!isUpstreamJsonType(source.headers.get("content-type"))) {
+            cancelUpstreamBody(source, release.track);
+            throw new UpstreamResponseError("invalid-content-type");
+          }
+          download = new UpstreamBodyStream(source, decoder.maxBytes, signal, decoder, release.track, checkpoint);
+          // Preflight may observe a body failure before the final await below;
+          // attach a rejection observer immediately, without swallowing that await.
+          void download.finished.catch(() => {});
+          const body = !retainItems && options.preflight
+            ? await new CollectionStreamGate(download.body, () => decoder.hasDataArray(), signal, checkpoint).prepare()
+            : download.body;
+          checkpoint();
+          expose({ response: new Response(body, { status, headers }), payload: () => decoder.payload() });
+          await download.finished;
+        } else {
+          // A 401 triggers rotation from its status alone. Never wait on a
+          // corrupt, huge or stalled optional diagnostic before coordinating it.
+          let bytes = new Uint8Array(0);
+          if (status === 401 || status >= 500 || kind === "content" || [204, 205, 304].includes(status)) {
+            cancelUpstreamBody(source, release.track);
+          } else {
+            const buffered = await bufferUpstreamResponse(source, API_RESPONSE_MAX_BYTES, signal, release.track, progress, checkpoint);
+            upstreamJsonPayload(buffered);
+            bytes = buffered.bytes;
+          }
+          checkpoint();
+          expose({ response: new Response(bytes.byteLength ? bytes : null, { status, headers }), payload: () => null });
+        }
+        checkpoint();
+        outcome = status >= 400 ? "http_error" : "ok";
+        permit.report(status >= 500 ? "failure" : "healthy");
+      } catch (error) {
+        permit?.report(signal.aborted ? signal.reason instanceof UpstreamTimeoutError ? "failure" : "neutral" : error instanceof UpstreamCancelledError || error instanceof UpstreamBusyError ? "neutral" : "failure");
+        throw error;
+      } finally { release.finish(); }
+    }, callerSignal);
+    void lifecycle.catch(error => {
+      const failure = this.stopping && !physicalLease && !options.signal?.aborted && !init.signal?.aborted ? new UpstreamBusyError("closing") : error;
+      permit?.report(failure instanceof UpstreamTimeoutError || failure instanceof UpstreamResponseError ? "failure" : "neutral");
+      outcome = upstreamOutcome(failure);
+      refuse(failure);
+    }).finally(() => {
+      physicalLease?.detach();
+      observeUpstream(this.observer, { kind, outcome, durationMs: Math.max(0, performance.now() - startedAt),
+        bytes: download?.bytes() ?? progress.bytes, ...(status === undefined ? {} : { status }),
+        collection: { mode: retainItems ? "parsed" : "forwarded", ...decoder.snapshot() } });
     });
     return headersReady;
   }

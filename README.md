@@ -54,7 +54,7 @@ require, publishes through the Web writing-desk proxy, reads the article
 anonymously, and prints the article and archive links. Use
 `pnpm verify:publish --keep` to leave the stack running, or `--api-url` /
 `--web-url` to check an existing chain. See
-[Publishing visibility without mail](docs/development/local-development.md#61-publishing-visibility-without-mail).
+[Publishing visibility without mail](docs/development/local-development.md#41-publishing-visibility-without-mail).
 
 `pnpm dev` prints a safe database summary, for example:
 

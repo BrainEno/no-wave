@@ -3,9 +3,12 @@ import { SUPPORTED_LOCALES, authenticatedActorId, decodeSlug, decodeUserId, opti
 import { MAX_ARTICLE_OFFSET, describeArticlePageRefusal, maxArticleOffset } from "../../../domain/article.ts";
 import { decodeCursor } from "../../../domain/cursor.ts";
 import { normalizeArticleWriteBody, normalizeCommentWriteBody, normalizeFeaturedWriteBody, normalizeLikeWriteBody, type ArticleWriteBody } from "../bodies.ts";
-import { serializeRestArticle, serializeRestArticles, serializeRestComment, serializeRestComments } from "../serializers.ts";
+import { serializeRestArticle, serializeRestComment, serializeRestComments } from "../serializers.ts";
 import { MAX_FEATURED_ARTICLES } from "../../../domain/article.ts";
 import { createArticleWithSlug } from "../../../application/article-create.ts";
+import { articleReadOptions, parseArticleListView, sendRestArticleCollection } from "../article-collection.ts";
+import { collectionReadBudgetFor } from "../collection-read-budget.ts";
+import { settledReads } from "../../../application/settled-reads.ts";
 
 /**
  * Author-only lists may opt into every supported edition. The existing default
@@ -50,8 +53,9 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
         sendUnauthenticated(response);
         return;
       }
+      collectionReadBudgetFor(response)?.checkpoint();
       const articles = await services.listLikedArticles({ actorId, locale, limit });
-      sendJson(response, 200, { data: await serializeRestArticles(services, articles, actorId) });
+      await sendRestArticleCollection(response, services, articles, actorId);
     } catch (error: unknown) {
       sendServiceError(response, error);
     }
@@ -76,12 +80,12 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
       }
       // Authenticate once, then read every requested locale for that same actor.
       // If any read fails, fail the whole request rather than hiding that edition.
-      const pages = await Promise.all(locales.map((locale) => services.listMyArticles({ actorId, locale, limit })));
+      collectionReadBudgetFor(response)?.checkpoint();
+      const pages = await settledReads(locales.map((locale) => () => services.listMyArticles({ actorId, locale, limit })));
       const articles = locales.length === 1 ? pages[0] : newestFirst(pages.flat(), (article) => article.updatedAt);
-      const data = await serializeRestArticles(services, articles, actorId);
       // A previous API silently ignored unknown query parameters. The marker
       // lets the desk distinguish that old, partial answer from a complete one.
-      sendJson(response, 200, locales.length === 1 ? { data } : { data, meta: { locales } });
+      await sendRestArticleCollection(response, services, articles, actorId, { meta: locales.length === 1 ? undefined : { locales } });
     } catch (error: unknown) {
       sendServiceError(response, error);
     }
@@ -112,8 +116,9 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
         sendUnauthenticated(response);
         return;
       }
+      collectionReadBudgetFor(response)?.checkpoint();
       const articles = await services.listFollowingArticles({ actorId, locale, ...pagination });
-      sendJson(response, 200, { data: await serializeRestArticles(services, articles, actorId) });
+      await sendRestArticleCollection(response, services, articles, actorId);
     } catch (error: unknown) {
       sendServiceError(response, error);
     }
@@ -138,14 +143,15 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
     }
     if (request.method === "GET") {
       const pagination = parsePagination(url, 20, MAX_FEATURED_ARTICLES);
-      if (!pagination) {
+      const view = parseArticleListView(url);
+      if (!pagination || !view) {
         sendBadInput(response, "Invalid limit, or offset query parameter.");
         return;
       }
       try {
         const viewerId = await optionalViewerId(request, services, env);
-        const articles = await services.listFeaturedArticles({ locale, ...pagination });
-        sendJson(response, 200, { data: await serializeRestArticles(services, articles, viewerId) });
+        const articles = await services.listFeaturedArticles({ locale, ...pagination, ...articleReadOptions(response, view) });
+        await sendRestArticleCollection(response, services, articles, viewerId, { view });
       } catch (error: unknown) {
         sendServiceError(response, error);
       }
@@ -168,7 +174,7 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
         return;
       }
       const articles = await services.setFeaturedArticles({ actorId, articleIds: normalized.input.articleIds, locale });
-      sendJson(response, 200, { data: await serializeRestArticles(services, articles, actorId) });
+      await sendRestArticleCollection(response, services, articles, actorId);
     } catch (error: unknown) {
       sendServiceError(response, error);
     }
@@ -213,10 +219,11 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
     const locale = parseLocale(url);
     const query = parseQuery(url);
     const sort = parseSort(url);
+    const view = parseArticleListView(url);
     // The ceiling depends on the order: `latest` has a cursor for depth,
     // `popular` does not (see `maxArticleOffset`).
     const pagination = parseArticlePagination(url, 20, maxArticleOffset(sort ?? "latest"), sort ?? "latest");
-    if (!locale || query === null || sort === null || !pagination) {
+    if (!locale || query === null || sort === null || !pagination || !view) {
       const requested = Number(url.searchParams.get("offset") ?? "0");
       sendBadInput(
         response,
@@ -234,8 +241,8 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
       const page = pagination.kind === "cursor"
         ? { limit: pagination.limit, cursor: pagination.cursor }
         : { limit: pagination.limit, offset: pagination.offset };
-      const articles = await services.listPublishedArticles({ locale, query, sort, ...page });
-      sendJson(response, 200, { data: await serializeRestArticles(services, articles, viewerId) });
+      const articles = await services.listPublishedArticles({ locale, query, sort, ...page, ...articleReadOptions(response, view) });
+      await sendRestArticleCollection(response, services, articles, viewerId, { view });
     } catch (error: unknown) {
       sendServiceError(response, error);
     }
@@ -249,14 +256,15 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
     const slug = decodeSlug(routeParams.slug);
     const locale = parseLocale(url);
     const limit = parseInteger(url.searchParams, "limit", 6, 1, 50);
-    if (!slug || !locale || limit === null) {
+    const view = parseArticleListView(url);
+    if (!slug || !locale || limit === null || !view) {
       sendBadInput(response, "Invalid article slug, locale, or limit query parameter.");
       return;
     }
     try {
       const viewerId = await optionalViewerId(request, services, env);
-      const articles = await services.listRelatedArticles({ slug, locale, limit });
-      sendJson(response, 200, { data: await serializeRestArticles(services, articles, viewerId) });
+      const articles = await services.listRelatedArticles({ slug, locale, limit, ...articleReadOptions(response, view) });
+      await sendRestArticleCollection(response, services, articles, viewerId, { view });
     } catch (error: unknown) {
       sendServiceError(response, error);
     }
@@ -579,10 +587,10 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
         return;
       }
       // The recycle bin follows the same language selection as the active list.
-      const pages = await Promise.all(locales.map((locale) => services.listMyDeletedArticles({ actorId, locale, limit })));
+      collectionReadBudgetFor(response)?.checkpoint();
+      const pages = await settledReads(locales.map((locale) => () => services.listMyDeletedArticles({ actorId, locale, limit })));
       const articles = locales.length === 1 ? pages[0] : newestFirst(pages.flat(), (article) => article.deletedAt);
-      const data = await serializeRestArticles(services, articles, actorId);
-      sendJson(response, 200, locales.length === 1 ? { data } : { data, meta: { locales } });
+      await sendRestArticleCollection(response, services, articles, actorId, { meta: locales.length === 1 ? undefined : { locales } });
     } catch (error: unknown) {
       sendServiceError(response, error);
     }

@@ -97,7 +97,7 @@ export function siteUrl(): string {
 export function publicContentSource(request?: Request) {
   const endpoint = apiBaseUrl();
   return createPublicContentSource(endpoint ? createApiContentClient({ endpoint, timeoutMs: apiTimeoutMs(),
-    upstreamTransport: upstreamTransport(), signal: request?.signal }) : null);
+    upstreamTransport: upstreamTransport(), signal: request?.signal, articleProjection: "card" }) : null);
 }
 
 export function publicTagSource(request?: Request) {

@@ -1,4 +1,5 @@
 import { UpstreamTimeoutError } from "./api.ts";
+import { UpstreamCollectionTelemetry, type CollectionSample } from "./upstream-collection-telemetry.ts";
 import { ADMISSION_WAIT_BUCKETS_MS, type AdmissionSnapshot } from "./upstream-admission.ts";
 import type { CircuitSnapshot } from "./upstream-circuit.ts";
 import { UpstreamBusyError, UpstreamCancelledError, UpstreamResponseError } from "./upstream-errors.ts";
@@ -7,7 +8,7 @@ export const UPSTREAM_KINDS = ["api", "auth", "media", "content", "crawl", "expo
 export const UPSTREAM_OUTCOMES = ["ok", "http_error", "timeout", "cancelled", "too_large", "invalid_response", "network", "capacity", "queue_timeout", "closing", "circuit_open"] as const;
 export type UpstreamKind = (typeof UPSTREAM_KINDS)[number];
 export type UpstreamOutcome = (typeof UPSTREAM_OUTCOMES)[number];
-export type UpstreamSample = { kind: UpstreamKind; outcome: UpstreamOutcome; durationMs: number; bytes: number; status?: number };
+export type UpstreamSample = { kind: UpstreamKind; outcome: UpstreamOutcome; durationMs: number; bytes: number; status?: number; collection?: CollectionSample };
 export type UpstreamObserver = (sample: UpstreamSample) => void;
 const BUCKETS = [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 120] as const;
 type Counters = { outcomes: Record<UpstreamOutcome, number>; statuses: number[]; bytes: number; duration: number; count: number; buckets: number[] };
@@ -37,12 +38,17 @@ function increment(current: number, by = 1): number {
 export class UpstreamTelemetry {
   private readonly series = new Map<UpstreamKind, Counters>(UPSTREAM_KINDS.map(kind => [kind, counters()]));
   private invalidSamples = 0;
+  private readonly collections = new UpstreamCollectionTelemetry();
 
   observe(sample: UpstreamSample): void {
     const values = this.series.get(sample.kind);
     if (!values || !(UPSTREAM_OUTCOMES as readonly string[]).includes(sample.outcome) ||
         !Number.isFinite(sample.durationMs) || sample.durationMs < 0 || !Number.isSafeInteger(sample.bytes) || sample.bytes < 0 ||
         (sample.status !== undefined && (!Number.isInteger(sample.status) || sample.status < 200 || sample.status > 599))) {
+      this.invalidSamples = increment(this.invalidSamples);
+      return;
+    }
+    if (sample.collection && (!(["api", "content"] as readonly string[]).includes(sample.kind) || !this.collections.observe(sample.collection, sample.outcome))) {
       this.invalidSamples = increment(this.invalidSamples);
       return;
     }
@@ -141,6 +147,6 @@ export class UpstreamTelemetry {
     }
     describe("web_upstream_invalid_samples_total", "counter", "Discarded malformed observer samples.");
     lines.push(`web_upstream_invalid_samples_total ${this.invalidSamples}`);
-    return lines.join("\n") + "\n";
+    return lines.join("\n") + "\n" + this.collections.render(UPSTREAM_OUTCOMES);
   }
 }

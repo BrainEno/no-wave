@@ -25,6 +25,7 @@ Web 已按 [ADR 0012](decisions/0012-portable-web-framework-migration.md) / [001
 | 公共内容、标签、feed、sitemap、SEO | `web-ui/src/lib/{api-content,public-pages,tag-pages,tag-feed,site-metadata,sitemap-catalog}.ts` | 显式 source/config；已配置 API 失败不得冒充 fixtures |
 | API 运维设置、生命周期 | `apps/api/src/infrastructure/{service-settings,service-operations,http-lifecycle}.ts` | 验证范围且不输出原始设置；Web 不导入 API 实现 |
 | API 业务与持久层 | `apps/api/src/application/`、`domain/`、`persistence/`；[API README](../../apps/api/README.md) | 业务事务与所有权由后端/数据库执行 |
+| 构建工具的 glob / 目录匹配 | [glob-match](../../packages/glob-match/README.md) 与 `scripts/glob-*.test.ts` | 私有非递归工具适配器；不生成 glob 正则，不进业务层或浏览器，不承诺完整 picomatch API |
 
 示例检索：`rg 'forwardAuthoringRequest|handle.*Request' packages/web-http/src apps/web-rr/app/routes`，
 再读对应测试。花括号路径表示检索分组，不是一个名为花括号的文件。

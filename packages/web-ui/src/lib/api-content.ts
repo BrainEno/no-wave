@@ -1,5 +1,6 @@
 import { resolveUpstreamTimeoutMs, upstreamTransportFor, upstreamJsonPayload, type FetchImpl, type UpstreamTransport } from "@bot-thk/web-http";
 import { isTagSlug, type TagReference, type TagView } from "./tag-discovery.ts";
+import { parseArticlePreview, projectArticleForList } from "./article-preview.ts";
 import type { ArticleContentBlock, ArticleSort, ArticleView, AuthorView, Locale, WorkType } from "./content.ts";
 import {
   defaultLocale,
@@ -193,8 +194,11 @@ function mapAuthorSummary(author: unknown, locale: Locale): AuthorSummary | null
   };
 }
 
-function mapArticle(article: unknown, locale: Locale): ArticleView | null {
+function mapArticle(article: unknown, locale: Locale, allowPreview = false): ArticleView | null {
   if (!isRecord(article) || typeof article.slug !== "string" || typeof article.title !== "string") return null;
+  const preview = article.contentProjection === "card";
+  if (preview && !allowPreview) throw new Error("A list-only article projection cannot replace a complete article.");
+  const listPreview = preview ? parseArticlePreview(article.reading, locale) : undefined;
   const author = mapAuthor(article.author, locale);
   if (!author) return null;
   const publishedAt = [article.publishedAt, article.updatedAt, article.createdAt]
@@ -205,7 +209,8 @@ function mapArticle(article: unknown, locale: Locale): ArticleView | null {
     title: article.title,
     description: typeof article.summary === "string" ? article.summary : "",
     workType: isWorkType(article.workType) ? article.workType : "other",
-    contentBlocks: parseContentBlocks(article.contentBlocks),
+    contentBlocks: preview ? [] : parseContentBlocks(article.contentBlocks),
+    ...(listPreview ? { listPreview } : {}),
     publishedAt,
     ...(typeof article.updatedAt === "string" ? { updatedAt: article.updatedAt } : {}),
     author,
@@ -230,26 +235,32 @@ function mapCategory(category: unknown): CategoryView | null {
 }
 
 export function createApiContentClient(
-  { endpoint, fetchImpl, timeoutMs, upstreamTransport, signal }: {
+  { endpoint, fetchImpl, timeoutMs, upstreamTransport, signal, articleProjection = "full" }: {
     endpoint?: string; fetchImpl?: FetchImpl; timeoutMs?: number | string | null; upstreamTransport?: UpstreamTransport; signal?: AbortSignal;
+    articleProjection?: "full" | "card";
   } = {},
 ): ApiContentClient {
   // Resolved once, at construction: a malformed budget is a deployment error and
   // must fail here rather than turn the first page request into an unbounded
   // wait. The default (`DEFAULT_UPSTREAM_TIMEOUT_MS`) applies when unset.
   const budget = resolveUpstreamTimeoutMs(timeoutMs);
-  async function request(path: string, query: QueryValues = {}, allowNotFound = false): Promise<unknown | null> {
+  async function request(path: string, query: QueryValues = {}, allowNotFound = false, project?: (value: unknown) => ArticleView | null): Promise<unknown | null> {
     if (typeof endpoint !== "string" || endpoint.trim().length === 0) {
       throw new Error("API_BASE_URL or API_SERVICE_URL must be configured to use API-backed content.");
     }
     // Everything — connection, headers and the JSON body — happens under one
     // deadline. Without it a hung content API pins the SSR request that reads it,
     // and every request that arrives behind it waits on the same stalled socket.
-    const response = await upstreamTransportFor({ fetchImpl, upstreamTransport }).request(buildApiUrl(endpoint, path, query), {
-      method: "GET", headers: { accept: "application/json" }, credentials: "omit",
-    }, { kind: "content", timeoutMs: budget, signal, responseType: "json" });
+    const transport = upstreamTransportFor({ fetchImpl, upstreamTransport });
+    const target = buildApiUrl(endpoint, path, { ...query, ...(project && articleProjection === "card" ? { view: "card" } : {}) });
+    const init: RequestInit = { method: "GET", headers: { accept: "application/json" }, credentials: "omit" };
+    const requestedLimit = Number(query.limit);
+    const response = project
+      ? await transport.readCollection(target, init, { kind: "content", timeoutMs: budget, signal,
+        maxItems: Number.isSafeInteger(requestedLimit) && requestedLimit >= 1 && requestedLimit <= 100 ? requestedLimit : 100 }, project)
+      : await transport.request(target, init, { kind: "content", timeoutMs: budget, signal, responseType: "json" });
     const result = { status: response.status, ok: response.status >= 200 && response.status <= 299,
-      payload: response.status >= 200 && response.status <= 299 ? upstreamJsonPayload(response) : null };
+      payload: "payload" in response ? response.payload : response.status >= 200 && response.status <= 299 ? upstreamJsonPayload(response) : null };
     if (!result.ok) {
       if (allowNotFound && result.status === 404) return CONTENT_NOT_FOUND;
       throw new Error(`Content API request failed with HTTP ${result.status}.`);
@@ -264,14 +275,22 @@ export function createApiContentClient(
     return payload.data;
   }
 
+  function articleMapper(locale: Locale) {
+    return (value: unknown) => {
+      const article = mapArticle(value, locale, articleProjection === "card");
+      return article && articleProjection === "card" ? projectArticleForList(article) : article;
+    };
+  }
+  function mappedArticles(data: unknown): ArticleView[] {
+    return Array.isArray(data) ? data.filter((article): article is ArticleView => article !== null) : [];
+  }
+
   return Object.freeze({
     async listArticles({ locale = defaultLocale, query = "", authorUsername = null, sort, limit = 100, offset = 0 }: ArticleListOptions = {}): Promise<ArticleView[]> {
       const path = authorUsername
         ? `api/v1/authors/${encodeURIComponent(authorUsername)}/articles`
         : "api/v1/articles";
-      const data = await request(path, { locale, query, limit, offset, ...(sort ? { sort } : {}) });
-      if (!Array.isArray(data)) return [];
-      return data.map((article) => mapArticle(article, locale)).filter((article): article is ArticleView => article !== null);
+      return mappedArticles(await request(path, { locale, query, limit, offset, ...(sort ? { sort } : {}) }, false, articleMapper(locale)));
     },
     /**
      * The editorial shelf. There is no fixture equivalent — a hand-picked order
@@ -280,9 +299,7 @@ export function createApiContentClient(
      * own answer rather than a failure.
      */
     async listFeaturedArticles({ locale = defaultLocale, limit = 20 }: { locale?: Locale; limit?: number } = {}): Promise<ArticleView[]> {
-      const data = await request("api/v1/featured", { locale, limit });
-      if (!Array.isArray(data)) return [];
-      return data.map((article) => mapArticle(article, locale)).filter((article): article is ArticleView => article !== null);
+      return mappedArticles(await request("api/v1/featured", { locale, limit }, false, articleMapper(locale)));
     },
     async getArticleBySlug(slug: string, locale: Locale = defaultLocale): Promise<ArticleView | null> {
       const data = await request(`api/v1/articles/${encodeURIComponent(slug)}`, { locale }, true);
@@ -311,9 +328,7 @@ export function createApiContentClient(
       return mapCategory(data);
     },
     async listCategoryArticles(slug: string, locale: Locale = defaultLocale, limit = 100, offset = 0): Promise<ArticleView[]> {
-      const data = await request(`api/v1/categories/${encodeURIComponent(slug)}/articles`, { locale, limit, offset }, true);
-      if (!Array.isArray(data)) return [];
-      return data.map((article) => mapArticle(article, locale)).filter((article): article is ArticleView => article !== null);
+      return mappedArticles(await request(`api/v1/categories/${encodeURIComponent(slug)}/articles`, { locale, limit, offset }, true, articleMapper(locale)));
     },
     async listTags({ locale = defaultLocale, query = "", limit = 100, offset = 0 }: TagListOptions = {}): Promise<TagView[]> {
       const data = await request("api/v1/tags", { locale, query, limit, offset });
@@ -325,20 +340,20 @@ export function createApiContentClient(
       return data === CONTENT_NOT_FOUND ? null : mapTag(data, locale);
     },
     async listTagArticles(slug: string, locale: Locale = defaultLocale, limit = 21, offset = 0): Promise<ArticleView[] | null> {
-      const data = await request(`${tagResourcePath(slug)}/articles`, { locale, limit, offset }, true);
-      if (data === CONTENT_NOT_FOUND) return null;
-      if (!Array.isArray(data)) throw new Error("The content API returned an invalid public tag article list.");
-      return data.map((value) => {
+      const data = await request(`${tagResourcePath(slug)}/articles`, { locale, limit, offset }, true, (value) => {
         // The anonymous API query is authoritative. Refuse, rather than hide, a
         // contract violation that would accidentally place a draft on this page.
         if (!isRecord(value) || value.status !== "published") throw new Error("The content API returned a non-public tag article.");
         if (value.locale !== undefined && value.locale !== locale) throw new Error("The content API returned an inconsistent tag article locale.");
         if (typeof value.publishedAt !== "string" || !value.publishedAt) throw new Error("The content API returned invalid tag article publication metadata.");
         if (value.updatedAt !== undefined && value.updatedAt !== null && typeof value.updatedAt !== "string") throw new Error("The content API returned invalid tag article modification metadata.");
-        const article = mapArticle(value, locale);
+        const article = articleMapper(locale)(value);
         if (!article) throw new Error("The content API returned an invalid public tag article.");
         return article;
       });
+      if (data === CONTENT_NOT_FOUND) return null;
+      if (!Array.isArray(data)) throw new Error("The content API returned an invalid public tag article list.");
+      return data;
     },
   });
 }
