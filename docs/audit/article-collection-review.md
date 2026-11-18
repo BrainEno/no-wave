@@ -122,8 +122,9 @@ node docs/audit/verify-article-collection-lines.ts
 
 ## 5. 依赖、冲突及交付边界
 
-- 没有增加/升级项目依赖，`pnpm-lock.yaml` 无差异。`pnpm audit --audit-level high` exit 0，
-  仍有一个已有 low 等级 Babel advisory；不是“零漏洞”。临时 PG、Chromium 和审计工具只在忽略目录。
+- 没有增加/升级项目依赖，`pnpm-lock.yaml` 无差异。早期 `pnpm audit --audit-level high` 曾 exit 0，
+  当时只有一个已有 low 等级 Babel advisory；这不是最终审计结果。创建 PR 后重跑已变为 **exit 1，2 high + 1 low**，
+  详见下节和 [#368](https://github.com/BrainEno/no-wave/issues/368)。临时 PG、Chromium 和审计工具只在忽略目录。
 - 检索过公共模块索引、既有 `upstream*.ts` / `StreamingJsonValidator`、body reader、API serializer、
   读取/SQL ports、生命周期和设置模块。collection framer 复用 syntax validator，新增的是 envelope/item
   边界及逐项投影；owned slabs 解决字节所有权；API 读取期限保护的是 native read 阶段，
@@ -133,3 +134,44 @@ node docs/audit/verify-article-collection-lines.ts
 - 合并冲突、最终 head 的 checks 和 issue 关闭动作在 PR 审查记录中据实更新；
   即使 CI 通过并按授权关闭已解决 issue，也不表示已经合并或部署。
 - 已复核改动范围与测试资料；未发现真实凭据、真实用户数据或无关变更进入补丁。
+
+## 6. 远端验收与未解除的依赖门禁
+
+本节的第一轮远端证据绑定生产代码提交 `5b7967e79877638d3c21c905a69aa39c992039d9`，
+[PR #367](https://github.com/BrainEno/no-wave/pull/367) 的
+[CI run 44280062098](https://github.com/BrainEno/no-wave/actions/runs/44280062098) 和
+[CodeQL run 44280062156](https://github.com/BrainEno/no-wave/actions/runs/44280062156)。
+后续若只有文档更新，最终 head 的实际 checks 仍以 PR 检查记录为准，不能用本节旧 head 的通过替代。
+
+| 第一轮远端检查 | 实际结果 |
+| --- | --- |
+| PostgreSQL integration、Web production build/behavior | 通过 |
+| local-dev-chain（SQLite / PostgreSQL） | 两项通过 |
+| portable-stack（SQLite / PostgreSQL） | 两项通过 |
+| Chromium e2e 分片 1 / 2 / 3 / 4 | 四项通过；check annotations 分别报告 60 / 67 / 61 / 52 passed |
+| container-image、performance-baseline | 通过 |
+| CodeQL（分析及结果检查） | 通过 |
+| full-local-suite | **通过**；实际执行隔离的 root / Web / 自有 PostgreSQL / 四个浏览器分片 |
+| verify | **失败**，安装成功后依赖审计失败；后续测试/lint/format/typecheck/build/route/publish 步骤被跳过 |
+| required-checks | **失败**，没有被其他通过的检查掩盖 |
+
+第一轮共 17 项检查：**15 success / 2 failure / 0 pending**；两项 failure 是 verify 和汇总 gate，
+不能报告为“CI 全绿”。文档、发现、inventory 与 CI-policy 的最后专项复核为 **38 pass / 0 fail / 0 skip**。
+
+### 不是网络错误，也不能以开发依赖为由豁免
+
+本地同一 lockfile 重跑 `pnpm audit --audit-level high --json` 返回 exit 1：
+两个 high 来自公开的 [GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf)，
+另有一个既存 low。`pnpm --recursive why picomatch` 确认路径为既有开发工具链：
+
+- `stylelint@17.4.0` / `fast-glob` / `globby` → `micromatch@4.0.8` → `picomatch@2.3.2`；
+- `@react-router/dev@8.5.1` / `vite@8.3.6` / `tinyglobby@0.2.17` → `picomatch@4.0.7`。
+
+查询时 npm 的 `picomatch` latest 仍是 `4.0.7`，advisory 将 `<=4.0.7` 列为受影响范围，
+`first_patched_version` 为 null。没有可直接升级的官方已发布修复版；不伪造版本、忽略 advisory、
+缩小到 `--prod`、降低 severity 或放宽 required gate。[#368](https://github.com/BrainEno/no-wave/issues/368)
+单独跟踪上游修复或需完整兼容性验证的替代方案，这不算本轮新增生产功能。
+
+因此，本轮代码与可执行验证已提交，但 **required CI 验收未完成**。
+#366 / #356 / #353 暂不关闭，以免把尚未合并且受 gate 阻塞的实现误报成正式解决。
+没有合并、部署、生产数据操作或依赖审计豁免。
