@@ -85,10 +85,11 @@ Node 24.22.3、pnpm 10.20.0；真实 PostgreSQL 17.11，独立测试 schema。
 | --- | --- | --- |
 | `pnpm test`（最后一轮） | 2425 / 0 / 464 | 根分组无外部 PG，PG 等环境条件跳过如实保留 |
 | `TEST_DATABASE_URL=… pnpm --filter @bot-thk/api test:integration` | 772 / 0 / 0 | 完整真实 PG 分组，含 SQLite 对照、shared Web 刷新等；不靠根分组的 skip 验收 |
-| `pnpm test:web`（串行最终轮） | 281 / 0 / 18 | 生产 Web build + HTTP 行为；18 项 PG 条件测试在上述真实 PG 分组运行 |
+| `pnpm test:web`（串行无 PG 轮） | 281 / 0 / 18 | 生产 Web build + HTTP 行为；不把 18 项 PG 条件跳过当通过 |
+| `TEST_DATABASE_URL=… pnpm --filter @bot-thk/web-rr test` | 299 / 0 / 0 | 额外完整实跑 Web 的全部 PG 条件测试；其中三项 `refresh-session.test.ts` 并不在 API integration inventory，不能用该分组的 772 冒充覆盖 |
 | `pnpm typecheck` / `pnpm lint` / `pnpm format:check` | 全部 exit 0 | 全仓类型、现有严格 lint 与 scoped format，未放宽门禁 |
 | `pnpm build` / `pnpm test:routes` / `pnpm --silent verify:publish --json` | 全部 exit 0 | 真实生产构建、路由与无邮件发布可见性 |
-| `pnpm audit --audit-level high` | exit 0 | 完整 dev + prod 树；仍有 1 项 low，未增加依赖或忽略 advisory |
+| `pnpm audit --audit-level high` | exit 0 | 完整 dev + prod 树；仍有 1 项 low，未增加依赖或忽略 advisory。另完整 `pnpm audit --json` 实跑 exit 1，唯一项为既有 `@babel/core` low（GHSA-4x5r-pxfx-6jf8），并非零漏洞声明 |
 | 生产 API + 生产 Web + 独立 CLI HTTP 场景 | exit 0 | Cookie-only preview/start/lookup/304/drain/succeeded/payload NULL；伪造 browser bearer 拒绝，不冒充浏览器测试 |
 | `playwright … --list` | 发现新增 1 项 | 这里只是发现；实际浏览器执行由本轮远端 shard 验证 |
 | 主证书 + 独立运行时核对 / `git diff --check` | 全部 exit 0 | 生产计数与 patch 格式 |
