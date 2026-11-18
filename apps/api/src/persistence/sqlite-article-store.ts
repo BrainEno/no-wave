@@ -1,3 +1,4 @@
+import { readSqliteArticlePage } from "./article-page-reader.ts";
 import { readArticleCatalogue, readCatalogueEditions } from "./article-catalogue-query.ts";
 import { randomUUID } from "node:crypto";
 import {
@@ -278,7 +279,7 @@ export function createSqliteArticleStore(db: SqliteRunner, options: { transactio
    * narrower scan, which would silently decide that some references do not
    * count.
    */
-    listPublishedArticles({ locale = "zh-CN", query = "", authorId = null, sort = "latest", limit = 20, offset = 0, cursor = null } = {}) {
+    listPublishedArticles({ locale = "zh-CN", query = "", authorId = null, sort = "latest", limit = 20, offset = 0, cursor = null, projection, signal } = {}) {
       validateArticleLocale(locale);
       if (typeof query !== "string" || query.length > 200) throw new ArticleInputError("query must be a string no longer than 200 characters.");
       if (authorId !== null) requiredText("authorId", authorId, 300);
@@ -320,7 +321,7 @@ export function createSqliteArticleStore(db: SqliteRunner, options: { transactio
       // drawn through it would move under the reader: they would meet a work
       // again after it was liked, and never meet one that was liked past them.
       const keyset = resolveArticleCursor({ cursor, sort, offset });
-      const rows = statement((popular ? articleSelectWithLikeCount : articleSelect) + `
+      return readSqliteArticlePage(statement((popular ? articleSelectWithLikeCount : articleSelect) + `
         WHERE a.status = 'published' AND t.locale = ?
           AND (? = '' OR instr(nw_fold(t.title), ?) > 0 OR instr(nw_fold(t.summary), ?) > 0
             OR EXISTS (
@@ -336,9 +337,8 @@ export function createSqliteArticleStore(db: SqliteRunner, options: { transactio
           ${keyset ? "AND (a.published_at < ? OR (a.published_at = ? AND a.id < ?))" : ""}
         ORDER BY ${popular ? "like_count DESC, a.published_at DESC, a.id DESC" : "a.published_at DESC, a.id DESC"}
         LIMIT ? OFFSET ?
-      `).all(locale, needle, needle, needle, needle, needle, needle, authorId, authorId,
-        ...(keyset ? [keyset.publishedAt, keyset.publishedAt, keyset.id] : []), limit, offset);
-      return rows.map(mapArticle);
+      `), [locale, needle, needle, needle, needle, needle, needle, authorId, authorId,
+        ...(keyset ? [keyset.publishedAt, keyset.publishedAt, keyset.id] : []), limit, offset], mapArticle, { limit, projection, signal });
     },
 
     /**
@@ -348,11 +348,11 @@ export function createSqliteArticleStore(db: SqliteRunner, options: { transactio
      * row — so restoring it puts it back where the editors had it — but must not
      * be offered to a reader while it is in the bin.
      */
-    listFeaturedArticles({ locale = "zh-CN", limit = 20, offset = 0 } = {}) {
+    listFeaturedArticles({ locale = "zh-CN", limit = 20, offset = 0, projection, signal } = {}) {
       validateArticleLocale(locale);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
       if (!Number.isInteger(offset) || offset < 0 || offset > 100000) throw new ArticleInputError("offset must be an integer between 0 and 100000.");
-      return readFeaturedArticles(locale, limit, offset);
+      return readSqliteArticlePage(featuredSelect, [locale, limit, offset], mapArticle, { limit, projection, signal });
     },
 
     /**
@@ -523,19 +523,19 @@ export function createSqliteArticleStore(db: SqliteRunner, options: { transactio
       `).all(actorId, locale, limit).map(mapArticle);
     },
 
-    listRelatedArticles({ slug, locale = "zh-CN", limit = 6 }) {
+    listRelatedArticles({ slug, locale = "zh-CN", limit = 6, projection, signal }) {
       validateArticleSlug(slug);
       validateArticleLocale(locale);
       if (!Number.isInteger(limit) || limit < 1 || limit > 50) throw new ArticleInputError("limit must be an integer between 1 and 50.");
       const current = statement("SELECT a.id, a.author_id FROM articles a JOIN article_translations t ON t.article_id = a.id AND t.locale = ? WHERE a.slug = ? AND a.status = 'published' LIMIT 1").get(locale, slug);
       if (!current) return [];
-      return statement(articleSelect + `
+      return readSqliteArticlePage(statement(articleSelect + `
         LEFT JOIN article_taxonomies target_link ON target_link.article_id = ?
         LEFT JOIN article_taxonomies candidate_link ON candidate_link.article_id = a.id AND candidate_link.taxonomy_id = target_link.taxonomy_id
         WHERE a.status = 'published' AND a.id <> ? AND t.locale = ?
         GROUP BY a.id, a.author_id, a.slug, a.work_type, a.status, t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version, a.created_at, a.updated_at, a.published_at, a.view_count
         ORDER BY count(DISTINCT candidate_link.taxonomy_id) DESC, (a.author_id = ?) DESC, a.published_at DESC, a.id DESC LIMIT ?
-      `).all(current.id, current.id, locale, current.author_id, limit).map(mapArticle);
+      `), [current.id, current.id, locale, current.author_id, limit], mapArticle, { limit, projection, signal });
     },
 
     createArticle({ authorId, slug, title, summary = "", locale = "zh-CN", contentBlocks, contentBlocksVersion = 0, publish = false, workType = "other", categoryIds = [], tagIds = [], idempotencyKey = null, requestedSlug, requireNew = false }) {

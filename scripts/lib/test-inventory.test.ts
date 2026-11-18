@@ -3,15 +3,15 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { parse } from "@babel/parser";
 import test from "node:test";
+import { discoverTests, TEST_GROUPS, type TestGroup } from "./test-discovery.ts";
 
 /**
  * Every test file must be reachable from a script that actually runs it (audit
  * F-13).
  *
- * The suites are hard-coded lists of paths (the root `test` script) or package
- * globs (`node --test test/*.test.ts`). Both shapes fail the same way: a new
- * file is added, nothing runs it, and the suite reports green without it. This
- * guard turns that silence into a failure.
+ * Independently walk the repository and compare it to the invoked discovery
+ * groups or package globs. A directory omitted by discovery still fails this
+ * guard, rather than making the automatic runner pass vacuously.
  */
 
 const repositoryRoot = new URL("../..", import.meta.url).pathname;
@@ -40,7 +40,7 @@ function listTestFiles(directory: string, found: string[] = []): string[] {
   return found;
 }
 
-type TestScript = { packagePath: string; script: string; args: string[] };
+type TestScript = { packagePath: string; script: string; args: string[]; discovered: string[] };
 
 /** Every `test` script in the workspace, with the arguments it passes to node. */
 function testScripts(): TestScript[] {
@@ -59,7 +59,15 @@ function testScripts(): TestScript[] {
     };
     const script = manifest.scripts?.test;
     if (!script) continue;
+    const tokens = script.trim().split(/\s+/).filter(token => !token.startsWith("--env-file-if-exists="));
+    const runner = tokens.length === 3 && tokens[0] === "node" && /^(?:\.\.\/)*scripts\/test\.ts$/.test(tokens[1]!);
+    const group = tokens[2];
+    if (runner) {
+      assert.ok((TEST_GROUPS as readonly string[]).includes(group!), `unknown discovery group in ${packagePath}`);
+      assert.equal(resolve(repositoryRoot, packagePath, "..", tokens[1]!), join(repositoryRoot, "scripts/test.ts"));
+    }
     scripts.push({
+      discovered: runner ? discoverTests(group as TestGroup, repositoryRoot) : [],
       packagePath,
       script,
       args: script.split(/\s+/).filter((token) => token.includes(".test.ts")),
@@ -89,7 +97,8 @@ test("every test file is named by a script that runs it", () => {
   assert.ok(scripts.length > 0, "no test script was found; the guard would pass vacuously");
 
   const covered = new Set<string>();
-  for (const { packagePath, args } of scripts) {
+  for (const { packagePath, args, discovered } of scripts) {
+    for (const file of discovered) covered.add(file);
     for (const argument of args) {
       for (const file of expandArgument(packagePath, argument)) covered.add(file);
     }
@@ -108,12 +117,12 @@ test("a test script does not name a file that no longer exists", () => {
   // file moved. A missing explicit path is worse than a missing new one: it
   // breaks the whole invocation on some Node versions and is silently skipped on
   // others, which is how four files stopped running unnoticed.
-  const missing = testScripts().flatMap(({ packagePath, args }) =>
-    args
+  const missing = testScripts().flatMap(({ packagePath, args, discovered }) =>
+    [...discovered.filter(file => !existsSync(join(repositoryRoot, file))), ...args
       .filter((argument) => !argument.includes("*"))
       .map((argument) => expandArgument(packagePath, argument))
       .flat()
-      .filter((file) => !existsSync(join(repositoryRoot, file))),
+      .filter((file) => !existsSync(join(repositoryRoot, file)))],
   );
   assert.deepEqual(missing, [], `test scripts name files that do not exist:\n${missing.join("\n")}`);
 });

@@ -79,7 +79,7 @@
                     "data": {
                       "type": "array",
                       "items": {
-                        "$ref": "#/components/schemas/Article"
+                        "$ref": "#/components/schemas/ArticleListEntry"
                       }
                     }
                   }
@@ -106,6 +106,20 @@
         ],
         "description": "Accepts **either** `offset` **or** `cursor`, never both: they are two answers to \"where does this page start\". Sending both, an undecodable cursor, or a cursor with `sort=popular` is `400 BAD_INPUT`.",
         "parameters": [
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "description": "Absent or full returns complete bodies. Explicit card omits contentBlocks and includes contentProjection=card and reading metadata, without changing ordering, pagination, visibility or locale. Detail/authoring reads always remain full.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "full",
+                "card"
+              ],
+              "default": "full"
+            }
+          },
           {
             "name": "query",
             "in": "query",
@@ -1065,7 +1079,7 @@
                     "data": {
                       "type": "array",
                       "items": {
-                        "$ref": "#/components/schemas/Article"
+                        "$ref": "#/components/schemas/ArticleListEntry"
                       }
                     }
                   }
@@ -1109,6 +1123,20 @@
             "schema": {
               "type": "string",
               "maxLength": 300
+            }
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "description": "Absent or full returns complete bodies. Explicit card omits contentBlocks and includes contentProjection=card and reading metadata, without changing ordering, pagination, visibility or locale. Detail/authoring reads always remain full.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "full",
+                "card"
+              ],
+              "default": "full"
             }
           },
           {
@@ -1501,7 +1529,7 @@
                     "data": {
                       "type": "array",
                       "items": {
-                        "$ref": "#/components/schemas/Article"
+                        "$ref": "#/components/schemas/ArticleListEntry"
                       }
                     }
                   }
@@ -1535,6 +1563,20 @@
             "schema": {
               "type": "string",
               "maxLength": 300
+            }
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "description": "Absent or full returns complete bodies. Explicit card omits contentBlocks and includes contentProjection=card and reading metadata, without changing ordering, pagination, visibility or locale. Detail/authoring reads always remain full.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "full",
+                "card"
+              ],
+              "default": "full"
             }
           },
           {
@@ -1801,7 +1843,7 @@
                     "data": {
                       "type": "array",
                       "items": {
-                        "$ref": "#/components/schemas/Article"
+                        "$ref": "#/components/schemas/ArticleListEntry"
                       }
                     }
                   }
@@ -1845,6 +1887,20 @@
             "schema": {
               "type": "string",
               "maxLength": 300
+            }
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "description": "Absent or full returns complete bodies. Explicit card omits contentBlocks and includes contentProjection=card and reading metadata, without changing ordering, pagination, visibility or locale. Detail/authoring reads always remain full.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "full",
+                "card"
+              ],
+              "default": "full"
             }
           },
           {
@@ -2807,7 +2863,7 @@
                     "data": {
                       "type": "array",
                       "items": {
-                        "$ref": "#/components/schemas/Article"
+                        "$ref": "#/components/schemas/ArticleListEntry"
                       }
                     }
                   }
@@ -2833,6 +2889,20 @@
           }
         ],
         "parameters": [
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "description": "Absent or full returns complete bodies. Explicit card omits contentBlocks and includes contentProjection=card and reading metadata, without changing ordering, pagination, visibility or locale. Detail/authoring reads always remain full.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "full",
+                "card"
+              ],
+              "default": "full"
+            }
+          },
           {
             "name": "locale",
             "in": "query",
@@ -5435,7 +5505,7 @@
                     "data": {
                       "type": "array",
                       "items": {
-                        "$ref": "#/components/schemas/Article"
+                        "$ref": "#/components/schemas/ArticleListEntry"
                       }
                     }
                   }
@@ -5479,6 +5549,20 @@
             "schema": {
               "type": "string",
               "maxLength": 300
+            }
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "description": "Absent or full returns complete bodies. Explicit card omits contentBlocks and includes contentProjection=card and reading metadata, without changing ordering, pagination, visibility or locale. Detail/authoring reads always remain full.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "full",
+                "card"
+              ],
+              "default": "full"
             }
           },
           {
@@ -6837,6 +6921,196 @@
             }
           }
         }
+      },
+      "ArticleCard": {
+        "type": "object",
+        "required": [
+          "id",
+          "authorId",
+          "slug",
+          "workType",
+          "status",
+          "locale",
+          "title",
+          "summary",
+          "contentBlocksVersion",
+          "viewCount",
+          "contentProjection",
+          "reading"
+        ],
+        "description": "Explicit list-only view=card projection. Never an authoring body or a replacement for full detail. Reading length excludes code, images/captions and quote attribution; English counts words, Chinese counts non-whitespace UTF-16 code units.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Database-local work revision as a decimal bigint string. Authoring reads/writes include it; send as expectedRevision on PUT."
+          },
+          "authorId": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string",
+            "description": "Work-wide address, not per translation."
+          },
+          "workType": {
+            "type": "string",
+            "enum": [
+              "novel",
+              "short_story",
+              "poetry",
+              "essay",
+              "criticism",
+              "literary_criticism",
+              "nonfiction",
+              "serial",
+              "other"
+            ],
+            "description": "`serial` is retired: it can be read and saved but not chosen for new work."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "published"
+            ]
+          },
+          "locale": {
+            "type": "string",
+            "enum": [
+              "zh-CN",
+              "zh-TW",
+              "en"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 110
+          },
+          "contentBlocksVersion": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "createdAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "updatedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "publishedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "viewCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Readers who opened the work, counted once per reader per UTC day and never the author's own visits (ADR 0035). Work-wide, not per translation."
+          },
+          "author": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AuthorProfile"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Taxonomy"
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Taxonomy"
+            }
+          },
+          "contentProjection": {
+            "type": "string",
+            "const": "card"
+          },
+          "reading": {
+            "type": "object",
+            "required": [
+              "locale",
+              "length",
+              "poemLines"
+            ],
+            "properties": {
+              "locale": {
+                "type": "string",
+                "enum": [
+                  "zh-CN",
+                  "zh-TW",
+                  "en"
+                ]
+              },
+              "length": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "poemLines": {
+                "type": "array",
+                "maxItems": 2,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 20000
+                },
+                "description": "First paragraph's first two trimmed, nonempty lines; no later-paragraph fallback."
+              }
+            }
+          }
+        },
+        "not": {
+          "required": [
+            "contentBlocks"
+          ]
+        }
+      },
+      "ArticleListEntry": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/Article"
+          },
+          {
+            "$ref": "#/components/schemas/ArticleCard"
+          }
+        ]
       },
       "DeletedArticle": {
         "description": "A tombstone in the author's recycle bin: the work plus when it was deleted and what its removal will sweep.",

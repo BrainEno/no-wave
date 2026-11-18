@@ -200,6 +200,13 @@ function describeUnhandledError(error: unknown): { errorName: string; errorMessa
 }
 
 export function sendServiceError(response: ServerResponse, error: unknown): void {
+  // A streamed collection can fail after 200 was committed. Never append a
+  // second envelope, nor try to write headers on a closed client connection.
+  if (response.destroyed || response.writableEnded) return;
+  if (response.headersSent) {
+    response.destroy();
+    return;
+  }
   if (error instanceof AuthenticationConfigurationError) {
     sendJson(response, 503, { error: { code: "SERVICE_UNAVAILABLE", message: "Identity is not configured." } });
     return;

@@ -3,8 +3,9 @@ import type { ReactNode } from "react";
 import { articlePath, getMessages, type ArticleView, type Locale, type WorkType } from "@/lib/content.ts";
 import { dateLabel, pad } from "@/lib/format.ts";
 import { pickDefaultCover } from "@/lib/covers.ts";
-import { lengthLabel, textLength } from "@/lib/reading.ts";
-import { firstLines, splitHighlight } from "@/lib/work-types.ts";
+import { lengthLabel } from "@/lib/reading.ts";
+import { articlePoemLines, articleReadingLength } from "@/lib/article-preview.ts";
+import { splitHighlight } from "@/lib/work-types.ts";
 import { getUi } from "@/lib/ui-copy.ts";
 
 export const tabTypes: readonly WorkType[] = ["novel", "short_story", "poetry", "essay", "criticism", "literary_criticism", "nonfiction", "serial"];
@@ -23,9 +24,9 @@ export function WorkRow({ article, locale, index, withCover = false, withExcerpt
   article: ArticleView; locale: Locale; index: number; withCover?: boolean; withExcerpt?: boolean; query?: string;
 }) {
   const cover = pickDefaultCover(article.slug);
-  const length = lengthLabel(textLength(article.contentBlocks, locale), locale);
-  const firstText = article.contentBlocks.find((block) => block.type === "paragraph");
-  const excerpt = article.workType === "poetry" && firstText?.type === "paragraph" ? firstLines(firstText.text, 2).join(" / ") : article.description;
+  const length = lengthLabel(articleReadingLength(article, locale), locale);
+  const lines = articlePoemLines(article);
+  const excerpt = article.workType === "poetry" && lines.length ? lines.join(" / ") : article.description;
   return (
     <Link className="nw-row" href={articlePath(article.slug, locale)} data-reveal="row">
       <span className="nw-m nw-rn">{pad(index)}</span>

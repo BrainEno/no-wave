@@ -2,8 +2,9 @@ import { Link } from "@/lib/framework/link.tsx";
 import { archivePath, articlePath, getMessages, type ArticleView, type Locale, type WorkType } from "@/lib/content.ts";
 import { dateLabel } from "@/lib/format.ts";
 import { pickDefaultCover } from "@/lib/covers.ts";
-import { lengthLabel, textLength } from "@/lib/reading.ts";
-import { PAGE_SIZE, firstLines } from "@/lib/work-types.ts";
+import { lengthLabel } from "@/lib/reading.ts";
+import { articlePoemLines, articleReadingLength } from "@/lib/article-preview.ts";
+import { PAGE_SIZE } from "@/lib/work-types.ts";
 import { getUi } from "@/lib/ui-copy.ts";
 import { EmptyState, hrefWith, Pager, TypeChip, TypeTabs, WorkRow } from "@/components/ui/parts.tsx";
 import type { ArchivePageData } from "@/lib/public-pages.ts";
@@ -23,8 +24,7 @@ export function ArchivePageView({ locale, query, page, type, articles, hasNextPa
   const lead = showLead ? articles[0] : undefined;
   const rows = lead ? articles.slice(1) : articles;
   const poem = rows.find((article) => article.workType === "poetry");
-  const poemParagraph = poem?.contentBlocks.find((block) => block.type === "paragraph");
-  const poemLines = poemParagraph?.type === "paragraph" ? firstLines(poemParagraph.text, 2) : [];
+  const poemLines = poem ? articlePoemLines(poem) : [];
   const poemAfter = Math.min(3, rows.length - 1);
 
   return (
@@ -75,7 +75,7 @@ function ArchiveLead({ article, locale, label }: { article: ArticleView; locale:
         <div className="nw-m"><span className="nw-gc" style={{ background: "var(--ink)", color: "var(--paper)" }}>{label}</span> <TypeChip type={article.workType} locale={locale} /> · {dateLabel(article.publishedAt, locale)}</div>
         <h2>{article.title}</h2>
         <p>{article.description}</p>
-        <div className="nw-m">{article.author.displayName} · {lengthLabel(textLength(article.contentBlocks, locale), locale)}</div>
+        <div className="nw-m">{article.author.displayName} · {lengthLabel(articleReadingLength(article, locale), locale)}</div>
         <span className="nw-btn nw-sec" style={{ marginTop: 20 }}>{messages.readArticle} →</span>
       </div>
     </Link>

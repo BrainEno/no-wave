@@ -51,7 +51,7 @@ pnpm verify:publish
 它会启动一次性本地栈，补齐公开页面所需的作者资料，通过 Web 写作台代理发布，
 匿名读回文章，并打印文章页与作品目录链接。用
 `pnpm verify:publish --keep` 可以保留栈和链接，用 `--api-url` / `--web-url`
-可以验证已经启动的链。详见[无邮箱服务验证发布可见性](docs/development/local-development.md#61-publishing-visibility-without-mail)。
+可以验证已经启动的链。详见[无邮箱服务验证发布可见性](docs/development/local-development.md#41-publishing-visibility-without-mail)。
 
 `pnpm dev` 会打印安全的数据库摘要，例如：
 

@@ -1,7 +1,7 @@
 import type { RestRouteContext, RestRouteHandler } from "./context.ts";
 import { MAX_TAXONOMY_OFFSET, authenticatedActorId, decodeSlug, decodeUserId, optionalViewerId, parseLocale, parsePagination, parseQuery, readJsonObject, sendBadInput, sendJson, sendJsonBodyError, sendServiceError, sendUnauthenticated, sendUnavailable } from "../http.ts";
 import { normalizeCreateTagBody, normalizeCreateTaxonomyBody } from "../bodies.ts";
-import { serializeRestArticles } from "../serializers.ts";
+import { articleReadOptions, parseArticleListView, sendRestArticleCollection } from "../article-collection.ts";
 
 /** Tags, categories and taxonomy administration. */
 const TAXONOMY_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Object.freeze({
@@ -97,7 +97,8 @@ const TAXONOMY_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Obje
     const slug = decodeSlug(routeParams.slug);
     const locale = parseLocale(url);
     const pagination = parsePagination(url, 20, MAX_TAXONOMY_OFFSET);
-    if (!slug || !locale || !pagination) {
+    const view = parseArticleListView(url);
+    if (!slug || !locale || !pagination || !view) {
       sendBadInput(response, "Invalid category slug, locale, limit, or offset query parameter.");
       return;
     }
@@ -108,8 +109,8 @@ const TAXONOMY_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Obje
         return;
       }
       const viewerId = await optionalViewerId(request, services, env);
-      const articles = await services.listTaxonomyArticles({ kind: "category", slug, locale, ...pagination });
-      sendJson(response, 200, { data: await serializeRestArticles(services, articles, viewerId) });
+      const articles = await services.listTaxonomyArticles({ kind: "category", slug, locale, ...pagination, ...articleReadOptions(response, view) });
+      await sendRestArticleCollection(response, services, articles, viewerId, { view });
     } catch (error: unknown) {
       sendServiceError(response, error);
     }
@@ -146,7 +147,8 @@ const TAXONOMY_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Obje
     const slug = decodeSlug(routeParams.slug);
     const locale = parseLocale(url);
     const pagination = parsePagination(url, 20, MAX_TAXONOMY_OFFSET);
-    if (!slug || !locale || !pagination) {
+    const view = parseArticleListView(url);
+    if (!slug || !locale || !pagination || !view) {
       sendBadInput(response, "Invalid tag slug, locale, limit, or offset query parameter.");
       return;
     }
@@ -157,8 +159,8 @@ const TAXONOMY_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Obje
         return;
       }
       const viewerId = await optionalViewerId(request, services, env);
-      const articles = await services.listTaxonomyArticles({ kind: "tag", slug, locale, ...pagination });
-      sendJson(response, 200, { data: await serializeRestArticles(services, articles, viewerId) });
+      const articles = await services.listTaxonomyArticles({ kind: "tag", slug, locale, ...pagination, ...articleReadOptions(response, view) });
+      await sendRestArticleCollection(response, services, articles, viewerId, { view });
     } catch (error: unknown) {
       sendServiceError(response, error);
     }

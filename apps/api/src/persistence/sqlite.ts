@@ -34,6 +34,7 @@ export type SqliteRunner = {
     run(...values: unknown[]): { changes: number | bigint };
     get(...values: unknown[]): SqliteRow | undefined;
     all(...values: unknown[]): SqliteRow[];
+    iterate?(...values: unknown[]): IterableIterator<SqliteRow>;
   };
 };
 /**

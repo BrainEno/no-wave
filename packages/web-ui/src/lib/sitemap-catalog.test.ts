@@ -41,7 +41,7 @@ test("all collections have fixed anonymous GET transport and preserve an explici
     const { url, init } = requests[0]!;
     assert.equal(url.origin, "https://api.example");
     assert.equal(url.pathname, `/prefix/api/v1/${method.slice(4).toLowerCase()}`);
-    assert.deepEqual(Object.fromEntries(url.searchParams), { locale: "zh-CN", limit: "100", offset: "100", ...(method === "listArticles" ? { sort: "latest" } : {}) });
+    assert.deepEqual(Object.fromEntries(url.searchParams), { locale: "zh-CN", limit: "100", offset: "100", ...(method === "listArticles" ? { sort: "latest", view: "card" } : {}) });
     assert.equal(init?.method, "GET");
     assert.equal(init?.cache, "no-store");
     assert.equal(init?.credentials, "omit");

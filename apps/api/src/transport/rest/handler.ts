@@ -1,4 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type { CollectionReadLease, HttpCollectionAdmission } from "../../infrastructure/http-collection-admission.ts";
+import { CollectionReadBudget, collectionReadTimeout } from "./collection-read-budget.ts";
 import { createIdentityService } from "../../application/identity.ts";
 import { createRateLimitService, type RateLimitBucket, type RateLimitStore } from "../../application/rate-limit.ts";
 import type { BackgroundFailureReporter } from "../../application/background-tasks.ts";
@@ -22,6 +24,8 @@ import { hasDuplicateQueryParameters, NO_ROUTE_PARAMS, sendBadInput, sendJson, t
  * too: one address, both deployments.
  */
 const MEDIA_APPLICATION_PATH = /^\/api\/media\/([^/]+)\/?$/;
+const ARTICLE_COLLECTION_READS = new Set(["articles", "articles.related", "featured", "authors.articles", "tags.articles", "categories.articles",
+  "me.articles", "me.deleted-articles", "me.liked-articles", "me.feed"]);
 
 /**
  * The REST entry point.
@@ -39,8 +43,10 @@ export function createRestHandler({
   onMailDelivery = null,
   onBackgroundFailure = null,
   onRouteMatched = null,
+  collectionAdmission = null,
 }: {
   services: RestServices | null;
+  collectionAdmission?: HttpCollectionAdmission | null;
   env?: NodeJS.ProcessEnv;
   mediaAssets?: MediaAssetsPort | null;
   onMailDelivery?: ((sample: { purpose: string; outcome: string; durationMs: number; code?: string; message?: string }) => void) | null;
@@ -72,6 +78,7 @@ export function createRestHandler({
   // Resolved at composition time, not per request: an invalid value must fail
   // the process at startup, not produce a 500 on the first login attempt.
   const resolveClientAddress = createBffClientAddressResolver(env);
+  const readTimeoutMs = collectionReadTimeout(env);
   const writeRateLimiter = rateLimitStore
     ? createRateLimitService({ store: rateLimitStore, env, onBackgroundFailure })
     : null;
@@ -132,11 +139,27 @@ export function createRestHandler({
       writeRateLimiter,
     });
 
-    for (const group of REST_ROUTE_GROUPS) {
-      if (await group(context)) return true;
+    const isCollectionRead = request.method === "GET" && route.kind === "matched" && ARTICLE_COLLECTION_READS.has(route.id);
+    let collectionLease: CollectionReadLease | undefined;
+    if (collectionAdmission && isCollectionRead) {
+      const acquired = await collectionAdmission.acquire(response);
+      if (!acquired) {
+        if (!response.destroyed && !response.writableEnded) {
+          response.setHeader("retry-after", "1");
+          sendJson(response, 503, { error: { code: "COLLECTION_BUSY", message: "Article collection capacity is unavailable." } });
+        }
+        return true;
+      }
+      collectionLease = acquired;
     }
-
-    sendJson(response, 404, { error: { code: "NOT_FOUND", message: "The API route was not found." } });
-    return true;
+    const readBudget = isCollectionRead ? new CollectionReadBudget(response, readTimeoutMs) : undefined;
+    try {
+      readBudget?.checkpoint();
+      for (const group of REST_ROUTE_GROUPS) {
+        if (await group(context)) return true;
+      }
+      sendJson(response, 404, { error: { code: "NOT_FOUND", message: "The API route was not found." } });
+      return true;
+    } finally { readBudget?.dispose(); collectionLease?.finish(); }
   };
 }

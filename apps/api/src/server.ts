@@ -1,5 +1,7 @@
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { createRestHandler } from "./transport/rest/handler.ts";
+import { collectionReadTimeout } from "./transport/rest/collection-read-budget.ts";
+import { configureJsonCollectionOutput, jsonCollectionOutputSettings } from "./transport/rest/json-collection-budget.ts";
 import { createApplicationServices } from "./application/services.ts";
 import { assertPersistenceAdapter, type PersistenceAdapterContract } from "./application/persistence-ports.ts";
 import { createPersistenceRuntime, describePersistenceRuntime } from "./infrastructure/persistence-runtime.ts";
@@ -10,13 +12,14 @@ import type { ApplicationServices } from "./application/services.ts";
 import { createMediaObjectStorage } from "./infrastructure/media-storage.ts";
 import { accessIssuerConfiguration } from "./security/authentication.ts";
 import { createApiReadiness } from "./infrastructure/api-readiness.ts";
+import { HttpCollectionAdmission, httpCollectionAdmissionSettings } from "./infrastructure/http-collection-admission.ts";
 import { createHttpLifecycle } from "./infrastructure/http-lifecycle.ts";
 import { apiHttpSettings, readinessSettings, shutdownSettings } from "./infrastructure/service-settings.ts";
 import { isMainModule } from "./infrastructure/entrypoint.ts";
 import { guardProcessFailures } from "./infrastructure/process-failures.ts";
 import { createStartupDeadline } from "./infrastructure/startup-deadline.ts";
 
-const apiRuntimes = new WeakMap<Server, { lifecycle: ReturnType<typeof createHttpLifecycle>; readiness: ReturnType<typeof createApiReadiness> }>();
+const apiRuntimes = new WeakMap<Server, { lifecycle: ReturnType<typeof createHttpLifecycle>; readiness: ReturnType<typeof createApiReadiness>; collections: HttpCollectionAdmission }>();
 
 /** REST is the only business HTTP transport exposed by this API. */
 export function createApiServer({
@@ -59,7 +62,9 @@ export function createApiServer({
   // A WeakMap keyed by the request: nothing to clean up, and a finished request
   // cannot keep an observation alive.
   const observations = new WeakMap<IncomingMessage, ReturnType<typeof observability.beginRequest>>();
+  const collections = new HttpCollectionAdmission(httpCollectionAdmissionSettings(env));
   const handleRest = createRestHandler({
+    collectionAdmission: collections,
     services,
     env,
     mediaAssets,
@@ -70,9 +75,11 @@ export function createApiServer({
 
   const readiness = createApiReadiness({ services, env });
   const http = apiHttpSettings(env);
+  const collectionOutput = jsonCollectionOutputSettings(env);
   const server = createServer({ ...http, connectionsCheckingInterval: Math.min(1000, http.headersTimeout, http.requestTimeout) }, async (request, response) => {
     const startedAt = process.hrtime.bigint();
     const observation = observability.beginRequest(request, response);
+    configureJsonCollectionOutput(response, collectionOutput);
     observations.set(request, observation);
     let errorName: string | undefined;
     const finish = (statusCode = response.statusCode) => observation.finish({
@@ -111,7 +118,7 @@ export function createApiServer({
           "content-type": "text/plain; version=0.0.4; charset=utf-8",
           "cache-control": "no-store",
         });
-        response.end(observability.renderMetrics() + await readiness.renderMetrics());
+        response.end(observability.renderMetrics() + collections.renderMetrics() + await readiness.renderMetrics());
         return;
       }
       if (probeMethod && pathname === "/ready") {
@@ -152,7 +159,7 @@ export function createApiServer({
     }
   });
   const lifecycle = createHttpLifecycle(server, { env, log: logger });
-  apiRuntimes.set(server, { lifecycle, readiness });
+  apiRuntimes.set(server, { lifecycle, readiness, collections });
   server.once("close", () => readiness.close());
   return server;
 }
@@ -163,6 +170,7 @@ export function shutdownApiServer(server: Server, {
   const runtime = apiRuntimes.get(server);
   if (!runtime) throw new TypeError("The server must be created by createApiServer.");
   runtime.readiness.close();
+  runtime.collections.stop();
   return runtime.lifecycle.stop([
     { name: "readiness", close: runtime.readiness.close },
     { name: "persistence", close: closePersistence },
@@ -173,6 +181,9 @@ export function shutdownApiServer(server: Server, {
 export async function runApiProcess(env: NodeJS.ProcessEnv = process.env): Promise<Server> {
   accessIssuerConfiguration(env);
   apiHttpSettings(env);
+  jsonCollectionOutputSettings(env);
+  collectionReadTimeout(env);
+  httpCollectionAdmissionSettings(env);
   readinessSettings(env);
   const shutdown = shutdownSettings(env);
   type Runtime = Awaited<ReturnType<typeof createPersistenceRuntime>>;

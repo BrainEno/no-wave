@@ -1,3 +1,5 @@
+import { readPostgresArticlePage } from "./article-page-reader.ts";
+import type { ArticleReadProjection } from "../application/persistence-ports.ts";
 /**
  * Shared row mappers, SQL helpers and the migration-capture context for the
  * PostgreSQL domain slices. Keeping these in one module is what lets
@@ -302,12 +304,12 @@ export function mapAuthorProfile(row: PgRow) {
  */
 export async function readFeaturedArticles(
   executor: PgExecutor,
-  { locale = "zh-CN", limit = 20, offset = 0 }: { locale?: string; limit?: number; offset?: number } = {},
+  { locale = "zh-CN", limit = 20, offset = 0, projection, signal }: { locale?: string; limit?: number; offset?: number } & ArticleReadProjection = {},
 ) {
   validateArticleLocale(locale);
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArticleInputError("limit must be an integer between 1 and 100.");
   if (!Number.isInteger(offset) || offset < 0 || offset > 100000) throw new ArticleInputError("offset must be an integer between 0 and 100000.");
-  const rows = await executor.unsafe(
+  return readPostgresArticlePage(executor,
     `SELECT a.id, a.author_id, a.slug, a.work_type, a.status, a.created_at, a.updated_at, a.published_at, a.view_count, a.import_revision::text AS revision,
             t.locale, t.title, t.summary, t.content_blocks, t.content_blocks_version
      FROM articles AS a
@@ -317,8 +319,8 @@ export async function readFeaturedArticles(
      ORDER BY f.position ASC, f.created_at ASC
      LIMIT $2 OFFSET $3`,
     [locale, limit, offset],
+    mapArticle, { limit, projection, signal },
   );
-  return rows.map(mapArticle);
 }
 
 export async function findAuthorProfile(

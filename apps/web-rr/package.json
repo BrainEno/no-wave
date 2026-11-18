@@ -9,7 +9,7 @@
     "build": "react-router build",
     "start": "node server.ts",
     "typecheck": "react-router typegen && tsc --noEmit",
-    "test": "node --test test/*.test.ts"
+    "test": "node ../../scripts/test.ts web"
   },
   "dependencies": {
     "@bot-thk/web-http": "workspace:*",

@@ -6,6 +6,7 @@ import type {
   StoredTaxonomy,
 } from "../../application/persistence-ports.ts";
 import { type RestServices } from "./http.ts";
+import { settledReads } from "../../application/settled-reads.ts";
 
 /**
  * The REST response projections.
@@ -174,19 +175,19 @@ async function projectArticles<A extends ArticleLike>(
   const articleIds = [...new Set(records.map((record) => record.id).filter(isIdentifier))];
   const localesUsed = [...new Set(locales.values())];
 
-  const [profilesByLocale, categoriesByLocale, tagsByLocale] = await Promise.all([
-    Promise.all(localesUsed.map((locale) =>
+  const [profilesByLocale, categoriesByLocale, tagsByLocale] = await settledReads([
+    () => settledReads(localesUsed.map((locale) => () =>
       authorIds.length === 0
-        ? Promise.resolve<Record<string, StoredAuthorProfile>>({})
-        : Promise.resolve(services.getAuthorProfilesByIds({ userIds: authorIds, locale, viewerId })))),
-    Promise.all(localesUsed.map((locale) =>
+        ? {} as Record<string, StoredAuthorProfile>
+        : services.getAuthorProfilesByIds({ userIds: authorIds, locale, viewerId }))),
+    () => settledReads(localesUsed.map((locale) => () =>
       articleIds.length === 0
-        ? Promise.resolve<Record<string, StoredTaxonomy[]>>({})
-        : Promise.resolve(services.listArticlesTaxonomies({ articleIds, kind: "category", locale })))),
-    Promise.all(localesUsed.map((locale) =>
+        ? {} as Record<string, StoredTaxonomy[]>
+        : services.listArticlesTaxonomies({ articleIds, kind: "category", locale }))),
+    () => settledReads(localesUsed.map((locale) => () =>
       articleIds.length === 0
-        ? Promise.resolve<Record<string, StoredTaxonomy[]>>({})
-        : Promise.resolve(services.listArticlesTaxonomies({ articleIds, kind: "tag", locale })))),
+        ? {} as Record<string, StoredTaxonomy[]>
+        : services.listArticlesTaxonomies({ articleIds, kind: "tag", locale }))),
   ]);
   const byLocale = <T>(results: T[]) => new Map(localesUsed.map((locale, index) => [locale, results[index]]));
   const profiles = byLocale(profilesByLocale);

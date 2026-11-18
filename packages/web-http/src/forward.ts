@@ -12,6 +12,7 @@ import { isRefreshFailure, refreshFailureResponse, resolveSessionRefresh } from 
 import { upstreamTransportFor } from "./upstream.ts";
 import { upstreamJsonText, type BufferedApiResponse } from "./upstream-response.ts";
 import { UpstreamResponseError, upstreamFailureResponse } from "./upstream-errors.ts";
+import { articleCollectionLimits } from "./article-collection-policy.ts";
 
 /**
  * Authenticated API forwarder for the browser-facing authoring/session/media
@@ -90,9 +91,12 @@ async function callApi(
   setIdempotencyKeyHeader(headers, idempotencyKey);
   const target = apiUrl(base, path);
   applyClientAddressHeaders(headers, target, method, config.clientAddressHeaders);
-  if (path.split("?")[0] === "api/v1/imports/notion/export") {
-    const response = await upstreamTransportFor(config).openStream(target, { method, headers },
-      { kind: "export", timeoutMs, signal: callerSignal });
+  const collection = articleCollectionLimits(path, method);
+  if (collection || path.split("?")[0] === "api/v1/imports/notion/export") {
+    const transport = upstreamTransportFor(config);
+    const response = collection
+      ? await transport.openCollection(target, { method, headers, ...(body === undefined ? {} : { body }) }, { ...collection, timeoutMs, signal: callerSignal, preflight: true })
+      : await transport.openStream(target, { method, headers }, { kind: "export", timeoutMs, signal: callerSignal });
     const common = { status: response.status, contentType: response.headers.get("content-type"), retryAfter: response.headers.get("retry-after") };
     if (response.ok) return { ...common, text: "", stream: response.body };
     const bytes = new Uint8Array(await response.arrayBuffer());

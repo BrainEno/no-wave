@@ -27,8 +27,15 @@ export type PgRow = Row;
  * mirrors postgres.js's own `unsafe<T>`: a query that returns a known column
  * set can name its row shape, while the default stays the driver's row.
  */
+export type PgPendingRows<TRow> = Promise<TRow[]> & {
+  cursor?: {
+    (rows: number): AsyncIterable<TRow[]>;
+    (rows: number, consume: (rows: TRow[]) => unknown): Promise<unknown>;
+  };
+  signal?(signal: AbortSignal): PgPendingRows<TRow>;
+};
 export interface PgExecutor {
-  unsafe<TRow = PgRow>(query: string, parameters?: readonly unknown[]): Promise<TRow[]>;
+  unsafe<TRow = PgRow>(query: string, parameters?: readonly unknown[]): PgPendingRows<TRow>;
 }
 
 /** The executor handed to a `sql.begin` callback (a subset of the pool). */

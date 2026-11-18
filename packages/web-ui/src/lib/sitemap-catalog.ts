@@ -57,7 +57,7 @@ export function createApiSitemapSource({ endpoint, fetchImpl, timeoutMs, upstrea
     validatePage(options);
     const url = new URL(`api/v1/${collection}`, base);
     for (const [key, value] of Object.entries({ locale: options.locale, limit: options.limit, offset: options.offset })) url.searchParams.set(key, String(value));
-    if (collection === "articles") url.searchParams.set("sort", "latest");
+    if (collection === "articles") { url.searchParams.set("sort", "latest"); url.searchParams.set("view", "card"); }
     const signal = options.signal && requestSignal ? AbortSignal.any([options.signal, requestSignal]) : options.signal ?? requestSignal;
     const response = await upstreamTransportFor({ fetchImpl, upstreamTransport }).request(url.toString(), {
       method: "GET", headers: { accept: "application/json" }, credentials: "omit",

@@ -40,7 +40,7 @@ test("a public tag has an Atom subscription backed by the bounded anonymous coll
   assert.ok(!response.body.includes("主题作品 21"));
   assert.deepEqual(api.requests().map(({ path, query }) => ({ path, query })), [
     { path: `/api/v1/tags/${STABLE_TAG_SLUG}`, query: { locale: "zh-CN" } },
-    { path: `/api/v1/tags/${STABLE_TAG_SLUG}/articles`, query: { locale: "zh-CN", limit: "21", offset: "0" } },
+    { path: `/api/v1/tags/${STABLE_TAG_SLUG}/articles`, query: { locale: "zh-CN", limit: "21", offset: "0", view: "card" } },
   ]);
 });
 
