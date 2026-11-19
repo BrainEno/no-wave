@@ -17,8 +17,9 @@ export default {
       source: "./apps/api/src/neon/health.ts",
     },
   },
-  // Provision Realtime now; client subscriptions should be added with explicit
-  // row-level authorization and a product-level live-update contract.
+  // Provisioning only: no application client subscribes to Realtime yet. Add
+  // subscriptions only with explicit row-level authorization and a product-level
+  // live-update contract; this flag does not mean realtime behavior is implemented.
   preview: {
     realtime: true,
   },

@@ -29,9 +29,11 @@ const FILE_NAME = /^(\d{4})-[a-z0-9-]+\.md$/;
 const HEADING = /^# ADR (\d{4}): (\S.*)$/m;
 const STATUS = /^- Status:\s*(\S.*)$/m;
 const DATE = /^- Date:\s*(\d{4}-\d{2}-\d{2})/m;
+const IMPLEMENTATION = /^- Implementation:\s*(\S.*)$/m;
+const IMPLEMENTATION_STATES = ["Not started", "Partial", "Done", "Not recorded"] as const;
 const CITATION = /\bADR (\d{4})\b/g;
 const RELATIVE_LINK = /\]\((\d{4}-[a-z0-9-]+\.md)\)/g;
-const INDEX_ROW = /^\| \[(\d{4})\]\(([^)]+)\) \| ([^|]+?) \| ([A-Za-z]+) \| (\d{4}-\d{2}-\d{2}) \|$/gm;
+const INDEX_ROW = /^\| \[(\d{4})\]\(([^)]+)\) \| ([^|]+?) \| ([A-Za-z]+) \| (Not started|Not recorded|Partial|Done) \| (\d{4}-\d{2}-\d{2}) \|$/gm;
 
 /** One decision file, as parsed. */
 export type Adr = {
@@ -39,12 +41,20 @@ export type Adr = {
   number: string;
   title: string;
   status: string;
+  implementation: (typeof IMPLEMENTATION_STATES)[number];
   date: string;
 };
 
 function statusWord(status: string): string {
   const word = /\b[A-Za-z]+/.exec(status.replace(/[*[\]]/g, ""));
   return word?.[0] ?? "";
+}
+
+function implementationState(value: string): (typeof IMPLEMENTATION_STATES)[number] | "" {
+  const normalized = value.replace(/[*[\]]/g, "").trim();
+  return IMPLEMENTATION_STATES.find((state) =>
+    normalized === state || normalized.startsWith(`${state} —`) || normalized.startsWith(`${state} -`) || normalized.startsWith(`${state}:`),
+  ) ?? "";
 }
 
 function isCalendarDate(value: string): boolean {
@@ -97,6 +107,12 @@ export function checkAdrIndex(files: Record<string, string>): string[] {
       problems.push(`${file}: ${date[1]} is not a calendar date`);
     }
 
+    const implementation = IMPLEMENTATION.exec(text);
+    const implementationStatus = implementation ? implementationState(implementation[1]) : "Not recorded";
+    if (implementation && !implementationStatus) {
+      problems.push(`${file}: implementation starts with an unrecognized state; expected ${IMPLEMENTATION_STATES.join(", ")}`);
+    }
+
     const previous = byNumber.get(name[1]);
     if (previous) {
       problems.push(`ADR ${name[1]} is claimed by both ${previous} and ${file}: numbers must be unique`);
@@ -109,6 +125,7 @@ export function checkAdrIndex(files: Record<string, string>): string[] {
       number: name[1],
       title: heading[2].trim(),
       status: status ? statusWord(status[1]) : "",
+      implementation: implementationStatus || "Not recorded",
       date: date?.[1] ?? "",
     });
   }
@@ -136,10 +153,10 @@ export function checkAdrIndex(files: Record<string, string>): string[] {
     problems.push(`${indexFile}: the decisions directory needs an index page`);
     return problems;
   }
-  const rows = new Map<string, { file: string; title: string; status: string; date: string }>();
-  for (const [, number, file, title, status, date] of readme.matchAll(INDEX_ROW)) {
+  const rows = new Map<string, { file: string; title: string; status: string; implementation: string; date: string }>();
+  for (const [, number, file, title, status, implementation, date] of readme.matchAll(INDEX_ROW)) {
     if (rows.has(number)) problems.push(`${indexFile}: lists ADR ${number} twice`);
-    rows.set(number, { file, title: title.trim(), status, date });
+    rows.set(number, { file, title: title.trim(), status, implementation, date });
   }
   for (const adr of adrs) {
     const row = rows.get(adr.number);
@@ -150,6 +167,7 @@ export function checkAdrIndex(files: Record<string, string>): string[] {
     if (row.file !== adr.file) problems.push(`${indexFile}: ADR ${adr.number} links ${row.file}, expected ${adr.file}`);
     if (row.title !== adr.title) problems.push(`${indexFile}: ADR ${adr.number} title "${row.title}" != "${adr.title}"`);
     if (row.status !== adr.status) problems.push(`${indexFile}: ADR ${adr.number} status "${row.status}" != "${adr.status}"`);
+    if (row.implementation !== adr.implementation) problems.push(`${indexFile}: ADR ${adr.number} implementation "${row.implementation}" != "${adr.implementation}"`);
     if (row.date !== adr.date) problems.push(`${indexFile}: ADR ${adr.number} date "${row.date}" != "${adr.date}"`);
   }
   for (const [number, row] of rows) {
@@ -172,6 +190,24 @@ function readDecisions(): Record<string, string> {
 test("every architecture decision has a unique number, a matching index row and no dangling citation", () => {
   const problems = checkAdrIndex(readDecisions());
   assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+test("the index distinguishes an accepted design from unimplemented work", () => {
+  const files = readDecisions();
+  const decision = files["0026-moderation-reports-and-appeals.md"];
+  assert.match(decision, /^- Implementation: Not started/m);
+  assert.match(
+    files[indexFile],
+    /^\| \[0026\]\(0026-moderation-reports-and-appeals\.md\) \| Reports, scoped moderation and independent appeals \| Accepted \| Not started \| 2026-11-05 \|$/m,
+  );
+});
+
+test("the guard rejects an unrecognized implementation state", () => {
+  const files = readDecisions();
+  files["0026-moderation-reports-and-appeals.md"] = files["0026-moderation-reports-and-appeals.md"].replace(
+    "- Implementation: Not started", "- Implementation: Planned",
+  );
+  assert.ok(checkAdrIndex(files).some((problem) => problem.includes("implementation starts with an unrecognized state")));
 });
 
 test("the guard rejects a second decision under an existing number", () => {
@@ -202,8 +238,8 @@ test("the guard rejects a heading that disagrees with the file name", () => {
 test("the guard rejects an index row that drifted from its file", () => {
   const files = readDecisions();
   files[indexFile] = files[indexFile].replace(
-    "| [0020](0020-read-aloud-stays-in-the-browser.md) | Read-aloud stays in the browser | Accepted |",
-    "| [0020](0020-read-aloud-stays-in-the-browser.md) | Read-aloud stays in the browser | Proposed |",
+    "| [0020](0020-read-aloud-stays-in-the-browser.md) | Read-aloud stays in the browser | Accepted | Not recorded |",
+    "| [0020](0020-read-aloud-stays-in-the-browser.md) | Read-aloud stays in the browser | Proposed | Not recorded |",
   );
   assert.ok(checkAdrIndex(files).some((problem) => problem.includes("ADR 0020 status")));
 });

@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-11-12
+- Implementation: Done — 仓库内的仅内存三方分析、守恒校验、手动计划与取舍/结果预览已实现；验收证据和环境缺口见[本轮审阅](../../audit/writing-merge-review.md)，不包括生产部署。
 - Approval: owner 明确选择 `approve-local-three-way-full`；不是把继续开发或合并授权当作新持久化/写入授权。
 - Scope: 三份明确选择的本机单篇备份、保守三方分析、逐项取舍、手动决策计划和新 JSON 下载。
 
