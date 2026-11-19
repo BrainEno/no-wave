@@ -1,3 +1,5 @@
+import { assertSqliteNotionJobFence } from "./sqlite-notion-jobs-store.ts";
+import { NotionJobError } from "../application/notion-durable-jobs.ts";
 import { articleIdempotencyKeyHash } from "../application/article-idempotency.ts";
 import { assertNotionImportWorkState, type CommitNotionImportWorkInput, type CommittedNotionImportEdition } from "../application/notion-import-plan.ts";
 import { ArticleSlugConflictError, ImportConflictError } from "../domain/errors.ts";
@@ -90,6 +92,10 @@ export function createSqliteImportStore(db: SqliteRunner, options: { transaction
     commitNotionImportWork(input: CommitNotionImportWorkInput): CommittedNotionImportEdition[] {
       db.exec("BEGIN IMMEDIATE");
       try {
+        if (input.jobFence) {
+          if (input.jobFence.ownerId !== input.actorId) throw new NotionJobError("IMPORT_JOB_LEASE_LOST");
+          assertSqliteNotionJobFence(db, input.jobFence);
+        }
         const expected = input.expected;
         const placeholders = expected.sourceIds.map(() => "?").join(", ");
         const links = db.prepare(`SELECT provider, external_id, locale, article_id, owner_id, digest, synced_at
@@ -133,6 +139,7 @@ export function createSqliteImportStore(db: SqliteRunner, options: { transaction
             articleId, ownerId: input.actorId, digest: edition.digest, syncedAt: edition.syncedAt }, scoped, transactionId);
           committed.push({ externalId: edition.externalId, article, created });
         }
+        if (input.jobFence) assertSqliteNotionJobFence(db, input.jobFence);
         db.exec("COMMIT");
         return committed;
       } catch (error) {

@@ -29,7 +29,10 @@ function aad(context: Context): Buffer {
 
 /** Reject non-canonical base64; Node's Buffer decoder otherwise ignores invalid characters. */
 function decode(value: unknown, maximum: number): Buffer {
-  if (typeof value !== "string" || value.length > Math.ceil(maximum / 3) * 4 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) throw new Error("Invalid encrypted job payload");
+  // A repeated-group regexp over a legal 11 MiB encoding can overflow V8's stack.
+  // The flat character check is linear; the exact round trip below validates padding.
+  if (typeof value !== "string" || value.length > Math.ceil(maximum / 3) * 4 || value.length % 4 !== 0 ||
+      /[^A-Za-z0-9+/=]/.test(value)) throw new Error("Invalid encrypted job payload");
   const bytes = Buffer.from(value, "base64");
   if (bytes.length > maximum || bytes.toString("base64") !== value) throw new Error("Invalid encrypted job payload");
   return bytes;

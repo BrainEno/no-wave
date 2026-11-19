@@ -1,4 +1,6 @@
+import type { NotionJobPoller } from "../../../application/notion-job-poll.ts";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type { NotionJobService } from "../../../application/notion-job-service.ts";
 import type { createIdentityService } from "../../../application/identity.ts";
 import type { createRateLimitService } from "../../../application/rate-limit.ts";
 import type { MediaAssetsPort, RestServices } from "../http.ts";
@@ -29,6 +31,8 @@ export type RestRouteContext = {
   readonly services: RestServices | null;
   readonly env: NodeJS.ProcessEnv;
   readonly mediaAssets: MediaAssetsPort | null;
+  readonly notionJobs: NotionJobService | null;
+  readonly notionPoller: NotionJobPoller | null;
   readonly identity: ReturnType<typeof createIdentityService> | null;
   readonly writeRateLimiter: ReturnType<typeof createRateLimitService> | null;
 };

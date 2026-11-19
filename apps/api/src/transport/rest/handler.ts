@@ -1,3 +1,5 @@
+import { createNotionJobPoller } from "../../application/notion-job-poll.ts";
+import { HttpCollectionAdmission as InputAdmission } from "../../infrastructure/http-collection-admission.ts";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { CollectionReadLease, HttpCollectionAdmission } from "../../infrastructure/http-collection-admission.ts";
 import { CollectionReadBudget, collectionReadTimeout } from "./collection-read-budget.ts";
@@ -7,6 +9,7 @@ import type { BackgroundFailureReporter } from "../../application/background-tas
 import { createBffClientAddressResolver } from "./bff-client-address.ts";
 import { resolveRestRoute } from "./routes.ts";
 import { REST_ROUTE_GROUPS } from "./routes/index.ts";
+import { createNotionJobService } from "../../application/notion-job-service.ts";
 import type { RestRouteContext } from "./routes/context.ts";
 import { hasDuplicateQueryParameters, NO_ROUTE_PARAMS, sendBadInput, sendJson, type MediaAssetsPort, type RestServices } from "./http.ts";
 
@@ -66,6 +69,9 @@ export function createRestHandler({
   // `ApplicationServices` already carries the identity store methods
   // (`createIdentityAccount`, `findIdentityAccount`, ...), so no assertion is
   // needed to reach them (issue #66).
+  const notionPoller = services ? createNotionJobPoller({ read: input => services.getMyNotionImportJob(input) }) : null;
+  const notionInputs = new InputAdmission({ active: 2, queued: 0, waitMs: 1 });
+  const notionJobs = services ? createNotionJobService({ store: services, deps: services, env }) : null;
   const identity = services ? createIdentityService({ store: services, env, onMailDelivery }) : null;
   const rateLimitStore: RateLimitStore | null = services && typeof services.consumeRateLimit === "function"
     ? {
@@ -83,7 +89,7 @@ export function createRestHandler({
     ? createRateLimitService({ store: rateLimitStore, env, onBackgroundFailure })
     : null;
 
-  return async function handleRest(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
+  const handleRest = async function handleRest(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
     let url = new URL(request.url ?? "/", "http://localhost");
     // Rewritten before anything else reads it, so the alias resolves through
     // the same route table, the same handler and the same 405 allow-list as the
@@ -135,6 +141,8 @@ export function createRestHandler({
       services,
       env,
       mediaAssets,
+      notionJobs,
+      notionPoller,
       identity,
       writeRateLimiter,
     });
@@ -152,6 +160,18 @@ export function createRestHandler({
       }
       collectionLease = acquired;
     }
+    if (route.kind === "matched" && route.id === "imports.notion.jobs" && request.method === "POST") {
+      const lease = await notionInputs.acquire(response);
+      if (!lease) {
+        request.pause();
+        response.shouldKeepAlive = false;
+        response.setHeader("connection", "close");
+        response.setHeader("retry-after", "2");
+        sendJson(response, 503, { error: { code: "IMPORT_STATUS_BUSY", message: "Import input capacity is unavailable. Retry with the same idempotency key." } });
+        return true;
+      }
+      collectionLease = lease;
+    }
     const readBudget = isCollectionRead ? new CollectionReadBudget(response, readTimeoutMs) : undefined;
     try {
       readBudget?.checkpoint();
@@ -162,4 +182,8 @@ export function createRestHandler({
       return true;
     } finally { readBudget?.dispose(); collectionLease?.finish(); }
   };
+  return Object.assign(handleRest, {
+    close() { notionPoller?.close(); notionInputs.stop(); },
+    async drain() { await Promise.all([notionPoller?.drain(), notionInputs.drain()]); },
+  });
 }

@@ -226,3 +226,5 @@ export { API_RESPONSE_MAX_BYTES, AUTH_RESPONSE_MAX_BYTES, EXPORT_RESPONSE_MAX_BY
 export { UpstreamTelemetry, type UpstreamKind, type UpstreamSample, type UpstreamObserver } from "./upstream-telemetry.ts";
 
 export { WebRequestAdmission, type IncomingRequestInfo, type RequestAdmissionSettings } from "./request-admission.ts";
+
+export { handleNotionJobsRequest, handleNotionJobRequest } from "./notion-jobs.ts";

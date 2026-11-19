@@ -119,3 +119,22 @@ test("collection admission rejects malformed operator settings before serving re
     });
   }
 });
+
+test("one shared drain waits for physical handler and socket completion in either order", async () => {
+  for (const socketFirst of [false, true]) {
+    const response = Object.assign(new EventEmitter(), { destroyed: false, writableEnded: false, writableFinished: false });
+    const pool = new HttpCollectionAdmission({ active: 1, queued: 0, waitMs: 1 });
+    const lease = await pool.acquire(response as unknown as ServerResponse); assert.ok(lease);
+    let done = false;
+    const draining = pool.drain();
+    assert.equal(pool.drain(), draining);
+    void draining.then(() => { done = true; });
+    if (socketFirst) response.emit("close"); else lease.finish();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(done, false);
+    if (socketFirst) lease.finish(); else response.emit("finish");
+    await draining;
+    assert.equal(done, true);
+    await pool.drain();
+  }
+});

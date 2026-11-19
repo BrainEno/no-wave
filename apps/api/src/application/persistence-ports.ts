@@ -1,3 +1,4 @@
+import type { NotionJobsPersistencePort } from "./notion-durable-jobs.ts";
 import type { ArticleCatalogueInput, ArticleCataloguePage, ArticleCatalogueEditionsInput, ArticleCatalogueEntry } from "../domain/article-catalogue.ts";
 import type { CommitNotionImportWorkInput, CommittedNotionImportEdition } from "./notion-import-plan.ts";
 /**
@@ -69,6 +70,7 @@ export const persistencePortMethods = Object.freeze({
     "pruneExpiredIdentityState",
   ] as const),
   imports: Object.freeze(["getExternalContentLink", "upsertExternalContentLink", "listExternalContentLinks", "getImportPlanGeneration", "commitNotionImportWork"] as const),
+  notionJobs: Object.freeze(["findMyNotionImportJobRequest", "readNextNotionImportJobInput", "enqueueNotionImportJob", "getMyNotionImportJob", "listMyNotionImportJobs", "cancelNotionImportJob", "claimNotionImportJob", "heartbeatNotionImportJob", "finishNotionImportJob", "sweepNotionImportJobs", "notionImportJobBacklog"] as const),
   rateLimits: Object.freeze(["consumeRateLimit"] as const),
   outbox: Object.freeze([
     "claimOutboxEvents", "markOutboxDelivered", "rescheduleOutboxEvent", "outboxBacklog",
@@ -627,6 +629,7 @@ export type TypedPersistenceAdapterContract =
   & ConversationsPersistencePort
   & NotificationsPersistencePort
   & ImportsPersistencePort
+  & NotionJobsPersistencePort
   & SessionsPersistencePort
   & IdentityPersistencePort
   & RateLimitsPersistencePort

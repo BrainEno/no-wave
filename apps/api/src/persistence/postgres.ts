@@ -1,3 +1,4 @@
+import { createPostgresNotionJobsStore } from "./postgres-notion-jobs-store.ts";
 /**
  * PostgreSQL provider entry point.
  *
@@ -63,6 +64,7 @@ export function createPostgresStore(sql: PgDatabase): TypedPersistenceAdapterCon
   const outbox = createPostgresOutboxStore(ctx);
   const media = createPostgresMediaStore(ctx);
   const imports = createPostgresImportStore(sql);
+  const notionJobs = createPostgresNotionJobsStore(sql);
   const sessions = createPostgresSessionStore(ctx);
   // `transaction` is PostgreSQL-only; it is optional in the shared contract so
   // the SQLite provider is not forced to invent a matching helper.
@@ -83,7 +85,7 @@ export function createPostgresStore(sql: PgDatabase): TypedPersistenceAdapterCon
   const slices = [
     ["identity", identity], ["article", article], ["taxonomy", taxonomy],
     ["profiles", profiles], ["engagement", engagement], ["conversations", conversations],
-    ["notifications", notifications], ["outbox", outbox], ["media", media], ["imports", imports],
+    ["notifications", notifications], ["outbox", outbox], ["media", media], ["imports", imports], ["notionJobs", notionJobs],
     ["sessions", sessions], ["provider", provider],
   ] as const;
   assertDisjointSlices(slices);
@@ -101,6 +103,7 @@ export function createPostgresStore(sql: PgDatabase): TypedPersistenceAdapterCon
     ...outbox,
     ...media,
     ...imports,
+    ...notionJobs,
     ...sessions,
     ...provider,
   } satisfies TypedPersistenceAdapterContract;

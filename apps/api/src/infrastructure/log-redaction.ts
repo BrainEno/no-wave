@@ -49,13 +49,23 @@ export function secretValues(env: NodeJS.ProcessEnv = process.env): string[] {
     "AWS_SECRET_ACCESS_KEY",
     "OUTBOX_DRAIN_SECRET",
     "BFF_CLIENT_ADDRESS_SECRET",
+    "NOTION_IMPORT_JOB_KEY",
+    "NOTION_IMPORT_JOB_KEYS",
   ];
   const values: string[] = [];
   for (const name of names) {
     const value = env?.[name];
     if (typeof value === "string" && value.trim().length >= MINIMUM_SECRET_LENGTH) values.push(value.trim());
   }
-  return values;
+  const ring = env?.NOTION_IMPORT_JOB_KEYS;
+  if (typeof ring === "string") {
+    for (const entry of ring.split(",")) {
+      const separator = entry.indexOf(":");
+      const material = entry.slice(separator + 1);
+      if (separator > 0 && /^[A-Za-z0-9+/]{43}=$/.test(material)) values.push(material);
+    }
+  }
+  return [...new Set(values)];
 }
 
 function escapeRegExp(value: string): string {

@@ -59,7 +59,8 @@ type TransferErrorCode =
   | "TARGET_NOT_EMPTY"
   | "SOURCE_READ_FAILED"
   | "RECONCILIATION_MISMATCH"
-  | "INVALID_OPTIONS";
+  | "INVALID_OPTIONS"
+  | "ACTIVE_IMPORT_JOBS";
 
 const errorMessages: Record<TransferErrorCode, string> = {
   UNSUPPORTED_PROVIDER: "The transfer supports SQLite and PostgreSQL only.",
@@ -67,6 +68,7 @@ const errorMessages: Record<TransferErrorCode, string> = {
   SOURCE_READ_FAILED: "The source database could not be read consistently.",
   RECONCILIATION_MISMATCH: "The copied data does not match the source it was read from.",
   INVALID_OPTIONS: "Invalid transfer options.",
+  ACTIVE_IMPORT_JOBS: "Cancel or finish local Notion import jobs, sweep expired jobs, then quiesce both databases before transfer.",
 };
 
 /**
@@ -157,7 +159,7 @@ export type ProviderTransferReport = {
 
 export type TransferOptions = {
   pageSize?: number;
-  /** Validate and measure the source without opening a target transaction. */
+  /** Validate the source and observe target job state without a target write transaction. */
   dryRun?: boolean;
   /** Called once per table, after that table's rows are written and checked. */
   onTable?: (report: TransferTableReport) => void;
@@ -454,6 +456,15 @@ function assertPlanCoversEntities(): void {
   }
 }
 
+/** Ciphertext/leases bind this database generation and key; they are never replayable domain data. */
+async function assertNoActiveImportJobs(reader: RowSource): Promise<void> {
+  const count = await reader.rowCount("notion_import_jobs");
+  for (let offset = 0; offset < count; offset += 100) {
+    const rows = await reader.page("notion_import_jobs", ["state"], ["id"], offset, 100);
+    if (rows.some(row => row.state === "queued" || row.state === "running")) throw new ProviderTransferError("ACTIVE_IMPORT_JOBS");
+  }
+}
+
 async function assertTargetEmpty(target: RowSource): Promise<void> {
   for (const table of [...PROVIDER_TRANSFER_ORDER, ...ASSOCIATION_TABLES]) {
     if ((await target.rowCount(table)) > 0) {
@@ -531,7 +542,7 @@ async function writeRow(
  * Reads happen inside one source snapshot; writes happen inside one target
  * transaction that is committed only if the reconciliation pass agrees with the
  * source it just read. A dry run validates the source the same way — every row
- * through the replay allowlist — and stops before touching the target.
+ * through the replay allowlist — and only observes the target job-admission guard.
  */
 export async function transferProviderData(
   input: { source: TransferEndpoint; target: TransferEndpoint } & TransferOptions,
@@ -540,9 +551,11 @@ export async function transferProviderData(
   const pageSize = validatePageSize(input.pageSize);
 
   return withSourceSnapshot(input.source, async (source) => {
+    await assertNoActiveImportJobs(source);
     const mediaRefs = await readArticleMediaRefs(source, pageSize);
 
     if (input.dryRun) {
+      await assertNoActiveImportJobs(targetFor(input.target));
       const tables: TransferTableReport[] = [];
       let totalRows = 0;
       for (const table of [...PROVIDER_TRANSFER_ORDER, ...ASSOCIATION_TABLES]) {
@@ -578,6 +591,7 @@ export async function transferProviderData(
     }
 
     const tables = await withTargetTransaction(input.target, async (writer) => {
+      await assertNoActiveImportJobs(writer);
       await assertTargetEmpty(writer);
       const produced: TransferTableReport[] = [];
       for (const table of PROVIDER_TRANSFER_ORDER) {

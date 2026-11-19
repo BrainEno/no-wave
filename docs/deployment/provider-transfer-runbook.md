@@ -38,6 +38,15 @@ online migration pipeline ADR 0010 asks for is still unimplemented
 5. **Take a backup of the source anyway.** A copy that misreads its source cannot
    repair it, and a copy is not a backup.
 
+### 默认关闭的 Notion jobs 也必须先停写
+
+新 `notion_import_jobs` 是 database-local 运维表，不属于 domain transfer/replay。
+源或目标有 queued/running 时，dry-run 与真实转移均拒绝 `ACTIVE_IMPORT_JOBS`。
+先完成或认证取消任务、运行独立 `jobs:notion sweep`，再停止双方 API 与 drain 命令；
+过期 running 只能变为 interrupted，不能改回 queued。终态、租约和密文不复制。
+这个前置检查不是跨数据库锁，不替代上述停写窗口；完整数据库备份也不是 domain transfer。
+见[任务操作规程](../operations/notion-import-jobs.md)。
+
 ## Rehearse on a disposable copy
 
 ```bash

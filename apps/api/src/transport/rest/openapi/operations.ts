@@ -80,6 +80,8 @@ export type OperationMetadata = {
   readonly tags: readonly string[];
   readonly response: ResponseSpec;
   readonly query?: readonly QueryParameter[];
+  readonly headers?: readonly QueryParameter[];
+  readonly notModified?: boolean;
   readonly requestBody?: RequestBodySpec;
   /**
    * `Idempotency-Key` support, as implemented: create-article and create-comment
@@ -87,7 +89,7 @@ export type OperationMetadata = {
    * conversations and messages require it because a duplicate conversation or
    * message is not something a retry can be allowed to invent.
    */
-  readonly idempotency?: "optional" | "required";
+  readonly idempotency?: "optional" | "required" | "notion-job" | "notion-job-lookup";
   /** Extra error statuses beyond the `400` / `401` every operation already documents. */
   readonly errors?: readonly number[];
   /** Overrides the generated description of a path parameter. */
@@ -440,6 +442,37 @@ export const OPERATIONS: Readonly<Record<string, OperationMetadata>> = Object.fr
     requestBody: { schema: "NotionImportRequest", description: "The bundle, and whether to apply it.", required: true },
     errors: [409, 413, 415],
     response: { status: 200, description: "The per-page report (and, with `apply: true`, what was written).", data: "NotionImportReport" },
+  },
+
+  "POST imports.notion.jobs": {
+    summary: "Queue one approved Notion import without holding the HTTP connection",
+    description: "Opt-in; disabled by default (409 IMPORT_JOBS_DISABLED). Requires the unchanged bundle and its authentic, unexpired preview plan. The separate finite drain command performs the existing importer; the API never executes or schedules queued import work. Idempotency is owner-scoped while the plan is valid; after expiry use list/status, never blindly submit a new key. Signed URLs and plan are encrypted with a separately provisioned key. The original 8 MiB/200-page/eight-image bounds and per-work revision/ownership checks remain. Capacity refusal is 429 IMPORT_QUEUE_FULL. A running job whose lease expires becomes interrupted, never automatically retried. This is not live sync or image checkpoint resume.",
+    security: "session", tags: ["imports"], idempotency: "notion-job",
+    requestBody: { schema: "NotionJobRequest", required: true, description: "Only bundle and planToken; no actor, credentials or lease." },
+    errors: [409, 413, 415, 429, 503],
+    response: { status: 202, description: "The durable status; Location names the owner-scoped resource. Retry-After: 2 while active.", data: "NotionJobStatus" },
+  },
+  "GET imports.notion.jobs": {
+    summary: "List your own retained Notion import jobs",
+    description: "Newest first, at most 20. Contains only bounded status facts and sanitized report ordinals, not source page ids, titles, content, error details, signed URLs or leases. Still available when admission is disabled. Status expires 24 hours after the input deadline. To recover a lost submission response after preview expiry or admission shutdown, supply the original Idempotency-Key header instead of a query: the array then contains only that owner/key match (zero or one). A key selector cannot be mixed with limit.",
+    security: "session", tags: ["imports"], query: [limitParameter(20, 20)], idempotency: "notion-job-lookup",
+    response: { description: "Your jobs only.", data: "NotionJobStatus", array: true },
+  },
+  "GET imports.notion.jobs.item": {
+    summary: "Read one of your Notion import jobs",
+    description: "A missing job and another owner's job are indistinguishable 404s. No query parameters. Retry-After: 2 while active. completed is the last acknowledged report checkpoint, NOT proof that later works were not committed if the process crashed. Preview again and inspect your works/media after interruption. A strong ETag enables conditional reads: matching If-None-Match returns bodyless 304. Prefer: wait=0..5 optionally waits for change (only if the ETag matches); maximum five seconds, no SSE or scheduler. All responses stay no-store. At most 16 owner/job wait groups, four subscribers per group and two physical status reads are admitted; abandoned reads retain their slot until physical completion. A stuck/full status path returns 503 with Retry-After and must not trigger import replay.",
+    security: "session", tags: ["imports"], pathParams: { jobId: "The server-issued UUID of your job." }, errors: [404, 503], notModified: true,
+    headers: [
+      { name: "If-None-Match", description: "One strong ETag from your previous status response. No wildcard, weak ETag or list.", schema: { type: "string", pattern: '^"[A-Za-z0-9_-]{43}"$' } },
+      { name: "Prefer", description: "Optional bounded conditional wait. Status remains owner-scoped and private.", schema: { type: "string", pattern: "^wait=[0-5]$" } },
+    ],
+    response: { description: "Sanitized durable progress.", data: "NotionJobStatus" },
+  },
+  "DELETE imports.notion.jobs.item": {
+    summary: "Cancel a queued or running Notion import job",
+    description: "Idempotent. Deletes encrypted input and fences subsequent work transactions; waits for an already admitted transaction to settle. Does not undo earlier works or silently delete prepared media. Terminal jobs keep their state. Status remains readable when admission is disabled.",
+    security: "session", tags: ["imports"], pathParams: { jobId: "The server-issued UUID of your job." }, errors: [404, 429],
+    response: { description: "The resulting status, with explicit recovery instructions.", data: "NotionJobStatus" },
   },
 
   "GET imports.notion.export": {
@@ -933,6 +966,7 @@ export const ERROR_DESCRIPTIONS: Readonly<Record<number, string>> = Object.freez
   409: "Conflict: `ARTICLE_VERSION_CONFLICT`, `IMPORT_PLAN_INVALID`, `IDEMPOTENCY_CONFLICT`, `MAIL_DISABLED`, `MEDIA_DELETE_DISABLED`, or a duplicate unique value.",
   413: "The request body is larger than this route accepts (`PAYLOAD_TOO_LARGE`).",
   415: "The request body is not `application/json` (`UNSUPPORTED_MEDIA_TYPE`).",
+  429: "Rate or import queue capacity limit reached (`RATE_LIMITED`, `IMPORT_QUEUE_FULL`); observe Retry-After.",
   503: "A dependency this route needs is unavailable (`SERVICE_UNAVAILABLE`, `MEDIA_STORAGE_UNAVAILABLE`).",
 });
 

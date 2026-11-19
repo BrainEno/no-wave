@@ -16,10 +16,11 @@ import { HttpCollectionAdmission, httpCollectionAdmissionSettings } from "./infr
 import { createHttpLifecycle } from "./infrastructure/http-lifecycle.ts";
 import { apiHttpSettings, readinessSettings, shutdownSettings } from "./infrastructure/service-settings.ts";
 import { isMainModule } from "./infrastructure/entrypoint.ts";
+import { notionJobSettings } from "./infrastructure/notion-job-settings.ts";
 import { guardProcessFailures } from "./infrastructure/process-failures.ts";
 import { createStartupDeadline } from "./infrastructure/startup-deadline.ts";
 
-const apiRuntimes = new WeakMap<Server, { lifecycle: ReturnType<typeof createHttpLifecycle>; readiness: ReturnType<typeof createApiReadiness>; collections: HttpCollectionAdmission }>();
+const apiRuntimes = new WeakMap<Server, { lifecycle: ReturnType<typeof createHttpLifecycle>; readiness: ReturnType<typeof createApiReadiness>; collections: HttpCollectionAdmission; closeImportRequests(): void; drainImportRequests(): Promise<void> }>();
 
 /** REST is the only business HTTP transport exposed by this API. */
 export function createApiServer({
@@ -159,8 +160,8 @@ export function createApiServer({
     }
   });
   const lifecycle = createHttpLifecycle(server, { env, log: logger });
-  apiRuntimes.set(server, { lifecycle, readiness, collections });
-  server.once("close", () => readiness.close());
+  apiRuntimes.set(server, { lifecycle, readiness, collections, closeImportRequests: handleRest.close, drainImportRequests: handleRest.drain });
+  server.once("close", () => { readiness.close(); handleRest.close(); });
   return server;
 }
 
@@ -171,15 +172,17 @@ export function shutdownApiServer(server: Server, {
   if (!runtime) throw new TypeError("The server must be created by createApiServer.");
   runtime.readiness.close();
   runtime.collections.stop();
+  runtime.closeImportRequests();
   return runtime.lifecycle.stop([
     { name: "readiness", close: runtime.readiness.close },
     { name: "persistence", close: closePersistence },
     { name: "media", close: closeMedia },
-  ], signal);
+  ], signal, async () => { await Promise.all([runtime.collections.drain(), runtime.drainImportRequests()]); });
 }
 
 export async function runApiProcess(env: NodeJS.ProcessEnv = process.env): Promise<Server> {
   accessIssuerConfiguration(env);
+  notionJobSettings(env);
   apiHttpSettings(env);
   jsonCollectionOutputSettings(env);
   collectionReadTimeout(env);

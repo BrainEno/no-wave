@@ -32,6 +32,8 @@
 | Mark notification read | `PUT /api/v1/me/notifications/:id/read` | Naturally idempotent state-setting | Confirm repeat-safe update and no repeated external side effects. |
 | Mark all notifications read | `POST /api/v1/me/notifications/read-all` | Conditionally idempotent bulk state-setting | Though method is POST, semantics are state-setting; ensure repeat-safe count/side effects and do not demand a key unnecessarily. |
 | Upload media | `POST /api/v1/me/media` | Non-idempotent create | **Deferred, on purpose.** Bytes are already content-addressed by SHA-256; whether a reused key replaces or conflicts, and who owns an asset several works reference, is a product decision — see the contract document. |
+| 显式提交 Notion durable job | `POST /api/v1/imports/notion/jobs` | 非幂等创建，必需 job 专用 key | 默认关闭；16–128 ASCII 字母／数字／`_`／`-`，hash 绑定 verified owner，fingerprint 绑定 bundle hash 与原签名 plan。与加密输入同事务去重，预览有效期间精确 retry 回同一安全 status，不同请求 409。原期限后保留 24h；过期 plan 不可借 key 写入。丢失响应用 GET collection + 原 `Idempotency-Key` 只读查询零或一条，关闭 admission／丢失 AES key 也可恢复。不是文章 mutation 的自动 replay；[ADR 0041](../architecture/decisions/0041-default-off-notion-import-jobs.md)。 |
+| 取消 Notion durable job | `DELETE /api/v1/imports/notion/jobs/:jobId` | 单调状态设置，无需 key | 只处理 verified owner，终态保持；删除输入、撤销 lease fence，不撤回已完成作品，不把 interrupted 改回 queued。 |
 | Other profile/session writes | `PUT /api/v1/me/profile`, `DELETE /api/v1/me/session` | See rows above | Do not classify based on HTTP method alone. |
 
 ## Required follow-up sequence

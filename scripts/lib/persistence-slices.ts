@@ -213,9 +213,9 @@ export async function validateLayout(root: string = ROOT): Promise<string[]> {
     const slices = manifest.slices.filter((slice) => slice.provider === provider);
     // The count is hard-coded on purpose: adding or removing a slice is a
     // decision about ownership, not a side effect of moving a file. It went from
-    // ten to eleven when `imports` arrived (ADR 0037) — provenance is neither
-    // content nor taxonomy, and folding it into either slice would have hidden it.
-    if (slices.length !== 11) problems.push(`${provider}: expected 11 slices, found ${slices.length}`);
+    // ten to eleven for provenance (ADR 0037), then twelve for encrypted,
+    // database-local execution jobs. Jobs are not portable provenance/domain rows.
+    if (slices.length !== 12) problems.push(`${provider}: expected 12 slices, found ${slices.length}`);
     const owned = new Map<string, string[]>();
     const union = new Set<string>();
     for (const slice of slices) {

@@ -1,3 +1,4 @@
+import { createSqliteNotionJobsStore } from "./sqlite-notion-jobs-store.ts";
 import { assertDisjointSlices, assertPersistenceAdapter, type TypedPersistenceAdapterContract } from "../application/persistence-ports.ts";
 import { createSqliteArticleStore } from "./sqlite-article-store.ts";
 import { createSqliteTaxonomyStore } from "./sqlite-taxonomy-store.ts";
@@ -41,6 +42,7 @@ export function createSqliteStore(db: SqliteRunner): TypedPersistenceAdapterCont
   const outbox = createSqliteOutboxStore(db);
   const media = createSqliteMediaStore(db);
   const imports = createSqliteImportStore(db);
+  const notionJobs = createSqliteNotionJobsStore(db);
   const operations = Object.freeze({
     async health() {
       db.prepare("SELECT 1 AS ok").get();
@@ -52,7 +54,7 @@ export function createSqliteStore(db: SqliteRunner): TypedPersistenceAdapterCont
     ["article", article], ["taxonomy", taxonomy], ["profiles", profiles],
     ["engagement", engagement], ["conversations", conversations],
     ["notifications", notifications], ["sessions", sessions], ["identity", identity],
-    ["outbox", outbox], ["media", media], ["imports", imports], ["operations", operations],
+    ["outbox", outbox], ["media", media], ["imports", imports], ["notionJobs", notionJobs], ["operations", operations],
   ] as const;
   assertDisjointSlices(slices);
 
@@ -68,6 +70,7 @@ export function createSqliteStore(db: SqliteRunner): TypedPersistenceAdapterCont
     ...outbox,
     ...media,
     ...imports,
+    ...notionJobs,
     ...operations,
   } satisfies TypedPersistenceAdapterContract;
 
