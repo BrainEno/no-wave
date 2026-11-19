@@ -52,6 +52,22 @@ The previous project provides the reference for user-visible capabilities and kn
 - Push delivery is best effort and must not imply the user has seen a notification.
 - Push permissions are opt-in and revocable.
 
+## Writing files and local three-way review
+
+- 单篇 JSON 备份/字段恢复、两稿比较、集合工具及默认关闭的可选恢复缓存保持可用。
+- 已批准的 `/write/merge` 只在内存处理用户明确选择的共同基线/当前稿/另一稿，精确比较
+  元数据、格式与正文，显示单侧建议；重复段落/顺序歧义不猜对应关系，冲突须人工逐项选择。
+- Given 来源或人工取舍已变，When 旧读取/分析/计划/输出准备完成，Then 不得覆盖新状态、
+  复活旧 DOM 或继续下载。筛选分页不能丢弃隐藏的选择。
+- Given 下载决策计划，Then 只含闭集引用和来源摘要，不含正文；重新使用先核对原三份文件，
+  预览并另行确认完整替换，不自动应用。
+- Given 所有冲突已取舍，When 准备新备份，Then 独立校验三份来源无遗漏/乱序，并将
+  序列化输出逐项核对人工选择和完整既有备份限制；超限整份失败，不截断或部分成功。
+- 最终只有手动新 JSON 下载；不改原文件、编辑区、缓存或服务器，不建立身份、媒体权限、
+  保存回执或自动发布/重放。选错基线/人工取舍和未加密/共用设备风险必须说明。
+  详细边界与验收见 [ADR 0046](../architecture/decisions/0046-local-three-way-writing-merge.md)、
+  [操作说明](../operations/writing-merge.md)与[本轮审阅记录](../audit/writing-merge-review.md)。
+
 ## Cross-cutting
 
 - Private data is never exposed through public endpoints or shared caches.

@@ -91,7 +91,7 @@ export function AuthoringCatalogue() {
     <header className="nw-authoring-header">
       <p className="nw-kicker">PRIVATE / 作品管理</p><h1>作品目录</h1>
       <p>按语言版本浏览全部自己的作品，不限最近 100 条；先检索元数据，需要编辑时才读取所选版本正文。</p>
-      <div className="nw-authoring-actions"><Link className="nw-btn" href="/write">返回写作台</Link><Link className="nw-btn" href="/write/media">图片库</Link><Link className="nw-btn" href="/write/collections">本机集合工具</Link></div>
+      <div className="nw-authoring-actions"><Link className="nw-btn" href="/write">返回写作台</Link><Link className="nw-btn" href="/write/media">图片库</Link><Link className="nw-btn" href="/write/collections">本机集合工具</Link><Link className="nw-btn" href="/write/merge">本机三方合并</Link></div>
     </header>
     <form className="nw-catalogue-filters" aria-label="目录筛选" onSubmit={event => { event.preventDefault(); submit(); }}>
       <fieldset disabled={state.restoring || checkingExport}>

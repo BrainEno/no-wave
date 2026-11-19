@@ -1,0 +1,2225 @@
+{
+  "base": "b7009ebfaa160525d4047b81316d8ba4e8709487",
+  "rules": [
+    {
+      "file": "packages/web-ui/src/lib/writing-merge-controller.ts",
+      "reason": "仅函数/类声明、参数、闭包和 props 解构框架，不把签名计为功能",
+      "fragments": [
+        {
+          "line": 70,
+          "text": "export class WritingMergeWorkbench {"
+        },
+        {
+          "line": 100,
+          "text": "constructor(options: Options = {}) {"
+        },
+        {
+          "line": 105,
+          "text": "(async (text, signal) => {"
+        },
+        {
+          "line": 122,
+          "text": "private publish(patch: Partial<WritingMergeState>): void {"
+        },
+        {
+          "line": 127,
+          "text": "private updateSlot(role: WritingMergeRole, patch: Partial<Slot>): void {"
+        },
+        {
+          "line": 136,
+          "text": "private invalidatePlan(): Partial<WritingMergeState> {"
+        },
+        {
+          "line": 150,
+          "text": "private invalidateDecisions(): Partial<WritingMergeState> {"
+        },
+        {
+          "line": 157,
+          "text": "private invalidateAnalysis(): Partial<WritingMergeState> {"
+        },
+        {
+          "line": 168,
+          "text": "clear(role?: WritingMergeRole): void {"
+        },
+        {
+          "line": 185,
+          "text": "async load(role: WritingMergeRole, file: File): Promise<void> {"
+        },
+        {
+          "line": 237,
+          "text": "private inputs(): WritingMergeSources {"
+        },
+        {
+          "line": 248,
+          "text": "confirmBaseline(confirmed: boolean): void {"
+        },
+        {
+          "line": 263,
+          "text": "cancelAnalysis(): void {"
+        },
+        {
+          "line": 271,
+          "text": "async analyze(): Promise<void> {"
+        },
+        {
+          "line": 305,
+          "text": "private liveAnalysis("
+        },
+        {
+          "line": 306,
+          "text": "expected?: WritingMergeAnalysis | null,"
+        },
+        {
+          "line": 320,
+          "text": "choose("
+        },
+        {
+          "line": 321,
+          "text": "unit: string,"
+        },
+        {
+          "line": 322,
+          "text": "choice: WritingMergeChoice | null,"
+        },
+        {
+          "line": 323,
+          "text": "expected: WritingMergeAnalysis | null,"
+        },
+        {
+          "line": 344,
+          "text": "resetDecisions(expected: WritingMergeAnalysis | null): void {"
+        },
+        {
+          "line": 355,
+          "text": "cancelPreparation(): void {"
+        },
+        {
+          "line": 361,
+          "text": "async prepare(): Promise<void> {"
+        },
+        {
+          "line": 404,
+          "text": "resultDownload(expected: PreparedWritingMerge | null): CollectionArtifact {"
+        },
+        {
+          "line": 428,
+          "text": "cancelPlan(): void {"
+        },
+        {
+          "line": 432,
+          "text": "async loadPlan(file: File): Promise<void> {"
+        },
+        {
+          "line": 475,
+          "text": "applyPlan(expected: WritingMergePlanPreview | null): void {"
+        },
+        {
+          "line": 493,
+          "text": "async preparePlan(): Promise<void> {"
+        },
+        {
+          "line": 533,
+          "text": "planDownload(expected: CollectionArtifact | null): CollectionArtifact {"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-merge-controller.ts",
+      "reason": "静态默认状态、协议常量或文案映射；只计实际使用它们的校验/状态策略",
+      "fragments": [
+        {
+          "line": 61,
+          "text": "const emptySlot = (): Slot => ({"
+        },
+        {
+          "line": 63,
+          "text": "name: \"\","
+        },
+        {
+          "line": 64,
+          "text": "percent: 0,"
+        },
+        {
+          "line": 65,
+          "text": "backup: null,"
+        },
+        {
+          "line": 71,
+          "text": "private state: WritingMergeState = {"
+        },
+        {
+          "line": 72,
+          "text": "slots: { base: emptySlot(), current: emptySlot(), incoming: emptySlot() },"
+        },
+        {
+          "line": 73,
+          "text": "baselineConfirmed: false,"
+        },
+        {
+          "line": 74,
+          "text": "analysisStatus: \"idle\","
+        },
+        {
+          "line": 75,
+          "text": "analysis: null,"
+        },
+        {
+          "line": 76,
+          "text": "decisions: [],"
+        },
+        {
+          "line": 77,
+          "text": "preparing: false,"
+        },
+        {
+          "line": 78,
+          "text": "prepared: null,"
+        },
+        {
+          "line": 79,
+          "text": "planLoading: false,"
+        },
+        {
+          "line": 80,
+          "text": "planPreparing: false,"
+        },
+        {
+          "line": 81,
+          "text": "planPreview: null,"
+        },
+        {
+          "line": 82,
+          "text": "planArtifact: null,"
+        },
+        {
+          "line": 86,
+          "text": "private reads: Record<WritingMergeRole, AbortController | null> = {"
+        },
+        {
+          "line": 87,
+          "text": "base: null,"
+        },
+        {
+          "line": 88,
+          "text": "current: null,"
+        },
+        {
+          "line": 89,
+          "text": "incoming: null,"
+        },
+        {
+          "line": 91,
+          "text": "private analysisAbort: AbortController | null = null;"
+        },
+        {
+          "line": 93,
+          "text": "private planReadAbort: AbortController | null = null;"
+        },
+        {
+          "line": 94,
+          "text": "private planExportAbort: AbortController | null = null;"
+        },
+        {
+          "line": 96,
+          "text": "private decisionVersion = 0;"
+        },
+        {
+          "line": 97,
+          "text": "private previewRevision = -1;"
+        },
+        {
+          "line": 101,
+          "text": "this.options = {"
+        },
+        {
+          "line": 102,
+          "text": "read: options.read ?? readCollectionFile,"
+        },
+        {
+          "line": 103,
+          "text": "open:"
+        },
+        {
+          "line": 104,
+          "text": "options.open ??"
+        },
+        {
+          "line": 109,
+          "text": "pause:"
+        },
+        {
+          "line": 110,
+          "text": "options.pause ??"
+        },
+        {
+          "line": 111,
+          "text": "(() => new Promise((resolve) => setTimeout(resolve, 0))),"
+        },
+        {
+          "line": 112,
+          "text": "now: options.now ?? (() => new Date()),"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-merge-controller.ts",
+      "reason": "额外保守扣除简单事件、props/参数/依赖转发、实例化、订阅和既有能力的薄接线",
+      "fragments": [
+        {
+          "line": 106,
+          "text": "assertWritingMergeActive(signal);"
+        },
+        {
+          "line": 107,
+          "text": "return parseWritingMergeSource(text);"
+        },
+        {
+          "line": 116,
+          "text": "getSnapshot = (): WritingMergeState => this.state;"
+        },
+        {
+          "line": 119,
+          "text": "return () => this.listeners.delete(listener);"
+        },
+        {
+          "line": 129,
+          "text": "slots: {"
+        },
+        {
+          "line": 130,
+          "text": "...this.state.slots,"
+        },
+        {
+          "line": 131,
+          "text": "[role]: { ...this.state.slots[role], ...patch },"
+        },
+        {
+          "line": 179,
+          "text": "slots,"
+        },
+        {
+          "line": 238,
+          "text": "const sources = {} as WritingMergeSources;"
+        },
+        {
+          "line": 245,
+          "text": "return sources;"
+        },
+        {
+          "line": 288,
+          "text": "inputs,"
+        },
+        {
+          "line": 289,
+          "text": "abort.signal,"
+        },
+        {
+          "line": 290,
+          "text": "this.options.pause,"
+        },
+        {
+          "line": 317,
+          "text": "return analysis;"
+        },
+        {
+          "line": 379,
+          "text": "this.options.now(),"
+        },
+        {
+          "line": 418,
+          "text": "text: prepared.text,"
+        },
+        {
+          "line": 419,
+          "text": "name: writingDownloadName("
+        },
+        {
+          "line": 420,
+          "text": "`${prepared.backup.draft.title}-merged`,"
+        },
+        {
+          "line": 421,
+          "text": "\"json\","
+        },
+        {
+          "line": 422,
+          "text": "new Date(prepared.backup.createdAt),"
+        },
+        {
+          "line": 515,
+          "text": "const planArtifact: CollectionArtifact = {"
+        },
+        {
+          "line": 517,
+          "text": "name: `no-wave-merge-plan-${prepared.plan.createdAt.slice(0, 10)}.json`,"
+        },
+        {
+          "line": 538,
+          "text": "return artifact;"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-merge-controller.ts",
+      "reason": "仅结果 DTO 的已命名变量/字段转发，不单独计入新增行为",
+      "fragments": [
+        {
+          "line": 394,
+          "text": "error:"
+        },
+        {
+          "line": 397,
+          "text": ": \"合并结果校验失败，没有截断或部分生成文稿。\","
+        },
+        {
+          "line": 468,
+          "text": ": \"决策计划读取失败，原人工取舍未改变。\","
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-merge-plan.ts",
+      "reason": "仅函数/类声明、参数、闭包和 props 解构框架，不把签名计为功能",
+      "fragments": [
+        {
+          "line": 49,
+          "text": "function exact("
+        },
+        {
+          "line": 51,
+          "text": "keys: readonly string[],"
+        },
+        {
+          "line": 76,
+          "text": "function bounded(text: string): void {"
+        },
+        {
+          "line": 86,
+          "text": "function sourceReferences(raw: unknown): Record<WritingMergeRole, string> {"
+        },
+        {
+          "line": 99,
+          "text": "export async function createWritingMergePlan("
+        },
+        {
+          "line": 101,
+          "text": "raw: readonly WritingMergeDecision[],"
+        },
+        {
+          "line": 125,
+          "text": "export async function previewWritingMergePlan("
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-merge-plan.ts",
+      "reason": "静态默认状态、协议常量或文案映射；只计实际使用它们的校验/状态策略",
+      "fragments": [
+        {
+          "line": 17,
+          "text": "export const MERGE_PLAN_BYTE_LIMIT = 64 * 1024;"
+        },
+        {
+          "line": 18,
+          "text": "const FORMAT = \"no-wave-writing-merge-plan\";"
+        },
+        {
+          "line": 19,
+          "text": "const SHA256 = /^[a-f0-9]{64}$/;"
+        },
+        {
+          "line": 20,
+          "text": "const PLAN_FIELDS = ["
+        },
+        {
+          "line": 21,
+          "text": "\"format\","
+        },
+        {
+          "line": 23,
+          "text": "\"algorithm\","
+        },
+        {
+          "line": 25,
+          "text": "\"analysisKey\","
+        },
+        {
+          "line": 26,
+          "text": "\"sources\","
+        },
+        {
+          "line": 27,
+          "text": "\"decisions\","
+        },
+        {
+          "line": 28,
+          "text": "\"digest\","
+        },
+        {
+          "line": 108,
+          "text": "format: FORMAT,"
+        },
+        {
+          "line": 110,
+          "text": "algorithm: WRITING_MERGE_ALGORITHM,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-merge-plan.ts",
+      "reason": "仅结果 DTO 的已命名变量/字段转发，不单独计入新增行为",
+      "fragments": [
+        {
+          "line": 88,
+          "text": "const sources = {} as Record<WritingMergeRole, string>;"
+        },
+        {
+          "line": 112,
+          "text": "analysisKey: analysis.key,"
+        },
+        {
+          "line": 121,
+          "text": "return { plan, text };"
+        },
+        {
+          "line": 168,
+          "text": "createdAt,"
+        },
+        {
+          "line": 169,
+          "text": "analysisKey: raw.analysisKey,"
+        },
+        {
+          "line": 183,
+          "text": "plan: { ...payload, digest: raw.digest },"
+        },
+        {
+          "line": 185,
+          "text": "unresolved,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-merge-review.ts",
+      "reason": "仅函数/类声明、参数、闭包和 props 解构框架，不把签名计为功能",
+      "fragments": [
+        {
+          "line": 22,
+          "text": "export function writingMergeReviewRows("
+        },
+        {
+          "line": 25,
+          "text": "filter: MergeReviewFilter,"
+        },
+        {
+          "line": 49,
+          "text": "export function writingMergeReviewPage("
+        },
+        {
+          "line": 50,
+          "text": "rows: readonly MergeReviewRow[],"
+        },
+        {
+          "line": 51,
+          "text": "requested: number,"
+        },
+        {
+          "line": 68,
+          "text": "export function writingMergeConflictTarget("
+        },
+        {
+          "line": 71,
+          "text": "from: string | null,"
+        },
+        {
+          "line": 72,
+          "text": "direction: -1 | 1,"
+        },
+        {
+          "line": 100,
+          "text": "export function writingMergeDecisionChanges("
+        },
+        {
+          "line": 102,
+          "text": "before: readonly WritingMergeDecision[],"
+        },
+        {
+          "line": 103,
+          "text": "after: readonly WritingMergeDecision[],"
+        },
+        {
+          "line": 134,
+          "text": "export function writingMergeResultReview("
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-merge-review.ts",
+      "reason": "静态默认状态、协议常量或文案映射；只计实际使用它们的校验/状态策略",
+      "fragments": [
+        {
+          "line": 11,
+          "text": "export const MERGE_REVIEW_PAGE_SIZE = 12;"
+        },
+        {
+          "line": 151,
+          "text": "const from = { base: 0, current: 0, incoming: 0 };"
+        },
+        {
+          "line": 152,
+          "text": "let removed = 0,"
+        },
+        {
+          "line": 153,
+          "text": "added = 0,"
+        },
+        {
+          "line": 154,
+          "text": "overridden = 0,"
+        },
+        {
+          "line": 155,
+          "text": "ambiguous = 0,"
+        },
+        {
+          "line": 156,
+          "text": "baseConflicts = 0;"
+        },
+        {
+          "line": 157,
+          "text": "const fields: {"
+        },
+        {
+          "line": 161,
+          "text": "}[] = [];"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-merge-review.ts",
+      "reason": "仅结果 DTO 的已命名变量/字段转发，不单独计入新增行为",
+      "fragments": [
+        {
+          "line": 31,
+          "text": "item.unit,"
+        },
+        {
+          "line": 32,
+          "text": "item.choice,"
+        },
+        {
+          "line": 124,
+          "text": "before: previous,"
+        },
+        {
+          "line": 125,
+          "text": "after: next,"
+        },
+        {
+          "line": 183,
+          "text": "removed,"
+        },
+        {
+          "line": 184,
+          "text": "added,"
+        },
+        {
+          "line": 185,
+          "text": "overridden,"
+        },
+        {
+          "line": 189,
+          "text": "blockCount,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-merge-integrity.ts",
+      "reason": "仅函数/类声明、参数、闭包和 props 解构框架，不把签名计为功能",
+      "fragments": [
+        {
+          "line": 14,
+          "text": "export function writingMergeRootAttributes(backup: WritingBackup): WritingNode {"
+        },
+        {
+          "line": 18,
+          "text": "function corrupted(message: string): never {"
+        },
+        {
+          "line": 21,
+          "text": "function equal(before: unknown, after: unknown): boolean {"
+        },
+        {
+          "line": 26,
+          "text": "export function verifyWritingMergePartition("
+        },
+        {
+          "line": 27,
+          "text": "sources: WritingMergeSources,"
+        },
+        {
+          "line": 28,
+          "text": "units: readonly WritingMergeUnit[],"
+        },
+        {
+          "line": 120,
+          "text": "export function verifyWritingMergeOutput("
+        },
+        {
+          "line": 123,
+          "text": "output: WritingBackup,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-merge-integrity.ts",
+      "reason": "静态默认状态、协议常量或文案映射；只计实际使用它们的校验/状态策略",
+      "fragments": [
+        {
+          "line": 31,
+          "text": "const consumed: Record<WritingMergeRole, number> = {"
+        },
+        {
+          "line": 32,
+          "text": "base: 0,"
+        },
+        {
+          "line": 33,
+          "text": "current: 0,"
+        },
+        {
+          "line": 34,
+          "text": "incoming: 0,"
+        },
+        {
+          "line": 38,
+          "text": "const knownFields: WritingMergeField[] = ["
+        },
+        {
+          "line": 39,
+          "text": "\"title\","
+        },
+        {
+          "line": 40,
+          "text": "\"summary\","
+        },
+        {
+          "line": 41,
+          "text": "\"locale\","
+        },
+        {
+          "line": 42,
+          "text": "\"workType\","
+        },
+        {
+          "line": 45,
+          "text": "let roots = 0;"
+        },
+        {
+          "line": 138,
+          "text": "let cursor = 0,"
+        },
+        {
+          "line": 139,
+          "text": "roots = 0;"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-merge-integrity.ts",
+      "reason": "仅结果 DTO 的已命名变量/字段转发，不单独计入新增行为",
+      "fragments": [
+        {
+          "line": 16,
+          "text": "return attributes;"
+        },
+        {
+          "line": 116,
+          "text": "return consumed;"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-merge-structure.ts",
+      "reason": "仅函数/类声明、参数、闭包和 props 解构框架，不把签名计为功能",
+      "fragments": [
+        {
+          "line": 31,
+          "text": "function pathLabel(path: Path): string {"
+        },
+        {
+          "line": 41,
+          "text": "function valueType(value: unknown): string {"
+        },
+        {
+          "line": 45,
+          "text": "function snippet("
+        },
+        {
+          "line": 47,
+          "text": "present: boolean,"
+        },
+        {
+          "line": 56,
+          "text": "export function inspectWritingMergeStructure("
+        },
+        {
+          "line": 57,
+          "text": "unit: WritingMergeUnit,"
+        },
+        {
+          "line": 58,
+          "text": "role: WritingMergeRole,"
+        },
+        {
+          "line": 78,
+          "text": "const enqueue = (pending: Pending) => {"
+        },
+        {
+          "line": 86,
+          "text": "const append = ("
+        },
+        {
+          "line": 87,
+          "text": "item: Pending,"
+        },
+        {
+          "line": 88,
+          "text": "kind: Change[\"kind\"],"
+        },
+        {
+          "line": 89,
+          "text": "before = item.before,"
+        },
+        {
+          "line": 90,
+          "text": "after = item.after,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-merge-structure.ts",
+      "reason": "静态默认状态、协议常量或文案映射；只计实际使用它们的校验/状态策略",
+      "fragments": [
+        {
+          "line": 28,
+          "text": "const MAX_VISITS = 4096;"
+        },
+        {
+          "line": 29,
+          "text": "const MAX_CHANGES = 40;"
+        },
+        {
+          "line": 60,
+          "text": "const result: WritingMergeStructure = {"
+        },
+        {
+          "line": 61,
+          "text": "changes: [],"
+        },
+        {
+          "line": 62,
+          "text": "visited: 0,"
+        },
+        {
+          "line": 63,
+          "text": "limited: false,"
+        },
+        {
+          "line": 70,
+          "text": "path: [],"
+        },
+        {
+          "line": 73,
+          "text": "beforePresent: true,"
+        },
+        {
+          "line": 74,
+          "text": "afterPresent: true,"
+        },
+        {
+          "line": 77,
+          "text": "let scheduled = 1;"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-merge-structure.ts",
+      "reason": "仅结果 DTO 的已命名变量/字段转发，不单独计入新增行为",
+      "fragments": [
+        {
+          "line": 34,
+          "text": "path"
+        },
+        {
+          "line": 71,
+          "text": "before: unit.values.base,"
+        },
+        {
+          "line": 72,
+          "text": "after: unit.values[role],"
+        },
+        {
+          "line": 97,
+          "text": "before: a.text,"
+        },
+        {
+          "line": 98,
+          "text": "after: b.text,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-merge.ts",
+      "reason": "仅函数/类声明、参数、闭包和 props 解构框架，不把签名计为功能",
+      "fragments": [
+        {
+          "line": 71,
+          "text": "export function assertWritingMergeActive(signal?: AbortSignal): void {"
+        },
+        {
+          "line": 76,
+          "text": "export function parseWritingMergeSource(text: string): WritingBackup {"
+        },
+        {
+          "line": 88,
+          "text": "function classify<T>("
+        },
+        {
+          "line": 89,
+          "text": "values: Alternatives<T>,"
+        },
+        {
+          "line": 105,
+          "text": "function reordered(base: string[], side: string[]): boolean {"
+        },
+        {
+          "line": 118,
+          "text": "function changes("
+        },
+        {
+          "line": 119,
+          "text": "base: WritingNode[],"
+        },
+        {
+          "line": 120,
+          "text": "side: WritingNode[],"
+        },
+        {
+          "line": 121,
+          "text": "sideName: Hunk[\"side\"],"
+        },
+        {
+          "line": 163,
+          "text": "function touches(a: Hunk, b: Hunk): boolean {"
+        },
+        {
+          "line": 170,
+          "text": "function overlappingGroups(hunks: Hunk[]): Hunk[][] {"
+        },
+        {
+          "line": 172,
+          "text": "const find = (index: number): number => {"
+        },
+        {
+          "line": 192,
+          "text": "(a, b) =>"
+        },
+        {
+          "line": 198,
+          "text": "function project("
+        },
+        {
+          "line": 200,
+          "text": "group: Hunk[],"
+        },
+        {
+          "line": 201,
+          "text": "side: Hunk[\"side\"],"
+        },
+        {
+          "line": 202,
+          "text": "start: number,"
+        },
+        {
+          "line": 203,
+          "text": "end: number,"
+        },
+        {
+          "line": 219,
+          "text": "function bodyUnits(sources: WritingMergeSources): WritingMergeUnit[] {"
+        },
+        {
+          "line": 313,
+          "text": "export async function analyzeWritingMerge("
+        },
+        {
+          "line": 314,
+          "text": "input: WritingMergeSources,"
+        },
+        {
+          "line": 316,
+          "text": "pause: () => Promise<void> = () => Promise.resolve(),"
+        },
+        {
+          "line": 367,
+          "text": "export function validateWritingMergeDecisions("
+        },
+        {
+          "line": 369,
+          "text": "raw: unknown,"
+        },
+        {
+          "line": 400,
+          "text": "export function writingMergeDecisionsKey("
+        },
+        {
+          "line": 402,
+          "text": "decisions: unknown,"
+        },
+        {
+          "line": 407,
+          "text": "export function writingMergeProgress("
+        },
+        {
+          "line": 434,
+          "text": "export async function prepareWritingMerge("
+        },
+        {
+          "line": 479,
+          "text": "export function writingMergeCandidateText("
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-merge.ts",
+      "reason": "静态默认状态、协议常量或文案映射；只计实际使用它们的校验/状态策略",
+      "fragments": [
+        {
+          "line": 25,
+          "text": "export const MERGE_ROLES = [\"base\", \"current\", \"incoming\"] as const;"
+        },
+        {
+          "line": 26,
+          "text": "export const MERGE_CHOICES = [\"base\", \"current\", \"incoming\"] as const;"
+        },
+        {
+          "line": 27,
+          "text": "export const WRITING_MERGE_ALGORITHM = \"exact-block-diff3-v1\";"
+        },
+        {
+          "line": 69,
+          "text": "const FIELDS: WritingMergeField[] = [\"title\", \"summary\", \"locale\", \"workType\"];"
+        },
+        {
+          "line": 107,
+          "text": "let previous = -1;"
+        },
+        {
+          "line": 135,
+          "text": "const anchors: [number, number][] = [];"
+        },
+        {
+          "line": 136,
+          "text": "let i = 0,"
+        },
+        {
+          "line": 137,
+          "text": "j = 0;"
+        },
+        {
+          "line": 145,
+          "text": "const hunks: Hunk[] = [];"
+        },
+        {
+          "line": 146,
+          "text": "let fromBase = 0,"
+        },
+        {
+          "line": 147,
+          "text": "fromSide = 0;"
+        },
+        {
+          "line": 232,
+          "text": "kind: \"body\","
+        },
+        {
+          "line": 233,
+          "text": "start: 0,"
+        },
+        {
+          "line": 264,
+          "text": "const units: WritingMergeUnit[] = [];"
+        },
+        {
+          "line": 336,
+          "text": "kind: \"field\","
+        },
+        {
+          "line": 414,
+          "text": "let conflicts = 0,"
+        },
+        {
+          "line": 415,
+          "text": "unresolved = 0,"
+        },
+        {
+          "line": 416,
+          "text": "changed = 0;"
+        },
+        {
+          "line": 443,
+          "text": "const draft: WritingDraft = {"
+        },
+        {
+          "line": 444,
+          "text": "title: \"\","
+        },
+        {
+          "line": 445,
+          "text": "summary: \"\","
+        },
+        {
+          "line": 447,
+          "text": "workType: \"other\","
+        },
+        {
+          "line": 448,
+          "text": "editorState: null,"
+        },
+        {
+          "line": 450,
+          "text": "let root: WritingNode | null = null;"
+        },
+        {
+          "line": 451,
+          "text": "const children: WritingNode[] = [];"
+        },
+        {
+          "line": 493,
+          "text": "title: \"预览\","
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-merge.ts",
+      "reason": "仅结果 DTO 的已命名变量/字段转发，不单独计入新增行为",
+      "fragments": [
+        {
+          "line": 151,
+          "text": "start: fromBase,"
+        },
+        {
+          "line": 152,
+          "text": "end: toBase,"
+        },
+        {
+          "line": 154,
+          "text": "side: sideName,"
+        },
+        {
+          "line": 177,
+          "text": "return index;"
+        },
+        {
+          "line": 225,
+          "text": ") as Alternatives<WritingNode[]>;"
+        },
+        {
+          "line": 234,
+          "text": "end: count,"
+        },
+        {
+          "line": 235,
+          "text": "values,"
+        },
+        {
+          "line": 236,
+          "text": "...entire,"
+        },
+        {
+          "line": 276,
+          "text": "start: cursor,"
+        },
+        {
+          "line": 277,
+          "text": "end: start,"
+        },
+        {
+          "line": 278,
+          "text": "values: same,"
+        },
+        {
+          "line": 292,
+          "text": "values: alternatives,"
+        },
+        {
+          "line": 320,
+          "text": "const digests = {} as Record<WritingMergeRole, string>;"
+        },
+        {
+          "line": 337,
+          "text": "field,"
+        },
+        {
+          "line": 360,
+          "text": "sources: digests,"
+        },
+        {
+          "line": 361,
+          "text": "coverage,"
+        },
+        {
+          "line": 362,
+          "text": "units,"
+        },
+        {
+          "line": 426,
+          "text": "conflicts,"
+        },
+        {
+          "line": 428,
+          "text": "changed,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-merge-plan.tsx",
+      "reason": "仅函数/类声明、参数、闭包和 props 解构框架，不把签名计为功能",
+      "fragments": [
+        {
+          "line": 16,
+          "text": "function PlanPreview({"
+        },
+        {
+          "line": 19,
+          "text": "analysis,"
+        },
+        {
+          "line": 20,
+          "text": "preview,"
+        },
+        {
+          "line": 21,
+          "text": "feedback,"
+        },
+        {
+          "line": 35,
+          "text": "function apply() {"
+        },
+        {
+          "line": 65,
+          "text": "{changes.map((change) => ("
+        },
+        {
+          "line": 86,
+          "text": "{preview.decisions.map((decision) => ("
+        },
+        {
+          "line": 129,
+          "text": "export function WritingMergePlanPanel({"
+        },
+        {
+          "line": 133,
+          "text": "save,"
+        },
+        {
+          "line": 142,
+          "text": "function choose(files: FileList | null) {"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-merge-plan.tsx",
+      "reason": "额外保守扣除简单事件、props/参数/依赖转发、实例化、订阅和既有能力的薄接线",
+      "fragments": [
+        {
+          "line": 29,
+          "text": "const [confirmed, setConfirmed] = useState(false);"
+        },
+        {
+          "line": 32,
+          "text": "state.decisions,"
+        },
+        {
+          "line": 33,
+          "text": "preview.decisions,"
+        },
+        {
+          "line": 38,
+          "text": "controller.applyPlan(preview);"
+        },
+        {
+          "line": 39,
+          "text": "feedback(\"已按刚才核对的计划完整替换人工取舍，尚未生成或下载结果。\");"
+        },
+        {
+          "line": 41,
+          "text": "feedback("
+        },
+        {
+          "line": 43,
+          "text": "true,"
+        },
+        {
+          "line": 66,
+          "text": "<li key={change.unit.id}>"
+        },
+        {
+          "line": 71,
+          "text": "→{\" \"}"
+        },
+        {
+          "line": 87,
+          "text": "<li key={decision.unit}>"
+        },
+        {
+          "line": 103,
+          "text": "checked={confirmed}"
+        },
+        {
+          "line": 104,
+          "text": "onChange={(event) => setConfirmed(event.target.checked)}"
+        },
+        {
+          "line": 112,
+          "text": "disabled={!confirmed}"
+        },
+        {
+          "line": 113,
+          "text": "onClick={apply}"
+        },
+        {
+          "line": 120,
+          "text": "onClick={() => controller.cancelPlan()}"
+        },
+        {
+          "line": 148,
+          "text": "void controller.loadPlan(files[0]!);"
+        },
+        {
+          "line": 165,
+          "text": "disabled={state.planPreparing}"
+        },
+        {
+          "line": 166,
+          "text": "onClick={() => {"
+        },
+        {
+          "line": 167,
+          "text": "void controller.preparePlan();"
+        },
+        {
+          "line": 175,
+          "text": "disabled={!state.planArtifact || state.planPreparing}"
+        },
+        {
+          "line": 176,
+          "text": "onClick={save}"
+        },
+        {
+          "line": 202,
+          "text": "choose(event.currentTarget.files);"
+        },
+        {
+          "line": 221,
+          "text": "key={state.planPreview.plan.digest}"
+        },
+        {
+          "line": 223,
+          "text": "state={state}"
+        },
+        {
+          "line": 224,
+          "text": "analysis={analysis}"
+        },
+        {
+          "line": 225,
+          "text": "preview={state.planPreview}"
+        },
+        {
+          "line": 226,
+          "text": "feedback={feedback}"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-merge-result.tsx",
+      "reason": "仅函数/类声明、参数、闭包和 props 解构框架，不把签名计为功能",
+      "fragments": [
+        {
+          "line": 12,
+          "text": "export function WritingMergeResult({"
+        },
+        {
+          "line": 14,
+          "text": "decisions,"
+        },
+        {
+          "line": 15,
+          "text": "prepared,"
+        },
+        {
+          "line": 60,
+          "text": "{Object.entries(report.from).map(([role, count]) => ("
+        },
+        {
+          "line": 88,
+          "text": "{inspection.issues.map((issue, index) => ("
+        },
+        {
+          "line": 95,
+          "text": "{inspection.blocks.map((block) => ("
+        },
+        {
+          "line": 109,
+          "text": "{images.map((node, index) => ("
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-merge-result.tsx",
+      "reason": "额外保守扣除简单事件、props/参数/依赖转发、实例化、订阅和既有能力的薄接线",
+      "fragments": [
+        {
+          "line": 24,
+          "text": "const [rawOpen, setRawOpen] = useState(false);"
+        },
+        {
+          "line": 25,
+          "text": "const region = useRef<HTMLElement | null>(null);"
+        },
+        {
+          "line": 30,
+          "text": "const inspection = prepared.inspection;"
+        },
+        {
+          "line": 37,
+          "text": "tabIndex={-1}"
+        },
+        {
+          "line": 38,
+          "text": "ref={region}"
+        },
+        {
+          "line": 89,
+          "text": "<li key={`${issue.code}-${index}`}>{issue.message}</li>"
+        },
+        {
+          "line": 96,
+          "text": "<li key={block.path.join(\".\")}>"
+        },
+        {
+          "line": 101,
+          "text": "<MergeLiteral text={block.text} />"
+        },
+        {
+          "line": 122,
+          "text": "<details onToggle={(event) => setRawOpen(event.currentTarget.open)}>"
+        },
+        {
+          "line": 132,
+          "text": "decisions={decisions}"
+        },
+        {
+          "line": 133,
+          "text": "prepared={prepared}"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-merge-impact.ts",
+      "reason": "仅函数/类声明、参数、闭包和 props 解构框架，不把签名计为功能",
+      "fragments": [
+        {
+          "line": 53,
+          "text": "export function reviewWritingMergeImpact("
+        },
+        {
+          "line": 54,
+          "text": "analysis: WritingMergeAnalysis,"
+        },
+        {
+          "line": 55,
+          "text": "decisions: readonly WritingMergeDecision[],"
+        },
+        {
+          "line": 56,
+          "text": "prepared: PreparedWritingMerge,"
+        },
+        {
+          "line": 143,
+          "text": "export function writingMergeImpactRows("
+        },
+        {
+          "line": 144,
+          "text": "report: WritingMergeImpact,"
+        },
+        {
+          "line": 145,
+          "text": "filter: WritingMergeImpactFilter,"
+        },
+        {
+          "line": 150,
+          "text": "(item) =>"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-merge-impact.ts",
+      "reason": "静态默认状态、协议常量或文案映射；只计实际使用它们的校验/状态策略",
+      "fragments": [
+        {
+          "line": 50,
+          "text": "const BRANCHES: Branch[] = [\"current\", \"incoming\"];"
+        },
+        {
+          "line": 68,
+          "text": "const items: WritingMergeImpactItem[] = [];"
+        },
+        {
+          "line": 69,
+          "text": "const unadopted = { current: 0, incoming: 0 };"
+        },
+        {
+          "line": 70,
+          "text": "let overrides = 0,"
+        },
+        {
+          "line": 71,
+          "text": "baseConflicts = 0,"
+        },
+        {
+          "line": 72,
+          "text": "emptySelections = 0,"
+        },
+        {
+          "line": 73,
+          "text": "ambiguous = 0;"
+        },
+        {
+          "line": 107,
+          "text": "const sources = {} as Record<WritingMergeRole, SourceRelation>;"
+        },
+        {
+          "line": 113,
+          "text": "const blocks: WritingNode[] = [];"
+        },
+        {
+          "line": 114,
+          "text": "const fields: WritingMergeField[] = [];"
+        },
+        {
+          "line": 115,
+          "text": "let rootEqual = false;"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-merge-impact.ts",
+      "reason": "额外保守扣除简单事件、props/参数/依赖转发、实例化、订阅和既有能力的薄接线",
+      "fragments": [
+        {
+          "line": 66,
+          "text": "const output = serialized.draft;"
+        },
+        {
+          "line": 109,
+          "text": "writingMergeRootAttributes(serialized),"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-merge-impact.ts",
+      "reason": "仅结果 DTO 的已命名变量/字段转发，不单独计入新增行为",
+      "fragments": [
+        {
+          "line": 97,
+          "text": "...row,"
+        },
+        {
+          "line": 99,
+          "text": "unadopted: rejected,"
+        },
+        {
+          "line": 100,
+          "text": "override,"
+        },
+        {
+          "line": 101,
+          "text": "baseConflict,"
+        },
+        {
+          "line": 102,
+          "text": "empty,"
+        },
+        {
+          "line": 103,
+          "text": "selectedBlocks:"
+        },
+        {
+          "line": 126,
+          "text": "rootEqual,"
+        },
+        {
+          "line": 131,
+          "text": "items,"
+        },
+        {
+          "line": 132,
+          "text": "byUnit: new Map(items.map((item) => [item.unit.id, item])),"
+        },
+        {
+          "line": 134,
+          "text": "unadopted,"
+        },
+        {
+          "line": 135,
+          "text": "overrides,"
+        },
+        {
+          "line": 136,
+          "text": "baseConflicts,"
+        },
+        {
+          "line": 137,
+          "text": "emptySelections,"
+        },
+        {
+          "line": 138,
+          "text": "ambiguous,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-merge-impact.tsx",
+      "reason": "仅函数/类声明、参数、闭包和 props 解构框架，不把签名计为功能",
+      "fragments": [
+        {
+          "line": 28,
+          "text": "function ImpactCandidate({"
+        },
+        {
+          "line": 29,
+          "text": "unit,"
+        },
+        {
+          "line": 30,
+          "text": "role,"
+        },
+        {
+          "line": 31,
+          "text": "selected,"
+        },
+        {
+          "line": 57,
+          "text": "function ImpactContent({ analysis, decisions, prepared }: Props) {"
+        },
+        {
+          "line": 81,
+          "text": "{MERGE_ROLES.map((role) => {"
+        },
+        {
+          "line": 132,
+          "text": "{page.rows.map((row) => {"
+        },
+        {
+          "line": 163,
+          "text": "{item.unadopted.map((role) => ("
+        },
+        {
+          "line": 198,
+          "text": "export function WritingMergeImpactPanel(props: Props) {"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-merge-impact.tsx",
+      "reason": "静态默认状态、协议常量或文案映射；只计实际使用它们的校验/状态策略",
+      "fragments": [
+        {
+          "line": 62,
+          "text": "const [filter, setFilter] = useState<WritingMergeImpactFilter>(\"all\");"
+        },
+        {
+          "line": 63,
+          "text": "const [requested, setRequested] = useState(0);"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-merge-impact.tsx",
+      "reason": "额外保守扣除简单事件、props/参数/依赖转发、实例化、订阅和既有能力的薄接线",
+      "fragments": [
+        {
+          "line": 39,
+          "text": "<details onToggle={(event) => setOpen(event.currentTarget.open)}>"
+        },
+        {
+          "line": 60,
+          "text": "[analysis, decisions, prepared],"
+        },
+        {
+          "line": 84,
+          "text": "<div key={role}>"
+        },
+        {
+          "line": 112,
+          "text": "value={filter}"
+        },
+        {
+          "line": 135,
+          "text": "<li key={item.unit.id}>"
+        },
+        {
+          "line": 162,
+          "text": "<ImpactCandidate unit={item.unit} role={item.choice} selected />"
+        },
+        {
+          "line": 165,
+          "text": "key={role}"
+        },
+        {
+          "line": 166,
+          "text": "unit={item.unit}"
+        },
+        {
+          "line": 167,
+          "text": "role={role}"
+        },
+        {
+          "line": 168,
+          "text": "selected={false}"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-merge-review.tsx",
+      "reason": "仅函数/类声明、参数、闭包和 props 解构框架，不把签名计为功能",
+      "fragments": [
+        {
+          "line": 43,
+          "text": "export function writingMergeUnitLabel(unit: WritingMergeUnit): string {"
+        },
+        {
+          "line": 51,
+          "text": "export function MergeLiteral({ text }: { text: string }) {"
+        },
+        {
+          "line": 75,
+          "text": "function MergeStructure({"
+        },
+        {
+          "line": 124,
+          "text": "{result.changes.map((change) => ("
+        },
+        {
+          "line": 162,
+          "text": "function MergeCandidate({"
+        },
+        {
+          "line": 165,
+          "text": "choice,"
+        },
+        {
+          "line": 166,
+          "text": "group,"
+        },
+        {
+          "line": 167,
+          "text": "choose,"
+        },
+        {
+          "line": 225,
+          "text": "export function WritingMergeReview({"
+        },
+        {
+          "line": 250,
+          "text": "function jump(direction: -1 | 1) {"
+        },
+        {
+          "line": 333,
+          "text": "{page.rows.map((row) => ("
+        },
+        {
+          "line": 360,
+          "text": "{MERGE_ROLES.map((role) => ("
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-merge-review.tsx",
+      "reason": "静态默认状态、协议常量或文案映射；只计实际使用它们的校验/状态策略",
+      "fragments": [
+        {
+          "line": 24,
+          "text": "export const MERGE_ROLE_LABELS = {"
+        },
+        {
+          "line": 25,
+          "text": "base: \"共同基线\","
+        },
+        {
+          "line": 26,
+          "text": "current: \"当前稿\","
+        },
+        {
+          "line": 27,
+          "text": "incoming: \"另一稿\","
+        },
+        {
+          "line": 29,
+          "text": "const FIELD_LABELS = {"
+        },
+        {
+          "line": 32,
+          "text": "locale: \"语言\","
+        },
+        {
+          "line": 35,
+          "text": "const STATUS_LABELS = {"
+        },
+        {
+          "line": 36,
+          "text": "same: \"三份相同\","
+        },
+        {
+          "line": 37,
+          "text": "current: \"仅当前稿改动\","
+        },
+        {
+          "line": 38,
+          "text": "incoming: \"仅另一稿改动\","
+        },
+        {
+          "line": 39,
+          "text": "agreed: \"两稿改动一致\","
+        },
+        {
+          "line": 40,
+          "text": "conflict: \"需要明确取舍\","
+        },
+        {
+          "line": 52,
+          "text": "const [full, setFull] = useState(false);"
+        },
+        {
+          "line": 234,
+          "text": "const [filter, setFilter] = useState<MergeReviewFilter>(\"changed\");"
+        },
+        {
+          "line": 235,
+          "text": "const [pageIndex, setPageIndex] = useState(0);"
+        },
+        {
+          "line": 236,
+          "text": "const [target, setTarget] = useState<{ id: string } | null>(null);"
+        },
+        {
+          "line": 237,
+          "text": "const fields = useRef(new Map<string, HTMLFieldSetElement>());"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-merge-review.tsx",
+      "reason": "额外保守扣除简单事件、props/参数/依赖转发、实例化、订阅和既有能力的薄接线",
+      "fragments": [
+        {
+          "line": 65,
+          "text": "onClick={() => setFull((value) => !value)}"
+        },
+        {
+          "line": 85,
+          "text": "[open, unit, role],"
+        },
+        {
+          "line": 125,
+          "text": "<li key={change.path}>"
+        },
+        {
+          "line": 178,
+          "text": "[unit, role],"
+        },
+        {
+          "line": 182,
+          "text": "[unit],"
+        },
+        {
+          "line": 196,
+          "text": "name={group}"
+        },
+        {
+          "line": 198,
+          "text": "onChange={() => choose(role)}"
+        },
+        {
+          "line": 213,
+          "text": "<MergeLiteral text={text} />"
+        },
+        {
+          "line": 214,
+          "text": "<MergeStructure unit={unit} role={role} />"
+        },
+        {
+          "line": 254,
+          "text": "target?.id ?? null,"
+        },
+        {
+          "line": 255,
+          "text": "direction,"
+        },
+        {
+          "line": 304,
+          "text": "onClick={() => jump(-1)}"
+        },
+        {
+          "line": 312,
+          "text": "onClick={() => jump(1)}"
+        },
+        {
+          "line": 320,
+          "text": "onClick={() => controller.resetDecisions(analysis)}"
+        },
+        {
+          "line": 335,
+          "text": "key={row.unit.id}"
+        },
+        {
+          "line": 337,
+          "text": "data-merge-unit={row.unit.id}"
+        },
+        {
+          "line": 338,
+          "text": "ref={(element) => {"
+        },
+        {
+          "line": 339,
+          "text": "if (element) fields.current.set(row.unit.id, element);"
+        },
+        {
+          "line": 340,
+          "text": "else fields.current.delete(row.unit.id);"
+        },
+        {
+          "line": 363,
+          "text": "unit={row.unit}"
+        },
+        {
+          "line": 365,
+          "text": "choice={row.choice}"
+        },
+        {
+          "line": 366,
+          "text": "group={`${analysis.key}-${row.unit.id}`}"
+        },
+        {
+          "line": 367,
+          "text": "choose={(choice) =>"
+        },
+        {
+          "line": 368,
+          "text": "controller.choose(row.unit.id, choice, analysis)"
+        },
+        {
+          "line": 377,
+          "text": "onClick={() => controller.choose(row.unit.id, null, analysis)}"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-merge-workbench.tsx",
+      "reason": "仅函数/类声明、参数、闭包和 props 解构框架，不把签名计为功能",
+      "fragments": [
+        {
+          "line": 25,
+          "text": "export function LocalWritingMerge() {"
+        },
+        {
+          "line": 46,
+          "text": "const clear = () => {"
+        },
+        {
+          "line": 59,
+          "text": "function feedback(text: string, error = false) {"
+        },
+        {
+          "line": 62,
+          "text": "function choose(role: WritingMergeRole, files: FileList | null) {"
+        },
+        {
+          "line": 72,
+          "text": "function clear(role?: WritingMergeRole) {"
+        },
+        {
+          "line": 77,
+          "text": "function save(kind: \"result\" | \"plan\") {"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-merge-workbench.tsx",
+      "reason": "静态默认状态、协议常量或文案映射；只计实际使用它们的校验/状态策略",
+      "fragments": [
+        {
+          "line": 33,
+          "text": "const [notice, setNotice] = useState<{"
+        },
+        {
+          "line": 37,
+          "text": "} | null>(null);"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-merge-workbench.tsx",
+      "reason": "额外保守扣除简单事件、props/参数/依赖转发、实例化、订阅和既有能力的薄接线",
+      "fragments": [
+        {
+          "line": 26,
+          "text": "const [controller] = useState(() => new WritingMergeWorkbench());"
+        },
+        {
+          "line": 41,
+          "text": "const analysis = state.analysis;"
+        },
+        {
+          "line": 47,
+          "text": "controller.clear();"
+        },
+        {
+          "line": 48,
+          "text": "download.release();"
+        },
+        {
+          "line": 49,
+          "text": "setNotice(null);"
+        },
+        {
+          "line": 70,
+          "text": "void controller.load(role, files[0]!);"
+        },
+        {
+          "line": 73,
+          "text": "controller.clear(role);"
+        },
+        {
+          "line": 83,
+          "text": "controller.resultDownload(prepared),"
+        },
+        {
+          "line": 88,
+          "text": "\"新的合并文稿已交给浏览器下载；没有修改原文件、编辑区或服务器。请妥善保管未加密的文稿。\","
+        },
+        {
+          "line": 93,
+          "text": "controller.planDownload(plan),"
+        },
+        {
+          "line": 97,
+          "text": "\"人工取舍计划已交给浏览器下载；不含正文，但三份原始文稿必须另外妥善保存。\","
+        },
+        {
+          "line": 124,
+          "text": "<button className=\"nw-btn\" type=\"button\" onClick={() => clear()}>"
+        },
+        {
+          "line": 144,
+          "text": "aria-label={`${MERGE_ROLE_LABELS[role]}来源`}"
+        },
+        {
+          "line": 153,
+          "text": "choose(role, event.currentTarget.files);"
+        },
+        {
+          "line": 162,
+          "text": "onClick={() => clear(role)}"
+        },
+        {
+          "line": 201,
+          "text": "checked={state.baselineConfirmed}"
+        },
+        {
+          "line": 203,
+          "text": "onChange={(event) => controller.confirmBaseline(event.target.checked)}"
+        },
+        {
+          "line": 218,
+          "text": "void controller.analyze();"
+        },
+        {
+          "line": 227,
+          "text": "onClick={() => controller.cancelAnalysis()}"
+        },
+        {
+          "line": 245,
+          "text": "key={analysis.key}"
+        },
+        {
+          "line": 248,
+          "text": "decisions={state.decisions}"
+        },
+        {
+          "line": 265,
+          "text": "void controller.prepare();"
+        },
+        {
+          "line": 274,
+          "text": "onClick={() => controller.cancelPreparation()}"
+        },
+        {
+          "line": 288,
+          "text": "key={state.prepared.digest}"
+        },
+        {
+          "line": 291,
+          "text": "prepared={state.prepared}"
+        },
+        {
+          "line": 292,
+          "text": "save={() => save(\"result\")}"
+        },
+        {
+          "line": 299,
+          "text": "save={() => save(\"plan\")}"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-merge-result.tsx",
+      "reason": "独立运行 token 复核额外否决的基线或本轮重复片段；不放宽复核，全部从 claim 扣除",
+      "fragments": [
+        {
+          "line": 55,
+          "text": "{inspection.statistics.characters} 字符 · 图片地址{\" \"}"
+        },
+        {
+          "line": 63,
+          "text": "取自{MERGE_ROLE_LABELS[role as keyof typeof MERGE_ROLE_LABELS]}"
+        },
+        {
+          "line": 77,
+          "text": "有 {report.ambiguous}{\" \"}"
+        },
+        {
+          "line": 83,
+          "text": "<summary>写作格式与内容提示（{inspection.issues.length}）</summary>"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-merge-review.tsx",
+      "reason": "独立运行 token 复核额外否决的基线或本轮重复片段；不放宽复核，全部从 claim 扣除",
+      "fragments": [
+        {
+          "line": 90,
+          "text": "<summary>{MERGE_ROLE_LABELS[role]}相对基线的结构差异</summary>"
+        },
+        {
+          "line": 115,
+          "text": "{result.limited"
+        },
+        {
+          "line": 216,
+          "text": "<summary>{MERGE_ROLE_LABELS[role]}的精确 JSON</summary>"
+        },
+        {
+          "line": 288,
+          "text": "setFilter(event.target.value as MergeReviewFilter);"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-merge-workbench.tsx",
+      "reason": "独立运行 token 复核额外否决的基线或本轮重复片段；不放宽复核，全部从 claim 扣除",
+      "fragments": [
+        {
+          "line": 146,
+          "text": "<h2>{MERGE_ROLE_LABELS[role]}</h2>"
+        },
+        {
+          "line": 148,
+          "text": "{MERGE_ROLE_LABELS[role]}单篇文稿文件"
+        },
+        {
+          "line": 164,
+          "text": "清除{MERGE_ROLE_LABELS[role]}文件"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-merge-controller.ts",
+      "reason": "独立运行 token 复核额外否决的基线或本轮重复片段；不放宽复核，全部从 claim 扣除",
+      "fragments": [
+        {
+          "line": 206,
+          "text": "if (current())"
+        },
+        {
+          "line": 210,
+          "text": ": 0,"
+        },
+        {
+          "line": 347,
+          "text": "this.publish({ ...this.invalidateDecisions(), decisions: [], error: \"\" });"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-merge-integrity.ts",
+      "reason": "独立运行 token 复核额外否决的基线或本轮重复片段；不放宽复核，全部从 claim 扣除",
+      "fragments": [
+        {
+          "line": 137,
+          "text": "const fields = new Set<string>();"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-merge-review.ts",
+      "reason": "独立运行 token 复核额外否决的基线或本轮重复片段；不放宽复核，全部从 claim 扣除",
+      "fragments": [
+        {
+          "line": 145,
+          "text": "const selected = new Map("
+        },
+        {
+          "line": 170,
+          "text": "if (unit.kind === \"field\")"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-merge-structure.ts",
+      "reason": "独立运行 token 复核额外否决的基线或本轮重复片段；不放宽复核，全部从 claim 扣除",
+      "fragments": [
+        {
+          "line": 138,
+          "text": "const keys = ["
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-merge.ts",
+      "reason": "独立运行 token 复核额外否决的基线或本轮重复片段；不放宽复核，全部从 claim 扣除",
+      "fragments": [
+        {
+          "line": 184,
+          "text": "const groups = new Map<number, Hunk[]>();"
+        },
+        {
+          "line": 342,
+          "text": "const roots = {"
+        },
+        {
+          "line": 393,
+          "text": "return analysis.units.flatMap((unit) =>"
+        },
+        {
+          "line": 502,
+          "text": ".join(\"\\n\"),"
+        }
+      ]
+    }
+  ]
+}

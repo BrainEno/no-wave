@@ -210,6 +210,19 @@ try {
 
   const writingDesk = await fetch(`${baseUrl}/write`);
   assert.equal(writingDesk.status, 200, "writing desk should render when the API and media store are not configured");
+  const merge = await fetch(`${baseUrl}/write/merge`);
+  assert.equal(merge.status, 200, "the local merge shell must be usable without an API or account");
+  assert.match(merge.headers.get("cache-control") ?? "", /no-store/i);
+  const mergeHtml = await merge.text();
+  assert.match(mergeHtml, /data-route="write-merge"/);
+  assert.match(mergeHtml, /noindex, nofollow/);
+  assert.match(mergeHtml, /本机三方文稿合并/);
+  assert.doesNotMatch(mergeHtml, /contenteditable="true"/);
+  const mergeQuery = await fetch(`${baseUrl}/write/merge?base=https%3A%2F%2Funtrusted.test%2FPRIVATE-SOURCE`, { redirect: "manual" });
+  assert.equal(mergeQuery.status, 302, "file locations must never come from the URL");
+  assert.equal(mergeQuery.headers.get("location"), "/write/merge");
+  assert.match(mergeQuery.headers.get("cache-control") ?? "", /no-store/i);
+  assert.doesNotMatch(await mergeQuery.text(), /PRIVATE-SOURCE/);
   const anonymousMediaUpload = await fetch(`${baseUrl}/api/authoring/media`, {
     method: "POST",
     headers: { "content-type": "image/png" },

@@ -75,20 +75,20 @@ export function readCollectionJson(text: string): unknown {
 }
 
 /** Only validated JSON reaches this serializer; object key order is not part of the checksum. */
-function canonical(value: unknown): string {
+export function collectionCanonicalJson(value: unknown): string {
   if (value === null || typeof value !== "object") {
     const text = JSON.stringify(value);
     if (text === undefined) invalid("摘要输入无法序列化。");
     return text;
   }
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (Array.isArray(value)) return `[${value.map(collectionCanonicalJson).join(",")}]`;
   const record = value as Record<string, unknown>;
-  return `{${Object.keys(record).sort().map(key => `${JSON.stringify(key)}:${canonical(record[key])}`).join(",")}}`;
+  return `{${Object.keys(record).sort().map(key => `${JSON.stringify(key)}:${collectionCanonicalJson(record[key])}`).join(",")}}`;
 }
 export async function collectionChecksum(value: unknown, signal?: AbortSignal): Promise<string> {
   active(signal);
   if (!globalThis.crypto?.subtle) invalid("浏览器不支持 SHA-256，请在支持 Web Crypto 的 HTTPS 页面使用；没有降级为弱校验。");
-  const bytes = new TextEncoder().encode(canonical(value));
+  const bytes = new TextEncoder().encode(collectionCanonicalJson(value));
   const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
   active(signal);
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");

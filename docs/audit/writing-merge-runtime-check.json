@@ -1,0 +1,10 @@
+{
+  "base": "b7009ebfaa160525d4047b81316d8ba4e8709487",
+  "certificateSha256": "2553f839ae59c8dc2df0c039b1a82cdcf92c3217be6aadc0484ea23fabb71110",
+  "method": "Independent Node 24 TS erasure / esbuild TSX erasure with original source maps, then Espree tokens, exact source hashes and git additions. Canonical runtime-token fragments are deduplicated against all baseline production TS/TSX and within new credits. Semantic exclusions remain in the primary ledger; this verifier cannot add credits.",
+  "claimed": 810,
+  "runtimeConfirmed": 810,
+  "failures": [],
+  "minimum": 800,
+  "satisfied": true
+}
