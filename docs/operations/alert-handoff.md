@@ -196,3 +196,7 @@ stderr 只有固定 `alert_handoff_error/code`，不输出原始异常、私钥�
 退出码：0 命令成功或只读视图无待办；1 status/reconcile 有待办；2 参数/配置错误；
 3 完整性/时钟/容量/锁/文件/输出失败。读成功、签名正确、接收成功和实际通知到人是
 四种不同证据，不能互换。完整演练与未跑门禁见[审阅报告](../audit/alert-handoff-review.md)。
+
+多份已归档 v1 batch/receipt 可另用[公钥-only 历史证据工具](alert-evidence.md)
+`ops:evidence review|compare|check|trace`；它没有私钥或日志写权限，不改变本规程中的
+settle/consume、签名 inbox cursor 或 v1 产物。历史审阅和导航成功不构成这些动作的授权。
