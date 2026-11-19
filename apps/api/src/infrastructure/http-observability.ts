@@ -149,6 +149,7 @@ export function createHttpObservability({
 }: {
   logger?: (record: LogRecord) => void;
 } = {}) {
+  const instanceId = randomUUID();
   const requests = new Map<string, RequestMetric>();
   const authFailures = new Map<string, { method: string; status: string; count: number }>();
   const persistence = new Map<string, PersistenceMetric>();
@@ -382,6 +383,9 @@ export function createHttpObservability({
 
   function renderMetrics(): string {
     const lines = [
+      "# HELP api_process_instance_info Opaque exporter lifetime, not a host or actor identity.",
+      "# TYPE api_process_instance_info gauge",
+      `api_process_instance_info{instance="${instanceId}"} 1`,
       "# HELP api_http_requests_total Completed HTTP requests.",
       "# TYPE api_http_requests_total counter",
     ];

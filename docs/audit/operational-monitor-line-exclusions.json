@@ -1,0 +1,1833 @@
+{
+  "base": "cd58a637668373e2f9f61f3fc00ec4837bf9a238",
+  "rules": [
+    {
+      "file": "apps/api/src/application/operational-alerts.ts",
+      "reason": "纯函数/构造器签名与参数行不算运行逻辑；实现体的验证、转换及状态写入另计。",
+      "fragments": [
+        {
+          "line": 25,
+          "text": "function invalid(): never {"
+        },
+        {
+          "line": 28,
+          "text": "function nonnegative(value: unknown, integer = false): number {"
+        },
+        {
+          "line": 39,
+          "text": "function snapshotValue(value: unknown, target: MonitorTarget): MonitorSnapshot {"
+        },
+        {
+          "line": 75,
+          "text": "function observationValue("
+        },
+        {
+          "line": 77,
+          "text": "target: MonitorTarget,"
+        },
+        {
+          "line": 78,
+          "text": "now: number,"
+        },
+        {
+          "line": 79,
+          "text": "config: MonitorConfig,"
+        },
+        {
+          "line": 96,
+          "text": "export function assertMonitorEvaluationTime(config: MonitorConfig, previous: MonitorState, now: number): void {"
+        },
+        {
+          "line": 106,
+          "text": "function updateHistory("
+        },
+        {
+          "line": 107,
+          "text": "target: MonitorTargetState,"
+        },
+        {
+          "line": 108,
+          "text": "observation: MonitorObservation,"
+        },
+        {
+          "line": 147,
+          "text": "function known(breached: boolean, value: number): MonitorSignal {"
+        },
+        {
+          "line": 150,
+          "text": "function unknown(reason: MonitorReason): MonitorSignal {"
+        },
+        {
+          "line": 153,
+          "text": "function signalFor("
+        },
+        {
+          "line": 154,
+          "text": "id: MonitorRuleId,"
+        },
+        {
+          "line": 157,
+          "text": "window: Window | null,"
+        },
+        {
+          "line": 158,
+          "text": "windowReason: MonitorReason,"
+        },
+        {
+          "line": 200,
+          "text": "function transitionRule("
+        },
+        {
+          "line": 201,
+          "text": "rule: MonitorRuleState,"
+        },
+        {
+          "line": 202,
+          "text": "signal: MonitorSignal,"
+        },
+        {
+          "line": 205,
+          "text": "interrupted: boolean,"
+        },
+        {
+          "line": 248,
+          "text": "export function evaluateMonitor("
+        },
+        {
+          "line": 250,
+          "text": "previousValue: unknown | null,"
+        },
+        {
+          "line": 251,
+          "text": "values: readonly MonitorObservation[],"
+        },
+        {
+          "line": 329,
+          "text": "export function acknowledgeMonitorEvents("
+        },
+        {
+          "line": 332,
+          "text": "through: string,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/operational-alerts.ts",
+      "reason": "保守扣除独立 DTO 属性的原值转发/静态默认值；不把逐字段排版或纯输出绑定当新功能行。",
+      "fragments": [
+        {
+          "line": 66,
+          "text": "instance: row.instance,"
+        },
+        {
+          "line": 67,
+          "text": "ready: row.ready,"
+        },
+        {
+          "line": 68,
+          "text": "databaseAvailable: row.databaseAvailable as boolean | null,"
+        },
+        {
+          "line": 69,
+          "text": "backlog,"
+        },
+        {
+          "line": 70,
+          "text": "http,"
+        },
+        {
+          "line": 71,
+          "text": "mailFailures,"
+        },
+        {
+          "line": 141,
+          "text": "window,"
+        },
+        {
+          "line": 288,
+          "text": "revision: state.revision,"
+        },
+        {
+          "line": 289,
+          "text": "targetId: target.id,"
+        },
+        {
+          "line": 290,
+          "text": "rule: rule.id,"
+        },
+        {
+          "line": 292,
+          "text": "transition: event,"
+        },
+        {
+          "line": 293,
+          "text": "at: now,"
+        },
+        {
+          "line": 295,
+          "text": "reason: signal.reason,"
+        },
+        {
+          "line": 296,
+          "text": "value: signal.value,"
+        },
+        {
+          "line": 303,
+          "text": "observedAt: observation.observedAt,"
+        },
+        {
+          "line": 304,
+          "text": "source: observation.reason,"
+        },
+        {
+          "line": 313,
+          "text": "state: validated,"
+        },
+        {
+          "line": 316,
+          "text": "event: \"monitor_check\","
+        },
+        {
+          "line": 317,
+          "text": "evaluatedAt: now,"
+        },
+        {
+          "line": 319,
+          "text": "targets: reports,"
+        },
+        {
+          "line": 320,
+          "text": "events: validated.events,"
+        },
+        {
+          "line": 321,
+          "text": "unacknowledged: validated.events.length,"
+        },
+        {
+          "line": 322,
+          "text": "exitCode,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/operational-alerts.ts",
+      "reason": "保守扣除既有能力的薄接线、原值 DTO 重建/返回、通用入口或错误包装，不计新功能。",
+      "fragments": [
+        {
+          "line": 24,
+          "text": "const INSTANCE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;"
+        },
+        {
+          "line": 41,
+          "text": "value,"
+        },
+        {
+          "line": 42,
+          "text": "[\"instance\", \"ready\", \"databaseAvailable\", \"backlog\", \"http\", \"mailFailures\"],"
+        },
+        {
+          "line": 43,
+          "text": "\"invalid_metrics\","
+        },
+        {
+          "line": 50,
+          "text": "backlog = {"
+        },
+        {
+          "line": 57,
+          "text": "let http: MonitorSnapshot[\"http\"] = null;"
+        },
+        {
+          "line": 58,
+          "text": "let mailFailures: number | null = null;"
+        },
+        {
+          "line": 122,
+          "text": "const counters = { ...snapshot.http, mailFailures: snapshot.mailFailures! };"
+        },
+        {
+          "line": 175,
+          "text": "oldestAgeSeconds,"
+        },
+        {
+          "line": 300,
+          "text": "return { id: rule.id, phase: rule.phase, ...signal };"
+        },
+        {
+          "line": 307,
+          "text": "reports.push({ id: target.id, role: target.role, source: observation.reason, rules });"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/operational-alerts.ts",
+      "reason": "独立 Node 24 类型擦除发现的基线运行时通用片段，额外扣除，不把改类型/变量声明或重复对象起始行计为新功能。",
+      "fragments": [
+        {
+          "line": 47,
+          "text": "let backlog: MonitorSnapshot[\"backlog\"] = null;"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/operational-monitor-configure.ts",
+      "reason": "纯函数/构造器签名与参数行不算运行逻辑；实现体的验证、转换及状态写入另计。",
+      "fragments": [
+        {
+          "line": 19,
+          "text": "function sameSource(previous: MonitorTarget, next: MonitorTarget): boolean {"
+        },
+        {
+          "line": 22,
+          "text": "function changedRule(previous: MonitorConfig, next: MonitorConfig, id: MonitorRuleId): boolean {"
+        },
+        {
+          "line": 49,
+          "text": "function restartContinuity(rule: MonitorRuleState): void {"
+        },
+        {
+          "line": 59,
+          "text": "export function reconfigureMonitor("
+        },
+        {
+          "line": 60,
+          "text": "previousConfig: MonitorConfig,"
+        },
+        {
+          "line": 61,
+          "text": "nextConfig: MonitorConfig,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/operational-monitor-configure.ts",
+      "reason": "保守扣除独立 DTO 属性的原值转发/静态默认值；不把逐字段排版或纯输出绑定当新功能行。",
+      "fragments": [
+        {
+          "line": 67,
+          "text": "changed: false,"
+        },
+        {
+          "line": 68,
+          "text": "state: previous,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/operational-monitor-configure.ts",
+      "reason": "保守扣除既有能力的薄接线、原值 DTO 重建/返回、通用入口或错误包装，不计新功能。",
+      "fragments": [
+        {
+          "line": 66,
+          "text": "const output: ConfigurationResult = {"
+        },
+        {
+          "line": 69,
+          "text": "added: [],"
+        },
+        {
+          "line": 70,
+          "text": "removed: [],"
+        },
+        {
+          "line": 71,
+          "text": "sourcesReset: [],"
+        },
+        {
+          "line": 72,
+          "text": "rulesReset: [],"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/operational-monitor-state.ts",
+      "reason": "纯函数/构造器签名与参数行不算运行逻辑；实现体的验证、转换及状态写入另计。",
+      "fragments": [
+        {
+          "line": 35,
+          "text": "function integer(value: unknown): number {"
+        },
+        {
+          "line": 39,
+          "text": "function timestamp(value: unknown, maximum: number): number | null {"
+        },
+        {
+          "line": 46,
+          "text": "function ruleState(value: unknown, expected: MonitorRuleId, maximum: number): MonitorRuleState {"
+        },
+        {
+          "line": 66,
+          "text": "function cachedKnownSignal(id: MonitorRuleId, signal: MonitorSignal, config: MonitorConfig): void {"
+        },
+        {
+          "line": 92,
+          "text": "function lastObservation("
+        },
+        {
+          "line": 94,
+          "text": "expected: readonly MonitorRuleId[],"
+        },
+        {
+          "line": 95,
+          "text": "lastSampleAt: number | null,"
+        },
+        {
+          "line": 96,
+          "text": "maximum: number,"
+        },
+        {
+          "line": 175,
+          "text": "function targetState(value: unknown, config: MonitorConfig, index: number, maximum: number): MonitorTargetState {"
+        },
+        {
+          "line": 230,
+          "text": "function eventState(value: unknown, config: MonitorConfig, maximum: number, revision: number): MonitorEvent {"
+        },
+        {
+          "line": 278,
+          "text": "export function parseMonitorState(value: unknown, config: MonitorConfig): MonitorState {"
+        },
+        {
+          "line": 359,
+          "text": "export function emptyMonitorState(config: MonitorConfig): MonitorState {"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/operational-monitor-state.ts",
+      "reason": "保守扣除独立 DTO 属性的原值转发/静态默认值；不把逐字段排版或纯输出绑定当新功能行。",
+      "fragments": [
+        {
+          "line": 157,
+          "text": "condition: signal.condition as \"good\" | \"bad\" | \"unknown\","
+        },
+        {
+          "line": 158,
+          "text": "reason: signal.reason as MonitorReason,"
+        },
+        {
+          "line": 159,
+          "text": "value: signal.value as number | null,"
+        },
+        {
+          "line": 221,
+          "text": "id: target.id,"
+        },
+        {
+          "line": 222,
+          "text": "instance: row.instance as string | null,"
+        },
+        {
+          "line": 223,
+          "text": "lastSampleAt,"
+        },
+        {
+          "line": 224,
+          "text": "history,"
+        },
+        {
+          "line": 225,
+          "text": "rules,"
+        },
+        {
+          "line": 263,
+          "text": "revision: eventRevision,"
+        },
+        {
+          "line": 265,
+          "text": "rule,"
+        },
+        {
+          "line": 267,
+          "text": "transition: row.transition as MonitorEvent[\"transition\"],"
+        },
+        {
+          "line": 268,
+          "text": "at,"
+        },
+        {
+          "line": 269,
+          "text": "firingSince,"
+        },
+        {
+          "line": 270,
+          "text": "reason: row.reason as MonitorReason,"
+        },
+        {
+          "line": 271,
+          "text": "value: row.value as number | null,"
+        },
+        {
+          "line": 349,
+          "text": "fingerprint: config.fingerprint,"
+        },
+        {
+          "line": 350,
+          "text": "revision,"
+        },
+        {
+          "line": 351,
+          "text": "lastEvaluatedAt,"
+        },
+        {
+          "line": 352,
+          "text": "acknowledgedThrough: row.acknowledgedThrough as string | null,"
+        },
+        {
+          "line": 353,
+          "text": "targets,"
+        },
+        {
+          "line": 354,
+          "text": "events,"
+        },
+        {
+          "line": 355,
+          "text": "lastConfigurationChange,"
+        },
+        {
+          "line": 363,
+          "text": "revision: 0,"
+        },
+        {
+          "line": 364,
+          "text": "lastEvaluatedAt: null,"
+        },
+        {
+          "line": 365,
+          "text": "acknowledgedThrough: null,"
+        },
+        {
+          "line": 366,
+          "text": "lastConfigurationChange: null,"
+        },
+        {
+          "line": 369,
+          "text": "instance: null,"
+        },
+        {
+          "line": 370,
+          "text": "lastSampleAt: null,"
+        },
+        {
+          "line": 371,
+          "text": "lastObservation: null,"
+        },
+        {
+          "line": 375,
+          "text": "phase: \"inactive\","
+        },
+        {
+          "line": 376,
+          "text": "pendingSince: null,"
+        },
+        {
+          "line": 377,
+          "text": "firingSince: null,"
+        },
+        {
+          "line": 378,
+          "text": "recoverySince: null,"
+        },
+        {
+          "line": 379,
+          "text": "lastEventAt: null,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/operational-monitor-state.ts",
+      "reason": "静态阈值表、family/错误码目录、常量与帮助文案属于配置/说明，不计功能逻辑。",
+      "fragments": [
+        {
+          "line": 20,
+          "text": "export const MONITOR_EVENT_LIMIT = 256;"
+        },
+        {
+          "line": 23,
+          "text": "const REASONS: readonly MonitorReason[] = ["
+        },
+        {
+          "line": 24,
+          "text": "\"breached\","
+        },
+        {
+          "line": 25,
+          "text": "\"within_threshold\","
+        },
+        {
+          "line": 26,
+          "text": "\"source_unavailable\","
+        },
+        {
+          "line": 27,
+          "text": "\"telemetry_unavailable\","
+        },
+        {
+          "line": 28,
+          "text": "\"counter_warmup\","
+        },
+        {
+          "line": 29,
+          "text": "\"counter_reset\","
+        },
+        {
+          "line": 30,
+          "text": "\"insufficient_traffic\","
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/operational-monitor-state.ts",
+      "reason": "保守扣除既有能力的薄接线、原值 DTO 重建/返回、通用入口或错误包装，不计新功能。",
+      "fragments": [
+        {
+          "line": 49,
+          "text": "[\"id\", \"phase\", \"pendingSince\", \"firingSince\", \"recoverySince\", \"lastEventAt\"],"
+        },
+        {
+          "line": 50,
+          "text": "\"state_invalid\","
+        },
+        {
+          "line": 53,
+          "text": "const phase = row.phase as MonitorPhase;"
+        },
+        {
+          "line": 63,
+          "text": "return { id: expected, phase, pendingSince, firingSince, recoverySince, lastEventAt };"
+        },
+        {
+          "line": 181,
+          "text": "const target = config.targets[index]!;"
+        },
+        {
+          "line": 193,
+          "text": "let previous: MonitorCounterPoint | null = null;"
+        },
+        {
+          "line": 199,
+          "text": "const counters = {"
+        },
+        {
+          "line": 233,
+          "text": "[\"id\", \"revision\", \"targetId\", \"rule\", \"severity\", \"transition\", \"at\", \"firingSince\", \"reason\", \"value\"],"
+        },
+        {
+          "line": 241,
+          "text": "const rule = row.rule as MonitorRuleId;"
+        },
+        {
+          "line": 282,
+          "text": "\"version\","
+        },
+        {
+          "line": 283,
+          "text": "\"fingerprint\","
+        },
+        {
+          "line": 284,
+          "text": "\"revision\","
+        },
+        {
+          "line": 285,
+          "text": "\"lastEvaluatedAt\","
+        },
+        {
+          "line": 286,
+          "text": "\"acknowledgedThrough\","
+        },
+        {
+          "line": 287,
+          "text": "\"targets\","
+        },
+        {
+          "line": 288,
+          "text": "\"events\","
+        },
+        {
+          "line": 289,
+          "text": "\"lastConfigurationChange\","
+        },
+        {
+          "line": 323,
+          "text": "let lastConfigurationChange: MonitorState[\"lastConfigurationChange\"] = null;"
+        },
+        {
+          "line": 367,
+          "text": "targets: config.targets.map((target) => ({"
+        },
+        {
+          "line": 373,
+          "text": "rules: monitorRulesFor(target.role).map((id) => ({"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/operational-monitor-state.ts",
+      "reason": "独立 Node 24 类型擦除发现的基线运行时通用片段，额外扣除，不把改类型/变量声明或重复对象起始行计为新功能。",
+      "fragments": [
+        {
+          "line": 155,
+          "text": "const result = {"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/operational-monitor-status.ts",
+      "reason": "纯函数/构造器签名与参数行不算运行逻辑；实现体的验证、转换及状态写入另计。",
+      "fragments": [
+        {
+          "line": 13,
+          "text": "export function monitorStatus(config: MonitorConfig, value: unknown, now: number): MonitorStatusReport {"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/operational-monitor-status.ts",
+      "reason": "保守扣除独立 DTO 属性的原值转发/静态默认值；不把逐字段排版或纯输出绑定当新功能行。",
+      "fragments": [
+        {
+          "line": 36,
+          "text": "id: rule.id,"
+        },
+        {
+          "line": 37,
+          "text": "phase: rule.phase,"
+        },
+        {
+          "line": 38,
+          "text": "condition: \"unknown\","
+        },
+        {
+          "line": 40,
+          "text": "value: null,"
+        },
+        {
+          "line": 45,
+          "text": "role: target.role,"
+        },
+        {
+          "line": 46,
+          "text": "freshness,"
+        },
+        {
+          "line": 49,
+          "text": "lastSampleAt: persisted.lastSampleAt,"
+        },
+        {
+          "line": 50,
+          "text": "observationAgeMs: age,"
+        },
+        {
+          "line": 57,
+          "text": "event: \"monitor_status\","
+        },
+        {
+          "line": 58,
+          "text": "reportedAt: now,"
+        },
+        {
+          "line": 59,
+          "text": "lastEvaluatedAt: state.lastEvaluatedAt,"
+        },
+        {
+          "line": 62,
+          "text": "unacknowledged: state.events.length,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/operational-monitor.ts",
+      "reason": "纯函数/构造器签名与参数行不算运行逻辑；实现体的验证、转换及状态写入另计。",
+      "fragments": [
+        {
+          "line": 169,
+          "text": "constructor(code: MonitorFaultCode) {"
+        },
+        {
+          "line": 178,
+          "text": "export function monitorFields("
+        },
+        {
+          "line": 180,
+          "text": "allowed: readonly string[],"
+        },
+        {
+          "line": 181,
+          "text": "code: MonitorFaultCode,"
+        },
+        {
+          "line": 190,
+          "text": "export function monitorRulesFor(role: MonitorRole): MonitorRuleId[] {"
+        },
+        {
+          "line": 196,
+          "text": "export function monitorSeverity(rule: MonitorRuleId): MonitorEvent[\"severity\"] {"
+        },
+        {
+          "line": 202,
+          "text": "export function monitorExitCode("
+        },
+        {
+          "line": 203,
+          "text": "targets: readonly { rules: readonly { phase: MonitorPhase; condition: MonitorSignal[\"condition\"] }[] }[],"
+        },
+        {
+          "line": 204,
+          "text": "unacknowledged: number,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/operational-monitor.ts",
+      "reason": "静态阈值表、family/错误码目录、常量与帮助文案属于配置/说明，不计功能逻辑。",
+      "fragments": [
+        {
+          "line": 1,
+          "text": "export const MONITOR_RULES = ["
+        },
+        {
+          "line": 2,
+          "text": "\"target_unavailable\","
+        },
+        {
+          "line": 3,
+          "text": "\"service_not_ready\","
+        },
+        {
+          "line": 4,
+          "text": "\"database_unavailable\","
+        },
+        {
+          "line": 5,
+          "text": "\"notification_telemetry_unavailable\","
+        },
+        {
+          "line": 6,
+          "text": "\"notification_backlog\","
+        },
+        {
+          "line": 7,
+          "text": "\"notification_dead_letters\","
+        },
+        {
+          "line": 8,
+          "text": "\"http_5xx\","
+        },
+        {
+          "line": 9,
+          "text": "\"mail_delivery_failures\","
+        },
+        {
+          "line": 43,
+          "text": "export const MONITOR_SOURCE_RESULTS = ["
+        },
+        {
+          "line": 44,
+          "text": "\"ok\","
+        },
+        {
+          "line": 45,
+          "text": "\"timeout\","
+        },
+        {
+          "line": 46,
+          "text": "\"run_timeout\","
+        },
+        {
+          "line": 47,
+          "text": "\"cancelled\","
+        },
+        {
+          "line": 48,
+          "text": "\"transport\","
+        },
+        {
+          "line": 49,
+          "text": "\"http_status\","
+        },
+        {
+          "line": 50,
+          "text": "\"invalid_content_type\","
+        },
+        {
+          "line": 51,
+          "text": "\"response_too_large\","
+        },
+        {
+          "line": 53,
+          "text": "\"stale_response\","
+        },
+        {
+          "line": 167,
+          "text": "export class MonitorFault extends Error {"
+        },
+        {
+          "line": 171,
+          "text": "this.name = \"MonitorFault\";"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/operational-monitor.ts",
+      "reason": "独立 Node 24 类型擦除发现的基线运行时通用片段，额外扣除，不把改类型/变量声明或重复对象起始行计为新功能。",
+      "fragments": [
+        {
+          "line": 184,
+          "text": "const prototype = Object.getPrototypeOf(value);"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/api-readiness.ts",
+      "reason": "保守扣除既有能力的薄接线、原值 DTO 重建/返回、通用入口或错误包装，不计新功能。",
+      "fragments": [
+        {
+          "line": 131,
+          "text": "[\"api_persistence_available\", \"A timely persistence health read succeeded; independent of notification readiness.\", status.persistence === \"ok\" ? 1 : 0],"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/http-observability.ts",
+      "reason": "保守扣除既有能力的薄接线、原值 DTO 重建/返回、通用入口或错误包装，不计新功能。",
+      "fragments": [
+        {
+          "line": 386,
+          "text": "\"# HELP api_process_instance_info Opaque exporter lifetime, not a host or actor identity.\","
+        },
+        {
+          "line": 387,
+          "text": "\"# TYPE api_process_instance_info gauge\","
+        },
+        {
+          "line": 388,
+          "text": "`api_process_instance_info{instance=\"${instanceId}\"} 1`,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/monitor-command.ts",
+      "reason": "纯函数/构造器签名与参数行不算运行逻辑；实现体的验证、转换及状态写入另计。",
+      "fragments": [
+        {
+          "line": 49,
+          "text": "function argumentsValue(args: readonly string[]): Command | null {"
+        },
+        {
+          "line": 95,
+          "text": "function streamWrite(stream: Writable, text: string): Promise<void> {"
+        },
+        {
+          "line": 119,
+          "text": "async function emit(write: Write, value: unknown): Promise<void> {"
+        },
+        {
+          "line": 127,
+          "text": "export async function runMonitorCommand(args: readonly string[], dependencies: Dependencies = {}): Promise<number> {"
+        },
+        {
+          "line": 232,
+          "text": "export async function monitorMain(args = process.argv.slice(2)): Promise<number> {"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/monitor-command.ts",
+      "reason": "保守扣除独立 DTO 属性的原值转发/静态默认值；不把逐字段排版或纯输出绑定当新功能行。",
+      "fragments": [
+        {
+          "line": 151,
+          "text": "event: \"monitor_inspect\","
+        },
+        {
+          "line": 154,
+          "text": "acknowledgedThrough: state.acknowledgedThrough,"
+        },
+        {
+          "line": 155,
+          "text": "lastConfigurationChange: state.lastConfigurationChange,"
+        },
+        {
+          "line": 157,
+          "text": "events: state.events,"
+        },
+        {
+          "line": 160,
+          "text": "lastSampleAt: target.lastSampleAt,"
+        },
+        {
+          "line": 161,
+          "text": "counterSamples: target.history.length,"
+        },
+        {
+          "line": 179,
+          "text": "event: \"monitor_reconfigure\","
+        },
+        {
+          "line": 180,
+          "text": "changed: result.changed,"
+        },
+        {
+          "line": 181,
+          "text": "revision: result.state.revision,"
+        },
+        {
+          "line": 182,
+          "text": "previousFingerprint: config.fingerprint,"
+        },
+        {
+          "line": 184,
+          "text": "lastConfigurationChange: result.state.lastConfigurationChange,"
+        },
+        {
+          "line": 185,
+          "text": "added: result.added,"
+        },
+        {
+          "line": 186,
+          "text": "removed: result.removed,"
+        },
+        {
+          "line": 187,
+          "text": "sourcesReset: result.sourcesReset,"
+        },
+        {
+          "line": 188,
+          "text": "rulesReset: result.rulesReset,"
+        },
+        {
+          "line": 197,
+          "text": "event: \"monitor_ack\","
+        },
+        {
+          "line": 199,
+          "text": "through: command.through,"
+        },
+        {
+          "line": 200,
+          "text": "acknowledged: result.acknowledged,"
+        },
+        {
+          "line": 201,
+          "text": "remaining: result.state.events.length,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/monitor-command.ts",
+      "reason": "静态阈值表、family/错误码目录、常量与帮助文案属于配置/说明，不计功能逻辑。",
+      "fragments": [
+        {
+          "line": 15,
+          "text": "const HELP = `有限只读运维监测，不启动后台进程、不自动修复、不向外部告警服务发送数据。"
+        },
+        {
+          "line": 17,
+          "text": "ops:monitor check --config <config.json> --state <private-directory/alerts.json>"
+        },
+        {
+          "line": 18,
+          "text": "ops:monitor inspect --config <config.json> --state <private-directory/alerts.json>"
+        },
+        {
+          "line": 19,
+          "text": "ops:monitor status --config <config.json> --state <private-directory/alerts.json>"
+        },
+        {
+          "line": 20,
+          "text": "ops:monitor ack --config <config.json> --state <private-directory/alerts.json> --through <event-id>"
+        },
+        {
+          "line": 21,
+          "text": "ops:monitor reconfigure --config <old.json> --next-config <new.json> --state <private-directory/alerts.json>"
+        },
+        {
+          "line": 23,
+          "text": "check: 仅 GET 显式配置的 metrics；状态提交后输出全部未确认事件。"
+        },
+        {
+          "line": 24,
+          "text": "inspect: 不访问端点、不修改状态；成功只代表读取完成，不是服务健康证明。"
+        },
+        {
+          "line": 25,
+          "text": "status: 离线检查最后观测的新鲜度；过期绿灯变 unknown，但不清除告警或确认事件。"
+        },
+        {
+          "line": 26,
+          "text": "ack: 只有下游已可靠接收后才确认精确事件前缀；不会修复服务或清除活跃条件。"
+        },
+        {
+          "line": 27,
+          "text": "reconfigure: 离线锁内切换配置；须先交付全部事件，禁止移除或重绑定活跃告警目标。"
+        },
+        {
+          "line": 29,
+          "text": "状态父目录须由当前用户拥有、权限 0700、无符号链接，并位于本地 POSIX 文件系统。"
+        },
+        {
+          "line": 30,
+          "text": "退出码：0 检查无异常/命令成功；1 告警或待确认事件；2 参数/配置错误；3 未知/运维失败。"
+        },
+        {
+          "line": 31,
+          "text": "完整边界：docs/operations/operational-monitor.md"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/monitor-command.ts",
+      "reason": "保守扣除既有能力的薄接线、原值 DTO 重建/返回、通用入口或错误包装，不计新功能。",
+      "fragments": [
+        {
+          "line": 51,
+          "text": "const [name, ...options] = args;"
+        },
+        {
+          "line": 70,
+          "text": "const config = fields.get(\"--config\"),"
+        },
+        {
+          "line": 71,
+          "text": "state = fields.get(\"--state\"),"
+        },
+        {
+          "line": 72,
+          "text": "through = fields.get(\"--through\") ?? null;"
+        },
+        {
+          "line": 82,
+          "text": "const configPath = resolve(config),"
+        },
+        {
+          "line": 83,
+          "text": "statePath = resolve(state),"
+        },
+        {
+          "line": 84,
+          "text": "nextConfig = next === null ? null : resolve(next);"
+        },
+        {
+          "line": 89,
+          "text": "return { name: name as Command[\"name\"], config: configPath, state: statePath, through, nextConfig };"
+        },
+        {
+          "line": 128,
+          "text": "const stdout = dependencies.stdout ?? ((text) => streamWrite(process.stdout, text));"
+        },
+        {
+          "line": 129,
+          "text": "const stderr = dependencies.stderr ?? ((text) => streamWrite(process.stderr, text));"
+        },
+        {
+          "line": 130,
+          "text": "const now = dependencies.now ?? Date.now;"
+        },
+        {
+          "line": 131,
+          "text": "const collect = dependencies.collect ?? collectMonitorTargets;"
+        },
+        {
+          "line": 132,
+          "text": "const signal = dependencies.signal;"
+        },
+        {
+          "line": 158,
+          "text": "targets: state.targets.map((target) => ({"
+        },
+        {
+          "line": 163,
+          "text": "rules: target.rules.map((rule) => ({ ...rule })),"
+        },
+        {
+          "line": 170,
+          "text": "let output: unknown;"
+        },
+        {
+          "line": 171,
+          "text": "let exitCode = 0;"
+        },
+        {
+          "line": 173,
+          "text": "const previous = journal.state;"
+        },
+        {
+          "line": 234,
+          "text": "const stop = () => controller.abort();"
+        },
+        {
+          "line": 235,
+          "text": "process.on(\"SIGTERM\", stop);"
+        },
+        {
+          "line": 236,
+          "text": "process.on(\"SIGINT\", stop);"
+        },
+        {
+          "line": 238,
+          "text": "return await runMonitorCommand(args, { signal: controller.signal });"
+        },
+        {
+          "line": 240,
+          "text": "process.off(\"SIGTERM\", stop);"
+        },
+        {
+          "line": 241,
+          "text": "process.off(\"SIGINT\", stop);"
+        },
+        {
+          "line": 247,
+          "text": "if (isMainModule(import.meta.url)) process.exit(await monitorMain());"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/monitor-config.ts",
+      "reason": "保守扣除独立 DTO 属性的原值转发/静态默认值；不把逐字段排版或纯输出绑定当新功能行。",
+      "fragments": [
+        {
+          "line": 14,
+          "text": "windowMs: 300_000,"
+        },
+        {
+          "line": 15,
+          "text": "minIntervalMs: 1000,"
+        },
+        {
+          "line": 16,
+          "text": "maxGapMs: 90_000,"
+        },
+        {
+          "line": 17,
+          "text": "httpMinRequests: 20,"
+        },
+        {
+          "line": 18,
+          "text": "httpErrorRatio: 0.05,"
+        },
+        {
+          "line": 19,
+          "text": "pendingAgeSeconds: 120,"
+        },
+        {
+          "line": 20,
+          "text": "pendingEvents: 1000,"
+        },
+        {
+          "line": 21,
+          "text": "mailFailures: 1,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/monitor-config.ts",
+      "reason": "纯函数/构造器签名与参数行不算运行逻辑；实现体的验证、转换及状态写入另计。",
+      "fragments": [
+        {
+          "line": 34,
+          "text": "function setting(value: unknown, fallback: number, min: number, max: number, integer = true): number {"
+        },
+        {
+          "line": 48,
+          "text": "function metricsUrl(value: unknown, allowInsecure: boolean): string {"
+        },
+        {
+          "line": 75,
+          "text": "export function parseMonitorConfig(value: unknown): MonitorConfig {"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/monitor-config.ts",
+      "reason": "静态阈值表、family/错误码目录、常量与帮助文案属于配置/说明，不计功能逻辑。",
+      "fragments": [
+        {
+          "line": 13,
+          "text": "const POLICY_DEFAULTS: MonitorPolicy = {"
+        },
+        {
+          "line": 23,
+          "text": "const POLICY_RANGES: Record<keyof MonitorPolicy, readonly [number, number]> = {"
+        },
+        {
+          "line": 24,
+          "text": "windowMs: [1000, 900_000],"
+        },
+        {
+          "line": 25,
+          "text": "minIntervalMs: [1000, 60_000],"
+        },
+        {
+          "line": 26,
+          "text": "maxGapMs: [1000, 900_000],"
+        },
+        {
+          "line": 27,
+          "text": "httpMinRequests: [1, 1_000_000_000],"
+        },
+        {
+          "line": 28,
+          "text": "httpErrorRatio: [0.000001, 1],"
+        },
+        {
+          "line": 29,
+          "text": "pendingAgeSeconds: [1, 86400],"
+        },
+        {
+          "line": 30,
+          "text": "pendingEvents: [1, 1_000_000_000],"
+        },
+        {
+          "line": 31,
+          "text": "mailFailures: [1, 1_000_000_000],"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/monitor-config.ts",
+      "reason": "保守扣除既有能力的薄接线、原值 DTO 重建/返回、通用入口或错误包装，不计新功能。",
+      "fragments": [
+        {
+          "line": 78,
+          "text": "[\"version\", \"allowInsecureHttp\", \"targets\", \"scrapeTimeoutMs\", \"runTimeoutMs\", \"policy\", \"rules\"],"
+        },
+        {
+          "line": 79,
+          "text": "\"config_invalid\","
+        },
+        {
+          "line": 103,
+          "text": "Object.keys(POLICY_DEFAULTS),"
+        },
+        {
+          "line": 106,
+          "text": "const policy = { ...POLICY_DEFAULTS };"
+        },
+        {
+          "line": 108,
+          "text": "const [min, max] = POLICY_RANGES[key];"
+        },
+        {
+          "line": 117,
+          "text": "const rules = {} as Record<MonitorRuleId, MonitorTiming>;"
+        },
+        {
+          "line": 121,
+          "text": "[\"forMs\", \"resolveMs\", \"repeatMs\"],"
+        },
+        {
+          "line": 131,
+          "text": "const canonical = { version: 1 as const, allowInsecureHttp, targets, scrapeTimeoutMs, runTimeoutMs, policy, rules };"
+        },
+        {
+          "line": 133,
+          "text": "return { ...canonical, fingerprint };"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/monitor-exposition.ts",
+      "reason": "保守扣除独立 DTO 属性的原值转发/静态默认值；不把逐字段排版或纯输出绑定当新功能行。",
+      "fragments": [
+        {
+          "line": 8,
+          "text": "api_process_instance_info: \"gauge\","
+        },
+        {
+          "line": 9,
+          "text": "api_http_requests_total: \"counter\","
+        },
+        {
+          "line": 10,
+          "text": "api_identity_mail_deliveries_total: \"counter\","
+        },
+        {
+          "line": 11,
+          "text": "api_readiness_available: \"gauge\","
+        },
+        {
+          "line": 12,
+          "text": "api_persistence_available: \"gauge\","
+        },
+        {
+          "line": 13,
+          "text": "api_notification_backlog_available: \"gauge\","
+        },
+        {
+          "line": 14,
+          "text": "api_notification_pending_events: \"gauge\","
+        },
+        {
+          "line": 15,
+          "text": "api_notification_dead_letter_events: \"gauge\","
+        },
+        {
+          "line": 16,
+          "text": "api_notification_oldest_pending_age_seconds: \"gauge\","
+        },
+        {
+          "line": 17,
+          "text": "api_notification_backlog_sample_timestamp_seconds: \"gauge\","
+        },
+        {
+          "line": 20,
+          "text": "notification_worker_process_instance_info: \"gauge\","
+        },
+        {
+          "line": 21,
+          "text": "notification_worker_ready: \"gauge\","
+        },
+        {
+          "line": 22,
+          "text": "api_outbox_pending_events: \"gauge\","
+        },
+        {
+          "line": 23,
+          "text": "api_outbox_dead_letter_events: \"gauge\","
+        },
+        {
+          "line": 24,
+          "text": "notification_worker_backlog_available: \"gauge\","
+        },
+        {
+          "line": 25,
+          "text": "notification_worker_backlog_sample_age_seconds: \"gauge\","
+        },
+        {
+          "line": 26,
+          "text": "notification_worker_backlog_sample_timestamp_seconds: \"gauge\","
+        },
+        {
+          "line": 27,
+          "text": "notification_worker_backlog_oldest_pending_age_seconds: \"gauge\","
+        },
+        {
+          "line": 28,
+          "text": "notification_worker_backlog_freshness_budget_seconds: \"gauge\","
+        },
+        {
+          "line": 217,
+          "text": "instance,"
+        },
+        {
+          "line": 218,
+          "text": "ready,"
+        },
+        {
+          "line": 219,
+          "text": "databaseAvailable,"
+        },
+        {
+          "line": 242,
+          "text": "databaseAvailable: null,"
+        },
+        {
+          "line": 244,
+          "text": "http: null,"
+        },
+        {
+          "line": 245,
+          "text": "mailFailures: null,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/monitor-exposition.ts",
+      "reason": "纯函数/构造器签名与参数行不算运行逻辑；实现体的验证、转换及状态写入另计。",
+      "fragments": [
+        {
+          "line": 37,
+          "text": "function sampleLine(text: string, offset: number): Sample {"
+        },
+        {
+          "line": 87,
+          "text": "function readFamilies(text: string, role: MonitorRole): Map<string, Family> {"
+        },
+        {
+          "line": 129,
+          "text": "function labelsExactly(sample: Sample, labels: readonly string[]): void {"
+        },
+        {
+          "line": 133,
+          "text": "function scalar(families: Map<string, Family>, name: string): number {"
+        },
+        {
+          "line": 140,
+          "text": "function nonnegative(value: number): number {"
+        },
+        {
+          "line": 144,
+          "text": "function countValue(value: number): number {"
+        },
+        {
+          "line": 148,
+          "text": "function boolValue(value: number): boolean {"
+        },
+        {
+          "line": 152,
+          "text": "function exporterInstance(families: Map<string, Family>, name: string): string {"
+        },
+        {
+          "line": 160,
+          "text": "function backlog("
+        },
+        {
+          "line": 161,
+          "text": "pending: number,"
+        },
+        {
+          "line": 162,
+          "text": "deadLetters: number,"
+        },
+        {
+          "line": 163,
+          "text": "oldestAgeSeconds: number,"
+        },
+        {
+          "line": 171,
+          "text": "function freshTimestamp(timestampSeconds: number, now: number, maxAgeMs: number): boolean {"
+        },
+        {
+          "line": 178,
+          "text": "function apiSnapshot(families: Map<string, Family>, now: number, maxAgeMs: number): MonitorSnapshot {"
+        },
+        {
+          "line": 226,
+          "text": "function workerSnapshot(families: Map<string, Family>, now: number, maxAgeMs: number): MonitorSnapshot {"
+        },
+        {
+          "line": 249,
+          "text": "export function parseMonitorExposition("
+        },
+        {
+          "line": 251,
+          "text": "role: MonitorRole,"
+        },
+        {
+          "line": 253,
+          "text": "maxAgeMs: number,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/monitor-exposition.ts",
+      "reason": "静态阈值表、family/错误码目录、常量与帮助文案属于配置/说明，不计功能逻辑。",
+      "fragments": [
+        {
+          "line": 3,
+          "text": "export const MONITOR_SCRAPE_MAX_BYTES = 4 * 1024 * 1024;"
+        },
+        {
+          "line": 4,
+          "text": "const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;"
+        },
+        {
+          "line": 7,
+          "text": "const API_FAMILIES = {"
+        },
+        {
+          "line": 19,
+          "text": "const WORKER_FAMILIES = {"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/monitor-exposition.ts",
+      "reason": "保守扣除既有能力的薄接线、原值 DTO 重建/返回、通用入口或错误包装，不计新功能。",
+      "fragments": [
+        {
+          "line": 84,
+          "text": "return { labels, value };"
+        },
+        {
+          "line": 138,
+          "text": "return sample.value;"
+        },
+        {
+          "line": 158,
+          "text": "return sample.labels.instance!;"
+        },
+        {
+          "line": 169,
+          "text": "return { pending, deadLetters, oldestAgeSeconds };"
+        },
+        {
+          "line": 189,
+          "text": "const http = { requests: 0, errors: 0 };"
+        },
+        {
+          "line": 192,
+          "text": "const { method, route, status } = sample.labels;"
+        },
+        {
+          "line": 205,
+          "text": "let mailFailures = 0;"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/monitor-scrape.ts",
+      "reason": "纯函数/构造器签名与参数行不算运行逻辑；实现体的验证、转换及状态写入另计。",
+      "fragments": [
+        {
+          "line": 12,
+          "text": "function metricsContentType(value: string | undefined): boolean {"
+        },
+        {
+          "line": 33,
+          "text": "function scrapeTarget("
+        },
+        {
+          "line": 36,
+          "text": "signal: AbortSignal,"
+        },
+        {
+          "line": 37,
+          "text": "abortReason: () => MonitorSourceResult,"
+        },
+        {
+          "line": 166,
+          "text": "export async function collectMonitorTargets("
+        },
+        {
+          "line": 168,
+          "text": "parent?: AbortSignal,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/monitor-scrape.ts",
+      "reason": "保守扣除独立 DTO 属性的原值转发/静态默认值；不把逐字段排版或纯输出绑定当新功能行。",
+      "fragments": [
+        {
+          "line": 141,
+          "text": "method: \"GET\","
+        },
+        {
+          "line": 142,
+          "text": "agent: false as const,"
+        },
+        {
+          "line": 144,
+          "text": "accept: \"text/plain; version=0.0.4\","
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/monitor-scrape.ts",
+      "reason": "保守扣除既有能力的薄接线、原值 DTO 重建/返回、通用入口或错误包装，不计新功能。",
+      "fragments": [
+        {
+          "line": 140,
+          "text": "const options = {"
+        },
+        {
+          "line": 145,
+          "text": "\"accept-encoding\": \"identity\","
+        },
+        {
+          "line": 146,
+          "text": "\"cache-control\": \"no-cache\","
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/monitor-scrape.ts",
+      "reason": "独立 Node 24 类型擦除发现的基线运行时通用片段，额外扣除，不把改类型/变量声明或重复对象起始行计为新功能。",
+      "fragments": [
+        {
+          "line": 42,
+          "text": "let response: IncomingMessage | undefined;"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/monitor-state-file.ts",
+      "reason": "纯函数/构造器签名与参数行不算运行逻辑；实现体的验证、转换及状态写入另计。",
+      "fragments": [
+        {
+          "line": 30,
+          "text": "function missing(error: unknown): boolean {"
+        },
+        {
+          "line": 33,
+          "text": "function ownedFile(stat: Stats): boolean {"
+        },
+        {
+          "line": 36,
+          "text": "function statePath(value: string): string {"
+        },
+        {
+          "line": 43,
+          "text": "function privateParent(path: string): void {"
+        },
+        {
+          "line": 64,
+          "text": "function readBytes("
+        },
+        {
+          "line": 68,
+          "text": "privateFile: boolean,"
+        },
+        {
+          "line": 69,
+          "text": "optional = false,"
+        },
+        {
+          "line": 104,
+          "text": "function jsonValue(bytes: Buffer, code: MonitorFaultCode): unknown {"
+        },
+        {
+          "line": 111,
+          "text": "export function readMonitorConfigFile(path: string): MonitorConfig {"
+        },
+        {
+          "line": 115,
+          "text": "export function readMonitorJournal(value: string, config: MonitorConfig): MonitorState | null {"
+        },
+        {
+          "line": 125,
+          "text": "export function openMonitorJournal(value: string, config: MonitorConfig) {"
+        },
+        {
+          "line": 180,
+          "text": "function persist(value: unknown, nextConfig: MonitorConfig): void {"
+        },
+        {
+          "line": 230,
+          "text": "function commit(value: unknown): void {"
+        },
+        {
+          "line": 233,
+          "text": "function reconfigure(nextConfig: MonitorConfig, now: number) {"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/monitor-state-file.ts",
+      "reason": "保守扣除独立 DTO 属性的原值转发/静态默认值；不把逐字段排版或纯输出绑定当新功能行。",
+      "fragments": [
+        {
+          "line": 244,
+          "text": "commit,"
+        },
+        {
+          "line": 245,
+          "text": "reconfigure,"
+        },
+        {
+          "line": 246,
+          "text": "close,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/monitor-state-file.ts",
+      "reason": "静态阈值表、family/错误码目录、常量与帮助文案属于配置/说明，不计功能逻辑。",
+      "fragments": [
+        {
+          "line": 27,
+          "text": "export const MONITOR_STATE_MAX_BYTES = 4 * 1024 * 1024;"
+        },
+        {
+          "line": 28,
+          "text": "const NOFOLLOW = constants.O_NOFOLLOW ?? 0;"
+        },
+        {
+          "line": 29,
+          "text": "const hash = (value: Buffer) => createHash(\"sha256\").update(value).digest(\"hex\");"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/monitor-state-file.ts",
+      "reason": "保守扣除既有能力的薄接线、原值 DTO 重建/返回、通用入口或错误包装，不计新功能。",
+      "fragments": [
+        {
+          "line": 39,
+          "text": "const path = resolve(value);"
+        },
+        {
+          "line": 41,
+          "text": "return path;"
+        },
+        {
+          "line": 71,
+          "text": "let descriptor: number;"
+        },
+        {
+          "line": 112,
+          "text": "const bytes = readBytes(path, 65_536, \"config_invalid\", false)!;"
+        },
+        {
+          "line": 113,
+          "text": "return parseMonitorConfig(jsonValue(bytes, \"config_invalid\"));"
+        },
+        {
+          "line": 116,
+          "text": "const path = statePath(value);"
+        },
+        {
+          "line": 119,
+          "text": "return bytes === null ? null : parseMonitorState(jsonValue(bytes, \"state_invalid\"), config);"
+        },
+        {
+          "line": 128,
+          "text": "const lockPath = path + \".lock\";"
+        },
+        {
+          "line": 139,
+          "text": "let current: MonitorState | null = null;"
+        },
+        {
+          "line": 140,
+          "text": "let currentHash: string | null = null;"
+        },
+        {
+          "line": 141,
+          "text": "let activeConfig = config;"
+        },
+        {
+          "line": 199,
+          "text": "let temporaryExists = false;"
+        },
+        {
+          "line": 200,
+          "text": "let output: number | null = null;"
+        },
+        {
+          "line": 201,
+          "text": "let directory: number | null = null;"
+        },
+        {
+          "line": 231,
+          "text": "persist(value, activeConfig);"
+        },
+        {
+          "line": 241,
+          "text": "get state() {"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/persistence/outbox-metrics.ts",
+      "reason": "保守扣除既有能力的薄接线、原值 DTO 重建/返回、通用入口或错误包装，不计新功能。",
+      "fragments": [
+        {
+          "line": 59,
+          "text": "\"# HELP notification_worker_process_instance_info Opaque exporter lifetime, not a host or actor identity.\","
+        },
+        {
+          "line": 60,
+          "text": "\"# TYPE notification_worker_process_instance_info gauge\","
+        },
+        {
+          "line": 61,
+          "text": "`notification_worker_process_instance_info{instance=\"${instanceId}\"} 1`,"
+        }
+      ]
+    }
+  ]
+}

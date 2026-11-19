@@ -1,6 +1,9 @@
+import { randomUUID } from "node:crypto";
+
 const HISTOGRAM_BUCKETS_MS = Object.freeze([5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000]);
 
 export function createOutboxMetrics() {
+  const instanceId = randomUUID();
   let batches = 0;
   let claimed = 0;
   let delivered = 0;
@@ -53,6 +56,9 @@ export function createOutboxMetrics() {
 
   function render() {
     const lines = [
+      "# HELP notification_worker_process_instance_info Opaque exporter lifetime, not a host or actor identity.",
+      "# TYPE notification_worker_process_instance_info gauge",
+      `notification_worker_process_instance_info{instance="${instanceId}"} 1`,
       "# HELP api_outbox_batches_total Outbox worker batches attempted.",
       "# TYPE api_outbox_batches_total counter",
       `api_outbox_batches_total ${batches}`,

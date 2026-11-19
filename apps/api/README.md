@@ -7,6 +7,17 @@ This package is the backend API of the independent BOT THK rebuild. Versioned RE
 - `GET /health` is a liveness probe and does not require persistence.
 - `GET /ready` is a readiness probe: it returns `200` only when a configured persistence store passes its health check, otherwise `503` with a sanitized response. Both responses are non-cacheable.
 
+## 有限只读运维告警
+
+`pnpm --silent --filter @bot-thk/api ops:monitor --help` 提供一次性的
+`check` / `inspect` / `status` / `ack` / `reconfigure`（status 离线令旧绿灯到期）。明确配置私有 API、worker metrics
+目标后评估 HTTP5xx、积压/死信、独立 DB 健康、邮件失败与遥测可用性；unknown
+不作健康，事件先落盘再输出，须显式确认交付。命令不加载 `.env`、不连接业务数据库、
+不修改 outbox、不自动重投/修复。metrics 默认关闭，生产调度与告警接线没有启用。
+
+配置、私有 POSIX 日志、退出码、恢复/确认与真实演练边界见
+[运维规程](../../docs/operations/operational-monitor.md)。
+
 ## Write idempotency
 
 The reviewed mutation-by-mutation classification and follow-up acceptance plan for `Idempotency-Key` is maintained in [the REST write idempotency inventory](../../docs/audit/rest-write-idempotency-inventory.md). Keep that inventory current when adding or changing a REST mutation. The current comment-create implementation is a first slice; do not assume all write routes support replay semantics.

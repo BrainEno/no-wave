@@ -58,6 +58,8 @@ Enable API metrics explicitly with `API_METRICS_ENABLED=true`, then scrape `GET 
 
 Current in-process metrics:
 
+- `api_process_instance_info{instance}`: opaque exporter lifetime UUID; a replacement starts a new counter baseline, not a host/user identity.
+- `api_persistence_available`: independent timely persistence health, not inferred from combined readiness.
 - `api_readiness_available`, `api_notification_backlog_available`: readiness and dependency availability (zero is not proof of an empty queue).
 - `api_notification_pending_events`, `api_notification_dead_letter_events`, `api_notification_oldest_pending_age_seconds`, `api_notification_backlog_sample_timestamp_seconds`, `api_notification_backlog_max_age_seconds`: last-good backlog and configured threshold.
 - `api_readiness_dependency_reads_total`, `api_readiness_dependency_failures_total`, `api_readiness_probe_timeouts_total`: bounded probe/coalescing outcomes.
@@ -130,6 +132,18 @@ Each failure also writes one `background_task_failed` log record at `warn` with
 `task`, `errorName` and, for the deletion notices, `failed` (how many readers
 could not be told). The error **class** is all that travels: a driver message can
 carry a connection string.
+
+## 有限只读告警评估
+
+仓库提供 `pnpm --silent --filter @bot-thk/api ops:monitor`，明确配置 API / worker
+目标后有限执行 `check`、离线 `inspect` / 带 freshness 的 `status`、显式 `ack` 和安全 `reconfigure`。
+规则覆盖 HTTP 5xx、pending 数量/年龄、死信、独立数据库健康、邮件失败及源可用性；
+缺失、过期、重启、低 HTTP 流量不能作为恢复证明。日志先持久化再输出，待交付
+事件重复返回直至明确确认；不会访问业务 store、自动修复或重投。
+
+命令不加载 `.env`，不改变 metrics 默认关闭或私网限制，也不配置外部账号。
+完整阈值、退出码、文件权限、交付/恢复语义和实际演练边界见
+[有限监测规程](operational-monitor.md)。这不是实际主机/生产告警资格验证。
 
 ## Known boundaries
 

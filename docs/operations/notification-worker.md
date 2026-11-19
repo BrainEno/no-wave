@@ -64,6 +64,15 @@ Error fields are reduced to a safe class name (`safeErrorName`): driver messages
 
 `/metrics` (when enabled) exposes batch counters, delivery/failure counters and batch duration. The snapshot gauges `api_outbox_pending_events` / `api_outbox_oldest_pending_age_seconds` exclude dead letters but include delayed retries and live leases; `api_outbox_dead_letter_events` reports retained dead rows. A failed backlog read increments a failure counter and preserves the complete last-known snapshot rather than failing the scrape. Crash quarantine appears in the durable gauge, not a delivery callback counter. Failure diagnostics distinguish `retryScheduled`, `deadLettered` and the actual `retryDelaySeconds`; messages and payloads remain private.
 
+### 有限只读告警消费者
+
+worker 额外提供 `notification_worker_process_instance_info{instance}`，用不透明
+lifetime UUID 区分 exporter 替换；不包含主机或业务身份。仓库内的
+[有限监测命令](operational-monitor.md) 可同时监测 API / worker 的 backlog、
+死信、就绪与遥测可用性，使用 worker 的 monotonic freshness，而不把 last-good
+零当作健康。它只 GET `/metrics`，不 claim、ack 或修改业务 outbox；告警事件的
+`ack` 只确认监测日志交付，不是通知投递确认。生产调度/外部告警服务仍须另行批准。
+
 ## 5. Shutdown
 
 `SIGINT`/`SIGTERM` immediately mark readiness as stopping, interrupt an idle poll and prevent new claims. A claim already in flight is still delivered/settled under its lease. One absolute `SHUTDOWN_GRACE_MS` budget includes draining that batch, closing health connections and persistence/metrics cleanup; `SHUTDOWN_CLEANUP_MS` is reserved rather than spent waiting on an unfinished HTTP body. Repeated stops share one cleanup promise. Logs include `notification_worker_shutdown_started`, `notification_worker_persistence_closed` and `notification_worker_shutdown_complete` with `forced`, `cleanupSucceeded`, `cleanupTimedOut`, `durationMs` and `exitCode`.
