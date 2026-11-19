@@ -26,6 +26,7 @@ Web 已按 [ADR 0012](decisions/0012-portable-web-framework-migration.md) / [001
 | 默认关闭的 Notion job | `application/notion-{durable-jobs,job-service,job-poll,job-drain,job-check}.ts`、两个 `*-notion-jobs-store.ts`；[操作规程](../operations/notion-import-jobs.md) | 无崩溃自动重放；数据库事务 fence、外部 key、独立有限命令；BFF 仍在 web-http，不进 UI |
 | API 运维设置、生命周期 | `apps/api/src/infrastructure/{service-settings,service-operations,http-lifecycle}.ts` | 验证范围且不输出原始设置；Web 不导入 API 实现 |
 | 有限只读告警、事件确认、配置切换 | `application/operational-{alerts,monitor,monitor-state,monitor-configure,monitor-status}.ts`、`infrastructure/monitor-{config,exposition,scrape,state-file,command}.ts`；[运维规程](../operations/operational-monitor.md) | 不连接业务 DB、不自动修复/重投；unknown 不作健康；私有 POSIX 日志与显式 ack，不是浏览器 upstream 或生产告警账号 |
+| 离线告警交接、签名证据、持久收件箱 | `application/alert-handoff-{protocol,sender,inbox,reader,status,reconcile,verification}.ts`、`infrastructure/alert-handoff-{config,file,command}.ts`、`private-operation-file.ts`；[交接规程](../operations/alert-handoff.md) | 不联网/不导入业务 store；receipt 只证明持久接受；settle 与 consume 分离，禁止隐式 ack/身份重绑定/清空旧链 |
 | API 业务与持久层 | `apps/api/src/application/`、`domain/`、`persistence/`；[API README](../../apps/api/README.md) | 业务事务与所有权由后端/数据库执行 |
 | 构建工具的 glob / 目录匹配 | [glob-match](../../packages/glob-match/README.md) 与 `scripts/glob-*.test.ts` | 私有非递归工具适配器；不生成 glob 正则，不进业务层或浏览器，不承诺完整 picomatch API |
 

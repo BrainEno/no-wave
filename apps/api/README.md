@@ -18,6 +18,12 @@ This package is the backend API of the independent BOT THK rebuild. Versioned RE
 配置、私有 POSIX 日志、退出码、恢复/确认与真实演练边界见
 [运维规程](../../docs/operations/operational-monitor.md)。
 
+另有 `pnpm --silent --filter @bot-thk/api ops:handoff --help`：离线签名事件包、
+独立持久收件箱、回执恢复/公钥核验、等待年龄/分页/对账，以及显式 settle/consume。
+不联网、不加载 `.env`、不访问业务 store；持久接收不等于通知到人，只有显式
+settle 才确认原 monitor 前缀。配置、双向公钥 pin、容量和中断恢复见
+[交接规程](../../docs/operations/alert-handoff.md)；未启用外部渠道、调度器或生产账号。
+
 ## Write idempotency
 
 The reviewed mutation-by-mutation classification and follow-up acceptance plan for `Idempotency-Key` is maintained in [the REST write idempotency inventory](../../docs/audit/rest-write-idempotency-inventory.md). Keep that inventory current when adding or changing a REST mutation. The current comment-create implementation is a first slice; do not assume all write routes support replay semantics.
