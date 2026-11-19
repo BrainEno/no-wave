@@ -18,6 +18,19 @@ This package is the backend API of the independent BOT THK rebuild. Versioned RE
 配置、私有 POSIX 日志、退出码、恢复/确认与真实演练边界见
 [运维规程](../../docs/operations/operational-monitor.md)。
 
+另有 `pnpm --silent --filter @bot-thk/api ops:handoff --help`：离线签名事件包、
+独立持久收件箱、回执恢复/公钥核验、等待年龄/分页/对账，以及显式 settle/consume。
+不联网、不加载 `.env`、不访问业务 store；持久接收不等于通知到人，只有显式
+settle 才确认原 monitor 前缀。配置、双向公钥 pin、容量和中断恢复见
+[交接规程](../../docs/operations/alert-handoff.md)；未启用外部渠道、调度器或生产账号。
+
+`pnpm --silent --filter @bot-thk/api ops:evidence --help` 提供只持独立公钥的离线
+`review` / `compare` / `check` / `trace`：审阅跨批次历史，保留删除/替换证据造成的
+回退，核验独立已知检查点，并分页定位事件及完整发现。任何过滤或导航 token 都不
+授予确认/消费权限，也不隐藏全局冲突；签名历史不代表当前健康或通知到人。不改变
+既有 v1 产物或业务行为，详见[历史证据规程](../../docs/operations/alert-evidence.md)
+与 [ADR 0044](../../docs/architecture/decisions/0044-public-only-alert-evidence-review.md)。
+
 ## Write idempotency
 
 The reviewed mutation-by-mutation classification and follow-up acceptance plan for `Idempotency-Key` is maintained in [the REST write idempotency inventory](../../docs/audit/rest-write-idempotency-inventory.md). Keep that inventory current when adding or changing a REST mutation. The current comment-create implementation is a first slice; do not assume all write routes support replay semantics.

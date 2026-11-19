@@ -15,6 +15,15 @@
 - `src/lib/notification-*.ts`、`messaging-*.ts`：浏览器传输和状态控制，保留取消/身份切换保护。
 - `src/styles/`、`src/data/`：共享呈现与明确无 API 模式的示例内容。
 
+## 可选本机文稿恢复
+
+`/write` 的“可选本机文稿恢复”默认关闭，明确同意后才在 IndexedDB 有界缓存，
+刷新后仍需手动预览/复制字段。缓存未加密，退出/账号切换尝试清除并使旧标签失效；
+不是自动服务器保存、离线发布或请求重放。手动来源核对复用 catalogue/shared HTTP，
+不合并、不更新基线。容量、失败和共享设备风险见
+[使用说明](../../docs/operations/writing-recovery.md)与
+[ADR 0045](../../docs/architecture/decisions/0045-default-off-local-writing-recovery.md)。
+
 ## 配置契约
 
 `apps/web-rr/app/lib/runtime.ts` 将 API endpoint、site origin、mail、source、

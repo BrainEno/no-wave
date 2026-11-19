@@ -144,6 +144,8 @@ carry a connection string.
 命令不加载 `.env`，不改变 metrics 默认关闭或私网限制，也不配置外部账号。
 完整阈值、退出码、文件权限、交付/恢复语义和实际演练边界见
 [有限监测规程](operational-monitor.md)。这不是实际主机/生产告警资格验证。
+[离线签名交接规程](alert-handoff.md)补充持久收件箱、双向签名回执、显式前缀结算和
+消费；不自动发送外部 webhook/邮件，也不把接收/签名验证结果当作服务健康。
 
 ## Known boundaries
 

@@ -9,9 +9,10 @@ import { writingSnapshotKey, type WritingDraft } from "@/lib/writing-session.ts"
 import { restoreWritingSelection } from "@/lib/writing-restore.ts";
 import { WritingRestorePreview } from "./writing-restore-preview.tsx";
 import { WritingReferencesPanel } from "./writing-references-panel.tsx";
+import { WritingRecovery, type WritingRecoveryOwner } from "./writing-recovery.tsx";
 
 const FIELD_LABELS: Record<WritingField, string> = { title: "标题", summary: "摘要", locale: "作品语言", workType: "作品类型", editorState: "正文（含格式）" };
-type ToolsProps = { draft: WritingDraft; getDraft(): WritingDraft; onChange(draft: WritingDraft): void; locked: boolean };
+type ToolsProps = { draft: WritingDraft; getDraft(): WritingDraft; onChange(draft: WritingDraft): void; locked: boolean; recovery: WritingRecoveryOwner };
 type ActionProps = { draft: WritingDraft; read(): WritingDraft; apply(draft: WritingDraft): void; locked: boolean };
 
 function InspectionPanel({ inspection, draft, navigate }: { inspection: WritingInspection; draft: WritingDraft; navigate(path: WritingPath): void }) {
@@ -200,7 +201,7 @@ function BackupPanel({ draft, read, apply, locked }: ActionProps) {
   const needsRemoteConsent = remoteCount > 0 && selected.includes("editorState");
   const missingBlocks = selected.includes("editorState") && bodyMode === "append" && !bodyBlocks.length;
   return <section aria-label="本机备份与恢复">
-    <p>JSON 备份包含当前标题、摘要、语言、类型和正文，不附加账户、作品地址、发布状态或版本凭据。纯文本和 Markdown 仅导出标题与正文。仅手动下载/读取，不会自动存到浏览器，也不会上传备份文件。</p>
+    <p>JSON 备份包含当前标题、摘要、语言、类型和正文，不附加账户、作品地址、发布状态或版本凭据。纯文本和 Markdown 仅导出标题与正文。此处仅手动下载/读取，不上传备份文件；只有上方另行明确启用的“本机文稿恢复”才会自动缓存编辑内容。</p>
     <p className="nw-m">备份文件未加密，请妥善保管；不包含图片原文件。恢复图片后仍需服务端验证媒体权限。浏览器崩溃或强制退出时，离开提醒无法保证生效。</p>
     <div className="nw-authoring-actions">
       <button className="nw-btn" type="button" onClick={() => download("json")}>下载 JSON 文稿备份</button>
@@ -233,7 +234,7 @@ function BackupPanel({ draft, read, apply, locked }: ActionProps) {
   </section>;
 }
 
-export function WritingTools({ draft, getDraft, onChange, locked }: ToolsProps) {
+export function WritingTools({ draft, getDraft, onChange, locked, recovery }: ToolsProps) {
   const [editor] = useLexicalComposerContext();
   const [open, setOpen] = useState(false);
   const [panel, setPanel] = useState<"inspection" | "replacement" | "backup">("inspection");
@@ -289,7 +290,8 @@ export function WritingTools({ draft, getDraft, onChange, locked }: ToolsProps) 
     setMessage("已定位到正文对应位置。");
   }
 
-  return <details className="nw-writing-tools" open={open} onToggle={event => setOpen(event.currentTarget.open)}>
+  return <><WritingRecovery owner={recovery} draft={draft} read={read} apply={apply} locked={locked} />
+  <details className="nw-writing-tools" open={open} onToggle={event => setOpen(event.currentTarget.open)}>
     <summary>文稿工具：检查、大纲、替换与本机备份</summary>
     {open ? <div className="nw-writing-tools-body">
       <div className="nw-authoring-actions" role="group" aria-label="选择文稿工具">
@@ -302,5 +304,5 @@ export function WritingTools({ draft, getDraft, onChange, locked }: ToolsProps) 
       {panel === "backup" ? <BackupPanel draft={draft} read={read} apply={apply} locked={locked} /> : null}
       {message ? <p role="status">{message}</p> : null}
     </div> : null}
-  </details>;
+  </details></>;
 }

@@ -1,5 +1,7 @@
 import { expect } from "@playwright/test";
-import { test } from "./support/csp-fixture.ts";
+// Keep these multi-account journeys off the shard's finite shared registration
+// budget; the existing private-stack fixture preserves production rate limits.
+import { test } from "./support/article-view-stack.ts";
 import { gate, settleUi } from "./support/messaging-privacy.ts";
 import { NOTIFICATION_ACTOR_HEADER, loginNotificationAccount, notificationAccounts, openNotificationSurfaces, unreadNotifications } from "./support/notification-privacy.ts";
 

@@ -2,6 +2,7 @@ import { Link } from "@/lib/framework/link.tsx";
 import { useNotificationActions } from "@/components/chrome/notification-provider.tsx";
 import { useState, type FormEvent } from "react";
 import { useRouter } from "@/lib/framework/navigation.ts";
+import { writingRecoveryBoundary } from "@/lib/writing-recovery-boundary.ts";
 import { apiErrorCode } from "@/lib/api-error.ts";
 import { signInFailureMessage } from "@/lib/rate-limit.ts";
 import { signInSuccessMessage } from "@/lib/auth-navigation.ts";
@@ -33,6 +34,8 @@ export function SignInForm({ nextPath, mailEnabled, locale = "zh-CN" }: SignInFo
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
+  const [recoveryWarning, setRecoveryWarning] = useState<string | null>(null);
+  const [signedIn, setSignedIn] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -41,13 +44,14 @@ export function SignInForm({ nextPath, mailEnabled, locale = "zh-CN" }: SignInFo
     setError("");
     setStatus("");
     try {
-      const response = await fetch(`/api/auth/${mode}`, {
+      let warning: string | null = null;
+      const response = await writingRecoveryBoundary().runSessionChange(() => fetch(`/api/auth/${mode}`, {
         method: "POST",
         headers: { "content-type": "application/json", accept: "application/json" },
         credentials: "same-origin",
         cache: "no-store",
         body: JSON.stringify({ email, password }),
-      });
+      }), value => { warning = value; setRecoveryWarning(value); });
       const payload: unknown = await response.json().catch(() => null);
       if (!response.ok) {
         // A taken address is not a failure to report but a next step: the
@@ -59,6 +63,7 @@ export function SignInForm({ nextPath, mailEnabled, locale = "zh-CN" }: SignInFo
       finishSessionChange();
       void notifications.connect(true);
       setStatus(signInSuccessMessage(nextPath, mode, locale));
+      if (warning) { setSignedIn(true); return; }
       router.replace(nextPath);
       router.refresh();
     } catch (caught) {
@@ -75,6 +80,8 @@ export function SignInForm({ nextPath, mailEnabled, locale = "zh-CN" }: SignInFo
       <p className="nw-ep" style={{ marginTop: 24 }}>
         {mode === "login" ? "登录后可以继续编辑草稿、保存修改并发布作品。" : "使用邮箱与至少 12 个字符的密码创建账户。"}
       </p>
+      {recoveryWarning ? <p className="nw-auth-error" role="alert">{recoveryWarning}</p> : null}
+      {signedIn ? <Link className="nw-btn" href={nextPath}>我已了解，继续访问</Link> : null}
       <form className="nw-auth-form" onSubmit={submit}>
         <label>邮箱
           <input type="email" name="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required maxLength={254} />

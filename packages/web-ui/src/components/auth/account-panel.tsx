@@ -1,5 +1,6 @@
 import { Link } from "@/lib/framework/link.tsx";
 import { useNotificationActions } from "@/components/chrome/notification-provider.tsx";
+import { writingRecoveryBoundary } from "@/lib/writing-recovery-boundary.ts";
 import { useRouter } from "@/lib/framework/navigation.ts";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 
@@ -361,16 +362,22 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
    * 401, so there is no special case to get wrong here.
    */
   async function endDevice(sessionId: string) {
+    let recoveryWarning: string | null = null;
     setEnding(sessionId);
     setError("");
     setNotice("");
     try {
-      const response = await fetch(`/api/authoring/sessions/${encodeURIComponent(sessionId)}`, {
+      const current = devices?.find(device => device.sessionId === sessionId)?.current === true;
+      const request = () => fetch(`/api/authoring/sessions/${encodeURIComponent(sessionId)}`, {
         method: "DELETE",
         headers: { accept: "application/json" },
         credentials: "same-origin",
         cache: "no-store",
       });
+      const response = current
+        ? await writingRecoveryBoundary().runSessionChange(request, value => { recoveryWarning = value; })
+        : await request();
+      if (recoveryWarning) { setError(recoveryWarning); setState("signed-out"); return; }
       if (response.status === 401) {
         goToSignIn();
         return;
@@ -388,7 +395,8 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
       await refreshDevices();
       setNotice("这台设备已退出登录，它手里的令牌即刻失效。");
     } catch {
-      setError("暂时无法连接服务器，请稍后重试。");
+      setError(recoveryWarning ?? "暂时无法连接服务器，请稍后重试。");
+      if (recoveryWarning) setState("signed-out");
     } finally {
       setEnding(null);
     }
@@ -432,17 +440,18 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
   }
 
   async function signOut() {
+    let recoveryWarning: string | null = null;
     const finishSessionChange = notifications.beginSessionChange();
     setBusy("logout");
     setError("");
     try {
-      await fetch("/api/auth/logout", {
+      await writingRecoveryBoundary().runSessionChange(() => fetch("/api/auth/logout", {
         method: "POST",
         headers: { "content-type": "application/json", accept: "application/json" },
         credentials: "same-origin",
         cache: "no-store",
         body: "{}",
-      });
+      }), value => { recoveryWarning = value; });
     } catch {
       // Logout is local first: the cookies are cleared by the proxy even when
       // the API is unreachable, so a network failure must not keep the visitor
@@ -450,6 +459,7 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
     } finally {
       finishSessionChange();
     }
+    if (recoveryWarning) { setError(recoveryWarning); setState("signed-out"); return; }
     router.replace("/");
     router.refresh();
   }
@@ -468,6 +478,7 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
       <section className="nw-auth-panel" aria-labelledby="nw-account-out">
         <h1 id="nw-account-out"><span className="nw-zh">尚未登录</span> <i>Signed out</i></h1>
         <p className="nw-ep" style={{ marginTop: 24 }}>这个会话已经结束，正在前往登录页……</p>
+        {error ? <p className="nw-auth-error" role="alert">{error}</p> : null}
         <div className="nw-auth-switch">
           <Link className="nw-btn nw-pri" href="/sign-in?next=%2Faccount">前往登录</Link>
         </div>

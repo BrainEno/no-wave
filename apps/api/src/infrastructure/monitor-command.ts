@@ -1,5 +1,4 @@
 import { resolve } from "node:path";
-import type { Writable } from "node:stream";
 import {
   acknowledgeMonitorEvents,
   assertMonitorEvaluationTime,
@@ -11,6 +10,7 @@ import { MonitorFault, type MonitorFaultCode } from "../application/operational-
 import { collectMonitorTargets } from "./monitor-scrape.ts";
 import { openMonitorJournal, readMonitorConfigFile, readMonitorJournal } from "./monitor-state-file.ts";
 import { isMainModule } from "./entrypoint.ts";
+import { writeOperationOutput } from "./operation-command-output.ts";
 
 const HELP = `有限只读运维监测，不启动后台进程、不自动修复、不向外部告警服务发送数据。
 
@@ -89,33 +89,6 @@ function argumentsValue(args: readonly string[]): Command | null {
   return { name: name as Command["name"], config: configPath, state: statePath, through, nextConfig };
 }
 
-/** Await backpressure without treating stdout as delivery acknowledgement. A
- * blocked pipe fails boundedly; the already committed queue survives for a
- * consumer to deduplicate and explicitly acknowledge on a later invocation. */
-function streamWrite(stream: Writable, text: string): Promise<void> {
-  return new Promise((resolvePromise, reject) => {
-    let settled = false;
-    const finish = (failed: boolean) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      if (!failed) stream.off("error", failedWrite);
-      if (failed) reject(new MonitorFault("output_failed"));
-      else resolvePromise();
-    };
-    const failedWrite = () => finish(true);
-    const timer = setTimeout(() => {
-      stream.destroy();
-      finish(true);
-    }, 2000);
-    stream.once("error", failedWrite);
-    try {
-      stream.write(text, (error) => finish(Boolean(error)));
-    } catch {
-      finish(true);
-    }
-  });
-}
 async function emit(write: Write, value: unknown): Promise<void> {
   try {
     await write(typeof value === "string" ? value : JSON.stringify(value) + "\n");
@@ -125,8 +98,8 @@ async function emit(write: Write, value: unknown): Promise<void> {
 }
 
 export async function runMonitorCommand(args: readonly string[], dependencies: Dependencies = {}): Promise<number> {
-  const stdout = dependencies.stdout ?? ((text) => streamWrite(process.stdout, text));
-  const stderr = dependencies.stderr ?? ((text) => streamWrite(process.stderr, text));
+  const stdout = dependencies.stdout ?? ((text) => writeOperationOutput(process.stdout, text));
+  const stderr = dependencies.stderr ?? ((text) => writeOperationOutput(process.stderr, text));
   const now = dependencies.now ?? Date.now;
   const collect = dependencies.collect ?? collectMonitorTargets;
   const signal = dependencies.signal;

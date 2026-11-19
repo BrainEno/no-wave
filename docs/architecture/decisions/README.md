@@ -49,6 +49,9 @@ which of two `0011`s meant what.
 | [0040](0040-notification-service-operations.md) | 通知投递使用独立进程角色，探针与资源关停必须有界 | Accepted | Not recorded | 2026-11-12 |
 | [0041](0041-default-off-notion-import-jobs.md) | Notion 导入任务默认关闭，崩溃后不自动重放写入 | Proposed | Partial | 2026-11-12 |
 | [0042](0042-finite-read-only-operational-monitor.md) | 运维告警使用有限只读采集与显式确认的本地事件日志 | Proposed | Partial | 2026-11-12 |
+| [0043](0043-offline-signed-alert-handoff.md) | 告警交接使用签名离线批次、独立持久收件箱和显式结算 | Proposed | Partial | 2026-11-12 |
+| [0044](0044-public-only-alert-evidence-review.md) | 告警历史证据使用独立公钥、只读集合审阅和不授予权限的导航 | Accepted | Not recorded | 2026-11-12 |
+| [0045](0045-default-off-local-writing-recovery.md) | 文稿恢复默认关闭，缓存有界隔离且只允许手动复制编辑字段 | Accepted | Not recorded | 2026-11-12 |
 
 The status column carries the leading word of each file's `- Status:` line —
 read the file for the qualifier ("Superseded by ADR 0012", "Accepted as the

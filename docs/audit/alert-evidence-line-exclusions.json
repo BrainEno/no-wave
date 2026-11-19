@@ -1,0 +1,3173 @@
+{
+  "base": "a4e9de38a36387dd7b1314b5eae177d96041dbe3",
+  "rules": [
+    {
+      "file": "apps/api/src/application/alert-evidence-authentication.ts",
+      "reason": "函数/方法/回调签名、参数和默认参数绑定不计生产功能。",
+      "fragments": [
+        {
+          "line": 22,
+          "text": "export function authenticateAlertEvidence("
+        },
+        {
+          "line": 23,
+          "text": "trust: AlertEvidenceTrust,"
+        },
+        {
+          "line": 24,
+          "text": "inputs: readonly EvidenceInput[],"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-authentication.ts",
+      "reason": "纯 DTO/元数据/返回对象装配（连同其中内联投影）不计生产功能。",
+      "fragments": [
+        {
+          "line": 100,
+          "text": "batches: [...batches.values()].sort(evidenceBatchOrder),"
+        },
+        {
+          "line": 101,
+          "text": "receipts: [...receipts.values()].sort(evidenceReceiptOrder),"
+        },
+        {
+          "line": 102,
+          "text": "artifactIds,"
+        },
+        {
+          "line": 103,
+          "text": "duplicates,"
+        },
+        {
+          "line": 105,
+          "text": "totalBytes,"
+        },
+        {
+          "line": 106,
+          "text": "evidenceId: handoffHash(["
+        },
+        {
+          "line": 107,
+          "text": "\"no-wave-alert-evidence-set-v1\","
+        },
+        {
+          "line": 108,
+          "text": "trust.fingerprint,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-compare.ts",
+      "reason": "函数/方法/回调签名、参数和默认参数绑定不计生产功能。",
+      "fragments": [
+        {
+          "line": 21,
+          "text": "function unionEvidence("
+        },
+        {
+          "line": 23,
+          "text": "before: AuthenticatedEvidence,"
+        },
+        {
+          "line": 24,
+          "text": "after: AuthenticatedEvidence,"
+        },
+        {
+          "line": 57,
+          "text": "function kindCounts(ids: readonly string[]) {"
+        },
+        {
+          "line": 70,
+          "text": "export function compareAlertEvidence("
+        },
+        {
+          "line": 72,
+          "text": "beforeInputs: readonly EvidenceInput[],"
+        },
+        {
+          "line": 73,
+          "text": "afterInputs: readonly EvidenceInput[],"
+        },
+        {
+          "line": 74,
+          "text": "options: EvidenceOptions,"
+        },
+        {
+          "line": 107,
+          "text": "const streams = before.report.streams.map((prior) => {"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-compare.ts",
+      "reason": "纯 DTO/元数据/返回对象装配（连同其中内联投影）不计生产功能。",
+      "fragments": [
+        {
+          "line": 43,
+          "text": "totalBytes: before.totalBytes + after.totalBytes,"
+        },
+        {
+          "line": 44,
+          "text": "duplicates:"
+        },
+        {
+          "line": 45,
+          "text": "before.duplicates +"
+        },
+        {
+          "line": 46,
+          "text": "after.duplicates +"
+        },
+        {
+          "line": 47,
+          "text": "before.artifactIds.length +"
+        },
+        {
+          "line": 48,
+          "text": "after.artifactIds.length -"
+        },
+        {
+          "line": 49,
+          "text": "artifactIds.length,"
+        },
+        {
+          "line": 64,
+          "text": "return { batches, receipts };"
+        },
+        {
+          "line": 118,
+          "text": "regressions.add(\"stream_tip_rollback\", \"gap\", {"
+        },
+        {
+          "line": 119,
+          "text": "streamId: prior.streamId,"
+        },
+        {
+          "line": 120,
+          "text": "sequence: prior.lastSequence,"
+        },
+        {
+          "line": 121,
+          "text": "batchId: prior.tipBatchIds[0] ?? null,"
+        },
+        {
+          "line": 128,
+          "text": "regressions.add(\"stream_tip_replaced\", \"conflict\", {"
+        },
+        {
+          "line": 131,
+          "text": "batchId: next.tipBatchIds[0] ?? null,"
+        },
+        {
+          "line": 132,
+          "text": "relatedId: missingTips[0]!,"
+        },
+        {
+          "line": 160,
+          "text": "beforeSequence: prior.lastSequence,"
+        },
+        {
+          "line": 161,
+          "text": "afterSequence: next.lastSequence,"
+        },
+        {
+          "line": 162,
+          "text": "addedBatches,"
+        },
+        {
+          "line": 163,
+          "text": "removedBatches,"
+        },
+        {
+          "line": 164,
+          "text": "addedReceipts,"
+        },
+        {
+          "line": 165,
+          "text": "removedReceipts,"
+        },
+        {
+          "line": 192,
+          "text": "event: \"alert_evidence_comparison\","
+        },
+        {
+          "line": 193,
+          "text": "evidence: \"signed_history_only\","
+        },
+        {
+          "line": 194,
+          "text": "assessment: \"artifact_set_relation_not_service_progress\","
+        },
+        {
+          "line": 195,
+          "text": "reportedAt: options.now,"
+        },
+        {
+          "line": 196,
+          "text": "trustFingerprint: trust.fingerprint,"
+        },
+        {
+          "line": 197,
+          "text": "change,"
+        },
+        {
+          "line": 198,
+          "text": "before: before.report,"
+        },
+        {
+          "line": 199,
+          "text": "after: after.report,"
+        },
+        {
+          "line": 200,
+          "text": "added: kindCounts(addedIds),"
+        },
+        {
+          "line": 201,
+          "text": "removed: kindCounts(removedIds),"
+        },
+        {
+          "line": 202,
+          "text": "retained: kindCounts(retainedIds),"
+        },
+        {
+          "line": 203,
+          "text": "artifactChanges: {"
+        },
+        {
+          "line": 204,
+          "text": "added: addedIds.slice(0, 64),"
+        },
+        {
+          "line": 205,
+          "text": "removed: removedIds.slice(0, 64),"
+        },
+        {
+          "line": 206,
+          "text": "truncated: addedIds.length > 64 || removedIds.length > 64,"
+        },
+        {
+          "line": 208,
+          "text": "streams,"
+        },
+        {
+          "line": 209,
+          "text": "combinedEvidence: {"
+        },
+        {
+          "line": 210,
+          "text": "evidenceId: union.evidenceId,"
+        },
+        {
+          "line": 211,
+          "text": "stats: union.stats,"
+        },
+        {
+          "line": 212,
+          "text": "findingTotals: union.findingTotals,"
+        },
+        {
+          "line": 213,
+          "text": "findings: union.findings,"
+        },
+        {
+          "line": 215,
+          "text": "regressionTotals,"
+        },
+        {
+          "line": 216,
+          "text": "regressions: regressions.list(),"
+        },
+        {
+          "line": 217,
+          "text": "exitCode: (change === \"conflicting\" ||"
+        },
+        {
+          "line": 218,
+          "text": "change === \"regressed\" ||"
+        },
+        {
+          "line": 219,
+          "text": "change === \"incomparable\" ||"
+        },
+        {
+          "line": 220,
+          "text": "after.report.exitCode !== 0 ||"
+        },
+        {
+          "line": 221,
+          "text": "regressionTotals.total > 0"
+        },
+        {
+          "line": 222,
+          "text": "? 1"
+        },
+        {
+          "line": 223,
+          "text": ": 0) as 0 | 1,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-context.ts",
+      "reason": "函数/方法/回调签名、参数和默认参数绑定不计生产功能。",
+      "fragments": [
+        {
+          "line": 18,
+          "text": "function factOrder(a: EvidenceTraceFact, b: EvidenceTraceFact): number {"
+        },
+        {
+          "line": 28,
+          "text": "export function buildEvidenceTraceContext("
+        },
+        {
+          "line": 30,
+          "text": "evidence: AuthenticatedEvidence,"
+        },
+        {
+          "line": 125,
+          "text": "function linkage("
+        },
+        {
+          "line": 126,
+          "text": "context: Context,"
+        },
+        {
+          "line": 127,
+          "text": "earlier: EvidenceTraceFact,"
+        },
+        {
+          "line": 128,
+          "text": "later: EvidenceTraceFact,"
+        },
+        {
+          "line": 170,
+          "text": "export function describeEvidenceTraceFact("
+        },
+        {
+          "line": 172,
+          "text": "fact: EvidenceTraceFact,"
+        },
+        {
+          "line": 175,
+          "text": "const describeNeighbor = ("
+        },
+        {
+          "line": 176,
+          "text": "neighbor: EvidenceTraceFact | null,"
+        },
+        {
+          "line": 177,
+          "text": "previous: boolean,"
+        },
+        {
+          "line": 178,
+          "text": ") => {"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-context.ts",
+      "reason": "纯 DTO/元数据/返回对象装配（连同其中内联投影）不计生产功能。",
+      "fragments": [
+        {
+          "line": 48,
+          "text": "const fact = {"
+        },
+        {
+          "line": 49,
+          "text": "rowId: handoffHash(["
+        },
+        {
+          "line": 50,
+          "text": "\"no-wave-alert-evidence-event-v1\","
+        },
+        {
+          "line": 73,
+          "text": "neighbors.set(group[index]!.rowId, {"
+        },
+        {
+          "line": 74,
+          "text": "previous: group[index - 1] ?? null,"
+        },
+        {
+          "line": 75,
+          "text": "next: group[index + 1] ?? null,"
+        },
+        {
+          "line": 103,
+          "text": "claims.push({"
+        },
+        {
+          "line": 104,
+          "text": "receiptId: evidenceReceiptId(receipt),"
+        },
+        {
+          "line": 106,
+          "text": "inboxRevision: receipt.inboxRevision,"
+        },
+        {
+          "line": 107,
+          "text": "matchesBatch,"
+        },
+        {
+          "line": 112,
+          "text": "facts,"
+        },
+        {
+          "line": 113,
+          "text": "byId,"
+        },
+        {
+          "line": 114,
+          "text": "bySequence,"
+        },
+        {
+          "line": 116,
+          "text": "neighbors,"
+        },
+        {
+          "line": 117,
+          "text": "receiptClaims,"
+        },
+        {
+          "line": 118,
+          "text": "sourceReceiptCounts,"
+        },
+        {
+          "line": 181,
+          "text": "rowId: neighbor.rowId,"
+        },
+        {
+          "line": 182,
+          "text": "batchId: neighbor.batch.id,"
+        },
+        {
+          "line": 183,
+          "text": "eventId: neighbor.event.id,"
+        },
+        {
+          "line": 184,
+          "text": "sequence: neighbor.batch.sequence,"
+        },
+        {
+          "line": 185,
+          "text": "at: neighbor.event.at,"
+        },
+        {
+          "line": 186,
+          "text": "transition: neighbor.event.transition,"
+        },
+        {
+          "line": 187,
+          "text": "linkage: previous"
+        },
+        {
+          "line": 188,
+          "text": "? linkage(context, neighbor, fact)"
+        },
+        {
+          "line": 189,
+          "text": ": linkage(context, fact, neighbor),"
+        },
+        {
+          "line": 218,
+          "text": "kind: \"event\" as const,"
+        },
+        {
+          "line": 219,
+          "text": "rowId: fact.rowId,"
+        },
+        {
+          "line": 220,
+          "text": "streamId: fact.batch.streamId,"
+        },
+        {
+          "line": 221,
+          "text": "sequence: fact.batch.sequence,"
+        },
+        {
+          "line": 222,
+          "text": "batchId: fact.batch.id,"
+        },
+        {
+          "line": 223,
+          "text": "monitorFingerprint: fact.batch.monitorFingerprint,"
+        },
+        {
+          "line": 224,
+          "text": "event: { ...fact.event },"
+        },
+        {
+          "line": 225,
+          "text": "previous: describeNeighbor(neighbors.previous, true),"
+        },
+        {
+          "line": 226,
+          "text": "next: describeNeighbor(neighbors.next, false),"
+        },
+        {
+          "line": 227,
+          "text": "neighborScope: \"nearest_provided_same_rule_not_complete_history\","
+        },
+        {
+          "line": 228,
+          "text": "predecessor: { status: parentStatus, batchId: fact.batch.previous },"
+        },
+        {
+          "line": 229,
+          "text": "providedSuccessors: successors.length,"
+        },
+        {
+          "line": 230,
+          "text": "successorSamples: successors.slice(0, 4).map((batch) => batch.id),"
+        },
+        {
+          "line": 231,
+          "text": "receiptProof,"
+        },
+        {
+          "line": 232,
+          "text": "signedReceiptClaims: claims.slice(0, 4),"
+        },
+        {
+          "line": 233,
+          "text": "receiptClaimsTruncated: claims.length > 4,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-episodes.ts",
+      "reason": "函数/方法/回调签名、参数和默认参数绑定不计生产功能。",
+      "fragments": [
+        {
+          "line": 15,
+          "text": "export function reviewEvidenceEpisodes("
+        },
+        {
+          "line": 16,
+          "text": "history: EvidenceStreamHistory,"
+        },
+        {
+          "line": 17,
+          "text": "findings: EvidenceFindings,"
+        },
+        {
+          "line": 85,
+          "text": "open.sort((a, b) => {"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-episodes.ts",
+      "reason": "纯 DTO/元数据/返回对象装配（连同其中内联投影）不计生产功能。",
+      "fragments": [
+        {
+          "line": 39,
+          "text": "const scope = {"
+        },
+        {
+          "line": 40,
+          "text": "...evidenceBatchScope(batch),"
+        },
+        {
+          "line": 41,
+          "text": "relatedId: prior?.batchId ?? null,"
+        },
+        {
+          "line": 42,
+          "text": "eventId: event.id,"
+        },
+        {
+          "line": 70,
+          "text": "current.set(key, {"
+        },
+        {
+          "line": 71,
+          "text": "fingerprint: batch.monitorFingerprint,"
+        },
+        {
+          "line": 74,
+          "text": "originProven,"
+        },
+        {
+          "line": 91,
+          "text": "observedStarts,"
+        },
+        {
+          "line": 92,
+          "text": "observedResolutions,"
+        },
+        {
+          "line": 93,
+          "text": "unprovenOrigins,"
+        },
+        {
+          "line": 94,
+          "text": "unprovenResolutions,"
+        },
+        {
+          "line": 95,
+          "text": "openBeforeBoundary,"
+        },
+        {
+          "line": 96,
+          "text": "tailAmbiguous,"
+        },
+        {
+          "line": 97,
+          "text": "openAtTail: tailAmbiguous ? null : open.length,"
+        },
+        {
+          "line": 98,
+          "text": "provenOriginsAtTail: tailAmbiguous ? null : originsAtTail,"
+        },
+        {
+          "line": 99,
+          "text": "openTailSampleTruncated: open.length > 16,"
+        },
+        {
+          "line": 100,
+          "text": "openTailSamples: tailAmbiguous"
+        },
+        {
+          "line": 101,
+          "text": "? []"
+        },
+        {
+          "line": 102,
+          "text": ": open.slice(0, 16).map((episode) => ({"
+        },
+        {
+          "line": 103,
+          "text": "monitorFingerprint: episode.fingerprint,"
+        },
+        {
+          "line": 104,
+          "text": "targetId: episode.event.targetId,"
+        },
+        {
+          "line": 105,
+          "text": "rule: episode.event.rule,"
+        },
+        {
+          "line": 106,
+          "text": "batchId: episode.batchId,"
+        },
+        {
+          "line": 107,
+          "text": "eventId: episode.event.id,"
+        },
+        {
+          "line": 108,
+          "text": "lastEventAt: episode.event.at,"
+        },
+        {
+          "line": 109,
+          "text": "firingSince: episode.event.firingSince,"
+        },
+        {
+          "line": 110,
+          "text": "originProven: episode.originProven,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-history.ts",
+      "reason": "函数/方法/回调签名、参数和默认参数绑定不计生产功能。",
+      "fragments": [
+        {
+          "line": 24,
+          "text": "function inspectLink("
+        },
+        {
+          "line": 25,
+          "text": "current: HandoffBatch,"
+        },
+        {
+          "line": 26,
+          "text": "prior: HandoffBatch,"
+        },
+        {
+          "line": 50,
+          "text": "export function reviewEvidenceHistory("
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-history.ts",
+      "reason": "纯 DTO/元数据/返回对象装配（连同其中内联投影）不计生产功能。",
+      "fragments": [
+        {
+          "line": 29,
+          "text": "const scope = { ...evidenceBatchScope(current), relatedId: prior.id };"
+        },
+        {
+          "line": 63,
+          "text": "findings.add(\"source_not_provided\", \"gap\", { streamId });"
+        },
+        {
+          "line": 64,
+          "text": "result.push({"
+        },
+        {
+          "line": 66,
+          "text": "batches,"
+        },
+        {
+          "line": 67,
+          "text": "segments: [],"
+        },
+        {
+          "line": 68,
+          "text": "firstSequence: null,"
+        },
+        {
+          "line": 69,
+          "text": "lastSequence: null,"
+        },
+        {
+          "line": 70,
+          "text": "missingSequences: 0,"
+        },
+        {
+          "line": 71,
+          "text": "forkedSequences: 0,"
+        },
+        {
+          "line": 72,
+          "text": "chainCoverage: \"not_provided\","
+        },
+        {
+          "line": 103,
+          "text": "findings.add(\"sequence_gap\", \"gap\", {"
+        },
+        {
+          "line": 104,
+          "text": "...evidenceBatchScope(group[0]!),"
+        },
+        {
+          "line": 105,
+          "text": "relatedId: priorGroup[0]!.id,"
+        },
+        {
+          "line": 117,
+          "text": "findings.add(\"sequence_fork\", \"conflict\", {"
+        },
+        {
+          "line": 118,
+          "text": "...evidenceBatchScope(fork),"
+        },
+        {
+          "line": 119,
+          "text": "relatedId: group[0]!.id,"
+        },
+        {
+          "line": 136,
+          "text": "findings.add(\"predecessor_mismatch\", \"conflict\", {"
+        },
+        {
+          "line": 138,
+          "text": "relatedId: batch.previous,"
+        },
+        {
+          "line": 159,
+          "text": "findings.add(\"event_replayed\", \"conflict\", {"
+        },
+        {
+          "line": 161,
+          "text": "relatedId: previousBatchId,"
+        },
+        {
+          "line": 170,
+          "text": "segment = { boundary: nextBoundary, batches: [] };"
+        },
+        {
+          "line": 183,
+          "text": "segments,"
+        },
+        {
+          "line": 184,
+          "text": "firstSequence,"
+        },
+        {
+          "line": 186,
+          "text": "missingSequences: lastSequence - groups.size,"
+        },
+        {
+          "line": 187,
+          "text": "forkedSequences,"
+        },
+        {
+          "line": 188,
+          "text": "chainCoverage: coherent ? \"complete_from_sequence_one\" : \"partial\","
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-query.ts",
+      "reason": "函数/方法/回调签名、参数和默认参数绑定不计生产功能。",
+      "fragments": [
+        {
+          "line": 38,
+          "text": "function rangeNumber("
+        },
+        {
+          "line": 40,
+          "text": "minimum: number,"
+        },
+        {
+          "line": 56,
+          "text": "export function parseEvidenceTraceQuery("
+        },
+        {
+          "line": 192,
+          "text": "export function traceQueryFingerprint("
+        },
+        {
+          "line": 193,
+          "text": "query: EvidenceTraceQuery,"
+        },
+        {
+          "line": 203,
+          "text": "export function pageEvidenceTrace<T extends { rowId: string }>("
+        },
+        {
+          "line": 204,
+          "text": "rows: readonly T[],"
+        },
+        {
+          "line": 205,
+          "text": "evidenceId: string,"
+        },
+        {
+          "line": 206,
+          "text": "queryFingerprint: string,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-query.ts",
+      "reason": "纯 DTO/元数据/返回对象装配（连同其中内联投影）不计生产功能。",
+      "fragments": [
+        {
+          "line": 171,
+          "text": "view,"
+        },
+        {
+          "line": 173,
+          "text": "targetId,"
+        },
+        {
+          "line": 176,
+          "text": "rule: rule as MonitorRuleId | null,"
+        },
+        {
+          "line": 177,
+          "text": "transition: transition as EvidenceTraceQuery[\"transition\"],"
+        },
+        {
+          "line": 178,
+          "text": "fromAt,"
+        },
+        {
+          "line": 179,
+          "text": "throughAt,"
+        },
+        {
+          "line": 180,
+          "text": "fromSequence,"
+        },
+        {
+          "line": 181,
+          "text": "throughSequence,"
+        },
+        {
+          "line": 182,
+          "text": "code: code as EvidenceFindingCode | null,"
+        },
+        {
+          "line": 183,
+          "text": "severity: severity as EvidenceTraceQuery[\"severity\"],"
+        },
+        {
+          "line": 185,
+          "text": "after,"
+        },
+        {
+          "line": 255,
+          "text": "JSON.stringify({"
+        },
+        {
+          "line": 257,
+          "text": "type: \"alert_evidence_navigation\","
+        },
+        {
+          "line": 258,
+          "text": "view: query.view,"
+        },
+        {
+          "line": 259,
+          "text": "pageId,"
+        },
+        {
+          "line": 260,
+          "text": "rowId: last.rowId,"
+        },
+        {
+          "line": 264,
+          "text": "return { selected, matched: rows.length, continuation, pageId };"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-query.ts",
+      "reason": "复用 closed-object 边界的字段表及参数接线不重复计入生产功能。",
+      "fragments": [
+        {
+          "line": 224,
+          "text": "handoffJson(bytes, \"artifact_invalid\"),"
+        },
+        {
+          "line": 225,
+          "text": "[\"version\", \"type\", \"view\", \"pageId\", \"rowId\"],"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-receipts.ts",
+      "reason": "函数/方法/回调签名、参数和默认参数绑定不计生产功能。",
+      "fragments": [
+        {
+          "line": 17,
+          "text": "export function reviewEvidenceReceipts("
+        },
+        {
+          "line": 110,
+          "text": "const inspect = () => {"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-receipts.ts",
+      "reason": "纯 DTO/元数据/返回对象装配（连同其中内联投影）不计生产功能。",
+      "fragments": [
+        {
+          "line": 69,
+          "text": "findings.add(\"receipt_equivocation\", \"conflict\", {"
+        },
+        {
+          "line": 70,
+          "text": "...evidenceReceiptScope(receipt),"
+        },
+        {
+          "line": 71,
+          "text": "relatedId: evidenceReceiptId(first),"
+        },
+        {
+          "line": 96,
+          "text": "findings.add(\"preparation_before_previous_acceptance\", \"conflict\", {"
+        },
+        {
+          "line": 98,
+          "text": "relatedId: evidenceReceiptId(receipt),"
+        },
+        {
+          "line": 116,
+          "text": "findings.add(\"receipt_sequence_rollback\", \"conflict\", {"
+        },
+        {
+          "line": 118,
+          "text": "relatedId: evidenceReceiptId(greatestRevision),"
+        },
+        {
+          "line": 124,
+          "text": "findings.add(\"receipt_time_rollback\", \"conflict\", {"
+        },
+        {
+          "line": 126,
+          "text": "relatedId: evidenceReceiptId(latestAcceptance),"
+        },
+        {
+          "line": 177,
+          "text": "findings.add(\"inbox_revision_reused\", \"conflict\", {"
+        },
+        {
+          "line": 183,
+          "text": "findings.add(\"inbox_time_rollback\", \"conflict\", {"
+        },
+        {
+          "line": 197,
+          "text": "matched,"
+        },
+        {
+          "line": 198,
+          "text": "missingReceipts,"
+        },
+        {
+          "line": 199,
+          "text": "orphanReceipts,"
+        },
+        {
+          "line": 200,
+          "text": "mismatchedReceipts,"
+        },
+        {
+          "line": 201,
+          "text": "unambiguousReceiptBatches,"
+        },
+        {
+          "line": 202,
+          "text": "unambiguousSignedEventClaims,"
+        },
+        {
+          "line": 203,
+          "text": "receiver: {"
+        },
+        {
+          "line": 204,
+          "text": "receiverId: trust.receiverId,"
+        },
+        {
+          "line": 205,
+          "text": "firstRevision: orderedRevisions[0] ?? null,"
+        },
+        {
+          "line": 207,
+          "text": "distinctRevisions: orderedRevisions.length,"
+        },
+        {
+          "line": 209,
+          "text": "unobservedRevisions:"
+        },
+        {
+          "line": 210,
+          "text": "lastRevision === null ? 0 : lastRevision - orderedRevisions.length,"
+        },
+        {
+          "line": 211,
+          "text": "latestAcceptanceAt: latestAcceptance?.acceptedAt ?? null,"
+        },
+        {
+          "line": 212,
+          "text": "consumptionProof: \"not_provided\" as const,"
+        },
+        {
+          "line": 213,
+          "text": "physicalDurabilityProof: \"not_provided\" as const,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-requirements.ts",
+      "reason": "函数/方法/回调签名、参数和默认参数绑定不计生产功能。",
+      "fragments": [
+        {
+          "line": 45,
+          "text": "export function parseEvidenceRequirements("
+        },
+        {
+          "line": 122,
+          "text": "function inspectPrefix("
+        },
+        {
+          "line": 123,
+          "text": "anchor: HandoffBatch,"
+        },
+        {
+          "line": 124,
+          "text": "batches: ReadonlyMap<string, HandoffBatch>,"
+        },
+        {
+          "line": 125,
+          "text": "sequences: ReadonlyMap<string, HandoffBatch[]>,"
+        },
+        {
+          "line": 126,
+          "text": "failures: Set<CheckpointFailure>,"
+        },
+        {
+          "line": 182,
+          "text": "function inspectReceipt("
+        },
+        {
+          "line": 183,
+          "text": "expected: Checkpoint,"
+        },
+        {
+          "line": 185,
+          "text": "receipts: ReadonlyMap<string, HandoffReceipt>,"
+        },
+        {
+          "line": 186,
+          "text": "sameSequence: readonly HandoffReceipt[],"
+        },
+        {
+          "line": 213,
+          "text": "export function checkAlertEvidenceRequirements("
+        },
+        {
+          "line": 216,
+          "text": "requirementsValue: unknown,"
+        },
+        {
+          "line": 238,
+          "text": "const checkpoints = requirements.checkpoints.map((expected) => {"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-requirements.ts",
+      "reason": "复用 closed-object 边界的字段表及参数接线不重复计入生产功能。",
+      "fragments": [
+        {
+          "line": 52,
+          "text": "[\"version\", \"role\", \"trustFingerprint\", \"checkpoints\"],"
+        },
+        {
+          "line": 71,
+          "text": "[\"streamId\", \"sequence\", \"batchId\", \"receiptId\", \"coverage\"],"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-requirements.ts",
+      "reason": "纯 DTO/元数据/返回对象装配（连同其中内联投影）不计生产功能。",
+      "fragments": [
+        {
+          "line": 93,
+          "text": "checkpoints.push({"
+        },
+        {
+          "line": 95,
+          "text": "sequence: item.sequence,"
+        },
+        {
+          "line": 96,
+          "text": "batchId: item.batchId,"
+        },
+        {
+          "line": 97,
+          "text": "receiptId: item.receiptId,"
+        },
+        {
+          "line": 98,
+          "text": "coverage: item.coverage,"
+        },
+        {
+          "line": 110,
+          "text": "role: \"evidence-requirements\","
+        },
+        {
+          "line": 112,
+          "text": "checkpoints,"
+        },
+        {
+          "line": 168,
+          "text": "covered,"
+        },
+        {
+          "line": 169,
+          "text": "batches: chain.length,"
+        },
+        {
+          "line": 171,
+          "text": "tipEvents: anchor.events.length,"
+        },
+        {
+          "line": 172,
+          "text": "firstSequence: first.sequence,"
+        },
+        {
+          "line": 173,
+          "text": "lastSequence: anchor.sequence,"
+        },
+        {
+          "line": 174,
+          "text": "firstBatchId: first.id,"
+        },
+        {
+          "line": 175,
+          "text": "lastBatchId: anchor.id,"
+        },
+        {
+          "line": 176,
+          "text": "chainDigest: handoffHash([\"no-wave-alert-evidence-prefix-v1\", ids]),"
+        },
+        {
+          "line": 177,
+          "text": "batchSamples:"
+        },
+        {
+          "line": 178,
+          "text": "ids.length <= 8 ? ids : [...ids.slice(0, 4), ...ids.slice(-4)],"
+        },
+        {
+          "line": 179,
+          "text": "samplesTruncated: ids.length > 8,"
+        },
+        {
+          "line": 265,
+          "text": "streamId: expected.streamId,"
+        },
+        {
+          "line": 266,
+          "text": "sequence: expected.sequence,"
+        },
+        {
+          "line": 267,
+          "text": "batchId: expected.batchId,"
+        },
+        {
+          "line": 268,
+          "text": "coverage: expected.coverage,"
+        },
+        {
+          "line": 270,
+          "text": "prefix,"
+        },
+        {
+          "line": 271,
+          "text": "matched: failures.size === 0,"
+        },
+        {
+          "line": 272,
+          "text": "failures: [...failures].sort(),"
+        },
+        {
+          "line": 280,
+          "text": "event: \"alert_evidence_requirements\","
+        },
+        {
+          "line": 282,
+          "text": "requirementsProvenance: \"operator_supplied_not_self_authenticated\","
+        },
+        {
+          "line": 283,
+          "text": "tailFinality: \"not_proven\","
+        },
+        {
+          "line": 284,
+          "text": "requirementsId: handoffHash(requirements),"
+        },
+        {
+          "line": 285,
+          "text": "requirementsSatisfied,"
+        },
+        {
+          "line": 287,
+          "text": "report,"
+        },
+        {
+          "line": 288,
+          "text": "exitCode: (!requirementsSatisfied || report.exitCode !== 0 ? 1 : 0) as"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-review.ts",
+      "reason": "函数/方法/回调签名、参数和默认参数绑定不计生产功能。",
+      "fragments": [
+        {
+          "line": 16,
+          "text": "export function reviewAuthenticatedEvidence("
+        },
+        {
+          "line": 20,
+          "text": "findings = new EvidenceFindings(),"
+        },
+        {
+          "line": 25,
+          "text": "const streams = histories.map((history) => {"
+        },
+        {
+          "line": 139,
+          "text": "export function analyzeAlertEvidence("
+        },
+        {
+          "line": 153,
+          "text": "export function reviewAlertEvidence("
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-review.ts",
+      "reason": "纯 DTO/元数据/返回对象装配（连同其中内联投影）不计生产功能。",
+      "fragments": [
+        {
+          "line": 66,
+          "text": "findings.add(\"evidence_stale\", \"warning\", {"
+        },
+        {
+          "line": 67,
+          "text": "streamId: history.streamId,"
+        },
+        {
+          "line": 68,
+          "text": "sequence: history.firstSequence,"
+        },
+        {
+          "line": 69,
+          "text": "batchId: history.batches[0]?.id ?? null,"
+        },
+        {
+          "line": 73,
+          "text": "batches: history.batches.length,"
+        },
+        {
+          "line": 74,
+          "text": "receipts: sourceReceipts.length,"
+        },
+        {
+          "line": 75,
+          "text": "events: count,"
+        },
+        {
+          "line": 76,
+          "text": "firstSequence: history.firstSequence,"
+        },
+        {
+          "line": 77,
+          "text": "lastSequence: history.lastSequence,"
+        },
+        {
+          "line": 78,
+          "text": "tipBatchIds: history.batches"
+        },
+        {
+          "line": 79,
+          "text": ".filter((batch) => batch.sequence === history.lastSequence)"
+        },
+        {
+          "line": 80,
+          "text": ".map((batch) => batch.id)"
+        },
+        {
+          "line": 81,
+          "text": ".sort(),"
+        },
+        {
+          "line": 82,
+          "text": "chainCoverage: history.chainCoverage,"
+        },
+        {
+          "line": 83,
+          "text": "missingSequences: history.missingSequences,"
+        },
+        {
+          "line": 84,
+          "text": "forkedSequences: history.forkedSequences,"
+        },
+        {
+          "line": 85,
+          "text": "monitorConfigurations: fingerprints.size,"
+        },
+        {
+          "line": 86,
+          "text": "unreceiptedBatches,"
+        },
+        {
+          "line": 89,
+          "text": "oldestPreparedAt,"
+        },
+        {
+          "line": 90,
+          "text": "newestPreparedAt,"
+        },
+        {
+          "line": 92,
+          "text": "newestAcceptedAt,"
+        },
+        {
+          "line": 93,
+          "text": "oldestEventAgeMs: oldestEventAt === null ? null : now - oldestEventAt,"
+        },
+        {
+          "line": 94,
+          "text": "newestEventAgeMs: newestEventAt === null ? null : now - newestEventAt,"
+        },
+        {
+          "line": 95,
+          "text": "oldestAcceptanceAgeMs:"
+        },
+        {
+          "line": 96,
+          "text": "oldestAcceptedAt === null ? null : now - oldestAcceptedAt,"
+        },
+        {
+          "line": 97,
+          "text": "newestAcceptanceAgeMs:"
+        },
+        {
+          "line": 98,
+          "text": "newestAcceptedAt === null ? null : now - newestAcceptedAt,"
+        },
+        {
+          "line": 99,
+          "text": "episodes,"
+        },
+        {
+          "line": 103,
+          "text": "const report = {"
+        },
+        {
+          "line": 105,
+          "text": "event: \"alert_evidence_review\","
+        },
+        {
+          "line": 107,
+          "text": "scope: \"provided_artifacts_only\","
+        },
+        {
+          "line": 109,
+          "text": "serviceHealth: \"not_assessed\","
+        },
+        {
+          "line": 110,
+          "text": "humanDelivery: \"not_assessed\","
+        },
+        {
+          "line": 112,
+          "text": "maxAgeMs,"
+        },
+        {
+          "line": 114,
+          "text": "evidenceId: evidence.evidenceId,"
+        },
+        {
+          "line": 115,
+          "text": "stats: {"
+        },
+        {
+          "line": 116,
+          "text": "artifacts: evidence.artifactIds.length,"
+        },
+        {
+          "line": 117,
+          "text": "batches: evidence.batches.length,"
+        },
+        {
+          "line": 118,
+          "text": "receipts: evidence.receipts.length,"
+        },
+        {
+          "line": 119,
+          "text": "events: evidence.events,"
+        },
+        {
+          "line": 120,
+          "text": "duplicates: evidence.duplicates,"
+        },
+        {
+          "line": 121,
+          "text": "inputBytes: evidence.totalBytes,"
+        },
+        {
+          "line": 122,
+          "text": "missingReceipts: receipts.missingReceipts,"
+        },
+        {
+          "line": 123,
+          "text": "orphanReceipts: receipts.orphanReceipts,"
+        },
+        {
+          "line": 124,
+          "text": "mismatchedReceipts: receipts.mismatchedReceipts,"
+        },
+        {
+          "line": 125,
+          "text": "unambiguousReceiptBatches: receipts.unambiguousReceiptBatches,"
+        },
+        {
+          "line": 126,
+          "text": "unambiguousSignedEventClaims: receipts.unambiguousSignedEventClaims,"
+        },
+        {
+          "line": 129,
+          "text": "receiver: receipts.receiver,"
+        },
+        {
+          "line": 130,
+          "text": "findingTotals,"
+        },
+        {
+          "line": 131,
+          "text": "findings: findings.list(),"
+        },
+        {
+          "line": 132,
+          "text": "exitCode: (findingTotals.total > 0 ? 1 : 0) as 0 | 1,"
+        },
+        {
+          "line": 148,
+          "text": "evidence,"
+        },
+        {
+          "line": 149,
+          "text": "findings,"
+        },
+        {
+          "line": 150,
+          "text": "report: reviewAuthenticatedEvidence(trust, evidence, options, findings),"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-trace.ts",
+      "reason": "函数/方法/回调签名、参数和默认参数绑定不计生产功能。",
+      "fragments": [
+        {
+          "line": 30,
+          "text": "function sequenceSelected("
+        },
+        {
+          "line": 31,
+          "text": "sequence: number | null,"
+        },
+        {
+          "line": 46,
+          "text": "function eventSelected("
+        },
+        {
+          "line": 63,
+          "text": "function findingSelected("
+        },
+        {
+          "line": 64,
+          "text": "finding: EvidenceFinding,"
+        },
+        {
+          "line": 79,
+          "text": "function pageRelatedFindings("
+        },
+        {
+          "line": 80,
+          "text": "facts: readonly EvidenceTraceFact[],"
+        },
+        {
+          "line": 81,
+          "text": "context: ReturnType<typeof buildEvidenceTraceContext>,"
+        },
+        {
+          "line": 82,
+          "text": "allFindings: readonly EvidenceFinding[],"
+        },
+        {
+          "line": 119,
+          "text": "export function traceAlertEvidence("
+        },
+        {
+          "line": 122,
+          "text": "queryValue: unknown,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-trace.ts",
+      "reason": "纯 DTO/元数据/返回对象装配（连同其中内联投影）不计生产功能。",
+      "fragments": [
+        {
+          "line": 113,
+          "text": "return { totals: selected.summary(), findings: selected.list() };"
+        },
+        {
+          "line": 157,
+          "text": "kind: \"finding\","
+        },
+        {
+          "line": 158,
+          "text": "rowId: handoffHash([\"no-wave-alert-evidence-finding-v1\", finding]),"
+        },
+        {
+          "line": 159,
+          "text": "finding,"
+        },
+        {
+          "line": 176,
+          "text": "event: \"alert_evidence_trace\","
+        },
+        {
+          "line": 178,
+          "text": "assessment: \"filtered_navigation_not_service_progress\","
+        },
+        {
+          "line": 181,
+          "text": "cursorAuthentication: \"not_an_authorization_token\","
+        },
+        {
+          "line": 182,
+          "text": "evidenceId: analysis.evidence.evidenceId,"
+        },
+        {
+          "line": 183,
+          "text": "queryFingerprint: fingerprint,"
+        },
+        {
+          "line": 185,
+          "text": "selection,"
+        },
+        {
+          "line": 189,
+          "text": "relatedFindings: related,"
+        },
+        {
+          "line": 190,
+          "text": "globalReview: analysis.report,"
+        },
+        {
+          "line": 191,
+          "text": "exitCode: analysis.report.exitCode,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence.ts",
+      "reason": "薄错误类型及固定名称接线不计生产功能。",
+      "fragments": [
+        {
+          "line": 23,
+          "text": "export class AlertEvidenceFault extends Error {"
+        },
+        {
+          "line": 25,
+          "text": "constructor(code: AlertEvidenceFaultCode) {"
+        },
+        {
+          "line": 27,
+          "text": "this.name = \"AlertEvidenceFault\";"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence.ts",
+      "reason": "静态帮助/容量配置不计生产功能。",
+      "fragments": [
+        {
+          "line": 31,
+          "text": "export const EVIDENCE_LIMITS = Object.freeze({"
+        },
+        {
+          "line": 32,
+          "text": "artifacts: 256,"
+        },
+        {
+          "line": 33,
+          "text": "artifactBytes: 256 * 1024,"
+        },
+        {
+          "line": 34,
+          "text": "totalBytes: 8 * 1024 * 1024,"
+        },
+        {
+          "line": 35,
+          "text": "events: 8192,"
+        },
+        {
+          "line": 36,
+          "text": "trustBytes: 16 * 1024,"
+        },
+        {
+          "line": 37,
+          "text": "manifestBytes: 128 * 1024,"
+        },
+        {
+          "line": 38,
+          "text": "requirementsBytes: 32 * 1024,"
+        },
+        {
+          "line": 39,
+          "text": "checkpoints: 64,"
+        },
+        {
+          "line": 40,
+          "text": "findings: 128,"
+        },
+        {
+          "line": 41,
+          "text": "defaultAgeMs: 86_400_000,"
+        },
+        {
+          "line": 42,
+          "text": "maximumAgeMs: 30 * 86_400_000,"
+        },
+        {
+          "line": 43,
+          "text": "outputBytes: 512 * 1024,"
+        },
+        {
+          "line": 62,
+          "text": "export const EVIDENCE_FINDING_CODES = ["
+        },
+        {
+          "line": 63,
+          "text": "\"source_not_provided\","
+        },
+        {
+          "line": 65,
+          "text": "\"sequence_gap\","
+        },
+        {
+          "line": 66,
+          "text": "\"sequence_fork\","
+        },
+        {
+          "line": 67,
+          "text": "\"predecessor_mismatch\","
+        },
+        {
+          "line": 68,
+          "text": "\"source_revision_rollback\","
+        },
+        {
+          "line": 69,
+          "text": "\"source_time_rollback\","
+        },
+        {
+          "line": 70,
+          "text": "\"preparation_time_rollback\","
+        },
+        {
+          "line": 71,
+          "text": "\"preparation_before_previous_acceptance\","
+        },
+        {
+          "line": 72,
+          "text": "\"monitor_configuration_changed\","
+        },
+        {
+          "line": 73,
+          "text": "\"event_replayed\","
+        },
+        {
+          "line": 74,
+          "text": "\"episode_origin_unproven\","
+        },
+        {
+          "line": 75,
+          "text": "\"episode_start_while_open\","
+        },
+        {
+          "line": 76,
+          "text": "\"episode_after_resolution\","
+        },
+        {
+          "line": 77,
+          "text": "\"episode_origin_changed\","
+        },
+        {
+          "line": 78,
+          "text": "\"episode_overlaps_resolution\","
+        },
+        {
+          "line": 79,
+          "text": "\"receipt_missing\","
+        },
+        {
+          "line": 80,
+          "text": "\"receipt_orphan\","
+        },
+        {
+          "line": 81,
+          "text": "\"receipt_equivocation\","
+        },
+        {
+          "line": 82,
+          "text": "\"receipt_batch_mismatch\","
+        },
+        {
+          "line": 83,
+          "text": "\"receipt_revision_impossible\","
+        },
+        {
+          "line": 85,
+          "text": "\"receipt_sequence_rollback\","
+        },
+        {
+          "line": 86,
+          "text": "\"receipt_time_rollback\","
+        },
+        {
+          "line": 87,
+          "text": "\"inbox_revision_reused\","
+        },
+        {
+          "line": 88,
+          "text": "\"inbox_time_rollback\","
+        },
+        {
+          "line": 89,
+          "text": "\"evidence_stale\","
+        },
+        {
+          "line": 92,
+          "text": "\"stream_tip_rollback\","
+        },
+        {
+          "line": 93,
+          "text": "\"stream_tip_replaced\","
+        },
+        {
+          "line": 94,
+          "text": "\"receiver_revision_rollback\","
+        },
+        {
+          "line": 95,
+          "text": "\"comparison_baseline_empty\","
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence.ts",
+      "reason": "函数/方法/回调签名、参数和默认参数绑定不计生产功能。",
+      "fragments": [
+        {
+          "line": 124,
+          "text": "add("
+        },
+        {
+          "line": 125,
+          "text": "code: EvidenceFindingCode,"
+        },
+        {
+          "line": 126,
+          "text": "severity: EvidenceFinding[\"severity\"],"
+        },
+        {
+          "line": 127,
+          "text": "scope: EvidenceScope = {},"
+        },
+        {
+          "line": 157,
+          "text": "all(): EvidenceFinding[] {"
+        },
+        {
+          "line": 162,
+          "text": "list(): EvidenceFinding[] {"
+        },
+        {
+          "line": 165,
+          "text": "summary() {"
+        },
+        {
+          "line": 179,
+          "text": "export function evidenceOptions(options: EvidenceOptions): {"
+        },
+        {
+          "line": 194,
+          "text": "export function evidenceBatchScope(batch: HandoffBatch): EvidenceScope {"
+        },
+        {
+          "line": 201,
+          "text": "export function evidenceReceiptScope(receipt: HandoffReceipt): EvidenceScope {"
+        },
+        {
+          "line": 208,
+          "text": "export function evidenceReceiptId(receipt: HandoffReceipt): string {"
+        },
+        {
+          "line": 211,
+          "text": "export function evidenceBatchOrder(a: HandoffBatch, b: HandoffBatch): number {"
+        },
+        {
+          "line": 215,
+          "text": "export function evidenceReceiptOrder("
+        },
+        {
+          "line": 216,
+          "text": "a: HandoffReceipt,"
+        },
+        {
+          "line": 217,
+          "text": "b: HandoffReceipt,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence.ts",
+      "reason": "纯 DTO/元数据/返回对象装配（连同其中内联投影）不计生产功能。",
+      "fragments": [
+        {
+          "line": 129,
+          "text": "const value: EvidenceFinding = {"
+        },
+        {
+          "line": 130,
+          "text": "code,"
+        },
+        {
+          "line": 131,
+          "text": "severity,"
+        },
+        {
+          "line": 132,
+          "text": "streamId: scope.streamId ?? null,"
+        },
+        {
+          "line": 133,
+          "text": "sequence: scope.sequence ?? null,"
+        },
+        {
+          "line": 134,
+          "text": "batchId: scope.batchId ?? null,"
+        },
+        {
+          "line": 135,
+          "text": "relatedId: scope.relatedId ?? null,"
+        },
+        {
+          "line": 136,
+          "text": "eventId: scope.eventId ?? null,"
+        },
+        {
+          "line": 153,
+          "text": "this.samples.splice(low, 0, { key, value });"
+        },
+        {
+          "line": 160,
+          "text": ".map(([, value]) => ({ ...value }));"
+        },
+        {
+          "line": 163,
+          "text": "return this.samples.map(({ value }) => ({ ...value }));"
+        },
+        {
+          "line": 167,
+          "text": "total: this.seen.size,"
+        },
+        {
+          "line": 168,
+          "text": "conflicts: this.conflicts,"
+        },
+        {
+          "line": 169,
+          "text": "gaps: this.gaps,"
+        },
+        {
+          "line": 170,
+          "text": "warnings: this.warnings,"
+        },
+        {
+          "line": 171,
+          "text": "sampled: this.samples.length,"
+        },
+        {
+          "line": 172,
+          "text": "truncated: this.seen.size > this.samples.length,"
+        },
+        {
+          "line": 173,
+          "text": "byCode: [...this.counts]"
+        },
+        {
+          "line": 175,
+          "text": ".map(([code, count]) => ({ code, count })),"
+        },
+        {
+          "line": 192,
+          "text": "return { now: options.now, maxAgeMs };"
+        },
+        {
+          "line": 203,
+          "text": "streamId: receipt.streamId,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/alert-evidence-command.ts",
+      "reason": "静态帮助/容量配置不计生产功能。",
+      "fragments": [
+        {
+          "line": 14,
+          "text": "const HELP = `有限离线历史证据审阅：只使用独立分发的公钥，不联网、不加载 .env、不访问业务数据库。"
+        },
+        {
+          "line": 16,
+          "text": "ops:evidence review --trust <public-trust.json> --manifest <manifest.json> [--max-age-ms <1000..2592000000>]"
+        },
+        {
+          "line": 17,
+          "text": "ops:evidence compare --trust <public-trust.json> --before <before.json> --after <after.json> [--max-age-ms <1000..2592000000>]"
+        },
+        {
+          "line": 18,
+          "text": "ops:evidence check --trust <public-trust.json> --manifest <manifest.json> --requirements <requirements.json> [--max-age-ms <1000..2592000000>]"
+        },
+        {
+          "line": 19,
+          "text": "ops:evidence trace --trust <public-trust.json> --manifest <manifest.json> [--view events|findings] [--limit <1..128>] [--after <navigation-token>]"
+        },
+        {
+          "line": 20,
+          "text": "trace 可选 --stream、--batch-id、--event-id、--from-sequence、--through-sequence；events 另可用 --target、--rule、--transition、--from-at、--through-at；findings 另可用 --code、--severity。"
+        },
+        {
+          "line": 22,
+          "text": "清单只列本目录下相对 JSON 文件、batch/receipt 类型及原始字节 SHA256；不发现或信任清单中的公钥。"
+        },
+        {
+          "line": 23,
+          "text": "review 检查跨批次链、告警 episode 和多来源回执顺序；compare 同时审阅两侧及其并集，删除证据不是进展。"
+        },
+        {
+          "line": 24,
+          "text": "check 核验独立指定的已知批次/回执要求；要求文件不由清单选择，本身也不凭 hash 建立信任。"
+        },
+        {
+          "line": 25,
+          "text": "trace 分页定位已验证事件/完整发现，带已提供相邻事实与回执上下文；任何过滤都保留全量审阅及退出码。"
+        },
+        {
+          "line": 26,
+          "text": "导航 token 不签名、不授予权限，绑定确切证据/查询/结果；数据或查询改变须从第一页重读。"
+        },
+        {
+          "line": 27,
+          "text": "缺失前缀/回执和相互矛盾分开计数；历史证据不能证明不存在新尾部、当前健康、物理持久性或通知到人。"
+        },
+        {
+          "line": 28,
+          "text": "只读：不确认 monitor、不消费 inbox、不签发回执、不写文件或抢锁；多文件证据不是原子快照。"
+        },
+        {
+          "line": 29,
+          "text": "默认年龄预算 24 h，最多 30 d，仅用于提示历史证据过旧，不修改任何告警规则或时间。"
+        },
+        {
+          "line": 30,
+          "text": "每侧最多 256 个产物、8 MiB、8192 个事件；单产物 256 KiB。每个审阅/回退视图最多展示 128 条 findings 样本，总数完整保留。"
+        },
+        {
+          "line": 31,
+          "text": "配置/清单/产物须位于自有 0700 本地 POSIX 目录，文件私有、单 hardlink、无 symlink/FIFO。"
+        },
+        {
+          "line": 32,
+          "text": "退出码：0 无发现；1 有缺口/冲突/过旧或证据集回退；2 参数/信任/清单/要求错误；3 文件/签名/完整性/输出失败。"
+        },
+        {
+          "line": 33,
+          "text": "规程：docs/operations/alert-evidence.md"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/alert-evidence-command.ts",
+      "reason": "函数/方法/回调签名、参数和默认参数绑定不计生产功能。",
+      "fragments": [
+        {
+          "line": 51,
+          "text": "function argumentsFor(args: readonly string[]): Command | null {"
+        },
+        {
+          "line": 129,
+          "text": "function traceArguments("
+        },
+        {
+          "line": 130,
+          "text": "fields: ReadonlyMap<string, string>,"
+        },
+        {
+          "line": 132,
+          "text": "const number = (name: string) => {"
+        },
+        {
+          "line": 176,
+          "text": "export async function runAlertEvidenceCommand("
+        },
+        {
+          "line": 249,
+          "text": "export async function alertEvidenceMain("
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/alert-evidence-command.ts",
+      "reason": "纯 DTO/元数据/返回对象装配（连同其中内联投影）不计生产功能。",
+      "fragments": [
+        {
+          "line": 116,
+          "text": "kind,"
+        },
+        {
+          "line": 117,
+          "text": "trace: kind === \"trace\" ? traceArguments(fields) : {},"
+        },
+        {
+          "line": 118,
+          "text": "requirements: fields.has(\"--requirements\")"
+        },
+        {
+          "line": 119,
+          "text": "? resolve(fields.get(\"--requirements\")!)"
+        },
+        {
+          "line": 120,
+          "text": ": null,"
+        },
+        {
+          "line": 121,
+          "text": "trust: resolve(fields.get(\"--trust\")!),"
+        },
+        {
+          "line": 122,
+          "text": "maxAgeMs: Number(age),"
+        },
+        {
+          "line": 123,
+          "text": "manifests: (kind === \"compare\""
+        },
+        {
+          "line": 124,
+          "text": "? [\"--before\", \"--after\"]"
+        },
+        {
+          "line": 125,
+          "text": ": [\"--manifest\"]"
+        },
+        {
+          "line": 126,
+          "text": ").map((key) => resolve(fields.get(key)!)),"
+        },
+        {
+          "line": 143,
+          "text": "view: fields.get(\"--view\"),"
+        },
+        {
+          "line": 144,
+          "text": "streamId: fields.get(\"--stream\"),"
+        },
+        {
+          "line": 145,
+          "text": "targetId: fields.get(\"--target\"),"
+        },
+        {
+          "line": 148,
+          "text": "rule: fields.get(\"--rule\"),"
+        },
+        {
+          "line": 149,
+          "text": "transition: fields.get(\"--transition\"),"
+        },
+        {
+          "line": 150,
+          "text": "code: fields.get(\"--code\"),"
+        },
+        {
+          "line": 151,
+          "text": "severity: fields.get(\"--severity\"),"
+        },
+        {
+          "line": 152,
+          "text": "after: fields.get(\"--after\"),"
+        },
+        {
+          "line": 153,
+          "text": "limit: number(\"--limit\"),"
+        },
+        {
+          "line": 154,
+          "text": "fromAt: number(\"--from-at\"),"
+        },
+        {
+          "line": 155,
+          "text": "throughAt: number(\"--through-at\"),"
+        },
+        {
+          "line": 156,
+          "text": "fromSequence: number(\"--from-sequence\"),"
+        },
+        {
+          "line": 157,
+          "text": "throughSequence: number(\"--through-sequence\"),"
+        },
+        {
+          "line": 194,
+          "text": "const loaded = loadAlertEvidenceFiles(command.trust, command.manifests, {"
+        },
+        {
+          "line": 195,
+          "text": "signal: dependencies.signal,"
+        },
+        {
+          "line": 196,
+          "text": "requirementsPath: command.requirements ?? undefined,"
+        },
+        {
+          "line": 198,
+          "text": "const options = { now, maxAgeMs: command.maxAgeMs };"
+        },
+        {
+          "line": 231,
+          "text": "await emit(stdout, { ...report, snapshot: loaded.snapshot });"
+        },
+        {
+          "line": 236,
+          "text": "await emit(stderr, { version: 1, event: \"alert_evidence_error\", code });"
+        },
+        {
+          "line": 257,
+          "text": "return await runAlertEvidenceCommand(args, { signal: controller.signal });"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/alert-evidence-config.ts",
+      "reason": "函数/方法/回调签名、参数和默认参数绑定不计生产功能。",
+      "fragments": [
+        {
+          "line": 13,
+          "text": "export function parseAlertEvidenceTrust(value: unknown): AlertEvidenceTrust {"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/alert-evidence-config.ts",
+      "reason": "复用 closed-object 边界的字段表及参数接线不重复计入生产功能。",
+      "fragments": [
+        {
+          "line": 17,
+          "text": "[\"version\", \"role\", \"profiles\"],"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/alert-evidence-config.ts",
+      "reason": "纯 DTO/元数据/返回对象装配（连同其中内联投影）不计生产功能。",
+      "fragments": [
+        {
+          "line": 35,
+          "text": ".export({ type: \"spki\", format: \"der\" })"
+        },
+        {
+          "line": 56,
+          "text": "profiles,"
+        },
+        {
+          "line": 57,
+          "text": "byStream: new Map(profiles.map((profile) => [profile.streamId, profile])),"
+        },
+        {
+          "line": 59,
+          "text": "fingerprint: handoffHash(["
+        },
+        {
+          "line": 60,
+          "text": "\"no-wave-alert-evidence-trust-v1\","
+        },
+        {
+          "line": 61,
+          "text": "profiles.map((profile) => profile.fingerprint),"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/alert-evidence-file.ts",
+      "reason": "函数/方法/回调签名、参数和默认参数绑定不计生产功能。",
+      "fragments": [
+        {
+          "line": 19,
+          "text": "function bytesHash(bytes: Buffer): string {"
+        },
+        {
+          "line": 22,
+          "text": "function identityUnchanged(before: Stats, after: Stats): boolean {"
+        },
+        {
+          "line": 38,
+          "text": "export function readStableEvidenceFile("
+        },
+        {
+          "line": 62,
+          "text": "function decode(bytes: Buffer, code: AlertEvidenceFaultCode): unknown {"
+        },
+        {
+          "line": 69,
+          "text": "function cancelled(signal: AbortSignal | undefined): void {"
+        },
+        {
+          "line": 72,
+          "text": "function controlPath(value: string): string {"
+        },
+        {
+          "line": 90,
+          "text": "export function loadAlertEvidenceFiles("
+        },
+        {
+          "line": 91,
+          "text": "trustPathValue: string,"
+        },
+        {
+          "line": 92,
+          "text": "manifestPathValues: readonly string[],"
+        },
+        {
+          "line": 93,
+          "text": "dependencies: {"
+        },
+        {
+          "line": 124,
+          "text": "const read = (path: string, maximum: number) => {"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/alert-evidence-file.ts",
+      "reason": "纯 DTO/元数据/返回对象装配（连同其中内联投影）不计生产功能。",
+      "fragments": [
+        {
+          "line": 146,
+          "text": "const frame: Frame = { path, bytes, artifacts: [] };"
+        },
+        {
+          "line": 165,
+          "text": "frame.artifacts.push({"
+        },
+        {
+          "line": 166,
+          "text": "path: artifactPath,"
+        },
+        {
+          "line": 167,
+          "text": "sha256: digest,"
+        },
+        {
+          "line": 168,
+          "text": "length: artifact.length,"
+        },
+        {
+          "line": 170,
+          "text": "inputs.push({ kind: item.kind, bytes: artifact });"
+        },
+        {
+          "line": 173,
+          "text": "collections.push({ inputs, manifestId: bytesHash(bytes) });"
+        },
+        {
+          "line": 201,
+          "text": "collections,"
+        },
+        {
+          "line": 202,
+          "text": "requirements:"
+        },
+        {
+          "line": 203,
+          "text": "requirementsBytes === null"
+        },
+        {
+          "line": 205,
+          "text": ": decode(requirementsBytes, \"requirements_invalid\"),"
+        },
+        {
+          "line": 206,
+          "text": "snapshot: \"non_atomic_file_evidence\" as const,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/alert-evidence-manifest.ts",
+      "reason": "函数/方法/回调签名、参数和默认参数绑定不计生产功能。",
+      "fragments": [
+        {
+          "line": 17,
+          "text": "export function evidenceRelativeFile(value: unknown): string {"
+        },
+        {
+          "line": 31,
+          "text": "export function parseAlertEvidenceManifest("
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/alert-evidence-manifest.ts",
+      "reason": "复用 closed-object 边界的字段表及参数接线不重复计入生产功能。",
+      "fragments": [
+        {
+          "line": 37,
+          "text": "[\"version\", \"artifacts\"],"
+        },
+        {
+          "line": 49,
+          "text": "[\"kind\", \"file\", \"sha256\"],"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/alert-evidence-manifest.ts",
+      "reason": "纯 DTO/元数据/返回对象装配（连同其中内联投影）不计生产功能。",
+      "fragments": [
+        {
+          "line": 62,
+          "text": "artifacts.push({ kind: item.kind, file, sha256: item.sha256 });"
+        },
+        {
+          "line": 64,
+          "text": "return { version: 1, artifacts };"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/alert-evidence-command.ts",
+      "reason": "有限 CLI 为既有入口/输出边界的薄适配；本轮全部参数接线、分派和帮助均保守扣除，功能只计其实际应用/文件政策。",
+      "fragments": [
+        {
+          "line": 53,
+          "text": "const [kind, ...rest] = args;"
+        },
+        {
+          "line": 55,
+          "text": "(kind !== \"review\" &&"
+        },
+        {
+          "line": 56,
+          "text": "kind !== \"compare\" &&"
+        },
+        {
+          "line": 57,
+          "text": "kind !== \"check\" &&"
+        },
+        {
+          "line": 58,
+          "text": "kind !== \"trace\") ||"
+        },
+        {
+          "line": 59,
+          "text": "rest.length % 2 !== 0"
+        },
+        {
+          "line": 62,
+          "text": "const required ="
+        },
+        {
+          "line": 63,
+          "text": "kind === \"compare\""
+        },
+        {
+          "line": 64,
+          "text": "? [\"--trust\", \"--before\", \"--after\"]"
+        },
+        {
+          "line": 65,
+          "text": ": kind === \"check\""
+        },
+        {
+          "line": 66,
+          "text": "? [\"--trust\", \"--manifest\", \"--requirements\"]"
+        },
+        {
+          "line": 67,
+          "text": ": [\"--trust\", \"--manifest\"];"
+        },
+        {
+          "line": 68,
+          "text": "const allowed = ["
+        },
+        {
+          "line": 69,
+          "text": "...required,"
+        },
+        {
+          "line": 70,
+          "text": "\"--max-age-ms\","
+        },
+        {
+          "line": 71,
+          "text": "...(kind === \"trace\""
+        },
+        {
+          "line": 73,
+          "text": "\"--view\","
+        },
+        {
+          "line": 76,
+          "text": "\"--event-id\","
+        },
+        {
+          "line": 77,
+          "text": "\"--target\","
+        },
+        {
+          "line": 78,
+          "text": "\"--rule\","
+        },
+        {
+          "line": 79,
+          "text": "\"--transition\","
+        },
+        {
+          "line": 80,
+          "text": "\"--from-at\","
+        },
+        {
+          "line": 81,
+          "text": "\"--through-at\","
+        },
+        {
+          "line": 82,
+          "text": "\"--from-sequence\","
+        },
+        {
+          "line": 83,
+          "text": "\"--through-sequence\","
+        },
+        {
+          "line": 84,
+          "text": "\"--code\","
+        },
+        {
+          "line": 85,
+          "text": "\"--severity\","
+        },
+        {
+          "line": 108,
+          "text": "const age ="
+        },
+        {
+          "line": 109,
+          "text": "fields.get(\"--max-age-ms\") ?? String(EVIDENCE_LIMITS.defaultAgeMs);"
+        },
+        {
+          "line": 111,
+          "text": "!/^[1-9][0-9]{3,9}$/.test(age) ||"
+        },
+        {
+          "line": 112,
+          "text": "Number(age) > EVIDENCE_LIMITS.maximumAgeMs"
+        },
+        {
+          "line": 133,
+          "text": "const value = fields.get(name);"
+        },
+        {
+          "line": 136,
+          "text": "!/^(0|[1-9][0-9]{0,15})$/.test(value) ||"
+        },
+        {
+          "line": 137,
+          "text": "!Number.isSafeInteger(Number(value))"
+        },
+        {
+          "line": 140,
+          "text": "return Number(value);"
+        },
+        {
+          "line": 146,
+          "text": "batchId: fields.get(\"--batch-id\"),"
+        },
+        {
+          "line": 147,
+          "text": "eventId: fields.get(\"--event-id\"),"
+        },
+        {
+          "line": 161,
+          "text": "if (signal?.aborted) throw new AlertEvidenceFault(\"cancelled\");"
+        },
+        {
+          "line": 164,
+          "text": "const text = typeof value === \"string\" ? value : JSON.stringify(value) + \"\\n\";"
+        },
+        {
+          "line": 165,
+          "text": "if (Buffer.byteLength(text) > EVIDENCE_LIMITS.outputBytes)"
+        },
+        {
+          "line": 168,
+          "text": "await write(text);"
+        },
+        {
+          "line": 170,
+          "text": "throw new AlertEvidenceFault(\"output_failed\");"
+        },
+        {
+          "line": 187,
+          "text": "const command = argumentsFor(args);"
+        },
+        {
+          "line": 192,
+          "text": "checkSignal(dependencies.signal);"
+        },
+        {
+          "line": 193,
+          "text": "const now = (dependencies.now ?? Date.now)();"
+        },
+        {
+          "line": 199,
+          "text": "const input = loaded.collections[0]!.inputs;"
+        },
+        {
+          "line": 200,
+          "text": "let report: { exitCode: 0 | 1 };"
+        },
+        {
+          "line": 201,
+          "text": "switch (command.kind) {"
+        },
+        {
+          "line": 202,
+          "text": "case \"review\":"
+        },
+        {
+          "line": 203,
+          "text": "report = reviewAlertEvidence(loaded.trust, input, options);"
+        },
+        {
+          "line": 205,
+          "text": "case \"compare\":"
+        },
+        {
+          "line": 206,
+          "text": "report = compareAlertEvidence("
+        },
+        {
+          "line": 207,
+          "text": "loaded.trust,"
+        },
+        {
+          "line": 208,
+          "text": "input,"
+        },
+        {
+          "line": 209,
+          "text": "loaded.collections[1]!.inputs,"
+        },
+        {
+          "line": 213,
+          "text": "case \"check\":"
+        },
+        {
+          "line": 214,
+          "text": "report = checkAlertEvidenceRequirements("
+        },
+        {
+          "line": 217,
+          "text": "loaded.requirements,"
+        },
+        {
+          "line": 221,
+          "text": "case \"trace\":"
+        },
+        {
+          "line": 222,
+          "text": "report = traceAlertEvidence("
+        },
+        {
+          "line": 225,
+          "text": "command.trace,"
+        },
+        {
+          "line": 234,
+          "text": "const code = error instanceof AlertEvidenceFault ? error.code : \"file_io\";"
+        },
+        {
+          "line": 240,
+          "text": "return code === \"arguments_invalid\" ||"
+        },
+        {
+          "line": 241,
+          "text": "code === \"trust_invalid\" ||"
+        },
+        {
+          "line": 242,
+          "text": "code === \"manifest_invalid\" ||"
+        },
+        {
+          "line": 243,
+          "text": "code === \"requirements_invalid\" ||"
+        },
+        {
+          "line": 244,
+          "text": "code === \"cursor_invalid\""
+        },
+        {
+          "line": 245,
+          "text": "? 2"
+        },
+        {
+          "line": 246,
+          "text": ": 3;"
+        },
+        {
+          "line": 265,
+          "text": "if (isMainModule(import.meta.url)) process.exit(await alertEvidenceMain());"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-query.ts",
+      "reason": "复用 closed-object 边界的静态查询字段表不计新功能。",
+      "fragments": [
+        {
+          "line": 65,
+          "text": "\"view\","
+        },
+        {
+          "line": 67,
+          "text": "\"targetId\","
+        },
+        {
+          "line": 69,
+          "text": "\"eventId\","
+        },
+        {
+          "line": 70,
+          "text": "\"rule\","
+        },
+        {
+          "line": 71,
+          "text": "\"transition\","
+        },
+        {
+          "line": 72,
+          "text": "\"fromAt\","
+        },
+        {
+          "line": 73,
+          "text": "\"throughAt\","
+        },
+        {
+          "line": 74,
+          "text": "\"fromSequence\","
+        },
+        {
+          "line": 75,
+          "text": "\"throughSequence\","
+        },
+        {
+          "line": 76,
+          "text": "\"code\","
+        },
+        {
+          "line": 77,
+          "text": "\"severity\","
+        },
+        {
+          "line": 78,
+          "text": "\"limit\","
+        },
+        {
+          "line": 79,
+          "text": "\"after\","
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-query.ts",
+      "reason": "新增选择条件的返回 DTO 不计新功能。",
+      "fragments": [
+        {
+          "line": 174,
+          "text": "batchId: batchId as string | null,"
+        },
+        {
+          "line": 175,
+          "text": "eventId: eventId as string | null,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-authentication.ts",
+      "reason": "调用/数组中的纯标识符或属性参数转发，不以多行接线计新功能。",
+      "fragments": [
+        {
+          "line": 63,
+          "text": "profile.senderKey,"
+        },
+        {
+          "line": 64,
+          "text": "profile.streamId,"
+        },
+        {
+          "line": 65,
+          "text": "profile.receiverId,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-context.ts",
+      "reason": "调用/数组中的纯标识符或属性参数转发，不以多行接线计新功能。",
+      "fragments": [
+        {
+          "line": 91,
+          "text": "sequenceKey,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-query.ts",
+      "reason": "调用/数组中的纯标识符或属性参数转发，不以多行接线计新功能。",
+      "fragments": [
+        {
+          "line": 137,
+          "text": "row.fromSequence,"
+        },
+        {
+          "line": 139,
+          "text": "Number.MAX_SAFE_INTEGER,"
+        },
+        {
+          "line": 142,
+          "text": "row.throughSequence,"
+        },
+        {
+          "line": 211,
+          "text": "evidenceId,"
+        },
+        {
+          "line": 212,
+          "text": "queryFingerprint,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-requirements.ts",
+      "reason": "调用/数组中的纯标识符或属性参数转发，不以多行接线计新功能。",
+      "fragments": [
+        {
+          "line": 254,
+          "text": "expected,"
+        },
+        {
+          "line": 256,
+          "text": "receipts,"
+        },
+        {
+          "line": 258,
+          "text": "trust,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-trace.ts",
+      "reason": "调用/数组中的纯标识符或属性参数转发，不以多行接线计新功能。",
+      "fragments": [
+        {
+          "line": 140,
+          "text": "analysis.evidence.evidenceId,"
+        },
+        {
+          "line": 163,
+          "text": "rows,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/alert-evidence-file.ts",
+      "reason": "调用/数组中的纯标识符或属性参数转发，不以多行接线计新功能。",
+      "fragments": [
+        {
+          "line": 119,
+          "text": "trustPath,"
+        },
+        {
+          "line": 155,
+          "text": "artifactPath,"
+        },
+        {
+          "line": 157,
+          "text": "EVIDENCE_LIMITS.artifactBytes,"
+        },
+        {
+          "line": 194,
+          "text": "requirementsBytes!,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence.ts",
+      "reason": "手工复核的类/入口外壳、既有验证器薄调用、纯 DTO 分派/转发不计新功能。",
+      "fragments": [
+        {
+          "line": 117,
+          "text": "export class EvidenceFindings {"
+        },
+        {
+          "line": 209,
+          "text": "return handoffHash(receipt);"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-review.ts",
+      "reason": "手工复核的类/入口外壳、既有验证器薄调用、纯 DTO 分派/转发不计新功能。",
+      "fragments": [
+        {
+          "line": 22,
+          "text": "const { now, maxAgeMs } = evidenceOptions(options);"
+        },
+        {
+          "line": 23,
+          "text": "const histories = reviewEvidenceHistory(trust, evidence, findings);"
+        },
+        {
+          "line": 24,
+          "text": "const receipts = reviewEvidenceReceipts(trust, evidence, findings);"
+        },
+        {
+          "line": 26,
+          "text": "const episodes = reviewEvidenceEpisodes(history, findings);"
+        },
+        {
+          "line": 144,
+          "text": "const { now } = evidenceOptions(options);"
+        },
+        {
+          "line": 145,
+          "text": "const evidence = authenticateAlertEvidence(trust, inputs, now);"
+        },
+        {
+          "line": 146,
+          "text": "const findings = new EvidenceFindings();"
+        },
+        {
+          "line": 158,
+          "text": "return analyzeAlertEvidence(trust, inputs, options).report;"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-trace.ts",
+      "reason": "手工复核的类/入口外壳、既有验证器薄调用、纯 DTO 分派/转发不计新功能。",
+      "fragments": [
+        {
+          "line": 125,
+          "text": "const normalized = evidenceOptions(options);"
+        },
+        {
+          "line": 126,
+          "text": "const query = parseEvidenceTraceQuery(queryValue, trust, normalized.now);"
+        },
+        {
+          "line": 127,
+          "text": "const analysis = analyzeAlertEvidence(trust, inputs, options);"
+        },
+        {
+          "line": 129,
+          "text": "const fingerprint = traceQueryFingerprint(query, normalized.maxAgeMs);"
+        },
+        {
+          "line": 130,
+          "text": "let entries: TraceEntry[],"
+        },
+        {
+          "line": 131,
+          "text": "matched: number,"
+        },
+        {
+          "line": 134,
+          "text": "let related: ReturnType<typeof pageRelatedFindings> | null = null;"
+        },
+        {
+          "line": 144,
+          "text": "const eventEntries = page.selected.map((fact) =>"
+        },
+        {
+          "line": 145,
+          "text": "describeEvidenceTraceFact(context, fact),"
+        },
+        {
+          "line": 147,
+          "text": "entries = eventEntries;"
+        },
+        {
+          "line": 148,
+          "text": "matched = page.matched;"
+        },
+        {
+          "line": 149,
+          "text": "continuation = page.continuation;"
+        },
+        {
+          "line": 150,
+          "text": "pageId = page.pageId;"
+        },
+        {
+          "line": 168,
+          "text": "entries = page.selected;"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/alert-evidence-file.ts",
+      "reason": "手工复核的类/入口外壳、既有验证器薄调用、纯 DTO 分派/转发不计新功能。",
+      "fragments": [
+        {
+          "line": 20,
+          "text": "return createHash(\"sha256\").update(bytes).digest(\"hex\");"
+        },
+        {
+          "line": 66,
+          "text": "throw new AlertEvidenceFault(code);"
+        },
+        {
+          "line": 74,
+          "text": "return privateOperationPath(value);"
+        },
+        {
+          "line": 123,
+          "text": "const reader = dependencies.read ?? readStableEvidenceFile;"
+        },
+        {
+          "line": 134,
+          "text": "const trust = parseAlertEvidenceTrust(decode(trustBytes, \"trust_invalid\"));"
+        },
+        {
+          "line": 143,
+          "text": "const manifest = parseAlertEvidenceManifest("
+        },
+        {
+          "line": 144,
+          "text": "decode(bytes, \"manifest_invalid\"),"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/alert-evidence-config.ts",
+      "reason": "手工复核的类/入口外壳、既有验证器薄调用、纯 DTO 分派/转发不计新功能。",
+      "fragments": [
+        {
+          "line": 29,
+          "text": ".map(parseHandoffVerificationConfig)"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-history.ts",
+      "reason": "独立 Node 类型擦除后与基线既有运行时片段等价，保守扣除而非改排版计数。",
+      "fragments": [
+        {
+          "line": 56,
+          "text": "const result: EvidenceStreamHistory[] = [];"
+        },
+        {
+          "line": 76,
+          "text": "const groups = new Map<number, HandoffBatch[]>();"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-receipts.ts",
+      "reason": "独立 Node 类型擦除后与基线既有运行时片段等价，保守扣除而非改排版计数。",
+      "fragments": [
+        {
+          "line": 109,
+          "text": "let group: HandoffReceipt[] = [];"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-trace.ts",
+      "reason": "独立 Node 类型擦除后与基线既有运行时片段等价，保守扣除而非改排版计数。",
+      "fragments": [
+        {
+          "line": 153,
+          "text": "const rows: FindingEntry[] = [];"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-receipts.ts",
+      "reason": "额外保守扣除：返回元数据、既有 JSON/验签薄调用、SPKI/base64 归一化和旧 inbox cursor 已有的通用 codec，不将仅换名的原语计作新功能。",
+      "fragments": [
+        {
+          "line": 208,
+          "text": "minimumReceivesClaimed: minimumReceives.toString(),"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-authentication.ts",
+      "reason": "额外保守扣除：返回元数据、既有 JSON/验签薄调用、SPKI/base64 归一化和旧 inbox cursor 已有的通用 codec，不将仅换名的原语计作新功能。",
+      "fragments": [
+        {
+          "line": 50,
+          "text": "const value = handoffJson(input.bytes, \"artifact_invalid\");"
+        },
+        {
+          "line": 78,
+          "text": "const receipt = parseHandoffReceipt(value, profile.receiverKey);"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/alert-evidence-config.ts",
+      "reason": "额外保守扣除：返回元数据、既有 JSON/验签薄调用、SPKI/base64 归一化和旧 inbox cursor 已有的通用 codec，不将仅换名的原语计作新功能。",
+      "fragments": [
+        {
+          "line": 33,
+          "text": "const receiverId = profiles[0]!.receiverId;"
+        },
+        {
+          "line": 34,
+          "text": "const receiverKey = profiles[0]!.receiverKey"
+        },
+        {
+          "line": 36,
+          "text": ".toString(\"base64\");"
+        },
+        {
+          "line": 40,
+          "text": "const senderKey = profile.senderKey"
+        },
+        {
+          "line": 42,
+          "text": ".toString(\"base64\");"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-query.ts",
+      "reason": "额外保守扣除：返回元数据、既有 JSON/验签薄调用、SPKI/base64 归一化和旧 inbox cursor 已有的通用 codec，不将仅换名的原语计作新功能。",
+      "fragments": [
+        {
+          "line": 167,
+          "text": "(typeof after !== \"string\" || after.length < 1 || after.length > 2048)"
+        },
+        {
+          "line": 218,
+          "text": "if (!/^[A-Za-z0-9_-]+$/.test(query.after))"
+        },
+        {
+          "line": 220,
+          "text": "const bytes = Buffer.from(query.after, \"base64url\");"
+        },
+        {
+          "line": 221,
+          "text": "if (bytes.toString(\"base64url\") !== query.after)"
+        },
+        {
+          "line": 254,
+          "text": "? Buffer.from("
+        },
+        {
+          "line": 262,
+          "text": ").toString(\"base64url\")"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence.ts",
+      "reason": "新增固定 finding code 表与关联 ID 的纯 DTO 装配不计功能；判断和索引本身另计。",
+      "fragments": [
+        {
+          "line": 84,
+          "text": "\"receipt_event_replayed\","
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-evidence-receipts.ts",
+      "reason": "新增固定 finding code 表与关联 ID 的纯 DTO 装配不计功能；判断和索引本身另计。",
+      "fragments": [
+        {
+          "line": 37,
+          "text": "...scope,"
+        },
+        {
+          "line": 38,
+          "text": "relatedId: evidenceReceiptId(previousTerminal),"
+        }
+      ]
+    }
+  ]
+}

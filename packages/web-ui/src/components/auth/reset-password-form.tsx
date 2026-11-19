@@ -1,3 +1,4 @@
+import { writingRecoveryBoundary } from "@/lib/writing-recovery-boundary.ts";
 import { Link } from "@/lib/framework/link.tsx";
 import { useState, type FormEvent } from "react";
 
@@ -16,6 +17,7 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
+  const [recoveryWarning, setRecoveryWarning] = useState<string | null>(null);
 
   // Checked here as well as at the API: a mismatch is the one mistake the
   // author can make that the server can only report after the fact, and by then
@@ -28,14 +30,14 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
     setBusy(true);
     setError("");
     try {
-      const response = await fetch("/api/auth/reset-password", {
+      const response = await writingRecoveryBoundary().runSessionChange(() => fetch("/api/auth/reset-password", {
         method: "POST",
         headers: { "content-type": "application/json", accept: "application/json" },
         credentials: "same-origin",
         cache: "no-store",
         // The token travels in the body, never in the path.
         body: JSON.stringify({ token, password }),
-      });
+      }), setRecoveryWarning);
       const payload: unknown = await response.json().catch(() => null);
       if (!response.ok) throw new Error(errorMessage(payload));
       setDone(true);
@@ -68,6 +70,7 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
         <p className="nw-ep" style={{ marginTop: 24 }}>
           请使用新密码重新登录。<strong>你此前登录的所有设备都已退出</strong>——重设密码会吊销这个账号的全部会话，这是找回账号的意义所在。
         </p>
+        {recoveryWarning ? <p className="nw-auth-error" role="alert">{recoveryWarning}</p> : null}
         <div className="nw-auth-switch">
           <Link className="nw-btn nw-pri" href="/sign-in">前往登录</Link>
         </div>
@@ -90,6 +93,7 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
         </label>
         {mismatch ? <p className="nw-auth-error" role="alert">两次输入的密码不一致。</p> : null}
         {error ? <p className="nw-auth-error" role="alert">{error}</p> : null}
+        {recoveryWarning ? <p className="nw-auth-error" role="alert">{recoveryWarning}</p> : null}
         <button className="nw-btn nw-pri" type="submit" disabled={busy || mismatch}>{busy ? "请稍候…" : "重设密码"}</button>
       </form>
       <div className="nw-auth-switch">

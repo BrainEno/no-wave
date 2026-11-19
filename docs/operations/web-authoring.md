@@ -4,6 +4,18 @@
 
 The authenticated writing desk is available at `/write`. It supports draft creation/saving, reopening work, editing published articles and publishing through the existing REST contract. The Lexical editor supports paragraph text, h2–h4 headings, quotes without attributions, flat ordered/unordered lists, inline marks, links, code blocks and approved image nodes.
 
+## Optional local writing recovery
+
+The writing desk now offers **default-off**, explicitly enabled local manuscript
+recovery. It caches bounded drafts in IndexedDB, never credentials or retry
+requests. Refreshing does not automatically restore, save or publish a work;
+previewing and copying selected fields is a person's decision. The cache is not
+encrypted, may be evicted by the browser, and is purged with old-tab invalidation
+around account-changing requests. A manual source-server comparison is read-only,
+not a merge or proof that an earlier save committed. See the
+[usage and failure guide](writing-recovery.md) and
+[ADR 0045](../architecture/decisions/0045-default-off-local-writing-recovery.md).
+
 ## Image storage and upload
 
 Uploads use an S3-compatible object store; the API never stores source image bytes in SQLite or PostgreSQL. Configure all four required server-only variables:
