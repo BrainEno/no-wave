@@ -6,8 +6,9 @@
 [ADR 0046](../architecture/decisions/0046-local-three-way-writing-merge.md)与
 [操作说明](../operations/writing-merge.md)。上一轮恢复功能的 807 行不计入本轮。
 
-**验收进行中**：本页明确区分已实跑、历史中间结果和待执行；最终精确提交的 CI/CodeQL、
-Ready 与 ordinary merge 事实在 PR 验收中另行记录。没有生产部署授权。
+本页记录功能边界、开发过程留痕与可重现审计。**最终精确提交、全部本地/CI/CodeQL
+结果和 Ready/ordinary merge 事实以 [PR #376 的验收记录](https://github.com/BrainEno/no-wave/pull/376)
+为准**；不把下面的开发子集、旧提交或环境不可用当作最终全量通过。没有生产部署授权。
 
 ## 行为、最小边界与复用
 
@@ -48,12 +49,21 @@ collection 模型/控制器/浏览器 helper、现有路由/SSR/cache/bundle 和
 - 集成新守恒模块时一次并行编辑丢了 import 和 coverage 类型，聚合出现 9 pass/34 fail；
   顺序恢复并完整复跑，不删除日志或放宽断言，后续 45/45 通过。
 - 初次完整根测试是 3146 项、2680 pass/1 fail/465 skip：失败明确来自新增文档引用的
-  本审阅文件尚未创建，不是产品运行断言。补齐实际审阅文件后须完整重跑，不把该次记绿。
+  本审阅文件尚未创建，不是产品运行断言。已补齐文件；后续全量重跑单独记录在 PR，
+  不把这一次失败记绿。
 - 严格语义初审剔除 422 行签名/默认状态/DTO/薄接线后旧范围只有约 752 行，未达 800；
   没有放宽排除或重复计数。补齐有实际价值的“未采用改动/来源完整对照”，先测试陈旧输出、
   下载文本与预览不符、零块取舍、格式/根属性与歧义，再接入只读结果面板。
 - 影响检查首个 fixture 使用既有合同不允许的 rtl，在实现前即正确被拒；改为允许的 ltr
   根属性差异后四项均在拒绝 scaffold 上 RED，再真实实现 GREEN，未放松生产合同。
+- 影响面板的新增浏览器断言曾在未确认未加密风险前期望下载按钮可用，10 pass/1 fail。
+  生产拦截正确；测试现在先断言 disabled、明确勾选，再验证筛选不撤销取舍和可用下载，
+  保留全部原断言，相关 11 项重新通过，手机 axe 也展开影响候选。
+- 完整四分片首次第 1 分片 70 项通过，但新文件改变了文件级分片，旧通知同步用例在
+  第 2 分片耗尽共享临时栈的 80 次注册预算，真实返回 429。终止不可恢复的该次运行，
+  后续分片未执行，不把局部结果当全套。仅把 `notification-sync.spec.ts` 改用既有
+  `article-view-stack` 每用例私有真实 SQLite/API/Web（仍继承 CSP 审计）；不改断言、
+  请求语义、生产/fixture 限额或分片配置。该文件独立 12/12 通过后，再从完整入口重新验收。
 - 浏览器使用真实本机文件输入与下载：匿名/离线、私密字串不持久化/不上传、链接和图片
   不请求、坏 UTF-8、转义重复字段、超限 admission、晚到原生 FileReader、计划预览不自动
   应用、换来源/选择撤销结果、重复块、分页/焦点、手机/axe、pagehide/bfcache 与组合超限。
@@ -63,13 +73,23 @@ collection 模型/控制器/浏览器 helper、现有路由/SSR/cache/bundle 和
 工具链 Node 24.22.3 / pnpm 10.20.0；证据日志留在忽略的
 `verification/writing-merge/`，不提交截图、大日志、运行依赖或数据库。子集重叠不相加。
 
-- frozen install、前一版生产 build、完整 lint/typecheck 及独立字体离线/配方检查已实跑通过。
+- 开发期间 frozen install、生产 build、完整 lint/typecheck 及字体离线/配方检查已实跑通过。
   字体仍 2887 faces / 35076184 bytes，本轮无需重新生成，也未修改字体来源/配方或二进制。
-- 扩展前模型 45/45、浏览器 11/11 通过；增加影响面板后的单元子集、全量根/Web/浏览器、
-  routes/publish/格式/安全和最终精确源码门禁仍待最后复跑与记录。
+- 增加影响面板后的七模型子集 49/49；生产 Web 开发快照 300 项、282 pass/0 fail/18 skip；
+  相关浏览器 11/11；路由/匿名空壳、无 mail 的真实临时栈 publish/匿名 SSR、28 项文档索引
+  均有独立通过记录。它们有重叠，不相加；全量根/浏览器最终数字及冻结源码在 PR 验收表。
+- 本机 `pnpm test:all` 确实在 Docker 预检 `spawn docker ENOENT` exit 1，没有执行其 Docker/PG
+  聚合阶段。独立本地命令和 CI 不可包装成这个入口在本机成功。
 - 本机浏览器是忽略目录中的 Chromium **153.0.8010.0** 适配，不是 Playwright 1.65.0
   官方期望的 Chromium 158/v1254。未增加关闭 CORS/CSP/同源隔离的参数，不改版本化配置
-  或生产限流。官方浏览器、Docker/PostgreSQL 与容器门禁须由本 PR 精确源码 CI 独立验证。
+  或生产限流。完整 `pnpm test:e2e` 即使本机通过，也只能说明适配浏览器结果；官方浏览器、
+  Docker/PostgreSQL 与容器门禁须由本 PR 精确源码 CI 独立验证。
+- 依赖严格 audit JSON exit 1：1 low（开发依赖 `@babel/core` 的
+  [GHSA-4x5r-pxfx-6jf8](https://github.com/advisories/GHSA-4x5r-pxfx-6jf8)），0 moderate/high/critical；
+  high 阈值 exit 0，不声称零漏洞，不顺带升级无关编译工具链。
+- 当前 code-scanning 全告警清单与 main 分支保护 API 均返回 403，不能声称完整告警库存或
+  保护配置已审阅。最终 workflow/job/step/check/annotation/review/blocker 直接从 GitHub
+  可读接口核对，不用 CodeQL 成功冒充零告警，也不虚构不可读日志里的 PostgreSQL 精确数量。
 
 ## 独立有效行审计
 
