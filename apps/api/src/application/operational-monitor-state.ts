@@ -1,5 +1,6 @@
 import {
   MonitorFault,
+  MONITOR_RULES,
   MONITOR_SOURCE_RESULTS,
   monitorFields,
   monitorRulesFor,
@@ -227,7 +228,9 @@ function targetState(value: unknown, config: MonitorConfig, index: number, maxim
   };
 }
 
-function eventState(value: unknown, config: MonitorConfig, maximum: number, revision: number): MonitorEvent {
+/** Shared closed event boundary for the monitor journal and signed handoff.
+ * Target membership/role remain the monitor configuration's responsibility. */
+export function parseMonitorEvent(value: unknown, maximum: number, revision: number): MonitorEvent {
   const row = monitorFields(
     value,
     ["id", "revision", "targetId", "rule", "severity", "transition", "at", "firingSince", "reason", "value"],
@@ -236,8 +239,8 @@ function eventState(value: unknown, config: MonitorConfig, maximum: number, revi
   if (typeof row.id !== "string" || !HASH.test(row.id)) invalid();
   const eventRevision = integer(row.revision);
   if (eventRevision < 1 || eventRevision > revision) invalid();
-  const target = config.targets.find((target) => target.id === row.targetId);
-  if (!target || !monitorRulesFor(target.role).includes(row.rule as MonitorRuleId)) invalid();
+  if (typeof row.targetId !== "string" || !/^[a-z][a-z0-9-]{0,47}$/.test(row.targetId)) invalid();
+  if (!MONITOR_RULES.includes(row.rule as MonitorRuleId)) invalid();
   const rule = row.rule as MonitorRuleId;
   if (row.severity !== monitorSeverity(rule) || !["firing", "resolved", "reminder"].includes(String(row.transition)))
     invalid();
@@ -258,10 +261,33 @@ function eventState(value: unknown, config: MonitorConfig, maximum: number, revi
       row.value > Number.MAX_SAFE_INTEGER)
   )
     invalid();
+  const known = row.reason === "breached" || row.reason === "within_threshold";
+  if (known !== (row.value !== null) || (row.transition === "resolved") !== (row.reason === "within_threshold")) invalid();
+  if (row.transition === "firing" && firingSince !== at) invalid();
+  if (!known) {
+    if (rule === "target_unavailable") invalid();
+    const reason = row.reason as MonitorReason;
+    if (rule === "http_5xx") {
+      if (!["source_unavailable", "counter_warmup", "counter_reset", "insufficient_traffic"].includes(reason)) invalid();
+    } else if (rule === "mail_delivery_failures") {
+      if (!["source_unavailable", "counter_warmup", "counter_reset"].includes(reason)) invalid();
+    } else if (rule === "notification_backlog" || rule === "notification_dead_letters") {
+      if (reason !== "source_unavailable" && reason !== "telemetry_unavailable") invalid();
+    } else if (reason !== "source_unavailable") invalid();
+  }
+  if (row.value !== null) {
+    const value = row.value as number;
+    if (["target_unavailable", "service_not_ready", "database_unavailable", "notification_telemetry_unavailable"].includes(rule) &&
+        value !== (row.reason === "breached" ? 1 : 0)) invalid();
+    if (["notification_dead_letters", "mail_delivery_failures"].includes(rule) && !Number.isSafeInteger(value)) invalid();
+    if (rule === "notification_dead_letters" && (row.reason === "breached") !== (value > 0)) invalid();
+    if (rule === "mail_delivery_failures" && row.reason === "breached" && value < 1) invalid();
+    if (rule === "http_5xx" && (value > 1 || row.reason === "breached" && value === 0)) invalid();
+  }
   return {
     id: row.id,
     revision: eventRevision,
-    targetId: target.id,
+    targetId: row.targetId,
     rule,
     severity: monitorSeverity(rule),
     transition: row.transition as MonitorEvent["transition"],
@@ -308,7 +334,12 @@ export function parseMonitorState(value: unknown, config: MonitorConfig): Monito
   )
     invalid();
   const targets = row.targets.map((value, index) => targetState(value, config, index, lastEvaluatedAt ?? 0));
-  const events = row.events.map((value) => eventState(value, config, lastEvaluatedAt ?? 0, revision));
+  const events = row.events.map((value) => {
+    const event = parseMonitorEvent(value, lastEvaluatedAt ?? 0, revision);
+    const target = config.targets.find((target) => target.id === event.targetId);
+    if (!target || !monitorRulesFor(target.role).includes(event.rule)) invalid();
+    return event;
+  });
   if (
     new Set(events.map((event) => event.id)).size !== events.length ||
     events.some((event) => event.id === row.acknowledgedThrough)

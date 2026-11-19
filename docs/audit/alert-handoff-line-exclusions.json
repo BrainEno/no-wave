@@ -1,0 +1,2683 @@
+{
+  "base": "1463bfcd727aabe6ded8cf90e80cde5815fca1b0",
+  "rules": [
+    {
+      "file": "apps/api/src/application/alert-handoff-inbox.ts",
+      "reason": "局部错误抛出转发，不重复计算。",
+      "fragments": [
+        {
+          "line": 48,
+          "text": "throw new HandoffFault(\"state_invalid\");"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-inbox.ts",
+      "reason": "函数/方法签名、类型参数、默认参数与参数接线不算生产功能。",
+      "fragments": [
+        {
+          "line": 50,
+          "text": "function entryId("
+        },
+        {
+          "line": 51,
+          "text": "receiver: string,"
+        },
+        {
+          "line": 52,
+          "text": "ordinal: number,"
+        },
+        {
+          "line": 53,
+          "text": "stream: string,"
+        },
+        {
+          "line": 54,
+          "text": "sequence: number,"
+        },
+        {
+          "line": 55,
+          "text": "batch: string,"
+        },
+        {
+          "line": 60,
+          "text": "function empty(config: HandoffInboxConfig): HandoffInboxState {"
+        },
+        {
+          "line": 80,
+          "text": "function parseCursor("
+        },
+        {
+          "line": 82,
+          "text": "config: HandoffInboxConfig,"
+        },
+        {
+          "line": 83,
+          "text": "index: number,"
+        },
+        {
+          "line": 84,
+          "text": "revision: number,"
+        },
+        {
+          "line": 145,
+          "text": "export function parseHandoffInboxState("
+        },
+        {
+          "line": 198,
+          "text": "const entries: AlertInboxEntry[] = row.entries.map((value, index) => {"
+        },
+        {
+          "line": 353,
+          "text": "function assertTime(state: HandoffInboxState, now: number): void {"
+        },
+        {
+          "line": 367,
+          "text": "export function acceptAlertHandoff("
+        },
+        {
+          "line": 369,
+          "text": "previous: unknown | null,"
+        },
+        {
+          "line": 370,
+          "text": "batchValue: unknown,"
+        },
+        {
+          "line": 433,
+          "text": "export function consumeAlertInbox("
+        },
+        {
+          "line": 435,
+          "text": "previous: unknown,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-inbox.ts",
+      "reason": "静态容量/格式/默认值声明不算功能行。",
+      "fragments": [
+        {
+          "line": 16,
+          "text": "export const ALERT_INBOX_LIMIT = 1024;"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-inbox.ts",
+      "reason": "纯 DTO 属性转发或静态结果外壳，不算新策略。",
+      "fragments": [
+        {
+          "line": 63,
+          "text": "kind: \"alert_inbox\","
+        },
+        {
+          "line": 66,
+          "text": "lastMutationAt: null,"
+        },
+        {
+          "line": 67,
+          "text": "nextOrdinal: 1,"
+        },
+        {
+          "line": 68,
+          "text": "consumedThrough: null,"
+        },
+        {
+          "line": 71,
+          "text": "streamId: source.streamId,"
+        },
+        {
+          "line": 72,
+          "text": "sequence: 0,"
+        },
+        {
+          "line": 73,
+          "text": "batchId: null,"
+        },
+        {
+          "line": 74,
+          "text": "lastEventRevision: null,"
+        },
+        {
+          "line": 76,
+          "text": "receipt: null,"
+        },
+        {
+          "line": 294,
+          "text": "streamId: item.streamId,"
+        },
+        {
+          "line": 413,
+          "text": "streamId: batch.streamId,"
+        },
+        {
+          "line": 414,
+          "text": "sequence: batch.sequence,"
+        },
+        {
+          "line": 415,
+          "text": "batchId: batch.id,"
+        },
+        {
+          "line": 416,
+          "text": "monitorFingerprint: batch.monitorFingerprint,"
+        },
+        {
+          "line": 417,
+          "text": "acceptedAt: now,"
+        },
+        {
+          "line": 418,
+          "text": "inboxRevision: state.revision,"
+        },
+        {
+          "line": 430,
+          "text": "duplicate: false,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-inbox.ts",
+      "reason": "静态 schema/help/编码/常量参数片段，不算运行算法。",
+      "fragments": [
+        {
+          "line": 90,
+          "text": "\"streamId\","
+        },
+        {
+          "line": 91,
+          "text": "\"sequence\","
+        },
+        {
+          "line": 92,
+          "text": "\"batchId\","
+        },
+        {
+          "line": 93,
+          "text": "\"lastEventRevision\","
+        },
+        {
+          "line": 94,
+          "text": "\"lastEventAt\","
+        },
+        {
+          "line": 95,
+          "text": "\"receipt\","
+        },
+        {
+          "line": 153,
+          "text": "\"kind\","
+        },
+        {
+          "line": 156,
+          "text": "\"lastMutationAt\","
+        },
+        {
+          "line": 157,
+          "text": "\"nextOrdinal\","
+        },
+        {
+          "line": 158,
+          "text": "\"consumedThrough\","
+        },
+        {
+          "line": 159,
+          "text": "\"cursors\","
+        },
+        {
+          "line": 160,
+          "text": "\"entries\","
+        },
+        {
+          "line": 202,
+          "text": "\"id\","
+        },
+        {
+          "line": 203,
+          "text": "\"ordinal\","
+        },
+        {
+          "line": 207,
+          "text": "\"monitorFingerprint\","
+        },
+        {
+          "line": 208,
+          "text": "\"acceptedAt\","
+        },
+        {
+          "line": 209,
+          "text": "\"inboxRevision\","
+        },
+        {
+          "line": 210,
+          "text": "\"event\","
+        },
+        {
+          "line": 333,
+          "text": "0,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-inbox.ts",
+      "reason": "单独形参传递、局部绑定或 DTO 简写，不算独立功能。",
+      "fragments": [
+        {
+          "line": 137,
+          "text": "streamId,"
+        },
+        {
+          "line": 138,
+          "text": "sequence,"
+        },
+        {
+          "line": 139,
+          "text": "batchId,"
+        },
+        {
+          "line": 140,
+          "text": "lastEventRevision,"
+        },
+        {
+          "line": 141,
+          "text": "lastEventAt,"
+        },
+        {
+          "line": 142,
+          "text": "receipt,"
+        },
+        {
+          "line": 175,
+          "text": "row.consumedThrough,"
+        },
+        {
+          "line": 230,
+          "text": "item.event,"
+        },
+        {
+          "line": 231,
+          "text": "acceptedAt,"
+        },
+        {
+          "line": 232,
+          "text": "cursor.lastEventRevision!,"
+        },
+        {
+          "line": 240,
+          "text": "monitorFingerprint,"
+        },
+        {
+          "line": 241,
+          "text": "event.revision,"
+        },
+        {
+          "line": 242,
+          "text": "event.targetId,"
+        },
+        {
+          "line": 243,
+          "text": "event.rule,"
+        },
+        {
+          "line": 244,
+          "text": "event.transition,"
+        },
+        {
+          "line": 245,
+          "text": "event.at,"
+        },
+        {
+          "line": 253,
+          "text": "config.receiverId,"
+        },
+        {
+          "line": 254,
+          "text": "ordinal,"
+        },
+        {
+          "line": 255,
+          "text": "item.streamId,"
+        },
+        {
+          "line": 258,
+          "text": "event.id,"
+        },
+        {
+          "line": 299,
+          "text": "inboxRevision,"
+        },
+        {
+          "line": 346,
+          "text": "lastMutationAt,"
+        },
+        {
+          "line": 347,
+          "text": "nextOrdinal,"
+        },
+        {
+          "line": 348,
+          "text": "consumedThrough,"
+        },
+        {
+          "line": 349,
+          "text": "cursors,"
+        },
+        {
+          "line": 350,
+          "text": "entries,"
+        },
+        {
+          "line": 407,
+          "text": "batch.streamId,"
+        },
+        {
+          "line": 408,
+          "text": "batch.sequence,"
+        },
+        {
+          "line": 409,
+          "text": "batch.id,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-protocol.ts",
+      "reason": "有限错误词汇的类外壳与名称是错误接线，不算独立新功能。",
+      "fragments": [
+        {
+          "line": 30,
+          "text": "export class HandoffFault extends Error {"
+        },
+        {
+          "line": 32,
+          "text": "constructor(code: HandoffFaultCode) {"
+        },
+        {
+          "line": 34,
+          "text": "this.name = \"HandoffFault\";"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-protocol.ts",
+      "reason": "函数/方法签名、类型参数、默认参数与参数接线不算生产功能。",
+      "fragments": [
+        {
+          "line": 99,
+          "text": "export function handoffFields("
+        },
+        {
+          "line": 101,
+          "text": "fields: readonly string[],"
+        },
+        {
+          "line": 102,
+          "text": "code: HandoffFaultCode,"
+        },
+        {
+          "line": 112,
+          "text": "export function handoffInteger("
+        },
+        {
+          "line": 114,
+          "text": "minimum = 0,"
+        },
+        {
+          "line": 115,
+          "text": "maximum = Number.MAX_SAFE_INTEGER,"
+        },
+        {
+          "line": 126,
+          "text": "export function handoffHash(value: unknown): string {"
+        },
+        {
+          "line": 129,
+          "text": "export function handoffDigest(value: unknown): string {"
+        },
+        {
+          "line": 134,
+          "text": "export function handoffJson(bytes: Buffer, code: HandoffFaultCode): unknown {"
+        },
+        {
+          "line": 141,
+          "text": "export function handoffArtifactText("
+        },
+        {
+          "line": 142,
+          "text": "value: HandoffBatch | HandoffReceipt,"
+        },
+        {
+          "line": 149,
+          "text": "function signatureBytes(value: unknown): Buffer {"
+        },
+        {
+          "line": 157,
+          "text": "function signingInput(domain: \"batch\" | \"receipt\", value: unknown): Buffer {"
+        },
+        {
+          "line": 163,
+          "text": "function signed("
+        },
+        {
+          "line": 164,
+          "text": "domain: \"batch\" | \"receipt\","
+        },
+        {
+          "line": 166,
+          "text": "key: KeyObject,"
+        },
+        {
+          "line": 170,
+          "text": "function authenticated("
+        },
+        {
+          "line": 173,
+          "text": "signature: unknown,"
+        },
+        {
+          "line": 182,
+          "text": "function uuid(value: unknown): string {"
+        },
+        {
+          "line": 190,
+          "text": "function batchBody(value: unknown): Omit<HandoffBatch, \"id\" | \"signature\"> {"
+        },
+        {
+          "line": 288,
+          "text": "export function createHandoffBatch("
+        },
+        {
+          "line": 289,
+          "text": "config: HandoffSenderConfig,"
+        },
+        {
+          "line": 290,
+          "text": "events: readonly MonitorEvent[],"
+        },
+        {
+          "line": 291,
+          "text": "monitorFingerprint: string,"
+        },
+        {
+          "line": 293,
+          "text": "previous: string | null,"
+        },
+        {
+          "line": 294,
+          "text": "preparedAt: number,"
+        },
+        {
+          "line": 320,
+          "text": "export function parseHandoffBatch("
+        },
+        {
+          "line": 322,
+          "text": "publicKey: KeyObject,"
+        },
+        {
+          "line": 323,
+          "text": "expectedStream: string,"
+        },
+        {
+          "line": 324,
+          "text": "expectedReceiver: string,"
+        },
+        {
+          "line": 350,
+          "text": "export function verifyHandoffBatch("
+        },
+        {
+          "line": 367,
+          "text": "function receiptBody(value: unknown): Omit<HandoffReceipt, \"signature\"> {"
+        },
+        {
+          "line": 400,
+          "text": "export function createHandoffReceipt("
+        },
+        {
+          "line": 402,
+          "text": "batch: HandoffBatch,"
+        },
+        {
+          "line": 420,
+          "text": "export function parseHandoffReceipt("
+        },
+        {
+          "line": 437,
+          "text": "export function verifyHandoffReceipt("
+        },
+        {
+          "line": 439,
+          "text": "config: Pick<HandoffSenderConfig, \"streamId\" | \"receiverId\" | \"receiverKey\">,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-protocol.ts",
+      "reason": "静态容量/格式/默认值声明不算功能行。",
+      "fragments": [
+        {
+          "line": 92,
+          "text": "export const HANDOFF_ARTIFACT_MAX_BYTES = 256 * 1024;"
+        },
+        {
+          "line": 93,
+          "text": "export const HANDOFF_HASH = /^[a-f0-9]{64}$/;"
+        },
+        {
+          "line": 94,
+          "text": "export const HANDOFF_UUID ="
+        },
+        {
+          "line": 95,
+          "text": "/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-protocol.ts",
+      "reason": "静态 schema/help/编码/常量参数片段，不算运行算法。",
+      "fragments": [
+        {
+          "line": 160,
+          "text": "\"utf8\","
+        },
+        {
+          "line": 195,
+          "text": "\"type\","
+        },
+        {
+          "line": 197,
+          "text": "\"receiverId\","
+        },
+        {
+          "line": 199,
+          "text": "\"previous\","
+        },
+        {
+          "line": 201,
+          "text": "\"preparedAt\","
+        },
+        {
+          "line": 204,
+          "text": "\"signature\","
+        },
+        {
+          "line": 206,
+          "text": "\"artifact_invalid\","
+        },
+        {
+          "line": 338,
+          "text": "\"batch\","
+        },
+        {
+          "line": 377,
+          "text": "\"count\","
+        },
+        {
+          "line": 378,
+          "text": "\"through\","
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-protocol.ts",
+      "reason": "纯 DTO 属性转发或静态结果外壳，不算新策略。",
+      "fragments": [
+        {
+          "line": 278,
+          "text": "type: \"alert_batch\","
+        },
+        {
+          "line": 297,
+          "text": "version: 1 as const,"
+        },
+        {
+          "line": 298,
+          "text": "type: \"alert_batch\" as const,"
+        },
+        {
+          "line": 299,
+          "text": "streamId: config.streamId,"
+        },
+        {
+          "line": 300,
+          "text": "receiverId: config.receiverId,"
+        },
+        {
+          "line": 389,
+          "text": "type: \"alert_receipt\","
+        },
+        {
+          "line": 413,
+          "text": "count: batch.events.length,"
+        },
+        {
+          "line": 416,
+          "text": "inboxRevision: revision,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-protocol.ts",
+      "reason": "单独形参传递、局部绑定或 DTO 简写，不算独立功能。",
+      "fragments": [
+        {
+          "line": 280,
+          "text": "receiverId,"
+        },
+        {
+          "line": 282,
+          "text": "previous,"
+        },
+        {
+          "line": 284,
+          "text": "preparedAt,"
+        },
+        {
+          "line": 314,
+          "text": "result,"
+        },
+        {
+          "line": 315,
+          "text": "config.publicKey,"
+        },
+        {
+          "line": 316,
+          "text": "config.streamId,"
+        },
+        {
+          "line": 339,
+          "text": "unsigned,"
+        },
+        {
+          "line": 340,
+          "text": "row.signature,"
+        },
+        {
+          "line": 341,
+          "text": "publicKey,"
+        },
+        {
+          "line": 362,
+          "text": "source.publicKey,"
+        },
+        {
+          "line": 363,
+          "text": "source.streamId,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-reader.ts",
+      "reason": "函数/方法签名、类型参数、默认参数与参数接线不算生产功能。",
+      "fragments": [
+        {
+          "line": 37,
+          "text": "function cursorBytes(value: PageCursor): Buffer {"
+        },
+        {
+          "line": 40,
+          "text": "function encodeCursor(config: HandoffInboxConfig, cursor: PageCursor): string {"
+        },
+        {
+          "line": 48,
+          "text": "function decodeCursor(config: HandoffInboxConfig, text: string): PageCursor {"
+        },
+        {
+          "line": 105,
+          "text": "export function readAlertInboxPage("
+        },
+        {
+          "line": 109,
+          "text": "continuation: string | null,"
+        },
+        {
+          "line": 156,
+          "text": "export function recoverAlertReceipt("
+        },
+        {
+          "line": 159,
+          "text": "streamId: string,"
+        },
+        {
+          "line": 161,
+          "text": "batchId: string,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-reader.ts",
+      "reason": "静态容量/格式/默认值声明不算功能行。",
+      "fragments": [
+        {
+          "line": 36,
+          "text": "const CURSOR_MAX = 2048;"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-reader.ts",
+      "reason": "静态 schema/help/编码/常量参数片段，不算运行算法。",
+      "fragments": [
+        {
+          "line": 45,
+          "text": "\"base64url\","
+        },
+        {
+          "line": 67,
+          "text": "\"stateDigest\","
+        },
+        {
+          "line": 70,
+          "text": "\"cursor_invalid\","
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-reader.ts",
+      "reason": "纯 DTO 属性转发或静态结果外壳，不算新策略。",
+      "fragments": [
+        {
+          "line": 87,
+          "text": "stateDigest: row.stateDigest,"
+        },
+        {
+          "line": 138,
+          "text": "nextOrdinal: next.ordinal,"
+        },
+        {
+          "line": 143,
+          "text": "event: \"alert_inbox_read\","
+        },
+        {
+          "line": 145,
+          "text": "pending: state.entries.length,"
+        },
+        {
+          "line": 149,
+          "text": "continuation: token,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-reader.ts",
+      "reason": "单独形参传递、局部绑定或 DTO 简写，不算独立功能。",
+      "fragments": [
+        {
+          "line": 139,
+          "text": "stateDigest,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-reconcile.ts",
+      "reason": "函数/方法签名、类型参数、默认参数与参数接线不算生产功能。",
+      "fragments": [
+        {
+          "line": 67,
+          "text": "export function reconcileAlertHandoff(input: {"
+        },
+        {
+          "line": 90,
+          "text": "const finish = (stage: Stage, exitCode: 0 | 1 | 3): HandoffReconciliation => {"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-reconcile.ts",
+      "reason": "纯 DTO 属性转发或静态结果外壳，不算新策略。",
+      "fragments": [
+        {
+          "line": 79,
+          "text": "event: \"alert_handoff_reconcile\","
+        },
+        {
+          "line": 80,
+          "text": "scope: \"non_atomic_offline_evidence\","
+        },
+        {
+          "line": 83,
+          "text": "stage: \"evidence_invalid\","
+        },
+        {
+          "line": 84,
+          "text": "exitCode: 3,"
+        },
+        {
+          "line": 86,
+          "text": "source: null,"
+        },
+        {
+          "line": 87,
+          "text": "inbox: null,"
+        },
+        {
+          "line": 120,
+          "text": "senderRevision: state.revision,"
+        },
+        {
+          "line": 121,
+          "text": "monitorRevision: monitor.revision,"
+        },
+        {
+          "line": 122,
+          "text": "sequence: state.sequence,"
+        },
+        {
+          "line": 123,
+          "text": "pendingEvents: monitor.events.length,"
+        },
+        {
+          "line": 144,
+          "text": "revision: inbox.revision,"
+        },
+        {
+          "line": 145,
+          "text": "sequence: cursor.sequence,"
+        },
+        {
+          "line": 146,
+          "text": "pending: inbox.entries.length,"
+        },
+        {
+          "line": 204,
+          "text": "batchId: receipt.batchId,"
+        },
+        {
+          "line": 205,
+          "text": "sequence: receipt.sequence,"
+        },
+        {
+          "line": 206,
+          "text": "acceptedAt: receipt.acceptedAt,"
+        },
+        {
+          "line": 207,
+          "text": "pendingEntries: entries.length,"
+        },
+        {
+          "line": 208,
+          "text": "evidence: \"durable_acceptance_only\","
+        },
+        {
+          "line": 226,
+          "text": "batchId: cursor.receipt.batchId,"
+        },
+        {
+          "line": 228,
+          "text": "acceptedAt: cursor.receipt.acceptedAt,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-reconcile.ts",
+      "reason": "单独形参传递、局部绑定或 DTO 简写，不算独立功能。",
+      "fragments": [
+        {
+          "line": 114,
+          "text": "input.senderState,"
+        },
+        {
+          "line": 115,
+          "text": "sender,"
+        },
+        {
+          "line": 116,
+          "text": "input.sourceBinding,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-sender.ts",
+      "reason": "函数/方法签名、类型参数、默认参数与参数接线不算生产功能。",
+      "fragments": [
+        {
+          "line": 31,
+          "text": "function empty("
+        },
+        {
+          "line": 33,
+          "text": "sourceBinding: string,"
+        },
+        {
+          "line": 48,
+          "text": "export function parseHandoffSenderState("
+        },
+        {
+          "line": 153,
+          "text": "export function assertHandoffMonitorPrefix("
+        },
+        {
+          "line": 155,
+          "text": "monitor: MonitorState,"
+        },
+        {
+          "line": 184,
+          "text": "export function prepareAlertHandoff("
+        },
+        {
+          "line": 235,
+          "text": "export async function settleAlertHandoff("
+        },
+        {
+          "line": 238,
+          "text": "receiptValue: unknown,"
+        },
+        {
+          "line": 239,
+          "text": "ports: {"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-sender.ts",
+      "reason": "纯 DTO 属性转发或静态结果外壳，不算新策略。",
+      "fragments": [
+        {
+          "line": 37,
+          "text": "kind: \"alert_sender\","
+        },
+        {
+          "line": 42,
+          "text": "lastBatchId: null,"
+        },
+        {
+          "line": 43,
+          "text": "lastPreparedAt: null,"
+        },
+        {
+          "line": 44,
+          "text": "lastReceipt: null,"
+        },
+        {
+          "line": 45,
+          "text": "pending: null,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-sender.ts",
+      "reason": "单独形参传递、局部绑定或 DTO 简写，不算独立功能。",
+      "fragments": [
+        {
+          "line": 39,
+          "text": "sourceBinding,"
+        },
+        {
+          "line": 95,
+          "text": "row.pending,"
+        },
+        {
+          "line": 100,
+          "text": "intent.batch,"
+        },
+        {
+          "line": 143,
+          "text": "lastBatchId,"
+        },
+        {
+          "line": 144,
+          "text": "lastPreparedAt,"
+        },
+        {
+          "line": 145,
+          "text": "lastReceipt,"
+        },
+        {
+          "line": 146,
+          "text": "pending,"
+        },
+        {
+          "line": 217,
+          "text": "monitor.events,"
+        },
+        {
+          "line": 218,
+          "text": "monitor.fingerprint,"
+        },
+        {
+          "line": 220,
+          "text": "state.lastBatchId,"
+        },
+        {
+          "line": 221,
+          "text": "now,"
+        },
+        {
+          "line": 228,
+          "text": "batch,"
+        },
+        {
+          "line": 275,
+          "text": "receiptValue,"
+        },
+        {
+          "line": 277,
+          "text": "state.pending.batch,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-sender.ts",
+      "reason": "静态 schema/help/编码/常量参数片段，不算运行算法。",
+      "fragments": [
+        {
+          "line": 59,
+          "text": "\"sourceBinding\","
+        },
+        {
+          "line": 62,
+          "text": "\"lastBatchId\","
+        },
+        {
+          "line": 63,
+          "text": "\"lastPreparedAt\","
+        },
+        {
+          "line": 64,
+          "text": "\"lastReceipt\","
+        },
+        {
+          "line": 65,
+          "text": "\"pending\","
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-status.ts",
+      "reason": "函数/方法签名、类型参数、默认参数与参数接线不算生产功能。",
+      "fragments": [
+        {
+          "line": 14,
+          "text": "function validateBudget(value: number): void {"
+        },
+        {
+          "line": 18,
+          "text": "function validateClock(now: number, minimum: number): void {"
+        },
+        {
+          "line": 22,
+          "text": "function ageClass("
+        },
+        {
+          "line": 23,
+          "text": "age: number | null,"
+        },
+        {
+          "line": 24,
+          "text": "budget: number,"
+        },
+        {
+          "line": 28,
+          "text": "export function alertSenderStatus("
+        },
+        {
+          "line": 31,
+          "text": "binding: string,"
+        },
+        {
+          "line": 34,
+          "text": "maxPendingAgeMs = HANDOFF_DEFAULT_PENDING_BUDGET_MS,"
+        },
+        {
+          "line": 84,
+          "text": "export function alertInboxStatus("
+        },
+        {
+          "line": 103,
+          "text": "const sources = state.cursors.map((cursor) => {"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-status.ts",
+      "reason": "静态容量/格式/默认值声明不算功能行。",
+      "fragments": [
+        {
+          "line": 13,
+          "text": "export const HANDOFF_DEFAULT_PENDING_BUDGET_MS = 3_600_000;"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-status.ts",
+      "reason": "纯 DTO 属性转发或静态结果外壳，不算新策略。",
+      "fragments": [
+        {
+          "line": 66,
+          "text": "event: \"alert_sender_status\","
+        },
+        {
+          "line": 67,
+          "text": "scope: \"handoff_progress_only\","
+        },
+        {
+          "line": 75,
+          "text": "monitorPending: monitor.events.length,"
+        },
+        {
+          "line": 110,
+          "text": "streamId: cursor.streamId,"
+        },
+        {
+          "line": 113,
+          "text": "pending: entries.length,"
+        },
+        {
+          "line": 114,
+          "text": "oldestAcceptedAt: oldestAt,"
+        },
+        {
+          "line": 121,
+          "text": "event: \"alert_inbox_status\","
+        },
+        {
+          "line": 125,
+          "text": "lastMutationAt: state.lastMutationAt,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-status.ts",
+      "reason": "单独形参传递、局部绑定或 DTO 简写，不算独立功能。",
+      "fragments": [
+        {
+          "line": 70,
+          "text": "phase,"
+        },
+        {
+          "line": 74,
+          "text": "remainingPrefix,"
+        },
+        {
+          "line": 77,
+          "text": "waitingSince,"
+        },
+        {
+          "line": 78,
+          "text": "pendingAgeMs,"
+        },
+        {
+          "line": 80,
+          "text": "maxPendingAgeMs,"
+        },
+        {
+          "line": 128,
+          "text": "oldestAcceptedAt,"
+        },
+        {
+          "line": 129,
+          "text": "oldestAcceptanceAgeMs,"
+        },
+        {
+          "line": 130,
+          "text": "oldestEventAt,"
+        },
+        {
+          "line": 131,
+          "text": "oldestEventAgeMs,"
+        },
+        {
+          "line": 134,
+          "text": "sources,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-verification.ts",
+      "reason": "函数/方法签名、类型参数、默认参数与参数接线不算生产功能。",
+      "fragments": [
+        {
+          "line": 11,
+          "text": "export function handoffVerificationDocument(config: HandoffSenderConfig) {"
+        },
+        {
+          "line": 29,
+          "text": "export function verifyAlertHandoffEvidence("
+        },
+        {
+          "line": 30,
+          "text": "config: HandoffVerificationConfig,"
+        },
+        {
+          "line": 32,
+          "text": "receiptValue: unknown | null,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-verification.ts",
+      "reason": "纯 DTO 属性转发或静态结果外壳，不算新策略。",
+      "fragments": [
+        {
+          "line": 14,
+          "text": "role: \"verify\","
+        },
+        {
+          "line": 17,
+          "text": "senderKey: config.publicKey"
+        },
+        {
+          "line": 20,
+          "text": "receiverKey: config.receiverKey"
+        },
+        {
+          "line": 89,
+          "text": "event: \"alert_handoff_verified\","
+        },
+        {
+          "line": 90,
+          "text": "evidence: \"signatures_only\","
+        },
+        {
+          "line": 94,
+          "text": "receiverId: batch.receiverId,"
+        },
+        {
+          "line": 96,
+          "text": "previousBatchId: batch.previous,"
+        },
+        {
+          "line": 99,
+          "text": "targets: targets.size,"
+        },
+        {
+          "line": 111,
+          "text": "preparedAt: batch.preparedAt,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-verification.ts",
+      "reason": "单独形参传递、局部绑定或 DTO 简写，不算独立功能。",
+      "fragments": [
+        {
+          "line": 36,
+          "text": "batchValue,"
+        },
+        {
+          "line": 37,
+          "text": "config.senderKey,"
+        },
+        {
+          "line": 100,
+          "text": "critical,"
+        },
+        {
+          "line": 101,
+          "text": "warning,"
+        },
+        {
+          "line": 103,
+          "text": "unknownFacts,"
+        },
+        {
+          "line": 104,
+          "text": "firstRevision,"
+        },
+        {
+          "line": 105,
+          "text": "lastRevision,"
+        },
+        {
+          "line": 107,
+          "text": "newestEventAt,"
+        },
+        {
+          "line": 108,
+          "text": "oldestFiringSince,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/operational-monitor-state.ts",
+      "reason": "函数/方法签名、类型参数、默认参数与参数接线不算生产功能。",
+      "fragments": [
+        {
+          "line": 233,
+          "text": "export function parseMonitorEvent(value: unknown, maximum: number, revision: number): MonitorEvent {"
+        },
+        {
+          "line": 337,
+          "text": "const events = row.events.map((value) => {"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/operational-monitor-state.ts",
+      "reason": "纯 DTO 属性转发或静态结果外壳，不算新策略。",
+      "fragments": [
+        {
+          "line": 290,
+          "text": "targetId: row.targetId,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/operational-monitor-state.ts",
+      "reason": "从旧 eventState 提取的角色/目标校验属于历史功能，不重复计入。",
+      "fragments": [
+        {
+          "line": 338,
+          "text": "const event = parseMonitorEvent(value, lastEvaluatedAt ?? 0, revision);"
+        },
+        {
+          "line": 339,
+          "text": "const target = config.targets.find((target) => target.id === event.targetId);"
+        },
+        {
+          "line": 340,
+          "text": "if (!target || !monitorRulesFor(target.role).includes(event.rule)) invalid();"
+        },
+        {
+          "line": 341,
+          "text": "return event;"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/alert-handoff-command.ts",
+      "reason": "函数/方法签名、类型参数、默认参数与参数接线不算生产功能。",
+      "fragments": [
+        {
+          "line": 125,
+          "text": "function commandArguments(args: readonly string[]): Command | null {"
+        },
+        {
+          "line": 223,
+          "text": "function checkSignal(signal: AbortSignal | undefined): void {"
+        },
+        {
+          "line": 235,
+          "text": "function faultCode(error: unknown): HandoffFaultCode {"
+        },
+        {
+          "line": 258,
+          "text": "export async function runAlertHandoffCommand("
+        },
+        {
+          "line": 259,
+          "text": "args: readonly string[],"
+        },
+        {
+          "line": 260,
+          "text": "dependencies: Dependencies = {},"
+        },
+        {
+          "line": 385,
+          "text": "persist(state) {"
+        },
+        {
+          "line": 389,
+          "text": "acknowledge(batch) {"
+        },
+        {
+          "line": 533,
+          "text": "export async function alertHandoffMain("
+        },
+        {
+          "line": 534,
+          "text": "args = process.argv.slice(2),"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/alert-handoff-command.ts",
+      "reason": "静态 schema/help/编码/常量参数片段，不算运行算法。",
+      "fragments": [
+        {
+          "line": 188,
+          "text": "\"--through\","
+        },
+        {
+          "line": 189,
+          "text": "\"--limit\","
+        },
+        {
+          "line": 190,
+          "text": "\"--after\","
+        },
+        {
+          "line": 191,
+          "text": "\"--max-pending-age-ms\","
+        },
+        {
+          "line": 192,
+          "text": "\"--stream\","
+        },
+        {
+          "line": 193,
+          "text": "\"--sequence\","
+        },
+        {
+          "line": 194,
+          "text": "\"--batch-id\","
+        },
+        {
+          "line": 242,
+          "text": "\"state_config_mismatch\","
+        },
+        {
+          "line": 243,
+          "text": "\"state_io\","
+        },
+        {
+          "line": 244,
+          "text": "\"state_locked\","
+        },
+        {
+          "line": 245,
+          "text": "\"state_missing\","
+        },
+        {
+          "line": 247,
+          "text": "\"state_full\","
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/alert-handoff-command.ts",
+      "reason": "纯 DTO 属性转发或静态结果外壳，不算新策略。",
+      "fragments": [
+        {
+          "line": 212,
+          "text": "name: kind,"
+        },
+        {
+          "line": 287,
+          "text": "event: \"alert_handoff_profile\","
+        },
+        {
+          "line": 288,
+          "text": "streamId: sender.streamId,"
+        },
+        {
+          "line": 289,
+          "text": "receiverId: sender.receiverId,"
+        },
+        {
+          "line": 310,
+          "text": "senderConfig: config,"
+        },
+        {
+          "line": 312,
+          "text": "sourceBinding: binding,"
+        },
+        {
+          "line": 313,
+          "text": "inboxConfig: receiver,"
+        },
+        {
+          "line": 372,
+          "text": "event: \"alert_handoff_prepared\","
+        },
+        {
+          "line": 417,
+          "text": "event: \"alert_handoff_settled\","
+        },
+        {
+          "line": 418,
+          "text": "sequence: result.state.sequence,"
+        },
+        {
+          "line": 419,
+          "text": "batchId: result.state.lastBatchId,"
+        },
+        {
+          "line": 421,
+          "text": "duplicate: result.duplicate,"
+        },
+        {
+          "line": 456,
+          "text": "event: \"alert_receipt_recovered\","
+        },
+        {
+          "line": 459,
+          "text": "count: receipt.count,"
+        },
+        {
+          "line": 491,
+          "text": "event: \"alert_handoff_received\","
+        },
+        {
+          "line": 492,
+          "text": "batchId: result.receipt.batchId,"
+        },
+        {
+          "line": 493,
+          "text": "sequence: result.receipt.sequence,"
+        },
+        {
+          "line": 494,
+          "text": "count: result.receipt.count,"
+        },
+        {
+          "line": 496,
+          "text": "pending: result.state.entries.length,"
+        },
+        {
+          "line": 510,
+          "text": "event: \"alert_inbox_consumed\","
+        },
+        {
+          "line": 511,
+          "text": "consumed: result.consumed,"
+        },
+        {
+          "line": 513,
+          "text": "remaining: result.state.entries.length,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/alert-handoff-command.ts",
+      "reason": "单独形参传递、局部绑定或 DTO 简写，不算独立功能。",
+      "fragments": [
+        {
+          "line": 213,
+          "text": "paths,"
+        },
+        {
+          "line": 215,
+          "text": "through,"
+        },
+        {
+          "line": 216,
+          "text": "continuation,"
+        },
+        {
+          "line": 315,
+          "text": "monitorConfig,"
+        },
+        {
+          "line": 335,
+          "text": "binding,"
+        },
+        {
+          "line": 336,
+          "text": "monitor,"
+        },
+        {
+          "line": 338,
+          "text": "command.maxPendingAgeMs,"
+        },
+        {
+          "line": 359,
+          "text": "journal.state,"
+        },
+        {
+          "line": 441,
+          "text": "command.limit,"
+        },
+        {
+          "line": 442,
+          "text": "command.continuation,"
+        },
+        {
+          "line": 448,
+          "text": "command.streamId!,"
+        },
+        {
+          "line": 449,
+          "text": "command.sequence!,"
+        },
+        {
+          "line": 450,
+          "text": "command.batchId!,"
+        },
+        {
+          "line": 503,
+          "text": "command.through!,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/alert-handoff-command.ts",
+      "reason": "静态中文 help，不算运行功能。",
+      "fragments": [
+        {
+          "line": 53,
+          "text": "const HELP = `有限离线告警交接：不联网、不加载 .env、不访问业务数据库、不安装调度器。"
+        },
+        {
+          "line": 55,
+          "text": "ops:handoff prepare --config <sender.json> --state <sender-state.json> --monitor-config <monitor.json> --monitor-state <alerts.json> --output <batch.json>"
+        },
+        {
+          "line": 56,
+          "text": "ops:handoff settle --config <sender.json> --state <sender-state.json> --monitor-config <monitor.json> --monitor-state <alerts.json> --receipt <receipt.json>"
+        },
+        {
+          "line": 57,
+          "text": "ops:handoff sender-status --config <sender.json> --state <sender-state.json> --monitor-config <monitor.json> --monitor-state <alerts.json>"
+        },
+        {
+          "line": 58,
+          "text": "ops:handoff receive --config <inbox.json> --state <inbox-state.json> --batch <batch.json> --output <receipt.json>"
+        },
+        {
+          "line": 59,
+          "text": "ops:handoff inbox-read --config <inbox.json> --state <inbox-state.json> [--limit <1..256>] [--after <cursor>]"
+        },
+        {
+          "line": 60,
+          "text": "ops:handoff inbox-status --config <inbox.json> --state <inbox-state.json>"
+        },
+        {
+          "line": 61,
+          "text": "ops:handoff consume --config <inbox.json> --state <inbox-state.json> --through <entry-id>"
+        },
+        {
+          "line": 62,
+          "text": "ops:handoff receipt --config <inbox.json> --state <inbox-state.json> --stream <uuid> --sequence <n> --batch-id <id> --output <receipt.json>"
+        },
+        {
+          "line": 63,
+          "text": "ops:handoff reconcile --config <sender.json> --state <sender-state.json> --monitor-config <monitor.json> --monitor-state <alerts.json> --inbox-config <inbox.json> --inbox-state <inbox-state.json>"
+        },
+        {
+          "line": 64,
+          "text": "ops:handoff profile --config <sender.json> --output <public-profile.json>"
+        },
+        {
+          "line": 65,
+          "text": "ops:handoff verify --config <public-profile.json> --batch <batch.json> [--receipt <receipt.json>]"
+        },
+        {
+          "line": 66,
+          "text": "两个 status 命令接受可选 --max-pending-age-ms <1000..86400000>，默认 3600000。"
+        },
+        {
+          "line": 68,
+          "text": "prepare 冻结全部未确认事件；事件包发布失败不删除交接意图。接收不代表有人收到通知。"
+        },
+        {
+          "line": 69,
+          "text": "receive 验证来源签名并先持久化 inbox，再发布独立签名回执；相同批次重试不重复入箱。"
+        },
+        {
+          "line": 70,
+          "text": "settle 是显式授权：验证回执后，只确认原监测日志中匹配的精确前缀，不清除告警条件。"
+        },
+        {
+          "line": 71,
+          "text": "consume 只确认接收箱中已由下游处理的精确前缀；不修改 monitor 或签发新的接收证明。"
+        },
+        {
+          "line": 72,
+          "text": "receipt 只重新发布指定来源最近一份已持久化回执；更早回执不会凭空重建。"
+        },
+        {
+          "line": 73,
+          "text": "reconcile 只比较离线快照证据，不是跨主机原子快照、服务健康证明或自动修复。"
+        },
+        {
+          "line": 74,
+          "text": "profile 只导出双方公钥 pin；verify 不需要私钥，只验证历史证据签名，不作健康声明。"
+        },
+        {
+          "line": 75,
+          "text": "分页 cursor 绑定精确快照；入箱/消费改变 revision 后须重新从第一页开始。"
+        },
+        {
+          "line": 76,
+          "text": "私有配置/日志/产物均需当前 UID 拥有、0600 文件与 0700 本地 POSIX 目录。"
+        },
+        {
+          "line": 77,
+          "text": "退出码：0 命令成功；1 status 有待处理项；2 参数/配置错误；3 运维/完整性失败。"
+        },
+        {
+          "line": 78,
+          "text": "规程：docs/operations/alert-handoff.md"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/alert-handoff-command.ts",
+      "reason": "命令必需参数表是静态配置，不算新增策略。",
+      "fragments": [
+        {
+          "line": 110,
+          "text": "const BASE = [\"--config\", \"--state\"];"
+        },
+        {
+          "line": 111,
+          "text": "const SOURCE = [...BASE, \"--monitor-config\", \"--monitor-state\"];"
+        },
+        {
+          "line": 112,
+          "text": "const REQUIRED: Record<CommandName, readonly string[]> = {"
+        },
+        {
+          "line": 113,
+          "text": "prepare: [...SOURCE, \"--output\"],"
+        },
+        {
+          "line": 114,
+          "text": "settle: [...SOURCE, \"--receipt\"],"
+        },
+        {
+          "line": 115,
+          "text": "\"sender-status\": SOURCE,"
+        },
+        {
+          "line": 116,
+          "text": "receive: [...BASE, \"--batch\", \"--output\"],"
+        },
+        {
+          "line": 117,
+          "text": "\"inbox-read\": BASE,"
+        },
+        {
+          "line": 118,
+          "text": "\"inbox-status\": BASE,"
+        },
+        {
+          "line": 119,
+          "text": "consume: [...BASE, \"--through\"],"
+        },
+        {
+          "line": 120,
+          "text": "reconcile: [...SOURCE, \"--inbox-config\", \"--inbox-state\"],"
+        },
+        {
+          "line": 121,
+          "text": "receipt: [...BASE, \"--stream\", \"--sequence\", \"--batch-id\", \"--output\"],"
+        },
+        {
+          "line": 122,
+          "text": "profile: [\"--config\", \"--output\"],"
+        },
+        {
+          "line": 123,
+          "text": "verify: [\"--config\", \"--batch\"],"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/alert-handoff-config.ts",
+      "reason": "函数/方法签名、类型参数、默认参数与参数接线不算生产功能。",
+      "fragments": [
+        {
+          "line": 12,
+          "text": "function encoded(value: unknown, maximum: number): Buffer {"
+        },
+        {
+          "line": 20,
+          "text": "function publicText(key: KeyObject): string {"
+        },
+        {
+          "line": 23,
+          "text": "function privateKey(value: unknown): KeyObject {"
+        },
+        {
+          "line": 33,
+          "text": "function publicKey(value: unknown): KeyObject {"
+        },
+        {
+          "line": 48,
+          "text": "export function parseHandoffSenderConfig(value: unknown): HandoffSenderConfig {"
+        },
+        {
+          "line": 94,
+          "text": "export function parseHandoffInboxConfig(value: unknown): HandoffInboxConfig {"
+        },
+        {
+          "line": 113,
+          "text": ".map((value) => {"
+        },
+        {
+          "line": 161,
+          "text": "export function parseHandoffVerificationConfig("
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/alert-handoff-config.ts",
+      "reason": "静态 schema/help/编码/常量参数片段，不算运行算法。",
+      "fragments": [
+        {
+          "line": 54,
+          "text": "\"role\","
+        },
+        {
+          "line": 57,
+          "text": "\"signingKey\","
+        },
+        {
+          "line": 58,
+          "text": "\"receiverKey\","
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/alert-handoff-config.ts",
+      "reason": "纯 DTO 属性转发或静态结果外壳，不算新策略。",
+      "fragments": [
+        {
+          "line": 74,
+          "text": "role: \"sender\","
+        },
+        {
+          "line": 85,
+          "text": "privateKey: signing,"
+        },
+        {
+          "line": 86,
+          "text": "publicKey: ownPublic,"
+        },
+        {
+          "line": 87,
+          "text": "receiverKey: peer,"
+        },
+        {
+          "line": 136,
+          "text": "role: \"inbox\","
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/alert-handoff-config.ts",
+      "reason": "单独形参传递、局部绑定或 DTO 简写，不算独立功能。",
+      "fragments": [
+        {
+          "line": 194,
+          "text": "senderKey,"
+        },
+        {
+          "line": 195,
+          "text": "receiverKey,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/alert-handoff-file.ts",
+      "reason": "函数/方法签名、类型参数、默认参数与参数接线不算生产功能。",
+      "fragments": [
+        {
+          "line": 43,
+          "text": "role: \"sender\" | \"inbox\" | \"verify\","
+        },
+        {
+          "line": 60,
+          "text": "export function readHandoffArtifact(path: string): unknown {"
+        },
+        {
+          "line": 72,
+          "text": "export function publishHandoffArtifact("
+        },
+        {
+          "line": 82,
+          "text": "export function readHandoffSenderFile("
+        },
+        {
+          "line": 92,
+          "text": "export function readHandoffInboxFile(path: string, config: HandoffInboxConfig) {"
+        },
+        {
+          "line": 98,
+          "text": "export function openHandoffSenderFile("
+        },
+        {
+          "line": 109,
+          "text": "export function openHandoffInboxFile(path: string, config: HandoffInboxConfig) {"
+        },
+        {
+          "line": 117,
+          "text": "export function publishHandoffProfile(path: string, value: unknown): boolean {"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/alert-handoff-file.ts",
+      "reason": "纯 DTO 属性转发或静态结果外壳，不算新策略。",
+      "fragments": [
+        {
+          "line": 49,
+          "text": "privateFile: true,"
+        },
+        {
+          "line": 64,
+          "text": "maximum: HANDOFF_ARTIFACT_MAX_BYTES,"
+        },
+        {
+          "line": 104,
+          "text": "maximum: HANDOFF_STATE_MAX_BYTES,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/alert-handoff-file.ts",
+      "reason": "单独形参传递、局部绑定或 DTO 简写，不算独立功能。",
+      "fragments": [
+        {
+          "line": 79,
+          "text": "HANDOFF_ARTIFACT_MAX_BYTES,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/alert-handoff-file.ts",
+      "reason": "复用/搬移现有 monitor 文件和输出契约，或将既有原语绑定到新类型；不把抽取与薄适配重复算功能。",
+      "fragments": [
+        {
+          "line": 28,
+          "text": "export const HANDOFF_STATE_MAX_BYTES = 2 * 1024 * 1024;"
+        },
+        {
+          "line": 29,
+          "text": "export function readHandoffConfig("
+        },
+        {
+          "line": 46,
+          "text": "assertPrivateOperationParent(privateOperationPath(path));"
+        },
+        {
+          "line": 47,
+          "text": "const bytes = readPrivateOperationFile(path, {"
+        },
+        {
+          "line": 48,
+          "text": "maximum: 16 * 1024,"
+        },
+        {
+          "line": 50,
+          "text": "})!;"
+        },
+        {
+          "line": 51,
+          "text": "const value = handoffJson(bytes, \"config_invalid\");"
+        },
+        {
+          "line": 52,
+          "text": "if (role === \"verify\") return parseHandoffVerificationConfig(value);"
+        },
+        {
+          "line": 53,
+          "text": "return role === \"sender\""
+        },
+        {
+          "line": 54,
+          "text": "? parseHandoffSenderConfig(value)"
+        },
+        {
+          "line": 55,
+          "text": ": parseHandoffInboxConfig(value);"
+        },
+        {
+          "line": 67,
+          "text": "return handoffJson(bytes, \"artifact_invalid\");"
+        },
+        {
+          "line": 76,
+          "text": "return writePrivateOperationArtifact("
+        },
+        {
+          "line": 78,
+          "text": "Buffer.from(handoffArtifactText(value)),"
+        },
+        {
+          "line": 87,
+          "text": "const snapshot = readPrivateOperationSnapshot(path, HANDOFF_STATE_MAX_BYTES);"
+        },
+        {
+          "line": 88,
+          "text": "return snapshot === null"
+        },
+        {
+          "line": 90,
+          "text": ": parseHandoffSenderState(snapshot.value, config, binding);"
+        },
+        {
+          "line": 96,
+          "text": ": parseHandoffInboxState(snapshot.value, config);"
+        },
+        {
+          "line": 103,
+          "text": "return openPrivateOperationJournal(path, {"
+        },
+        {
+          "line": 105,
+          "text": "parse: (value) => parseHandoffSenderState(value, config, binding),"
+        },
+        {
+          "line": 106,
+          "text": "revision: (state) => state.revision,"
+        },
+        {
+          "line": 112,
+          "text": "parse: (value) => parseHandoffInboxState(value, config),"
+        },
+        {
+          "line": 118,
+          "text": "parseHandoffVerificationConfig(value);"
+        },
+        {
+          "line": 121,
+          "text": "Buffer.from(JSON.stringify(value) + \"\\n\"),"
+        },
+        {
+          "line": 122,
+          "text": "16 * 1024,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/monitor-command.ts",
+      "reason": "复用/搬移现有 monitor 文件和输出契约，或将既有原语绑定到新类型；不把抽取与薄适配重复算功能。",
+      "fragments": [
+        {
+          "line": 101,
+          "text": "const stdout = dependencies.stdout ?? ((text) => writeOperationOutput(process.stdout, text));"
+        },
+        {
+          "line": 102,
+          "text": "const stderr = dependencies.stderr ?? ((text) => writeOperationOutput(process.stderr, text));"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/monitor-state-file.ts",
+      "reason": "函数/方法签名、类型参数、默认参数与参数接线不算生产功能。",
+      "fragments": [
+        {
+          "line": 12,
+          "text": "function monitorFailure(error: unknown): never {"
+        },
+        {
+          "line": 52,
+          "text": "get state() { return journal.state; },"
+        },
+        {
+          "line": 53,
+          "text": "commit(value: unknown) { persist(value, activeConfig); },"
+        },
+        {
+          "line": 54,
+          "text": "reconfigure(nextConfig: MonitorConfig, now: number) {"
+        },
+        {
+          "line": 60,
+          "text": "close() { try { journal.close(); } catch (error) { monitorFailure(error); } },"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/monitor-state-file.ts",
+      "reason": "纯 DTO 属性转发或静态结果外壳，不算新策略。",
+      "fragments": [
+        {
+          "line": 35,
+          "text": "maximum: MONITOR_STATE_MAX_BYTES,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/monitor-state-file.ts",
+      "reason": "复用/搬移现有 monitor 文件和输出契约，或将既有原语绑定到新类型；不把抽取与薄适配重复算功能。",
+      "fragments": [
+        {
+          "line": 14,
+          "text": "if (error instanceof PrivateOperationFault && error.code !== \"artifact_conflict\") throw new MonitorFault(error.code);"
+        },
+        {
+          "line": 19,
+          "text": "const bytes = readPrivateOperationFile(path, { maximum: 65_536, privateFile: false })!;"
+        },
+        {
+          "line": 20,
+          "text": "return parseMonitorConfig(JSON.parse(new TextDecoder(\"utf-8\", { fatal: true }).decode(bytes)));"
+        },
+        {
+          "line": 21,
+          "text": "} catch { throw new MonitorFault(\"config_invalid\"); }"
+        },
+        {
+          "line": 25,
+          "text": "const snapshot = readPrivateOperationSnapshot(value, MONITOR_STATE_MAX_BYTES);"
+        },
+        {
+          "line": 26,
+          "text": "return snapshot === null ? null : parseMonitorState(snapshot.value, config);"
+        },
+        {
+          "line": 27,
+          "text": "} catch (error) { return monitorFailure(error); }"
+        },
+        {
+          "line": 34,
+          "text": "const journal = openPrivateOperationJournal(value, {"
+        },
+        {
+          "line": 36,
+          "text": "parse: value => parseMonitorState(value, config),"
+        },
+        {
+          "line": 37,
+          "text": "revision: state => state.revision,"
+        },
+        {
+          "line": 42,
+          "text": "const next = parseMonitorState(value, nextConfig), current = journal.state;"
+        },
+        {
+          "line": 43,
+          "text": "const identical = current !== null && JSON.stringify(current) === JSON.stringify(next);"
+        },
+        {
+          "line": 44,
+          "text": "if (!identical && (next.lastEvaluatedAt === null || (current?.lastEvaluatedAt !== null &&"
+        },
+        {
+          "line": 45,
+          "text": "current?.lastEvaluatedAt !== undefined && next.lastEvaluatedAt < current.lastEvaluatedAt)))"
+        },
+        {
+          "line": 47,
+          "text": "journal.commit(next, value => parseMonitorState(value, nextConfig));"
+        },
+        {
+          "line": 49,
+          "text": "} catch (error) { monitorFailure(error); }"
+        },
+        {
+          "line": 55,
+          "text": "if (journal.state === null) throw new MonitorFault(\"state_missing\");"
+        },
+        {
+          "line": 56,
+          "text": "const result = reconfigureMonitor(activeConfig, nextConfig, journal.state, now);"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/operation-command-output.ts",
+      "reason": "函数/方法签名、类型参数、默认参数与参数接线不算生产功能。",
+      "fragments": [
+        {
+          "line": 6,
+          "text": "export function writeOperationOutput("
+        },
+        {
+          "line": 7,
+          "text": "stream: Writable,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/operation-command-output.ts",
+      "reason": "复用/搬移现有 monitor 文件和输出契约，或将既有原语绑定到新类型；不把抽取与薄适配重复算功能。",
+      "fragments": [
+        {
+          "line": 17,
+          "text": "if (failed) reject(new Error(\"output_failed\"));"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/private-operation-file.ts",
+      "reason": "函数/方法签名、类型参数、默认参数与参数接线不算生产功能。",
+      "fragments": [
+        {
+          "line": 26,
+          "text": "constructor(code: PrivateOperationFault[\"code\"]) {"
+        },
+        {
+          "line": 43,
+          "text": "function exists(error: unknown): boolean {"
+        },
+        {
+          "line": 58,
+          "text": "export function privateOperationPath(value: string): string {"
+        },
+        {
+          "line": 70,
+          "text": "export function assertPrivateOperationParent(path: string): void {"
+        },
+        {
+          "line": 89,
+          "text": "export function readPrivateOperationFile("
+        },
+        {
+          "line": 91,
+          "text": "options: { maximum: number; privateFile: boolean; optional?: boolean },"
+        },
+        {
+          "line": 135,
+          "text": "function jsonValue(bytes: Buffer): unknown {"
+        },
+        {
+          "line": 142,
+          "text": "export function readPrivateOperationSnapshot("
+        },
+        {
+          "line": 143,
+          "text": "pathValue: string,"
+        },
+        {
+          "line": 158,
+          "text": "export function openPrivateOperationJournal<T>("
+        },
+        {
+          "line": 160,
+          "text": "options: {"
+        },
+        {
+          "line": 234,
+          "text": "function commit(value: unknown, nextParser = parser): void {"
+        },
+        {
+          "line": 308,
+          "text": "function synchronizeExistingArtifact(path: string, expected: Buffer): void {"
+        },
+        {
+          "line": 361,
+          "text": "export function writePrivateOperationArtifact("
+        },
+        {
+          "line": 363,
+          "text": "bytes: Buffer,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/private-operation-file.ts",
+      "reason": "单独形参传递、局部绑定或 DTO 简写，不算独立功能。",
+      "fragments": [
+        {
+          "line": 116,
+          "text": "descriptor,"
+        },
+        {
+          "line": 117,
+          "text": "buffer,"
+        },
+        {
+          "line": 118,
+          "text": "length,"
+        },
+        {
+          "line": 120,
+          "text": "null,"
+        },
+        {
+          "line": 149,
+          "text": "maximum,"
+        },
+        {
+          "line": 172,
+          "text": "lockPath,"
+        },
+        {
+          "line": 263,
+          "text": "temporary,"
+        },
+        {
+          "line": 324,
+          "text": "file,"
+        },
+        {
+          "line": 325,
+          "text": "observed,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/private-operation-file.ts",
+      "reason": "纯 DTO 属性转发或静态结果外壳，不算新策略。",
+      "fragments": [
+        {
+          "line": 151,
+          "text": "optional: true,"
+        },
+        {
+          "line": 218,
+          "text": "maximum: options.maximum,"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/private-operation-file.ts",
+      "reason": "静态 schema/help/编码/常量参数片段，不算运行算法。",
+      "fragments": [
+        {
+          "line": 214,
+          "text": "\"\\n\","
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/private-operation-file.ts",
+      "reason": "既有 monitor 私有 POSIX 文件读写/锁/原子 journal 的等价抽取与异常改名，不是新增功能。",
+      "fragments": [
+        {
+          "line": 19,
+          "text": "export class PrivateOperationFault extends Error {"
+        },
+        {
+          "line": 28,
+          "text": "this.name = \"PrivateOperationFault\";"
+        },
+        {
+          "line": 33,
+          "text": "const hash = (value: Buffer) =>"
+        },
+        {
+          "line": 34,
+          "text": "createHash(\"sha256\").update(value).digest(\"hex\");"
+        },
+        {
+          "line": 37,
+          "text": "error !== null &&"
+        },
+        {
+          "line": 38,
+          "text": "typeof error === \"object\" &&"
+        },
+        {
+          "line": 39,
+          "text": "\"code\" in error &&"
+        },
+        {
+          "line": 40,
+          "text": "error.code === \"ENOENT\""
+        },
+        {
+          "line": 48,
+          "text": "error.code === \"EEXIST\""
+        },
+        {
+          "line": 53,
+          "text": "stat.isFile() &&"
+        },
+        {
+          "line": 54,
+          "text": "stat.nlink === 1 &&"
+        },
+        {
+          "line": 55,
+          "text": "(typeof process.getuid !== \"function\" || stat.uid === process.getuid())"
+        },
+        {
+          "line": 60,
+          "text": "typeof value !== \"string\" ||"
+        },
+        {
+          "line": 61,
+          "text": "value.length < 1 ||"
+        },
+        {
+          "line": 65,
+          "text": "throw new PrivateOperationFault(\"state_io\");"
+        },
+        {
+          "line": 67,
+          "text": "if (basename(path).length > 128) throw new PrivateOperationFault(\"state_io\");"
+        },
+        {
+          "line": 95,
+          "text": "descriptor = openSync("
+        },
+        {
+          "line": 97,
+          "text": "constants.O_RDONLY | constants.O_NONBLOCK | NOFOLLOW,"
+        },
+        {
+          "line": 100,
+          "text": "if (options.optional && missing(error)) return null;"
+        },
+        {
+          "line": 106,
+          "text": "!ownedFile(stat) ||"
+        },
+        {
+          "line": 107,
+          "text": "(stat.mode & (options.privateFile ? 0o077 : 0o022)) !== 0"
+        },
+        {
+          "line": 110,
+          "text": "if (stat.size < 1 || stat.size > options.maximum)"
+        },
+        {
+          "line": 111,
+          "text": "throw new PrivateOperationFault(\"state_invalid\");"
+        },
+        {
+          "line": 112,
+          "text": "const buffer = Buffer.allocUnsafe(options.maximum + 1);"
+        },
+        {
+          "line": 115,
+          "text": "const received = readSync("
+        },
+        {
+          "line": 119,
+          "text": "buffer.length - length,"
+        },
+        {
+          "line": 125,
+          "text": "if (length === 0 || length > options.maximum)"
+        },
+        {
+          "line": 129,
+          "text": "if (error instanceof PrivateOperationFault) throw error;"
+        },
+        {
+          "line": 146,
+          "text": "const path = privateOperationPath(pathValue);"
+        },
+        {
+          "line": 147,
+          "text": "assertPrivateOperationParent(path);"
+        },
+        {
+          "line": 153,
+          "text": "return bytes === null ? null : { value: jsonValue(bytes) };"
+        },
+        {
+          "line": 173,
+          "text": "constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | NOFOLLOW,"
+        },
+        {
+          "line": 174,
+          "text": "0o600,"
+        },
+        {
+          "line": 177,
+          "text": "throw new PrivateOperationFault("
+        },
+        {
+          "line": 178,
+          "text": "exists(error) ? \"state_locked\" : \"state_io\","
+        },
+        {
+          "line": 182,
+          "text": "let closed = false,"
+        },
+        {
+          "line": 183,
+          "text": "current: T | null = null,"
+        },
+        {
+          "line": 184,
+          "text": "currentHash: string | null = null;"
+        },
+        {
+          "line": 185,
+          "text": "let parser = options.parse;"
+        },
+        {
+          "line": 190,
+          "text": "ownedFile(stat) &&"
+        },
+        {
+          "line": 191,
+          "text": "stat.dev === identity.dev &&"
+        },
+        {
+          "line": 192,
+          "text": "stat.ino === identity.ino"
+        },
+        {
+          "line": 202,
+          "text": "if (!ownsLock()) throw new PrivateOperationFault(\"state_io\");"
+        },
+        {
+          "line": 211,
+          "text": "writeFileSync("
+        },
+        {
+          "line": 213,
+          "text": "JSON.stringify({ version: 1, pid: process.pid, createdAt: Date.now() }) +"
+        },
+        {
+          "line": 223,
+          "text": "current = parser(jsonValue(bytes));"
+        },
+        {
+          "line": 235,
+          "text": "if (closed || !ownsLock()) throw new PrivateOperationFault(\"state_io\");"
+        },
+        {
+          "line": 237,
+          "text": "const next = nextParser(value),"
+        },
+        {
+          "line": 238,
+          "text": "text = JSON.stringify(next) + \"\\n\";"
+        },
+        {
+          "line": 239,
+          "text": "const present = readPrivateOperationFile(path, {"
+        },
+        {
+          "line": 244,
+          "text": "if ((present === null ? null : hash(present)) !== currentHash)"
+        },
+        {
+          "line": 248,
+          "text": "options.revision(next) !=="
+        },
+        {
+          "line": 249,
+          "text": "(current === null ? 0 : options.revision(current)) + 1"
+        },
+        {
+          "line": 252,
+          "text": "if (Buffer.byteLength(text) > options.maximum)"
+        },
+        {
+          "line": 253,
+          "text": "throw new PrivateOperationFault(\"state_full\");"
+        },
+        {
+          "line": 254,
+          "text": "const temporary = join("
+        },
+        {
+          "line": 255,
+          "text": "dirname(path),"
+        },
+        {
+          "line": 256,
+          "text": "`.${basename(path)}.${randomUUID()}.tmp`,"
+        },
+        {
+          "line": 258,
+          "text": "let temporaryExists = false,"
+        },
+        {
+          "line": 259,
+          "text": "output: number | null = null,"
+        },
+        {
+          "line": 260,
+          "text": "directory: number | null = null;"
+        },
+        {
+          "line": 262,
+          "text": "output = openSync("
+        },
+        {
+          "line": 275,
+          "text": "directory = openSync("
+        },
+        {
+          "line": 277,
+          "text": "constants.O_RDONLY | constants.O_DIRECTORY | NOFOLLOW,"
+        },
+        {
+          "line": 282,
+          "text": "parser = nextParser;"
+        },
+        {
+          "line": 299,
+          "text": "return current === null ? null : parser(current);"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-inbox.ts",
+      "reason": "独立 Node 24 类型擦除/Espree 复核扣除：erased-or-trivia；不把 erased token、历史运行时或类型差异片段作为新功能。",
+      "fragments": [
+        {
+          "line": 380,
+          "text": ")!;"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-protocol.ts",
+      "reason": "独立 Node 24 类型擦除/Espree 复核扣除：duplicate-runtime-fragment；不把 erased token、历史运行时或类型差异片段作为新功能。",
+      "fragments": [
+        {
+          "line": 406,
+          "text": "const body: Omit<HandoffReceipt, \"signature\"> = {"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-reconcile.ts",
+      "reason": "独立 Node 24 类型擦除/Espree 复核扣除：historical-runtime-fragment；不把 erased token、历史运行时或类型差异片段作为新功能。",
+      "fragments": [
+        {
+          "line": 77,
+          "text": "const report: HandoffReconciliation = {"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-sender.ts",
+      "reason": "独立 Node 24 类型擦除/Espree 复核扣除：historical-runtime-fragment；不把 erased token、历史运行时或类型差异片段作为新功能。",
+      "fragments": [
+        {
+          "line": 81,
+          "text": "let pending: HandoffSenderState[\"pending\"] = null;"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/application/alert-handoff-sender.ts",
+      "reason": "独立 Node 24 类型擦除/Espree 复核扣除：duplicate-runtime-fragment；不把 erased token、历史运行时或类型差异片段作为新功能。",
+      "fragments": [
+        {
+          "line": 286,
+          "text": "const batch = state.pending!.batch;"
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/infrastructure/alert-handoff-command.ts",
+      "reason": "独立 Node 24 类型擦除/Espree 复核扣除：duplicate-runtime-fragment；不把 erased token、历史运行时或类型差异片段作为新功能。",
+      "fragments": [
+        {
+          "line": 250,
+          "text": "return error.code as HandoffFaultCode;"
+        }
+      ]
+    }
+  ]
+}

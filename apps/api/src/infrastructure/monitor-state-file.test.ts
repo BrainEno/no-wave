@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test, { type TestContext } from "node:test";
 import { acknowledgeMonitorEvents, evaluateMonitor } from "../application/operational-alerts.ts";
+import { emptyMonitorState } from "../application/operational-monitor-state.ts";
 import { parseMonitorConfig } from "./monitor-config.ts";
 import { MONITOR_STATE_MAX_BYTES, openMonitorJournal, readMonitorJournal, readMonitorConfigFile } from "./monitor-state-file.ts";
 
@@ -137,4 +138,16 @@ test("configuration changes cannot overwrite an independently replaced journal",
   assert.throws(() => journal.reconfigure(next, first.lastEvaluatedAt! + 1000), { code: "state_io" });
   assert.equal(readFileSync(f.path, "utf8"), foreign); journal.close();
   assert.equal(readMonitorJournal(f.path, config)?.fingerprint, config.fingerprint);
+});
+
+
+test("shared snapshot extraction preserves JSON-null rejection and exact no-op commits of a valid empty snapshot", t => {
+  const f = fixture(t);
+  writeFileSync(f.path, "null", { mode: 0o600 });
+  assert.throws(() => readMonitorJournal(f.path, config), { code: "state_invalid" });
+  const empty = emptyMonitorState(config);
+  writeFileSync(f.path, JSON.stringify(empty), { mode: 0o600 });
+  const journal = openMonitorJournal(f.path, config);
+  try { journal.commit(empty); assert.deepEqual(journal.state, empty); }
+  finally { journal.close(); }
 });
