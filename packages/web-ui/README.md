@@ -24,6 +24,14 @@
 [使用说明](../../docs/operations/writing-recovery.md)与
 [ADR 0045](../../docs/architecture/decisions/0045-default-off-local-writing-recovery.md)。
 
+## 仅内存的本机三方文稿合并
+
+`/write/merge` 只处理明确选择的共同基线/当前稿/另一稿单篇备份，保守对齐、逐项取舍，
+生成新的文稿 JSON；不自动写编辑区、服务器或上述可选恢复缓存。重复/顺序歧义保留
+整个正文冲突，来源和取舍变化撤销旧预览/下载。计划手动导出和重新核对，不含正文，
+也不授予身份/媒体权限。风险与用法见[说明](../../docs/operations/writing-merge.md)和
+[ADR 0046](../../docs/architecture/decisions/0046-local-three-way-writing-merge.md)。
+
 ## 配置契约
 
 `apps/web-rr/app/lib/runtime.ts` 将 API endpoint、site origin、mail、source、

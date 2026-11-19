@@ -1,5 +1,7 @@
 import { expect, type Page } from "@playwright/test";
-import { test } from "./support/csp-fixture.ts";
+// File-level sharding must not couple these sessions to another spec's finite
+// registration budget. Keep the same enforcing CSP fixture via the real private stack.
+import { test } from "./support/article-view-stack.ts";
 import { registerThroughForm, uniqueEmail } from "./support/accounts.ts";
 import { interceptNotifications } from "./support/notification-api.ts";
 

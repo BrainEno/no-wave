@@ -52,6 +52,7 @@ which of two `0011`s meant what.
 | [0043](0043-offline-signed-alert-handoff.md) | 告警交接使用签名离线批次、独立持久收件箱和显式结算 | Proposed | Partial | 2026-11-12 |
 | [0044](0044-public-only-alert-evidence-review.md) | 告警历史证据使用独立公钥、只读集合审阅和不授予权限的导航 | Accepted | Not recorded | 2026-11-12 |
 | [0045](0045-default-off-local-writing-recovery.md) | 文稿恢复默认关闭，缓存有界隔离且只允许手动复制编辑字段 | Accepted | Not recorded | 2026-11-12 |
+| [0046](0046-local-three-way-writing-merge.md) | 三方文稿合并只在本机取舍，重复或顺序歧义不自动对齐 | Accepted | Done | 2026-11-12 |
 
 The status column carries the leading word of each file's `- Status:` line —
 read the file for the qualifier ("Superseded by ADR 0012", "Accepted as the

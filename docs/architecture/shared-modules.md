@@ -22,6 +22,7 @@ Web 已按 [ADR 0012](decisions/0012-portable-web-framework-migration.md) / [001
 | UI 控件、样式、文案 | [web-ui](../../packages/web-ui/README.md)、`src/components/ui/parts.tsx`、`src/lib/ui-copy.ts` | 优先既有交互/无障碍语义，不只复制外观 |
 | 写作状态、目录、集合与备份 | `web-ui/src/lib/writing-*.ts`、`authoring-catalogue-*.ts` | 保留未保存编辑、修订冲突、恢复和跨账户保护 |
 | 默认关闭的本机文稿恢复 | `web-ui/src/lib/writing-recovery-{model,store,controller,boundary,lifecycle,source}.ts`；[ADR 0045](decisions/0045-default-off-local-writing-recovery.md)、[使用/故障说明](../operations/writing-recovery.md) | IDB 原子 actor/epoch/writer/CAS fence、20 份/16 MiB；复用 backup/diff/catalogue/shared HTTP；只手动复制字段/只读核对，身份不来自磁盘；账号变更两侧 purge；不持久化凭据或请求、不重放/自动发布 |
+| 本机三方文稿取舍 | `web-ui/src/lib/writing-merge{,-integrity,-structure,-impact,-plan,-review,-controller}.ts`；[ADR 0046](decisions/0046-local-three-way-writing-merge.md)、[使用说明](../operations/writing-merge.md) | 仅明确选择三份单篇备份；精确区间、歧义整篇冲突、逐来源/输出守恒、闭集手动取舍；无上传/缓存/编辑区写入/发布/重放；来源和取舍变化撤销旧计划/结果 |
 | 通知与消息浏览器传输 | `web-ui/src/lib/notification-transport.ts`、`messaging-transport.ts` 及 actor/controller 模块 | 既有取消、幂等、限流恢复；不重复计入新增功能 |
 | 公共内容、标签、feed、sitemap、SEO | `web-ui/src/lib/{api-content,public-pages,tag-pages,tag-feed,site-metadata,sitemap-catalog}.ts` | 显式 source/config；已配置 API 失败不得冒充 fixtures |
 | 默认关闭的 Notion job | `application/notion-{durable-jobs,job-service,job-poll,job-drain,job-check}.ts`、两个 `*-notion-jobs-store.ts`；[操作规程](../operations/notion-import-jobs.md) | 无崩溃自动重放；数据库事务 fence、外部 key、独立有限命令；BFF 仍在 web-http，不进 UI |
@@ -30,6 +31,7 @@ Web 已按 [ADR 0012](decisions/0012-portable-web-framework-migration.md) / [001
 | 离线告警交接、签名证据、持久收件箱 | `application/alert-handoff-{protocol,sender,inbox,reader,status,reconcile,verification}.ts`、`infrastructure/alert-handoff-{config,file,command}.ts`、`private-operation-file.ts`；[交接规程](../operations/alert-handoff.md) | 不联网/不导入业务 store；receipt 只证明持久接受；settle 与 consume 分离，禁止隐式 ack/身份重绑定/清空旧链 |
 | 公钥-only 历史证据审阅、比较、检查点和只读追踪 | `application/alert-evidence-{authentication,history,episodes,receipts,review,compare,requirements,query,context,trace}.ts`、`infrastructure/alert-evidence-{config,manifest,file,command}.ts`；[证据规程](../operations/alert-evidence.md)、[ADR 0044](decisions/0044-public-only-alert-evidence-review.md) | 复用 handoff 的签名/事件/profile 与 private-operation-file/output；固定 trust/独立要求，不接受私钥、不发现文件、不写日志；过滤和 unsigned navigation token 不授予权限、不隐藏全局发现，历史不能证明健康/最终性 |
 | API 业务与持久层 | `apps/api/src/application/`、`domain/`、`persistence/`；[API README](../../apps/api/README.md) | 业务事务与所有权由后端/数据库执行 |
+| 第一方字体构建和离线核验 | `scripts/fonts/{generate,source-download,repertoires}.ts`、`scripts/lib/font-assets.ts`；[字体说明](first-party-fonts.md) | 只在构建期读取固定公开输入；SHA/配方/许可证不漂移；缺失才准备、坏字节失败；不借用带身份的业务 HTTP 客户端，不把生成器或源字体带入浏览器/运行镜像 |
 | 构建工具的 glob / 目录匹配 | [glob-match](../../packages/glob-match/README.md) 与 `scripts/glob-*.test.ts` | 私有非递归工具适配器；不生成 glob 正则，不进业务层或浏览器，不承诺完整 picomatch API |
 
 示例检索：`rg 'forwardAuthoringRequest|handle.*Request' packages/web-http/src apps/web-rr/app/routes`，

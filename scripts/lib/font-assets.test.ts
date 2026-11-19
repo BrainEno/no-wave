@@ -8,6 +8,8 @@ import { applicationRepertoires, fontPartitions, literalCjkText, verifyFontRecip
 import { FONT_SOURCES, fontSourceReceipt } from "../fonts/font-sources.ts";
 import {
   assertSubsetCoverage,
+  assertFontReproduction,
+  fontBundleNeedsGeneration,
   codepoints,
   expandUnicodeRange,
   partitionCharacters,
@@ -57,6 +59,91 @@ async function fixture(work: (directory: string, data: FontManifest) => Promise<
     await rm(directory, { recursive: true, force: true });
   }
 }
+
+test("font preparation distinguishes an absent generated asset from a verified bundle without accepting a missing bundle as verified", async () => {
+  await fixture(async (directory, data) => {
+    const css = renderFontCss(data.faces);
+    const before = structuredClone(data);
+    assert.equal(await fontBundleNeedsGeneration(data, directory, css), false);
+    await rm(join(directory, data.faces[0]!.file));
+    assert.equal(await fontBundleNeedsGeneration(data, directory, css), true);
+    await assert.rejects(verifyFontBundle(data, directory, css), /Missing/);
+    assert.deepEqual(data, before);
+  });
+});
+
+test("font preparation never regenerates over unowned files, bad licenses, metadata or stale CSS", async () => {
+  for (const mode of ["extra", "license", "missing-license", "metadata", "css"] as const) {
+    await fixture(async (directory, data) => {
+      await rm(join(directory, data.faces[0]!.file));
+      if (mode === "extra") await writeFile(join(directory, "unowned.woff2"), woff2());
+      if (mode === "license") await writeFile(join(directory, data.sources[0]!.license), "changed attribution");
+      if (mode === "missing-license") await rm(join(directory, data.sources[0]!.license));
+      if (mode === "metadata") data.faces[0]!.file = "../outside.woff2";
+      const css = renderFontCss(manifest().faces) + (mode === "css" ? "/* changed */" : "");
+      const expected = mode === "extra" ? /unowned font/ : mode === "license" ? /Changed font license/ :
+        mode === "missing-license" ? { code: "ENOENT" } : mode === "metadata" ? /Invalid font/ : /stylesheet/;
+      await assert.rejects(fontBundleNeedsGeneration(data, directory, css), expected, mode);
+    });
+  }
+});
+
+test("a partially missing font bundle still authenticates every present asset before allowing generation", async () => {
+  await fixture(async (directory, data) => {
+    data.faces[0]!.unicodeRange = "U+20-4F";
+    data.faces.push({ ...data.faces[0]!, file: "inter-tight-normal-next.woff2", unicodeRange: "U+50-7E" });
+    const corrupt = woff2(); corrupt[51] = 7;
+    await writeFile(join(directory, data.faces[1]!.file), corrupt);
+    await rm(join(directory, data.faces[0]!.file));
+    await assert.rejects(fontBundleNeedsGeneration(data, directory, renderFontCss(data.faces)), /Changed font asset/);
+  });
+});
+
+test("automatic font preparation must reproduce both checked-in receipts byte-for-byte rather than silently refreshing them", () => {
+  const expected = { manifest: JSON.stringify(manifest()), css: renderFontCss(manifest().faces) };
+  const before = structuredClone(expected);
+  assert.doesNotThrow(() => assertFontReproduction(expected, { ...expected }));
+  for (const actual of [
+    { ...expected, manifest: expected.manifest + "\n" },
+    { ...expected, css: expected.css + "/* changed */" },
+  ]) assert.throws(() => assertFontReproduction(expected, actual), /receipt|reproduc/i);
+  assert.deepEqual(expected, before);
+});
+
+test("clean-checkout root tests and both Web entry points prepare fonts, while Docker carries build-only generator inputs", async () => {
+  const root = JSON.parse(await readFile(new URL("../../package.json", import.meta.url), "utf8")) as { scripts: Record<string, string> };
+  const web = JSON.parse(await readFile(new URL("../../apps/web-rr/package.json", import.meta.url), "utf8")) as { scripts: Record<string, string> };
+  assert.equal(root.scripts["fonts:prepare"], "node scripts/fonts/generate.ts --prepare");
+  assert.equal(root.scripts.test, "pnpm fonts:prepare && node scripts/test.ts root");
+  assert.equal(web.scripts.build, "node ../../scripts/fonts/generate.ts --prepare && react-router build");
+  assert.equal(web.scripts.dev, "node ../../scripts/fonts/generate.ts --prepare && react-router dev");
+  const [build, runtime] = (await readFile(new URL("../../apps/web-rr/Dockerfile", import.meta.url), "utf8")).split("# ---- Runtime");
+  assert.ok(build && runtime);
+  assert.match(build, /COPY scripts\/fonts \.\/scripts\/fonts/);
+  assert.match(build, /COPY scripts\/lib\/font-assets\.ts \.\/scripts\/lib\/font-assets\.ts/);
+  assert.ok(build.indexOf("COPY scripts/fonts") < build.indexOf("RUN pnpm fonts:prepare"));
+  assert.match(build, /RUN pnpm fonts:prepare/);
+  assert.doesNotMatch(runtime, /COPY scripts|fonts:prepare|fonts:generate|fontkit|subset-font/);
+});
+
+test("the native React Router build and dev configuration await font preparation without requiring a global package-manager shim", async () => {
+  const config = await readFile(new URL("../../apps/web-rr/vite.config.ts", import.meta.url), "utf8");
+  assert.match(config, /export default defineConfig\(async \(\) => \{/);
+  assert.match(config, /await prepareFirstPartyFonts\(\);/);
+  assert.ok(config.indexOf("await prepareFirstPartyFonts();") < config.indexOf("plugins:"));
+  assert.match(config, /process\.execPath/);
+  assert.match(config, /scripts\/fonts\/generate\.ts/);
+  assert.match(config, /"--prepare"/);
+});
+
+test("the dev supervisor awaits a cancellable bounded font preflight before any service readiness clock starts", async () => {
+  const dev = await readFile(new URL("../../scripts/dev.ts", import.meta.url), "utf8");
+  const preparation = dev.indexOf("await executeFile(process.execPath, [resolve(repositoryRoot, \"scripts/fonts/generate.ts\"), \"--prepare\"]");
+  assert.ok(preparation >= 0 && preparation < dev.indexOf("supervisor.launch("));
+  assert.match(dev, /if \(startWeb\) \{\s*info\("Preparing first-party fonts before service startup/);
+  assert.match(dev, /signal: supervisor\.signal, timeout: 300_000/);
+  assert.match(dev, /const READY_TIMEOUT_MS = 90_000;/, "generation is a preflight, not a relaxed service readiness budget");
+});
 
 test("font ranges are canonical, sorted, deduplicated and preserve supplementary scalars", () => {
   const input = [0x4e00, 0x21, 0x20, 0x23, 0x22, 0x20000, 0x4e00, 0x20001];
@@ -186,7 +273,7 @@ test("duplicate assets, overlapping shards and undeclared sources fail before pu
   }
 });
 
-test("the checked-in first-party fonts are verified offline and root does not reference Google Fonts", async () => {
+test("the prepared first-party fonts are verified offline and root does not reference Google Fonts", async () => {
   const data = JSON.parse(await readFile(new URL("../../packages/web-ui/src/styles/fonts/manifest.json", import.meta.url), "utf8")) as FontManifest;
   const css = await readFile(new URL("../../packages/web-ui/src/styles/fonts.css", import.meta.url), "utf8");
   const result = await verifyFontBundle(data, new URL("../../packages/web-ui/src/styles/fonts/", import.meta.url), css);
@@ -194,7 +281,7 @@ test("the checked-in first-party fonts are verified offline and root does not re
   await verifyFontRecipe(data, new URL("../..", import.meta.url).pathname);
   assert.deepEqual(result.families, ["Instrument Serif", "Inter Tight", "Noto Sans SC", "Noto Serif SC"]);
   assert.ok(result.faces > 10, "Chinese and extended scripts have lazy Unicode shards");
-  assert.ok(result.bytes < 64 * 1024 * 1024, "the complete font bundle has a bounded repository footprint");
+  assert.ok(result.bytes < 64 * 1024 * 1024, "the complete font bundle has a bounded build footprint");
   const root = await readFile(new URL("../../apps/web-rr/app/root.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(root, /fonts\.googleapis\.com|fonts\.gstatic\.com/);
   assert.match(root, /styles\/fonts\.css\?url/);

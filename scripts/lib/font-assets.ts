@@ -39,6 +39,13 @@ const MAX_FONT_BYTES = 2 * 1024 * 1024;
 const digest = (bytes: Uint8Array | string) => createHash("sha256").update(bytes).digest("hex");
 const record = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
+/** Automatic preparation may restore ignored assets, never refresh reviewed receipts. */
+export function assertFontReproduction(expected: { manifest: string; css: string }, actual: { manifest: string; css: string }): void {
+  if (expected.manifest !== actual.manifest || expected.css !== actual.css) {
+    throw new Error("Font reproduction differs from checked-in receipts; regenerate and review the metadata explicitly.");
+  }
+}
+
 function scalars(values: readonly number[]): number[] {
   if (values.some((value) => !Number.isInteger(value) || value < 0 || value > 0x10ffff || (value >= 0xd800 && value <= 0xdfff))) {
     throw new Error("Invalid Unicode scalar in font repertoire.");
@@ -195,15 +202,17 @@ function parseManifest(value: unknown): FontManifest {
   return value as FontManifest;
 }
 
-/** No network, browser or regeneration: every checked-in byte must match its receipt. */
-export async function verifyFontBundle(value: unknown, directory: string | URL, css: string): Promise<{ faces: number; bytes: number; families: string[] }> {
+/** Shared read-only inspection; only the preparation query can tolerate absent generated files. */
+async function inspectFontBundle(value: unknown, directory: string | URL, css: string, allowMissing: boolean): Promise<{ faces: number; bytes: number; families: string[]; missing: number }> {
   const data = parseManifest(value);
   const path = directory instanceof URL ? fileURLToPath(directory) : directory;
   const expected = new Set(data.faces.map((face) => face.file));
-  const actual = (await readdir(path)).filter((file) => file.endsWith(".woff2"));
-  if (actual.length !== expected.size || actual.some((file) => !expected.has(file))) throw new Error("Missing or unowned font assets in the generated directory.");
+  const actual = new Set((await readdir(path)).filter((file) => file.endsWith(".woff2")));
+  const missing = data.faces.filter((face) => !actual.has(face.file)).length;
+  if ((!allowMissing && missing > 0) || [...actual].some((file) => !expected.has(file))) throw new Error("Missing or unowned font assets in the generated directory.");
   let total = 0;
   for (const face of data.faces) {
+    if (!actual.has(face.file)) continue;
     const bytes = await readFile(join(path, face.file));
     validateWoff2(bytes);
     if (bytes.length !== face.byteLength || digest(bytes) !== face.sha256) throw new Error(`Changed font asset: ${face.file}`);
@@ -214,5 +223,16 @@ export async function verifyFontBundle(value: unknown, directory: string | URL, 
     if (digest(license) !== source.licenseSha256 || !/SIL OPEN FONT LICENSE/i.test(license.toString("utf8"))) throw new Error(`Changed font license: ${source.license}`);
   }
   if (css !== renderFontCss(data.faces)) throw new Error("Generated font stylesheet is stale; run pnpm fonts:generate.");
-  return { faces: data.faces.length, bytes: total, families: [...new Set(data.faces.map((face) => face.family))].sort() };
+  return { faces: data.faces.length, bytes: total, families: [...new Set(data.faces.map((face) => face.family))].sort(), missing };
+}
+
+/** No network or regeneration: a missing file is still a hard verification failure. */
+export async function verifyFontBundle(value: unknown, directory: string | URL, css: string): Promise<{ faces: number; bytes: number; families: string[] }> {
+  const result = await inspectFontBundle(value, directory, css, false);
+  return { faces: result.faces, bytes: result.bytes, families: result.families };
+}
+
+/** Missing files are rebuildable only after all metadata, present bytes and licenses pass. */
+export async function fontBundleNeedsGeneration(value: unknown, directory: string | URL, css: string): Promise<boolean> {
+  return (await inspectFontBundle(value, directory, css, true)).missing > 0;
 }

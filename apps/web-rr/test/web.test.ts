@@ -1869,6 +1869,21 @@ test("the production server does not compress private, query-bearing or authenti
   }
 });
 
+test("the local three-way merge route is an empty private shell and does not reflect or load file URLs", async () => {
+  const response = await get("/write/merge");
+  assert.equal(response.status, 200);
+  assert.match(response.body, /data-route="write-merge"/);
+  assert.match(response.body, /本机三方文稿合并/);
+  assert.match(response.body, /noindex, nofollow/);
+  assert.match(response.headers.get("cache-control") ?? "", /no-store/);
+  assert.doesNotMatch(response.body, /contenteditable="true"/);
+  const query = await get("/write/merge?base=https%3A%2F%2Fattacker.test%2FPRIVATE-MERGE-FILE");
+  assert.equal(query.status, 302);
+  assert.equal(query.headers.get("location"), "/write/merge");
+  assert.match(query.headers.get("cache-control") ?? "", /no-store/);
+  assert.doesNotMatch(query.body, /PRIVATE-MERGE-FILE/);
+});
+
 test("the local collection tool is a protected empty shell without account authority or file-URL auto-loading", async () => {
   const response = await get("/write/collections");
   assert.equal(response.status, 200);

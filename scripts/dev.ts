@@ -4,9 +4,11 @@
  * Node watch mode retains hot reload, while failed watched applications tear
  * down the whole chain instead of leaving an apparently running half-stack.
  */
+import { execFile } from "node:child_process";
 import { createServer } from "node:net";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { promisify } from "node:util";
 import {
   apiPackageDirectory,
   evaluateNodeVersion,
@@ -21,6 +23,7 @@ import { formatReport, runLocalChecks } from "./local-dev-check.ts";
 import { resolveWebBuildCli } from "./lib/web-build-cli.ts";
 import { createDevSupervisor } from "./lib/dev-supervisor.ts";
 
+const executeFile = promisify(execFile);
 const READY_TIMEOUT_MS = 90_000;
 const info = (message: string) => process.stdout.write(`${message}\n`);
 const error = (message: string) => process.stderr.write(`error   ${message}\n`);
@@ -96,6 +99,16 @@ export async function runDev(): Promise<void> {
   const graceMs = Number.isInteger(configuredGrace) && configuredGrace >= 100 && configuredGrace <= 60_000 ? configuredGrace + 1500 : 9500;
   const supervisor = createDevSupervisor({ info, error, graceMs });
   try {
+    if (startWeb) {
+      info("Preparing first-party fonts before service startup (a cold checkout may take several minutes).");
+      // Cold subsetting is a bounded, cancellable preflight, not Web readiness.
+      // Start no API/worker/Web role until it succeeds; keep their 90s bound.
+      const { stdout, stderr } = await executeFile(process.execPath, [resolve(repositoryRoot, "scripts/fonts/generate.ts"), "--prepare"], {
+        cwd: repositoryRoot, env: process.env, signal: supervisor.signal, timeout: 300_000, windowsHide: true,
+      });
+      if (stdout) process.stdout.write(stdout);
+      if (stderr) process.stderr.write(stderr);
+    }
     if (startApi) {
       // Same cwd and persistence variables: a relative SQLite filename must
       // identify one durable database, never two role-specific local files.

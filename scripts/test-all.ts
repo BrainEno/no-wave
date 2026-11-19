@@ -31,7 +31,11 @@ export function safeEnvironment(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
  * Reject unexpected syntax rather than trying to interpret shell commands.
  */
 export function testArguments(script: string): string[] {
-  const tokens = script.trim().split(/\s+/);
+  // One reviewed package-script composition, not a shell interpreter. The suite
+  // runs preparation explicitly with a clean environment before this inventory.
+  const reviewed = "pnpm fonts:prepare && node scripts/test.ts root";
+  const inventory = script.trim() === reviewed ? "node scripts/test.ts root" : script.trim();
+  const tokens = inventory.split(/\s+/);
   if (tokens.shift() !== "node") throw new Error("Test script must start with node.");
   const args = tokens.filter((token) => !token.startsWith("--env-file-if-exists="));
   const discovery = args.length === 2 && ["scripts/test.ts", "../../scripts/test.ts"].includes(args[0]!);
@@ -112,11 +116,14 @@ export async function runSuite(options: SuiteOptions): Promise<void> {
   if (!existsSync(options.chromiumPath)) {
     throw new Error("Playwright Chromium is missing. Run: pnpm test:e2e:install");
   }
+  const rootArguments = testArguments(options.rootTest);
   await requireSuccess(execute, capture("docker", ["info"]), "Docker is unavailable; start Docker Desktop/Engine and retry");
 
-  // No user-configured database or URL is ever passed to a test process.
+  // No user-configured database or URL is ever passed to preparation or tests.
+  log("Preparing first-party fonts from pinned inputs without refreshing receipts.");
+  await requireSuccess(execute, run(node, [join(cwd, "scripts/fonts/generate.ts"), "--prepare"]), "Font preparation failed");
   log("Running root tests without an external PostgreSQL database.");
-  await requireSuccess(execute, run(node, testArguments(options.rootTest)), "Root tests failed");
+  await requireSuccess(execute, run(node, rootArguments), "Root tests failed");
   log("Building and testing the production Web server.");
   await requireSuccess(execute, run(node, [pnpmCli, "--filter", "@bot-thk/web-rr", "build"]), "Web build failed");
   if (!options.webTests.length) throw new Error("No Web tests found.");

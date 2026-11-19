@@ -15,9 +15,9 @@
 
 ## 来源与许可证
 
-`scripts/fonts/font-sources.ts` 固定 Google Fonts 仓库中的五个 TTF Git **blob ID**、对应 SHA-256、四份原始 OFL 文本及其校验和。blob 是不可变内容标识，不把它误称为仓库 commit。下载只发生在显式再生成时，经 GitHub blob API 取得内容，拒绝重定向并校验哈希。构建、测试和页面运行不需要 GitHub 或 Google Fonts 在线。
+`scripts/fonts/font-sources.ts` 固定 Google Fonts 仓库中的五个 TTF Git **blob ID**、对应 SHA-256、四份原始 OFL 文本及其校验和。blob 是不可变内容标识，不把它误称为仓库 commit。下载只发生在显式再生成或缺失生成资产的冷准备时，经 GitHub blob API 取得内容，拒绝重定向并校验哈希。首次干净检出构建/根测试需要 GitHub 或已验证的输入缓存；完整资产准备后可离线构建/测试，页面运行始终不依赖 GitHub 或 Google Fonts 在线。
 
-原始 TTF 不进入 Git 或镜像；`.cache/font-sources/` 仅为可丢弃、校验后使用的构建缓存。仓库提交部署所必需的 WOFF2、原始 OFL、清单和 CSS。字体名称表的版权、许可及许可 URL 保留，字体内部历史名称（如 Thin / ExtraLight）不用于推断 CSS 家族或字重。
+原始 TTF 不进入 Git 或运行镜像；`.cache/font-sources/` 仅为可丢弃、校验后使用的构建缓存。仓库只提交原始 OFL、来源收据、清单和 CSS；部署所需 WOFF2 由构建准备生成并保持忽略。字体名称表的版权、许可及许可 URL 保留，字体内部历史名称（如 Thin / ExtraLight）不用于推断 CSS 家族或字重。
 
 `noto-reading-priority.json` 的常用字优先级取自固定 `@fontsource-variable/noto-serif-sc@5.3.1` 的 `unicode.json` 分组，记录原 tarball 和元数据 SHA-256。它只决定分片优先级，不是字形来源，也不从测试文章提取字表。所有其余原始字形仍可按需加载。
 
@@ -46,7 +46,7 @@ UI 核心字表来自 `ui-copy.ts` 的外壳文案、站点外壳、共用的阅
 
 原始非控制字符覆盖为 Instrument Serif 每个样式 333、Inter Tight 2,504、Noto Serif SC 30,928、Noto Sans SC 30,890。清单固定各来源的覆盖数量及排序后码点的 SHA-256，逐个字重检查完整覆盖；不能通过删掉生僻字或遗漏一个字重来让预算通过。
 
-这是按需分发，不是承诺任意长度、任意生僻字密度的用户文章都只需固定字节数。600 KB 守门有明确的中英混排正文 fixture；异常大的字符集合仍会加载更多合法分片。完整字体集合的仓库体积与首屏传输量是不同指标。
+这是按需分发，不是承诺任意长度、任意生僻字密度的用户文章都只需固定字节数。600 KB 守门有明确的中英混排正文 fixture；异常大的字符集合仍会加载更多合法分片。完整字体集合的构建资产体积与首屏传输量是不同指标。
 
 ## 生成与离线验证
 
@@ -54,22 +54,30 @@ UI 核心字表来自 `ui-copy.ts` 的外壳文案、站点外壳、共用的阅
 
 ```sh
 pnpm install --frozen-lockfile
-pnpm fonts:generate       # 显式下载不可变上游输入并生成；首次需 GitHub 网络
-pnpm fonts:check          # 不联网、不重新子集化，验证全部已提交产物和当前配方
-pnpm test                # 包含离线字体策略、负例与完整性测试
-pnpm test:web            # 先构建，再核对真实 CSS、哈希资产和许可证 HTTP 分发
+pnpm fonts:prepare       # 恢复缺失的忽略资产；冷启动需 GitHub，已有完整产物时只做离线校验
+pnpm fonts:check         # 严格离线核验所有产物和已提交合同；缺失文件仍然失败
+pnpm fonts:generate      # 有意更改配方后显式再生成，并审阅来源收据、manifest、CSS、许可证
+pnpm test                # 自动 prepare，再运行离线字体策略、负例与完整性测试
+pnpm test:web            # Web build 自动 prepare，再核对 CSS、哈希资产和许可证 HTTP 分发
 pnpm test:e2e --grep 'font|typography|cold desktop home'
 ```
 
 构建期工具为精确版本 `fontkit@3.0.0`、`subset-font@2.9.0` 和 `@babel/parser@7.29.11`，不进入应用运行时或浏览器 JavaScript。解析器复用原 lockfile 已有版本，不降低既有 Babel 工具链的传递版本。子集保留 OpenType 排版功能；不通过删除字形替换、提示信息或断言来换取更小数字。
 
-生成先写入临时目录，完成字形、格式、哈希、来源、许可证和分片检查后才替换原产物。源下载或子集化失败时，不发布半套新字体。源码、字体、清单、CSS、许可证必须一同审阅提交；生成的元数据／二进制不计入本轮实质代码行数。
+生成先写入临时目录，完成字形、格式、哈希、来源、许可证和分片检查后才替换原产物。源下载或子集化失败时，不发布半套新字体。源码、来源收据、清单、CSS、原始许可证仍一同审阅；生成 WOFF2、临时 staging 和下载缓存被忽略，不再提交二进制，也不计入功能代码行。
+
+`fonts:prepare` 只容忍缺失的生成 WOFF2：仍核验所有已有字节、完整来源覆盖、CSS、许可证和当前配方；损坏、未知资产或漂移先失败，不自动更新受审元数据。冷重建后的 manifest/CSS 必须与已提交收据逐字节相同，替换前还会再核对输入，不能把构建变成隐式配方升级。完整产物存在时不下载、不重新子集化；离线机器首次构建须先在可信联网环境准备资产或取得匹配固定 SHA 的输入缓存。
+
+冷下载优先从 `raw.githubusercontent.com/google/fonts` 的固定 revision `cc5661d43cd4f9aad5567033a8e15ca28dc35c86` 读取闭集路径，避免大量并行干净构建消耗匿名 Git API 配额；已核对这九份字体/许可证仍对应原受审 blob 和 SHA-256，不使用 `main` 或动态字体 CSS。受限网络的连接失败或有限可用性状态可退回原固定 Git blob API 一次，仍无令牌/凭据、禁止重定向、强制期限/流式字节上限和同一 SHA-256；坏字节、404、无效 JSON/身份/大小均失败，不改用其他版本，不降级系统字体。此传输仅在构建期使用，不是浏览器或应用运行时依赖。
+
+根测试、Web 的 `dev`/`build`（包括过滤构建、portable/perf/PG 测试入口）共用该前置。Vite 配置在初始化插件前 await 原生 Node `--prepare`，因此直接调用 React Router CLI 也受覆盖，不依赖全局 pnpm shim。开发编排在启动任何服务前执行可取消、有界的准备，冷子集化不消耗原有 90s 服务就绪期限；`--api-only` 不准备 Web 字体。`test:all` 在干净环境中显式准备，命令解析只接受唯一受审前缀，不执行一般 shell 字串。Docker 构建阶段显式复制生成器及其共享验证依赖、安装根构建依赖；运行阶段仍只带生产依赖和构建输出，不带生成脚本、字体源下载或构建工具。
 
 Vite 将 CSS 中所有字体 URL 改写为同源带哈希资产，连小分片也不内联到全局 CSS。生产服务器沿用既有 `font/woff2`、HEAD、Content-Length 和一年 immutable 资源缓存；不另设字体代理或第三方回源。原始许可文本按普通静态文件重验证缓存。
 
 ## 回归证据与失败诊断
 
 - `scripts/lib/font-assets.test.ts`：恶意路径／CSS 值、无效 Unicode、分片重叠、完整覆盖、丢失字重、变更字节、损坏 WOFF2、许可证缺失和配方漂移。
+- `scripts/fonts/source-download.test.ts`：Git API 返回 403 时仍从固定文件取得同一字节；受限网络的有限回退、九份闭集映射、重定向/错误身份/坏字节/流式超限拒绝；不传递授权头。
 - `apps/web-rr/test/font-build.test.ts`：实际构建 CSS 的每个 face 必须指向存在、内容与清单相符的哈希 WOFF2；不能退化为 data URL、系统字体、外部 URL 或不可达资产；生成器不进入客户端。
 - `apps/web-rr/test/server-lifecycle.test.ts`：生产分发携带原始许可文本，不只在仓库里存在。
 - `e2e/fonts.spec.ts`：冷传输预算、字体状态、CDP 实际绘制字体、normal / italic 和必需字重、五次普通动态 CLS，以及屏蔽第三方后的几何与字体一致性。

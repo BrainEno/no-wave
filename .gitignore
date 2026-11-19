@@ -39,3 +39,4 @@ notion-bundle.json
 # (pnpm fonts:generate) and must not be committed. Only the source receipts,
 # manifest and original OFL licenses are tracked.
 packages/web-ui/src/styles/fonts/*.woff2
+packages/web-ui/src/styles/.font-staging-*/
