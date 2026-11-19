@@ -31,6 +31,7 @@ Web 已按 [ADR 0012](decisions/0012-portable-web-framework-migration.md) / [001
 | 离线告警交接、签名证据、持久收件箱 | `application/alert-handoff-{protocol,sender,inbox,reader,status,reconcile,verification}.ts`、`infrastructure/alert-handoff-{config,file,command}.ts`、`private-operation-file.ts`；[交接规程](../operations/alert-handoff.md) | 不联网/不导入业务 store；receipt 只证明持久接受；settle 与 consume 分离，禁止隐式 ack/身份重绑定/清空旧链 |
 | 公钥-only 历史证据审阅、比较、检查点和只读追踪 | `application/alert-evidence-{authentication,history,episodes,receipts,review,compare,requirements,query,context,trace}.ts`、`infrastructure/alert-evidence-{config,manifest,file,command}.ts`；[证据规程](../operations/alert-evidence.md)、[ADR 0044](decisions/0044-public-only-alert-evidence-review.md) | 复用 handoff 的签名/事件/profile 与 private-operation-file/output；固定 trust/独立要求，不接受私钥、不发现文件、不写日志；过滤和 unsigned navigation token 不授予权限、不隐藏全局发现，历史不能证明健康/最终性 |
 | API 业务与持久层 | `apps/api/src/application/`、`domain/`、`persistence/`；[API README](../../apps/api/README.md) | 业务事务与所有权由后端/数据库执行 |
+| 第一方字体构建和离线核验 | `scripts/fonts/{generate,source-download,repertoires}.ts`、`scripts/lib/font-assets.ts`；[字体说明](first-party-fonts.md) | 只在构建期读取固定公开输入；SHA/配方/许可证不漂移；缺失才准备、坏字节失败；不借用带身份的业务 HTTP 客户端，不把生成器或源字体带入浏览器/运行镜像 |
 | 构建工具的 glob / 目录匹配 | [glob-match](../../packages/glob-match/README.md) 与 `scripts/glob-*.test.ts` | 私有非递归工具适配器；不生成 glob 正则，不进业务层或浏览器，不承诺完整 picomatch API |
 
 示例检索：`rg 'forwardAuthoringRequest|handle.*Request' packages/web-http/src apps/web-rr/app/routes`，

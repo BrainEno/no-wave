@@ -68,13 +68,16 @@ pnpm test:e2e --grep 'font|typography|cold desktop home'
 
 `fonts:prepare` 只容忍缺失的生成 WOFF2：仍核验所有已有字节、完整来源覆盖、CSS、许可证和当前配方；损坏、未知资产或漂移先失败，不自动更新受审元数据。冷重建后的 manifest/CSS 必须与已提交收据逐字节相同，替换前还会再核对输入，不能把构建变成隐式配方升级。完整产物存在时不下载、不重新子集化；离线机器首次构建须先在可信联网环境准备资产或取得匹配固定 SHA 的输入缓存。
 
-根测试、Web 的 `dev`/`build`（包括过滤构建、portable/perf/PG 测试入口）共用该前置。Vite 配置在初始化插件前 await 原生 Node `--prepare`，因此直接调用 React Router CLI 也受覆盖，不依赖全局 pnpm shim；`test:all` 在干净环境中显式准备，命令解析只接受唯一受审前缀，不执行一般 shell 字串。Docker 构建阶段显式复制生成器及其共享验证依赖、安装根构建依赖；运行阶段仍只带生产依赖和构建输出，不带生成脚本、字体源下载或构建工具。
+冷下载优先从 `raw.githubusercontent.com/google/fonts` 的固定 revision `cc5661d43cd4f9aad5567033a8e15ca28dc35c86` 读取闭集路径，避免大量并行干净构建消耗匿名 Git API 配额；已核对这九份字体/许可证仍对应原受审 blob 和 SHA-256，不使用 `main` 或动态字体 CSS。受限网络的连接失败或有限可用性状态可退回原固定 Git blob API 一次，仍无令牌/凭据、禁止重定向、强制期限/流式字节上限和同一 SHA-256；坏字节、404、无效 JSON/身份/大小均失败，不改用其他版本，不降级系统字体。此传输仅在构建期使用，不是浏览器或应用运行时依赖。
+
+根测试、Web 的 `dev`/`build`（包括过滤构建、portable/perf/PG 测试入口）共用该前置。Vite 配置在初始化插件前 await 原生 Node `--prepare`，因此直接调用 React Router CLI 也受覆盖，不依赖全局 pnpm shim。开发编排在启动任何服务前执行可取消、有界的准备，冷子集化不消耗原有 90s 服务就绪期限；`--api-only` 不准备 Web 字体。`test:all` 在干净环境中显式准备，命令解析只接受唯一受审前缀，不执行一般 shell 字串。Docker 构建阶段显式复制生成器及其共享验证依赖、安装根构建依赖；运行阶段仍只带生产依赖和构建输出，不带生成脚本、字体源下载或构建工具。
 
 Vite 将 CSS 中所有字体 URL 改写为同源带哈希资产，连小分片也不内联到全局 CSS。生产服务器沿用既有 `font/woff2`、HEAD、Content-Length 和一年 immutable 资源缓存；不另设字体代理或第三方回源。原始许可文本按普通静态文件重验证缓存。
 
 ## 回归证据与失败诊断
 
 - `scripts/lib/font-assets.test.ts`：恶意路径／CSS 值、无效 Unicode、分片重叠、完整覆盖、丢失字重、变更字节、损坏 WOFF2、许可证缺失和配方漂移。
+- `scripts/fonts/source-download.test.ts`：Git API 返回 403 时仍从固定文件取得同一字节；受限网络的有限回退、九份闭集映射、重定向/错误身份/坏字节/流式超限拒绝；不传递授权头。
 - `apps/web-rr/test/font-build.test.ts`：实际构建 CSS 的每个 face 必须指向存在、内容与清单相符的哈希 WOFF2；不能退化为 data URL、系统字体、外部 URL 或不可达资产；生成器不进入客户端。
 - `apps/web-rr/test/server-lifecycle.test.ts`：生产分发携带原始许可文本，不只在仓库里存在。
 - `e2e/fonts.spec.ts`：冷传输预算、字体状态、CDP 实际绘制字体、normal / italic 和必需字重、五次普通动态 CLS，以及屏蔽第三方后的几何与字体一致性。

@@ -136,6 +136,15 @@ test("the native React Router build and dev configuration await font preparation
   assert.match(config, /"--prepare"/);
 });
 
+test("the dev supervisor awaits a cancellable bounded font preflight before any service readiness clock starts", async () => {
+  const dev = await readFile(new URL("../../scripts/dev.ts", import.meta.url), "utf8");
+  const preparation = dev.indexOf("await executeFile(process.execPath, [resolve(repositoryRoot, \"scripts/fonts/generate.ts\"), \"--prepare\"]");
+  assert.ok(preparation >= 0 && preparation < dev.indexOf("supervisor.launch("));
+  assert.match(dev, /if \(startWeb\) \{\s*info\("Preparing first-party fonts before service startup/);
+  assert.match(dev, /signal: supervisor\.signal, timeout: 300_000/);
+  assert.match(dev, /const READY_TIMEOUT_MS = 90_000;/, "generation is a preflight, not a relaxed service readiness budget");
+});
+
 test("font ranges are canonical, sorted, deduplicated and preserve supplementary scalars", () => {
   const input = [0x4e00, 0x21, 0x20, 0x23, 0x22, 0x20000, 0x4e00, 0x20001];
   assert.equal(unicodeRange(input), "U+20-23,U+4E00,U+20000-20001");

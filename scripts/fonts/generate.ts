@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { create } from "fontkit";
 import subsetFont from "subset-font";
 import { FONT_SOURCES, fontSourceReceipt, type FontSource } from "./font-sources.ts";
+import { downloadPinnedFontBlob } from "./source-download.ts";
 import { assertFontReproduction, assertSubsetCoverage, fontBundleNeedsGeneration, renderFontCss, unicodeRange, validateWoff2, verifyFontBundle, type FontAsset, type FontManifest } from "../lib/font-assets.ts";
 
 import { applicationRepertoires, fontPartitions, verifyFontRecipe, type Repertoires } from "./repertoires.ts";
@@ -27,15 +28,7 @@ async function pinnedBlob(blob: string, expected: string): Promise<Buffer> {
   } catch (error) {
     if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw error;
   }
-  const url = `https://api.github.com/repos/google/fonts/git/blobs/${blob}`;
-  const response = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(60_000),
-    headers: { Accept: "application/vnd.github+json", "User-Agent": "no-wave-font-builder" } });
-  if (!response.ok) throw new Error(`Font source download failed (${response.status}): ${url}`);
-  const data: unknown = await response.json();
-  if (typeof data !== "object" || data === null || !("encoding" in data) || data.encoding !== "base64" ||
-      !("content" in data) || typeof data.content !== "string" || data.content.length > MAX_SOURCE_BYTES * 1.4) throw new Error("Invalid Git font blob response.");
-  const bytes = Buffer.from(data.content, "base64");
-  if (!bytes.length || bytes.length > MAX_SOURCE_BYTES || digest(bytes) !== expected) throw new Error(`Upstream font checksum mismatch: ${blob}`);
+  const bytes = await downloadPinnedFontBlob(blob, expected);
   await writeFile(cached, bytes);
   return bytes;
 }

@@ -94,6 +94,25 @@ collection 模型/控制器/浏览器 helper、现有路由/SSR/cache/bundle 和
   子集先 36 pass/5 fail，独立库存另有 RED；修复后连同模型/库存/reporter 共 95/95，
   完整 strict typecheck 和相关 lint 通过。异步 config 的回调显式保留 string 类型，
   未关闭 noImplicitAny 或减少检查。所有构建自动化及其回归仍零计入 810 行。
+- `b6df6d0c` 的两套性能基线均成功，PR 四浏览器分片与 PostgreSQL job 成功，但
+  portable push 作业的可读注解明确记录固定 Git blob 下载 HTTP 403；其他通用构建
+  退出码不冒充同一根因。新增构建期固定 revision/raw 路径传输，仍是原九份公开
+  字体/许可证、原 blob 与 SHA-256；不引入 GitHub token、外部配置或运行时环境白名单。
+  只有连接失败/有限可用性状态可退回原 API 一次；两条路径都禁止重定向、限制期限及
+  流式字节，坏字节/身份/JSON/404 不降级。先 7/7 RED，后全部 GREEN；本机 raw
+  网络不可达，实际经原固定 API 重新下载九份字节并与原认证缓存逐一相同，raw 真实
+  网络路径的验收留给最终精确源码 CI，不把 mocked 403 用例称为外网成功。
+- 同时本机真正移开全部 2887 个忽略生成文件，复现 dev 冷子集化耗尽服务就绪窗口：
+  **91028ms / exit 1**、原始 `within 90s` 错误。准备移到服务启动前，使用当前 Node、
+  supervisor abort 信号与 300s 构建期限，API-only 不执行；服务原 90s 门槛未变。
+  同样无生成文件的 GREEN 实跑 **214413ms / exit 0**，真实 API/worker/Web、写入探针
+  和有界关停通过，随后相关模型/库存/reporter/字体/传输共 **103/103**，严格 scripts
+  tsc 与相关 lint 通过。还重建一次 2887 faces 并完成原生生产构建，manifest/CSS/OFL
+  未改。检索字体生成器、共享 font-assets、web-build-cli、dev-supervisor 及调用/测试；
+  构建期匿名固定输入不同于带业务身份/预算的 web-http，后者不引入构建器复用。
+- `b6df6d0c` 本机完整根测试 3159 项：2693 pass/1 fail/465 skip，唯一失败是既有
+  sitemap fixture 的 40ms 上游期限；原测试不改门槛重跑 18/18。此失败保留、不当作
+  全套通过，也不以子集替代最终完整重跑。
 - 浏览器使用真实本机文件输入与下载：匿名/离线、私密字串不持久化/不上传、链接和图片
   不请求、坏 UTF-8、转义重复字段、超限 admission、晚到原生 FileReader、计划预览不自动
   应用、换来源/选择撤销结果、重复块、分页/焦点、手机/axe、pagehide/bfcache 与组合超限。
