@@ -12,6 +12,7 @@
     "worker:notifications": "node --env-file-if-exists=../../.env --env-file-if-exists=../../.env.local src/persistence/notification-worker.ts",
     "ops:monitor": "node src/infrastructure/monitor-command.ts",
     "ops:handoff": "node src/infrastructure/alert-handoff-command.ts",
+    "ops:evidence": "node src/infrastructure/alert-evidence-command.ts",
     "jobs:notion": "node --env-file-if-exists=../../.env --env-file-if-exists=../../.env.local src/persistence/notion-job-command.ts",
     "drain:notifications": "node --env-file-if-exists=../../.env --env-file-if-exists=../../.env.local src/persistence/notification-drain.ts",
     "maintenance": "node --env-file-if-exists=../../.env --env-file-if-exists=../../.env.local src/persistence/maintenance.ts",

@@ -142,6 +142,7 @@ Exit gate: feature traceability and critical E2E journeys pass; both Traditional
 - [ ] Verify migrations, backup/restore, health/readiness, graceful shutdown, logs and monitoring.
   - 仓库内已有[有限只读告警评估与事件确认](../operations/operational-monitor.md)（[ADR 0042](../architecture/decisions/0042-finite-read-only-operational-monitor.md)）：HTTP 5xx、outbox 积压/死信、独立 DB 健康、邮件失败，以及本地双 provider 故障/恢复演练。真实主机、持久磁盘、外部告警接收/自身失联和回滚仍未验收；不据此关闭 #331 或此总门禁。
   - 仓库内另有[离线签名事件交接](../operations/alert-handoff.md)（[ADR 0043](../architecture/decisions/0043-offline-signed-alert-handoff.md)）：持久 inbox、独立回执、公钥核验、只读对账与显式 settle/consume；外部通知到人、跨主机传输、key rotation、真实宿主资格仍开放。
+  - owner 已批准[公钥-only 历史证据审阅](../operations/alert-evidence.md)（[ADR 0044](../architecture/decisions/0044-public-only-alert-evidence-review.md)）：跨批次审阅、集合比较、独立已知 checkpoint 与有界追踪。任何过滤、集合扩展或签名正确都不证明当前健康、尾部最终性或人员通知；不改变既有 v1 产物，不关闭上述真实运维门禁。
 - [ ] Decide whether any historical data import is desired and approve a separate runbook before execution.
 - [ ] Design HA inside the chosen primary engine first; add cross-engine warm standby only after consistency/fencing rules are approved.
 - [ ] Add React Native/Tauri clients only after API/auth contracts stabilize.
