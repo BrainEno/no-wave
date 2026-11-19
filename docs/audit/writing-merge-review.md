@@ -111,8 +111,14 @@ collection 模型/控制器/浏览器 helper、现有路由/SSR/cache/bundle 和
   未改。检索字体生成器、共享 font-assets、web-build-cli、dev-supervisor 及调用/测试；
   构建期匿名固定输入不同于带业务身份/预算的 web-http，后者不引入构建器复用。
 - `b6df6d0c` 本机完整根测试 3159 项：2693 pass/1 fail/465 skip，唯一失败是既有
-  sitemap fixture 的 40ms 上游期限；原测试不改门槛重跑 18/18。此失败保留、不当作
-  全套通过，也不以子集替代最终完整重跑。
+  sitemap fixture 的 40ms 上游期限；原测试不改门槛重跑 18/18。`34a2ac7c` 全量再次
+  3167 项：2701 pass/1 fail/465 skip，同一首个投影约 45ms；两次都不算全套通过。
+  根因是成功 fixture 在客户端期限启动后才构造首个 Node `Response`。最小测试修复
+  先准备静态服务器响应，每次调用仍 clone 全新 body；40ms 没变，生产 transport、
+  20ms 连接/流挂起与取消/体积负例均未改。忽略目录注入首个构造 80ms 的同一见证：
+  改前预期 timeout RED，改后 GREEN，完整 sitemap 18/18；再把忽略副本的 20ms 改成
+  2500ms，原连接/流两项被 1500ms test timeout 拒绝、进程 exit 1。没有给通过路径
+  加重试、关闭计时器或放宽断言；最终仍跑未经预热/注入的正式完整入口。
 - 浏览器使用真实本机文件输入与下载：匿名/离线、私密字串不持久化/不上传、链接和图片
   不请求、坏 UTF-8、转义重复字段、超限 admission、晚到原生 FileReader、计划预览不自动
   应用、换来源/选择撤销结果、重复块、分页/焦点、手机/axe、pagehide/bfcache 与组合超限。

@@ -10,9 +10,13 @@ const methods = ["listArticles", "listAuthors", "listCategories", "listTags"] as
 function json(payload: unknown, status = 200) { return new Response(JSON.stringify(payload), { status, headers: { "content-type": "application/json" } }); }
 function fixture(payload: unknown, status = 200) {
   const requests: { url: URL; init?: RequestInit }[] = [];
+  // Prepare the simulated server response before starting the client's budget.
+  // First-use Node Response initialization is not part of this projection test;
+  // every call still gets a fresh body under the unchanged 40ms deadline.
+  const response = json(payload, status);
   const source = createApiSitemapSource({ endpoint: "https://api.example/prefix", timeoutMs: 40, fetchImpl: async (input, init) => {
     requests.push({ url: new URL(input), init });
-    return json(payload, status);
+    return response.clone();
   } });
   return { source, requests };
 }
