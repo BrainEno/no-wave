@@ -59,7 +59,11 @@ function testScripts(): TestScript[] {
     };
     const script = manifest.scripts?.test;
     if (!script) continue;
-    const tokens = script.trim().split(/\s+/).filter(token => !token.startsWith("--env-file-if-exists="));
+    // Independently recognize this one reviewed composition; do not interpret
+    // general shell syntax or share the production runner's discovery parser.
+    const inventory = packagePath === "package.json" && script === "pnpm fonts:prepare && node scripts/test.ts root"
+      ? "node scripts/test.ts root" : script;
+    const tokens = inventory.trim().split(/\s+/).filter(token => !token.startsWith("--env-file-if-exists="));
     const runner = tokens.length === 3 && tokens[0] === "node" && /^(?:\.\.\/)*scripts\/test\.ts$/.test(tokens[1]!);
     const group = tokens[2];
     if (runner) {
@@ -70,7 +74,7 @@ function testScripts(): TestScript[] {
       discovered: runner ? discoverTests(group as TestGroup, repositoryRoot) : [],
       packagePath,
       script,
-      args: script.split(/\s+/).filter((token) => token.includes(".test.ts")),
+      args: inventory.split(/\s+/).filter((token) => token.includes(".test.ts")),
     });
   }
   return scripts;

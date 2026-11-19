@@ -83,6 +83,17 @@ collection 模型/控制器/浏览器 helper、现有路由/SSR/cache/bundle 和
   保持 TLS 校验，重新从固定 SHA/blob 来源生成 2887 faces / 35076184 bytes。manifest、
   CSS、许可证无内容变化，WOFF2 与 staging 保持忽略；强制 fetch 失败的暖准备仍通过，
   确认完整产物只离线核验。没有新增字体来源、配方、依赖或前端外发行为。
+- 首次字体集成修复仍遗漏了直接 React Router CLI 的 portable/perf/dev 路径，以及
+  `test:all`/独立库存守卫对新根命令组合的识别；`11ee9599` 的 push/PR CI 均真实失败，
+  不用重试掩盖。现在 Vite 初始化先 await 同一原生 Node 准备命令；不依赖全局 pnpm。
+  全套入口用干净环境显式准备，只把唯一已审前缀映射为原来的闭集库存，其他 shell/环境
+  组合仍拒绝；独立库存守卫继续独立遍历，不排除或减少实际测试。准备/根/Web 任一失败
+  均不能创建数据库，原隔离、清理、退出码和双 reporter 断言全部保留并扩充。
+- 原生 CLI 在无生成资产、无全局 pnpm 的真实冷构建先 RED（缺少同一 WOFF2），加入
+  初始化前置后 GREEN：固定来源重建 2887 faces 并完成生产构建，收据未变。编排与字体
+  子集先 36 pass/5 fail，独立库存另有 RED；修复后连同模型/库存/reporter 共 95/95，
+  完整 strict typecheck 和相关 lint 通过。异步 config 的回调显式保留 string 类型，
+  未关闭 noImplicitAny 或减少检查。所有构建自动化及其回归仍零计入 810 行。
 - 浏览器使用真实本机文件输入与下载：匿名/离线、私密字串不持久化/不上传、链接和图片
   不请求、坏 UTF-8、转义重复字段、超限 admission、晚到原生 FileReader、计划预览不自动
   应用、换来源/选择撤销结果、重复块、分页/焦点、手机/axe、pagehide/bfcache 与组合超限。
@@ -90,7 +101,9 @@ collection 模型/控制器/浏览器 helper、现有路由/SSR/cache/bundle 和
 ## 本地验证口径
 
 工具链 Node 24.22.3 / pnpm 10.20.0；证据日志留在忽略的
-`verification/writing-merge/`，不提交截图、大日志、运行依赖或数据库。子集重叠不相加。
+`verification/writing-merge/`，不提交截图、大日志、运行依赖或数据库。临时工作区重建后，
+忽略目录中的旧日志/浏览器不保证保留；本页历史事实不等于最终源码验收，最终重跑和
+可读云端注解在 PR 留痕。子集重叠不相加。
 
 - 开发期间 frozen install、生产 build、完整 lint/typecheck 及字体离线/配方检查已实跑通过。
   同步 #375 后再实跑冷生成和离线准备，字体仍 2887 faces / 35076184 bytes；来源/配方、
@@ -101,10 +114,11 @@ collection 模型/控制器/浏览器 helper、现有路由/SSR/cache/bundle 和
   全套和子集有重叠，不相加；最终精确源码和后续测试加强后的重跑结果在 PR 验收表。
 - 本机 `pnpm test:all` 确实在 Docker 预检 `spawn docker ENOENT` exit 1，没有执行其 Docker/PG
   聚合阶段。独立本地命令和 CI 不可包装成这个入口在本机成功。
-- 本机浏览器是忽略目录中的 Chromium **153.0.8010.0** 适配，不是 Playwright 1.65.0
-  官方期望的 Chromium 158/v1254。未增加关闭 CORS/CSP/同源隔离的参数，不改版本化配置
-  或生产限流。完整 `pnpm test:e2e` 即使本机通过，也只能说明适配浏览器结果；官方浏览器、
-  Docker/PostgreSQL 与容器门禁须由本 PR 精确源码 CI 独立验证。
+- 早先完整本机浏览器使用忽略目录中的 Chromium **153.0.8010.0** 适配，不是
+  Playwright 1.65.0 官方期望的 Chromium 158/v1254，未关闭 CORS/CSP/同源隔离或提高
+  限流。工作区重建后该适配不在，官方 executable 也实际不存在；不为取得绿色伪造
+  浏览器或把 `--list` 的 266 项库存当执行通过。最终官方浏览器、Docker/PostgreSQL 和
+  容器门禁由本 PR 精确源码的完整 CI 独立验证，本机环境缺口另行说明。
 - 依赖严格 audit JSON exit 1：1 low（开发依赖 `@babel/core` 的
   [GHSA-4x5r-pxfx-6jf8](https://github.com/advisories/GHSA-4x5r-pxfx-6jf8)），0 moderate/high/critical；
   high 阈值 exit 0，不声称零漏洞，不顺带升级无关编译工具链。

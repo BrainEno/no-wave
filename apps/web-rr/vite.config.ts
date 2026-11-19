@@ -1,5 +1,7 @@
+import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { reactRouter } from "@react-router/dev/vite";
 import { defineConfig } from "vite";
 import { parseAllowedDevOrigins } from "@bot-thk/web-ui/src/lib/dev-origins.ts";
@@ -14,6 +16,17 @@ import { upstreamIngress } from "./upstream-ingress.ts";
 // inherited, not reimplemented.
 const rootEnvFile = fileURLToPath(new URL("../../.env.local", import.meta.url));
 if (existsSync(rootEnvFile)) process.loadEnvFile(rootEnvFile);
+
+const executeFile = promisify(execFile);
+async function prepareFirstPartyFonts(): Promise<void> {
+  // Native CLI users (portable/perf/dev) bypass package scripts. Prepare before
+  // Vite reads font imports; use the current Node, never a global pnpm shim.
+  const { stdout, stderr } = await executeFile(process.execPath, [
+    fileURLToPath(new URL("../../scripts/fonts/generate.ts", import.meta.url)), "--prepare",
+  ], { timeout: 300_000, windowsHide: true });
+  if (stdout) process.stdout.write(stdout);
+  if (stderr) process.stderr.write(stderr);
+}
 
 /**
  * Vite rejects unknown `Host` headers in development, which breaks LAN access and
@@ -35,35 +48,38 @@ function allowedDevHosts(): string[] | true {
  * directory, which is written against React Router; there is no per-application
  * navigation adapter left to alias.
  */
-export default defineConfig({
-  plugins: [clientAddressIngress(), refreshCoordinationIngress(), upstreamIngress(), reactRouter(), firstPartyFontLicenses()],
-  build: {
-    // Keep even tiny Unicode shards addressable and independently cacheable;
-    // inlining them would hide their transfer cost inside a global stylesheet.
-    assetsInlineLimit: (filePath) => filePath.endsWith(".woff2") ? false : undefined,
-  },
-  // The shared UI is compiled into the server bundle. Bundle its ZIP decoder
-  // too: the runtime image does not have web-ui source or its node_modules.
-  ssr: { noExternal: ["fflate"] },
-  // React Router 8 uses environment-level resolution. Keep the Node ingress and
-  // SSR on one module/AsyncLocalStorage instance, not an inlined copy per build.
-  // The main entry stays native too: transport exceptions must have the exact
-  // same class identity in handlers and ingress, including UPSTREAM_BUSY/504.
-  environments: { ssr: {
-    resolve: { external: ["@bot-thk/web-http", "@bot-thk/web-http/client-address", "@bot-thk/web-http/refresh-runtime", "@bot-thk/web-http/upstream-runtime"] },
-    // Node 24 loads this TypeScript package entry directly; do not let the
-    // bundler's ordinary TS-source inlining create a second request store.
-    build: { rolldownOptions: { external: ["@bot-thk/web-http", "@bot-thk/web-http/client-address", "@bot-thk/web-http/refresh-runtime", "@bot-thk/web-http/upstream-runtime"] } },
-  } },
-  resolve: {
-    alias: [
-      { find: /^@\/(.*)$/, replacement: fileURLToPath(new URL("../../packages/web-ui/src/$1", import.meta.url)) },
-    ],
-  },
-  // Deliberately no `define` for `process.env.*`: server-rendered metadata must
-  // read the runtime environment of the process that serves the page (canonical
-  // URLs differ per deployment), so these values must not be frozen at build time.
-  // Shared UI helpers receive explicit values from app/lib/runtime.ts.
-  server: { host: "0.0.0.0", port: Number(process.env.PORT ?? 3100), allowedHosts: allowedDevHosts() },
-  preview: { host: "0.0.0.0", port: Number(process.env.PORT ?? 3100) },
+export default defineConfig(async () => {
+  await prepareFirstPartyFonts();
+  return {
+    plugins: [clientAddressIngress(), refreshCoordinationIngress(), upstreamIngress(), reactRouter(), firstPartyFontLicenses()],
+    build: {
+      // Keep even tiny Unicode shards addressable and independently cacheable;
+      // inlining them would hide their transfer cost inside a global stylesheet.
+      assetsInlineLimit: (filePath: string) => filePath.endsWith(".woff2") ? false : undefined,
+    },
+    // The shared UI is compiled into the server bundle. Bundle its ZIP decoder
+    // too: the runtime image does not have web-ui source or its node_modules.
+    ssr: { noExternal: ["fflate"] },
+    // React Router 8 uses environment-level resolution. Keep the Node ingress and
+    // SSR on one module/AsyncLocalStorage instance, not an inlined copy per build.
+    // The main entry stays native too: transport exceptions must have the exact
+    // same class identity in handlers and ingress, including UPSTREAM_BUSY/504.
+    environments: { ssr: {
+      resolve: { external: ["@bot-thk/web-http", "@bot-thk/web-http/client-address", "@bot-thk/web-http/refresh-runtime", "@bot-thk/web-http/upstream-runtime"] },
+      // Node 24 loads this TypeScript package entry directly; do not let the
+      // bundler's ordinary TS-source inlining create a second request store.
+      build: { rolldownOptions: { external: ["@bot-thk/web-http", "@bot-thk/web-http/client-address", "@bot-thk/web-http/refresh-runtime", "@bot-thk/web-http/upstream-runtime"] } },
+    } },
+    resolve: {
+      alias: [
+        { find: /^@\/(.*)$/, replacement: fileURLToPath(new URL("../../packages/web-ui/src/$1", import.meta.url)) },
+      ],
+    },
+    // Deliberately no `define` for `process.env.*`: server-rendered metadata must
+    // read the runtime environment of the process that serves the page (canonical
+    // URLs differ per deployment), so these values must not be frozen at build time.
+    // Shared UI helpers receive explicit values from app/lib/runtime.ts.
+    server: { host: "0.0.0.0", port: Number(process.env.PORT ?? 3100), allowedHosts: allowedDevHosts() },
+    preview: { host: "0.0.0.0", port: Number(process.env.PORT ?? 3100) },
+  };
 });

@@ -37,6 +37,17 @@ test("the suite uses the package inventories without loading local env files or 
   }
 });
 
+test("only the exact reviewed font-preparation prefix maps to the same closed root inventory", () => {
+  assert.deepEqual(testArguments("pnpm fonts:prepare && node scripts/test.ts root"), testArguments("node scripts/test.ts root"));
+  for (const unsafe of [
+    "pnpm fonts:generate && node scripts/test.ts root",
+    "pnpm fonts:prepare || node scripts/test.ts root",
+    "pnpm fonts:prepare && node scripts/test.ts root && echo bypass",
+    "pnpm fonts:prepare && node --env-file-if-exists=.env.local scripts/test.ts root",
+    "pnpm fonts:prepare && node scripts/test.ts api-integration",
+  ]) assert.throws(() => testArguments(unsafe), /Test script|Unsupported/);
+});
+
 test("port parsing only accepts an explicitly loopback-bound valid port", () => {
   assert.equal(parseDockerPort("127.0.0.1:12345\n"), 12345);
   for (const value of ["", "0.0.0.0:5432", "[::]:5432", "127.0.0.1:0", "127.0.0.1:65536", "127.0.0.1:5432\n0.0.0.0:5432", "postgres:5432"]) {
@@ -96,21 +107,22 @@ test("all layers run in order against a private disposable database and clean up
     await runSuite(f.options);
     const describe = f.calls.map((call) => `${call.executable} ${call.args.join(" ")}`);
     assert.match(describe[0]!, /^docker info/);
-    assert.match(describe[1]!, /^\/node --test /);
-    assert.match(describe[2]!, /\/pnpm\/cli.js --filter @bot-thk\/web-rr build/);
-    assert.match(describe[3]!, /--test test\/web.test.ts test\/server.test.ts/);
-    assert.match(describe[4]!, /^docker run --detach --rm --name no-wave-test-unique/);
-    assert.match(describe[4]!, /127\.0\.0\.1::5432/);
-    assert.match(describe[5]!, /^docker port /);
-    assert.match(describe[6]!, /^docker exec .* pg_isready/);
-    assert.match(describe[7]!, /^\/node --test pg.test.ts/);
-    assert.match(describe[8]!, /^docker rm -f no-wave-test-unique/);
-    assert.match(describe[9]!, /scripts\/e2e-runner.ts/);
-    assert.equal(f.calls[7]!.env.TEST_DATABASE_URL, "postgres://postgres:temporary-password@127.0.0.1:45678/no_wave_test");
+    assert.match(describe[1]!, /^\/node .*scripts\/fonts\/generate\.ts --prepare$/);
+    assert.match(describe[2]!, /^\/node --test /);
+    assert.match(describe[3]!, /\/pnpm\/cli.js --filter @bot-thk\/web-rr build/);
+    assert.match(describe[4]!, /--test test\/web.test.ts test\/server.test.ts/);
+    assert.match(describe[5]!, /^docker run --detach --rm --name no-wave-test-unique/);
+    assert.match(describe[5]!, /127\.0\.0\.1::5432/);
+    assert.match(describe[6]!, /^docker port /);
+    assert.match(describe[7]!, /^docker exec .* pg_isready/);
+    assert.match(describe[8]!, /^\/node --test pg.test.ts/);
+    assert.match(describe[9]!, /^docker rm -f no-wave-test-unique/);
+    assert.match(describe[10]!, /scripts\/e2e-runner.ts/);
+    assert.equal(f.calls[8]!.env.TEST_DATABASE_URL, "postgres://postgres:temporary-password@127.0.0.1:45678/no_wave_test");
     for (const [index, call] of f.calls.entries()) {
       assert.equal(call.env.DATABASE_URL, undefined, `command ${index}`);
       assert.equal(call.env.E2E_WEB_URL, undefined, `command ${index}`);
-      if (index !== 7) assert.equal(call.env.TEST_DATABASE_URL, undefined, `command ${index}`);
+      if (index !== 8) assert.equal(call.env.TEST_DATABASE_URL, undefined, `command ${index}`);
       if (call.executable !== "docker") assert.equal(call.env.DOCKER_HOST, undefined, `command ${index}`);
     }
     assert.match(f.logs.at(-1)!, /All layers passed/);
@@ -139,8 +151,8 @@ test("Docker errors fail preflight before running tests", async () => {
   } finally { await f.dispose(); }
 });
 
-test("root, build and web failures stop before creating a database", async () => {
-  for (const failingIndex of [1, 2, 3]) {
+test("font preparation, root, build and web failures stop before creating a database", async () => {
+  for (const failingIndex of [1, 2, 3, 4]) {
     let count = 0;
     const f = await fixture(() => count++ === failingIndex ? { ...ok, code: 2 } : ok);
     try {

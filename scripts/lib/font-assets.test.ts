@@ -126,6 +126,16 @@ test("clean-checkout root tests and both Web entry points prepare fonts, while D
   assert.doesNotMatch(runtime, /COPY scripts|fonts:prepare|fonts:generate|fontkit|subset-font/);
 });
 
+test("the native React Router build and dev configuration await font preparation without requiring a global package-manager shim", async () => {
+  const config = await readFile(new URL("../../apps/web-rr/vite.config.ts", import.meta.url), "utf8");
+  assert.match(config, /export default defineConfig\(async \(\) => \{/);
+  assert.match(config, /await prepareFirstPartyFonts\(\);/);
+  assert.ok(config.indexOf("await prepareFirstPartyFonts();") < config.indexOf("plugins:"));
+  assert.match(config, /process\.execPath/);
+  assert.match(config, /scripts\/fonts\/generate\.ts/);
+  assert.match(config, /"--prepare"/);
+});
+
 test("font ranges are canonical, sorted, deduplicated and preserve supplementary scalars", () => {
   const input = [0x4e00, 0x21, 0x20, 0x23, 0x22, 0x20000, 0x4e00, 0x20001];
   assert.equal(unicodeRange(input), "U+20-23,U+4E00,U+20000-20001");

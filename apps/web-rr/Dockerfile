@@ -50,8 +50,9 @@ COPY scripts/lib/font-assets.ts ./scripts/lib/font-assets.ts
 
 ENV NODE_ENV=production
 # Generate first-party font WOFF2 subsets at build time instead of shipping
-# committed binaries. fontkit/subset-font are root devDependencies and never
-# enter the runtime image (asserted by test/font-build.test.ts).
+# committed binaries. fontkit/subset-font are build-only root devDependencies;
+# the separate runtime stage below does not copy the generator or raw sources.
+# test/font-build.test.ts checks emitted assets and client JS, not image contents.
 RUN pnpm fonts:prepare
 RUN pnpm --filter @bot-thk/web-rr build
 

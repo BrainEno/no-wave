@@ -68,7 +68,7 @@ pnpm test:e2e --grep 'font|typography|cold desktop home'
 
 `fonts:prepare` 只容忍缺失的生成 WOFF2：仍核验所有已有字节、完整来源覆盖、CSS、许可证和当前配方；损坏、未知资产或漂移先失败，不自动更新受审元数据。冷重建后的 manifest/CSS 必须与已提交收据逐字节相同，替换前还会再核对输入，不能把构建变成隐式配方升级。完整产物存在时不下载、不重新子集化；离线机器首次构建须先在可信联网环境准备资产或取得匹配固定 SHA 的输入缓存。
 
-根测试、Web 的 `dev`/`build`（包括过滤构建、portable/perf/PG 测试入口）共用该前置。Docker 构建阶段显式复制生成器及其共享验证依赖、安装根构建依赖；运行阶段仍只带生产依赖和构建输出，不带生成脚本、字体源下载或构建工具。
+根测试、Web 的 `dev`/`build`（包括过滤构建、portable/perf/PG 测试入口）共用该前置。Vite 配置在初始化插件前 await 原生 Node `--prepare`，因此直接调用 React Router CLI 也受覆盖，不依赖全局 pnpm shim；`test:all` 在干净环境中显式准备，命令解析只接受唯一受审前缀，不执行一般 shell 字串。Docker 构建阶段显式复制生成器及其共享验证依赖、安装根构建依赖；运行阶段仍只带生产依赖和构建输出，不带生成脚本、字体源下载或构建工具。
 
 Vite 将 CSS 中所有字体 URL 改写为同源带哈希资产，连小分片也不内联到全局 CSS。生产服务器沿用既有 `font/woff2`、HEAD、Content-Length 和一年 immutable 资源缓存；不另设字体代理或第三方回源。原始许可文本按普通静态文件重验证缓存。
 
