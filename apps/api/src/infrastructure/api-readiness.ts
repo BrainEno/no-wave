@@ -128,6 +128,7 @@ export function createApiReadiness({
       ? [Math.max(0, now() - attempt.startedAt) / 1000] : []);
     const gauges: [string, string, number][] = [
       ["api_readiness_available", "All API readiness dependencies currently available.", status.status === "ready" ? 1 : 0],
+      ["api_persistence_available", "A timely persistence health read succeeded; independent of notification readiness.", status.persistence === "ok" ? 1 : 0],
       ["api_readiness_inflight_reads", "Dependency queries still owned, including timed-out queries; at most two.", inflightAges.length],
       ["api_readiness_oldest_inflight_read_seconds", "Monotonic age of the oldest owned dependency query; zero when none.", Math.max(0, ...inflightAges)],
       ["api_notification_backlog_available", "Notification backlog read succeeded; zero means unavailable, not an empty queue.", status.notifications.status === "unavailable" ? 0 : 1],

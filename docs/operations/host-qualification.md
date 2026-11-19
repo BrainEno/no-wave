@@ -26,6 +26,14 @@ instead of being reported as done.
 | Health-check target | `server-lifecycle.test.ts` | `GET /healthz` → 200 `{"status":"ok"}`, `no-store`, `x-robots-tag: noindex` |
 | Statelessness | by construction, asserted by every restart above | the server writes nothing to disk and keeps no state a restart needs; a fresh process serves the same HTML |
 
+## 仓库内告警证据不是主机资格
+
+[有限只读告警](operational-monitor.md) 已提供 HTTP 5xx、通知积压/死信、独立
+数据库健康和邮件失败的可执行规则，并有 SQLite / PostgreSQL 实际进程演练。
+这只验证仓库契约；其中 API500/DB-health 故障为注入，SMTP 为本地连接拒绝。
+尚未在目标主机验证定时器、监控自身失联、私网可达性、持久日志磁盘、外部
+接收者的去重/显式确认或告警/回滚流程。此节不改变下面的未完成状态。
+
 ## What only a real host can prove
 
 - **Sleep/wake timing.** A free instance sleeps after ~15 minutes idle and takes
