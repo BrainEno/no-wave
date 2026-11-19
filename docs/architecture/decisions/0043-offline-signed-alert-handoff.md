@@ -2,7 +2,7 @@
 
 - Status: Proposed
 - Date: 2026-11-12
-- Implementation: implemented — 有限离线命令、独立进程与故障演练；没有生产接线或外部通知渠道。
+- Implementation: Partial — 仓库内有限离线命令、独立进程与故障演练已实现；生产接线与外部通知渠道未启用。
 - Scope: #331 的告警事件交接切片；不替代 ADR 0042 的观测规则，不完成整个 Phase 6。
 
 ## 背景

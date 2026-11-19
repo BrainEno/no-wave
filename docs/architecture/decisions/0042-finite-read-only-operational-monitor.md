@@ -2,7 +2,7 @@
 
 - Status: Proposed
 - Date: 2026-11-12
-- Implementation: implemented — 仓库内评估器、有限命令与双 provider 演练；真实主机与外部告警交付尚未验证。
+- Implementation: Partial — in-repository evaluator, bounded commands and dual-provider drills are implemented; real-host qualification and external alert delivery remain unverified.
 - Scope: #331 的可执行告警规则切片，不代表 Phase 6、生产上线或整个 issue 完成。
 
 ## 背景

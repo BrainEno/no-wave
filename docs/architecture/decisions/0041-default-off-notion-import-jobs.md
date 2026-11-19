@@ -1,6 +1,7 @@
 # ADR 0041: Notion 导入任务默认关闭，崩溃后不自动重放写入
 
 - Status: Proposed — 已实现默认关闭的审阅切片；不代表生产启用或托管验收获准
+- Implementation: Partial — the default-off review slice is implemented in-repo; production enablement and managed-host acceptance remain unverified.
 - Date: 2026-11-12
 
 ## 范围

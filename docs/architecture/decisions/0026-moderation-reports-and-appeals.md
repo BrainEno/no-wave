@@ -1,6 +1,7 @@
 # ADR 0026: Reports, scoped moderation and independent appeals
 
 - Status: **Accepted — design accepted 2026-11-07; nothing implemented, and P1/P5–P10 are release gates**
+- Implementation: Not started — no moderation schema, migration, service, REST route, audit log or UI exists; §9 gates still block implementation.
 - Date: 2026-11-05
 - Relates to: [issue #72](https://github.com/BrainEno/no-wave/issues/72),
   [ADR 0016](0016-editorial-taxonomy-and-editor-role.md),
