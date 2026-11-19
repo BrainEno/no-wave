@@ -245,7 +245,10 @@ test("format-only, link-target and root-layout changes are compared losslessly",
     [{ unit: body.id, choice: "incoming" }],
     now,
   );
-  assert.ok(text(prepared.backup).includes("https://example.test/private"));
+  assert.deepEqual(
+    prepared.backup.draft.editorState!.root.children,
+    incoming.draft.editorState!.root.children,
+  );
   assert.equal(prepared.backup.draft.editorState!.root.direction, "ltr");
 });
 
