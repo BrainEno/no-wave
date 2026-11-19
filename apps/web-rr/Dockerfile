@@ -39,7 +39,7 @@ COPY patches ./patches
 # Lexical, gsap, react-router — against that package's dependencies, so the
 # workspace dependency has to be installed even though the runtime stage needs
 # none of it. The build inlines what it used.
-RUN pnpm install --frozen-lockfile --filter @bot-thk/web-rr...
+RUN pnpm install --frozen-lockfile
 
 COPY packages/web-http ./packages/web-http
 COPY packages/web-ui ./packages/web-ui
@@ -47,6 +47,10 @@ COPY packages/glob-match ./packages/glob-match
 COPY apps/web-rr ./apps/web-rr
 
 ENV NODE_ENV=production
+# Generate first-party font WOFF2 subsets at build time instead of shipping
+# committed binaries. fontkit/subset-font are root devDependencies and never
+# enter the runtime image (asserted by test/font-build.test.ts).
+RUN pnpm fonts:generate
 RUN pnpm --filter @bot-thk/web-rr build
 
 # ---- Runtime -----------------------------------------------------------------
