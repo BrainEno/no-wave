@@ -21,6 +21,7 @@ Web 已按 [ADR 0012](decisions/0012-portable-web-framework-migration.md) / [001
 | Web 入口、配置、SSR 数据源 | [web-rr](../../apps/web-rr/README.md)、`app/lib/runtime.ts` | 环境读取、Node 驱动和运维凭据不进浏览器 |
 | UI 控件、样式、文案 | [web-ui](../../packages/web-ui/README.md)、`src/components/ui/parts.tsx`、`src/lib/ui-copy.ts` | 优先既有交互/无障碍语义，不只复制外观 |
 | 写作状态、目录、集合与备份 | `web-ui/src/lib/writing-*.ts`、`authoring-catalogue-*.ts` | 保留未保存编辑、修订冲突、恢复和跨账户保护 |
+| 默认关闭的本机文稿恢复 | `web-ui/src/lib/writing-recovery-{model,store,controller,boundary,lifecycle,source}.ts`；[ADR 0045](decisions/0045-default-off-local-writing-recovery.md)、[使用/故障说明](../operations/writing-recovery.md) | IDB 原子 actor/epoch/writer/CAS fence、20 份/16 MiB；复用 backup/diff/catalogue/shared HTTP；只手动复制字段/只读核对，身份不来自磁盘；账号变更两侧 purge；不持久化凭据或请求、不重放/自动发布 |
 | 通知与消息浏览器传输 | `web-ui/src/lib/notification-transport.ts`、`messaging-transport.ts` 及 actor/controller 模块 | 既有取消、幂等、限流恢复；不重复计入新增功能 |
 | 公共内容、标签、feed、sitemap、SEO | `web-ui/src/lib/{api-content,public-pages,tag-pages,tag-feed,site-metadata,sitemap-catalog}.ts` | 显式 source/config；已配置 API 失败不得冒充 fixtures |
 | 默认关闭的 Notion job | `application/notion-{durable-jobs,job-service,job-poll,job-drain,job-check}.ts`、两个 `*-notion-jobs-store.ts`；[操作规程](../operations/notion-import-jobs.md) | 无崩溃自动重放；数据库事务 fence、外部 key、独立有限命令；BFF 仍在 web-http，不进 UI |

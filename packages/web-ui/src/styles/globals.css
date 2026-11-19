@@ -428,6 +428,7 @@ mark { background: var(--or); color: #0f0d0c; }
 .nw-authoring-actions .nw-m { flex: 1 1 100%; }
 .nw-writing-save-state { margin: 12px 0 0; color: var(--t2); font-size: 13px; }
 .nw-writing-tools { margin-top: 16px; border: 1px solid var(--ink); font-size: 14px; overflow-wrap: anywhere; }
+.nw-writing-recovery { padding: 16px clamp(12px, 3vw, 24px); }
 .nw-writing-tools summary { padding: 14px; cursor: pointer; }
 .nw-writing-tools-body { padding: 0 clamp(12px, 3vw, 24px) 20px; border-top: 1px solid var(--ink); }
 .nw-writing-tools h3 { margin-top: 24px; font-size: 17px; }

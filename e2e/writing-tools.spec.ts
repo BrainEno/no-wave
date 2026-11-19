@@ -325,7 +325,8 @@ test("edits made after confirming logout remain recoverable when the asynchronou
   await received;
   await page.getByLabel("标题", { exact: true }).fill("退出途中写下的标题");
   release();
-  await expect(page.getByRole("alert")).toContainText("当前未保存输入仍保留");
+  await expect(page.getByRole("alert").filter({ hasText: "当前未保存输入仍保留" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "可选本机文稿恢复", exact: true }).getByRole("alert")).toContainText("旧标签不能重新写入");
   await expect(page.getByLabel("标题", { exact: true })).toHaveValue("退出途中写下的标题");
   const json = JSON.parse(await downloadedBackup(page));
   expect(json.draft.title).toBe("退出途中写下的标题");

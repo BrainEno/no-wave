@@ -1,5 +1,7 @@
 import { expect } from "@playwright/test";
-import { test } from "./support/csp-fixture.ts";
+// Each account-bound recovery runs on the existing disposable real stack, not
+// an expanded rate-limit allowance in the shared shard's database.
+import { test } from "./support/article-view-stack.ts";
 import { gate, restorePage, settleUi } from "./support/messaging-privacy.ts";
 import { NOTIFICATION_ACTOR_HEADER, loginNotificationAccount, notificationAccounts, openNotificationSurfaces, unreadNotifications } from "./support/notification-privacy.ts";
 

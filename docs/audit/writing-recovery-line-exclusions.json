@@ -1,0 +1,1613 @@
+{
+  "base": "c3171b1f13428605c1a5bbf2386071a383b21089",
+  "rules": [
+    {
+      "file": "packages/web-ui/src/components/authoring/article-editor.tsx",
+      "reason": "仅声明/参数/闭包框架，不把函数签名作为新增功能",
+      "fragments": [
+        {
+          "line": 384,
+          "text": "useEffect(() => { baseArticle.current = article; }, [article]);"
+        },
+        {
+          "line": 386,
+          "text": "const [recoverySource] = useState(() => { try { return crypto.randomUUID(); } catch { return \"\"; } });"
+        },
+        {
+          "line": 391,
+          "text": "snapshot: () => {"
+        },
+        {
+          "line": 396,
+          "text": "apply: next => {"
+        },
+        {
+          "line": 400,
+          "text": "identityLost: () => { setSignInHelp(true); setError(\"登录账户已变化或无法确认，旧标签已停止本机恢复和保存。请下载当前输入，重新载入后核对账户。\"); },"
+        },
+        {
+          "line": 403,
+          "text": "const registerRecoveryRuntime = useCallback((read: () => Draft, apply: (next: Draft) => void) => {"
+        },
+        {
+          "line": 406,
+          "text": "return () => { if (runtime.current === bridge) runtime.current = null; };"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/article-editor.tsx",
+      "reason": "React/异步调用依赖或接线尾行",
+      "fragments": [
+        {
+          "line": 414,
+          "text": "}, [session, recoveryController]);"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-recovery.tsx",
+      "reason": "静态字段标签，不计功能",
+      "fragments": [
+        {
+          "line": 50,
+          "text": "const LABELS: Record<WritingField, string> = {"
+        },
+        {
+          "line": 52,
+          "text": "summary: \"摘要\","
+        },
+        {
+          "line": 53,
+          "text": "locale: \"作品语言\","
+        },
+        {
+          "line": 54,
+          "text": "workType: \"作品类型\","
+        },
+        {
+          "line": 55,
+          "text": "editorState: \"正文（含格式）\","
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-recovery.tsx",
+      "reason": "确认对话框/下载类型的静态或标题文案配置",
+      "fragments": [
+        {
+          "line": 51,
+          "text": "title: \"标题\","
+        },
+        {
+          "line": 368,
+          "text": "title: \"清除全部本机缓存并关闭？\","
+        },
+        {
+          "line": 371,
+          "text": "confirmLabel: \"清除缓存并关闭\","
+        },
+        {
+          "line": 381,
+          "text": "title: `删除本机缓存《${title || \"空标题\"}》？`,"
+        },
+        {
+          "line": 384,
+          "text": "confirmLabel: \"删除这份本机缓存\","
+        },
+        {
+          "line": 395,
+          "text": "mime: \"application/json;charset=utf-8\","
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-recovery.tsx",
+      "reason": "仅声明/参数/闭包框架，不把函数签名作为新增功能",
+      "fragments": [
+        {
+          "line": 58,
+          "text": "function SourceReview({ result }: { result: RecoverySourceReview }) {"
+        },
+        {
+          "line": 97,
+          "text": "{comparison.fields.map((field) => ("
+        },
+        {
+          "line": 131,
+          "text": "{changed.map((row, index) => ("
+        },
+        {
+          "line": 173,
+          "text": "function RecoveryPlan({"
+        },
+        {
+          "line": 184,
+          "text": "const [fields, setFields] = useState<WritingField[]>(() =>"
+        },
+        {
+          "line": 186,
+          "text": "(field) =>"
+        },
+        {
+          "line": 236,
+          "text": "{WRITING_FIELDS.map((field) => ("
+        },
+        {
+          "line": 244,
+          "text": "setFields((values) =>"
+        },
+        {
+          "line": 309,
+          "text": "export function WritingRecovery({"
+        },
+        {
+          "line": 327,
+          "text": "() =>"
+        },
+        {
+          "line": 366,
+          "text": "async function disable() {"
+        },
+        {
+          "line": 379,
+          "text": "async function discard(id: string, revision: number, title: string) {"
+        },
+        {
+          "line": 389,
+          "text": "function download(id: string, revision: number) {"
+        },
+        {
+          "line": 390,
+          "text": "void controller.download(id, revision, (entry, permitted) => {"
+        },
+        {
+          "line": 497,
+          "text": "{summaries.map(({ entry, draft: cached }) => ("
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-recovery.tsx",
+      "reason": "静态修订状态文案映射，不计功能",
+      "fragments": [
+        {
+          "line": 61,
+          "text": "const relations = {"
+        },
+        {
+          "line": 62,
+          "text": "same: \"服务器修订与缓存基线相同\","
+        },
+        {
+          "line": 63,
+          "text": "advanced: \"服务器已有更高修订，恢复旧稿可能覆盖新内容\","
+        },
+        {
+          "line": 64,
+          "text": "rewound: \"服务器修订低于缓存基线，请先核对部署或备份回退\","
+        },
+        {
+          "line": 65,
+          "text": "unknown: \"缓存没有可比较的服务器基线修订\","
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-recovery.tsx",
+      "reason": "独立标识符/参数转发/依赖数组行，不独立计功能",
+      "fragments": [
+        {
+          "line": 174,
+          "text": "plan,"
+        },
+        {
+          "line": 177,
+          "text": "locked,"
+        },
+        {
+          "line": 203,
+          "text": "[plan],"
+        },
+        {
+          "line": 245,
+          "text": "checked"
+        },
+        {
+          "line": 310,
+          "text": "owner,"
+        },
+        {
+          "line": 312,
+          "text": "read,"
+        },
+        {
+          "line": 329,
+          "text": "entry,"
+        },
+        {
+          "line": 332,
+          "text": "[state.entries],"
+        },
+        {
+          "line": 343,
+          "text": "actor,"
+        },
+        {
+          "line": 398,
+          "text": "permitted,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-recovery.tsx",
+      "reason": "JSX 属性/简单事件和 props 转发，不计功能",
+      "fragments": [
+        {
+          "line": 240,
+          "text": "aria-label={`从缓存恢复${LABELS[field]}`}"
+        },
+        {
+          "line": 264,
+          "text": "onChange={(event) => setDifferentBase(event.target.checked)}"
+        },
+        {
+          "line": 274,
+          "text": "onChange={(event) => setRemoteImages(event.target.checked)}"
+        },
+        {
+          "line": 289,
+          "text": "onClick={() =>"
+        },
+        {
+          "line": 430,
+          "text": "onChange={(event) => setConsent(event.target.checked)}"
+        },
+        {
+          "line": 438,
+          "text": "onClick={() => void controller.enable()}"
+        },
+        {
+          "line": 459,
+          "text": "onClick={() => void controller.flush()}"
+        },
+        {
+          "line": 480,
+          "text": "onClick={() => actor && void controller.connect(actor)}"
+        },
+        {
+          "line": 488,
+          "text": "onClick={() => void disable()}"
+        },
+        {
+          "line": 516,
+          "text": "aria-label={`预览本机缓存：${cached.title || \"空标题\"}`}"
+        },
+        {
+          "line": 517,
+          "text": "onClick={() => void controller.preview(entry.id)}"
+        },
+        {
+          "line": 524,
+          "text": "aria-label={`下载本机缓存：${cached.title || \"空标题\"}`}"
+        },
+        {
+          "line": 525,
+          "text": "onClick={() => download(entry.id, entry.revision)}"
+        },
+        {
+          "line": 533,
+          "text": "aria-label={`核对来源服务器：${cached.title || \"空标题\"}`}"
+        },
+        {
+          "line": 534,
+          "text": "onClick={() => void controller.reviewSource(entry.id)}"
+        },
+        {
+          "line": 541,
+          "text": "aria-label={`删除本机缓存：${cached.title || \"空标题\"}`}"
+        },
+        {
+          "line": 567,
+          "text": "key={state.preview.witness + state.preview.restore.source}"
+        },
+        {
+          "line": 568,
+          "text": "plan={state.preview}"
+        },
+        {
+          "line": 569,
+          "text": "controller={controller}"
+        },
+        {
+          "line": 570,
+          "text": "draft={draft}"
+        },
+        {
+          "line": 571,
+          "text": "locked={locked}"
+        },
+        {
+          "line": 591,
+          "text": "onChange={(event) => setReviewed(event.target.checked)}"
+        },
+        {
+          "line": 599,
+          "text": "onClick={() => void controller.acknowledgeReview()}"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-recovery.tsx",
+      "reason": "React 订阅接线，不计独立功能",
+      "fragments": [
+        {
+          "line": 317,
+          "text": "const state = useSyncExternalStore("
+        },
+        {
+          "line": 318,
+          "text": "controller.subscribe,"
+        },
+        {
+          "line": 319,
+          "text": "controller.getSnapshot,"
+        },
+        {
+          "line": 320,
+          "text": "controller.getServerSnapshot,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-recovery.tsx",
+      "reason": "React/异步调用依赖或接线尾行",
+      "fragments": [
+        {
+          "line": 358,
+          "text": "}, [controller, store, actor, source, downloads]);"
+        },
+        {
+          "line": 361,
+          "text": "}, [state.requiresReview]);"
+        },
+        {
+          "line": 364,
+          "text": "}, [state.status, downloads]);"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-recovery-boundary.ts",
+      "reason": "类声明壳，不是运行策略",
+      "fragments": [
+        {
+          "line": 17,
+          "text": "export class WritingRecoveryBoundary {"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-recovery-boundary.ts",
+      "reason": "仅声明/参数/闭包框架，不把函数签名作为新增功能",
+      "fragments": [
+        {
+          "line": 20,
+          "text": "constructor(options: RecoveryBoundaryOptions) {"
+        },
+        {
+          "line": 23,
+          "text": "subscribe(listener: (source: string) => void): () => void {"
+        },
+        {
+          "line": 29,
+          "text": "announce(source?: string): void {"
+        },
+        {
+          "line": 46,
+          "text": "receive(value: unknown): void {"
+        },
+        {
+          "line": 63,
+          "text": "async runSessionChange<T>("
+        },
+        {
+          "line": 64,
+          "text": "action: () => Promise<T>,"
+        },
+        {
+          "line": 65,
+          "text": "warning?: (value: string | null) => void,"
+        },
+        {
+          "line": 76,
+          "text": "async clearForSessionChange(): Promise<string | null> {"
+        },
+        {
+          "line": 96,
+          "text": "export function writingRecoveryBoundary(): WritingRecoveryBoundary {"
+        },
+        {
+          "line": 107,
+          "text": "send: (value) => {"
+        },
+        {
+          "line": 124,
+          "text": "channel.onmessage = (event) => {"
+        },
+        {
+          "line": 127,
+          "text": "window.addEventListener(\"storage\", (event) => {"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-recovery-boundary.ts",
+      "reason": "独立标识符/参数转发/依赖数组行，不独立计功能",
+      "fragments": [
+        {
+          "line": 115,
+          "text": "RECOVERY_BOUNDARY_CHANNEL,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-recovery-controller.ts",
+      "reason": "类声明壳，不是运行策略",
+      "fragments": [
+        {
+          "line": 73,
+          "text": "export class WritingRecoveryController {"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-recovery-controller.ts",
+      "reason": "仅声明/参数/闭包框架，不把函数签名作为新增功能",
+      "fragments": [
+        {
+          "line": 99,
+          "text": "constructor(options: RecoveryControllerOptions) {"
+        },
+        {
+          "line": 113,
+          "text": "subscribe = (listener: () => void): (() => void) => {"
+        },
+        {
+          "line": 119,
+          "text": "private publish(patch: Partial<WritingRecoveryState>) {"
+        },
+        {
+          "line": 138,
+          "text": "private clearTimer() {"
+        },
+        {
+          "line": 142,
+          "text": "private current(version: number): boolean {"
+        },
+        {
+          "line": 149,
+          "text": "private nextGeneration(): number {"
+        },
+        {
+          "line": 157,
+          "text": "private fail(error: unknown, version: number) {"
+        },
+        {
+          "line": 177,
+          "text": "private async verify("
+        },
+        {
+          "line": 178,
+          "text": "version: number,"
+        },
+        {
+          "line": 179,
+          "text": "witness?: string | null,"
+        },
+        {
+          "line": 191,
+          "text": "await this.options.store.revoke(witness).catch(() => {});"
+        },
+        {
+          "line": 204,
+          "text": "await this.options.store.attach(actor, witness).catch(() => {});"
+        },
+        {
+          "line": 212,
+          "text": "private async enter(enable: boolean, passive = false): Promise<void> {"
+        },
+        {
+          "line": 286,
+          "text": "async connect("
+        },
+        {
+          "line": 287,
+          "text": "expectedActor: string,"
+        },
+        {
+          "line": 288,
+          "text": "mode: \"explicit\" | \"lifecycle\" = \"explicit\","
+        },
+        {
+          "line": 302,
+          "text": "private async trackEntry(enable: boolean, passive = false): Promise<void> {"
+        },
+        {
+          "line": 311,
+          "text": "enable(): Promise<void> {"
+        },
+        {
+          "line": 314,
+          "text": "noteChange(): void {"
+        },
+        {
+          "line": 323,
+          "text": "private identifiers() {"
+        },
+        {
+          "line": 330,
+          "text": "private async writeOne(version: number, lease: RecoveryLease): Promise<void> {"
+        },
+        {
+          "line": 402,
+          "text": "flush(): Promise<boolean> {"
+        },
+        {
+          "line": 435,
+          "text": "async beforeServerWrite(): Promise<void> {"
+        },
+        {
+          "line": 451,
+          "text": "private async settleOwn(): Promise<void> {"
+        },
+        {
+          "line": 477,
+          "text": "async confirmServerWrite(): Promise<void> {"
+        },
+        {
+          "line": 489,
+          "text": "private snapshotKey(): string {"
+        },
+        {
+          "line": 496,
+          "text": "async preview(id: string): Promise<void> {"
+        },
+        {
+          "line": 521,
+          "text": "async restore("
+        },
+        {
+          "line": 522,
+          "text": "fields: readonly WritingField[],"
+        },
+        {
+          "line": 523,
+          "text": "consent: { differentBase: boolean; remoteImages: boolean },"
+        },
+        {
+          "line": 561,
+          "text": "async acknowledgeReview(): Promise<void> {"
+        },
+        {
+          "line": 575,
+          "text": "async reviewSource(id: string): Promise<void> {"
+        },
+        {
+          "line": 581,
+          "text": "const current = () =>"
+        },
+        {
+          "line": 644,
+          "text": "async download("
+        },
+        {
+          "line": 647,
+          "text": "deliver: (entry: RecoveryEntry, permitted: () => boolean) => void,"
+        },
+        {
+          "line": 667,
+          "text": "async discard(id: string, revision: number): Promise<void> {"
+        },
+        {
+          "line": 692,
+          "text": "async disable(): Promise<void> {"
+        },
+        {
+          "line": 710,
+          "text": "suspend(): void {"
+        },
+        {
+          "line": 719,
+          "text": "invalidate(): void {"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-recovery-controller.ts",
+      "reason": "独立标识符/参数转发/依赖数组行，不独立计功能",
+      "fragments": [
+        {
+          "line": 248,
+          "text": "witness,"
+        },
+        {
+          "line": 341,
+          "text": "base,"
+        },
+        {
+          "line": 342,
+          "text": "unknown,"
+        },
+        {
+          "line": 373,
+          "text": "lease,"
+        },
+        {
+          "line": 378,
+          "text": "backup,"
+        },
+        {
+          "line": 463,
+          "text": "prior.id,"
+        },
+        {
+          "line": 464,
+          "text": "prior.writer,"
+        },
+        {
+          "line": 465,
+          "text": "prior.revision,"
+        },
+        {
+          "line": 472,
+          "text": "row,"
+        },
+        {
+          "line": 541,
+          "text": "snapshot.draft,"
+        },
+        {
+          "line": 542,
+          "text": "snapshot.base,"
+        },
+        {
+          "line": 544,
+          "text": "consent,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-recovery-lifecycle.ts",
+      "reason": "仅声明/参数/闭包框架，不把函数签名作为新增功能",
+      "fragments": [
+        {
+          "line": 13,
+          "text": "export function bindWritingRecovery("
+        },
+        {
+          "line": 14,
+          "text": "controller: Pick<"
+        },
+        {
+          "line": 18,
+          "text": "actor: string,"
+        },
+        {
+          "line": 20,
+          "text": "boundary: Pick<WritingRecoveryBoundary, \"subscribe\">,"
+        },
+        {
+          "line": 21,
+          "text": "environment: RecoveryLifecycleEnvironment,"
+        },
+        {
+          "line": 26,
+          "text": "const visible = () => {"
+        },
+        {
+          "line": 33,
+          "text": "const hide = (synchronous = true) => {"
+        },
+        {
+          "line": 34,
+          "text": "const work = () => {"
+        },
+        {
+          "line": 51,
+          "text": "const resume = () => {"
+        },
+        {
+          "line": 55,
+          "text": "const visibility = () => {"
+        },
+        {
+          "line": 59,
+          "text": "const pagehide = () => {"
+        },
+        {
+          "line": 63,
+          "text": "const pageshow = (event: Event) => {"
+        },
+        {
+          "line": 66,
+          "text": "const stopBoundary = boundary.subscribe((origin) => {"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-recovery-model.ts",
+      "reason": "类声明壳，不是运行策略",
+      "fragments": [
+        {
+          "line": 35,
+          "text": "export class WritingRecoveryFault extends Error {"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-recovery-model.ts",
+      "reason": "仅声明/参数/闭包框架，不把函数签名作为新增功能",
+      "fragments": [
+        {
+          "line": 37,
+          "text": "constructor(code: RecoveryCode) {"
+        },
+        {
+          "line": 86,
+          "text": "export const recoverySize = (value: unknown): number =>"
+        },
+        {
+          "line": 88,
+          "text": "export function recoveryId(value: unknown): value is string {"
+        },
+        {
+          "line": 91,
+          "text": "export function recoveryTime(value: unknown): value is number {"
+        },
+        {
+          "line": 99,
+          "text": "function closed("
+        },
+        {
+          "line": 112,
+          "text": "export function parseRecoveryBase(value: unknown): RecoveryBase {"
+        },
+        {
+          "line": 131,
+          "text": "export function parseRecoveryControl(value: unknown): RecoveryControl {"
+        },
+        {
+          "line": 152,
+          "text": "export function parseRecoveryEntry(value: unknown): RecoveryEntry {"
+        },
+        {
+          "line": 210,
+          "text": "export function recoveryPreview("
+        },
+        {
+          "line": 211,
+          "text": "entry: RecoveryEntry,"
+        },
+        {
+          "line": 212,
+          "text": "current: WritingDraft,"
+        },
+        {
+          "line": 213,
+          "text": "base: RecoveryBase,"
+        },
+        {
+          "line": 226,
+          "text": "export function applyRecoveryPreview("
+        },
+        {
+          "line": 227,
+          "text": "plan: RecoveryPreview,"
+        },
+        {
+          "line": 250,
+          "text": "export function recoveryProblem(error: unknown): string {"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-recovery-model.ts",
+      "reason": "静态错误文案，不计功能",
+      "fragments": [
+        {
+          "line": 253,
+          "text": "const messages: Record<RecoveryCode, string> = {"
+        },
+        {
+          "line": 254,
+          "text": "invalid: \"本机缓存格式无效，未载入部分内容；可手动下载当前输入后清除缓存。\","
+        },
+        {
+          "line": 255,
+          "text": "unavailable: \"浏览器拒绝本机存储，当前输入仍在页面；请手动下载文稿备份。\","
+        },
+        {
+          "line": 256,
+          "text": "blocked: \"本机存储被其他页面的版本占用；请关闭旧页面后手动重试。\","
+        },
+        {
+          "line": 257,
+          "text": "timeout: \"本机存储未在期限内完成，不能确认已缓存；请下载文稿备份。\","
+        },
+        {
+          "line": 258,
+          "text": "quota: \"浏览器存储空间不足，原缓存未被替换；请下载备份或明确删除旧缓存。\","
+        },
+        {
+          "line": 259,
+          "text": "revoked: \"本机恢复已关闭或账户已变化，旧标签不能重新写入；请重新核对账户。\","
+        },
+        {
+          "line": 260,
+          "text": "conflict: \"本机缓存已被其他操作修改，未覆盖新版本；请刷新列表后重新选择。\","
+        },
+        {
+          "line": 261,
+          "text": "limit:"
+        },
+        {
+          "line": 262,
+          "text": "\"本机缓存达到 20 份或 16 MiB 上限；不会自动删除旧稿，请先备份并明确删除。\","
+        },
+        {
+          "line": 263,
+          "text": "clock: \"本机时钟回退，未改写缓存时间或旧稿；请核对时钟后重试。\","
+        },
+        {
+          "line": 264,
+          "text": "stale: \"恢复预览已过期，文稿、目标或缓存已变化；请重新预览。\","
+        },
+        {
+          "line": 265,
+          "text": "identity: \"无法确认原登录账户，本机内容已隐藏；不会从缓存推断身份。\","
+        },
+        {
+          "line": 266,
+          "text": "review_required:"
+        },
+        {
+          "line": 267,
+          "text": "\"恢复稿的上次保存结果未知；请先核对服务器作品列表，再明确解除保存拦截。\","
+        },
+        {
+          "line": 268,
+          "text": "remote_consent: \"恢复正文可能加载远程图片，请先明确同意。\","
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-recovery-source.ts",
+      "reason": "类声明壳，不是运行策略",
+      "fragments": [
+        {
+          "line": 49,
+          "text": "export class WritingRecoverySourceReader {"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-recovery-source.ts",
+      "reason": "仅声明/参数/闭包框架，不把函数签名作为新增功能",
+      "fragments": [
+        {
+          "line": 56,
+          "text": "constructor(options: RecoverySourceOptions = {}) {"
+        },
+        {
+          "line": 60,
+          "text": "this.reader = new CatalogueDocumentReader((url, init) =>"
+        },
+        {
+          "line": 64,
+          "text": "cancel(): void {"
+        },
+        {
+          "line": 73,
+          "text": "private async fetchBounded("
+        },
+        {
+          "line": 75,
+          "text": "init: RequestInit,"
+        },
+        {
+          "line": 79,
+          "text": "async (signal, checkpoint) => {"
+        },
+        {
+          "line": 141,
+          "text": "async read("
+        },
+        {
+          "line": 142,
+          "text": "input: RecoveryEntry,"
+        },
+        {
+          "line": 144,
+          "text": "stillCurrent: () => boolean,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-recovery-source.ts",
+      "reason": "独立标识符/参数转发/依赖数组行，不独立计功能",
+      "fragments": [
+        {
+          "line": 78,
+          "text": "this.timeoutMs,"
+        },
+        {
+          "line": 84,
+          "text": "signal,"
+        },
+        {
+          "line": 103,
+          "text": "this.retryAt,"
+        },
+        {
+          "line": 175,
+          "text": "current,"
+        },
+        {
+          "line": 215,
+          "text": "relation,"
+        },
+        {
+          "line": 219,
+          "text": "comparison,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-recovery-store.ts",
+      "reason": "仅声明/参数/闭包框架，不把函数签名作为新增功能",
+      "fragments": [
+        {
+          "line": 45,
+          "text": "function storageFault(error: unknown): WritingRecoveryFault {"
+        },
+        {
+          "line": 68,
+          "text": "constructor("
+        },
+        {
+          "line": 87,
+          "text": "private open(): Promise<IDBDatabase> {"
+        },
+        {
+          "line": 90,
+          "text": "const operation = new Promise<IDBDatabase>((resolve, reject) => {"
+        },
+        {
+          "line": 92,
+          "text": "const fail = (error: unknown) => {"
+        },
+        {
+          "line": 108,
+          "text": "request.onupgradeneeded = (event) => {"
+        },
+        {
+          "line": 121,
+          "text": "request.onsuccess = () => {"
+        },
+        {
+          "line": 138,
+          "text": "db.onversionchange = () => {"
+        },
+        {
+          "line": 142,
+          "text": "db.onclose = () => {"
+        },
+        {
+          "line": 162,
+          "text": "private async transaction<T>("
+        },
+        {
+          "line": 163,
+          "text": "mode: IDBTransactionMode,"
+        },
+        {
+          "line": 164,
+          "text": "work: TransactionWork<T>,"
+        },
+        {
+          "line": 167,
+          "text": "return new Promise<T>((resolve, reject) => {"
+        },
+        {
+          "line": 181,
+          "text": "const rejectOnce = (error: unknown) => {"
+        },
+        {
+          "line": 201,
+          "text": "tx.onerror = (event) => {"
+        },
+        {
+          "line": 204,
+          "text": "tx.oncomplete = () => {"
+        },
+        {
+          "line": 214,
+          "text": "const guard = (callback: () => void) => {"
+        },
+        {
+          "line": 223,
+          "text": "guard(() =>"
+        },
+        {
+          "line": 226,
+          "text": "(value) => {"
+        },
+        {
+          "line": 235,
+          "text": "private load("
+        },
+        {
+          "line": 236,
+          "text": "tx: IDBTransaction,"
+        },
+        {
+          "line": 237,
+          "text": "guard: (work: () => void) => void,"
+        },
+        {
+          "line": 238,
+          "text": "next: (dataset: Dataset) => void,"
+        },
+        {
+          "line": 246,
+          "text": "const complete = () => {"
+        },
+        {
+          "line": 258,
+          "text": "(row) =>"
+        },
+        {
+          "line": 270,
+          "text": "control.onsuccess = () =>"
+        },
+        {
+          "line": 271,
+          "text": "guard(() => {"
+        },
+        {
+          "line": 275,
+          "text": "entries.onsuccess = () =>"
+        },
+        {
+          "line": 281,
+          "text": "private freshControl("
+        },
+        {
+          "line": 282,
+          "text": "actor: string | null,"
+        },
+        {
+          "line": 283,
+          "text": "enabled: boolean,"
+        },
+        {
+          "line": 289,
+          "text": "private checkWitness("
+        },
+        {
+          "line": 290,
+          "text": "control: RecoveryControl | null,"
+        },
+        {
+          "line": 291,
+          "text": "witness: string | null,"
+        },
+        {
+          "line": 296,
+          "text": "private checkLease("
+        },
+        {
+          "line": 298,
+          "text": "lease: RecoveryLease,"
+        },
+        {
+          "line": 308,
+          "text": "private advance(control: RecoveryControl): RecoveryControl {"
+        },
+        {
+          "line": 313,
+          "text": "async inspect(): Promise<string | null> {"
+        },
+        {
+          "line": 314,
+          "text": "return this.transaction(\"readonly\", (tx, finish, guard) => {"
+        },
+        {
+          "line": 316,
+          "text": "request.onsuccess = () =>"
+        },
+        {
+          "line": 326,
+          "text": "private enter("
+        },
+        {
+          "line": 329,
+          "text": "enable: boolean,"
+        },
+        {
+          "line": 336,
+          "text": "return this.transaction(\"readwrite\", (tx, finish, guard) =>"
+        },
+        {
+          "line": 337,
+          "text": "this.load(tx, guard, (data) => {"
+        },
+        {
+          "line": 365,
+          "text": "attach(actor: string, control: string | null): Promise<RecoveryView> {"
+        },
+        {
+          "line": 368,
+          "text": "enable(actor: string, control: string | null): Promise<RecoveryView> {"
+        },
+        {
+          "line": 371,
+          "text": "read(lease: RecoveryLease): Promise<RecoveryEntry[]> {"
+        },
+        {
+          "line": 372,
+          "text": "return this.transaction(\"readonly\", (tx, finish, guard) =>"
+        },
+        {
+          "line": 379,
+          "text": "put("
+        },
+        {
+          "line": 381,
+          "text": "input: RecoveryInput,"
+        },
+        {
+          "line": 429,
+          "text": "settle("
+        },
+        {
+          "line": 432,
+          "text": "writer: string,"
+        },
+        {
+          "line": 452,
+          "text": "remove(lease: RecoveryLease, id: string, revision: number): Promise<void> {"
+        },
+        {
+          "line": 465,
+          "text": "revoke(witness: string | null): Promise<void> {"
+        },
+        {
+          "line": 466,
+          "text": "return this.transaction(\"readwrite\", (tx, finish, guard) => {"
+        },
+        {
+          "line": 485,
+          "text": "purge(): Promise<void> {"
+        },
+        {
+          "line": 486,
+          "text": "return this.transaction(\"readwrite\", (tx, finish) => {"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-recovery-store.ts",
+      "reason": "类声明壳，不是运行策略",
+      "fragments": [
+        {
+          "line": 60,
+          "text": "export class IndexedWritingRecoveryStore implements WritingRecoveryStore {"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-recovery-store.ts",
+      "reason": "独立标识符/参数转发/依赖数组行，不独立计功能",
+      "fragments": [
+        {
+          "line": 225,
+          "text": "tx,"
+        },
+        {
+          "line": 230,
+          "text": "guard,"
+        },
+        {
+          "line": 389,
+          "text": "existing"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/article-editor.tsx",
+      "reason": "保守排除 editor 的实例化/订阅/bridge/props 转发；仅接纳同步快照、并发应用保护、dispatch checkpoint 与返回处理策略",
+      "fragments": [
+        {
+          "line": 383,
+          "text": "const baseArticle = useRef(article);"
+        },
+        {
+          "line": 385,
+          "text": "const runtime = useRef<{ read(): Draft; apply(next: Draft): void } | null>(null);"
+        },
+        {
+          "line": 387,
+          "text": "const [recoveryStore] = useState(() => new IndexedWritingRecoveryStore());"
+        },
+        {
+          "line": 388,
+          "text": "const [recoveryController] = useState(() => new WritingRecoveryController({"
+        },
+        {
+          "line": 389,
+          "text": "store: recoveryStore,"
+        },
+        {
+          "line": 390,
+          "text": "actor: createNotificationTransport().actor,"
+        },
+        {
+          "line": 398,
+          "text": "runtime.current.apply(next);"
+        },
+        {
+          "line": 401,
+          "text": "revoked: () => writingRecoveryBoundary().announce(recoverySource),"
+        },
+        {
+          "line": 404,
+          "text": "const bridge = { read, apply };"
+        },
+        {
+          "line": 405,
+          "text": "runtime.current = bridge;"
+        },
+        {
+          "line": 413,
+          "text": "recoveryController.noteChange();"
+        },
+        {
+          "line": 751,
+          "text": "<WritingTools draft={{ title, summary, locale, workType, editorState }} getDraft={getDraft} onChange={changeDraft} locked={hasPending || busy} recovery={{ controller: recoveryController, store: recoveryStore, actor: viewerId, source: recoverySource, register: registerRecoveryRuntime }} />"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-recovery.tsx",
+      "reason": "JSX 容器的 key 接线不计功能",
+      "fragments": [
+        {
+          "line": 98,
+          "text": "<div key={field.field}>"
+        },
+        {
+          "line": 132,
+          "text": "<li key={index}>"
+        },
+        {
+          "line": 237,
+          "text": "<label className=\"nw-writing-check\" key={field}>"
+        },
+        {
+          "line": 498,
+          "text": "<li key={entry.id}>"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-recovery.tsx",
+      "reason": "props 解构/bridge/lifecycle 转发与静态确认帮助文案，不计独立功能",
+      "fragments": [
+        {
+          "line": 316,
+          "text": "const { controller, store, actor, source, register } = owner;"
+        },
+        {
+          "line": 338,
+          "text": "useLayoutEffect(() => register(read, apply), [register, read, apply]);"
+        },
+        {
+          "line": 341,
+          "text": "const stop = bindWritingRecovery("
+        },
+        {
+          "line": 345,
+          "text": "writingRecoveryBoundary(),"
+        },
+        {
+          "line": 370,
+          "text": "\"本浏览器本站下所有缓存文稿将被删除，其他标签的旧写入会失效。不会删除服务器作品，也不会清空当前编辑区；需要的旧稿请先下载。\","
+        },
+        {
+          "line": 383,
+          "text": "\"仅删除所选本机版本，不删除服务器作品，不清空当前输入。较新的缓存不会被此确认覆盖或删除。\","
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-recovery-boundary.ts",
+      "reason": "静态 channel 名配置不计功能",
+      "fragments": [
+        {
+          "line": 7,
+          "text": "export const RECOVERY_BOUNDARY_CHANNEL = \"no-wave-writing-recovery-boundary-v1\";"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-recovery-controller.ts",
+      "reason": "静态空状态对象，不把状态 DTO 默认值算成新增功能",
+      "fragments": [
+        {
+          "line": 56,
+          "text": "const EMPTY: WritingRecoveryState = Object.freeze({"
+        },
+        {
+          "line": 57,
+          "text": "status: \"idle\","
+        },
+        {
+          "line": 58,
+          "text": "actor: null,"
+        },
+        {
+          "line": 60,
+          "text": "preview: null,"
+        },
+        {
+          "line": 61,
+          "text": "saving: false,"
+        },
+        {
+          "line": 62,
+          "text": "savedAt: null,"
+        },
+        {
+          "line": 63,
+          "text": "requiresReview: false,"
+        },
+        {
+          "line": 64,
+          "text": "error: \"\","
+        },
+        {
+          "line": 65,
+          "text": "sourceReview: null,"
+        },
+        {
+          "line": 66,
+          "text": "sourceBusy: false,"
+        },
+        {
+          "line": 67,
+          "text": "sourceError: \"\","
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-recovery-model.ts",
+      "reason": "静态容量常量声明；接纳使用常量实施的 admission 策略，不计配置自身",
+      "fragments": [
+        {
+          "line": 16,
+          "text": "export const RECOVERY_LIMITS = Object.freeze({"
+        },
+        {
+          "line": 17,
+          "text": "entries: 20,"
+        },
+        {
+          "line": 18,
+          "text": "bytes: 16 * 1024 * 1024,"
+        },
+        {
+          "line": 19,
+          "text": "entryBytes: 2 * 1024 * 1024 + 4096,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-recovery-source.ts",
+      "reason": "静态响应字节预算配置不计功能",
+      "fragments": [
+        {
+          "line": 44,
+          "text": "const SOURCE_BYTES = 2 * 1024 * 1024;"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-recovery.tsx",
+      "reason": "独立 Node/esbuild→Espree 复核扣除：historical-runtime-fragment，不以新路径或类型/格式变化重复申报",
+      "fragments": [
+        {
+          "line": 106,
+          "text": "{\"\\n\"}服务器："
+        },
+        {
+          "line": 226,
+          "text": ".join(\"\\n\")"
+        },
+        {
+          "line": 282,
+          "text": "disabled={"
+        },
+        {
+          "line": 354,
+          "text": "stop();"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-recovery.tsx",
+      "reason": "独立 Node/esbuild→Espree 复核扣除：erased-or-trivia，不以新路径或类型/格式变化重复申报",
+      "fragments": [
+        {
+          "line": 191,
+          "text": ") &&"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-recovery-boundary.ts",
+      "reason": "独立 Node/esbuild→Espree 复核扣除：historical-runtime-fragment，不以新路径或类型/格式变化重复申报",
+      "fragments": [
+        {
+          "line": 19,
+          "text": "private listeners = new Set<(source: string) => void>();"
+        },
+        {
+          "line": 80,
+          "text": "let store: ReturnType<RecoveryBoundaryOptions[\"store\"]> | undefined;"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-recovery-controller.ts",
+      "reason": "独立 Node/esbuild→Espree 复核扣除：historical-runtime-fragment，不以新路径或类型/格式变化重复申报",
+      "fragments": [
+        {
+          "line": 111,
+          "text": "getSnapshot = (): WritingRecoveryState => this.state;"
+        },
+        {
+          "line": 306,
+          "text": "await operation;"
+        },
+        {
+          "line": 471,
+          "text": "entries: ["
+        },
+        {
+          "line": 491,
+          "text": "return JSON.stringify(["
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-recovery-lifecycle.ts",
+      "reason": "独立 Node/esbuild→Espree 复核扣除：historical-runtime-fragment，不以新路径或类型/格式变化重复申报",
+      "fragments": [
+        {
+          "line": 23,
+          "text": "let stopped = false,"
+        },
+        {
+          "line": 24,
+          "text": "scheduled = false,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-recovery-model.ts",
+      "reason": "独立 Node/esbuild→Espree 复核扣除：duplicate-runtime-fragment，不以新路径或类型/格式变化重复申报",
+      "fragments": [
+        {
+          "line": 194,
+          "text": "actor: row.actor,"
+        },
+        {
+          "line": 197,
+          "text": "revision: row.revision,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-recovery-source.ts",
+      "reason": "独立 Node/esbuild→Espree 复核扣除：historical-runtime-fragment，不以新路径或类型/格式变化重复申报",
+      "fragments": [
+        {
+          "line": 120,
+          "text": "{ signal },"
+        },
+        {
+          "line": 154,
+          "text": "const result: RecoverySourceReview = {"
+        },
+        {
+          "line": 184,
+          "text": "locale: article.locale,"
+        },
+        {
+          "line": 226,
+          "text": "if (error instanceof UpstreamTimeoutError)"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-recovery-store.ts",
+      "reason": "独立 Node/esbuild→Espree 复核扣除：historical-runtime-fragment，不以新路径或类型/格式变化重复申报",
+      "fragments": [
+        {
+          "line": 118,
+          "text": "fail(error);"
+        },
+        {
+          "line": 177,
+          "text": "let settled = false,"
+        },
+        {
+          "line": 179,
+          "text": "let result: T;"
+        },
+        {
+          "line": 224,
+          "text": "work("
+        },
+        {
+          "line": 273,
+          "text": "complete();"
+        },
+        {
+          "line": 318,
+          "text": "finish("
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-recovery.tsx",
+      "reason": "额外保守扣除：SSR 常量读取、纯控制器包装转发、拆成多行的 UI/lifecycle 事件转发不再独立计功能",
+      "fragments": [
+        {
+          "line": 290,
+          "text": "void controller.restore(fields, { differentBase, remoteImages })"
+        },
+        {
+          "line": 543,
+          "text": "void discard(entry.id, entry.revision, cached.title)"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-recovery-controller.ts",
+      "reason": "额外保守扣除：SSR 常量读取、纯控制器包装转发、拆成多行的 UI/lifecycle 事件转发不再独立计功能",
+      "fragments": [
+        {
+          "line": 112,
+          "text": "getServerSnapshot = (): WritingRecoveryState => EMPTY;"
+        },
+        {
+          "line": 312,
+          "text": "return this.trackEntry(true);"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-recovery-lifecycle.ts",
+      "reason": "额外保守扣除：SSR 常量读取、纯控制器包装转发、拆成多行的 UI/lifecycle 事件转发不再独立计功能",
+      "fragments": [
+        {
+          "line": 47,
+          "text": "void controller.connect(actor, \"lifecycle\");"
+        }
+      ]
+    }
+  ]
+}
