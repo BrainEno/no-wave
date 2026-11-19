@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { writingRecoveryBoundary } from "@/lib/writing-recovery-boundary.ts";
 import { Link } from "@/lib/framework/link.tsx";
 import { useNavigationBlocker, usePageLocation } from "@/lib/framework/navigation.ts";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog.tsx";
@@ -140,6 +141,7 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
   const [leave, setLeave] = useState<DocumentLeave | null>(null);
   const routeLeave = useRef<(WritingLeaveToken & { pending: boolean }) | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+  const [recoveryWarning, setRecoveryWarning] = useState<string | null>(null);
   const signingOutRef = useRef(false);
   const shouldBlock = useCallback(() => pendingCreateRef.current || guardRef.current.dirty, []);
   const blocker = useNavigationBlocker(shouldBlock);
@@ -434,7 +436,7 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
     setSigningOut(true);
     const finishSessionChange = notifications.beginSessionChange();
     try {
-      await fetch("/api/auth/logout", { method: "POST", headers: { "content-type": "application/json" }, credentials: "same-origin", cache: "no-store", body: "{}" });
+      await writingRecoveryBoundary().runSessionChange(() => fetch("/api/auth/logout", { method: "POST", headers: { "content-type": "application/json" }, credentials: "same-origin", cache: "no-store", body: "{}" }), setRecoveryWarning);
     } finally {
       finishSessionChange();
       signingOutRef.current = false;
@@ -483,7 +485,7 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
 
   if (state === "loading") return <p role="status">正在验证登录状态并载入草稿……</p>;
   if (state === "unauthenticated") {
-    return <section className="nw-auth-panel"><h1><span className="nw-zh">先登录</span> <i>Sign in</i></h1><p>写作、保存草稿与发布功能需要有效的登录会话。</p><Link className="nw-btn nw-pri" href="/sign-in?next=%2Fwrite">登录或创建账户</Link></section>;
+    return <section className="nw-auth-panel"><h1><span className="nw-zh">先登录</span> <i>Sign in</i></h1><p>写作、保存草稿与发布功能需要有效的登录会话。</p>{recoveryWarning ? <p className="nw-auth-error" role="alert">{recoveryWarning}</p> : null}<Link className="nw-btn nw-pri" href="/sign-in?next=%2Fwrite">登录或创建账户</Link></section>;
   }
   if (state === "error") return <section><p className="nw-auth-error" role="alert">{error}</p><button className="nw-btn" type="button" onClick={() => { setError(""); setState("loading"); window.location.reload(); }}>重新载入</button></section>;
 
@@ -501,7 +503,7 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
           <button className="nw-btn" type="button" disabled={pendingCreate || signingOut} onClick={() => requestDocumentAction({ kind: "sign-out" })}>退出登录</button>
         </div>
       </div>
-      <p className="nw-ep" style={{ marginTop: 18 }}>保存成功的草稿与发布状态由 API 持久化；未保存输入只保留在本页，请保存或下载本机备份。</p>
+      <p className="nw-ep" style={{ marginTop: 18 }}>保存成功的草稿与发布状态由 API 持久化；未保存输入默认只在本页；只有明确启用下方本机恢复才会缓存。请保存服务器草稿或下载备份。</p>
       {account ? (
         <p className="nw-auth-status" role="status">
           已登录：{account.email} · 邮箱{account.emailVerifiedAt ? "已验证" : "未验证"}
@@ -552,7 +554,7 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
       <ConfirmDialog
         open={blocker.state === "blocked"}
         title={pendingCreate ? "上次保存尚未确认" : "离开未保存的文稿？"}
-        description={pendingCreate ? "作品可能已经创建。离开后本页的重试标识和未保存的编辑会丢失，再次保存可能产生重复作品。" : "当前修改尚未保存，离开后会丢失。建议先取消并保存，或在文稿工具中下载本机备份。"}
+        description={pendingCreate ? "作品可能已经创建。离开后本页的重试标识和未保存的编辑会丢失，再次保存可能产生重复作品。" : "当前修改尚未保存，离开可能丢失最后输入；可选本机缓存不保证完整。建议先取消并保存，或在文稿工具中下载本机备份。"}
         confirmLabel="仍要离开"
         tone="danger"
         onCancel={() => { if (blocker.state === "blocked") blocker.reset(); }}
@@ -571,7 +573,7 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
       <ConfirmDialog
         open={leave !== null}
         title="放弃未保存的修改？"
-        description="当前修改尚未保存，继续会丢失这些输入。您可以取消，先保存或下载本机文稿备份。"
+        description="当前修改尚未保存，继续可能丢失最后输入；本机缓存不保证完整，退出还会清除缓存。您可以取消，先保存或下载本机文稿备份。"
         confirmLabel={leave?.action.kind === "sign-out" ? "放弃修改并退出" : "放弃修改并切换"}
         tone="danger"
         onCancel={() => setLeave(null)}

@@ -1,5 +1,9 @@
 # 写作台：未保存保护与本机文稿工具
 
+> 本文保留下面固定基线的历史范围；后续 owner 已明确批准默认关闭的可选 IndexedDB 文稿恢复。
+> 当前持久化、账号/跨标签隔离与退出清除策略以 [ADR 0045](decisions/0045-default-off-local-writing-recovery.md)
+> 及[使用说明](../operations/writing-recovery.md)为准；不改变本页原有手动文件备份行为。
+
 固定基线：`1aecb065ce29f354bee6c36ebca52761d349c59b`。本轮补齐已有 Lexical 写作台，不新增 API、数据库迁移、账户同步、遥测或浏览器自动存稿。`#284/#286` 的首屏建议在当前实现已有接线，本轮不重复计数、不以扩展功能关闭整个 backlog。
 
 ## 范围与可观察行为

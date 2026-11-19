@@ -12,6 +12,11 @@ import { $setBlocksType } from "@lexical/selection";
 import { $createParagraphNode, $getSelection, $insertNodes, $isRangeSelection, defineExtension, FORMAT_TEXT_COMMAND, REDO_COMMAND, UNDO_COMMAND, type ElementNode } from "lexical";
 import { ArticleImageNode, $createArticleImageNode } from "./article-image-node.tsx";
 import { WritingTools } from "./writing-tools.tsx";
+import { WritingRecoveryController } from "@/lib/writing-recovery-controller.ts";
+import { IndexedWritingRecoveryStore } from "@/lib/writing-recovery-store.ts";
+import { writingRecoveryBoundary } from "@/lib/writing-recovery-boundary.ts";
+import { recoveryProblem, WritingRecoveryFault } from "@/lib/writing-recovery-model.ts";
+import { createNotificationTransport } from "@/lib/notification-transport.ts";
 import { WritingSession, type WritingDraft, type WritingGuard } from "@/lib/writing-session.ts";
 import { PromptDialog, type PromptDialogField } from "@/components/ui/prompt-dialog.tsx";
 import { useConfirm } from "@/components/ui/confirm-dialog.tsx";
@@ -375,12 +380,38 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
   const latest = useRef<Draft>({ title, summary, locale, workType, editorState });
   const [session] = useState(() => new WritingSession(latest.current));
   const [guard, setGuard] = useState(session.getSnapshot());
+  const baseArticle = useRef(article);
+  useEffect(() => { baseArticle.current = article; }, [article]);
+  const runtime = useRef<{ read(): Draft; apply(next: Draft): void } | null>(null);
+  const [recoverySource] = useState(() => { try { return crypto.randomUUID(); } catch { return ""; } });
+  const [recoveryStore] = useState(() => new IndexedWritingRecoveryStore());
+  const [recoveryController] = useState(() => new WritingRecoveryController({
+    store: recoveryStore,
+    actor: createNotificationTransport().actor,
+    snapshot: () => {
+      const draft = runtime.current?.read() ?? latest.current;
+      const base = baseArticle.current;
+      return { draft, dirty: session.getSnapshot().dirty, base: { articleId: base?.id ?? null, locale: draft.locale, revision: base?.locale === draft.locale ? base.revision ?? null : null } };
+    },
+    apply: next => {
+      if (!runtime.current || pending.current || inFlight.current) throw new WritingRecoveryFault("stale");
+      runtime.current.apply(next);
+    },
+    identityLost: () => { setSignInHelp(true); setError("登录账户已变化或无法确认，旧标签已停止本机恢复和保存。请下载当前输入，重新载入后核对账户。"); },
+    revoked: () => writingRecoveryBoundary().announce(recoverySource),
+  }));
+  const registerRecoveryRuntime = useCallback((read: () => Draft, apply: (next: Draft) => void) => {
+    const bridge = { read, apply };
+    runtime.current = bridge;
+    return () => { if (runtime.current === bridge) runtime.current = null; };
+  }, []);
   const guardCallback = useRef(onGuardChange);
   useEffect(() => { guardCallback.current = onGuardChange; }, [onGuardChange]);
   const reportGuard = useCallback((next = session.update(latest.current)) => {
     setGuard(next);
     guardCallback.current(next);
-  }, [session]);
+    recoveryController.noteChange();
+  }, [session, recoveryController]);
   const getDraft = useCallback(() => latest.current, []);
   const changeDraft = useCallback((next: Draft) => {
     latest.current = next;
@@ -442,7 +473,12 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
     setSignInHelp(false);
     setStatus("");
     setConfirmedReplay(false);
+    let dispatched = false;
     try {
+      // When opted in, durably mark uncertainty before sending any write. The
+      // cache stores text only: not this request's bytes, key, target or retry.
+      await recoveryController.beforeServerWrite();
+      dispatched = true;
       const response = await fetch(currentArticle ? `/api/authoring/articles/${encodeURIComponent(currentArticle.id)}` : "/api/authoring/articles", {
         method: currentArticle ? "PUT" : "POST",
         headers: {
@@ -467,6 +503,7 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
           // attempt did not write; an earlier ambiguous attempt still matters.
           const rejectedBeforeWrite = response.headers.get(AUTHORING_NOT_FORWARDED_HEADER) === "1";
           if (rejectedBeforeWrite && !create.mayHaveCommitted) {
+            await recoveryController.confirmServerWrite();
             clearPending();
             setError(apiError(payload));
             return;
@@ -519,7 +556,9 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
           reportGuard(session.acknowledge({ title: data.title, summary: data.summary, locale: data.locale, workType: data.workType, editorState: articleBlocksToLexicalEditorState(data.contentBlocks) }));
         } catch { /* An unsupported current server version cannot acknowledge this editor. */ }
       } else reportGuard(session.acknowledge(JSON.parse(body) as Draft));
+      baseArticle.current = data;
       onSaved(data);
+      await recoveryController.confirmServerWrite();
       // A replay returns the *current* resource, which another tab may have
       // changed after the original create. Do not say this editor's snapshot
       // was just saved over those changes.
@@ -531,9 +570,12 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
           ? "作品已转为草稿，公开页面已不可访问；重新发布即可恢复同一地址。"
           : `${data.status === "published" ? "作品已发布。" : "草稿已保存。"} ${address}`;
       setConfirmedReplay(replayed);
-      setStatus(`${completion}${hasLaterEdits ? " 当前修改尚未保存，请再次保存或发布。" : hasOtherAction ? " 所选操作尚未执行，请再次保存或发布。" : ""}`);
+      setStatus(`${completion}${hasLaterEdits || saveBody(latest.current, target, currentArticle) !== body ? " 当前修改尚未保存，请再次保存或发布。" : hasOtherAction ? " 所选操作尚未执行，请再次保存或发布。" : ""}`);
     } catch (caught) {
-      if (create) {
+      if (!dispatched) {
+        if (create && !create.mayHaveCommitted) clearPending();
+        setError(recoveryProblem(caught));
+      } else if (create) {
         create.mayHaveCommitted = true;
         setError("暂时无法确认作品是否已创建。请确认上次保存，或先核对作品列表。");
       } else {
@@ -706,7 +748,7 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
           <ContentEditable className="nw-lexical-input" aria-label="作品正文" aria-placeholder="从这里开始写作" placeholder={<p className="nw-lexical-placeholder">从这里开始写作……</p>} />
         </div>
         <EditorStatePlugin onChange={onEditorChange} />
-        <WritingTools draft={{ title, summary, locale, workType, editorState }} getDraft={getDraft} onChange={changeDraft} locked={hasPending} />
+        <WritingTools draft={{ title, summary, locale, workType, editorState }} getDraft={getDraft} onChange={changeDraft} locked={hasPending || busy} recovery={{ controller: recoveryController, store: recoveryStore, actor: viewerId, source: recoverySource, register: registerRecoveryRuntime }} />
       </LexicalExtensionComposer>
       <div className="nw-article-fields nw-article-metadata">
         <p className="nw-field-note">作品地址（slug）由系统根据标题自动生成，无需填写。</p>
@@ -751,7 +793,7 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
       {status ? <p className="nw-auth-status" role="status">{status}{confirmedReplay ? <> <Link href="/write" target="_blank" rel="noopener noreferrer">在新标签页核对服务器版本</Link></> : null}</p> : null}
       {hasPending && !busy ? (
         <div className="nw-authoring-recovery">
-          <p>这次请求和当前编辑只暂存在此页面。确认前请勿刷新或离开；确认原请求不会覆盖当前编辑。 <Link href="/write" target="_blank" rel="noopener noreferrer">在新标签页核对作品列表</Link></p>
+          <p>这次请求的重试标识只在此页面，绝不会存入本机缓存；当前编辑仅在另行启用本机恢复时才可能缓存。确认前请勿刷新或离开；确认原请求不会覆盖当前编辑。 <Link href="/write" target="_blank" rel="noopener noreferrer">在新标签页核对作品列表</Link></p>
           <div className="nw-authoring-actions">
             <button className="nw-btn" type="button" onClick={retryPending}>确认上次保存</button>
             <button className="nw-btn" type="button" onClick={() => void discardPending()}>放弃上次未确认的请求</button>

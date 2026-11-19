@@ -61,6 +61,7 @@
     "eslint": "9.39.5",
     "eslint-plugin-jsx-a11y": "6.10.2",
     "eslint-plugin-react-hooks": "7.1.1",
+    "fake-indexeddb": "6.2.8",
     "fflate": "0.8.3",
     "fontkit": "3.0.0",
     "marked": "18.1.3",
