@@ -80,7 +80,25 @@ collection 模型/控制器/浏览器 helper、现有路由/SSR/cache/bundle 和
 `claimed=810`、`runtimeConfirmed=810`、`failures=[]`、`satisfied=true`。
 主证书 SHA-256 为 `2553f839ae59c8dc2df0c039b1a82cdcf92c3217be6aadc0484ea23fabb71110`。
 复核初次额外否决 22 个历史/重复运行片段，已经全部扣除，未放宽复核规则。
-两份审计脚本的独立严格 tsc 也已通过。执行方式：
+两份审计脚本的独立严格 tsc 也已通过。
+
+| 不重叠生产模块 | 有效新增行 |
+| --- | ---: |
+| 精确三方对齐、选择验证、完整输出重建 `writing-merge.ts` | 180 |
+| 来源流与序列化输出守恒 `writing-merge-integrity.ts` | 75 |
+| 取消/来源世代/取舍 revision 和计划/结果下载见证 controller | 129 |
+| 严格闭集、来源绑定、无正文的手动计划 | 49 |
+| 全局筛选/分页/冲突定位/计划替换/结果账目 review helper | 63 |
+| 有界只读结构路径诊断 | 51 |
+| 实际下载文本与预览、未采用改动和逐来源精确对照 impact helper | 46 |
+| 五个组件的动态取舍/诊断/结果/计划行为（已扣薄接线） | 217 |
+| **合计** | **810** |
+
+开发期间 main 合入 #374 的 ADR 实施状态索引变更，已在同一工作分支同步
+`1e0e86b177423d1c9f8b05c0091bb8e93f392726`，保留其新索引/门禁说明，新增 0046 行和
+Implementation 记录。同步来的主线工作全部零计入本轮；固定增量审计基线没有改变。
+
+执行方式：
 
 ```sh
 node docs/audit/writing-merge-lines.ts > docs/audit/writing-merge-lines.json
