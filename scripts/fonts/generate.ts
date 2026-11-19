@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { create } from "fontkit";
 import subsetFont from "subset-font";
 import { FONT_SOURCES, fontSourceReceipt, type FontSource } from "./font-sources.ts";
-import { assertSubsetCoverage, renderFontCss, unicodeRange, validateWoff2, verifyFontBundle, type FontAsset, type FontManifest } from "../lib/font-assets.ts";
+import { assertFontReproduction, assertSubsetCoverage, fontBundleNeedsGeneration, renderFontCss, unicodeRange, validateWoff2, verifyFontBundle, type FontAsset, type FontManifest } from "../lib/font-assets.ts";
 
 import { applicationRepertoires, fontPartitions, verifyFontRecipe, type Repertoires } from "./repertoires.ts";
 
@@ -80,15 +80,28 @@ async function emitSource(source: FontSource, directory: string, repertoires: Re
 }
 
 async function main(): Promise<void> {
-  if (process.argv.includes("--check")) {
-    const data: unknown = JSON.parse(await readFile(join(target, "manifest.json"), "utf8"));
-    console.log(await verifyFontBundle(data, target, await readFile(stylesheet, "utf8")));
+  const args = process.argv.slice(2);
+  if (args.length > 1 || (args.length === 1 && args[0] !== "--check" && args[0] !== "--prepare")) {
+    throw new Error("Usage: node scripts/fonts/generate.ts [--check|--prepare]");
+  }
+  const expected = args[0] === "--prepare" ? {
+    manifest: await readFile(join(target, "manifest.json"), "utf8"),
+    css: await readFile(stylesheet, "utf8"),
+  } : undefined;
+  if (args.length) {
+    const data: unknown = JSON.parse(expected?.manifest ?? await readFile(join(target, "manifest.json"), "utf8"));
+    const css = expected?.css ?? await readFile(stylesheet, "utf8");
+    const needsGeneration = expected ? await fontBundleNeedsGeneration(data, target, css) : false;
+    if (!expected) console.log(await verifyFontBundle(data, target, css));
+    // Both inspections validate the manifest before it reaches the recipe.
     const manifest = data as FontManifest;
     await verifyFontRecipe(manifest, root);
     if (JSON.stringify(manifest.sources) !== JSON.stringify(FONT_SOURCES.map(fontSourceReceipt))) throw new Error("Font source receipts differ from the pinned source catalog.");
-    return;
+    if (!needsGeneration) {
+      if (expected) console.log("First-party fonts are ready; verified offline without regeneration.");
+      return;
+    }
   }
-  if (process.argv.length > 2) throw new Error("Usage: node scripts/fonts/generate.ts [--check]");
   await mkdir(dirname(target), { recursive: true });
   const staging = await mkdtemp(join(dirname(target), ".font-staging-"));
   try {
@@ -100,12 +113,23 @@ async function main(): Promise<void> {
     const manifest: FontManifest = { version: 1, generator: "subset-font@2.9.0",
       sources: FONT_SOURCES.map(fontSourceReceipt), faces };
     const css = renderFontCss(faces);
-    await writeFile(join(staging, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+    const receipts = { manifest: `${JSON.stringify(manifest, null, 2)}\n`, css };
+    await writeFile(join(staging, "manifest.json"), receipts.manifest);
     await verifyFontBundle(manifest, staging, css);
+    if (expected) {
+      assertFontReproduction(expected, receipts);
+      assertFontReproduction(expected, {
+        manifest: await readFile(join(target, "manifest.json"), "utf8"),
+        css: await readFile(stylesheet, "utf8"),
+      });
+      // Recheck inputs changed during a cold rebuild before replacing anything.
+      await fontBundleNeedsGeneration(JSON.parse(expected.manifest), target, expected.css);
+      await verifyFontRecipe(manifest, root);
+    }
     await rm(target, { recursive: true, force: true });
     await rename(staging, target);
-    await writeFile(stylesheet, css);
-    console.log(`Generated ${faces.length} first-party font faces. Commit fonts, licenses, manifest and CSS together.`);
+    if (!expected) await writeFile(stylesheet, css);
+    console.log(`Prepared ${faces.length} first-party font faces. WOFF2 files stay ignored; review receipts, licenses, manifest and CSS for intentional recipe changes.`);
   } finally {
     await rm(staging, { recursive: true, force: true });
   }

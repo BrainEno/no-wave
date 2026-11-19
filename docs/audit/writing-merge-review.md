@@ -71,6 +71,18 @@ collection 模型/控制器/浏览器 helper、现有路由/SSR/cache/bundle 和
   忽略目录中仅篡改测试结果 URL 为“其他主机 + 原地址查询值”的突变：旧断言漏检通过，
   新断言以预期 exit 1 拒绝同一突变；未篡改的七模型重新 49/49。不添加抑制、放宽查询
   或忽略线程；最终新 head 的独立 checks、注解和线程状态在 PR 再确认。
+- 主线随后合入 #375（`f1bf85e55c5081d2b2b1a1e15f8bf36a7f49cb1a`）移除生成 WOFF2。
+  主线 CI `44543108433` 与本 PR 合并测试均实际失败：多个干净检出入口缺少字体，Docker
+  未复制生成脚本。在当前分支同步，保留“不跟踪生成物”，不重新提交字体或退回该决定。
+  最小修复是根测试与 Web dev/build 共用 `fonts:prepare`、Docker 仅构建阶段带生成器和
+  验证依赖；严格 check 对缺失仍失败，prepare 只容忍缺失生成文件，不掩盖坏字节、未知
+  文件、许可证、CSS 或配方漂移。冷重建必须逐字节复现既有 manifest/CSS，发布前再核对
+  输入，不把构建变成自动元数据升级。构建自动化不计入本轮 810 行。
+- 字体构建回归先 RED：19 pass/6 fail（5 个新增行为及实际缺失资产），实现后 25/25。
+  首次冷下载因本机 Node 未信任系统 CA 失败，保留日志；仅本机启用 `--use-system-ca`，
+  保持 TLS 校验，重新从固定 SHA/blob 来源生成 2887 faces / 35076184 bytes。manifest、
+  CSS、许可证无内容变化，WOFF2 与 staging 保持忽略；强制 fetch 失败的暖准备仍通过，
+  确认完整产物只离线核验。没有新增字体来源、配方、依赖或前端外发行为。
 - 浏览器使用真实本机文件输入与下载：匿名/离线、私密字串不持久化/不上传、链接和图片
   不请求、坏 UTF-8、转义重复字段、超限 admission、晚到原生 FileReader、计划预览不自动
   应用、换来源/选择撤销结果、重复块、分页/焦点、手机/axe、pagehide/bfcache 与组合超限。
@@ -81,9 +93,10 @@ collection 模型/控制器/浏览器 helper、现有路由/SSR/cache/bundle 和
 `verification/writing-merge/`，不提交截图、大日志、运行依赖或数据库。子集重叠不相加。
 
 - 开发期间 frozen install、生产 build、完整 lint/typecheck 及字体离线/配方检查已实跑通过。
-  字体仍 2887 faces / 35076184 bytes，本轮无需重新生成，也未修改字体来源/配方或二进制。
-- 七模型子集 49/49；完整根测试 3152 项、2687 pass/0 fail/465 skip；生产 Web 重新 build
-  和 300 项行为测试为 282 pass/0 fail/18 skip；正式浏览器入口四分片 266/266。
+  同步 #375 后再实跑冷生成和离线准备，字体仍 2887 faces / 35076184 bytes；来源/配方、
+  manifest/CSS/许可证未改，生成 WOFF2 不入 Git。
+- 同步 #375 前，七模型子集 49/49；完整根测试 3152 项、2687 pass/0 fail/465 skip；生产 Web
+  重新 build 和 300 项行为测试为 282 pass/0 fail/18 skip；正式浏览器入口四分片 266/266。
   路由/匿名空壳、无 mail 的真实临时栈 publish/匿名 SSR、28 项文档索引也有独立通过记录。
   全套和子集有重叠，不相加；最终精确源码和后续测试加强后的重跑结果在 PR 验收表。
 - 本机 `pnpm test:all` 确实在 Docker 预检 `spawn docker ENOENT` exit 1，没有执行其 Docker/PG
@@ -124,7 +137,8 @@ collection 模型/控制器/浏览器 helper、现有路由/SSR/cache/bundle 和
 
 开发期间 main 合入 #374 的 ADR 实施状态索引变更，已在同一工作分支同步
 `1e0e86b177423d1c9f8b05c0091bb8e93f392726`，保留其新索引/门禁说明，新增 0046 行和
-Implementation 记录。同步来的主线工作全部零计入本轮；固定增量审计基线没有改变。
+Implementation 记录；随后再同步 #375 的 `f1bf85e55c5081d2b2b1a1e15f8bf36a7f49cb1a`。
+同步来的主线工作、字体构建集成修复及其回归全部零计入本轮；固定增量审计基线没有改变。
 
 执行方式：
 

@@ -45,12 +45,14 @@ COPY packages/web-http ./packages/web-http
 COPY packages/web-ui ./packages/web-ui
 COPY packages/glob-match ./packages/glob-match
 COPY apps/web-rr ./apps/web-rr
+COPY scripts/fonts ./scripts/fonts
+COPY scripts/lib/font-assets.ts ./scripts/lib/font-assets.ts
 
 ENV NODE_ENV=production
 # Generate first-party font WOFF2 subsets at build time instead of shipping
 # committed binaries. fontkit/subset-font are root devDependencies and never
 # enter the runtime image (asserted by test/font-build.test.ts).
-RUN pnpm fonts:generate
+RUN pnpm fonts:prepare
 RUN pnpm --filter @bot-thk/web-rr build
 
 # ---- Runtime -----------------------------------------------------------------

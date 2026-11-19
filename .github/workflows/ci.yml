@@ -36,10 +36,10 @@ jobs:
       - run: pnpm lint
       - run: pnpm format:check
       - run: pnpm typecheck
-      # Regenerate first-party font subsets from the pinned upstream sources and
-      # prove the checked-in receipts, manifest and stylesheet still match before
-      # the production build consumes them. Generated WOFF2s are not committed.
-      - run: pnpm fonts:generate
+      # Restore missing ignored subsets from pinned sources, without silently
+      # refreshing reviewed receipts. Root tests use the same cold preparation;
+      # this is an offline verification when their outputs are already present.
+      - run: pnpm fonts:prepare
       - run: pnpm fonts:check
       - run: pnpm build
       - run: pnpm test:routes
