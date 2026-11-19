@@ -85,9 +85,17 @@ async function preview(page: Page, title: string) {
   await region(page)
     .getByRole("button", { name: `预览本机缓存：${title}`, exact: true })
     .click();
+  const plan = page.getByRole("region", {
+    name: "本机缓存恢复预览",
+    exact: true,
+  });
+  await expect(plan).toBeVisible();
+  await expect(plan).toContainText(`缓存标题：${title}`);
+  // Re-preview is asynchronous. The previous panel may still be mounted while
+  // its actor/read checks run; visibility alone must not release the mutation.
   await expect(
-    page.getByRole("region", { name: "本机缓存恢复预览", exact: true }),
-  ).toBeVisible();
+    plan.getByRole("alert").filter({ hasText: "本机恢复预览已过期" }),
+  ).toHaveCount(0);
 }
 async function copyPreview(page: Page) {
   const plan = page.getByRole("region", {

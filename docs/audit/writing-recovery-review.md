@@ -31,23 +31,23 @@ node docs/audit/writing-recovery-lines.ts > docs/audit/writing-recovery-lines.js
 node docs/audit/verify-writing-recovery-lines.ts > docs/audit/writing-recovery-runtime-check.json
 ```
 
-固定基线下 **1140 候选 − 336 显式扣除 = 804 行有效新增生产功能代码**。
+固定基线下 **1146 候选 − 339 显式扣除 = 807 行有效新增生产功能代码**。
 逐文件 source SHA-256/精确行号见[主证书](writing-recovery-lines.json)，
 逐片段理由见[语义排除表](writing-recovery-line-exclusions.json)，
 独立工具结果见[运行时复核证书](writing-recovery-runtime-check.json)：
-`claimed=804`、`runtimeConfirmed=804`、`failures=[]`、`satisfied=true`。
+`claimed=807`、`runtimeConfirmed=807`、`failures=[]`、`satisfied=true`。
 
 | 不重叠生产模块                                       |  有效行 |
 | ---------------------------------------------------- | ------: |
 | ArticleEditor 的快照/应用保护、checkpoint 和响应策略 |      14 |
 | 手动预览/字段选择/差异/容量/失效 UI 行为             |     141 |
 | 会话两侧 purge 与 metadata-only 通知边界             |      40 |
-| 账号、输入世代、保存 checkpoint、恢复与来源核对协调  |     258 |
+| 账号、输入世代、保存 checkpoint、恢复与来源核对协调  |     261 |
 | 页面隐藏/恢复与生命周期检查                          |      19 |
 | 严格记录解析、基线和恢复同意策略                     |      82 |
 | 有界只读来源读取及修订/等价/差异分类                 |      79 |
 | IndexedDB 原子 fence、CAS、容量和失败边界            |     171 |
-| **合计**                                             | **804** |
+| **合计**                                             | **807** |
 
 主审计用 Babel AST/tokens 和 Git 增量行，去除基线**所有生产 TS/TSX** 的规范化旧行、
 重复新片段、imports/types/signatures、静态默认状态/配置/帮助文案、JSX 纯标签、简单
@@ -90,6 +90,15 @@ ledger 负责。初次复核额外否决 25 片段，已全部扣除而非放宽
 - 新增测试文件重新分片后，既有通知多账号用例耗尽共享栈 80 次注册预算；仅把两个通知
   actor spec 改用既有的每用例私有真实栈，保留全部 session 请求次数/隐私/无副作用断言，
   不提高生产或 fixture 限额，不放宽断言，不跳过测试。
+- 首版精确源码 `03a641e` 的两套 CI 汇总均成功，但检查注解发现同一恢复用例依赖一次
+  retry 才通过，因而保留 Draft，没有据此合并。浏览器 helper 重新预览只等已存在旧面板
+  visible，可能在新预览的 actor/IDB 读取完成前变更来源；实际快照显示应用的是新预览
+  读到的新稿。改为同时等待请求标题和旧预览过期提示消失，保留原冲突/输入断言；初次
+  重复 10 轮 6 pass/4 fail，修后 **10/10、0 retry/skip**，失败记录不删除。
+- 排查另用确定性单元 RED 复现真实反馈竞态：手动恢复正确拒绝旧 witness 后，独立后台
+  put 成功会清掉冲突提示。控制器保留手动操作失败直到新显式操作或隐私边界；后台仍
+  正常落盘并重读完整分支，不能把缓存成功冒充恢复成功。回归验证当前输入不变、两份
+  分支完整、冲突提示保留，再显式预览才清除；新增后恢复单元 **44/44**。
 - 登录页新增文案触发根字体配方检查 RED；使用既有固定来源/校验和的 `pnpm fonts:generate`
   同步派生字体、manifest 和 CSS，并运行 `fonts:check`。完整集合仍为 2887 faces、
   35076184 bytes，未变更字体来源或生成策略；所有派生资源零计入有效行数。
@@ -104,19 +113,25 @@ ledger 负责。初次复核额外否决 25 片段，已全部扣除而非放宽
 | frozen install、全仓 lint、根 format:check 与所有新增文件 Prettier               | 通过                                                                                             |
 | 完整 pnpm typecheck（含 UI/API/Web/scripts/E2E）与两份新审计脚本的严格 tsc       | 通过                                                                                             |
 | 生产 build、字体离线覆盖/配方、route smoke、无 mail 的真实 publish/匿名 SSR 探针 | 通过                                                                                             |
-| 根 pnpm test                                                                     | **2635 pass / 0 fail / 465 skip**；跳过的是需要外部临时 PostgreSQL 的用例                        |
+| 根 pnpm test                                                                     | **2636 pass / 0 fail / 465 skip**，3101 项；跳过的是需要外部临时 PostgreSQL 的用例               |
 | 生产 Web suite                                                                   | **281 pass / 0 fail / 18 skip**；共享 PostgreSQL ledger/真实 PG 部分未在本机执行                 |
-| 新增恢复单元子集                                                                 | **43/43，0 skip**；包含在根结果中                                                                |
-| 相关浏览器子集                                                                   | **40/40，0 retry/skip**；恢复 14、原写作工具 17、通知 actor/恢复 9                               |
+| 新增恢复单元子集                                                                 | **44/44，0 skip**；包含在根结果中                                                                |
+| 完整浏览器清单中的直接相关覆盖                                                   | 恢复 14、原写作工具 17、通知 actor/恢复 9；包含在下行 255 中，不额外相加                         |
 | **完整浏览器清单**，4 个独立临时 SQLite 栈                                       | **255/255，0 retry/skip**，分片 **70 + 63 + 60 + 62**；含字体预算、桌面/手机、CSP 和既有产品流程 |
 | 依赖 audit --audit-level high                                                    | exit 0；**1 low，0 moderate/high/critical**；严格 audit --json 因此 exit 1，不称零漏洞           |
-| 独立有效行复核                                                                   | **804/804，0 failures**，源码/证书哈希一致                                                       |
+| 独立有效行复核                                                                   | **807/807，0 failures**，源码/证书哈希一致                                                       |
 
 在完整浏览器、Web 和根测试并行时，未改动的 `upstream-release.test.ts` 的一个 10ms
 用例曾出现 active=0（期望 1）；保留该失败日志，未改生产模块或断言。空闲环境单独
-**10/10**，随后完整根测试 **2635/0/465**。这不证明消除了该调度敏感性，仍须由本 PR
-的独立 CI 再验证；不把一次失败抹成“首次全绿”。精确提交的 CI/CodeQL 链接与最终
+**10/10**，随后旧版完整根 **2635/0/465**；修复反馈竞态后的最终串行根为
+**2636/0/465**。这不证明消除了该调度敏感性，仍须由本 PR 的独立 CI 再验证；
+不把一次失败抹成“首次全绿”。精确提交的 CI/CodeQL 链接与最终
 head/base/Ready/merge 事实记录在 PR 验收中。
+
+修复后的本地完整回归曾在第一分片遇到未修改的 CSP inline-handler 用例缺少预期
+violation 事件（0 而非 1，69 pass/1 fail）；未修改该安全用例、fixture 或生产策略，
+独立真实栈连续 **10/10、0 retry**。失败日志保留，不把隔离成功当作消除了事件/时序
+敏感性；之后串行重跑的完整结果以上表为准，云端仍须检查精确提交的失败/retry 注解。
 
 `pnpm test:all` 确实在官方 Chromium 缺失预检处 exit 1，未运行其 Docker/PG 聚合阶段；
 不能把上述独立浏览器分片的替代验证说成该官方入口已通过。
@@ -130,6 +145,10 @@ head/base/Ready/merge 事实记录在 PR 验收中。
 依赖或浏览器 bundle。既有开发依赖 `@babel/core` 7.28.5 仍有
 [GHSA-4x5r-pxfx-6jf8](https://github.com/advisories/GHSA-4x5r-pxfx-6jf8) 的 low 告警，
 本轮不顺带升级无关编译工具链。依赖审计结果以上表和 PR 为准，不用“CodeQL 成功”声称零告警。
+首版 PR CodeQL 成功但因超过 300 个差异文件而警告无法取得完整 diff（955 个为字体派生文件）；
+当前代码扫描告警清单/分支保护设置 API 返回 403，完整 Actions 日志的下载主机也超出沙箱
+网络范围。CI 状态/步骤、浏览器结果及注解直接从 GitHub API 审阅；不编造日志内的 PG
+精确用例总数，不把 diff 分级限制或不可读告警清单包装成无告警。
 内容未加密、同源/共用浏览器及 XSS/扩展风险、约 600ms 最后编辑窗口和浏览器可回收性仍在。
 请求字节/重试 key 永不持久化，缓存相同不能证明服务器写入结果；没有自动重放、修复或发布。
 #331 以及 ADR 0026、0041–0043 的独立门禁不因本轮功能/merge 关闭。

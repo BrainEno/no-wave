@@ -355,6 +355,98 @@ test("stale cache revisions, changed input and changed target each refuse a prev
   assert.equal(f.snapshot.draft.title, "");
 });
 
+test("a background cache commit cannot erase a newer manual restore conflict; explicit preview clears the failure only after rechecking the source", async (t) => {
+  const f = fixture();
+  let release!: () => void;
+  t.after(() => {
+    release?.();
+    f.controller.dispose();
+    f.store.close();
+  });
+  await f.controller.connect("author-a");
+  await f.controller.enable();
+  const view = await f.store.attach("author-a", await f.store.inspect());
+  const input = {
+    id: randomUUID(),
+    writer: randomUUID(),
+    expectedRevision: null,
+    base: f.snapshot.base,
+    outcomeUnknown: false,
+    backup: createWritingBackup(
+      { ...f.snapshot.draft, title: "预览来源" },
+      new Date(now),
+    ),
+  };
+  const source = await f.store.put(view.lease!, input, now);
+  f.snapshot.draft.summary = "预览后仍继续输入";
+  f.snapshot.dirty = true;
+  f.controller.noteChange();
+  await f.controller.preview(source.id);
+  let arrived!: () => void;
+  const entered = new Promise<void>((resolve) => {
+    arrived = resolve;
+  });
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const put = f.store.put.bind(f.store);
+  f.store.put = async (...args) => {
+    arrived();
+    await gate;
+    return put(...args);
+  };
+  const caching = f.controller.flush();
+  await entered;
+  const replacement = await put(
+    view.lease!,
+    {
+      ...input,
+      expectedRevision: source.revision,
+      backup: createWritingBackup(
+        { ...f.snapshot.draft, title: "另一操作写下的新版本" },
+        new Date(now),
+      ),
+    },
+    now,
+  );
+  assert.equal(
+    await f.controller.restore(["title"], {
+      differentBase: true,
+      remoteImages: false,
+    }),
+    null,
+  );
+  assert.match(f.controller.getSnapshot().error, /未覆盖新版本/);
+  release();
+  assert.equal(
+    await caching,
+    true,
+    "independent background caching still completes",
+  );
+  assert.equal(f.snapshot.draft.title, "");
+  assert.equal(f.snapshot.draft.summary, "预览后仍继续输入");
+  assert.equal(f.controller.getSnapshot().entries.length, 2);
+  assert.ok(
+    f.controller
+      .getSnapshot()
+      .entries.some(
+        (row) => row.id === source.id && row.revision === replacement.revision,
+      ),
+  );
+  assert.match(
+    f.controller.getSnapshot().error,
+    /未覆盖新版本/,
+    "background persistence success must not conceal the failed manual restore",
+  );
+  await f.controller.preview(source.id);
+  assert.equal(f.controller.getSnapshot().error, "");
+  assert.equal(
+    f.snapshot.draft.title,
+    "",
+    "a fresh preview is still not an apply",
+  );
+});
+
 test("quota failure never says cached, never automatically retries, and blocks a new request that lacks its durable checkpoint", async (t) => {
   const f = fixture();
   t.after(() => {

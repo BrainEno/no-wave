@@ -466,159 +466,159 @@
       "reason": "仅声明/参数/闭包框架，不把函数签名作为新增功能",
       "fragments": [
         {
-          "line": 99,
+          "line": 100,
           "text": "constructor(options: RecoveryControllerOptions) {"
         },
         {
-          "line": 113,
+          "line": 114,
           "text": "subscribe = (listener: () => void): (() => void) => {"
         },
         {
-          "line": 119,
+          "line": 120,
           "text": "private publish(patch: Partial<WritingRecoveryState>) {"
         },
         {
-          "line": 138,
+          "line": 139,
           "text": "private clearTimer() {"
         },
         {
-          "line": 142,
+          "line": 143,
           "text": "private current(version: number): boolean {"
         },
         {
-          "line": 149,
+          "line": 150,
           "text": "private nextGeneration(): number {"
         },
         {
-          "line": 157,
-          "text": "private fail(error: unknown, version: number) {"
+          "line": 159,
+          "text": "private fail(error: unknown, version: number, action = false) {"
         },
         {
-          "line": 177,
+          "line": 182,
           "text": "private async verify("
         },
         {
-          "line": 178,
+          "line": 183,
           "text": "version: number,"
         },
         {
-          "line": 179,
+          "line": 184,
           "text": "witness?: string | null,"
         },
         {
-          "line": 191,
+          "line": 196,
           "text": "await this.options.store.revoke(witness).catch(() => {});"
         },
         {
-          "line": 204,
+          "line": 209,
           "text": "await this.options.store.attach(actor, witness).catch(() => {});"
         },
         {
-          "line": 212,
+          "line": 217,
           "text": "private async enter(enable: boolean, passive = false): Promise<void> {"
         },
         {
-          "line": 286,
+          "line": 291,
           "text": "async connect("
         },
         {
-          "line": 287,
+          "line": 292,
           "text": "expectedActor: string,"
         },
         {
-          "line": 288,
+          "line": 293,
           "text": "mode: \"explicit\" | \"lifecycle\" = \"explicit\","
         },
         {
-          "line": 302,
+          "line": 307,
           "text": "private async trackEntry(enable: boolean, passive = false): Promise<void> {"
         },
         {
-          "line": 311,
+          "line": 316,
           "text": "enable(): Promise<void> {"
         },
         {
-          "line": 314,
+          "line": 319,
           "text": "noteChange(): void {"
         },
         {
-          "line": 323,
+          "line": 328,
           "text": "private identifiers() {"
         },
         {
-          "line": 330,
+          "line": 335,
           "text": "private async writeOne(version: number, lease: RecoveryLease): Promise<void> {"
         },
         {
-          "line": 402,
+          "line": 407,
           "text": "flush(): Promise<boolean> {"
         },
         {
-          "line": 435,
+          "line": 440,
           "text": "async beforeServerWrite(): Promise<void> {"
         },
         {
-          "line": 451,
+          "line": 456,
           "text": "private async settleOwn(): Promise<void> {"
         },
         {
-          "line": 477,
+          "line": 482,
           "text": "async confirmServerWrite(): Promise<void> {"
         },
         {
-          "line": 489,
+          "line": 494,
           "text": "private snapshotKey(): string {"
         },
         {
-          "line": 496,
+          "line": 501,
           "text": "async preview(id: string): Promise<void> {"
         },
         {
-          "line": 521,
+          "line": 524,
           "text": "async restore("
         },
         {
-          "line": 522,
+          "line": 525,
           "text": "fields: readonly WritingField[],"
         },
         {
-          "line": 523,
+          "line": 526,
           "text": "consent: { differentBase: boolean; remoteImages: boolean },"
         },
         {
-          "line": 561,
+          "line": 565,
           "text": "async acknowledgeReview(): Promise<void> {"
         },
         {
-          "line": 575,
+          "line": 580,
           "text": "async reviewSource(id: string): Promise<void> {"
         },
         {
-          "line": 581,
+          "line": 586,
           "text": "const current = () =>"
         },
         {
-          "line": 644,
+          "line": 649,
           "text": "async download("
         },
         {
-          "line": 647,
+          "line": 652,
           "text": "deliver: (entry: RecoveryEntry, permitted: () => boolean) => void,"
         },
         {
-          "line": 667,
+          "line": 675,
           "text": "async discard(id: string, revision: number): Promise<void> {"
         },
         {
-          "line": 692,
+          "line": 701,
           "text": "async disable(): Promise<void> {"
         },
         {
-          "line": 710,
+          "line": 719,
           "text": "suspend(): void {"
         },
         {
-          "line": 719,
+          "line": 728,
           "text": "invalidate(): void {"
         }
       ]
@@ -628,51 +628,51 @@
       "reason": "独立标识符/参数转发/依赖数组行，不独立计功能",
       "fragments": [
         {
-          "line": 248,
+          "line": 253,
           "text": "witness,"
         },
         {
-          "line": 341,
+          "line": 346,
           "text": "base,"
         },
         {
-          "line": 342,
+          "line": 347,
           "text": "unknown,"
         },
         {
-          "line": 373,
+          "line": 378,
           "text": "lease,"
         },
         {
-          "line": 378,
+          "line": 383,
           "text": "backup,"
         },
         {
-          "line": 463,
+          "line": 468,
           "text": "prior.id,"
         },
         {
-          "line": 464,
+          "line": 469,
           "text": "prior.writer,"
         },
         {
-          "line": 465,
+          "line": 470,
           "text": "prior.revision,"
         },
         {
-          "line": 472,
+          "line": 477,
           "text": "row,"
         },
         {
-          "line": 541,
+          "line": 544,
           "text": "snapshot.draft,"
         },
         {
-          "line": 542,
+          "line": 545,
           "text": "snapshot.base,"
         },
         {
-          "line": 544,
+          "line": 547,
           "text": "consent,"
         }
       ]
@@ -1474,19 +1474,19 @@
       "reason": "独立 Node/esbuild→Espree 复核扣除：historical-runtime-fragment，不以新路径或类型/格式变化重复申报",
       "fragments": [
         {
-          "line": 111,
+          "line": 112,
           "text": "getSnapshot = (): WritingRecoveryState => this.state;"
         },
         {
-          "line": 306,
+          "line": 311,
           "text": "await operation;"
         },
         {
-          "line": 471,
+          "line": 476,
           "text": "entries: ["
         },
         {
-          "line": 491,
+          "line": 496,
           "text": "return JSON.stringify(["
         }
       ]
@@ -1590,11 +1590,11 @@
       "reason": "额外保守扣除：SSR 常量读取、纯控制器包装转发、拆成多行的 UI/lifecycle 事件转发不再独立计功能",
       "fragments": [
         {
-          "line": 112,
+          "line": 113,
           "text": "getServerSnapshot = (): WritingRecoveryState => EMPTY;"
         },
         {
-          "line": 312,
+          "line": 317,
           "text": "return this.trackEntry(true);"
         }
       ]
@@ -1606,6 +1606,24 @@
         {
           "line": 47,
           "text": "void controller.connect(actor, \"lifecycle\");"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-recovery-controller.ts",
+      "reason": "CI 竞态修复仍保守扣除：新增错误字段的静态默认值、显式操作的错误转发和预览发布薄接线，不为修复补算包装行",
+      "fragments": [
+        {
+          "line": 95,
+          "text": "private actionProblem = \"\";"
+        },
+        {
+          "line": 521,
+          "text": "this.fail(error, version, true);"
+        },
+        {
+          "line": 519,
+          "text": "this.publish({ entries: rows, preview, error: \"\" });"
         }
       ]
     }

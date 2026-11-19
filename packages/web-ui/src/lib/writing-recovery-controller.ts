@@ -92,6 +92,7 @@ export class WritingRecoveryController {
   private lastKey = "";
   private uncertain = false;
   private problem: unknown = null;
+  private actionProblem = "";
   private delayMs: number;
   private sourceReader: Pick<WritingRecoverySourceReader, "read" | "cancel">;
   private sourceVersion = 0;
@@ -152,10 +153,14 @@ export class WritingRecoveryController {
     this.sourceReader.cancel();
     this.abort.abort();
     this.abort = new AbortController();
+    this.actionProblem = "";
     return ++this.generation;
   }
-  private fail(error: unknown, version: number) {
+  private fail(error: unknown, version: number, action = false) {
     if (!this.current(version)) return;
+    // A later background cache commit is not a retry of a failed manual action.
+    // Keep its feedback until a fresh explicit action or privacy boundary.
+    if (action) this.actionProblem = recoveryProblem(error);
     this.problem = error;
     const revoked =
       error instanceof WritingRecoveryFault && error.code === "revoked";
@@ -357,7 +362,7 @@ export class WritingRecoveryController {
         this.publish({
           entries: this.state.entries.filter((row) => row.id !== removed.id),
           savedAt: null,
-          error: "",
+          error: this.actionProblem,
         });
       }
       return;
@@ -396,7 +401,7 @@ export class WritingRecoveryController {
       status: "ready",
       entries,
       savedAt: row.updatedAt,
-      error: "",
+      error: this.actionProblem,
     });
   }
   flush(): Promise<boolean> {
@@ -509,13 +514,11 @@ export class WritingRecoveryController {
       const row = rows.find((entry) => entry.id === id);
       if (!row) throw new WritingRecoveryFault("conflict");
       const snapshot = this.options.snapshot();
-      this.publish({
-        entries: rows,
-        preview: recoveryPreview(row, snapshot.draft, snapshot.base),
-        error: "",
-      });
+      const preview = recoveryPreview(row, snapshot.draft, snapshot.base);
+      this.actionProblem = "";
+      this.publish({ entries: rows, preview, error: "" });
     } catch (error) {
-      this.fail(error, version);
+      this.fail(error, version, true);
     }
   }
   async restore(
@@ -547,6 +550,7 @@ export class WritingRecoveryController {
       // continuation that might race another edit or privacy invalidation.
       this.options.apply?.(next);
       this.uncertain ||= plan.outcomeUnknown;
+      this.actionProblem = "";
       this.publish({
         preview: null,
         requiresReview: this.state.requiresReview || plan.outcomeUnknown,
@@ -554,7 +558,7 @@ export class WritingRecoveryController {
       });
       return next;
     } catch (error) {
-      this.fail(error, version);
+      this.fail(error, version, true);
       return null;
     }
   }
@@ -566,10 +570,11 @@ export class WritingRecoveryController {
       if (!this.current(version)) return;
       this.uncertain = false;
       this.noteVersion++;
+      this.actionProblem = "";
       this.publish({ requiresReview: false, error: "" });
       await this.flush();
     } catch (error) {
-      this.fail(error, version);
+      this.fail(error, version, true);
     }
   }
   async reviewSource(id: string): Promise<void> {
@@ -660,8 +665,11 @@ export class WritingRecoveryController {
       );
       if (!row) throw new WritingRecoveryFault("conflict");
       deliver(row, () => this.current(version) && this.lease === lease);
+      if (!this.current(version) || this.lease !== lease) return;
+      this.actionProblem = "";
+      this.publish({ error: "" });
     } catch (error) {
-      this.fail(error, version);
+      this.fail(error, version, true);
     }
   }
   async discard(id: string, revision: number): Promise<void> {
@@ -679,6 +687,7 @@ export class WritingRecoveryController {
         this.own = null;
         this.lastKey = "";
       }
+      this.actionProblem = "";
       this.publish({
         entries: this.state.entries.filter((row) => row.id !== id),
         preview: null,
@@ -686,7 +695,7 @@ export class WritingRecoveryController {
         error: "",
       });
     } catch (error) {
-      this.fail(error, version);
+      this.fail(error, version, true);
     }
   }
   async disable(): Promise<void> {
