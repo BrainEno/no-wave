@@ -59,6 +59,7 @@ const CLIENT_COMPONENTS: readonly ClientComponent[] = [
   { component: "WritingMergePlanPanel", sentinel: "no-wave-writing-merge-plan", page: "write/merge" },
   { component: "LocalWritingVault", sentinel: "nw-vault-password", page: "write/vault" },
   { component: "LocalWritingTerms", sentinel: "no-wave-writing-terms-v1", page: "write/terms" },
+  { component: "LocalWritingCadence", sentinel: "no-wave-writing-cadence-v1", page: "write/cadence" },
   { component: "LocalWritingOverlap", sentinel: "no-wave-writing-overlap-v1", page: "write/overlap" },
   { component: "WritingOverlapReview", sentinel: "nw-overlap-detail", page: "write/overlap" },
   // The inbox must ship its own rows, not merely the shared transport that is

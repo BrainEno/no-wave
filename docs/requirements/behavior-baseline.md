@@ -99,6 +99,18 @@ The previous project provides the reference for user-visible capabilities and kn
 - 不写原件、编辑区、服务器或浏览器存储，不自动替换、上传、同步、保存、发布或重放；报告只显式准备/核对/手动下载。
   详细边界见 [ADR 0049](../architecture/decisions/0049-read-only-local-writing-terms.md)、[使用说明](../operations/writing-terms.md)与[审阅记录](../audit/writing-terms-review.md)。
 
+## Read-only local writing cadence review
+
+- `/write/cadence` 只使用用户明确选入的完整单篇备份或集合 JSON，支持设定扫描范围、引号策略与长短句长度阈值。
+- Given 标点符号与停顿结构，When 流式扫描正文，Then 按终结符切分停顿片段，记录句内停顿，分类统计过短、正常与过长片段；遇到结构断点或跨单元边界绝不跨结构拼接。
+- Given 括号与引号等成对符号，When 对称与嵌套匹配，Then 维护显式配对栈，强制执行 128 层最大深度门禁；超深截断并生成独立 finding，不发生栈溢出。
+- Given 配对跨度与停顿边界，When 差分交叉扫描，Then 采用反向区间 join，严格核算穿透边界与深度，并验证配对跨边界总数恒等于全部缝隙深度之和；跨 run 跨度立即拒绝。
+- Given 零宽空格、连字符或双向控制符，When 检测，Then 按代码点归类统计并提供定位样本，不静默擦除或自动替换。
+- Given 审阅视图与人工标记，When 筛选或分页，Then 保持有界惰性渲染；手动标记“有意使用 / 后续检查”仅保留在内存，不影响全局报告口径。
+- Given 策略调整、无效数字中间输入、重新分析、取消或离页，When 异步事件触发，Then 双读取栅栏撤销旧数据，同步清理 DOM 与引用，不复活旧数据或下载。
+- 不修改原稿、编辑区或服务器数据，不提供自动润色或格式化，不生成可导入应用的反向修改计划；报告仅脱敏导出元数据与统计特征。
+  详细边界见 [ADR 0050](../architecture/decisions/0050-read-only-local-writing-cadence.md)、[使用说明](../operations/writing-cadence.md)与[审阅记录](../audit/writing-cadence-review.md)。
+
 ## Cross-cutting
 
 - Private data is never exposed through public endpoints or shared caches.

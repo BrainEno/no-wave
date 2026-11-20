@@ -1952,3 +1952,21 @@ test("local terminology review is an empty no-store shell, rejects URL-selected 
     assert.doesNotMatch(query.body, /PRIVATE_TERMS_SOURCE/);
   }
 });
+
+test("local punctuation/rhythm review is an empty private shell with URL-inert inputs and no Worker permission", async () => {
+  const response = await get("/write/cadence");
+  assert.equal(response.status, 200);
+  assert.match(response.body, /data-route="write-cadence"/);
+  assert.match(response.body, /本机标点与停顿节奏审阅/);
+  assert.match(response.body, /noindex, nofollow/);
+  assert.match(response.headers.get("cache-control") ?? "", /no-store/);
+  assert.match(response.headers.get("content-security-policy") ?? "", /worker-src 'none'/);
+  assert.doesNotMatch(response.body, /contenteditable="true"|PRIVATE_CADENCE_SOURCE/);
+  for (const path of ["/write/cadence?file=https%3A%2F%2Fattacker.test%2FPRIVATE_CADENCE_SOURCE&dot=true", "/write/%63adence", "/write/cadence/"]) {
+    const query = await get(path);
+    assert.equal(query.status, 302, path);
+    assert.equal(query.headers.get("location"), "/write/cadence");
+    assert.match(query.headers.get("cache-control") ?? "", /no-store/);
+    assert.doesNotMatch(query.body, /PRIVATE_CADENCE_SOURCE/);
+  }
+});

@@ -19,3 +19,9 @@ test("terminology review uses a clean, private Document for both entry and exit,
   for (const href of ["/", "/write", "/write/collections", "/write/overlap"]) assert.equal(requiresDocumentNavigation("/write/terms", href), true);
   assert.equal(requiresDocumentNavigation("/write/terms", "#top"), false);
 });
+
+test("punctuation review crosses Documents in both directions and keeps source/conditions out of Router queries", () => {
+  for (const href of ["/write/cadence", "/write/cadence?file=untrusted", "/write/%63adence", "/write/cadence/"]) assert.equal(requiresDocumentNavigation("/write/collections", href), true);
+  for (const href of ["/", "/write", "/write/collections", "/write/terms"]) assert.equal(requiresDocumentNavigation("/write/cadence", href), true);
+  assert.equal(requiresDocumentNavigation("/write/cadence", "#top"), false);
+});

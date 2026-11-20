@@ -1,0 +1,3193 @@
+{
+  "base": "491e6e91fe4a4d7ae8fee6126e35b6421cc3eb9e",
+  "rules": [
+    {
+      "file": "packages/web-ui/src/lib/writing-cadence-controller.ts",
+      "reason": "保守整份扣除控制器/报告/编排层，不以通用状态机、序列化与薄接线补数。",
+      "fragments": [
+        {
+          "line": 66,
+          "text": "const inputState = (): CadenceWorkbenchState[\"input\"] => ({"
+        },
+        {
+          "line": 73,
+          "text": "const derived = () => ({"
+        },
+        {
+          "line": 77,
+          "text": "explanation: null,"
+        },
+        {
+          "line": 83,
+          "text": "const initial = (): CadenceWorkbenchState => ({"
+        },
+        {
+          "line": 84,
+          "text": "...derived(),"
+        },
+        {
+          "line": 85,
+          "text": "input: inputState(),"
+        },
+        {
+          "line": 86,
+          "text": "policy: { ...DEFAULT_CADENCE_POLICY },"
+        },
+        {
+          "line": 88,
+          "text": "const safeError = (error: unknown) =>"
+        },
+        {
+          "line": 89,
+          "text": "error instanceof Error ? error.message : \"本机分析失败；没有改动或上传文稿。\";"
+        },
+        {
+          "line": 93,
+          "text": "private state = initial();"
+        },
+        {
+          "line": 94,
+          "text": "private source: OpenedCollection | null = null;"
+        },
+        {
+          "line": 98,
+          "text": "private reportWitness: CadenceAnalysis | null = null;"
+        },
+        {
+          "line": 105,
+          "text": "analyze: options.analyze ?? analyzeWritingCadence,"
+        },
+        {
+          "line": 106,
+          "text": "explain: options.explain ?? explainCadenceStack,"
+        },
+        {
+          "line": 114,
+          "text": "getSnapshot = (): CadenceWorkbenchState => this.state;"
+        },
+        {
+          "line": 120,
+          "text": "const state = { ...this.state, ...patch };"
+        },
+        {
+          "line": 121,
+          "text": "for (const document of state.input.documents) Object.freeze(document);"
+        },
+        {
+          "line": 122,
+          "text": "for (const mark of state.marks) Object.freeze(mark);"
+        },
+        {
+          "line": 123,
+          "text": "Object.freeze(state.input.documents);"
+        },
+        {
+          "line": 124,
+          "text": "Object.freeze(state.input);"
+        },
+        {
+          "line": 125,
+          "text": "Object.freeze(state.marks);"
+        },
+        {
+          "line": 126,
+          "text": "if (state.policy) Object.freeze(state.policy);"
+        },
+        {
+          "line": 127,
+          "text": "if (state.progress) Object.freeze(state.progress);"
+        },
+        {
+          "line": 128,
+          "text": "if (state.explanation) Object.freeze(state.explanation);"
+        },
+        {
+          "line": 129,
+          "text": "this.state = Object.freeze(state);"
+        },
+        {
+          "line": 137,
+          "text": "this.reportWitness = null;"
+        },
+        {
+          "line": 140,
+          "text": "this.publish({ error: safeError(error) });"
+        },
+        {
+          "line": 147,
+          "text": "this.source = null;"
+        },
+        {
+          "line": 148,
+          "text": "this.publish(initial());"
+        },
+        {
+          "line": 157,
+          "text": "input: this.source ? this.state.input : inputState(),"
+        },
+        {
+          "line": 163,
+          "text": "this.publish({ ...derived(), policy: validateCadencePolicy(value) });"
+        },
+        {
+          "line": 166,
+          "text": "this.publish({ ...derived(), policy: null, error: safeError(error) });"
+        },
+        {
+          "line": 174,
+          "text": "const token = new AbortController();"
+        },
+        {
+          "line": 175,
+          "text": "this.reading = token;"
+        },
+        {
+          "line": 176,
+          "text": "const current = () => this.reading === token && !token.signal.aborted;"
+        },
+        {
+          "line": 185,
+          "text": "input: { ...inputState(), status: \"failed\" },"
+        },
+        {
+          "line": 186,
+          "text": "error: \"来源须大于0且不超过16 MiB，未读取文件。\","
+        },
+        {
+          "line": 193,
+          "text": "...inputState(),"
+        },
+        {
+          "line": 195,
+          "text": "name: displayCadenceText([...file.name].slice(0, 200).join(\"\")),"
+        },
+        {
+          "line": 200,
+          "text": "const text = await this.options.read(file, token.signal, (value) => {"
+        },
+        {
+          "line": 216,
+          "text": "const source = await this.options.open(text, token.signal);"
+        },
+        {
+          "line": 218,
+          "text": "this.source = source;"
+        },
+        {
+          "line": 223,
+          "text": "source: source.source,"
+        },
+        {
+          "line": 224,
+          "text": "documents: source.prepared.collection.entries.map((entry) => ({"
+        },
+        {
+          "line": 225,
+          "text": "id: entry.key,"
+        },
+        {
+          "line": 226,
+          "text": "title: displayCadenceText(entry.backup.draft.title),"
+        },
+        {
+          "line": 237,
+          "text": "error: safeError(error),"
+        },
+        {
+          "line": 241,
+          "text": "if (this.reading === token) this.reading = null;"
+        },
+        {
+          "line": 246,
+          "text": "const source = this.source,"
+        },
+        {
+          "line": 248,
+          "text": "if (!source || !policy || this.state.input.status !== \"ready\") {"
+        },
+        {
+          "line": 251,
+          "text": "error: \"请先明确校验本机来源并填写有效条件。\","
+        },
+        {
+          "line": 256,
+          "text": "this.operation = token;"
+        },
+        {
+          "line": 258,
+          "text": "this.operation === token &&"
+        },
+        {
+          "line": 259,
+          "text": "!token.signal.aborted &&"
+        },
+        {
+          "line": 260,
+          "text": "this.source === source &&"
+        },
+        {
+          "line": 262,
+          "text": "this.publish({ ...derived(), status: \"running\" });"
+        },
+        {
+          "line": 265,
+          "text": "const result = await this.options.analyze(source, policy, token.signal, {"
+        },
+        {
+          "line": 267,
+          "text": "progress: (value) => {"
+        },
+        {
+          "line": 268,
+          "text": "if (current()) this.publish({ progress: { ...value } });"
+        },
+        {
+          "line": 272,
+          "text": "cadenceInventory(result);"
+        },
+        {
+          "line": 277,
+          "text": "throw new Error(\"分析来源或条件与本轮不一致，未接纳旧结果。\");"
+        },
+        {
+          "line": 278,
+          "text": "this.publish({ status: \"complete\", progress: null, analysis: result });"
+        },
+        {
+          "line": 287,
+          "text": "if (this.operation === token) this.operation = null;"
+        },
+        {
+          "line": 293,
+          "text": "if (this.state.explanation) this.publish({ explanation: null });"
+        },
+        {
+          "line": 296,
+          "text": "this.clearExplanation();"
+        },
+        {
+          "line": 299,
+          "text": "if (!analysis) throw new Error(\"请先完成当前分析，再明确选择解释位置。\");"
+        },
+        {
+          "line": 300,
+          "text": "resolveCadenceRow(analysis, id);"
+        },
+        {
+          "line": 301,
+          "text": "if (focus !== \"start\" && focus !== \"end\")"
+        },
+        {
+          "line": 302,
+          "text": "throw new Error(\"栈解释焦点无效。\");"
+        },
+        {
+          "line": 308,
+          "text": "this.explaining = token;"
+        },
+        {
+          "line": 310,
+          "text": "this.explaining === token &&"
+        },
+        {
+          "line": 314,
+          "text": "explanation: { id, focus, status: \"running\", value: null, error: \"\" },"
+        },
+        {
+          "line": 322,
+          "text": "focus,"
+        },
+        {
+          "line": 323,
+          "text": "token.signal,"
+        },
+        {
+          "line": 324,
+          "text": "{ pause: this.options.pause },"
+        },
+        {
+          "line": 329,
+          "text": "value.id !== id ||"
+        },
+        {
+          "line": 330,
+          "text": "value.focus !== focus ||"
+        },
+        {
+          "line": 331,
+          "text": "value.unit !== resolveCadenceRow(analysis, id).unit"
+        },
+        {
+          "line": 333,
+          "text": "throw new Error(\"栈解释来源或位置与当前请求不一致。\");"
+        },
+        {
+          "line": 335,
+          "text": "explanation: { id, focus, status: \"complete\", value, error: \"\" },"
+        },
+        {
+          "line": 340,
+          "text": "explanation: {"
+        },
+        {
+          "line": 349,
+          "text": "if (this.explaining === token) this.explaining = null;"
+        },
+        {
+          "line": 361,
+          "text": "witness !== analysis ||"
+        },
+        {
+          "line": 362,
+          "text": "!Array.isArray(ids) ||"
+        },
+        {
+          "line": 363,
+          "text": "!ids.length ||"
+        },
+        {
+          "line": 364,
+          "text": "new Set(ids).size !== ids.length ||"
+        },
+        {
+          "line": 365,
+          "text": "![\"intentional\", \"follow-up\", \"unreviewed\"].includes(state)"
+        },
+        {
+          "line": 367,
+          "text": "throw new Error(\"标记编号、来源或状态已失效，整批未接纳。\");"
+        },
+        {
+          "line": 368,
+          "text": "for (const id of ids) resolveCadenceRow(analysis, id);"
+        },
+        {
+          "line": 369,
+          "text": "const replacing = new Set(ids),"
+        },
+        {
+          "line": 370,
+          "text": "next = this.state.marks.filter((mark) => !replacing.has(mark.id));"
+        },
+        {
+          "line": 371,
+          "text": "if (state !== \"unreviewed\")"
+        },
+        {
+          "line": 372,
+          "text": "next.push(...ids.map((id) => ({ id, state })));"
+        },
+        {
+          "line": 373,
+          "text": "const marks = validateCadenceMarks(analysis, next);"
+        },
+        {
+          "line": 375,
+          "text": "this.publish({ marks, report: null, confirmed: false, error: \"\" });"
+        },
+        {
+          "line": 384,
+          "text": "if (!analysis) throw new Error(\"请先完成本轮分析，未准备部分报告。\");"
+        },
+        {
+          "line": 385,
+          "text": "const report = prepareCadenceReport("
+        },
+        {
+          "line": 390,
+          "text": "if (analysis !== this.state.analysis)"
+        },
+        {
+          "line": 391,
+          "text": "throw new Error(\"来源已变化，未发布旧报告。\");"
+        },
+        {
+          "line": 392,
+          "text": "this.reportWitness = analysis;"
+        },
+        {
+          "line": 393,
+          "text": "this.publish({ report, confirmed: false, error: \"\" });"
+        },
+        {
+          "line": 397,
+          "text": "this.publish({ report: null, confirmed: false });"
+        },
+        {
+          "line": 403,
+          "text": "typeof value !== \"boolean\" ||"
+        },
+        {
+          "line": 404,
+          "text": "!this.state.report ||"
+        },
+        {
+          "line": 405,
+          "text": "this.reportWitness !== this.state.analysis"
+        },
+        {
+          "line": 407,
+          "text": "return this.fail(new Error(\"报告已变化，请重新准备并核对。\"));"
+        },
+        {
+          "line": 408,
+          "text": "this.publish({ confirmed: value, error: \"\" });"
+        },
+        {
+          "line": 413,
+          "text": "report !== null &&"
+        },
+        {
+          "line": 414,
+          "text": "report === this.state.report &&"
+        },
+        {
+          "line": 416,
+          "text": "this.state.analysis !== null &&"
+        },
+        {
+          "line": 417,
+          "text": "this.state.analysis === this.reportWitness &&"
+        },
+        {
+          "line": 418,
+          "text": "report.sourceKey === this.state.analysis.sourceKey &&"
+        },
+        {
+          "line": 419,
+          "text": "report.marksKey === cadenceMarksKey(this.state.analysis, this.state.marks)"
+        },
+        {
+          "line": 423,
+          "text": "if (!this.permitsReport(report))"
+        },
+        {
+          "line": 424,
+          "text": "throw new Error(\"请准备、核对并明确确认当前报告，旧输出无效。\");"
+        },
+        {
+          "line": 425,
+          "text": "return report!;"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-cadence-crossings.ts",
+      "reason": "保守扣除可复用/重复的通用策略、筛选标记薄接线、DTO/配置/静态文案及被动打包；余下仍须独立运行时复核。",
+      "fragments": [
+        {
+          "line": 50,
+          "text": "for (const pair of result.pairs) {"
+        },
+        {
+          "line": 51,
+          "text": "Object.freeze(pair.examples);"
+        },
+        {
+          "line": 52,
+          "text": "Object.freeze(pair);"
+        },
+        {
+          "line": 54,
+          "text": "for (const seam of result.seams) Object.freeze(seam);"
+        },
+        {
+          "line": 55,
+          "text": "for (const document of result.documents) {"
+        },
+        {
+          "line": 56,
+          "text": "Object.freeze(document.examples);"
+        },
+        {
+          "line": 59,
+          "text": "Object.freeze(result.pairs);"
+        },
+        {
+          "line": 60,
+          "text": "Object.freeze(result.seams);"
+        },
+        {
+          "line": 61,
+          "text": "Object.freeze(result.documents);"
+        },
+        {
+          "line": 62,
+          "text": "return Object.freeze(result);"
+        },
+        {
+          "line": 95,
+          "text": "seams: CadenceSeam[] = [];"
+        },
+        {
+          "line": 101,
+          "text": "coverage: document.coverage,"
+        },
+        {
+          "line": 102,
+          "text": "pairs: 0,"
+        },
+        {
+          "line": 103,
+          "text": "withinOne: 0,"
+        },
+        {
+          "line": 104,
+          "text": "spanning: 0,"
+        },
+        {
+          "line": 105,
+          "text": "seams: 0,"
+        },
+        {
+          "line": 106,
+          "text": "insideSeams: 0,"
+        },
+        {
+          "line": 107,
+          "text": "maximumDepth: null as number | null,"
+        },
+        {
+          "line": 108,
+          "text": "pairBoundaryIncidences: 0,"
+        },
+        {
+          "line": 109,
+          "text": "examples: [] as string[],"
+        },
+        {
+          "line": 145,
+          "text": "pair: pair.id,"
+        },
+        {
+          "line": 146,
+          "text": "unit: unitId,"
+        },
+        {
+          "line": 148,
+          "text": "first: first.id,"
+        },
+        {
+          "line": 149,
+          "text": "last: last.id,"
+        },
+        {
+          "line": 150,
+          "text": "fragments: boundaries + 1,"
+        },
+        {
+          "line": 186,
+          "text": "before: fragment.id,"
+        },
+        {
+          "line": 187,
+          "text": "after: next.id,"
+        },
+        {
+          "line": 188,
+          "text": "at: fragment.end,"
+        },
+        {
+          "line": 189,
+          "text": "pointAt: fragment.pointEnd,"
+        },
+        {
+          "line": 218,
+          "text": "documents: [...summaries.values()],"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-cadence-crossings.ts",
+      "reason": "保守扣除被动单标识符参数、对象/数组简写打包等无独立语义的行。",
+      "fragments": [
+        {
+          "line": 151,
+          "text": "containedFragments,"
+        },
+        {
+          "line": 152,
+          "text": "boundaries,"
+        },
+        {
+          "line": 153,
+          "text": "examples,"
+        },
+        {
+          "line": 190,
+          "text": "depth,"
+        },
+        {
+          "line": 217,
+          "text": "seams,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-cadence-crossings.ts",
+      "reason": "独立运行时复核判定为历史/重复/擦除运行时片段，保守扣除；不放宽复核也不重报这些行。",
+      "fragments": [
+        {
+          "line": 94,
+          "text": "const pairs: CadencePairSpan[] = [],"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-cadence-enclosures.ts",
+      "reason": "保守扣除可复用/重复的通用策略、筛选标记薄接线、DTO/配置/静态文案及被动打包；余下仍须独立运行时复核。",
+      "fragments": [
+        {
+          "line": 44,
+          "text": "\"unclosed-open\","
+        },
+        {
+          "line": 45,
+          "text": "\"unexpected-close\","
+        },
+        {
+          "line": 46,
+          "text": "\"blocked-close\","
+        },
+        {
+          "line": 47,
+          "text": "\"invisible\","
+        },
+        {
+          "line": 48,
+          "text": "\"whitespace-run\","
+        },
+        {
+          "line": 49,
+          "text": "\"punctuation-run\","
+        },
+        {
+          "line": 59,
+          "text": "high = values.length;"
+        },
+        {
+          "line": 61,
+          "text": "const middle = Math.floor((low + high) / 2),"
+        },
+        {
+          "line": 62,
+          "text": "value = values[middle]!;"
+        },
+        {
+          "line": 63,
+          "text": "if (value < target || (inclusive && value === target)) low = middle + 1;"
+        },
+        {
+          "line": 89,
+          "text": "for (const entry of result.entries) {"
+        },
+        {
+          "line": 90,
+          "text": "Object.freeze(entry.findings);"
+        },
+        {
+          "line": 91,
+          "text": "Object.freeze(entry);"
+        },
+        {
+          "line": 93,
+          "text": "for (const group of result.groups) {"
+        },
+        {
+          "line": 94,
+          "text": "for (const bucket of group.lengths.buckets) Object.freeze(bucket);"
+        },
+        {
+          "line": 95,
+          "text": "Object.freeze(group.lengths.buckets);"
+        },
+        {
+          "line": 96,
+          "text": "if (group.lengths.mean) Object.freeze(group.lengths.mean);"
+        },
+        {
+          "line": 97,
+          "text": "Object.freeze(group.lengths);"
+        },
+        {
+          "line": 98,
+          "text": "Object.freeze(group.examples);"
+        },
+        {
+          "line": 99,
+          "text": "Object.freeze(group);"
+        },
+        {
+          "line": 101,
+          "text": "Object.freeze(result.entries);"
+        },
+        {
+          "line": 102,
+          "text": "Object.freeze(result.groups);"
+        },
+        {
+          "line": 119,
+          "text": "entries: previous.entries.filter("
+        },
+        {
+          "line": 122,
+          "text": "groups: previous.groups.filter("
+        },
+        {
+          "line": 130,
+          "text": "pairs: [] as Interval[],"
+        },
+        {
+          "line": 131,
+          "text": "roots: [] as Interval[],"
+        },
+        {
+          "line": 132,
+          "text": "fragments: [] as CadenceFragment[],"
+        },
+        {
+          "line": 133,
+          "text": "findings: new Map("
+        },
+        {
+          "line": 227,
+          "text": "fragment: fragment.id,"
+        },
+        {
+          "line": 230,
+          "text": "points: fragment.points,"
+        },
+        {
+          "line": 266,
+          "text": "fragments: [],"
+        },
+        {
+          "line": 272,
+          "text": "fragments: bucket.fragments.length,"
+        },
+        {
+          "line": 273,
+          "text": "points: bucket.entries.reduce((sum, entry) => sum + entry.points, 0),"
+        },
+        {
+          "line": 274,
+          "text": "pairedPoints: bucket.entries.reduce("
+        },
+        {
+          "line": 278,
+          "text": "observations: bucket.entries.reduce("
+        },
+        {
+          "line": 283,
+          "text": "lengths: summarizeCadenceLengths(bucket.fragments, analysis.policy),"
+        },
+        {
+          "line": 284,
+          "text": "examples: bucket.fragments.slice(0, 3).map((fragment) => fragment.id),"
+        },
+        {
+          "line": 298,
+          "text": "entries: result.entries.filter((entry) => entry.document === document),"
+        },
+        {
+          "line": 299,
+          "text": "groups: result.groups.filter((group) => group.document === document),"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-cadence-enclosures.ts",
+      "reason": "保守扣除被动单标识符参数、对象/数组简写打包等无独立语义的行。",
+      "fragments": [
+        {
+          "line": 231,
+          "text": "pairedPoints,"
+        },
+        {
+          "line": 232,
+          "text": "touchedPairs,"
+        },
+        {
+          "line": 233,
+          "text": "fullyContained,"
+        },
+        {
+          "line": 234,
+          "text": "depthAtStart,"
+        },
+        {
+          "line": 235,
+          "text": "depthAtEnd,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-cadence-enclosures.ts",
+      "reason": "独立运行时复核判定为历史/重复/擦除运行时片段，保守扣除；不放宽复核也不重报这些行。",
+      "fragments": [
+        {
+          "line": 42,
+          "text": "const cache = new WeakMap<CadenceAnalysis, CadenceEnclosures>();"
+        },
+        {
+          "line": 111,
+          "text": "const inventory = cadenceInventory(analysis);"
+        },
+        {
+          "line": 115,
+          "text": "if (previous)"
+        },
+        {
+          "line": 156,
+          "text": "const entries: CadenceEnclosureEntry[] = [];"
+        },
+        {
+          "line": 217,
+          "text": "const findings = {} as Record<CadenceFindingKind, number>;"
+        },
+        {
+          "line": 236,
+          "text": "relation:"
+        },
+        {
+          "line": 249,
+          "text": "const groups: CadenceEnclosureGroup[] = [],"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-cadence-explain.ts",
+      "reason": "保守扣除可复用/重复的通用策略、筛选标记薄接线、DTO/配置/静态文案及被动打包；余下仍须独立运行时复核。",
+      "fragments": [
+        {
+          "line": 61,
+          "text": "for (const child of Object.values(value)) freeze(child);"
+        },
+        {
+          "line": 68,
+          "text": "left.start === right.start &&"
+        },
+        {
+          "line": 69,
+          "text": "left.end === right.end &&"
+        },
+        {
+          "line": 70,
+          "text": "left.pointStart === right.pointStart &&"
+        },
+        {
+          "line": 71,
+          "text": "left.pointEnd === right.pointEnd"
+        },
+        {
+          "line": 96,
+          "text": "steps: options.steps ?? LIMITS.steps,"
+        },
+        {
+          "line": 97,
+          "text": "tokens: options.tokens ?? LIMITS.tokens,"
+        },
+        {
+          "line": 98,
+          "text": "window: options.window ?? LIMITS.window,"
+        },
+        {
+          "line": 124,
+          "text": "run: run ? { ...run } : null,"
+        },
+        {
+          "line": 125,
+          "text": "status: run ? \"explained\" : \"structural-boundary\","
+        },
+        {
+          "line": 127,
+          "text": "stackAtFocus: null,"
+        },
+        {
+          "line": 128,
+          "text": "endingOpens: null,"
+        },
+        {
+          "line": 129,
+          "text": "coverage: {"
+        },
+        {
+          "line": 131,
+          "text": "examinedReferences: 0,"
+        },
+        {
+          "line": 132,
+          "text": "totalTokens: null,"
+        },
+        {
+          "line": 133,
+          "text": "replayedTokens: 0,"
+        },
+        {
+          "line": 134,
+          "text": "complete: false,"
+        },
+        {
+          "line": 135,
+          "text": "selectedReached: false,"
+        },
+        {
+          "line": 136,
+          "text": "omittedBefore: 0,"
+        },
+        {
+          "line": 137,
+          "text": "omittedAfter: 0,"
+        },
+        {
+          "line": 159,
+          "text": "...pair.open,"
+        },
+        {
+          "line": 160,
+          "text": "item: pair.id,"
+        },
+        {
+          "line": 161,
+          "text": "family: pair.family,"
+        },
+        {
+          "line": 162,
+          "text": "action: \"push\","
+        },
+        {
+          "line": 163,
+          "text": "opener: null,"
+        },
+        {
+          "line": 164,
+          "text": "related: [],"
+        },
+        {
+          "line": 165,
+          "text": "unclosed: false,"
+        },
+        {
+          "line": 168,
+          "text": "...pair.close,"
+        },
+        {
+          "line": 171,
+          "text": "action: \"pair\","
+        },
+        {
+          "line": 172,
+          "text": "opener: pair.open,"
+        },
+        {
+          "line": 191,
+          "text": "start: finding.start,"
+        },
+        {
+          "line": 192,
+          "text": "end: finding.end,"
+        },
+        {
+          "line": 193,
+          "text": "pointStart: finding.pointStart,"
+        },
+        {
+          "line": 194,
+          "text": "pointEnd: finding.pointEnd,"
+        },
+        {
+          "line": 195,
+          "text": "item: finding.id,"
+        },
+        {
+          "line": 204,
+          "text": "related: finding.related,"
+        },
+        {
+          "line": 205,
+          "text": "unclosed: finding.kind === \"unclosed-open\","
+        },
+        {
+          "line": 237,
+          "text": "stage: \"replay\","
+        },
+        {
+          "line": 238,
+          "text": "token: ordinal,"
+        },
+        {
+          "line": 239,
+          "text": "start: tokens[ordinal]!.start,"
+        },
+        {
+          "line": 254,
+          "text": "obstruction: string | null = null;"
+        },
+        {
+          "line": 259,
+          "text": "item: token.item,"
+        },
+        {
+          "line": 260,
+          "text": "family: token.family,"
+        },
+        {
+          "line": 261,
+          "text": "start: token.start,"
+        },
+        {
+          "line": 262,
+          "text": "end: token.end,"
+        },
+        {
+          "line": 263,
+          "text": "pointStart: token.pointStart,"
+        },
+        {
+          "line": 264,
+          "text": "pointEnd: token.pointEnd,"
+        },
+        {
+          "line": 284,
+          "text": "expected: CadenceRange[] = [];"
+        },
+        {
+          "line": 311,
+          "text": "action: token.action,"
+        },
+        {
+          "line": 316,
+          "text": "depthBefore: before,"
+        },
+        {
+          "line": 317,
+          "text": "depthAfter: stack.length,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-cadence-explain.ts",
+      "reason": "保守扣除被动单标识符参数、对象/数组简写打包等无独立语义的行。",
+      "fragments": [
+        {
+          "line": 318,
+          "text": "reference,"
+        },
+        {
+          "line": 319,
+          "text": "obstruction,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-cadence-explain.ts",
+      "reason": "独立运行时复核判定为历史/重复/擦除运行时片段，保守扣除；不放宽复核也不重报这些行。",
+      "fragments": [
+        {
+          "line": 84,
+          "text": "const inventory = cadenceInventory(analysis),"
+        },
+        {
+          "line": 95,
+          "text": "const limits = {"
+        },
+        {
+          "line": 117,
+          "text": "null;"
+        },
+        {
+          "line": 118,
+          "text": "const result: CadenceStackExplanation = {"
+        },
+        {
+          "line": 143,
+          "text": "const tokens: ReplayToken[] = [];"
+        },
+        {
+          "line": 152,
+          "text": "take();"
+        },
+        {
+          "line": 197,
+          "text": "action:"
+        },
+        {
+          "line": 230,
+          "text": "const stack: CadenceStackFrame[] = [],"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-cadence-index.ts",
+      "reason": "保守扣除可复用/重复的通用策略、筛选标记薄接线、DTO/配置/静态文案及被动打包；余下仍须独立运行时复核。",
+      "fragments": [
+        {
+          "line": 37,
+          "text": "const view: ReadonlyMap<Key, Value> = {"
+        },
+        {
+          "line": 38,
+          "text": "get: (key) => map.get(key),"
+        },
+        {
+          "line": 39,
+          "text": "has: (key) => map.has(key),"
+        },
+        {
+          "line": 41,
+          "text": "return map.size;"
+        },
+        {
+          "line": 43,
+          "text": "keys: () => map.keys(),"
+        },
+        {
+          "line": 44,
+          "text": "values: () => map.values(),"
+        },
+        {
+          "line": 45,
+          "text": "entries: () => map.entries(),"
+        },
+        {
+          "line": 46,
+          "text": "[Symbol.iterator]: () => map.entries(),"
+        },
+        {
+          "line": 47,
+          "text": "forEach: (callback, receiver) =>"
+        },
+        {
+          "line": 48,
+          "text": "map.forEach((value, key) => callback.call(receiver, value, key, view)),"
+        },
+        {
+          "line": 50,
+          "text": "return Object.freeze(view);"
+        },
+        {
+          "line": 53,
+          "text": "throw new Error(\"标点分析的完整性或原文位置无效，未展示猜测内容。\");"
+        },
+        {
+          "line": 56,
+          "text": "if (!value || typeof value !== \"object\" || Object.isFrozen(value)) return;"
+        },
+        {
+          "line": 57,
+          "text": "for (const item of Object.values(value)) freezeTree(item);"
+        },
+        {
+          "line": 61,
+          "text": "const result = new Map<number, number>([[0, 0]]);"
+        },
+        {
+          "line": 62,
+          "text": "let offset = 0,"
+        },
+        {
+          "line": 65,
+          "text": "offset += point.length;"
+        },
+        {
+          "line": 66,
+          "text": "result.set(offset, ++points);"
+        },
+        {
+          "line": 77,
+          "text": "range.start >= range.end ||"
+        },
+        {
+          "line": 78,
+          "text": "points.get(range.start) !== range.pointStart ||"
+        },
+        {
+          "line": 79,
+          "text": "points.get(range.end) !== range.pointEnd"
+        },
+        {
+          "line": 110,
+          "text": "stack: CadencePair[] = [];"
+        },
+        {
+          "line": 122,
+          "text": "id: pair.id,"
+        },
+        {
+          "line": 123,
+          "text": "parent: parent?.id ?? null,"
+        },
+        {
+          "line": 124,
+          "text": "depth: stack.length + 1,"
+        },
+        {
+          "line": 125,
+          "text": "points: pair.close.pointEnd - pair.open.pointStart,"
+        },
+        {
+          "line": 126,
+          "text": "children: [] as string[],"
+        },
+        {
+          "line": 236,
+          "text": "unit: scanned,"
+        },
+        {
+          "line": 237,
+          "text": "document: next.document,"
+        },
+        {
+          "line": 238,
+          "text": "path: next.path,"
+        },
+        {
+          "line": 240,
+          "text": "pointStart: 0,"
+        },
+        {
+          "line": 397,
+          "text": "units: readonlyMap(units),"
+        },
+        {
+          "line": 398,
+          "text": "findings: readonlyMap(findings),"
+        },
+        {
+          "line": 399,
+          "text": "pairs: readonlyMap(pairs),"
+        },
+        {
+          "line": 400,
+          "text": "fragments: readonlyMap(fragments),"
+        },
+        {
+          "line": 401,
+          "text": "order: readonlyMap(order),"
+        },
+        {
+          "line": 402,
+          "text": "topology: readonlyMap(topology),"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-cadence-index.ts",
+      "reason": "保守扣除被动单标识符参数、对象/数组简写打包等无独立语义的行。",
+      "fragments": [
+        {
+          "line": 347,
+          "text": "point,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-cadence-index.ts",
+      "reason": "独立运行时复核判定为历史/重复/擦除运行时片段，保守扣除；不放宽复核也不重报这些行。",
+      "fragments": [
+        {
+          "line": 121,
+          "text": "const node = {"
+        },
+        {
+          "line": 152,
+          "text": "const units = new Map<string, CadenceUnit>(),"
+        },
+        {
+          "line": 153,
+          "text": "order = new Map<string, number>(),"
+        },
+        {
+          "line": 156,
+          "text": "points = 0,"
+        },
+        {
+          "line": 158,
+          "text": "scannedCharacters = 0,"
+        },
+        {
+          "line": 232,
+          "text": "analysis.limit,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-cadence-profile.ts",
+      "reason": "保守扣除可复用/重复的通用策略、筛选标记薄接线、DTO/配置/静态文案及被动打包；余下仍须独立运行时复核。",
+      "fragments": [
+        {
+          "line": 20,
+          "text": "const emptyFindings = (): Record<CadenceFindingKind, number> => ({"
+        },
+        {
+          "line": 21,
+          "text": "\"unclosed-open\": 0,"
+        },
+        {
+          "line": 22,
+          "text": "\"unexpected-close\": 0,"
+        },
+        {
+          "line": 23,
+          "text": "\"blocked-close\": 0,"
+        },
+        {
+          "line": 24,
+          "text": "invisible: 0,"
+        },
+        {
+          "line": 25,
+          "text": "\"whitespace-run\": 0,"
+        },
+        {
+          "line": 26,
+          "text": "\"punctuation-run\": 0,"
+        },
+        {
+          "line": 30,
+          "text": "for (const child of Object.values(value)) frozen(child);"
+        },
+        {
+          "line": 128,
+          "text": "count: pairs.length,"
+        },
+        {
+          "line": 134,
+          "text": "families: [...families]"
+        },
+        {
+          "line": 140,
+          "text": "return units === 0"
+        },
+        {
+          "line": 141,
+          "text": "? \"outside-scope\""
+        },
+        {
+          "line": 142,
+          "text": ": scanned === 0"
+        },
+        {
+          "line": 143,
+          "text": "? \"unscanned\""
+        },
+        {
+          "line": 144,
+          "text": ": units === scanned"
+        },
+        {
+          "line": 145,
+          "text": "? \"complete\""
+        },
+        {
+          "line": 146,
+          "text": ": \"partial\";"
+        },
+        {
+          "line": 149,
+          "text": "return [...unit.text].length;"
+        },
+        {
+          "line": 195,
+          "text": "units: [] as CadenceUnit[],"
+        },
+        {
+          "line": 196,
+          "text": "pairs: [] as CadencePair[],"
+        },
+        {
+          "line": 198,
+          "text": "findings: emptyFindings(),"
+        },
+        {
+          "line": 208,
+          "text": "scanned: ordinal < analysis.coverage.scannedUnits,"
+        },
+        {
+          "line": 209,
+          "text": "points: unitPoints(unit),"
+        },
+        {
+          "line": 210,
+          "text": "protectedCharacters: unit.barriers.reduce("
+        },
+        {
+          "line": 214,
+          "text": "findings: 0,"
+        },
+        {
+          "line": 216,
+          "text": "fragments: 0,"
+        },
+        {
+          "line": 217,
+          "text": "longest: null,"
+        },
+        {
+          "line": 261,
+          "text": "coverage: coverageState(source.units.length, scannedUnits),"
+        },
+        {
+          "line": 262,
+          "text": "units: source.units.length,"
+        },
+        {
+          "line": 268,
+          "text": "findings: source.findings,"
+        },
+        {
+          "line": 269,
+          "text": "pairs: pairSummary(source.pairs, analysis),"
+        },
+        {
+          "line": 270,
+          "text": "lengths: summarizeCadenceLengths(source.fragments, analysis.policy),"
+        },
+        {
+          "line": 271,
+          "text": "rhythm: groupCadenceRhythm(source.fragments, analysis.policy),"
+        },
+        {
+          "line": 272,
+          "text": "transitions: cadenceTransitions(source.fragments, analysis.policy),"
+        },
+        {
+          "line": 289,
+          "text": "units: [...unitProfiles.values()],"
+        },
+        {
+          "line": 290,
+          "text": "lengths: summarizeCadenceLengths(analysis.fragments, analysis.policy),"
+        },
+        {
+          "line": 291,
+          "text": "transitions: cadenceTransitions(analysis.fragments, analysis.policy),"
+        },
+        {
+          "line": 292,
+          "text": "pairs: pairSummary(analysis.pairs, analysis),"
+        },
+        {
+          "line": 326,
+          "text": "left: a.findings[kind],"
+        },
+        {
+          "line": 327,
+          "text": "right: b.findings[kind],"
+        },
+        {
+          "line": 328,
+          "text": "countDifference: a.findings[kind] - b.findings[kind],"
+        },
+        {
+          "line": 329,
+          "text": "perPointDifference: pointDenominator"
+        },
+        {
+          "line": 334,
+          "text": "denominator: pointDenominator,"
+        },
+        {
+          "line": 340,
+          "text": "from: cell.from,"
+        },
+        {
+          "line": 341,
+          "text": "to: cell.to,"
+        },
+        {
+          "line": 342,
+          "text": "left: cell.count,"
+        },
+        {
+          "line": 343,
+          "text": "right: b.transitions.cells[index]!.count,"
+        },
+        {
+          "line": 344,
+          "text": "difference: transitionDenominator"
+        },
+        {
+          "line": 349,
+          "text": "denominator: transitionDenominator,"
+        },
+        {
+          "line": 356,
+          "text": "coverage: { left: a.coverage, right: b.coverage },"
+        },
+        {
+          "line": 357,
+          "text": "complete: a.coverage === \"complete\" && b.coverage === \"complete\","
+        },
+        {
+          "line": 361,
+          "text": "pairDifference: a.pairs.count - b.pairs.count,"
+        },
+        {
+          "line": 362,
+          "text": "depthDifference: a.pairs.maximumDepth - b.pairs.maximumDepth,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-cadence-profile.ts",
+      "reason": "保守扣除被动单标识符参数、对象/数组简写打包等无独立语义的行。",
+      "fragments": [
+        {
+          "line": 129,
+          "text": "roots,"
+        },
+        {
+          "line": 130,
+          "text": "maximumDepth,"
+        },
+        {
+          "line": 131,
+          "text": "maximumSpan,"
+        },
+        {
+          "line": 132,
+          "text": "spanPoints,"
+        },
+        {
+          "line": 133,
+          "text": "coveredPoints,"
+        },
+        {
+          "line": 263,
+          "text": "scannedUnits,"
+        },
+        {
+          "line": 264,
+          "text": "characters,"
+        },
+        {
+          "line": 265,
+          "text": "points,"
+        },
+        {
+          "line": 266,
+          "text": "scannedPoints,"
+        },
+        {
+          "line": 267,
+          "text": "protectedCharacters,"
+        },
+        {
+          "line": 358,
+          "text": "distribution,"
+        },
+        {
+          "line": 359,
+          "text": "findingDifferences,"
+        },
+        {
+          "line": 360,
+          "text": "transitions,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-cadence-profile.ts",
+      "reason": "独立运行时复核判定为历史/重复/擦除运行时片段，保守扣除；不放宽复核也不重报这些行。",
+      "fragments": [
+        {
+          "line": 53,
+          "text": "let previous: { fragment: CadenceFragment; band: CadenceBand } | null = null,"
+        },
+        {
+          "line": 92,
+          "text": "let roots = 0,"
+        },
+        {
+          "line": 114,
+          "text": "let start = -1,"
+        },
+        {
+          "line": 184,
+          "text": "const cache = new WeakMap<CadenceAnalysis, CadenceProfile>();"
+        },
+        {
+          "line": 218,
+          "text": "} as CadenceUnitProfile,"
+        },
+        {
+          "line": 221,
+          "text": "for (const unit of analysis.units)"
+        },
+        {
+          "line": 233,
+          "text": "for (const fragment of analysis.fragments) {"
+        },
+        {
+          "line": 241,
+          "text": "const documents: CadenceDocumentProfile[] = [];"
+        },
+        {
+          "line": 242,
+          "text": "for (const document of analysis.documents) {"
+        },
+        {
+          "line": 248,
+          "text": "protectedCharacters = 0;"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-cadence-report.ts",
+      "reason": "保守整份扣除控制器/报告/编排层，不以通用状态机、序列化与薄接线补数。",
+      "fragments": [
+        {
+          "line": 27,
+          "text": "marks = validateCadenceMarks(analysis, input),"
+        },
+        {
+          "line": 34,
+          "text": "const states = new Map(marks.map((mark) => [mark.id, mark.state]));"
+        },
+        {
+          "line": 35,
+          "text": "const items ="
+        },
+        {
+          "line": 36,
+          "text": "analysis.findings.length +"
+        },
+        {
+          "line": 37,
+          "text": "analysis.pairs.length +"
+        },
+        {
+          "line": 38,
+          "text": "analysis.fragments.length;"
+        },
+        {
+          "line": 40,
+          "text": "format: \"no-wave-writing-cadence-report\","
+        },
+        {
+          "line": 45,
+          "text": "source: analysis.source,"
+        },
+        {
+          "line": 49,
+          "text": "frontier: analysis.frontier"
+        },
+        {
+          "line": 50,
+          "text": "? { ...analysis.frontier, path: [...analysis.frontier.path] }"
+        },
+        {
+          "line": 54,
+          "text": "marked: marks.length,"
+        },
+        {
+          "line": 55,
+          "text": "intentional: marks.filter((mark) => mark.state === \"intentional\").length,"
+        },
+        {
+          "line": 56,
+          "text": "followUp: marks.filter((mark) => mark.state === \"follow-up\").length,"
+        },
+        {
+          "line": 57,
+          "text": "unreviewed: items - marks.length,"
+        },
+        {
+          "line": 59,
+          "text": "profile,"
+        },
+        {
+          "line": 60,
+          "text": "enclosures: cadenceEnclosures(analysis).groups,"
+        },
+        {
+          "line": 61,
+          "text": "units: analysis.units.map((unit) => ({"
+        },
+        {
+          "line": 66,
+          "text": "runs: unit.runs.map((run) => ({ ...run })),"
+        },
+        {
+          "line": 67,
+          "text": "barriers: unit.barriers.map((barrier) => ({ ...barrier })),"
+        },
+        {
+          "line": 69,
+          "text": "findings: analysis.findings.map((finding) => ({"
+        },
+        {
+          "line": 71,
+          "text": "unit: finding.unit,"
+        },
+        {
+          "line": 73,
+          "text": "code: finding.code,"
+        },
+        {
+          "line": 79,
+          "text": "related: finding.related.map((range) => ({ ...range })),"
+        },
+        {
+          "line": 80,
+          "text": "state: states.get(finding.id) ?? \"unreviewed\","
+        },
+        {
+          "line": 82,
+          "text": "pairs: analysis.pairs.map((pair) => ({"
+        },
+        {
+          "line": 84,
+          "text": "unit: pair.unit,"
+        },
+        {
+          "line": 86,
+          "text": "open: { ...pair.open },"
+        },
+        {
+          "line": 87,
+          "text": "close: { ...pair.close },"
+        },
+        {
+          "line": 88,
+          "text": "parent: inventory.topology.get(pair.id)!.parent,"
+        },
+        {
+          "line": 89,
+          "text": "depth: inventory.topology.get(pair.id)!.depth,"
+        },
+        {
+          "line": 90,
+          "text": "state: states.get(pair.id) ?? \"unreviewed\","
+        },
+        {
+          "line": 92,
+          "text": "fragments: analysis.fragments.map((fragment) => ({"
+        },
+        {
+          "line": 93,
+          "text": "id: fragment.id,"
+        },
+        {
+          "line": 94,
+          "text": "unit: fragment.unit,"
+        },
+        {
+          "line": 95,
+          "text": "run: fragment.run,"
+        },
+        {
+          "line": 96,
+          "text": "start: fragment.start,"
+        },
+        {
+          "line": 97,
+          "text": "end: fragment.end,"
+        },
+        {
+          "line": 98,
+          "text": "pointStart: fragment.pointStart,"
+        },
+        {
+          "line": 99,
+          "text": "pointEnd: fragment.pointEnd,"
+        },
+        {
+          "line": 101,
+          "text": "nonspace: fragment.nonspace,"
+        },
+        {
+          "line": 102,
+          "text": "ending: fragment.ending,"
+        },
+        {
+          "line": 103,
+          "text": "state: states.get(fragment.id) ?? \"unreviewed\","
+        },
+        {
+          "line": 106,
+          "text": "const text = JSON.stringify(report) + \"\\n\","
+        },
+        {
+          "line": 107,
+          "text": "bytes = new TextEncoder().encode(text).byteLength;"
+        },
+        {
+          "line": 108,
+          "text": "if (bytes > 2 * 1024 * 1024)"
+        },
+        {
+          "line": 109,
+          "text": "throw new Error(\"无正文报告超过2 MiB，整份未准备；未截短全局清单。\");"
+        },
+        {
+          "line": 111,
+          "text": "name: `no-wave-cadence-report-${now.toISOString().slice(0, 10)}.json`,"
+        },
+        {
+          "line": 116,
+          "text": "marksKey: cadenceMarksKey(analysis, marks),"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-cadence-review.ts",
+      "reason": "保守扣除可复用/重复的通用策略、筛选标记薄接线、DTO/配置/静态文案及被动打包；余下仍须独立运行时复核。",
+      "fragments": [
+        {
+          "line": 18,
+          "text": "export const DEFAULT_CADENCE_FILTERS: CadenceFilters = {"
+        },
+        {
+          "line": 20,
+          "text": "type: \"findings\","
+        },
+        {
+          "line": 22,
+          "text": "state: \"all\","
+        },
+        {
+          "line": 23,
+          "text": "sort: \"source\","
+        },
+        {
+          "line": 54,
+          "text": "cached = rowCache.get(analysis);"
+        },
+        {
+          "line": 56,
+          "text": "const rows: CadenceRow[] = [];"
+        },
+        {
+          "line": 57,
+          "text": "for (const finding of analysis.findings)"
+        },
+        {
+          "line": 61,
+          "text": "document: inventory.units.get(finding.unit)!.document,"
+        },
+        {
+          "line": 68,
+          "text": "length: finding.pointEnd - finding.pointStart,"
+        },
+        {
+          "line": 69,
+          "text": "depth: 0,"
+        },
+        {
+          "line": 70,
+          "text": "state: \"unreviewed\","
+        },
+        {
+          "line": 72,
+          "text": "for (const pair of analysis.pairs)"
+        },
+        {
+          "line": 76,
+          "text": "document: inventory.units.get(pair.unit)!.document,"
+        },
+        {
+          "line": 77,
+          "text": "type: \"pairs\","
+        },
+        {
+          "line": 78,
+          "text": "kind: pair.family,"
+        },
+        {
+          "line": 79,
+          "text": "start: pair.open.start,"
+        },
+        {
+          "line": 80,
+          "text": "end: pair.close.end,"
+        },
+        {
+          "line": 81,
+          "text": "pointStart: pair.open.pointStart,"
+        },
+        {
+          "line": 82,
+          "text": "pointEnd: pair.close.pointEnd,"
+        },
+        {
+          "line": 83,
+          "text": "length: pair.close.pointEnd - pair.open.pointStart,"
+        },
+        {
+          "line": 91,
+          "text": "document: inventory.units.get(fragment.unit)!.document,"
+        },
+        {
+          "line": 92,
+          "text": "type: \"fragments\","
+        },
+        {
+          "line": 93,
+          "text": "kind: fragment.ending,"
+        },
+        {
+          "line": 98,
+          "text": "length: fragment.nonspace,"
+        },
+        {
+          "line": 102,
+          "text": "rows.sort("
+        },
+        {
+          "line": 104,
+          "text": "inventory.order.get(a.unit)! - inventory.order.get(b.unit)! ||"
+        },
+        {
+          "line": 107,
+          "text": "a.id.localeCompare(b.id, \"en\", { numeric: true }),"
+        },
+        {
+          "line": 109,
+          "text": "for (const row of rows) Object.freeze(row);"
+        },
+        {
+          "line": 110,
+          "text": "Object.freeze(rows);"
+        },
+        {
+          "line": 113,
+          "text": "byId: new Map(rows.map((row) => [row.id, row])),"
+        },
+        {
+          "line": 114,
+          "text": "ordinal: new Map(rows.map((row, index) => [row.id, index])),"
+        },
+        {
+          "line": 116,
+          "text": "rowCache.set(analysis, result);"
+        },
+        {
+          "line": 123,
+          "text": "const row = baseRows(analysis).byId.get(id);"
+        },
+        {
+          "line": 124,
+          "text": "if (!row) throw new Error(\"审阅编号不属于当前分析，没有定位相邻内容。\");"
+        },
+        {
+          "line": 133,
+          "text": "const index = baseRows(analysis),"
+        },
+        {
+          "line": 134,
+          "text": "seen = new Set<string>(),"
+        },
+        {
+          "line": 135,
+          "text": "result: CadenceMark[] = [];"
+        },
+        {
+          "line": 136,
+          "text": "if (!Array.isArray(input) || input.length > index.rows.length)"
+        },
+        {
+          "line": 137,
+          "text": "throw new Error(\"临时标记数量或结构无效。\");"
+        },
+        {
+          "line": 138,
+          "text": "for (const mark of input) {"
+        },
+        {
+          "line": 141,
+          "text": "Object.keys(mark).sort().join(\",\") !== \"id,state\" ||"
+        },
+        {
+          "line": 142,
+          "text": "!index.byId.has(mark.id) ||"
+        },
+        {
+          "line": 143,
+          "text": "seen.has(mark.id) ||"
+        },
+        {
+          "line": 144,
+          "text": "![\"intentional\", \"follow-up\"].includes(mark.state)"
+        },
+        {
+          "line": 146,
+          "text": "throw new Error(\"临时标记含过期、重复或无效编号，整批未接纳。\");"
+        },
+        {
+          "line": 147,
+          "text": "seen.add(mark.id);"
+        },
+        {
+          "line": 148,
+          "text": "result.push({ id: mark.id, state: mark.state });"
+        },
+        {
+          "line": 150,
+          "text": "result.sort((a, b) => index.ordinal.get(a.id)! - index.ordinal.get(b.id)!);"
+        },
+        {
+          "line": 157,
+          "text": "return JSON.stringify(validateCadenceMarks(analysis, marks));"
+        },
+        {
+          "line": 164,
+          "text": "const inventory = baseRows(analysis);"
+        },
+        {
+          "line": 166,
+          "text": "!filters ||"
+        },
+        {
+          "line": 167,
+          "text": "Object.keys(filters).sort().join(\",\") !== \"document,kind,sort,state,type\" ||"
+        },
+        {
+          "line": 168,
+          "text": "(filters.document !== \"all\" &&"
+        },
+        {
+          "line": 169,
+          "text": "!analysis.documents.includes(filters.document)) ||"
+        },
+        {
+          "line": 170,
+          "text": "![\"all\", \"findings\", \"pairs\", \"fragments\"].includes(filters.type) ||"
+        },
+        {
+          "line": 171,
+          "text": "![\"all\", ...findingKinds].includes(filters.kind) ||"
+        },
+        {
+          "line": 173,
+          "text": "filters.state,"
+        },
+        {
+          "line": 175,
+          "text": "![\"source\", \"length\", \"depth\"].includes(filters.sort)"
+        },
+        {
+          "line": 177,
+          "text": "throw new Error(\"审阅视图条件无效；没有回退到其他文稿。\");"
+        },
+        {
+          "line": 179,
+          "text": "validateCadenceMarks(analysis, marks).map((mark) => [mark.id, mark.state]),"
+        },
+        {
+          "line": 182,
+          "text": "for (const row of inventory.rows) {"
+        },
+        {
+          "line": 183,
+          "text": "if (filters.document !== \"all\" && row.document !== filters.document)"
+        },
+        {
+          "line": 185,
+          "text": "if (filters.type !== \"all\" && row.type !== filters.type) continue;"
+        },
+        {
+          "line": 186,
+          "text": "if (filters.kind !== \"all\" && row.kind !== filters.kind) continue;"
+        },
+        {
+          "line": 187,
+          "text": "const state = chosen.get(row.id) ?? \"unreviewed\";"
+        },
+        {
+          "line": 188,
+          "text": "if (filters.state !== \"all\" && state !== filters.state) continue;"
+        },
+        {
+          "line": 189,
+          "text": "rows.push({ ...row, state });"
+        },
+        {
+          "line": 191,
+          "text": "if (filters.sort !== \"source\")"
+        },
+        {
+          "line": 194,
+          "text": "(filters.sort === \"length\" ? b.length - a.length : b.depth - a.depth) ||"
+        },
+        {
+          "line": 195,
+          "text": "inventory.ordinal.get(a.id)! - inventory.ordinal.get(b.id)!,"
+        },
+        {
+          "line": 242,
+          "text": "start: row.start,"
+        },
+        {
+          "line": 243,
+          "text": "end: row.end,"
+        },
+        {
+          "line": 244,
+          "text": "selected: true,"
+        },
+        {
+          "line": 245,
+          "text": "related: false,"
+        },
+        {
+          "line": 246,
+          "text": "role: \"primary\","
+        },
+        {
+          "line": 250,
+          "text": "...range,"
+        },
+        {
+          "line": 251,
+          "text": "selected: false,"
+        },
+        {
+          "line": 252,
+          "text": "related: true,"
+        },
+        {
+          "line": 253,
+          "text": "role: \"related\","
+        },
+        {
+          "line": 264,
+          "text": "pieces: CadenceContext[\"pieces\"] = [];"
+        },
+        {
+          "line": 270,
+          "text": "text: displayCadenceText(unit.text.slice(start, end)),"
+        },
+        {
+          "line": 273,
+          "text": "selected: ranges.some("
+        },
+        {
+          "line": 276,
+          "text": "related: ranges.some("
+        },
+        {
+          "line": 285,
+          "text": "start: page.start,"
+        },
+        {
+          "line": 286,
+          "text": "end: page.end,"
+        },
+        {
+          "line": 287,
+          "text": "more: page.more,"
+        },
+        {
+          "line": 288,
+          "text": "total: unit.text.length,"
+        },
+        {
+          "line": 289,
+          "text": "targets: ranges.map((range) => ({"
+        },
+        {
+          "line": 290,
+          "text": "start: range.start,"
+        },
+        {
+          "line": 291,
+          "text": "end: range.end,"
+        },
+        {
+          "line": 292,
+          "text": "role: range.role,"
+        },
+        {
+          "line": 328,
+          "text": "category: finding.code,"
+        },
+        {
+          "line": 329,
+          "text": "count: 0,"
+        },
+        {
+          "line": 330,
+          "text": "documents: new Map<string, number>(),"
+        },
+        {
+          "line": 350,
+          "text": "category: group.category,"
+        },
+        {
+          "line": 351,
+          "text": "count: group.count,"
+        },
+        {
+          "line": 352,
+          "text": "documents: analysis.documents"
+        },
+        {
+          "line": 356,
+          "text": "count: group.documents.get(document)!,"
+        },
+        {
+          "line": 358,
+          "text": "examples: [...group.examples],"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-cadence-review.ts",
+      "reason": "保守扣除被动单标识符参数、对象/数组简写打包等无独立语义的行。",
+      "fragments": [
+        {
+          "line": 294,
+          "text": "pieces,"
+        },
+        {
+          "line": 349,
+          "text": "codepoint,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-cadence-review.ts",
+      "reason": "独立运行时复核判定为历史/重复/擦除运行时片段，保守扣除；不放宽复核也不重报这些行。",
+      "fragments": [
+        {
+          "line": 43,
+          "text": "const findingKinds = ["
+        },
+        {
+          "line": 241,
+          "text": "ranges.push({"
+        },
+        {
+          "line": 269,
+          "text": "pieces.push({"
+        },
+        {
+          "line": 313,
+          "text": "const groups = new Map<"
+        },
+        {
+          "line": 344,
+          "text": ".sort("
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-cadence-rhythm.ts",
+      "reason": "保守扣除可复用/重复的通用策略、筛选标记薄接线、DTO/配置/静态文案及被动打包；余下仍须独立运行时复核。",
+      "fragments": [
+        {
+          "line": 32,
+          "text": "points: to - from,"
+        },
+        {
+          "line": 129,
+          "text": "samples: lengths.length,"
+        },
+        {
+          "line": 133,
+          "text": "minimum: lengths[0] ?? null,"
+        },
+        {
+          "line": 134,
+          "text": "maximum: lengths.at(-1) ?? null,"
+        },
+        {
+          "line": 135,
+          "text": "median: rank(1, 2),"
+        },
+        {
+          "line": 136,
+          "text": "q1: rank(1, 4),"
+        },
+        {
+          "line": 137,
+          "text": "q3: rank(3, 4),"
+        },
+        {
+          "line": 138,
+          "text": "p90: rank(9, 10),"
+        },
+        {
+          "line": 139,
+          "text": "mean: lengths.length"
+        },
+        {
+          "line": 195,
+          "text": "end: fragment.start,"
+        },
+        {
+          "line": 196,
+          "text": "nonspace: 0,"
+        },
+        {
+          "line": 270,
+          "text": "samples: { left: a.samples, right: b.samples },"
+        },
+        {
+          "line": 273,
+          "text": "meanDifference: denominator"
+        },
+        {
+          "line": 275,
+          "text": "numerator: a.nonspace * b.samples - b.nonspace * a.samples,"
+        },
+        {
+          "line": 279,
+          "text": "cdfGap: denominator ? { numerator: largest, denominator, at } : null,"
+        },
+        {
+          "line": 280,
+          "text": "transport: denominator ? { numerator: area, denominator } : null,"
+        },
+        {
+          "line": 281,
+          "text": "buckets: a.buckets.map((bucket, index) => {"
+        },
+        {
+          "line": 286,
+          "text": "from: bucket.from,"
+        },
+        {
+          "line": 287,
+          "text": "to: bucket.to,"
+        },
+        {
+          "line": 288,
+          "text": "left: bucket.count,"
+        },
+        {
+          "line": 289,
+          "text": "right: other.count,"
+        },
+        {
+          "line": 290,
+          "text": "difference: comparable"
+        },
+        {
+          "line": 292,
+          "text": "numerator: bucket.count * b.samples - other.count * a.samples,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-cadence-rhythm.ts",
+      "reason": "保守扣除被动单标识符参数、对象/数组简写打包等无独立语义的行。",
+      "fragments": [
+        {
+          "line": 31,
+          "text": "run,"
+        },
+        {
+          "line": 33,
+          "text": "nonspace,"
+        },
+        {
+          "line": 34,
+          "text": "ending,"
+        },
+        {
+          "line": 142,
+          "text": "short,"
+        },
+        {
+          "line": 143,
+          "text": "long,"
+        },
+        {
+          "line": 144,
+          "text": "terminal,"
+        },
+        {
+          "line": 145,
+          "text": "boundary,"
+        },
+        {
+          "line": 146,
+          "text": "buckets,"
+        },
+        {
+          "line": 276,
+          "text": "denominator,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-cadence-rhythm.ts",
+      "reason": "独立运行时复核判定为历史/重复/擦除运行时片段，保守扣除；不放宽复核也不重报这些行。",
+      "fragments": [
+        {
+          "line": 37,
+          "text": "nonspace = 0;"
+        },
+        {
+          "line": 126,
+          "text": "]!"
+        },
+        {
+          "line": 164,
+          "text": "const result: CadenceRhythmRun[] = [];"
+        },
+        {
+          "line": 165,
+          "text": "let current: CadenceRhythmRun | null = null;"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-cadence-scan.ts",
+      "reason": "保守扣除可复用/重复的通用策略、筛选标记薄接线、DTO/配置/静态文案及被动打包；余下仍须独立运行时复核。",
+      "fragments": [
+        {
+          "line": 82,
+          "text": "kind: \"whitespace-run\","
+        },
+        {
+          "line": 84,
+          "text": "family: null,"
+        },
+        {
+          "line": 86,
+          "text": "end: offset,"
+        },
+        {
+          "line": 88,
+          "text": "pointEnd: pointIndex,"
+        },
+        {
+          "line": 147,
+          "text": "stack: Frame[] = [],"
+        },
+        {
+          "line": 155,
+          "text": "kind: \"punctuation-run\","
+        },
+        {
+          "line": 156,
+          "text": "code: \"adjacent-punctuation\","
+        },
+        {
+          "line": 171,
+          "text": "kind: \"invisible\","
+        },
+        {
+          "line": 172,
+          "text": "code: invisible,"
+        },
+        {
+          "line": 209,
+          "text": "related: CadenceRange[] = [];"
+        },
+        {
+          "line": 214,
+          "text": "kind: matching ? \"blocked-close\" : \"unexpected-close\","
+        },
+        {
+          "line": 215,
+          "text": "code: matching ? \"stack-blocked\" : \"no-open-at-top\","
+        },
+        {
+          "line": 224,
+          "text": "...frame.range,"
+        },
+        {
+          "line": 225,
+          "text": "kind: \"unclosed-open\","
+        },
+        {
+          "line": 226,
+          "text": "code: \"open-at-run-boundary\","
+        },
+        {
+          "line": 227,
+          "text": "family: frame.family,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-cadence-scan.ts",
+      "reason": "保守扣除被动单标识符参数、对象/数组简写打包等无独立语义的行。",
+      "fragments": [
+        {
+          "line": 231,
+          "text": "tape,"
+        },
+        {
+          "line": 232,
+          "text": "runIndex,"
+        },
+        {
+          "line": 234,
+          "text": "meter,"
+        },
+        {
+          "line": 237,
+          "text": "acceptFragment,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-cadence-scan.ts",
+      "reason": "独立运行时复核判定为历史/重复/擦除运行时片段，保守扣除；不放宽复核也不重报这些行。",
+      "fragments": [
+        {
+          "line": 66,
+          "text": "const flush = () => {"
+        },
+        {
+          "line": 92,
+          "text": "start = -1;"
+        },
+        {
+          "line": 93,
+          "text": "hasBreak = false;"
+        },
+        {
+          "line": 148,
+          "text": "families = new Map<string, Frame[]>();"
+        },
+        {
+          "line": 153,
+          "text": "finding({"
+        },
+        {
+          "line": 189,
+          "text": "top = stack.at(-1);"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-cadence-source.ts",
+      "reason": "保守扣除可复用/重复的通用策略、筛选标记薄接线、DTO/配置/静态文案及被动打包；余下仍须独立运行时复核。",
+      "fragments": [
+        {
+          "line": 94,
+          "text": "const serialized = opened.prepared.text,"
+        },
+        {
+          "line": 95,
+          "text": "expected = opened.prepared.collection.digest,"
+        },
+        {
+          "line": 96,
+          "text": "source = opened.source;"
+        },
+        {
+          "line": 97,
+          "text": "if (source !== \"single\" && source !== \"collection\")"
+        },
+        {
+          "line": 98,
+          "text": "throw new Error(\"来源类型无效，未建立本机分析。\");"
+        },
+        {
+          "line": 99,
+          "text": "const owned = await openWritingCollection(serialized, signal);"
+        },
+        {
+          "line": 101,
+          "text": "throw new Error(\"来源快照摘要不符，未使用可变调用者树。\");"
+        },
+        {
+          "line": 102,
+          "text": "const entries = owned.prepared.collection.entries;"
+        },
+        {
+          "line": 103,
+          "text": "const coverage: CadenceCoverage = {"
+        },
+        {
+          "line": 110,
+          "text": "protectedCharacters: 0,"
+        },
+        {
+          "line": 116,
+          "text": "const units: CadenceUnit[] = [];"
+        },
+        {
+          "line": 117,
+          "text": "let allCharacters = 0;"
+        },
+        {
+          "line": 118,
+          "text": "for (const [ordinal, entry] of entries.entries()) {"
+        },
+        {
+          "line": 125,
+          "text": "throw new Error(\"来源不能被完整提取，未把部分检查当成完整正文。\");"
+        },
+        {
+          "line": 126,
+          "text": "const root = entry.backup.draft.editorState!.root;"
+        },
+        {
+          "line": 129,
+          "text": "throw new Error(\"来源文字单元超过固定上限，整轮拒绝。\");"
+        },
+        {
+          "line": 130,
+          "text": "allCharacters += block.text.length;"
+        },
+        {
+          "line": 131,
+          "text": "if (allCharacters > budgets.characters)"
+        },
+        {
+          "line": 132,
+          "text": "throw new Error(\"来源正文字符超过预算，整轮拒绝而不截短。\");"
+        },
+        {
+          "line": 133,
+          "text": "if (coverage.units % 32 === 0) await cadenceCheckpoint(signal, pause);"
+        },
+        {
+          "line": 138,
+          "text": "if (!writingNodeAt(root, block.path))"
+        },
+        {
+          "line": 139,
+          "text": "throw new Error(\"原文路径缺失，未定位相邻段落。\");"
+        },
+        {
+          "line": 140,
+          "text": "const { runs, barriers, points } = ranges(block, root);"
+        },
+        {
+          "line": 147,
+          "text": "runs,"
+        },
+        {
+          "line": 148,
+          "text": "barriers,"
+        },
+        {
+          "line": 152,
+          "text": "coverage.points += points;"
+        },
+        {
+          "line": 153,
+          "text": "coverage.protectedCharacters += barriers.reduce("
+        },
+        {
+          "line": 158,
+          "text": "progress({ stage: \"source\", done: ordinal + 1, total: entries.length });"
+        },
+        {
+          "line": 162,
+          "text": "sourceKey: expected,"
+        },
+        {
+          "line": 164,
+          "text": "documents: entries.map((entry) => entry.key),"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-cadence-source.ts",
+      "reason": "独立运行时复核判定为历史/重复/擦除运行时片段，保守扣除；不放宽复核也不重报这些行。",
+      "fragments": [
+        {
+          "line": 63,
+          "text": "let start = run.start;"
+        },
+        {
+          "line": 72,
+          "text": "const runs: CadenceRange[] = [];"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-cadence-symbols.ts",
+      "reason": "保守扣除可复用/重复的通用策略、筛选标记薄接线、DTO/配置/静态文案及被动打包；余下仍须独立运行时复核。",
+      "fragments": [
+        {
+          "line": 10,
+          "text": "const DELIMITERS = ["
+        },
+        {
+          "line": 11,
+          "text": "[\"round\", \"(\", \")\"],"
+        },
+        {
+          "line": 12,
+          "text": "[\"square\", \"[\", \"]\"],"
+        },
+        {
+          "line": 13,
+          "text": "[\"brace\", \"{\", \"}\"],"
+        },
+        {
+          "line": 14,
+          "text": "[\"round-wide\", \"（\", \"）\"],"
+        },
+        {
+          "line": 15,
+          "text": "[\"square-wide\", \"［\", \"］\"],"
+        },
+        {
+          "line": 16,
+          "text": "[\"brace-wide\", \"｛\", \"｝\"],"
+        },
+        {
+          "line": 17,
+          "text": "[\"corner\", \"「\", \"」\"],"
+        },
+        {
+          "line": 18,
+          "text": "[\"white-corner\", \"『\", \"』\"],"
+        },
+        {
+          "line": 19,
+          "text": "[\"book\", \"《\", \"》\"],"
+        },
+        {
+          "line": 20,
+          "text": "[\"angle\", \"〈\", \"〉\"],"
+        },
+        {
+          "line": 21,
+          "text": "[\"lenticular\", \"【\", \"】\"],"
+        },
+        {
+          "line": 22,
+          "text": "[\"tortoise\", \"〔\", \"〕\"],"
+        },
+        {
+          "line": 23,
+          "text": "[\"white-lenticular\", \"〖\", \"〗\"],"
+        },
+        {
+          "line": 24,
+          "text": "[\"curly-double\", \"“\", \"”\"],"
+        },
+        {
+          "line": 25,
+          "text": "[\"curly-single\", \"‘\", \"’\"],"
+        },
+        {
+          "line": 27,
+          "text": "const openers = new Map<string, string>("
+        },
+        {
+          "line": 28,
+          "text": "DELIMITERS.map(([family, open]) => [open, family]),"
+        },
+        {
+          "line": 30,
+          "text": "const closers = new Map<string, string>("
+        },
+        {
+          "line": 31,
+          "text": "DELIMITERS.map(([family, , close]) => [close, family]),"
+        },
+        {
+          "line": 33,
+          "text": "const named = new Map<number, string>(["
+        },
+        {
+          "line": 34,
+          "text": "[0x00a0, \"nonbreaking-space\"],"
+        },
+        {
+          "line": 35,
+          "text": "[0x202f, \"nonbreaking-space\"],"
+        },
+        {
+          "line": 36,
+          "text": "[0x2007, \"nonbreaking-space\"],"
+        },
+        {
+          "line": 37,
+          "text": "[0x200b, \"zero-width-space\"],"
+        },
+        {
+          "line": 38,
+          "text": "[0x2060, \"word-joiner\"],"
+        },
+        {
+          "line": 39,
+          "text": "[0xfeff, \"byte-order-mark\"],"
+        },
+        {
+          "line": 40,
+          "text": "[0x00ad, \"soft-hyphen\"],"
+        },
+        {
+          "line": 41,
+          "text": "[0x200c, \"join-control\"],"
+        },
+        {
+          "line": 42,
+          "text": "[0x200d, \"join-control\"],"
+        },
+        {
+          "line": 43,
+          "text": "[0x034f, \"combining-grapheme-joiner\"],"
+        },
+        {
+          "line": 44,
+          "text": "[0x061c, \"direction-control\"],"
+        },
+        {
+          "line": 45,
+          "text": "[0x200e, \"direction-control\"],"
+        },
+        {
+          "line": 46,
+          "text": "[0x200f, \"direction-control\"],"
+        },
+        {
+          "line": 48,
+          "text": "const word = (text: string | undefined) =>"
+        },
+        {
+          "line": 49,
+          "text": "text !== undefined && /[\\p{L}\\p{N}\\p{M}]/u.test(text);"
+        },
+        {
+          "line": 52,
+          "text": "if (!value || typeof value !== \"object\" || Array.isArray(value))"
+        },
+        {
+          "line": 53,
+          "text": "throw new Error(\"请选择完整的本机标点分析条件。\");"
+        },
+        {
+          "line": 54,
+          "text": "const input = value as Record<string, unknown>;"
+        },
+        {
+          "line": 56,
+          "text": "Object.keys(input).sort().join(\",\") !== \"dot,long,quotes,scope,short\" ||"
+        },
+        {
+          "line": 57,
+          "text": "![\"all\", \"paragraphs\", \"headings\", \"quotes\", \"lists\"].includes("
+        },
+        {
+          "line": 58,
+          "text": "String(input.scope),"
+        },
+        {
+          "line": 60,
+          "text": "![\"off\", \"double\", \"all\"].includes(String(input.quotes)) ||"
+        },
+        {
+          "line": 61,
+          "text": "typeof input.dot !== \"boolean\" ||"
+        },
+        {
+          "line": 62,
+          "text": "!Number.isSafeInteger(input.short) ||"
+        },
+        {
+          "line": 63,
+          "text": "!Number.isSafeInteger(input.long) ||"
+        },
+        {
+          "line": 64,
+          "text": "Number(input.short) < 1 ||"
+        },
+        {
+          "line": 65,
+          "text": "Number(input.long) <= Number(input.short) ||"
+        },
+        {
+          "line": 66,
+          "text": "Number(input.long) > 10000"
+        },
+        {
+          "line": 69,
+          "text": "\"分析条件无效：短片段阈值须为正整数，长阈值须更大且不超过10000。\","
+        },
+        {
+          "line": 72,
+          "text": "scope: input.scope as CadencePolicy[\"scope\"],"
+        },
+        {
+          "line": 73,
+          "text": "quotes: input.quotes as CadencePolicy[\"quotes\"],"
+        },
+        {
+          "line": 74,
+          "text": "dot: input.dot,"
+        },
+        {
+          "line": 75,
+          "text": "short: Number(input.short),"
+        },
+        {
+          "line": 76,
+          "text": "long: Number(input.long),"
+        },
+        {
+          "line": 83,
+          "text": "if (!input || typeof input !== \"object\" || Array.isArray(input))"
+        },
+        {
+          "line": 84,
+          "text": "throw new Error(\"计算预算结构无效。\");"
+        },
+        {
+          "line": 85,
+          "text": "const result: CadenceBudgets = { ...CADENCE_LIMITS };"
+        },
+        {
+          "line": 86,
+          "text": "for (const name of Object.keys(input)) {"
+        },
+        {
+          "line": 87,
+          "text": "if (!Object.hasOwn(result, name))"
+        },
+        {
+          "line": 88,
+          "text": "throw new Error(\"未知计算预算，未忽略字段。\");"
+        },
+        {
+          "line": 89,
+          "text": "const key = name as keyof CadenceBudgets,"
+        },
+        {
+          "line": 90,
+          "text": "value = input[key];"
+        },
+        {
+          "line": 93,
+          "text": "value! < 0 ||"
+        },
+        {
+          "line": 94,
+          "text": "value! > CADENCE_LIMITS[key]"
+        },
+        {
+          "line": 96,
+          "text": "throw new Error(\"预算只能缩小固定上限，不能放宽。\");"
+        },
+        {
+          "line": 97,
+          "text": "result[key] = value!;"
+        },
+        {
+          "line": 104,
+          "text": "throw new DOMException(\"本机标点分析已取消。\", \"AbortError\");"
+        },
+        {
+          "line": 117,
+          "text": "super(\"本单元尚未完整扫描，未提交部分发现。\");"
+        },
+        {
+          "line": 122,
+          "text": "steps = 0;"
+        },
+        {
+          "line": 128,
+          "text": "if (this.steps >= this.maximum) throw new CadenceBudgetStop(\"steps\");"
+        },
+        {
+          "line": 129,
+          "text": "this.steps++;"
+        },
+        {
+          "line": 138,
+          "text": "!Number.isSafeInteger(from) ||"
+        },
+        {
+          "line": 139,
+          "text": "!Number.isSafeInteger(to) ||"
+        },
+        {
+          "line": 140,
+          "text": "from < 0 ||"
+        },
+        {
+          "line": 141,
+          "text": "to <= from ||"
+        },
+        {
+          "line": 142,
+          "text": "to > tape.chars.length"
+        },
+        {
+          "line": 144,
+          "text": "throw new Error(\"原文范围无效，没有定位相邻字符。\");"
+        },
+        {
+          "line": 146,
+          "text": "start: tape.offsets[from]!,"
+        },
+        {
+          "line": 147,
+          "text": "end: tape.offsets[to]!,"
+        },
+        {
+          "line": 148,
+          "text": "pointStart: tape.pointStart + from,"
+        },
+        {
+          "line": 149,
+          "text": "pointEnd: tape.pointStart + to,"
+        },
+        {
+          "line": 169,
+          "text": "family: point === '\"' ? \"ascii-double\" : \"ascii-single\","
+        },
+        {
+          "line": 170,
+          "text": "role: \"symmetric\","
+        },
+        {
+          "line": 221,
+          "text": "return `U+${point.codePointAt(0)!.toString(16).toUpperCase().padStart(4, \"0\")}`;"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-cadence.ts",
+      "reason": "保守整份扣除控制器/报告/编排层，不以通用状态机、序列化与薄接线补数。",
+      "fragments": [
+        {
+          "line": 27,
+          "text": "const policy = validateCadencePolicy(rawPolicy),"
+        },
+        {
+          "line": 28,
+          "text": "budgets = cadenceBudgets(options.budgets);"
+        },
+        {
+          "line": 31,
+          "text": "progress = options.progress ?? (() => {});"
+        },
+        {
+          "line": 32,
+          "text": "const source = await prepareCadenceSource("
+        },
+        {
+          "line": 40,
+          "text": "const result: CadenceAnalysis = {"
+        },
+        {
+          "line": 41,
+          "text": "algorithm: \"no-wave-writing-cadence-v1\","
+        },
+        {
+          "line": 45,
+          "text": "pairs: [],"
+        },
+        {
+          "line": 50,
+          "text": "const meter = new CadenceMeter(budgets.steps);"
+        },
+        {
+          "line": 51,
+          "text": "for (const [index, unit] of result.units.entries()) {"
+        },
+        {
+          "line": 54,
+          "text": "const audit = await auditCadenceUnit("
+        },
+        {
+          "line": 58,
+          "text": "findings: budgets.findings - result.findings.length,"
+        },
+        {
+          "line": 59,
+          "text": "pairs: budgets.pairs - result.pairs.length,"
+        },
+        {
+          "line": 60,
+          "text": "fragments: budgets.fragments - result.fragments.length,"
+        },
+        {
+          "line": 61,
+          "text": "depth: budgets.depth,"
+        },
+        {
+          "line": 68,
+          "text": "for (const finding of audit.findings)"
+        },
+        {
+          "line": 69,
+          "text": "result.findings.push({"
+        },
+        {
+          "line": 70,
+          "text": "...finding,"
+        },
+        {
+          "line": 71,
+          "text": "id: `f${result.findings.length + 1}`,"
+        },
+        {
+          "line": 74,
+          "text": "for (const pair of audit.pairs)"
+        },
+        {
+          "line": 75,
+          "text": "result.pairs.push({"
+        },
+        {
+          "line": 77,
+          "text": "id: `p${result.pairs.length + 1}`,"
+        },
+        {
+          "line": 80,
+          "text": "for (const fragment of audit.fragments)"
+        },
+        {
+          "line": 81,
+          "text": "result.fragments.push({"
+        },
+        {
+          "line": 82,
+          "text": "...fragment,"
+        },
+        {
+          "line": 83,
+          "text": "id: `s${result.fragments.length + 1}`,"
+        },
+        {
+          "line": 86,
+          "text": "result.coverage.scannedUnits++;"
+        },
+        {
+          "line": 87,
+          "text": "result.coverage.scannedCharacters += unit.text.length;"
+        },
+        {
+          "line": 88,
+          "text": "result.coverage.scannedPoints += [...unit.text].length;"
+        },
+        {
+          "line": 90,
+          "text": "if (!(error instanceof CadenceBudgetStop)) throw error;"
+        },
+        {
+          "line": 92,
+          "text": "result.limit = error.limit;"
+        },
+        {
+          "line": 94,
+          "text": "unit: index,"
+        },
+        {
+          "line": 102,
+          "text": "progress({ stage: \"scan\", done: index + 1, total: result.units.length });"
+        },
+        {
+          "line": 105,
+          "text": "result.coverage.steps = meter.steps;"
+        },
+        {
+          "line": 107,
+          "text": "const sealed = sealCadenceAnalysis(result);"
+        },
+        {
+          "line": 109,
+          "text": "return sealed;"
+        }
+      ]
+    }
+  ]
+}

@@ -946,3 +946,16 @@ mark { background: var(--or); color: #0f0d0c; }
 .nw-terms .nw-overlap-literal mark[data-selected] { text-decoration: underline double; text-underline-offset: 4px; }
 .nw-terms input:focus-visible, .nw-terms textarea:focus-visible, .nw-terms select:focus-visible, .nw-terms .nw-overlap-detail:focus { outline: 2px solid var(--or); outline-offset: 4px; }
 .nw-terms-table:focus-visible { outline: 2px solid var(--or); outline-offset: 4px; }
+
+/* Punctuation controls are projected into visible text; tables remain keyboard-scrollable on phones. */
+.nw-cadence label { display: grid; gap: 8px; min-width: 0; }
+.nw-cadence .nw-authoring-actions { align-items: end; }
+.nw-cadence .nw-writing-check { display: flex; align-items: start; white-space: normal; }
+.nw-cadence input, .nw-cadence select { max-width: 100%; min-height: 44px; }
+.nw-cadence-scroll { max-width: 100%; overflow-x: auto; margin-block: 18px; }
+.nw-cadence table { border-collapse: collapse; width: 100%; min-width: 520px; }
+.nw-cadence caption { padding: 10px; text-align: start; font-weight: 700; }
+.nw-cadence th, .nw-cadence td { border: 1px solid var(--t2); padding: 10px; text-align: start; overflow-wrap: anywhere; }
+.nw-cadence mark[data-related] { text-decoration: underline; }
+.nw-cadence mark[data-selected] { text-decoration: underline double; text-underline-offset: 4px; }
+.nw-cadence-scroll:focus-visible { outline: 2px solid var(--or); outline-offset: 4px; }
