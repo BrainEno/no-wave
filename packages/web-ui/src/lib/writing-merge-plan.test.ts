@@ -186,3 +186,20 @@ test("plan import is only a preview, and cancellation never returns a usable dec
     { name: "AbortError" },
   );
 });
+
+test("standalone plan inspection verifies syntax and digest but never grants authority without the three original sources", async () => {
+  const { parseWritingMergePlan } = await import("./writing-merge-plan.ts");
+  const source = await analysis();
+  const made = await createWritingMergePlan(source, [{ unit: source.units[0]!.id, choice: "base" }], now);
+  assert.deepEqual(await parseWritingMergePlan(made.text), made.plan);
+  const raw = JSON.parse(made.text) as Record<string, unknown>;
+  for (const unit of ["body:201:201", "body:3:2", "body:00:1", "unknown", "field:token"]) {
+    await assert.rejects(parseWritingMergePlan(await resign({ ...raw, decisions: [{ unit, choice: "base" }] })));
+  }
+  const wrongOrder = await resign({ ...raw, decisions: [{ unit: "root", choice: "base" }, { unit: "field:title", choice: "current" }] });
+  await assert.rejects(parseWritingMergePlan(wrongOrder));
+  const wrongKey = await resign({ ...raw, analysisKey: "a".repeat(64) });
+  await assert.rejects(parseWritingMergePlan(wrongKey), /分析|摘要|来源/);
+  const unrelated = await analyzeWritingMerge({ base: backup("A"), current: backup("B"), incoming: backup("C") });
+  await assert.rejects(previewWritingMergePlan(made.text, unrelated), /来源|过期/);
+});

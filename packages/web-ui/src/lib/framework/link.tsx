@@ -1,5 +1,6 @@
-import { Link as RouterLink } from "react-router";
+import { Link as RouterLink, useLocation } from "react-router";
 import type { AnchorHTMLAttributes, ReactNode } from "react";
+import { requiresDocumentNavigation } from "../document-navigation.ts";
 
 /**
  * The navigation seam (`@/lib/framework/link.tsx`), React Router edition.
@@ -29,8 +30,10 @@ function toHref(href: NextLinkProps["href"]): string {
 
 export function Link({ href, prefetch, replace, scroll, children, ...rest }: NextLinkProps) {
   void prefetch;
+  const { pathname } = useLocation();
+  const target = toHref(href);
   return (
-    <RouterLink to={toHref(href)} replace={replace} preventScrollReset={scroll === false} {...rest}>
+    <RouterLink to={target} reloadDocument={requiresDocumentNavigation(pathname, target)} replace={replace} preventScrollReset={scroll === false} {...rest}>
       {children}
     </RouterLink>
   );

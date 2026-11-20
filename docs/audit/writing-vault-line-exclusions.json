@@ -1,0 +1,2719 @@
+{
+  "base": "28ca34be4584fb7684b736069abf02a7d208f171",
+  "rules": [
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-vault-password.tsx",
+      "reason": "逐行复核扣除声明/参数、静态默认值/配置/文案、被动 DTO/props/依赖和薄转发；既有三方预览授权检查的搬移/改名不重复计入。本轮新增严校验/所有权/取消/计算/清理/交互逻辑才可入账。",
+      "fragments": [
+        {
+          "line": 8,
+          "text": "export function WritingVaultPassword({"
+        },
+        {
+          "line": 11,
+          "text": "busy,"
+        },
+        {
+          "line": 19,
+          "text": "const password = useRef<HTMLInputElement | null>(null);"
+        },
+        {
+          "line": 20,
+          "text": "const replacement = useRef<HTMLInputElement | null>(null);"
+        },
+        {
+          "line": 21,
+          "text": "const confirmation = useRef<HTMLInputElement | null>(null);"
+        },
+        {
+          "line": 22,
+          "text": "const consent = useRef<HTMLInputElement | null>(null);"
+        },
+        {
+          "line": 23,
+          "text": "const [visible, setVisible] = useState(false);"
+        },
+        {
+          "line": 24,
+          "text": "const [rotating, setRotating] = useState(false);"
+        },
+        {
+          "line": 25,
+          "text": "const description = useId();"
+        },
+        {
+          "line": 29,
+          "text": "function reset() {"
+        },
+        {
+          "line": 36,
+          "text": "function run(action: \"seal\" | \"unlock\" | \"verify\" | \"rotate\") {"
+        },
+        {
+          "line": 44,
+          "text": "if (action === \"seal\") void controller.seal(first, second, accepted);"
+        },
+        {
+          "line": 45,
+          "text": "else if (action === \"rotate\")"
+        },
+        {
+          "line": 46,
+          "text": "void controller.rotate(first, next, second, accepted);"
+        },
+        {
+          "line": 47,
+          "text": "else if (action === \"unlock\") void controller.unlock(first);"
+        },
+        {
+          "line": 48,
+          "text": "else void controller.verify(first);"
+        },
+        {
+          "line": 50,
+          "text": "function edited() {"
+        },
+        {
+          "line": 52,
+          "text": "controller.credentialsChanged();"
+        },
+        {
+          "line": 54,
+          "text": "const input = {"
+        },
+        {
+          "line": 56,
+          "text": "maxLength: 512,"
+        },
+        {
+          "line": 57,
+          "text": "autoComplete: \"off\","
+        },
+        {
+          "line": 58,
+          "text": "autoCapitalize: \"none\","
+        },
+        {
+          "line": 59,
+          "text": "spellCheck: false,"
+        },
+        {
+          "line": 60,
+          "text": "\"aria-describedby\": description,"
+        },
+        {
+          "line": 61,
+          "text": "onChange: edited,"
+        },
+        {
+          "line": 74,
+          "text": "{plain ? \"为新加密副本设置口令\" : \"用口令核验所选加密文件\"}"
+        },
+        {
+          "line": 76,
+          "text": "<p id={description}>"
+        },
+        {
+          "line": 86,
+          "text": "checked={rotating}"
+        },
+        {
+          "line": 89,
+          "text": "edited();"
+        },
+        {
+          "line": 97,
+          "text": "{plain ? \"新加密口令\" : rotating ? \"原解密口令\" : \"解密口令\"}"
+        },
+        {
+          "line": 98,
+          "text": "<input ref={password} {...input} />"
+        },
+        {
+          "line": 100,
+          "text": "{rotating && !plain ? ("
+        },
+        {
+          "line": 103,
+          "text": "<input ref={replacement} {...input} />"
+        },
+        {
+          "line": 106,
+          "text": "{sealing ? ("
+        },
+        {
+          "line": 109,
+          "text": "<input ref={confirmation} {...input} />"
+        },
+        {
+          "line": 112,
+          "text": "{rotating && !plain ? ("
+        },
+        {
+          "line": 121,
+          "text": "checked={visible}"
+        },
+        {
+          "line": 122,
+          "text": "onChange={(event) => setVisible(event.target.checked)}"
+        },
+        {
+          "line": 126,
+          "text": "{sealing ? ("
+        },
+        {
+          "line": 128,
+          "text": "<input ref={consent} type=\"checkbox\" />"
+        },
+        {
+          "line": 134,
+          "text": "{plain"
+        },
+        {
+          "line": 135,
+          "text": "? \"加密并回解自检\""
+        },
+        {
+          "line": 136,
+          "text": ": rotating"
+        },
+        {
+          "line": 137,
+          "text": "? \"认证并另存新口令副本\""
+        },
+        {
+          "line": 138,
+          "text": ": \"解密并预览\"}"
+        },
+        {
+          "line": 144,
+          "text": "onClick={() => run(\"verify\")}"
+        },
+        {
+          "line": 154,
+          "text": "edited();"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-vault-result.tsx",
+      "reason": "逐行复核扣除声明/参数、静态默认值/配置/文案、被动 DTO/props/依赖和薄转发；既有三方预览授权检查的搬移/改名不重复计入。本轮新增严校验/所有权/取消/计算/清理/交互逻辑才可入账。",
+      "fragments": [
+        {
+          "line": 8,
+          "text": "export function WritingVaultResult({"
+        },
+        {
+          "line": 21,
+          "text": "const readback = state.readback;"
+        },
+        {
+          "line": 29,
+          "text": "controller.cancelReadback();"
+        },
+        {
+          "line": 32,
+          "text": "void controller.verifyDownloaded(files[0]!, result);"
+        },
+        {
+          "line": 41,
+          "text": "<h2>{sealed ? \"新加密副本已回解自检\" : \"明文已认证并校验，尚未下载\"}</h2>"
+        },
+        {
+          "line": 43,
+          "text": "{sealed"
+        },
+        {
+          "line": 44,
+          "text": "? \"已从实际封装的密文回解，并逐字节核对与原稿完全一致；原明文预览已清除。\""
+        },
+        {
+          "line": 45,
+          "text": ": \"认证成功后才检查全部载荷，未作格式转换；没有把内容恢复到编辑器或服务器。\"}"
+        },
+        {
+          "line": 48,
+          "text": "新文件 <code>{result.name}</code> ·{\" \"}"
+        },
+        {
+          "line": 49,
+          "text": "{result.bytes.toLocaleString(\"zh-CN\")} 字节。"
+        },
+        {
+          "line": 50,
+          "text": "{sealed"
+        },
+        {
+          "line": 51,
+          "text": "? \"格式只暴露版本、固定算法参数、随机 salt/nonce 与长度，不含标题、原文件名、明文摘要或来源类型。\""
+        },
+        {
+          "line": 52,
+          "text": ": \"这是未加密的新 JSON；请留意浏览器下载历史、目录同步、共用设备和磁盘备份。\"}"
+        },
+        {
+          "line": 56,
+          "text": "<code className=\"nw-collection-digest\">{result.digest}</code>"
+        },
+        {
+          "line": 59,
+          "text": "{sealed"
+        },
+        {
+          "line": 60,
+          "text": "? \"加密不删除您已有的明文、恢复缓存或其他副本。请独立保存口令；遗忘后无法恢复。自检不证明下载目录已成功落盘，下载后可用下方复读核对。\""
+        },
+        {
+          "line": 61,
+          "text": ": \"手动下载明文会重新产生未加密副本。只想检查文件时，请改用“只验证，不展开文稿”。后续恢复仍需在既有工具中重新选择文件、预览和确认。\"}"
+        },
+        {
+          "line": 66,
+          "text": "checked={state.confirmed}"
+        },
+        {
+          "line": 67,
+          "text": "onChange={(event) =>"
+        },
+        {
+          "line": 68,
+          "text": "controller.confirmResult(result, event.target.checked)"
+        },
+        {
+          "line": 71,
+          "text": "{sealed"
+        },
+        {
+          "line": 72,
+          "text": "? \"我已独立记住口令，理解原明文仍存在，手动下载新加密副本\""
+        },
+        {
+          "line": 73,
+          "text": ": \"我已复核内容，理解将手动下载未加密的私密 JSON\"}"
+        },
+        {
+          "line": 82,
+          "text": "{sealed ? \"下载新加密副本\" : \"下载解密后的原始 JSON\"}"
+        },
+        {
+          "line": 87,
+          "text": "onClick={() => controller.lock()}"
+        },
+        {
+          "line": 89,
+          "text": "{sealed ? \"清除本次加密结果\" : \"重新锁定并清除明文\"}"
+        },
+        {
+          "line": 102,
+          "text": "accept={"
+        },
+        {
+          "line": 103,
+          "text": "sealed"
+        },
+        {
+          "line": 104,
+          "text": "? \".nwvault,application/octet-stream\""
+        },
+        {
+          "line": 105,
+          "text": ": \".json,application/json\""
+        },
+        {
+          "line": 116,
+          "text": "{readback.status === \"reading\" ? \"读取所选副本\" : \"比较完整字节\"}{\" \"}"
+        },
+        {
+          "line": 117,
+          "text": "{readback.percent}%；尚未报告核对成功。"
+        },
+        {
+          "line": 122,
+          "text": "onClick={() => controller.cancelReadback()}"
+        },
+        {
+          "line": 135,
+          "text": "{readback.report.matches"
+        },
+        {
+          "line": 136,
+          "text": "? \"所选副本与本次输出逐字节一致。\""
+        },
+        {
+          "line": 137,
+          "text": ": \"所选副本与本次输出不一致；未替换原结果，请保留原稿并重新核对。\"}"
+        },
+        {
+          "line": 141,
+          "text": "预期 {readback.report.expectedBytes} / 实际{\" \"}"
+        },
+        {
+          "line": 142,
+          "text": "{readback.report.actualBytes} 字节；"
+        },
+        {
+          "line": 143,
+          "text": "{readback.report.reason === \"truncated\""
+        },
+        {
+          "line": 144,
+          "text": "? \"尾部截断\""
+        },
+        {
+          "line": 145,
+          "text": ": readback.report.reason === \"appended\""
+        },
+        {
+          "line": 146,
+          "text": "? \"尾部多出字节\""
+        },
+        {
+          "line": 147,
+          "text": ": \"内容字节不同\"}"
+        },
+        {
+          "line": 148,
+          "text": "。不同或缺失字节 {readback.report.differentBytes}{\" \"}"
+        },
+        {
+          "line": 149,
+          "text": "处，首个不同偏移 {readback.report.firstDifference}（从 0"
+        },
+        {
+          "line": 156,
+          "text": "{readback.report.actualDigest}"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-vault-review.tsx",
+      "reason": "逐行复核扣除声明/参数、静态默认值/配置/文案、被动 DTO/props/依赖和薄转发；既有三方预览授权检查的搬移/改名不重复计入。本轮新增严校验/所有权/取消/计算/清理/交互逻辑才可入账。",
+      "fragments": [
+        {
+          "line": 10,
+          "text": "export const VAULT_KIND_LABELS = {"
+        },
+        {
+          "line": 11,
+          "text": "backup: \"单篇文稿备份\","
+        },
+        {
+          "line": 12,
+          "text": "collection: \"文稿集合\","
+        },
+        {
+          "line": 13,
+          "text": "\"merge-plan\": \"三方取舍计划\","
+        },
+        {
+          "line": 17,
+          "text": "export function WritingVaultReview({"
+        },
+        {
+          "line": 18,
+          "text": "review,"
+        },
+        {
+          "line": 26,
+          "text": "const [locale, setLocale] = useState(\"all\");"
+        },
+        {
+          "line": 27,
+          "text": "const [page, setPage] = useState(0);"
+        },
+        {
+          "line": 28,
+          "text": "const [raw, setRaw] = useState(false);"
+        },
+        {
+          "line": 41,
+          "text": "[review.documents, query, locale],"
+        },
+        {
+          "line": 43,
+          "text": "const region = useRef<HTMLDivElement | null>(null);"
+        },
+        {
+          "line": 46,
+          "text": "}, [selected]);"
+        },
+        {
+          "line": 60,
+          "text": "<h2>{VAULT_KIND_LABELS[review.kind]} · 只读复核</h2>"
+        },
+        {
+          "line": 62,
+          "text": "完整载荷已通过原有结构校验，共 {review.bytes.toLocaleString(\"zh-CN\")}{\" \"}"
+        },
+        {
+          "line": 72,
+          "text": "<code className=\"nw-collection-digest\">{review.digest}</code>"
+        },
+        {
+          "line": 81,
+          "text": "value={query}"
+        },
+        {
+          "line": 84,
+          "text": "onChange={(event) => setQuery(event.target.value)}"
+        },
+        {
+          "line": 90,
+          "text": "value={locale}"
+        },
+        {
+          "line": 91,
+          "text": "onChange={(event) => setLocale(event.target.value)}"
+        },
+        {
+          "line": 94,
+          "text": "{[\"zh-CN\", \"zh-TW\", \"en\"].map((value) => ("
+        },
+        {
+          "line": 95,
+          "text": "<option key={value} value={value}>"
+        },
+        {
+          "line": 96,
+          "text": "{catalogueLocaleLabel(value)}"
+        },
+        {
+          "line": 104,
+          "text": "value={selected}"
+        },
+        {
+          "line": 105,
+          "text": "onChange={(event) => setSelected(event.target.value)}"
+        },
+        {
+          "line": 108,
+          "text": "<option value={item.id} key={item.id}>"
+        },
+        {
+          "line": 109,
+          "text": "{item.id} · {item.backup.draft.title || \"（无标题）\"} ·{\" \"}"
+        },
+        {
+          "line": 110,
+          "text": "{catalogueLocaleLabel(item.backup.draft.locale)}"
+        },
+        {
+          "line": 117,
+          "text": "筛选可见 {visible.length} / {review.documents.length}{\" \"}"
+        },
+        {
+          "line": 119,
+          "text": "{hidden ? \"当前查看文稿被筛选隐藏，仍保留查看位置。\" : \"\"}"
+        },
+        {
+          "line": 123,
+          "text": "<li key={item.id}>"
+        },
+        {
+          "line": 128,
+          "text": "onClick={() => setSelected(item.id)}"
+        },
+        {
+          "line": 130,
+          "text": "{item.id} · {item.backup.draft.title || \"（无标题）\"}"
+        },
+        {
+          "line": 140,
+          "text": "onClick={() => move(-1)}"
+        },
+        {
+          "line": 148,
+          "text": "onClick={() => move(1)}"
+        },
+        {
+          "line": 163,
+          "text": "<div ref={region} tabIndex={-1}>"
+        },
+        {
+          "line": 166,
+          "text": "key={document.id}"
+        },
+        {
+          "line": 167,
+          "text": "row={{ entry: document }}"
+        },
+        {
+          "line": 177,
+          "text": "已记录 {decisions.length}{\" \"}"
+        },
+        {
+          "line": 184,
+          "text": "{MERGE_ROLE_LABELS[role as keyof typeof MERGE_ROLE_LABELS]}"
+        },
+        {
+          "line": 188,
+          "text": "<code className=\"nw-collection-digest\">{digest}</code>"
+        },
+        {
+          "line": 194,
+          "text": "人工取舍第 {current + 1} / {pages}{\" \"}"
+        },
+        {
+          "line": 199,
+          "text": "<li key={item.unit}>"
+        },
+        {
+          "line": 200,
+          "text": "<code>{item.unit}</code> → {MERGE_ROLE_LABELS[item.choice]}"
+        },
+        {
+          "line": 209,
+          "text": "onClick={() => setPage(current - 1)}"
+        },
+        {
+          "line": 217,
+          "text": "onClick={() => setPage(current + 1)}"
+        },
+        {
+          "line": 230,
+          "text": "<WritingVaultTextPreview controller={controller} review={review} />"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-vault-workbench.tsx",
+      "reason": "逐行复核扣除声明/参数、静态默认值/配置/文案、被动 DTO/props/依赖和薄转发；既有三方预览授权检查的搬移/改名不重复计入。本轮新增严校验/所有权/取消/计算/清理/交互逻辑才可入账。",
+      "fragments": [
+        {
+          "line": 20,
+          "text": "const STAGES = {"
+        },
+        {
+          "line": 21,
+          "text": "validating: \"严格校验全部载荷\","
+        },
+        {
+          "line": 22,
+          "text": "deriving: \"使用固定参数计算口令密钥\","
+        },
+        {
+          "line": 23,
+          "text": "encrypting: \"加密副本\","
+        },
+        {
+          "line": 24,
+          "text": "\"self-checking\": \"回解实际封装并核对原始字节\","
+        },
+        {
+          "line": 25,
+          "text": "decrypting: \"认证并解密所选文件\","
+        },
+        {
+          "line": 27,
+          "text": "const noServerWork = () => \"cold\" as const;"
+        },
+        {
+          "line": 29,
+          "text": "export function LocalWritingVault() {"
+        },
+        {
+          "line": 30,
+          "text": "const [controller] = useState("
+        },
+        {
+          "line": 32,
+          "text": "new WritingVaultWorkbench({"
+        },
+        {
+          "line": 33,
+          "text": "crypto: writingVaultWorker,"
+        },
+        {
+          "line": 34,
+          "text": "inspect: async (bytes, signal) => {"
+        },
+        {
+          "line": 37,
+          "text": "return inspected.review;"
+        },
+        {
+          "line": 50,
+          "text": "const workerStatus = useSyncExternalStore("
+        },
+        {
+          "line": 51,
+          "text": "writingVaultWorker.subscribe,"
+        },
+        {
+          "line": 52,
+          "text": "writingVaultWorker.getSnapshot,"
+        },
+        {
+          "line": 53,
+          "text": "noServerWork,"
+        },
+        {
+          "line": 77,
+          "text": "}, [download, state.result, state.confirmed]);"
+        },
+        {
+          "line": 84,
+          "text": "}, [workerStatus, controller, download]);"
+        },
+        {
+          "line": 85,
+          "text": "function changed() {"
+        },
+        {
+          "line": 89,
+          "text": "function clear() {"
+        },
+        {
+          "line": 98,
+          "text": "setNotice({"
+        },
+        {
+          "line": 99,
+          "text": "result: null,"
+        },
+        {
+          "line": 100,
+          "text": "text: \"一次只读取一份本机 JSON 或加密文件，不会自动挑选第一份。\","
+        },
+        {
+          "line": 101,
+          "text": "error: true,"
+        },
+        {
+          "line": 105,
+          "text": "void controller.load(files[0]!);"
+        },
+        {
+          "line": 107,
+          "text": "function save() {"
+        },
+        {
+          "line": 113,
+          "text": "setNotice({"
+        },
+        {
+          "line": 115,
+          "text": "text: \"新的副本已交给浏览器下载；这不是已落盘回执。请重新选入实际下载文件作复读核对。\","
+        },
+        {
+          "line": 116,
+          "text": "error: false,"
+        },
+        {
+          "line": 119,
+          "text": "setNotice({"
+        },
+        {
+          "line": 121,
+          "text": "text: \"下载失败或意图已变化，没有确认旧结果；请重新核对当前结果后手动下载。\","
+        },
+        {
+          "line": 122,
+          "text": "error: true,"
+        },
+        {
+          "line": 149,
+          "text": "<button className=\"nw-btn\" type=\"button\" onClick={clear}>"
+        },
+        {
+          "line": 207,
+          "text": "正在完整读取并校验本机文件 {state.percent}%；未接纳部分内容……"
+        },
+        {
+          "line": 213,
+          "text": "{state.source.kind === \"plain\""
+        },
+        {
+          "line": 214,
+          "text": "? \"已校验的明文来源\""
+        },
+        {
+          "line": 215,
+          "text": ": \"待认证的加密来源\"}"
+        },
+        {
+          "line": 218,
+          "text": "本机文件：{state.source.name} ·{\" \"}"
+        },
+        {
+          "line": 219,
+          "text": "{state.source.bytes.toLocaleString(\"zh-CN\")} 字节"
+        },
+        {
+          "line": 227,
+          "text": "key={state.source.serial}"
+        },
+        {
+          "line": 231,
+          "text": "changed={changed}"
+        },
+        {
+          "line": 249,
+          "text": "{state.stage ? STAGES[state.stage] : \"正在准备本机操作\"}"
+        },
+        {
+          "line": 271,
+          "text": "{VAULT_KIND_LABELS[state.verified.kind]} ·{\" \"}"
+        },
+        {
+          "line": 272,
+          "text": "{state.verified.bytes.toLocaleString(\"zh-CN\")} 个明文字节 ·{\" \"}"
+        },
+        {
+          "line": 273,
+          "text": "{state.verified.documents} 篇文稿 · {state.verified.decisions}{\" \"}"
+        },
+        {
+          "line": 279,
+          "text": "{state.verified.digest}"
+        },
+        {
+          "line": 287,
+          "text": "controller.lock();"
+        },
+        {
+          "line": 296,
+          "text": "key={state.result.serial}"
+        },
+        {
+          "line": 297,
+          "text": "result={state.result}"
+        },
+        {
+          "line": 300,
+          "text": "save={save}"
+        },
+        {
+          "line": 305,
+          "text": "key={state.review.digest}"
+        },
+        {
+          "line": 306,
+          "text": "review={state.review}"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-vault-controller.ts",
+      "reason": "逐行复核扣除声明/参数、静态默认值/配置/文案、被动 DTO/props/依赖和薄转发；既有三方预览授权检查的搬移/改名不重复计入。本轮新增严校验/所有权/取消/计算/清理/交互逻辑才可入账。",
+      "fragments": [
+        {
+          "line": 93,
+          "text": "const emptyReadback = (): Readback => ({"
+        },
+        {
+          "line": 96,
+          "text": "report: null,"
+        },
+        {
+          "line": 99,
+          "text": "const emptyState = (): WritingVaultState => ({"
+        },
+        {
+          "line": 101,
+          "text": "phase: \"idle\","
+        },
+        {
+          "line": 103,
+          "text": "loading: false,"
+        },
+        {
+          "line": 105,
+          "text": "stage: null,"
+        },
+        {
+          "line": 106,
+          "text": "review: null,"
+        },
+        {
+          "line": 108,
+          "text": "verified: null,"
+        },
+        {
+          "line": 109,
+          "text": "confirmed: false,"
+        },
+        {
+          "line": 110,
+          "text": "readback: emptyReadback(),"
+        },
+        {
+          "line": 113,
+          "text": "function percent(value: number): number {"
+        },
+        {
+          "line": 120,
+          "text": "export class WritingVaultWorkbench {"
+        },
+        {
+          "line": 121,
+          "text": "private state = emptyState();"
+        },
+        {
+          "line": 123,
+          "text": "private sourceBytes: VaultBytes | null = null;"
+        },
+        {
+          "line": 124,
+          "text": "private sourceReview: VaultReview | null = null;"
+        },
+        {
+          "line": 125,
+          "text": "private outputBytes: VaultBytes | null = null;"
+        },
+        {
+          "line": 126,
+          "text": "private reading: AbortController | null = null;"
+        },
+        {
+          "line": 127,
+          "text": "private operation: AbortController | null = null;"
+        },
+        {
+          "line": 128,
+          "text": "private readback: AbortController | null = null;"
+        },
+        {
+          "line": 129,
+          "text": "private serial = 0;"
+        },
+        {
+          "line": 130,
+          "text": "private previewing: AbortController | null = null;"
+        },
+        {
+          "line": 134,
+          "text": "read: options.read ?? readVaultLocalFile,"
+        },
+        {
+          "line": 135,
+          "text": "crypto: options.crypto ?? writingVaultCryptography,"
+        },
+        {
+          "line": 136,
+          "text": "compare: options.compare ?? compareVaultReadback,"
+        },
+        {
+          "line": 137,
+          "text": "search: options.search ?? searchVaultText,"
+        },
+        {
+          "line": 138,
+          "text": "inspect: options.inspect ?? inspectVaultPayload,"
+        },
+        {
+          "line": 141,
+          "text": "getSnapshot = (): WritingVaultState => this.state;"
+        },
+        {
+          "line": 146,
+          "text": "private publish(patch: Partial<WritingVaultState>): void {"
+        },
+        {
+          "line": 150,
+          "text": "private cancelReadbackWork(): void {"
+        },
+        {
+          "line": 154,
+          "text": "private discardOutput(): void {"
+        },
+        {
+          "line": 160,
+          "text": "private derivedReset(): Partial<WritingVaultState> {"
+        },
+        {
+          "line": 164,
+          "text": "confirmed: false,"
+        },
+        {
+          "line": 165,
+          "text": "verified: null,"
+        },
+        {
+          "line": 166,
+          "text": "readback: emptyReadback(),"
+        },
+        {
+          "line": 167,
+          "text": "stage: null,"
+        },
+        {
+          "line": 189,
+          "text": "loading: false,"
+        },
+        {
+          "line": 194,
+          "text": "credentialsChanged(): void {"
+        },
+        {
+          "line": 198,
+          "text": "lock(): void {"
+        },
+        {
+          "line": 206,
+          "text": "async load(file: File): Promise<void> {"
+        },
+        {
+          "line": 231,
+          "text": "let kind: Source[\"kind\"],"
+        },
+        {
+          "line": 232,
+          "text": "review: VaultReview | null = null;"
+        },
+        {
+          "line": 254,
+          "text": "phase: \"ready\","
+        },
+        {
+          "line": 255,
+          "text": "loading: false,"
+        },
+        {
+          "line": 256,
+          "text": "percent: 100,"
+        },
+        {
+          "line": 264,
+          "text": "loading: false,"
+        },
+        {
+          "line": 267,
+          "text": "review: null,"
+        },
+        {
+          "line": 274,
+          "text": "async seal("
+        },
+        {
+          "line": 275,
+          "text": "password: string,"
+        },
+        {
+          "line": 276,
+          "text": "confirmation: string,"
+        },
+        {
+          "line": 277,
+          "text": "consented: boolean,"
+        },
+        {
+          "line": 289,
+          "text": "await this.transform(\"seal\", password);"
+        },
+        {
+          "line": 291,
+          "text": "async unlock(password: string): Promise<void> {"
+        },
+        {
+          "line": 292,
+          "text": "await this.transform(\"unlock\", password);"
+        },
+        {
+          "line": 294,
+          "text": "async verify(password: string): Promise<void> {"
+        },
+        {
+          "line": 295,
+          "text": "await this.transform(\"verify\", password);"
+        },
+        {
+          "line": 297,
+          "text": "async rotate("
+        },
+        {
+          "line": 298,
+          "text": "password: string,"
+        },
+        {
+          "line": 299,
+          "text": "replacement: string,"
+        },
+        {
+          "line": 300,
+          "text": "confirmation: string,"
+        },
+        {
+          "line": 301,
+          "text": "consented: boolean,"
+        },
+        {
+          "line": 314,
+          "text": "await this.transform(\"rotate\", password, replacement);"
+        },
+        {
+          "line": 316,
+          "text": "private async transform("
+        },
+        {
+          "line": 317,
+          "text": "action: \"seal\" | \"unlock\" | \"verify\" | \"rotate\","
+        },
+        {
+          "line": 318,
+          "text": "password: string,"
+        },
+        {
+          "line": 319,
+          "text": "replacement = \"\","
+        },
+        {
+          "line": 354,
+          "text": "password,"
+        },
+        {
+          "line": 356,
+          "text": "stage,"
+        },
+        {
+          "line": 364,
+          "text": "verified,"
+        },
+        {
+          "line": 365,
+          "text": "stage: null,"
+        },
+        {
+          "line": 366,
+          "text": "review: null,"
+        },
+        {
+          "line": 376,
+          "text": "password,"
+        },
+        {
+          "line": 377,
+          "text": "replacement,"
+        },
+        {
+          "line": 379,
+          "text": "stage,"
+        },
+        {
+          "line": 391,
+          "text": "const name ="
+        },
+        {
+          "line": 392,
+          "text": "kind === \"sealed\""
+        },
+        {
+          "line": 393,
+          "text": "? \"no-wave-encrypted-writing-v1.nwvault\""
+        },
+        {
+          "line": 394,
+          "text": ": `no-wave-decrypted-${prepared.review.kind}.json`;"
+        },
+        {
+          "line": 395,
+          "text": "const result: VaultResult = {"
+        },
+        {
+          "line": 396,
+          "text": "serial: ++this.serial,"
+        },
+        {
+          "line": 398,
+          "text": "bytes: prepared.bytes.length,"
+        },
+        {
+          "line": 400,
+          "text": "name,"
+        },
+        {
+          "line": 401,
+          "text": "mime:"
+        },
+        {
+          "line": 402,
+          "text": "kind === \"sealed\""
+        },
+        {
+          "line": 403,
+          "text": "? \"application/octet-stream\""
+        },
+        {
+          "line": 404,
+          "text": ": \"application/json;charset=utf-8\","
+        },
+        {
+          "line": 420,
+          "text": "stage: null,"
+        },
+        {
+          "line": 427,
+          "text": "stage: null,"
+        },
+        {
+          "line": 430,
+          "text": "confirmed: false,"
+        },
+        {
+          "line": 454,
+          "text": "return vaultTextPage(this.previewBytes(expected), anchor, direction);"
+        },
+        {
+          "line": 484,
+          "text": "confirmResult(expected: VaultResult | null, confirmed: boolean): void {"
+        },
+        {
+          "line": 497,
+          "text": "permits(expected: VaultResult | null): boolean {"
+        },
+        {
+          "line": 507,
+          "text": "artifact(expected: VaultResult | null): LocalBinaryArtifact {"
+        },
+        {
+          "line": 512,
+          "text": "name: expected.name,"
+        },
+        {
+          "line": 513,
+          "text": "mime: expected.mime,"
+        },
+        {
+          "line": 516,
+          "text": "cancelReadback(): void {"
+        },
+        {
+          "line": 520,
+          "text": "async verifyDownloaded("
+        },
+        {
+          "line": 522,
+          "text": "expected: VaultResult | null,"
+        },
+        {
+          "line": 566,
+          "text": "this.outputBytes,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-vault-crypto.ts",
+      "reason": "逐行复核扣除声明/参数、静态默认值/配置/文案、被动 DTO/props/依赖和薄转发；既有三方预览授权检查的搬移/改名不重复计入。本轮新增严校验/所有权/取消/计算/清理/交互逻辑才可入账。",
+      "fragments": [
+        {
+          "line": 28,
+          "text": "export function validateVaultPassword(password: string): void {"
+        },
+        {
+          "line": 41,
+          "text": "export class WritingVaultCryptography {"
+        },
+        {
+          "line": 42,
+          "text": "private busy = false;"
+        },
+        {
+          "line": 45,
+          "text": "constructor(options: CryptoOptions = {}) {"
+        },
+        {
+          "line": 46,
+          "text": "this.provider = options.provider ?? (() => globalThis.crypto);"
+        },
+        {
+          "line": 48,
+          "text": "getSnapshot = (): boolean => this.busy;"
+        },
+        {
+          "line": 53,
+          "text": "private notify(): void {"
+        },
+        {
+          "line": 56,
+          "text": "private crypto(): Crypto {"
+        },
+        {
+          "line": 66,
+          "text": "private async exclusive<T extends VaultOpened>("
+        },
+        {
+          "line": 68,
+          "text": "operation: (crypto: Crypto) => Promise<T>,"
+        },
+        {
+          "line": 91,
+          "text": "private async key("
+        },
+        {
+          "line": 92,
+          "text": "crypto: Crypto,"
+        },
+        {
+          "line": 94,
+          "text": "salt: VaultBytes,"
+        },
+        {
+          "line": 102,
+          "text": "\"raw\","
+        },
+        {
+          "line": 104,
+          "text": "\"PBKDF2\","
+        },
+        {
+          "line": 105,
+          "text": "false,"
+        },
+        {
+          "line": 106,
+          "text": "[\"deriveKey\"],"
+        },
+        {
+          "line": 110,
+          "text": "{ name: \"PBKDF2\", hash: \"SHA-256\", iterations: VAULT_ITERATIONS, salt },"
+        },
+        {
+          "line": 111,
+          "text": "material,"
+        },
+        {
+          "line": 112,
+          "text": "{ name: \"AES-GCM\", length: 256 },"
+        },
+        {
+          "line": 113,
+          "text": "false,"
+        },
+        {
+          "line": 114,
+          "text": "[\"encrypt\", \"decrypt\"],"
+        },
+        {
+          "line": 122,
+          "text": "async inspect("
+        },
+        {
+          "line": 123,
+          "text": "input: VaultBytes,"
+        },
+        {
+          "line": 125,
+          "text": "progress: Stage = () => {},"
+        },
+        {
+          "line": 141,
+          "text": "input: VaultBytes,"
+        },
+        {
+          "line": 144,
+          "text": "progress: Stage = () => {},"
+        },
+        {
+          "line": 146,
+          "text": "return this.exclusive(signal, (crypto) =>"
+        },
+        {
+          "line": 147,
+          "text": "this.sealWithin(crypto, input, password, signal, progress),"
+        },
+        {
+          "line": 150,
+          "text": "async open("
+        },
+        {
+          "line": 151,
+          "text": "input: VaultBytes,"
+        },
+        {
+          "line": 154,
+          "text": "progress: Stage = () => {},"
+        },
+        {
+          "line": 156,
+          "text": "return this.exclusive(signal, (crypto) =>"
+        },
+        {
+          "line": 157,
+          "text": "this.openWithin(crypto, input, password, signal, progress),"
+        },
+        {
+          "line": 161,
+          "text": "input: VaultBytes,"
+        },
+        {
+          "line": 164,
+          "text": "progress: Stage = () => {},"
+        },
+        {
+          "line": 175,
+          "text": "input: VaultBytes,"
+        },
+        {
+          "line": 179,
+          "text": "progress: Stage = () => {},"
+        },
+        {
+          "line": 187,
+          "text": "crypto,"
+        },
+        {
+          "line": 196,
+          "text": "crypto,"
+        },
+        {
+          "line": 197,
+          "text": "opened.bytes,"
+        },
+        {
+          "line": 207,
+          "text": "private async sealWithin("
+        },
+        {
+          "line": 208,
+          "text": "crypto: Crypto,"
+        },
+        {
+          "line": 209,
+          "text": "input: VaultBytes,"
+        },
+        {
+          "line": 212,
+          "text": "progress: Stage,"
+        },
+        {
+          "line": 218,
+          "text": "let verification: VaultBytes | null = null,"
+        },
+        {
+          "line": 219,
+          "text": "encrypted: VaultBytes | null = null;"
+        },
+        {
+          "line": 236,
+          "text": "plaintext,"
+        },
+        {
+          "line": 248,
+          "text": "name: \"AES-GCM\","
+        },
+        {
+          "line": 249,
+          "text": "iv: parsed.nonce,"
+        },
+        {
+          "line": 250,
+          "text": "additionalData: parsed.aad,"
+        },
+        {
+          "line": 251,
+          "text": "tagLength: 128,"
+        },
+        {
+          "line": 254,
+          "text": "parsed.ciphertext,"
+        },
+        {
+          "line": 267,
+          "text": "private async openWithin("
+        },
+        {
+          "line": 268,
+          "text": "crypto: Crypto,"
+        },
+        {
+          "line": 269,
+          "text": "input: VaultBytes,"
+        },
+        {
+          "line": 272,
+          "text": "progress: Stage,"
+        },
+        {
+          "line": 276,
+          "text": "let plaintext: VaultBytes | null = null;"
+        },
+        {
+          "line": 290,
+          "text": "name: \"AES-GCM\","
+        },
+        {
+          "line": 291,
+          "text": "iv: parsed.nonce,"
+        },
+        {
+          "line": 292,
+          "text": "additionalData: parsed.aad,"
+        },
+        {
+          "line": 293,
+          "text": "tagLength: 128,"
+        },
+        {
+          "line": 296,
+          "text": "parsed.ciphertext,"
+        },
+        {
+          "line": 320,
+          "text": "export const writingVaultCryptography = new WritingVaultCryptography();"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-vault-format.ts",
+      "reason": "逐行复核扣除声明/参数、静态默认值/配置/文案、被动 DTO/props/依赖和薄转发；既有三方预览授权检查的搬移/改名不重复计入。本轮新增严校验/所有权/取消/计算/清理/交互逻辑才可入账。",
+      "fragments": [
+        {
+          "line": 8,
+          "text": "export const VAULT_HEADER_LIMIT = 1024;"
+        },
+        {
+          "line": 9,
+          "text": "export const VAULT_ITERATIONS = 600000;"
+        },
+        {
+          "line": 10,
+          "text": "export const VAULT_FILE_LIMIT ="
+        },
+        {
+          "line": 11,
+          "text": "COLLECTION_BYTE_LIMIT + 12 + VAULT_HEADER_LIMIT + 16;"
+        },
+        {
+          "line": 12,
+          "text": "const MAGIC = new TextEncoder().encode(\"NWVAULT\\n\");"
+        },
+        {
+          "line": 29,
+          "text": "const MESSAGES: Record<VaultFailureCode, string> = {"
+        },
+        {
+          "line": 30,
+          "text": "format:"
+        },
+        {
+          "line": 31,
+          "text": "\"不是支持的加密文稿 v1，或文件头、参数、完整长度无效。没有启动密码计算。\","
+        },
+        {
+          "line": 32,
+          "text": "size: \"本机文件为空或超限；明文最多 16 MiB，密文只允许固定的少量封装开销。\","
+        },
+        {
+          "line": 33,
+          "text": "password:"
+        },
+        {
+          "line": 34,
+          "text": "\"请输入 12–256 个 Unicode 字符的口令，不支持控制字符、损坏字符或全空白。不会修剪空格或正规化文字。\","
+        },
+        {
+          "line": 35,
+          "text": "payload:"
+        },
+        {
+          "line": 36,
+          "text": "\"文件未通过现有单篇备份、集合或三方取舍计划的严格校验；没有输出任何明文。\","
+        },
+        {
+          "line": 37,
+          "text": "authentication:"
+        },
+        {
+          "line": 38,
+          "text": "\"口令不匹配，或加密文件被修改、损坏。认证失败，没有输出任何明文。\","
+        },
+        {
+          "line": 39,
+          "text": "unavailable:"
+        },
+        {
+          "line": 40,
+          "text": "\"需要支持原生 Web Crypto 的安全浏览器页面；没有降级为明文或弱加密。\","
+        },
+        {
+          "line": 41,
+          "text": "busy: \"上一项本机密码计算尚未结束。原生计算不能强行中止，请稍后手动重试；不会排队重放。\","
+        },
+        {
+          "line": 42,
+          "text": "crypto: \"本机加密操作失败，没有生成可下载结果；原始文件未改变。\","
+        },
+        {
+          "line": 43,
+          "text": "\"self-check\": \"加密副本回解后的字节与原稿不一致，没有提供下载。请保留原稿。\","
+        },
+        {
+          "line": 44,
+          "text": "stale: \"来源、密码、确认或操作已变化，旧结果不能使用，请重新准备。\","
+        },
+        {
+          "line": 45,
+          "text": "consent:"
+        },
+        {
+          "line": 46,
+          "text": "\"请先确认口令丢失不可恢复、原稿不变和本机使用风险，再手动准备加密副本。\","
+        },
+        {
+          "line": 47,
+          "text": "worker:"
+        },
+        {
+          "line": 48,
+          "text": "\"专用工作线程不可用、超时或通信失败。没有回退到主线程、自动重启或重放；请保留原稿，重新加载页面后再手动尝试。\","
+        },
+        {
+          "line": 49,
+          "text": "confirmation:"
+        },
+        {
+          "line": 50,
+          "text": "\"两次输入的新口令必须完全一致，换口令时还须与原口令不同；空格和 Unicode 组合形式也必须匹配。\","
+        },
+        {
+          "line": 51,
+          "text": "read: \"本机文件读取失败或字节数已变化；没有接纳截断或部分内容。\","
+        },
+        {
+          "line": 58,
+          "text": "super(MESSAGES[code]);"
+        },
+        {
+          "line": 59,
+          "text": "this.name = \"VaultError\";"
+        },
+        {
+          "line": 98,
+          "text": "throw new VaultError(\"format\");"
+        },
+        {
+          "line": 103,
+          "text": "throw new VaultError(\"format\");"
+        },
+        {
+          "line": 109,
+          "text": "throw new VaultError(\"format\");"
+        },
+        {
+          "line": 122,
+          "text": "throw new VaultError(\"format\");"
+        },
+        {
+          "line": 129,
+          "text": "kdf: {"
+        },
+        {
+          "line": 147,
+          "text": "export function encodeVaultAad("
+        },
+        {
+          "line": 148,
+          "text": "plaintextBytes: number,"
+        },
+        {
+          "line": 149,
+          "text": "salt: Uint8Array,"
+        },
+        {
+          "line": 153,
+          "text": "if (salt.length !== 32 || nonce.length !== 12) throw new VaultError(\"format\");"
+        },
+        {
+          "line": 154,
+          "text": "const header: VaultHeader = {"
+        },
+        {
+          "line": 155,
+          "text": "format: \"no-wave-writing-vault\","
+        },
+        {
+          "line": 157,
+          "text": "cipher: \"AES-256-GCM\","
+        },
+        {
+          "line": 158,
+          "text": "kdf: {"
+        },
+        {
+          "line": 159,
+          "text": "name: \"PBKDF2\","
+        },
+        {
+          "line": 160,
+          "text": "hash: \"SHA-256\","
+        },
+        {
+          "line": 161,
+          "text": "iterations: VAULT_ITERATIONS,"
+        },
+        {
+          "line": 164,
+          "text": "nonce: vaultBase64(nonce),"
+        },
+        {
+          "line": 165,
+          "text": "plaintextBytes,"
+        },
+        {
+          "line": 175,
+          "text": "export function packVaultEnvelope("
+        },
+        {
+          "line": 176,
+          "text": "aad: Uint8Array,"
+        },
+        {
+          "line": 185,
+          "text": "throw new VaultError(\"format\");"
+        },
+        {
+          "line": 200,
+          "text": "throw new VaultError(\"format\");"
+        },
+        {
+          "line": 211,
+          "text": "throw new VaultError(\"format\");"
+        },
+        {
+          "line": 225,
+          "text": "throw new VaultError(\"format\");"
+        },
+        {
+          "line": 230,
+          "text": "\"cipher\","
+        },
+        {
+          "line": 231,
+          "text": "\"kdf\","
+        },
+        {
+          "line": 232,
+          "text": "\"nonce\","
+        },
+        {
+          "line": 233,
+          "text": "\"plaintextBytes\","
+        },
+        {
+          "line": 249,
+          "text": "throw new VaultError(\"format\");"
+        },
+        {
+          "line": 253,
+          "text": "header: {"
+        },
+        {
+          "line": 254,
+          "text": "format: \"no-wave-writing-vault\","
+        },
+        {
+          "line": 256,
+          "text": "cipher: \"AES-256-GCM\","
+        },
+        {
+          "line": 257,
+          "text": "kdf: {"
+        },
+        {
+          "line": 258,
+          "text": "name: \"PBKDF2\","
+        },
+        {
+          "line": 259,
+          "text": "hash: \"SHA-256\","
+        },
+        {
+          "line": 260,
+          "text": "iterations: VAULT_ITERATIONS,"
+        },
+        {
+          "line": 261,
+          "text": "salt: kdf.salt as string,"
+        },
+        {
+          "line": 263,
+          "text": "nonce: header.nonce as string,"
+        },
+        {
+          "line": 264,
+          "text": "plaintextBytes: header.plaintextBytes,"
+        },
+        {
+          "line": 266,
+          "text": "salt,"
+        },
+        {
+          "line": 267,
+          "text": "nonce,"
+        },
+        {
+          "line": 268,
+          "text": "aad,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-vault-payload.ts",
+      "reason": "逐行复核扣除声明/参数、静态默认值/配置/文案、被动 DTO/props/依赖和薄转发；既有三方预览授权检查的搬移/改名不重复计入。本轮新增严校验/所有权/取消/计算/清理/交互逻辑才可入账。",
+      "fragments": [
+        {
+          "line": 33,
+          "text": "export async function digestVaultBytes("
+        },
+        {
+          "line": 47,
+          "text": "export async function inspectVaultPayload("
+        },
+        {
+          "line": 53,
+          "text": "let documents: VaultDocument[] = [],"
+        },
+        {
+          "line": 54,
+          "text": "plan: WritingMergePlan | null = null;"
+        },
+        {
+          "line": 55,
+          "text": "let kind: VaultReview[\"kind\"];"
+        },
+        {
+          "line": 61,
+          "text": "documents = [{ id: \"d1\", group: \"w1\", backup }];"
+        },
+        {
+          "line": 66,
+          "text": "id: key,"
+        },
+        {
+          "line": 81,
+          "text": "return { kind, bytes: bytes.byteLength, digest, documents, plan };"
+        },
+        {
+          "line": 85,
+          "text": "export function vaultBytesEqual(left: Uint8Array, right: Uint8Array): boolean {"
+        },
+        {
+          "line": 102,
+          "text": "kind: review.kind,"
+        },
+        {
+          "line": 103,
+          "text": "documents: review.documents.length,"
+        },
+        {
+          "line": 104,
+          "text": "decisions: review.plan?.decisions.length ?? 0,"
+        },
+        {
+          "line": 105,
+          "text": "bytes: review.bytes,"
+        },
+        {
+          "line": 106,
+          "text": "digest: review.digest,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-vault-readback.ts",
+      "reason": "逐行复核扣除声明/参数、静态默认值/配置/文案、被动 DTO/props/依赖和薄转发；既有三方预览授权检查的搬移/改名不重复计入。本轮新增严校验/所有权/取消/计算/清理/交互逻辑才可入账。",
+      "fragments": [
+        {
+          "line": 21,
+          "text": "export async function compareVaultReadback("
+        },
+        {
+          "line": 22,
+          "text": "expected: VaultBytes,"
+        },
+        {
+          "line": 23,
+          "text": "actual: VaultBytes,"
+        },
+        {
+          "line": 37,
+          "text": "firstDifference: number | null = null;"
+        },
+        {
+          "line": 65,
+          "text": "reason,"
+        },
+        {
+          "line": 66,
+          "text": "expectedBytes: left.length,"
+        },
+        {
+          "line": 67,
+          "text": "actualBytes: right.length,"
+        },
+        {
+          "line": 69,
+          "text": "firstDifference,"
+        },
+        {
+          "line": 70,
+          "text": "expectedDigest,"
+        },
+        {
+          "line": 71,
+          "text": "actualDigest,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-vault-worker-client.ts",
+      "reason": "逐行复核扣除声明/参数、静态默认值/配置/文案、被动 DTO/props/依赖和薄转发；既有三方预览授权检查的搬移/改名不重复计入。本轮新增严校验/所有权/取消/计算/清理/交互逻辑才可入账。",
+      "fragments": [
+        {
+          "line": 57,
+          "text": "export class WritingVaultWorkerClient {"
+        },
+        {
+          "line": 58,
+          "text": "private status: Status = \"cold\";"
+        },
+        {
+          "line": 59,
+          "text": "private worker: VaultWorkerPort | null = null;"
+        },
+        {
+          "line": 60,
+          "text": "private pending: Pending | null = null;"
+        },
+        {
+          "line": 64,
+          "text": "private detach: (() => void) | null = null;"
+        },
+        {
+          "line": 68,
+          "text": "create:"
+        },
+        {
+          "line": 69,
+          "text": "options.create ??"
+        },
+        {
+          "line": 70,
+          "text": "(() =>"
+        },
+        {
+          "line": 71,
+          "text": "new Worker(new URL(\"./writing-vault-worker.ts\", import.meta.url), {"
+        },
+        {
+          "line": 72,
+          "text": "type: \"module\","
+        },
+        {
+          "line": 73,
+          "text": "name: \"no-wave-local-writing-vault\","
+        },
+        {
+          "line": 75,
+          "text": "later:"
+        },
+        {
+          "line": 76,
+          "text": "options.later ??"
+        },
+        {
+          "line": 77,
+          "text": "((work, milliseconds) => setTimeout(work, milliseconds)),"
+        },
+        {
+          "line": 78,
+          "text": "cancelTimer: options.cancelTimer ?? ((timer) => clearTimeout(timer)),"
+        },
+        {
+          "line": 81,
+          "text": "getSnapshot = (): Status => this.status;"
+        },
+        {
+          "line": 86,
+          "text": "private publish(status: Status): void {"
+        },
+        {
+          "line": 90,
+          "text": "private clearTimer(): void {"
+        },
+        {
+          "line": 94,
+          "text": "warm(): void {"
+        },
+        {
+          "line": 101,
+          "text": "const message = (event: Event) => {"
+        },
+        {
+          "line": 109,
+          "text": "const failed = () => {"
+        },
+        {
+          "line": 115,
+          "text": "this.detach = () => {"
+        },
+        {
+          "line": 122,
+          "text": "}, 10000);"
+        },
+        {
+          "line": 127,
+          "text": "private fault(): void {"
+        },
+        {
+          "line": 165,
+          "text": "private message(value: unknown): void {"
+        },
+        {
+          "line": 256,
+          "text": "bytes: result.bytes as VaultBytes,"
+        },
+        {
+          "line": 257,
+          "text": "review: result.review,"
+        },
+        {
+          "line": 258,
+          "text": "...(result.selfChecked === true ? { selfChecked: true as const } : {}),"
+        },
+        {
+          "line": 265,
+          "text": "private async execute("
+        },
+        {
+          "line": 266,
+          "text": "action: VaultWorkerAction,"
+        },
+        {
+          "line": 271,
+          "text": "progress: Progress,"
+        },
+        {
+          "line": 294,
+          "text": "const pending: Pending = {"
+        },
+        {
+          "line": 298,
+          "text": "started: false,"
+        },
+        {
+          "line": 299,
+          "text": "resolve,"
+        },
+        {
+          "line": 300,
+          "text": "reject,"
+        },
+        {
+          "line": 302,
+          "text": "abort: () => {"
+        },
+        {
+          "line": 314,
+          "text": "protocol: VAULT_WORKER_PROTOCOL,"
+        },
+        {
+          "line": 315,
+          "text": "kind: \"cancel\","
+        },
+        {
+          "line": 316,
+          "text": "id: pending.id,"
+        },
+        {
+          "line": 328,
+          "text": "const message = {"
+        },
+        {
+          "line": 329,
+          "text": "protocol: VAULT_WORKER_PROTOCOL,"
+        },
+        {
+          "line": 330,
+          "text": "kind: \"run\","
+        },
+        {
+          "line": 331,
+          "text": "id: pending.id,"
+        },
+        {
+          "line": 333,
+          "text": "input: owned,"
+        },
+        {
+          "line": 341,
+          "text": "}, 120000);"
+        },
+        {
+          "line": 367,
+          "text": "progress: Progress = () => {},"
+        },
+        {
+          "line": 369,
+          "text": "const result = await this.execute("
+        },
+        {
+          "line": 370,
+          "text": "\"verify\","
+        },
+        {
+          "line": 382,
+          "text": "return result.verification;"
+        },
+        {
+          "line": 387,
+          "text": "progress: Progress = () => {},"
+        },
+        {
+          "line": 389,
+          "text": "return this.payload("
+        },
+        {
+          "line": 390,
+          "text": "await this.execute(\"inspect\", input, \"\", \"\", signal, progress),"
+        },
+        {
+          "line": 397,
+          "text": "progress: Progress = () => {},"
+        },
+        {
+          "line": 399,
+          "text": "const result = await this.execute("
+        },
+        {
+          "line": 400,
+          "text": "\"seal\","
+        },
+        {
+          "line": 407,
+          "text": "return { ...this.payload(result), selfChecked: true };"
+        },
+        {
+          "line": 413,
+          "text": "progress: Progress = () => {},"
+        },
+        {
+          "line": 415,
+          "text": "return this.payload("
+        },
+        {
+          "line": 416,
+          "text": "await this.execute(\"open\", input, password, \"\", signal, progress),"
+        },
+        {
+          "line": 424,
+          "text": "progress: Progress = () => {},"
+        },
+        {
+          "line": 426,
+          "text": "const result = await this.execute("
+        },
+        {
+          "line": 427,
+          "text": "\"rotate\","
+        },
+        {
+          "line": 434,
+          "text": "return { ...this.payload(result), selfChecked: true };"
+        },
+        {
+          "line": 437,
+          "text": "export const writingVaultWorker = new WritingVaultWorkerClient();"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-vault-worker-protocol.ts",
+      "reason": "逐行复核扣除声明/参数、静态默认值/配置/文案、被动 DTO/props/依赖和薄转发；既有三方预览授权检查的搬移/改名不重复计入。本轮新增严校验/所有权/取消/计算/清理/交互逻辑才可入账。",
+      "fragments": [
+        {
+          "line": 21,
+          "text": "export const VAULT_WORKER_PROTOCOL = \"no-wave-writing-vault-worker-v1\";"
+        },
+        {
+          "line": 22,
+          "text": "export const VAULT_WORKER_STAGES = ["
+        },
+        {
+          "line": 23,
+          "text": "\"validating\","
+        },
+        {
+          "line": 24,
+          "text": "\"deriving\","
+        },
+        {
+          "line": 25,
+          "text": "\"encrypting\","
+        },
+        {
+          "line": 26,
+          "text": "\"self-checking\","
+        },
+        {
+          "line": 27,
+          "text": "\"decrypting\","
+        },
+        {
+          "line": 50,
+          "text": "function exactMessage("
+        },
+        {
+          "line": 61,
+          "text": "export function vaultWorkerId(value: unknown): value is number {"
+        },
+        {
+          "line": 64,
+          "text": "export function wipeVaultMessage(value: unknown): void {"
+        },
+        {
+          "line": 72,
+          "text": "function request(value: unknown): Request {"
+        },
+        {
+          "line": 74,
+          "text": "\"protocol\","
+        },
+        {
+          "line": 77,
+          "text": "\"action\","
+        },
+        {
+          "line": 78,
+          "text": "\"input\","
+        },
+        {
+          "line": 79,
+          "text": "\"password\","
+        },
+        {
+          "line": 80,
+          "text": "\"replacement\","
+        },
+        {
+          "line": 112,
+          "text": "id: raw.id,"
+        },
+        {
+          "line": 114,
+          "text": "input: raw.input as VaultBytes,"
+        },
+        {
+          "line": 115,
+          "text": "password: raw.password,"
+        },
+        {
+          "line": 116,
+          "text": "replacement: raw.replacement,"
+        },
+        {
+          "line": 121,
+          "text": "export function vaultWorkerReview(value: unknown): value is VaultReview {"
+        },
+        {
+          "line": 124,
+          "text": "\"bytes\","
+        },
+        {
+          "line": 126,
+          "text": "\"documents\","
+        },
+        {
+          "line": 127,
+          "text": "\"plan\","
+        },
+        {
+          "line": 172,
+          "text": "\"documents\","
+        },
+        {
+          "line": 174,
+          "text": "\"bytes\","
+        },
+        {
+          "line": 202,
+          "text": "export function vaultWorkerFailure(value: unknown): VaultError {"
+        },
+        {
+          "line": 203,
+          "text": "const known: VaultFailureCode[] = ["
+        },
+        {
+          "line": 205,
+          "text": "\"size\","
+        },
+        {
+          "line": 206,
+          "text": "\"password\","
+        },
+        {
+          "line": 207,
+          "text": "\"payload\","
+        },
+        {
+          "line": 208,
+          "text": "\"authentication\","
+        },
+        {
+          "line": 209,
+          "text": "\"unavailable\","
+        },
+        {
+          "line": 210,
+          "text": "\"busy\","
+        },
+        {
+          "line": 211,
+          "text": "\"crypto\","
+        },
+        {
+          "line": 212,
+          "text": "\"self-check\","
+        },
+        {
+          "line": 213,
+          "text": "\"stale\","
+        },
+        {
+          "line": 214,
+          "text": "\"read\","
+        },
+        {
+          "line": 215,
+          "text": "\"consent\","
+        },
+        {
+          "line": 216,
+          "text": "\"confirmation\","
+        },
+        {
+          "line": 261,
+          "text": "export function installVaultWorker("
+        },
+        {
+          "line": 262,
+          "text": "scope: VaultWorkerScope,"
+        },
+        {
+          "line": 263,
+          "text": "engine: WorkerEngine,"
+        },
+        {
+          "line": 266,
+          "text": "const send = ("
+        },
+        {
+          "line": 267,
+          "text": "kind: string,"
+        },
+        {
+          "line": 268,
+          "text": "id: number,"
+        },
+        {
+          "line": 269,
+          "text": "fields: Record<string, unknown> = {},"
+        },
+        {
+          "line": 270,
+          "text": ") =>"
+        },
+        {
+          "line": 271,
+          "text": "scope.postMessage({ protocol: VAULT_WORKER_PROTOCOL, kind, id, ...fields });"
+        },
+        {
+          "line": 272,
+          "text": "async function run(raw: unknown, job: Request): Promise<void> {"
+        },
+        {
+          "line": 275,
+          "text": "const stage = (value: string) => {"
+        },
+        {
+          "line": 278,
+          "text": "let result: (VaultOpened & { selfChecked?: true }) | null = null;"
+        },
+        {
+          "line": 279,
+          "text": "let failure: VaultError | null = null;"
+        },
+        {
+          "line": 284,
+          "text": "job.input,"
+        },
+        {
+          "line": 285,
+          "text": "job.password,"
+        },
+        {
+          "line": 301,
+          "text": "job.input,"
+        },
+        {
+          "line": 302,
+          "text": "job.password,"
+        },
+        {
+          "line": 303,
+          "text": "job.replacement,"
+        },
+        {
+          "line": 343,
+          "text": "kind: \"complete\","
+        },
+        {
+          "line": 344,
+          "text": "id: job.id,"
+        },
+        {
+          "line": 372,
+          "text": "let job: Request;"
+        },
+        {
+          "line": 389,
+          "text": "scope.postMessage({ protocol: VAULT_WORKER_PROTOCOL, kind: \"ready\" });"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-vault-text-preview.tsx",
+      "reason": "逐行复核扣除声明/参数、静态默认值/配置/文案、被动 DTO/props/依赖和薄转发；既有三方预览授权检查的搬移/改名不重复计入。本轮新增严校验/所有权/取消/计算/清理/交互逻辑才可入账。",
+      "fragments": [
+        {
+          "line": 25,
+          "text": "const [anchor, setAnchor] = useState(\"0\");"
+        },
+        {
+          "line": 27,
+          "text": "const [result, setResult] = useState<VaultTextSearch | null>(null);"
+        },
+        {
+          "line": 28,
+          "text": "const [searching, setSearching] = useState(false);"
+        },
+        {
+          "line": 30,
+          "text": "const serial = useRef(0),"
+        },
+        {
+          "line": 31,
+          "text": "region = useRef<HTMLDivElement | null>(null);"
+        },
+        {
+          "line": 35,
+          "text": "controller.cancelPreviewSearch();"
+        },
+        {
+          "line": 37,
+          "text": "[controller, review],"
+        },
+        {
+          "line": 48,
+          "text": "setError(\"原始文字来源已变化，未显示旧页。请重新读取或解密。\");"
+        },
+        {
+          "line": 53,
+          "text": "controller.cancelPreviewSearch();"
+        },
+        {
+          "line": 69,
+          "text": "setError("
+        },
+        {
+          "line": 70,
+          "text": "\"文字检索无效、已取消或来源变化。最多输入 120 个 Unicode 字符，不接受空条件；没有展开旧结果。\","
+        },
+        {
+          "line": 87,
+          "text": "else setError(\"请输入文件范围内的整数字节偏移。\");"
+        },
+        {
+          "line": 94,
+          "text": "value={anchor}"
+        },
+        {
+          "line": 95,
+          "text": "maxLength={9}"
+        },
+        {
+          "line": 96,
+          "text": "onChange={(event) => setAnchor(event.target.value)}"
+        },
+        {
+          "line": 106,
+          "text": "正在显示 [{page.start}, {page.end}) / {review.bytes} 个原始字节。"
+        },
+        {
+          "line": 113,
+          "text": "onClick={() => move(0)}"
+        },
+        {
+          "line": 121,
+          "text": "onClick={() => move(page.start, \"backward\")}"
+        },
+        {
+          "line": 129,
+          "text": "onClick={() => move(page.end)}"
+        },
+        {
+          "line": 137,
+          "text": "onClick={() => move(review.bytes, \"backward\")}"
+        },
+        {
+          "line": 143,
+          "text": "<MergeLiteral text={page.text} />"
+        },
+        {
+          "line": 152,
+          "text": "void search(0);"
+        },
+        {
+          "line": 160,
+          "text": "maxLength={240}"
+        },
+        {
+          "line": 165,
+          "text": "setQuery(event.target.value);"
+        },
+        {
+          "line": 183,
+          "text": "<button className=\"nw-btn\" type=\"button\" onClick={cancel}>"
+        },
+        {
+          "line": 208,
+          "text": "本次扫描 {result.scannedBytes} 字节，显示 {result.hits.length}{\" \"}"
+        },
+        {
+          "line": 210,
+          "text": "{result.complete"
+        },
+        {
+          "line": 211,
+          "text": "? \"已到文件末尾。\""
+        },
+        {
+          "line": 212,
+          "text": ": \"达到 100 处上限，尚未穷尽后续字节。\"}"
+        },
+        {
+          "line": 216,
+          "text": "<li key={hit.start}>"
+        },
+        {
+          "line": 220,
+          "text": "onClick={() => move(hit.start)}"
+        },
+        {
+          "line": 222,
+          "text": "定位字节 [{hit.start}, {hit.end})"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-merge-plan.ts",
+      "reason": "逐行复核扣除声明/参数、静态默认值/配置/文案、被动 DTO/props/依赖和薄转发；既有三方预览授权检查的搬移/改名不重复计入。本轮新增严校验/所有权/取消/计算/清理/交互逻辑才可入账。",
+      "fragments": [
+        {
+          "line": 152,
+          "text": "{ algorithm: WRITING_MERGE_ALGORITHM, sources },"
+        },
+        {
+          "line": 162,
+          "text": "const fields = ["
+        },
+        {
+          "line": 163,
+          "text": "\"field:title\","
+        },
+        {
+          "line": 164,
+          "text": "\"field:summary\","
+        },
+        {
+          "line": 165,
+          "text": "\"field:locale\","
+        },
+        {
+          "line": 166,
+          "text": "\"field:workType\","
+        },
+        {
+          "line": 167,
+          "text": "\"root\","
+        },
+        {
+          "line": 195,
+          "text": "unit: item.unit,"
+        },
+        {
+          "line": 196,
+          "text": "choice: item.choice as WritingMergeDecision[\"choice\"],"
+        },
+        {
+          "line": 211,
+          "text": "return { ...payload, digest: raw.digest };"
+        },
+        {
+          "line": 220,
+          "text": "const plan = await parseWritingMergePlan(text, signal);"
+        },
+        {
+          "line": 223,
+          "text": "plan.analysisKey !== analysis.key ||"
+        },
+        {
+          "line": 224,
+          "text": "MERGE_ROLES.some((role) => plan.sources[role] !== analysis.sources[role])"
+        },
+        {
+          "line": 228,
+          "text": "const decisions = validateWritingMergeDecisions(analysis, plan.decisions);"
+        },
+        {
+          "line": 231,
+          "text": "collectionCanonicalJson(plan.decisions)"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-vault-preview.ts",
+      "reason": "逐行复核扣除声明/参数、静态默认值/配置/文案、被动 DTO/props/依赖和薄转发；既有三方预览授权检查的搬移/改名不重复计入。本轮新增严校验/所有权/取消/计算/清理/交互逻辑才可入账。",
+      "fragments": [
+        {
+          "line": 15,
+          "text": "const PAGE_BYTES = 8192;"
+        },
+        {
+          "line": 104,
+          "text": "hits,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-vault-password.tsx",
+      "reason": "独立 Node TS 擦除 / esbuild TSX source-map / Espree token 核验发现的历史 runtime 或新增重复片段，进一步扣除而非替换/补计信用。",
+      "fragments": [
+        {
+          "line": 67,
+          "text": "onSubmit={(event) => {"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-vault-review.tsx",
+      "reason": "独立 Node TS 擦除 / esbuild TSX source-map / Espree token 核验发现的历史 runtime 或新增重复片段，进一步扣除而非替换/补计信用。",
+      "fragments": [
+        {
+          "line": 54,
+          "text": "setSelected("
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-vault-text-preview.tsx",
+      "reason": "独立 Node TS 擦除 / esbuild TSX source-map / Espree token 核验发现的历史 runtime 或新增重复片段，进一步扣除而非替换/补计信用。",
+      "fragments": [
+        {
+          "line": 32,
+          "text": "useEffect("
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-vault-workbench.tsx",
+      "reason": "独立 Node TS 擦除 / esbuild TSX source-map / Espree token 核验发现的历史 runtime 或新增重复片段，进一步扣除而非替换/补计信用。",
+      "fragments": [
+        {
+          "line": 181,
+          "text": "clear();"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-vault-controller.ts",
+      "reason": "独立 Node TS 擦除 / esbuild TSX source-map / Espree token 核验发现的历史 runtime 或新增重复片段，进一步扣除而非替换/补计信用。",
+      "fragments": [
+        {
+          "line": 443,
+          "text": "const bytes ="
+        },
+        {
+          "line": 467,
+          "text": "abort = new AbortController();"
+        },
+        {
+          "line": 544,
+          "text": "let bytes: VaultBytes | null = null;"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-vault-local-file.ts",
+      "reason": "独立 Node TS 擦除 / esbuild TSX source-map / Espree token 核验发现的历史 runtime 或新增重复片段，进一步扣除而非替换/补计信用。",
+      "fragments": [
+        {
+          "line": 31,
+          "text": "let prefix: VaultBytes | null = null,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-vault-payload.ts",
+      "reason": "独立 Node TS 擦除 / esbuild TSX source-map / Espree token 核验发现的历史 runtime 或新增重复片段，进一步扣除而非替换/补计信用。",
+      "fragments": [
+        {
+          "line": 43,
+          "text": ").join(\"\");"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-vault-preview.ts",
+      "reason": "独立 Node TS 擦除 / esbuild TSX source-map / Espree token 核验发现的历史 runtime 或新增重复片段，进一步扣除而非替换/补计信用。",
+      "fragments": [
+        {
+          "line": 72,
+          "text": "!query ||"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-vault-readback.ts",
+      "reason": "独立 Node TS 擦除 / esbuild TSX source-map / Espree token 核验发现的历史 runtime 或新增重复片段，进一步扣除而非替换/补计信用。",
+      "fragments": [
+        {
+          "line": 55,
+          "text": ": missing"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-vault-worker-client.ts",
+      "reason": "独立 Node TS 擦除 / esbuild TSX source-map / Espree token 核验发现的历史 runtime 或新增重复片段，进一步扣除而非替换/补计信用。",
+      "fragments": [
+        {
+          "line": 293,
+          "text": "return new Promise<Reply>((resolve, reject) => {"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-vault-worker-protocol.ts",
+      "reason": "独立 Node TS 擦除 / esbuild TSX source-map / Espree token 核验发现的历史 runtime 或新增重复片段，进一步扣除而非替换/补计信用。",
+      "fragments": [
+        {
+          "line": 221,
+          "text": "? (value as VaultFailureCode)"
+        },
+        {
+          "line": 222,
+          "text": ": \"worker\","
+        },
+        {
+          "line": 241,
+          "text": "if (raw.kind === \"failed\")"
+        },
+        {
+          "line": 265,
+          "text": "let active: { id: number; abort: AbortController } | null = null;"
+        }
+      ]
+    }
+  ]
+}

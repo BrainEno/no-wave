@@ -59,7 +59,7 @@ export function documentScriptHashes(html: string, marker: string): string[] {
   return [...hashes].sort();
 }
 
-export function documentContentSecurityPolicy(hashes: readonly string[]): string {
+export function documentContentSecurityPolicy(hashes: readonly string[], localVaultWorker = false): string {
   if (hashes.length > MAX_DOCUMENT_SCRIPT_HASHES || hashes.some(hash => !/^'sha256-[A-Za-z0-9+/]{43}='$/.test(hash))) {
     throw new TypeError("Invalid document script hashes.");
   }
@@ -74,7 +74,7 @@ export function documentContentSecurityPolicy(hashes: readonly string[]): string
     "font-src 'self'",
     "connect-src 'self'",
     "media-src 'self' blob:",
-    "worker-src 'none'",
+    localVaultWorker ? "worker-src 'self'" : "worker-src 'none'",
     "object-src 'none'",
     "base-uri 'self'",
     "frame-src 'none'",
@@ -90,8 +90,8 @@ export function documentContentSecurityPolicy(hashes: readonly string[]): string
  * Aborts and bounds fail before any HTML is sent. Non-HTML stays streaming.
  */
 export async function protectHtmlResponse(body: Readable, {
-  marker, signal, headers: initialHeaders, status, secure,
-}: { marker: string; signal: AbortSignal; headers: Headers; status: number; secure: boolean }): Promise<Response> {
+  marker, signal, headers: initialHeaders, status, secure, documentPath,
+}: { marker: string; signal: AbortSignal; headers: Headers; status: number; secure: boolean; documentPath?: string }): Promise<Response> {
   const chunks: Buffer[] = [];
   let size = 0;
   addAbortSignal(signal, body);
@@ -107,7 +107,9 @@ export async function protectHtmlResponse(body: Readable, {
     let html: string;
     try { html = new TextDecoder("utf-8", { fatal: true }).decode(bytes); }
     catch { throw new DocumentSecurityError("INVALID_UTF8"); }
-    const policy = documentContentSecurityPolicy(documentScriptHashes(html, marker));
+    const privateVault = documentPath === "/write/vault" && status === 200 &&
+      (initialHeaders.get("cache-control") ?? "").split(",").some(value => value.trim().toLowerCase() === "no-store");
+    const policy = documentContentSecurityPolicy(documentScriptHashes(html, marker), privateVault);
     const headers = new Headers(initialHeaders);
     for (const [name, value] of Object.entries(browserSecurityHeaders(secure, policy))) headers.set(name, value);
     if (!secure) headers.delete("strict-transport-security");

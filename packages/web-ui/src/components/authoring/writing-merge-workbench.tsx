@@ -118,6 +118,9 @@ export function LocalWritingMerge() {
           <Link className="nw-btn" href="/write/collections">
             本机集合工具
           </Link>
+          <Link className="nw-btn" href="/write/vault">
+            本机加密备份
+          </Link>
           <Link className="nw-btn" href="/write">
             返回写作台
           </Link>
