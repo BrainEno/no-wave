@@ -503,9 +503,17 @@ test("mobile plain-text/JSON paging escapes hostile-looking content, exposes lon
   await expect(
     page.getByRole("region", { name: "段落分析覆盖与限制", exact: true }),
   ).toContainText("超长文字组仅参加同文字分组");
-  await page
-    .getByRole("button", { name: "只读核对 e:f1", exact: true })
-    .click();
+  const openPair = page.getByRole("button", {
+    name: "只读核对 e:f1",
+    exact: true,
+  });
+  await openPair.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".nw-overlap-detail")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(
+    page.getByRole("button", { name: "关闭原文核对并返回条目", exact: true }),
+  ).toBeFocused();
   const left = page.getByRole("region", { name: "左侧原始文字", exact: true });
   expect((await left.locator("pre").textContent())!.length).toBeLessThanOrEqual(
     2048,
@@ -514,14 +522,17 @@ test("mobile plain-text/JSON paging escapes hostile-looking content, exposes lon
   await page
     .getByLabel("定位左侧原始文字字符偏移", { exact: true })
     .fill(String(text.length - 30));
-  await page
-    .getByRole("button", { name: "定位左侧原始文字", exact: true })
-    .click();
+  await page.keyboard.press("Enter");
   await expect(left.locator("pre")).toContainText("PRIVATE_END");
   await expect(left).toBeFocused();
-  await page
-    .getByText("只读查看这两处的富文本节点 JSON", { exact: true })
-    .click();
+  const nodeSummary = page.getByText("只读查看这两处的富文本节点 JSON", {
+    exact: true,
+  });
+  await nodeSummary.focus();
+  await page.keyboard.press("Space");
+  await expect(
+    page.getByRole("region", { name: "左侧节点 JSON", exact: true }),
+  ).toBeVisible();
   expect(
     await page
       .getByRole("region", { name: "重复候选原文核对", exact: true })

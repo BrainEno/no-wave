@@ -44,6 +44,9 @@ index/search/controller/browser、`writing-document` 的提取/路径、`writing
 8. 浏览器前几轮真实失败还暴露了精确标签、整页返回边界和相邻重复 React key；
    不使用 `.first()`、缩小断言或跳过失败场景。为控件提供明确标签，为解释子树使用唯一 key，
    并复用整页导航策略；导航模型先 RED，再 GREEN，完整 8 条兼容旅程最后全部通过。
+9. 提交后自查发现原先只有焦点断言，没有实际键盘按键；因此补入 Enter 打开核对、Tab 到关闭按钮、
+   Enter 提交偏移定位和 Space 展开节点 JSON，再完整运行 **8/8 通过（47.1 秒，无重试）**。
+   这次仅补强测试/记录，不修改生产代码或增加功能行信用；不把局部按键验收夸大为全站键盘资格。
 
 ## 实际执行与结果
 
@@ -73,7 +76,7 @@ index/search/controller/browser、`writing-document` 的提取/路径、`writing
 主要证据名：`analysis-red.log`、`controller-red.log`、`bounds-red.log`、`route-red.log`、
 `route-green.log`、`evidence-red.log`、`evidence-controller-red.log`、`map-red.log`、
 `navigation-red.log`、`models-oracles-final.log`、`typecheck-map-final.log`、`lint-map-final.log`、
-`build-map-final.log`、`browser-map-final.log`、`root-serial-final.log`、`web-serial-final.log`、
+`build-map-final.log`、`browser-map-final.log`、`browser-keyboard-head.log`、`root-serial-final.log`、`web-serial-final.log`、
 `routes-serial-final.log`、`overlap-format-verified.log`、`font-check-final.log`、`dependency-audit-final.log`。
 
 合成 pagehide/persisted-pageshow 与实际 `goBack()` 是不同证据；**未证明某次实际返回确实被 BFCache 收纳**。
