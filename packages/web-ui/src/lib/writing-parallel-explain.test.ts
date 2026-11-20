@@ -47,6 +47,10 @@ test("解释对齐条目：输出类型契合度、数字与外链锚点加分�
     analysis,
     paragraphAlign.id,
   );
-  assert.ok(paragraphExplanation.anchors.includes("https://example.com/spec"));
+  assert.ok(
+    paragraphExplanation.anchors.some(
+      (anchor) => anchor === "https://example.com/spec",
+    ),
+  );
   assert.ok(paragraphExplanation.anchors.includes("2026"));
 });
