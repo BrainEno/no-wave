@@ -914,3 +914,21 @@ mark { background: var(--or); color: #0f0d0c; }
 .nw-vault-document-list { display: flex; gap: 8px; flex-wrap: wrap; padding: 0; list-style: none; }
 .nw-vault .nw-writing-file input { max-width: 100%; }
 .nw-vault code { overflow-wrap: anywhere; }
+
+/* Read-only local overlap review keeps every text/JSON page inert and bounded. */
+.nw-overlap-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin-block: 20px; }
+.nw-overlap-coverage, .nw-overlap-review, .nw-overlap-report { min-width: 0; margin-block: 28px; padding-top: 24px; border-top: 1px solid var(--ink); }
+.nw-overlap-detail, .nw-overlap-pair { min-width: 0; scroll-margin-top: 100px; }
+.nw-overlap-literal { min-width: 0; padding: 14px; margin-block: 16px; border: 1px solid var(--t2); }
+.nw-overlap-literal pre { max-width: 100%; font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; unicode-bidi: plaintext; }
+.nw-overlap-picker { min-width: 0; }
+.nw-overlap-picker > label, .nw-overlap .nw-authoring-actions > label { display: grid; gap: 8px; min-width: 0; max-width: 100%; }
+.nw-overlap input:not([type="file"], [type="checkbox"]) { box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; padding: 9px 12px; color: var(--ink); background: var(--paper); border: 1px solid var(--ink); }
+.nw-overlap input[type="file"] { box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; }
+.nw-overlap .nw-writing-check { min-height: 44px; white-space: normal; }
+.nw-overlap-literal form { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin-block: 16px; }
+.nw-overlap-literal form label { display: grid; gap: 8px; min-width: 0; max-width: 100%; }
+.nw-overlap-detail:focus, .nw-overlap-literal:focus, .nw-overlap input:focus-visible, .nw-overlap select:focus-visible { outline: 2px solid var(--or); outline-offset: 4px; }
+@media (max-width: 900px) {
+  .nw-overlap-columns { grid-template-columns: minmax(0, 1fr); }
+}

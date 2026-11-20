@@ -58,6 +58,8 @@ const CLIENT_COMPONENTS: readonly ClientComponent[] = [
   { component: "LocalWritingMerge", sentinel: "nw-merge-slots", page: "write/merge" },
   { component: "WritingMergePlanPanel", sentinel: "no-wave-writing-merge-plan", page: "write/merge" },
   { component: "LocalWritingVault", sentinel: "nw-vault-password", page: "write/vault" },
+  { component: "LocalWritingOverlap", sentinel: "no-wave-writing-overlap-v1", page: "write/overlap" },
+  { component: "WritingOverlapReview", sentinel: "nw-overlap-detail", page: "write/overlap" },
   // The inbox must ship its own rows, not merely the shared transport that is
   // also reachable from the bell. A network-path sentinel cannot prove that
   // the desk's notification component survived tree-shaking.

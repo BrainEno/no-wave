@@ -68,6 +68,26 @@ The previous project provides the reference for user-visible capabilities and kn
   详细边界与验收见 [ADR 0046](../architecture/decisions/0046-local-three-way-writing-merge.md)、
   [操作说明](../operations/writing-merge.md)与[本轮审阅记录](../audit/writing-merge-review.md)。
 
+## Read-only local paragraph overlap review
+
+- `/write/overlap` 仅处理用户明确选择的一份既有单篇备份/集合；默认字面与跨篇，
+  显式可选 NFKC/小写/空白折叠及同篇范围；完整文字、富文本节点种类与近似分数分开显示。
+- Given 已校验来源，When 分组/近似分析，Then 保留每处原文/路径，不物化平方级位置对，
+  不把相同文字或 100% 片段集合相似当作相同节点、语义、作者或自动去重/合并依据。
+- Given 来源、规范化、索引、访问、候选、评分或列表预算，When 达限，Then 来源超限整轮拒绝，
+  近似缺口明确报告，未完成比较不输出假分数；零结果不作全文无重复证明。
+- Given 换文件/条件、无效数字中间输入、取消、重跑或离页，When 旧读取/摘要/进度/按需解释完成，
+  Then 不复活候选、正文 DOM、片段、临时标记、报告或下载确认；筛选/分页不丢隐藏标记。
+- Given 文稿对概览，When 聚合或限定视图，Then 组合计数与原分析一致，不物化所有位置对，
+  列表及左右选择器均限于当前文稿对，近似组的两个有效方向仍可选；全局标记和报告不变。
+- Given 片段集合 100% 但频率/顺序不同，When 显式解释所选两处，Then 每个片段全部位置、
+  次数差异、共享覆盖和唯一位置链仅作诊断，规范化坐标不冒充原文坐标；片段和筛选词不进入报告。
+- 报告只有显式准备/核对/手动下载，包含全局已列 finding、未核对数、覆盖限制与本机坐标/摘要，
+  不含正文/标题/摘要文字/原文件名/URL/节点，且无导入或应用入口。
+- 不上传、持久化、请求来源媒体、修改原稿/编辑区/恢复缓存/服务器、自动发布或重放。
+  详细边界见 [ADR 0048](../architecture/decisions/0048-read-only-local-writing-overlap.md)、
+  [使用说明](../operations/writing-overlap.md)与[本轮证据](../audit/writing-overlap-review.md)。
+
 ## Cross-cutting
 
 - Private data is never exposed through public endpoints or shared caches.

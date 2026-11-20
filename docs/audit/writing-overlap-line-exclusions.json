@@ -1,0 +1,2899 @@
+{
+  "base": "82600adcaf66d7d4506aeba802bae3e0f5197424",
+  "rules": [
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-overlap-conditions.tsx",
+      "reason": "被动文案/插值展示/props/默认 hooks 与 ref 声明、依赖数组或简单事件转发，不计为有效新功能行。",
+      "fragments": [
+        {
+          "line": 17,
+          "text": "const [minimum, setMinimum] = useState(String(state.policy.minimum));"
+        },
+        {
+          "line": 18,
+          "text": "const [threshold, setThreshold] = useState(String(state.policy.threshold));"
+        },
+        {
+          "line": 27,
+          "text": "controller.setPolicy({ ...state.policy, ...patch });"
+        },
+        {
+          "line": 33,
+          "text": "...state.policy,"
+        },
+        {
+          "line": 45,
+          "text": "analyze();"
+        },
+        {
+          "line": 53,
+          "text": "value={state.policy.mode}"
+        },
+        {
+          "line": 55,
+          "text": "apply({ mode: event.target.value as OverlapPolicy[\"mode\"] })"
+        },
+        {
+          "line": 66,
+          "text": "value={state.policy.scope}"
+        },
+        {
+          "line": 68,
+          "text": "apply({ scope: event.target.value as OverlapPolicy[\"scope\"] })"
+        },
+        {
+          "line": 81,
+          "text": "min={8}"
+        },
+        {
+          "line": 82,
+          "text": "max={500}"
+        },
+        {
+          "line": 83,
+          "text": "step={1}"
+        },
+        {
+          "line": 84,
+          "text": "value={minimum}"
+        },
+        {
+          "line": 85,
+          "text": "onChange={(event) => editNumber(\"minimum\", event.target.value)}"
+        },
+        {
+          "line": 93,
+          "text": "min={50}"
+        },
+        {
+          "line": 94,
+          "text": "max={95}"
+        },
+        {
+          "line": 96,
+          "text": "value={threshold}"
+        },
+        {
+          "line": 97,
+          "text": "onChange={(event) => editNumber(\"threshold\", event.target.value)}"
+        },
+        {
+          "line": 113,
+          "text": "disabled={state.status === \"running\"}"
+        },
+        {
+          "line": 117,
+          "text": "{state.status === \"running\" ? ("
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-overlap-conditions.tsx",
+      "reason": "独立运行时复核拒绝：historical-runtime-fragment；保守扣除，不把取消类型语法或旧/重复片段计入。",
+      "fragments": [
+        {
+          "line": 21,
+          "text": "controller.cancel(); // Even an unfinished/invalid numeric draft revokes old outputs immediately."
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-overlap-evidence.tsx",
+      "reason": "被动文案/插值展示/props/默认 hooks 与 ref 声明、依赖数组或简单事件转发，不计为有效新功能行。",
+      "fragments": [
+        {
+          "line": 28,
+          "text": "const [index, setIndex] = useState(0),"
+        },
+        {
+          "line": 29,
+          "text": "[jump, setJump] = useState(\"\"),"
+        },
+        {
+          "line": 30,
+          "text": "[error, setError] = useState(\"\");"
+        },
+        {
+          "line": 32,
+          "text": "label = side === \"left\" ? \"左\" : \"右\";"
+        },
+        {
+          "line": 34,
+          "text": "const context = overlapEvidenceContext(evidence, side, term.id, index);"
+        },
+        {
+          "line": 36,
+          "text": "setIndex(next);"
+        },
+        {
+          "line": 37,
+          "text": "setJump(\"\");"
+        },
+        {
+          "line": 54,
+          "text": "<section className=\"nw-overlap-literal\" aria-label={`${label}侧片段上下文`}>"
+        },
+        {
+          "line": 56,
+          "text": "{label}侧第 {index + 1} / {count} 处"
+        },
+        {
+          "line": 59,
+          "text": "分析文字代码点 [{context.pointStart}, {context.pointEnd})；UTF-16 ["
+        },
+        {
+          "line": 60,
+          "text": "{context.utf16Start}, {context.utf16End})。仅展示前后各最多 40"
+        },
+        {
+          "line": 64,
+          "text": "{context.before}"
+        },
+        {
+          "line": 65,
+          "text": "<mark>{context.match}</mark>"
+        },
+        {
+          "line": 66,
+          "text": "{context.after}"
+        },
+        {
+          "line": 72,
+          "text": "disabled={!index}"
+        },
+        {
+          "line": 73,
+          "text": "onClick={() => move(index - 1)}"
+        },
+        {
+          "line": 75,
+          "text": "上一处{label}侧片段"
+        },
+        {
+          "line": 80,
+          "text": "disabled={index + 1 === count}"
+        },
+        {
+          "line": 81,
+          "text": "onClick={() => move(index + 1)}"
+        },
+        {
+          "line": 97,
+          "text": "onClick={() => move(count - 1)}"
+        },
+        {
+          "line": 102,
+          "text": "{count > 1 ? ("
+        },
+        {
+          "line": 106,
+          "text": "locate();"
+        },
+        {
+          "line": 112,
+          "text": "aria-label={`定位${label}侧片段出现序号`}"
+        },
+        {
+          "line": 115,
+          "text": "value={jump}"
+        },
+        {
+          "line": 117,
+          "text": "setJump(event.target.value);"
+        },
+        {
+          "line": 133,
+          "text": "const [filter, setFilter] = useState<OverlapEvidenceFilter>({"
+        },
+        {
+          "line": 134,
+          "text": "...DEFAULT_OVERLAP_EVIDENCE_FILTER,"
+        },
+        {
+          "line": 137,
+          "text": "[termId, setTermId] = useState<string | null>(null);"
+        },
+        {
+          "line": 138,
+          "text": "const [anchorFilter, setAnchorFilter] = useState<\"all\" | \"chain\" | \"outside\">("
+        },
+        {
+          "line": 139,
+          "text": "\"all\","
+        },
+        {
+          "line": 141,
+          "text": "[anchorPage, setAnchorPage] = useState(0);"
+        },
+        {
+          "line": 142,
+          "text": "const contextRegion = useRef<HTMLElement>(null),"
+        },
+        {
+          "line": 143,
+          "text": "trigger = useRef<HTMLButtonElement | null>(null);"
+        },
+        {
+          "line": 147,
+          "text": "}, [termId]);"
+        },
+        {
+          "line": 148,
+          "text": "let rows: OverlapEvidenceTerm[] = [],"
+        },
+        {
+          "line": 149,
+          "text": "error = \"\";"
+        },
+        {
+          "line": 151,
+          "text": "rows = overlapEvidenceTerms(evidence, filter);"
+        },
+        {
+          "line": 153,
+          "text": "error ="
+        },
+        {
+          "line": 154,
+          "text": "\"片段筛选无效；请输入最多 120 个代码点的完整字面文字，不执行正则表达式。\";"
+        },
+        {
+          "line": 156,
+          "text": "const page = overlapReviewPage(rows, requested),"
+        },
+        {
+          "line": 157,
+          "text": "anchors = overlapEvidenceAnchors(evidence, anchorFilter),"
+        },
+        {
+          "line": 158,
+          "text": "chainPage = overlapReviewPage(anchors, anchorPage);"
+        },
+        {
+          "line": 160,
+          "text": "setFilter(next);"
+        },
+        {
+          "line": 176,
+          "text": "完整片段集合：交集 {evidence.intersection} / 并集 {evidence.union}"
+        },
+        {
+          "line": 177,
+          "text": "，Jaccard {(evidence.basisPoints / 100).toFixed(2)}"
+        },
+        {
+          "line": 178,
+          "text": "%。片段出现次数多重集：最小次数合计 {evidence.countIntersection} /"
+        },
+        {
+          "line": 179,
+          "text": "最大次数合计 {evidence.countUnion}，诊断比例{\" \"}"
+        },
+        {
+          "line": 180,
+          "text": "{(evidence.countBasisPoints / 100).toFixed(2)}"
+        },
+        {
+          "line": 184,
+          "text": "共享片段覆盖左侧 {evidence.left.covered} / {evidence.left.points}{\" \"}"
+        },
+        {
+          "line": 185,
+          "text": "个代码点，右侧 {evidence.right.covered} / {evidence.right.points}{\" \"}"
+        },
+        {
+          "line": 193,
+          "text": "value={filter.kind}"
+        },
+        {
+          "line": 196,
+          "text": "...filter,"
+        },
+        {
+          "line": 197,
+          "text": "kind: event.target.value as OverlapEvidenceFilter[\"kind\"],"
+        },
+        {
+          "line": 213,
+          "text": "value={filter.query}"
+        },
+        {
+          "line": 215,
+          "text": "change({ ...filter, query: event.target.value })"
+        },
+        {
+          "line": 223,
+          "text": "value={filter.order}"
+        },
+        {
+          "line": 227,
+          "text": "order: event.target.value as OverlapEvidenceFilter[\"order\"],"
+        },
+        {
+          "line": 238,
+          "text": "筛选后 {rows.length} 个片段；第 {page.page + 1} / {page.pages}{\" \"}"
+        },
+        {
+          "line": 242,
+          "text": "{page.rows.map((item) => ("
+        },
+        {
+          "line": 245,
+          "text": "{item.id} ·{\" \"}"
+        },
+        {
+          "line": 247,
+          "text": "<bdi>{item.text}</bdi>"
+        },
+        {
+          "line": 248,
+          "text": "</code>{\" \"}"
+        },
+        {
+          "line": 250,
+          "text": "{item.kind === \"shared\""
+        },
+        {
+          "line": 251,
+          "text": "? \"共享\""
+        },
+        {
+          "line": 252,
+          "text": ": item.kind === \"left-only\""
+        },
+        {
+          "line": 253,
+          "text": "? \"仅左侧\""
+        },
+        {
+          "line": 254,
+          "text": ": \"仅右侧\"}{\" \"}"
+        },
+        {
+          "line": 255,
+          "text": "· 左侧 {item.left.length} 次 / 右侧 {item.right.length} 次"
+        },
+        {
+          "line": 260,
+          "text": "onClick={(event) => open(item.id, event.currentTarget)}"
+        },
+        {
+          "line": 262,
+          "text": "查看片段 {item.id} 的每处位置"
+        },
+        {
+          "line": 267,
+          "text": "{!rows.length && !error ? ("
+        },
+        {
+          "line": 274,
+          "text": "disabled={!page.page}"
+        },
+        {
+          "line": 276,
+          "text": "setRequested(page.page - 1);"
+        },
+        {
+          "line": 285,
+          "text": "disabled={page.page + 1 === page.pages}"
+        },
+        {
+          "line": 287,
+          "text": "setRequested(page.page + 1);"
+        },
+        {
+          "line": 297,
+          "text": "两侧都只出现一次的片段共 {evidence.anchors.length}{\" \"}"
+        },
+        {
+          "line": 298,
+          "text": "个；其中一条确定的严格递增位置链有 {evidence.chainLength}{\" \"}"
+        },
+        {
+          "line": 305,
+          "text": "value={anchorFilter}"
+        },
+        {
+          "line": 307,
+          "text": "setAnchorFilter(event.target.value as typeof anchorFilter);"
+        },
+        {
+          "line": 308,
+          "text": "setAnchorPage(0);"
+        },
+        {
+          "line": 317,
+          "text": "{chainPage.rows.map((anchor) => ("
+        },
+        {
+          "line": 318,
+          "text": "<li key={anchor.term}>"
+        },
+        {
+          "line": 319,
+          "text": "{anchor.term} · 代码点 {anchor.left} → {anchor.right} ·{\" \"}"
+        },
+        {
+          "line": 320,
+          "text": "{anchor.inChain ? \"链内\" : \"链外\"}{\" \"}"
+        },
+        {
+          "line": 324,
+          "text": "onClick={(event) => open(anchor.term, event.currentTarget)}"
+        },
+        {
+          "line": 326,
+          "text": "查看锚点 {anchor.term} 的文字位置"
+        },
+        {
+          "line": 332,
+          "text": "第 {chainPage.page + 1} / {chainPage.pages} 页，共 {anchors.length}{\" \"}"
+        },
+        {
+          "line": 339,
+          "text": "disabled={!chainPage.page}"
+        },
+        {
+          "line": 340,
+          "text": "onClick={() => setAnchorPage(chainPage.page - 1)}"
+        },
+        {
+          "line": 347,
+          "text": "disabled={chainPage.page + 1 === chainPage.pages}"
+        },
+        {
+          "line": 348,
+          "text": "onClick={() => setAnchorPage(chainPage.page + 1)}"
+        },
+        {
+          "line": 354,
+          "text": "{term ? ("
+        },
+        {
+          "line": 357,
+          "text": "ref={contextRegion}"
+        },
+        {
+          "line": 361,
+          "text": "<h4>{term.id} 的只读出现位置</h4>"
+        },
+        {
+          "line": 362,
+          "text": "<button className=\"nw-btn\" type=\"button\" onClick={close}>"
+        },
+        {
+          "line": 367,
+          "text": "key={`${term.id}:left`}"
+        },
+        {
+          "line": 368,
+          "text": "evidence={evidence}"
+        },
+        {
+          "line": 369,
+          "text": "term={term}"
+        },
+        {
+          "line": 373,
+          "text": "key={`${term.id}:right`}"
+        },
+        {
+          "line": 385,
+          "text": "{evidence.mode === \"folded\""
+        },
+        {
+          "line": 386,
+          "text": "? \"已明确选择的 NFKC / 小写 / 空白折叠\""
+        },
+        {
+          "line": 387,
+          "text": ": \"原始字面\"}"
+        },
+        {
+          "line": 393,
+          "text": "text={evidence.left.text}"
+        },
+        {
+          "line": 394,
+          "text": "highlights={(start, end) =>"
+        },
+        {
+          "line": 395,
+          "text": "overlapEvidenceSegments(evidence, \"left\", start, end)"
+        },
+        {
+          "line": 400,
+          "text": "text={evidence.right.text}"
+        },
+        {
+          "line": 402,
+          "text": "overlapEvidenceSegments(evidence, \"right\", start, end)"
+        },
+        {
+          "line": 431,
+          "text": "() => () => controller.cancelEvidence(analysis, finding, left, right),"
+        },
+        {
+          "line": 432,
+          "text": "[controller, analysis, finding, left, right],"
+        },
+        {
+          "line": 434,
+          "text": "const pending = state.evidence;"
+        },
+        {
+          "line": 453,
+          "text": "disabled={current?.status === \"running\"}"
+        },
+        {
+          "line": 455,
+          "text": "void controller.explainPair(analysis, finding, left, right);"
+        },
+        {
+          "line": 460,
+          "text": "{current ? ("
+        },
+        {
+          "line": 465,
+          "text": "controller.cancelEvidence(analysis, finding, left, right)"
+        },
+        {
+          "line": 472,
+          "text": "{current?.status === \"running\" ? ("
+        },
+        {
+          "line": 475,
+          "text": "{current?.status === \"failed\" ? ("
+        },
+        {
+          "line": 476,
+          "text": "<p role=\"alert\">{current.error}</p>"
+        },
+        {
+          "line": 478,
+          "text": "{current?.value ? <EvidenceDetails evidence={current.value} /> : null}"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-overlap-evidence.tsx",
+      "reason": "独立运行时复核拒绝：duplicate-runtime-fragment；保守扣除，不把取消类型语法或旧/重复片段计入。",
+      "fragments": [
+        {
+          "line": 83,
+          "text": "下一处{label}侧片段"
+        },
+        {
+          "line": 91,
+          "text": "第一处{label}侧片段"
+        },
+        {
+          "line": 99,
+          "text": "最后一处{label}侧片段"
+        },
+        {
+          "line": 110,
+          "text": "定位{label}侧片段出现序号"
+        },
+        {
+          "line": 123,
+          "text": "定位{label}侧片段出现位置"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-overlap-evidence.tsx",
+      "reason": "独立运行时复核拒绝：historical-runtime-fragment；保守扣除，不把取消类型语法或旧/重复片段计入。",
+      "fragments": [
+        {
+          "line": 114,
+          "text": "maxLength={4}"
+        },
+        {
+          "line": 136,
+          "text": "const [requested, setRequested] = useState(0),"
+        },
+        {
+          "line": 195,
+          "text": "change({"
+        },
+        {
+          "line": 249,
+          "text": "·{\" \"}"
+        },
+        {
+          "line": 440,
+          "text": "? pending"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-overlap-literal.tsx",
+      "reason": "被动文案/插值展示/props/默认 hooks 与 ref 声明、依赖数组或简单事件转发，不计为有效新功能行。",
+      "fragments": [
+        {
+          "line": 14,
+          "text": "const [position, setPosition] = useState({ witness: text, history: [0] });"
+        },
+        {
+          "line": 15,
+          "text": "const [jump, setJump] = useState(\"\");"
+        },
+        {
+          "line": 19,
+          "text": "const page = overlapPreview(text, history.at(-1)!);"
+        },
+        {
+          "line": 20,
+          "text": "const pieces = highlights?.(page.start, page.end);"
+        },
+        {
+          "line": 22,
+          "text": "setPosition({ witness: text, history: offsets });"
+        },
+        {
+          "line": 46,
+          "text": "aria-label={label}"
+        },
+        {
+          "line": 51,
+          "text": "{label} · UTF-16 偏移 {page.start}–{page.end} / {text.length}；每页最多"
+        },
+        {
+          "line": 58,
+          "text": "<mark key={index}>{piece.text}</mark>"
+        },
+        {
+          "line": 63,
+          "text": ": page.text || \"（空文字）\"}"
+        },
+        {
+          "line": 69,
+          "text": "disabled={history.length < 2}"
+        },
+        {
+          "line": 70,
+          "text": "onClick={() => navigate(history.slice(0, -1))}"
+        },
+        {
+          "line": 77,
+          "text": "disabled={!page.more}"
+        },
+        {
+          "line": 78,
+          "text": "onClick={() => navigate([...history, page.end])}"
+        },
+        {
+          "line": 86,
+          "text": "onClick={() => navigate([0])}"
+        },
+        {
+          "line": 91,
+          "text": "{page.more ? ("
+        },
+        {
+          "line": 94,
+          "text": "{text.length > 2048 ? ("
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-overlap-literal.tsx",
+      "reason": "独立运行时复核拒绝：historical-runtime-fragment；保守扣除，不把取消类型语法或旧/重复片段计入。",
+      "fragments": [
+        {
+          "line": 17,
+          "text": "const region = useRef<HTMLElement>(null);"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-overlap-literal.tsx",
+      "reason": "独立运行时复核拒绝：duplicate-runtime-fragment；保守扣除，不把取消类型语法或旧/重复片段计入。",
+      "fragments": [
+        {
+          "line": 60,
+          "text": "<span key={index}>{piece.text}</span>"
+        },
+        {
+          "line": 72,
+          "text": "上一页{label}"
+        },
+        {
+          "line": 80,
+          "text": "下一页{label}"
+        },
+        {
+          "line": 88,
+          "text": "返回{label}开头"
+        },
+        {
+          "line": 102,
+          "text": "定位{label}字符偏移"
+        },
+        {
+          "line": 113,
+          "text": "定位{label}"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-overlap-pair.tsx",
+      "reason": "被动文案/插值展示/props/默认 hooks 与 ref 声明、依赖数组或简单事件转发，不计为有效新功能行。",
+      "fragments": [
+        {
+          "line": 20,
+          "text": "return `${unit.document} · ${unit.path.map((part) => part + 1).join(\" / \")} · ${unit.kind}`;"
+        },
+        {
+          "line": 34,
+          "text": "const page = overlapReviewPage(units, requested);"
+        },
+        {
+          "line": 42,
+          "text": "aria-label={`${side}侧原始段落位置`}"
+        },
+        {
+          "line": 45,
+          "text": "if (event.target.value) choose(event.target.value);"
+        },
+        {
+          "line": 48,
+          "text": "{!inPage ? ("
+        },
+        {
+          "line": 50,
+          "text": "当前已选 {selected ? location(selected) : \"（无）\"}"
+        },
+        {
+          "line": 54,
+          "text": "{page.rows.map((unit) => ("
+        },
+        {
+          "line": 55,
+          "text": "<option key={unit.id} value={unit.id}>"
+        },
+        {
+          "line": 56,
+          "text": "{location(unit)}"
+        },
+        {
+          "line": 62,
+          "text": "{side}侧可选 {units.length} 处，第 {page.page + 1} / {page.pages}{\" \"}"
+        },
+        {
+          "line": 82,
+          "text": "{!inPage && selected ? ("
+        },
+        {
+          "line": 87,
+          "text": "setRequested("
+        },
+        {
+          "line": 119,
+          "text": "left,"
+        },
+        {
+          "line": 124,
+          "text": "const [selection, setSelection] = useState(() => {"
+        },
+        {
+          "line": 127,
+          "text": "witness: analysis,"
+        },
+        {
+          "line": 152,
+          "text": "\"来源、文字组或位置已变化；没有猜测或打开其他段落，请重新分析。\","
+        },
+        {
+          "line": 157,
+          "text": "const pair = resolveOverlapPair("
+        },
+        {
+          "line": 160,
+          "text": "selection.left,"
+        },
+        {
+          "line": 163,
+          "text": "const difference = pair.difference;"
+        },
+        {
+          "line": 169,
+          "text": "units={leftUnits}"
+        },
+        {
+          "line": 170,
+          "text": "value={selection.left}"
+        },
+        {
+          "line": 172,
+          "text": "choose={(id) => choose(\"left\", id)}"
+        },
+        {
+          "line": 176,
+          "text": "units={rightUnits}"
+        },
+        {
+          "line": 177,
+          "text": "value={selection.right}"
+        },
+        {
+          "line": 179,
+          "text": "choose={(id) => choose(\"right\", id)}"
+        },
+        {
+          "line": 183,
+          "text": "原始文字{pair.rawEqual ? \"完全相同\" : \"不同\"}；富文本节点序列化"
+        },
+        {
+          "line": 184,
+          "text": "{pair.structuralEqual"
+        },
+        {
+          "line": 185,
+          "text": "? \"完全相同（仅忽略对象键顺序）\""
+        },
+        {
+          "line": 186,
+          "text": ": \"不同，可能涉及格式、链接或节点类型\"}"
+        },
+        {
+          "line": 191,
+          "text": "key={`${selection.left}:text`}"
+        },
+        {
+          "line": 193,
+          "text": "text={pair.left.text}"
+        },
+        {
+          "line": 196,
+          "text": "key={`${selection.right}:text`}"
+        },
+        {
+          "line": 198,
+          "text": "text={pair.right.text}"
+        },
+        {
+          "line": 201,
+          "text": "{!difference.textEqual ? ("
+        },
+        {
+          "line": 209,
+          "text": "<del>{difference.removed}</del>"
+        },
+        {
+          "line": 214,
+          "text": "<ins>{difference.inserted}</ins>"
+        },
+        {
+          "line": 217,
+          "text": "{difference.truncated ? ("
+        },
+        {
+          "line": 225,
+          "text": "<details key={`${selection.left}:${selection.right}`}>"
+        },
+        {
+          "line": 232,
+          "text": "<OverlapLiteral label=\"左侧节点 JSON\" text={pair.left.structure} />"
+        },
+        {
+          "line": 233,
+          "text": "<OverlapLiteral label=\"右侧节点 JSON\" text={pair.right.structure} />"
+        },
+        {
+          "line": 237,
+          "text": "key={`evidence:${selection.left}:${selection.right}`}"
+        },
+        {
+          "line": 240,
+          "text": "finding={finding}"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-overlap-pair.tsx",
+      "reason": "独立运行时复核拒绝：historical-runtime-fragment；保守扣除，不把取消类型语法或旧/重复片段计入。",
+      "fragments": [
+        {
+          "line": 40,
+          "text": "{side}侧原始段落位置"
+        },
+        {
+          "line": 72,
+          "text": "上一页{side}侧位置"
+        },
+        {
+          "line": 80,
+          "text": "下一页{side}侧位置"
+        },
+        {
+          "line": 92,
+          "text": "显示已选{side}侧位置"
+        },
+        {
+          "line": 141,
+          "text": "? id"
+        },
+        {
+          "line": 208,
+          "text": "左侧：{difference.prefix}"
+        },
+        {
+          "line": 213,
+          "text": "右侧：{difference.prefix}"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-overlap-pair.tsx",
+      "reason": "独立运行时复核拒绝：duplicate-runtime-fragment；保守扣除，不把取消类型语法或旧/重复片段计入。",
+      "fragments": [
+        {
+          "line": 161,
+          "text": "selection.right,"
+        },
+        {
+          "line": 175,
+          "text": "key={selection.left}"
+        },
+        {
+          "line": 241,
+          "text": "left={selection.left}"
+        },
+        {
+          "line": 242,
+          "text": "right={selection.right}"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-overlap-review.tsx",
+      "reason": "独立运行时复核拒绝：duplicate-runtime-fragment；保守扣除，不把取消类型语法或旧/重复片段计入。",
+      "fragments": [
+        {
+          "line": 27,
+          "text": "const [filter, setFilter] = useState<OverlapFilter>({"
+        },
+        {
+          "line": 115,
+          "text": "kind: event.target.value as OverlapFilter[\"kind\"],"
+        },
+        {
+          "line": 228,
+          "text": "只读核对 {row.finding.id}"
+        },
+        {
+          "line": 231,
+          "text": "标记 {row.finding.id}"
+        },
+        {
+          "line": 238,
+          "text": "row.finding.id,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-overlap-review.tsx",
+      "reason": "被动文案/插值展示/props/默认 hooks 与 ref 声明、依赖数组或简单事件转发，不计为有效新功能行。",
+      "fragments": [
+        {
+          "line": 28,
+          "text": "...DEFAULT_OVERLAP_FILTER,"
+        },
+        {
+          "line": 31,
+          "text": "const [active, setActive] = useState<{"
+        },
+        {
+          "line": 35,
+          "text": "const detail = useRef<HTMLDivElement>(null);"
+        },
+        {
+          "line": 36,
+          "text": "const triggers = useRef(new Map<string, HTMLButtonElement>());"
+        },
+        {
+          "line": 57,
+          "text": "page = overlapReviewPage(rows, requested);"
+        },
+        {
+          "line": 77,
+          "text": "setRequested(value);"
+        },
+        {
+          "line": 96,
+          "text": "全局列出 {analysis.exact.length + analysis.near.length} 项；已标记{\" \"}"
+        },
+        {
+          "line": 97,
+          "text": "{marks.length} 项，尚未核对{\" \"}"
+        },
+        {
+          "line": 98,
+          "text": "{analysis.exact.length + analysis.near.length - marks.length}{\" \"}"
+        },
+        {
+          "line": 113,
+          "text": "changeFilter({"
+        },
+        {
+          "line": 128,
+          "text": "value={filter.status}"
+        },
+        {
+          "line": 132,
+          "text": "status: event.target.value as OverlapFilter[\"status\"],"
+        },
+        {
+          "line": 146,
+          "text": "value={filter.document}"
+        },
+        {
+          "line": 148,
+          "text": "changeFilter({ ...filter, document: event.target.value })"
+        },
+        {
+          "line": 152,
+          "text": "{documents.map((id) => ("
+        },
+        {
+          "line": 153,
+          "text": "<option key={id} value={id}>"
+        },
+        {
+          "line": 162,
+          "text": "{page.rows.length} / 筛选后 {rows.length} 项，第 {page.page + 1} /{\" \"}"
+        },
+        {
+          "line": 163,
+          "text": "{page.pages} 页。"
+        },
+        {
+          "line": 169,
+          "text": "disabled={!page.rows.length}"
+        },
+        {
+          "line": 170,
+          "text": "onClick={() => markPage(\"follow-up\")}"
+        },
+        {
+          "line": 178,
+          "text": "onClick={() => markPage(\"intentional\")}"
+        },
+        {
+          "line": 186,
+          "text": "onClick={() => markPage(null)}"
+        },
+        {
+          "line": 193,
+          "text": "<li key={row.finding.id}>"
+        },
+        {
+          "line": 195,
+          "text": "{row.finding.kind === \"exact\" ? \"同文字组\" : \"近似候选\"}{\" \"}"
+        },
+        {
+          "line": 196,
+          "text": "{row.finding.id}"
+        },
+        {
+          "line": 199,
+          "text": "涉及 {row.occurrences} 处 / {row.documents} 篇；当前范围内{\" \"}"
+        },
+        {
+          "line": 200,
+          "text": "{row.finding.pairs} 个位置配对。每处位置仍独立保留。"
+        },
+        {
+          "line": 202,
+          "text": "{row.finding.kind === \"exact\" ? ("
+        },
+        {
+          "line": 204,
+          "text": "{row.finding.rawVariants} 种原始文字 /{\" \"}"
+        },
+        {
+          "line": 205,
+          "text": "{row.finding.structuralVariants}{\" \"}"
+        },
+        {
+          "line": 211,
+          "text": "{(row.finding.basisPoints / 100).toFixed(2)}%（交集{\" \"}"
+        },
+        {
+          "line": 212,
+          "text": "{row.finding.intersection} / 并集 {row.finding.union}）。即使"
+        },
+        {
+          "line": 220,
+          "text": "ref={(node) => {"
+        },
+        {
+          "line": 225,
+          "text": "setActive({ witness: analysis, id: row.finding.id })"
+        },
+        {
+          "line": 233,
+          "text": "aria-label={`标记 ${row.finding.id}`}"
+        },
+        {
+          "line": 234,
+          "text": "value={row.verdict ?? \"\"}"
+        },
+        {
+          "line": 236,
+          "text": "controller.mark("
+        },
+        {
+          "line": 239,
+          "text": "event.target.value"
+        },
+        {
+          "line": 240,
+          "text": "? (event.target.value as OverlapMark[\"verdict\"])"
+        },
+        {
+          "line": 264,
+          "text": "onClick={() => changePage(page.page - 1)}"
+        },
+        {
+          "line": 272,
+          "text": "onClick={() => changePage(page.page + 1)}"
+        },
+        {
+          "line": 277,
+          "text": "{selected ? ("
+        },
+        {
+          "line": 278,
+          "text": "<div className=\"nw-overlap-detail\" ref={detail} tabIndex={-1}>"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-overlap-review.tsx",
+      "reason": "独立运行时复核拒绝：historical-runtime-fragment；保守扣除，不把取消类型语法或旧/重复片段计入。",
+      "fragments": [
+        {
+          "line": 154,
+          "text": "{id}"
+        },
+        {
+          "line": 161,
+          "text": "筛选只改变列表，不会改变隐藏项目的标记、计算覆盖或报告内容。本页显示{\" \"}"
+        },
+        {
+          "line": 210,
+          "text": "五字符片段集合 Jaccard{\" \"}"
+        },
+        {
+          "line": 286,
+          "text": "finding={selected}"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-overlap-workbench.tsx",
+      "reason": "被动文案/插值展示/props/默认 hooks 与 ref 声明、依赖数组或简单事件转发，不计为有效新功能行。",
+      "fragments": [
+        {
+          "line": 21,
+          "text": "source: \"重新校验来源并提取文字\","
+        },
+        {
+          "line": 22,
+          "text": "index: \"建立有界片段索引\","
+        },
+        {
+          "line": 23,
+          "text": "candidates: \"发现有界候选\","
+        },
+        {
+          "line": 24,
+          "text": "compare: \"核对完整片段集合\","
+        },
+        {
+          "line": 26,
+          "text": "const LIMITS: Record<OverlapLimit, string> = {"
+        },
+        {
+          "line": 27,
+          "text": "\"long-unit\": \"超长文字组仅参加同文字分组，未参加近似筛查。\","
+        },
+        {
+          "line": 28,
+          "text": "\"index-budget\": \"部分文字组未进入近似索引，片段成员总数达到预算。\","
+        },
+        {
+          "line": 29,
+          "text": "\"common-grams\":"
+        },
+        {
+          "line": 30,
+          "text": "\"常见片段的整份索引项被移除；仅靠这些片段相交的候选可能漏掉。\","
+        },
+        {
+          "line": 31,
+          "text": "\"candidate-budget\": \"候选组对达到预算，未继续发现后续候选。\","
+        },
+        {
+          "line": 32,
+          "text": "\"posting-budget\": \"索引配对访问达到预算，部分索引未遍历完成。\","
+        },
+        {
+          "line": 33,
+          "text": "\"comparison-budget\": \"完整集合比较达到预算，部分已发现候选未评分。\","
+        },
+        {
+          "line": 34,
+          "text": "\"result-budget\":"
+        },
+        {
+          "line": 35,
+          "text": "\"列表达到上限，同文字组优先；近似仅保留已完整评分候选中分数最高的部分。\","
+        },
+        {
+          "line": 39,
+          "text": "const [controller] = useState(() => new WritingOverlapWorkbench());"
+        },
+        {
+          "line": 52,
+          "text": "report = state.report;"
+        },
+        {
+          "line": 68,
+          "text": "}, [download, report, state.reportConfirmed]);"
+        },
+        {
+          "line": 81,
+          "text": "feedback(\"一次只明确读取一份备份或集合，不会自动取第一份。\", true);"
+        },
+        {
+          "line": 91,
+          "text": "const expected = controller.getSnapshot().report;"
+        },
+        {
+          "line": 93,
+          "text": "download.download(controller.reportDownload(expected), () =>"
+        },
+        {
+          "line": 94,
+          "text": "controller.permitsReport(expected),"
+        },
+        {
+          "line": 97,
+          "text": "\"无正文报告已交给浏览器下载；这不是已落盘回执。报告含本机坐标、摘要和计数，请仍按私密文件保管。\","
+        },
+        {
+          "line": 101,
+          "text": "\"报告、人工标记或确认已变化，或浏览器下载失败；没有确认旧输出，请核对当前报告后重试。\","
+        },
+        {
+          "line": 153,
+          "text": "{state.input.name ? ("
+        },
+        {
+          "line": 155,
+          "text": "当前本机文件：<bdi>{state.input.name}</bdi>"
+        },
+        {
+          "line": 158,
+          "text": "{state.input.status === \"reading\" ||"
+        },
+        {
+          "line": 159,
+          "text": "state.input.status === \"checking\" ? ("
+        },
+        {
+          "line": 162,
+          "text": "{state.input.status === \"reading\""
+        },
+        {
+          "line": 163,
+          "text": "? `正在读取本机文件 ${state.input.percent}%`"
+        },
+        {
+          "line": 164,
+          "text": ": \"正在严格校验完整来源，尚未接纳部分文稿……\"}"
+        },
+        {
+          "line": 178,
+          "text": "{state.input.status === \"ready\" ? ("
+        },
+        {
+          "line": 181,
+          "text": "来源结构校验通过，共 {state.input.documents.length} 篇。"
+        },
+        {
+          "line": 182,
+          "text": "{state.input.source === \"single\""
+        },
+        {
+          "line": 183,
+          "text": "? \"原单篇文件没有集合摘要；只校验格式并为当前内存快照计算摘要。\""
+        },
+        {
+          "line": 184,
+          "text": ": \"集合摘要已核对，但不是作者签名。\"}"
+        },
+        {
+          "line": 187,
+          "text": "{state.input.documents.map((document) => ("
+        },
+        {
+          "line": 188,
+          "text": "<li key={document.key}>"
+        },
+        {
+          "line": 189,
+          "text": "{document.key} · {document.title || \"（无标题）\"} ·{\" \"}"
+        },
+        {
+          "line": 190,
+          "text": "{document.locale}"
+        },
+        {
+          "line": 206,
+          "text": "{state.progress"
+        },
+        {
+          "line": 207,
+          "text": "? `${STAGES[state.progress.stage]}：${state.progress.done} / ${state.progress.total}`"
+        },
+        {
+          "line": 208,
+          "text": ": \"准备本机分析……\"}"
+        },
+        {
+          "line": 212,
+          "text": "{state.status === \"cancelled\" ? ("
+        },
+        {
+          "line": 221,
+          "text": "{analysis ? ("
+        },
+        {
+          "line": 229,
+          "text": "检查 {analysis.coverage.documents} 篇 / {analysis.coverage.units}{\" \"}"
+        },
+        {
+          "line": 230,
+          "text": "个文字单元，合格 {analysis.coverage.eligible}{\" \"}"
+        },
+        {
+          "line": 231,
+          "text": "个，按类型、空白或长度排除 {analysis.coverage.excluded}{\" \"}"
+        },
+        {
+          "line": 232,
+          "text": "个。合格文字分成 {analysis.coverage.families}{\" \"}"
+        },
+        {
+          "line": 236,
+          "text": "近似索引接纳 {analysis.coverage.indexed} 个文字组；"
+        },
+        {
+          "line": 237,
+          "text": "{analysis.coverage.long} 个超长组只做同文字分组；索引片段成员{\" \"}"
+        },
+        {
+          "line": 238,
+          "text": "{analysis.coverage.grams}，移除常见片段 {analysis.coverage.common}"
+        },
+        {
+          "line": 239,
+          "text": "。发现候选组对 {analysis.coverage.candidates}，完整评分{\" \"}"
+        },
+        {
+          "line": 240,
+          "text": "{analysis.coverage.compared}；共有 {analysis.coverage.qualified}{\" \"}"
+        },
+        {
+          "line": 242,
+          "text": "{analysis.exact.length + analysis.near.length} 项。"
+        },
+        {
+          "line": 245,
+          "text": "计算预算：最多 {OVERLAP_LIMITS.units}{\" \"}"
+        },
+        {
+          "line": 246,
+          "text": "个文字单元，原始及规范化文字各 {OVERLAP_LIMITS.characters} 个"
+        },
+        {
+          "line": 248,
+          "text": "{OVERLAP_LIMITS.nearCharacters} 个代码点，"
+        },
+        {
+          "line": 249,
+          "text": "{OVERLAP_LIMITS.indexGrams} 个索引片段成员，单片段最多{\" \"}"
+        },
+        {
+          "line": 250,
+          "text": "{OVERLAP_LIMITS.posting} 组，{OVERLAP_LIMITS.postingSteps}{\" \"}"
+        },
+        {
+          "line": 251,
+          "text": "次索引配对访问、{OVERLAP_LIMITS.candidates} 对候选、"
+        },
+        {
+          "line": 252,
+          "text": "{OVERLAP_LIMITS.comparisonSteps} 次片段成员比较，最多列出{\" \"}"
+        },
+        {
+          "line": 253,
+          "text": "{OVERLAP_LIMITS.results} 项。"
+        },
+        {
+          "line": 255,
+          "text": "{analysis.limits.length ? ("
+        },
+        {
+          "line": 261,
+          "text": "{analysis.limits.map((limit) => ("
+        },
+        {
+          "line": 262,
+          "text": "<li key={limit}>{LIMITS[limit]}</li>"
+        },
+        {
+          "line": 275,
+          "text": "marks={state.marks}"
+        },
+        {
+          "line": 291,
+          "text": "controller.prepareReport(analysis);"
+        },
+        {
+          "line": 296,
+          "text": "{report ? ("
+        },
+        {
+          "line": 299,
+          "text": "报告已准备：{report.findings} 项，尚未核对 {report.unreviewed}{\" \"}"
+        },
+        {
+          "line": 303,
+          "text": "key={`${report.sourceKey}:${report.marksKey}`}"
+        },
+        {
+          "line": 305,
+          "text": "text={report.artifact.text}"
+        },
+        {
+          "line": 310,
+          "text": "checked={state.reportConfirmed}"
+        },
+        {
+          "line": 313,
+          "text": "controller.confirmReport(report, event.target.checked);"
+        },
+        {
+          "line": 321,
+          "text": "disabled={!controller.permitsReport(report)}"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-overlap-workbench.tsx",
+      "reason": "独立运行时复核拒绝：historical-runtime-fragment；保守扣除，不把取消类型语法或旧/重复片段计入。",
+      "fragments": [
+        {
+          "line": 51,
+          "text": "const analysis = state.analysis,"
+        },
+        {
+          "line": 241,
+          "text": "项已知符合条件，列表显示{\" \"}"
+        },
+        {
+          "line": 247,
+          "text": "UTF-16 代码单元；超限整轮拒绝。近似每组最多{\" \"}"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-overlap-controller.ts",
+      "reason": "静态默认值/配置/错误文案续行、被动 DTO 字段或单纯参数转发；仅保留实际校验/计算/所有权/有界遍历/取消逻辑。",
+      "fragments": [
+        {
+          "line": 69,
+          "text": "const emptyInput = (): OverlapWorkbenchState[\"input\"] => ({"
+        },
+        {
+          "line": 74,
+          "text": "documents: [],"
+        },
+        {
+          "line": 76,
+          "text": "const emptyDerived = () => ({"
+        },
+        {
+          "line": 78,
+          "text": "progress: null,"
+        },
+        {
+          "line": 80,
+          "text": "evidence: null,"
+        },
+        {
+          "line": 81,
+          "text": "marks: [],"
+        },
+        {
+          "line": 83,
+          "text": "reportConfirmed: false,"
+        },
+        {
+          "line": 87,
+          "text": "...emptyDerived(),"
+        },
+        {
+          "line": 88,
+          "text": "input: emptyInput(),"
+        },
+        {
+          "line": 89,
+          "text": "policy: { ...DEFAULT_OVERLAP_POLICY },"
+        },
+        {
+          "line": 95,
+          "text": "private opened: OpenedCollection | null = null;"
+        },
+        {
+          "line": 98,
+          "text": "private explaining: AbortController | null = null;"
+        },
+        {
+          "line": 99,
+          "text": "private reportAnalysis: OverlapAnalysis | null = null;"
+        },
+        {
+          "line": 105,
+          "text": "open: options.open ?? openWritingCollection,"
+        },
+        {
+          "line": 106,
+          "text": "analyze: options.analyze ?? analyzeWritingOverlap,"
+        },
+        {
+          "line": 107,
+          "text": "explain: options.explain ?? explainWritingOverlap,"
+        },
+        {
+          "line": 137,
+          "text": ": \"本机段落操作失败，没有修改文稿。\","
+        },
+        {
+          "line": 161,
+          "text": "status: \"cancelled\","
+        },
+        {
+          "line": 179,
+          "text": "input: { ...emptyInput(), status: \"failed\" },"
+        },
+        {
+          "line": 180,
+          "text": "error: \"文件须大于 0 且不超过 16 MiB，未读取文件。\","
+        },
+        {
+          "line": 195,
+          "text": "input: { ...emptyInput(), status: \"reading\", name },"
+        },
+        {
+          "line": 203,
+          "text": "...this.state.input,"
+        },
+        {
+          "line": 212,
+          "text": "input: { ...this.state.input, status: \"checking\", percent: 100 },"
+        },
+        {
+          "line": 222,
+          "text": "source: opened.source,"
+        },
+        {
+          "line": 223,
+          "text": "documents: opened.prepared.collection.entries.map((entry) => ({"
+        },
+        {
+          "line": 224,
+          "text": "key: entry.key,"
+        },
+        {
+          "line": 225,
+          "text": "title: entry.backup.draft.title,"
+        },
+        {
+          "line": 226,
+          "text": "locale: entry.backup.draft.locale,"
+        },
+        {
+          "line": 238,
+          "text": ": \"文件校验失败，未接纳任何文稿。\","
+        },
+        {
+          "line": 264,
+          "text": "error: \"请先明确选择并完整校验一份本机备份或集合。\","
+        },
+        {
+          "line": 278,
+          "text": "pause: this.options.pause,"
+        },
+        {
+          "line": 298,
+          "text": ": \"段落分析失败，未保留部分结果。\","
+        },
+        {
+          "line": 385,
+          "text": "let analysis: OverlapAnalysis;"
+        },
+        {
+          "line": 400,
+          "text": "const pair = { finding, left, right };"
+        },
+        {
+          "line": 402,
+          "text": "evidence: { ...pair, status: \"running\", value: null, error: \"\" },"
+        },
+        {
+          "line": 410,
+          "text": "right,"
+        },
+        {
+          "line": 425,
+          "text": "evidence: { ...pair, status: \"complete\", value, error: \"\" },"
+        },
+        {
+          "line": 431,
+          "text": "...pair,"
+        },
+        {
+          "line": 437,
+          "text": ": \"片段解释失败，没有交付部分内容。\","
+        },
+        {
+          "line": 449,
+          "text": "this.state.marks,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-overlap-controller.ts",
+      "reason": "独立运行时复核拒绝：historical-runtime-fragment；保守扣除，不把取消类型语法或旧/重复片段计入。",
+      "fragments": [
+        {
+          "line": 77,
+          "text": "status: \"idle\" as const,"
+        },
+        {
+          "line": 86,
+          "text": "const emptyState = (): OverlapWorkbenchState => ({"
+        },
+        {
+          "line": 114,
+          "text": "getSnapshot = (): OverlapWorkbenchState => this.state;"
+        },
+        {
+          "line": 231,
+          "text": "if (current()) {"
+        },
+        {
+          "line": 430,
+          "text": "evidence: {"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-overlap-controller.ts",
+      "reason": "独立运行时复核拒绝：duplicate-runtime-fragment；保守扣除，不把取消类型语法或旧/重复片段计入。",
+      "fragments": [
+        {
+          "line": 342,
+          "text": "const analysis = this.requireAnalysis(expected);"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-overlap-evidence-view.ts",
+      "reason": "静态默认值/配置/错误文案续行、被动 DTO 字段或单纯参数转发；仅保留实际校验/计算/所有权/有界遍历/取消逻辑。",
+      "fragments": [
+        {
+          "line": 15,
+          "text": "export const DEFAULT_OVERLAP_EVIDENCE_FILTER: OverlapEvidenceFilter = {"
+        },
+        {
+          "line": 16,
+          "text": "kind: \"all\","
+        },
+        {
+          "line": 17,
+          "text": "query: \"\","
+        },
+        {
+          "line": 18,
+          "text": "order: \"source\","
+        },
+        {
+          "line": 107,
+          "text": "pointStart,"
+        },
+        {
+          "line": 108,
+          "text": "pointEnd,"
+        },
+        {
+          "line": 112,
+          "text": "total: term[side].length,"
+        },
+        {
+          "line": 114,
+          "text": "match: term.text,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-overlap-evidence-view.ts",
+      "reason": "独立运行时复核拒绝：historical-runtime-fragment；保守扣除，不把取消类型语法或旧/重复片段计入。",
+      "fragments": [
+        {
+          "line": 111,
+          "text": "index,"
+        },
+        {
+          "line": 113,
+          "text": "before,"
+        },
+        {
+          "line": 140,
+          "text": "const pieces: { text: string; hit: boolean }[] = [];"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-overlap-evidence-view.ts",
+      "reason": "独立运行时复核拒绝：duplicate-runtime-fragment；保守扣除，不把取消类型语法或旧/重复片段计入。",
+      "fragments": [
+        {
+          "line": 126,
+          "text": "const source = evidenceSide(evidence, side);"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-overlap-evidence.ts",
+      "reason": "静态默认值/配置/错误文案续行、被动 DTO 字段或单纯参数转发；仅保留实际校验/计算/所有权/有界遍历/取消逻辑。",
+      "fragments": [
+        {
+          "line": 57,
+          "text": "\"片段解释每侧最多 4096 个代码点；原文核对仍可分页，不截断生成解释。\","
+        },
+        {
+          "line": 81,
+          "text": "return { text, points, offsets, positions };"
+        },
+        {
+          "line": 107,
+          "text": "text: side.text,"
+        },
+        {
+          "line": 108,
+          "text": "points: side.points.length,"
+        },
+        {
+          "line": 109,
+          "text": "offsets: side.offsets,"
+        },
+        {
+          "line": 110,
+          "text": "covered: count,"
+        },
+        {
+          "line": 111,
+          "text": "spans,"
+        },
+        {
+          "line": 124,
+          "text": "term: term.id,"
+        },
+        {
+          "line": 125,
+          "text": "left: term.left[0]!,"
+        },
+        {
+          "line": 126,
+          "text": "right: term.right[0]!,"
+        },
+        {
+          "line": 127,
+          "text": "inChain: false,"
+        },
+        {
+          "line": 210,
+          "text": "id: `g${terms.length + 1}`,"
+        },
+        {
+          "line": 212,
+          "text": "left: from,"
+        },
+        {
+          "line": 213,
+          "text": "right: to,"
+        },
+        {
+          "line": 216,
+          "text": "? \"shared\""
+        },
+        {
+          "line": 218,
+          "text": "? \"left-only\""
+        },
+        {
+          "line": 219,
+          "text": ": \"right-only\","
+        },
+        {
+          "line": 240,
+          "text": "sourceKey: analysis.sourceKey,"
+        },
+        {
+          "line": 242,
+          "text": "leftId: left,"
+        },
+        {
+          "line": 243,
+          "text": "rightId: right,"
+        },
+        {
+          "line": 244,
+          "text": "mode: analysis.policy.mode,"
+        },
+        {
+          "line": 247,
+          "text": "terms,"
+        },
+        {
+          "line": 248,
+          "text": "intersection,"
+        },
+        {
+          "line": 249,
+          "text": "union,"
+        },
+        {
+          "line": 250,
+          "text": "basisPoints,"
+        },
+        {
+          "line": 251,
+          "text": "countIntersection,"
+        },
+        {
+          "line": 252,
+          "text": "countUnion,"
+        },
+        {
+          "line": 254,
+          "text": "...chain,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-overlap-evidence.ts",
+      "reason": "独立运行时复核拒绝：historical-runtime-fragment；保守扣除，不把取消类型语法或旧/重复片段计入。",
+      "fragments": [
+        {
+          "line": 59,
+          "text": "const points: string[] = [],"
+        },
+        {
+          "line": 95,
+          "text": "const spans: OverlapEvidenceSide[\"spans\"] = [];"
+        },
+        {
+          "line": 96,
+          "text": "let start = 0,"
+        },
+        {
+          "line": 97,
+          "text": "count = 0;"
+        },
+        {
+          "line": 214,
+          "text": "kind:"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-overlap-index.ts",
+      "reason": "静态默认值/配置/错误文案续行、被动 DTO 字段或单纯参数转发；仅保留实际校验/计算/所有权/有界遍历/取消逻辑。",
+      "fragments": [
+        {
+          "line": 88,
+          "text": "return { families: indexed, postings };"
+        },
+        {
+          "line": 179,
+          "text": "const finding: OverlapNear = {"
+        },
+        {
+          "line": 180,
+          "text": "id: `n:${a.family.id}:${b.family.id}`,"
+        },
+        {
+          "line": 181,
+          "text": "kind: \"near\","
+        },
+        {
+          "line": 182,
+          "text": "left: a.family.id,"
+        },
+        {
+          "line": 183,
+          "text": "right: b.family.id,"
+        },
+        {
+          "line": 199,
+          "text": "\"compare\","
+        },
+        {
+          "line": 200,
+          "text": "context.coverage.compared,"
+        },
+        {
+          "line": 201,
+          "text": "candidates.length,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-overlap-index.ts",
+      "reason": "独立运行时复核拒绝：historical-runtime-fragment；保守扣除，不把取消类型语法或旧/重复片段计入。",
+      "fragments": [
+        {
+          "line": 66,
+          "text": "continue; // Do not admit a partially indexed family or use partial sets for a score."
+        },
+        {
+          "line": 96,
+          "text": "const seen = new Set<number>(),"
+        },
+        {
+          "line": 98,
+          "text": "const result: [number, number][] = [];"
+        },
+        {
+          "line": 198,
+          "text": "context,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-overlap-index.ts",
+      "reason": "独立运行时复核拒绝：duplicate-runtime-fragment；保守扣除，不把取消类型语法或旧/重复片段计入。",
+      "fragments": [
+        {
+          "line": 62,
+          "text": "for (let start = 0; start + OVERLAP_SHINGLE_WIDTH <= points.length; start++)"
+        },
+        {
+          "line": 167,
+          "text": "let intersection = 0;"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-overlap-model.ts",
+      "reason": "静态默认值/配置/错误文案续行、被动 DTO 字段或单纯参数转发；仅保留实际校验/计算/所有权/有界遍历/取消逻辑。",
+      "fragments": [
+        {
+          "line": 7,
+          "text": "export const DEFAULT_OVERLAP_POLICY: OverlapPolicy = {"
+        },
+        {
+          "line": 8,
+          "text": "mode: \"literal\","
+        },
+        {
+          "line": 9,
+          "text": "scope: \"cross-document\","
+        },
+        {
+          "line": 10,
+          "text": "minimum: 24,"
+        },
+        {
+          "line": 11,
+          "text": "threshold: 65,"
+        },
+        {
+          "line": 13,
+          "text": "export const OVERLAP_SHINGLE_WIDTH = 5;"
+        },
+        {
+          "line": 14,
+          "text": "export const OVERLAP_LIMITS = {"
+        },
+        {
+          "line": 15,
+          "text": "units: 4096,"
+        },
+        {
+          "line": 16,
+          "text": "characters: 2_000_000,"
+        },
+        {
+          "line": 17,
+          "text": "nearCharacters: 4096,"
+        },
+        {
+          "line": 18,
+          "text": "indexGrams: 200_000,"
+        },
+        {
+          "line": 19,
+          "text": "posting: 64,"
+        },
+        {
+          "line": 20,
+          "text": "candidates: 12_000,"
+        },
+        {
+          "line": 21,
+          "text": "postingSteps: 250_000,"
+        },
+        {
+          "line": 22,
+          "text": "comparisonSteps: 1_000_000,"
+        },
+        {
+          "line": 23,
+          "text": "results: 200,"
+        },
+        {
+          "line": 125,
+          "text": "\"段落条件无效：最短 8–500 个字符，相似阈值 50–95，且须明确选择文字与范围模式。\","
+        },
+        {
+          "line": 129,
+          "text": "mode: value.mode,"
+        },
+        {
+          "line": 130,
+          "text": "scope: value.scope,"
+        },
+        {
+          "line": 131,
+          "text": "minimum: value.minimum,"
+        },
+        {
+          "line": 132,
+          "text": "threshold: value.threshold,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-overlap-model.ts",
+      "reason": "独立运行时复核拒绝：historical-runtime-fragment；保守扣除，不把取消类型语法或旧/重复片段计入。",
+      "fragments": [
+        {
+          "line": 174,
+          "text": "} else"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-overlap-report.ts",
+      "reason": "静态默认值/配置/错误文案续行、被动 DTO 字段或单纯参数转发；仅保留实际校验/计算/所有权/有界遍历/取消逻辑。",
+      "fragments": [
+        {
+          "line": 41,
+          "text": "id: finding.id,"
+        },
+        {
+          "line": 42,
+          "text": "kind: finding.kind,"
+        },
+        {
+          "line": 43,
+          "text": "family: finding.family,"
+        },
+        {
+          "line": 44,
+          "text": "pairs: finding.pairs,"
+        },
+        {
+          "line": 45,
+          "text": "rawVariants: finding.rawVariants,"
+        },
+        {
+          "line": 46,
+          "text": "richVariants: finding.structuralVariants,"
+        },
+        {
+          "line": 55,
+          "text": "left: finding.left,"
+        },
+        {
+          "line": 56,
+          "text": "right: finding.right,"
+        },
+        {
+          "line": 58,
+          "text": "intersection: finding.intersection,"
+        },
+        {
+          "line": 59,
+          "text": "union: finding.union,"
+        },
+        {
+          "line": 60,
+          "text": "basisPoints: finding.basisPoints,"
+        },
+        {
+          "line": 70,
+          "text": "document: unit.document,"
+        },
+        {
+          "line": 71,
+          "text": "group: unit.group,"
+        },
+        {
+          "line": 72,
+          "text": "path: [...unit.path],"
+        },
+        {
+          "line": 73,
+          "text": "kind: unit.kind,"
+        },
+        {
+          "line": 79,
+          "text": "format: \"no-wave-writing-overlap-report\","
+        },
+        {
+          "line": 82,
+          "text": "algorithm: analysis.algorithm,"
+        },
+        {
+          "line": 83,
+          "text": "sourceDigest: analysis.sourceKey,"
+        },
+        {
+          "line": 84,
+          "text": "policy: { ...analysis.policy },"
+        },
+        {
+          "line": 85,
+          "text": "coverage: { ...analysis.coverage },"
+        },
+        {
+          "line": 86,
+          "text": "limits: [...analysis.limits],"
+        },
+        {
+          "line": 88,
+          "text": "findings: findings.length,"
+        },
+        {
+          "line": 89,
+          "text": "unreviewed,"
+        },
+        {
+          "line": 94,
+          "text": "families,"
+        },
+        {
+          "line": 95,
+          "text": "findings: rows,"
+        },
+        {
+          "line": 100,
+          "text": "const artifact = {"
+        },
+        {
+          "line": 111,
+          "text": "artifact,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-overlap-report.ts",
+      "reason": "独立运行时复核拒绝：historical-runtime-fragment；保守扣除，不把取消类型语法或旧/重复片段计入。",
+      "fragments": [
+        {
+          "line": 87,
+          "text": "review: {"
+        },
+        {
+          "line": 91,
+          "text": ".length,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-overlap-review.ts",
+      "reason": "静态默认值/配置/错误文案续行、被动 DTO 字段或单纯参数转发；仅保留实际校验/计算/所有权/有界遍历/取消逻辑。",
+      "fragments": [
+        {
+          "line": 22,
+          "text": "export const DEFAULT_OVERLAP_FILTER: OverlapFilter = {"
+        },
+        {
+          "line": 24,
+          "text": "status: \"all\","
+        },
+        {
+          "line": 25,
+          "text": "document: \"all\","
+        },
+        {
+          "line": 69,
+          "text": "mark.finding,"
+        },
+        {
+          "line": 70,
+          "text": "mark.verdict,"
+        },
+        {
+          "line": 102,
+          "text": "filter.status,"
+        },
+        {
+          "line": 131,
+          "text": "verdict,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-overlap-review.ts",
+      "reason": "独立运行时复核拒绝：historical-runtime-fragment；保守扣除，不把取消类型语法或旧/重复片段计入。",
+      "fragments": [
+        {
+          "line": 67,
+          "text": "return JSON.stringify("
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-overlap-review.ts",
+      "reason": "独立运行时复核拒绝：duplicate-runtime-fragment；保守扣除，不把取消类型语法或旧/重复片段计入。",
+      "fragments": [
+        {
+          "line": 108,
+          "text": "const chosen = new Map("
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-overlap-source.ts",
+      "reason": "静态默认值/配置/错误文案续行、被动 DTO 字段或单纯参数转发；仅保留实际校验/计算/所有权/有界遍历/取消逻辑。",
+      "fragments": [
+        {
+          "line": 42,
+          "text": "const coverage: OverlapCoverage = {"
+        },
+        {
+          "line": 43,
+          "text": "documents: entries.length,"
+        },
+        {
+          "line": 44,
+          "text": "units: 0,"
+        },
+        {
+          "line": 45,
+          "text": "eligible: 0,"
+        },
+        {
+          "line": 46,
+          "text": "excluded: 0,"
+        },
+        {
+          "line": 47,
+          "text": "families: 0,"
+        },
+        {
+          "line": 48,
+          "text": "indexed: 0,"
+        },
+        {
+          "line": 49,
+          "text": "long: 0,"
+        },
+        {
+          "line": 50,
+          "text": "grams: 0,"
+        },
+        {
+          "line": 51,
+          "text": "candidates: 0,"
+        },
+        {
+          "line": 52,
+          "text": "compared: 0,"
+        },
+        {
+          "line": 53,
+          "text": "probes: 0,"
+        },
+        {
+          "line": 54,
+          "text": "common: 0,"
+        },
+        {
+          "line": 55,
+          "text": "qualified: 0,"
+        },
+        {
+          "line": 97,
+          "text": "id: `${entry.key}:${block.path.join(\".\")}`,"
+        },
+        {
+          "line": 98,
+          "text": "document: entry.key,"
+        },
+        {
+          "line": 99,
+          "text": "group: entry.group,"
+        },
+        {
+          "line": 100,
+          "text": "path: [...block.path],"
+        },
+        {
+          "line": 101,
+          "text": "kind: block.kind,"
+        },
+        {
+          "line": 102,
+          "text": "text: block.text,"
+        },
+        {
+          "line": 103,
+          "text": "normalized,"
+        },
+        {
+          "line": 109,
+          "text": "stage: \"source\","
+        },
+        {
+          "line": 111,
+          "text": "total: entries.length,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-overlap-source.ts",
+      "reason": "独立运行时复核拒绝：historical-runtime-fragment；保守扣除，不把取消类型语法或旧/重复片段计入。",
+      "fragments": [
+        {
+          "line": 41,
+          "text": "const units: OverlapUnit[] = [];"
+        },
+        {
+          "line": 57,
+          "text": "let characters = 0,"
+        },
+        {
+          "line": 108,
+          "text": "progress({"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-overlap.ts",
+      "reason": "静态默认值/配置/错误文案续行、被动 DTO 字段或单纯参数转发；仅保留实际校验/计算/所有权/有界遍历/取消逻辑。",
+      "fragments": [
+        {
+          "line": 59,
+          "text": "opened,"
+        },
+        {
+          "line": 60,
+          "text": "policy,"
+        },
+        {
+          "line": 61,
+          "text": "budgets,"
+        },
+        {
+          "line": 73,
+          "text": "family = {"
+        },
+        {
+          "line": 74,
+          "text": "id: `f${families.length + 1}`,"
+        },
+        {
+          "line": 76,
+          "text": "normalized: unit.normalized,"
+        },
+        {
+          "line": 101,
+          "text": "id: `e:${family.id}`,"
+        },
+        {
+          "line": 102,
+          "text": "kind: \"exact\","
+        },
+        {
+          "line": 103,
+          "text": "family: family.id,"
+        },
+        {
+          "line": 104,
+          "text": "pairs,"
+        },
+        {
+          "line": 109,
+          "text": "const context = {"
+        },
+        {
+          "line": 111,
+          "text": "coverage: source.coverage,"
+        },
+        {
+          "line": 122,
+          "text": "candidates,"
+        },
+        {
+          "line": 128,
+          "text": "algorithm: \"no-wave-writing-overlap-v1\","
+        },
+        {
+          "line": 132,
+          "text": "exact,"
+        },
+        {
+          "line": 133,
+          "text": "near,"
+        },
+        {
+          "line": 134,
+          "text": "limits: [...limits],"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-overlap.ts",
+      "reason": "独立运行时复核拒绝：historical-runtime-fragment；保守扣除，不把取消类型语法或旧/重复片段计入。",
+      "fragments": [
+        {
+          "line": 56,
+          "text": "(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));"
+        },
+        {
+          "line": 63,
+          "text": "pause,"
+        },
+        {
+          "line": 68,
+          "text": "const counts = new Map<OverlapFamily, Map<string, number>>();"
+        },
+        {
+          "line": 75,
+          "text": "units: [],"
+        },
+        {
+          "line": 112,
+          "text": "limits,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-overlap.ts",
+      "reason": "独立运行时复核拒绝：duplicate-runtime-fragment；保守扣除，不把取消类型语法或旧/重复片段计入。",
+      "fragments": [
+        {
+          "line": 52,
+          "text": "const policy = validateOverlapPolicy(raw),"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-overlap-map.tsx",
+      "reason": "整个概览适配组件保守不计：hooks/ref 默认声明、被动展示、props 和简单事件转发；实际组合/校验/筛选/定位算法在独立 map 库按语义审阅。",
+      "fragments": [
+        {
+          "line": 17,
+          "text": "const [document, setDocument] = useState(\"all\"),"
+        },
+        {
+          "line": 18,
+          "text": "[order, setOrder] = useState<\"source\" | \"pairs\" | \"unreviewed\">(\"source\"),"
+        },
+        {
+          "line": 19,
+          "text": "[requested, setRequested] = useState(0);"
+        },
+        {
+          "line": 20,
+          "text": "const cells = overlapMapCells(map, { document, order }),"
+        },
+        {
+          "line": 21,
+          "text": "page = overlapReviewPage(cells, requested),"
+        },
+        {
+          "line": 22,
+          "text": "active = map.cells.find((cell) => cell.id === selected);"
+        },
+        {
+          "line": 27,
+          "text": "按文件内编号汇总，不比较标题、作者或来源权属。全局已列候选涉及{\" \"}"
+        },
+        {
+          "line": 28,
+          "text": "{map.pairs}{\" \"}"
+        },
+        {
+          "line": 34,
+          "text": "{map.documents.map((item) => ("
+        },
+        {
+          "line": 36,
+          "text": "{item.id}：合格 {item.eligible} 个单元，其中 {item.listed}{\" \"}"
+        },
+        {
+          "line": 37,
+          "text": "个出现在已列候选的有效位置配对里；涉及 {item.findings}{\" \"}"
+        },
+        {
+          "line": 38,
+          "text": "项，尚未核对 {item.unreviewed} 项；其他文稿伙伴{\" \"}"
+        },
+        {
+          "line": 39,
+          "text": "{item.peers.join(\"、\") || \"（无已列伙伴）\"}。"
+        },
+        {
+          "line": 48,
+          "text": "value={document}"
+        },
+        {
+          "line": 50,
+          "text": "setDocument(event.target.value);"
+        },
+        {
+          "line": 56,
+          "text": "<option key={item.id} value={item.id}>"
+        },
+        {
+          "line": 57,
+          "text": "{item.id}"
+        },
+        {
+          "line": 66,
+          "text": "value={order}"
+        },
+        {
+          "line": 68,
+          "text": "setOrder(event.target.value as typeof order);"
+        },
+        {
+          "line": 79,
+          "text": "概览筛选后 {cells.length} 对，第 {page.page + 1} / {page.pages}{\" \"}"
+        },
+        {
+          "line": 83,
+          "text": "{page.rows.map((cell) => ("
+        },
+        {
+          "line": 84,
+          "text": "<li key={cell.id}>"
+        },
+        {
+          "line": 86,
+          "text": "{cell.left} / {cell.right}"
+        },
+        {
+          "line": 87,
+          "text": "{cell.left === cell.right"
+        },
+        {
+          "line": 88,
+          "text": "? \"（同篇内部）\""
+        },
+        {
+          "line": 89,
+          "text": ": \"\"}：同文字位置配对 {cell.exactPairs} / 近似位置配对{\" \"}"
+        },
+        {
+          "line": 90,
+          "text": "{cell.nearPairs}；候选 {cell.findings.length} 项，尚未核对{\" \"}"
+        },
+        {
+          "line": 91,
+          "text": "{cell.unreviewed} 项，有意重复 {cell.intentional}{\" \"}"
+        },
+        {
+          "line": 92,
+          "text": "项，需要后续检查 {cell.followUp} 项。"
+        },
+        {
+          "line": 97,
+          "text": "onClick={() => choose(cell.id)}"
+        },
+        {
+          "line": 99,
+          "text": "只显示文稿对 {cell.left} / {cell.right}"
+        },
+        {
+          "line": 104,
+          "text": "{!cells.length ? ("
+        },
+        {
+          "line": 126,
+          "text": "{active ? ("
+        },
+        {
+          "line": 129,
+          "text": "候选列表及左右原文位置仅限 {active.left} / {active.right}"
+        },
+        {
+          "line": 132,
+          "text": "<button className=\"nw-btn\" type=\"button\" onClick={() => choose(null)}>"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-overlap-pair.tsx",
+      "reason": "文稿对位置适配仅转发既有/新 helper 与参数、保存被动引用，不重复计入算法信用。",
+      "fragments": [
+        {
+          "line": 112,
+          "text": "return documentPair"
+        },
+        {
+          "line": 113,
+          "text": "? overlapMapOccurrences("
+        },
+        {
+          "line": 115,
+          "text": "documentPair.map,"
+        },
+        {
+          "line": 116,
+          "text": "documentPair.id,"
+        },
+        {
+          "line": 118,
+          "text": "side,"
+        },
+        {
+          "line": 121,
+          "text": ": overlapOccurrences(analysis, finding, side, left);"
+        },
+        {
+          "line": 123,
+          "text": "const leftUnits = occurrences(\"left\");"
+        },
+        {
+          "line": 134,
+          "text": "const rightUnits = occurrences(\"right\", selection.left);"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/components/authoring/writing-overlap-review.tsx",
+      "reason": "概览 memo/props、hooks 声明、薄转发和默认状态配置不计；保留分析对象 witness 判断与当前页批量变换等功能。",
+      "fragments": [
+        {
+          "line": 37,
+          "text": "const documentMap = useMemo("
+        },
+        {
+          "line": 39,
+          "text": "mapWritingOverlap("
+        },
+        {
+          "line": 41,
+          "text": "marks,"
+        },
+        {
+          "line": 42,
+          "text": "controller"
+        },
+        {
+          "line": 43,
+          "text": ".getSnapshot()"
+        },
+        {
+          "line": 44,
+          "text": ".input.documents.map((document) => document.key),"
+        },
+        {
+          "line": 46,
+          "text": "[analysis, marks, controller],"
+        },
+        {
+          "line": 48,
+          "text": "const [pair, setPair] = useState<{"
+        },
+        {
+          "line": 53,
+          "text": "const sourceRows = overlapReviewRows(analysis, marks, filter);"
+        },
+        {
+          "line": 54,
+          "text": "const rows = pairId"
+        },
+        {
+          "line": 55,
+          "text": "? overlapMapRows(analysis, documentMap, pairId, sourceRows)"
+        },
+        {
+          "line": 56,
+          "text": ": sourceRows,"
+        },
+        {
+          "line": 70,
+          "text": "if (id) overlapMapRows(analysis, documentMap, id, sourceRows);"
+        },
+        {
+          "line": 71,
+          "text": "setPair(id ? { witness: analysis, id } : null);"
+        },
+        {
+          "line": 72,
+          "text": "setFilter({ ...DEFAULT_OVERLAP_FILTER });"
+        },
+        {
+          "line": 102,
+          "text": "map={documentMap}"
+        },
+        {
+          "line": 103,
+          "text": "selected={pairId}"
+        },
+        {
+          "line": 104,
+          "text": "choose={choosePair}"
+        },
+        {
+          "line": 283,
+          "text": "key={`${selected}:${pairId ?? \"all\"}`}"
+        },
+        {
+          "line": 287,
+          "text": "documentPair={pairId ? { map: documentMap, id: pairId } : null}"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-overlap-map.ts",
+      "reason": "概览静态初始计数、DTO/参数字段与错误文案续行不计；计数组合、闭集校验、完整性核对、作用域分派及真实位置定位才计。",
+      "fragments": [
+        {
+          "line": 80,
+          "text": "\"文稿概览需要当前文件的完整、唯一编号，不接纳来源名称或未知编号。\","
+        },
+        {
+          "line": 91,
+          "text": "mark.finding,"
+        },
+        {
+          "line": 92,
+          "text": "mark.verdict,"
+        },
+        {
+          "line": 99,
+          "text": "eligible: 0,"
+        },
+        {
+          "line": 100,
+          "text": "units: new Set(),"
+        },
+        {
+          "line": 101,
+          "text": "findings: new Set(),"
+        },
+        {
+          "line": 102,
+          "text": "peers: new Set(),"
+        },
+        {
+          "line": 152,
+          "text": "cell = {"
+        },
+        {
+          "line": 156,
+          "text": "exactPairs: 0,"
+        },
+        {
+          "line": 157,
+          "text": "nearPairs: 0,"
+        },
+        {
+          "line": 159,
+          "text": "unreviewed: 0,"
+        },
+        {
+          "line": 160,
+          "text": "intentional: 0,"
+        },
+        {
+          "line": 161,
+          "text": "followUp: 0,"
+        },
+        {
+          "line": 226,
+          "text": "eligible: document.eligible,"
+        },
+        {
+          "line": 227,
+          "text": "listed: document.units.size,"
+        },
+        {
+          "line": 228,
+          "text": "findings: document.findings.size,"
+        },
+        {
+          "line": 237,
+          "text": "documents: summaries,"
+        },
+        {
+          "line": 238,
+          "text": "cells: result,"
+        },
+        {
+          "line": 239,
+          "text": "pairs,"
+        },
+        {
+          "line": 298,
+          "text": "\"候选列表不属于当前分析或含重复项，未应用部分文稿对筛选。\","
+        },
+        {
+          "line": 346,
+          "text": "\"right\","
+        },
+        {
+          "line": 347,
+          "text": "selected.id,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-overlap-map.ts",
+      "reason": "新增文稿对实现后的独立运行时去重复核扣除；独立验证器只能拒绝信用，不能补足阈值。",
+      "fragments": [
+        {
+          "line": 315,
+          "text": "const cell = currentCell(analysis, map, pair);"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-overlap-report.ts",
+      "reason": "新增文稿对实现后的独立运行时去重复核扣除；独立验证器只能拒绝信用，不能补足阈值。",
+      "fragments": [
+        {
+          "line": 35,
+          "text": "const findings = overlapFindings(analysis),"
+        }
+      ]
+    }
+  ]
+}

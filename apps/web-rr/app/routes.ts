@@ -63,6 +63,7 @@ export default [
   route("write", "routes/write.tsx"),
   route("write/library", "routes/write.library.tsx"),
   route("write/collections", "routes/write.collections.tsx"),
+  route("write/overlap", "routes/write.overlap.tsx"),
   route("write/merge", "routes/write.merge.tsx"),
   route("write/vault", "routes/write.vault.tsx"),
   route("write/media", "routes/write.media.tsx"),
