@@ -59,6 +59,7 @@ const PRIVATE_PAGES = [
   "write.library",
   "write.collections",
   "write.merge",
+  "write.vault",
   "write.notion",
 ];
 

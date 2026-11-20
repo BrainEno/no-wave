@@ -903,3 +903,14 @@ mark { background: var(--or); color: #0f0d0c; }
   .nw-merge-slots, .nw-merge-candidates { grid-template-columns: minmax(0, 1fr); }
   .nw-merge-units fieldset, .nw-merge-candidate { padding: 12px; }
 }
+
+/* Local password files use the existing authoring controls; content never becomes HTML. */
+.nw-vault-password fieldset { display: grid; gap: 16px; min-width: 0; margin: 24px 0; padding: 16px; border: 1px solid var(--t2); }
+.nw-vault-password legend { max-width: 100%; white-space: normal; font-weight: 600; }
+.nw-vault-password label:not(.nw-writing-check) { display: grid; gap: 8px; min-width: 0; }
+.nw-vault-password input:not([type="checkbox"]) { width: 100%; min-width: 0; padding: 12px; background: var(--paper); border: 1px solid var(--t2); }
+.nw-vault .nw-writing-check { min-height: 44px; white-space: normal; }
+.nw-vault-review, .nw-vault-result { min-width: 0; margin-block: 32px; padding-block: 24px; border-top: 1px solid var(--ink); scroll-margin-top: 100px; }
+.nw-vault-document-list { display: flex; gap: 8px; flex-wrap: wrap; padding: 0; list-style: none; }
+.nw-vault .nw-writing-file input { max-width: 100%; }
+.nw-vault code { overflow-wrap: anywhere; }

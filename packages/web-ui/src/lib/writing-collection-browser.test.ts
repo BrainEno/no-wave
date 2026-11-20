@@ -97,3 +97,33 @@ test("a native read whose byte result changed or was truncated is never accepted
   await assert.rejects(result, /大小|字节|变化/);
   assert.equal(reader.onload, null);
 });
+
+test("a shared binary read preserves BOM/non-UTF-8 ciphertext bytes without decoding or changing existing JSON behavior", async () => {
+  const { readLocalFileBytes } = await import("./writing-collection-browser.ts");
+  const reader = new Reader();
+  const result = readLocalFileBytes(new File([new Uint8Array([0xef, 0xbb, 0xbf, 0xff])], "locked.nwvault"), new AbortController().signal, () => {}, () => reader as unknown as FileReader);
+  reader.finish([0xef, 0xbb, 0xbf, 0xff]);
+  assert.deepEqual(Array.from(await result), [0xef, 0xbb, 0xbf, 0xff]);
+  const cancelled = new Reader(), abort = new AbortController();
+  const pending = readLocalFileBytes(new File(["xx"], "private.json"), abort.signal, () => {}, () => cancelled as unknown as FileReader);
+  abort.abort(); await assert.rejects(pending, { name: "AbortError" });
+  assert.equal(cancelled.started, 1); assert.equal(cancelled.aborted, 1);
+});
+
+test("binary downloads keep native ciphertext bytes and recheck intent without allowing new path/MIME capabilities", async () => {
+  let payload: Blob | null = null, permit = true;
+  const revoked: string[] = [], names: string[] = [];
+  const lease = new CollectionDownloadLease({ create: blob => { payload = blob; return "blob:binary"; }, revoke: url => revoked.push(url), deliver: (_url, name) => names.push(name), later: work => setTimeout(work, 1000), cancel: timer => clearTimeout(timer) });
+  const bytes = new Uint8Array([0, 255, 127, 128]);
+  const artifact = { bytes, name: "no-wave-encrypted-writing.nwvault", mime: "application/octet-stream" };
+  lease.downloadBytes(artifact, () => permit);
+  assert.deepEqual(new Uint8Array(await payload!.arrayBuffer()), bytes);
+  assert.deepEqual(names, [artifact.name]);
+  assert.throws(() => lease.downloadBytes({ ...artifact, mime: "text/html" }, () => true));
+  assert.throws(() => lease.downloadBytes({ ...artifact, name: "../secret.nwvault" }, () => true));
+  assert.throws(() => lease.downloadBytes({ ...artifact, name: "file.json" }, () => true));
+  const stale = new CollectionDownloadLease({ create: () => { permit = false; return "blob:stale-vault"; }, revoke: url => revoked.push(url), deliver: () => assert.fail("stale delivery"), later: work => setTimeout(work, 1000), cancel: timer => clearTimeout(timer) });
+  assert.throws(() => stale.downloadBytes(artifact, () => permit));
+  assert.equal(revoked.at(-1), "blob:stale-vault");
+  lease.release();
+});

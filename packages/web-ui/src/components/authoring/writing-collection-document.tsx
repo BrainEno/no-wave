@@ -9,7 +9,7 @@ function excerpt(text: string): string {
   const characters = Array.from(text);
   return characters.length > 1600 ? characters.slice(0, 1600).join("") + "…（仅截断屏幕预览，下载保留完整正文）" : text || "（空）";
 }
-export function WritingCollectionDocument({ row, target }: { row: CollectionRow; target?: WritingMatch }) {
+export function WritingCollectionDocument({ row, target }: { row: { entry: Pick<CollectionRow["entry"], "backup" | "group"> }; target?: WritingMatch }) {
   const inspection = useMemo(() => inspectWriting(row.entry.backup.draft), [row.entry.backup]);
   const [referencesOpen, setReferencesOpen] = useState(false);
   const references = useMemo(() => referencesOpen ? auditWritingReferences(row.entry.backup.draft) : null, [referencesOpen, row.entry.backup]);

@@ -57,6 +57,7 @@ const CLIENT_COMPONENTS: readonly ClientComponent[] = [
   // The local merge shell alone cannot read files, make choices or download a result.
   { component: "LocalWritingMerge", sentinel: "nw-merge-slots", page: "write/merge" },
   { component: "WritingMergePlanPanel", sentinel: "no-wave-writing-merge-plan", page: "write/merge" },
+  { component: "LocalWritingVault", sentinel: "nw-vault-password", page: "write/vault" },
   // The inbox must ship its own rows, not merely the shared transport that is
   // also reachable from the bell. A network-path sentinel cannot prove that
   // the desk's notification component survived tree-shaking.

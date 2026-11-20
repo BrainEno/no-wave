@@ -214,3 +214,23 @@ test("render retries and cookie-bearing HTML cannot inherit a public cache grant
   assert.deepEqual(response.headers.getSetCookie(), ["fixture=one; HttpOnly"]);
   await response.body?.cancel();
 });
+
+test("only the canonical successful private vault document grants a same-origin Worker; every other document retains worker-src none", async () => {
+  for (const [documentPath, status, cache, expected] of [
+    ["/write/vault", 200, "no-store, max-age=0", "'self'"],
+    ["/write/vault", 500, "no-store", "'none'"],
+    ["/write/vault", 200, "public, max-age=60", "'none'"],
+    ["/write/vault?password=NEVER_USE", 200, "no-store", "'none'"],
+    ["/write/vault/extra", 200, "no-store", "'none'"],
+    ["/articles/example", 200, "no-store", "'none'"],
+  ] as const) {
+    const nonce = marker();
+    const response = await protectHtmlResponse(Readable.from([script(nonce, "boot()")]), {
+      marker: nonce, signal: AbortSignal.timeout(2000), headers: new Headers({ "cache-control": cache }), secure: false, status, documentPath,
+    });
+    const policy = response.headers.get("content-security-policy")!;
+    assert.ok(policy.includes(`worker-src ${expected}`), documentPath);
+    assert.doesNotMatch(policy, /worker-src[^;]*(?:blob:|data:|https:|unsafe)/);
+    assert.ok(policy.includes("script-src-attr 'none'"));
+  }
+});

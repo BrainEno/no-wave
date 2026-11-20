@@ -1897,3 +1897,22 @@ test("the local collection tool is a protected empty shell without account autho
   assert.match(query.headers.get("cache-control") ?? "", /no-store/);
   assert.doesNotMatch(query.body, /PRIVATE-FILE-URL/);
 });
+
+test("the local encryption tool is an empty no-store document with a narrowly scoped Worker capability and inert URL input", async () => {
+  const response = await get("/write/vault");
+  assert.equal(response.status, 200);
+  assert.match(response.body, /data-route="write-vault"/);
+  assert.match(response.body, /本机文稿加密备份/);
+  assert.match(response.body, /noindex, nofollow/);
+  assert.match(response.headers.get("cache-control") ?? "", /no-store/);
+  assert.match(response.headers.get("content-security-policy") ?? "", /worker-src 'self'/);
+  assert.doesNotMatch(response.body, /contenteditable="true"|PRIVATE_VAULT_SOURCE/);
+  const query = await get("/write/vault?password=PRIVATE_VAULT_SOURCE&file=https%3A%2F%2Fattacker.test%2Fnever");
+  assert.equal(query.status, 302); assert.equal(query.headers.get("location"), "/write/vault");
+  assert.match(query.headers.get("cache-control") ?? "", /no-store/);
+  assert.doesNotMatch(query.body, /PRIVATE_VAULT_SOURCE/);
+  for (const path of ["/write/merge", "/write/collections", "/"]) {
+    const ordinary = await get(path);
+    assert.match(ordinary.headers.get("content-security-policy") ?? "", /worker-src 'none'/);
+  }
+});

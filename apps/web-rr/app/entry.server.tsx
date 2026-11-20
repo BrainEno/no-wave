@@ -44,7 +44,7 @@ export default function handleRequest(
           shellRendered = true;
           responseHeaders.set("content-type", "text/html; charset=utf-8");
           if (production) {
-            protectHtmlResponse(body, { marker, signal, headers: responseHeaders, status: responseStatusCode, secure })
+            protectHtmlResponse(body, { marker, signal, headers: responseHeaders, status: responseStatusCode, secure, documentPath: new URL(request.url).pathname + new URL(request.url).search })
               .then(resolve, reject).finally(() => signal.removeEventListener("abort", cancel));
           } else {
             // Vite HMR/React Refresh require development transforms. Keep the

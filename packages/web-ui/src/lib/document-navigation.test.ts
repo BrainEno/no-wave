@@ -1,0 +1,9 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { requiresDocumentNavigation } from "./document-navigation.ts";
+
+test("CSP-isolated local file tools cross real document boundaries in both directions, but ordinary routes and same-document fragments keep SPA behavior", () => {
+  for (const href of ["/write/vault", "/write/vault?file=untrusted", "/write/%76ault", "/write/vault/"]) assert.equal(requiresDocumentNavigation("/write", href), true);
+  for (const href of ["/", "/write", "/write/collections", "https://other.example.test/"]) assert.equal(requiresDocumentNavigation("/write/vault", href), true);
+  for (const [from, to] of [["/write", "/write/merge"], ["/articles/example", "/"], ["/write/vault", "#top"], ["/write/vault", "javascript:alert(1)"]]) assert.equal(requiresDocumentNavigation(from!, to!), false);
+});

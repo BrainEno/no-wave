@@ -7,6 +7,7 @@ import { writingRecord } from "./writing-document.ts";
 import {
   assertWritingMergeActive,
   MERGE_ROLES,
+  MERGE_CHOICES,
   validateWritingMergeDecisions,
   WRITING_MERGE_ALGORITHM,
   type WritingMergeAnalysis,
@@ -121,12 +122,11 @@ export async function createWritingMergePlan(
   return { plan, text };
 }
 
-/** The caller must separately confirm this preview against its current decision revision. */
-export async function previewWritingMergePlan(
+/** Standalone syntax/integrity only: membership still requires the original analysis. */
+export async function parseWritingMergePlan(
   text: string,
-  analysis: WritingMergeAnalysis,
   signal?: AbortSignal,
-): Promise<WritingMergePlanPreview> {
+): Promise<WritingMergePlan> {
   assertWritingMergeActive(signal);
   bounded(text);
   const raw = exact(readCollectionJson(text), PLAN_FIELDS);
@@ -147,19 +147,54 @@ export async function previewWritingMergePlan(
     throw new Error("合并计划的分析摘要或校验摘要无效。");
   }
   const sources = sourceReferences(raw.sources);
-  // This comparison includes roles and the complete validated backup envelope, not file names.
   if (
-    raw.analysisKey !== analysis.key ||
-    MERGE_ROLES.some((role) => sources[role] !== analysis.sources[role])
+    (await collectionChecksum(
+      { algorithm: WRITING_MERGE_ALGORITHM, sources },
+      signal,
+    )) !== raw.analysisKey
   ) {
-    throw new Error("合并计划的来源或角色已经变化，旧计划不能用于这三份文件。");
+    throw new Error("合并计划的分析摘要与来源摘要不一致。");
   }
-  const decisions = validateWritingMergeDecisions(analysis, raw.decisions);
-  if (
-    collectionCanonicalJson(decisions) !==
-    collectionCanonicalJson(raw.decisions)
-  ) {
-    throw new Error("合并计划条目顺序无效，请用工作台重新导出计划。");
+  if (!Array.isArray(raw.decisions) || raw.decisions.length > 406)
+    throw new Error("合并取舍数量无效。");
+  const decisions: WritingMergeDecision[] = [];
+  const seen = new Set<string>();
+  const fields = [
+    "field:title",
+    "field:summary",
+    "field:locale",
+    "field:workType",
+    "root",
+  ];
+  let lastField = -1,
+    lastEnd = -1;
+  for (const value of raw.decisions) {
+    const item = exact(value, ["unit", "choice"]);
+    if (
+      typeof item.unit !== "string" ||
+      !MERGE_CHOICES.includes(item.choice as WritingMergeDecision["choice"]) ||
+      seen.has(item.unit)
+    ) {
+      throw new Error("合并取舍引用了无效或重复条目或选项。");
+    }
+    const field = fields.indexOf(item.unit);
+    if (field >= 0) {
+      if (lastEnd >= 0 || field <= lastField)
+        throw new Error("合并计划条目顺序无效。");
+      lastField = field;
+    } else {
+      const match = /^body:(0|[1-9]\d{0,2}):(0|[1-9]\d{0,2})$/.exec(item.unit);
+      const start = Number(match?.[1]),
+        end = Number(match?.[2]);
+      if (!match || start > end || end > 200 || start < lastEnd)
+        throw new Error("合并取舍正文条目无效或顺序重叠。");
+      lastEnd = end;
+    }
+    seen.add(item.unit);
+    decisions.push({
+      unit: item.unit,
+      choice: item.choice as WritingMergeDecision["choice"],
+    });
   }
   const payload = {
     format: FORMAT,
@@ -172,6 +207,31 @@ export async function previewWritingMergePlan(
   } as const;
   if ((await collectionChecksum(payload, signal)) !== raw.digest)
     throw new Error("合并计划摘要不匹配，未接纳任何人工取舍。");
+  assertWritingMergeActive(signal);
+  return { ...payload, digest: raw.digest };
+}
+
+/** The caller must separately confirm this preview against its current decision revision. */
+export async function previewWritingMergePlan(
+  text: string,
+  analysis: WritingMergeAnalysis,
+  signal?: AbortSignal,
+): Promise<WritingMergePlanPreview> {
+  const plan = await parseWritingMergePlan(text, signal);
+  // This still includes roles and the complete validated backups, not filenames.
+  if (
+    plan.analysisKey !== analysis.key ||
+    MERGE_ROLES.some((role) => plan.sources[role] !== analysis.sources[role])
+  ) {
+    throw new Error("合并计划的来源或角色已经变化，旧计划不能用于这三份文件。");
+  }
+  const decisions = validateWritingMergeDecisions(analysis, plan.decisions);
+  if (
+    collectionCanonicalJson(decisions) !==
+    collectionCanonicalJson(plan.decisions)
+  ) {
+    throw new Error("合并计划条目顺序无效，请用工作台重新导出计划。");
+  }
   const selected = new Set(decisions.map((item) => item.unit));
   const unresolved = analysis.units.filter(
     (unit) => unit.status === "conflict" && !selected.has(unit.id),
@@ -180,7 +240,7 @@ export async function previewWritingMergePlan(
   return {
     analysisKey: analysis.key,
     decisions,
-    plan: { ...payload, digest: raw.digest },
+    plan,
     manual: decisions.length,
     unresolved,
   };
