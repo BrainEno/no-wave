@@ -13,3 +13,9 @@ test("overlap's URL-inert local shell crosses Documents rather than feeding Rout
   for (const href of ["/", "/write", "/write/collections", "/write/merge"]) assert.equal(requiresDocumentNavigation("/write/overlap", href), true);
   assert.equal(requiresDocumentNavigation("/write/overlap", "#top"), false);
 });
+
+test("terminology review uses a clean, private Document for both entry and exit, without selecting files through Router queries", () => {
+  for (const href of ["/write/terms", "/write/terms?recipe=untrusted", "/write/%74erms", "/write/terms/"]) assert.equal(requiresDocumentNavigation("/write/collections", href), true);
+  for (const href of ["/", "/write", "/write/collections", "/write/overlap"]) assert.equal(requiresDocumentNavigation("/write/terms", href), true);
+  assert.equal(requiresDocumentNavigation("/write/terms", "#top"), false);
+});

@@ -1934,3 +1934,21 @@ test("the local paragraph-overlap review is an empty private shell, rejects URL-
     assert.doesNotMatch(query.body, /PRIVATE_OVERLAP_SOURCE/);
   }
 });
+
+test("local terminology review is an empty no-store shell, rejects URL-selected source/glossary and never broadens Worker capability", async () => {
+  const response = await get("/write/terms");
+  assert.equal(response.status, 200);
+  assert.match(response.body, /data-route="write-terms"/);
+  assert.match(response.body, /本机术语一致性审阅/);
+  assert.match(response.body, /noindex, nofollow/);
+  assert.match(response.headers.get("cache-control") ?? "", /no-store/);
+  assert.match(response.headers.get("content-security-policy") ?? "", /worker-src 'none'/);
+  assert.doesNotMatch(response.body, /contenteditable="true"|PRIVATE_TERMS_SOURCE/);
+  for (const path of ["/write/terms?file=https%3A%2F%2Fattacker.test%2FPRIVATE_TERMS_SOURCE&recipe=secret", "/write/%74erms", "/write/terms/"]) {
+    const query = await get(path);
+    assert.equal(query.status, 302, path);
+    assert.equal(query.headers.get("location"), "/write/terms");
+    assert.match(query.headers.get("cache-control") ?? "", /no-store/);
+    assert.doesNotMatch(query.body, /PRIVATE_TERMS_SOURCE/);
+  }
+});

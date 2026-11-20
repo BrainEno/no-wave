@@ -56,6 +56,7 @@ which of two `0011`s meant what.
 
 | [0047](0047-local-encrypted-writing-backups.md) | 文稿密码文件只在本机验证与手动另存，不托管口令或自动恢复 | Accepted | Done | 2026-11-12 |
 | [0048](0048-read-only-local-writing-overlap.md) | 文稿重复审阅使用有界本机候选，不推断合并或去重权限 | Accepted | Done | 2026-11-12 |
+| [0049](0049-read-only-local-writing-terms.md) | 术语审阅保留全部字面主张，不把偏好词变成替换权限 | Accepted | Done | 2026-11-12 |
 
 The status column carries the leading word of each file's `- Status:` line —
 read the file for the qualifier ("Superseded by ADR 0012", "Accepted as the

@@ -1,10 +1,12 @@
 import { expect } from "@playwright/test";
-import { test } from "./support/csp-fixture.ts";
+import { test } from "./support/article-view-stack.ts";
 import { registerThroughForm, uniqueEmail } from "./support/accounts.ts";
 import { publishWork } from "./support/works.ts";
 
-test("anonymous articles skip session probes and signed-in readers can create and edit comments", async ({ page, request }) => {
-  const { slug } = await publishWork(request, `评论身份 ${Date.now().toString(36)}`, ["一篇可供评论的文章。"]);
+// Session assertions must not depend on previous shard journeys spending the real 30/IP/hour write budget.
+// Both HTTP setup and browser navigation target the same disposable production stack; no limit is changed.
+test("anonymous articles skip session probes and signed-in readers can create and edit comments", async ({ page, request, readingStack }) => {
+  const { slug } = await publishWork(request, `评论身份 ${Date.now().toString(36)}`, ["一篇可供评论的文章。"], undefined, readingStack.apiBaseUrl);
   const path = `/articles/${slug}`;
   let probes = 0;
   page.on("request", (req) => { if (new URL(req.url()).pathname === "/api/authoring/session") probes++; });
