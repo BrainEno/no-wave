@@ -25,3 +25,9 @@ test("punctuation review crosses Documents in both directions and keeps source/c
   for (const href of ["/", "/write", "/write/collections", "/write/terms"]) assert.equal(requiresDocumentNavigation("/write/cadence", href), true);
   assert.equal(requiresDocumentNavigation("/write/cadence", "#top"), false);
 });
+
+test("parallel review crosses Documents in both directions and keeps source/conditions out of Router queries", () => {
+  for (const href of ["/write/parallel", "/write/parallel?file=untrusted", "/write/%70arallel", "/write/parallel/"]) assert.equal(requiresDocumentNavigation("/write/collections", href), true);
+  for (const href of ["/", "/write", "/write/collections", "/write/cadence"]) assert.equal(requiresDocumentNavigation("/write/parallel", href), true);
+  assert.equal(requiresDocumentNavigation("/write/parallel", "#top"), false);
+});

@@ -220,7 +220,8 @@ async function inspectFontBundle(value: unknown, directory: string | URL, css: s
   }
   for (const source of data.sources) {
     const license = await readFile(join(path, source.license));
-    if (digest(license) !== source.licenseSha256 || !/SIL OPEN FONT LICENSE/i.test(license.toString("utf8"))) throw new Error(`Changed font license: ${source.license}`);
+    const normalized = license.toString("utf8").replace(/\r\n/g, "\n");
+    if (digest(normalized) !== source.licenseSha256 || !/SIL OPEN FONT LICENSE/i.test(normalized)) throw new Error(`Changed font license: ${source.license}`);
   }
   if (css !== renderFontCss(data.faces)) throw new Error("Generated font stylesheet is stale; run pnpm fonts:generate.");
   return { faces: data.faces.length, bytes: total, families: [...new Set(data.faces.map((face) => face.family))].sort(), missing };

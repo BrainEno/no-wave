@@ -1,0 +1,127 @@
+{
+  "base": "93f516230cb58dc72aedc71b9069c12d97ea1eed",
+  "rules": [
+    {
+      "file": "packages/web-ui/src/lib/writing-parallel-controller.ts",
+      "reason": "排除控制器初始化、观察者薄接线与报告授权通用判断。",
+      "fragments": [
+        {
+          "line": 75,
+          "text": "marks: {},"
+        },
+        {
+          "line": 84,
+          "text": "private readonly listeners = new Set<() => void>();"
+        },
+        {
+          "line": 107,
+          "text": "public subscribe = (listener: () => void): (() => void) => {"
+        },
+        {
+          "line": 114,
+          "text": "listener();"
+        },
+        {
+          "line": 442,
+          "text": "if (!this.permitsReport(report)) {"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-parallel-index.ts",
+      "reason": "排除索引初始化映射集合变量声明。",
+      "fragments": [
+        {
+          "line": 24,
+          "text": "const units = new Map<string, ParallelUnit>();"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-parallel-review.ts",
+      "reason": "排除审阅行数组分配、默认过滤项分派与报告 DTO 壳层。",
+      "fragments": [
+        {
+          "line": 46,
+          "text": "const rows: ParallelReviewRow[] = [];"
+        },
+        {
+          "line": 117,
+          "text": ": \"all\";"
+        },
+        {
+          "line": 231,
+          "text": "const report: ParallelRedactedReport = {"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-parallel-skeleton.ts",
+      "reason": "排除骨架树段落数组分配重复标记。",
+      "fragments": [
+        {
+          "line": 29,
+          "text": "const sections: SkeletonSection[] = [];"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-parallel-source.ts",
+      "reason": "排除单元集合初始化与字符预算条件分支模板代码。",
+      "fragments": [
+        {
+          "line": 24,
+          "text": "const units: ParallelUnit[] = [];"
+        },
+        {
+          "line": 25,
+          "text": "const byDocument = new Map<string, ParallelUnit[]>();"
+        },
+        {
+          "line": 53,
+          "text": "const kind: ParallelBlockKind ="
+        },
+        {
+          "line": 102,
+          "text": "if (totalCharacters > budgets.characters) {"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-parallel-symbols.ts",
+      "reason": "排除计数器初始化、策略字段透传与锚点集合声明。",
+      "fragments": [
+        {
+          "line": 21,
+          "text": "public steps = 0;"
+        },
+        {
+          "line": 66,
+          "text": "scope,"
+        },
+        {
+          "line": 105,
+          "text": "const anchors: string[] = [];"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-parallel.ts",
+      "reason": "排除调度微任务退避、指标对象重组与分析主结果 DTO 声明。",
+      "fragments": [
+        {
+          "line": 40,
+          "text": "options.pause ?? (() => new Promise((resolve) => setTimeout(resolve, 0)));"
+        },
+        {
+          "line": 133,
+          "text": "metrics,"
+        },
+        {
+          "line": 154,
+          "text": "const analysis: ParallelAnalysis = {"
+        }
+      ]
+    }
+  ]
+}

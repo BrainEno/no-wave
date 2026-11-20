@@ -61,6 +61,7 @@ const PRIVATE_PAGES = [
   "write.overlap",
   "write.terms",
   "write.cadence",
+  "write.parallel",
   "write.merge",
   "write.vault",
   "write.notion",
