@@ -1916,3 +1916,21 @@ test("the local encryption tool is an empty no-store document with a narrowly sc
     assert.match(ordinary.headers.get("content-security-policy") ?? "", /worker-src 'none'/);
   }
 });
+
+test("the local paragraph-overlap review is an empty private shell, rejects URL-selected sources and does not enable Workers", async () => {
+  const response = await get("/write/overlap");
+  assert.equal(response.status, 200);
+  assert.match(response.body, /data-route="write-overlap"/);
+  assert.match(response.body, /本机文稿重复段落审阅/);
+  assert.match(response.body, /noindex, nofollow/);
+  assert.match(response.headers.get("cache-control") ?? "", /no-store/);
+  assert.match(response.headers.get("content-security-policy") ?? "", /worker-src 'none'/);
+  assert.doesNotMatch(response.body, /contenteditable="true"|PRIVATE_OVERLAP_SOURCE/);
+  for (const path of ["/write/overlap?file=https%3A%2F%2Fattacker.test%2FPRIVATE_OVERLAP_SOURCE", "/write/%6fverlap", "/write/overlap/"]) {
+    const query = await get(path);
+    assert.equal(query.status, 302, path);
+    assert.equal(query.headers.get("location"), "/write/overlap");
+    assert.match(query.headers.get("cache-control") ?? "", /no-store/);
+    assert.doesNotMatch(query.body, /PRIVATE_OVERLAP_SOURCE/);
+  }
+});

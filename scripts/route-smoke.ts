@@ -223,6 +223,18 @@ try {
   assert.equal(mergeQuery.headers.get("location"), "/write/merge");
   assert.match(mergeQuery.headers.get("cache-control") ?? "", /no-store/i);
   assert.doesNotMatch(await mergeQuery.text(), /PRIVATE-SOURCE/);
+  const overlap = await fetch(`${baseUrl}/write/overlap`);
+  assert.equal(overlap.status, 200, "local overlap review must render without an API or account");
+  assert.match(overlap.headers.get("cache-control") ?? "", /no-store/i);
+  const overlapHtml = await overlap.text();
+  assert.match(overlapHtml, /data-route="write-overlap"/);
+  assert.match(overlapHtml, /noindex, nofollow/);
+  assert.doesNotMatch(overlapHtml, /contenteditable="true"/);
+  const overlapQuery = await fetch(`${baseUrl}/write/overlap?file=PRIVATE-OVERLAP-SOURCE`, { redirect: "manual" });
+  assert.equal(overlapQuery.status, 302);
+  assert.equal(overlapQuery.headers.get("location"), "/write/overlap");
+  assert.match(overlapQuery.headers.get("cache-control") ?? "", /no-store/i);
+  assert.doesNotMatch(await overlapQuery.text(), /PRIVATE-OVERLAP-SOURCE/);
   const anonymousMediaUpload = await fetch(`${baseUrl}/api/authoring/media`, {
     method: "POST",
     headers: { "content-type": "image/png" },
