@@ -1,0 +1,10 @@
+{
+  "base": "491e6e91fe4a4d7ae8fee6126e35b6421cc3eb9e",
+  "certificateSha256": "f9ee97a4d15432cd63a6065aebee58c2cdc502b5726b6fe154491a48a1402866",
+  "method": "Independent Node24 TS erasure / esbuild TSX erasure with source maps / Espree runtime tokens; exact source hashes and new-file additions; canonical runtime fragment deduplication against all baseline production TS/TSX and within accepted new credits. Semantic exclusions cannot be overridden or supplemented with credits.",
+  "claimed": 932,
+  "runtimeConfirmed": 932,
+  "failures": [],
+  "minimum": 800,
+  "satisfied": true
+}

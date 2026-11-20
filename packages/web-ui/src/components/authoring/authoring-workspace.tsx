@@ -497,7 +497,7 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
           {/* The images an author has uploaded, and which of them nothing uses. */}
           <Link className="nw-btn" href="/write/library">全部作品目录</Link>
           <Link className="nw-btn" href="/write/collections">本机集合工具</Link>
-          <Link className="nw-btn" href="/write/overlap">本机段落审阅</Link><Link className="nw-btn" href="/write/terms">本机术语审阅</Link>
+          <Link className="nw-btn" href="/write/overlap">本机段落审阅</Link><Link className="nw-btn" href="/write/terms">本机术语审阅</Link><Link className="nw-btn" href="/write/cadence">本机标点与节奏</Link>
           <Link className="nw-btn" href="/write/merge">本机三方合并</Link><Link className="nw-btn" href="/write/vault">本机加密备份</Link>
           <Link className="nw-btn" href="/write/media">媒体库</Link>
           {/* Notion as an interchange format (ADR 0036): bring a bundle in. */}

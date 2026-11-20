@@ -247,6 +247,18 @@ try {
   assert.equal(termsQuery.headers.get("location"), "/write/terms");
   assert.match(termsQuery.headers.get("cache-control") ?? "", /no-store/i);
   assert.doesNotMatch(await termsQuery.text(), /PRIVATE-TERMS-SOURCE/);
+  const cadence = await fetch(`${baseUrl}/write/cadence`);
+  assert.equal(cadence.status, 200, "local punctuation review must render without an API or account");
+  assert.match(cadence.headers.get("cache-control") ?? "", /no-store/i);
+  const cadenceHtml = await cadence.text();
+  assert.match(cadenceHtml, /data-route="write-cadence"/);
+  assert.match(cadenceHtml, /noindex, nofollow/);
+  assert.doesNotMatch(cadenceHtml, /contenteditable="true"/);
+  const cadenceQuery = await fetch(`${baseUrl}/write/cadence?file=PRIVATE-CADENCE-SOURCE&dot=true`, { redirect: "manual" });
+  assert.equal(cadenceQuery.status, 302);
+  assert.equal(cadenceQuery.headers.get("location"), "/write/cadence");
+  assert.match(cadenceQuery.headers.get("cache-control") ?? "", /no-store/i);
+  assert.doesNotMatch(await cadenceQuery.text(), /PRIVATE-CADENCE-SOURCE/);
   const anonymousMediaUpload = await fetch(`${baseUrl}/api/authoring/media`, {
     method: "POST",
     headers: { "content-type": "image/png" },

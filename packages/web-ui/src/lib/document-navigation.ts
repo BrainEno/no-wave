@@ -2,7 +2,7 @@
 export function requiresDocumentNavigation(currentPath: string, href: string): boolean {
   if (href.startsWith("#")) return false;
   const isolated = (path: string) => {
-    try { return ["/write/vault", "/write/overlap", "/write/terms"].includes(decodeURIComponent(path).replace(/\/+$/, "")); }
+    try { return ["/write/vault", "/write/overlap", "/write/terms", "/write/cadence"].includes(decodeURIComponent(path).replace(/\/+$/, "")); }
     catch { return false; }
   };
   try {
