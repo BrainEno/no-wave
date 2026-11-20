@@ -62,6 +62,23 @@
 字体准备使用 Node 原生系统 CA，未关闭 TLS 检查。兼容浏览器不使用包提供的关闭 Web 安全参数；
 浏览器旅程继续使用 enforcing CSP fixture，不登记违规豁免。合成隐私过渡和实际 goBack 均不是 BFCache 实际收纳证明。
 
+## 远端门禁暴露的评论旅程隔离修正
+
+初始提交 `d730112677087b63dff40f72848d7aa1600023f8` 的 push CI 中，
+[e2e(1)](https://github.com/BrainEno/no-wave/actions/runs/44709346118/job/136196771197)
+实际失败：既有 `comment-session.spec.ts` 创建测试作品首次和重试均收到 `429 RATE_LIMITED`。
+该文件原先使用所有旅程共用的 API；生产 `article.create` 的真实 IP 预算为 30/小时。
+这证明验收依赖其他旅程的配额状态；不声称已逐笔重建当时所有消耗请求，也不把该失败当作本轮全绿。
+
+最小修正仅让此既有旅程复用 `article-view-stack` 的真实一次性 SQLite/API/Web 栈，
+HTTP setup 显式使用 `readingStack.apiBaseUrl`，浏览器也使用同一栈。全部原评论/会话/CSP断言保留，
+不提高生产限额、不伪造 IP、不 mock 响应、不增加重试或跳过用例；没有新增生产功能行信用。
+修正后的评论旅程 + 6条术语旅程 **7/7 通过，23秒，无重试**，随后完整 typecheck/lint 和文档模型均退出0。
+这些与此前14条是重叠集合，总共15条相关独立旅程，不能相加成21条。
+
+初始提交两个未完成 CI workflow 已明确请求取消以避免继续消耗旧版本的 runner，取消不算通过。
+PR379 保持 Draft，修正后精确HEAD的全部门禁仍须重新完成后才单独 Ready。
+
 ## 独立有效新增生产功能行
 
 - [主审计](writing-terms-lines.ts)固定本轮 11 个新 lib 模块，不准入类型模型、UI、路由、导航、样式、入口登记、测试、文档或工具。
