@@ -1,0 +1,1529 @@
+{
+  "base": "a46b927f56c74130177eb9659e4ae925bafd2f42",
+  "rules": [
+    {
+      "file": "packages/web-ui/src/lib/writing-terms-catalog.ts",
+      "reason": "额外扣除被动 DTO/状态打包、静态配置/文案、签名片段和已有通用策略/薄封装；实际运行时逻辑仍须独立复核。",
+      "fragments": [
+        {
+          "line": 24,
+          "text": "steps: 0,"
+        },
+        {
+          "line": 25,
+          "text": "outputs: 0,"
+        },
+        {
+          "line": 26,
+          "text": "wordRejected: 0,"
+        },
+        {
+          "line": 27,
+          "text": "boundaryRejected: 0,"
+        },
+        {
+          "line": 30,
+          "text": "const limits: TermsBudgets = {"
+        },
+        {
+          "line": 31,
+          "text": "...TERMS_LIMITS,"
+        },
+        {
+          "line": 32,
+          "text": "matches: TERMS_LIMITS.outputs,"
+        },
+        {
+          "line": 57,
+          "text": "relation = {"
+        },
+        {
+          "line": 58,
+          "text": "left: pattern.id,"
+        },
+        {
+          "line": 59,
+          "text": "right: other.id,"
+        },
+        {
+          "line": 61,
+          "text": "offsets: [],"
+        },
+        {
+          "line": 111,
+          "text": "return Object.freeze({ relations, complete, components });"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-terms-context.ts",
+      "reason": "额外扣除被动 DTO/状态打包、静态配置/文案、签名片段和已有通用策略/薄封装；实际运行时逻辑仍须独立复核。",
+      "fragments": [
+        {
+          "line": 22,
+          "text": "const splitPair = (text: string, offset: number) =>"
+        },
+        {
+          "line": 52,
+          "text": "match.start,"
+        },
+        {
+          "line": 56,
+          "text": "start: match.start,"
+        },
+        {
+          "line": 57,
+          "text": "end: match.end,"
+        },
+        {
+          "line": 58,
+          "text": "pointStart: match.pointStart,"
+        },
+        {
+          "line": 59,
+          "text": "pointEnd: match.pointEnd,"
+        },
+        {
+          "line": 89,
+          "text": "[start, { enter: [], leave: [] }],"
+        },
+        {
+          "line": 90,
+          "text": "[end, { enter: [], leave: [] }],"
+        },
+        {
+          "line": 95,
+          "text": "const value = { enter: [], leave: [] };"
+        },
+        {
+          "line": 125,
+          "text": "Object.freeze({"
+        },
+        {
+          "line": 127,
+          "text": "end: position,"
+        },
+        {
+          "line": 129,
+          "text": "claims: active.size,"
+        },
+        {
+          "line": 130,
+          "text": "preferred,"
+        },
+        {
+          "line": 131,
+          "text": "alternatives,"
+        },
+        {
+          "line": 132,
+          "text": "rules: groups.size,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-terms-controller.ts",
+      "reason": "保守整份扣除：控制器沿用已有本机多输入、取消与手动报告模式；报告的白名单投影不计新增功能。",
+      "fragments": [
+        {
+          "line": 80,
+          "text": "const emptyInput = (): TermsWorkbenchState[\"input\"] => ({"
+        },
+        {
+          "line": 87,
+          "text": "const emptyRecipe = (): TermsWorkbenchState[\"recipe\"] => ({"
+        },
+        {
+          "line": 89,
+          "text": "text: \"\","
+        },
+        {
+          "line": 102,
+          "text": "const emptyState = (): TermsWorkbenchState => ({"
+        },
+        {
+          "line": 105,
+          "text": "recipe: emptyRecipe(),"
+        },
+        {
+          "line": 106,
+          "text": "policy: { ...DEFAULT_TERMS_POLICY },"
+        },
+        {
+          "line": 108,
+          "text": "const fileName = (name: string) =>"
+        },
+        {
+          "line": 109,
+          "text": "[...name.replace(/[\\p{Cc}\\u202a-\\u202e\\u2066-\\u2069]/gu, \"\")]"
+        },
+        {
+          "line": 112,
+          "text": "const percent = (value: number) =>"
+        },
+        {
+          "line": 113,
+          "text": "Number.isFinite(value) ? Math.max(0, Math.min(100, Math.floor(value))) : 0;"
+        },
+        {
+          "line": 114,
+          "text": "const message = (error: unknown) =>"
+        },
+        {
+          "line": 117,
+          "text": ": \"本机术语操作失败，没有修改或上传任何文稿。\";"
+        },
+        {
+          "line": 123,
+          "text": "const bytes = await readLocalFileBytes("
+        },
+        {
+          "line": 128,
+          "text": "TERMS_RECIPE_BYTES,"
+        },
+        {
+          "line": 131,
+          "text": "return new TextDecoder(\"utf-8\", { fatal: true }).decode(bytes);"
+        },
+        {
+          "line": 133,
+          "text": "throw new Error(\"词表须为完整有效 UTF-8；未以替换字符修复词条。\");"
+        },
+        {
+          "line": 143,
+          "text": "private recipeValue: TermsRecipe | null = null;"
+        },
+        {
+          "line": 144,
+          "text": "private sourceRead: AbortController | null = null;"
+        },
+        {
+          "line": 145,
+          "text": "private recipeRead: AbortController | null = null;"
+        },
+        {
+          "line": 147,
+          "text": "private reportAnalysis: TermsAnalysis | null = null;"
+        },
+        {
+          "line": 153,
+          "text": "readRecipe: options.readRecipe ?? readRecipeFile,"
+        },
+        {
+          "line": 155,
+          "text": "analyze: options.analyze ?? analyzeWritingTerms,"
+        },
+        {
+          "line": 161,
+          "text": "this.publish({});"
+        },
+        {
+          "line": 163,
+          "text": "getSnapshot = (): TermsWorkbenchState => this.state;"
+        },
+        {
+          "line": 175,
+          "text": "Object.freeze(next.recipe);"
+        },
+        {
+          "line": 187,
+          "text": "this.publish({ error: message(error) });"
+        },
+        {
+          "line": 191,
+          "text": "this.sourceRead?.abort();"
+        },
+        {
+          "line": 192,
+          "text": "this.sourceRead = null;"
+        },
+        {
+          "line": 193,
+          "text": "this.recipeRead?.abort();"
+        },
+        {
+          "line": 194,
+          "text": "this.recipeRead = null;"
+        },
+        {
+          "line": 197,
+          "text": "this.recipeValue = null;"
+        },
+        {
+          "line": 210,
+          "text": "recipe:"
+        },
+        {
+          "line": 211,
+          "text": "this.state.recipe.status === \"reading\""
+        },
+        {
+          "line": 212,
+          "text": "? emptyRecipe()"
+        },
+        {
+          "line": 213,
+          "text": ": this.state.recipe,"
+        },
+        {
+          "line": 221,
+          "text": "this.sourceRead = abort;"
+        },
+        {
+          "line": 222,
+          "text": "const current = () => this.sourceRead === abort && !abort.signal.aborted;"
+        },
+        {
+          "line": 232,
+          "text": "error: \"来源文件须大于 0 且不超过 16 MiB，未读取文件。\","
+        },
+        {
+          "line": 238,
+          "text": "input: { ...emptyInput(), status: \"reading\", name: fileName(file.name) },"
+        },
+        {
+          "line": 245,
+          "text": "input: { ...this.state.input, percent: percent(value) },"
+        },
+        {
+          "line": 273,
+          "text": "error: message(error),"
+        },
+        {
+          "line": 277,
+          "text": "if (this.sourceRead === abort) this.sourceRead = null;"
+        },
+        {
+          "line": 285,
+          "text": "this.recipeRead = abort;"
+        },
+        {
+          "line": 286,
+          "text": "const current = () => this.recipeRead === abort && !abort.signal.aborted;"
+        },
+        {
+          "line": 290,
+          "text": "file.size > TERMS_RECIPE_BYTES"
+        },
+        {
+          "line": 295,
+          "text": "recipe: { ...emptyRecipe(), status: \"invalid\" },"
+        },
+        {
+          "line": 296,
+          "text": "error: \"词表文件须大于 0 且不超过 128 KiB，未读取文件。\","
+        },
+        {
+          "line": 302,
+          "text": "recipe: {"
+        },
+        {
+          "line": 303,
+          "text": "...emptyRecipe(),"
+        },
+        {
+          "line": 304,
+          "text": "status: \"reading\","
+        },
+        {
+          "line": 305,
+          "text": "name: fileName(file.name),"
+        },
+        {
+          "line": 310,
+          "text": "const text = await this.options.readRecipe("
+        },
+        {
+          "line": 316,
+          "text": "recipe: { ...this.state.recipe, percent: percent(value) },"
+        },
+        {
+          "line": 321,
+          "text": "const recipe = parseTermsRecipe(text);"
+        },
+        {
+          "line": 322,
+          "text": "this.recipeValue = recipe;"
+        },
+        {
+          "line": 324,
+          "text": "recipe: { ...this.state.recipe, status: \"ready\", text, percent: 100 },"
+        },
+        {
+          "line": 336,
+          "text": "if (this.recipeRead === abort) this.recipeRead = null;"
+        },
+        {
+          "line": 344,
+          "text": "let bounded = \"\";"
+        },
+        {
+          "line": 348,
+          "text": "text.length > TERMS_RECIPE_BYTES ||"
+        },
+        {
+          "line": 349,
+          "text": "new TextEncoder().encode(text).byteLength > TERMS_RECIPE_BYTES"
+        },
+        {
+          "line": 351,
+          "text": "throw new Error(\"词表草稿超过 128 KiB，已清除旧分析且未保留超限输入。\");"
+        },
+        {
+          "line": 352,
+          "text": "bounded = text;"
+        },
+        {
+          "line": 357,
+          "text": "recipe: { ...emptyRecipe(), status: \"ready\", text },"
+        },
+        {
+          "line": 365,
+          "text": "status: text ? \"invalid\" : \"idle\","
+        },
+        {
+          "line": 366,
+          "text": "text: bounded,"
+        },
+        {
+          "line": 368,
+          "text": "error: text ? message(error) : \"\","
+        },
+        {
+          "line": 375,
+          "text": "const policy = validateTermsPolicy(raw);"
+        },
+        {
+          "line": 383,
+          "text": "this.publish({ ...emptyDerived(), error: message(error) });"
+        },
+        {
+          "line": 390,
+          "text": "recipe = this.recipeValue,"
+        },
+        {
+          "line": 391,
+          "text": "policy = this.state.policy;"
+        },
+        {
+          "line": 394,
+          "text": "!recipe ||"
+        },
+        {
+          "line": 396,
+          "text": "this.state.recipe.status !== \"ready\""
+        },
+        {
+          "line": 400,
+          "text": "error: \"请先明确选择完整校验的来源，并输入或导入有效词表。\","
+        },
+        {
+          "line": 409,
+          "text": "this.opened === source &&"
+        },
+        {
+          "line": 410,
+          "text": "this.recipeValue === recipe &&"
+        },
+        {
+          "line": 411,
+          "text": "this.state.policy === policy;"
+        },
+        {
+          "line": 413,
+          "text": "const progress: NonNullable<TermsOptions[\"progress\"]> = ("
+        },
+        {
+          "line": 418,
+          "text": "if (current()) this.publish({ progress: { stage, done, total } });"
+        },
+        {
+          "line": 422,
+          "text": "const result = await this.options.analyze("
+        },
+        {
+          "line": 424,
+          "text": "recipe,"
+        },
+        {
+          "line": 427,
+          "text": "{ pause: this.options.pause, progress },"
+        },
+        {
+          "line": 430,
+          "text": "const recipeKey = await collectionChecksum(recipe, abort.signal);"
+        },
+        {
+          "line": 434,
+          "text": "result.recipeKey !== recipeKey ||"
+        },
+        {
+          "line": 435,
+          "text": "JSON.stringify(result.recipe) !== JSON.stringify(recipe) ||"
+        },
+        {
+          "line": 438,
+          "text": "throw new Error(\"分析与当前来源、词表或条件不符，未接纳旧结果。\");"
+        },
+        {
+          "line": 439,
+          "text": "termsInventory(result);"
+        },
+        {
+          "line": 459,
+          "text": "this.state.recipe.status !== \"ready\" ||"
+        },
+        {
+          "line": 461,
+          "text": "JSON.stringify(analysis.recipe) !== JSON.stringify(this.recipeValue) ||"
+        },
+        {
+          "line": 464,
+          "text": "throw new Error(\"术语分析已经变化，请重新分析当前来源、词表和条件。\");"
+        },
+        {
+          "line": 470,
+          "text": "marks = validateTermsMarks(analysis, raw);"
+        },
+        {
+          "line": 472,
+          "text": "termsMarksKey(analysis, marks) ==="
+        },
+        {
+          "line": 473,
+          "text": "termsMarksKey(analysis, this.state.marks)"
+        },
+        {
+          "line": 490,
+          "text": "if (!termsInventory(analysis).matches.has(id))"
+        },
+        {
+          "line": 491,
+          "text": "throw new Error(\"术语命中已经失效，没有标记其他位置。\");"
+        },
+        {
+          "line": 492,
+          "text": "const marks = this.state.marks.filter((mark) => mark.match !== id);"
+        },
+        {
+          "line": 493,
+          "text": "if (verdict !== null) marks.push({ match: id, verdict });"
+        },
+        {
+          "line": 500,
+          "text": "return resolveTermsRow(this.requireAnalysis(row.witness), row);"
+        },
+        {
+          "line": 505,
+          "text": "report = prepareTermsReport("
+        },
+        {
+          "line": 520,
+          "text": "expected !== this.state.report ||"
+        },
+        {
+          "line": 524,
+          "text": "throw new Error(\"报告预览已变化，请重新准备并核对。\");"
+        },
+        {
+          "line": 540,
+          "text": "expected.recipeKey === analysis.recipeKey &&"
+        },
+        {
+          "line": 541,
+          "text": "expected.marksKey === termsMarksKey(analysis, this.state.marks)"
+        },
+        {
+          "line": 549,
+          "text": "throw new Error(\"术语报告或确认已失效，没有下载旧结果。\");"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-terms-index.ts",
+      "reason": "额外扣除被动 DTO/状态打包、静态配置/文案、签名片段和已有通用策略/薄封装；实际运行时逻辑仍须独立复核。",
+      "fragments": [
+        {
+          "line": 33,
+          "text": "\"术语分析的位置、完整性或所属清单已经变化；未展示猜测的内容。\","
+        },
+        {
+          "line": 176,
+          "text": "\"algorithm,catalog,coverage,documents,frontier,limit,matches,patterns,policy,recipe,recipeKey,sourceKey,units\","
+        },
+        {
+          "line": 354,
+          "text": "\"boundaryRejected,characters,documents,eligibleUnits,excludedUnits,outputs,points,scannedCharacters,scannedPoints,scannedUnits,steps,units,wordRejected\","
+        },
+        {
+          "line": 392,
+          "text": "unit: unit.id,"
+        },
+        {
+          "line": 395,
+          "text": "claims: [],"
+        },
+        {
+          "line": 396,
+          "text": "patterns: [],"
+        },
+        {
+          "line": 397,
+          "text": "rules: [],"
+        },
+        {
+          "line": 423,
+          "text": "const index: Inventory = {"
+        },
+        {
+          "line": 424,
+          "text": "patterns,"
+        },
+        {
+          "line": 426,
+          "text": "matches,"
+        },
+        {
+          "line": 427,
+          "text": "inUnit,"
+        },
+        {
+          "line": 428,
+          "text": "patternOrder,"
+        },
+        {
+          "line": 429,
+          "text": "unitOrder,"
+        },
+        {
+          "line": 430,
+          "text": "clusterOf,"
+        },
+        {
+          "line": 431,
+          "text": "clusters,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-terms-machine.ts",
+      "reason": "额外扣除被动 DTO/状态打包、静态配置/文案、签名片段和已有通用策略/薄封装；实际运行时逻辑仍须独立复核。",
+      "fragments": [
+        {
+          "line": 75,
+          "text": "const states: State[] = ["
+        },
+        {
+          "line": 76,
+          "text": "{ edges: new Map(), failure: 0, suffix: -1, terminal: [] },"
+        },
+        {
+          "line": 92,
+          "text": "states.push({ edges: new Map(), failure: 0, suffix: -1, terminal: [] });"
+        },
+        {
+          "line": 132,
+          "text": "const stop = (limit: TermScan[\"limit\"]): TermScan => ({"
+        },
+        {
+          "line": 134,
+          "text": "points: completed,"
+        },
+        {
+          "line": 135,
+          "text": "utf16,"
+        },
+        {
+          "line": 180,
+          "text": "pending.push({"
+        },
+        {
+          "line": 182,
+          "text": "match: {"
+        },
+        {
+          "line": 183,
+          "text": "pattern: pattern.id,"
+        },
+        {
+          "line": 187,
+          "text": "pointEnd: index + 1,"
+        },
+        {
+          "line": 203,
+          "text": "return Object.freeze({ patterns, states: states.length, scan });"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-terms-recipe.ts",
+      "reason": "额外扣除被动 DTO/状态打包、静态配置/文案、签名片段和已有通用策略/薄封装；实际运行时逻辑仍须独立复核。",
+      "fragments": [
+        {
+          "line": 12,
+          "text": "export const TERMS_RECIPE_BYTES = 128 * 1024;"
+        },
+        {
+          "line": 31,
+          "text": "\"术语条件无效，请明确选择字面或 ASCII 大小写模式及正文范围。\","
+        },
+        {
+          "line": 33,
+          "text": "return Object.freeze({ mode: raw.mode, scope: raw.scope });"
+        },
+        {
+          "line": 36,
+          "text": "const limits: TermsBudgets = { ...TERMS_LIMITS };"
+        },
+        {
+          "line": 38,
+          "text": "if (!Object.hasOwn(limits, key)) throw new Error(\"未知术语计算预算。\");"
+        },
+        {
+          "line": 39,
+          "text": "const field = key as keyof TermsBudgets,"
+        },
+        {
+          "line": 40,
+          "text": "value = raw[field];"
+        },
+        {
+          "line": 44,
+          "text": "value! > TERMS_LIMITS[field]"
+        },
+        {
+          "line": 46,
+          "text": "throw new Error(\"术语预算只能在既有上限内缩小。\");"
+        },
+        {
+          "line": 47,
+          "text": "limits[field] = value!;"
+        },
+        {
+          "line": 61,
+          "text": "\"每个词条须为 1–80 个代码点的完整文字，不含首尾空白、控制符或不完整代理对。\","
+        },
+        {
+          "line": 78,
+          "text": "\"词表须为 no-wave-writing-terms v1，包含 1–128 个术语组且没有未知字段。\","
+        },
+        {
+          "line": 98,
+          "text": "\"同一术语组不能重复列出完全相同的词条；跨组同形仍会保留并提示。\","
+        },
+        {
+          "line": 104,
+          "text": "\"词表超过 512 个词条或 16384 个代码点预算，未接纳部分规则。\","
+        },
+        {
+          "line": 110,
+          "text": "boundary: record.boundary as TermsRule[\"boundary\"],"
+        },
+        {
+          "line": 114,
+          "text": "return Object.freeze({ format: \"no-wave-writing-terms\", version: 1, rules });"
+        },
+        {
+          "line": 139,
+          "text": "boundary: rule.boundary,"
+        },
+        {
+          "line": 146,
+          "text": "if (signal.aborted)"
+        },
+        {
+          "line": 147,
+          "text": "throw new DOMException(\"本机术语审阅已取消。\", \"AbortError\");"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-terms-report.ts",
+      "reason": "保守整份扣除：控制器沿用已有本机多输入、取消与手动报告模式；报告的白名单投影不计新增功能。",
+      "fragments": [
+        {
+          "line": 28,
+          "text": "!/^\\d{4}-\\d{2}-\\d{2}T/u.test(now.toISOString())"
+        },
+        {
+          "line": 30,
+          "text": "throw new Error(\"术语报告时间无效。\");"
+        },
+        {
+          "line": 31,
+          "text": "const index = termsInventory(analysis),"
+        },
+        {
+          "line": 32,
+          "text": "marks = validateTermsMarks(analysis, raw),"
+        },
+        {
+          "line": 33,
+          "text": "chosen = new Map(marks.map((mark) => [mark.match, mark.verdict]));"
+        },
+        {
+          "line": 34,
+          "text": "const summary = summarizeTerms(analysis, marks),"
+        },
+        {
+          "line": 35,
+          "text": "usedUnits = new Set(analysis.matches.map((match) => match.unit));"
+        },
+        {
+          "line": 37,
+          "text": "format: \"no-wave-writing-terms-report\","
+        },
+        {
+          "line": 42,
+          "text": "recipeDigest: analysis.recipeKey,"
+        },
+        {
+          "line": 45,
+          "text": "limit: analysis.limit,"
+        },
+        {
+          "line": 46,
+          "text": "frontier: analysis.frontier ? { ...analysis.frontier } : null,"
+        },
+        {
+          "line": 47,
+          "text": "catalog: {"
+        },
+        {
+          "line": 48,
+          "text": "complete: analysis.catalog.complete,"
+        },
+        {
+          "line": 49,
+          "text": "relations: analysis.catalog.relations.map((relation) => ({"
+        },
+        {
+          "line": 50,
+          "text": "left: relation.left,"
+        },
+        {
+          "line": 51,
+          "text": "right: relation.right,"
+        },
+        {
+          "line": 52,
+          "text": "kind: relation.kind,"
+        },
+        {
+          "line": 53,
+          "text": "offsets: [...relation.offsets],"
+        },
+        {
+          "line": 55,
+          "text": "components: analysis.catalog.components.map((component) => ["
+        },
+        {
+          "line": 56,
+          "text": "...component,"
+        },
+        {
+          "line": 60,
+          "text": "claims: summary.claims,"
+        },
+        {
+          "line": 61,
+          "text": "locations: summary.locations,"
+        },
+        {
+          "line": 62,
+          "text": "overlappingClaims: summary.overlappingClaims,"
+        },
+        {
+          "line": 63,
+          "text": "unreviewed: summary.unreviewed,"
+        },
+        {
+          "line": 68,
+          "text": "groups: summary.groups.map((group) => ({"
+        },
+        {
+          "line": 69,
+          "text": "id: group.rule,"
+        },
+        {
+          "line": 70,
+          "text": "claims: group.claims,"
+        },
+        {
+          "line": 71,
+          "text": "locations: group.locations,"
+        },
+        {
+          "line": 72,
+          "text": "primary: group.preferred,"
+        },
+        {
+          "line": 73,
+          "text": "other: group.alternatives,"
+        },
+        {
+          "line": 74,
+          "text": "variants: [...group.variants],"
+        },
+        {
+          "line": 75,
+          "text": "documents: [...group.documents],"
+        },
+        {
+          "line": 76,
+          "text": "unreviewed: group.unreviewed,"
+        },
+        {
+          "line": 78,
+          "text": "documents: summary.documents.map((document) => ({ ...document })),"
+        },
+        {
+          "line": 79,
+          "text": "usage: profileTermsUsage(analysis),"
+        },
+        {
+          "line": 80,
+          "text": "units: analysis.units"
+        },
+        {
+          "line": 81,
+          "text": ".filter((unit) => usedUnits.has(unit.id))"
+        },
+        {
+          "line": 82,
+          "text": ".map((unit) => ({"
+        },
+        {
+          "line": 83,
+          "text": "id: unit.id,"
+        },
+        {
+          "line": 88,
+          "text": "matches: analysis.matches.map((match) => ({"
+        },
+        {
+          "line": 89,
+          "text": "id: match.id,"
+        },
+        {
+          "line": 90,
+          "text": "unit: index.units.get(match.unit)!.id,"
+        },
+        {
+          "line": 91,
+          "text": "pattern: index.patterns.get(match.pattern)!.id,"
+        },
+        {
+          "line": 96,
+          "text": "verdict: chosen.get(match.id) ?? null,"
+        },
+        {
+          "line": 101,
+          "text": "throw new Error(\"术语无正文报告超过 2 MiB，未截断导出。\");"
+        },
+        {
+          "line": 102,
+          "text": "const artifact = Object.freeze({"
+        },
+        {
+          "line": 104,
+          "text": "name: `no-wave-terms-report-${report.createdAt.slice(0, 10)}.json`,"
+        },
+        {
+          "line": 109,
+          "text": "recipeKey: analysis.recipeKey,"
+        },
+        {
+          "line": 110,
+          "text": "marksKey: termsMarksKey(analysis, marks),"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-terms-review.ts",
+      "reason": "额外扣除被动 DTO/状态打包、静态配置/文案、签名片段和已有通用策略/薄封装；实际运行时逻辑仍须独立复核。",
+      "fragments": [
+        {
+          "line": 69,
+          "text": "export const DEFAULT_TERMS_FILTER: TermsFilter = {"
+        },
+        {
+          "line": 71,
+          "text": "rule: \"all\","
+        },
+        {
+          "line": 72,
+          "text": "variant: \"all\","
+        },
+        {
+          "line": 75,
+          "text": "overlap: \"all\","
+        },
+        {
+          "line": 183,
+          "text": "rows.push("
+        },
+        {
+          "line": 186,
+          "text": "match,"
+        },
+        {
+          "line": 188,
+          "text": "pattern,"
+        },
+        {
+          "line": 189,
+          "text": "cluster,"
+        },
+        {
+          "line": 241,
+          "text": "const tally = (): Tally => ({"
+        },
+        {
+          "line": 242,
+          "text": "claims: 0,"
+        },
+        {
+          "line": 243,
+          "text": "locations: new Set(),"
+        },
+        {
+          "line": 244,
+          "text": "preferred: 0,"
+        },
+        {
+          "line": 245,
+          "text": "alternatives: 0,"
+        },
+        {
+          "line": 246,
+          "text": "variants: new Set(),"
+        },
+        {
+          "line": 247,
+          "text": "documents: new Set(),"
+        },
+        {
+          "line": 248,
+          "text": "rules: new Set(),"
+        },
+        {
+          "line": 252,
+          "text": "overlappingClaims: 0,"
+        },
+        {
+          "line": 280,
+          "text": "claims: tally.claims,"
+        },
+        {
+          "line": 281,
+          "text": "locations: tally.locations.size,"
+        },
+        {
+          "line": 282,
+          "text": "preferred: tally.preferred,"
+        },
+        {
+          "line": 283,
+          "text": "alternatives: tally.alternatives,"
+        },
+        {
+          "line": 284,
+          "text": "variants,"
+        },
+        {
+          "line": 285,
+          "text": "unreviewed: tally.unreviewed,"
+        },
+        {
+          "line": 286,
+          "text": "intentional: tally.intentional,"
+        },
+        {
+          "line": 287,
+          "text": "followUp: tally.followUp,"
+        },
+        {
+          "line": 343,
+          "text": "...values,"
+        },
+        {
+          "line": 344,
+          "text": "documents,"
+        },
+        {
+          "line": 346,
+          "text": "overlappingClaims: counts.overlappingClaims,"
+        },
+        {
+          "line": 353,
+          "text": "claims: counts.claims,"
+        },
+        {
+          "line": 354,
+          "text": "locations: counts.locations.size,"
+        },
+        {
+          "line": 356,
+          "text": "ruleCount: counts.rules.size,"
+        },
+        {
+          "line": 357,
+          "text": "unreviewed: counts.unreviewed,"
+        },
+        {
+          "line": 370,
+          "text": "claims: total.claims,"
+        },
+        {
+          "line": 371,
+          "text": "locations: total.locations.size,"
+        },
+        {
+          "line": 372,
+          "text": "overlappingClaims: total.overlappingClaims,"
+        },
+        {
+          "line": 373,
+          "text": "unreviewed: total.unreviewed,"
+        },
+        {
+          "line": 374,
+          "text": "complete: analysis.limit === null,"
+        },
+        {
+          "line": 375,
+          "text": "groups: summaries,"
+        },
+        {
+          "line": 377,
+          "text": "cells,"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-terms-source.ts",
+      "reason": "额外扣除被动 DTO/状态打包、静态配置/文案、签名片段和已有通用策略/薄封装；实际运行时逻辑仍须独立复核。",
+      "fragments": [
+        {
+          "line": 31,
+          "text": "const coverage: TermsCoverage = {"
+        },
+        {
+          "line": 32,
+          "text": "documents: documents.length,"
+        },
+        {
+          "line": 34,
+          "text": "eligibleUnits: 0,"
+        },
+        {
+          "line": 35,
+          "text": "excludedUnits: 0,"
+        },
+        {
+          "line": 36,
+          "text": "points: 0,"
+        },
+        {
+          "line": 37,
+          "text": "characters: 0,"
+        },
+        {
+          "line": 38,
+          "text": "scannedUnits: 0,"
+        },
+        {
+          "line": 39,
+          "text": "scannedPoints: 0,"
+        },
+        {
+          "line": 40,
+          "text": "scannedCharacters: 0,"
+        },
+        {
+          "line": 46,
+          "text": "const kinds = {"
+        },
+        {
+          "line": 47,
+          "text": "all: [\"paragraph\", \"heading\", \"quote\", \"listitem\"],"
+        },
+        {
+          "line": 48,
+          "text": "paragraphs: [\"paragraph\"],"
+        },
+        {
+          "line": 49,
+          "text": "headings: [\"heading\"],"
+        },
+        {
+          "line": 50,
+          "text": "quotes: [\"quote\"],"
+        },
+        {
+          "line": 51,
+          "text": "lists: [\"listitem\"],"
+        },
+        {
+          "line": 86,
+          "text": "id: `${entry.key}:${path.join(\".\")}`,"
+        },
+        {
+          "line": 91,
+          "text": "blocked,"
+        },
+        {
+          "line": 101,
+          "text": "return { sourceKey: expected, units, documents, coverage };"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-terms-usage.ts",
+      "reason": "额外扣除被动 DTO/状态打包、静态配置/文案、签名片段和已有通用策略/薄封装；实际运行时逻辑仍须独立复核。",
+      "fragments": [
+        {
+          "line": 79,
+          "text": "state: \"unscanned\" as TermsDocumentCoverage[\"state\"],"
+        },
+        {
+          "line": 190,
+          "text": "id: spelling.id,"
+        },
+        {
+          "line": 191,
+          "text": "claims: entry.claims,"
+        },
+        {
+          "line": 192,
+          "text": "locations: entry.locations.size,"
+        },
+        {
+          "line": 205,
+          "text": "classes: observed,"
+        },
+        {
+          "line": 206,
+          "text": "coverage: document.state,"
+        },
+        {
+          "line": 212,
+          "text": "cells.push({"
+        },
+        {
+          "line": 213,
+          "text": "document: document.document,"
+        },
+        {
+          "line": 215,
+          "text": "classes: rows,"
+        },
+        {
+          "line": 217,
+          "text": "claims: raw.claims,"
+        },
+        {
+          "line": 218,
+          "text": "locations: raw.locations.size,"
+        },
+        {
+          "line": 231,
+          "text": "const item = {"
+        },
+        {
+          "line": 232,
+          "text": "left: a,"
+        },
+        {
+          "line": 233,
+          "text": "right: b,"
+        },
+        {
+          "line": 234,
+          "text": "both: [] as string[],"
+        },
+        {
+          "line": 235,
+          "text": "leftObservedOnly: [] as string[],"
+        },
+        {
+          "line": 236,
+          "text": "rightObservedOnly: [] as string[],"
+        },
+        {
+          "line": 237,
+          "text": "neitherObserved: [] as string[],"
+        },
+        {
+          "line": 257,
+          "text": "groups.push({"
+        },
+        {
+          "line": 259,
+          "text": "classes: definitions,"
+        },
+        {
+          "line": 264,
+          "text": "mixedDocuments,"
+        },
+        {
+          "line": 265,
+          "text": "signatures: [...signatures.values()],"
+        },
+        {
+          "line": 266,
+          "text": "coUses,"
+        },
+        {
+          "line": 282,
+          "text": "groups,"
+        },
+        {
+          "line": 326,
+          "text": "rule: group.rule,"
+        },
+        {
+          "line": 328,
+          "text": "shared,"
+        },
+        {
+          "line": 329,
+          "text": "leftOnly,"
+        },
+        {
+          "line": 330,
+          "text": "rightOnly,"
+        },
+        {
+          "line": 331,
+          "text": "leftLocations: leftCell.locations,"
+        },
+        {
+          "line": 332,
+          "text": "rightLocations: rightCell.locations,"
+        },
+        {
+          "line": 333,
+          "text": "difference,"
+        },
+        {
+          "line": 336,
+          "text": "return freezeUsage({"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-terms.ts",
+      "reason": "额外扣除被动 DTO/状态打包、静态配置/文案、签名片段和已有通用策略/薄封装；实际运行时逻辑仍须独立复核。",
+      "fragments": [
+        {
+          "line": 63,
+          "text": "const analysis: TermsAnalysis = {"
+        },
+        {
+          "line": 64,
+          "text": "algorithm: \"no-wave-writing-terms-v1\","
+        },
+        {
+          "line": 66,
+          "text": "recipeKey,"
+        },
+        {
+          "line": 70,
+          "text": "matches: [],"
+        },
+        {
+          "line": 71,
+          "text": "catalog,"
+        },
+        {
+          "line": 72,
+          "text": "limit: null,"
+        },
+        {
+          "line": 73,
+          "text": "frontier: null,"
+        },
+        {
+          "line": 78,
+          "text": "...budgets,"
+        },
+        {
+          "line": 84,
+          "text": "...match,"
+        },
+        {
+          "line": 86,
+          "text": "id: `m${analysis.matches.length + 1}`,"
+        },
+        {
+          "line": 95,
+          "text": "point: scan.points,"
+        },
+        {
+          "line": 96,
+          "text": "utf16: scan.utf16,"
+        },
+        {
+          "line": 109,
+          "text": "return Object.freeze(analysis);"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-terms-catalog.ts",
+      "reason": "独立运行时擦除/全基线去重拒绝：不授予改名、旧代码或重复片段信用。",
+      "fragments": [
+        {
+          "line": 19,
+          "text": "const relations: TermsRelation[] = [],"
+        },
+        {
+          "line": 45,
+          "text": "complete = false;"
+        },
+        {
+          "line": 100,
+          "text": "const groups = new Map<number, string[]>();"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-terms-context.ts",
+      "reason": "独立运行时擦除/全基线去重拒绝：不授予改名、旧代码或重复片段信用。",
+      "fragments": [
+        {
+          "line": 29,
+          "text": "for ("
+        },
+        {
+          "line": 105,
+          "text": "groups = new Map<string, number>(),"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-terms-index.ts",
+      "reason": "独立运行时擦除/全基线去重拒绝：不授予改名、旧代码或重复片段信用。",
+      "fragments": [
+        {
+          "line": 233,
+          "text": "lastEnd = -1,"
+        },
+        {
+          "line": 288,
+          "text": "let points = 0,"
+        },
+        {
+          "line": 303,
+          "text": "const list = inUnit.get(unit.id) ?? [],"
+        },
+        {
+          "line": 312,
+          "text": "offset = 0;"
+        },
+        {
+          "line": 387,
+          "text": "let current: TermsCluster | null = null;"
+        },
+        {
+          "line": 56,
+          "text": "const seen = new Set<string>(),"
+        },
+        {
+          "line": 96,
+          "text": "const visited = new Set<string>(),"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-terms-machine.ts",
+      "reason": "独立运行时擦除/全基线去重拒绝：不授予改名、旧代码或重复片段信用。",
+      "fragments": [
+        {
+          "line": 126,
+          "text": "offsets = [0],"
+        },
+        {
+          "line": 128,
+          "text": "let state = 0,"
+        },
+        {
+          "line": 154,
+          "text": "const pending: { ordinal: number; match: TermTextMatch }[] = [];"
+        },
+        {
+          "line": 166,
+          "text": "pattern.boundary === \"word\" &&"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-terms-review.ts",
+      "reason": "独立运行时擦除/全基线去重拒绝：不授予改名、旧代码或重复片段信用。",
+      "fragments": [
+        {
+          "line": 84,
+          "text": "const inventory = termsInventory(analysis);"
+        },
+        {
+          "line": 155,
+          "text": "const rows: TermsRow[] = [];"
+        },
+        {
+          "line": 312,
+          "text": "const cells: TermsCell[] = [];"
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-terms-source.ts",
+      "reason": "独立运行时擦除/全基线去重拒绝：不授予改名、旧代码或重复片段信用。",
+      "fragments": [
+        {
+          "line": 30,
+          "text": "const units: TermsUnit[] = [];"
+        },
+        {
+          "line": 84,
+          "text": "units.push("
+        }
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-terms-usage.ts",
+      "reason": "独立运行时擦除/全基线去重拒绝：不授予改名、旧代码或重复片段信用。",
+      "fragments": [
+        {
+          "line": 83,
+          "text": "const frontier = analysis.frontier"
+        },
+        {
+          "line": 85,
+          "text": ": analysis.units.length;"
+        },
+        {
+          "line": 128,
+          "text": "for (const pattern of analysis.patterns) {"
+        },
+        {
+          "line": 146,
+          "text": "const counts = new Map<string, CellCount>();"
+        },
+        {
+          "line": 174,
+          "text": "const groups: TermsUsageGroup[] = [];"
+        },
+        {
+          "line": 175,
+          "text": "for (const [rule, definitions] of classes) {"
+        },
+        {
+          "line": 300,
+          "text": "const groups: TermsUsageComparison[\"groups\"] = [];"
+        }
+      ]
+    }
+  ]
+}

@@ -88,6 +88,17 @@ The previous project provides the reference for user-visible capabilities and kn
   详细边界见 [ADR 0048](../architecture/decisions/0048-read-only-local-writing-overlap.md)、
   [使用说明](../operations/writing-overlap.md)与[本轮证据](../audit/writing-overlap-review.md)。
 
+## Read-only local terminology review
+
+- `/write/terms` 只使用明确选择的完整本机备份/集合及严格手动词表；默认字面，可选仅 ASCII 大小写折叠。
+- Given 同形、后缀、包含和重叠词条，When 分析，Then 保留每个主张与原文 UTF-16/代码点坐标；偏好不作为正确性或替换指令。
+- Given 来源/词表超限，When 校验，Then 整轮拒绝；Given 计算预算，Then 同一结束位置全部提交或不提交，精确未覆盖前沿可见。
+- Given 词组/文稿分布与拼写组合，When 查看，Then 区分主张/精确跨度/重叠团，折叠同形不冒充多种拼写，未覆盖不冒充完整缺席。
+- Given 手动标记、视图筛选或文稿对照，When 准备报告，Then 始终保留全局口径；无正文/词条明文/标题/摘要/文件名/URL/节点。
+- Given 输入或条件变化、无效词表中间稿、取消、重跑或隐私清理，When 旧读取/摘要/进度/计算完成，Then 旧定位、标记与下载不能复活。
+- 不写原件、编辑区、服务器或浏览器存储，不自动替换、上传、同步、保存、发布或重放；报告只显式准备/核对/手动下载。
+  详细边界见 [ADR 0049](../architecture/decisions/0049-read-only-local-writing-terms.md)、[使用说明](../operations/writing-terms.md)与[审阅记录](../audit/writing-terms-review.md)。
+
 ## Cross-cutting
 
 - Private data is never exposed through public endpoints or shared caches.

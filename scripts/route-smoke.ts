@@ -235,6 +235,18 @@ try {
   assert.equal(overlapQuery.headers.get("location"), "/write/overlap");
   assert.match(overlapQuery.headers.get("cache-control") ?? "", /no-store/i);
   assert.doesNotMatch(await overlapQuery.text(), /PRIVATE-OVERLAP-SOURCE/);
+  const terms = await fetch(`${baseUrl}/write/terms`);
+  assert.equal(terms.status, 200, "local terminology review must render without an API or account");
+  assert.match(terms.headers.get("cache-control") ?? "", /no-store/i);
+  const termsHtml = await terms.text();
+  assert.match(termsHtml, /data-route="write-terms"/);
+  assert.match(termsHtml, /noindex, nofollow/);
+  assert.doesNotMatch(termsHtml, /contenteditable="true"/);
+  const termsQuery = await fetch(`${baseUrl}/write/terms?recipe=PRIVATE-TERMS-SOURCE`, { redirect: "manual" });
+  assert.equal(termsQuery.status, 302);
+  assert.equal(termsQuery.headers.get("location"), "/write/terms");
+  assert.match(termsQuery.headers.get("cache-control") ?? "", /no-store/i);
+  assert.doesNotMatch(await termsQuery.text(), /PRIVATE-TERMS-SOURCE/);
   const anonymousMediaUpload = await fetch(`${baseUrl}/api/authoring/media`, {
     method: "POST",
     headers: { "content-type": "image/png" },

@@ -932,3 +932,17 @@ mark { background: var(--or); color: #0f0d0c; }
 @media (max-width: 900px) {
   .nw-overlap-columns { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Local terminology review keeps literal input and large distributions bounded. */
+.nw-terms textarea { box-sizing: border-box; display: block; width: 100%; max-width: 100%; min-height: 180px; padding: 12px; color: var(--ink); background: var(--paper); border: 1px solid var(--ink); font: inherit; overflow-wrap: anywhere; }
+.nw-terms input, .nw-terms select { box-sizing: border-box; max-width: 100%; min-height: 44px; }
+.nw-terms label { display: grid; gap: 8px; min-width: 0; }
+.nw-terms-table { width: 100%; max-width: 100%; overflow-x: auto; margin-block: 18px; }
+.nw-terms table { border-collapse: collapse; min-width: 520px; width: 100%; }
+.nw-terms th, .nw-terms td { padding: 10px; border: 1px solid var(--t2); text-align: start; overflow-wrap: anywhere; }
+.nw-terms caption { padding: 10px; text-align: start; font-weight: 700; }
+.nw-terms .nw-writing-check { display: flex; align-items: start; min-height: 44px; }
+.nw-terms .nw-authoring-actions { align-items: end; }
+.nw-terms .nw-overlap-literal mark[data-selected] { text-decoration: underline double; text-underline-offset: 4px; }
+.nw-terms input:focus-visible, .nw-terms textarea:focus-visible, .nw-terms select:focus-visible, .nw-terms .nw-overlap-detail:focus { outline: 2px solid var(--or); outline-offset: 4px; }
+.nw-terms-table:focus-visible { outline: 2px solid var(--or); outline-offset: 4px; }

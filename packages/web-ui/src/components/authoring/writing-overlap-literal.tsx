@@ -6,12 +6,14 @@ export function OverlapLiteral({
   text,
   label,
   highlights,
+  initialOffset = 0,
 }: {
   text: string;
   label: string;
-  highlights?: (start: number, end: number) => { text: string; hit: boolean }[];
+  initialOffset?: number;
+  highlights?: (start: number, end: number) => { text: string; hit: boolean; title?: string; selected?: boolean }[];
 }) {
-  const [position, setPosition] = useState({ witness: text, history: [0] });
+  const [position, setPosition] = useState({ witness: text, history: [overlapPreview(text, initialOffset).start] });
   const [jump, setJump] = useState("");
   const [error, setError] = useState("");
   const region = useRef<HTMLElement>(null);
@@ -55,7 +57,7 @@ export function OverlapLiteral({
         {pieces
           ? pieces.map((piece, index) =>
               piece.hit ? (
-                <mark key={index}>{piece.text}</mark>
+                <mark key={index} title={piece.title} data-selected={piece.selected || undefined}>{piece.text}</mark>
               ) : (
                 <span key={index}>{piece.text}</span>
               ),
