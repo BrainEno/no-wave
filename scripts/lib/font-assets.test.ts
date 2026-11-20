@@ -88,6 +88,18 @@ test("font preparation never regenerates over unowned files, bad licenses, metad
   }
 });
 
+test("license verification tolerates Windows CRLF line endings without reporting changed attribution", async () => {
+  await fixture(async (directory, data) => {
+    const crlf = "SIL OPEN FONT LICENSE Version 1.1\r\nCopyright test\r\n";
+    data.sources[0]!.licenseSha256 = sha256("SIL OPEN FONT LICENSE Version 1.1\nCopyright test\n");
+    await writeFile(join(directory, data.sources[0]!.license), crlf);
+    const css = renderFontCss(data.faces);
+    assert.equal(await fontBundleNeedsGeneration(data, directory, css), false);
+    const result = await verifyFontBundle(data, directory, css);
+    assert.equal(result.faces, 1);
+  });
+});
+
 test("a partially missing font bundle still authenticates every present asset before allowing generation", async () => {
   await fixture(async (directory, data) => {
     data.faces[0]!.unicodeRange = "U+20-4F";

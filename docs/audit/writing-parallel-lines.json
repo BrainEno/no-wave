@@ -1,0 +1,199 @@
+{
+  "base": "93f516230cb58dc72aedc71b9069c12d97ea1eed",
+  "minimum": 800,
+  "semanticLedgerSha256": "e736ce99c4cd66b4d986125d32ce37b2f7ad7f7f4d5133a808cbda195b74f8d4",
+  "method": "Exact round allowlist; Babel runtime tokens with TS/import/signature/static-JSX/trivia erasure; deduplicate normalized source fragments against every baseline production TS/TSX line and within this round; then pinned semantic exclusions for DTO/static copy/config/thin wiring/repetition. No tests/docs/audit tooling/generated output/old feature code is credited. Independent runtime verifier may only reject credits.",
+  "candidates": 905,
+  "deductions": 20,
+  "total": 885,
+  "files": [
+    {
+      "file": "packages/web-ui/src/lib/writing-parallel-align.ts",
+      "sha256": "1455bf166678e11daae2d39ab773e2eefe8345d13c13669a8c4b8cef3f39dcec",
+      "executableCandidateLines": 142,
+      "semanticExclusions": [],
+      "executableNewLines": 142,
+      "lines": [
+        17, 18, 19, 20, 21, 22, 25, 26, 27, 28, 29, 30, 33, 34, 42, 43, 44, 45,
+        46, 47, 48, 49, 50, 52, 54, 55, 56, 57, 59, 69, 72, 73, 74, 75, 76, 78,
+        82, 86, 87, 88, 89, 91, 94, 95, 96, 97, 98, 103, 104, 105, 106, 108,
+        109, 110, 111, 113, 117, 128, 129, 131, 132, 135, 137, 141, 144, 145,
+        148, 149, 151, 152, 153, 154, 155, 156, 158, 159, 160, 162, 167, 168,
+        169, 175, 176, 180, 181, 182, 183, 184, 186, 187, 191, 194, 195, 200,
+        202, 212, 214, 215, 216, 218, 219, 221, 223, 224, 225, 226, 228, 229,
+        230, 231, 232, 233, 235, 238, 239, 240, 241, 242, 243, 244, 245, 246,
+        247, 250, 251, 252, 253, 255, 256, 257, 262, 263, 264, 266, 267, 271,
+        274, 275, 277, 281, 282, 283
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-parallel-asymmetry.ts",
+      "sha256": "cc69f72f86b3d89f790d38ec8d31319bef0bfe914254f6b29970195dc3012ae9",
+      "executableCandidateLines": 65,
+      "semanticExclusions": [],
+      "executableNewLines": 65,
+      "lines": [
+        15, 16, 17, 20, 21, 23, 24, 26, 27, 31, 32, 33, 34, 36, 37, 38, 39, 40,
+        41, 43, 44, 45, 47, 48, 49, 50, 51, 58, 69, 75, 77, 78, 80, 83, 88, 96,
+        101, 104, 105, 111, 114, 120, 121, 122, 123, 124, 125, 126, 131, 135,
+        141, 142, 143, 144, 149, 153, 159, 160, 161, 162, 164, 169, 170, 173,
+        179
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-parallel-controller.ts",
+      "sha256": "fc2f15f02b9d972f03ebfe9043db12614f5e4a8ba0501f998f47d52d783bd417",
+      "executableCandidateLines": 95,
+      "semanticExclusions": [75, 84, 107, 114, 442],
+      "executableNewLines": 90,
+      "lines": [
+        60, 68, 69, 70, 71, 72, 79, 83, 85, 86, 87, 94, 95, 103, 104, 113, 119,
+        120, 121, 122, 124, 125, 126, 128, 129, 133, 134, 140, 141, 150, 151,
+        152, 154, 158, 167, 174, 175, 176, 186, 200, 206, 208, 210, 215, 223,
+        233, 236, 237, 238, 239, 248, 254, 255, 259, 263, 272, 280, 283, 292,
+        293, 297, 304, 309, 312, 315, 318, 327, 331, 345, 346, 347, 349, 350,
+        351, 353, 355, 360, 361, 368, 369, 372, 373, 374, 381, 409, 411, 412,
+        413, 417, 435
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-parallel-explain.ts",
+      "sha256": "c0e74162cbbb6152c23651455e6ee492a5cff6f341d0d0cc7d2bf2d41eb5f8b6",
+      "executableCandidateLines": 82,
+      "semanticExclusions": [],
+      "executableNewLines": 82,
+      "lines": [
+        44, 45, 46, 47, 50, 51, 52, 55, 56, 59, 60, 61, 62, 63, 64, 65, 66, 67,
+        68, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86,
+        88, 94, 96, 99, 101, 105, 109, 111, 113, 114, 116, 118, 120, 121, 123,
+        127, 129, 131, 132, 134, 135, 143, 144, 146, 147, 148, 149, 154, 155,
+        156, 157, 158, 159, 160, 161, 163, 164, 165, 166, 167, 168, 169, 170,
+        171, 172, 175
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-parallel-index.ts",
+      "sha256": "3dcedf43ccc52b70f8b54fbd8a96ce24ef16709f2a905ba63bf561ebafc6a3ae",
+      "executableCandidateLines": 18,
+      "semanticExclusions": [24],
+      "executableNewLines": 17,
+      "lines": [
+        16, 21, 29, 30, 31, 35, 36, 38, 39, 43, 46, 50, 51, 55, 59, 60, 68
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-parallel-model.ts",
+      "sha256": "2fda405a644ac03bddff24e8ff836a7ddd475c0567c23e04c71bec3b9e7909be",
+      "executableCandidateLines": 17,
+      "semanticExclusions": [],
+      "executableNewLines": 17,
+      "lines": [
+        10, 12, 13, 14, 17, 22, 23, 164, 165, 166, 167, 169, 170, 171, 172, 173,
+        175
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-parallel-profile.ts",
+      "sha256": "f22b18a69d546871c206de6f9195124346b9c6e64d8fac450055d862a264c8ce",
+      "executableCandidateLines": 39,
+      "semanticExclusions": [],
+      "executableNewLines": 39,
+      "lines": [
+        18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 31, 32, 33, 34, 39, 40, 41, 42,
+        43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 61, 71, 72, 73, 76, 77,
+        82, 83, 84
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-parallel-ratios.ts",
+      "sha256": "4fe22707fbc4696e8f91adee19fcd09fb8d13f1d7a19492b7f5380c5e6650927",
+      "executableCandidateLines": 81,
+      "semanticExclusions": [],
+      "executableNewLines": 81,
+      "lines": [
+        26, 28, 29, 33, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49,
+        53, 54, 56, 57, 58, 59, 61, 62, 63, 64, 66, 67, 68, 69, 71, 72, 75, 77,
+        79, 80, 82, 83, 85, 86, 87, 88, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100,
+        101, 102, 103, 104, 105, 113, 114, 116, 117, 119, 134, 135, 136, 137,
+        140, 141, 142, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-parallel-report.ts",
+      "sha256": "b07efbb7bf4408a8d1f7af2d2e785cb7bba0845dd4e070afb10cbe4a4c6fadcd",
+      "executableCandidateLines": 6,
+      "semanticExclusions": [],
+      "executableNewLines": 6,
+      "lines": [22, 25, 26, 35, 36, 37]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-parallel-review.ts",
+      "sha256": "f855305786901ec1e69bcbf55f282fdea9d7e52eefaa00e2feee5e3570a14f02",
+      "executableCandidateLines": 93,
+      "semanticExclusions": [46, 117, 231],
+      "executableNewLines": 90,
+      "lines": [
+        17, 48, 49, 50, 51, 53, 56, 57, 58, 59, 62, 63, 64, 66, 67, 69, 70, 73,
+        75, 76, 79, 80, 82, 83, 84, 85, 86, 87, 88, 89, 90, 92, 110, 111, 112,
+        113, 114, 115, 116, 119, 120, 121, 124, 126, 127, 131, 132, 134, 135,
+        136, 139, 150, 151, 155, 156, 157, 159, 162, 164, 165, 166, 167, 176,
+        177, 178, 180, 181, 212, 214, 215, 216, 217, 218, 219, 220, 221, 222,
+        223, 224, 225, 228, 229, 232, 234, 235, 237, 238, 241, 242, 243
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-parallel-skeleton.ts",
+      "sha256": "24d9ab62bd713dbf4c222f08758ff5aaf6bebd922398e453511722316e157901",
+      "executableCandidateLines": 37,
+      "semanticExclusions": [29],
+      "executableNewLines": 36,
+      "lines": [
+        21, 22, 23, 24, 25, 26, 27, 30, 31, 32, 34, 36, 39, 40, 41, 42, 43, 44,
+        45, 50, 55, 56, 57, 58, 70, 76, 77, 78, 79, 80, 84, 85, 88, 94, 95, 96
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-parallel-source.ts",
+      "sha256": "a72d55c4da66ecfbf0d4e75b3083c332d5d75b5797193e1e81f65b96992b599e",
+      "executableCandidateLines": 87,
+      "semanticExclusions": [24, 25, 53, 102],
+      "executableNewLines": 83,
+      "lines": [
+        26, 27, 30, 32, 35, 36, 37, 39, 40, 42, 43, 47, 48, 50, 51, 54, 55, 56,
+        57, 58, 59, 60, 61, 62, 63, 64, 66, 67, 69, 70, 76, 77, 81, 82, 83, 84,
+        85, 86, 89, 93, 96, 100, 101, 104, 108, 109, 111, 115, 116, 117, 120,
+        121, 122, 123, 125, 127, 129, 130, 131, 132, 133, 134, 135, 136, 137,
+        140, 141, 143, 144, 147, 150, 151, 153, 154, 155, 158, 159, 160, 161,
+        170, 171, 172, 173
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-parallel-symbols.ts",
+      "sha256": "11d6af3a17750eae463ccc46efaf7019369f6393f23a0df90bf0032bc0d17730",
+      "executableCandidateLines": 66,
+      "semanticExclusions": [21, 66, 105],
+      "executableNewLines": 63,
+      "lines": [
+        11, 12, 22, 29, 30, 31, 35, 36, 37, 39, 40, 45, 46, 47, 53, 54, 55, 57,
+        58, 59, 61, 62, 63, 67, 68, 69, 77, 78, 79, 81, 82, 83, 85, 86, 87, 89,
+        90, 91, 93, 94, 95, 97, 98, 99, 106, 107, 108, 110, 111, 112, 114, 115,
+        116, 118, 121, 122, 123, 124, 125, 126, 127, 128, 129
+      ]
+    },
+    {
+      "file": "packages/web-ui/src/lib/writing-parallel.ts",
+      "sha256": "9050cfa75fb6fe3358bf834a0c7115c689e4f306b52f9d1c9703ca8858955dbb",
+      "executableCandidateLines": 77,
+      "semanticExclusions": [40, 133, 154],
+      "executableNewLines": 74,
+      "lines": [
+        33, 36, 37, 43, 45, 47, 49, 52, 53, 54, 56, 61, 62, 63, 65, 67, 68, 74,
+        76, 78, 79, 81, 85, 86, 88, 89, 91, 92, 95, 96, 97, 98, 99, 102, 103,
+        104, 105, 106, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119,
+        120, 123, 124, 125, 126, 127, 128, 131, 136, 137, 138, 142, 143, 144,
+        145, 146, 147, 148, 151, 152, 155, 156, 157, 158, 163
+      ]
+    }
+  ],
+  "satisfied": true
+}

@@ -58,6 +58,7 @@ which of two `0011`s meant what.
 | [0048](0048-read-only-local-writing-overlap.md) | 文稿重复审阅使用有界本机候选，不推断合并或去重权限 | Accepted | Done | 2026-11-12 |
 | [0049](0049-read-only-local-writing-terms.md) | 术语审阅保留全部字面主张，不把偏好词变成替换权限 | Accepted | Done | 2026-11-12 |
 | [0050](0050-read-only-local-writing-cadence.md) | 写作停顿与配对节奏审阅使用单次有界扫描，不推断行文风格或自动润色 | Accepted | Done | 2026-11-12 |
+| [0051](0051-read-only-local-writing-parallel.md) | 双语与平行文稿对照审阅使用确定性骨架树对齐，不推断翻译质量或自动回写 | Accepted | Done | 2026-11-12 |
 
 The status column carries the leading word of each file's `- Status:` line —
 read the file for the qualifier ("Superseded by ADR 0012", "Accepted as the
