@@ -78,8 +78,8 @@ export function HomePageView({ locale, featured, latest, popular, categories }: 
   return (
     <main lang={locale} id="top" tabIndex={-1}>
       <PageLoader label="载入中 · LOADING" />
-      <header className="nw-hero" data-hero>
-        <img className="nw-hero-bg" src={heroCover.src} alt="" width={heroCover.width} height={heroCover.height} fetchPriority="high" />
+      <header className="nw-hero" data-hero style={{ userSelect: "none", touchAction: "none" }}>
+        <img className="nw-hero-bg" src={heroCover.src} alt="" width={heroCover.width} height={heroCover.height} fetchPriority="high" draggable={false} style={{ userSelect: "none", pointerEvents: "none" }} />
         <HeroCanvas src={heroCover.src} />
         <div className="nw-brand">
           {locale === "en" ? null : <p className="nw-cn nw-zh" data-intro aria-hidden="true"><i>无</i><i>浪</i><i>潮</i></p>}
@@ -92,7 +92,7 @@ export function HomePageView({ locale, featured, latest, popular, categories }: 
 
       <section className="nw-sel" id="selected" aria-label={ui.home.selected}>
         <div className="nw-wrap" style={{ maxWidth: 1280, margin: "0 auto" }}>
-          <SectionHeading zh={ui.home.selected} latin={ui.home.selectedEn} aside={selected.length ? <span className="nw-m">{fallback ? "" : ui.home.selectedNote}</span> : undefined} />
+          <SectionHeading zh={ui.home.selected} latin={ui.home.selectedEn} locale={locale} aside={selected.length ? <span className="nw-m">{fallback ? "" : ui.home.selectedNote}</span> : undefined} />
           {fallback ? <p className="nw-m" data-featured-fallback>{ui.home.selectedFallback}</p> : null}
           {selected.length ? (
             <div className="nw-tri">
@@ -139,14 +139,14 @@ export function HomePageView({ locale, featured, latest, popular, categories }: 
 
       {latestItems.length ? (
         <section className="nw-lat" id="latest" aria-label={ui.home.latest}>
-          <HomeLatest items={latestItems} allLabel={ui.home.allWorks} allHref={archivePath(locale)} heading={<SectionHeading zh={ui.home.latest} latin={ui.home.latestEn} />} />
+          <HomeLatest items={latestItems} allLabel={ui.home.allWorks} allHref={archivePath(locale)} heading={<SectionHeading zh={ui.home.latest} latin={ui.home.latestEn} locale={locale} />} />
         </section>
       ) : null}
 
       {popular.length ? (
         <section className="nw-pop" id="popular" aria-label={ui.home.popular}>
           <div style={{ maxWidth: 1280, margin: "0 auto" }}>
-            <SectionHeading zh={ui.home.popular} latin={ui.home.popularEn} aside={<span className="nw-m">{ui.home.popularEn}</span>} />
+            <SectionHeading zh={ui.home.popular} latin={ui.home.popularEn} locale={locale} aside={locale === "en" ? <span className="nw-m">{ui.home.popularEn}</span> : undefined} />
             <div className="nw-shelf" data-reveal="row">
               {popular.map((article, index) => (
                 <ShelfRow

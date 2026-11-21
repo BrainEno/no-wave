@@ -491,17 +491,14 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
 
   return (
     <section className="nw-authoring">
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-        <h1><span className="nw-zh">写作台</span> <i>Authoring</i></h1>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
-          {/* The images an author has uploaded, and which of them nothing uses. */}
-          <Link className="nw-btn" href="/write/library">全部作品目录</Link>
-          <Link className="nw-btn" href="/write/collections">本机集合工具</Link>
-          <Link className="nw-btn" href="/write/overlap">本机段落审阅</Link><Link className="nw-btn" href="/write/terms">本机术语审阅</Link><Link className="nw-btn" href="/write/cadence">本机标点与节奏</Link><Link className="nw-btn" href="/write/parallel">本机双语对照</Link>
-          <Link className="nw-btn" href="/write/merge">本机三方合并</Link><Link className="nw-btn" href="/write/vault">本机加密备份</Link>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap", paddingBottom: 16, borderBottom: "1px solid var(--t2, #333)" }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 28 }}><span className="nw-zh">写作台</span></h1>
+          <p className="nw-m" style={{ margin: "4px 0 0" }}>专注文学创作与纯粹写作</p>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <Link className="nw-btn" href="/write/library" style={{ fontWeight: 600 }}>全部作品目录</Link>
           <Link className="nw-btn" href="/write/media">媒体库</Link>
-          {/* Notion as an interchange format (ADR 0036): bring a bundle in. */}
-          <Link className="nw-btn" href="/write/notion">从 Notion 导入</Link>
           <button className="nw-btn" type="button" disabled={pendingCreate || signingOut} onClick={() => requestDocumentAction({ kind: "sign-out" })}>退出登录</button>
         </div>
       </div>
@@ -525,9 +522,12 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
       {catalogueIntent ? <div className="nw-authoring-actions"><button className="nw-btn" type="button" disabled={pendingCreate || catalogueLoading} onClick={() => requestDocumentAction({ kind: "catalogue", intent: catalogueIntent })}>重新读取目录所选版本</button>{catalogueLoading ? <button className="nw-btn" type="button" onClick={() => { catalogueRequest.current++; catalogueReader.cancel(); setCatalogueLoading(false); }}>取消目录读取</button> : null}</div> : null}
       <div className="nw-authoring-grid">
         <aside className="nw-authoring-sidebar" aria-label="我的作品">
-          <h2>我的作品（{articles.length}）</h2>
-          <button className="nw-btn nw-pri" type="button" disabled={pendingCreate} onClick={openNewDocument}>新建作品 +</button>
-          <p className="nw-m">显示各语言最近 100 个版本；同一作品的不同语言分别列出。更早作品请到<Link href="/write/library">全部作品目录</Link>按元数据检索。</p>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
+            <h2 style={{ fontSize: 18, margin: 0 }}>我的作品（{articles.length}）</h2>
+            <Link className="nw-m" href="/write/library">作品管理 →</Link>
+          </div>
+          <button className="nw-btn nw-pri" type="button" disabled={pendingCreate} onClick={openNewDocument} style={{ width: "100%", marginBottom: 12 }}>新建作品 +</button>
+          <p className="nw-m">显示各语言最近 100 个版本；更早作品或批量导入请到<Link href="/write/library">作品管理</Link>。</p>
           {articles.length === 0 ? <p className="nw-m">还没有草稿或已发布作品。</p> : articles.map((article) => (
             <button className="nw-authoring-article" key={editionKey(article)} type="button" disabled={pendingCreate} aria-current={selected && editionKey(selected) === editionKey(article) ? "true" : undefined} onClick={() => openDocument(article)}>
               <span>{article.title}</span>

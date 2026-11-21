@@ -51,6 +51,7 @@ main:focus { outline: none; }
 .nw-pill .nw-lang[aria-current="true"] { font-weight: 700; color: var(--or); text-decoration: none; }
 .nw-sep { width: 1px; height: 20px; background: var(--ink); margin: 0 8px; }
 .nw-ic { padding: 0 !important; }
+.nw-pill .nw-ic:hover { color: var(--or); text-decoration: none; }
 .nw-ic svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .nw-bdg { position: absolute; top: 3px; right: 1px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--or); color: #0f0d0c; font: 700 10px/16px var(--f-ss); text-align: center; pointer-events: none; }
 .nw-mnb { display: none !important; }

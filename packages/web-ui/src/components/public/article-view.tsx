@@ -149,7 +149,7 @@ export function ArticlePageView({ article, newer, older, related }: ArticleDetai
 
       {related.length ? (
         <section style={{ marginTop: 120, paddingBottom: 140 }}>
-          <SectionHeading zh={ui.reader.related} latin={ui.reader.relatedEn} />
+          <SectionHeading zh={ui.reader.related} latin={ui.reader.relatedEn} locale={locale} />
           <div style={{ marginTop: 40 }}>{related.map((item, index) => <WorkRow key={item.slug} article={item} locale={locale} index={index + 1} withExcerpt={false} />)}</div>
         </section>
       ) : <div style={{ height: 140 }} />}
