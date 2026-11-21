@@ -82,33 +82,40 @@ export function ArticlePageView({ article, newer, older, related }: ArticleDetai
     done: ui.reader.done, position: ui.reader.position, unavailable: ui.reader.unavailable };
 
   return (
-    <main id="top" tabIndex={-1} lang={locale} className="nw-w">
+    <main id="top" tabIndex={-1} lang={locale} className="nw-w nw-reader">
       <ReadingProgress label={ui.reader.progress} />
       <header className="nw-rh">
-        <Link className="nw-ss" href={archivePath(locale)} style={{ display: "inline-flex", alignItems: "center", minHeight: 44, fontWeight: 700, fontSize: 15 }}>← {ui.reader.back}</Link>
-        <div className="nw-m" style={{ marginTop: 8 }}><TypeChip type={article.workType} locale={locale} /> · {dateLabel(article.publishedAt, locale)} · {lengthLabel(length, locale)} · {minutesLabel(readingMinutes(length, locale), locale)}</div>
-        <h1 data-reveal>{article.title}</h1>
+        <div className="nw-rh-top">
+          <Link className="nw-back" href={archivePath(locale)}>← {ui.reader.back}</Link>
+          <div className="nw-m nw-rh-meta"><TypeChip type={article.workType} locale={locale} /> · {dateLabel(article.publishedAt, locale)} · {lengthLabel(length, locale)} · {minutesLabel(readingMinutes(length, locale), locale)}</div>
+        </div>
+        <h1 data-reveal="mask">{article.title}</h1>
         {article.description && !repeatsArticleOpening(article.description, article.contentBlocks) ? <p className="nw-ep">{article.description}</p> : null}
         <div className="nw-by">
-          <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+          <div className="nw-by-author">
             <div className="nw-avatar" aria-hidden="true">{initial(article.author.displayName)}</div>
-            <div><Link className="nw-zh" href={authorPath(article.author.username, locale)} style={{ fontSize: 20, display: "inline-flex", alignItems: "center", minHeight: 44, minWidth: 44 }}>{article.author.displayName}</Link><div className="nw-m">{ui.reader.by} · {messages.publishedOn} {dateLabel(article.publishedAt, locale)}</div></div>
+            <div><Link className="nw-zh nw-by-name" href={authorPath(article.author.username, locale)}>{article.author.displayName}</Link><div className="nw-m">{ui.reader.by} · {messages.publishedOn} {dateLabel(article.publishedAt, locale)}</div></div>
           </div>
-          <ReaderBar labels={labels} />
-          <ReadAloud blocks={article.contentBlocks} locale={locale} labels={aloud} />
+          <div className="nw-dock">
+            <ReaderBar labels={labels} />
+            <ReadAloud blocks={article.contentBlocks} locale={locale} labels={aloud} />
+          </div>
         </div>
       </header>
 
-      <ArticleReadingList article={article} />
-      <ReaderFind key={`${locale}:${article.slug}`} locale={locale} edition={`${locale}:${article.slug}`} />
+      <div className="nw-reader-tools">
+        <ArticleReadingList article={article} />
+        <ReaderFind key={`${locale}:${article.slug}`} locale={locale} edition={`${locale}:${article.slug}`} />
+      </div>
 
       <div className="nw-rg">
-        <div />
+        {/* 书口：竖排的题名与作者，只是版面上的装饰，正文与标题已经说过一遍。 */}
+        <div className="nw-spine" aria-hidden="true"><span>{article.title}</span><i>{article.author.displayName}</i></div>
         <article className="nw-rd" id="nw-article" data-form={poem ? "poem" : "prose"} aria-label={article.title}>
           {article.contentBlocks.map(renderBlock)}
           <span className="nw-end">{ui.reader.end}</span>
           {article.categories.length ? (
-            <p className="nw-m" style={{ textAlign: "center", marginTop: 24, textIndent: 0 }}>{article.categories.join(" · ")}</p>
+            <p className="nw-m nw-rd-cats">{article.categories.join(" · ")}</p>
           ) : null}
           <ArticleTagLinks article={article} locale={locale} />
         </article>
@@ -126,20 +133,20 @@ export function ArticlePageView({ article, newer, older, related }: ArticleDetai
 
       <ArticleComments slug={article.slug} locale={locale} />
 
-      <section style={{ maxWidth: 640, margin: "96px auto 0" }} aria-label={ui.reader.aboutAuthor}>
+      <section className="nw-au-wrap" aria-label={ui.reader.aboutAuthor}>
         <div className="nw-au">
           <div className="nw-avatar" aria-hidden="true">{initial(article.author.displayName)}</div>
           <div>
-            <div className="nw-m">{ui.reader.aboutAuthor}</div>
-            <div className="nw-zh" style={{ fontSize: 28, lineHeight: 1.3 }}>{article.author.displayName}</div>
-            {article.author.bio ? <p className="nw-m" style={{ margin: "6px 0 0", maxWidth: "34em", fontSize: 14 }}>{article.author.bio}</p> : null}
+            <div className="nw-kicker">{ui.reader.aboutAuthor}</div>
+            <div className="nw-zh nw-au-name">{article.author.displayName}</div>
+            {article.author.bio ? <p className="nw-m nw-au-bio">{article.author.bio}</p> : null}
           </div>
           <Link className="nw-btn" href={authorPath(article.author.username, locale)}>{ui.reader.allWorks} →</Link>
         </div>
       </section>
 
       {newer || older ? (
-        <section style={{ marginTop: 120 }}>
+        <section className="nw-pn-wrap">
           <nav className="nw-pn" aria-label={`${ui.reader.prev} / ${ui.reader.next}`}>
             {older ? <Link href={articlePath(older.slug, locale)}><span className="nw-m">← {ui.reader.prev}</span><span className="nw-zh">{older.title}</span></Link> : <span />}
             {newer ? <Link href={articlePath(newer.slug, locale)}><span className="nw-m">{ui.reader.next} →</span><span className="nw-zh">{newer.title}</span></Link> : <span />}
@@ -148,11 +155,11 @@ export function ArticlePageView({ article, newer, older, related }: ArticleDetai
       ) : null}
 
       {related.length ? (
-        <section style={{ marginTop: 120, paddingBottom: 140 }}>
+        <section className="nw-related">
           <SectionHeading zh={ui.reader.related} latin={ui.reader.relatedEn} locale={locale} />
-          <div style={{ marginTop: 40 }}>{related.map((item, index) => <WorkRow key={item.slug} article={item} locale={locale} index={index + 1} withExcerpt={false} />)}</div>
+          <div className="nw-related-list">{related.map((item, index) => <WorkRow key={item.slug} article={item} locale={locale} index={index + 1} withExcerpt={false} />)}</div>
         </section>
-      ) : <div style={{ height: 140 }} />}
+      ) : <div className="nw-related-gap" />}
     </main>
   );
 }

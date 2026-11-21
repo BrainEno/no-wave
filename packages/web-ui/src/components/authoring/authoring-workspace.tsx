@@ -490,55 +490,57 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
   if (state === "error") return <section><p className="nw-auth-error" role="alert">{error}</p><button className="nw-btn" type="button" onClick={() => { setError(""); setState("loading"); window.location.reload(); }}>重新载入</button></section>;
 
   return (
-    <section className="nw-authoring">
-      <header className="nw-authoring-header">
-        <div>
+    <section className="nw-authoring nw-desk">
+      {/* 写作台顶栏：一行身份、一行去处。存储说明折叠在「存储说明」里，不占首屏。 */}
+      <header className="nw-authoring-header nw-desk-bar">
+        <div className="nw-desk-id">
           <h1><span className="nw-zh">写作台</span> <i>Authoring</i></h1>
-          <p className="nw-m">专注文学创作与纯粹写作</p>
+          {account ? (
+            <p className="nw-auth-status nw-desk-account" role="status">
+              <span>已登录：{account.email}</span><span className={account.emailVerifiedAt ? "nw-desk-ok" : "nw-desk-warn"}>邮箱{account.emailVerifiedAt ? "已验证" : "未验证"}</span>
+              {/* Verification gates nothing, so the button is an offer, not a
+                  blocked state: an unverified author can still write and publish. */}
+              {account.emailVerifiedAt || !mailEnabled ? null : (
+                <button className="nw-btn" type="button" disabled={verificationBusy} onClick={() => void requestVerification()}>
+                  {verificationBusy ? "发送中…" : "发送验证邮件"}
+                </button>
+              )}
+              {verificationStatus ? <span> {verificationStatus}</span> : null}
+            </p>
+          ) : <p className="nw-m nw-desk-account">专注文学创作与纯粹写作</p>}
         </div>
-        <div className="nw-authoring-actions">
-          <Link className="nw-btn" href="/write/library" style={{ fontWeight: 600 }}>全部作品目录</Link>
-          <Link className="nw-btn" href="/write/media">媒体库</Link>
-          <button className="nw-btn" type="button" disabled={pendingCreate || signingOut} onClick={() => requestDocumentAction({ kind: "sign-out" })}>退出登录</button>
-        </div>
+        <nav className="nw-authoring-actions nw-desk-nav" aria-label="写作台去处">
+          <Link className="nw-desk-link" href="/write/library">全部作品目录</Link>
+          <Link className="nw-desk-link" href="/write/media">媒体库</Link>
+          <details className="nw-authoring-help nw-desk-help">
+            <summary className="nw-desk-link">存储说明</summary>
+            <p>保存成功的草稿与发布状态由 API 持久化；未保存输入默认只在本页；只有明确启用下方本机恢复才会缓存。请保存服务器草稿或下载备份。</p>
+          </details>
+          <button className="nw-desk-link nw-desk-quiet" type="button" disabled={pendingCreate || signingOut} onClick={() => requestDocumentAction({ kind: "sign-out" })}>退出登录</button>
+        </nav>
       </header>
-      <details className="nw-authoring-help" style={{ margin: "12px 0 16px" }}>
-        <summary className="nw-m" style={{ cursor: "pointer" }}>文稿存储说明：草稿与发布由服务器保存，请及时保存或下载备份 ▾</summary>
-        <p className="nw-ep" style={{ marginTop: 8 }}>保存成功的草稿与发布状态由 API 持久化；未保存输入默认只在本页；只有明确启用下方本机恢复才会缓存。请保存服务器草稿或下载备份。</p>
-      </details>
-      {account ? (
-        <p className="nw-auth-status" role="status">
-          已登录：{account.email} · 邮箱{account.emailVerifiedAt ? "已验证" : "未验证"}
-          {/* Verification gates nothing, so the button is an offer, not a
-              blocked state: an unverified author can still write and publish. */}
-          {account.emailVerifiedAt || !mailEnabled ? null : (
-            <>{" "}<button className="nw-btn" type="button" disabled={verificationBusy} onClick={() => void requestVerification()}>
-              {verificationBusy ? "发送中…" : "发送验证邮件"}
-            </button></>
-          )}
-          {verificationStatus ? <span> {verificationStatus}</span> : null}
-        </p>
-      ) : null}
       {error ? <p className="nw-auth-error" role="alert">{error}</p> : null}
       {notice ? <p className="nw-auth-status" role="status">{notice}</p> : null}
       {catalogueLoading ? <p role="status">正在核对目录所选作品的精确语言版本；继续输入或新建会使本次读取失效……</p> : null}
       {catalogueIntent ? <div className="nw-authoring-actions"><button className="nw-btn" type="button" disabled={pendingCreate || catalogueLoading} onClick={() => requestDocumentAction({ kind: "catalogue", intent: catalogueIntent })}>重新读取目录所选版本</button>{catalogueLoading ? <button className="nw-btn" type="button" onClick={() => { catalogueRequest.current++; catalogueReader.cancel(); setCatalogueLoading(false); }}>取消目录读取</button> : null}</div> : null}
       <div className="nw-authoring-grid">
         <aside className="nw-authoring-sidebar" aria-label="我的作品">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
-            <h2 style={{ fontSize: 18, margin: 0 }}>我的作品（{articles.length}）</h2>
-            <Link className="nw-m" href="/write/library">作品管理 →</Link>
+          <div className="nw-desk-side-head">
+            <h2>我的作品 <span className="nw-desk-count">{articles.length}</span></h2>
+            <Link className="nw-desk-more" href="/write/library">作品管理 →</Link>
           </div>
-          <button className="nw-btn nw-pri" type="button" disabled={pendingCreate} onClick={openNewDocument} style={{ width: "100%", marginBottom: 12 }}>新建作品 +</button>
-          <p className="nw-m">显示各语言最近 100 个版本；更早作品或批量导入请到<Link href="/write/library">作品管理</Link>。</p>
-          {articles.length === 0 ? <p className="nw-m">还没有草稿或已发布作品。</p> : articles.map((article) => (
-            <button className="nw-authoring-article" key={editionKey(article)} type="button" disabled={pendingCreate} aria-current={selected && editionKey(selected) === editionKey(article) ? "true" : undefined} onClick={() => openDocument(article)}>
-              <span>{article.title}</span>
-              <small>{article.status === "published" ? "已发布" : "草稿"} · {localeLabel(article.locale)} · {article.updatedAt ? new Date(article.updatedAt).toLocaleDateString("zh-CN") : article.slug}</small>
-            </button>
-          ))}
+          <button className="nw-btn nw-pri nw-desk-new" type="button" disabled={pendingCreate} onClick={openNewDocument}>新建作品 +</button>
+          <div className="nw-desk-works">
+            {articles.length === 0 ? <p className="nw-m">还没有草稿或已发布作品。</p> : articles.map((article) => (
+              <button className="nw-authoring-article" key={editionKey(article)} type="button" disabled={pendingCreate} aria-current={selected && editionKey(selected) === editionKey(article) ? "true" : undefined} onClick={() => openDocument(article)}>
+                <span>{article.title}</span>
+                <small><b data-status={article.status}>{article.status === "published" ? "已发布" : "草稿"}</b> · {localeLabel(article.locale)} · {article.updatedAt ? new Date(article.updatedAt).toLocaleDateString("zh-CN") : article.slug}</small>
+              </button>
+            ))}
+          </div>
+          <p className="nw-m nw-desk-side-note">显示各语言最近 100 个版本；更早作品或批量导入请到<Link href="/write/library">作品管理</Link>。</p>
         </aside>
-        <div>
+        <div className="nw-desk-paper">
           <ArticleEditor
             key={editorKey}
             article={selected}
@@ -584,8 +586,9 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
       {/* Keep supporting tools mounted and reachable, in a visual auxiliary area without displacing the writing flow. */}
       <div className="nw-authoring-auxiliary" aria-label="写作台辅助工具">
         <div className="nw-authoring-auxiliary-intro">
-          <h2><span className="nw-zh">辅助功能与账户资料</span> <i>Auxiliary</i></h2>
-          <p className="nw-m">作者公开署名资料、通知同步与回收站。正常创作与发布均可在上方主编辑区完成。</p>
+          <p className="nw-kicker">附录 · Appendix</p>
+          <h2><span className="nw-zh">署名、通知与回收站</span></h2>
+          <p className="nw-m">正常创作与发布都在上方完成；这里放偶尔才用到的东西。</p>
         </div>
         <AuthorProfilePanel profile={profile} onSave={saveProfile} />
         <NotificationInbox locale="zh-CN" />

@@ -17,6 +17,14 @@ and optional summary remain editable below the body, rather than consuming the
 first screen before writing begins. Nothing about publication or draft recovery
 is changed by this layout.
 
+The 2026-11 v3 redesign keeps this order. The workspace header is one line
+(identity on the left, text links on the right), the article list is a sticky
+248-pixel column, the title is a borderless input above a sticky format toolbar,
+and save/publish sit in a sticky bar under the editor. Profile, notifications
+and trash are an always-visible "appendix" of three cards. On tool routes the
+site navigation scrolls away with the page instead of covering the title. See
+`packages/web-ui/docs/UI_DESIGN_SYSTEM.md` §22.
+
 The desktop acceptance target is a 1440 × 900 viewport with the entire title
 input and at least the first 100 pixels of the body visible without scrolling.
 The browser test also exercises a 390-pixel viewport, keyboard-editable fields,

@@ -274,7 +274,9 @@ function CommentComposer({ resetKey, onSubmit, busy, initialBlocks, submitLabel,
       }}>
         <LexicalExtensionComposer extension={extension} contentEditable={null}>
           <CommentToolbar onLinkError={setFormError} ask={askForLink} />
-          <ContentEditable className="nw-comment-editor" aria-label="评论内容" aria-placeholder="写下你的回应……" placeholder={<p>写下你的回应……</p>} />
+          <div className="nw-comment-shell">
+            <ContentEditable className="nw-comment-editor" aria-label="评论内容" aria-placeholder="写下你的回应……" placeholder={<p className="nw-comment-placeholder">写下你的回应……</p>} />
+          </div>
           <CommentStatePlugin onChange={onChange} />
         </LexicalExtensionComposer>
         {formError ? <p className="nw-auth-error" role="alert">{formError}</p> : null}

@@ -12,6 +12,7 @@ import {
   grainOffsets,
   grainTileData,
   shouldUseSmoothScroll,
+  isToolRoute,
   unreadBadge,
 } from "@/lib/chrome.ts";
 import gsap from "gsap";
@@ -83,16 +84,17 @@ function SiteFooter({ locale }: { locale: Locale }) {
   const ui = getUi(locale);
   const pathname = usePathname() ?? "/";
   const onHome = pathname === "/" || pathname === "/en";
+  const tool = isToolRoute(pathname);
   const home = homePath(locale);
   const topicsHref = locale === "en" ? "/en/categories" : "/categories";
   const searchHref = locale === "en" ? "/en/search" : "/search";
   const authorsHref = locale === "en" ? "/en/authors" : "/authors";
   return (
-    <footer className="nw-footer">
-      <div className="nw-fim">
+    <footer className="nw-footer" data-tool={tool ? "" : undefined}>
+      {tool ? null : <div className="nw-fim">
         <img src="/covers/cover-oxblood-4x5.jpg" alt="" loading="lazy" width={1200} height={1500} />
         <div className="nw-fwm" aria-hidden="true" data-footer-letters><span className="nw-ss"><i>N</i><i>o</i></span> <span className="nw-it"><i>W</i><i>a</i><i>v</i><i>e</i></span></div>
-      </div>
+      </div>}
       {/* 页尾条：demo 的四栏布置（首页 / Blog / 主题 / 搜索 → 首页 / 最新 / 分类 / 搜索）。 */}
       <div className="nw-fbar">
         <nav aria-label={ui.nav.footer}>
@@ -276,13 +278,14 @@ function SiteChromeContent({ children }: { children: ReactNode }) {
   const navTopics = onHome ? "#topics" : topicsHref;
   const searchHref = locale === "en" ? "/en/search" : "/search";
   const badge = unreadBadge(unread);
+  const tool = isToolRoute(pathname);
 
 
   return (
     <>
       <a className="nw-skip" href="#top">{locale === "en" ? "Skip to main content" : "跳到正文"}</a>
-      <GrainCanvas />
-      <header>
+      {tool ? null : <GrainCanvas />}
+      <header data-tool={tool ? "" : undefined}>
       <Link className="nw-rail" href={homePath(locale)} aria-label={`${ui.rail} — ${ui.homeAria}`}>{ui.rail}</Link>
       <nav className="nw-pill" aria-label={ui.nav.primary} lang={locale}>
         <Link className="nw-nv" href={navSelected}>{ui.nav.selected}</Link>
