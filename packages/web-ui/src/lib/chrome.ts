@@ -178,6 +178,18 @@ const NATIVE_SCROLL_PREFIXES = [
  * Tool and form routes keep native scrolling: a transformed smoother can move
  * content between mousedown and mouseup and silently swallow a button click.
  */
+const TOOL_PREFIXES = ["/write", "/account", "/admin", "/notifications"] as const;
+
+/**
+ * Tool routes are desks, not pages: the chrome drops the film grain, lets the
+ * navigation scroll away with the document instead of floating over form
+ * fields, and keeps the footer to its link bar.
+ */
+export function isToolRoute(pathname: string): boolean {
+  const bare = pathname.replace(/^\/en(?=\/|$)/, "") || "/";
+  return TOOL_PREFIXES.some((prefix) => bare === prefix || bare.startsWith(`${prefix}/`));
+}
+
 export function shouldUseSmoothScroll(pathname: string): boolean {
   const bare = pathname.replace(/^\/en(?=\/|$)/, "") || "/";
   return !NATIVE_SCROLL_PREFIXES.some((prefix) => bare === prefix || bare.startsWith(`${prefix}/`));

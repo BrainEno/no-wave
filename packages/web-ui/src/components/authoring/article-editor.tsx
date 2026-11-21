@@ -82,6 +82,17 @@ function EditorStatePlugin({ onChange }: { onChange(state: LexicalEditorStateJso
   return null;
 }
 
+/** Stroke icons for the format toolbar; decorative, the buttons carry the names. */
+const toolIcon = {
+  bullets: <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="7" r="1.2" /><circle cx="5" cy="12" r="1.2" /><circle cx="5" cy="17" r="1.2" /><path d="M9.5 7H20M9.5 12H20M9.5 17H20" /></svg>,
+  numbers: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h1.5V10M4 10h3M4 14.5h3l-3 4h3M10 7h10M10 12h10M10 17h10" /></svg>,
+  link: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.2 1.2M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1.2-1.2" /></svg>,
+  image: <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" /><circle cx="9" cy="10" r="1.6" /><path d="m3.5 17 5-4.5 4 3.5 3-2.5 5 4" /></svg>,
+  code: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8.5 7-5 5 5 5M15.5 7l5 5-5 5" /></svg>,
+  undo: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 8H15a5 5 0 0 1 0 10H8M9 8l3.5-3.5M9 8l3.5 3.5" /></svg>,
+  redo: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 8H9a5 5 0 0 0 0 10h7M15 8l-3.5-3.5M15 8l-3.5 3.5" /></svg>,
+};
+
 function Toolbar({
   onStatus,
   onError,
@@ -188,23 +199,28 @@ function Toolbar({
 
   return (
     <div className="nw-lexical-toolbar" role="toolbar" aria-label="富文本格式">
-      <button type="button" onClick={() => setBlock(() => $createParagraphNode())}>段落</button>
-      <button type="button" onClick={() => setBlock(() => $createHeadingNode("h2"))}>H2</button>
-      <button type="button" onClick={() => setBlock(() => $createHeadingNode("h3"))}>H3</button>
-      <button type="button" onClick={() => setBlock(() => $createHeadingNode("h4"))}>H4</button>
-      <button type="button" onClick={() => setBlock(() => $createQuoteNode())}>引用</button>
-      <button type="button" onClick={() => editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined)}>无序列表</button>
-      <button type="button" onClick={() => editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined)}>有序列表</button>
-      <button type="button" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "bold")}><strong>B</strong></button>
-      <button type="button" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "italic")}><em>I</em></button>
-      <button type="button" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "underline")}><u>U</u></button>
-      <button type="button" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "strikethrough")}><s>S</s></button>
-      <button type="button" onClick={addLink}>链接</button>
-      <button type="button" disabled={uploading} onClick={() => fileInput.current?.click()}>{uploading ? "上传图片中…" : "插入图片"}</button>
+      {/* 按功能分成五组：段落层级、列表、字形、插入、历史。可见字形尽量短，可访问名称保持完整中文。 */}
+      <button type="button" aria-label="段落" title="段落" onClick={() => setBlock(() => $createParagraphNode())}><span aria-hidden="true">¶</span></button>
+      <button type="button" title="二级标题" onClick={() => setBlock(() => $createHeadingNode("h2"))}>H2</button>
+      <button type="button" title="三级标题" onClick={() => setBlock(() => $createHeadingNode("h3"))}>H3</button>
+      <button type="button" title="四级标题" onClick={() => setBlock(() => $createHeadingNode("h4"))}>H4</button>
+      <button type="button" aria-label="引用" title="引用" onClick={() => setBlock(() => $createQuoteNode())}><span aria-hidden="true" className="nw-tb-quote">“</span></button>
+      <span className="nw-tb-sep" aria-hidden="true" />
+      <button type="button" aria-label="无序列表" title="无序列表" onClick={() => editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined)}>{toolIcon.bullets}</button>
+      <button type="button" aria-label="有序列表" title="有序列表" onClick={() => editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined)}>{toolIcon.numbers}</button>
+      <span className="nw-tb-sep" aria-hidden="true" />
+      <button type="button" title="粗体" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "bold")}><strong>B</strong></button>
+      <button type="button" title="斜体" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "italic")}><em>I</em></button>
+      <button type="button" title="下划线" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "underline")}><u>U</u></button>
+      <button type="button" title="删除线" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "strikethrough")}><s>S</s></button>
+      <span className="nw-tb-sep" aria-hidden="true" />
+      <button type="button" aria-label="链接" title="链接" onClick={addLink}>{toolIcon.link}</button>
+      <button type="button" aria-label={uploading ? "上传图片中…" : "插入图片"} title="插入图片" disabled={uploading} onClick={() => fileInput.current?.click()}>{toolIcon.image}</button>
       <input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp" aria-label="选择要上传的图片" hidden onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; void uploadImage(file); }} />
-      <button type="button" onClick={() => setBlock(() => $createCodeNode())}>代码块</button>
-      <button type="button" onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)} aria-label="撤销">撤销</button>
-      <button type="button" onClick={() => editor.dispatchCommand(REDO_COMMAND, undefined)} aria-label="重做">重做</button>
+      <button type="button" aria-label="代码块" title="代码块" onClick={() => setBlock(() => $createCodeNode())}>{toolIcon.code}</button>
+      <span className="nw-tb-sep nw-tb-push" aria-hidden="true" />
+      <button type="button" onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)} aria-label="撤销" title="撤销">{toolIcon.undo}</button>
+      <button type="button" onClick={() => editor.dispatchCommand(REDO_COMMAND, undefined)} aria-label="重做" title="重做">{toolIcon.redo}</button>
     </div>
   );
 }
@@ -736,9 +752,9 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
 
   return (
     <section className="nw-article-editor" aria-label="作品编辑器">
-      <div className="nw-article-fields">
+      <div className="nw-article-fields nw-article-title">
         <label className="nw-field-wide">标题
-          <input value={title} onChange={(event) => { latest.current.title = event.target.value; setTitle(event.target.value); reportGuard(); }} required maxLength={200} />
+          <input value={title} onChange={(event) => { latest.current.title = event.target.value; setTitle(event.target.value); reportGuard(); }} required maxLength={200} placeholder="无题" />
         </label>
       </div>
       {guard.dirty ? <p className="nw-writing-save-state" role="status">有未保存的修改；离开或切换作品前请保存，或下载本机文稿备份。</p> : null}

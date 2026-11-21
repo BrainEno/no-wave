@@ -304,9 +304,9 @@ export function WritingTools({ draft, getDraft, onChange, locked, recovery }: To
       {panel === "replacement" ? <ReplacementPanel draft={draft} read={read} apply={apply} locked={locked} navigate={navigateMatch} /> : null}
       {panel === "backup" ? <BackupPanel draft={draft} read={read} apply={apply} locked={locked} /> : null}
       {message ? <p role="status">{message}</p> : null}
-      <div style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid var(--ink)" }}>
-        <p className="nw-m" style={{ marginBottom: 10 }}>深度校对与分析辅助（新标签页打开）：</p>
-        <div className="nw-authoring-actions" style={{ flexWrap: "wrap", gap: 8 }}>
+      <div className="nw-writing-deep">
+        <p className="nw-kicker">深度校对与分析 · 新标签页打开</p>
+        <div className="nw-authoring-actions nw-writing-deep-links">
           <Link className="nw-btn" href="/write/overlap" target="_blank" rel="noopener noreferrer">段落审阅 ↗</Link>
           <Link className="nw-btn" href="/write/terms" target="_blank" rel="noopener noreferrer">术语审阅 ↗</Link>
           <Link className="nw-btn" href="/write/cadence" target="_blank" rel="noopener noreferrer">标点与节奏 ↗</Link>
