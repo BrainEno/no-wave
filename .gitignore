@@ -32,8 +32,8 @@ data/
 .notion-seed-state.json
 notion-bundle.json
 
-# Reproducible font generator: raw upstream download cache is never shipped.
-.cache/font-sources/
+# Reproducible font generator: raw upstream download cache and subset caches are never shipped.
+.cache/
 
 # Generated first-party font WOFF2 subsets are produced at build time
 # (pnpm fonts:generate) and must not be committed. Only the source receipts,
