@@ -90,12 +90,12 @@ export function AuthoringCatalogue() {
 
   return <section className="nw-authoring nw-catalogue" aria-label="全量作品管理">
     <header className="nw-authoring-header">
-      <p className="nw-kicker">PRIVATE / 作品管理 · 作品目录</p>
+      <p className="nw-kicker">作品管理 · 全部作品目录</p>
       <h1>作品管理</h1>
       <p>按语言版本浏览全部作品目录，不限最近 100 条；先检索元数据，需要编辑时才读取所选版本正文。亦可通过文档与已有数据接口批量导入作品。</p>
       <div className="nw-authoring-actions">
         <Link className="nw-btn" href="/write">返回写作台</Link>
-        <Link className="nw-btn nw-pri" href="/write">新建作品 +</Link>
+        <Link className="nw-btn" href="/write">新建作品 +</Link>
         <Link className="nw-btn" href="/write/media">媒体库</Link>
       </div>
       <div className="nw-authoring-actions" style={{ marginTop: 16 }}>
@@ -104,14 +104,14 @@ export function AuthoringCatalogue() {
           type="button"
           onClick={() => setActiveTab("works")}
         >
-          📚 作品目录与草稿
+          作品目录与草稿
         </button>
         <button
           className={`nw-btn ${activeTab === "import" ? "nw-pri" : ""}`}
           type="button"
           onClick={() => setActiveTab("import")}
         >
-          📥 批量导入与数据接入
+          批量导入与数据接入
         </button>
       </div>
     </header>
@@ -135,7 +135,7 @@ export function AuthoringCatalogue() {
           <label>每页版本数<select value={form.limit} onChange={event => change("limit", Number(event.target.value))}>{[10, 20, 50].map(limit => <option key={limit} value={limit}>{limit}</option>)}</select></label>
         </div>
         <p className="nw-m">日期按 UTC 自然日和所选排序字段过滤。分面数来自上次成功请求的范围、搜索与日期，不预先套用语言/状态/类型；提交后更新。</p>
-        <div className="nw-authoring-actions"><button className="nw-btn nw-pri" type="submit" disabled={remaining > 0}>检索目录</button><button className="nw-btn" type="button" onClick={reset} disabled={remaining > 0}>重置筛选</button></div>
+        <div className="nw-authoring-actions"><button className="nw-btn" type="submit" disabled={remaining > 0}>检索目录</button><button className="nw-btn" type="button" onClick={reset} disabled={remaining > 0}>重置筛选</button></div>
       </fieldset>
     </form>
     {remaining > 0 ? <p role="status">请求受限，请等待 {remaining} 秒后手动重试；不会自动发送请求。</p> : null}

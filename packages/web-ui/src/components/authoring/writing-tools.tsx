@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "@/lib/framework/link.tsx";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { $createNodeSelection, $createRangeSelection, $getRoot, $isElementNode, $isTextNode, $setSelection, HISTORY_PUSH_TAG, type LexicalNode } from "lexical";
 import type { LexicalEditorStateJson } from "@/lib/lexical-article-state.ts";
@@ -303,6 +304,18 @@ export function WritingTools({ draft, getDraft, onChange, locked, recovery }: To
       {panel === "replacement" ? <ReplacementPanel draft={draft} read={read} apply={apply} locked={locked} navigate={navigateMatch} /> : null}
       {panel === "backup" ? <BackupPanel draft={draft} read={read} apply={apply} locked={locked} /> : null}
       {message ? <p role="status">{message}</p> : null}
+      <div style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid var(--ink)" }}>
+        <p className="nw-m" style={{ marginBottom: 10 }}>深度校对与分析辅助（新标签页打开）：</p>
+        <div className="nw-authoring-actions" style={{ flexWrap: "wrap", gap: 8 }}>
+          <Link className="nw-btn" href="/write/overlap" target="_blank" rel="noopener noreferrer">段落审阅 ↗</Link>
+          <Link className="nw-btn" href="/write/terms" target="_blank" rel="noopener noreferrer">术语审阅 ↗</Link>
+          <Link className="nw-btn" href="/write/cadence" target="_blank" rel="noopener noreferrer">标点与节奏 ↗</Link>
+          <Link className="nw-btn" href="/write/parallel" target="_blank" rel="noopener noreferrer">双语对照 ↗</Link>
+          <Link className="nw-btn" href="/write/collections" target="_blank" rel="noopener noreferrer">文稿集合 ↗</Link>
+          <Link className="nw-btn" href="/write/merge" target="_blank" rel="noopener noreferrer">三方合并 ↗</Link>
+          <Link className="nw-btn" href="/write/vault" target="_blank" rel="noopener noreferrer">加密备份 ↗</Link>
+        </div>
+      </div>
     </div> : null}
   </details></>;
 }

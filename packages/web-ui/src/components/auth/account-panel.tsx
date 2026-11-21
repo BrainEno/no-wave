@@ -587,7 +587,7 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
         {devices && devices.length > 1 ? (
           <div className="nw-auth-switch">
             <button
-              className="nw-btn nw-pri"
+              className="nw-btn"
               type="button"
               disabled={ending !== null || endingOthers}
               onClick={() => void endOtherDevices()}
@@ -626,7 +626,7 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
             maxLength={128}
           />
         </label>
-        <button className="nw-btn nw-pri" type="submit" disabled={busy !== null} data-account-email-submit>
+        <button className="nw-btn" type="submit" disabled={busy !== null} data-account-email-submit>
           {busy === "email" ? "正在修改……" : "修改邮箱"}
         </button>
       </form>

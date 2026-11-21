@@ -211,7 +211,7 @@ mark { background: var(--or); color: #0f0d0c; }
 .nw-fbar span { color: var(--ti); }
 
 /* ---------- 列表页头 ---------- */
-.nw-head { padding-top: 128px; }
+.nw-head { padding-top: 156px; }
 .nw-head h1 { margin: 0; font-size: clamp(64px, 11vw, 160px); line-height: 1; letter-spacing: -.02em; font-weight: 400; }
 .nw-head h1 .nw-zh { font-weight: 600; }
 .nw-head h1 i { font-family: var(--f-sf); font-style: italic; font-weight: 400; }
@@ -324,7 +324,7 @@ mark { background: var(--or); color: #0f0d0c; }
   .nw-w { padding: 0 16px; } .nw-sel, .nw-lat, .nw-top, .nw-pop { padding: 72px 16px; }
   .nw-pill { top: max(12px, var(--st)); right: 12px; padding: 0 4px 0 8px; } .nw-pill .nw-nv { display: none; } .nw-mnb { display: inline-flex !important; }
   .nw-np { right: 12px; top: calc(max(12px, var(--st)) + 60px); max-height: calc(100dvh - max(12px, var(--st)) - 72px); }
-  .nw-hero { --w: 36vw; } .nw-brand { left: 12px; } .nw-cn { position: absolute; left: 4px; top: calc(var(--st) + 80px); margin: 0; font-size: 72px; } .nw-wm { font-size: 38vw; flex-direction: column; align-items: flex-start; gap: 0; block-size: 1.6em; } .nw-wm > span { display: block; }
+  .nw-hero { --w: 36vw; } .nw-brand { left: 12px; bottom: 16px; } .nw-cn { position: static; margin: 0 0 6px; font-size: clamp(28px, 9vw, 44px); line-height: 1.1; block-size: auto; } .nw-wm { font-size: 34vw; flex-direction: column; align-items: flex-start; gap: 0; block-size: auto; margin: 0; } .nw-wm > span { display: block; line-height: .82; }
   .nw-h2 h2 { font-size: 40px; } .nw-tri { gap: 56px; margin-top: 40px; } .nw-item { width: 100% !important; margin-top: 0 !important; } .nw-item:nth-child(2) { width: 78% !important; margin-left: auto; } .nw-item:nth-child(3) { width: 58% !important; }
   .nw-band { height: 56px; font-size: 26px; }
   .nw-lat .nw-wrap { gap: 40px; } .nw-pic { width: 100%; aspect-ratio: 1 / 1; }
@@ -350,7 +350,8 @@ mark { background: var(--or); color: #0f0d0c; }
 
 /* ---------- 内容编辑 / Lexical ---------- */
 .nw-auth-panel, .nw-authoring { padding-bottom: 96px; }
-.nw-auth-panel h1, .nw-authoring h1 { max-width: 900px; font-size: clamp(44px, 8vw, 104px); font-weight: 400; line-height: 1.05; }
+.nw-auth-panel h1, .nw-authoring h1 { max-width: 900px; font-family: var(--f-zh); font-size: clamp(44px, 8vw, 104px); font-weight: 600; line-height: 1.05; }
+.nw-auth-panel h2 { font-family: var(--f-zh); font-weight: 600; }
 .nw-auth-form, .nw-article-fields { display: grid; gap: 18px; max-width: 720px; margin-top: 36px; }
 .nw-auth-form label, .nw-article-fields label { display: grid; gap: 8px; font-size: 14px; }
 .nw-auth-form input, .nw-article-fields input, .nw-article-fields textarea, .nw-article-fields select { width: 100%; min-height: 48px; border: 1px solid var(--ink); border-radius: 0; padding: 10px 12px; background: transparent; }
@@ -374,9 +375,11 @@ mark { background: var(--or); color: #0f0d0c; }
 .nw-device-meta { display: grid; gap: 4px; flex: 1 1 16em; }
 .nw-device-meta small { color: var(--t2); font-variant-numeric: tabular-nums; }
 .nw-device-actions { display: flex; gap: 8px; }
-.nw-device-actions .nw-btn { min-height: 40px; padding: 0 14px; font-size: 13px; }
-.nw-account-fields dt { color: var(--t2); }
+.nw-device-actions .nw-btn { min-height: 44px; padding: 0 14px; font-size: 13px; }
+.nw-account-fields { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 12px 24px; max-width: 720px; margin: 24px 0; border: 1px solid var(--ink); padding: 18px 20px; }
+.nw-account-fields dt { color: var(--t2); font-weight: 500; }
 .nw-account-fields dd { margin: 0; overflow-wrap: anywhere; }
+.nw-account-fields dd[data-account-id] { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
 .nw-authoring-grid { display: grid; grid-template-columns: minmax(180px, .32fr) minmax(0, 1fr); align-items: start; gap: clamp(24px, 4vw, 64px); margin-top: 40px; }
 .nw-authoring-sidebar { display: grid; gap: 8px; }
 .nw-authoring-sidebar h2 { margin: 0 0 10px; font-size: 18px; }
@@ -410,9 +413,10 @@ mark { background: var(--or); color: #0f0d0c; }
 .nw-article-metadata { margin-top: 24px; }
 .nw-article-fields .nw-field-wide { grid-column: 1 / -1; }
 .nw-article-fields .nw-field-note { grid-column: 1 / -1; margin: 0; color: var(--t2); font-size: 13px; }
-.nw-lexical-toolbar { display: flex; flex-wrap: wrap; gap: 6px; border: 1px solid var(--ink); padding: 10px; margin-top: 22px; }
-.nw-lexical-toolbar button { min-height: 44px; min-width: 44px; padding: 6px 10px; border: 1px solid var(--ink); background: transparent; font-size: 13px; }
+.nw-lexical-toolbar { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 4px; border: 1px solid var(--ink); padding: 4px 6px; margin-top: 14px; scrollbar-width: thin; }
+.nw-lexical-toolbar button { flex: 0 0 auto; min-height: 38px; min-width: 36px; padding: 4px 8px; border: 1px solid var(--ink); background: transparent; font-size: 13px; }
 .nw-lexical-toolbar button:hover { background: var(--ink); color: var(--paper); }
+.nw-authoring-bar { position: sticky; bottom: 0; z-index: 30; background: var(--paper); padding: 12px 16px; margin-top: 24px; border-top: 1px solid var(--ink); box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.05); }
 .nw-lexical-shell { border: 1px solid var(--ink); border-top: 0; background: color-mix(in srgb, var(--paper) 96%, var(--ink)); }
 .nw-lexical-input { min-height: 420px; padding: clamp(18px, 4vw, 40px); outline: none; line-height: 1.9; font: 400 20px/1.9 var(--f-zh); overflow-wrap: anywhere; }
 .nw-lexical-input p { margin: 0 0 1.2em; }
@@ -478,7 +482,7 @@ mark { background: var(--or); color: #0f0d0c; }
 }
 
 /* ---------- 私有作品目录：轻量检索、版本核对和元数据索引 ---------- */
-.nw-catalogue { max-width: 1080px; margin-inline: auto; }
+.nw-catalogue { width: 100%; max-width: 100%; margin-inline: 0; }
 .nw-catalogue header > p { max-width: 760px; }
 .nw-catalogue h2 { font-size: 24px; margin-block: 24px 16px; }
 .nw-catalogue h3 { font-size: 20px; overflow-wrap: anywhere; }

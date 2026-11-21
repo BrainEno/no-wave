@@ -491,18 +491,21 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
 
   return (
     <section className="nw-authoring">
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap", paddingBottom: 16, borderBottom: "1px solid var(--t2, #333)" }}>
+      <header className="nw-authoring-header">
         <div>
-          <h1 style={{ margin: 0, fontSize: 28 }}><span className="nw-zh">写作台</span></h1>
-          <p className="nw-m" style={{ margin: "4px 0 0" }}>专注文学创作与纯粹写作</p>
+          <h1><span className="nw-zh">写作台</span> <i>Authoring</i></h1>
+          <p className="nw-m">专注文学创作与纯粹写作</p>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div className="nw-authoring-actions">
           <Link className="nw-btn" href="/write/library" style={{ fontWeight: 600 }}>全部作品目录</Link>
           <Link className="nw-btn" href="/write/media">媒体库</Link>
           <button className="nw-btn" type="button" disabled={pendingCreate || signingOut} onClick={() => requestDocumentAction({ kind: "sign-out" })}>退出登录</button>
         </div>
-      </div>
-      <p className="nw-ep" style={{ marginTop: 18 }}>保存成功的草稿与发布状态由 API 持久化；未保存输入默认只在本页；只有明确启用下方本机恢复才会缓存。请保存服务器草稿或下载备份。</p>
+      </header>
+      <details className="nw-authoring-help" style={{ margin: "12px 0 16px" }}>
+        <summary className="nw-m" style={{ cursor: "pointer" }}>文稿存储说明：草稿与发布由服务器保存，请及时保存或下载备份 ▾</summary>
+        <p className="nw-ep" style={{ marginTop: 8 }}>保存成功的草稿与发布状态由 API 持久化；未保存输入默认只在本页；只有明确启用下方本机恢复才会缓存。请保存服务器草稿或下载备份。</p>
+      </details>
       {account ? (
         <p className="nw-auth-status" role="status">
           已登录：{account.email} · 邮箱{account.emailVerifiedAt ? "已验证" : "未验证"}
