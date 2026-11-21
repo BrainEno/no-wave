@@ -7,6 +7,7 @@ import {
   applyBatchPatch,
   extractParagraphs,
   parseTextOrMarkdown,
+  parseHtmlContent,
   validateImportItem,
   type ParsedImportItem,
 } from "./work-import-utils.ts";
@@ -122,5 +123,12 @@ test("parseTextOrMarkdown extracts title and paragraphs", () => {
   const text = `# 标题测试\n\n这是第一段正文。\n\n这是第二段正文。`;
   const parsed = parseTextOrMarkdown(text);
   assert.equal(parsed.title, "标题测试");
+  assert.equal(extractParagraphs(parsed.content).length, 2);
+});
+
+test("parseHtmlContent extracts title and paragraphs safely without DOMParser", () => {
+  const html = `<!DOCTYPE html><html><head><title>网页测试标题</title></head><body><h1>网页测试标题</h1><p>第一段内容。</p><p>第二段内容。</p></body></html>`;
+  const parsed = parseHtmlContent(html);
+  assert.equal(parsed.title, "网页测试标题");
   assert.equal(extractParagraphs(parsed.content).length, 2);
 });

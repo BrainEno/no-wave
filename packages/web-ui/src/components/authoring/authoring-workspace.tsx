@@ -497,9 +497,8 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
           <p className="nw-m" style={{ margin: "4px 0 0" }}>专注文学创作与纯粹写作</p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <button className="nw-btn nw-pri" type="button" disabled={pendingCreate} onClick={openNewDocument}>新建作品 +</button>
-          <Link className="nw-btn" href="/write/library" style={{ fontWeight: 600 }}>作品管理 →</Link>
-          <Link className="nw-btn" href="/write/media">媒体图片库</Link>
+          <Link className="nw-btn" href="/write/library" style={{ fontWeight: 600 }}>全部作品目录</Link>
+          <Link className="nw-btn" href="/write/media">媒体库</Link>
           <button className="nw-btn" type="button" disabled={pendingCreate || signingOut} onClick={() => requestDocumentAction({ kind: "sign-out" })}>退出登录</button>
         </div>
       </div>

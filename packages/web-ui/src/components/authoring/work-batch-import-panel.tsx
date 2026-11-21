@@ -5,6 +5,7 @@ import {
   SUPPORTED_WORK_TYPES,
   parseDocxBytes,
   parseTextOrMarkdown,
+  parseHtmlContent,
   parseUserDataInput,
   applyBatchPatch,
   validateImportItem,
@@ -76,13 +77,9 @@ export function WorkBatchImportPanel({ onImportComplete }: { onImportComplete?: 
           content = parsed.content;
         } else if (ext === "html" || ext === "htm") {
           const text = await file.text();
-          const doc = new DOMParser().parseFromString(text, "text/html");
-          title = doc.querySelector("title")?.textContent?.trim() || doc.querySelector("h1")?.textContent?.trim() || baseName;
-          const pElements = Array.from(doc.querySelectorAll("p"));
-          content = pElements.map(p => p.textContent?.trim() || "").filter(Boolean).join("\n\n");
-          if (!content) {
-            content = doc.body?.textContent?.trim() || "";
-          }
+          const parsed = parseHtmlContent(text, baseName);
+          title = parsed.title;
+          content = parsed.content;
         } else {
           // 其它格式尝试纯文本读取
           const text = await file.text();

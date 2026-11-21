@@ -136,7 +136,33 @@ export function parseTextOrMarkdown(text: string, fallbackTitle = "未命名文�
 }
 
 /**
+ * 解析 HTML 文本中的标题与段落（纯字符串与正则解析，不调用 DOMParser，保证 SSR 与安全性）
+ */
+export function parseHtmlContent(raw: string, fallbackTitle = "未命名文档"): { title: string; content: string } {
+  const titleMatch = raw.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || raw.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+  const title = titleMatch ? titleMatch[1]!.replace(/<[^>]+>/g, "").trim() : fallbackTitle;
+
+  const pMatches = Array.from(raw.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi));
+  let content = pMatches.map(m => m[1]!.replace(/<[^>]+>/g, "").trim()).filter(Boolean).join("\n\n");
+
+  if (!content) {
+    const cleaned = raw
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, "");
+    content = cleaned
+      .replace(/<[^>]+>/g, "\n")
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .filter(Boolean)
+      .join("\n\n");
+  }
+
+  return { title: title || fallbackTitle, content };
+}
+
+/**
  * 通用已有用户数据（JSON / CSV / 结构化文本）解析器
+
  */
 export function parseUserDataInput(raw: string, defaultAuthor = ""): ParsedImportItem[] {
   const trimmed = raw.trim();

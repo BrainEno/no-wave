@@ -96,7 +96,7 @@ export function AuthoringCatalogue() {
       <div className="nw-authoring-actions">
         <Link className="nw-btn" href="/write">返回写作台</Link>
         <Link className="nw-btn nw-pri" href="/write">新建作品 +</Link>
-        <Link className="nw-btn" href="/write/media">媒体图片库</Link>
+        <Link className="nw-btn" href="/write/media">媒体库</Link>
       </div>
       <div className="nw-authoring-actions" style={{ marginTop: 16 }}>
         <button
