@@ -21,6 +21,7 @@
  * Writes go to the database the running API is configured with. Point it at a
  * disposable local database, and use `--read-only` when that is not acceptable.
  */
+import { readJson } from "./lib/http-json.ts";
 import {
   buildProbeIdentity,
   loadLocalEnvFile,
@@ -60,17 +61,6 @@ function trimBaseUrl(value: string): string {
 
 async function request(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
   return fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs), redirect: "manual" });
-}
-
-async function readJson(response: Response): Promise<Record<string, unknown> | null> {
-  try {
-    const value: unknown = await response.json();
-    return typeof value === "object" && value !== null && !Array.isArray(value)
-      ? (value as Record<string, unknown>)
-      : null;
-  } catch {
-    return null;
-  }
 }
 
 function errorCodeOf(payload: Record<string, unknown> | null): string | null {

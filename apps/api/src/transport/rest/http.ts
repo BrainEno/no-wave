@@ -4,6 +4,7 @@ import { redactDiagnostic, secretValues } from "../../infrastructure/log-redacti
 import { COMMENT_DEPTH_LIMIT_MESSAGE } from "../../domain/comment-content.ts";
 import { DomainError, RateLimitError } from "../../domain/errors.ts";
 import { AuthenticationConfigurationError, createAuthContext } from "../../security/authentication.ts";
+import { isRecord } from "../../domain/validation.ts";
 import type { ApplicationServices } from "../../application/services.ts";
 
 export const JSON_HEADERS = {
@@ -248,9 +249,7 @@ export type JsonObjectResult =
   | { ok: true; value: Record<string, unknown> }
   | { ok: false; status: number; code: string; message: string; closeConnection?: boolean };
 
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+export { isRecord };
 
 export async function readJsonObject(request: IncomingMessage, maxBytes = MAX_JSON_BODY_BYTES): Promise<JsonObjectResult> {
   const contentType = request.headers["content-type"];

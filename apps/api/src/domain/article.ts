@@ -1,6 +1,6 @@
 import { decodeCursor, encodeCursor } from "./cursor.ts";
 import { ArticleInputError } from "./errors.ts";
-import { isUuid, requiredText } from "./validation.ts";
+import { isRecord, isUuid, requiredText } from "./validation.ts";
 
 const SUPPORTED_ARTICLE_LOCALES = new Set(["zh-CN", "zh-TW", "en"]);
 const ARTICLE_WORK_TYPES = new Set(["novel", "short_story", "poetry", "essay", "criticism", "literary_criticism", "nonfiction", "serial", "other"]);
@@ -92,9 +92,7 @@ export function validateArticleContentBlocksVersion(value: unknown): number {
   return version;
 }
 
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+export { isRecord };
 
 function rejectUnknownFields(value: Record<string, unknown>, allowedFields: ReadonlySet<string>, name: string): void {
   if (Object.keys(value).some((field) => !allowedFields.has(field))) {

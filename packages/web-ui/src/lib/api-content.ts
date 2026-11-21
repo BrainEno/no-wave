@@ -1,4 +1,4 @@
-import { resolveUpstreamTimeoutMs, upstreamTransportFor, upstreamJsonPayload, type FetchImpl, type UpstreamTransport } from "@bot-thk/web-http";
+import { isRecord, resolveUpstreamTimeoutMs, upstreamTransportFor, upstreamJsonPayload, type FetchImpl, type UpstreamTransport } from "@bot-thk/web-http";
 import { isTagSlug, type TagReference, type TagView } from "./tag-discovery.ts";
 import { parseArticlePreview, projectArticleForList } from "./article-preview.ts";
 import type { ArticleContentBlock, ArticleSort, ArticleView, AuthorView, Locale, WorkType } from "./content.ts";
@@ -45,10 +45,6 @@ const WORK_TYPES = ["novel", "short_story", "poetry", "essay", "criticism", "lit
 let legacyGraphqlWarningShown = false;
 // Preserve HTTP absence separately from a malformed successful `data: null`.
 const CONTENT_NOT_FOUND = Symbol("content-not-found");
-
-function isRecord(value: unknown): value is ApiObject {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function isWorkType(value: unknown): value is WorkType {
   return typeof value === "string" && (WORK_TYPES as readonly string[]).includes(value);

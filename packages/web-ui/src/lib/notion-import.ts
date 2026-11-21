@@ -16,6 +16,8 @@
  *    tested without a browser.
  */
 
+import { isRecord } from "@bot-thk/web-http";
+
 /** The ceiling the API enforces on one import body (`MAX_NOTION_IMPORT_BYTES`). */
 export const NOTION_BUNDLE_MAX_BYTES = 8 * 1024 * 1024;
 
@@ -52,10 +54,6 @@ export type BundleFileResult =
   | { ok: false; message: string };
 
 const ACTIONS: readonly NotionImportAction[] = ["create", "update", "skip", "refused", "failed"];
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function megabytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;

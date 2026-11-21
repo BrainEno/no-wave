@@ -1,3 +1,5 @@
+import { isRecord } from "./http.ts";
+
 export const ACCESS_TOKEN_COOKIE = "nw_access";
 export const REFRESH_TOKEN_COOKIE = "nw_refresh";
 
@@ -33,10 +35,6 @@ export type TokenSet = {
   refreshToken: string;
   refreshExpiresAt: string;
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function isTimestamp(value: unknown): value is string {
   return typeof value === "string" && Number.isFinite(Date.parse(value));
