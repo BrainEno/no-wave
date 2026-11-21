@@ -1,10 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isUuid, requiredText } from "./validation.ts";
+import { isRecord, isUuid, requiredText } from "./validation.ts";
 import { normalizeParticipantIds } from "./conversation.ts";
 import { validateProfileUrl } from "./profile.ts";
 
 test("common validation helpers enforce text and ID formats", () => {
+  assert.equal(isRecord({}), true);
+  assert.equal(isRecord([]), false);
+  assert.equal(isRecord(null), false);
+  assert.equal(isRecord("text"), false);
   assert.equal(isUuid("bdb4ec86-22d3-4eaf-96db-34b7b5a63bb8"), true);
   assert.equal(isUuid("nope"), false);
   assert.equal(requiredText("name", "name"), "name");

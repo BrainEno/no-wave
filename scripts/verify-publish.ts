@@ -35,6 +35,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { parseJson, readJson } from "./lib/http-json.ts";
 import { buildProbeIdentity, originOf } from "./lib/local-dev-config.ts";
 import {
   childEnvironment,
@@ -140,21 +141,6 @@ export function parseArguments(argv: readonly string[]): { args?: VerifyPublishA
 
 function trimBaseUrl(value: string): string {
   return originOf(value);
-}
-
-function parseJson(text: string): Record<string, unknown> | null {
-  try {
-    const value: unknown = JSON.parse(text);
-    return typeof value === "object" && value !== null && !Array.isArray(value)
-      ? (value as Record<string, unknown>)
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-async function readJson(response: Response): Promise<Record<string, unknown> | null> {
-  return parseJson(await response.text());
 }
 
 function dataOf(payload: Record<string, unknown> | null): Record<string, unknown> | null {

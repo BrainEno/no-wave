@@ -35,6 +35,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { parseJson, readJson } from "./lib/http-json.ts";
 import { resolveWebBuildCli } from "./lib/web-build-cli.ts";
 
 export type CheckStatus = "pass" | "fail" | "skip";
@@ -398,19 +399,6 @@ async function step(
       durationMs: Date.now() - startedAt,
     });
   }
-}
-
-function parseJson(text: string): Record<string, unknown> | null {
-  try {
-    const value: unknown = JSON.parse(text);
-    return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
-  } catch {
-    return null;
-  }
-}
-
-async function readJson(response: Response): Promise<Record<string, unknown> | null> {
-  return parseJson(await response.text());
 }
 
 function dataOf(payload: Record<string, unknown> | null): Record<string, unknown> | null {

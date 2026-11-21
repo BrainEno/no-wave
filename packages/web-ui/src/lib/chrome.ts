@@ -1,3 +1,4 @@
+import { isRecord } from "@bot-thk/web-http";
 import { notificationSelectionId } from "./notification-selection.ts";
 import { notificationInboxPath } from "./locale-navigation.ts";
 import type { Locale } from "./content.ts";
@@ -37,10 +38,6 @@ export type NotificationRow = {
 };
 
 export type GrainOffset = readonly [number, number];
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 export function isNotificationItem(value: unknown): value is NotificationItem {
   if (!isRecord(value)) return false;

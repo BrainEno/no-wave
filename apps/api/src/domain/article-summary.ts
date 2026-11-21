@@ -14,15 +14,13 @@
  *  - `…` is only ever appended when the text was actually cut, and never
  *    directly after another punctuation mark.
  */
+import { isRecord } from "./validation.ts";
+
 export const ARTICLE_SUMMARY_MAX_LENGTH = 110;
 const ELLIPSIS = "…";
 const SENTENCE_TERMINATORS = /[。．.！!？?…‼⁇⁈⁉]$/u;
 const TRAILING_PUNCTUATION = /[\p{P}\p{S}\s]+$/u;
 const LATIN_EDGE = /[A-Za-z0-9]/;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 /** Code points, not UTF-16 units: a summary must never split a surrogate pair. */
 function characters(value: string): string[] {

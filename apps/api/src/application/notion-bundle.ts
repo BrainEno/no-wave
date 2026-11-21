@@ -16,6 +16,7 @@
  * answer to "have I imported this already".
  */
 import { createHash } from "node:crypto";
+import { isRecord } from "../domain/validation.ts";
 import {
   DEFAULT_NOTION_PROPERTY_NAMES,
   articleDraftFromNotionPage,
@@ -53,10 +54,6 @@ export type NotionBundle = {
 };
 
 export class NotionBundleError extends Error {}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 /**
  * Read a bundle from parsed JSON, refusing rather than guessing.

@@ -6,11 +6,9 @@
  * API only after it has been trimmed and bounded here.
  */
 
-export type AuthorProfile = { displayName: string; locale: string };
+import { isRecord } from "@bot-thk/web-http";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+export type AuthorProfile = { displayName: string; locale: string };
 
 export function parseAuthorProfile(payload: unknown): AuthorProfile | null {
   if (!isRecord(payload) || !isRecord(payload.data)) return null;

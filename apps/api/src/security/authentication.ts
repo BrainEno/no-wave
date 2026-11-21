@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { isRecord } from "../domain/validation.ts";
 
 const BEARER_PREFIX = /^Bearer\s+(.+)$/i;
 const MAX_BEARER_TOKEN_LENGTH = 8192;
@@ -12,10 +13,6 @@ export class AuthenticationConfigurationError extends Error {
     super(message);
     this.name = "AuthenticationConfigurationError";
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function decodeSegment(segment: string): { value: unknown; bytes: Buffer } | null {

@@ -5,7 +5,7 @@ import type {
   StoredAuthorProfile,
   StoredTaxonomy,
 } from "../../application/persistence-ports.ts";
-import { type RestServices } from "./http.ts";
+import { isRecord, type RestServices } from "./http.ts";
 import { settledReads } from "../../application/settled-reads.ts";
 
 /**
@@ -51,10 +51,6 @@ export type SerializedRestNotification = {
 type ArticleLike = { id?: unknown; authorId?: unknown; locale?: unknown };
 /** The fields this module reads off a stored comment. */
 type CommentLike = { authorId?: unknown; locale?: unknown; replies?: unknown };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function isArticleLike(value: unknown): value is ArticleLike {
   return isRecord(value);

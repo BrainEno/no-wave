@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@/lib/framework/link.tsx";
-import { hasUsableSession, SESSION_MARKER_COOKIE } from "@bot-thk/web-http";
+import { hasUsableSession, isRecord, SESSION_MARKER_COOKIE } from "@bot-thk/web-http";
 import { sessionMarkerFromCookie } from "@/lib/chrome.ts";
 import type { ReactNode } from "react";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
@@ -42,10 +42,6 @@ type CommentView = {
   author?: { displayName?: string; username?: string } | null;
   replies?: CommentView[];
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function readError(value: unknown): string {
   if (isRecord(value) && isRecord(value.error) && typeof value.error.message === "string") return value.error.message;
