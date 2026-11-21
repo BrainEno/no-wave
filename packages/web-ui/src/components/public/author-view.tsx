@@ -43,7 +43,7 @@ export function AuthorPageView({ locale, author, type, page, works }: AuthorPage
         <div>
           {recent.length ? (
             <section>
-              <SectionHeading zh={ui.author.recent} latin="Recent" />
+              <SectionHeading zh={ui.author.recent} latin="Recent" locale={locale} />
               <div style={{ marginTop: 32 }}>
                 {recent.map((article, index) => (
                   <Link key={article.slug} className="nw-rp3" href={articlePath(article.slug, locale)} data-reveal="row">
@@ -55,7 +55,7 @@ export function AuthorPageView({ locale, author, type, page, works }: AuthorPage
             </section>
           ) : null}
           <section className={recent.length ? "nw-sec2" : undefined} id="catalogue">
-            <SectionHeading zh={ui.author.works} latin={ui.author.worksEn} aside={<span className="nw-m">{ui.author.count(filtered.length)}</span>} />
+            <SectionHeading zh={ui.author.works} latin={ui.author.worksEn} locale={locale} aside={<span className="nw-m">{ui.author.count(filtered.length)}</span>} />
             <div style={{ margin: "24px 0 8px" }}><TypeTabs locale={locale} base={base} current={type} /></div>
             {visible.length ? (
               <>

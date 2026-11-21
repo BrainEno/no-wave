@@ -41,8 +41,17 @@ export function WorkRow({ article, locale, index, withCover = false, withExcerpt
   );
 }
 
-export function SectionHeading({ zh, latin, aside }: { zh: string; latin: string; aside?: ReactNode }) {
-  return <div className="nw-h2"><h2><span className="nw-zh">{zh}</span> <i>{latin}</i></h2>{aside}</div>;
+export function SectionHeading({ zh, latin, aside, locale }: { zh: string; latin?: string; aside?: ReactNode; locale?: Locale }) {
+  const showLatin = locale === "en";
+  return (
+    <div className="nw-h2">
+      <h2>
+        <span className="nw-zh">{zh}</span>
+        {showLatin && latin && latin !== zh ? <> <i>{latin}</i></> : null}
+      </h2>
+      {aside}
+    </div>
+  );
 }
 
 export function EmptyState({ title, body, href, action }: { title: string; body: string; href?: string; action?: string }) {

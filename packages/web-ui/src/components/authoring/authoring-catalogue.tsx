@@ -9,14 +9,15 @@ import { getMessages } from "@/lib/content.ts";
 import { workTypes } from "@/lib/work-types.ts";
 import { catalogueSelectionFingerprint } from "@/lib/authoring-catalogue-review.ts";
 import type { CatalogueExport } from "@/lib/authoring-catalogue-export.ts";
-import { WritingCollectionExportPanel } from "./writing-collection-export-panel.tsx";
 import { CatalogueExportPanel } from "./catalogue-export.tsx";
 import { CatalogueSelection } from "./catalogue-selection.tsx";
 import { CatalogueVersions, catalogueDate, catalogueLocaleLabel } from "./catalogue-versions.tsx";
+import { WorkBatchImportPanel } from "./work-batch-import-panel.tsx";
 
 export function AuthoringCatalogue() {
   const [controller] = useState(() => new CatalogueController());
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
+  const [activeTab, setActiveTab] = useState<"works" | "import">("works");
   const [form, setForm] = useState<CatalogueFilters>({ ...DEFAULT_CATALOGUE_FILTERS });
   const [downloadError, setDownloadError] = useState("");
   const [checkingExport, setCheckingExport] = useState(false);
@@ -87,12 +88,38 @@ export function AuthoringCatalogue() {
   }
   function reset() { setForm({ ...DEFAULT_CATALOGUE_FILTERS }); void controller.apply({ ...DEFAULT_CATALOGUE_FILTERS }); }
 
-  return <section className="nw-authoring nw-catalogue" aria-label="全量作品目录">
+  return <section className="nw-authoring nw-catalogue" aria-label="全量作品管理">
     <header className="nw-authoring-header">
-      <p className="nw-kicker">PRIVATE / 作品管理</p><h1>作品目录</h1>
-      <p>按语言版本浏览全部自己的作品，不限最近 100 条；先检索元数据，需要编辑时才读取所选版本正文。</p>
-      <div className="nw-authoring-actions"><Link className="nw-btn" href="/write">返回写作台</Link><Link className="nw-btn" href="/write/media">图片库</Link><Link className="nw-btn" href="/write/collections">本机集合工具</Link><Link className="nw-btn" href="/write/merge">本机三方合并</Link><Link className="nw-btn" href="/write/vault">本机加密备份</Link></div>
+      <p className="nw-kicker">PRIVATE / 作品管理 · 作品目录</p>
+      <h1>作品管理</h1>
+      <p>按语言版本浏览全部作品目录，不限最近 100 条；先检索元数据，需要编辑时才读取所选版本正文。亦可通过文档与已有数据接口批量导入作品。</p>
+      <div className="nw-authoring-actions">
+        <Link className="nw-btn" href="/write">返回写作台</Link>
+        <Link className="nw-btn nw-pri" href="/write">新建作品 +</Link>
+        <Link className="nw-btn" href="/write/media">媒体图片库</Link>
+      </div>
+      <div className="nw-authoring-actions" style={{ marginTop: 16 }}>
+        <button
+          className={`nw-btn ${activeTab === "works" ? "nw-pri" : ""}`}
+          type="button"
+          onClick={() => setActiveTab("works")}
+        >
+          📚 作品目录与草稿
+        </button>
+        <button
+          className={`nw-btn ${activeTab === "import" ? "nw-pri" : ""}`}
+          type="button"
+          onClick={() => setActiveTab("import")}
+        >
+          📥 批量导入与数据接入
+        </button>
+      </div>
     </header>
+
+    {activeTab === "import" ? (
+      <WorkBatchImportPanel onImportComplete={() => void controller.refresh()} />
+    ) : (
+      <>
     <form className="nw-catalogue-filters" aria-label="目录筛选" onSubmit={event => { event.preventDefault(); submit(); }}>
       <fieldset disabled={state.restoring || checkingExport}>
         <legend>组合筛选</legend>
@@ -132,7 +159,6 @@ export function AuthoringCatalogue() {
           <button className="nw-btn" type="button" disabled={!state.selected.length || state.restoring} onClick={() => controller.clearSelection()}>清除选择</button>
         </div>
         <p>已选 {state.selected.length} / {CATALOGUE_SELECTION_LIMIT} 个语言版本。翻页保留选择，已提交的筛选或账户变更会清空。下载的是所选条目上次读取的快照，可在下方明确发起只读核对。</p>
-        <WritingCollectionExportPanel catalogue={controller} disabled={unavailable || formChanged || checkingExport} />
         <CatalogueExportPanel selected={state.selected} disabled={unavailable || formChanged || checkingExport} onDownload={report => { void exportSelection(report); }} />
         {state.actor ? <CatalogueSelection actor={state.actor} scope={state.filters.scope} selected={state.selected} visible={state.page.items} disabled={unavailable || formChanged} onRemove={key => controller.removeSelection(key)} onApply={(actor, fingerprint, entries) => controller.adoptReviewedSelection(actor, fingerprint, entries)} onAccountRefused={controller.refuseAccount} onRateLimited={controller.respectReadCooldown} /> : null}
         {state.page.items.length ? <ul className="nw-catalogue-list" aria-label="目录条目">{state.page.items.map(entry => <li key={catalogueEntryKey(entry)}>
@@ -148,6 +174,8 @@ export function AuthoringCatalogue() {
         <p className="nw-m">目录与计数随并发保存/删除变化，不是跨请求快照；需要核对时请重新开始。翻页不自动选择或读取正文。</p>
       </> : state.status === "failed" && state.actor ? <button className="nw-btn" type="button" disabled={remaining > 0} onClick={() => { void controller.refresh(); }}>重试读取目录</button> : null}
     </section>
+      </>
+    )}
     {state.inspection && state.actor ? <CatalogueVersions key={`${state.inspection.source.id}-${state.inspection.status}`} inspection={state.inspection} actor={state.actor} close={() => { controller.closeInspection(); inspectionTrigger.current?.focus(); }} /> : null}
     <ConfirmDialog open={state.restoreIntent !== null} title="还原这部作品？" confirmLabel="还原全部语言为草稿" description={state.restoreIntent ? `所选版本：《${state.restoreIntent.entry.title}》 · ${catalogueLocaleLabel(state.restoreIntent.entry.locale)}。\n这会还原同一作品的全部已有语言版本，并将整部作品设为草稿，不会自动重新发布。\n已永久清除的内容不能通过还原找回；此操作不会更改当前写作台编辑区。` : ""} onCancel={() => controller.cancelRestore()} onConfirm={() => { void controller.confirmRestore(); }} />
   </section>;

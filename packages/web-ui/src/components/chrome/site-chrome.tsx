@@ -31,6 +31,8 @@ import { READER_SCROLL_EVENT, readerScrollRequest } from "@/lib/reader-location.
 const icon = {
   search: <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-4-4" /></svg>,
   bell: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8a6 6 0 0112 0c0 7 3 8 3 8H3s3-1 3-8" /><path d="M10.3 20a2 2 0 003.4 0" /></svg>,
+  write: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" /></svg>,
+  account: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>,
 };
 
 const GRAIN_TILE_SIZE = 256;
@@ -285,16 +287,6 @@ function SiteChromeContent({ children }: { children: ReactNode }) {
       <nav className="nw-pill" aria-label={ui.nav.primary} lang={locale}>
         <Link className="nw-nv" href={navSelected}>{ui.nav.selected}</Link>
         <Link className="nw-nv" href={navLatest}>{ui.nav.latest}</Link>
-        <Link className="nw-nv" href="/write">{ui.nav.write}</Link>
-        {/*
-          The account entry is a plain link, not a session-aware one: the chrome
-          is shared by every page, and reading a cookie in the layout would make
-          every public page uncacheable. `/account` already answers both states
-          — it redirects to sign-in with `next=/account` when there is no
-          session, so a signed-out visitor who clicks it is sent to log in and
-          comes straight back.
-        */}
-        <Link className="nw-nv" href="/account" aria-current={current("/account")}>{ui.nav.account}</Link>
         <Link className="nw-nv" href={navTopics} aria-current={onHome ? undefined : current(topicsHref)}>{ui.nav.topics}</Link>
         <span className="nw-sep nw-nv" aria-hidden="true" />
         <Link className="nw-nv nw-lang" onClick={overlays.onLanguageNavigate} href={locale === "en" ? alternateHref : currentHref} lang="zh-CN" aria-current={locale === "zh-CN" ? "true" : undefined}>简</Link>
@@ -304,6 +296,9 @@ function SiteChromeContent({ children }: { children: ReactNode }) {
         <button className="nw-ic" ref={overlays.bellTrigger} type="button" aria-haspopup="dialog" aria-label={badge ? `${ui.bell.label}，${badge} ${ui.bell.unread}` : ui.bell.label} aria-expanded={bellOpen} aria-controls="nw-np" onClick={() => overlays.toggle("bell")}>
           {icon.bell}{badge ? <span className="nw-bdg" aria-live="polite">{badge}</span> : null}
         </button>
+        <span className="nw-sep nw-nv" aria-hidden="true" />
+        <Link className="nw-ic nw-ic-write" href="/write" aria-label={ui.nav.write} title={ui.nav.write}>{icon.write}</Link>
+        <Link className="nw-ic nw-ic-account" href="/account" aria-label={ui.nav.account} title={ui.nav.account} aria-current={current("/account")}>{icon.account}</Link>
         <button className="nw-mnb" ref={overlays.menuTrigger} type="button" aria-haspopup="dialog" style={{ fontWeight: 700 }} aria-expanded={menuOpen} aria-controls="nw-menu" onClick={() => overlays.toggle("menu")}>{ui.nav.menu}</button>
       </nav>
       </header>
@@ -351,9 +346,9 @@ function SiteChromeContent({ children }: { children: ReactNode }) {
         <Link href={homePath(locale)}>{ui.nav.home}</Link>
         <Link href={navSelected}>{ui.nav.selected}</Link>
         <Link href={navLatest}>{ui.nav.latest}</Link>
+        <Link href={navTopics}>{ui.nav.topics}</Link>
         <Link href="/write">{ui.nav.write}</Link>
         <Link href="/account">{ui.nav.account}</Link>
-        <Link href={navTopics}>{ui.nav.topics}</Link>
         <Link href={readingListPath(locale)}>{readingShelfCopy(locale).title}</Link>
         <Link href={searchHref}>{ui.nav.search}</Link>
         <Link href={alternateHref} lang={other} aria-label={ui.nav.language}>{other === "en" ? "English" : "简体中文"}</Link>

@@ -9,7 +9,7 @@ export function loader({ request }: LoaderFunctionArgs) {
   return null;
 }
 export const headers: HeadersFunction = () => PRIVATE_PAGE_HEADERS;
-export const meta: MetaFunction = () => [{ title: "作品目录 | 无浪潮" }, { name: "robots", content: "noindex, nofollow" }];
+export const meta: MetaFunction = () => [{ title: "作品管理 | 无浪潮" }, { name: "robots", content: "noindex, nofollow" }];
 
 export default function WriteLibraryRoute() {
   return <main id="top" tabIndex={-1} className="nw-w nw-head nw-private-page" data-route="write-library"><AuthoringCatalogue /></main>;

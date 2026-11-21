@@ -102,27 +102,6 @@ export function HeroCanvas({ src }: { src: string }) {
     let imageWidth = 1;
     let imageHeight = 1;
 
-    /** 连续两帧栅格化成纯色（部分驱动遇到异常会输出白/黑平面）→ 交给 React 回退。 */
-    const checkFrame = () => {
-      const points: Array<[number, number]> = [
-        [Math.floor(canvas.width * 0.2), Math.floor(canvas.height * 0.2)],
-        [Math.floor(canvas.width * 0.8), Math.floor(canvas.height * 0.3)],
-        [Math.floor(canvas.width * 0.5), Math.floor(canvas.height * 0.5)],
-        [Math.floor(canvas.width * 0.3), Math.floor(canvas.height * 0.8)],
-        [Math.floor(canvas.width * 0.7), Math.floor(canvas.height * 0.7)],
-      ];
-      const pixel = new Uint8Array(4);
-      let min = 255;
-      let max = 0;
-      for (const [x, y] of points) {
-        gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
-        const lum = (pixel[0] + pixel[1] + pixel[2]) / 3;
-        if (lum < min) min = lum;
-        if (lum > max) max = lum;
-      }
-      if (max - min < 6) activateFallback();
-    };
-
     const draw = () => {
       if (!ready) return;
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -150,8 +129,6 @@ export function HeroCanvas({ src }: { src: string }) {
       gl.uniform1f(U.S, reduce ? 0 : motionState.scrollVelocity);
       gl.uniform1f(U.Rv, motionState.reveal);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-      drawCount += 1;
-      if (drawCount === 2) checkFrame();
     };
     const loop = () => {
       frame = 0;
@@ -184,12 +161,39 @@ export function HeroCanvas({ src }: { src: string }) {
     image.onerror = () => { activateFallback(); };
     image.src = src;
 
-    const onMove = (event: PointerEvent) => {
+    let isDragging = false;
+    const updatePointer = (clientX: number, clientY: number) => {
       const rect = hero.getBoundingClientRect();
-      mouse.tx = (event.clientX - rect.left) / rect.width;
-      mouse.ty = 1 - (event.clientY - rect.top) / rect.height;
+      if (rect.width <= 0 || rect.height <= 0) return;
+      mouse.tx = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      mouse.ty = Math.max(0, Math.min(1, 1 - (clientY - rect.top) / rect.height));
     };
-    if (!reduce && window.matchMedia("(pointer: fine)").matches) hero.addEventListener("pointermove", onMove);
+
+    const onPointerMove = (event: PointerEvent) => {
+      updatePointer(event.clientX, event.clientY);
+    };
+
+    const onPointerDown = (event: PointerEvent) => {
+      isDragging = true;
+      updatePointer(event.clientX, event.clientY);
+      // 允许鼠标拖动的同时防止浏览器默认触发图片拖拽或文字选中
+      if (event.cancelable) event.preventDefault();
+    };
+
+    const onPointerUp = () => {
+      isDragging = false;
+    };
+
+    if (!reduce) {
+      hero.addEventListener("pointermove", onPointerMove);
+      hero.addEventListener("pointerdown", onPointerDown);
+      window.addEventListener("pointermove", (e) => {
+        if (isDragging) onPointerMove(e);
+      });
+      window.addEventListener("pointerup", onPointerUp);
+      window.addEventListener("pointercancel", onPointerUp);
+    }
+
     const observer = new IntersectionObserver(([entry]) => {
       visible = entry?.isIntersecting ?? true;
       if (visible) startLoop();
@@ -203,7 +207,10 @@ export function HeroCanvas({ src }: { src: string }) {
       image.onload = null;
       image.onerror = null;
       observer.disconnect();
-      hero.removeEventListener("pointermove", onMove);
+      hero.removeEventListener("pointermove", onPointerMove);
+      hero.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
       gl.getExtension("WEBGL_lose_context")?.loseContext();
     };
   }, [src, fallback]);
