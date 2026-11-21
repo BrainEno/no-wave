@@ -550,9 +550,6 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
           />
         </div>
       </div>
-      {/* Keep supporting tools mounted and reachable, without displacing the editor. */}
-      <AuthorProfilePanel profile={profile} onSave={saveProfile} />
-      <NotificationInbox locale="zh-CN" />
       {/* Leaving with an unconfirmed request is a question, not a form: the
           answer is a route decision (`blocker.proceed()`), so it belongs in the
           confirmation dialog rather than in an empty prompt form. */}
@@ -584,32 +581,43 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
         onCancel={() => setLeave(null)}
         onConfirm={confirmDocumentAction}
       />
-      <section className="nw-authoring-trash" aria-label="回收站">
-        <h2>回收站（{deleted.length}）</h2>
-        <p className="nw-m">这里只列出最近的已删除版本；<Link href="/write/library">到全量目录筛选回收站</Link>可分页核对更早作品并在还原前确认全部语言的影响。</p>
-        {trashError ? <p className="nw-auth-error" role="alert">{trashError}</p> : null}
-        {deleted.length === 0 && !trashError
-          ? <p className="nw-m">没有已删除的作品。</p>
-          : deleted.map((entry) => {
-            const days = daysUntilPurge(entry);
-            return (
-              <div className="nw-authoring-trash-row" key={editionKey(entry)}>
-                <span>{entry.title}</span>
-                <small>
-                  {localeLabel(entry.locale)} · {entry.deletedAt ? `删除于 ${new Date(entry.deletedAt).toLocaleDateString("zh-CN")}` : "已删除"}
-                  {days === null ? null : days === 0 ? " · 即将自动清除" : ` · 将在 ${days} 天后自动清除`}
-                  {/* The one thing a restore cannot give back to a third party:
-                      the sweep takes the comments with it, so the row says how
-                      many rather than leaving the author to imagine it. */}
-                  {entry.commentCount ? ` · 连同 ${entry.commentCount} 条评论` : null}
-                </small>
-                <button className="nw-btn" type="button" aria-label={`还原《${entry.title}》（${localeLabel(entry.locale)}）`} onClick={() => void restoreDeleted(entry)}>
-                  还原《{entry.title}》
-                </button>
-              </div>
-            );
-          })}
-      </section>
+      {/* Keep supporting tools mounted and reachable, in a visual auxiliary area without displacing the writing flow. */}
+      <div className="nw-authoring-auxiliary" aria-label="写作台辅助工具">
+        <div className="nw-authoring-auxiliary-intro">
+          <h2><span className="nw-zh">辅助功能与账户资料</span> <i>Auxiliary</i></h2>
+          <p className="nw-m">作者公开署名资料、通知同步与回收站。正常创作与发布均可在上方主编辑区完成。</p>
+        </div>
+        <AuthorProfilePanel profile={profile} onSave={saveProfile} />
+        <NotificationInbox locale="zh-CN" />
+        <section className="nw-authoring-trash" aria-label="回收站">
+          <h2>回收站（{deleted.length}）</h2>
+          <p className="nw-m">这里只列出最近的已删除版本；<Link href="/write/library">到全量目录筛选回收站</Link>可分页核对更早作品并在还原前确认全部语言的影响。</p>
+          {trashError ? <p className="nw-auth-error" role="alert">{trashError}</p> : null}
+          {deleted.length === 0 && !trashError
+            ? <p className="nw-m">没有已删除的作品。</p>
+            : <div className="nw-authoring-trash-list">
+                {deleted.map((entry) => {
+                  const days = daysUntilPurge(entry);
+                  return (
+                    <div className="nw-authoring-trash-row" key={editionKey(entry)}>
+                      <span>{entry.title}</span>
+                      <small>
+                        {localeLabel(entry.locale)} · {entry.deletedAt ? `删除于 ${new Date(entry.deletedAt).toLocaleDateString("zh-CN")}` : "已删除"}
+                        {days === null ? null : days === 0 ? " · 即将自动清除" : ` · 将在 ${days} 天后自动清除`}
+                        {/* The one thing a restore cannot give back to a third party:
+                            the sweep takes the comments with it, so the row says how
+                            many rather than leaving the author to imagine it. */}
+                        {entry.commentCount ? ` · 连同 ${entry.commentCount} 条评论` : null}
+                      </small>
+                      <button className="nw-btn" type="button" aria-label={`还原《${entry.title}》（${localeLabel(entry.locale)}）`} onClick={() => void restoreDeleted(entry)}>
+                        还原《{entry.title}》
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>}
+        </section>
+      </div>
     </section>
   );
 }

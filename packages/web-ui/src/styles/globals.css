@@ -367,7 +367,12 @@ mark { background: var(--or); color: #0f0d0c; }
 .nw-curate-actions .nw-btn { min-height: 40px; padding: 0 14px; font-size: 13px; }
 .nw-auth-error, .nw-auth-status { margin: 16px 0; padding: 12px 0; border-top: 1px solid var(--ink); }
 .nw-auth-error { color: var(--red); }
-.nw-account-fields { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 10px 20px; max-width: 720px; margin-top: 32px; font-size: 15px; }
+.nw-auth-panel .nw-ep, .nw-authoring .nw-ep { margin: 0; font: 400 15px/1.65 var(--f-body); color: var(--t2); max-width: 48em; }
+.nw-account-details { margin: 8px 0 16px; font: 400 13px/1.65 var(--f-body); color: var(--t2); border-left: 2px solid var(--ti); padding: 4px 0 4px 12px; }
+.nw-account-details summary { cursor: pointer; color: var(--t2); font-size: 13px; user-select: none; }
+.nw-account-details summary:hover { color: var(--or); }
+.nw-account-details p { margin: 6px 0 0; color: var(--t2); }
+.nw-auth-panel .nw-auth-form { padding-top: 28px; border-top: 1px solid var(--ti); margin-top: 40px; }
 /* The device list: one row per signed-in session, newest activity first (ADR 0019). */
 .nw-device-list { list-style: none; margin: 0; padding: 0; max-width: 720px; border-bottom: 1px solid var(--ink); }
 .nw-device-row { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 12px 0; border-top: 1px solid var(--ink); }
@@ -376,19 +381,24 @@ mark { background: var(--or); color: #0f0d0c; }
 .nw-device-meta small { color: var(--t2); font-variant-numeric: tabular-nums; }
 .nw-device-actions { display: flex; gap: 8px; }
 .nw-device-actions .nw-btn { min-height: 44px; padding: 0 14px; font-size: 13px; }
-.nw-account-fields { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 12px 24px; max-width: 720px; margin: 24px 0; border: 1px solid var(--ink); padding: 18px 20px; }
-.nw-account-fields dt { color: var(--t2); font-weight: 500; }
-.nw-account-fields dd { margin: 0; overflow-wrap: anywhere; }
-.nw-account-fields dd[data-account-id] { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+.nw-account-fields { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 12px 24px; max-width: 720px; margin: 24px 0; border: 1px solid var(--ink); padding: 18px 20px; }
+.nw-account-fields dt { color: var(--t2); font-weight: 500; font-size: 14px; }
+.nw-account-fields dd { margin: 0; overflow-wrap: anywhere; font-size: 15px; }
+.nw-account-fields dd[data-account-id] { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; color: var(--t2); }
 .nw-authoring-grid { display: grid; grid-template-columns: minmax(180px, .32fr) minmax(0, 1fr); align-items: start; gap: clamp(24px, 4vw, 64px); margin-top: 40px; }
 .nw-authoring-sidebar { display: grid; gap: 8px; }
 .nw-authoring-sidebar h2 { margin: 0 0 10px; font-size: 18px; }
 .nw-authoring-article { display: grid; gap: 4px; text-align: left; padding: 12px; border: 1px solid var(--ink); background: transparent; overflow-wrap: anywhere; }
 .nw-authoring-article[aria-current="true"] { border-color: var(--or); box-shadow: inset 4px 0 var(--or); }
 .nw-authoring-article small { color: var(--t2); }
-.nw-authoring-inbox { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--ink); display: grid; gap: 10px; justify-items: start; }
-.nw-authoring-inbox h2 { margin: 0; font-size: 18px; }
-.nw-authoring-inbox-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; width: 100%; }
+.nw-authoring-auxiliary { margin-top: clamp(48px, 6vw, 96px); padding: 32px 24px 48px; border-top: 1px dashed var(--ti); background: color-mix(in srgb, var(--paper) 98%, var(--ink)); display: grid; gap: 32px; }
+.nw-authoring-auxiliary-intro h2 { margin: 0 0 6px; font-size: 18px; font-family: var(--f-zh); font-weight: 600; }
+.nw-authoring-profile { padding-bottom: 24px; border-bottom: 1px solid var(--ti); }
+.nw-authoring-profile h2, .nw-authoring-inbox h2, .nw-authoring-trash h2 { margin: 0 0 8px; font-size: 16px; font-family: var(--f-zh); font-weight: 600; }
+.nw-authoring-profile .nw-auth-form { margin-top: 12px; max-width: 520px; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.nw-authoring-profile .nw-auth-form label { flex: 1 1 240px; margin: 0; }
+.nw-authoring-inbox { margin-top: 0; padding-top: 0; border-top: none; padding-bottom: 24px; border-bottom: 1px solid var(--ti); display: grid; gap: 10px; justify-items: start; }
+.nw-authoring-inbox-list { max-height: 260px; overflow-y: auto; border: 1px solid var(--ti); padding: 6px; background: var(--paper); display: grid; gap: 8px; margin: 8px 0 0; padding: 0; list-style: none; width: 100%; }
 .nw-authoring-inbox-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 12px; border: 1px solid var(--t2); overflow-wrap: anywhere; }
 .nw-authoring-inbox-text { flex: 1 1 240px; margin: 0; }
 /* An unread notice is the only reason the inbox exists, so it carries a mark
@@ -403,8 +413,8 @@ mark { background: var(--or); color: #0f0d0c; }
 .nw-inbox-day { flex-basis: 100%; margin: 0; font-size: 18px; }
 .nw-inbox-feedback { min-height: 1.5em; margin: 0; font-size: 14px; }
 .nw-authoring-inbox-row:focus-visible { outline: 2px solid var(--or); outline-offset: 2px; }
-.nw-authoring-trash { margin-top: clamp(32px, 5vw, 72px); padding-top: 24px; border-top: 1px solid var(--ink); display: grid; gap: 10px; }
-.nw-authoring-trash h2 { margin: 0; font-size: 18px; }
+.nw-authoring-trash { margin-top: 0; padding-top: 0; border-top: none; display: grid; gap: 10px; }
+.nw-authoring-trash-list { max-height: 260px; overflow-y: auto; display: grid; gap: 8px; }
 .nw-authoring-trash-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 12px; border: 1px solid var(--t2); overflow-wrap: anywhere; }
 .nw-authoring-trash-row > span { flex: 1 1 240px; }
 .nw-authoring-trash-row small { color: var(--t2); }

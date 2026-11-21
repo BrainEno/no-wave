@@ -505,8 +505,12 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
     <section className="nw-auth-panel" aria-labelledby="nw-account-title">
       <h1 id="nw-account-title"><span className="nw-zh">我的账户</span> <i>Account</i></h1>
       <p className="nw-ep" style={{ marginTop: 24 }}>
-        这里是这个账号的身份信息。令牌只存在于 HttpOnly cookie 中，页面拿不到，也不会出现在这里。
+        这里是这个账号的基础身份信息。
       </p>
+      <details className="nw-account-details">
+        <summary>安全与身份认证说明 ▾</summary>
+        <p>令牌只存在于 HttpOnly cookie 中，页面拿不到，也不会出现在这里。</p>
+      </details>
       {mailEnabled ? null : (
         <p className="nw-ep" data-mail-state="disabled">
           找回密码与邮箱验证需要邮件功能，而这个站点没有启用它；除此之外账号的一切照常。
@@ -530,9 +534,13 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
         </p>
       ) : null}
       {mailEnabled === false || verified ? null : (
-        <p className="nw-ep">
-          未验证的账号同样可以登录、写作和发布：验证只是给这个邮箱留一个「曾经可达」的标记，用于在需要时确认你仍能收到邮件。
-        </p>
+        <div style={{ marginTop: 8 }}>
+          <p className="nw-ep">未验证的账号同样可以登录、写作和发布。</p>
+          <details className="nw-account-details">
+            <summary>关于邮箱验证的作用 ▾</summary>
+            <p>验证只是给这个邮箱留一个「曾经可达」的标记，用于在需要时确认你仍能收到邮件。</p>
+          </details>
+        </div>
       )}
       {/*
         Devices.
@@ -547,9 +555,15 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
       <div className="nw-auth-form" aria-labelledby="nw-account-devices-title" data-account-devices>
         <h2 id="nw-account-devices-title"><span className="nw-zh">登录的设备</span> <i>Devices</i></h2>
         <p className="nw-ep">
-          这些是正在以这个账号登录的会话。服务端只记录会话的创建时间、最近一次续期时间和失效时间——没有设备型号、浏览器和地址，
-          因为项目里任何地方都不存这些；所以这里只能靠时间认出是哪一台。
+          当前正在以这个账号登录的有效会话。
         </p>
+        <details className="nw-account-details">
+          <summary>隐私与记录说明 ▾</summary>
+          <p>
+            这些是正在以这个账号登录的会话。服务端只记录会话的创建时间、最近一次续期时间和失效时间——没有设备型号、浏览器和地址，
+            因为项目里任何地方都不存这些；所以这里只能靠时间认出是哪一台。
+          </p>
+        </details>
         {devices === null && devicesError === "" ? (
           <p className="nw-auth-status" role="status" data-devices-loading>正在载入设备列表……</p>
         ) : null}
@@ -601,9 +615,15 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
       <form className="nw-auth-form" onSubmit={changeEmail} aria-labelledby="nw-account-email-title" data-account-email-form>
         <h2 id="nw-account-email-title"><span className="nw-zh">修改邮箱</span> <i>Change address</i></h2>
         <p className="nw-ep">
-          这个邮箱是账号找回密码时唯一的去处，所以修改它需要输入当前密码：只有会话、没有密码的话，谁都不能把账号的找回途径搬走。
-          改完之后这个地址会变成「未验证」——验证只是留一个「曾经可达」的标记，不影响登录、写作和发布。
+          修改邮箱需输入当前密码以保障安全。
         </p>
+        <details className="nw-account-details">
+          <summary>修改邮箱的安全须知 ▾</summary>
+          <p>
+            这个邮箱是账号找回密码时唯一的去处，所以修改它需要输入当前密码：只有会话、没有密码的话，谁都不能把账号的找回途径搬走。
+            改完之后这个地址会变成「未验证」——验证只是留一个「曾经可达」的标记，不影响登录、写作和发布。
+          </p>
+        </details>
         <label>新邮箱
           <input
             type="email"
@@ -638,9 +658,15 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
       <form className="nw-auth-form" onSubmit={changePassword} aria-labelledby="nw-account-password-title" data-account-password>
         <h2 id="nw-account-password-title"><span className="nw-zh">修改密码</span> <i>Change password</i></h2>
         <p className="nw-ep">
-          需要输入当前密码：只有会话、没有密码的话，谁都不能改掉这个账号——包括把你锁在门外。改完之后，
-          除了这台设备之外的登录都会退出，而这个会话继续保持登录状态。
+          修改后除当前设备外，其他设备均会自动退出。
         </p>
+        <details className="nw-account-details">
+          <summary>修改密码的安全机制说明 ▾</summary>
+          <p>
+            需要输入当前密码：只有会话、没有密码的话，谁都不能改掉这个账号——包括把你锁在门外。改完之后，
+            除了这台设备之外的登录都会退出，而这个会话继续保持登录状态。
+          </p>
+        </details>
         <label>当前密码
           <input
             type="password"
@@ -664,7 +690,7 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
             maxLength={128}
           />
         </label>
-        <button className="nw-btn nw-pri" type="submit" disabled={busy !== null} data-account-password-submit>
+        <button className="nw-btn" type="submit" disabled={busy !== null} data-account-password-submit>
           {busy === "password" ? "正在修改……" : "修改密码"}
         </button>
       </form>
@@ -672,7 +698,7 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
       {notice ? <p className="nw-auth-status" role="status">{notice}</p> : null}
       <div className="nw-auth-switch">
         {mailEnabled === false || verified ? null : (
-          <button className="nw-btn nw-pri" type="button" disabled={busy !== null} onClick={() => void requestVerification()}>
+          <button className="nw-btn" type="button" disabled={busy !== null} onClick={() => void requestVerification()}>
             {busy === "verification" ? "正在发送……" : "发送验证邮件"}
           </button>
         )}
