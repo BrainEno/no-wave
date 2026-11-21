@@ -800,7 +800,7 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
           </div>
         </div>
       ) : null}
-      <div className="nw-authoring-actions">
+      <div className="nw-authoring-actions nw-authoring-bar">
         {article ? <button className="nw-btn" type="button" disabled={busy} onClick={() => void destroy()}>删除作品</button> : null}
         <button className="nw-btn" type="button" disabled={busy} onClick={() => void save(article?.status === "published" ? "publish" : "draft")}>{busy ? "保存中…" : article?.status === "published" ? "保存更新" : "保存草稿"}</button>
         <button className="nw-btn nw-pri" type="button" disabled={busy} onClick={() => void save("publish")}>{busy ? "正在保存…" : article?.status === "published" ? "保存并发布" : "发布作品"}</button>
