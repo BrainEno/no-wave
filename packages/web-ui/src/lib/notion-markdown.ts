@@ -1,6 +1,7 @@
 import { marked, type Token, type Tokens } from "marked";
 import { Unzip, UnzipInflate } from "fflate";
 import { NOTION_BUNDLE_MAX_BYTES, NOTION_BUNDLE_MAX_PAGES } from "./notion-import.ts";
+import { resolveLocalImage } from "./notion-zip-images.ts";
 
 type Entry = { name: string; text: string };
 /** One CSV export of a Notion database view: the first column is the title property. */
@@ -14,7 +15,19 @@ export type MarkdownBundleResult = {
    * date of a published page without one (see notion-created-date.ts).
    */
   created: Record<string, string>;
+  /**
+   * Every standalone local image the pages link, in page order: its path inside
+   * the export (null when the link is not a plain relative path) and whether this
+   * conversion already linked an uploaded copy. See notion-zip-images.ts.
+   */
+  localImages: { path: string | null; uploaded: boolean }[];
 };
+
+export type MarkdownBundleOptions = {
+  /** Export path → `/api/media/<id>` of the copy the author uploaded to the media library. */
+  uploadedImages?: ReadonlyMap<string, string>;
+};
+type LocalImageSink = { uploaded: ReadonlyMap<string, string>; found: { path: string | null; uploaded: boolean }[] };
 const rich = (plain_text: string) => ({ plain_text });
 const titleProp = (s: string) => ({ type: "title", title: [rich(s)] });
 const textProp = (s: string) => ({ type: "rich_text", rich_text: [rich(s)] });
@@ -76,7 +89,7 @@ export function notionDateStart(raw: string): { start: string; range: boolean } 
 }
 
 /** Parse only a leading run of known Notion properties: normal prose is never swallowed. */
-function parseEntry(entry: Entry, warnings: string[], unreadableDate?: (pageId: string) => void): Page | null {
+function parseEntry(entry: Entry, warnings: string[], unreadableDate?: (pageId: string) => void, localImages?: LocalImageSink): Page | null {
   const lines = entry.text.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n").split("\n");
   const heading = /^#\s+(.+?)\s*#*\s*$/.exec(lines[0] ?? "");
   const id = pageId(entry.name);
@@ -154,7 +167,16 @@ function parseEntry(entry: Entry, warnings: string[], unreadableDate?: (pageId: 
           if (isNotion) block("image", { type: "file", file: { url: image.href }, caption: [rich(image.text)] });
           else if ([...url.searchParams.keys()].some((key) => /^x-amz-/i.test(key))) warnings.push(`${entry.name}：无法安全复制的签名图片已移除。`);
           else block("image", { type: "external", external: { url: image.href }, caption: [rich(image.text)] });
-        } else warnings.push(`${entry.name}：本地图片 ${image.text || "（无说明）"} 未导入。`);
+        } else {
+          // A local file: linked only when the author uploaded it to the media
+          // library (the site's own /api/media address); otherwise removed and
+          // named, as before.
+          const path = resolveLocalImage(entry.name, image.href);
+          const src = path === null ? undefined : localImages?.uploaded.get(path);
+          localImages?.found.push({ path, uploaded: src !== undefined });
+          if (src !== undefined) block("image", { type: "external", external: { url: src }, caption: [rich(image.text)] });
+          else warnings.push(`${entry.name}：本地图片 ${image.text || "（无说明）"} 未导入。`);
+        }
       } else if (token.type === "paragraph" || token.type === "heading" || token.type === "text") {
         const runs = "tokens" in token && Array.isArray(token.tokens) ? inline(token.tokens) : [rich(token.text)];
         if (token.type === "heading" && token.depth > 3) warnings.push(`${entry.name}：四级及以下标题已调整为三级。`);
@@ -374,15 +396,16 @@ export function readMarkdownZip(bytes: Uint8Array): Entry[] {
   return entries;
 }
 
-export function markdownEntriesToBundle(entries: Entry[]): MarkdownBundleResult {
+export function markdownEntriesToBundle(entries: Entry[], options: MarkdownBundleOptions = {}): MarkdownBundleResult {
   const markdown = entries.filter((e) => !/\.csv$/i.test(e.name));
   if (markdown.length > NOTION_BUNDLE_MAX_PAGES) throw new Error("一次最多导入 200 个 Markdown 文件。");
   const warnings: string[] = []; const pages: Page[] = []; const ids = new Set<string>();
   const tables = indexTables(tablesOf(entries), warnings);
   const created: Record<string, string> = {};
+  const localImages: LocalImageSink = { uploaded: options.uploadedImages ?? new Map(), found: [] };
   for (const entry of markdown) {
     let unreadable = false;
-    const page = parseEntry(entry, warnings, () => { unreadable = true; }); if (!page) continue;
+    const page = parseEntry(entry, warnings, () => { unreadable = true; }, localImages); if (!page) continue;
     fillFromTables(page, entry, tables, warnings, created);
     if (unreadable) delete created[page.id];
     if (ids.has(page.id)) throw new Error(`重复的 Notion 页面 ID：${page.id}；请选择一个副本。`);
@@ -398,5 +421,5 @@ export function markdownEntriesToBundle(entries: Entry[]): MarkdownBundleResult 
   const bundle = { version: 1, database: { id: "", title: "Notion Markdown 导出" }, pages };
   // The converted bundle may exceed one request's 8 MiB; the desk splits it
   // into requests the API accepts (planImportBatches), so it is not refused here.
-  return { bundle, pages: pages.length, warnings, created };
+  return { bundle, pages: pages.length, warnings, created, localImages: localImages.found };
 }

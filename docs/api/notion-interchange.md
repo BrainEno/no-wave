@@ -775,8 +775,9 @@ ZIP parsing is bounded to 8 MiB compressed and 8 MiB extracted Markdown, 200
 Markdown files and 2000 total entries; the files chosen at once must total 8 MiB
 or less. The converted bundle is no longer required to fit one request: see
 *Automatic batches* below. ZIP64, split or incomplete archives are rejected. Files are never extracted
-to disk. Local or inline images are **omitted with a warning**, even when present
-in the ZIP; they are not yet uploaded. External images remain links; recognized
+to disk. Local images are **omitted with a warning** unless the author uploads them
+first (see *Local images in a ZIP export* below); an image inside a paragraph is
+always omitted with a warning. External images remain links; recognized
 Notion-hosted URLs go through the existing bounded image copy path, and signed
 URLs on other hosts are removed. Per-request limits and retry caveats in the
 image section above still apply. The conversion warnings should be reviewed
@@ -807,6 +808,57 @@ before the dry run. A page with no `# Title` falls back to its filename with a
 warning; only a page with neither is skipped (and reported). A CSV cover that
 is a file inside the export is reported, not imported, and a CSV
 `FeaturedImage` URL is still not carried (`featured-image-not-carried`).
+
+### Local images in a ZIP export
+
+A Notion export keeps each image beside its page and links it relatively. The desk
+lists the ZIP's image entries from its central directory (nothing is decompressed)
+and resolves each standalone image link against the page's folder; a link with a
+scheme, an absolute path or `..` above the archive's root is not a local image.
+Before the dry run, a section 「导出包里的本地图片」 offers one button,
+「上传 N 张本地图片到你的媒体库」. **Nothing is uploaded unless it is clicked**, and
+an image that is not uploaded is removed and named exactly as before.
+
+A click sends each image through the editor's own upload
+(`POST /api/authoring/media` → `POST /api/v1/me/media`): the proxy's Origin check,
+JPEG/PNG/WebP allow-list and 8 MiB ceiling, and the server's re-encoding, all
+apply unchanged. The content type sent is the one the bytes really are. Each image
+is inflated only when it is about to be sent, and cut off at 8 MiB whatever its
+header claims. Files that are GIF, SVG, HEIC and so on, larger than 8 MiB, missing
+from the ZIP, or not really an accepted image are listed with their reason and cost
+no request.
+
+The media limit (10 uploads per author and 20 per IP per hour) is not raised, so
+**one click sends at most 10 upload requests** and stops at the first `429`, `401` or
+`503` without waiting. The rest are counted ("还有 N 张没有上传"), and the author can
+import what is there now and later choose the same export again. An image the server
+refused is not offered again in that session.
+
+An upload writes no article. The uploaded images appear in the author's media library,
+where they can be deleted while unused. The desk converts the export again with
+`{type: "external", external: {url: "/api/media/<id>"}}` blocks, the site's own stable
+addresses: the importer already accepts those, and neither copies nor counts them as
+Notion images. It keeps the selection and discards any plan, because the plan token is
+bound to the bundle.
+
+**A later visit does not upload the same image twice.** For each image the browser
+stores, in `localStorage` (`nw:notion-zip-image-uploads:v1`, at most 2000 entries), a
+SHA-256 of its path, CRC-32 and size mapped to the address it got. No names or titles
+are kept. A remembered address is reused only after it is found in the signed-in
+author's own library (`GET /api/authoring/media`, up to 10 pages of 60). A deleted
+asset is therefore uploaded again, and another account in the same browser never
+borrows one. When storage is unavailable, uploads still work without reuse.
+
+This applies to ZIP files. Loose `.md` files chosen without their images still have
+their local images removed with a warning.
+
+Tested by `packages/web-ui/src/lib/notion-zip-images.test.ts` (link resolution, the
+central directory listing, inflating only what is wanted, the 8 MiB cut-off, type
+sniffing, 10 per click, stopping at 429/401/503, reuse only when the library still has
+the asset, fingerprints with no names) and `e2e/notion-zip-images.spec.ts` (media and
+import mocked: nothing before the click, ten then two, a plan discarded by the upload,
+dry run and confirm carrying the addresses, a 429 stopping at once, and a reload
+reusing the library).
 
 ### Selecting pages
 
