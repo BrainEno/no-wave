@@ -444,6 +444,19 @@ export const OPERATIONS: Readonly<Record<string, OperationMetadata>> = Object.fr
     response: { status: 200, description: "The per-page report (and, with `apply: true`, what was written).", data: "NotionImportReport" },
   },
 
+  "POST imports.notion.fetch": {
+    summary: "Pull your own Notion database with a pasted integration token, one bounded slice at a time",
+    description:
+      "A read of the caller's Notion, not a write here. The token is used for this request only and is never stored, logged or returned (ADR 0052); Notion's own error text is never forwarded either.\n\n" +
+      "`mode: \"rows\"` resolves `source` (a database link or id, or a data source id) and lists rows with their properties, up to 1000 per request; a non-null `cursor` in the answer continues the listing. `mode: \"pages\"` reads the bodies of at most 200 named pages, in order, until the request's time (about 45 s to start a page, 75 s hard) or byte budget (6 MiB) runs out; `done` lists every id the slice finished, carried or reported in `issues` (`too-many-blocks` over 2000 blocks, `page-too-large`, `fetch-timeout`, `page-unavailable`, `fetch-failed`) — a page is never truncated. Send the remaining ids for the next slice; nothing about the continuation is kept on the server. When Notion's rate limit ends a slice early, `retryAfterSeconds` says how long to wait.\n\n" +
+      "The result is the raw material of a bundle for `POST imports.notion`, whose dry run and explicit apply are unchanged. Errors: `NOTION_TOKEN_INVALID` / `NOTION_NOT_SHARED` (422), `NOTION_RATE_LIMITED` (429 with Retry-After), `NOTION_UNAVAILABLE` (502), `NOTION_FETCH_DISABLED` (409) when `NOTION_FETCH_ENABLED=false`, `NOTION_FETCH_BUSY` (503 with Retry-After) when too many pulls are in flight on this instance (8 in total, 2 per author).",
+    security: "session",
+    tags: ["imports"],
+    requestBody: { schema: "NotionFetchRequest", description: "The token, the mode and its continuation.", required: true },
+    errors: [409, 413, 415, 422, 429, 502, 503],
+    response: { status: 200, description: "Rows (with a cursor) or page bodies (with `done` and `issues`).", data: "NotionFetchResult" },
+  },
+
   "POST imports.notion.jobs": {
     summary: "Queue one approved Notion import without holding the HTTP connection",
     description: "Opt-in; disabled by default (409 IMPORT_JOBS_DISABLED). Requires the unchanged bundle and its authentic, unexpired preview plan. The separate finite drain command performs the existing importer; the API never executes or schedules queued import work. Idempotency is owner-scoped while the plan is valid; after expiry use list/status, never blindly submit a new key. Signed URLs and plan are encrypted with a separately provisioned key. The original 8 MiB/200-page/eight-image bounds and per-work revision/ownership checks remain. Capacity refusal is 429 IMPORT_QUEUE_FULL. A running job whose lease expires becomes interrupted, never automatically retried. This is not live sync or image checkpoint resume.",
@@ -966,7 +979,9 @@ export const ERROR_DESCRIPTIONS: Readonly<Record<number, string>> = Object.freez
   409: "Conflict: `ARTICLE_VERSION_CONFLICT`, `IMPORT_PLAN_INVALID`, `IDEMPOTENCY_CONFLICT`, `MAIL_DISABLED`, `MEDIA_DELETE_DISABLED`, or a duplicate unique value.",
   413: "The request body is larger than this route accepts (`PAYLOAD_TOO_LARGE`).",
   415: "The request body is not `application/json` (`UNSUPPORTED_MEDIA_TYPE`).",
+  422: "A third party refused the request on the caller's behalf (`NOTION_TOKEN_INVALID`, `NOTION_NOT_SHARED`).",
   429: "Rate or import queue capacity limit reached (`RATE_LIMITED`, `IMPORT_QUEUE_FULL`); observe Retry-After.",
+  502: "A third-party API this route reads could not be read (`NOTION_UNAVAILABLE`).",
   503: "A dependency this route needs is unavailable (`SERVICE_UNAVAILABLE`, `MEDIA_STORAGE_UNAVAILABLE`).",
 });
 
