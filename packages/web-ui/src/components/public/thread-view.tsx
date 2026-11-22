@@ -6,7 +6,7 @@ import { dateLabel } from "@/lib/format.ts";
 import { apiErrorCode } from "@/lib/api-error.ts";
 import type { MessagingController } from "@/lib/messaging-intent.ts";
 import { MessagingActorNotice, MessagingPendingGuard, useMessagingActor, useMessagingWrite } from "@/components/public/messaging-controls.tsx";
-import { SectionHeading } from "@/components/ui/parts.tsx";
+import { PageIntro } from "@/components/ui/parts.tsx";
 import { MarkConversationRead } from "@/components/public/mark-conversation-read.tsx";
 
 /**
@@ -327,7 +327,7 @@ function Shell({
 }) {
   return (
     <>
-      <SectionHeading zh={ui.title} latin="Conversation" />
+      <PageIntro kicker={ui.eyebrow} title={ui.title} latin={locale === "en" ? undefined : "Conversation"} />
       <Link className="nw-m nw-thread-back" href={backHref}>← {ui.back}</Link>
       <div lang={locale}>{children}</div>
       <MessagingPendingGuard controller={controller} locale={locale} />

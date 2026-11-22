@@ -3,7 +3,7 @@ import { Link } from "@/lib/framework/link.tsx";
 import { articlePath, type Locale, type WorkType } from "@/lib/content.ts";
 import { dateLabel } from "@/lib/format.ts";
 import { getUi } from "@/lib/ui-copy.ts";
-import { EmptyState, SectionHeading, TypeChip } from "@/components/ui/parts.tsx";
+import { EmptyState, PageIntro, TypeChip } from "@/components/ui/parts.tsx";
 
 /**
  * 关注流 — the read side of following (#198).
@@ -109,10 +109,16 @@ export function FeedView({ locale }: { locale: Locale }) {
     };
   }, [load]);
 
+  // 中文页：大标题「关注流 Following」；英文页：小标 FOLLOWING + 标题。
+  const introProps = locale === "en"
+    ? { kicker: ui.eyebrow, title: ui.title, lede: ui.intro }
+    : { kicker: ui.title, title: ui.eyebrow, latin: "Following", lede: ui.intro };
+  const intro = <PageIntro {...introProps} />;
+
   if (state.kind === "loading") {
     return (
       <main id="top" tabIndex={-1} lang={locale} className="nw-w">
-        <SectionHeading zh={ui.eyebrow} latin="Following" />
+        {intro}
         <p className="nw-m nw-feed-note">{ui.loading}</p>
       </main>
     );
@@ -121,7 +127,7 @@ export function FeedView({ locale }: { locale: Locale }) {
   if (state.kind === "signed-out") {
     return (
       <main id="top" tabIndex={-1} lang={locale} className="nw-w">
-        <SectionHeading zh={ui.eyebrow} latin="Following" />
+        {intro}
         <EmptyState
           title={ui.signIn}
           body={ui.intro}
@@ -135,7 +141,7 @@ export function FeedView({ locale }: { locale: Locale }) {
   if (state.kind === "failed") {
     return (
       <main id="top" tabIndex={-1} lang={locale} className="nw-w">
-        <SectionHeading zh={ui.eyebrow} latin="Following" />
+        {intro}
         <div className="nw-feed-note" role="alert">
           <p>{ui.failed}</p>
           <button type="button" className="nw-feed-retry" onClick={() => void load(0, false)}>
@@ -149,7 +155,7 @@ export function FeedView({ locale }: { locale: Locale }) {
   if (state.items.length === 0) {
     return (
       <main id="top" tabIndex={-1} lang={locale} className="nw-w">
-        <SectionHeading zh={ui.eyebrow} latin="Following" />
+        {intro}
         <EmptyState
           title={ui.empty}
           body={ui.emptyHint}
@@ -162,12 +168,7 @@ export function FeedView({ locale }: { locale: Locale }) {
 
   return (
     <main id="top" tabIndex={-1} lang={locale} className="nw-w">
-      <SectionHeading
-        zh={ui.eyebrow}
-        latin="Following"
-        aside={<span className="nw-m">{ui.count(state.items.length)}</span>}
-      />
-      <p className="nw-m nw-feed-intro">{ui.intro}</p>
+      <PageIntro {...introProps} aside={<span className="nw-m">{ui.count(state.items.length)}</span>} />
       <div>
         {state.items.map((item) => (
           <Link key={item.slug} className="nw-cr" href={articlePath(item.slug, locale)}>

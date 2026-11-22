@@ -9,8 +9,9 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { dateLabel } from "@/lib/format.ts";
 import {
   notificationPresentation,
-  grainOffsets,
   grainTileData,
+  isReadingRoute,
+  shouldPaintGrain,
   shouldUseSmoothScroll,
   isToolRoute,
   unreadBadge,
@@ -37,47 +38,33 @@ const icon = {
 };
 
 const GRAIN_TILE_SIZE = 256;
+/** ScrollSmoother lag in seconds: shorter on article pages so long-form text tracks the wheel. */
+const PAGE_SMOOTH = 1.2;
+const READING_SMOOTH = 0.55;
 
+/**
+ * Paper grain: one 256×256 noise tile, painted once and repeated as a still
+ * background behind the content. It never animates — a shifting noise layer
+ * over body text reads as flicker on a long read — and it sits under the text
+ * rather than over it, so glyph edges stay clean.
+ */
 function GrainCanvas() {
-  const ref = useRef<HTMLCanvasElement>(null);
+  const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const canvas = ref.current;
-    const context = canvas?.getContext("2d");
-    if (!canvas || !context || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-
-    // One 256×256 tile is generated once. Every frame afterwards is a single
-    // pattern fill shifted by a precomputed offset, not a full-screen pixel loop.
+    const layer = ref.current;
+    if (!layer) return;
     const tile = document.createElement("canvas");
     tile.width = GRAIN_TILE_SIZE;
     tile.height = GRAIN_TILE_SIZE;
-    const tileContext = tile.getContext("2d");
-    if (!tileContext) return;
-    const image = tileContext.createImageData(GRAIN_TILE_SIZE, GRAIN_TILE_SIZE);
+    const context = tile.getContext("2d");
+    if (!context) return;
+    const image = context.createImageData(GRAIN_TILE_SIZE, GRAIN_TILE_SIZE);
     image.data.set(grainTileData(GRAIN_TILE_SIZE));
-    tileContext.putImageData(image, 0, 0);
-    const pattern = context.createPattern(tile, "repeat");
-    if (!pattern) return;
-    const offsets = grainOffsets(GRAIN_TILE_SIZE);
-    let offsetIndex = 0;
-    const paint = () => {
-      const [dx, dy] = offsets[offsetIndex++ % offsets.length];
-      context.setTransform(1, 0, 0, 1, 0, 0);
-      context.clearRect(0, 0, canvas.width, canvas.height);
-      context.translate(-dx, -dy);
-      context.fillStyle = pattern;
-      context.fillRect(0, 0, canvas.width + GRAIN_TILE_SIZE, canvas.height + GRAIN_TILE_SIZE);
-    };
-    const resize = () => {
-      canvas.width = Math.ceil(window.innerWidth / 2);
-      canvas.height = Math.ceil(window.innerHeight / 2);
-      paint();
-    };
-    resize();
-    const timer = window.setInterval(() => { if (!document.hidden) paint(); }, 125);
-    window.addEventListener("resize", resize);
-    return () => { window.clearInterval(timer); window.removeEventListener("resize", resize); };
+    context.putImageData(image, 0, 0);
+    layer.style.backgroundImage = `url(${tile.toDataURL("image/png")})`;
+    layer.dataset.ready = "";
   }, []);
-  return <canvas className="nw-grain" ref={ref} aria-hidden="true" />;
+  return <div className="nw-grain" ref={ref} aria-hidden="true" />;
 }
 
 function SiteFooter({ locale }: { locale: Locale }) {
@@ -149,7 +136,7 @@ function SiteChromeContent({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!smoothEnabled || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     gsap.registerPlugin(ScrollTrigger, ScrollSmoother);
-    const instance = ScrollSmoother.create({ wrapper: "#smooth-wrapper", content: "#smooth-content", smooth: 1.2, effects: true });
+    const instance = ScrollSmoother.create({ wrapper: "#smooth-wrapper", content: "#smooth-content", smooth: isReadingRoute(window.location.pathname) ? READING_SMOOTH : PAGE_SMOOTH, effects: true });
     smoother.current = instance;
     document.documentElement.classList.add("nw-smooth");
     const velocity = ScrollTrigger.create({
@@ -165,6 +152,11 @@ function SiteChromeContent({ children }: { children: ReactNode }) {
       document.documentElement.classList.remove("nw-smooth");
     };
   }, [smoothEnabled]);
+
+  // 长文阅读时惯性要短：正文跟手，字不「漂」。其他页面保留原来的顺滑感。
+  useEffect(() => {
+    smoother.current?.smooth(isReadingRoute(pathname) ? READING_SMOOTH : PAGE_SMOOTH);
+  }, [pathname, smoothEnabled]);
 
   // Reader locations are deliberate, immediate jumps, including inside transformed content.
   useEffect(() => {
@@ -284,7 +276,7 @@ function SiteChromeContent({ children }: { children: ReactNode }) {
   return (
     <>
       <a className="nw-skip" href="#top">{locale === "en" ? "Skip to main content" : "跳到正文"}</a>
-      {tool ? null : <GrainCanvas />}
+      {shouldPaintGrain(pathname) ? <GrainCanvas /> : null}
       <header data-tool={tool ? "" : undefined}>
       <Link className="nw-rail" href={homePath(locale)} aria-label={`${ui.rail} — ${ui.homeAria}`}>{ui.rail}</Link>
       <nav className="nw-pill" aria-label={ui.nav.primary} lang={locale}>

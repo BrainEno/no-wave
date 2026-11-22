@@ -6,6 +6,9 @@ import {
   deletionNoticeText,
   grainOffsets,
   grainTileData,
+  isReadingRoute,
+  isToolRoute,
+  shouldPaintGrain,
   isNotificationItem,
   notificationRows,
   parseNotificationNotice,
@@ -167,4 +170,42 @@ test("notification types emitted by known API producers have dedicated presentat
   }
   assert.deepEqual([...emitted].sort(), ["article.comment_replied", "article.commented", "article.deleted", "article.liked", "message.created", "user.followed"]);
   for (const type of emitted) assert.notEqual(parseNotificationNotice(JSON.stringify({ type, articleId: "a", purgesAt: "2999-01-01" })).type, "unknown", type);
+});
+
+test("reading routes are single works, not the archive index", () => {
+  for (const path of ["/articles/some-slug", "/en/articles/some-slug", "/articles/some-slug/"]) {
+    assert.equal(isReadingRoute(path), true, path);
+  }
+  for (const path of ["/", "/en", "/articles", "/en/articles", "/articles/a/b", "/authors/x", "/write"]) {
+    assert.equal(isReadingRoute(path), false, path);
+  }
+});
+
+test("tool routes are desks; prefixes match whole segments only", () => {
+  for (const path of ["/write", "/write/library", "/en/write", "/account", "/admin/featured", "/notifications"]) {
+    assert.equal(isToolRoute(path), true, path);
+  }
+  for (const path of ["/", "/write-up", "/administrator", "/articles/x", "/reading-list"]) {
+    assert.equal(isToolRoute(path), false, path);
+  }
+});
+
+test("the still grain stays off reading and tool surfaces", () => {
+  for (const path of ["/articles/some-slug", "/en/articles/some-slug", "/write", "/account"]) {
+    assert.equal(shouldPaintGrain(path), false, path);
+  }
+  for (const path of ["/", "/en", "/articles", "/authors", "/search"]) {
+    assert.equal(shouldPaintGrain(path), true, path);
+  }
+});
+
+test("the grain canvas paints once and never runs a frame timer", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const source = await readFile(new URL("../components/chrome/site-chrome.tsx", import.meta.url), "utf8");
+  const start = source.indexOf("function GrainCanvas");
+  const end = source.indexOf("\n}\n", start);
+  const body = source.slice(start, end);
+  assert.ok(start > 0 && end > start, "GrainCanvas exists");
+  assert.equal(/setInterval|requestAnimationFrame/.test(body), false, "no animation loop over the page");
+  assert.match(source, /shouldPaintGrain\(pathname\)/);
 });

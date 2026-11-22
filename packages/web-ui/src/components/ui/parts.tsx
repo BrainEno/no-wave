@@ -41,6 +41,25 @@ export function WorkRow({ article, locale, index, withCover = false, withExcerpt
   );
 }
 
+/**
+ * 页首：一个页面只有一个 h1。朱线小标 + 宋体大标题（可带意大利体外文副题）+ 一段导语。
+ * 负责给浮动导航条让出上方空间（.nw-intro 自带页首留白），所以不需要外层 .nw-head。
+ */
+export function PageIntro({ kicker, title, latin, lede, aside }: {
+  kicker?: string; title: string; latin?: string; lede?: ReactNode; aside?: ReactNode;
+}) {
+  return (
+    <header className="nw-intro">
+      {kicker ? <p className="nw-kicker">{kicker}</p> : null}
+      <div className="nw-intro-row">
+        <h1><span className="nw-zh">{title}</span>{latin && latin !== title ? <> <i lang="en">{latin}</i></> : null}</h1>
+        {aside}
+      </div>
+      {lede ? <p className="nw-intro-lede">{lede}</p> : null}
+    </header>
+  );
+}
+
 export function SectionHeading({ zh, latin, aside, locale }: { zh: string; latin?: string; aside?: ReactNode; locale?: Locale }) {
   const showLatin = locale === "en";
   return (

@@ -14,7 +14,7 @@ export function CategoryIndexContent({ locale, categories, query = "", page = 1,
   return (
     <main id="top" tabIndex={-1} lang={locale} className="nw-w">
       <header className="nw-head">
-        <div className="nw-m" style={{ marginBottom: 12 }}>{ui.categories.eyebrow}</div>
+        <p className="nw-kicker nw-head-kicker">{ui.categories.eyebrow}</p>
         <h1><span className="nw-zh">{ui.nav.topics}</span> <i>Topics</i></h1>
         <p className="nw-ep" style={{ marginTop: 20 }}>{ui.categories.intro}</p>
         <form className="nw-sf-form" action={base} method="get" role="search" aria-label={ui.categories.search}>
@@ -60,8 +60,8 @@ export function AuthorIndexContent({ locale, authors, query = "", page = 1, hasN
   return (
     <main id="top" tabIndex={-1} lang={locale} className="nw-w">
       <header className="nw-head">
-        <div className="nw-m" style={{ marginBottom: 12 }}>{ui.authors.eyebrow}</div>
-        <h1><span className="nw-zh">{ui.authors.title}</span> <i>Authors</i></h1>
+        <p className="nw-kicker nw-head-kicker">{ui.authors.eyebrow}</p>
+        <h1 className="nw-h1-long"><span className="nw-zh">{ui.authors.title}</span> <i>Authors</i></h1>
         <p className="nw-ep" style={{ marginTop: 20 }}>{ui.authors.intro}</p>
         <form className="nw-sf-form" action={base} method="get" role="search" aria-label={ui.authors.search}>
           <div className="nw-fgrow"><label className="nw-lab" htmlFor="author-q">{ui.authors.search}</label><input id="author-q" className="nw-fld" type="search" name="q" defaultValue={query} placeholder={ui.authors.placeholder} /></div>

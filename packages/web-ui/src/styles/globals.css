@@ -22,7 +22,7 @@
 :root[data-theme="dark"] { --paper: #121010; --paper-2: #1c1917; --ink: #efe9de; --t2: #b0a89b; --field: color-mix(in srgb, var(--paper) 88%, var(--ink)); --accent-text: var(--or); }
 *, *::before, *::after { box-sizing: border-box; }
 html { background: var(--paper); -webkit-text-size-adjust: 100%; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
-body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--f-body); line-height: 1.6; font-feature-settings: "palt" 0; }
+body { margin: 0; background: transparent; color: var(--ink); font-family: var(--f-body); line-height: 1.6; font-feature-settings: "palt" 0; }
 ::selection { background: var(--or); color: #140f0c; }
 a { color: inherit; text-decoration: none; }
 button, input, textarea, select { font: inherit; color: inherit; }
@@ -40,7 +40,9 @@ img { max-width: 100%; }
 .nw-kicker::before { content: ""; width: 22px; height: 2px; background: var(--or); }
 /* 朱印：方形印章，只作装饰，从不承载可读文字以外的信息。 */
 .nw-seal { display: inline-grid; place-items: center; width: 1.9em; height: 1.9em; background: var(--or); color: #140f0c; font: 700 .72em/1 var(--f-zh); letter-spacing: 0; writing-mode: vertical-rl; }
-.nw-grain { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 95; pointer-events: none; opacity: .06; mix-blend-mode: multiply; }
+/* 纸纹：一块静止的噪点贴片，铺在正文之下（z-index -1，body 透明），从不动画，也不盖在字上。阅读页与工具页不铺。 */
+.nw-grain { position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: 0; mix-blend-mode: multiply; background-size: 256px 256px; transition: opacity .8s; }
+.nw-grain[data-ready] { opacity: .055; }
 
 /* Keep the first keyboard stop discoverable without covering content at rest. */
 .nw-skip { position: fixed; z-index: 120; top: 8px; left: 8px; padding: 12px 18px; min-height: 44px; background: var(--ink); color: var(--paper); transform: translateY(-200%); }
@@ -166,7 +168,7 @@ mark { background: var(--or); color: #140f0c; }
 .nw-stb .nw-btn { margin-top: 20px; }
 .nw-sk { background: color-mix(in srgb, var(--ink) 10%, transparent); animation: nw-pulse 1.4s ease-in-out infinite; }
 @keyframes nw-pulse { 50% { opacity: .45; } }
-@media (prefers-reduced-motion: reduce) { .nw-sk { animation: none; } .nw-grain { display: none; } }
+@media (prefers-reduced-motion: reduce) { .nw-sk { animation: none; } .nw-grain { transition: none; } }
 
 /* ---------- 载入页 ---------- */
 .nw-load { position: fixed; inset: 0; z-index: 100; animation: nw-fail 0s 8s forwards; }
@@ -591,7 +593,7 @@ mark { background: var(--or); color: #140f0c; }
 .nw-writing-references summary { padding-left: 0; }
 .nw-writing-references > ol { max-height: 480px; overflow-y: auto; padding-left: 24px; }
 .nw-writing-references h4 { font-size: 15px; }
-.nw-writing-file select { width: 100%; min-height: 44px; padding: 8px; color: inherit; border: 1px solid var(--line-2); background: var(--paper); }
+.nw-writing-file select { width: 100%; min-height: 44px; padding: 8px; color: inherit; border: 1px solid var(--edge); background-color: var(--field); }
 .nw-writing-issues { padding-left: 20px; }
 .nw-writing-issues li { margin-block: 12px; }
 .nw-writing-issues button { margin-left: 10px; }
@@ -791,7 +793,7 @@ header[data-tool] .nw-pill { position: absolute; }
 .nw-catalogue fieldset { min-width: 0; border: 1px solid var(--t2); padding: 20px; }
 .nw-catalogue legend { padding-inline: 8px; font-weight: 700; }
 .nw-catalogue label:not(.nw-writing-check) { display: grid; gap: 8px; font-size: 14px; }
-.nw-catalogue input:not([type="checkbox"]), .nw-catalogue select { min-width: 0; width: 100%; min-height: 44px; padding: 8px 10px; border: 1px solid var(--line-2); color: inherit; background: var(--paper); font: inherit; }
+.nw-catalogue input:not([type="checkbox"]), .nw-catalogue select { min-width: 0; width: 100%; min-height: 44px; padding: 8px 10px; border: 1px solid var(--edge); color: inherit; background-color: var(--field); font: inherit; }
 .nw-catalogue-filter-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; margin-block: 20px; }
 .nw-catalogue button:disabled { opacity: .5; cursor: not-allowed; }
 .nw-catalogue .nw-authoring-actions { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
@@ -1176,7 +1178,7 @@ header[data-tool] .nw-pill { position: absolute; }
 .nw-collection-filter-grid, .nw-collection-pair-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: 16px; align-items: end; margin-block: 20px; }
 .nw-collection-filter-grid label, .nw-collection-pair-form label, .nw-collection-format { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .nw-collection-filter-grid .nw-writing-check { flex-direction: row; align-items: center; }
-.nw-collections select, .nw-collections input[type="search"] { box-sizing: border-box; min-width: 0; width: 100%; max-width: 100%; min-height: 44px; padding: 9px 12px; border: 1px solid var(--line-2); color: var(--ink); background: var(--paper); }
+.nw-collections select, .nw-collections input[type="search"] { box-sizing: border-box; min-width: 0; width: 100%; max-width: 100%; min-height: 44px; padding: 9px 12px; border: 1px solid var(--edge); color: var(--ink); background-color: var(--field); }
 .nw-collection-format { max-width: 34rem; margin-block: 18px; }
 .nw-collection-rows { padding: 0; list-style: none; margin-block: 20px; }
 .nw-collection-rows > li { min-width: 0; padding-block: 20px; border-bottom: 1px solid var(--t2); }
@@ -1295,3 +1297,227 @@ header[data-tool] .nw-pill { position: absolute; }
 .nw-parallel-badge { display: inline-block; padding: 2px 6px; font-size: 0.85em; border-radius: 4px; border: 1px solid var(--t2); margin-inline-end: 6px; }
 .nw-parallel-detail { padding: 16px; border: 1px solid var(--t2); border-radius: 6px; margin-block: 16px; background: var(--paper); }
 .nw-parallel-snippet { padding: 8px 12px; border: 1px solid var(--ti); border-left: 3px solid var(--or); margin-block: 6px; font-family: monospace; white-space: pre-wrap; word-break: break-all; }
+
+/* =====================================================================
+   v4「静纸」：纸面静止 · 页首同构 · 控件同源。规范见 UI_DESIGN_SYSTEM.md §25–30。
+   ===================================================================== */
+:root {
+  /* 控件描边：50% 墨，浅纸上 3.4:1、深纸上 4.5:1，满足非文字 3:1，又比 --t2 安静。 */
+  --edge: color-mix(in srgb, var(--ink) 50%, transparent);
+  /* 正文墨：长读时比标题墨略浅一档（浅纸上仍高于 12:1），减少大面积纯黑的眩光。 */
+  --read-ink: color-mix(in srgb, var(--ink) 88%, var(--paper));
+  --intro-top: 156px;
+}
+
+/* ---------- §25 外壳：短页面的页脚落到底部 ---------- */
+#smooth-content { display: flex; flex-direction: column; min-height: 100svh; }
+#smooth-content > * { width: 100%; min-width: 0; }
+#smooth-content > main { flex: 1 0 auto; }
+
+/* ---------- §26 页首：小标 / 宋体大题 + 意大利体外文 / 导语 ---------- */
+.nw-intro { padding: var(--intro-top) 0 36px; margin: 0 0 8px; border-bottom: 1px solid var(--ink); }
+.nw-intro .nw-kicker { margin-bottom: 24px; }
+.nw-intro-row { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 32px; }
+.nw-intro h1, [data-route="notifications"] > header h1, .nw-reading-list > header h1, .nw-authoring-header h1 {
+  margin: 0; font: 600 clamp(48px, 7.6vw, 112px)/1.04 var(--f-zh); letter-spacing: -.02em; text-wrap: balance; overflow-wrap: anywhere;
+}
+.nw-intro h1 i, .nw-auth-panel h1 i, .nw-media h1 i, .nw-import h1 i {
+  font: italic 400 .58em/1 var(--f-sf); letter-spacing: 0; color: var(--t2); margin-left: .1em;
+}
+.nw-intro-row > .nw-m { padding-bottom: .9em; }
+.nw-intro-lede, [data-route="notifications"] > header p, .nw-reading-list > header p:not(.nw-m) {
+  margin: 22px 0 0; max-width: 34em; font: 400 18px/1.85 var(--f-zh); color: var(--t2);
+}
+/* 通知、阅读清单沿用路由自带的 header > h1 + p，样式与 .nw-intro 对齐。 */
+[data-route="notifications"] > header, .nw-reading-list > header { max-width: none; margin: 0 0 40px; padding-bottom: 36px; border-bottom: 1px solid var(--ink); }
+.nw-reading-list > header .nw-m { margin: 14px 0 0; max-width: 40em; }
+/* 写作台工作台页首（九个工作台共用）：比公开页小一号，留给工具本身。 */
+.nw-authoring-header { display: grid; gap: 18px; margin: 0 0 40px; padding-bottom: 32px; border-bottom: 1px solid var(--ink); }
+.nw-authoring-header h1 { font-size: clamp(40px, 5.6vw, 76px); line-height: 1.1; }
+.nw-authoring-header > p:not(.nw-kicker) { margin: 0; max-width: 42em; font: 400 16px/1.85 var(--f-body); color: var(--t2); }
+.nw-media h1, .nw-import h1 { font-family: var(--f-zh); font-weight: 600; letter-spacing: -.015em; }
+
+/* ---------- §27 登录 / 找回 / 重设 / 验证：左题右表 ---------- */
+.nw-auth-page { padding-bottom: 120px; }
+.nw-auth-page .nw-auth-panel { padding-bottom: 0; }
+.nw-auth-panel h1 { margin: 0; letter-spacing: -.02em; text-wrap: balance; }
+@media (min-width: 1024px) {
+  .nw-auth-page .nw-auth-panel { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 460px); column-gap: clamp(48px, 7vw, 120px); align-items: start; }
+  .nw-auth-page .nw-auth-panel > * { grid-column: 1; }
+  .nw-auth-page .nw-auth-panel > h1 { font-size: clamp(56px, 6.4vw, 104px); }
+  .nw-auth-page .nw-auth-panel > .nw-auth-form { grid-column: 2; grid-row: 1 / span 4; margin-top: 0; padding: 32px 0 0; border-top: 2px solid var(--ink); }
+  .nw-auth-page .nw-auth-panel > .nw-auth-switch { grid-column: 2; }
+}
+.nw-auth-page .nw-auth-form { gap: 22px; }
+.nw-auth-page .nw-auth-form label { font: 600 11px/1.4 var(--f-ss); letter-spacing: .14em; text-transform: uppercase; color: var(--t2); }
+.nw-auth-page .nw-auth-form label:lang(zh-CN), .nw-auth-page .nw-auth-form label:lang(zh) { font-family: var(--f-body); font-size: 13px; letter-spacing: .08em; }
+.nw-auth-form input, .nw-article-fields input, .nw-article-fields textarea, .nw-article-fields select { border-color: var(--edge); background: var(--field); font: 400 16px/1.5 var(--f-body); letter-spacing: normal; text-transform: none; color: var(--ink); transition: border-color .25s; }
+.nw-auth-form input:hover, .nw-article-fields input:hover, .nw-article-fields textarea:hover, .nw-article-fields select:hover { border-color: var(--ink); }
+.nw-auth-page .nw-auth-form .nw-btn { justify-self: start; min-width: 12em; }
+.nw-auth-page .nw-auth-switch { gap: 4px 20px; margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--line-2); }
+.nw-auth-page .nw-auth-switch .nw-btn { min-height: 44px; padding: 0; border: 0; background: none; font: 500 14px var(--f-body); color: var(--t2); text-decoration: underline; text-decoration-color: var(--line-2); text-underline-offset: 5px; transition: color .25s, text-decoration-color .25s; }
+.nw-auth-page .nw-auth-switch .nw-btn::before { display: none; }
+.nw-auth-page .nw-auth-switch .nw-btn:hover:not(:disabled) { color: var(--ink); text-decoration-color: var(--or); }
+.nw-auth-page .nw-auth-switch .nw-btn:first-child { color: var(--ink); font-weight: 600; }
+
+/* ---------- §28 控件同源：安静按钮 / 下拉 / 搜索框 / 勾选 ---------- */
+.nw-reading-list button:not(.nw-btn), .nw-shelf-transfer button:not(.nw-btn), .nw-quiet {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 16px;
+  border: 1px solid var(--edge); border-radius: 0; background: transparent; color: var(--ink);
+  font: 600 13px/1.2 var(--f-ss); letter-spacing: .03em; transition: border-color .25s, background-color .25s, color .25s;
+}
+.nw-reading-list button:not(.nw-btn):hover:not(:disabled), .nw-shelf-transfer button:not(.nw-btn):hover:not(:disabled), .nw-quiet:hover:not(:disabled) { border-color: var(--ink); background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.nw-reading-list button[aria-pressed="true"] { border-color: var(--ink); background: var(--ink); color: var(--paper); }
+.nw-reading-list button:not(.nw-btn):disabled, .nw-shelf-transfer button:not(.nw-btn):disabled, .nw-quiet:disabled { opacity: .4; cursor: not-allowed; }
+.nw-reading-list select, .nw-reading-list input[type="search"], .nw-authoring-inbox select, .nw-reader-find input[type="search"], .nw-reading-entry select {
+  min-height: 44px; padding: 8px 12px; border: 1px solid var(--edge); border-radius: 0; background-color: var(--field); color: var(--ink);
+  font: 400 15px/1.4 var(--f-body); letter-spacing: normal; text-transform: none; transition: border-color .25s;
+}
+.nw-reading-list select, .nw-authoring-inbox select, .nw-reading-entry select {
+  appearance: none; padding-right: 40px;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 20px) 52%, calc(100% - 15px) 52%; background-size: 5px 5px; background-repeat: no-repeat;
+}
+.nw-reading-list select:hover, .nw-reading-list input[type="search"]:hover, .nw-authoring-inbox select:hover, .nw-reader-find input[type="search"]:hover { border-color: var(--ink); }
+.nw-reading-list select:disabled { opacity: .45; cursor: not-allowed; }
+.nw-reading-list input[type="checkbox"], .nw-import-select-page input, .nw-reading-check input { width: 18px; height: 18px; accent-color: var(--ink); }
+
+/* ---------- §29 阅读清单：检索条 + 状态分段 + 书目行 ---------- */
+.nw-shelf-filters { display: grid; grid-template-columns: minmax(0, 1fr) repeat(2, minmax(150px, 200px)) auto; align-items: end; gap: 16px; margin: 0 0 20px; }
+.nw-shelf-filters label, .nw-shelf-bulk label, .nw-shelf-rows > li > label:not(.nw-shelf-select) { font: 600 11px/1.4 var(--f-ss); letter-spacing: .14em; text-transform: uppercase; color: var(--t2); }
+.nw-shelf-filters input[type="search"] { width: 100%; }
+.nw-reading-list > .nw-reading-actions { gap: 0; margin: 0 0 48px; border-bottom: 1px solid var(--line-2); }
+.nw-reading-list > .nw-reading-actions button:not(.nw-btn) { position: relative; min-height: 48px; padding: 0 18px; border: 0; background: none; color: var(--t2); font: 500 15px var(--f-body); }
+.nw-reading-list > .nw-reading-actions button:not(.nw-btn)::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--or); transform: scaleX(0); transform-origin: left; transition: transform .45s var(--ease-out); }
+.nw-reading-list > .nw-reading-actions button:not(.nw-btn):hover:not(:disabled) { background: none; color: var(--ink); }
+.nw-reading-list > .nw-reading-actions button[aria-pressed="true"] { background: none; color: var(--ink); font-weight: 700; }
+.nw-reading-list > .nw-reading-actions button[aria-pressed="true"]::after { transform: scaleX(1); }
+.nw-reading-list section > h2 { margin: 0; font: 600 clamp(26px, 3vw, 36px)/1.3 var(--f-zh); }
+.nw-reading-list section > h2:focus-visible { outline: 2px solid var(--or); outline-offset: 6px; }
+.nw-reading-list section > h2 + p { margin: 6px 0 0; font: 400 14px var(--f-ss); color: var(--t2); }
+.nw-reading-list section > h2 + p + .nw-m { margin: 4px 0 20px; }
+.nw-shelf-bulk { gap: 10px 12px; padding: 14px 16px; border: 1px solid var(--line-2); background: color-mix(in srgb, var(--ink) 3%, transparent); }
+.nw-shelf-bulk > span { flex-basis: auto; margin-right: auto; font: 500 13px var(--f-ss); color: var(--t2); order: -1; }
+.nw-shelf-bulk label { flex-direction: row; align-items: center; gap: 10px; }
+.nw-shelf-rows { margin-top: 8px; border-top: 1px solid var(--ink); }
+.nw-shelf-rows > li { position: relative; gap: 24px; padding: 22px 0; border-bottom: 1px solid var(--line-2); transition: background-color .3s; }
+.nw-shelf-rows > li:hover { background: color-mix(in srgb, var(--ink) 3%, transparent); }
+.nw-shelf-rows > li > label:not(.nw-shelf-select) { display: flex; flex-direction: column; gap: 6px; }
+.nw-shelf-rows > li > button:not(.nw-btn) { border-color: transparent; color: var(--t2); }
+.nw-shelf-rows > li > button:not(.nw-btn):hover:not(:disabled) { border-color: var(--edge); color: var(--red); background: none; }
+.nw-shelf-work h3 { margin: 0 0 2px; font: 600 clamp(20px, 2.2vw, 26px)/1.4 var(--f-zh); }
+.nw-shelf-work h3 a { transition: color .3s; }
+.nw-shelf-work h3 a:hover { color: var(--accent-text); }
+.nw-shelf-work p { font: 400 14px/1.6 var(--f-body); color: var(--t2); }
+.nw-shelf-work p.nw-m { font-size: 12px; letter-spacing: .06em; }
+.nw-reading-list > nav.nw-reading-actions, .nw-reading-list section > nav.nw-reading-actions { justify-content: space-between; margin: 0 0 24px; border: 0; }
+.nw-shelf-transfer { margin: 64px 0 32px; padding: 28px clamp(16px, 3vw, 32px); border: 1px solid var(--line-2); border-top: 2px solid var(--ink); }
+.nw-reading-list > [role="status"], .nw-reading-list > [role="alert"] { margin: 0 0 20px; padding: 12px 0; border-top: 1px solid var(--line-2); font-size: 14px; }
+.nw-reading-list > [role="alert"] { color: var(--red); }
+@media (max-width: 900px) {
+  .nw-shelf-filters { grid-template-columns: 1fr 1fr; }
+  .nw-shelf-filters label:first-child { grid-column: 1 / -1; }
+}
+@media (max-width: 640px) {
+  .nw-shelf-filters { grid-template-columns: 1fr; }
+  .nw-reading-list > .nw-reading-actions { flex-wrap: nowrap; overflow-x: auto; }
+  .nw-reading-list > .nw-reading-actions button:not(.nw-btn) { flex: none; padding: 0 12px; }
+}
+
+/* ---------- §29b 通知页：整页收件箱是一份按日分组的清单，不再是框里套框 ---------- */
+[data-route="notifications"] .nw-authoring-inbox { gap: 14px; padding-bottom: 64px; border-bottom: 0; }
+[data-route="notifications"] .nw-authoring-inbox > h2 { margin: 0; font: 600 13px/1.4 var(--f-ss); letter-spacing: .16em; text-transform: uppercase; color: var(--t2); }
+[data-route="notifications"] .nw-inbox-filters { gap: 8px; padding-bottom: 16px; border-bottom: 1px solid var(--line-2); }
+[data-route="notifications"] .nw-inbox-filters .nw-btn { min-height: 40px; padding: 0 16px; border-color: var(--edge); border-radius: 999px; font-size: 13px; }
+[data-route="notifications"] .nw-inbox-filters .nw-btn::before { border-radius: 999px; }
+[data-route="notifications"] .nw-inbox-filters [aria-current="page"] { border-color: var(--ink); }
+[data-route="notifications"] .nw-authoring-inbox-list { max-height: none; overflow: visible; gap: 0; margin-top: 0; border: 0; border-top: 1px solid var(--ink); background: none; }
+[data-route="notifications"] .nw-authoring-inbox-row { gap: 10px 20px; padding: 18px 8px; border: 0; border-bottom: 1px solid var(--line-2); transition: background-color .25s; }
+[data-route="notifications"] .nw-authoring-inbox-row:hover { background: color-mix(in srgb, var(--ink) 3%, transparent); }
+[data-route="notifications"] .nw-authoring-inbox-row .nw-btn { min-height: 40px; padding: 0 14px; border-color: var(--edge); font-size: 13px; }
+[data-route="notifications"] .nw-inbox-day { margin: 18px 0 2px; font: 600 12px/1.4 var(--f-ss); letter-spacing: .14em; color: var(--accent-text); }
+[data-route="notifications"] .nw-authoring-inbox-text { font: 400 16px/1.7 var(--f-body); }
+[data-route="notifications"] .nw-inbox-selection { border-color: var(--line-2); border-left: 3px solid var(--or); }
+
+[data-route="notifications"] .nw-inbox-filters > span, [data-route="notifications"] .nw-inbox-filters > label { font: 600 11px/1.4 var(--f-ss); letter-spacing: .14em; text-transform: uppercase; color: var(--t2); }
+[data-route="notifications"] .nw-inbox-filters > label { margin-left: 16px; }
+[data-route="notifications"] .nw-inbox-filters select { min-height: 40px; }
+[data-route="notifications"] .nw-authoring-inbox > .nw-m { margin: 0; }
+/* 页首下方紧接的第一块（空状态、列表、表格）不再画自己的顶线，避免双线。 */
+.nw-intro + .nw-stb, .nw-intro + .nw-list, .nw-intro + * > .nw-row:first-child { border-top: 0; }
+.nw-intro + .nw-stb { padding-top: 64px; }
+
+/* ---------- §29c 搜索：小标即 h1，巨型输入框才是版面的主角 ---------- */
+.nw-search-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 20px; margin: 0 0 28px; }
+.nw-head .nw-search-head h1.nw-kicker { font: 600 11px/1.4 var(--f-ss); letter-spacing: .18em; color: var(--ink); }
+.nw-search-head p { margin: 0; }
+.nw-sb input[type="search"]::placeholder { color: var(--edge); }
+.nw-chips a { border-color: var(--edge); border-radius: 999px; padding: 0 18px; transition: background-color .25s, color .25s, border-color .25s; }
+.nw-chips a:hover { border-color: var(--ink); }
+.nw-chips a[aria-current="true"], .nw-chips a[aria-current="page"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+section > .nw-kicker + .nw-chips { margin-top: 18px; }
+
+/* ---------- §29d 写作台工作台：导航按钮、原生下拉、文件选择、分组框统一成一套 ---------- */
+.nw-authoring-header .nw-authoring-actions { gap: 8px; margin-top: 4px; }
+.nw-authoring-header .nw-authoring-actions .nw-btn:not(.nw-pri) { min-height: 40px; padding: 0 16px; border-color: var(--edge); border-radius: 999px; font-size: 13px; }
+.nw-authoring-header .nw-authoring-actions .nw-btn::before { border-radius: 999px; }
+.nw-authoring-header .nw-authoring-actions .nw-btn.nw-pri { min-height: 40px; padding: 0 18px; border-radius: 999px; font-size: 13px; }
+/* 基础样式用 :where() 归零特异性，已有工作台规则照常生效；只有箭头与 appearance 用正常特异性兜底。 */
+:where(.nw-private-page, .nw-authoring) select:where(:not([multiple], [size])) {
+  min-height: 44px; padding: 8px 12px; border: 1px solid var(--edge); border-radius: 0; background-color: var(--field); color: var(--ink);
+  font: 400 15px/1.4 var(--f-body); transition: border-color .25s;
+}
+:where(.nw-private-page, .nw-authoring) select:where(:not(:disabled)):hover { border-color: var(--ink); }
+.nw-private-page select:not([multiple]):not([size]), .nw-authoring select:not([multiple]):not([size]) {
+  appearance: none; padding-right: 40px;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 20px) 52%, calc(100% - 15px) 52%; background-size: 5px 5px; background-repeat: no-repeat;
+}
+:where(.nw-private-page, .nw-authoring) input:where([type="text"], [type="search"], [type="date"], [type="number"], [type="email"], [type="url"], [type="password"]) { border: 1px solid var(--edge); border-radius: 0; background-color: var(--field); }
+input[type="file"] { font: 400 14px var(--f-body); color: var(--t2); }
+input[type="file"]::file-selector-button {
+  min-height: 40px; margin-right: 14px; padding: 0 16px; border: 1px solid var(--ink); border-radius: 0; background: transparent; color: var(--ink);
+  font: 600 13px/1 var(--f-ss); letter-spacing: .03em; cursor: pointer; transition: background-color .25s, color .25s;
+}
+input[type="file"]::file-selector-button:hover { background: var(--ink); color: var(--paper); }
+.nw-private-page fieldset { border-color: var(--line-2); }
+.nw-private-page legend { padding-inline: 10px; font: 600 15px/1.4 var(--f-zh); }
+.nw-collection-slot, .nw-catalogue fieldset { border-color: var(--line-2); }
+
+/* ---------- §29e 索引页（作品 / 分类 / 作者 / 标签）页首 ---------- */
+.nw-head > .nw-head-kicker { margin: 0 0 24px; }
+.nw-head h1 i { color: var(--t2); }
+/* 七八个字的长标题不能再按 160px 排：降一档，外文副题换到下一行也不至于压住导语。 */
+.nw-head h1.nw-h1-long { font-size: clamp(52px, 7.4vw, 112px); line-height: 1.08; }
+.nw-head h1.nw-h1-long i { font-size: .72em; }
+.nw-head > .nw-ep { max-width: 34em; }
+.nw-sf-form .nw-fld { border-color: var(--edge); }
+
+/* 深色纸上导航条与纸面同色：加一圈发丝描边与略浅的台面，让它仍读作一条浮起的 nav。 */
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .nw-pill { background: #221e1b; box-shadow: inset 0 0 0 1px rgba(242, 238, 230, .12), 0 10px 30px -12px rgba(0, 0, 0, .7); } }
+:root[data-theme="dark"] .nw-pill { background: #221e1b; box-shadow: inset 0 0 0 1px rgba(242, 238, 230, .12), 0 10px 30px -12px rgba(0, 0, 0, .7); }
+
+/* ---------- §30 阅读页：长读舒适度 ---------- */
+/* 进度条只是位置，不发光；2px 细线，不抢正文。 */
+.nw-progress, .nw-progress i { height: 2px; }
+.nw-progress i { box-shadow: none; }
+.nw-rd { color: var(--read-ink); }
+.nw-rd p, .nw-rd li { text-autospace: normal; text-spacing-trim: normal; line-break: strict; }
+.nw-rd h2, .nw-rd h3, .nw-rd h4, .nw-rd blockquote { color: var(--ink); }
+/* 中文段首已缩进两字，段距收一点，版面更像书页而不是网页段落。 */
+.nw-rd[data-form="prose"]:not(:lang(en)) > p { margin-bottom: .9em; }
+.nw-rd hr { width: 3em; margin: 3em auto; border: 0; border-top: 1px solid var(--line-2); }
+@media (min-width: 1280px) { .nw-reader { --measure: 35em; } }
+
+@media (max-width: 767px) {
+  :root { --intro-top: 96px; }
+  /* 移动端导航条高 52px、离顶 12px：页首留白与 .nw-intro 对齐，标题不贴着导航条。 */
+  .nw-head { padding-top: var(--intro-top); }
+  .nw-intro { padding-bottom: 28px; }
+  .nw-intro-lede, [data-route="notifications"] > header p, .nw-reading-list > header p:not(.nw-m) { font-size: 16px; }
+  .nw-auth-page .nw-auth-switch { flex-direction: column; align-items: flex-start; gap: 0; }
+}
+@media print {
+  #smooth-content { display: block; min-height: 0; }
+  .nw-rd { color: #000; }
+}

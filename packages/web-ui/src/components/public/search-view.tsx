@@ -32,7 +32,10 @@ export function SearchPageView({ locale, query, tab, type, works, authors, categ
   return (
     <main id="top" tabIndex={-1} lang={locale} className="nw-w">
       <header className="nw-head">
-        <div className="nw-m" style={{ marginBottom: 8 }}>{ui.search.title} · {q ? ui.search.total(total) : ui.search.intro}</div>
+        <div className="nw-search-head">
+          <h1 className="nw-kicker">{ui.search.title}</h1>
+          <p className="nw-m">{q ? ui.search.total(total) : ui.search.intro}</p>
+        </div>
         <form className="nw-sb" action={base} method="get" role="search" aria-label={ui.search.label}>
           <label className="nw-lab" htmlFor="site-q">{ui.search.label}</label>
           <input id="site-q" type="search" name="q" defaultValue={query} placeholder={ui.search.placeholder} autoComplete="off" />
@@ -42,7 +45,7 @@ export function SearchPageView({ locale, query, tab, type, works, authors, categ
 
       {!q ? (
         <section style={{ marginTop: 56 }}>
-          <div className="nw-m">{ui.search.browse}</div>
+          <p className="nw-kicker">{ui.search.browse}</p>
           <div className="nw-chips">{tabTypes.map((candidate) => <Link key={candidate} href={`${archivePath(locale)}?type=${candidate}`}>{messages.workTypeLabels[candidate]}</Link>)}</div>
         </section>
       ) : total === 0 ? (

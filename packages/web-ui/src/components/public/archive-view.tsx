@@ -30,7 +30,7 @@ export function ArchivePageView({ locale, query, page, type, articles, hasNextPa
   return (
     <main id="top" tabIndex={-1} lang={locale} className="nw-w">
       <header className="nw-head">
-        <div className="nw-m" style={{ marginBottom: 12 }}>{messages.blogDescription}</div>
+        <p className="nw-kicker nw-head-kicker">{messages.blogDescription}</p>
         <h1><span className="nw-zh">{ui.archive.title}</span> <i>{ui.archive.titleEn}</i></h1>
         <form className="nw-sf-form" action={base} method="get" role="search" aria-label={ui.archive.search}>
           {type ? <input type="hidden" name="type" value={type} /> : null}
