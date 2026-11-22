@@ -512,6 +512,9 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
         <nav className="nw-authoring-actions nw-desk-nav" aria-label="写作台去处">
           <Link className="nw-desk-link" href="/write/library">全部作品目录</Link>
           <Link className="nw-desk-link" href="/write/media">媒体库</Link>
+          {/* Notion as an interchange format (ADR 0036): restored after 179bac0
+              removed the only link to /write/notion. */}
+          <Link className="nw-desk-link" href="/write/notion">从 Notion 导入</Link>
           <details className="nw-authoring-help nw-desk-help">
             <summary className="nw-desk-link">存储说明</summary>
             <p>保存成功的草稿与发布状态由 API 持久化；未保存输入默认只在本页；只有明确启用下方本机恢复才会缓存。请保存服务器草稿或下载备份。</p>
