@@ -41,7 +41,8 @@ const record = (value: unknown): value is Record<string, unknown> => typeof valu
 
 /** Automatic preparation may restore ignored assets, never refresh reviewed receipts. */
 export function assertFontReproduction(expected: { manifest: string; css: string }, actual: { manifest: string; css: string }): void {
-  if (expected.manifest !== actual.manifest || expected.css !== actual.css) {
+  const normalize = (text: string) => text.replace(/\r\n/g, "\n");
+  if (normalize(expected.manifest) !== normalize(actual.manifest) || normalize(expected.css) !== normalize(actual.css)) {
     throw new Error("Font reproduction differs from checked-in receipts; regenerate and review the metadata explicitly.");
   }
 }
@@ -223,7 +224,7 @@ async function inspectFontBundle(value: unknown, directory: string | URL, css: s
     const normalized = license.toString("utf8").replace(/\r\n/g, "\n");
     if (digest(normalized) !== source.licenseSha256 || !/SIL OPEN FONT LICENSE/i.test(normalized)) throw new Error(`Changed font license: ${source.license}`);
   }
-  if (css !== renderFontCss(data.faces)) throw new Error("Generated font stylesheet is stale; run pnpm fonts:generate.");
+  if (css.replace(/\r\n/g, "\n") !== renderFontCss(data.faces)) throw new Error("Generated font stylesheet is stale; run pnpm fonts:generate.");
   return { faces: data.faces.length, bytes: total, families: [...new Set(data.faces.map((face) => face.family))].sort(), missing };
 }
 
