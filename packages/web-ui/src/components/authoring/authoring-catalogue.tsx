@@ -13,6 +13,7 @@ import { CatalogueExportPanel } from "./catalogue-export.tsx";
 import { CatalogueSelection } from "./catalogue-selection.tsx";
 import { CatalogueVersions, catalogueDate, catalogueLocaleLabel } from "./catalogue-versions.tsx";
 import { WorkBatchImportPanel } from "./work-batch-import-panel.tsx";
+import { WritingCollectionExportPanel } from "./writing-collection-export-panel.tsx";
 
 export function AuthoringCatalogue() {
   const [controller] = useState(() => new CatalogueController());
@@ -159,6 +160,9 @@ export function AuthoringCatalogue() {
           <button className="nw-btn" type="button" disabled={!state.selected.length || state.restoring} onClick={() => controller.clearSelection()}>清除选择</button>
         </div>
         <p>已选 {state.selected.length} / {CATALOGUE_SELECTION_LIMIT} 个语言版本。翻页保留选择，已提交的筛选或账户变更会清空。下载的是所选条目上次读取的快照，可在下方明确发起只读核对。</p>
+        {/* Restored after 179bac0 dropped it: the selected-body collection backup
+            is the only way to hand catalogue editions to the local collection tool. */}
+        <WritingCollectionExportPanel catalogue={controller} disabled={unavailable || formChanged || checkingExport} />
         <CatalogueExportPanel selected={state.selected} disabled={unavailable || formChanged || checkingExport} onDownload={report => { void exportSelection(report); }} />
         {state.actor ? <CatalogueSelection actor={state.actor} scope={state.filters.scope} selected={state.selected} visible={state.page.items} disabled={unavailable || formChanged} onRemove={key => controller.removeSelection(key)} onApply={(actor, fingerprint, entries) => controller.adoptReviewedSelection(actor, fingerprint, entries)} onAccountRefused={controller.refuseAccount} onRateLimited={controller.respectReadCooldown} /> : null}
         {state.page.items.length ? <ul className="nw-catalogue-list" aria-label="目录条目">{state.page.items.map(entry => <li key={catalogueEntryKey(entry)}>

@@ -9,6 +9,18 @@ import {
   issueCounts,
   importDetail,
   readBundleFile,
+  indicesWithActions,
+  invertSelection,
+  englishPartners,
+  withEnglishPartners,
+  mergeReports,
+  pageKey,
+  planImportBatches,
+  selectBundlePages,
+  reportCsv,
+  reportRowMatches,
+  type NotionImportAction,
+  type NotionImportPage,
   type NotionImportReport,
 } from "./notion-import.ts";
 
@@ -273,4 +285,127 @@ test("ownership conflicts explain cross-locale refusal and retain unused-media g
   assert.match(importDetail("The Notion page is already linked to another work or account. Nothing in this work was written; preview again."), /其他作品或账号.*均未写入/);
   assert.match(importDetail("The work or its import provenance changed. Nothing in this work was written; preview again."), /试跑后已变化.*重新试跑/);
   assert.equal(importDetail("unrecognized safe report detail"), "unrecognized safe report detail");
+});
+
+test("report rows are filtered by what they would write and what needs reading", () => {
+  const row = (action: NotionImportAction, issues: { code: string; detail: string }[] = []): NotionImportPage =>
+    ({ externalId: action, title: action, locale: "zh", action, slug: "", articleId: null, detail: "", issues });
+  const rows = [row("create"), row("update"), row("skip"), row("skip", [{ code: "expiring-image-url", detail: "" }]), row("refused"), row("failed")];
+  assert.deepEqual(rows.filter((r) => reportRowMatches(r, "changes")).map((r) => r.action), ["create", "update"]);
+  assert.deepEqual(rows.filter((r) => reportRowMatches(r, "attention")).map((r) => r.action), ["skip", "refused", "failed"]);
+  assert.equal(rows.filter((r) => reportRowMatches(r, "all")).length, rows.length);
+});
+
+test("report rows choose bundle indices by normalised id, never by report order", () => {
+  const bundle = { pages: [{ id: "AAAA-1" }, { id: "bbbb2" }, { id: "cccc3" }, {}] };
+  const report = asImportReport({ applied: false, pages: [
+    { externalId: "cccc3", action: "update" }, { externalId: "aaaa1", action: "create" }, { externalId: "bbbb2", action: "skip" },
+  ] })!;
+  assert.deepEqual([...indicesWithActions(bundle, report, ["create", "update"])].sort(), [0, 2]);
+  assert.deepEqual([...indicesWithActions(bundle, report, ["skip"])], [1]);
+  assert.equal(pageKey("CE90817D-48BC-4108-9028-08C6C7BDE306"), "ce90817d48bc4108902808c6c7bde306");
+});
+
+test("invert toggles only the visible pages", () => {
+  assert.deepEqual([...invertSelection(new Set([0, 1, 5]), [1, 2, 3])].sort(), [0, 2, 3, 5]);
+});
+
+test("the report CSV has one escaped row per page and cannot inject a formula", () => {
+  const report = asImportReport({ applied: false, pages: [
+    { externalId: "p1", title: "墙壁, 其一", locale: "zh", action: "update", slug: "wall", articleId: "a-1", detail: "", issues: [{ code: "featured-image-not-carried", detail: "1 file(s)" }] },
+    { externalId: "p2", title: "=HYPERLINK(\"x\")", locale: "en", action: "refused", slug: "", articleId: null, detail: "Select all pages referenced by English before importing this work", issues: [{ code: "missing-translation-page", detail: "" }] },
+  ] })!;
+  const csv = reportCsv(report);
+  assert.ok(csv.startsWith("\uFEFFaction,title,locale,slug,articleId,issues,detail\r\n"));
+  const lines = csv.slice(1).trimEnd().split("\r\n");
+  assert.equal(lines.length, 3);
+  assert.equal(lines[1], "update,\"墙壁, 其一\",zh,wall,a-1,featured-image-not-carried,1 file(s)");
+  assert.ok(lines[2]!.startsWith("refused,\"'=HYPERLINK(\"\"x\"\")\",en,,,missing-translation-page,请选择 English 关联的所有页面后重新试跑。"));
+});
+
+// --- planImportBatches: the API's per-request ceilings, and translation pairs kept together ---
+
+const pageWith = (id: string, extra: Record<string, unknown> = {}, blocks: unknown[] = []) => ({ id, properties: { Name: { type: "title", title: [{ plain_text: id }] }, ...extra }, blocks });
+const notionImage = (url: string) => ({ type: "image", image: { type: "file", file: { url } } });
+const all = (n: number) => new Set(Array.from({ length: n }, (_, index) => index));
+
+test("200 pages are one batch and page 201 starts a second", () => {
+  const pages = (n: number) => ({ version: 1, database: { id: "", title: null }, pages: Array.from({ length: n }, (_, i) => pageWith(`p${i}`)) });
+  assert.deepEqual(planImportBatches(pages(200), all(200)).batches.map((b) => b.length), [200]);
+  assert.deepEqual(planImportBatches(pages(201), all(201)).batches.map((b) => b.length), [200, 1]);
+});
+
+test("the serialised request may reach the byte ceiling exactly, but not exceed it", () => {
+  const bundle = { version: 1, database: { id: "", title: null }, pages: [pageWith("a"), pageWith("b")] };
+  const exact = new TextEncoder().encode(JSON.stringify({ bundle, apply: true })).length;
+  assert.deepEqual(planImportBatches(bundle, all(2), { bytes: exact, pages: 200, images: 8 }).batches, [[0, 1]]);
+  assert.deepEqual(planImportBatches(bundle, all(2), { bytes: exact - 1, pages: 200, images: 8 }).batches, [[0], [1]]);
+  // The default ceiling is the API's own: 8 MiB of `{ bundle, apply }`.
+  const big = (id: string) => pageWith(id, { Excerpt: { type: "rich_text", rich_text: [{ plain_text: "x".repeat(3 * 1024 * 1024) }] } });
+  const heavy = { version: 1, database: { id: "", title: null }, pages: [big("a"), big("b"), big("c")] };
+  const plan = planImportBatches(heavy, all(3));
+  assert.deepEqual(plan.batches, [[0, 1], [2]]);
+  for (const batch of plan.batches) assert.ok(new TextEncoder().encode(JSON.stringify({ bundle: selectBundlePages(heavy, new Set(batch)), apply: true })).length <= NOTION_BUNDLE_MAX_BYTES);
+});
+
+test("at most 8 distinct Notion images per batch; a repeated image counts once", () => {
+  const pages = Array.from({ length: 9 }, (_, i) => pageWith(`p${i}`, {}, [notionImage(`https://prod-files-secure.s3.us-west-2.amazonaws.com/${i}.png`)]));
+  pages.push(pageWith("again", {}, [notionImage("https://prod-files-secure.s3.us-west-2.amazonaws.com/0.png"), { type: "image", image: { type: "external", external: { url: "https://example.com/x.png" } } }]));
+  const plan = planImportBatches({ version: 1, database: { id: "", title: null }, pages }, all(10));
+  assert.deepEqual(plan.batches, [[0, 1, 2, 3, 4, 5, 6, 7], [8, 9]]);
+});
+
+test("a work with more than 8 images is sent alone, with a note rather than silently", () => {
+  const many = pageWith("many", {}, Array.from({ length: 10 }, (_, i) => notionImage(`https://prod-files-secure.s3.amazonaws.com/${i}`)));
+  const plan = planImportBatches({ version: 1, database: { id: "", title: null }, pages: [pageWith("a"), many, pageWith("b")] }, all(3));
+  assert.deepEqual(plan.batches, [[0], [1], [2]]);
+  assert.match(plan.notes[0]!, /10 张 Notion 图片/);
+});
+
+test("pages linked by English always share a batch, even across the page ceiling", () => {
+  const zh = "11111111-1111-1111-1111-111111111111"; const en = "22222222222222222222222222222222";
+  const pages = [pageWith(zh, { English: { type: "relation", relation: [{ id: en }] } }), pageWith("solo"), pageWith(en)];
+  const plan = planImportBatches({ version: 1, database: { id: "", title: null }, pages }, all(3), { bytes: NOTION_BUNDLE_MAX_BYTES, pages: 2, images: 8 });
+  assert.deepEqual(plan.batches, [[0, 2], [1]]);
+  // Only selected pages are planned; an unselected partner is not pulled in here.
+  assert.deepEqual(planImportBatches({ version: 1, database: { id: "", title: null }, pages }, new Set([0, 1])).batches, [[0, 1]]);
+});
+
+test("a work too large for any request is reported, not dropped or sent", () => {
+  const pages = [pageWith("ok"), pageWith("huge", { Excerpt: { type: "rich_text", rich_text: [{ plain_text: "x".repeat(2000) }] } })];
+  const plan = planImportBatches({ version: 1, database: { id: "", title: null }, pages }, all(2), { bytes: 1000, pages: 200, images: 8 });
+  assert.deepEqual(plan.batches, [[0]]);
+  assert.deepEqual(plan.tooLarge, [1]);
+});
+
+test("batch reports merge into one report; applied only when every batch was", () => {
+  const one = asImportReport({ applied: true, summary: { create: 1, update: 0, skip: 0, refused: 0, failed: 0 }, pages: [{ externalId: "a", action: "create" }] })!;
+  const two = asImportReport({ applied: false, planToken: "t", summary: { create: 0, update: 1, skip: 1, refused: 0, failed: 0 }, pages: [{ externalId: "b", action: "update" }, { externalId: "c", action: "skip" }] })!;
+  const merged = mergeReports([one, two])!;
+  assert.equal(merged.applied, false);
+  assert.equal(merged.planToken, undefined);
+  assert.deepEqual(merged.summary, { create: 1, update: 1, skip: 1, refused: 0, failed: 0 });
+  assert.deepEqual(merged.pages.map((p) => p.externalId), ["a", "b", "c"]);
+  assert.equal(mergeReports([]), null);
+});
+
+test("English counterparts are found in the bundle, and the ones missing from it are named", () => {
+  const zh = "11111111111111111111111111111111"; const en = "22222222-2222-2222-2222-222222222222"; const gone = "33333333333333333333333333333333";
+  const bundle = { pages: [
+    pageWith(zh, { English: { type: "relation", relation: [{ id: en.replaceAll("-", "") }] } }),
+    pageWith(en),
+    pageWith("orphan", { English: { type: "relation", relation: [{ id: gone }] } }),
+  ] };
+  const partners = englishPartners(bundle);
+  assert.deepEqual(partners.get(0), { inBundle: [1], missing: [] });
+  assert.deepEqual(partners.get(2), { inBundle: [], missing: [gone] });
+  assert.equal(partners.has(1), false);
+});
+
+test("selecting a page adds its English counterpart; unchecking the counterpart is respected", () => {
+  const partners = new Map([[0, { inBundle: [1], missing: [] }], [1, { inBundle: [2], missing: [] }]]);
+  assert.deepEqual(withEnglishPartners(new Set(), new Set([0]), partners), { selection: new Set([0, 1, 2]), added: [1, 2] });
+  // 0 was already selected; the author removed 1 on purpose.
+  assert.deepEqual(withEnglishPartners(new Set([0, 1]), new Set([0]), partners), { selection: new Set([0]), added: [] });
+  assert.deepEqual(withEnglishPartners(new Set([3]), new Set([3, 1]), partners).added, [2]);
 });

@@ -1,10 +1,13 @@
 import { expect, type BrowserContext } from "@playwright/test";
-import { test } from "./support/csp-fixture.ts";
+import { test } from "./support/article-view-stack.ts";
 import { editorState, publishWork, uniqueEmail, WORK_PASSWORD } from "./support/works.ts";
 
 /** These journeys use the real cookie jar, Web resource routes, API and SQLite.
  * Manually constructing a Cookie header does not exercise the browser's Path
- * restriction and previously let authenticated controls look correct in tests. */
+ * restriction and previously let authenticated controls look correct in tests.
+ * Every journey publishes through its own disposable stack (`readingStack`), so
+ * its real creates never share — or exhaust — the 30/IP/hour budget of the
+ * other journeys a Playwright shard happens to place it with. */
 async function registerReader(context: BrowserContext, origin: string): Promise<void> {
   const response = await context.request.post(`${origin}/api/auth/register`, {
     headers: { origin },
@@ -17,8 +20,8 @@ async function refreshCookie(context: BrowserContext): Promise<string | undefine
   return (await context.cookies()).find((cookie) => cookie.name === "nw_refresh")?.value;
 }
 
-test("a signed-in reader can save, reload and remove a save", async ({ browser, page, request, baseURL }) => {
-  const { slug } = await publishWork(request, `收藏旅程 ${Date.now().toString(36)}`, ["一篇真实发表的作品。"]);
+test("a signed-in reader can save, reload and remove a save", async ({ browser, page, request, baseURL, readingStack }) => {
+  const { slug } = await publishWork(request, `收藏旅程 ${Date.now().toString(36)}`, ["一篇真实发表的作品。"], undefined, readingStack.apiBaseUrl);
   await registerReader(page.context(), new URL(baseURL!).origin);
   const refreshBefore = await refreshCookie(page.context());
   expect(Boolean(refreshBefore)).toBe(true);
@@ -143,9 +146,9 @@ test("a signed-in reader can save, reload and remove a save", async ({ browser, 
   expect((await refreshCookie(page.context())) === refreshAfter, "a valid access cookie must not rotate the refresh token").toBe(true);
 });
 
-test("following survives navigation and controls the reader's private feed", async ({ browser, page, request, baseURL }) => {
+test("following survives navigation and controls the reader's private feed", async ({ browser, page, request, baseURL, readingStack }) => {
   const title = `关注旅程 ${Date.now().toString(36)}`;
-  const { slug } = await publishWork(request, title, ["关注后，这篇作品应当出现。"]);
+  const { slug } = await publishWork(request, title, ["关注后，这篇作品应当出现。"], undefined, readingStack.apiBaseUrl);
   await registerReader(page.context(), new URL(baseURL!).origin);
   const refreshBefore = await refreshCookie(page.context());
   expect(Boolean(refreshBefore)).toBe(true);
@@ -277,11 +280,11 @@ test("following survives navigation and controls the reader's private feed", asy
   expect((await refreshCookie(page.context())) === refreshAfter, "normal reads and writes must not rotate the session").toBe(true);
 });
 
-test("a late save response cannot change the next work's control", async ({ page, request, baseURL }) => {
+test("a late save response cannot change the next work's control", async ({ page, request, baseURL, readingStack }) => {
   const firstTitle = `前一篇 ${Date.now().toString(36)}`;
   const nextTitle = `后一篇 ${Date.now().toString(36)}`;
-  const { email, slug: first } = await publishWork(request, firstTitle, ["前一篇的正文。"]);
-  const api = process.env.E2E_API_BASE_URL ?? "http://127.0.0.1:4000";
+  const { email, slug: first } = await publishWork(request, firstTitle, ["前一篇的正文。"], undefined, readingStack.apiBaseUrl);
+  const api = readingStack.apiBaseUrl;
   const login = await request.post(`${api}/api/v1/auth/login`, { data: { email, password: WORK_PASSWORD } });
   expect(login.status()).toBe(200);
   const accessToken = (await login.json()).data.accessToken as string;
@@ -336,11 +339,11 @@ test("a late save response cannot change the next work's control", async ({ page
   expect((await nextState.json()).data.likedByViewer).toBe(false);
 });
 
-test("a late follow response cannot change another author's control", async ({ page, request, baseURL }) => {
+test("a late follow response cannot change another author's control", async ({ page, request, baseURL, readingStack }) => {
   const firstTitle = `第一位作者 ${Date.now().toString(36)}`;
   const nextTitle = `第二位作者 ${Date.now().toString(36)}`;
-  const firstWork = await publishWork(request, firstTitle, ["第一位作者的作品。"]);
-  const nextWork = await publishWork(request, nextTitle, ["第二位作者的作品。"]);
+  const firstWork = await publishWork(request, firstTitle, ["第一位作者的作品。"], undefined, readingStack.apiBaseUrl);
+  const nextWork = await publishWork(request, nextTitle, ["第二位作者的作品。"], undefined, readingStack.apiBaseUrl);
   await registerReader(page.context(), new URL(baseURL!).origin);
 
   await page.goto(`/articles/${firstWork.slug}`);
@@ -403,8 +406,8 @@ test("a late follow response cannot change another author's control", async ({ p
   expect((await nextState.json()).data.isFollowing).toBe(false);
 });
 
-test("an anonymous English reader returns to the same edition after signing in", async ({ page, request }) => {
-  const { slug } = await publishWork(request, `English save ${Date.now().toString(36)}`, ["A reader can save this work."], "en");
+test("an anonymous English reader returns to the same edition after signing in", async ({ page, request, readingStack }) => {
+  const { slug } = await publishWork(request, `English save ${Date.now().toString(36)}`, ["A reader can save this work."], "en", readingStack.apiBaseUrl);
   await page.goto(`/en/articles/${slug}`);
   const button = page.getByRole("button", { name: "Save", exact: true });
   await expect(button).toBeEnabled();
