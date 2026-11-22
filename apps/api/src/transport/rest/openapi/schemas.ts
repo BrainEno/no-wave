@@ -771,6 +771,43 @@ export const SCHEMAS: Readonly<Record<string, JsonSchema>> = Object.freeze({
     },
   },
 
+  NotionOAuthStatus: {
+    type: "object",
+    required: ["enabled"],
+    properties: {
+      enabled: { type: "boolean", description: "Whether `NOTION_OAUTH_CLIENT_ID`, `NOTION_OAUTH_CLIENT_SECRET` and a valid `NOTION_OAUTH_REDIRECT_URI` are configured and pulling is on." },
+    },
+  },
+
+  NotionOAuthStart: {
+    type: "object",
+    required: ["authorizeUrl", "state", "expiresInSeconds"],
+    properties: {
+      authorizeUrl: { type: "string", format: "uri", description: "Notion's authorize URL with `client_id`, `response_type=code`, `owner=user`, the configured `redirect_uri` and `state`." },
+      state: { type: "string", description: "Signed for this session; valid once, for 10 minutes. Not stored on the server." },
+      expiresInSeconds: { type: "integer", minimum: 1 },
+    },
+  },
+
+  NotionOAuthExchangeRequest: {
+    type: "object",
+    required: ["code", "state"],
+    properties: {
+      code: { type: "string", minLength: 1, maxLength: 512, description: "The authorization code from the callback URL. Never logged or returned." },
+      state: { type: "string", maxLength: 200, description: "The `state` from the callback URL; must be the one `start` issued to this session." },
+    },
+  },
+
+  NotionOAuthGrant: {
+    type: "object",
+    required: ["accessToken", "workspaceName"],
+    description: "The access token is returned once and stored nowhere; use it as the `token` of `POST imports.notion.fetch`. Notion's refresh token is discarded.",
+    properties: {
+      accessToken: { type: "string" },
+      workspaceName: { type: ["string", "null"] },
+    },
+  },
+
   NotionImportRequest: {
     type: "object",
     required: ["bundle"],

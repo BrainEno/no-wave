@@ -74,6 +74,10 @@ const POLICIES: Readonly<Record<string, WriteRateLimitPolicy>> = Object.freeze({
   // A pull is many short Notion reads (ADR 0052): one listing plus a slice per
   // ~minute of reading. Its own budget, so pulling never spends the import's.
   "POST imports.notion.fetch": { endpoint: "import.notion.fetch", windowSeconds: 600, ipLimit: 120, userLimit: 60 },
+  // Starting and finishing a Notion authorization (ADR 0053): an author needs one
+  // of each per import, a few more after a cancelled popup.
+  "POST imports.notion.oauth.start": { endpoint: "import.notion.oauth.start", windowSeconds: 600, ipLimit: 20, userLimit: 10 },
+  "POST imports.notion.oauth.exchange": { endpoint: "import.notion.oauth.exchange", windowSeconds: 600, ipLimit: 20, userLimit: 10 },
   "POST imports.notion.jobs": { endpoint: "import.notion", windowSeconds: 600, ipLimit: 20, userLimit: 10 },
   "DELETE imports.notion.jobs.item": { endpoint: "import.notion.cancel", windowSeconds: 60, ipLimit: 120, userLimit: 30 },
   "POST conversations": { endpoint: "conversation.create", windowSeconds: 60, ipLimit: 120, userLimit: 60 },

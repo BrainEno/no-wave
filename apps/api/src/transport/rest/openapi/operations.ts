@@ -457,6 +457,35 @@ export const OPERATIONS: Readonly<Record<string, OperationMetadata>> = Object.fr
     response: { status: 200, description: "Rows (with a cursor) or page bodies (with `done` and `issues`).", data: "NotionFetchResult" },
   },
 
+  "GET imports.notion.oauth": {
+    summary: "Whether one-shot Notion OAuth is configured on this instance",
+    description: "Answers a boolean only (ADR 0053). Off unless all three `NOTION_OAUTH_*` variables are set, the redirect URI is an https URL whose path is `/write/notion/oauth/callback`, and pulling is enabled.",
+    security: "session",
+    tags: ["imports"],
+    response: { status: 200, description: "Whether to offer 「用 Notion 授权」.", data: "NotionOAuthStatus" },
+  },
+
+  "POST imports.notion.oauth.start": {
+    summary: "Start a one-shot Notion authorization",
+    description: "Returns Notion's authorize URL and a `state` signed for this session and valid once for 10 minutes (ADR 0053). Nothing is stored. `NOTION_OAUTH_DISABLED` (409) when OAuth is not configured. Rate limited to 10 per author and 20 per IP per 10 minutes.",
+    security: "session",
+    tags: ["imports"],
+    errors: [409, 429],
+    response: { status: 200, description: "Where to send the author, and the state that comes back.", data: "NotionOAuthStart" },
+  },
+
+  "POST imports.notion.oauth.exchange": {
+    summary: "Redeem a Notion authorization code for a one-time access token",
+    description:
+      "Checks that `state` was issued to this session, has not expired and has not been used, spends it, and redeems `code` at Notion's token endpoint with the client credentials (ADR 0053). Only the access token and the workspace name are returned; the refresh token is discarded and nothing is stored or logged. " +
+      "Errors: `NOTION_OAUTH_DISABLED` (409), `NOTION_OAUTH_STATE_INVALID` / `NOTION_OAUTH_CODE_INVALID` (422), `NOTION_OAUTH_MISCONFIGURED` (502, Notion refused the client credentials), `NOTION_UNAVAILABLE` (502). Rate limited to 10 per author and 20 per IP per 10 minutes.",
+    security: "session",
+    tags: ["imports"],
+    requestBody: { schema: "NotionOAuthExchangeRequest", description: "The code and state from the callback URL.", required: true },
+    errors: [409, 413, 415, 422, 429, 502],
+    response: { status: 200, description: "The access token, once.", data: "NotionOAuthGrant" },
+  },
+
   "POST imports.notion.jobs": {
     summary: "Queue one approved Notion import without holding the HTTP connection",
     description: "Opt-in; disabled by default (409 IMPORT_JOBS_DISABLED). Requires the unchanged bundle and its authentic, unexpired preview plan. The separate finite drain command performs the existing importer; the API never executes or schedules queued import work. Idempotency is owner-scoped while the plan is valid; after expiry use list/status, never blindly submit a new key. Signed URLs and plan are encrypted with a separately provisioned key. The original 8 MiB/200-page/eight-image bounds and per-work revision/ownership checks remain. Capacity refusal is 429 IMPORT_QUEUE_FULL. A running job whose lease expires becomes interrupted, never automatically retried. This is not live sync or image checkpoint resume.",
