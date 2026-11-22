@@ -51,7 +51,7 @@ test("only an integration secret's shape is accepted before anything is sent", (
 
 test("rows are listed across cursors into a bundle whose pages wait for their blocks", async () => {
   const server = scripted([
-    ok({ source: { id: "ds-1", title: "作品库" }, rows: [row("p1", "墙壁"), { ...row("p2", "旧作"), inTrash: true }], cursor: "c-2" }),
+    ok({ source: { id: "ds-1", title: "作品库" }, rows: [{ ...row("p1", "墙壁"), createdTime: "2024-05-01T17:00:00.000Z" }, { ...row("p2", "旧作"), inTrash: true }], cursor: "c-2" }),
     ok({ source: { id: "ds-1", title: "作品库" }, rows: [row("p3", "诗")], cursor: null }),
   ]);
   const result = await pullNotionRows(TOKEN, "https://www.notion.so/x", server.deps);
@@ -59,6 +59,9 @@ test("rows are listed across cursors into a bundle whose pages wait for their bl
   assert.equal(result.truncated, false);
   assert.deepEqual(result.bundle.database, { id: "ds-1", title: "作品库" });
   assert.deepEqual(result.bundle.pages.map((page) => [page.id, page.blocks, page.inTrash ?? false]), [["p1", [], false], ["p2", [], true], ["p3", [], false]]);
+  // Creation instants stay beside the bundle — never inside it — for the optional Date backfill.
+  assert.deepEqual([...result.created], [["p1", "2024-05-01T17:00:00.000Z"]]);
+  assert.equal(result.bundle.pages.some((page) => "createdTime" in page), false);
   assert.deepEqual(server.bodies, [
     { token: TOKEN, mode: "rows", source: "https://www.notion.so/x" },
     { token: TOKEN, mode: "rows", source: "https://www.notion.so/x", cursor: "c-2" },

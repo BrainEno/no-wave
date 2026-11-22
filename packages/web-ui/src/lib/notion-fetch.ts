@@ -51,6 +51,8 @@ export type NotionRowsPull = {
   bundle: { version: 1; database: { id: string; title: string }; pages: Record<string, unknown>[] };
   /** Rows not listed because the database is larger than NOTION_PULL_MAX_ROWS. */
   truncated: boolean;
+  /** Page id → Notion's `created_time`, kept beside the bundle for the optional date backfill. */
+  created: Map<string, string>;
 };
 
 export type NotionPullIssue = { id: string; code: string };
@@ -154,6 +156,7 @@ async function countdown(requested: number, deps: PullDeps, label: string): Prom
 export async function pullNotionRows(token: string, source: string, deps: PullDeps): Promise<NotionRowsPull | PullFailure> {
   const waits = { count: 0 };
   const pages: Record<string, unknown>[] = [];
+  const created = new Map<string, string>();
   let database: { id: string; title: string } | null = null;
   let cursor: string | null = null;
   do {
@@ -170,6 +173,7 @@ export async function pullNotionRows(token: string, source: string, deps: PullDe
     if (database === null || rows === null) return { ok: false, message: "拉取接口的响应格式不符合约定，请稍后重试。" };
     for (const row of rows) {
       if (!isRecord(row) || typeof row.id !== "string") continue;
+      if (typeof row.createdTime === "string") created.set(row.id, row.createdTime);
       pages.push({
         id: row.id,
         properties: isRecord(row.properties) ? row.properties : {},
@@ -185,6 +189,7 @@ export async function pullNotionRows(token: string, source: string, deps: PullDe
     ok: true,
     bundle: { version: 1, database: database ?? { id: "", title: "" }, pages: pages.slice(0, NOTION_PULL_MAX_ROWS) },
     truncated: cursor !== null || pages.length > NOTION_PULL_MAX_ROWS,
+    created,
   };
 }
 

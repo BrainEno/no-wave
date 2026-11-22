@@ -1,6 +1,7 @@
 import { Link } from "@/lib/framework/link.tsx";
 import { useEffect, useRef, useState } from "react";
 import { markdownEntriesToBundle, readMarkdownZip } from "@/lib/notion-markdown.ts";
+import { createdDay, fillMissingDates } from "@/lib/notion-created-date.ts";
 import {
   ACTION_LABEL,
   asImportReport,
@@ -110,6 +111,13 @@ type PullSession = {
   unreadable: Map<string, string>;
 };
 
+/** Raw creation values (API instants or CSV cells) → creation days; a value that cannot be read is left out. */
+function createdDays(raw: ReadonlyMap<string, string>): Map<string, string> {
+  const days = new Map<string, string>();
+  for (const [id, value] of raw) { const day = createdDay(value); if (day !== null) days.set(id, day); }
+  return days;
+}
+
 function dataOf(payload: unknown): unknown {
   return typeof payload === "object" && payload !== null ? (payload as { data?: unknown }).data : null;
 }
@@ -139,6 +147,13 @@ export function NotionImport() {
   // articleId → the work an `update` row would overwrite, read from the desk's
   // own list so the author sees *which* work changes, not only an id.
   const [targets, setTargets] = useState<ReadonlyMap<string, Target>>(new Map());
+  // Page id → its creation day (UTC midnight), from Notion's created_time or the
+  // CSV's "Created" column. Offered — never applied by default — as the Date of
+  // a published page that has none; see notion-created-date.ts.
+  const [created, setCreated] = useState<ReadonlyMap<string, string>>(new Map());
+  const [backfillDates, setBackfillDates] = useState(false);
+  // Page id → the day the current plan gave it, so each report row can say so.
+  const [datedBy, setDatedBy] = useState<ReadonlyMap<string, string>>(new Map());
   const fileInput = useRef<HTMLInputElement>(null);
   // Set by "停止" (and on unmount): the batch in flight finishes, no further
   // request is sent, and a countdown ends without retrying.
@@ -219,11 +234,19 @@ export function NotionImport() {
     setError(""); setFilter("all");
     const read = await readPulledPages(bundle, requested);
     if (read === null) return;
-    const { bundle: current, selection, notes: pullNotes } = read;
+    const { bundle: pulled, selection, notes: pullNotes } = read;
+    // The backfill changes only what is sent; the bundle in state keeps the
+    // author's own properties, so unticking the box and planning again undoes it.
+    const backfill = backfillDates ? fillMissingDates(pulled, created) : { bundle: pulled, filled: [] };
+    const current = backfill.bundle;
     const split = planImportBatches(current, selection);
     const titles = bundleSelectionPages(current);
+    const dated = backfill.filled.filter(({ index }) => selection.has(index));
+    const pageIds = Array.isArray(current.pages) ? current.pages as { id?: unknown }[] : [];
+    setDatedBy(new Map(dated.map(({ index, day }) => [String(pageIds[index]?.id ?? ""), day])));
     setNotes([
       ...pullNotes,
+      ...(dated.length ? [`以下 ${dated.length} 页已发布但没有 Date，已按你的选择用创建日期补上（只补空的 Date，不覆盖已有日期）：${dated.map(({ index, day }) => `《${titles[index]?.title ?? index + 1}》→ ${day}`).join("、")}。`] : []),
       ...split.notes,
       ...(split.tooLarge.length ? [`以下作品单件超过 ${MAX_MEGABYTES} MB 或 200 页，无法提交，未包含在计划中：${split.tooLarge.map((index) => `《${titles[index]?.title ?? index + 1}》`).join("、")}。`] : []),
     ]);
@@ -334,6 +357,7 @@ export function NotionImport() {
     const pasted = token.trim();
     setBatches(null); setNotes([]); setAutoNote(""); setError(""); setWarnings([]);
     setBundle(null); setPageCount(0); setSelected(new Set()); setQuery(""); setFileName("");
+    setCreated(new Map()); setDatedBy(new Map());
     pull.current = null;
     if (!looksLikeNotionToken(pasted)) {
       setError("这不像 Notion 集成令牌：应以 ntn_（或旧版 secret_）开头，可在 Notion 的「设置 → 连接 → 开发或管理集成」里复制。");
@@ -348,6 +372,7 @@ export function NotionImport() {
     pull.current = { token: pasted, read: new Set(), unreadable: new Map() };
     setFileName(`${result.bundle.database.title || "Notion 数据库"} · ${result.bundle.pages.length} 个条目`);
     setBundle(result.bundle); setPageCount(result.bundle.pages.length);
+    setCreated(createdDays(result.created));
     setSelected(new Set(result.bundle.pages.map((_page, index) => index)));
     if (result.truncated) {
       setWarnings([`这个数据库超过 ${NOTION_PULL_MAX_ROWS} 个条目，只列出了前 ${NOTION_PULL_MAX_ROWS} 个，其余条目这次不会导入。请在 Notion 里拆分数据库后分别拉取，或改用导出文件。`]);
@@ -365,6 +390,7 @@ export function NotionImport() {
     setPageCount(0);
     setSelected(new Set());
     setQuery("");
+    setCreated(new Map()); setDatedBy(new Map());
     setBusy("dry-run");
     try {
       if (files.reduce((sum, file) => sum + file.size, 0) > 8 * 1024 * 1024) throw new Error("文件总大小超过 8 MB，请分批导入。");
@@ -388,6 +414,7 @@ export function NotionImport() {
       }
       const result = markdownEntriesToBundle(entries);
       setBundle(result.bundle); setPageCount(result.pages); setWarnings(result.warnings);
+      setCreated(createdDays(new Map(Object.entries(result.created))));
       setSelected(new Set(bundleSelectionPages(result.bundle).map((page) => page.index)));
       setBusy(null);
     } catch (error) {
@@ -418,10 +445,12 @@ export function NotionImport() {
     const fromNotion = pull.current !== null;
     pull.current = null;
     setFileName(""); setBundle(null); setPageCount(0); setBatches(null); setNotes([]); setAutoNote(""); setError(""); setWarnings([]);
-    setSelected(new Set()); setQuery(""); setFilter("all");
+    setSelected(new Set()); setQuery(""); setFilter("all"); setCreated(new Map()); setDatedBy(new Map());
     if (!fromNotion) fileInput.current?.click();
   }
   const choices = bundle === null ? [] : bundleSelectionPages(bundle);
+  // Selected published pages that have no Date and could get their creation day.
+  const datable = bundle === null || created.size === 0 ? [] : fillMissingDates(bundle, created).filled.filter(({ index }) => selected.has(index));
   const partners = bundle === null ? new Map<number, { inBundle: number[]; missing: string[] }>() : englishPartners(bundle);
   const needsEnglish = [...partners.entries()].filter(([, partner]) => partner.missing.length > 0).map(([index]) => index);
   const needle = query.trim().toLowerCase();
@@ -497,6 +526,7 @@ export function NotionImport() {
           <p className="nw-m">
             选择 Notion 导出的 Markdown 文件（可多选，可附带数据库 CSV）或 ZIP 压缩包，也支持原有 JSON bundle。
             导出包里的数据库 CSV 会用来补齐 Markdown 中缺失的日期、摘要、标签等属性，不会覆盖已有值。
+            若 CSV 带有「Created」或「创建时间」列，还可以选择用它补上已发布页面缺失的 Date。
           </p>
           <p className="nw-m">
             所选文件合计不超过 {MAX_MEGABYTES} MB。超过 {MAX_MEGABYTES} MB / 200 页（或 8 张在线 Notion 图片）会自动分批提交：先逐批试跑，再一次确认。ZIP 内的本地图片目前不会导入，会在下方提示；在线 Notion 图片会尝试复制，失败则移除并报告。未指定 Published 的文章默认为草稿。
@@ -594,6 +624,25 @@ export function NotionImport() {
               </li>
             ))}
           </ul>
+          {created.size > 0 ? (
+            <div className="nw-import-option">
+              <label className="nw-import-select-page">
+                <input type="checkbox" checked={backfillDates} disabled={busy !== null}
+                  onChange={(event) => {
+                    setBackfillDates(event.currentTarget.checked);
+                    // The plan was made with the other choice; it must be made again.
+                    setBatches(null); setNotes([]); setDatedBy(new Map());
+                  }} />
+                <span>用 Notion 创建日期补上缺失的 Date</span>
+              </label>
+              <p className="nw-m">
+                {datable.length > 0
+                  ? `所选页面中有 ${datable.length} 页已发布但没有 Date；不勾选时它们的发表日期是导入当天，勾选后改用各自在 Notion 的创建日期。`
+                  : "所选的已发布页面都已有 Date，勾选不会改变任何页面。"}
+                只补空的 Date，不覆盖已有日期，也不改草稿；补了哪些页面会在试跑结果里逐页列出。
+              </p>
+            </div>
+          ) : null}
           <button className="nw-btn" type="button" disabled={busy !== null || selected.size === 0}
             onClick={() => void plan(selected)}>试跑所选文章</button>
         </section>
@@ -664,6 +713,7 @@ export function NotionImport() {
                   <small className="nw-import-reason" key={`${issue.code}:${index}`}>{importDetail(issue.detail)}</small>
                 ))}
                 {page.detail !== "" ? <small className="nw-import-reason">{importDetail(page.detail)}</small> : null}
+                {datedBy.has(page.externalId) ? <small className="nw-import-reason">Date 为空，已用创建日期补为 {datedBy.get(page.externalId)}。</small> : null}
               </li>
             ))}
           </ul>

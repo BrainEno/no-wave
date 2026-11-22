@@ -198,3 +198,18 @@ test("checkbox spellings", () => {
   for (const no of ["no", "FALSE", "n", "__NO__", "否"]) assert.equal(notionBoolean(no), false, no);
   for (const other of ["Published", "Draft", "1", ""]) assert.equal(notionBoolean(other), null, other);
 });
+
+test("a Created column is kept per page for the date backfill, but fills no property and is not reported unknown", () => {
+  const dbId = "0123456789abcdef0123456789abcdef";
+  const result = markdownEntriesToBundle([
+    { name: `墙壁 ${id}.md`, text: "# 墙壁\n\nPublished: Yes\n\n正文" },
+    { name: `无题 ${dbId}.md`, text: "# 无题\n\nPublished: Yes\nDate: 某天\n\n正文" },
+    { name: `作品库 ${dbId}_all.csv`, text: "Name,创建时间,Published\n墙壁,2024年5月1日 15:04,Yes\n无题,2024年5月2日 09:00,Yes\n" },
+  ]);
+  assert.deepEqual(result.created, { "ce90817d-48bc-4108-9028-08c6c7bde306": "2024年5月1日 15:04" });
+  const page = (result.bundle.pages as { properties: Record<string, unknown> }[])[0]!;
+  assert.equal(page.properties.Date, undefined);
+  assert.ok(!result.warnings.some((w) => w.includes("没有对应字段")), result.warnings.join("\n"));
+  // The page whose own Date was written but unreadable is said so, and is not offered for the backfill.
+  assert.ok(result.warnings.some((w) => w.includes("日期无法识别")));
+});

@@ -93,6 +93,10 @@ midnight of that day**: `2026-10-08` → `2026-10-08T00:00:00.000Z`.
 | `2026-10-08T09:30:00` | `2026-10-08T09:30:00.000Z` | a zone-less instant is read as UTC, never as the server's local time |
 | absent | `now()` when published, `null` when a draft | a draft has not been published yet |
 
+In the desk the author may instead fill an absent `Date` from the page's creation
+day; it is off by default and changes only what the desk sends (see *Filling a
+missing Date from the creation date* at the end of this document).
+
 Export writes the date back as `YYYY-MM-DD` (Notion's own day granularity), so a
 round trip does not accumulate time-of-day drift.
 
@@ -944,3 +948,41 @@ block limit fails the run instead of being silently cut short.
   malformed token never sent, the refusal sentences, a 429 waited out, an oversized
   page unchecked with its reason, no token in any import request or in storage,
   and an empty field after a reload.
+
+## Filling a missing Date from the creation date (desk, optional)
+
+A published page without a `Date` is dated at the moment of the import (§4), so a
+database written over years can arrive as if every work appeared today. The desk
+offers one checkbox before the dry run, 「用 Notion 创建日期补上缺失的 Date」,
+**unchecked by default**. It is shown only when creation dates are known:
+
+- **Pull:** Notion returns `created_time` with every row. The fetch endpoint passes
+  it through as `rows[].createdTime` (an ISO instant; anything else is dropped). It
+  is metadata beside the bundle and is never put into one.
+- **Upload:** a database CSV column named `Created`, `Created time`, `Created at`,
+  `创建时间`, `创建日期` or `创建于` (Notion's 「创建时间」 property). It fills no
+  property by itself and is not reported as an unknown column.
+
+When checked, the desk sets `Date` to the creation day for each selected page that
+is **published** (`Published` checked) and whose `Date` is **absent or empty**. It
+never replaces a `Date`, even one of another type, and never dates a draft: a draft
+has no publication date to be wrong. A Markdown `Date:` that was written but cannot
+be read is reported as before and is not filled. The day is the one the author saw
+in Notion: an API instant is read on the browser's calendar, and a CSV cell already
+prints the exporter's local time, so its date part is taken as written. It is stored
+as UTC midnight, like every other calendar date here.
+
+The change is made only to what the dry run sends; the selection in memory keeps the
+author's properties, so unchecking the box and running again undoes it. Switching
+the box discards the current plan. The dry run lists every page it filled with its
+day, and each such report row says 「Date 为空，已用创建日期补为 YYYY-MM-DD」. The
+server sees an ordinary `Date`: nothing in the import API, its digest or its
+rejection rules changes, and the plan token binds the filled bundle like any other.
+
+Tested by `packages/web-ui/src/lib/notion-created-date.test.ts` (day parsing in
+several timezones; only empty, published pages filled; input unchanged),
+`notion-markdown.test.ts` and `notion-fetch.test.ts` (the column and `createdTime`
+kept beside, not inside, the bundle), `apps/api/src/application/notion-fetch.test.ts`
+(`created_time` passed through only when it is an instant) and
+`e2e/notion-date-backfill.spec.ts` (both endpoints mocked: off by default, on fills
+one page and names it, the confirm writes the planned bundle, unchecking undoes it).
