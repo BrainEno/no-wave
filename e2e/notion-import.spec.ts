@@ -4,6 +4,7 @@ import { expect, type Page } from "@playwright/test";
 import { test } from "./support/csp-fixture.ts";
 import type { NotionImportReport } from "../packages/web-ui/src/lib/notion-import.ts";
 import { registerThroughForm, uniqueEmail } from "./support/accounts.ts";
+import { mockNotionImport } from "./support/notion-import-mock.ts";
 
 /**
  * Importing a Notion bundle from the desk (ADR 0036, phase 4).
@@ -189,6 +190,39 @@ test("a ZIP export discovers Markdown articles", async ({ page }) => {
   await expect(page.locator(".nw-import-report").getByText("压缩文章", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: /确认导入/ }).click();
   await expect(page.getByText(/已导入：新建 1 件/)).toBeVisible();
+});
+
+test("properties from the database CSV in a ZIP export are carried into the import", async ({ page }) => {
+  await registerThroughForm(page, uniqueEmail("notion-csv"), "/write/notion");
+  // Client-side journey: the endpoint is stood in for (see support/notion-import-mock.ts);
+  // what the server does with these properties is the planner's, tested there.
+  const writes = await mockNotionImport(page);
+  // Notion's "Markdown & CSV" export: the page files often carry no property
+  // lines at all, and the database's properties live in "X_all.csv" (every
+  // column) beside "X.csv" (the view's visible columns only).
+  const db = randomUUID().replaceAll("-", "");
+  const id = randomUUID().replaceAll("-", "");
+  const zip = zipSync({
+    [`导出/作品库 ${db}.csv`]: strToU8("Name,Tags\nCSV 属性作品,诗歌"),
+    [`导出/作品库 ${db}_all.csv`]: strToU8(`\uFEFFName,Date,Excerpt,Published,Slug,Tags\r\nCSV 属性作品,2026年10月8日,"来自 CSV 的摘要, 含逗号",是,csv-work,"诗歌, 实验"\r\n`),
+    [`导出/作品库/CSV 属性作品 ${id}.md`]: strToU8("# CSV 属性作品\n\n正文只在 Markdown 里。"),
+  });
+  await page.setInputFiles("#notion-bundle-file", { name: "export.zip", mimeType: "application/zip", buffer: Buffer.from(zip) });
+  await expect(page.getByText(/《CSV 属性作品》：已从 作品库\.csv 补 5 列属性.*请核对/)).toBeVisible();
+  await selectAllAndPreview(page);
+  await expect(page.getByText(/计划：新建 1 件/)).toBeVisible();
+  await page.getByRole("button", { name: /确认导入/ }).click();
+  await expect(page.getByText(/已导入：新建 1 件/)).toBeVisible();
+  const expected = {
+    Date: { date: { start: "2026-10-08T00:00:00.000Z" } },
+    Excerpt: { rich_text: [{ plain_text: "来自 CSV 的摘要, 含逗号" }] },
+    Published: { checkbox: true },
+    Slug: { rich_text: [{ plain_text: "csv-work" }] },
+    Tags: { multi_select: [{ name: "诗歌" }, { name: "实验" }] },
+  };
+  // The dry run and the confirmed write carry the same filled properties.
+  expect(writes.map((request) => request.apply === true)).toEqual([false, true]);
+  for (const request of writes) expect(request.bundle.pages[0]?.properties).toMatchObject(expected);
 });
 
 test("ZIP selection previews and writes only checked pages, and changing it invalidates the plan", async ({ page }) => {

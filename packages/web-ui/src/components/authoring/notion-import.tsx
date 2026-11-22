@@ -109,9 +109,10 @@ export function NotionImport() {
       }
       const entries: { name: string; text: string }[] = [];
       for (const file of files) {
-        if (/\.md$/i.test(file.name)) entries.push({ name: file.name, text: new TextDecoder("utf-8", { fatal: true }).decode(await file.arrayBuffer()) });
+        // A database CSV only carries properties for the Markdown pages beside it.
+        if (/\.(md|csv)$/i.test(file.name)) entries.push({ name: file.name, text: new TextDecoder("utf-8", { fatal: true }).decode(await file.arrayBuffer()) });
         else if (/\.zip$/i.test(file.name)) entries.push(...readMarkdownZip(new Uint8Array(await file.arrayBuffer())));
-        else throw new Error(`${file.name}：请选择 Markdown、ZIP，或单个 JSON bundle。`);
+        else throw new Error(`${file.name}：请选择 Markdown（可附带数据库 CSV）、ZIP，或单个 JSON bundle。`);
       }
       const result = markdownEntriesToBundle(entries);
       setBundle(result.bundle); setPageCount(result.pages); setWarnings(result.warnings);
@@ -139,7 +140,8 @@ export function NotionImport() {
         <Link className="nw-btn" href="/write">回到写作台</Link>
       </div>
       <p className="nw-ep">
-        选择 Notion 导出的 Markdown 文件（可多选）或 ZIP 压缩包，也支持原有 JSON bundle。
+        选择 Notion 导出的 Markdown 文件（可多选，可附带数据库 CSV）或 ZIP 压缩包，也支持原有 JSON bundle。
+        导出包里的数据库 CSV 会用来补齐 Markdown 中缺失的日期、摘要、标签等属性，不会覆盖已有值。
         勾选想导入的文章，试跑并检查报告后再确认写入；未勾选的页面不会提交。已有文章可能被更新，请留意试跑结果。
       </p>
       <p className="nw-m">
@@ -149,7 +151,7 @@ export function NotionImport() {
       <div className="nw-import-pick">
         <label className="nw-btn" htmlFor="notion-bundle-file">选择文件</label>
         <input
-          accept=".md,.zip,.json,application/json,application/zip"
+          accept=".md,.csv,.zip,.json,text/csv,application/json,application/zip"
           multiple
           disabled={busy !== null}
           hidden

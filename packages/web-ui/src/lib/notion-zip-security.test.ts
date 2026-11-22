@@ -25,16 +25,28 @@ function withEntries(count: number, extension = ".md"): Uint8Array {
   return archive(files);
 }
 
-test("ordinary compressed Markdown continues to import after the fflate update", () => {
+test("ordinary compressed Markdown and database CSV import; other non-.md/.csv files are ignored", () => {
   const zip = archive({
     "中 文.md": strToU8("# 标题\n\n第一段。"),
     "nested/essay.md": strToU8("# Essay\n\nSecond paragraph."),
+    "db_all.csv": strToU8("Name,Tags\n标题,a"),
     "picture.png": new Uint8Array([0, 1, 2]),
+    "notes.txt": strToU8("# Not a page"),
   });
   const entries = readMarkdownZip(zip);
-  assert.equal(entries.length, 2);
-  assert.deepEqual(entries.map((item) => item.text).sort(), ["# Essay\n\nSecond paragraph.", "# 标题\n\n第一段。"].sort());
+  assert.deepEqual(entries.map((item) => item.name).sort(), ["db_all.csv", "nested/essay.md", "中 文.md"].sort());
+  assert.deepEqual(entries.filter((item) => item.name.endsWith(".md")).map((item) => item.text).sort(), ["# Essay\n\nSecond paragraph.", "# 标题\n\n第一段。"].sort());
   assert.equal(markdownEntriesToBundle(entries).pages, 2);
+});
+
+test("CSV entries do not count as pages but do count toward the decompressed byte ceiling", () => {
+  const files: Record<string, Uint8Array> = {};
+  for (let index = 0; index < NOTION_BUNDLE_MAX_PAGES; index++) files[`page-${index}.md`] = strToU8(`# Title ${index}\n\nText`);
+  files["db.csv"] = strToU8("Name\nTitle 0");
+  files["db_all.csv"] = strToU8("Name\nTitle 0");
+  assert.equal(readMarkdownZip(archive(files)).length, NOTION_BUNDLE_MAX_PAGES + 2);
+  const half = new Uint8Array(NOTION_BUNDLE_MAX_BYTES / 2 + 1).fill(0x61);
+  assert.throws(() => readMarkdownZip(archive({ "one.md": half, "db.csv": half })), /超过 8 MB/);
 });
 
 test("the archive byte ceiling is enforced before parsing or decompressing", () => {
