@@ -629,6 +629,9 @@ header[data-tool] .nw-pill { position: absolute; }
 .nw-desk-link::after { content: ""; position: absolute; left: 14px; right: 14px; bottom: 10px; height: 1px; background: var(--or); transform: scaleX(0); transform-origin: right; transition: transform .45s var(--ease-out); }
 .nw-desk-link:hover::after, .nw-desk-help[open] > .nw-desk-link::after { transform: scaleX(1); transform-origin: left; }
 .nw-desk-quiet { color: var(--t2); }
+.nw-desk-import { flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px; line-height: 1.2; }
+.nw-desk-import small { font: 500 10px var(--f-ss); letter-spacing: .04em; color: var(--t2); }
+.nw-desk-import::after { bottom: 6px; }
 .nw-desk-link:disabled { opacity: .45; cursor: not-allowed; }
 .nw-desk-help { position: relative; }
 .nw-desk-help > p { position: absolute; z-index: 40; right: 0; top: calc(100% + 6px); width: min(340px, 80vw); margin: 0; padding: 16px 18px; background: var(--ink); color: var(--paper); font: 400 13px/1.7 var(--f-body); box-shadow: 0 24px 48px -24px rgba(0, 0, 0, .5); animation: nw-drop .35s var(--ease-out); }
@@ -650,6 +653,9 @@ header[data-tool] .nw-pill { position: absolute; }
 .nw-desk .nw-authoring-article small { font: 400 12px/1.4 var(--f-ss); color: var(--t2); }
 .nw-desk .nw-authoring-article b[data-status="published"] { color: var(--accent-text); font-weight: 600; }
 .nw-desk .nw-authoring-article b[data-status="draft"] { font-weight: 600; }
+.nw-desk-empty { display: flex; flex-direction: column; gap: 4px; padding: 14px 0; }
+.nw-desk-empty .nw-m { margin: 0; }
+.nw-desk-empty-cta { display: inline-flex; align-items: center; min-height: 44px; font: 600 13px/1.5 var(--f-ss); color: var(--ink); text-decoration: underline; text-decoration-color: var(--or); text-underline-offset: 4px; }
 .nw-desk-side-note { margin: 0; font-size: 12px; line-height: 1.6; }
 .nw-desk-side-note a { text-decoration: underline; text-underline-offset: 3px; }
 /* 纸面：标题与正文共用一张纸，工具栏贴着纸的上缘吸顶。 */

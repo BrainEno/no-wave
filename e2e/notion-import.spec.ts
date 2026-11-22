@@ -86,9 +86,15 @@ test("an anonymous visitor is sent to sign in, and pointed back afterwards", asy
 
 test("the writing desk links to the import", async ({ page }) => {
   await registerThroughForm(page, uniqueEmail("notion-desk"), "/write");
-  await page.getByRole("link", { name: "从 Notion 导入" }).click();
+  // A new account has no works, so the empty list offers the same destination.
+  await expect(page.getByRole("link", { name: /从 Notion 导入第一批/ })).toHaveAttribute("href", "/write/notion");
+  // The header entry reads "导入文章" first and keeps the source as its sub-label.
+  const entry = page.getByRole("navigation", { name: "写作台去处" }).getByRole("link", { name: "从 Notion 导入" });
+  await expect(entry).toContainText("导入文章");
+  await entry.click();
   await expect(page).toHaveURL(/\/write\/notion$/);
   await expect(page.getByRole("heading", { name: /从 Notion 导入/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: "回到写作台" })).toBeVisible();
 });
 
 test("choosing a bundle shows the plan, and only the confirm button writes it", async ({ page }) => {
