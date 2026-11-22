@@ -768,11 +768,86 @@ reported. Basic Markdown paragraphs, headings, links, marks, lists,
 quotes and code are converted; unsupported structures are flattened and reported.
 
 ZIP parsing is bounded to 8 MiB compressed and 8 MiB extracted Markdown, 200
-Markdown files and 2000 total entries. A request after conversion must also fit
-8 MiB. ZIP64, split or incomplete archives are rejected. Files are never extracted
+Markdown files and 2000 total entries; the files chosen at once must total 8 MiB
+or less. The converted bundle is no longer required to fit one request: see
+*Automatic batches* below. ZIP64, split or incomplete archives are rejected. Files are never extracted
 to disk. Local or inline images are **omitted with a warning**, even when present
 in the ZIP; they are not yet uploaded. External images remain links; recognized
 Notion-hosted URLs go through the existing bounded image copy path, and signed
 URLs on other hosts are removed. Per-request limits and retry caveats in the
 image section above still apply. The conversion warnings should be reviewed
 before confirming, especially for unsupported Markdown and missing relationships.
+
+### Database CSV beside the Markdown
+
+Notion's Markdown export writes most database properties only to the
+database's CSV (`作品库.csv` and/or `作品库_all.csv`). The desk reads `.csv`
+files chosen with the Markdown, or inside the ZIP (they count toward the same
+entry and byte limits; they are not pages). When both names exist for a
+table, `_all` wins. A page is matched to a row first by its `# Title`, then by
+its filename without the 32-digit ID, both trimmed; a title shared by several
+rows is ambiguous and fills nothing. Columns are matched case-insensitively,
+in English or Chinese (`Date`/`日期`, `Excerpt`/`摘要`, `FeaturedImage`/`封面`,
+`Published`/`发布`, `Slug`, `Tags`/`标签`).
+
+CSV values **only fill properties the Markdown left empty**; they never
+overwrite. `Published` is read as a checkbox only when every value in the
+column is boolean (`yes/no`, `true/false`, `是/否`, `Y/N`, `__YES__/__NO__`).
+Dates accept `2026-10-08`, `2026/10/08`, `2026.10.08`, `2026年10月8日`,
+`October 8, 2026` and `September 1 2026`, all as UTC midnight like
+`notionDateToInstant`; ambiguous forms such as `10/08/2026` are left empty and
+reported, and a date range keeps its start (reported). Tags split on `,`, `，` and `、`. `Rank`/`排序` is ignored; other
+columns are reported. Every page gets a visible conversion warning saying
+which columns were filled, or that no row matched, so the author can check
+before the dry run. A page with no `# Title` falls back to its filename with a
+warning; only a page with neither is skipped (and reported). A CSV cover that
+is a file inside the export is reported, not imported, and a CSV
+`FeaturedImage` URL is still not carried (`featured-image-not-carried`).
+
+### Selecting pages
+
+Every page is selected by default. The author can search titles, and select
+all, clear or invert the rows currently shown. After a dry run the list can be
+filtered to works that would be created or updated, or that need attention
+(refused, failed, or with issue codes), and one click selects only the works
+that would be created or updated. Each row shows the planned action, locale,
+issue codes and, for an update, the target article. Changing the selection
+discards the plan; the next dry run is the only thing that produces a new one.
+The plan or result can be downloaded as a CSV (UTF-8 with BOM; cells that
+start like a formula are prefixed with `'`).
+
+Choosing a page whose `English` counterpart is in the same export selects that
+counterpart too, transitively, and says which pages were added. Only newly
+chosen pages pull their counterparts in: a counterpart the author unchecks on
+purpose stays unchecked, the row says the work will be refused, and the API's
+`missing-translation-page` refusal is unchanged. A page whose counterpart is
+not in the export at all is marked before anything is sent, with a hint to
+export with subpages.
+
+### Automatic batches
+
+When the selection would not fit one request — 8 MiB of serialized JSON, 200
+pages, or 8 distinct Notion-hosted images — the desk splits it into several
+`POST /api/v1/imports/notion` requests. Pages are packed in source order, and
+pages linked by `English` always travel in the same batch, so the per-request
+translation check sees both sides. A single work with more than 8 Notion
+images goes alone (the API copies the first 8 and reports the rest, as for
+any request); a work too large for any request is left out with a visible
+note.
+
+Every batch is dry-run first and the reports are merged into one table with a
+single confirmation (“确认导入（写入 N 件作品，分 M 批）”). Each batch keeps its
+own plan token: confirmation applies each batch with its own token and
+idempotency key, exactly as a single import does, and nothing is written
+before that click. If a plan expires (`IMPORT_PLAN_INVALID`), that batch is
+dry-run once again and must be confirmed again. A `429` is waited out using
+the server's `Retry-After` (1–900 s, 30 s when absent; at most 6 waits per
+request) with a visible countdown. Any other failure leaves that batch
+unwritten — it is never retried blindly — while the remaining batches
+continue; the merged report names the failed batch, and the headline says
+when only some batches were written. The author can stop the remaining
+batches at any time.
+
+There is no fixed cap on the number of batches. Every dry run and every apply
+counts toward the import rate limits (10 per author and 20 per IP per 10
+minutes), so a large selection can take several minutes of automatic waiting.

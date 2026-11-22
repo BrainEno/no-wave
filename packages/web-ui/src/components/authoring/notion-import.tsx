@@ -343,7 +343,7 @@ export function NotionImport() {
         勾选想导入的文章，试跑并检查报告后再确认写入；未勾选的页面不会提交。已有文章可能被更新，请留意试跑结果。
       </p>
       <p className="nw-m">
-        上限 {MAX_MEGABYTES} MB、一次最多 200 页。ZIP 内的本地图片目前不会导入，会在下方提示；在线 Notion 图片会尝试复制，失败则移除并报告。一次最多复制 8 张不同图片。未指定 Published 的文章默认为草稿。
+        所选文件合计不超过 {MAX_MEGABYTES} MB。超过 {MAX_MEGABYTES} MB / 200 页（或 8 张在线 Notion 图片）会自动分批提交：先逐批试跑，再一次确认。ZIP 内的本地图片目前不会导入，会在下方提示；在线 Notion 图片会尝试复制，失败则移除并报告。未指定 Published 的文章默认为草稿。
       </p>
 
       <div className="nw-import-pick">
