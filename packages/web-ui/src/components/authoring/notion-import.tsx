@@ -12,6 +12,8 @@ import {
   readBundleFile,
   indicesWithActions,
   invertSelection,
+  mergeReports,
+  planImportBatches,
   reportCsv,
   reportRowMatches,
   type NotionImportReport,
@@ -59,6 +61,29 @@ function downloadReport(report: NotionImportReport): void {
 
 type Target = { title: string; slug: string };
 
+/**
+ * One request's worth of the selection. A batch keeps its own plan token: a
+ * token binds exactly the bundle it was issued for, so tokens are never merged.
+ */
+type Batch = {
+  indices: number[];
+  bundle: Record<string, unknown>;
+  /** The latest plan or result for this batch. */
+  report: NotionImportReport | null;
+  /** Why this batch did not plan or write, in the author's words. */
+  error: string;
+  /** The plan was re-run once after the server refused its token; it needs a fresh confirm. */
+  replanned: boolean;
+};
+
+type PostResult =
+  | { ok: true; report: NotionImportReport }
+  | { ok: false; status: number; code: string | null; message: string };
+
+/** 429s waited out per request before giving up; each wait is the server's own Retry-After. */
+const MAX_RATE_LIMIT_WAITS = 6;
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 function dataOf(payload: unknown): unknown {
   return typeof payload === "object" && payload !== null ? (payload as { data?: unknown }).data : null;
 }
@@ -67,18 +92,26 @@ export function NotionImport() {
   const [fileName, setFileName] = useState("");
   const [bundle, setBundle] = useState<Record<string, unknown> | null>(null);
   const [pageCount, setPageCount] = useState(0);
-  const [report, setReport] = useState<NotionImportReport | null>(null);
+  const [batches, setBatches] = useState<Batch[] | null>(null);
+  const [progress, setProgress] = useState("");
+  const [notes, setNotes] = useState<string[]>([]);
   const [busy, setBusy] = useState<null | "dry-run" | "apply">(null);
   const [error, setError] = useState("");
   const [warnings, setWarnings] = useState<string[]>([]);
   const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
-  const [plannedBundle, setPlannedBundle] = useState<Record<string, unknown> | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<ReportFilter>("all");
   // articleId → the work an `update` row would overwrite, read from the desk's
   // own list so the author sees *which* work changes, not only an id.
   const [targets, setTargets] = useState<ReadonlyMap<string, Target>>(new Map());
   const fileInput = useRef<HTMLInputElement>(null);
+  // Set by "停止" (and on unmount): the batch in flight finishes, no further
+  // request is sent, and a countdown ends without retrying.
+  const stopped = useRef(false);
+  useEffect(() => () => { stopped.current = true; }, []);
+
+  const planned = batches?.filter((batch) => batch.report !== null) ?? [];
+  const report = mergeReports(planned.map((batch) => batch.report!));
 
   const updateIds = report === null ? "" : report.pages.filter((page) => page.action === "update" && page.articleId !== null).map((page) => page.articleId).join(",");
   useEffect(() => {
@@ -100,55 +133,127 @@ export function NotionImport() {
     return () => { live = false; };
   }, [updateIds, targets]);
 
-  async function send(next: Record<string, unknown>, apply: boolean): Promise<void> {
-    const planToken = apply ? report?.planToken : undefined;
-    if (apply && !planToken) { setError("请先重新试跑，再确认导入。"); return; }
-    setBusy(apply ? "apply" : "dry-run");
-    setError("");
-    setReport(null);
-    setPlannedBundle(null);
-    try {
-      const response = await fetch("/api/authoring/notion-import", {
-        method: "POST",
-        headers: { "content-type": "application/json", accept: "application/json" },
-        credentials: "same-origin",
-        cache: "no-store",
-        // `apply` is omitted for a dry run rather than sent as `false`: the
-        // endpoint's default *is* the dry run, and a body that cannot be
-        // misunderstood is worth one fewer key.
-        body: JSON.stringify(apply ? { bundle: next, apply: true, planToken } : { bundle: next }),
-      });
+  /**
+   * One request to the import endpoint. A 429 is waited out — the countdown is
+   * the server's Retry-After — and the same request is sent again, so a long
+   * import continues by itself instead of asking the author to come back.
+   */
+  async function post(body: Record<string, unknown>, label: string): Promise<PostResult> {
+    for (let waits = 0; ; waits++) {
+      let response: Response;
+      try {
+        response = await fetch("/api/authoring/notion-import", {
+          method: "POST",
+          headers: { "content-type": "application/json", accept: "application/json" },
+          credentials: "same-origin",
+          cache: "no-store",
+          body: JSON.stringify(body),
+        });
+      } catch {
+        return { ok: false, status: 0, code: null, message: "网络中断，无法确认导入结果。部分内容可能已写入；请检查写作台，再重新试跑。" };
+      }
       const payload: unknown = await response.json().catch(() => null);
-      if (response.ok === false) {
-        setError(failureMessage(payload, response.status));
-        return;
+      if (response.status === 429 && waits < MAX_RATE_LIMIT_WAITS) {
+        const header = Number.parseInt(response.headers.get("retry-after") ?? "", 10);
+        const seconds = Math.min(Math.max(Number.isFinite(header) ? header : 30, 1), 900);
+        for (let left = seconds; left > 0; left--) {
+          if (stopped.current) return { ok: false, status: 429, code: null, message: "已停止，这一批没有提交。" };
+          setProgress(`导入请求过于频繁（每 10 分钟有次数上限）。${label}将在 ${left} 秒后自动继续…`);
+          await sleep(1000);
+        }
+        continue;
       }
+      const code = typeof payload === "object" && payload !== null ? (payload as { error?: { code?: unknown } }).error?.code : null;
+      if (!response.ok) return { ok: false, status: response.status, code: typeof code === "string" ? code : null, message: failureMessage(payload, response.status) };
       const parsed = asImportReport(dataOf(payload));
-      if (parsed === null) {
-        // Never pretend a report was shown. The plan is the whole point of the
-        // page, and "nothing was written" is the only safe thing to say.
-        setError("导入接口的响应格式不符合约定，无法确认结果；部分内容可能已写入，请检查写作台后重新试跑。");
-        return;
-      }
-      setReport(parsed);
-      setFilter("all");
-      if (!apply && !parsed.applied) setPlannedBundle(next);
-    } catch {
-      setError("网络中断，无法确认导入结果。部分内容可能已写入；请检查写作台，再重新试跑。 ");
-    } finally {
-      setBusy(null);
+      // Never pretend a report was shown: "nothing is known" is the only safe reading.
+      if (parsed === null) return { ok: false, status: response.status, code: null, message: "导入接口的响应格式不符合约定，无法确认结果；部分内容可能已写入，请检查写作台后重新试跑。" };
+      return { ok: true, report: parsed };
     }
+  }
+
+  /**
+   * Dry-run the selection, split into requests the API accepts. Every batch is
+   * planned before anything can be confirmed, so the author reads one merged
+   * plan and confirms once; a batch that fails to plan is named, and the others
+   * remain confirmable.
+   */
+  async function plan(selection: ReadonlySet<number>): Promise<void> {
+    if (bundle === null) return;
+    const split = planImportBatches(bundle, selection);
+    const titles = bundleSelectionPages(bundle);
+    stopped.current = false;
+    setError(""); setFilter("all");
+    setNotes([
+      ...split.notes,
+      ...(split.tooLarge.length ? [`以下作品单件超过 ${MAX_MEGABYTES} MB 或 200 页，无法提交，未包含在计划中：${split.tooLarge.map((index) => `《${titles[index]?.title ?? index + 1}》`).join("、")}。`] : []),
+    ]);
+    const next: Batch[] = split.batches.map((indices) => ({ indices, bundle: selectBundlePages(bundle, new Set(indices)), report: null, error: "", replanned: false }));
+    setBatches(next);
+    if (!next.length) return;
+    setBusy("dry-run");
+    for (const [i, batch] of next.entries()) {
+      if (stopped.current) { batch.error = `第 ${i + 1} 批没有试跑（已停止）。`; continue; }
+      const label = next.length > 1 ? `第 ${i + 1}/${next.length} 批` : "试跑";
+      setProgress(next.length > 1 ? `正在试跑${label}…` : "");
+      // `apply` is omitted for a dry run rather than sent as `false`: the
+      // endpoint's default *is* the dry run.
+      const result = await post({ bundle: batch.bundle }, label);
+      if (result.ok) batch.report = result.report;
+      else batch.error = next.length > 1 ? `第 ${i + 1} 批试跑失败：${result.message}` : result.message;
+      setBatches([...next]);
+    }
+    setProgress(""); setBusy(null);
+  }
+
+  /**
+   * Write every planned batch, each with its own token, on the author's one
+   * click. A failed batch does not stop the rest; a refused token (an expired
+   * or no-longer-matching plan) is planned again once and waits for a fresh
+   * confirm — it is never written without one.
+   */
+  async function applyAll(): Promise<void> {
+    if (batches === null) return;
+    const next = batches.map((batch) => ({ ...batch }));
+    const pending = next.filter((batch) => batch.report !== null && !batch.report.applied && describeImport(batch.report).canApply);
+    stopped.current = false;
+    setError(""); setBusy("apply");
+    for (const batch of pending) {
+      const i = next.indexOf(batch);
+      const label = next.length > 1 ? `第 ${i + 1}/${next.length} 批` : "写入";
+      if (stopped.current) { batch.error = `${next.length > 1 ? `第 ${i + 1} 批` : "本批"}没有写入（已停止）。`; continue; }
+      setProgress(next.length > 1 ? `正在写入${label}…` : "");
+      const result = await post({ bundle: batch.bundle, apply: true, planToken: batch.report!.planToken }, label);
+      const prefix = next.length > 1 ? `第 ${i + 1} 批：` : "";
+      if (result.ok) {
+        batch.report = result.report; batch.error = ""; batch.replanned = false;
+      } else if (result.code === "IMPORT_PLAN_INVALID" && !batch.replanned) {
+        setProgress(next.length > 1 ? `第 ${i + 1} 批的试跑计划已失效，正在重新试跑…` : "试跑计划已失效，正在重新试跑…");
+        const again = await post({ bundle: batch.bundle }, label);
+        if (again.ok) {
+          batch.report = again.report; batch.replanned = true;
+          batch.error = `${prefix}试跑计划已失效或与当前选择不符，没有执行本次写入。已自动重新试跑，请核对下面的新计划后再确认。`;
+        } else {
+          batch.report = null; batch.error = `${prefix}${again.message}`;
+        }
+      } else {
+        // The plan stays visible, but this batch is no longer confirmable.
+        batch.report = batch.report && { ...batch.report, planToken: undefined };
+        batch.error = `${prefix}写入失败：${result.message}`;
+      }
+      setBatches([...next]);
+    }
+    setProgress(""); setBusy(null);
   }
 
   async function choose(files: File[]): Promise<void> {
     setFileName(files.map((file) => file.name).join("、"));
-    setReport(null);
+    setBatches(null); setNotes([]);
     setError("");
     setWarnings([]);
     setBundle(null);
     setPageCount(0);
     setSelected(new Set());
-    setPlannedBundle(null);
     setQuery("");
     setBusy("dry-run");
     try {
@@ -183,27 +288,36 @@ export function NotionImport() {
 
   function changeSelection(next: ReadonlySet<number>) {
     setSelected(next);
-    setReport(null);
-    setPlannedBundle(null);
+    setBatches(null); setNotes([]);
     setError("");
   }
   /** Change the selection from the plan, and plan that selection: one click, still no write. */
   function reselect(next: ReadonlySet<number>) {
     if (bundle === null || next.size === 0) return;
     setSelected(next);
-    void send(selectBundlePages(bundle, next), false);
+    void plan(next);
   }
   /** Start over with another file, leaving this result behind. */
   function another() {
-    setFileName(""); setBundle(null); setPageCount(0); setReport(null); setError(""); setWarnings([]);
-    setSelected(new Set()); setPlannedBundle(null); setQuery(""); setFilter("all");
+    setFileName(""); setBundle(null); setPageCount(0); setBatches(null); setNotes([]); setError(""); setWarnings([]);
+    setSelected(new Set()); setQuery(""); setFilter("all");
     fileInput.current?.click();
   }
   const choices = bundle === null ? [] : bundleSelectionPages(bundle);
   const needle = query.trim().toLowerCase();
   const visible = needle === "" ? choices : choices.filter((page) => page.title.toLowerCase().includes(needle));
   const visibleIndices = visible.map((page) => page.index);
-  const outcome = report === null ? null : describeImport(report);
+  const total = batches?.length ?? 0;
+  const appliedCount = planned.filter((batch) => batch.report!.applied).length;
+  const confirmable = planned.filter((batch) => !batch.report!.applied && describeImport(batch.report!).canApply);
+  const writable = confirmable.reduce((sum, batch) => sum + describeImport(batch.report!).writable, 0);
+  const batchErrors = (batches ?? []).map((batch) => batch.error).filter(Boolean);
+  const base = report === null ? null : describeImport(report);
+  // A merged report is either a plan, a result, or — after a partial write —
+  // both; that last case gets its own sentence rather than a plan's.
+  const outcome = base === null ? null : appliedCount > 0 && appliedCount < total
+    ? { ...base, headline: `部分批次已写入：${appliedCount} / ${total} 批（新建 ${planned.filter((b) => b.report!.applied).reduce((n, b) => n + b.report!.summary.create, 0)} 件、更新 ${planned.filter((b) => b.report!.applied).reduce((n, b) => n + b.report!.summary.update, 0)} 件）。其余批次见下方说明。` }
+    : base;
   const issues = report === null ? [] : issueCounts(report);
   const writableIndices = report === null || bundle === null || report.applied ? null : indicesWithActions(bundle, report, ["create", "update"]);
   const rows = report === null ? [] : report.pages.filter((page) => reportRowMatches(page, filter));
@@ -246,8 +360,19 @@ export function NotionImport() {
         </span>
       </div>
 
-      {busy === "dry-run" ? <p className="nw-m" role="status">正在读取或试跑所选页面…</p> : null}
-      {error !== "" ? <p className="nw-auth-error" role="alert">{error}</p> : null}
+      {busy === "dry-run" && progress === "" ? <p className="nw-m" role="status">正在读取或试跑所选页面…</p> : null}
+      {progress !== "" ? (
+        <p className="nw-import-progress" role="status">
+          {progress}
+          {total > 1 ? <button className="nw-btn" type="button" onClick={() => { stopped.current = true; }}>停止剩余批次</button> : null}
+        </p>
+      ) : null}
+      {error !== "" || batchErrors.length > 0 ? (
+        <div className="nw-auth-error" role="alert">
+          {[error, ...batchErrors].filter(Boolean).map((message, index) => <p key={index}>{message}</p>)}
+        </div>
+      ) : null}
+      {notes.length > 0 ? <ul className="nw-import-notes" role="status">{notes.map((note, index) => <li key={index}>{note}</li>)}</ul> : null}
       {warnings.length > 0 ? <div role="status"><p>文件转换提示（请核对后再确认）：</p><ul>{warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul></div> : null}
 
       {bundle !== null && choices.length > 0 ? (
@@ -286,7 +411,7 @@ export function NotionImport() {
             ))}
           </ul>
           <button className="nw-btn" type="button" disabled={busy !== null || selected.size === 0}
-            onClick={() => void send(selectBundlePages(bundle, selected), false)}>试跑所选文章</button>
+            onClick={() => void plan(selected)}>试跑所选文章</button>
         </section>
       ) : null}
       {bundle !== null && choices.length === 0 ? <p className="nw-m">文件中没有可选择的页面。</p> : null}
@@ -294,6 +419,12 @@ export function NotionImport() {
       {report !== null && outcome !== null ? (
         <div className="nw-import-report">
           <p className="nw-import-headline" role="status">{outcome.headline}</p>
+          {total > 1 ? (
+            <p className="nw-import-source">
+              超过单次 {MAX_MEGABYTES} MB、200 页或 8 张 Notion 图片的上限，已自动分成 {total} 批提交；同一作品的各语言版本总在同一批。
+              {appliedCount > 0 ? ` 已写入 ${appliedCount} 批。` : ""}
+            </p>
+          ) : null}
           {report.database.id !== "" ? (
             <p className="nw-import-source">
               bundle 里的数据库：{report.database.title ?? report.database.id}
@@ -360,17 +491,17 @@ export function NotionImport() {
             </p>
           ) : null}
 
-          {outcome.canApply && plannedBundle !== null ? (
+          {confirmable.length > 0 ? (
             <div className="nw-import-confirm">
               <button
                 className="nw-btn"
                 disabled={busy !== null}
-                onClick={() => void send(plannedBundle, true)}
+                onClick={() => void applyAll()}
                 type="button"
               >
-                {busy === "apply" ? "写入中…" : `确认导入（写入 ${outcome.writable} 件作品）`}
+                {busy === "apply" ? "写入中…" : `确认导入（写入 ${writable} 件作品${total > 1 ? `，${appliedCount > 0 ? "剩余 " : "分 "}${confirmable.length} 批` : ""}）`}
               </button>
-              <p className="nw-m" role="alert">
+              <p className="nw-m">
                 试跑计划在 15 分钟内有效，并绑定当前选择与作品版本。试跑后的编辑或来源变化会由服务器拒绝，
                 请重新试跑后确认；同一作品的所有语言版本会一起写入或回滚，其他作品可独立成功。
               </p>
@@ -381,7 +512,7 @@ export function NotionImport() {
             </div>
           ) : null}
 
-          {report.applied ? (
+          {appliedCount > 0 && confirmable.length === 0 && busy === null ? (
             <p className="nw-import-done">
               <Link className="nw-btn nw-pri" href="/write">去看写作台</Link>
               <button className="nw-btn" type="button" onClick={another}>再导入一批</button>

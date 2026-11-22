@@ -372,6 +372,7 @@ export function markdownEntriesToBundle(entries: Entry[]): MarkdownBundleResult 
   }
   if (!pages.length) throw new Error(markdown.length ? "未找到可导入的文章：Markdown 文件既没有首行 # 标题，也没有可用的文件名。" : "未找到 Markdown 文章：CSV 只提供属性，请连同导出的 .md 文件一起选择。");
   const bundle = { version: 1, database: { id: "", title: "Notion Markdown 导出" }, pages };
-  if (new TextEncoder().encode(JSON.stringify({ bundle, apply: true })).length > NOTION_BUNDLE_MAX_BYTES) throw new Error("转换后超过 8 MB，请分批导入。");
+  // The converted bundle may exceed one request's 8 MiB; the desk splits it
+  // into requests the API accepts (planImportBatches), so it is not refused here.
   return { bundle, pages: pages.length, warnings };
 }

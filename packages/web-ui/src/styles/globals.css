@@ -1131,6 +1131,10 @@ header[data-tool] .nw-pill { position: absolute; }
 .nw-import-download { margin-left: auto; }
 .nw-import-target { grid-column: 2 / -1; color: var(--t2); font: 400 12px/1.6 var(--f-zh); overflow-wrap: anywhere; }
 .nw-import-done { display: flex; flex-wrap: wrap; gap: 10px; }
+.nw-import-progress { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 16px 0 0; font: 500 14px/1.6 var(--f-zh); font-variant-numeric: tabular-nums; }
+.nw-import-notes { margin: 12px 0 0; padding-left: 1.2em; color: var(--t2); font: 400 13px/1.7 var(--f-zh); }
+.nw-auth-error > p { margin: 0; }
+.nw-auth-error > p + p { margin-top: 6px; }
 
 /* 本机清单与正文定位；所有颜色复用阅读器的纸/墨/强调色。 */
 .nw-reading-entry, .nw-reader-find { min-width: 0; margin: 0; padding: 0; }

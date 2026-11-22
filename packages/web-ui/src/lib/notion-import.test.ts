@@ -11,7 +11,10 @@ import {
   readBundleFile,
   indicesWithActions,
   invertSelection,
+  mergeReports,
   pageKey,
+  planImportBatches,
+  selectBundlePages,
   reportCsv,
   reportRowMatches,
   type NotionImportAction,
@@ -316,4 +319,70 @@ test("the report CSV has one escaped row per page and cannot inject a formula", 
   assert.equal(lines.length, 3);
   assert.equal(lines[1], "update,\"墙壁, 其一\",zh,wall,a-1,featured-image-not-carried,1 file(s)");
   assert.ok(lines[2]!.startsWith("refused,\"'=HYPERLINK(\"\"x\"\")\",en,,,missing-translation-page,请选择 English 关联的所有页面后重新试跑。"));
+});
+
+// --- planImportBatches: the API's per-request ceilings, and translation pairs kept together ---
+
+const pageWith = (id: string, extra: Record<string, unknown> = {}, blocks: unknown[] = []) => ({ id, properties: { Name: { type: "title", title: [{ plain_text: id }] }, ...extra }, blocks });
+const notionImage = (url: string) => ({ type: "image", image: { type: "file", file: { url } } });
+const all = (n: number) => new Set(Array.from({ length: n }, (_, index) => index));
+
+test("200 pages are one batch and page 201 starts a second", () => {
+  const pages = (n: number) => ({ version: 1, database: { id: "", title: null }, pages: Array.from({ length: n }, (_, i) => pageWith(`p${i}`)) });
+  assert.deepEqual(planImportBatches(pages(200), all(200)).batches.map((b) => b.length), [200]);
+  assert.deepEqual(planImportBatches(pages(201), all(201)).batches.map((b) => b.length), [200, 1]);
+});
+
+test("the serialised request may reach the byte ceiling exactly, but not exceed it", () => {
+  const bundle = { version: 1, database: { id: "", title: null }, pages: [pageWith("a"), pageWith("b")] };
+  const exact = new TextEncoder().encode(JSON.stringify({ bundle, apply: true })).length;
+  assert.deepEqual(planImportBatches(bundle, all(2), { bytes: exact, pages: 200, images: 8 }).batches, [[0, 1]]);
+  assert.deepEqual(planImportBatches(bundle, all(2), { bytes: exact - 1, pages: 200, images: 8 }).batches, [[0], [1]]);
+  // The default ceiling is the API's own: 8 MiB of `{ bundle, apply }`.
+  const big = (id: string) => pageWith(id, { Excerpt: { type: "rich_text", rich_text: [{ plain_text: "x".repeat(3 * 1024 * 1024) }] } });
+  const heavy = { version: 1, database: { id: "", title: null }, pages: [big("a"), big("b"), big("c")] };
+  const plan = planImportBatches(heavy, all(3));
+  assert.deepEqual(plan.batches, [[0, 1], [2]]);
+  for (const batch of plan.batches) assert.ok(new TextEncoder().encode(JSON.stringify({ bundle: selectBundlePages(heavy, new Set(batch)), apply: true })).length <= NOTION_BUNDLE_MAX_BYTES);
+});
+
+test("at most 8 distinct Notion images per batch; a repeated image counts once", () => {
+  const pages = Array.from({ length: 9 }, (_, i) => pageWith(`p${i}`, {}, [notionImage(`https://prod-files-secure.s3.us-west-2.amazonaws.com/${i}.png`)]));
+  pages.push(pageWith("again", {}, [notionImage("https://prod-files-secure.s3.us-west-2.amazonaws.com/0.png"), { type: "image", image: { type: "external", external: { url: "https://example.com/x.png" } } }]));
+  const plan = planImportBatches({ version: 1, database: { id: "", title: null }, pages }, all(10));
+  assert.deepEqual(plan.batches, [[0, 1, 2, 3, 4, 5, 6, 7], [8, 9]]);
+});
+
+test("a work with more than 8 images is sent alone, with a note rather than silently", () => {
+  const many = pageWith("many", {}, Array.from({ length: 10 }, (_, i) => notionImage(`https://prod-files-secure.s3.amazonaws.com/${i}`)));
+  const plan = planImportBatches({ version: 1, database: { id: "", title: null }, pages: [pageWith("a"), many, pageWith("b")] }, all(3));
+  assert.deepEqual(plan.batches, [[0], [1], [2]]);
+  assert.match(plan.notes[0]!, /10 张 Notion 图片/);
+});
+
+test("pages linked by English always share a batch, even across the page ceiling", () => {
+  const zh = "11111111-1111-1111-1111-111111111111"; const en = "22222222222222222222222222222222";
+  const pages = [pageWith(zh, { English: { type: "relation", relation: [{ id: en }] } }), pageWith("solo"), pageWith(en)];
+  const plan = planImportBatches({ version: 1, database: { id: "", title: null }, pages }, all(3), { bytes: NOTION_BUNDLE_MAX_BYTES, pages: 2, images: 8 });
+  assert.deepEqual(plan.batches, [[0, 2], [1]]);
+  // Only selected pages are planned; an unselected partner is not pulled in here.
+  assert.deepEqual(planImportBatches({ version: 1, database: { id: "", title: null }, pages }, new Set([0, 1])).batches, [[0, 1]]);
+});
+
+test("a work too large for any request is reported, not dropped or sent", () => {
+  const pages = [pageWith("ok"), pageWith("huge", { Excerpt: { type: "rich_text", rich_text: [{ plain_text: "x".repeat(2000) }] } })];
+  const plan = planImportBatches({ version: 1, database: { id: "", title: null }, pages }, all(2), { bytes: 1000, pages: 200, images: 8 });
+  assert.deepEqual(plan.batches, [[0]]);
+  assert.deepEqual(plan.tooLarge, [1]);
+});
+
+test("batch reports merge into one report; applied only when every batch was", () => {
+  const one = asImportReport({ applied: true, summary: { create: 1, update: 0, skip: 0, refused: 0, failed: 0 }, pages: [{ externalId: "a", action: "create" }] })!;
+  const two = asImportReport({ applied: false, planToken: "t", summary: { create: 0, update: 1, skip: 1, refused: 0, failed: 0 }, pages: [{ externalId: "b", action: "update" }, { externalId: "c", action: "skip" }] })!;
+  const merged = mergeReports([one, two])!;
+  assert.equal(merged.applied, false);
+  assert.equal(merged.planToken, undefined);
+  assert.deepEqual(merged.summary, { create: 1, update: 1, skip: 1, refused: 0, failed: 0 });
+  assert.deepEqual(merged.pages.map((p) => p.externalId), ["a", "b", "c"]);
+  assert.equal(mergeReports([]), null);
 });

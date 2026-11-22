@@ -390,3 +390,121 @@ export function reportCsv(report: NotionImportReport): string {
   ]);
   return "\uFEFF" + [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n") + "\r\n";
 }
+
+/** Distinct Notion-hosted images the API copies per request (`imports.ts`: `attempted >= 8`). */
+export const NOTION_IMPORT_MAX_IMAGES = 8;
+
+export type ImportBatchLimits = { bytes: number; pages: number; images: number };
+export const IMPORT_BATCH_LIMITS: ImportBatchLimits = Object.freeze({ bytes: NOTION_BUNDLE_MAX_BYTES, pages: NOTION_BUNDLE_MAX_PAGES, images: NOTION_IMPORT_MAX_IMAGES });
+
+export type ImportBatchPlan = {
+  /** Bundle indices per request, each in source order; the batches in source order. */
+  batches: number[][];
+  /** Indices that cannot be sent at all (one work larger than a request may be). */
+  tooLarge: number[];
+  /** Sentences the page shows: why a batch is shaped the way it is. */
+  notes: string[];
+};
+
+const utf8 = new TextEncoder();
+
+/** The Notion-hosted image URLs in a page's blocks (nested children included). */
+function notionImages(page: unknown): string[] {
+  const urls: string[] = [];
+  const walk = (blocks: unknown) => {
+    if (!Array.isArray(blocks)) return;
+    for (const block of blocks) {
+      if (!isRecord(block)) continue;
+      const image = block.type === "image" && isRecord(block.image) ? block.image : null;
+      if (image && image.type === "file" && isRecord(image.file) && typeof image.file.url === "string") urls.push(image.file.url);
+      walk(block.children);
+      if (typeof block.type === "string" && isRecord(block[block.type])) walk((block[block.type] as Record<string, unknown>).children);
+    }
+  };
+  if (isRecord(page)) walk(page.blocks);
+  return urls;
+}
+
+/** The page ids a page's `English` relation names — the API's translation link (`notion-bundle.ts`). */
+export function englishRelationIds(page: unknown): string[] {
+  if (!isRecord(page) || !isRecord(page.properties)) return [];
+  const relation = (page.properties as Record<string, unknown>).English;
+  if (!isRecord(relation) || !Array.isArray(relation.relation)) return [];
+  return relation.relation.flatMap((link: unknown) => isRecord(link) && typeof link.id === "string" ? [link.id] : []);
+}
+
+/**
+ * Split the selected pages into requests the API will accept, without changing
+ * what any one request means.
+ *
+ * Each request stays under the same ceilings a single import has always had —
+ * the serialised `{ bundle, apply }` under 8 MiB, at most 200 pages, at most 8
+ * distinct Notion-hosted images (beyond that the API stops copying and the page
+ * fails) — and **pages linked by `English` always travel together**: the API
+ * checks a translation pair within one bundle, so splitting a pair would turn
+ * a valid work into a `missing-translation-page` refusal. Packing is next-fit
+ * in source order, so the batches are predictable and a re-run of the same
+ * selection yields the same batches (and so the same plans).
+ *
+ * A work that alone exceeds the byte or page ceiling cannot be sent and is
+ * returned in `tooLarge` — reported, never silently dropped. A work with more
+ * than 8 images is sent on its own, with a note that some images will fail.
+ */
+export function planImportBatches(bundle: Record<string, unknown>, selection: ReadonlySet<number>, limits: ImportBatchLimits = IMPORT_BATCH_LIMITS): ImportBatchPlan {
+  const pages: unknown[] = Array.isArray(bundle.pages) ? bundle.pages : [];
+  const chosen = [...selection].filter((index) => index >= 0 && index < pages.length).sort((a, b) => a - b);
+  // Union-find over the selected pages, joined by English relations either way.
+  const parent = new Map<number, number>(chosen.map((index) => [index, index]));
+  const find = (index: number): number => { let root = index; while (parent.get(root) !== root) root = parent.get(root)!; parent.set(index, root); return root; };
+  const byKey = new Map<string, number>();
+  for (const index of chosen) { const page = pages[index]; if (isRecord(page) && typeof page.id === "string") byKey.set(pageKey(page.id), index); }
+  for (const index of chosen) for (const id of englishRelationIds(pages[index])) {
+    const other = byKey.get(pageKey(id));
+    if (other !== undefined) { const a = find(index), b = find(other); if (a !== b) parent.set(Math.max(a, b), Math.min(a, b)); }
+  }
+  const groups = new Map<number, number[]>();
+  for (const index of chosen) { const root = find(index); groups.set(root, [...(groups.get(root) ?? []), index]); }
+
+  const shell = utf8.encode(JSON.stringify({ bundle: { ...bundle, pages: [] }, apply: true })).length;
+  const sizeOf = (index: number) => utf8.encode(JSON.stringify(pages[index] ?? null)).length;
+  const batches: number[][] = []; const tooLarge: number[] = []; const notes: string[] = [];
+  // The shell holds the brackets; each page adds its JSON and one comma, and
+  // the first page's comma is not written — hence the starting `shell - 1`.
+  const empty = shell - 1;
+  let current: number[] = []; let bytes = empty; let images = new Set<string>();
+  const close = () => { if (current.length) batches.push(current); current = []; bytes = empty; images = new Set(); };
+  for (const group of [...groups.values()].sort((a, b) => a[0]! - b[0]!)) {
+    const groupBytes = group.reduce((sum, index) => sum + sizeOf(index) + 1, 0);
+    const groupImages = new Set(group.flatMap((index) => notionImages(pages[index])));
+    if (empty + groupBytes > limits.bytes || group.length > limits.pages) { tooLarge.push(...group); continue; }
+    const merged = new Set([...images, ...groupImages]);
+    if (current.length && (bytes + groupBytes > limits.bytes || current.length + group.length > limits.pages || merged.size > limits.images)) close();
+    if (groupImages.size > limits.images) {
+      close();
+      notes.push(`有一件作品含 ${groupImages.size} 张 Notion 图片，超过单次复制 ${limits.images} 张的上限，已单独成批；超出的图片会在报告中标为失败，可之后重新导入补齐。`);
+      batches.push(group);
+      continue;
+    }
+    current.push(...group); bytes += groupBytes; for (const url of groupImages) images.add(url);
+  }
+  close();
+  for (const batch of batches) batch.sort((a, b) => a - b);
+  return { batches, tooLarge, notes };
+}
+
+/**
+ * Several batch reports read as one: pages in batch order, summaries summed.
+ * `applied` is true only when every batch was applied; the plan tokens stay
+ * with their batches and are deliberately not merged.
+ */
+export function mergeReports(reports: readonly NotionImportReport[]): NotionImportReport | null {
+  if (!reports.length) return null;
+  const summary: Record<NotionImportAction, number> = { create: 0, update: 0, skip: 0, refused: 0, failed: 0 };
+  for (const report of reports) for (const action of ACTIONS) summary[action] += report.summary[action];
+  return {
+    applied: reports.every((report) => report.applied),
+    database: reports[0]!.database,
+    summary,
+    pages: reports.flatMap((report) => report.pages),
+  };
+}

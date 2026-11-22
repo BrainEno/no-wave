@@ -388,7 +388,7 @@ test("an edit after preview is preserved and the import asks to preview again", 
 });
 
 
-test("an invalidated plan hides confirmation and re-preview submits only the new token", async ({ page }) => {
+test("an invalidated plan is planned again once, and only a second confirm submits the new token", async ({ page }) => {
   await registerThroughForm(page, uniqueEmail("notion-expired"), "/write/notion");
   const file = bundleFile();
   const source = JSON.parse(file.buffer.toString("utf8")) as typeof BUNDLE;
@@ -423,11 +423,61 @@ test("an invalidated plan hides confirmation and re-preview submits only the new
   await selectAllAndPreview(page);
   await page.getByRole("button", { name: /确认导入/ }).click();
   await expect(page.getByRole("alert")).toContainText("试跑计划已失效或与当前选择不符");
-  await expect(page.getByRole("button", { name: /确认导入/ })).toHaveCount(0);
+  await expect(page.getByRole("alert")).toContainText("已自动重新试跑");
   await expect(page.getByRole("checkbox")).toBeChecked();
-  await page.getByRole("button", { name: "试跑所选文章" }).click();
+  // The automatic re-run is a dry run: nothing more is written until the author confirms again.
+  await expect(page.getByRole("button", { name: /确认导入/ })).toBeVisible();
+  expect(previews).toBe(2);
+  expect(attempts).toEqual(["controlled-preview-1"]);
   await page.getByRole("button", { name: /确认导入/ }).click();
   await expect(page.getByText(/已导入：新建 1 件/)).toBeVisible();
   expect(previews).toBe(2);
   expect(attempts).toEqual(["controlled-preview-1", "controlled-preview-2"]);
+});
+
+/** Nine Markdown pages, each with its own Notion-hosted image: more than one request may copy. */
+function imagePages(prefix: string) {
+  return Array.from({ length: 9 }, (_, index) => {
+    const id = randomUUID().replaceAll("-", "");
+    return { name: `${prefix}${index + 1} ${id}.md`, mimeType: "text/markdown",
+      buffer: Buffer.from(`# ${prefix}${index + 1}\n\n正文 ${index + 1}\n\n![图 ${index + 1}](https://prod-files-secure.s3.us-west-2.amazonaws.com/e2e/${id}.png)`) };
+  });
+}
+
+test("a selection over one request's limits is planned in batches, waits out a 429 and is confirmed once", async ({ page }) => {
+  await registerThroughForm(page, uniqueEmail("notion-batches"), "/write/notion");
+  let throttled = false;
+  const writes = await mockNotionImport(page, (request, call) => {
+    // The second batch's dry run is throttled once; the page must wait and continue by itself.
+    if (call === 2 && !throttled) { throttled = true; return { status: 429, headers: { "retry-after": "2" }, body: { error: { code: "RATE_LIMITED", message: "Too many requests" } } }; }
+    return null;
+  });
+  await page.setInputFiles("#notion-bundle-file", imagePages("分批"));
+  await selectAllAndPreview(page);
+  await expect(page.getByText(/第 2\/2 批将在 \d 秒后自动继续/)).toBeVisible();
+  await expect(page.getByText(/计划：新建 9 件/)).toBeVisible();
+  await expect(page.getByText(/已自动分成 2 批提交/)).toBeVisible();
+  // 8 distinct Notion images per request: 8 pages, then 1, the dry run of batch 2 sent twice.
+  expect(writes.map((request) => [request.apply === true, request.bundle.pages.length])).toEqual([[false, 8], [false, 1], [false, 1]]);
+  await page.getByRole("button", { name: "确认导入（写入 9 件作品，分 2 批）" }).click();
+  await expect(page.getByText(/已导入：新建 9 件/)).toBeVisible();
+  const applies = writes.filter((request) => request.apply === true);
+  // Each batch is written with its own plan token, never another batch's.
+  expect(applies.map((request) => [request.planToken, request.bundle.pages.length])).toEqual([["mock-plan-1", 8], ["mock-plan-3", 1]]);
+  await expect(page.getByRole("link", { name: "去看写作台" })).toBeVisible();
+});
+
+test("a failed batch does not stop the others, and the merged report names it", async ({ page }) => {
+  await registerThroughForm(page, uniqueEmail("notion-batch-fail"), "/write/notion");
+  const writes = await mockNotionImport(page, (request) => request.apply === true && request.bundle.pages.length === 8
+    ? { status: 500, body: { error: { code: "INTERNAL", message: "服务器暂时无法完成写入。" } } }
+    : null);
+  await page.setInputFiles("#notion-bundle-file", imagePages("失败"));
+  await selectAllAndPreview(page);
+  await page.getByRole("button", { name: /确认导入（写入 9 件作品，分 2 批）/ }).click();
+  await expect(page.getByRole("alert")).toContainText("第 1 批：写入失败：服务器暂时无法完成写入。");
+  await expect(page.getByText(/部分批次已写入：1 \/ 2 批（新建 1 件、更新 0 件）/)).toBeVisible();
+  expect(writes.filter((request) => request.apply === true).map((request) => request.bundle.pages.length)).toEqual([8, 1]);
+  // The failed batch is not offered for a blind retry: it must be planned again.
+  await expect(page.getByRole("button", { name: /确认导入/ })).toHaveCount(0);
 });
