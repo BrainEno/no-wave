@@ -3,6 +3,8 @@ import { Unzip, UnzipInflate } from "fflate";
 import { NOTION_BUNDLE_MAX_BYTES, NOTION_BUNDLE_MAX_PAGES } from "./notion-import.ts";
 
 type Entry = { name: string; text: string };
+/** One CSV export of a Notion database view: the first column is the title property. */
+export type NotionTable = { name: string; header: string[]; rows: string[][] };
 type Page = { id: string; properties: Record<string, unknown>; blocks: Record<string, unknown>[] };
 export type MarkdownBundleResult = { bundle: Record<string, unknown>; pages: number; warnings: string[] };
 const rich = (plain_text: string) => ({ plain_text });
@@ -10,18 +12,77 @@ const titleProp = (s: string) => ({ type: "title", title: [rich(s)] });
 const textProp = (s: string) => ({ type: "rich_text", rich_text: [rich(s)] });
 const pageId = (name: string) => /(?:^|\s)([a-f0-9]{32})(?:\.md)$/i.exec(name.split(/[\\/]/).pop() ?? "")?.[1]?.toLowerCase();
 const canonical = (id: string) => `${id.slice(0, 8)}-${id.slice(8, 12)}-${id.slice(12, 16)}-${id.slice(16, 20)}-${id.slice(20)}`;
+const basenameOf = (name: string) => name.split(/[\\/]/).pop() ?? "";
+/** "墙壁 0123…cdef.md" → "墙壁": what a person would call the file. */
+const fileTitle = (name: string) => basenameOf(name).replace(/\.(md|csv)$/i, "").replace(/(?:_all)$/i, "").replace(/\s+[a-f0-9]{32}$/i, "").trim();
+
+/**
+ * Notion writes a checkbox as Yes/No; other tools and hand-edited exports use
+ * true/false, Y/N, 是/否, and Notion's own API dump uses __YES__/__NO__. Anything
+ * else is not a checkbox value, so the caller can tell a real checkbox column
+ * from a Status select that happens to be called "Published".
+ */
+export function notionBoolean(value: string): boolean | null {
+  const v = value.trim();
+  if (/^(yes|true|y|__yes__|是)$/i.test(v)) return true;
+  if (/^(no|false|n|__no__|否)$/i.test(v)) return false;
+  return null;
+}
+
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+const day = (y: number, m: number, d: number): string | null => {
+  const t = Date.UTC(y, m - 1, d);
+  const at = new Date(t);
+  // Reject 2026-02-30 rather than letting Date roll it into March.
+  return at.getUTCFullYear() === y && at.getUTCMonth() === m - 1 && at.getUTCDate() === d ? at.toISOString() : null;
+};
+
+/**
+ * A calendar day in any of the spellings a Notion export or a Chinese
+ * spreadsheet produces, read as **UTC midnight** — the same rule as the API's
+ * `notionDateToInstant`, so the instant never depends on the browser's
+ * timezone. `new Date("2026/10/08")` is deliberately never used: it is local
+ * time. A full ISO timestamp is honoured exactly; one without a zone is UTC.
+ * A Notion range ("A → B") keeps its start; the caller reports the rest.
+ */
+export function notionDateStart(raw: string): { start: string; range: boolean } | null {
+  const [head, ...rest] = raw.split(/\s*→\s*/);
+  const value = (head ?? "").trim();
+  const range = rest.length > 0;
+  let m = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/.exec(value) ?? /^(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日?$/.exec(value);
+  if (m) { const start = day(+m[1]!, +m[2]!, +m[3]!); return start ? { start, range } : null; }
+  m = /^([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4})$/.exec(value);
+  if (m) {
+    const month = MONTHS.indexOf(m[1]!.slice(0, 3).toLowerCase());
+    const full = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"][month];
+    if (month < 0 || !(m[1]!.length === 3 || full!.startsWith(m[1]!.toLowerCase()))) return null;
+    const start = day(+m[3]!, month + 1, +m[2]!);
+    return start ? { start, range } : null;
+  }
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?([zZ]|[+-]\d{2}:?\d{2})?$/.test(value)) {
+    const zoned = /[zZ]$|[+-]\d{2}:?\d{2}$/.test(value);
+    const t = Date.parse(zoned ? value : `${value}Z`);
+    return Number.isFinite(t) ? { start: new Date(t).toISOString(), range } : null;
+  }
+  return null;
+}
 
 /** Parse only a leading run of known Notion properties: normal prose is never swallowed. */
 function parseEntry(entry: Entry, warnings: string[]): Page | null {
   const lines = entry.text.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n").split("\n");
   const heading = /^#\s+(.+?)\s*#*\s*$/.exec(lines[0] ?? "");
   const id = pageId(entry.name);
-  if (!heading) { warnings.push(`${entry.name}：缺少首行标题，已跳过。`); return null; }
-  const basename = entry.name.split(/[\\/]/).pop() ?? "";
+  const basename = basenameOf(entry.name);
+  // A page exported without its "# title" line still has a name: the file's.
+  // It is used, and said so; only a page with neither is skipped.
+  const fallback = fileTitle(entry.name);
+  const title = heading?.[1]?.trim() || fallback;
+  if (!title) { warnings.push(`${entry.name}：既没有首行 # 标题，也无法从文件名得到标题，已跳过。`); return null; }
   if (!id && (!basename || basename.length > 120)) { warnings.push(`${entry.name}：文件名过长或无效，已跳过。`); return null; }
+  if (!heading) warnings.push(`${entry.name}：缺少首行 # 标题，已用文件名「${title}」作标题；请核对。`);
   if (!id) warnings.push(`${entry.name}：没有 Notion 页面 ID，使用文件名识别；重命名会视为新文章。`);
-  const properties: Record<string, unknown> = { Name: titleProp(heading[1]!.trim()) };
-  let i = 1;
+  const properties: Record<string, unknown> = { Name: titleProp(title) };
+  let i = heading ? 1 : 0;
   while (i < lines.length && !lines[i]!.trim()) i++;
   const known = new Set(["Date", "Excerpt", "FeaturedImage", "Published", "Rank", "Slug", "Tags", "English", "Parent item"]);
   let inProperties = false;
@@ -34,17 +95,16 @@ function parseEntry(entry: Entry, warnings: string[]): Page | null {
     const value = raw.trim();
     if (key === "Slug" || key === "Excerpt") properties[key] = textProp(value);
     else if (key === "Published") {
-      if (/^(yes|true)$/i.test(value)) properties[key] = { type: "checkbox", checkbox: true };
-      else if (/^(no|false)$/i.test(value)) properties[key] = { type: "checkbox", checkbox: false };
+      const checked = notionBoolean(value);
+      if (checked !== null) properties[key] = { type: "checkbox", checkbox: checked };
       else warnings.push(`${entry.name}：无法识别 Published，按草稿处理。`);
     } else if (key === "Tags") properties[key] = { type: "multi_select", multi_select: value.split(",").map((name) => ({ name: name.trim() })).filter(({ name }) => name) };
     else if (key === "Date") {
-      // Notion exports English month names without a timezone. Interpret a
-      // calendar day as UTC, independent of the browser's local timezone.
-      const dateOnly = /^[A-Za-z]+\s+\d{1,2},?\s+\d{4}$/.test(value);
-      const date = Date.parse(dateOnly ? `${value} UTC` : value);
-      if (Number.isFinite(date)) properties[key] = { type: "date", date: { start: new Date(date).toISOString() } };
-      else warnings.push(`${entry.name}：日期无法识别，使用默认日期。`);
+      const date = notionDateStart(value);
+      if (date) {
+        properties[key] = { type: "date", date: { start: date.start } };
+        if (date.range) warnings.push(`${entry.name}：Date 是时间段，只保留开始日期。`);
+      } else warnings.push(`${entry.name}：日期无法识别，使用默认日期。`);
     } else if (key === "FeaturedImage" && value) properties[key] = { type: "files", files: [{ type: "external", external: { url: value } }] };
     else if ((key === "English" || key === "Parent item") && value) {
       let decoded = value; try { decoded = decodeURIComponent(value); } catch { /* keep original */ }
@@ -110,6 +170,134 @@ function parseEntry(entry: Entry, warnings: string[]): Page | null {
   return { id: id ? canonical(id) : `markdown-file:${encodeURIComponent(basename)}`, properties, blocks };
 }
 
+/**
+ * RFC 4180 as Notion writes it: a UTF-8 BOM, CRLF line ends, quoted cells that
+ * may contain commas, doubled quotes and line breaks. Blank lines are dropped.
+ */
+export function parseCsv(text: string): string[][] {
+  const rows: string[][] = []; let row: string[] = []; let cell = ""; let quoted = false;
+  const src = text.replace(/^\uFEFF/, "");
+  const endRow = () => { row.push(cell); cell = ""; if (row.some((c) => c !== "")) rows.push(row); row = []; };
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i]!;
+    if (quoted) {
+      if (c === '"') { if (src[i + 1] === '"') { cell += '"'; i++; } else quoted = false; }
+      else cell += c;
+    } else if (c === '"' && cell === "") quoted = true;
+    else if (c === ",") { row.push(cell); cell = ""; }
+    else if (c === "\r") { if (src[i + 1] === "\n") i++; endRow(); }
+    else if (c === "\n") endRow();
+    else cell += c;
+  }
+  if (cell !== "" || row.length) endRow();
+  return rows;
+}
+
+/**
+ * The database CSVs in an export. Notion writes two per database: "X.csv" with
+ * the view's visible columns and "X_all.csv" with every property; when both are
+ * present only `_all` is read, so a hidden Date column is not mistaken for none.
+ */
+export function tablesOf(entries: readonly Entry[]): NotionTable[] {
+  const csv = entries.filter((e) => /\.csv$/i.test(e.name));
+  const keyOf = (name: string) => name.replace(/_all\.csv$/i, ".csv").toLowerCase();
+  const hasAll = new Set(csv.filter((e) => /_all\.csv$/i.test(e.name)).map((e) => keyOf(e.name)));
+  return csv.filter((e) => /_all\.csv$/i.test(e.name) || !hasAll.has(keyOf(e.name))).flatMap((e) => {
+    const [header, ...rows] = parseCsv(e.text);
+    return header ? [{ name: `${fileTitle(e.name)}.csv`, header: header.map((h) => h.trim()), rows }] : [];
+  });
+}
+
+/** Property → the column names a Notion database or a Chinese spreadsheet uses for it. */
+const COLUMN_NAMES: Record<string, readonly string[]> = {
+  Date: ["date", "日期", "发布日期", "发表日期", "创作日期"],
+  Excerpt: ["excerpt", "summary", "摘要", "摘录", "简介"],
+  FeaturedImage: ["featuredimage", "featured image", "cover", "封面", "封面图", "题图"],
+  Published: ["published", "已发布", "发布", "是否发布", "已发表"],
+  Slug: ["slug", "别名", "网址别名", "短链"],
+  Tags: ["tags", "tag", "标签"],
+};
+/** Columns that are known and deliberately not carried, so they are not reported as unknown. */
+const IGNORED_COLUMNS = new Set(["rank", "排序"]);
+type TableIndex = { table: NotionTable; columns: Partial<Record<string, number>>; checkbox: boolean };
+
+function isEmptyProperty(value: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  const v = value as { rich_text?: { plain_text: string }[]; multi_select?: unknown[]; files?: unknown[] };
+  if (v.rich_text) return v.rich_text.every((r) => !r.plain_text.trim());
+  if (v.multi_select) return v.multi_select.length === 0;
+  if (v.files) return v.files.length === 0;
+  return false;
+}
+
+/** Map each table's header once, and say once which of its columns are not imported. */
+export function indexTables(tables: readonly NotionTable[], warnings: string[]): TableIndex[] {
+  return tables.map((table) => {
+    const columns: Partial<Record<string, number>> = {}; const unknown: string[] = [];
+    table.header.forEach((name, index) => {
+      if (index === 0) return; // the title property
+      const key = Object.keys(COLUMN_NAMES).find((k) => COLUMN_NAMES[k]!.includes(name.trim().toLowerCase()));
+      if (key && columns[key] === undefined) columns[key] = index;
+      else if (!IGNORED_COLUMNS.has(name.trim().toLowerCase())) unknown.push(name || `第 ${index + 1} 列`);
+    });
+    // Only a column whose every non-empty value is a checkbox value is a
+    // checkbox: a Status select named "Published" holding "Draft" is not, and
+    // reading its "Yes" rows as published would publish by accident.
+    const published = columns.Published;
+    const values = published === undefined ? [] : table.rows.map((r) => (r[published] ?? "").trim()).filter(Boolean);
+    const checkbox = values.length > 0 && values.every((v) => notionBoolean(v) !== null);
+    if (published !== undefined && !checkbox) warnings.push(`${table.name}：「${table.header[published]}」列不全是勾选值（是/否、Yes/No），未用于发布状态。`);
+    if (unknown.length) warnings.push(`${table.name}：列 ${unknown.join("、")} 没有对应字段，未导入。`);
+    return { table, columns, checkbox };
+  });
+}
+
+/**
+ * Fill a page's *empty* properties from its database row; a value already in
+ * the Markdown is never overwritten. The row is found by the page's `#` title,
+ * then by the file name without its Notion id — both trimmed. A name shared by
+ * two rows is ambiguous and fills nothing. Every page says what happened.
+ */
+export function fillFromTables(page: Page, entry: Entry, tables: readonly TableIndex[], warnings: string[]): void {
+  if (!tables.length) return;
+  const title = ((page.properties.Name as { title: { plain_text: string }[] }).title[0]?.plain_text ?? "").trim();
+  const label = title || entry.name;
+  const find = (name: string) => tables.flatMap((t) => t.table.rows.filter((r) => (r[0] ?? "").trim() === name).map((row) => ({ t, row })));
+  let hits = title ? find(title) : [];
+  const base = fileTitle(entry.name);
+  if (!hits.length && base && base !== title) hits = find(base);
+  if (!hits.length) { warnings.push(`《${label}》：CSV 中没有匹配的行，属性未补齐。`); return; }
+  if (hits.length > 1) { warnings.push(`《${label}》：CSV 中有 ${hits.length} 行同名，无法确定是哪一行，属性未补齐。`); return; }
+  const { t, row } = hits[0]!;
+  const filled: string[] = []; const problems: string[] = [];
+  const cell = (key: string) => { const i = t.columns[key]; return i === undefined ? "" : (row[i] ?? "").trim(); };
+  for (const key of Object.keys(COLUMN_NAMES)) {
+    const value = cell(key);
+    if (!value || !isEmptyProperty(page.properties[key])) continue;
+    if (key === "Slug" || key === "Excerpt") page.properties[key] = textProp(value);
+    else if (key === "Tags") {
+      const tags = value.split(/[,，、]/).map((name) => ({ name: name.trim() })).filter(({ name }) => name);
+      if (tags.length) page.properties[key] = { type: "multi_select", multi_select: tags };
+    } else if (key === "Published") {
+      if (!t.checkbox) continue;
+      page.properties[key] = { type: "checkbox", checkbox: notionBoolean(value)! };
+    } else if (key === "Date") {
+      const date = notionDateStart(value);
+      if (!date) { problems.push(`日期「${value}」无法识别`); continue; }
+      page.properties[key] = { type: "date", date: { start: date.start } };
+      if (date.range) problems.push("Date 是时间段，只保留开始日期");
+    } else if (key === "FeaturedImage") {
+      if (!/^https?:\/\//i.test(value)) { problems.push("封面是导出包内的本地文件，未导入"); continue; }
+      page.properties[key] = { type: "files", files: [{ type: "external", external: { url: value.split(/\s*,\s*/)[0]! } }] };
+    }
+    if (page.properties[key] !== undefined) filled.push(key);
+  }
+  const extra = problems.length ? `；${problems.join("；")}` : "";
+  warnings.push(filled.length
+    ? `《${label}》：已从 ${t.table.name} 补 ${filled.length} 列属性（${filled.join("、")}）；请核对${extra}。`
+    : `《${label}》：已与 ${t.table.name} 对照，没有需要补的空属性${extra}。`);
+}
+
 /** Reject ZIP bombs while streaming, without extracting paths or saving files. */
 export function readMarkdownZip(bytes: Uint8Array): Entry[] {
   if (bytes.byteLength > NOTION_BUNDLE_MAX_BYTES) throw new Error("ZIP 超过 8 MB，请分批导入。");
@@ -124,15 +312,18 @@ export function readMarkdownZip(bytes: Uint8Array): Entry[] {
       view.getUint16(end + 8, true) !== view.getUint16(end + 10, true) || view.getUint16(end + 10, true) === 0xffff ||
       view.getUint32(end + 12, true) === 0xffffffff || view.getUint32(end + 16, true) === 0xffffffff ||
       view.getUint32(end + 12, true) + view.getUint32(end + 16, true) !== end) throw new Error("ZIP 不完整或格式不受支持。");
-  const entries: Entry[] = []; let total = 0; let count = 0;
+  const entries: Entry[] = []; let total = 0; let count = 0; let pages = 0;
   // fflate may catch a callback exception and call ondata again with an error.
   // Keep our actionable validation failure rather than replacing it with a
   // generic decompression message on that second call.
   let validationError: Error | null = null;
   const unzip = new Unzip((file) => {
     if (++count > 2000) throw new Error("ZIP 文件数量过多。");
-    if (!/\.md$/i.test(file.name) || /(^|\/)__MACOSX\//.test(file.name)) return;
-    if (entries.length >= NOTION_BUNDLE_MAX_PAGES) throw new Error("一次最多导入 200 个 Markdown 文件。");
+    // Markdown pages, plus the database CSVs that carry their properties. The
+    // entry, page and decompressed-byte ceilings below are unchanged; a CSV is
+    // not a page, so it does not count toward the 200.
+    if (!/\.(md|csv)$/i.test(file.name) || /(^|\/)__MACOSX\//.test(file.name)) return;
+    if (/\.md$/i.test(file.name) && ++pages > NOTION_BUNDLE_MAX_PAGES) throw new Error("一次最多导入 200 个 Markdown 文件。");
     const chunks: Uint8Array[] = []; let size = 0;
     file.ondata = (err, chunk, final) => {
       if (err) throw validationError ?? new Error("ZIP 解压失败或格式不受支持。");
@@ -148,7 +339,7 @@ export function readMarkdownZip(bytes: Uint8Array): Entry[] {
         let text: string;
         try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); }
         catch {
-          validationError = new Error("ZIP 中的 Markdown 不是有效的 UTF-8 文本。");
+          validationError = new Error(`ZIP 中的 ${/\.csv$/i.test(file.name) ? "CSV" : "Markdown"} 不是有效的 UTF-8 文本。`);
           throw validationError;
         }
         entries.push({ name: file.name, text });
@@ -163,10 +354,13 @@ export function readMarkdownZip(bytes: Uint8Array): Entry[] {
 }
 
 export function markdownEntriesToBundle(entries: Entry[]): MarkdownBundleResult {
-  if (entries.length > NOTION_BUNDLE_MAX_PAGES) throw new Error("一次最多导入 200 个 Markdown 文件。");
+  const markdown = entries.filter((e) => !/\.csv$/i.test(e.name));
+  if (markdown.length > NOTION_BUNDLE_MAX_PAGES) throw new Error("一次最多导入 200 个 Markdown 文件。");
   const warnings: string[] = []; const pages: Page[] = []; const ids = new Set<string>();
-  for (const entry of entries) {
+  const tables = indexTables(tablesOf(entries), warnings);
+  for (const entry of markdown) {
     const page = parseEntry(entry, warnings); if (!page) continue;
+    fillFromTables(page, entry, tables, warnings);
     if (ids.has(page.id)) throw new Error(`重复的 Notion 页面 ID：${page.id}；请选择一个副本。`);
     ids.add(page.id); pages.push(page);
   }
@@ -176,8 +370,9 @@ export function markdownEntriesToBundle(entries: Entry[]): MarkdownBundleResult 
       if (prop?.relation?.some((link) => !ids.has(link.id))) warnings.push(`${page.id}：${key} 所指页面不在本次选择中，无法关联。`);
     }
   }
-  if (!pages.length) throw new Error("未找到符合格式的文章：需要首行 # 标题。");
+  if (!pages.length) throw new Error(markdown.length ? "未找到可导入的文章：Markdown 文件既没有首行 # 标题，也没有可用的文件名。" : "未找到 Markdown 文章：CSV 只提供属性，请连同导出的 .md 文件一起选择。");
   const bundle = { version: 1, database: { id: "", title: "Notion Markdown 导出" }, pages };
-  if (new TextEncoder().encode(JSON.stringify({ bundle, apply: true })).length > NOTION_BUNDLE_MAX_BYTES) throw new Error("转换后超过 8 MB，请分批导入。");
+  // The converted bundle may exceed one request's 8 MiB; the desk splits it
+  // into requests the API accepts (planImportBatches), so it is not refused here.
   return { bundle, pages: pages.length, warnings };
 }

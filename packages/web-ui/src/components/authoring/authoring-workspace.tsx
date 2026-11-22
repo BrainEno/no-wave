@@ -512,6 +512,10 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
         <nav className="nw-authoring-actions nw-desk-nav" aria-label="写作台去处">
           <Link className="nw-desk-link" href="/write/library">全部作品目录</Link>
           <Link className="nw-desk-link" href="/write/media">媒体库</Link>
+          {/* Notion as an interchange format (ADR 0036). "导入文章" is the
+              first-level verb an author scans for; the source stays visible as a
+              sub-label, so the link's accessible name still reads "从 Notion 导入". */}
+          <Link className="nw-desk-link nw-desk-import" href="/write/notion"><span>导入文章</span><small>从 Notion 导入</small></Link>
           <details className="nw-authoring-help nw-desk-help">
             <summary className="nw-desk-link">存储说明</summary>
             <p>保存成功的草稿与发布状态由 API 持久化；未保存输入默认只在本页；只有明确启用下方本机恢复才会缓存。请保存服务器草稿或下载备份。</p>
@@ -531,7 +535,7 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
           </div>
           <button className="nw-btn nw-pri nw-desk-new" type="button" disabled={pendingCreate} onClick={openNewDocument}>新建作品 +</button>
           <div className="nw-desk-works">
-            {articles.length === 0 ? <p className="nw-m">还没有草稿或已发布作品。</p> : articles.map((article) => (
+            {articles.length === 0 ? <div className="nw-desk-empty"><p className="nw-m">还没有草稿或已发布作品。</p><Link className="nw-desk-empty-cta" href="/write/notion">还没有作品？从 Notion 导入第一批 →</Link></div> : articles.map((article) => (
               <button className="nw-authoring-article" key={editionKey(article)} type="button" disabled={pendingCreate} aria-current={selected && editionKey(selected) === editionKey(article) ? "true" : undefined} onClick={() => openDocument(article)}>
                 <span>{article.title}</span>
                 <small><b data-status={article.status}>{article.status === "published" ? "已发布" : "草稿"}</b> · {localeLabel(article.locale)} · {article.updatedAt ? new Date(article.updatedAt).toLocaleDateString("zh-CN") : article.slug}</small>

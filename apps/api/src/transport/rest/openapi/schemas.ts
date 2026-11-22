@@ -744,6 +744,33 @@ export const SCHEMAS: Readonly<Record<string, JsonSchema>> = Object.freeze({
     },
   },
 
+  NotionFetchRequest: {
+    type: "object",
+    required: ["token", "mode"],
+    description: "The token is a Notion internal integration secret; it is used for this request only and never stored.",
+    properties: {
+      token: { type: "string", minLength: 20, maxLength: 200, pattern: "^(?:ntn_|secret_)[A-Za-z0-9_]+$", description: "Your Notion integration secret. Never logged or returned." },
+      mode: { type: "string", enum: ["rows", "pages"] },
+      source: { type: "string", maxLength: 2048, description: "For `rows`: a Notion database link or its 32-character id (a data source id also works)." },
+      cursor: { type: ["string", "null"], maxLength: 512, description: "For `rows`: the `cursor` of the previous answer." },
+      pageIds: { type: "array", minItems: 1, maxItems: 200, items: { type: "string" }, description: "For `pages`: the page ids still to read." },
+    },
+  },
+
+  NotionFetchResult: {
+    type: "object",
+    description: "`rows` answers `source`, `rows` and `cursor`; `pages` answers `pages`, `issues`, `done` and, when Notion's rate limit ended the slice, `retryAfterSeconds`.",
+    properties: {
+      source: { type: "object", properties: { id: { type: "string" }, title: { type: ["string", "null"] } } },
+      rows: { type: "array", items: { type: "object", required: ["id", "properties"], properties: { id: { type: "string" }, properties: { type: "object", additionalProperties: true }, inTrash: { type: "boolean" }, archived: { type: "boolean" } } } },
+      cursor: { type: ["string", "null"] },
+      pages: { type: "array", items: { type: "object", required: ["id", "blocks"], properties: { id: { type: "string" }, blocks: { type: "array", items: { type: "object", additionalProperties: true } } } } },
+      issues: { type: "array", items: { type: "object", required: ["id", "code"], properties: { id: { type: "string" }, code: { type: "string", enum: ["too-many-blocks", "page-too-large", "fetch-timeout", "page-unavailable", "fetch-failed"] } } } },
+      done: { type: "array", items: { type: "string" } },
+      retryAfterSeconds: { type: "integer", minimum: 1 },
+    },
+  },
+
   NotionImportRequest: {
     type: "object",
     required: ["bundle"],

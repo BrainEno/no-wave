@@ -3240,6 +3240,142 @@
         ]
       }
     },
+    "/api/v1/imports/notion/fetch": {
+      "post": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "Pull your own Notion database with a pasted integration token, one bounded slice at a time",
+        "operationId": "imports.notion.fetch.post",
+        "responses": {
+          "200": {
+            "description": "Rows (with a cursor) or page bodies (with `done` and `issues`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/NotionFetchResult"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request: `BAD_USER_INPUT` for a query or body the contract does not allow, `BAD_INPUT` for discovery paging misuse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid, unrevoked bearer token was presented (`UNAUTHENTICATED`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict: `ARTICLE_VERSION_CONFLICT`, `IMPORT_PLAN_INVALID`, `IDEMPOTENCY_CONFLICT`, `MAIL_DISABLED`, `MEDIA_DELETE_DISABLED`, or a duplicate unique value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body is larger than this route accepts (`PAYLOAD_TOO_LARGE`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "The request body is not `application/json` (`UNSUPPORTED_MEDIA_TYPE`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A third party refused the request on the caller's behalf (`NOTION_TOKEN_INVALID`, `NOTION_NOT_SHARED`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate or import queue capacity limit reached (`RATE_LIMITED`, `IMPORT_QUEUE_FULL`); observe Retry-After.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "A third-party API this route reads could not be read (`NOTION_UNAVAILABLE`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A dependency this route needs is unavailable (`SERVICE_UNAVAILABLE`, `MEDIA_STORAGE_UNAVAILABLE`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "A read of the caller's Notion, not a write here. The token is used for this request only and is never stored, logged or returned (ADR 0052); Notion's own error text is never forwarded either.\n\n`mode: \"rows\"` resolves `source` (a database link or id, or a data source id) and lists rows with their properties, up to 1000 per request; a non-null `cursor` in the answer continues the listing. `mode: \"pages\"` reads the bodies of at most 200 named pages, in order, until the request's time (about 45 s to start a page, 75 s hard) or byte budget (6 MiB) runs out; `done` lists every id the slice finished, carried or reported in `issues` (`too-many-blocks` over 2000 blocks, `page-too-large`, `fetch-timeout`, `page-unavailable`, `fetch-failed`) — a page is never truncated. Send the remaining ids for the next slice; nothing about the continuation is kept on the server. When Notion's rate limit ends a slice early, `retryAfterSeconds` says how long to wait.\n\nThe result is the raw material of a bundle for `POST imports.notion`, whose dry run and explicit apply are unchanged. Errors: `NOTION_TOKEN_INVALID` / `NOTION_NOT_SHARED` (422), `NOTION_RATE_LIMITED` (429 with Retry-After), `NOTION_UNAVAILABLE` (502), `NOTION_FETCH_DISABLED` (409) when `NOTION_FETCH_ENABLED=false`, `NOTION_FETCH_BUSY` (503 with Retry-After) when too many pulls are in flight on this instance (8 in total, 2 per author).",
+        "requestBody": {
+          "required": true,
+          "description": "The token, the mode and its continuation.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotionFetchRequest"
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/imports/notion/jobs": {
       "get": {
         "tags": [
@@ -8829,6 +8965,160 @@
           },
           "issues": {
             "$ref": "#/components/schemas/InterchangeIssues"
+          }
+        }
+      },
+      "NotionFetchRequest": {
+        "type": "object",
+        "required": [
+          "token",
+          "mode"
+        ],
+        "description": "The token is a Notion internal integration secret; it is used for this request only and never stored.",
+        "properties": {
+          "token": {
+            "type": "string",
+            "minLength": 20,
+            "maxLength": 200,
+            "pattern": "^(?:ntn_|secret_)[A-Za-z0-9_]+$",
+            "description": "Your Notion integration secret. Never logged or returned."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "rows",
+              "pages"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 2048,
+            "description": "For `rows`: a Notion database link or its 32-character id (a data source id also works)."
+          },
+          "cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 512,
+            "description": "For `rows`: the `cursor` of the previous answer."
+          },
+          "pageIds": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 200,
+            "items": {
+              "type": "string"
+            },
+            "description": "For `pages`: the page ids still to read."
+          }
+        }
+      },
+      "NotionFetchResult": {
+        "type": "object",
+        "description": "`rows` answers `source`, `rows` and `cursor`; `pages` answers `pages`, `issues`, `done` and, when Notion's rate limit ended the slice, `retryAfterSeconds`.",
+        "properties": {
+          "source": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "title": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "properties"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "properties": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "inTrash": {
+                  "type": "boolean"
+                },
+                "archived": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "blocks"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "blocks": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                }
+              }
+            }
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "code"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "code": {
+                  "type": "string",
+                  "enum": [
+                    "too-many-blocks",
+                    "page-too-large",
+                    "fetch-timeout",
+                    "page-unavailable",
+                    "fetch-failed"
+                  ]
+                }
+              }
+            }
+          },
+          "done": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "retryAfterSeconds": {
+            "type": "integer",
+            "minimum": 1
           }
         }
       },

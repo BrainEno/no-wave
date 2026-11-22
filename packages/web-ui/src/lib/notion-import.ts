@@ -323,3 +323,232 @@ export function importDetail(detail: string): string {
   };
   return messages[detail] ?? detail;
 }
+
+/**
+ * Bundle page ids and report `externalId`s name the same page, but the API
+ * normalises the id it reports; compare them with dashes and case removed.
+ */
+export function pageKey(id: string): string {
+  return id.replaceAll("-", "").toLowerCase();
+}
+
+/** The id of each bundle page, by index ("" for a page without one). */
+export function bundlePageIds(bundle: Record<string, unknown>): string[] {
+  if (!Array.isArray(bundle.pages)) return [];
+  return bundle.pages.map((page: unknown) => isRecord(page) && typeof page.id === "string" ? page.id : "");
+}
+
+/** What a report row can be filtered by, after a dry run. */
+export type ReportFilter = "all" | "changes" | "attention";
+
+/**
+ * "changes" is what confirming would write (create, update); "attention" is a
+ * row the author must read before confirming: refused, failed, or carrying an
+ * issue code (something that will not come across as it was in Notion).
+ */
+export function reportRowMatches(page: NotionImportPage, filter: ReportFilter): boolean {
+  if (filter === "changes") return page.action === "create" || page.action === "update";
+  if (filter === "attention") return page.action === "refused" || page.action === "failed" || page.issues.length > 0;
+  return true;
+}
+
+/**
+ * The bundle indices whose report row has one of `actions`. A report row is
+ * only ever used to *choose* among bundle pages; the selection stays a set of
+ * bundle indices, so what is sent is always exactly the author's source pages.
+ */
+export function indicesWithActions(bundle: Record<string, unknown>, report: NotionImportReport, actions: readonly NotionImportAction[]): Set<number> {
+  const wanted = new Set(report.pages.filter((page) => actions.includes(page.action)).map((page) => pageKey(page.externalId)));
+  const indices = new Set<number>();
+  bundlePageIds(bundle).forEach((id, index) => { if (id && wanted.has(pageKey(id))) indices.add(index); });
+  return indices;
+}
+
+/** The selected indices after toggling every one of `visible`. */
+export function invertSelection(selected: ReadonlySet<number>, visible: readonly number[]): Set<number> {
+  const next = new Set(selected);
+  for (const index of visible) if (next.has(index)) next.delete(index); else next.add(index);
+  return next;
+}
+
+const csvCell = (value: string) => /[",\r\n]/.test(value) || /^[=+\-@\t]/.test(value)
+  // A leading = + - @ would be run as a formula by a spreadsheet; the apostrophe
+  // keeps a title like "=SUM(…)" a title.
+  ? `"${(/^[=+\-@\t]/.test(value) ? `'${value}` : value).replaceAll('"', '""')}"`
+  : value;
+
+/**
+ * The report as a CSV an author can keep or open in a spreadsheet: one row per
+ * page, with the same facts the page shows. A BOM makes Excel read it as UTF-8.
+ */
+export function reportCsv(report: NotionImportReport): string {
+  const header = ["action", "title", "locale", "slug", "articleId", "issues", "detail"];
+  const rows = report.pages.map((page) => [
+    page.action, page.title || page.externalId, page.locale, page.slug, page.articleId ?? "",
+    page.issues.map((issue) => issue.code).join(" "),
+    [page.detail, ...page.issues.map((issue) => issue.detail)].filter(Boolean).map(importDetail).join(" | "),
+  ]);
+  return "\uFEFF" + [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n") + "\r\n";
+}
+
+/** Distinct Notion-hosted images the API copies per request (`imports.ts`: `attempted >= 8`). */
+export const NOTION_IMPORT_MAX_IMAGES = 8;
+
+export type ImportBatchLimits = { bytes: number; pages: number; images: number };
+export const IMPORT_BATCH_LIMITS: ImportBatchLimits = Object.freeze({ bytes: NOTION_BUNDLE_MAX_BYTES, pages: NOTION_BUNDLE_MAX_PAGES, images: NOTION_IMPORT_MAX_IMAGES });
+
+export type ImportBatchPlan = {
+  /** Bundle indices per request, each in source order; the batches in source order. */
+  batches: number[][];
+  /** Indices that cannot be sent at all (one work larger than a request may be). */
+  tooLarge: number[];
+  /** Sentences the page shows: why a batch is shaped the way it is. */
+  notes: string[];
+};
+
+const utf8 = new TextEncoder();
+
+/** The Notion-hosted image URLs in a page's blocks (nested children included). */
+function notionImages(page: unknown): string[] {
+  const urls: string[] = [];
+  const walk = (blocks: unknown) => {
+    if (!Array.isArray(blocks)) return;
+    for (const block of blocks) {
+      if (!isRecord(block)) continue;
+      const image = block.type === "image" && isRecord(block.image) ? block.image : null;
+      if (image && image.type === "file" && isRecord(image.file) && typeof image.file.url === "string") urls.push(image.file.url);
+      walk(block.children);
+      if (typeof block.type === "string" && isRecord(block[block.type])) walk((block[block.type] as Record<string, unknown>).children);
+    }
+  };
+  if (isRecord(page)) walk(page.blocks);
+  return urls;
+}
+
+/** The page ids a page's `English` relation names — the API's translation link (`notion-bundle.ts`). */
+export function englishRelationIds(page: unknown): string[] {
+  if (!isRecord(page) || !isRecord(page.properties)) return [];
+  const relation = (page.properties as Record<string, unknown>).English;
+  if (!isRecord(relation) || !Array.isArray(relation.relation)) return [];
+  return relation.relation.flatMap((link: unknown) => isRecord(link) && typeof link.id === "string" ? [link.id] : []);
+}
+
+/**
+ * Split the selected pages into requests the API will accept, without changing
+ * what any one request means.
+ *
+ * Each request stays under the same ceilings a single import has always had —
+ * the serialised `{ bundle, apply }` under 8 MiB, at most 200 pages, at most 8
+ * distinct Notion-hosted images (beyond that the API stops copying and the page
+ * fails) — and **pages linked by `English` always travel together**: the API
+ * checks a translation pair within one bundle, so splitting a pair would turn
+ * a valid work into a `missing-translation-page` refusal. Packing is next-fit
+ * in source order, so the batches are predictable and a re-run of the same
+ * selection yields the same batches (and so the same plans).
+ *
+ * A work that alone exceeds the byte or page ceiling cannot be sent and is
+ * returned in `tooLarge` — reported, never silently dropped. A work with more
+ * than 8 images is sent on its own, with a note that some images will fail.
+ */
+export function planImportBatches(bundle: Record<string, unknown>, selection: ReadonlySet<number>, limits: ImportBatchLimits = IMPORT_BATCH_LIMITS): ImportBatchPlan {
+  const pages: unknown[] = Array.isArray(bundle.pages) ? bundle.pages : [];
+  const chosen = [...selection].filter((index) => index >= 0 && index < pages.length).sort((a, b) => a - b);
+  // Union-find over the selected pages, joined by English relations either way.
+  const parent = new Map<number, number>(chosen.map((index) => [index, index]));
+  const find = (index: number): number => { let root = index; while (parent.get(root) !== root) root = parent.get(root)!; parent.set(index, root); return root; };
+  const byKey = new Map<string, number>();
+  for (const index of chosen) { const page = pages[index]; if (isRecord(page) && typeof page.id === "string") byKey.set(pageKey(page.id), index); }
+  for (const index of chosen) for (const id of englishRelationIds(pages[index])) {
+    const other = byKey.get(pageKey(id));
+    if (other !== undefined) { const a = find(index), b = find(other); if (a !== b) parent.set(Math.max(a, b), Math.min(a, b)); }
+  }
+  const groups = new Map<number, number[]>();
+  for (const index of chosen) { const root = find(index); groups.set(root, [...(groups.get(root) ?? []), index]); }
+
+  const shell = utf8.encode(JSON.stringify({ bundle: { ...bundle, pages: [] }, apply: true })).length;
+  const sizeOf = (index: number) => utf8.encode(JSON.stringify(pages[index] ?? null)).length;
+  const batches: number[][] = []; const tooLarge: number[] = []; const notes: string[] = [];
+  // The shell holds the brackets; each page adds its JSON and one comma, and
+  // the first page's comma is not written — hence the starting `shell - 1`.
+  const empty = shell - 1;
+  let current: number[] = []; let bytes = empty; let images = new Set<string>();
+  const close = () => { if (current.length) batches.push(current); current = []; bytes = empty; images = new Set(); };
+  for (const group of [...groups.values()].sort((a, b) => a[0]! - b[0]!)) {
+    const groupBytes = group.reduce((sum, index) => sum + sizeOf(index) + 1, 0);
+    const groupImages = new Set(group.flatMap((index) => notionImages(pages[index])));
+    if (empty + groupBytes > limits.bytes || group.length > limits.pages) { tooLarge.push(...group); continue; }
+    const merged = new Set([...images, ...groupImages]);
+    if (current.length && (bytes + groupBytes > limits.bytes || current.length + group.length > limits.pages || merged.size > limits.images)) close();
+    if (groupImages.size > limits.images) {
+      close();
+      notes.push(`有一件作品含 ${groupImages.size} 张 Notion 图片，超过单次复制 ${limits.images} 张的上限，已单独成批；超出的图片会在报告中标为失败，可之后重新导入补齐。`);
+      batches.push(group);
+      continue;
+    }
+    current.push(...group); bytes += groupBytes; for (const url of groupImages) images.add(url);
+  }
+  close();
+  for (const batch of batches) batch.sort((a, b) => a - b);
+  return { batches, tooLarge, notes };
+}
+
+/**
+ * Several batch reports read as one: pages in batch order, summaries summed.
+ * `applied` is true only when every batch was applied; the plan tokens stay
+ * with their batches and are deliberately not merged.
+ */
+export function mergeReports(reports: readonly NotionImportReport[]): NotionImportReport | null {
+  if (!reports.length) return null;
+  const summary: Record<NotionImportAction, number> = { create: 0, update: 0, skip: 0, refused: 0, failed: 0 };
+  for (const report of reports) for (const action of ACTIONS) summary[action] += report.summary[action];
+  return {
+    applied: reports.every((report) => report.applied),
+    database: reports[0]!.database,
+    summary,
+    pages: reports.flatMap((report) => report.pages),
+  };
+}
+
+/** For one bundle page: the pages its `English` relation names, in the bundle or not. */
+export type EnglishPartners = { inBundle: number[]; missing: string[] };
+
+/**
+ * Every page's English counterparts, by bundle index. A counterpart in the
+ * bundle can be selected along with its page; one that is not in the bundle
+ * cannot, and the API will refuse the work (`missing-translation-page`) until
+ * the export includes it.
+ */
+export function englishPartners(bundle: Record<string, unknown>): Map<number, EnglishPartners> {
+  const pages: unknown[] = Array.isArray(bundle.pages) ? bundle.pages : [];
+  const byKey = new Map<string, number>();
+  pages.forEach((page, index) => { if (isRecord(page) && typeof page.id === "string") byKey.set(pageKey(page.id), index); });
+  const result = new Map<number, EnglishPartners>();
+  pages.forEach((page, index) => {
+    const ids = englishRelationIds(page).filter((id) => byKey.get(pageKey(id)) !== index);
+    if (!ids.length) return;
+    result.set(index, {
+      inBundle: ids.flatMap((id) => byKey.has(pageKey(id)) ? [byKey.get(pageKey(id))!] : []),
+      missing: ids.filter((id) => !byKey.has(pageKey(id))),
+    });
+  });
+  return result;
+}
+
+/**
+ * The selection after a change, with the English counterparts of every newly
+ * selected page added (transitively). Only *additions* pull partners in: a
+ * counterpart the author unchecks on purpose stays unchecked — the row says
+ * what that means, and the API's refusal stays the authority.
+ */
+export function withEnglishPartners(previous: ReadonlySet<number>, next: ReadonlySet<number>, partners: ReadonlyMap<number, EnglishPartners>): { selection: Set<number>; added: number[] } {
+  const selection = new Set(next); const added: number[] = [];
+  const queue = [...next].filter((index) => !previous.has(index));
+  while (queue.length) {
+    const index = queue.shift()!;
+    for (const partner of partners.get(index)?.inBundle ?? []) {
+      if (selection.has(partner)) continue;
+      selection.add(partner); added.push(partner); queue.push(partner);
+    }
+  }
+  return { selection, added };
+}

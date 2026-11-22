@@ -768,11 +768,179 @@ reported. Basic Markdown paragraphs, headings, links, marks, lists,
 quotes and code are converted; unsupported structures are flattened and reported.
 
 ZIP parsing is bounded to 8 MiB compressed and 8 MiB extracted Markdown, 200
-Markdown files and 2000 total entries. A request after conversion must also fit
-8 MiB. ZIP64, split or incomplete archives are rejected. Files are never extracted
+Markdown files and 2000 total entries; the files chosen at once must total 8 MiB
+or less. The converted bundle is no longer required to fit one request: see
+*Automatic batches* below. ZIP64, split or incomplete archives are rejected. Files are never extracted
 to disk. Local or inline images are **omitted with a warning**, even when present
 in the ZIP; they are not yet uploaded. External images remain links; recognized
 Notion-hosted URLs go through the existing bounded image copy path, and signed
 URLs on other hosts are removed. Per-request limits and retry caveats in the
 image section above still apply. The conversion warnings should be reviewed
 before confirming, especially for unsupported Markdown and missing relationships.
+
+### Database CSV beside the Markdown
+
+Notion's Markdown export writes most database properties only to the
+database's CSV (`作品库.csv` and/or `作品库_all.csv`). The desk reads `.csv`
+files chosen with the Markdown, or inside the ZIP (they count toward the same
+entry and byte limits; they are not pages). When both names exist for a
+table, `_all` wins. A page is matched to a row first by its `# Title`, then by
+its filename without the 32-digit ID, both trimmed; a title shared by several
+rows is ambiguous and fills nothing. Columns are matched case-insensitively,
+in English or Chinese (`Date`/`日期`, `Excerpt`/`摘要`, `FeaturedImage`/`封面`,
+`Published`/`发布`, `Slug`, `Tags`/`标签`).
+
+CSV values **only fill properties the Markdown left empty**; they never
+overwrite. `Published` is read as a checkbox only when every value in the
+column is boolean (`yes/no`, `true/false`, `是/否`, `Y/N`, `__YES__/__NO__`).
+Dates accept `2026-10-08`, `2026/10/08`, `2026.10.08`, `2026年10月8日`,
+`October 8, 2026` and `September 1 2026`, all as UTC midnight like
+`notionDateToInstant`; ambiguous forms such as `10/08/2026` are left empty and
+reported, and a date range keeps its start (reported). Tags split on `,`, `，` and `、`. `Rank`/`排序` is ignored; other
+columns are reported. Every page gets a visible conversion warning saying
+which columns were filled, or that no row matched, so the author can check
+before the dry run. A page with no `# Title` falls back to its filename with a
+warning; only a page with neither is skipped (and reported). A CSV cover that
+is a file inside the export is reported, not imported, and a CSV
+`FeaturedImage` URL is still not carried (`featured-image-not-carried`).
+
+### Selecting pages
+
+Every page is selected by default. The author can search titles, and select
+all, clear or invert the rows currently shown. After a dry run the list can be
+filtered to works that would be created or updated, or that need attention
+(refused, failed, or with issue codes), and one click selects only the works
+that would be created or updated. Each row shows the planned action, locale,
+issue codes and, for an update, the target article. Changing the selection
+discards the plan; the next dry run is the only thing that produces a new one.
+The plan or result can be downloaded as a CSV (UTF-8 with BOM; cells that
+start like a formula are prefixed with `'`).
+
+Choosing a page whose `English` counterpart is in the same export selects that
+counterpart too, transitively, and says which pages were added. Only newly
+chosen pages pull their counterparts in: a counterpart the author unchecks on
+purpose stays unchecked, the row says the work will be refused, and the API's
+`missing-translation-page` refusal is unchanged. A page whose counterpart is
+not in the export at all is marked before anything is sent, with a hint to
+export with subpages.
+
+### Automatic batches
+
+When the selection would not fit one request — 8 MiB of serialized JSON, 200
+pages, or 8 distinct Notion-hosted images — the desk splits it into several
+`POST /api/v1/imports/notion` requests. Pages are packed in source order, and
+pages linked by `English` always travel in the same batch, so the per-request
+translation check sees both sides. A single work with more than 8 Notion
+images goes alone (the API copies the first 8 and reports the rest, as for
+any request); a work too large for any request is left out with a visible
+note.
+
+Every batch is dry-run first and the reports are merged into one table with a
+single confirmation (“确认导入（写入 N 件作品，分 M 批）”). Each batch keeps its
+own plan token: confirmation applies each batch with its own token and
+idempotency key, exactly as a single import does, and nothing is written
+before that click. If a plan expires (`IMPORT_PLAN_INVALID`), that batch is
+dry-run once again and must be confirmed again. A `429` is waited out using
+the server's `Retry-After` (1–900 s, 30 s when absent; at most 6 waits per
+request) with a visible countdown. Any other failure leaves that batch
+unwritten — it is never retried blindly — while the remaining batches
+continue; the merged report names the failed batch, and the headline says
+when only some batches were written. The author can stop the remaining
+batches at any time.
+
+There is no fixed cap on the number of batches. Every dry run and every apply
+counts toward the import rate limits (10 per author and 20 per IP per 10
+minutes), so a large selection can take several minutes of automatic waiting.
+
+## Pulling straight from Notion with a pasted token (ADR 0052)
+
+The desk's default tab, 连接 Notion 直接拉取, skips the export step. The author
+creates an internal integration in Notion, adds it to the database under
+「… → 连接」, and pastes its Internal Integration Secret and the database link.
+Notion's API sends no CORS headers, so the browser cannot call it itself. The
+token therefore passes through our API, one request at a time, and is never kept.
+[ADR 0052](../architecture/decisions/0052-server-side-notion-pull-without-storing-tokens.md)
+amends ADR 0036 decision 3 for exactly this endpoint.
+
+What the author does, and what each step sends:
+
+1. **连接并读取条目** sends `POST /api/authoring/notion-fetch` with
+   `{ token, mode: "rows", source }`. The answer is the rows' properties only, up
+   to 1000 per request, with a `cursor` to continue. The desk shows them in the
+   usual selection list: all selected by default, English partners checked
+   automatically. Above 2000 rows the desk stops listing and says so.
+2. **试跑所选文章** first reads the blocks of the selected pages that have not been
+   read yet, with `{ token, mode: "pages", pageIds }` (at most 200 ids per request).
+   The server reads in order until about 45 s or 6 MiB and lists what it finished in
+   `done`. The desk sends the rest in the next request, so the server keeps no
+   continuation. Deselected pages are never read, and a second dry run does not read
+   the same pages again. The finished bundle then goes through the same automatic
+   batches, merged plan and single confirm as an uploaded file. Nothing is written
+   before 确认导入.
+3. A page the server could not carry is unchecked and named above the plan, with
+   its reason. The reasons are `too-many-blocks` (over 2000), `page-too-large` (over
+   6 MiB), `page-unavailable` (not shared, or deleted), `fetch-timeout` and
+   `fetch-failed`. The last two are tried again on the next dry run. A page is never
+   imported with part of its body.
+
+The token is a field of the request body and nothing else. It is the
+`Authorization` header of the outgoing Notion calls, then discarded with the
+request. It is not stored in the database, a file, a log line, an error message
+or a response, and Notion's own error text is never forwarded either. In the
+browser it lives in the page's memory: the field is `type="password"`,
+`autocomplete="off"`, nothing goes to `localStorage`, `sessionStorage` or the URL,
+and a reload clears it. Only `notion-fetch` ever receives it; the import requests
+carry the bundle and nothing else.
+
+Outgoing calls go only to `https://api.notion.com/v1/`. The server makes three
+read-only calls (`GET databases/{id}`, `POST data_sources/{id}/query`,
+`GET blocks/{id}/children`) with server-built URLs, no redirects, 15 s and 4 MiB
+per call, at least 340 ms apart, and a fixed `Notion-Version`. A Notion
+`Retry-After` of up to 10 s is waited out inside the request. A longer one ends the
+slice: with a 200 and `retryAfterSeconds` when some pages were finished, or a 429
+when none were. The desk waits either out with a visible countdown, at most six
+times per pull, and can be stopped.
+
+| Answer | When |
+|---|---|
+| `400 BAD_USER_INPUT` | malformed request; the message names the field, never its value |
+| `401` | no session |
+| `409 NOTION_FETCH_DISABLED` | the instance runs with `NOTION_FETCH_ENABLED=false` (default on) |
+| `422 NOTION_TOKEN_INVALID` | Notion did not accept the token |
+| `422 NOTION_NOT_SHARED` | the database is not shared with the integration, or the link is wrong |
+| `429 NOTION_RATE_LIMITED` / `429` | Notion's rate limit, or ours: 60 per author and 120 per IP per 10 minutes, separate from the import's 10/20 |
+| `502 NOTION_UNAVAILABLE` | Notion failed, timed out or answered too much |
+| `503 NOTION_FETCH_BUSY` | more than 8 pulls in this process, or 2 for this author, are in flight (`Retry-After: 5`) |
+
+Deployments must allow outbound `api.notion.com:443` from the API. Turning the
+pull off leaves the upload tab working as before.
+
+The command-line seed (§9) uses the same reading code
+(`apps/api/src/infrastructure/notion-source.ts`). Since this change, a page over its
+block limit fails the run instead of being silently cut short.
+
+### Where the guarantees are tested
+
+- `apps/api/src/infrastructure/notion-source.test.ts`: the outgoing calls' URLs and
+  headers, no redirects, the byte cap, pacing and 429 handling, and the block limit
+  failing instead of truncating.
+- `apps/api/src/application/notion-fetch.test.ts`: link and id parsing, token
+  shape, the time and byte budgets, `done` and issue codes, the error mapping, and
+  messages that never repeat the request.
+- `apps/api/src/transport/rest/notion-fetch.integration.test.ts`: over HTTP with
+  Notion stubbed, rows and pages, every refusal's status and code, Retry-After,
+  the session and flag checks, the separate rate limit and the concurrency cap.
+  The responses, the API's log lines and anything the process prints are captured,
+  and none contains the token or Notion's error text.
+- `packages/web-http/test/authoring-notion-fetch.test.ts`: the proxy forwards
+  byte for byte with a 90 s budget, keeps Retry-After, refuses non-pulls before
+  the network, and never echoes the token.
+- `packages/web-ui/src/lib/notion-fetch.test.ts`: the desk's loop, which follows
+  cursors and `done`, waits a bounded number of times, never loops on an answer
+  without progress, never drops a page silently, and words every failure without
+  the token.
+- `e2e/notion-fetch.spec.ts` (both endpoints mocked, Notion never contacted):
+  connect, uncheck one, dry run reading only the selected pages, confirm. Also: a
+  malformed token never sent, the refusal sentences, a 429 waited out, an oversized
+  page unchecked with its reason, no token in any import request or in storage,
+  and an empty field after a reload.

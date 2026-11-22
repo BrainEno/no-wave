@@ -6,6 +6,8 @@ import { NotionImportRequestError, importNotionBundle } from "../../../applicati
 import { fetchNotionImage } from "../../../infrastructure/notion-image-fetch.ts";
 import { MAX_NOTION_PLAN_TOKEN_BYTES } from "../../../application/notion-import-plan.ts";
 import type { NotionImageCopier } from "../../../application/notion-import-images.ts";
+import { NotionFetchError, NotionFetchRequestError, fetchNotionPages, fetchNotionRows, readNotionFetchRequest } from "../../../application/notion-fetch.ts";
+import { boundedNotionFetch, type NotionFetch } from "../../../infrastructure/notion-source.ts";
 
 /**
  * A bundle is big on purpose: one page carries up to 200 blocks of up to 20,000
@@ -20,6 +22,42 @@ const MAX_NOTION_IMPORT_REQUEST_BYTES = MAX_NOTION_IMPORT_BYTES + MAX_NOTION_PLA
 function readApplyFlag(value: unknown): boolean | null {
   if (value === undefined) return false;
   return typeof value === "boolean" ? value : null;
+}
+
+/** `NOTION_FETCH_ENABLED=false` turns the pull off; anything else leaves it on (ADR 0052, decision 8). */
+export function notionFetchEnabled(env: NodeJS.ProcessEnv): boolean {
+  return env.NOTION_FETCH_ENABLED?.trim().toLowerCase() !== "false";
+}
+
+/** The Notion transport, replaceable by a test so no test reaches api.notion.com. */
+let notionFetchTransport: NotionFetch = boundedNotionFetch();
+export function setNotionFetchTransportForTests(transport: NotionFetch | null): void {
+  notionFetchTransport = transport ?? boundedNotionFetch();
+}
+
+/**
+ * Pulls in flight in this process, overall and per author (ADR 0052). The rate
+ * limit bounds how many pulls an author starts in ten minutes, not how many hold
+ * a request open at once — and each one may hold it for 75 s with up to 6 MiB of
+ * blocks in memory. Over either cap the answer is 503 with a short Retry-After,
+ * which the desk waits out by itself; nothing is queued here.
+ */
+export const NOTION_FETCH_CONCURRENCY = Object.freeze({ total: 8, perActor: 2, retryAfterSeconds: 5 });
+const notionFetchesInFlight = { total: 0, byActor: new Map<string, number>() };
+
+function acquireNotionFetchSlot(actorId: string): (() => void) | null {
+  const mine = notionFetchesInFlight.byActor.get(actorId) ?? 0;
+  if (notionFetchesInFlight.total >= NOTION_FETCH_CONCURRENCY.total || mine >= NOTION_FETCH_CONCURRENCY.perActor) return null;
+  notionFetchesInFlight.total += 1;
+  notionFetchesInFlight.byActor.set(actorId, mine + 1);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    notionFetchesInFlight.total -= 1;
+    const left = (notionFetchesInFlight.byActor.get(actorId) ?? 1) - 1;
+    if (left > 0) notionFetchesInFlight.byActor.set(actorId, left); else notionFetchesInFlight.byActor.delete(actorId);
+  };
 }
 
 /** The address shape a slug must have before it is looked up. */
@@ -118,6 +156,60 @@ const IMPORT_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Object
         return;
       }
       sendServiceError(response, error);
+    }
+  },
+
+  /**
+   * `POST /api/v1/imports/notion/fetch` — read the author's own Notion database
+   * with the integration token they pasted, one bounded slice per request
+   * (ADR 0052).
+   *
+   * `{ token, mode: "rows", source, cursor? }` lists rows; `{ token, mode:
+   * "pages", pageIds }` reads bodies until the slice's time or byte budget runs
+   * out and names what it finished in `done`. Nothing is written here and nothing
+   * is kept: the token lives for this request only, and no response, error or log
+   * line carries it — or Notion's own error text. Every failure below is answered
+   * with a code built here, which is why this handler catches everything itself
+   * instead of handing an unknown error to `sendServiceError`.
+   */
+  "imports.notion.fetch": async (ctx: RestRouteContext): Promise<void> => {
+    const { request, response, services, env } = ctx;
+    if (!services) { sendUnavailable(response); return; }
+    const bodyResult = await readJsonObject(request);
+    if (bodyResult.ok === false) { sendJsonBodyError(response, request, bodyResult); return; }
+    if (!notionFetchEnabled(env)) {
+      sendJson(response, 409, { error: { code: "NOTION_FETCH_DISABLED", message: "Pulling from Notion is not enabled on this instance. Upload a Notion export instead." } });
+      return;
+    }
+
+    let actorId: string | null;
+    try {
+      actorId = await authenticatedActorId(request, services, env);
+    } catch (error: unknown) {
+      sendServiceError(response, error);
+      return;
+    }
+    if (!actorId) { sendUnauthenticated(response); return; }
+
+    let release: (() => void) | null = null;
+    try {
+      const input = readNotionFetchRequest(bodyResult.value);
+      release = acquireNotionFetchSlot(actorId);
+      if (release === null) {
+        response.setHeader("retry-after", String(NOTION_FETCH_CONCURRENCY.retryAfterSeconds));
+        sendJson(response, 503, { error: { code: "NOTION_FETCH_BUSY", message: "Too many Notion pulls are running. Retry after the indicated time." } });
+        return;
+      }
+      const deps = { fetchImpl: notionFetchTransport };
+      const data = input.mode === "rows" ? await fetchNotionRows(input, deps) : await fetchNotionPages(input, deps);
+      sendJson(response, 200, { data });
+    } catch (error: unknown) {
+      if (error instanceof NotionFetchRequestError) { sendBadInput(response, error.message); return; }
+      const failure = error instanceof NotionFetchError ? error : new NotionFetchError("NOTION_UNAVAILABLE");
+      if (failure.retryAfterSeconds !== null) response.setHeader("retry-after", String(Math.min(Math.max(failure.retryAfterSeconds, 1), 900)));
+      sendJson(response, failure.status, { error: { code: failure.code, message: failure.message } });
+    } finally {
+      release?.();
     }
   },
 
