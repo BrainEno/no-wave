@@ -1,6 +1,16 @@
 import { Link } from "@/lib/framework/link.tsx";
 import { useEffect, useRef, useState } from "react";
 import { markdownEntriesToBundle, readMarkdownZip } from "@/lib/notion-markdown.ts";
+import { createdDay, fillMissingDates } from "@/lib/notion-created-date.ts";
+import {
+  LOCAL_IMAGE_UPLOADS_PER_RUN,
+  browserUploadMemory,
+  localImageCandidates,
+  uploadLocalImages,
+  zipImageEntries,
+  type LocalImageCandidate,
+  type ZipImageEntry,
+} from "@/lib/notion-zip-images.ts";
 import {
   ACTION_LABEL,
   asImportReport,
@@ -110,6 +120,19 @@ type PullSession = {
   unreadable: Map<string, string>;
 };
 
+/** The conversion's local images: what is already linked, what one click could upload, and what it cannot. */
+function sortLocalImages(found: readonly { path: string | null; uploaded: boolean }[], zips: readonly ReadonlyMap<string, ZipImageEntry>[]) {
+  const { candidates, unusable } = zips.length === 0 ? { candidates: [], unusable: [] } : localImageCandidates(found.filter((image) => !image.uploaded).map((image) => image.path), zips);
+  return { candidates, unusable };
+}
+
+/** Raw creation values (API instants or CSV cells) → creation days; a value that cannot be read is left out. */
+function createdDays(raw: ReadonlyMap<string, string>): Map<string, string> {
+  const days = new Map<string, string>();
+  for (const [id, value] of raw) { const day = createdDay(value); if (day !== null) days.set(id, day); }
+  return days;
+}
+
 function dataOf(payload: unknown): unknown {
   return typeof payload === "object" && payload !== null ? (payload as { data?: unknown }).data : null;
 }
@@ -122,7 +145,7 @@ export function NotionImport() {
   const [progress, setProgress] = useState("");
   const [notes, setNotes] = useState<string[]>([]);
   const [autoNote, setAutoNote] = useState("");
-  const [busy, setBusy] = useState<null | "pull" | "dry-run" | "apply">(null);
+  const [busy, setBusy] = useState<null | "pull" | "dry-run" | "apply" | "upload">(null);
   // The direct pull is the default: it is the shortest way from a Notion database
   // to a plan. The file upload stays one click away and is chosen by itself as
   // soon as a file is picked.
@@ -139,6 +162,22 @@ export function NotionImport() {
   // articleId → the work an `update` row would overwrite, read from the desk's
   // own list so the author sees *which* work changes, not only an id.
   const [targets, setTargets] = useState<ReadonlyMap<string, Target>>(new Map());
+  // Page id → its creation day (UTC midnight), from Notion's created_time or the
+  // CSV's "Created" column. Offered — never applied by default — as the Date of
+  // a published page that has none; see notion-created-date.ts.
+  const [created, setCreated] = useState<ReadonlyMap<string, string>>(new Map());
+  const [backfillDates, setBackfillDates] = useState(false);
+  // Page id → the day the current plan gave it, so each report row can say so.
+  const [datedBy, setDatedBy] = useState<ReadonlyMap<string, string>>(new Map());
+  // The chosen export files, kept so the bundle can be converted again once the
+  // author has uploaded its local images; and what that upload found.
+  const exported = useRef<{ entries: { name: string; text: string }[]; zips: Uint8Array[]; images: Map<string, ZipImageEntry>[] } | null>(null);
+  const [uploadedImages, setUploadedImages] = useState<ReadonlyMap<string, string>>(new Map());
+  const [localImages, setLocalImages] = useState<{ candidates: LocalImageCandidate[]; unusable: { path: string; reason: string }[] }>({ candidates: [], unusable: [] });
+  const [imageReport, setImageReport] = useState<string | null>(null);
+  // Path → why it could not be uploaded. Not offered again in this session: a
+  // second try would spend one of the hour's uploads on the same refusal.
+  const [imageFailures, setImageFailures] = useState<ReadonlyMap<string, string>>(new Map());
   const fileInput = useRef<HTMLInputElement>(null);
   // Set by "停止" (and on unmount): the batch in flight finishes, no further
   // request is sent, and a countdown ends without retrying.
@@ -219,11 +258,19 @@ export function NotionImport() {
     setError(""); setFilter("all");
     const read = await readPulledPages(bundle, requested);
     if (read === null) return;
-    const { bundle: current, selection, notes: pullNotes } = read;
+    const { bundle: pulled, selection, notes: pullNotes } = read;
+    // The backfill changes only what is sent; the bundle in state keeps the
+    // author's own properties, so unticking the box and planning again undoes it.
+    const backfill = backfillDates ? fillMissingDates(pulled, created) : { bundle: pulled, filled: [] };
+    const current = backfill.bundle;
     const split = planImportBatches(current, selection);
     const titles = bundleSelectionPages(current);
+    const dated = backfill.filled.filter(({ index }) => selection.has(index));
+    const pageIds = Array.isArray(current.pages) ? current.pages as { id?: unknown }[] : [];
+    setDatedBy(new Map(dated.map(({ index, day }) => [String(pageIds[index]?.id ?? ""), day])));
     setNotes([
       ...pullNotes,
+      ...(dated.length ? [`以下 ${dated.length} 页已发布但没有 Date，已按你的选择用创建日期补上（只补空的 Date，不覆盖已有日期）：${dated.map(({ index, day }) => `《${titles[index]?.title ?? index + 1}》→ ${day}`).join("、")}。`] : []),
       ...split.notes,
       ...(split.tooLarge.length ? [`以下作品单件超过 ${MAX_MEGABYTES} MB 或 200 页，无法提交，未包含在计划中：${split.tooLarge.map((index) => `《${titles[index]?.title ?? index + 1}》`).join("、")}。`] : []),
     ]);
@@ -334,6 +381,7 @@ export function NotionImport() {
     const pasted = token.trim();
     setBatches(null); setNotes([]); setAutoNote(""); setError(""); setWarnings([]);
     setBundle(null); setPageCount(0); setSelected(new Set()); setQuery(""); setFileName("");
+    setCreated(new Map()); setDatedBy(new Map()); resetLocalImages();
     pull.current = null;
     if (!looksLikeNotionToken(pasted)) {
       setError("这不像 Notion 集成令牌：应以 ntn_（或旧版 secret_）开头，可在 Notion 的「设置 → 连接 → 开发或管理集成」里复制。");
@@ -348,6 +396,7 @@ export function NotionImport() {
     pull.current = { token: pasted, read: new Set(), unreadable: new Map() };
     setFileName(`${result.bundle.database.title || "Notion 数据库"} · ${result.bundle.pages.length} 个条目`);
     setBundle(result.bundle); setPageCount(result.bundle.pages.length);
+    setCreated(createdDays(result.created));
     setSelected(new Set(result.bundle.pages.map((_page, index) => index)));
     if (result.truncated) {
       setWarnings([`这个数据库超过 ${NOTION_PULL_MAX_ROWS} 个条目，只列出了前 ${NOTION_PULL_MAX_ROWS} 个，其余条目这次不会导入。请在 Notion 里拆分数据库后分别拉取，或改用导出文件。`]);
@@ -365,6 +414,7 @@ export function NotionImport() {
     setPageCount(0);
     setSelected(new Set());
     setQuery("");
+    setCreated(new Map()); setDatedBy(new Map()); resetLocalImages();
     setBusy("dry-run");
     try {
       if (files.reduce((sum, file) => sum + file.size, 0) > 8 * 1024 * 1024) throw new Error("文件总大小超过 8 MB，请分批导入。");
@@ -380,20 +430,75 @@ export function NotionImport() {
         return;
       }
       const entries: { name: string; text: string }[] = [];
+      const zips: Uint8Array[] = [];
       for (const file of files) {
         // A database CSV only carries properties for the Markdown pages beside it.
         if (/\.(md|csv)$/i.test(file.name)) entries.push({ name: file.name, text: new TextDecoder("utf-8", { fatal: true }).decode(await file.arrayBuffer()) });
-        else if (/\.zip$/i.test(file.name)) entries.push(...readMarkdownZip(new Uint8Array(await file.arrayBuffer())));
+        else if (/\.zip$/i.test(file.name)) {
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          entries.push(...readMarkdownZip(bytes));
+          zips.push(bytes);
+        }
         else throw new Error(`${file.name}：请选择 Markdown（可附带数据库 CSV）、ZIP，或单个 JSON bundle。`);
       }
       const result = markdownEntriesToBundle(entries);
+      exported.current = { entries, zips, images: zips.map(zipImageEntries) };
       setBundle(result.bundle); setPageCount(result.pages); setWarnings(result.warnings);
+      setCreated(createdDays(new Map(Object.entries(result.created))));
+      setLocalImages(sortLocalImages(result.localImages, exported.current.images));
       setSelected(new Set(bundleSelectionPages(result.bundle).map((page) => page.index)));
       setBusy(null);
     } catch (error) {
       setError(error instanceof Error ? error.message : "文件无法读取，请重新选择。 ");
       setBusy(null);
     }
+  }
+
+  function resetLocalImages() {
+    exported.current = null;
+    setUploadedImages(new Map()); setLocalImages({ candidates: [], unusable: [] }); setImageReport(null); setImageFailures(new Map());
+  }
+
+  /**
+   * Upload the export's local images to the author's media library, on the
+   * author's click, before the dry run (the plan is bound to the bundle). At most
+   * LOCAL_IMAGE_UPLOADS_PER_RUN requests; the first refusal that would refuse the
+   * rest stops it, and what was not sent is counted rather than waited for.
+   * Uploading writes no article: the bundle is converted again with the new
+   * addresses, the selection is kept, and any plan is discarded.
+   */
+  async function uploadImages(): Promise<void> {
+    const source = exported.current;
+    if (source === null || uploadable.length === 0) return;
+    setError(""); setBusy("upload"); setImageReport(null);
+    const result = await uploadLocalImages(source.zips, uploadable, {
+      fetch: (input, init) => fetch(input, init), memory: browserUploadMemory(), onProgress: setProgress,
+    });
+    setProgress(""); setBusy(null);
+    const uploaded = new Map([...uploadedImages, ...result.uploaded]);
+    setUploadedImages(uploaded);
+    if (result.uploaded.size > 0) {
+      const converted = markdownEntriesToBundle(source.entries, { uploadedImages: uploaded });
+      setBundle(converted.bundle); setWarnings(converted.warnings);
+      setLocalImages(sortLocalImages(converted.localImages, source.images));
+      setBatches(null); setNotes([]); setDatedBy(new Map());
+    }
+    const left = result.left.length;
+    const why = result.stop === "rate-limited" ? "已达到媒体库每小时的上传上限"
+      : result.stop === "session" ? "登录状态已失效，请重新登录后再试"
+      : result.stop === "unconfigured" ? "本站暂时无法保存图片（媒体存储未配置或不可用）"
+      : result.stop === "network" ? "网络中断；最后一张可能已经上传，可在媒体库中查看"
+      : `每次最多上传 ${LOCAL_IMAGE_UPLOADS_PER_RUN} 张`;
+    setImageFailures(new Map([...imageFailures, ...result.failed.map(({ path, reason }) => [path, reason] as const)]));
+    setImageReport(
+      [
+        result.newly > 0 ? `已上传 ${result.newly} 张图片到你的媒体库` : "这次没有上传新的图片",
+        result.reused > 0 ? `复用了之前上传过的 ${result.reused} 张` : "",
+        result.uploaded.size > 0 ? "它们已放进对应文章，试跑时会一并提交" : "",
+        left > 0 ? `还有 ${left} 张没有上传（${why}）。媒体库每位作者每小时最多上传 ${LOCAL_IMAGE_UPLOADS_PER_RUN} 张：可以先导入现在这些，稍后重新选择同一个导出包、再点一次上传，已上传的不会重复上传` : "",
+        result.failed.length > 0 ? `${result.failed.length} 张无法上传，见下方` : "",
+      ].filter(Boolean).join("；") + "。",
+    );
   }
 
   function changeSelection(next: ReadonlySet<number>) {
@@ -418,10 +523,14 @@ export function NotionImport() {
     const fromNotion = pull.current !== null;
     pull.current = null;
     setFileName(""); setBundle(null); setPageCount(0); setBatches(null); setNotes([]); setAutoNote(""); setError(""); setWarnings([]);
-    setSelected(new Set()); setQuery(""); setFilter("all");
+    setSelected(new Set()); setQuery(""); setFilter("all"); setCreated(new Map()); setDatedBy(new Map()); resetLocalImages();
     if (!fromNotion) fileInput.current?.click();
   }
   const choices = bundle === null ? [] : bundleSelectionPages(bundle);
+  const uploadable = localImages.candidates.filter((candidate) => !imageFailures.has(candidate.path));
+  const notUploaded = [...[...imageFailures].map(([path, reason]) => ({ path, reason })), ...localImages.unusable];
+  // Selected published pages that have no Date and could get their creation day.
+  const datable = bundle === null || created.size === 0 ? [] : fillMissingDates(bundle, created).filled.filter(({ index }) => selected.has(index));
   const partners = bundle === null ? new Map<number, { inBundle: number[]; missing: string[] }>() : englishPartners(bundle);
   const needsEnglish = [...partners.entries()].filter(([, partner]) => partner.missing.length > 0).map(([index]) => index);
   const needle = query.trim().toLowerCase();
@@ -497,9 +606,10 @@ export function NotionImport() {
           <p className="nw-m">
             选择 Notion 导出的 Markdown 文件（可多选，可附带数据库 CSV）或 ZIP 压缩包，也支持原有 JSON bundle。
             导出包里的数据库 CSV 会用来补齐 Markdown 中缺失的日期、摘要、标签等属性，不会覆盖已有值。
+            若 CSV 带有「Created」或「创建时间」列，还可以选择用它补上已发布页面缺失的 Date。
           </p>
           <p className="nw-m">
-            所选文件合计不超过 {MAX_MEGABYTES} MB。超过 {MAX_MEGABYTES} MB / 200 页（或 8 张在线 Notion 图片）会自动分批提交：先逐批试跑，再一次确认。ZIP 内的本地图片目前不会导入，会在下方提示；在线 Notion 图片会尝试复制，失败则移除并报告。未指定 Published 的文章默认为草稿。
+            所选文件合计不超过 {MAX_MEGABYTES} MB。超过 {MAX_MEGABYTES} MB / 200 页（或 8 张在线 Notion 图片）会自动分批提交：先逐批试跑，再一次确认。ZIP 内的本地图片可以在试跑前点按钮上传到你的媒体库（每次最多 {LOCAL_IMAGE_UPLOADS_PER_RUN} 张），不上传的会移除并在下方提示；在线 Notion 图片会尝试复制，失败则移除并报告。未指定 Published 的文章默认为草稿。
           </p>
           <div className="nw-import-pick">
             <label className="nw-btn" htmlFor="notion-bundle-file">选择文件</label>
@@ -543,6 +653,33 @@ export function NotionImport() {
       ) : null}
       {notes.length > 0 ? <ul className="nw-import-notes" role="status">{notes.map((note, index) => <li key={index}>{note}</li>)}</ul> : null}
       {warnings.length > 0 ? <div role="status"><p>文件转换提示（请核对后再确认）：</p><ul>{warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul></div> : null}
+
+      {exported.current !== null && exported.current.zips.length > 0 && (uploadable.length > 0 || uploadedImages.size > 0 || notUploaded.length > 0) ? (
+        <section className="nw-import-images" aria-labelledby="notion-images-title">
+          <h2 id="notion-images-title">导出包里的本地图片</h2>
+          {uploadable.length > 0 ? (
+            <>
+              <p className="nw-m">
+                还有 {uploadable.length} 张本地图片没有放进文章。上传后它们会出现在你的
+                <Link href="/write/media">媒体库</Link>（可以在那里删除），并放进对应文章；上传本身不会写入任何文章，试跑和确认导入仍由你决定。{""
+                }不上传的图片会像上面列出的那样被移除。
+              </p>
+              <p className="nw-m">
+                媒体库每位作者每小时最多上传 {LOCAL_IMAGE_UPLOADS_PER_RUN} 张，所以每次最多上传 {LOCAL_IMAGE_UPLOADS_PER_RUN} 张；之前上传过的会直接复用，不占次数。
+              </p>
+              <button className="nw-btn" type="button" disabled={busy !== null} onClick={() => void uploadImages()}>
+                {busy === "upload" ? "正在上传…" : `上传 ${Math.min(uploadable.length, LOCAL_IMAGE_UPLOADS_PER_RUN)} 张本地图片到你的媒体库`}
+              </button>
+            </>
+          ) : uploadedImages.size > 0 ? <p className="nw-m">导出包里能上传的本地图片都已在你的媒体库中，并已放进对应文章。</p> : null}
+          {imageReport !== null ? <p className="nw-import-auto" role="status">{imageReport}</p> : null}
+          {notUploaded.length > 0 ? (
+            <ul className="nw-import-notes">
+              {notUploaded.map(({ path, reason }) => <li key={path}>{path.split("/").pop()}：{reason}，未上传，导入时会移除。</li>)}
+            </ul>
+          ) : null}
+        </section>
+      ) : null}
 
       {bundle !== null && choices.length > 0 ? (
         <section className="nw-import-selection" aria-labelledby="notion-selection-title">
@@ -594,6 +731,25 @@ export function NotionImport() {
               </li>
             ))}
           </ul>
+          {created.size > 0 ? (
+            <div className="nw-import-option">
+              <label className="nw-import-select-page">
+                <input type="checkbox" checked={backfillDates} disabled={busy !== null}
+                  onChange={(event) => {
+                    setBackfillDates(event.currentTarget.checked);
+                    // The plan was made with the other choice; it must be made again.
+                    setBatches(null); setNotes([]); setDatedBy(new Map());
+                  }} />
+                <span>用 Notion 创建日期补上缺失的 Date</span>
+              </label>
+              <p className="nw-m">
+                {datable.length > 0
+                  ? `所选页面中有 ${datable.length} 页已发布但没有 Date；不勾选时它们的发表日期是导入当天，勾选后改用各自在 Notion 的创建日期。`
+                  : "所选的已发布页面都已有 Date，勾选不会改变任何页面。"}
+                只补空的 Date，不覆盖已有日期，也不改草稿；补了哪些页面会在试跑结果里逐页列出。
+              </p>
+            </div>
+          ) : null}
           <button className="nw-btn" type="button" disabled={busy !== null || selected.size === 0}
             onClick={() => void plan(selected)}>试跑所选文章</button>
         </section>
@@ -664,6 +820,7 @@ export function NotionImport() {
                   <small className="nw-import-reason" key={`${issue.code}:${index}`}>{importDetail(issue.detail)}</small>
                 ))}
                 {page.detail !== "" ? <small className="nw-import-reason">{importDetail(page.detail)}</small> : null}
+                {datedBy.has(page.externalId) ? <small className="nw-import-reason">Date 为空，已用创建日期补为 {datedBy.get(page.externalId)}。</small> : null}
               </li>
             ))}
           </ul>

@@ -67,13 +67,16 @@ test("rows are listed through the database's data source, across Notion's pages"
   const { fetchImpl, paths } = notion((path, body) => {
     if (path === `/v1/databases/${DB_DASHED}`) return json({ data_sources: [{ id: "ds-1", name: "作品库" }] });
     const cursor = body ? (JSON.parse(body) as { start_cursor?: string }).start_cursor : undefined;
-    if (cursor === undefined) return json({ results: [{ id: id(1), properties: { Name: { type: "title" } } }], next_cursor: "c2" });
-    return json({ results: [{ id: id(2), properties: {}, in_trash: true }], next_cursor: null });
+    if (cursor === undefined) return json({ results: [{ id: id(1), properties: { Name: { type: "title" } }, created_time: "2024-05-01T17:00:00.000Z" }], next_cursor: "c2" });
+    return json({ results: [{ id: id(2), properties: {}, in_trash: true, created_time: "yesterday" }], next_cursor: null });
   });
   const result = await fetchNotionRows({ mode: "rows", token: TOKEN, sourceId: DB_DASHED, cursor: null }, { fetchImpl, ...fast });
   assert.deepEqual(result.source, { id: "ds-1", title: "作品库" });
   assert.deepEqual(result.rows.map((row) => row.id), [id(1), id(2)]);
   assert.equal(result.rows[1]!.inTrash, true);
+  // Notion's creation instant comes along as metadata; a value that is not an ISO instant does not.
+  assert.equal(result.rows[0]!.createdTime, "2024-05-01T17:00:00.000Z");
+  assert.equal("createdTime" in result.rows[1]!, false);
   assert.equal(result.cursor, null);
   assert.deepEqual(paths, [`/v1/databases/${DB_DASHED}`, "/v1/data_sources/ds-1/query", "/v1/data_sources/ds-1/query"]);
 });

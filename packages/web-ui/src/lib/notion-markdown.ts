@@ -1,12 +1,33 @@
 import { marked, type Token, type Tokens } from "marked";
 import { Unzip, UnzipInflate } from "fflate";
 import { NOTION_BUNDLE_MAX_BYTES, NOTION_BUNDLE_MAX_PAGES } from "./notion-import.ts";
+import { resolveLocalImage } from "./notion-zip-images.ts";
 
 type Entry = { name: string; text: string };
 /** One CSV export of a Notion database view: the first column is the title property. */
 export type NotionTable = { name: string; header: string[]; rows: string[][] };
 type Page = { id: string; properties: Record<string, unknown>; blocks: Record<string, unknown>[] };
-export type MarkdownBundleResult = { bundle: Record<string, unknown>; pages: number; warnings: string[] };
+export type MarkdownBundleResult = {
+  bundle: Record<string, unknown>; pages: number; warnings: string[];
+  /**
+   * Page id → the raw "Created time" cell of its database row, when the CSV has
+   * one. Not a property and never in the bundle: the desk may offer it as the
+   * date of a published page without one (see notion-created-date.ts).
+   */
+  created: Record<string, string>;
+  /**
+   * Every standalone local image the pages link, in page order: its path inside
+   * the export (null when the link is not a plain relative path) and whether this
+   * conversion already linked an uploaded copy. See notion-zip-images.ts.
+   */
+  localImages: { path: string | null; uploaded: boolean }[];
+};
+
+export type MarkdownBundleOptions = {
+  /** Export path → `/api/media/<id>` of the copy the author uploaded to the media library. */
+  uploadedImages?: ReadonlyMap<string, string>;
+};
+type LocalImageSink = { uploaded: ReadonlyMap<string, string>; found: { path: string | null; uploaded: boolean }[] };
 const rich = (plain_text: string) => ({ plain_text });
 const titleProp = (s: string) => ({ type: "title", title: [rich(s)] });
 const textProp = (s: string) => ({ type: "rich_text", rich_text: [rich(s)] });
@@ -68,7 +89,7 @@ export function notionDateStart(raw: string): { start: string; range: boolean } 
 }
 
 /** Parse only a leading run of known Notion properties: normal prose is never swallowed. */
-function parseEntry(entry: Entry, warnings: string[]): Page | null {
+function parseEntry(entry: Entry, warnings: string[], unreadableDate?: (pageId: string) => void, localImages?: LocalImageSink): Page | null {
   const lines = entry.text.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n").split("\n");
   const heading = /^#\s+(.+?)\s*#*\s*$/.exec(lines[0] ?? "");
   const id = pageId(entry.name);
@@ -86,6 +107,7 @@ function parseEntry(entry: Entry, warnings: string[]): Page | null {
   while (i < lines.length && !lines[i]!.trim()) i++;
   const known = new Set(["Date", "Excerpt", "FeaturedImage", "Published", "Rank", "Slug", "Tags", "English", "Parent item"]);
   let inProperties = false;
+  let dateUnreadable = false;
   for (; i < lines.length; i++) {
     const m = /^([^:]+):\s*(.*)$/.exec(lines[i]!);
     if (!m || (!inProperties && !known.has(m[1]!))) break;
@@ -104,7 +126,7 @@ function parseEntry(entry: Entry, warnings: string[]): Page | null {
       if (date) {
         properties[key] = { type: "date", date: { start: date.start } };
         if (date.range) warnings.push(`${entry.name}：Date 是时间段，只保留开始日期。`);
-      } else warnings.push(`${entry.name}：日期无法识别，使用默认日期。`);
+      } else { warnings.push(`${entry.name}：日期无法识别，使用默认日期。`); dateUnreadable = true; }
     } else if (key === "FeaturedImage" && value) properties[key] = { type: "files", files: [{ type: "external", external: { url: value } }] };
     else if ((key === "English" || key === "Parent item") && value) {
       let decoded = value; try { decoded = decodeURIComponent(value); } catch { /* keep original */ }
@@ -145,7 +167,16 @@ function parseEntry(entry: Entry, warnings: string[]): Page | null {
           if (isNotion) block("image", { type: "file", file: { url: image.href }, caption: [rich(image.text)] });
           else if ([...url.searchParams.keys()].some((key) => /^x-amz-/i.test(key))) warnings.push(`${entry.name}：无法安全复制的签名图片已移除。`);
           else block("image", { type: "external", external: { url: image.href }, caption: [rich(image.text)] });
-        } else warnings.push(`${entry.name}：本地图片 ${image.text || "（无说明）"} 未导入。`);
+        } else {
+          // A local file: linked only when the author uploaded it to the media
+          // library (the site's own /api/media address); otherwise removed and
+          // named, as before.
+          const path = resolveLocalImage(entry.name, image.href);
+          const src = path === null ? undefined : localImages?.uploaded.get(path);
+          localImages?.found.push({ path, uploaded: src !== undefined });
+          if (src !== undefined) block("image", { type: "external", external: { url: src }, caption: [rich(image.text)] });
+          else warnings.push(`${entry.name}：本地图片 ${image.text || "（无说明）"} 未导入。`);
+        }
       } else if (token.type === "paragraph" || token.type === "heading" || token.type === "text") {
         const runs = "tokens" in token && Array.isArray(token.tokens) ? inline(token.tokens) : [rich(token.text)];
         if (token.type === "heading" && token.depth > 3) warnings.push(`${entry.name}：四级及以下标题已调整为三级。`);
@@ -167,7 +198,11 @@ function parseEntry(entry: Entry, warnings: string[]): Page | null {
     }
   };
   emit(marked.lexer(lines.slice(i).join("\n")));
-  return { id: id ? canonical(id) : `markdown-file:${encodeURIComponent(basename)}`, properties, blocks };
+  const pageKey = id ? canonical(id) : `markdown-file:${encodeURIComponent(basename)}`;
+  // A Date the author wrote but that cannot be read is not an empty Date: it is
+  // not offered for the creation-date backfill (the warning above names it).
+  if (dateUnreadable) unreadableDate?.(pageKey);
+  return { id: pageKey, properties, blocks };
 }
 
 /**
@@ -217,6 +252,12 @@ const COLUMN_NAMES: Record<string, readonly string[]> = {
   Slug: ["slug", "别名", "网址别名", "短链"],
   Tags: ["tags", "tag", "标签"],
 };
+/**
+ * Notion's "Created time" property, under the names Notion and Chinese
+ * workspaces give it. It fills no property by itself; it is kept per page for
+ * the optional date backfill.
+ */
+const CREATED_COLUMN_NAMES: readonly string[] = ["created", "created time", "created at", "创建时间", "创建日期", "创建于"];
 /** Columns that are known and deliberately not carried, so they are not reported as unknown. */
 const IGNORED_COLUMNS = new Set(["rank", "排序"]);
 type TableIndex = { table: NotionTable; columns: Partial<Record<string, number>>; checkbox: boolean };
@@ -238,6 +279,7 @@ export function indexTables(tables: readonly NotionTable[], warnings: string[]):
       if (index === 0) return; // the title property
       const key = Object.keys(COLUMN_NAMES).find((k) => COLUMN_NAMES[k]!.includes(name.trim().toLowerCase()));
       if (key && columns[key] === undefined) columns[key] = index;
+      else if (CREATED_COLUMN_NAMES.includes(name.trim().toLowerCase())) { if (columns.Created === undefined) columns.Created = index; }
       else if (!IGNORED_COLUMNS.has(name.trim().toLowerCase())) unknown.push(name || `第 ${index + 1} 列`);
     });
     // Only a column whose every non-empty value is a checkbox value is a
@@ -258,7 +300,7 @@ export function indexTables(tables: readonly NotionTable[], warnings: string[]):
  * then by the file name without its Notion id — both trimmed. A name shared by
  * two rows is ambiguous and fills nothing. Every page says what happened.
  */
-export function fillFromTables(page: Page, entry: Entry, tables: readonly TableIndex[], warnings: string[]): void {
+export function fillFromTables(page: Page, entry: Entry, tables: readonly TableIndex[], warnings: string[], created?: Record<string, string>): void {
   if (!tables.length) return;
   const title = ((page.properties.Name as { title: { plain_text: string }[] }).title[0]?.plain_text ?? "").trim();
   const label = title || entry.name;
@@ -271,6 +313,7 @@ export function fillFromTables(page: Page, entry: Entry, tables: readonly TableI
   const { t, row } = hits[0]!;
   const filled: string[] = []; const problems: string[] = [];
   const cell = (key: string) => { const i = t.columns[key]; return i === undefined ? "" : (row[i] ?? "").trim(); };
+  if (created && cell("Created")) created[page.id] = cell("Created");
   for (const key of Object.keys(COLUMN_NAMES)) {
     const value = cell(key);
     if (!value || !isEmptyProperty(page.properties[key])) continue;
@@ -353,14 +396,18 @@ export function readMarkdownZip(bytes: Uint8Array): Entry[] {
   return entries;
 }
 
-export function markdownEntriesToBundle(entries: Entry[]): MarkdownBundleResult {
+export function markdownEntriesToBundle(entries: Entry[], options: MarkdownBundleOptions = {}): MarkdownBundleResult {
   const markdown = entries.filter((e) => !/\.csv$/i.test(e.name));
   if (markdown.length > NOTION_BUNDLE_MAX_PAGES) throw new Error("一次最多导入 200 个 Markdown 文件。");
   const warnings: string[] = []; const pages: Page[] = []; const ids = new Set<string>();
   const tables = indexTables(tablesOf(entries), warnings);
+  const created: Record<string, string> = {};
+  const localImages: LocalImageSink = { uploaded: options.uploadedImages ?? new Map(), found: [] };
   for (const entry of markdown) {
-    const page = parseEntry(entry, warnings); if (!page) continue;
-    fillFromTables(page, entry, tables, warnings);
+    let unreadable = false;
+    const page = parseEntry(entry, warnings, () => { unreadable = true; }, localImages); if (!page) continue;
+    fillFromTables(page, entry, tables, warnings, created);
+    if (unreadable) delete created[page.id];
     if (ids.has(page.id)) throw new Error(`重复的 Notion 页面 ID：${page.id}；请选择一个副本。`);
     ids.add(page.id); pages.push(page);
   }
@@ -374,5 +421,5 @@ export function markdownEntriesToBundle(entries: Entry[]): MarkdownBundleResult 
   const bundle = { version: 1, database: { id: "", title: "Notion Markdown 导出" }, pages };
   // The converted bundle may exceed one request's 8 MiB; the desk splits it
   // into requests the API accepts (planImportBatches), so it is not refused here.
-  return { bundle, pages: pages.length, warnings };
+  return { bundle, pages: pages.length, warnings, created, localImages: localImages.found };
 }
