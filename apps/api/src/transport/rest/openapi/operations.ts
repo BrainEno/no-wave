@@ -445,7 +445,7 @@ export const OPERATIONS: Readonly<Record<string, OperationMetadata>> = Object.fr
   },
 
   "POST imports.notion.fetch": {
-    summary: "Pull your own Notion database with a pasted integration token, one bounded slice at a time",
+    summary: "Pull your own Notion database with a pasted Notion token, one bounded slice at a time",
     description:
       "A read of the caller's Notion, not a write here. The token is used for this request only and is never stored, logged or returned (ADR 0052); Notion's own error text is never forwarded either.\n\n" +
       "`mode: \"rows\"` resolves `source` (a database link or id, or a data source id) and lists rows with their properties, up to 1000 per request; a non-null `cursor` in the answer continues the listing. `mode: \"pages\"` reads the bodies of at most 200 named pages, in order, until the request's time (about 45 s to start a page, 75 s hard) or byte budget (6 MiB) runs out; `done` lists every id the slice finished, carried or reported in `issues` (`too-many-blocks` over 2000 blocks, `page-too-large`, `fetch-timeout`, `page-unavailable`, `fetch-failed`) — a page is never truncated. Send the remaining ids for the next slice; nothing about the continuation is kept on the server. When Notion's rate limit ends a slice early, `retryAfterSeconds` says how long to wait.\n\n" +

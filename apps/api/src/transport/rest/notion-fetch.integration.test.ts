@@ -137,7 +137,9 @@ test("the pull needs a session and a well-formed request, and can be switched of
   await withServer({}, async (post, logs) => {
     const anonymous = await post({ token: NOTION_TOKEN, mode: "rows", source: DB }, null);
     assert.equal(anonymous.status, 401);
-    const badToken = await post({ token: "sk-live-NOT-A-NOTION-TOKEN-0123456789", mode: "rows", source: DB });
+    // Only the shape is checked (the prefix is opaque), so a value that could not be
+    // one Authorization header is the malformed case.
+    const badToken = await post({ token: "sk-live NOT-A-NOTION-TOKEN-0123456789", mode: "rows", source: DB });
     assert.equal(badToken.status, 400);
     assert.doesNotMatch(badToken.text, /sk-live/);
     const badSource = await post({ token: NOTION_TOKEN, mode: "rows", source: "https://example.com/x" });

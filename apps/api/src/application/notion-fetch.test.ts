@@ -42,10 +42,16 @@ test("an id is read from a bare id or a Notion link, never from the view query",
 test("a token is checked for shape, and no validation message repeats it", () => {
   assert.equal(isNotionToken(TOKEN), true);
   assert.equal(isNotionToken("secret_abcdefghijklmnopqrstuvwxyz"), true);
-  for (const bad of ["Bearer ntn_abc", "ntn_short", "sk-live-0123456789abcdef0123", `ntn_${"a".repeat(300)}`, "ntn_with space 0123456789", 42]) assert.equal(isNotionToken(bad), false);
+  // The prefix is not checked: Notion treats tokens as opaque, and an OAuth access
+  // token's shape is not documented.
+  assert.equal(isNotionToken("nat_0123456789ABCDEFabcdef-._~+/=="), true);
+  for (const bad of [
+    "Bearer ntn_abcdefghijklmnopqrstuvwxyz", "ntn_short", `ntn_${"a".repeat(500)}`, "ntn_with space 0123456789",
+    "ntn_line\r\nX-Injected: 0123456789", "https://www.notion.so/workspace/0123456789abcdef", "ntn_令牌_0123456789abcdefghij", "==ntn_0123456789abcdefghij", 42,
+  ]) assert.equal(isNotionToken(bad), false, String(bad));
 
   const attempts = [
-    { token: "sk-live-0123456789abcdef0123", mode: "rows", source: DB },
+    { token: "sk-live 0123456789abcdef0123", mode: "rows", source: DB },
     { token: TOKEN, mode: "rows", source: "https://evil.example/x" },
     { token: TOKEN, mode: "rows", source: DB, cursor: "bad cursor!" },
     { token: TOKEN, mode: "pages", pageIds: [] },

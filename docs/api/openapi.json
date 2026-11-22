@@ -3245,7 +3245,7 @@
         "tags": [
           "imports"
         ],
-        "summary": "Pull your own Notion database with a pasted integration token, one bounded slice at a time",
+        "summary": "Pull your own Notion database with a pasted Notion token, one bounded slice at a time",
         "operationId": "imports.notion.fetch.post",
         "responses": {
           "200": {
@@ -8974,14 +8974,14 @@
           "token",
           "mode"
         ],
-        "description": "The token is a Notion internal integration secret; it is used for this request only and never stored.",
+        "description": "The token is a Notion access token — a personal access token, an internal integration secret or an OAuth access token; it is used for this request only and never stored.",
         "properties": {
           "token": {
             "type": "string",
             "minLength": 20,
-            "maxLength": 200,
-            "pattern": "^(?:ntn_|secret_)[A-Za-z0-9_]+$",
-            "description": "Your Notion integration secret. Never logged or returned."
+            "maxLength": 500,
+            "pattern": "^[A-Za-z0-9._~+/-]+=*$",
+            "description": "Your Notion access token. Its prefix is not checked (Notion treats tokens as opaque). Never logged or returned."
           },
           "mode": {
             "type": "string",

@@ -911,8 +911,16 @@ minutes), so a large selection can take several minutes of automatic waiting.
 ## Pulling straight from Notion with a pasted token (ADR 0052)
 
 The desk's default tab, 连接 Notion 直接拉取, skips the export step. The author
-creates an internal integration in Notion, adds it to the database under
-「… → 连接」, and pastes its Internal Integration Secret and the database link.
+pastes a Notion token and the database link. The desk recommends a **personal
+access token** (created at `notion.so/developers/tokens` once Developer Mode is
+on): it reads with the author's own permissions, so nothing has to be added to the
+database, and it can be given a short expiry and revoked right after the import.
+Some workspaces let only owners create one. The fallback is an **internal
+integration**: create it, add it to the database under 「… → 连接」, and paste its
+secret. Either way the token is opaque to us. Both server and browser check only
+that it is 20–500 characters of the RFC 6750 bearer-token alphabet (no spaces, no
+control characters, no pasted link). They do not check the `ntn_` / `secret_`
+prefix, because Notion does not promise a stable token format.
 Notion's API sends no CORS headers, so the browser cannot call it itself. The
 token therefore passes through our API, one request at a time, and is never kept.
 [ADR 0052](../architecture/decisions/0052-server-side-notion-pull-without-storing-tokens.md)
@@ -935,7 +943,7 @@ What the author does, and what each step sends:
    before 确认导入.
 3. A page the server could not carry is unchecked and named above the plan, with
    its reason. The reasons are `too-many-blocks` (over 2000), `page-too-large` (over
-   6 MiB), `page-unavailable` (not shared, or deleted), `fetch-timeout` and
+   6 MiB), `page-unavailable` (not visible to the token, or deleted), `fetch-timeout` and
    `fetch-failed`. The last two are tried again on the next dry run. A page is never
    imported with part of its body.
 
@@ -962,8 +970,8 @@ times per pull, and can be stopped.
 | `400 BAD_USER_INPUT` | malformed request; the message names the field, never its value |
 | `401` | no session |
 | `409 NOTION_FETCH_DISABLED` | the instance runs with `NOTION_FETCH_ENABLED=false` (default on) |
-| `422 NOTION_TOKEN_INVALID` | Notion did not accept the token |
-| `422 NOTION_NOT_SHARED` | the database is not shared with the integration, or the link is wrong |
+| `422 NOTION_TOKEN_INVALID` | Notion did not accept the token (incomplete, expired or revoked) |
+| `422 NOTION_NOT_SHARED` | the token cannot see the database (an internal integration not added under 连接, or a page the author cannot open), or the link is wrong |
 | `429 NOTION_RATE_LIMITED` / `429` | Notion's rate limit, or ours: 60 per author and 120 per IP per 10 minutes, separate from the import's 10/20 |
 | `502 NOTION_UNAVAILABLE` | Notion failed, timed out or answered too much |
 | `503 NOTION_FETCH_BUSY` | more than 8 pulls in this process, or 2 for this author, are in flight (`Retry-After: 5`) |

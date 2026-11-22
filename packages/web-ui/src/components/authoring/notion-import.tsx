@@ -384,7 +384,7 @@ export function NotionImport() {
     setCreated(new Map()); setDatedBy(new Map()); resetLocalImages();
     pull.current = null;
     if (!looksLikeNotionToken(pasted)) {
-      setError("这不像 Notion 集成令牌：应以 ntn_（或旧版 secret_）开头，可在 Notion 的「设置 → 连接 → 开发或管理集成」里复制。");
+      setError("这不像 Notion 令牌：令牌是一整段不含空格的字符（现在通常以 ntn_ 开头），不是数据库链接。请在 Notion 里重新复制。");
       return;
     }
     if (source.trim() === "") { setError("请粘贴 Notion 数据库的链接（浏览器地址栏里的整段网址即可）。"); return; }
@@ -573,12 +573,15 @@ export function NotionImport() {
         <form className="nw-import-connect" id="notion-panel-pull" role="tabpanel" aria-labelledby="notion-tab-pull"
           onSubmit={(event) => { event.preventDefault(); void connect(); }}>
           <ol className="nw-m nw-import-steps">
-            <li>在 Notion 打开「设置 → 连接 → 开发或管理集成」，新建一个内部集成，复制它的 Internal Integration Secret。</li>
-            <li>在要导入的数据库右上角「…」→「连接」里添加这个集成。</li>
-            <li>把令牌和数据库链接粘贴到下面。</li>
+            <li>
+              推荐用个人访问令牌：在 Notion 设置里打开开发者模式，到 notion.so/developers/tokens 新建一个令牌，有效期选短一些（例如 7 天），只给读取权限。{""}
+              它按你自己的权限读取，不用再给数据库添加连接。部分工作区只允许所有者创建令牌。
+            </li>
+            <li>也可以用内部集成：在「设置 → 连接 → 开发或管理集成」新建内部集成并复制它的密钥，再在数据库右上角「…」→「连接」里添加这个集成。</li>
+            <li>把令牌和数据库链接粘贴到下面。导入完成后可以随时在 Notion 里撤销令牌。</li>
           </ol>
           <label className="nw-import-field">
-            <span>集成令牌</span>
+            <span>Notion 令牌</span>
             <input type="password" name="notion-token" autoComplete="off" spellCheck={false} placeholder="ntn_…" value={token}
               disabled={busy !== null} onChange={(event) => setToken(event.currentTarget.value)} />
           </label>
@@ -588,7 +591,7 @@ export function NotionImport() {
               disabled={busy !== null} onChange={(event) => setSource(event.currentTarget.value)} />
           </label>
           <p className="nw-m">
-            令牌只用于这次拉取：经本站服务器转发给 Notion，不保存、不写入日志，刷新或离开页面即失效。建议给集成只开「读取内容」权限。
+            令牌只用于这次拉取：经本站服务器转发给 Notion，不保存、不写入日志，刷新或离开页面即失效。建议只给读取权限。
           </p>
           <div className="nw-import-pick">
             <button className="nw-btn" type="submit" disabled={busy !== null || token.trim() === "" || source.trim() === ""}>

@@ -59,8 +59,8 @@ export type NotionFetchIssueCode = "too-many-blocks" | "page-too-large" | "fetch
 export type NotionFetchErrorCode = "NOTION_TOKEN_INVALID" | "NOTION_NOT_SHARED" | "NOTION_RATE_LIMITED" | "NOTION_UNAVAILABLE";
 
 const ERROR_STATUS: Readonly<Record<NotionFetchErrorCode, { status: number; message: string }>> = Object.freeze({
-  NOTION_TOKEN_INVALID: { status: 422, message: "Notion did not accept this integration token. Copy the Internal Integration Secret again." },
-  NOTION_NOT_SHARED: { status: 422, message: "Notion could not find this database for the integration. Add the integration under the database's Connections, or check the link." },
+  NOTION_TOKEN_INVALID: { status: 422, message: "Notion did not accept this token. It may be incomplete, expired or revoked; copy it again or create a new one." },
+  NOTION_NOT_SHARED: { status: 422, message: "Notion could not find this database with this token. Check the link; with an internal integration, add it under the database's Connections." },
   NOTION_RATE_LIMITED: { status: 429, message: "Notion is rate limiting this integration. Retry after the indicated time." },
   NOTION_UNAVAILABLE: { status: 502, message: "The Notion API could not be read. Try again later." },
 });
@@ -119,9 +119,19 @@ export function parseNotionId(input: string): string | null {
   return dashed(last);
 }
 
-/** An internal integration secret's shape: checked before anything is sent with it. */
+/**
+ * The bearer-token alphabet of RFC 6750 (`b64token`). Notion's tokens are opaque:
+ * personal access tokens and internal integration secrets start with `ntn_` today,
+ * older ones with `secret_`, and Notion documents neither prefix as stable nor the
+ * shape of an OAuth access token at all. So the prefix is not checked. What is
+ * checked is what keeps the value a single safe `Authorization` header — no
+ * whitespace, no control characters, no `:` of a pasted link — and a sane length.
+ */
+const BEARER_TOKEN = /^[A-Za-z0-9\-._~+/]+=*$/;
+
+/** A Notion access token's shape (personal, internal integration or OAuth): checked before anything is sent with it. */
 export function isNotionToken(value: unknown): value is string {
-  return typeof value === "string" && value.length >= 20 && value.length <= 200 && /^(?:ntn_|secret_)[A-Za-z0-9_]+$/.test(value);
+  return typeof value === "string" && value.length >= 20 && value.length <= 500 && BEARER_TOKEN.test(value);
 }
 
 const CURSOR = /^[A-Za-z0-9_=+/-]{1,512}$/;
@@ -135,7 +145,7 @@ export type NotionFetchRequest =
  * the value of `token` is a credential.
  */
 export function readNotionFetchRequest(body: Record<string, unknown>): NotionFetchRequest {
-  if (!isNotionToken(body.token)) throw new NotionFetchRequestError("`token` must be a Notion internal integration secret (it starts with `ntn_` or `secret_`).");
+  if (!isNotionToken(body.token)) throw new NotionFetchRequestError("`token` must be a Notion access token: 20 to 500 characters with no spaces, such as a personal access token.");
   if (body.mode === "rows") {
     const sourceId = typeof body.source === "string" ? parseNotionId(body.source) : null;
     if (sourceId === null) throw new NotionFetchRequestError("`source` must be a Notion database link or its 32-character id.");

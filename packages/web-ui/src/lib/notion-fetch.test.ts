@@ -40,11 +40,16 @@ function scripted(answers: (FetchAnswer | ((body: Record<string, unknown>) => Fe
 
 const row = (id: string, title: string) => ({ id, properties: { Name: { type: "title", title: [{ plain_text: title }] } } });
 
-test("only an integration secret's shape is accepted before anything is sent", () => {
+test("only a token's shape is checked before anything is sent, not its prefix", () => {
   assert.equal(looksLikeNotionToken(TOKEN), true);
   assert.equal(looksLikeNotionToken(`  ${TOKEN}  `), true);
   assert.equal(looksLikeNotionToken("secret_0123456789abcdefghij"), true);
-  for (const value of ["", "ntn_short", "sk-live-0123456789abcdefghij", "ntn_has space 0123456789abc", `ntn_${"a".repeat(200)}`]) {
+  // Notion treats tokens as opaque; an OAuth access token's prefix is not documented.
+  assert.equal(looksLikeNotionToken("nat_0123456789ABCDEFabcdef-._~+/=="), true);
+  for (const value of [
+    "", "ntn_short", "Bearer ntn_0123456789abcdefghij", "ntn_has space 0123456789abc", `ntn_${"a".repeat(500)}`,
+    "https://www.notion.so/workspace/0123456789abcdef", "ntn_令牌_0123456789abcdefghij",
+  ]) {
     assert.equal(looksLikeNotionToken(value), false, value);
   }
 });

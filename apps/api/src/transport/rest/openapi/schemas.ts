@@ -747,9 +747,9 @@ export const SCHEMAS: Readonly<Record<string, JsonSchema>> = Object.freeze({
   NotionFetchRequest: {
     type: "object",
     required: ["token", "mode"],
-    description: "The token is a Notion internal integration secret; it is used for this request only and never stored.",
+    description: "The token is a Notion access token — a personal access token, an internal integration secret or an OAuth access token; it is used for this request only and never stored.",
     properties: {
-      token: { type: "string", minLength: 20, maxLength: 200, pattern: "^(?:ntn_|secret_)[A-Za-z0-9_]+$", description: "Your Notion integration secret. Never logged or returned." },
+      token: { type: "string", minLength: 20, maxLength: 500, pattern: "^[A-Za-z0-9._~+/-]+=*$", description: "Your Notion access token. Its prefix is not checked (Notion treats tokens as opaque). Never logged or returned." },
       mode: { type: "string", enum: ["rows", "pages"] },
       source: { type: "string", maxLength: 2048, description: "For `rows`: a Notion database link or its 32-character id (a data source id also works)." },
       cursor: { type: ["string", "null"], maxLength: 512, description: "For `rows`: the `cursor` of the previous answer." },
