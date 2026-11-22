@@ -21,6 +21,16 @@ import {
   type NotionImportReport,
   type ReportFilter,
 } from "@/lib/notion-import.ts";
+import {
+  NOTION_PULL_ISSUE_TEXT,
+  NOTION_PULL_MAX_ROWS,
+  isRetryableNotionIssue,
+  looksLikeNotionToken,
+  proxyFetchPost,
+  pullNotionPages,
+  pullNotionRows,
+  withPulledBlocks,
+} from "@/lib/notion-fetch.ts";
 
 /** Pick source pages first, then preview and apply precisely that selection. */
 
@@ -86,6 +96,20 @@ type PostResult =
 const MAX_RATE_LIMIT_WAITS = 6;
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+/**
+ * A connected Notion database (ADR 0052). Rows are listed up front; a page's
+ * blocks are read the first time it is part of a dry run, so pages the author
+ * deselects are never read. The token lives here, in the page's memory, for as
+ * long as this pull is on screen; it is not stored anywhere and leaves with the page.
+ */
+type PullSession = {
+  token: string;
+  /** Page ids whose blocks are in the bundle. */
+  read: Set<string>;
+  /** Page ids Notion will not give us however often we ask, with the reason. */
+  unreadable: Map<string, string>;
+};
+
 function dataOf(payload: unknown): unknown {
   return typeof payload === "object" && payload !== null ? (payload as { data?: unknown }).data : null;
 }
@@ -98,7 +122,15 @@ export function NotionImport() {
   const [progress, setProgress] = useState("");
   const [notes, setNotes] = useState<string[]>([]);
   const [autoNote, setAutoNote] = useState("");
-  const [busy, setBusy] = useState<null | "dry-run" | "apply">(null);
+  const [busy, setBusy] = useState<null | "pull" | "dry-run" | "apply">(null);
+  // The direct pull is the default: it is the shortest way from a Notion database
+  // to a plan. The file upload stays one click away and is chosen by itself as
+  // soon as a file is picked.
+  const [tab, setTab] = useState<"notion" | "file">("notion");
+  const [token, setToken] = useState("");
+  const [source, setSource] = useState("");
+  const [pulling, setPulling] = useState(false);
+  const pull = useRef<PullSession | null>(null);
   const [error, setError] = useState("");
   const [warnings, setWarnings] = useState<string[]>([]);
   const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
@@ -181,17 +213,21 @@ export function NotionImport() {
    * plan and confirms once; a batch that fails to plan is named, and the others
    * remain confirmable.
    */
-  async function plan(selection: ReadonlySet<number>): Promise<void> {
+  async function plan(requested: ReadonlySet<number>): Promise<void> {
     if (bundle === null) return;
-    const split = planImportBatches(bundle, selection);
-    const titles = bundleSelectionPages(bundle);
     stopped.current = false;
     setError(""); setFilter("all");
+    const read = await readPulledPages(bundle, requested);
+    if (read === null) return;
+    const { bundle: current, selection, notes: pullNotes } = read;
+    const split = planImportBatches(current, selection);
+    const titles = bundleSelectionPages(current);
     setNotes([
+      ...pullNotes,
       ...split.notes,
       ...(split.tooLarge.length ? [`以下作品单件超过 ${MAX_MEGABYTES} MB 或 200 页，无法提交，未包含在计划中：${split.tooLarge.map((index) => `《${titles[index]?.title ?? index + 1}》`).join("、")}。`] : []),
     ]);
-    const next: Batch[] = split.batches.map((indices) => ({ indices, bundle: selectBundlePages(bundle, new Set(indices)), report: null, error: "", replanned: false }));
+    const next: Batch[] = split.batches.map((indices) => ({ indices, bundle: selectBundlePages(current, new Set(indices)), report: null, error: "", replanned: false }));
     setBatches(next);
     if (!next.length) return;
     setBusy("dry-run");
@@ -249,7 +285,78 @@ export function NotionImport() {
     setProgress(""); setBusy(null);
   }
 
+  /**
+   * For a pulled database, read the blocks of the selected pages that have none
+   * yet, and plan only the pages that now have them. A page Notion would not give
+   * us is named with its reason and left out of the plan — never imported without
+   * its body. A failure that may pass (a timeout) is asked again on the next dry run.
+   * Returns null when the pull itself failed or was stopped; the error is shown.
+   */
+  async function readPulledPages(current: Record<string, unknown>, selection: ReadonlySet<number>):
+    Promise<{ bundle: Record<string, unknown>; selection: ReadonlySet<number>; notes: string[] } | null> {
+    const session = pull.current;
+    if (session === null) return { bundle: current, selection, notes: [] };
+    const ids = (Array.isArray(current.pages) ? current.pages : []).map((page: unknown) =>
+      typeof page === "object" && page !== null && typeof (page as { id?: unknown }).id === "string" ? (page as { id: string }).id : "");
+    const missing = [...selection].map((index) => ids[index] ?? "").filter((id) => id !== "" && !session.read.has(id) && !session.unreadable.has(id));
+    const reasons = new Map<string, string>(session.unreadable);
+    let bundleWithBlocks = current;
+    if (missing.length > 0) {
+      setBusy("pull"); setPulling(true);
+      const result = await pullNotionPages(session.token, missing, { post: proxyFetchPost(), onProgress: setProgress, isStopped: () => stopped.current });
+      setPulling(false); setProgress(""); setBusy(null);
+      if (!result.ok) { setError(result.message); return null; }
+      for (const id of result.blocks.keys()) session.read.add(id);
+      for (const issue of result.issues) {
+        reasons.set(issue.id, issue.code);
+        if (!isRetryableNotionIssue(issue.code)) session.unreadable.set(issue.id, issue.code);
+      }
+      bundleWithBlocks = withPulledBlocks(current, result.blocks);
+      setBundle(bundleWithBlocks);
+    }
+    const left = [...selection].filter((index) => !session.read.has(ids[index] ?? ""));
+    if (left.length === 0) return { bundle: bundleWithBlocks, selection, notes: [] };
+    const titles = bundleSelectionPages(bundleWithBlocks);
+    const kept = new Set([...selection].filter((index) => !left.includes(index)));
+    setSelected(kept);
+    return {
+      bundle: bundleWithBlocks,
+      selection: kept,
+      notes: [`以下 ${left.length} 页没有从 Notion 读到正文，已取消勾选、未包含在计划中：${left.map((index) => {
+        const code = reasons.get(ids[index] ?? "") ?? "fetch-failed";
+        return `《${titles[index]?.title ?? index + 1}》（${NOTION_PULL_ISSUE_TEXT[code] ?? code}${isRetryableNotionIssue(code) ? "，重新勾选后试跑会再读一次" : ""}）`;
+      }).join("、")}。`],
+    };
+  }
+
+  /** Connect with the pasted token and list the database's rows; nothing is written. */
+  async function connect(): Promise<void> {
+    const pasted = token.trim();
+    setBatches(null); setNotes([]); setAutoNote(""); setError(""); setWarnings([]);
+    setBundle(null); setPageCount(0); setSelected(new Set()); setQuery(""); setFileName("");
+    pull.current = null;
+    if (!looksLikeNotionToken(pasted)) {
+      setError("这不像 Notion 集成令牌：应以 ntn_（或旧版 secret_）开头，可在 Notion 的「设置 → 连接 → 开发或管理集成」里复制。");
+      return;
+    }
+    if (source.trim() === "") { setError("请粘贴 Notion 数据库的链接（浏览器地址栏里的整段网址即可）。"); return; }
+    stopped.current = false;
+    setBusy("pull"); setPulling(true);
+    const result = await pullNotionRows(pasted, source.trim(), { post: proxyFetchPost(), onProgress: setProgress, isStopped: () => stopped.current });
+    setPulling(false); setProgress(""); setBusy(null);
+    if (!result.ok) { setError(result.message); return; }
+    pull.current = { token: pasted, read: new Set(), unreadable: new Map() };
+    setFileName(`${result.bundle.database.title || "Notion 数据库"} · ${result.bundle.pages.length} 个条目`);
+    setBundle(result.bundle); setPageCount(result.bundle.pages.length);
+    setSelected(new Set(result.bundle.pages.map((_page, index) => index)));
+    if (result.truncated) {
+      setWarnings([`这个数据库超过 ${NOTION_PULL_MAX_ROWS} 个条目，只列出了前 ${NOTION_PULL_MAX_ROWS} 个，其余条目这次不会导入。请在 Notion 里拆分数据库后分别拉取，或改用导出文件。`]);
+    }
+  }
+
   async function choose(files: File[]): Promise<void> {
+    pull.current = null;
+    setTab("file");
     setFileName(files.map((file) => file.name).join("、"));
     setBatches(null); setNotes([]); setAutoNote("");
     setError("");
@@ -306,9 +413,13 @@ export function NotionImport() {
   }
   /** Start over with another file, leaving this result behind. */
   function another() {
+    // A pulled database starts over at the connect form, with the token still in
+    // the field: "再导入一批" from the same workspace should not mean pasting again.
+    const fromNotion = pull.current !== null;
+    pull.current = null;
     setFileName(""); setBundle(null); setPageCount(0); setBatches(null); setNotes([]); setAutoNote(""); setError(""); setWarnings([]);
     setSelected(new Set()); setQuery(""); setFilter("all");
-    fileInput.current?.click();
+    if (!fromNotion) fileInput.current?.click();
   }
   const choices = bundle === null ? [] : bundleSelectionPages(bundle);
   const partners = bundle === null ? new Map<number, { inBundle: number[]; missing: string[] }>() : englishPartners(bundle);
@@ -338,17 +449,69 @@ export function NotionImport() {
         <Link className="nw-btn" href="/write">回到写作台</Link>
       </div>
       <p className="nw-ep">
-        选择 Notion 导出的 Markdown 文件（可多选，可附带数据库 CSV）或 ZIP 压缩包，也支持原有 JSON bundle。
-        导出包里的数据库 CSV 会用来补齐 Markdown 中缺失的日期、摘要、标签等属性，不会覆盖已有值。
-        勾选想导入的文章，试跑并检查报告后再确认写入；未勾选的页面不会提交。已有文章可能被更新，请留意试跑结果。
-      </p>
-      <p className="nw-m">
-        所选文件合计不超过 {MAX_MEGABYTES} MB。超过 {MAX_MEGABYTES} MB / 200 页（或 8 张在线 Notion 图片）会自动分批提交：先逐批试跑，再一次确认。ZIP 内的本地图片目前不会导入，会在下方提示；在线 Notion 图片会尝试复制，失败则移除并报告。未指定 Published 的文章默认为草稿。
+        直接连接 Notion 数据库拉取，或上传 Notion 导出的文件。勾选想导入的文章，试跑并检查报告后再确认写入；
+        未勾选的页面不会提交。已有文章可能被更新，请留意试跑结果。
       </p>
 
-      <div className="nw-import-pick">
-        <label className="nw-btn" htmlFor="notion-bundle-file">选择文件</label>
-        <input
+      <div className="nw-import-tabs" role="tablist" aria-label="导入方式">
+        <button type="button" role="tab" id="notion-tab-pull" aria-controls="notion-panel-pull" aria-selected={tab === "notion"}
+          className="nw-import-tab" disabled={busy !== null} onClick={() => setTab("notion")}>连接 Notion 直接拉取</button>
+        <button type="button" role="tab" id="notion-tab-file" aria-controls="notion-panel-file" aria-selected={tab === "file"}
+          className="nw-import-tab" disabled={busy !== null} onClick={() => setTab("file")}>上传导出文件</button>
+      </div>
+
+      {tab === "notion" ? (
+        <form className="nw-import-connect" id="notion-panel-pull" role="tabpanel" aria-labelledby="notion-tab-pull"
+          onSubmit={(event) => { event.preventDefault(); void connect(); }}>
+          <ol className="nw-m nw-import-steps">
+            <li>在 Notion 打开「设置 → 连接 → 开发或管理集成」，新建一个内部集成，复制它的 Internal Integration Secret。</li>
+            <li>在要导入的数据库右上角「…」→「连接」里添加这个集成。</li>
+            <li>把令牌和数据库链接粘贴到下面。</li>
+          </ol>
+          <label className="nw-import-field">
+            <span>集成令牌</span>
+            <input type="password" name="notion-token" autoComplete="off" spellCheck={false} placeholder="ntn_…" value={token}
+              disabled={busy !== null} onChange={(event) => setToken(event.currentTarget.value)} />
+          </label>
+          <label className="nw-import-field">
+            <span>数据库链接</span>
+            <input type="text" inputMode="url" name="notion-source" autoComplete="off" spellCheck={false} placeholder="https://www.notion.so/…" value={source}
+              disabled={busy !== null} onChange={(event) => setSource(event.currentTarget.value)} />
+          </label>
+          <p className="nw-m">
+            令牌只用于这次拉取：经本站服务器转发给 Notion，不保存、不写入日志，刷新或离开页面即失效。建议给集成只开「读取内容」权限。
+          </p>
+          <div className="nw-import-pick">
+            <button className="nw-btn" type="submit" disabled={busy !== null || token.trim() === "" || source.trim() === ""}>
+              {busy === "pull" && bundle === null ? "正在读取…" : "连接并读取条目"}
+            </button>
+            {pull.current !== null && fileName !== "" ? <span className="nw-import-file" role="status">已连接：{fileName}</span> : null}
+          </div>
+          <p className="nw-m">
+            先只读取条目列表；正文在试跑时只为勾选的页面读取。超过 {MAX_MEGABYTES} MB / 200 页（或 8 张在线 Notion 图片）会自动分批提交。
+            在线 Notion 图片会尝试复制，失败则移除并报告。未指定 Published 的文章默认为草稿。
+          </p>
+        </form>
+      ) : (
+        <div id="notion-panel-file" role="tabpanel" aria-labelledby="notion-tab-file">
+          <p className="nw-m">
+            选择 Notion 导出的 Markdown 文件（可多选，可附带数据库 CSV）或 ZIP 压缩包，也支持原有 JSON bundle。
+            导出包里的数据库 CSV 会用来补齐 Markdown 中缺失的日期、摘要、标签等属性，不会覆盖已有值。
+          </p>
+          <p className="nw-m">
+            所选文件合计不超过 {MAX_MEGABYTES} MB。超过 {MAX_MEGABYTES} MB / 200 页（或 8 张在线 Notion 图片）会自动分批提交：先逐批试跑，再一次确认。ZIP 内的本地图片目前不会导入，会在下方提示；在线 Notion 图片会尝试复制，失败则移除并报告。未指定 Published 的文章默认为草稿。
+          </p>
+          <div className="nw-import-pick">
+            <label className="nw-btn" htmlFor="notion-bundle-file">选择文件</label>
+            <span className="nw-import-file" role="status">
+              {fileName === "" || pull.current !== null ? "还没有选择文件" : `${fileName}${pageCount > 0 ? ` · ${pageCount} 页` : ""}`}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Outside the panels so a file can be chosen from either; choosing one switches to the upload tab. */}
+      <input
           accept=".md,.csv,.zip,.json,text/csv,application/json,application/zip"
           multiple
           disabled={busy !== null}
@@ -364,16 +527,13 @@ export function NotionImport() {
           }}
           type="file"
         />
-        <span className="nw-import-file" role="status">
-          {fileName === "" ? "还没有选择文件" : `${fileName}${pageCount > 0 ? ` · ${pageCount} 页` : ""}`}
-        </span>
-      </div>
 
       {busy === "dry-run" && progress === "" ? <p className="nw-m" role="status">正在读取或试跑所选页面…</p> : null}
       {progress !== "" ? (
         <p className="nw-import-progress" role="status">
           {progress}
-          {total > 1 ? <button className="nw-btn" type="button" onClick={() => { stopped.current = true; }}>停止剩余批次</button> : null}
+          {pulling ? <button className="nw-btn" type="button" onClick={() => { stopped.current = true; }}>停止拉取</button>
+            : total > 1 ? <button className="nw-btn" type="button" onClick={() => { stopped.current = true; }}>停止剩余批次</button> : null}
         </p>
       ) : null}
       {error !== "" || batchErrors.length > 0 ? (
@@ -438,7 +598,7 @@ export function NotionImport() {
             onClick={() => void plan(selected)}>试跑所选文章</button>
         </section>
       ) : null}
-      {bundle !== null && choices.length === 0 ? <p className="nw-m">文件中没有可选择的页面。</p> : null}
+      {bundle !== null && choices.length === 0 ? <p className="nw-m">{pull.current !== null ? "这个数据库里没有条目。" : "文件中没有可选择的页面。"}</p> : null}
 
       {report !== null && outcome !== null ? (
         <div className="nw-import-report">
@@ -451,7 +611,7 @@ export function NotionImport() {
           ) : null}
           {report.database.id !== "" ? (
             <p className="nw-import-source">
-              bundle 里的数据库：{report.database.title ?? report.database.id}
+              {pull.current !== null ? "Notion 数据库" : "bundle 里的数据库"}：{report.database.title ?? report.database.id}
             </p>
           ) : null}
 

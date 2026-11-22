@@ -126,6 +126,10 @@ export const REST_ROUTES: readonly RestRoute[] = Object.freeze([
   // (ADR 0037). `apply` decides whether anything is written; the default dry run
   // is a read.
   { id: "imports.notion", methods: ["POST"], segments: [literal("imports"), literal("notion")] },
+  // Pulling from Notion with a token the author pastes (ADR 0052): a read of
+  // *their* Notion, so it writes nothing here, but it is a `POST` because the
+  // token travels in the body — never in a URL a log or a proxy could keep.
+  { id: "imports.notion.fetch", methods: ["POST"], segments: [literal("imports"), literal("notion"), literal("fetch")] },
   { id: "imports.notion.jobs", methods: ["GET", "POST"], segments: [literal("imports"), literal("notion"), literal("jobs")] },
   { id: "imports.notion.jobs.item", methods: ["GET", "DELETE"], segments: [literal("imports"), literal("notion"), literal("jobs"), param("jobId")] },
   // The same exchange in the other direction: the caller's own works, as a bundle

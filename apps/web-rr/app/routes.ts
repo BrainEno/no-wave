@@ -102,6 +102,8 @@ route("api/authoring/notifications/:id/read", "routes/api.authoring.notification
   // Notion exchange (ADR 0036): the import is a `POST` to the API from the desk's
   // own client; the export is a download, so the browser needs a URL it can follow.
   route("api/authoring/notion-export", "routes/api.authoring.notion-export.ts"),
+  // 直接拉取（ADR 0052）：作者粘贴的 token 只经由这里转给我们自己的 API，不落盘。
+  route("api/authoring/notion-fetch", "routes/api.authoring.notion-fetch.ts"),
   route("api/authoring/notion-import", "routes/api.authoring.notion-import.ts"),
   route("api/authoring/notion-jobs", "routes/api.authoring.notion-jobs.ts"),
   route("api/authoring/notion-jobs/:id", "routes/api.authoring.notion-job.ts"),

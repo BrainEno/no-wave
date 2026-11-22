@@ -851,3 +851,96 @@ batches at any time.
 There is no fixed cap on the number of batches. Every dry run and every apply
 counts toward the import rate limits (10 per author and 20 per IP per 10
 minutes), so a large selection can take several minutes of automatic waiting.
+
+## Pulling straight from Notion with a pasted token (ADR 0052)
+
+The desk's default tab, 连接 Notion 直接拉取, skips the export step. The author
+creates an internal integration in Notion, adds it to the database under
+「… → 连接」, and pastes its Internal Integration Secret and the database link.
+Notion's API sends no CORS headers, so the browser cannot call it itself. The
+token therefore passes through our API, one request at a time, and is never kept.
+[ADR 0052](../architecture/decisions/0052-server-side-notion-pull-without-storing-tokens.md)
+amends ADR 0036 decision 3 for exactly this endpoint.
+
+What the author does, and what each step sends:
+
+1. **连接并读取条目** sends `POST /api/authoring/notion-fetch` with
+   `{ token, mode: "rows", source }`. The answer is the rows' properties only, up
+   to 1000 per request, with a `cursor` to continue. The desk shows them in the
+   usual selection list: all selected by default, English partners checked
+   automatically. Above 2000 rows the desk stops listing and says so.
+2. **试跑所选文章** first reads the blocks of the selected pages that have not been
+   read yet, with `{ token, mode: "pages", pageIds }` (at most 200 ids per request).
+   The server reads in order until about 45 s or 6 MiB and lists what it finished in
+   `done`. The desk sends the rest in the next request, so the server keeps no
+   continuation. Deselected pages are never read, and a second dry run does not read
+   the same pages again. The finished bundle then goes through the same automatic
+   batches, merged plan and single confirm as an uploaded file. Nothing is written
+   before 确认导入.
+3. A page the server could not carry is unchecked and named above the plan, with
+   its reason. The reasons are `too-many-blocks` (over 2000), `page-too-large` (over
+   6 MiB), `page-unavailable` (not shared, or deleted), `fetch-timeout` and
+   `fetch-failed`. The last two are tried again on the next dry run. A page is never
+   imported with part of its body.
+
+The token is a field of the request body and nothing else. It is the
+`Authorization` header of the outgoing Notion calls, then discarded with the
+request. It is not stored in the database, a file, a log line, an error message
+or a response, and Notion's own error text is never forwarded either. In the
+browser it lives in the page's memory: the field is `type="password"`,
+`autocomplete="off"`, nothing goes to `localStorage`, `sessionStorage` or the URL,
+and a reload clears it. Only `notion-fetch` ever receives it; the import requests
+carry the bundle and nothing else.
+
+Outgoing calls go only to `https://api.notion.com/v1/`. The server makes three
+read-only calls (`GET databases/{id}`, `POST data_sources/{id}/query`,
+`GET blocks/{id}/children`) with server-built URLs, no redirects, 15 s and 4 MiB
+per call, at least 340 ms apart, and a fixed `Notion-Version`. A Notion
+`Retry-After` of up to 10 s is waited out inside the request. A longer one ends the
+slice: with a 200 and `retryAfterSeconds` when some pages were finished, or a 429
+when none were. The desk waits either out with a visible countdown, at most six
+times per pull, and can be stopped.
+
+| Answer | When |
+|---|---|
+| `400 BAD_USER_INPUT` | malformed request; the message names the field, never its value |
+| `401` | no session |
+| `409 NOTION_FETCH_DISABLED` | the instance runs with `NOTION_FETCH_ENABLED=false` (default on) |
+| `422 NOTION_TOKEN_INVALID` | Notion did not accept the token |
+| `422 NOTION_NOT_SHARED` | the database is not shared with the integration, or the link is wrong |
+| `429 NOTION_RATE_LIMITED` / `429` | Notion's rate limit, or ours: 60 per author and 120 per IP per 10 minutes, separate from the import's 10/20 |
+| `502 NOTION_UNAVAILABLE` | Notion failed, timed out or answered too much |
+| `503 NOTION_FETCH_BUSY` | more than 8 pulls in this process, or 2 for this author, are in flight (`Retry-After: 5`) |
+
+Deployments must allow outbound `api.notion.com:443` from the API. Turning the
+pull off leaves the upload tab working as before.
+
+The command-line seed (§9) uses the same reading code
+(`apps/api/src/infrastructure/notion-source.ts`). Since this change, a page over its
+block limit fails the run instead of being silently cut short.
+
+### Where the guarantees are tested
+
+- `apps/api/src/infrastructure/notion-source.test.ts`: the outgoing calls' URLs and
+  headers, no redirects, the byte cap, pacing and 429 handling, and the block limit
+  failing instead of truncating.
+- `apps/api/src/application/notion-fetch.test.ts`: link and id parsing, token
+  shape, the time and byte budgets, `done` and issue codes, the error mapping, and
+  messages that never repeat the request.
+- `apps/api/src/transport/rest/notion-fetch.integration.test.ts`: over HTTP with
+  Notion stubbed, rows and pages, every refusal's status and code, Retry-After,
+  the session and flag checks, the separate rate limit and the concurrency cap.
+  The responses, the API's log lines and anything the process prints are captured,
+  and none contains the token or Notion's error text.
+- `packages/web-http/test/authoring-notion-fetch.test.ts`: the proxy forwards
+  byte for byte with a 90 s budget, keeps Retry-After, refuses non-pulls before
+  the network, and never echoes the token.
+- `packages/web-ui/src/lib/notion-fetch.test.ts`: the desk's loop, which follows
+  cursors and `done`, waits a bounded number of times, never loops on an answer
+  without progress, never drops a page silently, and words every failure without
+  the token.
+- `e2e/notion-fetch.spec.ts` (both endpoints mocked, Notion never contacted):
+  connect, uncheck one, dry run reading only the selected pages, confirm. Also: a
+  malformed token never sent, the refusal sentences, a 429 waited out, an oversized
+  page unchecked with its reason, no token in any import request or in storage,
+  and an empty field after a reload.
