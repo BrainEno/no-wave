@@ -96,7 +96,8 @@ Notion 平均限速约 3 次/秒，200 页加上嵌套块通常需要数百次�
 - 只能放在请求体里（不进 URL 和查询串），只在本次请求中作为 `Authorization` 头发往
   Notion。
 - 校验格式（`ntn_` 或 `secret_` 前缀，`[A-Za-z0-9_]`，长度 20～200），格式不符的
-  直接拒绝，不会转发出去。
+  直接拒绝，不会转发出去。（已由 [ADR 0053](0053-notion-oauth-without-stored-tokens.md)
+  决定 6 修改：不再检查前缀，只检查长度 20～500 与 RFC 6750 bearer 字符集。）
 - 错误、日志、指标和响应中都不出现 token，也不出现 Notion 的错误原文（Notion 的
   错误体可能回显内容）。错误映射为稳定代码：`NOTION_TOKEN_INVALID`（Notion 401，
   返回 422）、`NOTION_NOT_SHARED`（Notion 403/404：数据库未共享给该 integration，或
@@ -155,6 +156,9 @@ P0-4 的分批、试跑和一次确认。写入只发生在作者明确点击「
    Internal Integration Secret；
 2. 在数据库右上角「… → 连接」中添加这个集成；
 3. 把令牌和数据库链接粘贴进来（链接或 32 位 ID 均可）。
+
+（后续：写作台改为优先推荐个人访问令牌，它不需要第 2 步；配置了 OAuth 时还可以
+「用 Notion 授权」，见 [ADR 0053](0053-notion-oauth-without-stored-tokens.md)。）
 
 点「连接并读取条目」后只列出行（属性），标题出现在现有的选择列表里（默认全选，英文
 对照页自动勾选）。点「试跑所选文章」时，先只为**仍勾选且还没读过**的页面读取正文

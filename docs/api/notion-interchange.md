@@ -1009,6 +1009,47 @@ block limit fails the run instead of being silently cut short.
   page unchecked with its reason, no token in any import request or in storage,
   and an empty field after a reload.
 
+## Authorizing with Notion instead of pasting a token (ADR 0053, optional)
+
+When the API has `NOTION_OAUTH_CLIENT_ID`, `NOTION_OAUTH_CLIENT_SECRET` and
+`NOTION_OAUTH_REDIRECT_URI` (an https URL whose path is
+`/write/notion/oauth/callback`), the pull tab also offers 用 Notion 授权. Without
+them nothing changes: `GET /api/authoring/notion-oauth` answers
+`{ data: { enabled: false } }` and the button is not shown.
+
+1. The desk opens a blank same-origin popup on the click, cuts its `opener`, and asks
+   `POST /api/authoring/notion-oauth/start` for Notion's authorize URL
+   (`owner=user`, the configured `redirect_uri`, and a `state`). The state is an
+   HMAC over the author, an expiry ten minutes out and a random nonce. Nothing
+   about it is stored.
+2. In Notion's page the author selects the database, or a page above it, and
+   approves. Notion redirects the popup to `/write/notion/oauth/callback`. That page
+   removes `code` and `state` from its address bar before doing anything else. It
+   is `no-store` and `Referrer-Policy: no-referrer`, and the web server logs paths
+   without query strings.
+3. The callback sends `{ code, state }` to
+   `POST /api/authoring/notion-oauth/exchange`. The API accepts the state only for
+   the same signed-in author, before it expires, and only once. It then redeems the
+   code at `POST https://api.notion.com/v1/oauth/token` with HTTP Basic client
+   credentials. The answer is `{ data: { accessToken, workspaceName } }`. Notion's
+   refresh token is never read out of its response.
+4. The callback posts the result on a `BroadcastChannel` named after the state, then
+   closes. The desk takes the first well-formed message on that channel only. It puts
+   the token where a pasted one goes and, if a database link is filled in, connects.
+   From here everything is the pasted-token flow above.
+
+| Answer | When |
+| --- | --- |
+| `409 NOTION_OAUTH_DISABLED` | OAuth is not configured, or pulling is off |
+| `422 NOTION_OAUTH_STATE_INVALID` | the state expired, was used, was forged or belongs to another author |
+| `422 NOTION_OAUTH_CODE_INVALID` | Notion refused the code (`invalid_grant`) |
+| `502 NOTION_OAUTH_MISCONFIGURED` | Notion refused the client id/secret |
+| `502 NOTION_UNAVAILABLE` | Notion failed, timed out, or returned no usable token |
+| `429` | 10 per author and 20 per IP per 10 minutes, separately for start and exchange |
+
+Nothing is persisted. The access token lives in the desk's memory like a pasted one.
+To revoke access, the author removes the connection in Notion's settings.
+
 ## Filling a missing Date from the creation date (desk, optional)
 
 A published page without a `Date` is dated at the moment of the import (§4), so a

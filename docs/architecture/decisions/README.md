@@ -60,7 +60,7 @@ which of two `0011`s meant what.
 | [0050](0050-read-only-local-writing-cadence.md) | 写作停顿与配对节奏审阅使用单次有界扫描，不推断行文风格或自动润色 | Accepted | Done | 2026-11-12 |
 | [0051](0051-read-only-local-writing-parallel.md) | 双语与平行文稿对照审阅使用确定性骨架树对齐，不推断翻译质量或自动回写 | Accepted | Done | 2026-11-12 |
 | [0052](0052-server-side-notion-pull-without-storing-tokens.md) | 粘贴 Notion token，由服务器分段拉取数据库；token 只随请求经过、从不保存 | Accepted | Done | 2026-11-22 |
-| [0053](0053-notion-oauth-without-stored-tokens.md) | 用 Notion OAuth 代替粘贴令牌，授权结果只交给当前页面、服务器仍不保存 | Proposed | Not started | 2026-11-22 |
+| [0053](0053-notion-oauth-without-stored-tokens.md) | 用 Notion OAuth 代替粘贴令牌，授权结果只交给当前页面、服务器仍不保存 | Accepted | Done | 2026-11-22 |
 
 The status column carries the leading word of each file's `- Status:` line —
 read the file for the qualifier ("Superseded by ADR 0012", "Accepted as the
