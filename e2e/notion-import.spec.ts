@@ -103,7 +103,10 @@ test("choosing a bundle shows the plan, and only the confirm button writes it", 
   const file = bundleFile();
   await registerThroughForm(page, uniqueEmail("notion-import"), "/write/notion");
 
-  // The panel is client-rendered: this is the empty state, after hydration.
+  // The panel is client-rendered. After hydration the direct pull (ADR 0052) is
+  // the default tab; the upload is one click away and shows its empty state.
+  await expect(page.getByRole("tab", { name: "连接 Notion 直接拉取" })).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("tab", { name: "上传导出文件" }).click();
   await expect(page.getByText("还没有选择文件")).toBeVisible();
   await page.setInputFiles("#notion-bundle-file", file);
   await selectAllAndPreview(page);

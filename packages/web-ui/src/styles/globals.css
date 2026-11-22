@@ -940,6 +940,18 @@ header[data-tool] .nw-pill { position: absolute; }
 .nw-import-pick { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin: 28px 0 8px; }
 .nw-import-pick label { cursor: pointer; }
 .nw-import-file { color: var(--t2); font: 400 13px/1.6 var(--f-ss); overflow-wrap: anywhere; }
+/* Two ways in (ADR 0052): pull from Notion with a pasted token, or upload an
+   export. Underlined tabs rather than buttons, so the choice reads as "which
+   form" and the panel's own button stays the one action. */
+.nw-import-tabs { display: flex; gap: 24px; flex-wrap: wrap; margin: 28px 0 0; border-bottom: 1px solid var(--line-2); }
+.nw-import-tab { min-height: 44px; padding: 0; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: transparent; color: var(--t2); font: 600 14px/1.4 var(--f-zh); cursor: pointer; }
+.nw-import-tab[aria-selected="true"] { border-bottom-color: var(--ink); color: var(--ink); }
+.nw-import-tab:disabled { cursor: default; }
+.nw-import-connect { display: grid; gap: 14px; max-width: 640px; margin-top: 20px; }
+.nw-import-connect .nw-m, .nw-import-connect .nw-import-pick { margin: 0; }
+.nw-import-steps { margin: 0; padding-left: 1.4em; display: grid; gap: 4px; }
+.nw-import-field { display: grid; gap: 6px; font: 600 12px/1.5 var(--f-ss); letter-spacing: .04em; }
+.nw-import-field input { min-height: 44px; padding: 0 12px; border: 1px solid var(--edge); background: transparent; color: var(--ink); font: 400 15px/1.5 var(--f-ss); }
 .nw-import-report { margin-top: 28px; border-top: 1px solid var(--line-2); padding-top: 20px; }
 .nw-import-headline { margin: 0; font: 600 18px/1.5 var(--f-zh); }
 .nw-import-source { margin: 6px 0 0; color: var(--t2); font: 400 12px/1.6 var(--f-ss); overflow-wrap: anywhere; }
