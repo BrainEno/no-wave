@@ -343,15 +343,37 @@ test("a selected page with a missing English relation is refused before writing"
     { name: `关联原文 ${zh}.md`, mimeType: "text/markdown", buffer: Buffer.from(`# 关联原文\n\nEnglish: English (English%20${en}.md)\n\n中文正文`) },
     { name: `English ${en}.md`, mimeType: "text/markdown", buffer: Buffer.from("# English\n\nEnglish text") },
   ]);
+  // Choosing a page brings its English counterpart along, and says so.
+  await page.getByRole("button", { name: "清空", exact: true }).click();
+  await page.getByLabel("关联原文", { exact: true }).check();
+  await expect(page.getByText("已自动为你勾上对照的英文页：《English》。")).toBeVisible();
+  await expect(page.getByLabel("English", { exact: true })).toBeChecked();
+  // Unchecking it on purpose is respected; the row warns, and the API still refuses the work.
   await page.getByLabel("English", { exact: true }).uncheck();
+  await expect(page.getByText("对照的英文页《English》未勾选：试跑时这件作品会被拒绝。")).toBeVisible();
   await page.getByRole("button", { name: "试跑所选文章" }).click();
   await expect(page.locator(".nw-import-report").getByText("missing-translation-page", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /确认导入/ })).toHaveCount(0);
-  await page.getByLabel("English", { exact: true }).check();
+  await page.getByRole("button", { name: "一并勾上《English》" }).click();
+  await expect(page.getByLabel("English", { exact: true })).toBeChecked();
   await page.getByRole("button", { name: "试跑所选文章" }).click();
   await expect(page.getByRole("button", { name: /确认导入/ })).toBeVisible();
 });
 
+
+test("a page whose English counterpart is not in the export is marked before anything is sent", async ({ page }) => {
+  await registerThroughForm(page, uniqueEmail("notion-needs-en"), "/write/notion");
+  const writes = await mockNotionImport(page);
+  const zh = randomUUID().replaceAll("-", "");
+  const absent = randomUUID().replaceAll("-", "");
+  await page.setInputFiles("#notion-bundle-file", [
+    { name: `缺英文 ${zh}.md`, mimeType: "text/markdown", buffer: Buffer.from(`# 缺英文\n\nEnglish: Missing (Missing%20${absent}.md)\n\n中文正文`) },
+  ]);
+  const row = page.locator(".nw-import-selection-list li").filter({ hasText: "缺英文" });
+  await expect(row.getByText("需先补齐英文版")).toBeVisible();
+  await expect(page.getByText(/有 1 页标注了「需先补齐英文版」.*包含子页面/)).toBeVisible();
+  expect(writes).toHaveLength(0);
+});
 
 test("an edit after preview is preserved and the import asks to preview again", async ({ page }) => {
   const file = bundleFile();

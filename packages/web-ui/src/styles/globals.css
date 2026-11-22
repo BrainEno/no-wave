@@ -1132,6 +1132,11 @@ header[data-tool] .nw-pill { position: absolute; }
 .nw-import-target { grid-column: 2 / -1; color: var(--t2); font: 400 12px/1.6 var(--f-zh); overflow-wrap: anywhere; }
 .nw-import-done { display: flex; flex-wrap: wrap; gap: 10px; }
 .nw-import-progress { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 16px 0 0; font: 500 14px/1.6 var(--f-zh); font-variant-numeric: tabular-nums; }
+.nw-import-auto { margin: 12px 0 0; padding: 10px 14px; background: var(--wash); font: 500 13px/1.6 var(--f-zh); }
+.nw-import-hint { margin: 12px 0 0; color: var(--t2); font: 400 13px/1.7 var(--f-zh); max-width: 64ch; }
+.nw-import-badge { flex: none; padding: 1px 8px; border: 1px solid var(--red); color: var(--red); font: 600 11px/1.6 var(--f-ss); letter-spacing: .04em; }
+.nw-import-row-hint { margin: 6px 0 0 30px; color: var(--red); font: 400 12px/1.7 var(--f-zh); }
+.nw-import-inline { margin-left: 8px; padding: 0; border: 0; background: none; color: var(--ink); font: 600 12px/1.7 var(--f-zh); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .nw-import-notes { margin: 12px 0 0; padding-left: 1.2em; color: var(--t2); font: 400 13px/1.7 var(--f-zh); }
 .nw-auth-error > p { margin: 0; }
 .nw-auth-error > p + p { margin-top: 6px; }

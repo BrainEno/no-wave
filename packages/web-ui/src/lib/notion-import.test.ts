@@ -11,6 +11,8 @@ import {
   readBundleFile,
   indicesWithActions,
   invertSelection,
+  englishPartners,
+  withEnglishPartners,
   mergeReports,
   pageKey,
   planImportBatches,
@@ -385,4 +387,25 @@ test("batch reports merge into one report; applied only when every batch was", (
   assert.deepEqual(merged.summary, { create: 1, update: 1, skip: 1, refused: 0, failed: 0 });
   assert.deepEqual(merged.pages.map((p) => p.externalId), ["a", "b", "c"]);
   assert.equal(mergeReports([]), null);
+});
+
+test("English counterparts are found in the bundle, and the ones missing from it are named", () => {
+  const zh = "11111111111111111111111111111111"; const en = "22222222-2222-2222-2222-222222222222"; const gone = "33333333333333333333333333333333";
+  const bundle = { pages: [
+    pageWith(zh, { English: { type: "relation", relation: [{ id: en.replaceAll("-", "") }] } }),
+    pageWith(en),
+    pageWith("orphan", { English: { type: "relation", relation: [{ id: gone }] } }),
+  ] };
+  const partners = englishPartners(bundle);
+  assert.deepEqual(partners.get(0), { inBundle: [1], missing: [] });
+  assert.deepEqual(partners.get(2), { inBundle: [], missing: [gone] });
+  assert.equal(partners.has(1), false);
+});
+
+test("selecting a page adds its English counterpart; unchecking the counterpart is respected", () => {
+  const partners = new Map([[0, { inBundle: [1], missing: [] }], [1, { inBundle: [2], missing: [] }]]);
+  assert.deepEqual(withEnglishPartners(new Set(), new Set([0]), partners), { selection: new Set([0, 1, 2]), added: [1, 2] });
+  // 0 was already selected; the author removed 1 on purpose.
+  assert.deepEqual(withEnglishPartners(new Set([0, 1]), new Set([0]), partners), { selection: new Set([0]), added: [] });
+  assert.deepEqual(withEnglishPartners(new Set([3]), new Set([3, 1]), partners).added, [2]);
 });

@@ -508,3 +508,47 @@ export function mergeReports(reports: readonly NotionImportReport[]): NotionImpo
     pages: reports.flatMap((report) => report.pages),
   };
 }
+
+/** For one bundle page: the pages its `English` relation names, in the bundle or not. */
+export type EnglishPartners = { inBundle: number[]; missing: string[] };
+
+/**
+ * Every page's English counterparts, by bundle index. A counterpart in the
+ * bundle can be selected along with its page; one that is not in the bundle
+ * cannot, and the API will refuse the work (`missing-translation-page`) until
+ * the export includes it.
+ */
+export function englishPartners(bundle: Record<string, unknown>): Map<number, EnglishPartners> {
+  const pages: unknown[] = Array.isArray(bundle.pages) ? bundle.pages : [];
+  const byKey = new Map<string, number>();
+  pages.forEach((page, index) => { if (isRecord(page) && typeof page.id === "string") byKey.set(pageKey(page.id), index); });
+  const result = new Map<number, EnglishPartners>();
+  pages.forEach((page, index) => {
+    const ids = englishRelationIds(page).filter((id) => byKey.get(pageKey(id)) !== index);
+    if (!ids.length) return;
+    result.set(index, {
+      inBundle: ids.flatMap((id) => byKey.has(pageKey(id)) ? [byKey.get(pageKey(id))!] : []),
+      missing: ids.filter((id) => !byKey.has(pageKey(id))),
+    });
+  });
+  return result;
+}
+
+/**
+ * The selection after a change, with the English counterparts of every newly
+ * selected page added (transitively). Only *additions* pull partners in: a
+ * counterpart the author unchecks on purpose stays unchecked — the row says
+ * what that means, and the API's refusal stays the authority.
+ */
+export function withEnglishPartners(previous: ReadonlySet<number>, next: ReadonlySet<number>, partners: ReadonlyMap<number, EnglishPartners>): { selection: Set<number>; added: number[] } {
+  const selection = new Set(next); const added: number[] = [];
+  const queue = [...next].filter((index) => !previous.has(index));
+  while (queue.length) {
+    const index = queue.shift()!;
+    for (const partner of partners.get(index)?.inBundle ?? []) {
+      if (selection.has(partner)) continue;
+      selection.add(partner); added.push(partner); queue.push(partner);
+    }
+  }
+  return { selection, added };
+}

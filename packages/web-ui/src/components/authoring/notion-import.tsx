@@ -10,8 +10,10 @@ import {
   issueCounts,
   importDetail,
   readBundleFile,
+  englishPartners,
   indicesWithActions,
   invertSelection,
+  withEnglishPartners,
   mergeReports,
   planImportBatches,
   reportCsv,
@@ -95,6 +97,7 @@ export function NotionImport() {
   const [batches, setBatches] = useState<Batch[] | null>(null);
   const [progress, setProgress] = useState("");
   const [notes, setNotes] = useState<string[]>([]);
+  const [autoNote, setAutoNote] = useState("");
   const [busy, setBusy] = useState<null | "dry-run" | "apply">(null);
   const [error, setError] = useState("");
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -248,7 +251,7 @@ export function NotionImport() {
 
   async function choose(files: File[]): Promise<void> {
     setFileName(files.map((file) => file.name).join("、"));
-    setBatches(null); setNotes([]);
+    setBatches(null); setNotes([]); setAutoNote("");
     setError("");
     setWarnings([]);
     setBundle(null);
@@ -287,7 +290,11 @@ export function NotionImport() {
   }
 
   function changeSelection(next: ReadonlySet<number>) {
-    setSelected(next);
+    // A page whose English counterpart is in this export brings it along: the
+    // API refuses a work whose counterpart was not sent with it.
+    const { selection, added } = withEnglishPartners(selected, next, partners);
+    setAutoNote(added.length ? `已自动为你勾上对照的英文页：${added.map((index) => `《${choices[index]?.title ?? index + 1}》`).join("、")}。` : "");
+    setSelected(selection);
     setBatches(null); setNotes([]);
     setError("");
   }
@@ -299,11 +306,13 @@ export function NotionImport() {
   }
   /** Start over with another file, leaving this result behind. */
   function another() {
-    setFileName(""); setBundle(null); setPageCount(0); setBatches(null); setNotes([]); setError(""); setWarnings([]);
+    setFileName(""); setBundle(null); setPageCount(0); setBatches(null); setNotes([]); setAutoNote(""); setError(""); setWarnings([]);
     setSelected(new Set()); setQuery(""); setFilter("all");
     fileInput.current?.click();
   }
   const choices = bundle === null ? [] : bundleSelectionPages(bundle);
+  const partners = bundle === null ? new Map<number, { inBundle: number[]; missing: string[] }>() : englishPartners(bundle);
+  const needsEnglish = [...partners.entries()].filter(([, partner]) => partner.missing.length > 0).map(([index]) => index);
   const needle = query.trim().toLowerCase();
   const visible = needle === "" ? choices : choices.filter((page) => page.title.toLowerCase().includes(needle));
   const visibleIndices = visible.map((page) => page.index);
@@ -386,6 +395,13 @@ export function NotionImport() {
             </label>
           ) : null}
           {needle !== "" ? <p className="nw-m" role="status">筛选出 {visible.length} 页；下面的全选、清空、反选只作用于这些页面。</p> : null}
+          {autoNote !== "" ? <p className="nw-import-auto" role="status">{autoNote}</p> : null}
+          {needsEnglish.length > 0 ? (
+            <p className="nw-import-hint">
+              有 {needsEnglish.length} 页标注了「需先补齐英文版」：它们的 English 关联页不在这次的文件里，试跑会被拒绝。
+              请在 Notion 导出时勾选「包含子页面」，或把对照的英文页一起导出后再选择。
+            </p>
+          ) : null}
           <div className="nw-import-select-actions">
             <button type="button" className="nw-btn" disabled={busy !== null || visibleIndices.every((index) => selected.has(index))}
               onClick={() => changeSelection(new Set([...selected, ...visibleIndices]))}>全选</button>
@@ -405,7 +421,15 @@ export function NotionImport() {
                       changeSelection(next);
                     }} />
                   <span>{page.title}</span>
+                  {partners.get(page.index)?.missing.length ? <span className="nw-import-badge">需先补齐英文版</span> : null}
                 </label>
+                {selected.has(page.index) ? (partners.get(page.index)?.inBundle ?? []).filter((partner) => !selected.has(partner)).map((partner) => (
+                  <p className="nw-import-row-hint" key={partner}>
+                    对照的英文页《{choices[partner]?.title}》未勾选：试跑时这件作品会被拒绝。
+                    <button type="button" className="nw-import-inline" disabled={busy !== null}
+                      onClick={() => changeSelection(new Set([...selected, partner]))}>一并勾上《{choices[partner]?.title}》</button>
+                  </p>
+                )) : null}
                 {page.preview ? <details><summary>查看正文摘录</summary><p className="nw-import-preview">{page.preview}</p></details> : null}
               </li>
             ))}
