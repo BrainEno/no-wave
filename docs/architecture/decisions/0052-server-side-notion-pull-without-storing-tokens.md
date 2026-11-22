@@ -1,7 +1,7 @@
 # ADR 0052: 粘贴 Notion token，由服务器分段拉取数据库；token 只随请求经过、从不保存
 
 - Status: Accepted
-- Implementation: Not started
+- Implementation: Done
 - Date: 2026-11-22
 - 修订：[ADR 0036](0036-notion-as-interchange-format.md) 决定 3（仅限本文所述的拉取端点；其余决定不变）
 
@@ -64,7 +64,7 @@ Notion 平均限速约 3 次/秒，200 页加上嵌套块通常需要数百次�
   返回 `{ source: {id, title}, rows: [{id, properties, inTrash?, archived?}], cursor }`。
   `cursor` 为 `null` 表示已列完。一个请求最多返回 1000 行；行数据很小，200 行通常
   一个请求就能完成。
-- **`{ token, source, mode: "pages", pageIds }`**：读取指定页面的正文块（深度优先，
+- **`{ token, mode: "pages", pageIds }`**：读取指定页面的正文块（深度优先，
   与 `collectBlocks` 相同）。`pageIds` 最多 200 个，按顺序处理，直到时间或字节预算
   用完。返回 `{ pages: [{id, blocks}], issues: [{id, code}], done: [...] }`，其中
   `done` 列出本段已经处理完的 ID（成功或带问题代码）。浏览器从 `pageIds` 中去掉这些
@@ -77,8 +77,9 @@ Notion 平均限速约 3 次/秒，200 页加上嵌套块通常需要数百次�
 - 字节：已收集的正文 JSON 达到 6 MiB 就结束本段；单页超过 6 MiB 记 `page-too-large`。
 - 单页超过 2000 个块记 `too-many-blocks`，**不截断正文后导入**。
 - 节奏：同一请求内两次 Notion 调用至少间隔 340 ms（≤ 3 次/秒）。Notion 返回 429 时，
-  若 `Retry-After` 在剩余预算内就等待后重试一次；否则提前结束本段，并以
-  `NOTION_RATE_LIMITED` + `Retry-After` 告诉浏览器，已完成的页面仍在 `done` 中。
+  `Retry-After` 不超过 10 秒就在请求内等待后重试；更长则提前结束本段：若本段已有完成
+  的页面，返回 200，已完成的页面在 `done` 中，并以 `retryAfterSeconds` 告诉浏览器等
+  多久再发剩下的 ID；若一页都没完成，返回 `429 NOTION_RATE_LIMITED` + `Retry-After`。
 - BFF 对这个路由使用 90 秒上游超时（与导入相同），不提高全局上限。
 
 ### 3. 出站请求的限制
@@ -97,12 +98,16 @@ Notion 平均限速约 3 次/秒，200 页加上嵌套块通常需要数百次�
 - 校验格式（`ntn_` 或 `secret_` 前缀，`[A-Za-z0-9_]`，长度 20～200），格式不符的
   直接拒绝，不会转发出去。
 - 错误、日志、指标和响应中都不出现 token，也不出现 Notion 的错误原文（Notion 的
-  错误体可能回显内容）。错误映射为稳定代码：`NOTION_TOKEN_INVALID`（Notion 401）、
-  `NOTION_NOT_SHARED`（Notion 403/404：数据库未共享给该 integration，或 ID 错误）、
-  `NOTION_RATE_LIMITED`（Notion 429，带 `Retry-After`）、`NOTION_UNAVAILABLE`
-  （Notion 5xx、超时或响应过大）。单个页面读取失败只记为该页的问题代码，不影响其他页面。
+  错误体可能回显内容）。错误映射为稳定代码：`NOTION_TOKEN_INVALID`（Notion 401，
+  返回 422）、`NOTION_NOT_SHARED`（Notion 403/404：数据库未共享给该 integration，或
+  ID 错误，返回 422）、`NOTION_RATE_LIMITED`（Notion 429，返回 429 并带
+  `Retry-After`，限制在 1～900 秒）、`NOTION_UNAVAILABLE`（Notion 5xx、超时、响应过大
+  或任何意外错误，返回 502）。请求本身的格式错误返回 400，信息只指出字段，不回显值。
+  在 `pages` 模式中，单页 403/404 记 `page-unavailable`、其他失败记 `fetch-failed`，
+  不影响其他页面；但 401 说明 token 已失效，后面每一页都会失败，所以结束整个请求。
 - 测试要捕获 API 和 BFF 的日志输出，断言其中不出现 token 和 Notion 的错误原文。
-- 浏览器端：token 只保存在 React state 中，输入框为 `type="password"`、
+- 浏览器端：token 只保存在页面内存中（输入框的 React state，以及当前这次拉取的
+  ref，用于试跑时读取正文），输入框为 `type="password"`、
   `autocomplete="off"`，不写入 localStorage、sessionStorage、URL 或导入报告，离开页面
   即丢弃，也不发往拉取以外的任何路由。
 
@@ -112,6 +117,10 @@ Notion 平均限速约 3 次/秒，200 页加上嵌套块通常需要数百次�
 `notion-import` 处理器相同。新增持久限流策略 `POST imports.notion.fetch`：每位作者
 60 次、每个 IP 120 次 / 10 分钟。它与导入的 10/20 次额度相互独立：拉取不消耗导入
 次数，导入的限流也不放宽。
+
+限流只约束 10 分钟内发起多少次，不约束同时进行多少个；而每个拉取请求最长占用 75 秒、
+内存中最多 6 MiB 正文。所以每个 API 进程另设并发上限：总共 8 个、每位作者 2 个。超出
+时返回 `503 NOTION_FETCH_BUSY` + `Retry-After: 5`，写作台自动等待后重发；服务器不排队。
 
 ### 6. 拉取结果只是 bundle，写入流程不变
 
@@ -127,7 +136,8 @@ P0-4 的分批、试跑和一次确认。写入只发生在作者明确点击「
 
 ### 8. 默认开启，可由运维关闭
 
-`NOTION_FETCH_ENABLED=false` 时端点返回 `404 FEATURE_DISABLED`，写作台提示改用上传。
+`NOTION_FETCH_ENABLED=false` 时端点返回 `409 NOTION_FETCH_DISABLED`（与
+`IMPORT_JOBS_DISABLED` 的做法一致：路由存在，只是本实例关闭了它），写作台提示改用上传。
 部署时出站防火墙需放行 `api.notion.com:443`。
 
 ### 9. 复用种子脚本的遍历逻辑
@@ -141,14 +151,17 @@ P0-4 的分批、试跑和一次确认。写入只发生在作者明确点击「
 导入页分两个选项卡：「连接 Notion 直接拉取」（默认）和「上传导出文件」（现有）。
 拉取选项卡有三步说明：
 
-1. 在 notion.so/profile/integrations 创建一个 Internal integration，复制它的
+1. 在 Notion「设置 → 连接 → 开发或管理集成」创建一个内部集成，复制它的
    Internal Integration Secret；
-2. 在数据库页面「••• → 连接（Connections）」中添加这个 integration；
-3. 把 secret 和数据库链接粘贴进来（链接或 32 位 ID 均可）。
+2. 在数据库右上角「… → 连接」中添加这个集成；
+3. 把令牌和数据库链接粘贴进来（链接或 32 位 ID 均可）。
 
-点「列出文章」后，标题出现在现有的选择列表里（默认全选，英文对照页自动勾选）。点
-「拉取所选并试跑」后显示「正在拉取 n/m 页…」，拉完自动进入试跑；作者看完合并报告，
-再点「确认导入」。
+点「连接并读取条目」后只列出行（属性），标题出现在现有的选择列表里（默认全选，英文
+对照页自动勾选）。点「试跑所选文章」时，先只为**仍勾选且还没读过**的页面读取正文
+（显示「正在读取正文：n / m 页…」，可停止），读完自动进入试跑；作者看完合并报告，再点
+「确认导入」。取消勾选的页面从不读取正文；再次试跑不会重复读取已读过的页面。读不到
+正文的页面会被取消勾选，并在计划上方逐页写明原因（可重试的超时会在下次试跑时再读）。
+选择文件会自动切换到「上传导出文件」。列出的行超过 2000 个时只列前 2000 个并给出提示。
 
 ## 后果
 
@@ -168,10 +181,30 @@ P0-4 的分批、试跑和一次确认。写入只发生在作者明确点击「
 - `notion-source` 单元测试：三种调用的 URL、方法和头；非法 ID 或游标被拒绝；不跟随
   重定向；超时；字节上限；429 处理；块上限报错而不截断；裁剪字段。
 - 端点测试：模式与参数校验、token 格式、预算切段、`done` 与问题代码、错误映射、
-  功能关闭时返回 404、新限流策略生效；捕获日志，断言其中没有 token 和 Notion 错误原文。
+  功能关闭时返回 409、新限流策略与并发上限生效；捕获日志，断言其中没有 token 和 Notion 错误原文。
 - 种子脚本现有测试继续通过。
 - BFF：同源、no-store、`Retry-After` 透传，token 不进入日志。
-- 前端单元测试：从链接解析 ID；行与正文拼成 bundle；分段续传；问题页被排除并给出提示。
-- e2e（mock 拉取端点，不访问真实 Notion）：列出 → 勾选 → 拉取 → 试跑 → 确认；token
-  无效、未共享、429 自动等待；刷新页面后 token 不再存在。
+- 前端单元测试：行与正文拼成 bundle；游标与分段续传；429、段内 `retryAfterSeconds`
+  与 503 自动等待且次数有限；没有进度的响应不会死循环；问题页被报告而不是静默丢弃；
+  错误信息是固定句子，不回显 token。（链接解析在 API 端，由端点测试覆盖。）
+- e2e（mock 拉取端点，不访问真实 Notion）：列出 → 取消一项 → 试跑（只读取勾选页面的
+  正文）→ 确认；token 格式不符时不发请求；无效、未共享的提示；429 自动等待；超过块
+  上限的页面被取消勾选并说明原因；导入请求里不含 token；刷新页面后 token 不再存在。
 - `pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm test:e2e` 全部通过。
+
+## 实现记录（2026-11-22）
+
+本 ADR 在同一分支上实现。与评审时的草稿相比，以下几处按实现时的发现做了调整，正文已同步：
+
+- **关闭时返回 `409 NOTION_FETCH_DISABLED`，而不是 `404 FEATURE_DISABLED`。** 仓库里
+  可由运维关闭的功能（`IMPORT_JOBS_DISABLED`）都用 409；404 会让客户端以为部署缺了路由。
+- **Notion 拒绝 token 或数据库未共享时返回 422，Notion 不可用时返回 502。** 401/403/404
+  是关于我们自己的会话和资源的，转发 Notion 的状态码会让写作台误以为本站登录失效。
+- **`pages` 模式不需要 `source`。** 页面 ID 已经足够，多传一个没有用到的字段只会多一个
+  校验分支。
+- **段内遇到较长的限流时返回 200 和 `retryAfterSeconds`，而不是 429。** 已读完的页面
+  不应因为后面一页被限流而作废。
+- **正文延迟到试跑时读取，只读勾选的页面。** 草稿中「列出文章」和「拉取所选并试跑」
+  两个按钮合成了现有的「试跑所选文章」，点击次数不变，但取消勾选的页面不再产生 Notion
+  调用。
+- **新增每进程并发上限（总 8、每位作者 2，超出返回 503 + Retry-After）。** 见决定 5。
