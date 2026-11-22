@@ -33,7 +33,7 @@ export const meta: MetaFunction = () => [
 export default function VerifyEmailRoute() {
   const { token, mailEnabled } = useLoaderData<typeof loader>();
   return (
-    <main id="top" tabIndex={-1} className="nw-w nw-head" data-route="verify-email">
+    <main id="top" tabIndex={-1} className="nw-w nw-head nw-auth-page" data-route="verify-email">
       {mailEnabled ? <VerifyEmailPanel token={token} /> : <MailDisabledNotice />}
     </main>
   );

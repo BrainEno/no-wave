@@ -3,7 +3,7 @@ import { Link } from "@/lib/framework/link.tsx";
 import type { Locale } from "@/lib/content.ts";
 import { getUi } from "@/lib/ui-copy.ts";
 import { apiErrorCode } from "@/lib/api-error.ts";
-import { EmptyState, SectionHeading } from "@/components/ui/parts.tsx";
+import { EmptyState, PageIntro } from "@/components/ui/parts.tsx";
 import { StartConversation } from "@/components/public/start-conversation.tsx";
 import { MessagingActorNotice, useMessagingActor } from "@/components/public/messaging-controls.tsx";
 
@@ -119,7 +119,9 @@ export function MessagesView({ locale, initialRecipient = "" }: { locale: Locale
   }
   return (
     <main id="top" tabIndex={-1} lang={locale} className="nw-w">
-      <SectionHeading zh={ui.eyebrow} latin="Inbox" />
+      {locale === "en"
+        ? <PageIntro kicker={ui.eyebrow} title={ui.title} />
+        : <PageIntro kicker={ui.title} title={ui.eyebrow} latin="Inbox" />}
       {body()}
       {actor.readable ? <MessagingActorNotice actor={actor} locale={locale} signInHref={signInHref} /> : null}
       {/* Keep the controller and its navigation guard mounted when history is concealed. */}

@@ -14,7 +14,7 @@ export function TagIndexView({ locale, tags, query, page, hasNextPage }: TagInde
   return (
     <main id="top" tabIndex={-1} lang={locale} className="nw-w">
       <header className="nw-head">
-        <div className="nw-m" style={{ marginBottom: 12 }}>{copy.eyebrow}</div>
+        <p className="nw-kicker nw-head-kicker">{copy.eyebrow}</p>
         <h1><span className="nw-zh">{copy.title}</span>{locale !== "en" ? <> <i>Tags</i></> : null}</h1>
         <p className="nw-ep" style={{ marginTop: 20 }}>{copy.intro}</p>
         <form className="nw-sf-form" action={base} method="get" role="search" aria-label={copy.search}>

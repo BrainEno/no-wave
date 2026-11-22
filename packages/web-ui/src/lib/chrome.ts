@@ -190,6 +190,25 @@ export function isToolRoute(pathname: string): boolean {
   return TOOL_PREFIXES.some((prefix) => bare === prefix || bare.startsWith(`${prefix}/`));
 }
 
+/**
+ * A work being read: `/articles/:slug` in either locale. The archive index
+ * (`/articles`) is a list, not a reading surface.
+ */
+export function isReadingRoute(pathname: string): boolean {
+  const bare = pathname.replace(/^\/en(?=\/|$)/, "") || "/";
+  return /^\/articles\/[^/]+\/?$/.test(bare);
+}
+
+/**
+ * The paper grain is a still texture, painted once. It never animates: a
+ * shifting noise layer over body text reads as flicker and tires the eye on a
+ * long read. Reading routes and tool desks get no grain at all, so nothing sits
+ * between the reader and the type.
+ */
+export function shouldPaintGrain(pathname: string): boolean {
+  return !isReadingRoute(pathname) && !isToolRoute(pathname);
+}
+
 export function shouldUseSmoothScroll(pathname: string): boolean {
   const bare = pathname.replace(/^\/en(?=\/|$)/, "") || "/";
   return !NATIVE_SCROLL_PREFIXES.some((prefix) => bare === prefix || bare.startsWith(`${prefix}/`));

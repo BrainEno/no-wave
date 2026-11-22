@@ -41,7 +41,7 @@ export const meta: MetaFunction = () => [
 export default function ResetPasswordRoute() {
   const { token, mailEnabled } = useLoaderData<typeof loader>();
   return (
-    <main id="top" tabIndex={-1} className="nw-w nw-head" data-route="reset-password">
+    <main id="top" tabIndex={-1} className="nw-w nw-head nw-auth-page" data-route="reset-password">
       {mailEnabled ? <ResetPasswordForm token={token} /> : <MailDisabledNotice />}
     </main>
   );
