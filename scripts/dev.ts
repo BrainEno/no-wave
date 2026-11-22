@@ -110,9 +110,13 @@ export async function runDev(): Promise<void> {
       if (stderr) process.stderr.write(stderr);
     }
     if (startApi) {
+      // For local development on SQLite, auto-migrate by default if not explicitly configured.
+      const autoMigrate = config.persistence.provider === "sqlite" && process.env.DATABASE_AUTO_MIGRATE === undefined
+        ? { DATABASE_AUTO_MIGRATE: "true" }
+        : {};
       // Same cwd and persistence variables: a relative SQLite filename must
       // identify one durable database, never two role-specific local files.
-      const shared = { ...process.env, PORT: String(config.api.port), HOST: config.api.host };
+      const shared = { ...process.env, PORT: String(config.api.port), HOST: config.api.host, ...autoMigrate };
       const api = supervisor.launch({ role: "api", label: "API", cwd: apiPackageDirectory,
         args: ["--watch", "--watch-preserve-output", "src/service.ts"], env: { ...shared, SERVICE_ROLE: "api" } });
       const worker = supervisor.launch({ role: "worker", label: "Notification worker", cwd: apiPackageDirectory,

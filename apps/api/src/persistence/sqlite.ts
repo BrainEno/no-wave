@@ -156,12 +156,50 @@ export function createSqliteClient({
     if (enableWal && filename !== ":memory:") {
       db.exec("PRAGMA journal_mode = WAL");
       db.exec("PRAGMA synchronous = NORMAL");
+      db.exec("PRAGMA cache_size = -64000");
+      db.exec("PRAGMA temp_store = MEMORY");
+      db.exec("PRAGMA mmap_size = 268435456");
     }
     const originalPrepare = db.prepare.bind(db) as (sql: string) => SqliteStatement;
+    const originalExec = db.exec.bind(db) as (sql: string) => void;
+    const originalClose = db.close.bind(db) as () => void;
+    const statementCache = new Map<string, SqliteStatement>();
+    const MAX_STATEMENTS = 512;
+
+    const cachedPrepare = (sql: string): SqliteStatement => {
+      let stmt = statementCache.get(sql);
+      if (stmt) return stmt;
+      stmt = wrapSqliteStatement(originalPrepare(sql));
+      if (statementCache.size >= MAX_STATEMENTS) {
+        const oldest = statementCache.keys().next().value;
+        if (oldest !== undefined) statementCache.delete(oldest);
+      }
+      statementCache.set(sql, stmt);
+      return stmt;
+    };
+
     Object.defineProperty(db, "prepare", {
       configurable: true,
       writable: true,
-      value: (sql: string): SqliteStatement => wrapSqliteStatement(originalPrepare(sql)),
+      value: cachedPrepare,
+    });
+    Object.defineProperty(db, "exec", {
+      configurable: true,
+      writable: true,
+      value: (sql: string): void => {
+        if (/\b(?:CREATE|DROP|ALTER)\b/i.test(sql)) {
+          statementCache.clear();
+        }
+        originalExec(sql);
+      },
+    });
+    Object.defineProperty(db, "close", {
+      configurable: true,
+      writable: true,
+      value: (): void => {
+        statementCache.clear();
+        originalClose();
+      },
     });
     return db;
   } catch (error) {
