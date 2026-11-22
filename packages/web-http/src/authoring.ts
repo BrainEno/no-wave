@@ -391,6 +391,51 @@ export async function handleAuthoringNotionFetchRequest(
     { ...config, upstreamTimeoutMs: config.upstreamTimeoutMs ?? 90_000 }, body.text);
 }
 
+/** A code and a state are a few hundred bytes; anything larger is not an exchange. */
+export const AUTHORING_NOTION_OAUTH_MAX_BYTES = 4 * 1024;
+
+export type AuthoringNotionOAuthAction = "status" | "start" | "exchange";
+
+/**
+ * `/api/authoring/notion-oauth[/start|/exchange]` — the proxy in front of the
+ * one-shot Notion OAuth (ADR 0053).
+ *
+ * `status` is a `GET` that says whether the desk should offer the button.
+ * `start` and `exchange` are same-origin `POST`s: `start` carries no body, and
+ * `exchange` forwards the `{ code, state }` it received after checking only that
+ * both are strings — whether they are valid is the API's answer, where the state
+ * is verified against the session. The client secret never passes through here;
+ * only the API holds it. Every answer is `no-store` (the exchange's carries the
+ * access token, once) and nothing this handler writes repeats the request body.
+ */
+export async function handleAuthoringNotionOAuthRequest(
+  request: Request,
+  action: AuthoringNotionOAuthAction,
+  config: ApiProxyConfig = {},
+): Promise<Response> {
+  if (action === "status") {
+    if (methodOf(request, ["GET"]) === null) {
+      return errorResponse("METHOD_NOT_ALLOWED", "Only GET is supported here.", 405);
+    }
+    return forwardAuthoringRequest(request, "api/v1/imports/notion/oauth", "GET", config);
+  }
+  if (methodOf(request, ["POST"]) === null) {
+    return errorResponse("METHOD_NOT_ALLOWED", "Only POST is supported for a Notion authorization.", 405);
+  }
+  if (rejectCrossOrigin(request)) {
+    return errorResponse("ORIGIN_REJECTED", "The request origin was rejected.", 403);
+  }
+  if (action === "start") {
+    return forwardAuthoringRequest(request, "api/v1/imports/notion/oauth/start", "POST", config);
+  }
+  const body = await readLimitedJson(request, AUTHORING_NOTION_OAUTH_MAX_BYTES);
+  if (!body.ok) return notForwarded(body.response);
+  if (typeof body.value.code !== "string" || typeof body.value.state !== "string") {
+    return notForwarded(errorResponse("BAD_USER_INPUT", "`code` and `state` are required.", 400));
+  }
+  return forwardAuthoringRequest(request, "api/v1/imports/notion/oauth/exchange", "POST", config, body.text);
+}
+
 /**
  * `POST /api/authoring/articles/:id/restore` — bring a deleted work back.
  *

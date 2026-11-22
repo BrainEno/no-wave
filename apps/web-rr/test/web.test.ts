@@ -1225,6 +1225,25 @@ test("the Notion import page is private, renders its panel, and is gated the sam
   assert.match(signedIn.headers.get("cache-control") ?? "", /no-store/);
 });
 
+test("the Notion OAuth callback renders without a sign-in redirect, never echoes the code, and sends no referrer", async () => {
+  // No session marker on purpose: a redirect would drop or carry the one-time code.
+  const callback = await get("/write/notion/oauth/callback?code=TESTONLY-CODE-0001&state=v1.1.a.b");
+  assert.equal(callback.status, 200);
+  assert.match(callback.body, /data-route="write-notion-oauth-callback"/);
+  assert.match(callback.body, /正在完成 Notion 授权/);
+  assert.doesNotMatch(callback.body, /TESTONLY-CODE-0001/);
+  assert.equal(callback.headers.get("referrer-policy"), "no-referrer");
+  assert.match(callback.headers.get("cache-control") ?? "", /no-store/);
+  assert.match(callback.body, /noindex/);
+
+  // The three proxy routes exist; start and exchange refuse anything but a same-origin POST.
+  assert.equal((await get("/api/authoring/notion-oauth/start", { cookie: DESK_COOKIE })).status, 405);
+  assert.equal((await get("/api/authoring/notion-oauth/exchange", { cookie: DESK_COOKIE })).status, 405);
+  const crossOrigin = await post("/api/authoring/notion-oauth/start", "", { cookie: DESK_COOKIE, origin: "https://evil.test" });
+  assert.equal(crossOrigin.status, 403);
+  assert.equal(JSON.parse(crossOrigin.body).error.code, "ORIGIN_REJECTED");
+});
+
 test("the catalogue shell is private/noindex and does not SSR private terms or metadata", async () => {
   const anonymous = await get("/write/library");
   assert.equal(anonymous.status, 302);
@@ -1277,6 +1296,7 @@ test("every private page answers no-store, sign-in included", async () => {
     "/write/media",
     "/write/library",
     "/write/notion",
+    "/write/notion/oauth/callback",
     "/feed",
     "/messages",
     "/notifications",

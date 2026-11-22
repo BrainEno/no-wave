@@ -54,6 +54,9 @@ const CLIENT_COMPONENTS: readonly ClientComponent[] = [
   // else until a file is chosen, so an HTML check would see a heading and a
   // button and pass; the sentinel is the request only this panel makes.
   { component: "NotionImport", sentinel: "/api/authoring/notion-import", page: "write/notion" },
+  // The OAuth callback (ADR 0053) is a sentence until its effect runs; without
+  // the exchange the popup would sit on "正在完成 Notion 授权…" forever.
+  { component: "NotionOAuthCallback", sentinel: "/api/authoring/notion-oauth/exchange", page: "write/notion/oauth/callback" },
   // The local merge shell alone cannot read files, make choices or download a result.
   { component: "LocalWritingMerge", sentinel: "nw-merge-slots", page: "write/merge" },
   { component: "WritingMergePlanPanel", sentinel: "no-wave-writing-merge-plan", page: "write/merge" },

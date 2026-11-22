@@ -91,7 +91,7 @@ function errorCode(payload: unknown): string | null {
 export function notionFetchFailureMessage(status: number, payload: unknown): string {
   const code = errorCode(payload);
   if (code === "NOTION_TOKEN_INVALID") return "Notion 不接受这个令牌：可能没有复制完整、已经过期或已被撤销。请在 Notion 里重新复制，或新建一个令牌。";
-  if (code === "NOTION_NOT_SHARED") return "Notion 找不到这个数据库。请检查链接是否完整；用个人访问令牌时，确认你自己能在 Notion 里打开它；用内部集成时，在数据库右上角「…」→「连接」里添加这个集成。";
+  if (code === "NOTION_NOT_SHARED") return "Notion 找不到这个数据库。请检查链接是否完整；用 Notion 授权时，确认在授权页里选中了它（或它的父页面）；用个人访问令牌时，确认你自己能在 Notion 里打开它；用内部集成时，在数据库右上角「…」→「连接」里添加这个集成。";
   if (code === "NOTION_UNAVAILABLE") return "暂时读不到 Notion，请稍后再试。";
   if (code === "NOTION_FETCH_DISABLED") return "本站暂时关闭了直接从 Notion 拉取，请改用「上传导出文件」。";
   if (code === "NOTION_RATE_LIMITED" || status === 429) return "请求过于频繁，已多次等待仍未恢复。请过几分钟再试。";

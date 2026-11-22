@@ -65,6 +65,7 @@ const PRIVATE_PAGES = [
   "write.merge",
   "write.vault",
   "write.notion",
+  "write.notion.oauth.callback",
 ];
 
 async function pageRouteModules(): Promise<string[]> {

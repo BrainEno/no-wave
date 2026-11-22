@@ -71,6 +71,7 @@ export default [
   route("write/vault", "routes/write.vault.tsx"),
   route("write/media", "routes/write.media.tsx"),
   route("write/notion", "routes/write.notion.tsx"),
+  route("write/notion/oauth/callback", "routes/write.notion.oauth.callback.tsx"),
   route("account", "routes/account.tsx"),
   route("admin/featured", "routes/admin.featured.tsx"),
   route("sitemap.xml", "routes/sitemap.xml.ts"),
@@ -104,6 +105,9 @@ route("api/authoring/notifications/:id/read", "routes/api.authoring.notification
   route("api/authoring/notion-export", "routes/api.authoring.notion-export.ts"),
   // 直接拉取（ADR 0052）：作者粘贴的 token 只经由这里转给我们自己的 API，不落盘。
   route("api/authoring/notion-fetch", "routes/api.authoring.notion-fetch.ts"),
+  route("api/authoring/notion-oauth", "routes/api.authoring.notion-oauth.ts"),
+  route("api/authoring/notion-oauth/start", "routes/api.authoring.notion-oauth.start.ts"),
+  route("api/authoring/notion-oauth/exchange", "routes/api.authoring.notion-oauth.exchange.ts"),
   route("api/authoring/notion-import", "routes/api.authoring.notion-import.ts"),
   route("api/authoring/notion-jobs", "routes/api.authoring.notion-jobs.ts"),
   route("api/authoring/notion-jobs/:id", "routes/api.authoring.notion-job.ts"),

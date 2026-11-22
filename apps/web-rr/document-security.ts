@@ -110,8 +110,13 @@ export async function protectHtmlResponse(body: Readable, {
     const privateVault = documentPath === "/write/vault" && status === 200 &&
       (initialHeaders.get("cache-control") ?? "").split(",").some(value => value.trim().toLowerCase() === "no-store");
     const policy = documentContentSecurityPolicy(documentScriptHashes(html, marker), privateVault);
+    // A route may tighten the referrer policy to `no-referrer` (the Notion OAuth
+    // callback, whose URL carries a code until the page clears it) and nothing
+    // else: any other value it set is replaced by the baseline below.
+    const noReferrer = (initialHeaders.get("referrer-policy") ?? "").trim().toLowerCase() === "no-referrer";
     const headers = new Headers(initialHeaders);
     for (const [name, value] of Object.entries(browserSecurityHeaders(secure, policy))) headers.set(name, value);
+    if (noReferrer) headers.set("referrer-policy", "no-referrer");
     if (!secure) headers.delete("strict-transport-security");
     headers.delete("content-security-policy-report-only");
     headers.delete("content-length");

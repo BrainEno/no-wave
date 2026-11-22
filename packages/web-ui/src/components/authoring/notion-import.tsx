@@ -41,6 +41,7 @@ import {
   pullNotionRows,
   withPulledBlocks,
 } from "@/lib/notion-fetch.ts";
+import { NOTION_OAUTH_STATUS_ENDPOINT, startNotionOAuth, waitForNotionOAuth, type NotionOAuthWait } from "@/lib/notion-oauth.ts";
 
 /** Pick source pages first, then preview and apply precisely that selection. */
 
@@ -183,6 +184,30 @@ export function NotionImport() {
   // request is sent, and a countdown ends without retrying.
   const stopped = useRef(false);
   useEffect(() => () => { stopped.current = true; }, []);
+
+  // One-shot Notion OAuth (ADR 0053): offered only when the instance is
+  // configured for it. The token it yields is put where a pasted one goes and
+  // used the same way; the popup and the wait are the only extra state.
+  const [oauthEnabled, setOauthEnabled] = useState(false);
+  const [authorizing, setAuthorizing] = useState(false);
+  const [authorizedWorkspace, setAuthorizedWorkspace] = useState<string | null>(null);
+  const oauthWait = useRef<NotionOAuthWait | null>(null);
+  const oauthPopup = useRef<Window | null>(null);
+  const oauthCancelled = useRef(false);
+  // The link may be typed while the popup is open; the answer reads the latest one.
+  const sourceNow = useRef(source);
+  sourceNow.current = source;
+  useEffect(() => {
+    let live = true;
+    void fetch(NOTION_OAUTH_STATUS_ENDPOINT, { credentials: "same-origin", cache: "no-store", headers: { accept: "application/json" } })
+      .then((response) => response.ok ? response.json() : null)
+      .then((payload: unknown) => {
+        const data = dataOf(payload);
+        if (live) setOauthEnabled(typeof data === "object" && data !== null && (data as { enabled?: unknown }).enabled === true);
+      })
+      .catch(() => {});
+    return () => { live = false; oauthWait.current?.cancel(); };
+  }, []);
 
   const planned = batches?.filter((batch) => batch.report !== null) ?? [];
   const report = mergeReports(planned.map((batch) => batch.report!));
@@ -376,9 +401,60 @@ export function NotionImport() {
     };
   }
 
-  /** Connect with the pasted token and list the database's rows; nothing is written. */
-  async function connect(): Promise<void> {
-    const pasted = token.trim();
+  /**
+   * Authorize with Notion in a popup and take the token it hands back (ADR 0053).
+   * The popup is opened before anything is awaited, so a popup blocker sees the
+   * click; it starts blank and same-origin, which lets the desk cut its `opener`
+   * before it is sent to Notion, so Notion's page holds no handle on the desk.
+   * The price: a browser may then move the popup into a browsing context group of
+   * its own, and the desk's handle on it goes dead — so cancelling stops the wait
+   * and only tries to close the window, and the page says it can be closed by hand.
+   */
+  async function authorize(): Promise<void> {
+    setError("");
+    const popup = window.open("", "nw-notion-oauth", "popup,width=560,height=720");
+    if (popup === null) {
+      setError("浏览器拦截了弹出窗口。请允许本站弹出窗口后再点「用 Notion 授权」，或改用粘贴令牌。");
+      return;
+    }
+    try { popup.opener = null; } catch { /* nothing to cut */ }
+    oauthPopup.current = popup;
+    oauthCancelled.current = false;
+    setAuthorizing(true);
+    const started = await startNotionOAuth();
+    if (!started.ok) {
+      popup.close();
+      setAuthorizing(false);
+      setError(started.message);
+      return;
+    }
+    const wait = waitForNotionOAuth(started.state);
+    oauthWait.current = wait;
+    popup.location.href = started.authorizeUrl;
+    const answer = await wait.result;
+    if (oauthWait.current === wait) oauthWait.current = null;
+    oauthPopup.current = null;
+    setAuthorizing(false);
+    if (answer === null) {
+      if (!oauthCancelled.current && !stopped.current) setError("等待 Notion 授权超过 10 分钟，已停止等待。需要时请重新点「用 Notion 授权」。");
+      return;
+    }
+    if (!answer.ok) { setError(answer.message); return; }
+    setToken(answer.token);
+    setAuthorizedWorkspace(answer.workspaceName ?? "");
+    if (sourceNow.current.trim() !== "") await connect({ token: answer.token, source: sourceNow.current });
+  }
+
+  function cancelAuthorize(): void {
+    oauthCancelled.current = true;
+    oauthWait.current?.cancel();
+    try { oauthPopup.current?.close(); } catch { /* already gone */ }
+  }
+
+  /** Connect with the pasted (or authorized) token and list the database's rows; nothing is written. */
+  async function connect(given: { token?: string; source?: string } = {}): Promise<void> {
+    const pasted = (given.token ?? token).trim();
+    const link = (given.source ?? source).trim();
     setBatches(null); setNotes([]); setAutoNote(""); setError(""); setWarnings([]);
     setBundle(null); setPageCount(0); setSelected(new Set()); setQuery(""); setFileName("");
     setCreated(new Map()); setDatedBy(new Map()); resetLocalImages();
@@ -387,10 +463,10 @@ export function NotionImport() {
       setError("这不像 Notion 令牌：令牌是一整段不含空格的字符（现在通常以 ntn_ 开头），不是数据库链接。请在 Notion 里重新复制。");
       return;
     }
-    if (source.trim() === "") { setError("请粘贴 Notion 数据库的链接（浏览器地址栏里的整段网址即可）。"); return; }
+    if (link === "") { setError("请粘贴 Notion 数据库的链接（浏览器地址栏里的整段网址即可）。"); return; }
     stopped.current = false;
     setBusy("pull"); setPulling(true);
-    const result = await pullNotionRows(pasted, source.trim(), { post: proxyFetchPost(), onProgress: setProgress, isStopped: () => stopped.current });
+    const result = await pullNotionRows(pasted, link, { post: proxyFetchPost(), onProgress: setProgress, isStopped: () => stopped.current });
     setPulling(false); setProgress(""); setBusy(null);
     if (!result.ok) { setError(result.message); return; }
     pull.current = { token: pasted, read: new Set(), unreadable: new Map() };
@@ -572,6 +648,27 @@ export function NotionImport() {
       {tab === "notion" ? (
         <form className="nw-import-connect" id="notion-panel-pull" role="tabpanel" aria-labelledby="notion-tab-pull"
           onSubmit={(event) => { event.preventDefault(); void connect(); }}>
+          {oauthEnabled ? (
+            <div className="nw-import-oauth">
+              <div className="nw-import-pick">
+                <button className="nw-btn" type="button" disabled={busy !== null || authorizing} onClick={() => { void authorize(); }}>
+                  {authorizing ? "等待 Notion 授权…" : "用 Notion 授权"}
+                </button>
+                {authorizing ? <button className="nw-btn" type="button" onClick={cancelAuthorize}>取消授权</button> : null}
+                {authorizing ? <span className="nw-import-file" role="status">请在弹出的 Notion 窗口里完成授权；取消后可以直接关掉那个窗口。</span> : null}
+                {authorizedWorkspace !== null && !authorizing ? (
+                  <span className="nw-import-file" role="status">
+                    已通过 Notion 授权{authorizedWorkspace === "" ? "" : `：${authorizedWorkspace}`}
+                    {source.trim() === "" ? "。粘贴数据库链接后点「连接并读取条目」。" : ""}
+                  </span>
+                ) : null}
+              </div>
+              <p className="nw-m">
+                最省事：在弹出的 Notion 页面里选中要导入的数据库（或它的父页面）并授权，令牌会自动填进下面，不用自己建令牌。本站只拿到这一次导入用的令牌，不保存。{""}
+                也可以按下面的步骤自己粘贴令牌。
+              </p>
+            </div>
+          ) : null}
           <ol className="nw-m nw-import-steps">
             <li>
               推荐用个人访问令牌：在 Notion 设置里打开开发者模式，到 notion.so/developers/tokens 新建一个令牌，有效期选短一些（例如 7 天），只给读取权限。{""}
@@ -594,7 +691,7 @@ export function NotionImport() {
             令牌只用于这次拉取：经本站服务器转发给 Notion，不保存、不写入日志，刷新或离开页面即失效。建议只给读取权限。
           </p>
           <div className="nw-import-pick">
-            <button className="nw-btn" type="submit" disabled={busy !== null || token.trim() === "" || source.trim() === ""}>
+            <button className="nw-btn" type="submit" disabled={busy !== null || authorizing || token.trim() === "" || source.trim() === ""}>
               {busy === "pull" && bundle === null ? "正在读取…" : "连接并读取条目"}
             </button>
             {pull.current !== null && fileName !== "" ? <span className="nw-import-file" role="status">已连接：{fileName}</span> : null}
