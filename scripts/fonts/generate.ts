@@ -177,6 +177,12 @@ async function main(): Promise<void> {
       const { restored } = await restoreBundleFromCache(manifest, target, cacheDirs);
       const needsGeneration = await fontBundleNeedsGeneration(data, target, rawCss);
       if (!needsGeneration) {
+        if (rawCss.includes("\r")) {
+          await writeFile(stylesheet, renderFontCss(manifest.faces));
+        }
+        if (rawManifest.includes("\r")) {
+          await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+        }
         await archiveTargetToCache(manifest, target, cacheDirs);
         if (restored > 0) {
           console.log(`First-party fonts are ready; restored ${restored} faces from local computer cache without regeneration.`);
@@ -219,7 +225,7 @@ async function main(): Promise<void> {
     }
     await rm(target, { recursive: true, force: true });
     await rename(staging, target);
-    if (!expected) await writeFile(stylesheet, css);
+    if (!expected || expected.css.includes("\r")) await writeFile(stylesheet, css);
 
     // Archive all freshly emitted faces to local computer cache
     await archiveTargetToCache(manifest, target, cacheDirs);

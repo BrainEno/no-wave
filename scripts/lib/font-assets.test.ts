@@ -100,6 +100,34 @@ test("license verification tolerates Windows CRLF line endings without reporting
   });
 });
 
+test("stylesheet verification tolerates Windows CRLF line endings without reporting stale CSS", async () => {
+  await fixture(async (directory, data) => {
+    const crlfCss = renderFontCss(data.faces).replace(/\n/g, "\r\n");
+    assert.ok(crlfCss.includes("\r\n"), "fixture CSS contains CRLF line endings");
+    assert.equal(await fontBundleNeedsGeneration(data, directory, crlfCss), false);
+    const result = await verifyFontBundle(data, directory, crlfCss);
+    assert.equal(result.faces, 1);
+
+    // Missing assets still signal that generation is needed without tripping the stale CSS guard
+    await rm(join(directory, data.faces[0]!.file));
+    assert.equal(await fontBundleNeedsGeneration(data, directory, crlfCss), true);
+  });
+});
+
+test("stylesheet verification still strictly rejects genuine CSS content changes even with CRLF line endings", async () => {
+  await fixture(async (directory, data) => {
+    const crlfCss = renderFontCss(data.faces).replace(/\n/g, "\r\n");
+    for (const badCss of [
+      crlfCss + "\r\n/* extra content */\r\n",
+      crlfCss.replace("swap", "block"),
+      crlfCss.replace("Inter Tight", "Wrong Family"),
+    ]) {
+      await assert.rejects(fontBundleNeedsGeneration(data, directory, badCss), /stylesheet/);
+      await assert.rejects(verifyFontBundle(data, directory, badCss), /stylesheet/);
+    }
+  });
+});
+
 test("a partially missing font bundle still authenticates every present asset before allowing generation", async () => {
   await fixture(async (directory, data) => {
     data.faces[0]!.unicodeRange = "U+20-4F";
@@ -120,6 +148,30 @@ test("automatic font preparation must reproduce both checked-in receipts byte-fo
     { ...expected, css: expected.css + "/* changed */" },
   ]) assert.throws(() => assertFontReproduction(expected, actual), /receipt|reproduc/i);
   assert.deepEqual(expected, before);
+});
+
+test("assertFontReproduction tolerates Windows CRLF line endings in receipts while rejecting content drift", () => {
+  const lfManifest = JSON.stringify(manifest(), null, 2) + "\n";
+  const crlfManifest = lfManifest.replace(/\n/g, "\r\n");
+  const lfCss = renderFontCss(manifest().faces);
+  const crlfCss = lfCss.replace(/\n/g, "\r\n");
+
+  const expectedCrlf = { manifest: crlfManifest, css: crlfCss };
+  const actualLf = { manifest: lfManifest, css: lfCss };
+
+  assert.doesNotThrow(() => assertFontReproduction(expectedCrlf, actualLf));
+  assert.doesNotThrow(() => assertFontReproduction(actualLf, expectedCrlf));
+
+  // Genuine content drift must still throw
+  assert.throws(() => assertFontReproduction(expectedCrlf, { ...actualLf, css: actualLf.css + "/* change */" }), /receipt|reproduc/i);
+  assert.throws(() => assertFontReproduction(expectedCrlf, { ...actualLf, manifest: actualLf.manifest + "\n" }), /receipt|reproduc/i);
+});
+
+test("gitattributes configures explicit LF line endings for generated font receipts", async () => {
+  const gitattributes = await readFile(new URL("../../.gitattributes", import.meta.url), "utf8");
+  assert.match(gitattributes, /packages\/web-ui\/src\/styles\/fonts\.css\s+text\s+eol=lf/);
+  assert.match(gitattributes, /packages\/web-ui\/src\/styles\/fonts\/manifest\.json\s+text\s+eol=lf/);
+  assert.match(gitattributes, /packages\/web-ui\/src\/styles\/fonts\/\*-OFL\.txt\s+text\s+eol=lf/);
 });
 
 test("clean-checkout root tests and both Web entry points prepare fonts, while Docker carries build-only generator inputs", async () => {
