@@ -1123,6 +1123,14 @@ header[data-tool] .nw-pill { position: absolute; }
 .nw-import-selection-list details { margin: 6px 0 0 27px; color: var(--t2); font: 400 13px/1.6 var(--f-zh); }
 .nw-import-selection-list summary { cursor: pointer; }
 .nw-import-preview { white-space: pre-wrap; overflow-wrap: anywhere; }
+.nw-import-search { display: grid; gap: 6px; max-width: 420px; margin: 16px 0 0; font: 600 12px/1.5 var(--f-ss); letter-spacing: .04em; }
+.nw-import-search input { min-height: 44px; padding: 0 12px; border: 1px solid var(--edge); background: transparent; color: var(--ink); font: 400 15px/1.5 var(--f-zh); }
+.nw-import-filter { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 0; }
+.nw-import-chip { min-height: 36px; padding: 0 14px; border: 1px solid var(--edge); border-radius: 999px; background: transparent; color: var(--ink); font: 500 12px/1 var(--f-ss); font-variant-numeric: tabular-nums; cursor: pointer; }
+.nw-import-chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.nw-import-download { margin-left: auto; }
+.nw-import-target { grid-column: 2 / -1; color: var(--t2); font: 400 12px/1.6 var(--f-zh); overflow-wrap: anywhere; }
+.nw-import-done { display: flex; flex-wrap: wrap; gap: 10px; }
 
 /* 本机清单与正文定位；所有颜色复用阅读器的纸/墨/强调色。 */
 .nw-reading-entry, .nw-reader-find { min-width: 0; margin: 0; padding: 0; }

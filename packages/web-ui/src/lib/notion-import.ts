@@ -323,3 +323,70 @@ export function importDetail(detail: string): string {
   };
   return messages[detail] ?? detail;
 }
+
+/**
+ * Bundle page ids and report `externalId`s name the same page, but the API
+ * normalises the id it reports; compare them with dashes and case removed.
+ */
+export function pageKey(id: string): string {
+  return id.replaceAll("-", "").toLowerCase();
+}
+
+/** The id of each bundle page, by index ("" for a page without one). */
+export function bundlePageIds(bundle: Record<string, unknown>): string[] {
+  if (!Array.isArray(bundle.pages)) return [];
+  return bundle.pages.map((page: unknown) => isRecord(page) && typeof page.id === "string" ? page.id : "");
+}
+
+/** What a report row can be filtered by, after a dry run. */
+export type ReportFilter = "all" | "changes" | "attention";
+
+/**
+ * "changes" is what confirming would write (create, update); "attention" is a
+ * row the author must read before confirming: refused, failed, or carrying an
+ * issue code (something that will not come across as it was in Notion).
+ */
+export function reportRowMatches(page: NotionImportPage, filter: ReportFilter): boolean {
+  if (filter === "changes") return page.action === "create" || page.action === "update";
+  if (filter === "attention") return page.action === "refused" || page.action === "failed" || page.issues.length > 0;
+  return true;
+}
+
+/**
+ * The bundle indices whose report row has one of `actions`. A report row is
+ * only ever used to *choose* among bundle pages; the selection stays a set of
+ * bundle indices, so what is sent is always exactly the author's source pages.
+ */
+export function indicesWithActions(bundle: Record<string, unknown>, report: NotionImportReport, actions: readonly NotionImportAction[]): Set<number> {
+  const wanted = new Set(report.pages.filter((page) => actions.includes(page.action)).map((page) => pageKey(page.externalId)));
+  const indices = new Set<number>();
+  bundlePageIds(bundle).forEach((id, index) => { if (id && wanted.has(pageKey(id))) indices.add(index); });
+  return indices;
+}
+
+/** The selected indices after toggling every one of `visible`. */
+export function invertSelection(selected: ReadonlySet<number>, visible: readonly number[]): Set<number> {
+  const next = new Set(selected);
+  for (const index of visible) if (next.has(index)) next.delete(index); else next.add(index);
+  return next;
+}
+
+const csvCell = (value: string) => /[",\r\n]/.test(value) || /^[=+\-@\t]/.test(value)
+  // A leading = + - @ would be run as a formula by a spreadsheet; the apostrophe
+  // keeps a title like "=SUM(…)" a title.
+  ? `"${(/^[=+\-@\t]/.test(value) ? `'${value}` : value).replaceAll('"', '""')}"`
+  : value;
+
+/**
+ * The report as a CSV an author can keep or open in a spreadsheet: one row per
+ * page, with the same facts the page shows. A BOM makes Excel read it as UTF-8.
+ */
+export function reportCsv(report: NotionImportReport): string {
+  const header = ["action", "title", "locale", "slug", "articleId", "issues", "detail"];
+  const rows = report.pages.map((page) => [
+    page.action, page.title || page.externalId, page.locale, page.slug, page.articleId ?? "",
+    page.issues.map((issue) => issue.code).join(" "),
+    [page.detail, ...page.issues.map((issue) => issue.detail)].filter(Boolean).map(importDetail).join(" | "),
+  ]);
+  return "\uFEFF" + [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n") + "\r\n";
+}

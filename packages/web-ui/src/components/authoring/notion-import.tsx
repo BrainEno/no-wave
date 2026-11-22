@@ -1,5 +1,5 @@
 import { Link } from "@/lib/framework/link.tsx";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { markdownEntriesToBundle, readMarkdownZip } from "@/lib/notion-markdown.ts";
 import {
   ACTION_LABEL,
@@ -10,7 +10,12 @@ import {
   issueCounts,
   importDetail,
   readBundleFile,
+  indicesWithActions,
+  invertSelection,
+  reportCsv,
+  reportRowMatches,
   type NotionImportReport,
+  type ReportFilter,
 } from "@/lib/notion-import.ts";
 
 /** Pick source pages first, then preview and apply precisely that selection. */
@@ -33,6 +38,27 @@ function failureMessage(payload: unknown, status: number): string {
   return typeof message === "string" ? message : `导入没有完成（HTTP ${status}）。`;
 }
 
+const FILTERS: readonly { id: ReportFilter; label: string }[] = [
+  { id: "all", label: "全部" },
+  { id: "changes", label: "新增/有变化" },
+  { id: "attention", label: "需要确认" },
+];
+
+/** Download the report as a file the author keeps; nothing leaves the browser. */
+function downloadReport(report: NotionImportReport): void {
+  const url = URL.createObjectURL(new Blob([reportCsv(report)], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `notion-import-${report.applied ? "result" : "plan"}-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  // Revoke on the next task: some browsers start the download asynchronously.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+type Target = { title: string; slug: string };
+
 function dataOf(payload: unknown): unknown {
   return typeof payload === "object" && payload !== null ? (payload as { data?: unknown }).data : null;
 }
@@ -47,6 +73,32 @@ export function NotionImport() {
   const [warnings, setWarnings] = useState<string[]>([]);
   const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
   const [plannedBundle, setPlannedBundle] = useState<Record<string, unknown> | null>(null);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<ReportFilter>("all");
+  // articleId → the work an `update` row would overwrite, read from the desk's
+  // own list so the author sees *which* work changes, not only an id.
+  const [targets, setTargets] = useState<ReadonlyMap<string, Target>>(new Map());
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  const updateIds = report === null ? "" : report.pages.filter((page) => page.action === "update" && page.articleId !== null).map((page) => page.articleId).join(",");
+  useEffect(() => {
+    if (updateIds === "" || updateIds.split(",").every((id) => targets.has(id))) return;
+    let live = true;
+    void fetch("/api/authoring/articles?allLocales=true", { credentials: "same-origin", cache: "no-store", headers: { accept: "application/json" } })
+      .then((response) => response.ok ? response.json() : null)
+      .then((payload: unknown) => {
+        const items = dataOf(payload);
+        if (!live || !Array.isArray(items)) return;
+        const next = new Map(targets);
+        for (const item of items as { id?: unknown; title?: unknown; slug?: unknown }[]) {
+          if (typeof item.id === "string" && typeof item.title === "string") next.set(item.id, { title: item.title, slug: typeof item.slug === "string" ? item.slug : "" });
+        }
+        setTargets(next);
+      })
+      // Only a label is lost: the row still shows the slug the report gave.
+      .catch(() => undefined);
+    return () => { live = false; };
+  }, [updateIds, targets]);
 
   async function send(next: Record<string, unknown>, apply: boolean): Promise<void> {
     const planToken = apply ? report?.planToken : undefined;
@@ -79,6 +131,7 @@ export function NotionImport() {
         return;
       }
       setReport(parsed);
+      setFilter("all");
       if (!apply && !parsed.applied) setPlannedBundle(next);
     } catch {
       setError("网络中断，无法确认导入结果。部分内容可能已写入；请检查写作台，再重新试跑。 ");
@@ -96,6 +149,7 @@ export function NotionImport() {
     setPageCount(0);
     setSelected(new Set());
     setPlannedBundle(null);
+    setQuery("");
     setBusy("dry-run");
     try {
       if (files.reduce((sum, file) => sum + file.size, 0) > 8 * 1024 * 1024) throw new Error("文件总大小超过 8 MB，请分批导入。");
@@ -104,6 +158,9 @@ export function NotionImport() {
         const read = readBundleFile({ text: await file.text(), byteLength: file.size });
         if (!read.ok) throw new Error(read.message);
         setBundle(read.bundle); setPageCount(read.pages);
+        // Everything is selected to begin with: the common case is "import this
+        // export", and the plan still has to be read and confirmed before a write.
+        setSelected(new Set(bundleSelectionPages(read.bundle).map((page) => page.index)));
         setBusy(null);
         return;
       }
@@ -116,6 +173,7 @@ export function NotionImport() {
       }
       const result = markdownEntriesToBundle(entries);
       setBundle(result.bundle); setPageCount(result.pages); setWarnings(result.warnings);
+      setSelected(new Set(bundleSelectionPages(result.bundle).map((page) => page.index)));
       setBusy(null);
     } catch (error) {
       setError(error instanceof Error ? error.message : "文件无法读取，请重新选择。 ");
@@ -129,9 +187,26 @@ export function NotionImport() {
     setPlannedBundle(null);
     setError("");
   }
+  /** Change the selection from the plan, and plan that selection: one click, still no write. */
+  function reselect(next: ReadonlySet<number>) {
+    if (bundle === null || next.size === 0) return;
+    setSelected(next);
+    void send(selectBundlePages(bundle, next), false);
+  }
+  /** Start over with another file, leaving this result behind. */
+  function another() {
+    setFileName(""); setBundle(null); setPageCount(0); setReport(null); setError(""); setWarnings([]);
+    setSelected(new Set()); setPlannedBundle(null); setQuery(""); setFilter("all");
+    fileInput.current?.click();
+  }
   const choices = bundle === null ? [] : bundleSelectionPages(bundle);
+  const needle = query.trim().toLowerCase();
+  const visible = needle === "" ? choices : choices.filter((page) => page.title.toLowerCase().includes(needle));
+  const visibleIndices = visible.map((page) => page.index);
   const outcome = report === null ? null : describeImport(report);
   const issues = report === null ? [] : issueCounts(report);
+  const writableIndices = report === null || bundle === null || report.applied ? null : indicesWithActions(bundle, report, ["create", "update"]);
+  const rows = report === null ? [] : report.pages.filter((page) => reportRowMatches(page, filter));
 
   return (
     <section className="nw-import">
@@ -156,6 +231,7 @@ export function NotionImport() {
           disabled={busy !== null}
           hidden
           id="notion-bundle-file"
+          ref={fileInput}
           onChange={(event) => {
             const files = Array.from(event.currentTarget.files ?? []);
             // Cleared so choosing the same file again is still a change event —
@@ -177,15 +253,24 @@ export function NotionImport() {
       {bundle !== null && choices.length > 0 ? (
         <section className="nw-import-selection" aria-labelledby="notion-selection-title">
           <h2 id="notion-selection-title">选择要导入的文章</h2>
-          <p className="nw-m">已选 {selected.size} / {choices.length} 页。关联的译文请一并选择；更改选择后须重新试跑。</p>
+          <p className="nw-m">已选 {selected.size} / {choices.length} 页，默认全选。关联的译文请一并选择；更改选择后须重新试跑。</p>
+          {choices.length > 1 ? (
+            <label className="nw-import-search">
+              <span>按标题筛选</span>
+              <input type="search" value={query} disabled={busy !== null} placeholder="输入标题中的字词" onChange={(event) => setQuery(event.currentTarget.value)} />
+            </label>
+          ) : null}
+          {needle !== "" ? <p className="nw-m" role="status">筛选出 {visible.length} 页；下面的全选、清空、反选只作用于这些页面。</p> : null}
           <div className="nw-import-select-actions">
-            <button type="button" className="nw-btn" disabled={busy !== null || selected.size === choices.length}
-              onClick={() => changeSelection(new Set(choices.map((page) => page.index)))}>全选</button>
-            <button type="button" className="nw-btn" disabled={busy !== null || selected.size === 0}
-              onClick={() => changeSelection(new Set())}>清空选择</button>
+            <button type="button" className="nw-btn" disabled={busy !== null || visibleIndices.every((index) => selected.has(index))}
+              onClick={() => changeSelection(new Set([...selected, ...visibleIndices]))}>全选</button>
+            <button type="button" className="nw-btn" disabled={busy !== null || !visibleIndices.some((index) => selected.has(index))}
+              onClick={() => changeSelection(new Set([...selected].filter((index) => !visibleIndices.includes(index))))}>清空</button>
+            <button type="button" className="nw-btn" disabled={busy !== null || visibleIndices.length === 0}
+              onClick={() => changeSelection(invertSelection(selected, visibleIndices))}>反选</button>
           </div>
           <ul className="nw-import-selection-list">
-            {choices.map((page) => (
+            {visible.map((page) => (
               <li key={page.index}>
                 <label className="nw-import-select-page">
                   <input type="checkbox" checked={selected.has(page.index)} disabled={busy !== null}
@@ -215,8 +300,32 @@ export function NotionImport() {
             </p>
           ) : null}
 
+          <div className="nw-import-filter" role="group" aria-label="按结果筛选报告">
+            {FILTERS.map(({ id, label }) => (
+              <button key={id} type="button" className="nw-import-chip" aria-pressed={filter === id} onClick={() => setFilter(id)}>
+                {label} {report.pages.filter((page) => reportRowMatches(page, id)).length}
+              </button>
+            ))}
+            <button type="button" className="nw-import-chip nw-import-download" onClick={() => downloadReport(report)}>下载报告 CSV</button>
+          </div>
+          {writableIndices !== null && bundle !== null ? (
+            <div className="nw-import-select-actions">
+              {writableIndices.size > 0 && writableIndices.size < selected.size ? (
+                <button type="button" className="nw-btn" disabled={busy !== null} onClick={() => reselect(writableIndices)}>
+                  只导入会新建或更新的（{writableIndices.size} 页）
+                </button>
+              ) : null}
+              {selected.size < choices.length ? (
+                <button type="button" className="nw-btn" disabled={busy !== null} onClick={() => reselect(new Set(choices.map((page) => page.index)))}>
+                  全选（含无变化的）
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+
+          {rows.length === 0 ? <p className="nw-m">没有符合这个筛选的页面。</p> : null}
           <ul className="nw-import-pages">
-            {report.pages.map((page) => (
+            {rows.map((page) => (
               <li
                 className="nw-import-page"
                 data-action={page.action}
@@ -227,6 +336,12 @@ export function NotionImport() {
                 </span>
                 <span className="nw-import-title">{page.title === "" ? page.externalId : page.title}</span>
                 <span className="nw-import-locale">{page.locale}</span>
+                {page.action === "update" ? (
+                  <small className="nw-import-target">
+                    将更新：{page.articleId !== null && targets.has(page.articleId) ? `《${targets.get(page.articleId)!.title}》` : "已有作品"}
+                    {page.slug !== "" ? ` · /${page.slug}` : ""}
+                  </small>
+                ) : page.slug !== "" && page.action === "create" ? <small className="nw-import-target">地址 /{page.slug}</small> : null}
                 {page.issues.length > 0 ? (
                   <span className="nw-import-issues">{page.issues.map((issue) => issue.code).join("、")}</span>
                 ) : null}
@@ -268,7 +383,8 @@ export function NotionImport() {
 
           {report.applied ? (
             <p className="nw-import-done">
-              <Link className="nw-btn" href="/write">去看写作台</Link>
+              <Link className="nw-btn nw-pri" href="/write">去看写作台</Link>
+              <button className="nw-btn" type="button" onClick={another}>再导入一批</button>
             </p>
           ) : null}
         </div>

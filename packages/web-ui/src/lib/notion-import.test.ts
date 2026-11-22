@@ -9,6 +9,13 @@ import {
   issueCounts,
   importDetail,
   readBundleFile,
+  indicesWithActions,
+  invertSelection,
+  pageKey,
+  reportCsv,
+  reportRowMatches,
+  type NotionImportAction,
+  type NotionImportPage,
   type NotionImportReport,
 } from "./notion-import.ts";
 
@@ -273,4 +280,40 @@ test("ownership conflicts explain cross-locale refusal and retain unused-media g
   assert.match(importDetail("The Notion page is already linked to another work or account. Nothing in this work was written; preview again."), /其他作品或账号.*均未写入/);
   assert.match(importDetail("The work or its import provenance changed. Nothing in this work was written; preview again."), /试跑后已变化.*重新试跑/);
   assert.equal(importDetail("unrecognized safe report detail"), "unrecognized safe report detail");
+});
+
+test("report rows are filtered by what they would write and what needs reading", () => {
+  const row = (action: NotionImportAction, issues: { code: string; detail: string }[] = []): NotionImportPage =>
+    ({ externalId: action, title: action, locale: "zh", action, slug: "", articleId: null, detail: "", issues });
+  const rows = [row("create"), row("update"), row("skip"), row("skip", [{ code: "expiring-image-url", detail: "" }]), row("refused"), row("failed")];
+  assert.deepEqual(rows.filter((r) => reportRowMatches(r, "changes")).map((r) => r.action), ["create", "update"]);
+  assert.deepEqual(rows.filter((r) => reportRowMatches(r, "attention")).map((r) => r.action), ["skip", "refused", "failed"]);
+  assert.equal(rows.filter((r) => reportRowMatches(r, "all")).length, rows.length);
+});
+
+test("report rows choose bundle indices by normalised id, never by report order", () => {
+  const bundle = { pages: [{ id: "AAAA-1" }, { id: "bbbb2" }, { id: "cccc3" }, {}] };
+  const report = asImportReport({ applied: false, pages: [
+    { externalId: "cccc3", action: "update" }, { externalId: "aaaa1", action: "create" }, { externalId: "bbbb2", action: "skip" },
+  ] })!;
+  assert.deepEqual([...indicesWithActions(bundle, report, ["create", "update"])].sort(), [0, 2]);
+  assert.deepEqual([...indicesWithActions(bundle, report, ["skip"])], [1]);
+  assert.equal(pageKey("CE90817D-48BC-4108-9028-08C6C7BDE306"), "ce90817d48bc4108902808c6c7bde306");
+});
+
+test("invert toggles only the visible pages", () => {
+  assert.deepEqual([...invertSelection(new Set([0, 1, 5]), [1, 2, 3])].sort(), [0, 2, 3, 5]);
+});
+
+test("the report CSV has one escaped row per page and cannot inject a formula", () => {
+  const report = asImportReport({ applied: false, pages: [
+    { externalId: "p1", title: "墙壁, 其一", locale: "zh", action: "update", slug: "wall", articleId: "a-1", detail: "", issues: [{ code: "featured-image-not-carried", detail: "1 file(s)" }] },
+    { externalId: "p2", title: "=HYPERLINK(\"x\")", locale: "en", action: "refused", slug: "", articleId: null, detail: "Select all pages referenced by English before importing this work", issues: [{ code: "missing-translation-page", detail: "" }] },
+  ] })!;
+  const csv = reportCsv(report);
+  assert.ok(csv.startsWith("\uFEFFaction,title,locale,slug,articleId,issues,detail\r\n"));
+  const lines = csv.slice(1).trimEnd().split("\r\n");
+  assert.equal(lines.length, 3);
+  assert.equal(lines[1], "update,\"墙壁, 其一\",zh,wall,a-1,featured-image-not-carried,1 file(s)");
+  assert.ok(lines[2]!.startsWith("refused,\"'=HYPERLINK(\"\"x\"\")\",en,,,missing-translation-page,请选择 English 关联的所有页面后重新试跑。"));
 });

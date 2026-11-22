@@ -4,7 +4,7 @@ import { expect, type Page } from "@playwright/test";
 import { test } from "./support/csp-fixture.ts";
 import type { NotionImportReport } from "../packages/web-ui/src/lib/notion-import.ts";
 import { registerThroughForm, uniqueEmail } from "./support/accounts.ts";
-import { mockNotionImport } from "./support/notion-import-mock.ts";
+import { mockNotionImport, titleOf } from "./support/notion-import-mock.ts";
 
 /**
  * Importing a Notion bundle from the desk (ADR 0036, phase 4).
@@ -75,7 +75,8 @@ function bundleFile() {
 }
 
 async function selectAllAndPreview(page: Page) {
-  await page.getByRole("button", { name: "全选", exact: true }).click();
+  // Every page starts selected; the plan is still shown before anything is written.
+  await expect(page.getByRole("button", { name: "全选", exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "试跑所选文章" }).click();
 }
 
@@ -238,10 +239,11 @@ test("ZIP selection previews and writes only checked pages, and changing it inva
     if (request.url().endsWith("/api/authoring/notion-import") && request.method() === "POST") writes.push(request.postDataJSON());
   });
   await page.setInputFiles("#notion-bundle-file", { name: "export.zip", mimeType: "application/zip", buffer: Buffer.from(zip) });
-  await expect(page.getByRole("button", { name: "试跑所选文章" })).toBeDisabled();
+  // Every page starts checked; unchecking is how a page is left out.
+  for (const title of ["保留甲", "不导入", "保留乙"]) await expect(page.getByLabel(title, { exact: true })).toBeChecked();
+  await expect(page.getByText("已选 3 / 3 页", { exact: false })).toBeVisible();
   await expect(page.getByText(/Rank 没有对应字段/)).toHaveCount(0);
-  await page.getByLabel("保留甲", { exact: true }).check();
-  await page.getByLabel("不导入", { exact: true }).check();
+  await page.getByLabel("保留乙", { exact: true }).uncheck();
   await page.getByRole("button", { name: "试跑所选文章" }).click();
   await expect(page.getByText(/计划：新建 2 件/)).toBeVisible();
   await page.getByLabel("不导入", { exact: true }).uncheck();
@@ -261,6 +263,73 @@ test("ZIP selection previews and writes only checked pages, and changing it inva
   await expect(page.getByText("不导入", { exact: true })).toHaveCount(0);
 });
 
+test("selection tools, report filters, one-click reselection, the report CSV and another batch", async ({ page }) => {
+  await registerThroughForm(page, uniqueEmail("notion-tools"), "/write/notion");
+  const ids = Array.from({ length: 4 }, () => randomUUID());
+  const [fresh, changed, same, refused] = ids as [string, string, string, string];
+  // The stand-in answers like the API would for an export that was imported
+  // before: one new page, one changed, one unchanged, one refused.
+  const writes = await mockNotionImport(page, (request) => request.bundle.pages.map((source) => {
+    const key = source.id;
+    const base = { externalId: key, title: titleOf(source), locale: "zh-CN", detail: "", issues: [] as { code: string; detail: string }[], articleId: null as string | null, slug: "" };
+    if (key === changed) return { ...base, action: "update" as const, articleId: "work-1", slug: "old-slug" };
+    if (key === same) return { ...base, action: "skip" as const, articleId: "work-2", slug: "same" };
+    if (key === refused) return { ...base, action: "refused" as const, issues: [{ code: "missing-translation-page", detail: "Select all pages referenced by English before importing this work" }] };
+    return { ...base, action: "create" as const, slug: "fresh" };
+  }));
+  const titles = ["新的一篇", "改过的一篇", "没变的一篇", "缺译文的一篇"];
+  await page.setInputFiles("#notion-bundle-file", ids.map((id, index) => ({
+    name: `${titles[index]} ${id.replaceAll("-", "")}.md`, mimeType: "text/markdown", buffer: Buffer.from(`# ${titles[index]}\n\n正文 ${index}`),
+  })));
+  await expect(page.getByText("已选 4 / 4 页", { exact: false })).toBeVisible();
+  // Title search narrows the list, and the bulk buttons act on what is shown.
+  await page.getByLabel("按标题筛选").fill("一篇");
+  await page.getByLabel("按标题筛选").fill("改过");
+  await expect(page.getByText(/筛选出 1 页/)).toBeVisible();
+  await page.getByRole("button", { name: "清空", exact: true }).click();
+  await expect(page.getByText("已选 3 / 4 页", { exact: false })).toBeVisible();
+  await page.getByLabel("按标题筛选").fill("");
+  await page.getByRole("button", { name: "反选", exact: true }).click();
+  await expect(page.getByText("已选 1 / 4 页", { exact: false })).toBeVisible();
+  await expect(page.getByLabel("改过的一篇", { exact: true })).toBeChecked();
+  await page.getByRole("button", { name: "全选", exact: true }).click();
+  await expect(page.getByText("已选 4 / 4 页", { exact: false })).toBeVisible();
+
+  await page.getByRole("button", { name: "试跑所选文章" }).click();
+  await expect(page.getByText(/计划：新建 1 件、更新 1 件、跳过 1 页、拒绝 1 页/)).toBeVisible();
+  const report = page.locator(".nw-import-report");
+  await expect(report.getByText("将更新：已有作品 · /old-slug")).toBeVisible();
+  await report.getByRole("button", { name: /^需要确认/ }).click();
+  await expect(report.locator(".nw-import-page")).toHaveCount(1);
+  await expect(report.getByText("缺译文的一篇", { exact: true })).toBeVisible();
+  await report.getByRole("button", { name: /^新增\/有变化/ }).click();
+  await expect(report.locator(".nw-import-page")).toHaveCount(2);
+
+  const download = page.waitForEvent("download");
+  await report.getByRole("button", { name: "下载报告 CSV" }).click();
+  const csv = await (await download).createReadStream().then(async (stream) => {
+    const chunks: Buffer[] = []; for await (const chunk of stream) chunks.push(chunk as Buffer); return Buffer.concat(chunks).toString("utf8");
+  });
+  expect(csv.replace(/^\uFEFF/, "").split("\r\n")[0]).toBe("action,title,locale,slug,articleId,issues,detail");
+  expect(csv).toContain("refused,缺译文的一篇,zh-CN,,,missing-translation-page,请选择 English 关联的所有页面后重新试跑。");
+
+  // One click narrows the selection to what would be written and plans it again.
+  await page.getByRole("button", { name: "只导入会新建或更新的（2 页）" }).click();
+  await expect(page.getByText(/计划：新建 1 件、更新 1 件、跳过 0 页/)).toBeVisible();
+  expect(writes.at(-1)!.bundle.pages.map((source) => source.id).sort()).toEqual([fresh, changed].sort());
+  await expect(page.getByRole("button", { name: "全选（含无变化的）" })).toBeVisible();
+  await page.getByRole("button", { name: /确认导入（写入 2 件作品）/ }).click();
+  await expect(page.getByText(/已导入：新建 1 件、更新 1 件/)).toBeVisible();
+  expect(writes.map((request) => request.apply === true)).toEqual([false, false, true]);
+  await expect(page.getByRole("link", { name: "去看写作台" })).toBeVisible();
+  // "Another batch" leaves this result behind and offers the file picker again.
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "再导入一批" }).click();
+  await chooser;
+  await expect(page.locator(".nw-import-report")).toHaveCount(0);
+  await expect(page.getByText("还没有选择文件")).toBeVisible();
+});
+
 function assertSelectedPages(request: { bundle: { pages: { id: string }[] } } | undefined, ids: string[]) {
   expect(request).toBeDefined();
   expect(request!.bundle.pages.map((page) => page.id.replaceAll("-", "")).sort()).toEqual([...ids].sort());
@@ -274,7 +343,7 @@ test("a selected page with a missing English relation is refused before writing"
     { name: `关联原文 ${zh}.md`, mimeType: "text/markdown", buffer: Buffer.from(`# 关联原文\n\nEnglish: English (English%20${en}.md)\n\n中文正文`) },
     { name: `English ${en}.md`, mimeType: "text/markdown", buffer: Buffer.from("# English\n\nEnglish text") },
   ]);
-  await page.getByLabel("关联原文", { exact: true }).check();
+  await page.getByLabel("English", { exact: true }).uncheck();
   await page.getByRole("button", { name: "试跑所选文章" }).click();
   await expect(page.locator(".nw-import-report").getByText("missing-translation-page", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /确认导入/ })).toHaveCount(0);
