@@ -67,6 +67,12 @@ already has.**
    with a token from the environment of whoever runs it. The server only ever
    sees content.
 
+   *Amended by [ADR 0052](0052-server-side-notion-pull-without-storing-tokens.md):*
+   the desk may send a pasted token with each `POST /api/v1/imports/notion/fetch`
+   request, because a browser cannot call the Notion API directly (no CORS). The
+   rule this decision protects still holds: the server never **stores** a Notion
+   credential — not in the database, a file, a log, an error or a response.
+
 4. **Identity is the Notion page id, recorded next to the article.** Re-import
    must update, not duplicate, so a link record `(provider, external_page_id) →
    (article_id, locale)` is the unit of idempotency, and a content digest on it
