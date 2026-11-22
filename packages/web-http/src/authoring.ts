@@ -344,6 +344,54 @@ export async function handleAuthoringNotionImportRequest(
 }
 
 /**
+ * How large a Notion pull request may be. The body is a token, a mode, a link or
+ * at most 200 page ids — a few kilobytes. Anything near this ceiling is not a
+ * pull, and the proxy refuses it before it holds more of it.
+ */
+export const AUTHORING_NOTION_FETCH_MAX_BYTES = 64 * 1024;
+
+/**
+ * `POST /api/authoring/notion-fetch` — ask our API to read the author's Notion
+ * with a token they pasted, one slice at a time (ADR 0052).
+ *
+ * The proxy is deliberately thin. It checks only what decides whether the request
+ * is a pull at all — POST, same origin, JSON, small, and one of the two modes —
+ * and forwards the text that arrived. Validating the token's shape or the link is
+ * the API's answer, so the desk shows the API's sentence, and so there is one place
+ * where the rule "the token is never repeated back" has to hold. Nothing this
+ * handler returns contains the request body: a refusal names the field, never its
+ * value.
+ *
+ * The upstream budget is 90 s. The API stops starting new pages at 45 s and gives up
+ * on a page at 75 s, so a slice finishes well inside it; the margin is for the
+ * response to travel back rather than for more Notion calls.
+ */
+export async function handleAuthoringNotionFetchRequest(
+  request: Request,
+  config: ApiProxyConfig = {},
+): Promise<Response> {
+  const method = methodOf(request, ["POST"]);
+  if (method === null) {
+    return errorResponse("METHOD_NOT_ALLOWED", "Only POST is supported for a Notion pull.", 405);
+  }
+  if (rejectCrossOrigin(request)) {
+    return errorResponse("ORIGIN_REJECTED", "The request origin was rejected.", 403);
+  }
+  const body = await readLimitedJson(request, AUTHORING_NOTION_FETCH_MAX_BYTES);
+  if (!body.ok) return notForwarded(body.response);
+
+  if (body.value.mode !== "rows" && body.value.mode !== "pages") {
+    return notForwarded(errorResponse("BAD_USER_INPUT", "`mode` must be \"rows\" or \"pages\".", 400));
+  }
+  if (typeof body.value.token !== "string" || body.value.token.length === 0) {
+    return notForwarded(errorResponse("BAD_USER_INPUT", "A Notion `token` is required.", 400));
+  }
+
+  return forwardAuthoringRequest(request, "api/v1/imports/notion/fetch", "POST",
+    { ...config, upstreamTimeoutMs: config.upstreamTimeoutMs ?? 90_000 }, body.text);
+}
+
+/**
  * `POST /api/authoring/articles/:id/restore` — bring a deleted work back.
  *
  * The same order as a save and a delete: the method first, then the Origin, then
