@@ -9053,6 +9053,11 @@
                 },
                 "archived": {
                   "type": "boolean"
+                },
+                "createdTime": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "Notion's created_time for the page; metadata only, never part of a bundle."
                 }
               }
             }

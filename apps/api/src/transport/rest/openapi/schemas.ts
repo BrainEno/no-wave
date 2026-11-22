@@ -762,7 +762,7 @@ export const SCHEMAS: Readonly<Record<string, JsonSchema>> = Object.freeze({
     description: "`rows` answers `source`, `rows` and `cursor`; `pages` answers `pages`, `issues`, `done` and, when Notion's rate limit ended the slice, `retryAfterSeconds`.",
     properties: {
       source: { type: "object", properties: { id: { type: "string" }, title: { type: ["string", "null"] } } },
-      rows: { type: "array", items: { type: "object", required: ["id", "properties"], properties: { id: { type: "string" }, properties: { type: "object", additionalProperties: true }, inTrash: { type: "boolean" }, archived: { type: "boolean" } } } },
+      rows: { type: "array", items: { type: "object", required: ["id", "properties"], properties: { id: { type: "string" }, properties: { type: "object", additionalProperties: true }, inTrash: { type: "boolean" }, archived: { type: "boolean" }, createdTime: { type: "string", format: "date-time", description: "Notion's created_time for the page; metadata only, never part of a bundle." } } } },
       cursor: { type: ["string", "null"] },
       pages: { type: "array", items: { type: "object", required: ["id", "blocks"], properties: { id: { type: "string" }, blocks: { type: "array", items: { type: "object", additionalProperties: true } } } } },
       issues: { type: "array", items: { type: "object", required: ["id", "code"], properties: { id: { type: "string" }, code: { type: "string", enum: ["too-many-blocks", "page-too-large", "fetch-timeout", "page-unavailable", "fetch-failed"] } } } },

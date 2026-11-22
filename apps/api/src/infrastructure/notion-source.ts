@@ -81,9 +81,18 @@ export type NotionRow = {
   properties: Record<string, NotionPropertyValue>;
   inTrash?: true;
   archived?: true;
+  /**
+   * Notion's `created_time` for the page, an ISO instant. It is page metadata,
+   * not a property, and the bundle never carries it; the desk may offer it as
+   * the date of a published page that has none (ADR 0052, P2).
+   */
+  createdTime?: string;
 };
 
-type NotionPageObject = { id?: unknown; properties?: unknown; in_trash?: unknown; archived?: unknown };
+type NotionPageObject = { id?: unknown; properties?: unknown; in_trash?: unknown; archived?: unknown; created_time?: unknown };
+
+/** Notion's timestamps are ISO instants with a zone; anything else is dropped rather than guessed at. */
+const NOTION_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})$/;
 type NotionBlockObject = { id?: unknown; type?: unknown; has_children?: unknown };
 
 function retryAfterOf(response: NotionResponse): number | null {
@@ -184,6 +193,8 @@ export async function queryRows(sourceId: string, call: NotionCall, options: { c
       properties: typeof page.properties === "object" && page.properties !== null ? page.properties as Record<string, NotionPropertyValue> : {},
       ...(page.in_trash === true ? { inTrash: true as const } : {}),
       ...(page.archived === true ? { archived: true as const } : {}),
+      ...(typeof page.created_time === "string" && NOTION_INSTANT.test(page.created_time) && Number.isFinite(Date.parse(page.created_time))
+        ? { createdTime: page.created_time } : {}),
     });
   }
   return { rows, nextCursor: typeof result.next_cursor === "string" ? result.next_cursor : null };
