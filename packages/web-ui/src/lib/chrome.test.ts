@@ -6,6 +6,7 @@ import {
   deletionNoticeText,
   grainOffsets,
   grainTileData,
+  inPageHash,
   isReadingRoute,
   isToolRoute,
   shouldPaintGrain,
@@ -208,4 +209,19 @@ test("the grain canvas paints once and never runs a frame timer", async () => {
   assert.ok(start > 0 && end > start, "GrainCanvas exists");
   assert.equal(/setInterval|requestAnimationFrame/.test(body), false, "no animation loop over the page");
   assert.match(source, /shouldPaintGrain\(pathname\)/);
+});
+
+test("an in-page jump is recognised by where the anchor points, not how its href is spelled", () => {
+  // The router renders `<Link href="#latest">` as `/#latest`; both are the same jump.
+  assert.equal(inPageHash("https://site.test/#latest", "https://site.test/"), "latest");
+  assert.equal(inPageHash("https://site.test/en#popular", "https://site.test/en"), "popular");
+  assert.equal(inPageHash("#selected", "https://site.test/en"), "selected");
+  // A Chinese heading id arrives percent-encoded.
+  assert.equal(inPageHash("https://site.test/articles/a#%E5%A2%99", "https://site.test/articles/a"), "墙");
+  // Leaving the page is not a jump: another path, query or origin, or no hash.
+  assert.equal(inPageHash("https://site.test/#latest", "https://site.test/en"), null);
+  assert.equal(inPageHash("https://site.test/search?q=a#x", "https://site.test/search?q=b"), null);
+  assert.equal(inPageHash("https://other.test/#latest", "https://site.test/"), null);
+  assert.equal(inPageHash("https://site.test/", "https://site.test/"), null);
+  assert.equal(inPageHash("https://site.test/#", "https://site.test/"), null);
 });

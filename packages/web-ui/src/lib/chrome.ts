@@ -213,3 +213,33 @@ export function shouldUseSmoothScroll(pathname: string): boolean {
   const bare = pathname.replace(/^\/en(?=\/|$)/, "") || "/";
   return !NATIVE_SCROLL_PREFIXES.some((prefix) => bare === prefix || bare.startsWith(`${prefix}/`));
 }
+
+/**
+ * The element id an anchor jumps to when it stays on the current page, or
+ * `null` when following it would leave the page (another path or query, another
+ * origin) or it has no hash at all.
+ *
+ * Both arguments are absolute URLs — `anchor.href` and `location.href` — so the
+ * spelling of the attribute does not matter: the router renders
+ * `<Link href="#latest">` as `/#latest`, and `/en#latest` on the English home is
+ * the same jump. The id is decoded, because a table-of-contents anchor for a
+ * Chinese heading arrives percent-encoded.
+ */
+export function inPageHash(href: string, current: string): string | null {
+  let address: URL;
+  let here: URL;
+  try {
+    address = new URL(href, current);
+    here = new URL(current);
+  } catch {
+    return null;
+  }
+  if (address.origin !== here.origin || address.pathname !== here.pathname || address.search !== here.search) return null;
+  const raw = address.hash.slice(1);
+  if (!raw) return null;
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}

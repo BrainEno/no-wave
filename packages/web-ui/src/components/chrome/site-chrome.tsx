@@ -10,6 +10,7 @@ import { dateLabel } from "@/lib/format.ts";
 import {
   notificationPresentation,
   grainTileData,
+  inPageHash,
   isReadingRoute,
   shouldPaintGrain,
   shouldUseSmoothScroll,
@@ -87,7 +88,8 @@ function SiteFooter({ locale }: { locale: Locale }) {
       <div className="nw-fbar">
         <nav aria-label={ui.nav.footer}>
           <Link href={home}>{ui.nav.home}</Link>
-          <Link href={onHome ? "#latest" : `${home}#latest`}>{ui.nav.latest}</Link>
+          <Link href={onHome ? "#latest" : `${home}#latest`} data-scroll-fallback="selected">{ui.nav.latest}</Link>
+          <Link href={onHome ? "#popular" : `${home}#popular`} data-scroll-fallback="latest selected">{ui.nav.popular}</Link>
           <Link href={onHome ? "#topics" : topicsHref}>{ui.nav.topics}</Link>
           {/* A directory with no way in is a page nobody visits: the footer is
               where the reading index lives, so this is where the authors go. */}
@@ -132,6 +134,8 @@ function SiteChromeContent({ children }: { children: ReactNode }) {
   const smoother = useRef<ScrollSmoother | null>(null);
   const pageMotion = useRef<{ revert(): void } | null>(null);
   const lastKey = useRef("");
+  const refreshFrame = useRef(0);
+  const hashTimer = useRef(0);
 
   // 平滑滚动：阅读页共用一次实例；写作/账户/管理/登录等表单页恢复原生滚动。
   useEffect(() => {
@@ -177,55 +181,98 @@ function SiteChromeContent({ children }: { children: ReactNode }) {
   }, []);
 
   // 页面级动效：路径或查询串变化后重新绑定
+  // Runs after every render but acts only when the page (path + query) changed.
+  // The refresh frame and the hash timer are kept in refs and cancelled only by
+  // the next page change or by unmounting, not by this effect's cleanup: the
+  // effect has no dependency list, so its cleanup runs before *every* re-render,
+  // and the chrome re-renders within the first frames of a page (session,
+  // notifications, the reading shelf). When the cleanup owned the timer, the
+  // cross-page jump from another page to /#latest or /#popular was cancelled by
+  // the next render and the following run returned early on the same key —
+  // the router's native jump landed somewhere, the smoother then reset to the
+  // top, and the reader was left at the hero.
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const key = window.location.pathname + window.location.search;
     if (key === lastKey.current) return;
     const first = lastKey.current === "";
     lastKey.current = key;
+    window.cancelAnimationFrame(refreshFrame.current);
+    window.clearTimeout(hashTimer.current);
     pageMotion.current?.revert();
     if (!first) smoother.current?.scrollTop(0);
     pageMotion.current = setupPageMotion();
-    const frame = window.requestAnimationFrame(() => ScrollTrigger.refresh());
+    refreshFrame.current = window.requestAnimationFrame(() => ScrollTrigger.refresh());
     // 跨页 #hash 落点（如从文章页回到 /#selected）：挂载后滚到对应区块。
-    let hashTimer = 0;
     const hash = window.location.hash.slice(1);
     if (hash) {
-      const target = document.getElementById(hash);
-      if (target) {
-        hashTimer = window.setTimeout(() => {
-          if (smoother.current) smoother.current.scrollTo(target, true, "top 24px");
-          else target.scrollIntoView({ behavior: "smooth" });
-        }, 80);
-      }
+      hashTimer.current = window.setTimeout(() => {
+        let id = hash;
+        try { id = decodeURIComponent(hash); } catch { /* a malformed escape is looked up as written */ }
+        const target = document.getElementById(id);
+        if (!target) return;
+        if (smoother.current) smoother.current.scrollTo(target, true, "top 24px");
+        else target.scrollIntoView({ behavior: "smooth" });
+      }, 80);
     }
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.clearTimeout(hashTimer);
-    };
   });
-  useEffect(() => () => { pageMotion.current?.revert(); pageMotion.current = null; lastKey.current = ""; }, []);
+  useEffect(() => () => {
+    window.cancelAnimationFrame(refreshFrame.current);
+    window.clearTimeout(hashTimer.current);
+    pageMotion.current?.revert();
+    pageMotion.current = null;
+    lastKey.current = "";
+  }, []);
 
-  // 页内锚点（目录等）使用平滑滚动。
-  // 捕获阶段拦截 + stopPropagation：Next <Link> 对 #hash 的默认处理会在冒泡阶段
-  // 调用 target.scrollIntoView()，把 overflow:hidden 的 #smooth-wrapper 也原生滚动，
+  // 页内锚点（目录、首页主导航等）使用平滑滚动。
+  // 捕获阶段拦截 + preventDefault：路由的 <Link> 对 #hash 的默认处理会调用
+  // target.scrollIntoView()，把 overflow:hidden 的 #smooth-wrapper 也原生滚动，
   // 导致整页内容被钳位上移（首屏缺一截、落点偏到按钮、页脚下方露黑底）。
+  //
+  // The anchor is matched by where it points, not by how its href is spelled:
+  // React Router renders `<Link href="#latest">` as `href="/#latest"`, so a
+  // selector on `href^="#"` never saw the header's 精选 / 最新 / 分类 links and
+  // clicking them on the home page did nothing — the router treated it as a
+  // navigation to the page already open, and the motion effect, keyed on path
+  // and query, had no reason to scroll. Anything whose path and query are the
+  // current page's and that carries a hash is an in-page jump.
+  //
+  // No stopPropagation: the router's Link already skips a click whose default
+  // was prevented, and the menu's overlay listener must still see the click so
+  // the menu closes when one of its entries scrolls the page underneath it.
+  //
+  // `data-scroll-fallback` names sections to try, in order, when the target is
+  // not on the page. The home page leaves out 最新 while the newest works fill
+  // the 精选 shelf, and 最多收藏 while nothing is published; the header keeps
+  // the same four entries either way, so a click lands on the shelf that holds
+  // those works instead of doing nothing.
   useEffect(() => {
     const onClick = (event: MouseEvent) => {
-      const anchor = (event.target as Element | null)?.closest?.('a[href^="#"]');
-      const hash = anchor?.getAttribute("href");
-      if (!hash || hash.length < 2) return;
-      const target = document.querySelector(hash);
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const anchor = (event.target as Element | null)?.closest?.("a[href]");
+      if (!(anchor instanceof HTMLAnchorElement) || (anchor.target && anchor.target !== "_self") || anchor.hasAttribute("download")) return;
+      const hash = inPageHash(anchor.href, window.location.href);
+      if (!hash) return;
+      const fallbacks = (anchor.dataset.scrollFallback ?? "").split(/\s+/).filter(Boolean);
+      const target = [hash, ...fallbacks].map((id) => document.getElementById(id)).find((element) => element !== null);
       if (!target) return;
       event.preventDefault();
-      event.stopPropagation();
-      // This capture listener owns hash navigation, so a React onClick would
-      // never run. Move keyboard focus before scrolling for the skip link.
-      if (anchor?.classList.contains("nw-skip") && target instanceof HTMLElement) {
+      // The default (and so the router's own jump) is cancelled here; move
+      // keyboard focus before scrolling for the skip link.
+      if (anchor.classList.contains("nw-skip") && target instanceof HTMLElement) {
         target.focus({ preventScroll: true });
       }
-      if (smoother.current) smoother.current.scrollTo(target, true, "top 24px");
-      else target.scrollIntoView({ behavior: "smooth" });
+      const scroll = () => {
+        if (smoother.current) smoother.current.scrollTo(target, true, "top 24px");
+        else target.scrollIntoView({ behavior: "smooth" });
+      };
+      // An entry in the menu closes the menu on the next frame (the overlay's
+      // own navigate handling). Measured while the modal is still open, the
+      // target is off by the menu's effect on the page, and the dismissal cut
+      // the tween short: the page jumped past the section. Scroll once the
+      // menu has gone.
+      if (anchor.closest('[role="dialog"]')) window.requestAnimationFrame(() => window.requestAnimationFrame(scroll));
+      else scroll();
     };
     document.addEventListener("click", onClick, true);
     return () => document.removeEventListener("click", onClick, true);
@@ -261,12 +308,13 @@ function SiteChromeContent({ children }: { children: ReactNode }) {
 
   const other: Locale = locale === "en" ? "zh-CN" : "en";
   const current = (prefix: string) => (pathname === prefix || pathname.startsWith(prefix + "/") ? "page" : undefined);
-  // 主导航：精选 / 最新 / 分类（按需求固定这三个入口）。
+  // 主导航：精选 / 最新 / 最多收藏 / 分类，与首页区块的顺序一致。
   // 首页内点击平滑滚动到对应区块；其他页面回到首页区块，分类保留项目实际的分类页入口。
   const onHome = pathname === "/" || pathname === "/en";
   const home = homePath(locale);
   const navSelected = onHome ? "#selected" : `${home}#selected`;
   const navLatest = onHome ? "#latest" : `${home}#latest`;
+  const navPopular = onHome ? "#popular" : `${home}#popular`;
   const topicsHref = locale === "en" ? "/en/categories" : "/categories";
   const navTopics = onHome ? "#topics" : topicsHref;
   const searchHref = locale === "en" ? "/en/search" : "/search";
@@ -292,7 +340,8 @@ function SiteChromeContent({ children }: { children: ReactNode }) {
       <Link className="nw-rail" href={homePath(locale)} aria-label={`${ui.rail} — ${ui.homeAria}`}>{ui.rail}</Link>
       <nav className="nw-pill" aria-label={ui.nav.primary} lang={locale}>
         <Link className="nw-nv" href={navSelected}>{ui.nav.selected}</Link>
-        <Link className="nw-nv" href={navLatest}>{ui.nav.latest}</Link>
+        <Link className="nw-nv" href={navLatest} data-scroll-fallback="selected">{ui.nav.latest}</Link>
+        <Link className="nw-nv" href={navPopular} data-scroll-fallback="latest selected">{ui.nav.popular}</Link>
         <Link className="nw-nv" href={navTopics} aria-current={onHome ? undefined : current(topicsHref)}>{ui.nav.topics}</Link>
         <span className="nw-sep nw-nv" aria-hidden="true" />
         <Link className="nw-nv nw-lang" onClick={overlays.onLanguageNavigate} href={locale === "en" ? alternateHref : currentHref} lang="zh-CN" aria-current={locale === "zh-CN" ? "true" : undefined}>简</Link>
@@ -303,7 +352,7 @@ function SiteChromeContent({ children }: { children: ReactNode }) {
           {icon.bell}{badge ? <span className="nw-bdg" aria-live="polite">{badge}</span> : null}
         </button>
         <span className="nw-sep nw-nv" aria-hidden="true" />
-        <Link className="nw-ic nw-ic-write" href="/write" aria-label={ui.nav.write} title={ui.nav.write}>{icon.write}{locale === "en" ? <span>Write</span> : null}</Link>
+        <Link className="nw-ic nw-ic-write" href="/write" aria-label={ui.nav.write} title={ui.nav.write}>{icon.write}</Link>
         <Link className="nw-ic nw-ic-account" href="/account" aria-label={ui.nav.account} title={ui.nav.account} aria-current={current("/account")}>{icon.account}</Link>
         <button className="nw-mnb" ref={overlays.menuTrigger} type="button" aria-haspopup="dialog" style={{ fontWeight: 700 }} aria-expanded={menuOpen} aria-controls="nw-menu" onClick={() => overlays.toggle("menu")}>{ui.nav.menu}</button>
       </nav>
@@ -351,7 +400,8 @@ function SiteChromeContent({ children }: { children: ReactNode }) {
         <button type="button" data-overlay-initial-focus data-overlay-focus-key="close" onClick={() => overlays.dismiss()}>{ui.nav.close}</button>
         <Link href={homePath(locale)}>{ui.nav.home}</Link>
         <Link href={navSelected}>{ui.nav.selected}</Link>
-        <Link href={navLatest}>{ui.nav.latest}</Link>
+        <Link href={navLatest} data-scroll-fallback="selected">{ui.nav.latest}</Link>
+        <Link href={navPopular} data-scroll-fallback="latest selected">{ui.nav.popular}</Link>
         <Link href={navTopics}>{ui.nav.topics}</Link>
         <Link href="/write">{ui.nav.write}</Link>
         <Link href="/account">{ui.nav.account}</Link>
