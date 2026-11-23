@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { writingRecoveryBoundary } from "@/lib/writing-recovery-boundary.ts";
 import { Link } from "@/lib/framework/link.tsx";
+import { DEEP_WRITING_TOOLS } from "@/lib/writing-tool-pages.ts";
 import { useNavigationBlocker, usePageLocation } from "@/lib/framework/navigation.ts";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog.tsx";
 import { bindWritingUnload, canLeaveWriting, type WritingGuard, type WritingLeaveToken } from "@/lib/writing-session.ts";
@@ -516,6 +517,22 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
               first-level verb an author scans for; the source stays visible as a
               sub-label, so the link's accessible name still reads "从 Notion 导入". */}
           <Link className="nw-desk-link nw-desk-import" href="/write/notion"><span>导入文章</span><small>从 Notion 导入</small></Link>
+          {/* The proofreading pages used to be reachable only from the bottom of
+              the collapsed tool panel, under a selected draft. They are tools of
+              the desk, not of one draft, so the desk names them too. */}
+          <details className="nw-desk-help nw-desk-tools">
+            <summary className="nw-desk-link">写作工具</summary>
+            <div className="nw-desk-menu">
+              <p className="nw-desk-menu-note">本机校对与分析 · 新标签页打开，不影响编辑区</p>
+              <ul>
+                {DEEP_WRITING_TOOLS.map((tool) => (
+                  <li key={tool.href}>
+                    <Link href={tool.href} target="_blank" rel="noopener noreferrer"><span>{tool.label} ↗</span><small>{tool.hint}</small></Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </details>
           <details className="nw-authoring-help nw-desk-help">
             <summary className="nw-desk-link">存储说明</summary>
             <p>保存成功的草稿与发布状态由 API 持久化；未保存输入默认只在本页；只有明确启用下方本机恢复才会缓存。请保存服务器草稿或下载备份。</p>

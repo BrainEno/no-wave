@@ -18,6 +18,12 @@ export default [
   route("en", "routes/home.tsx", { id: "en-home" }),
   route("articles", "routes/archive.tsx"),
   route("en/articles", "routes/archive.tsx", { id: "en-archive" }),
+  // The site-wide feed (newest works). Static segments outrank `articles/:slug`,
+  // and a dot can never appear in an article slug, so neither can shadow the other.
+  route("articles/feed.atom", "routes/site-feed.ts", { id: "site-feed-atom" }),
+  route("articles/feed.xml", "routes/site-feed.ts", { id: "site-feed-rss" }),
+  route("en/articles/feed.atom", "routes/site-feed.ts", { id: "en-site-feed-atom" }),
+  route("en/articles/feed.xml", "routes/site-feed.ts", { id: "en-site-feed-rss" }),
   // The directory first: `/authors` is a collection (ADR 0024), and a reader who
   // asks for the index must not be routed into `/authors/:username`.
   route("authors", "routes/authors.tsx"),

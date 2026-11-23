@@ -1,4 +1,4 @@
-# 公开标签发现与订阅
+# 公开标签发现与订阅（含全站订阅）
 
 ## 行为、范围与风险
 
@@ -18,6 +18,20 @@
 每页只展示 20 行，额外一行只判断下一页。订阅只包含最近的 20 篇，不循环扫描全站，也不承诺归档式完整同步；稀有／很早的作品仍可通过详情分页阅读。空的已存在标签返回 200；不存在或在两次读取间被删除的标签返回真实 404。
 
 React Router 的动态参数必须占据完整路径段，因此订阅路由以 `:feed` 接收完整文件名，再仅允许 `feed.atom` / `feed.xml`。未知格式、无效 slug 在访问 API 前拒绝。
+
+## 全站订阅
+
+全站订阅镜像作品目录 `/articles`，只含对应语言最新发表的 20 篇作品：
+
+| 资源 | 中文路径 | 英文路径 | 上游读取上限 |
+| --- | --- | --- | --- |
+| Atom | `/articles/feed.atom` | `/en/articles/feed.atom` | 一次最新作品列表，20 行 |
+| RSS | `/articles/feed.xml` | `/en/articles/feed.xml` | 同上 |
+
+- **放在作品目录下：** `/feed` 已经是登录读者的私有关注流，公开订阅如果放在 `/feed.xml`，容易被当成同一个东西。点号不会出现在作品 slug 里，静态路由也优先于 `articles/:slug`，两者不会互相遮挡。
+- **与标签订阅共用实现：** 渲染器是 `article-feed.ts`，HTTP 约定是 `feed-response.server.ts`，包括 308 去查询、弱 ETag／304、405、no-store 的 404／503，以及不回显上游诊断。每个条目的 `category` 是作品体裁（小说／诗歌／其他文体，ADR 0054）。
+- **入口：** 首页与作品目录的 head 都公开 Atom／RSS alternate 链接，作品目录正文另有与标签页相同的原生订阅按钮。
+- **不做的事：** 不按体裁拆分订阅。API 没有按类型筛选的参数，按体裁拆分只能在最新窗口里过滤，冷门体裁会长期为空。
 
 ## 可观察验收
 
@@ -55,6 +69,7 @@ ETag 基于完整 UTF-8 XML 的 SHA-256，包含重命名、摘要编辑、local
 - `tag-content.test.ts` / `tag-pages.test.ts`：API 数据形状、截止时间、缺失与故障语义。
 - `feed-text.test.ts` / `tag-feed.test.ts` / `tag-feed-source.test.ts`：XML、字符边界、有效日历、公开投影、修改时间、双格式与语言隔离；已进入根 test 入口。
 - Web `tag-feed-response.test.ts` / `tag-feed-upstream.test.ts`：条件请求、缺失／故障、凭据隔离，以及 fetch / JSON 两阶段截止时间。
+- `site-feed.test.ts`、Web `site-feed-response.test.ts`、`web.test.ts`：全站订阅的路径、20 篇上限、体裁分类、条件请求、故障语义，以及首页／作品目录的 alternate 链接与正文按钮。
 - Web `tag-pages.test.ts` / `tag-feeds.test.ts`：真实生产构建／HTTP 的状态、header、head alternate、分页和预算，不能仅凭单元或构建成功判定可用。
 - `e2e/tags.spec.ts` / `e2e/tag-feeds.spec.ts`：临时 SQLite＋真实 API＋生产 Web，检查草稿隔离、XML DOMParser、英文、移动键盘与无脚本入口。
 - 上一轮字体预算、完整覆盖与五次不可重试 CLS 守门继续执行，不因增加导航字样而降低阈值。

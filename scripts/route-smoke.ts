@@ -117,6 +117,11 @@ try {
   assert.equal(archive.status, 200, "article archive should return 200");
   assert.match(await archive.text(), /文学作品的数字出版空间/, "article archive should list available content");
 
+  const siteFeed = await fetch(`${baseUrl}/articles/feed.atom`);
+  assert.equal(siteFeed.status, 200, "the site-wide Atom feed should not be shadowed by the article route");
+  assert.match(siteFeed.headers.get("content-type") ?? "", /^application\/atom\+xml/, "the site-wide feed should be Atom");
+  assert.match(await siteFeed.text(), /<feed xmlns="http:\/\/www\.w3\.org\/2005\/Atom"/, "the site-wide feed should be an Atom document");
+
   const categories = await fetch(`${baseUrl}/categories`);
   assert.equal(categories.status, 200, "category index should return 200 without API configuration");
   assert.match(await categories.text(), /作品分类/, "category index should serve Simplified Chinese content");
@@ -319,7 +324,7 @@ try {
     assert.match(await signIn.text(), /\/forgot-password/, "the recovery link comes back with the switch");
   });
 
-  console.log("Route smoke checks passed: localized home/archive/article routes, search, SEO alternates, 404s, account cache policy, recovery and verification pages (mail off and on), retired spike 404s, robots and sitemap.");
+  console.log("Route smoke checks passed: localized home/archive/article routes, search, SEO alternates, 404s, account cache policy, recovery and verification pages (mail off and on), retired spike 404s, robots, sitemap and the site feed.");
 } finally {
   if (server.exitCode === null && server.signalCode === null) {
     if (process.platform !== "win32" && server.pid !== undefined) {

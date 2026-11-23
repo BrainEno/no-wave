@@ -1,4 +1,6 @@
 import type { MetaDescriptor } from "react-router";
+import type { Locale } from "../../../../packages/web-ui/src/lib/content.ts";
+import { siteFeedLinks } from "../../../../packages/web-ui/src/lib/site-feed.ts";
 
 /**
  * Adapter from the project's framework-neutral metadata objects
@@ -105,4 +107,15 @@ export function metaDescriptors(
   }
 
   return descriptors;
+}
+
+/**
+ * `<link rel="alternate">` for the site-wide feed, on the pages a reader would
+ * subscribe from (home and the archive), so feed readers find it from the URL
+ * a person pastes. Absolute, like the canonical it is resolved against.
+ */
+export function siteFeedDescriptors(locale: Locale, canonical: string): MetaDescriptor[] {
+  return siteFeedLinks(locale).map((link) => ({
+    tagName: "link" as const, rel: "alternate", type: link.type, title: link.title, href: new URL(link.href, canonical).toString(),
+  }));
 }
