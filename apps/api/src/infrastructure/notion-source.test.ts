@@ -10,6 +10,7 @@ import {
   notionCaller,
   type NotionFetch,
 } from "./notion-source.ts";
+import { notionBlocksToArticleBlocks } from "../application/notion-interchange.ts";
 
 const TOKEN = "ntn_TESTONLY_secret_value_1234567890";
 
@@ -25,6 +26,54 @@ test("a page longer than the ceiling is an error, never a truncated body", async
   await assert.rejects(() => collectBlocks("page", caller(fetchImpl), { pageSize: 100, maxBlocks: 2 }), TooManyBlocksError);
   const blocks = await collectBlocks("page", caller(fetchImpl), { pageSize: 100, maxBlocks: 3 });
   assert.equal(blocks.length, 3);
+});
+
+const rich = (content: string) => ({ rich_text: [{ type: "text", plain_text: content, text: { content } }] });
+const para = (id: string, content: string) => ({ id, type: "paragraph", has_children: false, paragraph: rich(content) });
+
+test("a sub-page or inline database is kept as a block but never walked into; inline containers still are", async () => {
+  // The shape of the bug: a work whose last block is a child page with its own
+  // body. Reading that body appended a different document after the ending.
+  const tree: Record<string, unknown[]> = {
+    work: [
+      para("p1", "正文第一段"),
+      { id: "tg", type: "toggle", has_children: true, toggle: rich("展开") },
+      { id: "cl", type: "column_list", has_children: true, column_list: {} },
+      { id: "sb", type: "synced_block", has_children: true, synced_block: { synced_from: { type: "block_id", block_id: "original" } } },
+      para("p2", "正文最后一段"),
+      { id: "cp", type: "child_page", has_children: true, child_page: { title: "Face in the wall" } },
+      { id: "cd", type: "child_database", has_children: true, child_database: { title: "书单" } },
+    ],
+    tg: [para("tg1", "折叠里的段落")],
+    cl: [{ id: "col", type: "column", has_children: true, column: {} }],
+    col: [para("col1", "分栏里的段落")],
+    sb: [para("sb1", "同步块里的段落")],
+    cp: [para("cp1", "The face in the wall looked back.")],
+    cd: [para("cd1", "数据库里的行")],
+  };
+  const fetched: string[] = [];
+  const fetchImpl: NotionFetch = async (url) => {
+    const parent = /\/v1\/blocks\/([^/]+)\/children/.exec(url)![1]!;
+    fetched.push(parent);
+    return json({ results: tree[parent] ?? [], next_cursor: null });
+  };
+
+  const blocks = await collectBlocks("work", caller(fetchImpl), { pageSize: 100, maxBlocks: 100 });
+  assert.deepEqual(fetched, ["work", "tg", "cl", "col", "sb"], "the sub-page and the database are never requested");
+  assert.deepEqual(blocks.map((block) => block.id), ["p1", "tg", "tg1", "cl", "col", "col1", "sb", "sb1", "p2", "cp", "cd"]);
+  assert.deepEqual(blocks.at(-2), { id: "cp", type: "child_page", has_children: true, child_page: { title: "Face in the wall" } });
+
+  // End to end through the mapping: the work ends where the author ended it,
+  // and the report says which page stayed behind.
+  const mapped = notionBlocksToArticleBlocks(blocks);
+  const texts = mapped.blocks.map((block) => block.text);
+  assert.deepEqual(texts, ["正文第一段", "展开", "折叠里的段落", "分栏里的段落", "同步块里的段落", "正文最后一段"]);
+  assert.ok(!texts.some((text) => typeof text === "string" && /face in the wall/i.test(text)));
+  assert.deepEqual(
+    mapped.issues.filter((issue) => issue.code === "unsupported-block"),
+    [{ code: "unsupported-block", detail: "child_page: Face in the wall" }, { code: "unsupported-block", detail: "child_database: 书单" }],
+    "a synced block is carried, so it is not reported as dropped",
+  );
 });
 
 test("the API's caller keeps Notion's error text and the token out of the error", async () => {

@@ -134,12 +134,23 @@ The site's block model is `paragraph`, `heading` (levels 2–4), `quote`, `list`
 | `equation` | `paragraph` in `code` marks | the LaTeX source is kept verbatim (`equation-flattened`) |
 | `callout`, `toggle` | `paragraph` | the site is flat; the text is kept (`callout-flattened`, `toggle-flattened`) |
 | `to_do` | `paragraph` | the checkbox state has nowhere to live (`checkbox-state-dropped`) |
-| `divider`, `column_list`, `column` | *nothing* | pure layout, nothing lost, no issue |
+| `divider`, `column_list`, `column`, `synced_block` | *nothing* | pure layout, nothing lost, no issue — a synced block's content is read as its children (below) |
 | `table`, `table_row` | *dropped* | a cell grid has no equivalent (`table-block-dropped`) |
-| `child_page`, `child_database`, `link_to_page`, `table_of_contents`, `breadcrumb`, `synced_block`, anything newer | *dropped* | `unsupported-block` with the type name |
+| `child_page`, `child_database` | *dropped*, body not read | `unsupported-block` with the type and title (`child_page: <title>`); the sub-page is another document |
+| `link_to_page`, `table_of_contents`, `breadcrumb`, anything newer | *dropped* | `unsupported-block` with the type name |
 
 Child blocks of a container are appended *after* it, because the site's model is
-flat; the caller passes the flattened list.
+flat; the caller passes the flattened list. The source (`collectBlocks`) walks
+into every block with `has_children` **except** `child_page` and
+`child_database`: their children are the body of a separate Notion page or
+database, which Notion shows on its own page rather than inline, so reading them
+would append another document after the work's ending. Toggles, callouts, quotes,
+list items, toggleable headings, columns and synced blocks are walked — a
+duplicate synced block answers with the original's blocks, exactly what Notion
+renders inline; if the original is not shared with the integration the read
+fails rather than importing the page without that passage. Works imported before
+this rule may still end with a sub-page's text; a fresh dry run of the same page
+offers an `update` that removes it.
 
 Inline runs are built from each item's `plain_text`, not from `text.content`:
 the write contract requires the concatenated runs to equal the block's `text`
