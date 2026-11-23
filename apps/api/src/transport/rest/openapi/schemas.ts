@@ -747,9 +747,9 @@ export const SCHEMAS: Readonly<Record<string, JsonSchema>> = Object.freeze({
   NotionFetchRequest: {
     type: "object",
     required: ["token", "mode"],
-    description: "The token is a Notion internal integration secret; it is used for this request only and never stored.",
+    description: "The token is a Notion access token — a personal access token, an internal integration secret or an OAuth access token; it is used for this request only and never stored.",
     properties: {
-      token: { type: "string", minLength: 20, maxLength: 200, pattern: "^(?:ntn_|secret_)[A-Za-z0-9_]+$", description: "Your Notion integration secret. Never logged or returned." },
+      token: { type: "string", minLength: 20, maxLength: 500, pattern: "^[A-Za-z0-9._~+/-]+=*$", description: "Your Notion access token. Its prefix is not checked (Notion treats tokens as opaque). Never logged or returned." },
       mode: { type: "string", enum: ["rows", "pages"] },
       source: { type: "string", maxLength: 2048, description: "For `rows`: a Notion database link or its 32-character id (a data source id also works)." },
       cursor: { type: ["string", "null"], maxLength: 512, description: "For `rows`: the `cursor` of the previous answer." },
@@ -768,6 +768,43 @@ export const SCHEMAS: Readonly<Record<string, JsonSchema>> = Object.freeze({
       issues: { type: "array", items: { type: "object", required: ["id", "code"], properties: { id: { type: "string" }, code: { type: "string", enum: ["too-many-blocks", "page-too-large", "fetch-timeout", "page-unavailable", "fetch-failed"] } } } },
       done: { type: "array", items: { type: "string" } },
       retryAfterSeconds: { type: "integer", minimum: 1 },
+    },
+  },
+
+  NotionOAuthStatus: {
+    type: "object",
+    required: ["enabled"],
+    properties: {
+      enabled: { type: "boolean", description: "Whether `NOTION_OAUTH_CLIENT_ID`, `NOTION_OAUTH_CLIENT_SECRET` and a valid `NOTION_OAUTH_REDIRECT_URI` are configured and pulling is on." },
+    },
+  },
+
+  NotionOAuthStart: {
+    type: "object",
+    required: ["authorizeUrl", "state", "expiresInSeconds"],
+    properties: {
+      authorizeUrl: { type: "string", format: "uri", description: "Notion's authorize URL with `client_id`, `response_type=code`, `owner=user`, the configured `redirect_uri` and `state`." },
+      state: { type: "string", description: "Signed for this session; valid once, for 10 minutes. Not stored on the server." },
+      expiresInSeconds: { type: "integer", minimum: 1 },
+    },
+  },
+
+  NotionOAuthExchangeRequest: {
+    type: "object",
+    required: ["code", "state"],
+    properties: {
+      code: { type: "string", minLength: 1, maxLength: 512, description: "The authorization code from the callback URL. Never logged or returned." },
+      state: { type: "string", maxLength: 200, description: "The `state` from the callback URL; must be the one `start` issued to this session." },
+    },
+  },
+
+  NotionOAuthGrant: {
+    type: "object",
+    required: ["accessToken", "workspaceName"],
+    description: "The access token is returned once and stored nowhere; use it as the `token` of `POST imports.notion.fetch`. Notion's refresh token is discarded.",
+    properties: {
+      accessToken: { type: "string" },
+      workspaceName: { type: ["string", "null"] },
     },
   },
 

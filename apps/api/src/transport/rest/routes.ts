@@ -130,6 +130,12 @@ export const REST_ROUTES: readonly RestRoute[] = Object.freeze([
   // *their* Notion, so it writes nothing here, but it is a `POST` because the
   // token travels in the body — never in a URL a log or a proxy could keep.
   { id: "imports.notion.fetch", methods: ["POST"], segments: [literal("imports"), literal("notion"), literal("fetch")] },
+  // One-shot Notion OAuth (ADR 0053): whether it is configured, a signed start,
+  // and the code exchange. Nothing about an authorization is stored; the token
+  // goes back to the page that asked and is then used like a pasted one.
+  { id: "imports.notion.oauth", methods: ["GET"], segments: [literal("imports"), literal("notion"), literal("oauth")] },
+  { id: "imports.notion.oauth.start", methods: ["POST"], segments: [literal("imports"), literal("notion"), literal("oauth"), literal("start")] },
+  { id: "imports.notion.oauth.exchange", methods: ["POST"], segments: [literal("imports"), literal("notion"), literal("oauth"), literal("exchange")] },
   { id: "imports.notion.jobs", methods: ["GET", "POST"], segments: [literal("imports"), literal("notion"), literal("jobs")] },
   { id: "imports.notion.jobs.item", methods: ["GET", "DELETE"], segments: [literal("imports"), literal("notion"), literal("jobs"), param("jobId")] },
   // The same exchange in the other direction: the caller's own works, as a bundle

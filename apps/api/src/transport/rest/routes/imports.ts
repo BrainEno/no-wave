@@ -8,6 +8,17 @@ import { MAX_NOTION_PLAN_TOKEN_BYTES } from "../../../application/notion-import-
 import type { NotionImageCopier } from "../../../application/notion-import-images.ts";
 import { NotionFetchError, NotionFetchRequestError, fetchNotionPages, fetchNotionRows, readNotionFetchRequest } from "../../../application/notion-fetch.ts";
 import { boundedNotionFetch, type NotionFetch } from "../../../infrastructure/notion-source.ts";
+import {
+  NOTION_OAUTH_LIMITS,
+  NotionOAuthError,
+  NotionOAuthRequestError,
+  consumeNotionOAuthState,
+  createUsedStates,
+  exchangeNotionOAuthCode,
+  readNotionOAuthConfig,
+  readNotionOAuthExchange,
+  startNotionOAuth,
+} from "../../../application/notion-oauth.ts";
 
 /**
  * A bundle is big on purpose: one page carries up to 200 blocks of up to 20,000
@@ -33,6 +44,19 @@ export function notionFetchEnabled(env: NodeJS.ProcessEnv): boolean {
 let notionFetchTransport: NotionFetch = boundedNotionFetch();
 export function setNotionFetchTransportForTests(transport: NotionFetch | null): void {
   notionFetchTransport = transport ?? boundedNotionFetch();
+}
+
+/** The transport for Notion's OAuth token endpoint (ADR 0053): a small answer, no redirects. */
+let notionOAuthTransport: NotionFetch = boundedNotionFetch(fetch, { maxBytes: NOTION_OAUTH_LIMITS.maxResponseBytes });
+export function setNotionOAuthTransportForTests(transport: NotionFetch | null): void {
+  notionOAuthTransport = transport ?? boundedNotionFetch(fetch, { maxBytes: NOTION_OAUTH_LIMITS.maxResponseBytes });
+}
+
+/** States already redeemed in this process, until they would have expired anyway. */
+const usedNotionOAuthStates = createUsedStates();
+
+function sendNotionOAuthDisabled(response: Parameters<typeof sendJson>[0]): void {
+  sendJson(response, 409, { error: { code: "NOTION_OAUTH_DISABLED", message: "Authorizing with Notion is not configured on this instance. Paste a Notion token instead." } });
 }
 
 /**
@@ -210,6 +234,79 @@ const IMPORT_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Object
       sendJson(response, failure.status, { error: { code: failure.code, message: failure.message } });
     } finally {
       release?.();
+    }
+  },
+
+  /**
+   * `GET /api/v1/imports/notion/oauth` — whether the desk should offer
+   * 「用 Notion 授权」 (ADR 0053). A boolean and nothing about the settings.
+   */
+  "imports.notion.oauth": async (ctx: RestRouteContext): Promise<void> => {
+    const { request, response, services, env } = ctx;
+    if (!services) { sendUnavailable(response); return; }
+    try {
+      const actorId = await authenticatedActorId(request, services, env);
+      if (!actorId) { sendUnauthenticated(response); return; }
+      sendJson(response, 200, { data: { enabled: readNotionOAuthConfig(env) !== null } });
+    } catch (error: unknown) {
+      sendServiceError(response, error);
+    }
+  },
+
+  /**
+   * `POST /api/v1/imports/notion/oauth/start` — a signed `state` bound to this
+   * author and the Notion authorize URL carrying it (ADR 0053). Nothing is stored.
+   */
+  "imports.notion.oauth.start": async (ctx: RestRouteContext): Promise<void> => {
+    const { request, response, services, env } = ctx;
+    if (!services) { sendUnavailable(response); return; }
+    const config = readNotionOAuthConfig(env);
+    if (config === null) { sendNotionOAuthDisabled(response); return; }
+    try {
+      const actorId = await authenticatedActorId(request, services, env);
+      if (!actorId) { sendUnauthenticated(response); return; }
+      sendJson(response, 200, { data: startNotionOAuth(config, actorId) });
+    } catch (error: unknown) {
+      sendServiceError(response, error);
+    }
+  },
+
+  /**
+   * `POST /api/v1/imports/notion/oauth/exchange` — redeem `{ code, state }` for an
+   * access token and return it to the page that asked, once (ADR 0053).
+   *
+   * The state is checked for this session and spent before Notion is called, so a
+   * replay is refused even when the first exchange failed. The answer carries the
+   * access token and the workspace name; the refresh token is never read out of
+   * Notion's response. Like the pull, every failure is a code built here, so this
+   * handler catches everything itself.
+   */
+  "imports.notion.oauth.exchange": async (ctx: RestRouteContext): Promise<void> => {
+    const { request, response, services, env } = ctx;
+    if (!services) { sendUnavailable(response); return; }
+    const bodyResult = await readJsonObject(request);
+    if (bodyResult.ok === false) { sendJsonBodyError(response, request, bodyResult); return; }
+    const config = readNotionOAuthConfig(env);
+    if (config === null) { sendNotionOAuthDisabled(response); return; }
+
+    let actorId: string | null;
+    try {
+      actorId = await authenticatedActorId(request, services, env);
+    } catch (error: unknown) {
+      sendServiceError(response, error);
+      return;
+    }
+    if (!actorId) { sendUnauthenticated(response); return; }
+
+    try {
+      const input = readNotionOAuthExchange(bodyResult.value);
+      consumeNotionOAuthState(config, actorId, input.state, usedNotionOAuthStates);
+      const grant = await exchangeNotionOAuthCode(config, input.code, notionOAuthTransport);
+      sendJson(response, 200, { data: grant });
+    } catch (error: unknown) {
+      if (error instanceof NotionOAuthRequestError) { sendBadInput(response, error.message); return; }
+      const failure = error instanceof NotionOAuthError ? error : new NotionOAuthError("NOTION_UNAVAILABLE");
+      sendJson(response, failure.status, { error: { code: failure.code, message: failure.message } });
     }
   },
 

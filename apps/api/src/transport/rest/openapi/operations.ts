@@ -445,7 +445,7 @@ export const OPERATIONS: Readonly<Record<string, OperationMetadata>> = Object.fr
   },
 
   "POST imports.notion.fetch": {
-    summary: "Pull your own Notion database with a pasted integration token, one bounded slice at a time",
+    summary: "Pull your own Notion database with a pasted Notion token, one bounded slice at a time",
     description:
       "A read of the caller's Notion, not a write here. The token is used for this request only and is never stored, logged or returned (ADR 0052); Notion's own error text is never forwarded either.\n\n" +
       "`mode: \"rows\"` resolves `source` (a database link or id, or a data source id) and lists rows with their properties, up to 1000 per request; a non-null `cursor` in the answer continues the listing. `mode: \"pages\"` reads the bodies of at most 200 named pages, in order, until the request's time (about 45 s to start a page, 75 s hard) or byte budget (6 MiB) runs out; `done` lists every id the slice finished, carried or reported in `issues` (`too-many-blocks` over 2000 blocks, `page-too-large`, `fetch-timeout`, `page-unavailable`, `fetch-failed`) — a page is never truncated. Send the remaining ids for the next slice; nothing about the continuation is kept on the server. When Notion's rate limit ends a slice early, `retryAfterSeconds` says how long to wait.\n\n" +
@@ -455,6 +455,35 @@ export const OPERATIONS: Readonly<Record<string, OperationMetadata>> = Object.fr
     requestBody: { schema: "NotionFetchRequest", description: "The token, the mode and its continuation.", required: true },
     errors: [409, 413, 415, 422, 429, 502, 503],
     response: { status: 200, description: "Rows (with a cursor) or page bodies (with `done` and `issues`).", data: "NotionFetchResult" },
+  },
+
+  "GET imports.notion.oauth": {
+    summary: "Whether one-shot Notion OAuth is configured on this instance",
+    description: "Answers a boolean only (ADR 0053). Off unless all three `NOTION_OAUTH_*` variables are set, the redirect URI is an https URL whose path is `/write/notion/oauth/callback`, and pulling is enabled.",
+    security: "session",
+    tags: ["imports"],
+    response: { status: 200, description: "Whether to offer 「用 Notion 授权」.", data: "NotionOAuthStatus" },
+  },
+
+  "POST imports.notion.oauth.start": {
+    summary: "Start a one-shot Notion authorization",
+    description: "Returns Notion's authorize URL and a `state` signed for this session and valid once for 10 minutes (ADR 0053). Nothing is stored. `NOTION_OAUTH_DISABLED` (409) when OAuth is not configured. Rate limited to 10 per author and 20 per IP per 10 minutes.",
+    security: "session",
+    tags: ["imports"],
+    errors: [409, 429],
+    response: { status: 200, description: "Where to send the author, and the state that comes back.", data: "NotionOAuthStart" },
+  },
+
+  "POST imports.notion.oauth.exchange": {
+    summary: "Redeem a Notion authorization code for a one-time access token",
+    description:
+      "Checks that `state` was issued to this session, has not expired and has not been used, spends it, and redeems `code` at Notion's token endpoint with the client credentials (ADR 0053). Only the access token and the workspace name are returned; the refresh token is discarded and nothing is stored or logged. " +
+      "Errors: `NOTION_OAUTH_DISABLED` (409), `NOTION_OAUTH_STATE_INVALID` / `NOTION_OAUTH_CODE_INVALID` (422), `NOTION_OAUTH_MISCONFIGURED` (502, Notion refused the client credentials), `NOTION_UNAVAILABLE` (502). Rate limited to 10 per author and 20 per IP per 10 minutes.",
+    security: "session",
+    tags: ["imports"],
+    requestBody: { schema: "NotionOAuthExchangeRequest", description: "The code and state from the callback URL.", required: true },
+    errors: [409, 413, 415, 422, 429, 502],
+    response: { status: 200, description: "The access token, once.", data: "NotionOAuthGrant" },
   },
 
   "POST imports.notion.jobs": {

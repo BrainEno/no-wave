@@ -949,6 +949,8 @@ header[data-tool] .nw-pill { position: absolute; }
 .nw-import-tab:disabled { cursor: default; }
 .nw-import-connect { display: grid; gap: 14px; max-width: 640px; margin-top: 20px; }
 .nw-import-connect .nw-m, .nw-import-connect .nw-import-pick { margin: 0; }
+/* One-shot Notion OAuth (ADR 0053): set apart from the paste-a-token steps below it. */
+.nw-import-oauth { display: grid; gap: 8px; padding-bottom: 14px; border-bottom: 1px solid var(--edge); }
 .nw-import-steps { margin: 0; padding-left: 1.4em; display: grid; gap: 4px; }
 .nw-import-field { display: grid; gap: 6px; font: 600 12px/1.5 var(--f-ss); letter-spacing: .04em; }
 .nw-import-field input { min-height: 44px; padding: 0 12px; border: 1px solid var(--edge); background: transparent; color: var(--ink); font: 400 15px/1.5 var(--f-ss); }

@@ -22,12 +22,18 @@ export const NOTION_PULL_PAGE_IDS = 200;
 /** Rate-limit waits per pull before giving up; each wait is the server's Retry-After. */
 export const NOTION_PULL_MAX_WAITS = 6;
 
-/** The same shape the API checks, so an obvious paste mistake is caught before a request. */
-const TOKEN_PATTERN = /^(?:ntn_|secret_)[A-Za-z0-9_]+$/;
+/**
+ * The same shape the API checks, so an obvious paste mistake (a link, a `Bearer `
+ * prefix, a half-copied value) is caught before a request. The prefix is not
+ * checked: Notion treats tokens as opaque, a personal access token and an internal
+ * integration secret both start with `ntn_` today, and an OAuth access token's
+ * shape is not documented. Only Notion can say whether a token is real.
+ */
+const TOKEN_PATTERN = /^[A-Za-z0-9\-._~+/]+=*$/;
 
 export function looksLikeNotionToken(value: string): boolean {
   const token = value.trim();
-  return token.length >= 20 && token.length <= 200 && TOKEN_PATTERN.test(token);
+  return token.length >= 20 && token.length <= 500 && TOKEN_PATTERN.test(token);
 }
 
 /** One answer from the fetch endpoint, already parsed. */
@@ -84,8 +90,8 @@ function errorCode(payload: unknown): string | null {
  */
 export function notionFetchFailureMessage(status: number, payload: unknown): string {
   const code = errorCode(payload);
-  if (code === "NOTION_TOKEN_INVALID") return "Notion 不接受这个令牌。请在 Notion 的集成设置里重新复制 Internal Integration Secret（以 ntn_ 开头）。";
-  if (code === "NOTION_NOT_SHARED") return "Notion 找不到这个数据库。请在数据库右上角「…」→「连接」里添加你的集成，或检查链接是否完整。";
+  if (code === "NOTION_TOKEN_INVALID") return "Notion 不接受这个令牌：可能没有复制完整、已经过期或已被撤销。请在 Notion 里重新复制，或新建一个令牌。";
+  if (code === "NOTION_NOT_SHARED") return "Notion 找不到这个数据库。请检查链接是否完整；用 Notion 授权时，确认在授权页里选中了它（或它的父页面）；用个人访问令牌时，确认你自己能在 Notion 里打开它；用内部集成时，在数据库右上角「…」→「连接」里添加这个集成。";
   if (code === "NOTION_UNAVAILABLE") return "暂时读不到 Notion，请稍后再试。";
   if (code === "NOTION_FETCH_DISABLED") return "本站暂时关闭了直接从 Notion 拉取，请改用「上传导出文件」。";
   if (code === "NOTION_RATE_LIMITED" || status === 429) return "请求过于频繁，已多次等待仍未恢复。请过几分钟再试。";
@@ -104,7 +110,7 @@ export const NOTION_PULL_ISSUE_TEXT: Readonly<Record<string, string>> = Object.f
   "too-many-blocks": "超过 2000 个块，无法完整读取（不会截断导入）",
   "page-too-large": "正文超过 6 MB，无法一次读取",
   "fetch-timeout": "读取超时",
-  "page-unavailable": "集成无权访问或页面已删除",
+  "page-unavailable": "令牌无权访问或页面已删除",
   "fetch-failed": "读取失败",
 });
 

@@ -234,3 +234,13 @@ test("only the canonical successful private vault document grants a same-origin 
     assert.ok(policy.includes("script-src-attr 'none'"));
   }
 });
+
+test("a route can tighten the referrer policy to no-referrer, and cannot loosen it", async () => {
+  const nonce = marker();
+  const tightened = await seal("<p>callback</p>", nonce, new Headers({ "referrer-policy": "no-referrer" }));
+  assert.equal(tightened.headers.get("referrer-policy"), "no-referrer");
+  const loosened = await seal("<p>page</p>", nonce, new Headers({ "referrer-policy": "unsafe-url" }));
+  assert.equal(loosened.headers.get("referrer-policy"), "strict-origin-when-cross-origin");
+  const plain = await seal("<p>page</p>", nonce);
+  assert.equal(plain.headers.get("referrer-policy"), "strict-origin-when-cross-origin");
+});

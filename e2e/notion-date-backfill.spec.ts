@@ -46,7 +46,7 @@ test("a pulled database fills only the published pages without a Date, and only 
   await mockPull(page);
   const imports = await mockNotionImport(page);
 
-  await page.getByLabel("集成令牌").fill(TOKEN);
+  await page.getByLabel("Notion 令牌").fill(TOKEN);
   await page.getByLabel("数据库链接").fill(LINK);
   await page.getByRole("button", { name: "连接并读取条目" }).click();
   await expect(page.getByText("已选 3 / 3 页")).toBeVisible();

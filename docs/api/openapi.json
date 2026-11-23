@@ -3245,7 +3245,7 @@
         "tags": [
           "imports"
         ],
-        "summary": "Pull your own Notion database with a pasted integration token, one bounded slice at a time",
+        "summary": "Pull your own Notion database with a pasted Notion token, one bounded slice at a time",
         "operationId": "imports.notion.fetch.post",
         "responses": {
           "200": {
@@ -3793,6 +3793,262 @@
             }
           }
         ]
+      }
+    },
+    "/api/v1/imports/notion/oauth": {
+      "get": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "Whether one-shot Notion OAuth is configured on this instance",
+        "operationId": "imports.notion.oauth.get",
+        "responses": {
+          "200": {
+            "description": "Whether to offer 「用 Notion 授权」.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/NotionOAuthStatus"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request: `BAD_USER_INPUT` for a query or body the contract does not allow, `BAD_INPUT` for discovery paging misuse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid, unrevoked bearer token was presented (`UNAUTHENTICATED`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Answers a boolean only (ADR 0053). Off unless all three `NOTION_OAUTH_*` variables are set, the redirect URI is an https URL whose path is `/write/notion/oauth/callback`, and pulling is enabled."
+      }
+    },
+    "/api/v1/imports/notion/oauth/exchange": {
+      "post": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "Redeem a Notion authorization code for a one-time access token",
+        "operationId": "imports.notion.oauth.exchange.post",
+        "responses": {
+          "200": {
+            "description": "The access token, once.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/NotionOAuthGrant"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request: `BAD_USER_INPUT` for a query or body the contract does not allow, `BAD_INPUT` for discovery paging misuse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid, unrevoked bearer token was presented (`UNAUTHENTICATED`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict: `ARTICLE_VERSION_CONFLICT`, `IMPORT_PLAN_INVALID`, `IDEMPOTENCY_CONFLICT`, `MAIL_DISABLED`, `MEDIA_DELETE_DISABLED`, or a duplicate unique value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body is larger than this route accepts (`PAYLOAD_TOO_LARGE`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "The request body is not `application/json` (`UNSUPPORTED_MEDIA_TYPE`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A third party refused the request on the caller's behalf (`NOTION_TOKEN_INVALID`, `NOTION_NOT_SHARED`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate or import queue capacity limit reached (`RATE_LIMITED`, `IMPORT_QUEUE_FULL`); observe Retry-After.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "A third-party API this route reads could not be read (`NOTION_UNAVAILABLE`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Checks that `state` was issued to this session, has not expired and has not been used, spends it, and redeems `code` at Notion's token endpoint with the client credentials (ADR 0053). Only the access token and the workspace name are returned; the refresh token is discarded and nothing is stored or logged. Errors: `NOTION_OAUTH_DISABLED` (409), `NOTION_OAUTH_STATE_INVALID` / `NOTION_OAUTH_CODE_INVALID` (422), `NOTION_OAUTH_MISCONFIGURED` (502, Notion refused the client credentials), `NOTION_UNAVAILABLE` (502). Rate limited to 10 per author and 20 per IP per 10 minutes.",
+        "requestBody": {
+          "required": true,
+          "description": "The code and state from the callback URL.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotionOAuthExchangeRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/imports/notion/oauth/start": {
+      "post": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "Start a one-shot Notion authorization",
+        "operationId": "imports.notion.oauth.start.post",
+        "responses": {
+          "200": {
+            "description": "Where to send the author, and the state that comes back.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/NotionOAuthStart"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request: `BAD_USER_INPUT` for a query or body the contract does not allow, `BAD_INPUT` for discovery paging misuse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid, unrevoked bearer token was presented (`UNAUTHENTICATED`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict: `ARTICLE_VERSION_CONFLICT`, `IMPORT_PLAN_INVALID`, `IDEMPOTENCY_CONFLICT`, `MAIL_DISABLED`, `MEDIA_DELETE_DISABLED`, or a duplicate unique value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate or import queue capacity limit reached (`RATE_LIMITED`, `IMPORT_QUEUE_FULL`); observe Retry-After.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Returns Notion's authorize URL and a `state` signed for this session and valid once for 10 minutes (ADR 0053). Nothing is stored. `NOTION_OAUTH_DISABLED` (409) when OAuth is not configured. Rate limited to 10 per author and 20 per IP per 10 minutes."
       }
     },
     "/api/v1/me": {
@@ -8974,14 +9230,14 @@
           "token",
           "mode"
         ],
-        "description": "The token is a Notion internal integration secret; it is used for this request only and never stored.",
+        "description": "The token is a Notion access token — a personal access token, an internal integration secret or an OAuth access token; it is used for this request only and never stored.",
         "properties": {
           "token": {
             "type": "string",
             "minLength": 20,
-            "maxLength": 200,
-            "pattern": "^(?:ntn_|secret_)[A-Za-z0-9_]+$",
-            "description": "Your Notion integration secret. Never logged or returned."
+            "maxLength": 500,
+            "pattern": "^[A-Za-z0-9._~+/-]+=*$",
+            "description": "Your Notion access token. Its prefix is not checked (Notion treats tokens as opaque). Never logged or returned."
           },
           "mode": {
             "type": "string",
@@ -9124,6 +9380,80 @@
           "retryAfterSeconds": {
             "type": "integer",
             "minimum": 1
+          }
+        }
+      },
+      "NotionOAuthStatus": {
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether `NOTION_OAUTH_CLIENT_ID`, `NOTION_OAUTH_CLIENT_SECRET` and a valid `NOTION_OAUTH_REDIRECT_URI` are configured and pulling is on."
+          }
+        }
+      },
+      "NotionOAuthStart": {
+        "type": "object",
+        "required": [
+          "authorizeUrl",
+          "state",
+          "expiresInSeconds"
+        ],
+        "properties": {
+          "authorizeUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "Notion's authorize URL with `client_id`, `response_type=code`, `owner=user`, the configured `redirect_uri` and `state`."
+          },
+          "state": {
+            "type": "string",
+            "description": "Signed for this session; valid once, for 10 minutes. Not stored on the server."
+          },
+          "expiresInSeconds": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "NotionOAuthExchangeRequest": {
+        "type": "object",
+        "required": [
+          "code",
+          "state"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "description": "The authorization code from the callback URL. Never logged or returned."
+          },
+          "state": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "The `state` from the callback URL; must be the one `start` issued to this session."
+          }
+        }
+      },
+      "NotionOAuthGrant": {
+        "type": "object",
+        "required": [
+          "accessToken",
+          "workspaceName"
+        ],
+        "description": "The access token is returned once and stored nowhere; use it as the `token` of `POST imports.notion.fetch`. Notion's refresh token is discarded.",
+        "properties": {
+          "accessToken": {
+            "type": "string"
+          },
+          "workspaceName": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },

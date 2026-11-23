@@ -51,7 +51,7 @@ async function mockNotionFetch(page: Page, respond: (body: FetchBody, call: numb
 
 async function connect(page: Page, token = TOKEN) {
   await expect(page.getByRole("tab", { name: "连接 Notion 直接拉取" })).toHaveAttribute("aria-selected", "true");
-  await page.getByLabel("集成令牌").fill(token);
+  await page.getByLabel("Notion 令牌").fill(token);
   await page.getByLabel("数据库链接").fill(LINK);
   await page.getByRole("button", { name: "连接并读取条目" }).click();
 }
@@ -62,7 +62,7 @@ test("a pasted token lists the rows, reads only the selected pages, and goes thr
   const imports = await mockNotionImport(page);
 
   // A password field the browser does not offer to remember.
-  const tokenField = page.getByLabel("集成令牌");
+  const tokenField = page.getByLabel("Notion 令牌");
   await expect(tokenField).toHaveAttribute("type", "password");
   await expect(tokenField).toHaveAttribute("autocomplete", "off");
 
@@ -99,8 +99,9 @@ test("Notion's refusals name the step to fix, and a mistyped token never leaves 
   let refusal: Answer = { status: 422, body: { error: { code: "NOTION_TOKEN_INVALID", message: "Notion did not accept this integration token." } } };
   const pulls = await mockNotionFetch(page, () => refusal);
 
-  await connect(page, "sk-this-is-not-a-notion-token-0123");
-  await expect(page.getByRole("alert")).toContainText("这不像 Notion 集成令牌");
+  // Pasting the database link into the token field is caught in the browser.
+  await connect(page, "https://www.notion.so/workspace/not-a-token-0123456789");
+  await expect(page.getByRole("alert")).toContainText("这不像 Notion 令牌");
   expect(pulls).toHaveLength(0);
 
   await connect(page);
@@ -108,7 +109,7 @@ test("Notion's refusals name the step to fix, and a mistyped token never leaves 
 
   refusal = { status: 422, body: { error: { code: "NOTION_NOT_SHARED", message: "not shared" } } };
   await page.getByRole("button", { name: "连接并读取条目" }).click();
-  await expect(page.getByRole("alert")).toContainText("「连接」里添加你的集成");
+  await expect(page.getByRole("alert")).toContainText("「连接」里添加这个集成");
   // No refusal repeats the token on the page.
   await expect(page.locator("body")).not.toContainText(TOKEN);
 
@@ -117,7 +118,7 @@ test("Notion's refusals name the step to fix, and a mistyped token never leaves 
   const stored = await page.evaluate(() => JSON.stringify([{ ...localStorage }, { ...sessionStorage }, location.href, document.cookie]));
   expect(stored).not.toContain(TOKEN);
   await page.reload({ waitUntil: "load" });
-  await expect(page.getByLabel("集成令牌")).toHaveValue("");
+  await expect(page.getByLabel("Notion 令牌")).toHaveValue("");
 });
 
 test("an oversized page is named and left out, and a rate limit is waited out by itself", async ({ page }) => {
