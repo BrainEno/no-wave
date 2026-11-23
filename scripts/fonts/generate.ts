@@ -18,7 +18,7 @@ import {
   type FontAsset,
   type FontManifest,
 } from "../lib/font-assets.ts";
-import { applicationRepertoires, fontPartitions, verifyFontRecipe, type Repertoires } from "./repertoires.ts";
+import { applicationRepertoires, fontPartitions, staleFontRecipe, verifyFontRecipe, type Repertoires } from "./repertoires.ts";
 import {
   archiveTargetToCache,
   clearFontCache,
@@ -161,10 +161,18 @@ async function main(): Promise<void> {
     const data: unknown = JSON.parse(rawManifest);
     const manifest = data as FontManifest;
 
-    // Both inspections validate the manifest before it reaches the recipe.
-    await verifyFontRecipe(manifest, root);
-    if (JSON.stringify(manifest.sources) !== JSON.stringify(FONT_SOURCES.map(fontSourceReceipt))) {
-      throw new Error("Font source receipts differ from the pinned source catalog.");
+    // A recipe change (new UI copy reaching a core shard) or a re-pinned source
+    // makes the committed receipts stale. --check and --prepare exist to prove
+    // the receipts reproduce, so for them that is the failure. Plain generation
+    // is the documented remedy ("run pnpm fonts:generate"), so it must not stop
+    // on the very condition it is asked to fix: it skips the fast restore and
+    // regenerates from the pinned, checksummed sources instead.
+    const staleRecipe = await staleFontRecipe(manifest, root);
+    const staleSources = JSON.stringify(manifest.sources) !== JSON.stringify(FONT_SOURCES.map(fontSourceReceipt));
+    if (checkOnly || prepareMode) {
+      // Both inspections validate the manifest before it reaches the recipe.
+      if (staleRecipe) throw new Error(`Stale font recipe for ${staleRecipe}; run pnpm fonts:generate.`);
+      if (staleSources) throw new Error("Font source receipts differ from the pinned source catalog.");
     }
 
     if (checkOnly) {
@@ -172,8 +180,10 @@ async function main(): Promise<void> {
       return;
     }
 
-    // Try fast restore from local computer cache
-    if (!force) {
+    if (staleRecipe || staleSources) {
+      console.log(`Font ${staleRecipe ? `recipe changed (${staleRecipe})` : "source receipts changed"}; regenerating from the pinned sources.`);
+    } else if (!force) {
+      // Try fast restore from local computer cache
       const { restored } = await restoreBundleFromCache(manifest, target, cacheDirs);
       const needsGeneration = await fontBundleNeedsGeneration(data, target, rawCss);
       if (!needsGeneration) {
