@@ -78,7 +78,11 @@ test("a signed-out bell keeps the sign-in prompt", async ({ page }) => {
 
 test("the English chrome translates the writing entry", async ({ page }) => {
   await page.goto("/en");
-  await expect(page.locator('.nw-pill a[href="/write"]')).toHaveText("Write");
+  // The header entry is the same pen icon in both languages; English only
+  // changes its name, never its width.
+  const pill = page.locator('.nw-pill a[href="/write"]');
+  await expect(pill).toHaveAccessibleName("Write");
+  await expect(pill).toHaveText("");
   await expect(page.locator('#nw-menu a[href="/write"]')).toHaveText("Write");
 });
 

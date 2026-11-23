@@ -35,7 +35,7 @@ for (const provider of integrityProviders) {
     const history = await f.store.listNotifications({ actorId: "legacy-author", limit: 100 });
     const oldColumns = "id,event_key,event_type,aggregate_id,attempts,available_at,delivered_at,lease_token";
     const before = await f.query(`SELECT ${oldColumns} FROM outbox_events ORDER BY id`);
-    const later = provider === "sqlite" ? ["0025_notion_import_jobs", "0026_three_work_types"] : ["0038_notion_import_jobs", "0039_three_work_types"];
+    const later = provider === "sqlite" ? ["0025_notion_import_jobs", "0026_three_work_types", "0027_edition_language"] : ["0038_notion_import_jobs", "0039_three_work_types", "0040_edition_language"];
     if (f.db) assert.deepEqual(await runSqliteMigrations(f.db), [version, ...later]);
     else assert.deepEqual((await runMigrations(f.sql!)).applied, [version, ...later]);
     assert.deepEqual(await f.query(`SELECT ${oldColumns} FROM outbox_events ORDER BY id`), before);

@@ -89,7 +89,8 @@ for (const provider of ["sqlite", "postgres"] as const) {
     assert.equal(status.report?.pages[0]?.issueCodes.includes("image-copy-failed"), true);
     assert.doesNotMatch(JSON.stringify(status), /Keep this title private|never-disclose-this|X-Amz|leaseToken|ownerId|planToken/);
     assert.equal((await f.query("SELECT payload FROM notion_import_jobs"))[0].payload, null);
-    assert.equal((await f.store.listMyArticles({ actorId: f.actorId })).length, 1);
+    // The fixture is written in English, so its single edition is `en`.
+    assert.equal((await f.store.listMyArticles({ actorId: f.actorId, locale: "en" })).length, 1);
     assert.equal(await executeNextNotionJob({ jobs: worker, store: f.store, deps: f.deps }), false);
   });
   test(`${provider}: a malformed encrypted input is failed once and discarded rather than poisoning the queue head`, options, async t => {
@@ -103,7 +104,8 @@ for (const provider of ["sqlite", "postgres"] as const) {
     await executeNextNotionJob({ jobs: f.jobs, store: f.store, deps: f.deps });
     assert.equal((await f.store.getMyNotionImportJob({ actorId: f.actorId, jobId: good.id }))?.state, "succeeded");
     assert.equal((await f.query("SELECT payload FROM notion_import_jobs WHERE id = ?", [bad.id]))[0].payload, null);
-    assert.equal((await f.store.listMyArticles({ actorId: f.actorId })).length, 1);
+    // The fixture is written in English, so its single edition is `en`.
+    assert.equal((await f.store.listMyArticles({ actorId: f.actorId, locale: "en" })).length, 1);
   });
   test(`${provider}: one queued job is claimed once, and cancellation fences article writes`, options, async t => {
     const f = await fixture(t, provider);
@@ -124,7 +126,7 @@ for (const provider of ["sqlite", "postgres"] as const) {
     }), NotionJobError);
     assert.equal(await f.store.heartbeatNotionImportJob({ fence: claim.fence }), false);
     assert.equal(await f.store.finishNotionImportJob({ fence: claim.fence, state: "succeeded" }), false);
-    assert.equal((await f.store.listMyArticles({ actorId: f.actorId })).length, 0);
+    assert.equal((await f.store.listMyArticles({ actorId: f.actorId, locale: "en" })).length, 0);
   });
   test(`${provider}: expired running jobs are interrupted, never replayed or renewed`, options, async t => {
     const f = await fixture(t, provider);
@@ -137,7 +139,7 @@ for (const provider of ["sqlite", "postgres"] as const) {
     assert.equal(await f.store.claimNotionImportJob(), null);
     assert.equal((await f.store.getMyNotionImportJob({ actorId: f.actorId, jobId: job.id }))?.state, "interrupted");
     assert.equal((await f.query("SELECT payload FROM notion_import_jobs"))[0].payload, null);
-    assert.equal((await f.store.listMyArticles({ actorId: f.actorId })).length, 0);
+    assert.equal((await f.store.listMyArticles({ actorId: f.actorId, locale: "en" })).length, 0);
   });
   test(`${provider}: bounded queues, expired input and retained-status deletion are enforced by the database adapter`, options, async t => {
     const f = await fixture(t, provider);
@@ -163,7 +165,7 @@ for (const provider of ["sqlite", "postgres"] as const) {
     } });
     assert.equal(copied, 1);
     assert.equal((await f.store.getMyNotionImportJob({ actorId: f.actorId, jobId: job.id }))?.state, "cancelled");
-    assert.equal((await f.store.listMyArticles({ actorId: f.actorId })).length, 0);
+    assert.equal((await f.store.listMyArticles({ actorId: f.actorId, locale: "en" })).length, 0);
     assert.equal(await executeNextNotionJob({ jobs: f.jobs, store: f.store, deps: f.deps }), false);
   });
   test(`${provider}: provider transfer refuses active local jobs but never copies ciphertext or terminal status`, options, async t => {

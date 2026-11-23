@@ -32,3 +32,24 @@ test("HeroCanvas reacts to hover and removes every window listener it adds", asy
   for (const listener of added) assert.ok(removed.has(listener), `window listener ${listener} is never removed`);
   assert.doesNotMatch(source, /window\.addEventListener\("\w+",\s*\(/, "an inline window listener cannot be removed");
 });
+
+/**
+ * The early hero's grain moved; 164eb653 made the page grain still, which left
+ * the hero without any. `HeroGrain` brings the motion back on the hero alone,
+ * and must do it the cheap way: a CSS step animation over one tile, never a
+ * script timer that repaints pixels (audit F-11), and never over body text.
+ */
+test("HeroGrain moves the hero's grain in CSS, pauses off screen, and lives only in the hero", async () => {
+  const grain = await readFile(new URL("../components/motion/hero-grain.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(grain, /setInterval|setTimeout|requestAnimationFrame/, "the grain must not run a script frame loop");
+  assert.match(grain, /IntersectionObserver/, "the animation pauses while the hero is off screen");
+  assert.match(grain, /observer\.disconnect\(\)/);
+  const css = await readFile(new URL("../styles/globals.css", import.meta.url), "utf8");
+  assert.match(css, /\.nw-hero-grain\[data-ready\] \{[^}]*animation: nw-hero-grain 1s steps\(1, end\) infinite/);
+  assert.match(css, /\.nw-hero-grain\[data-paused\] \{ animation-play-state: paused; \}/);
+  assert.match(css, /prefers-reduced-motion: reduce\)[^\n]*\.nw-hero-grain\[data-ready\] \{ animation: none;/);
+  const home = await readFile(new URL("../components/public/home-view.tsx", import.meta.url), "utf8");
+  const hero = home.slice(home.indexOf('<header className="nw-hero"'), home.indexOf("</header>"));
+  assert.match(hero, /<HeroGrain \/>/, "the grain is mounted inside the hero header");
+  assert.equal(home.split("<HeroGrain").length - 1, 1, "and nowhere else");
+});

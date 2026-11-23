@@ -168,7 +168,7 @@ mark { background: var(--or); color: #140f0c; }
 .nw-stb .nw-btn { margin-top: 20px; }
 .nw-sk { background: color-mix(in srgb, var(--ink) 10%, transparent); animation: nw-pulse 1.4s ease-in-out infinite; }
 @keyframes nw-pulse { 50% { opacity: .45; } }
-@media (prefers-reduced-motion: reduce) { .nw-sk { animation: none; } .nw-grain { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .nw-sk { animation: none; } .nw-grain { transition: none; } .nw-hero-grain[data-ready] { animation: none; transition: none; } }
 
 /* ---------- 载入页 ---------- */
 .nw-load { position: fixed; inset: 0; z-index: 100; animation: nw-fail 0s 8s forwards; }
@@ -201,6 +201,14 @@ mark { background: var(--or); color: #140f0c; }
 .nw-hero-bg, .nw-hero canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .nw-hero canvas { opacity: 0; transition: opacity .6s; }
 .nw-hero canvas[data-ready] { opacity: 1; }
+/* 首屏流动颗粒（HeroGrain）：早期首屏的 8fps 胶片颗粒，只铺在首屏上，盖住画布与字标，不碰正文。 */
+.nw-hero-grain { position: absolute; inset: 0; z-index: 3; pointer-events: none; opacity: 0; mix-blend-mode: multiply; background-size: 512px 512px; transition: opacity .6s; }
+.nw-hero-grain[data-ready] { opacity: .07; animation: nw-hero-grain 1s steps(1, end) infinite; }
+.nw-hero-grain[data-paused] { animation-play-state: paused; }
+@keyframes nw-hero-grain {
+  0% { background-position: 0 0; } 12.5% { background-position: -173px 61px; } 25% { background-position: 97px -229px; } 37.5% { background-position: -311px -137px; }
+  50% { background-position: 229px 191px; } 62.5% { background-position: -59px 307px; } 75% { background-position: 353px -83px; } 87.5% { background-position: -241px 433px; }
+}
 .nw-brand { position: absolute; z-index: 2; left: 72px; bottom: 0; display: flex; flex-direction: column; pointer-events: none; }
 .nw-cn { margin: 0 0 6px; block-size: 1em; font-size: calc(var(--w) * .44); line-height: 1; letter-spacing: -.01em; }
 /* Reserve the wordmark's final line/advance boxes before swap. The original

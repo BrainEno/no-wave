@@ -102,6 +102,6 @@ test("a delayed physical write may settle after a drain deadline, but cannot com
   } };
   const result = await runNotionJobDrain({ ...f, deps, deadlineMs: 1000 });
   assert.equal(result.stopReason, "deadline");
-  assert.equal((await f.store.listMyArticles({ actorId: "drain-author" })).length, 0);
+  assert.equal((await f.store.listMyArticles({ actorId: "drain-author", locale: "en" })).length, 0, "the English fixture would be an `en` edition");
   assert.equal((await f.store.getMyNotionImportJob({ actorId: "drain-author", jobId: f.job.id }))?.state, "interrupted");
 });

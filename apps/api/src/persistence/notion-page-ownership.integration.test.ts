@@ -108,8 +108,10 @@ for (const provider of ["sqlite", "postgres"] as const) {
       assert.ok(expected.includes(ownerMigration[provider]));
       assert.deepEqual(await f.migrate(), expected);
       assert.deepEqual(await f.migrate(), []);
-      await assert.rejects(f.insertLink("legacy-conflict", "en", b.id, f.actors[1]), (error) => databaseOwnerConflict(error, provider));
-      await f.insertLink("legacy-conflict", "en", a.id, f.actors[0]);
+      // zh-TW, not en: the edition-language backfill (0027/0040) has moved the
+      // English fixture's surviving zh-CN link to en.
+      await assert.rejects(f.insertLink("legacy-conflict", "zh-TW", b.id, f.actors[1]), (error) => databaseOwnerConflict(error, provider));
+      await f.insertLink("legacy-conflict", "zh-TW", a.id, f.actors[0]);
       assert.equal((await f.rows("SELECT DISTINCT owner_id FROM external_content_links")).length, 1);
     } finally { await f.close(); }
   });
@@ -165,7 +167,7 @@ for (const provider of ["sqlite", "postgres"] as const) {
       try {
         const sharedId = randomUUID();
         const tags = [`owner-a-${randomUUID()}`, `owner-b-${randomUUID()}`];
-        const sources = [sourceBundle(sourcePage(sharedId, "Chinese claim", [tags[0]!])), bilingualBundle(sharedId, [tags[1]!])] as const;
+        const sources = [sourceBundle(sourcePage(sharedId, "中文认领", [tags[0]!])), bilingualBundle(sharedId, [tags[1]!])] as const;
         const plans = await Promise.all(sources.map((source, index) => f.preview(source, f.actors[index]!)));
         assert.deepEqual(plans.map((plan) => plan.summary.create), [1, 1]);
         const { journal, sessionId } = await f.record();
@@ -388,7 +390,9 @@ for (const provider of ["sqlite", "postgres"] as const) {
     const f = await ownershipFixture(provider);
     try {
       const outsider = await f.article(f.actors[1]);
-      const source = sourceBundle(sourcePage(randomUUID(), "Late SQL claim", [`late-tag-${randomUUID()}`]));
+      // A Chinese title keeps this edition zh-CN, so the late en claim below is
+      // the same page in another locale: only page ownership can refuse it.
+      const source = sourceBundle(sourcePage(randomUUID(), "迟到的认领", [`late-tag-${randomUUID()}`]));
       const id = source.pages[0]!.id;
       const dry = await f.preview(source);
       const { journal, sessionId } = await f.record();
@@ -400,7 +404,7 @@ for (const provider of ["sqlite", "postgres"] as const) {
         // A real trigger injects a late claim inside the current transaction,
         // after the comparison but before the application's provenance INSERT.
         await f.exec(`CREATE TRIGGER inject_late_owner AFTER INSERT ON article_translations
-          WHEN NEW.title = 'Late SQL claim' BEGIN
+          WHEN NEW.title = '迟到的认领' BEGIN
           INSERT INTO external_content_links (provider, external_id, locale, article_id, owner_id, digest)
           VALUES ('notion', '${id}', 'en', '${outsider.id}', '${f.actors[1]}', 'late'); END`);
       } else {

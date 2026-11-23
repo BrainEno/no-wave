@@ -4,6 +4,7 @@ import { dateLabel, pad } from "@/lib/format.ts";
 import { heroCover, pickDefaultCover } from "@/lib/covers.ts";
 import { getUi } from "@/lib/ui-copy.ts";
 import { HeroCanvas } from "@/components/motion/hero-canvas.tsx";
+import { HeroGrain } from "@/components/motion/hero-grain.tsx";
 import { HomeLatest, type LatestItem } from "@/components/home-latest.tsx";
 import { EmptyState, SectionHeading } from "@/components/ui/parts.tsx";
 import type { HomePageData } from "@/lib/public-pages.ts";
@@ -41,8 +42,9 @@ function ShelfRow({ article, locale, index, count }: { article: ArticleView; loc
  * Presentational home page.
  *
  * Synchronous and data-in/props-out, so every route that mounts it renders the
- * same tree. The two client components it composes — `HeroCanvas` (WebGL) and
- * `HomeLatest` (hover/focus image switch) — are framework-neutral, reaching the
+ * same tree. The client components it composes — `HeroCanvas` (WebGL),
+ * `HeroGrain` (the moving film grain over the hero) and `HomeLatest`
+ * (hover/focus image switch) — are framework-neutral, reaching the
  * router only through `@/lib/framework/link.tsx`; hydration is what makes them
  * interactive, and that is exactly what Phase 4 covers. The intro curtain
  * (`PageLoader`) is not here: it is mounted by the site chrome, outside the
@@ -85,6 +87,7 @@ export function HomePageView({ locale, featured, latest, popular, genres }: Home
             <span className="nw-sr">{ui.home.tagline}</span>
           </h1>
         </div>
+        <HeroGrain />
       </header>
 
       <section className="nw-sel" id="selected" aria-label={ui.home.selected}>

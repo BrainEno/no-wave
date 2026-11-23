@@ -607,7 +607,8 @@ test("ambiguous translation group and missing related page are refused before al
 
 test("a source page already linked under another locale cannot be imported as a new work", async () => {
   const deps = stubDeps({ links: [{ provider: "notion", externalId: "en-page", locale: "en", articleId: "original", ownerId: "author-1", digest: "old", syncedAt: at().toISOString() }] });
-  const selected = bundle(page("en-page", "English title", "English text", { Tags: { type: "multi_select", multi_select: [{ name: "新标签" }] } }));
+  // Written in Chinese, so it is planned as `zh-CN` while its link says `en`.
+  const selected = bundle(page("en-page", "中文标题", "中文正文", { Tags: { type: "multi_select", multi_select: [{ name: "新标签" }] } }));
   for (const apply of [false, true]) {
     const report = await importNotionBundle({ actorId: "author-1", bundle: selected, apply, deps, now: at });
     assert.equal(report.summary.refused, 1);
@@ -615,6 +616,60 @@ test("a source page already linked under another locale cannot be imported as a 
     assert.equal(report.pages[0]!.articleId, null);
   }
   assert.deepEqual(deps.written, []);
+});
+
+test("a standalone page written in English becomes an English work, not a Chinese one", async () => {
+  const deps = stubDeps();
+  const report = await importNotionBundle({ actorId: "author-1", bundle: bundle(page("en-only", "The Face in the Wall", "It came through the plaster.")), apply: true, deps, now: at });
+  assert.equal(report.summary.create, 1);
+  const [article] = [...deps.articles.values()];
+  assert.equal(article?.locale, "en", "the Chinese reading view must not list an English-only work");
+  assert.deepEqual([...deps.links.values()].map((link) => link.locale), ["en"]);
+});
+
+test("a page with a Chinese title stays Chinese however much English its body has", async () => {
+  const deps = stubDeps();
+  await importNotionBundle({ actorId: "author-1", bundle: bundle(page("mixed", "墙中脸", "The face came through the plaster.")), apply: true, deps, now: at });
+  assert.equal([...deps.articles.values()][0]?.locale, "zh-CN");
+});
+
+test("the English page of a bilingual work selected alone is refused, not imported as the work's primary", async () => {
+  const deps = stubDeps();
+  const zh = page("zh-page", "墙中脸", "穿透层层墙壁", { English: { type: "relation", relation: [{ id: "en-page" }] } });
+  const en = page("en-page", "The Face in the Wall", "Through the walls", { Published: { type: "checkbox", checkbox: false } });
+  delete (en.properties as Record<string, unknown>).Date;
+  const first = await importNotionBundle({ actorId: "author-1", bundle: bundle(zh, en), apply: true, deps, now: at });
+  assert.equal(first.summary.refused, 0);
+  assert.equal(deps.links.size, 2);
+  const before = [...deps.articles.values()].map((article) => ({ ...article }));
+  const written = deps.written.length;
+  for (const apply of [false, true]) {
+    const report = await importNotionBundle({ actorId: "author-1", bundle: bundle(en), apply, deps, now: at });
+    assert.equal(report.summary.refused, 1);
+    assert.match(report.pages[0]!.detail, /another locale/);
+  }
+  assert.equal(deps.written.length, written, "the unticked English row cannot unpublish the work");
+  assert.deepEqual([...deps.articles.values()], before);
+});
+
+test("re-importing a page an earlier import labelled Chinese updates that edition instead of moving it", async () => {
+  const deps = stubDeps();
+  const english = page("legacy", "Plain English", "An English body.");
+  // What the importer did before it inferred the language.
+  await importNotionBundle({ actorId: "author-1", bundle: bundle(english), apply: true, deps, now: at });
+  const link = [...deps.links.values()][0]!;
+  deps.links.clear();
+  deps.links.set("legacy|zh-CN", { ...link, locale: "zh-CN" });
+  const article = [...deps.articles.values()][0]!;
+  deps.articles.set(article.id, { ...article, locale: "zh-CN" });
+  const changed = page("legacy", "Plain English", "An English body, revised.");
+  for (const apply of [false, true]) {
+    const report = await importNotionBundle({ actorId: "author-1", bundle: bundle(changed), apply, deps, now: at });
+    assert.equal(report.summary.update, 1, JSON.stringify(report.pages));
+    assert.equal(report.summary.refused, 0);
+  }
+  assert.deepEqual([...deps.links.keys()], ["legacy|zh-CN"], "no second edition or link is created");
+  assert.equal(deps.articles.size, 1);
 });
 
 test("preview and apply refuse foreign provenance without revealing its article or creating tags", async () => {

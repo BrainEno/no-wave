@@ -39,7 +39,9 @@ function token(sub: string): string {
 const richText = (content: string) => ({ type: "text", plain_text: content, text: { content } });
 function page(id = randomUUID(), body = "source body") {
   return { id, properties: {
-    Page: { type: "title", title: [richText("Conditional import")] },
+    // A Chinese title: every page here is the work's zh-CN edition, which a page
+    // with no Han character would no longer be (inferEditionLocale).
+    Page: { type: "title", title: [richText("条件导入")] },
     Published: { type: "checkbox", checkbox: true },
   }, blocks: [{ object: "block", id: "p", type: "paragraph", has_children: false,
     paragraph: { rich_text: [richText(body)] } }] };
