@@ -1,6 +1,6 @@
 import { parseReadingPosition, type ReadingPosition } from "./reading-position.ts";
 import type { ArticleView, Locale, WorkType } from "./content.ts";
-import { workTypes as knownWorkTypes } from "./work-types.ts";
+import { parseWorkType } from "./work-types.ts";
 
 export const SHELF_LIMIT = 200;
 export type ShelfLocale = "zh-CN" | "en";
@@ -12,7 +12,6 @@ export type ShelfRecord = ShelfMetadata & {
 };
 export type ShelfFilters = { query: string; state: ShelfState | "all"; edition: ShelfLocale | "all"; sort: "recent" | "saved" | "title" | "progress" };
 export const DEFAULT_SHELF_FILTERS: ShelfFilters = { query: "", state: "all", edition: "all", sort: "recent" };
-const workTypes = new Set<string>(knownWorkTypes);
 const MAX_TIMESTAMP = 8_640_000_000_000_000;
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -50,8 +49,11 @@ export function parseShelfMetadata(value: unknown): ShelfMetadata | null {
   const { slug, locale, title, author, workType } = value;
   if (typeof slug !== "string" || slug.length > 160 || !slugPattern.test(slug)) return null;
   if (locale !== "zh-CN" && locale !== "en") return null;
-  if (!text(title, 200) || !text(author, 200) || typeof workType !== "string" || !workTypes.has(workType)) return null;
-  return { slug, locale, title, author, workType: workType as WorkType };
+  // A shelf saved before ADR 0054 can hold a folded type such as "essay"; it is
+  // read as its group, not dropped as invalid.
+  const type = typeof workType === "string" ? parseWorkType(workType) : null;
+  if (!text(title, 200) || !text(author, 200) || !type) return null;
+  return { slug, locale, title, author, workType: type };
 }
 
 export function shelfMetadataFor(article: ArticleView): ShelfMetadata | null {

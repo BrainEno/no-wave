@@ -276,7 +276,7 @@ type MockArticle = {
 const ARTICLES: MockArticle[] = [
   {
     slug: "portable-web-foundation",
-    workType: "essay",
+    workType: "other",
     publishedAt: "2026-10-01T09:00:00.000Z",
     likeCount: 12,
     title: { "zh-CN": "可移植的文学基础设施", en: "A Portable Literary Foundation" },
@@ -302,7 +302,7 @@ const ARTICLES: MockArticle[] = [
   },
   {
     slug: "reading-as-resistance",
-    workType: "short_story",
+    workType: "novel",
     publishedAt: "2026-09-20T12:30:00.000Z",
     likeCount: 30,
     title: { "zh-CN": "作为抵抗的阅读", en: "Reading as Resistance" },

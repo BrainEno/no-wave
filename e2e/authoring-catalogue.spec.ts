@@ -26,10 +26,10 @@ async function setup(page: Page, stack: FontStack, count = 2) {
     // Seed through the real SQLite adapter: a 106-work browsing fixture must not
     // raise the production API's 30/IP/hour creation limit or consume other journeys' budget.
     for (let index = 0; index < count; index++) records.push(await store.createArticle({ authorId: actor, slug: `catalogue-${index}`, title: index === 0 ? OLD_TITLE : index === count - 1 ? "=SUM(1)" : `目录${String(index).padStart(3, "0")}`,
-      summary: index === 0 ? "literal %_ only" : `元数据摘要 ${index}`, locale: "zh-CN", publish: index % 2 === 0, workType: index % 2 === 0 ? "essay" : "poetry",
+      summary: index === 0 ? "literal %_ only" : `元数据摘要 ${index}`, locale: "zh-CN", publish: index % 2 === 0, workType: index % 2 === 0 ? "other" : "poetry",
       contentBlocks: [{ id: "p1", type: "paragraph", text: `CATALOGUE-PRIVATE-BODY-${index}` }] }));
     const first = records[0]!;
-    for (const locale of ["en", "zh-TW"]) await store.updateArticle({ actorId: actor, articleId: first.id, slug: first.slug, title: locale === "en" ? "Old English edition" : "繁體舊作", summary: locale === "en" ? "English synopsis" : "繁體摘要", locale, publish: true, workType: "essay", contentBlocks: [{ id: "p1", type: "paragraph", text: `EXACT-${locale}-PRIVATE-BODY` }] });
+    for (const locale of ["en", "zh-TW"]) await store.updateArticle({ actorId: actor, articleId: first.id, slug: first.slug, title: locale === "en" ? "Old English edition" : "繁體舊作", summary: locale === "en" ? "English synopsis" : "繁體摘要", locale, publish: true, workType: "other", contentBlocks: [{ id: "p1", type: "paragraph", text: `EXACT-${locale}-PRIVATE-BODY` }] });
     await store.createArticle({ authorId: `outsider-${randomUUID()}`, slug: "other-account-private", title: "OTHER-ACCOUNT-PRIVATE-TITLE", contentBlocks: [{ id: "p1", type: "paragraph", text: "OTHER-PRIVATE-BODY" }] });
     for (const [index, work] of records.entries()) {
       const stamp = new Date(Date.UTC(2026, 0, 1) + index * 86_400_000).toISOString();
@@ -161,7 +161,7 @@ test("selected metadata review shows actual cross-window changes and only an exp
   await search(page, OLD_TITLE);
   await page.getByRole("list", { name: "目录条目", exact: true }).getByRole("checkbox").check();
   const db = createSqliteClient({ filename: readingStack.databasePath });
-  try { await createSqliteStore(db).updateArticle({ actorId: actor, articleId: records[0]!.id, slug: records[0]!.slug, locale: "zh-CN", title: OLD_TITLE, summary: "核对后的摘要", contentBlocks: [{ id: "p1", type: "paragraph", text: "CATALOGUE-PRIVATE-BODY-0" }], publish: false, workType: "essay" }); } finally { db.close(); }
+  try { await createSqliteStore(db).updateArticle({ actorId: actor, articleId: records[0]!.id, slug: records[0]!.slug, locale: "zh-CN", title: OLD_TITLE, summary: "核对后的摘要", contentBlocks: [{ id: "p1", type: "paragraph", text: "CATALOGUE-PRIVATE-BODY-0" }], publish: false, workType: "other" }); } finally { db.close(); }
   await page.getByText("下载前只读核对与差异审核", { exact: true }).click();
   await page.getByRole("button", { name: "只读核对所选版本", exact: true }).click();
   await expect(page.getByRole("status").filter({ hasText: "1 个所选版本有差异" })).toBeVisible();

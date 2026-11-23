@@ -17,7 +17,7 @@ class MemoryStorage implements ShelfStorage {
   }
   removeItem(key: string) { if (this.denyWrites) throw new Error("denied"); this.values.delete(key); }
 }
-const metadata: ShelfMetadata = { slug: "river", locale: "zh-CN", title: "渡口", author: "作者", workType: "essay" };
+const metadata: ShelfMetadata = { slug: "river", locale: "zh-CN", title: "渡口", author: "作者", workType: "other" };
 const identity = shelfIdentity(metadata);
 function setup(storage = new MemoryStorage()) {
   let nonce = 0;

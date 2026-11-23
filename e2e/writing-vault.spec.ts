@@ -21,7 +21,7 @@ const original = (title = "PRIVATE_TITLE", body = "PRIVATE_BODY") =>
       title,
       summary: "PRIVATE_SUMMARY",
       locale: "zh-CN",
-      workType: "essay",
+      workType: "other",
       editorState: {
         root: {
           type: "root",

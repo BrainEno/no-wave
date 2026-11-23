@@ -4218,9 +4218,16 @@
             "name": "workType",
             "in": "query",
             "required": false,
-            "description": "Stored literary type, including retired types; all by default.",
+            "description": "小说 / 诗歌 / 其他文体; all by default.",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "all",
+                "novel",
+                "poetry",
+                "other"
+              ],
+              "default": "all"
             }
           },
           {
@@ -7151,13 +7158,7 @@
             "type": "string",
             "enum": [
               "novel",
-              "short_story",
               "poetry",
-              "essay",
-              "criticism",
-              "literary_criticism",
-              "nonfiction",
-              "serial",
               "other"
             ]
           },
@@ -7250,13 +7251,7 @@
                   "type": "string",
                   "enum": [
                     "novel",
-                    "short_story",
                     "poetry",
-                    "essay",
-                    "criticism",
-                    "literary_criticism",
-                    "nonfiction",
-                    "serial",
                     "other"
                   ]
                 },
@@ -7624,16 +7619,10 @@
             "type": "string",
             "enum": [
               "novel",
-              "short_story",
               "poetry",
-              "essay",
-              "criticism",
-              "literary_criticism",
-              "nonfiction",
-              "serial",
               "other"
             ],
-            "description": "`serial` is retired: it can be read and saved but not chosen for new work."
+            "description": "小说 / 诗歌 / 其他文体. `novel` covers all prose fiction, short stories and serials included."
           },
           "status": {
             "type": "string",
@@ -7770,16 +7759,10 @@
             "type": "string",
             "enum": [
               "novel",
-              "short_story",
               "poetry",
-              "essay",
-              "criticism",
-              "literary_criticism",
-              "nonfiction",
-              "serial",
               "other"
             ],
-            "description": "`serial` is retired: it can be read and saved but not chosen for new work."
+            "description": "小说 / 诗歌 / 其他文体. `novel` covers all prose fiction, short stories and serials included."
           },
           "status": {
             "type": "string",
@@ -8498,15 +8481,10 @@
             "type": "string",
             "enum": [
               "novel",
-              "short_story",
               "poetry",
-              "essay",
-              "criticism",
-              "literary_criticism",
-              "nonfiction",
               "other"
             ],
-            "description": "Types a new work may be created with. `serial` answers 400 on create; a stored `serial` work stays saveable and may be moved to an active type."
+            "description": "小说 (`novel`) / 诗歌 (`poetry`) / 其他文体 (`other`). Any other value answers 400."
           },
           "categoryIds": {
             "type": "array",

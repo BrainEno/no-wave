@@ -36,7 +36,7 @@ function fixture(
       title: "",
       summary: "",
       locale: "zh-CN",
-      workType: "essay",
+      workType: "other",
       editorState: {
         root: {
           type: "root",

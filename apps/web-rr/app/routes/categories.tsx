@@ -3,7 +3,6 @@ import { useLoaderData } from "react-router";
 import type { HeadersFunction, LoaderFunctionArgs, MetaFunction } from "react-router";
 import type { Locale } from "@/lib/content.ts";
 import { loadCategoryIndexPage } from "@/lib/public-pages.ts";
-import { parsePage } from "@/lib/work-types.ts";
 import { CategoryIndexContent } from "@/components/discovery-pages.tsx";
 import { PUBLIC_PAGE_HEADERS } from "../lib/http-policy.ts";
 import { upstreamUnavailable } from "../lib/loader-errors.ts";
@@ -11,20 +10,14 @@ import { localeFor } from "../lib/locale.ts";
 import { titleWithSite } from "../lib/meta.ts";
 
 /**
- * Category index for `/categories` and `/en/categories`.
- *
- * `CategoryIndexContent` is a synchronous shared component, so this route
- * reuses it unmodified — the only migration work was moving the data access
- * into `loadCategoryIndexPage`.
+ * `/categories` and `/en/categories`: the three genres, 小说 / 诗歌 / 其他文体
+ * (ADR 0054), with their counts. `?q` and `?page` belonged to the old list of
+ * editor categories and are ignored now.
  */
 export async function loader({ request, url }: LoaderFunctionArgs) {
   const locale = localeFor(url);
   try {
-    return await loadCategoryIndexPage({
-      locale,
-      query: url.searchParams.get("q") ?? "",
-      page: parsePage(url.searchParams.get("page") ?? undefined),
-    }, publicContentSource(request));
+    return await loadCategoryIndexPage({ locale }, publicContentSource(request));
   } catch (error: unknown) {
     throw upstreamUnavailable(error);
   }
@@ -36,17 +29,17 @@ export const meta: MetaFunction<typeof loader> = ({ loaderData }) => {
   const locale: Locale = loaderData?.locale ?? "zh-CN";
   const english = locale === "en";
   return [
-    { title: titleWithSite(english ? "Categories" : "作品分类") },
+    { title: titleWithSite(english ? "Genres" : "作品分类") },
     {
       name: "description",
       content: english
-        ? "Discover published writing through Nowave's maintained categories."
-        : "从无浪潮实际维护的作品分类中发现值得阅读的文学作品。",
+        ? "Fiction, poetry and other forms: the three genres of No Wave."
+        : "小说、诗歌与其他文体：按三种体裁浏览无浪潮的作品。",
     },
   ];
 };
 
 export default function CategoriesRoute() {
-  const { locale, categories, query, page, hasNextPage } = useLoaderData<typeof loader>();
-  return <CategoryIndexContent locale={locale} categories={categories} query={query} page={page} hasNextPage={hasNextPage} />;
+  const { locale, genres } = useLoaderData<typeof loader>();
+  return <CategoryIndexContent locale={locale} genres={genres} />;
 }

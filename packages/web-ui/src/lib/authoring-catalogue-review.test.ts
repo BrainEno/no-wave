@@ -3,7 +3,7 @@ import test from "node:test";
 import { CatalogueReviewController, catalogueSelectionFingerprint, planCatalogueReview, reviewedCatalogueSelection } from "./authoring-catalogue-review.ts";
 import { CatalogueController } from "./authoring-catalogue-controller.ts";
 import type { CatalogueEntry } from "./authoring-catalogue.ts";
-const row: CatalogueEntry = { id: "a13dbadf-0000-4000-8000-000000000001", locale: "en", slug: "one", title: "One", summary: "Before", status: "draft", workType: "essay", createdAt: "2026-11-01T00:00:00.000Z", updatedAt: "2026-11-01T00:00:00.000Z", deletedAt: null };
+const row: CatalogueEntry = { id: "a13dbadf-0000-4000-8000-000000000001", locale: "en", slug: "one", title: "One", summary: "Before", status: "draft", workType: "other", createdAt: "2026-11-01T00:00:00.000Z", updatedAt: "2026-11-01T00:00:00.000Z", deletedAt: null };
 const second = { ...row, id: "a13dbadf-0000-4000-8000-000000000002", slug: "two", title: "Two" };
 const input = (selected = [row]) => ({ actor: "author-a", scope: "active" as const, selected });
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }

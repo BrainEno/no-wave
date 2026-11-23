@@ -14,7 +14,7 @@ async function blockedRead(t: test.TestContext, phase: "body" | "metadata" = "bo
   let release!: () => void, entered!: () => void;
   const held = new Promise<void>(resolve => { release = resolve; });
   const started = new Promise<void>(resolve => { entered = resolve; });
-  const article: StoredArticle = { id: "00000000-0000-4000-8000-000000000366", authorId: "00000000-0000-4000-8000-000000000001", slug: "held-read", title: "Held read", locale: "en", workType: "essay", status: "published", summary: "", contentBlocks: [{ id: "p", type: "paragraph", text: "complete" }], contentBlocksVersion: 0, viewCount: 0, createdAt: null, updatedAt: null, publishedAt: "2026-11-12T00:00:00.000Z" };
+  const article: StoredArticle = { id: "00000000-0000-4000-8000-000000000366", authorId: "00000000-0000-4000-8000-000000000001", slug: "held-read", title: "Held read", locale: "en", workType: "other", status: "published", summary: "", contentBlocks: [{ id: "p", type: "paragraph", text: "complete" }], contentBlocksVersion: 0, viewCount: 0, createdAt: null, updatedAt: null, publishedAt: "2026-11-12T00:00:00.000Z" };
   let metadata = 0, reads = 0, readSignal: AbortSignal | undefined;
   const server = createApiServer({ env: { API_METRICS_ENABLED: "true", API_COLLECTION_CONCURRENCY: "1", API_COLLECTION_QUEUE: "0", API_COLLECTION_READ_TIMEOUT_MS: "100" }, logger: () => {}, store: {
     ...store,

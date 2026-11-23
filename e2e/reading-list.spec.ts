@@ -19,7 +19,7 @@ async function saveEnglish(page: Page) {
   await expect(articleEntry(page).getByRole("button", { name: "In your reading list", exact: true })).toBeVisible();
 }
 function seed(index: number, patch: Partial<ShelfRecord> = {}): ShelfRecord {
-  return { version: 1, slug: `saved-work-${String(index).padStart(3, "0")}`, locale: "en", title: `Work ${String(index).padStart(3, "0")}`, author: "Reader fixture", workType: "essay", state: "later", savedAt: 2000, updatedAt: 2000, revision: `entry-${index}`, tracking: null, position: null, ...patch };
+  return { version: 1, slug: `saved-work-${String(index).padStart(3, "0")}`, locale: "en", title: `Work ${String(index).padStart(3, "0")}`, author: "Reader fixture", workType: "other", state: "later", savedAt: 2000, updatedAt: 2000, revision: `entry-${index}`, tracking: null, position: null, ...patch };
 }
 
 test("visiting never creates reading history; explicit saves survive reload and both language entries are usable", async ({ page }) => {

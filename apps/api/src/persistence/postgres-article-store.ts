@@ -8,7 +8,7 @@ import { readArticleCatalogue, readCatalogueEditions } from "./article-catalogue
  */
 import { randomUUID } from "node:crypto";
 import { articleIdempotencyFingerprint, articleIdempotencyKeyHash, articleIdempotencyReplayMatches } from "../application/article-idempotency.ts";
-import { MAX_FEATURED_ARTICLES, assertArticleWorkTypeChange, assertCreatableArticleWorkType, maxArticleOffset, validateArticleRevision, normalizeArticleInput, normalizeTaxonomyIds, resolveArticleCursor, validateArticleLocale, validateArticleSlug } from "../domain/article.ts";
+import { MAX_FEATURED_ARTICLES, maxArticleOffset, validateArticleRevision, normalizeArticleInput, normalizeTaxonomyIds, resolveArticleCursor, validateArticleLocale, validateArticleSlug } from "../domain/article.ts";
 import { ArticleAuthorizationError, ArticleVersionConflictError, ArticleInputError, ArticleNotFoundError, ArticleSlugConflictError, IdempotencyConflictError } from "../domain/errors.ts";
 import { isUuid, requiredText } from "../domain/validation.ts";
 import { releasedArticleSlug, stripDeletedSlugSuffix } from "../domain/article-slug.ts";
@@ -291,11 +291,6 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
               return readArticleForAuthorOrThrow(tx, { articleId: existing.id, locale: input.locale });
             }
           }
-          // A retired type is not a choice this version makes. The check sits
-          // after the replay lookup so a key minted before the retirement still
-          // replays the work it created instead of answering 400 for a write that
-          // already happened.
-          assertCreatableArticleWorkType(input.workType ?? "other");
           const rows = await tx.unsafe(
             "INSERT INTO articles (id, author_id, slug, work_type, status, idempotency_key_hash, request_hash, published_at) " +
             "VALUES ($1, $2, $3, $4, $5, $6, $7, CASE WHEN $8 THEN date_trunc('milliseconds', now()) ELSE NULL END) " +
@@ -376,7 +371,6 @@ export function createPostgresArticleStore(ctx: PostgresStoreContext) {
           if (!ownership[0] || ownership[0].deleted_at) throw new ArticleNotFoundError();
           if (ownership[0].author_id !== actorId) throw new ArticleAuthorizationError();
           if (expectedRevision !== undefined && ownership[0].revision !== expectedRevision) throw new ArticleVersionConflictError();
-          assertArticleWorkTypeChange(ownership[0].work_type, input.workType);
           const previousLinks = await tx.unsafe("SELECT * FROM article_taxonomies WHERE article_id = $1", [articleId]);
           const rows = await tx.unsafe(
             "UPDATE articles SET slug = $2, work_type = COALESCE($6, work_type), status = $3, published_at = CASE WHEN $4 THEN date_trunc('milliseconds', COALESCE(published_at, now())) ELSE NULL END, updated_at = now() WHERE id = $1 AND author_id = $5 RETURNING id, author_id, slug, work_type, status, created_at, updated_at, published_at, view_count",

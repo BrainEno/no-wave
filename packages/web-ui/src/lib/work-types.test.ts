@@ -2,10 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { firstLines, paginate, parsePage, parseWorkType, splitHighlight } from "./work-types.ts";
 
-test("只接受 API 定义的作品类型", () => {
+test("只接受三种作品类型；合并前的旧类型读作它所属的组", () => {
   assert.equal(parseWorkType("poetry"), "poetry");
-  assert.equal(parseWorkType(["essay", "poetry"]), "essay");
+  assert.equal(parseWorkType(["other", "poetry"]), "other");
+  // ADR 0054: old links, drafts and files keep working as their group.
+  assert.equal(parseWorkType("short_story"), "novel");
+  assert.equal(parseWorkType("serial"), "novel");
+  assert.equal(parseWorkType(["essay", "poetry"]), "other");
+  for (const folded of ["criticism", "literary_criticism", "nonfiction"]) assert.equal(parseWorkType(folded), "other");
   assert.equal(parseWorkType("podcast"), null);
+  assert.equal(parseWorkType("constructor"), null, "an inherited property name is not a type");
   assert.equal(parseWorkType(undefined), null);
 });
 test("页码被限制在安全范围内", () => {

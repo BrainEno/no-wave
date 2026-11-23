@@ -5,7 +5,7 @@ import { createApiContentClient, getPublicTag, listPublicTagArticles, listPublic
 
 const tag = { slug: "stable-topic-123", name: "地方与记忆", description: "不同语言下的文学主题。", locale: "zh-CN", articleCount: 3 };
 const article = {
-  slug: "public-work", title: "公开作品", status: "published", summary: "独立摘要", workType: "essay",
+  slug: "public-work", title: "公开作品", status: "published", summary: "独立摘要", workType: "other",
   contentBlocks: [{ id: "paragraph", type: "paragraph", text: "公开正文" }], publishedAt: "2026-11-01T00:00:00.000Z",
   author: { userId: "writer", displayName: "作者", bio: "" }, categories: [], tags: [tag],
 };

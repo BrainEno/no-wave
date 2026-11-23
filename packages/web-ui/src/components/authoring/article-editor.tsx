@@ -243,7 +243,7 @@ function isSavedArticle(value: unknown): value is AuthoringArticle {
     typeof item.slug === "string" && item.slug.length <= 160 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(item.slug) &&
     typeof item.title === "string" && item.title.trim().length > 0 &&
     typeof item.summary === "string" && typeof item.locale === "string" && isAuthoringLocale(item.locale) &&
-    (item.workType === "serial" || workTypes.some(({ value: type }) => type === item.workType)) &&
+    workTypes.some(({ value: type }) => type === item.workType) &&
     (item.status === "draft" || item.status === "published") &&
     Array.isArray(item.contentBlocks) && item.contentBlocks.length > 0 &&
     (item.contentBlocksVersion === 0 || item.contentBlocksVersion === 1) &&
@@ -251,29 +251,12 @@ function isSavedArticle(value: unknown): value is AuthoringArticle {
     (item.publishedAt === undefined || item.publishedAt === null || typeof item.publishedAt === "string");
 }
 
-/**
- * The types a *new* work can be created as.
- *
- * `serial` is deliberately absent: ADR 0016 and `38d087b` settled that the
- * platform is for short and medium-form work, but the type was still offered
- * here, so a new work could be born in a shape the product does not support
- * (#196). It stays in the type union and in the reader's filter tabs, because
- * works created before that decision still have to be listed and read — this
- * list is about what can be *chosen*, not about what can exist.
- */
+/** 小说 / 诗歌 / 其他文体 — the only three types a work can have (ADR 0054). */
 const workTypes: { value: WorkType; label: string }[] = [
   { value: "novel", label: "小说" },
-  { value: "short_story", label: "短篇小说" },
   { value: "poetry", label: "诗歌" },
-  { value: "essay", label: "随笔" },
-  { value: "criticism", label: "评论" },
-  { value: "literary_criticism", label: "文学批评" },
-  { value: "nonfiction", label: "非虚构" },
-  { value: "other", label: "其他" },
+  { value: "other", label: "其他文体" },
 ];
-
-/** Types that can exist but can no longer be chosen, and how to name them. */
-const retiredWorkTypes: Partial<Record<WorkType, string>> = { serial: "连载" };
 
 /**
  * The languages a work can be *written* in (#196).
@@ -778,13 +761,6 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
         </label>
         <label>作品类型
           <select value={workType} onChange={(event) => { latest.current.workType = event.target.value as WorkType; setWorkType(event.target.value as WorkType); reportGuard(); }}>
-            {/* An existing `serial` work keeps its type in the list, or opening
-                it would silently retype it on the next save — the compatibility
-                half of #196. The option is present only because the work already
-                is. */}
-            {retiredWorkTypes[workType] ? (
-              <option value={workType}>{retiredWorkTypes[workType]}（已停用类型，保留原样）</option>
-            ) : null}
             {workTypes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
           </select>
         </label>

@@ -279,7 +279,7 @@ export async function verifyPublish(options: VerifyPublishOptions): Promise<Veri
         title: identity.title,
         slug: identity.slug,
         summary: "无邮箱服务发布验证。",
-        workType: "essay",
+        workType: "other",
         contentBlocksVersion: 0,
         contentBlocks: [{ id: "verify-1", type: "paragraph", text: BODY_TEXT }],
         publish: true,

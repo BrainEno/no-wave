@@ -1,7 +1,13 @@
 import type { TagReference } from "./tag-discovery.ts";
 
 export type Locale = "zh-CN" | "zh-TW" | "en";
-export type WorkType = "novel" | "short_story" | "poetry" | "essay" | "criticism" | "literary_criticism" | "nonfiction" | "serial" | "other";
+/**
+ * 作品类型：小说 / 诗歌 / 其他文体（ADR 0054）. `novel` is the stored name for
+ * all prose fiction. Values from before the fold are mapped by
+ * `parseWorkType` in `work-types.ts` wherever they can still arrive (old
+ * links, local drafts, backup files, import sheets).
+ */
+export type WorkType = "novel" | "poetry" | "other";
 export type AuthorView = { username: string; displayName: string; bio: string; locale: Locale; availableLocales: Locale[] };
 export type ArticleContentBlock =
   | { id: string; type: "paragraph"; text: string }
@@ -78,10 +84,7 @@ const messageCatalog: Record<Locale, SiteMessages> = {
     previousPage: "上一页",
     nextPage: "下一页",
     pageLabel: "第 {page} 页",
-    workTypeLabels: {
-      novel: "长篇小说", short_story: "短篇小说", poetry: "诗歌", essay: "散文",
-      criticism: "评论", literary_criticism: "文学批评", nonfiction: "非虚构", serial: "连载", other: "作品"
-    }
+    workTypeLabels: { novel: "小说", poetry: "诗歌", other: "其他文体" }
   },
   "zh-TW": {
     primaryNavigation: "主要導覽",
@@ -93,10 +96,7 @@ const messageCatalog: Record<Locale, SiteMessages> = {
     authorPrefix: "作者", switchLanguage: "简体中文", backToArticles: "返回文章列表",
     publishedOn: "發布於", authorProfile: "作者資料", noAuthorArticles: "此作者目前沒有可顯示的文章。",
     previousPage: "上一頁", nextPage: "下一頁", pageLabel: "第 {page} 頁",
-    workTypeLabels: {
-      novel: "长篇小说", short_story: "短篇小说", poetry: "诗歌", essay: "散文",
-      criticism: "评论", literary_criticism: "文学批评", nonfiction: "非虚构", serial: "连载", other: "作品"
-    }
+    workTypeLabels: { novel: "小說", poetry: "詩歌", other: "其他文體" }
   },
   en: {
     primaryNavigation: "Primary navigation",
@@ -120,10 +120,7 @@ const messageCatalog: Record<Locale, SiteMessages> = {
     previousPage: "Previous",
     nextPage: "Next",
     pageLabel: "Page {page}",
-    workTypeLabels: {
-      novel: "Novel", short_story: "Short story", poetry: "Poetry", essay: "Essay",
-      criticism: "Criticism", literary_criticism: "Literary criticism", nonfiction: "Nonfiction", serial: "Serial", other: "Work"
-    }
+    workTypeLabels: { novel: "Fiction", poetry: "Poetry", other: "Other forms" }
   }
 };
 
@@ -145,7 +142,7 @@ const articleRecords: ArticleRecord[] = [{
   slug: "portable-web-foundation",
   publishedAt: "2026-10-01T10:00:00Z",
   authorUsername: "bot-thk-team",
-  workType: "essay",
+  workType: "other",
   categories: [],
   tags: [],
   translations: {

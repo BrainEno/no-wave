@@ -40,7 +40,7 @@ function input(text = "不会自动发布的文稿"): RecoveryInput {
         title: "海风",
         summary: "",
         locale: "zh-CN",
-        workType: "essay",
+        workType: "other",
         editorState: {
           root: {
             type: "root",

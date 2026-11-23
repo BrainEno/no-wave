@@ -35,7 +35,7 @@ async function collection(texts: string[][]) {
               title: `PRIVATE_TITLE_${index}`,
               summary: "PRIVATE_SUMMARY",
               locale: "en",
-              workType: "essay",
+              workType: "other",
               editorState: {
                 root: {
                   type: "root",

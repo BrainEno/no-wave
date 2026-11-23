@@ -674,12 +674,18 @@ test("archive filters by query and by work type without extra API calls", async 
   assert.equal(empty.status, 200);
   assert.match(empty.body, /没有符合条件的作品/);
 
-  const byType = await get("/articles?type=short_story");
+  const byType = await get("/articles?type=novel");
   assert.equal(byType.status, 200);
   assert.match(byType.body, /作为抵抗的阅读/);
   assert.doesNotMatch(byType.body, /可移植的文学基础设施/);
   // Type filtering scans a bounded window and is served by one call.
-  assert.equal((await upstreamCalls("/articles?type=short_story")).length, 1);
+  assert.equal((await upstreamCalls("/articles?type=novel")).length, 1);
+
+  // A link from before ADR 0054 still filters, to the group its type folded into.
+  const legacy = await get("/articles?type=short_story");
+  assert.equal(legacy.status, 200);
+  assert.match(legacy.body, /作为抵抗的阅读/);
+  assert.doesNotMatch(legacy.body, /可移植的文学基础设施/);
 });
 
 test("author pages render the profile and its catalogue, unknown authors are 404", async () => {
@@ -723,19 +729,28 @@ test("the author directory is server-rendered and searched by name", async () =>
   assert.match(nobody.body, /没有符合搜索条件的作者/);
 });
 
-test("category index and detail are server-rendered with hard 404s", async () => {
+test("the category index lists the three genres with counts; an editor category still answers", async () => {
+  // ADR 0054: /categories is 小说 / 诗歌 / 其他文体, each linking to the
+  // archive filtered to it. The mock has one novel and one other-form work.
   const index = await get("/categories");
   assert.equal(index.status, 200);
-  assert.match(index.body, /随笔/);
-  assert.match(index.body, /href="\/categories\/essays"/);
+  for (const [type, label] of [["novel", "小说"], ["poetry", "诗歌"], ["other", "其他文体"]]) {
+    assert.match(index.body, new RegExp(`<a [^>]*data-genre="${type}" href="/articles\\?type=${type}"`));
+    assert.match(index.body, new RegExp(`<h2>${label}</h2>`));
+  }
+  assert.match(index.body, /data-genre="novel"[\s\S]*?1 篇/);
+  assert.match(index.body, /data-genre="poetry"[\s\S]*?0 篇/);
+  assert.doesNotMatch(index.body, /href="\/categories\/essays"/, "editor categories are out of the index");
 
+  // …but an editor category's own page is still reachable by its link.
   const detail = await get("/categories/essays");
   assert.equal(detail.status, 200);
   assert.match(detail.body, /可移植的文学基础设施/);
 
   const english = await get("/en/categories");
   assert.equal(english.status, 200);
-  assert.match(english.body, /Essays/);
+  assert.match(english.body, /<h2>Fiction<\/h2>/);
+  assert.match(english.body, /<h2>Other forms<\/h2>/);
 
   const missing = await get("/categories/does-not-exist");
   assert.equal(missing.status, 404);
@@ -784,7 +799,7 @@ const API_CALL_BUDGET: ReadonlyArray<readonly [string, number]> = [
   ["/authors", 1],
   ["/authors?q=林可行", 1],
   ["/authors/writer", 2],
-  ["/categories", 2],
+  ["/categories", 1],
   ["/categories/essays", 2],
   ["/search?q=portable", 3],
 ];
@@ -1197,7 +1212,7 @@ function articleBody(title: string, publish = false): string {
     title,
     summary: "",
     locale: "zh-CN",
-    workType: "essay",
+    workType: "other",
     editorState: editorStateOf(`${title} 的第一段，用来验证保存链路。`),
     contentBlocksVersion: 1,
     publish,

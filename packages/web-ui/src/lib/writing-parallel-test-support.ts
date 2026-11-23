@@ -72,7 +72,7 @@ export async function parallelSource(
             title: spec.title ?? `TITLE_${ordinal}`,
             summary: `SUMMARY_${ordinal}`,
             locale: spec.locale ?? (ordinal === 0 ? "zh-TW" : "en"),
-            workType: "essay",
+            workType: "other",
             editorState: {
               root: {
                 type: "root",

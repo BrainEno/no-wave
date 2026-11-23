@@ -3,7 +3,7 @@ import test from "node:test";
 import { CollectionExportController } from "./writing-collection-export.ts";
 import { parseWritingCollection } from "./writing-collection.ts";
 import type { CatalogueEntry } from "./authoring-catalogue.ts";
-const row: CatalogueEntry = { id: "a13dbadf-0000-4000-8000-000000000001", locale: "en", slug: "first", title: "One", summary: "Summary", workType: "essay", status: "draft", createdAt: "2026-11-01T00:00:00.000Z", updatedAt: "2026-11-01T00:00:00.000Z", deletedAt: null };
+const row: CatalogueEntry = { id: "a13dbadf-0000-4000-8000-000000000001", locale: "en", slug: "first", title: "One", summary: "Summary", workType: "other", status: "draft", createdAt: "2026-11-01T00:00:00.000Z", updatedAt: "2026-11-01T00:00:00.000Z", deletedAt: null };
 const second = { ...row, id: "a13dbadf-0000-4000-8000-000000000002", slug: "second", title: "Two" };
 function details(entry = row) { return Response.json({ data: { ...entry, authorId: "author-a", revision: "7", contentBlocksVersion: 1, publishedAt: null, contentBlocks: [{ id: "p1", type: "paragraph", text: "PRIVATE-BODY" }] } }); }
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve }; }

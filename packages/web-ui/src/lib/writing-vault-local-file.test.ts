@@ -11,7 +11,7 @@ const plain = new TextEncoder().encode(
         title: "PRIVATE_FILE",
         summary: "",
         locale: "en",
-        workType: "essay",
+        workType: "other",
         editorState: {
           root: {
             type: "root",

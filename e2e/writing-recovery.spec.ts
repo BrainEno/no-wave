@@ -642,7 +642,7 @@ test("manual source comparison sees a newer real server revision but never merge
       title: "另一窗口的服务器新标题",
       summary: "服务器新摘要",
       locale: "zh-CN",
-      workType: "essay",
+      workType: "other",
       publish: false,
       contentBlocksVersion: 1,
       contentBlocks: [

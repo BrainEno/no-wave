@@ -87,7 +87,7 @@ export function seedWork(index: number, authorId: string, assetId: string | null
     title: `基線作品 ${index}`,
     summary: `第 ${index} 篇用于容量基线的作品。`,
     locale,
-    workType: "essay" as const,
+    workType: "other" as const,
     publish: true,
     contentBlocks: [
       { id: `p-intro-${index}`, type: "paragraph" as const, text: `这是容量基线的第 ${index} 篇作品。正文长度接近一篇真实的中短篇开头，好让读取与摘要都不至于退化成空字符串。` },

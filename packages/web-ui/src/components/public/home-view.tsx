@@ -4,6 +4,7 @@ import type { CategoryView } from "@/lib/api-content.ts";
 import { dateLabel, pad } from "@/lib/format.ts";
 import { heroCover, pickDefaultCover } from "@/lib/covers.ts";
 import { getUi } from "@/lib/ui-copy.ts";
+import { workTypes } from "@/lib/work-types.ts";
 import { HeroCanvas } from "@/components/motion/hero-canvas.tsx";
 import { HomeLatest, type LatestItem } from "@/components/home-latest.tsx";
 import { EmptyState, SectionHeading } from "@/components/ui/parts.tsx";
@@ -69,7 +70,7 @@ export function HomePageView({ locale, featured, latest, popular, categories }: 
   const base = locale === "en" ? "/en" : "";
   const topics: { key: string; label: string; href: string }[] = categories.length
     ? categories.map((category) => ({ key: category.slug, label: category.name, href: `${base}/categories/${category.slug}` }))
-    : (["novel", "short_story", "poetry", "essay", "criticism", "nonfiction"] as const).map((type) => ({ key: type, label: messages.workTypeLabels[type], href: `${archivePath(locale)}?type=${type}` }));
+    : workTypes.map((type) => ({ key: type, label: messages.workTypeLabels[type], href: `${archivePath(locale)}?type=${type}` }));
   const unit = ui.home.marquee;
   const latestItems: LatestItem[] = latestRest.map((article: ArticleView, index) => {
     const cover = pickDefaultCover(article.slug);

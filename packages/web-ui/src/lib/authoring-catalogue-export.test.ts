@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildCatalogueExport, DEFAULT_CATALOGUE_EXPORT } from "./authoring-catalogue-export.ts";
 import { catalogueCsv, type CatalogueEntry } from "./authoring-catalogue.ts";
-const row: CatalogueEntry = { id: "a13dbadf-0000-4000-8000-000000000001", locale: "en", slug: "one", title: "One", summary: "A summary", status: "draft", workType: "essay", createdAt: "2026-11-01T00:00:00.000Z", updatedAt: "2026-11-01T00:00:00.000Z", deletedAt: null };
+const row: CatalogueEntry = { id: "a13dbadf-0000-4000-8000-000000000001", locale: "en", slug: "one", title: "One", summary: "A summary", status: "draft", workType: "other", createdAt: "2026-11-01T00:00:00.000Z", updatedAt: "2026-11-01T00:00:00.000Z", deletedAt: null };
 
 test("CSV export preflight matches the actual bytes, keeps default compatibility and never changes selection", () => {
   const selected = [row, { ...row, locale: "zh-CN", title: "中文" }];

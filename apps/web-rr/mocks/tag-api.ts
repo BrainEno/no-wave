@@ -19,7 +19,7 @@ function tagPayload(slug: string, locale: string) {
 function articlePayload(index: number, locale: string) {
   const english = locale === "en";
   return {
-    id: `article-${index}`, slug: `tagged-work-${index}`, status: "published", locale, workType: "essay",
+    id: `article-${index}`, slug: `tagged-work-${index}`, status: "published", locale, workType: "other",
     title: `${english ? "Tagged work" : "主题作品"} ${String(index).padStart(2, "0")}`,
     summary: english ? "An independent editorial summary." : "一段独立的编辑摘要。",
     contentBlocks: [{ id: `p-${index}`, type: "paragraph", text: english ? "A public work about places." : "这是一篇关于地方的公开作品。" }],

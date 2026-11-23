@@ -18,7 +18,7 @@ const text = (title = "PRIVATE_TITLE") =>
       title,
       summary: "",
       locale: "en",
-      workType: "essay",
+      workType: "other",
       editorState: {
         root: {
           type: "root",

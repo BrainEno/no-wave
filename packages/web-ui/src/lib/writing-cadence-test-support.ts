@@ -21,7 +21,7 @@ export async function cadenceSource(documents: (string | WritingNode)[][]) {
             title: `PRIVATE_TITLE_${ordinal}`,
             summary: "PRIVATE_SUMMARY",
             locale: "en",
-            workType: "essay",
+            workType: "other",
             editorState: {
               root: {
                 type: "root",

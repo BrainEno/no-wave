@@ -3,106 +3,43 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 
 /**
- * Regression for #196: the desk still offered 连载 (`serial`) for a *new* work,
- * after ADR 0016 and `38d087b` settled that the platform is for short and
- * medium-form work. A new work could be created in a shape the product does not
- * support.
- *
- * The distinction this guards is "can be chosen" versus "can exist". `serial`
- * must stay in the `WorkType` union, in the reader's filter tabs and in the
- * store, because works created before that decision still have to be listed and
- * read — deleting it from those would break real content. It must not be in the
- * list a new work is created from.
+ * ADR 0054: a work is 小说, 诗歌 or 其他文体 — nothing finer, and nothing
+ * "retired but still there". #196 once kept 连载 (`serial`) alive as a type that
+ * could exist but not be chosen; the fold migrated every such work to `novel`,
+ * so the desk, the reader tabs and the contract now name the same three types,
+ * and the database refuses the rest (see `domain/article.test.ts` and
+ * `persistence-adapter-contract.test.ts` for the behaviour on both providers).
  */
 
 const editorPath = new URL("../components/authoring/article-editor.tsx", import.meta.url);
+const THREE = /"novel"[\s\S]*"poetry"[\s\S]*"other"/;
+const FOLDED = /"(?:short_story|serial|essay|criticism|literary_criticism|nonfiction)"/;
 
-test("a new work cannot be created as the retired serial type", async () => {
-  const source = await readFile(editorPath, "utf8");
+test("the desk, the reader tabs and the type union all name exactly 小说 / 诗歌 / 其他文体", async () => {
+  const editor = await readFile(editorPath, "utf8");
+  const creatable = editor.match(/const workTypes: [^=]*= \[([\s\S]*?)\];/);
+  assert.ok(creatable, "the creatable-type list should be findable");
+  assert.match(creatable[1], THREE);
+  assert.doesNotMatch(creatable[1], FOLDED);
+  assert.doesNotMatch(editor, /retiredWorkTypes/, "no type is retired-but-kept any more");
 
-  const creatableBlock = source.match(/const workTypes: [^=]*= \[([\s\S]*?)\];/);
-  assert.ok(creatableBlock, "the creatable-type list should be findable");
-  assert.doesNotMatch(
-    creatableBlock[1],
-    /"serial"/,
-    "serial must not be offered when creating a work (#196, ADR 0016 / 38d087b)",
-  );
-
-  // The compatibility half: an existing serial work must keep its type when it
-  // is opened, or the next save would silently retype real content.
-  assert.match(
-    source,
-    /retiredWorkTypes[^=]*=\s*\{\s*serial:/,
-    "an existing serial work must still be nameable, so editing it cannot retype it",
-  );
-  assert.match(
-    source,
-    /retiredWorkTypes\[workType\]/,
-    "and that name has to reach the select for the stored value",
-  );
-});
-
-test("`serial` still exists for content that already has it", async () => {
-  // Stated as its own test because a future cleanup is likely to try removing
-  // the type everywhere, which would be a regression rather than a fix.
   const content = await readFile(new URL("../lib/content.ts", import.meta.url), "utf8");
-  assert.match(content, /export type WorkType =[^;]*"serial"/, "the type union must keep serial");
+  const union = content.match(/export type WorkType =([^;]*);/);
+  assert.ok(union);
+  assert.match(union[1], THREE);
+  assert.doesNotMatch(union[1], FOLDED);
 
-  const parts = await readFile(new URL("../components/ui/parts.tsx", import.meta.url), "utf8");
-  const tabs = parts.match(/tabTypes[^=]*=\s*\[([\s\S]*?)\];/);
-  assert.ok(tabs, "the reader filter tabs should be findable");
-  assert.match(tabs[1], /"serial"/, "readers must still be able to filter to legacy serial works");
-
-  const domain = await readFile(
-    new URL("../../../../apps/api/src/domain/article.ts", import.meta.url),
-    "utf8",
-  );
-  assert.match(domain, /"serial"/, "the API must still accept a stored serial work");
-  assert.match(
-    domain,
-    /RETIRED_ARTICLE_WORK_TYPES = new Set\(\["serial"\]\)/,
-    "and must also know that serial is the retired type, not an ordinary one",
-  );
+  const types = await readFile(new URL("../lib/work-types.ts", import.meta.url), "utf8");
+  const list = types.match(/export const workTypes[^=]*=\s*\[([\s\S]*?)\];/);
+  assert.ok(list);
+  assert.match(list[1], THREE);
+  assert.doesNotMatch(list[1], FOLDED);
 });
 
-/**
- * The other half of #196: the desk stopped *offering* 连载, but the write contract
- * still accepted it, so `POST /api/v1/articles` with `workType: "serial"` created
- * work the product says it does not publish. A guard on the desk alone is a guard
- * on the easiest client, not on the contract.
- *
- * Asserted statically here because this test already reads across packages and the
- * behaviour itself is covered where it belongs: `domain/article.test.ts` for the
- * rule, `persistence-adapter-contract.test.ts` for both providers and both
- * directions (create refuses it, a stored row still saves and can be retyped).
- */
-test("the write contract refuses a retired type but keeps a stored one editable", async () => {
-  const domain = await readFile(
-    new URL("../../../../apps/api/src/domain/article.ts", import.meta.url),
-    "utf8",
-  );
-  assert.match(domain, /export function assertCreatableArticleWorkType/, "create must gate retired types");
-  assert.match(
-    domain,
-    /export function assertArticleWorkTypeChange/,
-    "an update must distinguish \"unchanged\" from \"retyped to a retired type\"",
-  );
-
-  for (const store of ["postgres-article-store.ts", "sqlite-article-store.ts"]) {
-    const source = await readFile(
-      new URL(`../../../../apps/api/src/persistence/${store}`, import.meta.url),
-      "utf8",
-    );
-    assert.match(source, /assertCreatableArticleWorkType\(/, `${store} must gate creation`);
-    assert.match(source, /assertArticleWorkTypeChange\(/, `${store} must gate retyping`);
-    // The gate has to sit *after* the replay lookup, or a key minted before the
-    // retirement answers 400 for a write that already happened.
-    assert.ok(
-      source.indexOf("assertCreatableArticleWorkType(") > source.indexOf("idempotency_key_hash = $2")
-        || source.indexOf("assertCreatableArticleWorkType(") > source.indexOf("idempotency_key_hash = ?"),
-      `${store} must check the replay before the retirement`,
-    );
-  }
+test("the write contract names the same three types", async () => {
+  const domain = await readFile(new URL("../../../../apps/api/src/domain/article.ts", import.meta.url), "utf8");
+  assert.match(domain, /const ARTICLE_WORK_TYPES = new Set\(\["novel", "poetry", "other"\]\)/);
+  assert.doesNotMatch(domain, /RETIRED_ARTICLE_WORK_TYPES|assertCreatableArticleWorkType/);
 });
 
 test("a new work is not silently created as zh-CN", async () => {

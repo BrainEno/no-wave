@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assertArticleWorkTypeChange, assertCreatableArticleWorkType, normalizeArticleInput, normalizeTaxonomyIds, validateArticleLocale, validateArticleSlug, validateArticleWorkType, retiredArticleWorkTypes } from "./article.ts";
+import { normalizeArticleInput, normalizeTaxonomyIds, supportedArticleWorkTypes, validateArticleLocale, validateArticleSlug, validateArticleWorkType } from "./article.ts";
 
 const blocks = [{ id: "paragraph-1", type: "paragraph", text: "A complete paragraph." }];
 
@@ -55,28 +55,15 @@ test("literary work types are explicit and reject unknown values", () => {
 });
 
 
-test("a retired work type cannot be chosen, but it can still exist", () => {
-  // ADR 0016 / 38d087b retired 连载 (`serial`). The distinction is "can be
-  // chosen" versus "can exist": works stored before that decision are still real
-  // content, so the type has to stay readable and editable.
-  assert.deepEqual(retiredArticleWorkTypes, ["serial"]);
-  assert.equal(validateArticleWorkType("serial"), "serial", "the contract still names a stored serial work");
-  assert.equal(assertCreatableArticleWorkType("poetry"), "poetry");
-  assert.throws(() => assertCreatableArticleWorkType("serial"), {
-    code: "BAD_USER_INPUT",
-    message: /"serial" is retired/,
-  });
-
-  // Unchanged is not a change: saving an old serial work must not fail because
-  // of the type it already has.
-  assert.equal(assertArticleWorkTypeChange("serial", "serial"), "serial");
-  assert.equal(assertArticleWorkTypeChange("serial", "novel"), "novel", "retyping away from the legacy type is allowed");
-  assert.equal(assertArticleWorkTypeChange("poetry", undefined), undefined, "omitting workType keeps the stored one");
-  assert.throws(() => assertArticleWorkTypeChange("poetry", "serial"), {
-    code: "BAD_USER_INPUT",
-    message: /cannot be retyped to it/,
-  });
-  assert.throws(() => assertArticleWorkTypeChange("poetry", "viral-post"), { code: "BAD_USER_INPUT" });
+test("there are exactly three work types: 小说, 诗歌 and 其他文体", () => {
+  // ADR 0054 folded the six finer types into these three, in the database as
+  // well as here. None of the folded values is accepted again — not even
+  // `serial`, which used to be "retired but still saveable": no stored work
+  // carries it any more.
+  assert.deepEqual(supportedArticleWorkTypes, ["novel", "poetry", "other"]);
+  for (const folded of ["short_story", "serial", "essay", "criticism", "literary_criticism", "nonfiction"]) {
+    assert.throws(() => validateArticleWorkType(folded), { code: "BAD_USER_INPUT" }, folded);
+  }
 });
 
 test("article content version 1 preserves validated inline marks and safe links", () => {

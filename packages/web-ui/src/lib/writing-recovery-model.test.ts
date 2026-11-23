@@ -19,7 +19,7 @@ const draft = (): WritingDraft => ({
   title: "没有上传的海风",
   summary: "",
   locale: "zh-CN",
-  workType: "essay",
+  workType: "other",
   editorState: {
     root: {
       type: "root",

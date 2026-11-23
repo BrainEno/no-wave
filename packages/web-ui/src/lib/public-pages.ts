@@ -1,6 +1,6 @@
 import type { ArticleView, AuthorView, Locale, WorkType } from "./content.ts";
 import { fixturePublicContent, type PublicContentSource, type AuthorSummary, type CategoryView } from "./api-content.ts";
-import { PAGE_SIZE, paginate } from "./work-types.ts";
+import { PAGE_SIZE, paginate, workTypes } from "./work-types.ts";
 
 /**
  * Public page data loaders.
@@ -171,23 +171,50 @@ export async function loadAuthorIndexPage(
   return { locale, query, page, authors: results.slice(0, AUTHOR_PAGE_SIZE), hasNextPage: results.length > AUTHOR_PAGE_SIZE };
 }
 
-export type CategoryIndexData = {
-  locale: Locale;
-  query: string;
-  page: number;
-  categories: CategoryView[];
-  hasNextPage: boolean;
+/**
+ * One of the three genres (ADR 0054) as the index pages show it: how many works
+ * it has and its newest few.
+ *
+ * The API has no work-type parameter, so this is computed from the same bounded
+ * window the archive's type filter already scans. When the window came back
+ * full there may be older works beyond it, and `countIsLowerBound` says so —
+ * the page then shows "40+" rather than claim an exact number it cannot know.
+ */
+export type GenreSummary = {
+  type: WorkType;
+  count: number;
+  countIsLowerBound: boolean;
+  newest: ArticleView[];
 };
 
+/** How many newest works each genre shows on the home page. */
+export const GENRE_NEWEST_LIMIT = 3;
+
+export function summarizeGenres(window: readonly ArticleView[], options: { windowFull: boolean; newest?: number }): GenreSummary[] {
+  const newest = options.newest ?? GENRE_NEWEST_LIMIT;
+  return workTypes.map((type) => {
+    const matches = window.filter((article) => article.workType === type);
+    return { type, count: matches.length, countIsLowerBound: options.windowFull, newest: matches.slice(0, newest) };
+  });
+}
+
+export type CategoryIndexData = {
+  locale: Locale;
+  genres: GenreSummary[];
+};
+
+/**
+ * `/categories`: the three genres with their counts, one call.
+ *
+ * The editor-maintained categories (ADR 0016) are no longer listed here: the
+ * site's classification is 小说 / 诗歌 / 其他文体. Their own pages,
+ * `/categories/:slug`, still answer for anyone who has a link.
+ */
 export async function loadCategoryIndexPage(
-  options: { locale: Locale; query?: string; page?: number }, source: PublicContentSource = fixturePublicContent,
+  options: { locale: Locale }, source: PublicContentSource = fixturePublicContent,
 ): Promise<CategoryIndexData> {
-  const locale = options.locale;
-  const query = options.query ?? "";
-  const page = options.page ?? 1;
-  const offset = (page - 1) * CATEGORY_PAGE_SIZE;
-  const results = await source.listPublicCategories({ locale, query, limit: CATEGORY_PAGE_SIZE + 1, offset });
-  return { locale, query, page, categories: results.slice(0, CATEGORY_PAGE_SIZE), hasNextPage: results.length > CATEGORY_PAGE_SIZE };
+  const window = await source.listPublicArticles({ locale: options.locale, sort: "latest", limit: ARCHIVE_TYPE_SCAN_LIMIT });
+  return { locale: options.locale, genres: summarizeGenres(window, { windowFull: window.length >= ARCHIVE_TYPE_SCAN_LIMIT, newest: 0 }) };
 }
 
 export type CategoryDetailData = {

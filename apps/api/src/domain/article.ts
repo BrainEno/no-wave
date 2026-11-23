@@ -3,7 +3,16 @@ import { ArticleInputError } from "./errors.ts";
 import { isRecord, isUuid, requiredText } from "./validation.ts";
 
 const SUPPORTED_ARTICLE_LOCALES = new Set(["zh-CN", "zh-TW", "en"]);
-const ARTICLE_WORK_TYPES = new Set(["novel", "short_story", "poetry", "essay", "criticism", "literary_criticism", "nonfiction", "serial", "other"]);
+/**
+ * 作品类型只有三种：小说 / 诗歌 / 其他文体（ADR 0054）.
+ *
+ * `novel` names all prose fiction — short stories and serials included — and
+ * keeps its old spelling because the stored value, every `?type=novel` link and
+ * the SQLite column CHECK from 0001 already use it. The six finer types that
+ * existed before were folded into these three by migration 0039 (PostgreSQL) /
+ * 0026 (SQLite); the database now refuses them, and so does this contract.
+ */
+const ARTICLE_WORK_TYPES = new Set(["novel", "poetry", "other"]);
 const ARTICLE_BLOCK_TYPES = new Set(["paragraph", "heading", "quote", "list", "image", "code"]);
 const ARTICLE_CONTENT_BLOCK_VERSIONS = new Set([0, 1]);
 const INLINE_MARKS = new Set(["bold", "italic", "underline", "strikethrough", "code"]);
@@ -18,55 +27,6 @@ export function validateArticleWorkType(value: unknown): string {
     throw new ArticleInputError("workType must be one of the supported literary work types.");
   }
   return value;
-}
-
-/**
- * Work types that can still exist but can no longer be chosen.
- *
- * `serial` (连载) was retired for new work by ADR 0016 / `38d087b` — the platform
- * publishes short and medium-form writing, and a serialised work needs chapter
- * state the product does not model. Deleting the type outright is not an option:
- * works created before that decision still have to be listed, read and edited, so
- * removing it would either orphan them or silently retype real content on the next
- * save.
- *
- * The rule is therefore "cannot be chosen, can still exist". The authoring desk
- * stopped offering it (#196); this is the same rule on the write contract, where
- * a client that bypasses the desk can still reach it.
- */
-const RETIRED_ARTICLE_WORK_TYPES = new Set(["serial"]);
-export const retiredArticleWorkTypes = Object.freeze([...RETIRED_ARTICLE_WORK_TYPES]);
-
-/**
- * A type a new work may be created with.
- *
- * Called on create only: a stored `serial` work must stay saveable, or the author
- * loses the ability to fix a typo in work the platform itself accepted.
- */
-export function assertCreatableArticleWorkType(value: unknown): string {
-  const workType = validateArticleWorkType(value);
-  if (RETIRED_ARTICLE_WORK_TYPES.has(workType)) {
-    throw new ArticleInputError("workType \"serial\" is retired: a new work must use an active literary work type.");
-  }
-  return workType;
-}
-
-/**
- * A type change on an existing work.
- *
- * Unchanged is always allowed, including a legacy type keeping itself, so an
- * ordinary edit of an old serial work is not rejected for the type it already
- * has. Anything else has to be creatable — which also means an author may retype
- * a legacy serial work to a supported type, the one direction that removes the
- * legacy value.
- */
-export function assertArticleWorkTypeChange(previousWorkType: string, value: unknown): string | undefined {
-  if (value === undefined) return undefined;
-  const workType = validateArticleWorkType(value);
-  if (workType !== previousWorkType && RETIRED_ARTICLE_WORK_TYPES.has(workType)) {
-    throw new ArticleInputError("workType \"serial\" is retired: an existing work cannot be retyped to it.");
-  }
-  return workType;
 }
 
 export function validateArticleSlug(value: unknown): string {

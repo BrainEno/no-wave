@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse } from "@babel/parser";
+import { getMessages } from "../../packages/web-ui/src/lib/content.ts";
 import { getUi } from "../../packages/web-ui/src/lib/ui-copy.ts";
 import { codepoints, expandUnicodeRange, partitionCharacters, unicodeRange, type FontManifest, type FontAsset } from "../lib/font-assets.ts";
 import { FONT_SOURCES, fontSourceReceipt, LATIN_COMMON_CODEPOINTS, type FontSource } from "./font-sources.ts";
@@ -70,7 +71,14 @@ export async function applicationRepertoires(root: string): Promise<Repertoires>
   const strings = (value: unknown): string => typeof value === "string" ? value :
     typeof value === "object" && value !== null ? Object.values(value).map(strings).join("") : "";
   const ui = getUi("zh-CN");
-  const chromeCopy = strings([ui.brand, ui.rail, ui.nav, ui.bell, ui.footer, chineseLabels(shelfDictionary, ["title"])]);
+  // The three work-type labels (ADR 0054) sit on every card, row and article
+  // header, so they belong with the chrome: left to the numbered leaves, the
+  // 他 and 体 of 其他文体 each pull a whole shard onto every article page.
+  // Sans only — the chip is set in the sans. The serif display weights show a
+  // genre name only as the big headings of the home page and /categories,
+  // which can afford one leaf more; every article page cannot.
+  const workTypeLabels = strings(getMessages("zh-CN").workTypeLabels);
+  const chromeCopy = strings([ui.brand, ui.rail, ui.nav, ui.bell, ui.footer, workTypeLabels, chineseLabels(shelfDictionary, ["title"])]);
   // Closed article tools do not need list management, backup or result prose.
   const initialTools = chineseLabels(shelfDictionary, ["loading", "save", "savedAlready", "open"]) + chineseLabels(findDictionary, ["toggle"]);
   const readerCopy = strings(ui.reader) + initialTools;

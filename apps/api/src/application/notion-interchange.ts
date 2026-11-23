@@ -166,20 +166,26 @@ export const DEFAULT_NOTION_PROPERTY_NAMES: NotionPropertyNames = Object.freeze(
 
 /**
  * The tag vocabulary this site's own database already uses, mapped onto the
- * work types the write contract accepts. A tag that is not in the table leaves
- * the work `other` — a wrong genre is worse than an unspecific one, and the
- * author can retype it in one click.
+ * three work types the write contract accepts: 小说 / 诗歌 / 其他文体. The
+ * author's Notion "Tags" are 小说, 诗歌, 诗 and 其他; the finer genre words an
+ * older page might carry fold into the same three groups the stored works were
+ * migrated into (ADR 0054). A tag that is not in the table leaves the work
+ * `other` — a wrong genre is worse than an unspecific one, and the author can
+ * retype it in one click.
  */
 export const DEFAULT_WORK_TYPE_BY_TAG: Readonly<Record<string, string>> = Object.freeze({
   小说: "novel",
-  短篇: "short_story",
+  短篇: "novel",
+  长篇: "novel",
+  连载: "novel",
   诗歌: "poetry",
   诗: "poetry",
-  散文: "essay",
-  评论: "criticism",
-  文学批评: "literary_criticism",
-  非虚构: "nonfiction",
   其他: "other",
+  其他文体: "other",
+  散文: "other",
+  评论: "other",
+  文学批评: "other",
+  非虚构: "other",
 });
 
 export type NotionImportOptions = {

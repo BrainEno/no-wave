@@ -4,7 +4,7 @@ import { articleBlocksToLexicalEditorState } from "./lexical-article-state.ts";
 import { inspectWriting, writingSectionStatistics } from "./writing-document.ts";
 import type { WritingDraft } from "./writing-session.ts";
 
-const draft = (): WritingDraft => ({ title: "海风", summary: "", locale: "zh-CN", workType: "essay", editorState: articleBlocksToLexicalEditorState([
+const draft = (): WritingDraft => ({ title: "海风", summary: "", locale: "zh-CN", workType: "other", editorState: articleBlocksToLexicalEditorState([
   { type: "heading", level: 2, text: "一" },
   { type: "paragraph", text: "海风 one two 🌊" },
   { type: "heading", level: 4, text: " 二 " },

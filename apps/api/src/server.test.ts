@@ -2427,7 +2427,7 @@ test("REST article views count one reader once a day, refuse the author, and 404
     id: "9f0e3d2a-0000-4000-8000-000000000001",
     authorId: "author-user",
     slug: "counted-work",
-    workType: "essay",
+    workType: "other",
     status: "published",
     locale: "zh-CN",
     title: "被阅读的作品",

@@ -71,10 +71,10 @@ async function sqliteFixture() {
       db.prepare("UPDATE articles SET deleted_at = ? WHERE id = ?").run(deletedAt, id);
     },
     /**
-     * Write the type directly, the way a pre-retirement row got it.
+     * Write the type directly, bypassing the store.
      *
-     * The create path now refuses a retired type, so a legacy work can only be
-     * simulated below the contract — which is exactly how such a row got here.
+     * Writes below the contract, to prove the database refuses a folded work
+     * type on its own (ADR 0054), not only the store.
      */
     async setArticleWorkType(id, workType) {
       db.prepare("UPDATE articles SET work_type = ? WHERE id = ?").run(workType, id);
@@ -1185,56 +1185,49 @@ function registerAdapterContracts(adapterName, fixture, options = {}) {
     } finally { await runtime.cleanup(undefined, suffix); }
   });
 
-  test(`${adapterName}: a retired work type cannot be created or retyped to, while a stored one stays editable`, options, async () => {
-    // ADR 0016 / 38d087b retired 连载 (`serial`). #196 removed it from the desk's
-    // create list, but the write contract still accepted it, so a client posting
-    // directly could create work the product says it does not publish. The other
-    // half matters just as much: legacy rows must keep being editable.
+  test(`${adapterName}: only 小说, 诗歌 and 其他文体 can be written, through the contract or below it`, options, async () => {
+    // ADR 0054 folded the six finer work types into three and migrated every
+    // stored row. The contract refuses the folded values, and so does the
+    // database itself (a CHECK on PostgreSQL, triggers on SQLite), so nothing
+    // that bypasses the store can bring one back either.
     const runtime = await fixture();
     const suffix = randomUUID();
-    const slug = `contract-retired-${suffix}`;
+    const slug = `contract-work-type-${suffix}`;
     const block = [{ id: "p1", type: "paragraph", text: "Short form." }];
     try {
       await assert.rejects(
         Promise.resolve().then(() => runtime.store.createArticle({
-          authorId: `author-${suffix}`, slug, title: "A serialised work", locale: "zh-CN",
-          contentBlocks: block, workType: "serial",
+          authorId: `author-${suffix}`, slug, title: "A short story", locale: "zh-CN",
+          contentBlocks: block, workType: "short_story",
         })),
-        (error) => error instanceof ArticleInputError && /"serial" is retired/.test(error.message),
+        (error) => error instanceof ArticleInputError,
       );
       // Nothing was written, so the address is still free for a supported type.
       const created = await runtime.store.createArticle({
         authorId: `author-${suffix}`, slug, title: "A short story", locale: "zh-CN",
-        contentBlocks: block, workType: "short_story",
+        contentBlocks: block, workType: "novel",
       });
-      assert.equal(created.workType, "short_story");
-
-      // A row that predates the retirement: written below the contract, exactly
-      // as the old API left it.
-      await runtime.setArticleWorkType(created.id, "serial");
-      const edited = await runtime.store.updateArticle({
-        articleId: created.id, actorId: `author-${suffix}`, slug,
-        title: "A short story, corrected", locale: "zh-CN", contentBlocks: block,
-        publish: false, workType: "serial",
-      });
-      assert.equal(edited.workType, "serial", "saving an existing serial work must not retype or reject it");
-
-      const retyped = await runtime.store.updateArticle({
-        articleId: created.id, actorId: `author-${suffix}`, slug,
-        title: "Now a short story", locale: "zh-CN", contentBlocks: block,
-        publish: false, workType: "short_story",
-      });
-      assert.equal(retyped.workType, "short_story", "an author may retype legacy work to a supported type");
+      assert.equal(created.workType, "novel");
 
       await assert.rejects(
         Promise.resolve().then(() => runtime.store.updateArticle({
           articleId: created.id, actorId: `author-${suffix}`, slug,
-          title: "Back to serial", locale: "zh-CN", contentBlocks: block,
-          publish: false, workType: "serial",
+          title: "Now an essay", locale: "zh-CN", contentBlocks: block,
+          publish: false, workType: "essay",
         })),
-        (error) => error instanceof ArticleInputError && /cannot be retyped to it/.test(error.message),
+        (error) => error instanceof ArticleInputError,
       );
-      assert.equal(await runtime.articleWorkType(created.id), "short_story", "the rejected update changed nothing");
+      const retyped = await runtime.store.updateArticle({
+        articleId: created.id, actorId: `author-${suffix}`, slug,
+        title: "Now a poem", locale: "zh-CN", contentBlocks: block,
+        publish: false, workType: "poetry",
+      });
+      assert.equal(retyped.workType, "poetry");
+
+      for (const folded of ["serial", "essay", "nonfiction"]) {
+        await assert.rejects(runtime.setArticleWorkType(created.id, folded), undefined, `the database must refuse ${folded}`);
+      }
+      assert.equal(await runtime.articleWorkType(created.id), "poetry", "the refused writes changed nothing");
     } finally { await runtime.cleanup(undefined, suffix); }
   });
 

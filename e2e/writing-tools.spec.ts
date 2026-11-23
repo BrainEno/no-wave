@@ -42,7 +42,7 @@ async function uploadBackup(page: Page, text: string, name = "manuscript.json") 
 function backup(title: string, text: string, extras: Record<string, unknown> = {}) {
   const element = (type: string, children: unknown[]) => ({ type, version: 1, children, direction: null, format: "", indent: 0 });
   return JSON.stringify({ format: "no-wave-writing-backup", version: 1, createdAt: "2026-11-12T00:00:00.000Z", draft: {
-    title, summary: "备份摘要", locale: "zh-CN", workType: "essay", editorState: { root: element("root", [element("paragraph", [{ type: "text", version: 1, text, format: 0, detail: 0, mode: "normal", style: "" }])]) }, ...extras,
+    title, summary: "备份摘要", locale: "zh-CN", workType: "other", editorState: { root: element("root", [element("paragraph", [{ type: "text", version: 1, text, format: 0, detail: 0, mode: "normal", style: "" }])]) }, ...extras,
   } });
 }
 async function onlyBody(page: Page) {
@@ -131,7 +131,7 @@ test("a failed version-conflict save leaves ordinary edits protected", async ({ 
 test("a rich-text replacement is one undoable batch and preserves link destinations and outside marks on save", async ({ page }) => {
   await writer(page);
   const created = await page.request.post("/api/authoring/articles", { headers: { origin: new URL(page.url()).origin }, data: {
-    title: "富文本替换验证", locale: "zh-CN", workType: "essay", publish: false, contentBlocksVersion: 1,
+    title: "富文本替换验证", locale: "zh-CN", workType: "other", publish: false, contentBlocksVersion: 1,
     contentBlocks: [{ id: "p", type: "paragraph", text: "前海浪后海浪", inlines: [
       { text: "前海", marks: ["bold"] }, { text: "浪后", marks: ["italic"], href: "https://example.test/wave" }, { text: "海浪" },
     ] }],
@@ -409,7 +409,7 @@ test("an uncertain create keeps its exact retry bytes while tools can back up la
 test("opening an existing rich document is clean after Lexical hydration and its runtime backup reopens without false differences", async ({ page }) => {
   await writer(page);
   const created = await page.request.post("/api/authoring/articles", { headers: { origin: new URL(page.url()).origin }, data: {
-    title: "完整格式的已存作品", locale: "zh-CN", workType: "essay", publish: false, contentBlocksVersion: 1,
+    title: "完整格式的已存作品", locale: "zh-CN", workType: "other", publish: false, contentBlocksVersion: 1,
     contentBlocks: [
       { id: "h", type: "heading", level: 2, text: "节标题" },
       { id: "p", type: "paragraph", text: "同一链接", inlines: [{ text: "同一", marks: ["bold"], href: "https://example.test/read" }, { text: "链接", marks: ["italic"], href: "https://example.test/read" }] },

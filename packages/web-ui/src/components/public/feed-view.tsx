@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "@/lib/framework/link.tsx";
 import { articlePath, type Locale, type WorkType } from "@/lib/content.ts";
+import { parseWorkType } from "@/lib/work-types.ts";
 import { dateLabel } from "@/lib/format.ts";
 import { getUi } from "@/lib/ui-copy.ts";
 import { EmptyState, PageIntro, TypeChip } from "@/components/ui/parts.tsx";
@@ -231,7 +232,9 @@ function readItems(payload: unknown, locale: Locale): FeedItem[] | null {
       authorId: typeof author.userId === "string" ? author.userId : "",
       authorName: typeof author.displayName === "string" ? author.displayName : "",
       publishedAt: typeof record.publishedAt === "string" ? record.publishedAt : "",
-      workType: isWorkType(workType) ? workType : null,
+      // An unknown value from a newer API renders as no chip instead of crashing
+      // the list on `workTypeLabels[value]`; a pre-0054 value shows its group.
+      workType: typeof workType === "string" ? parseWorkType(workType) : null,
     });
   }
   // A page whose every entry was malformed is a broken read, not an empty feed.
@@ -240,21 +243,9 @@ function readItems(payload: unknown, locale: Locale): FeedItem[] | null {
   return items;
 }
 
-/**
- * The nine types the reader surface knows. Kept as a list rather than a cast so
- * an unknown value from a newer API renders as no chip, instead of crashing the
- * whole list on `workTypeLabels[value]`.
- */
-const WORK_TYPES: readonly string[] = Object.freeze([
-  "novel", "short_story", "poetry", "essay", "criticism",
-  "literary_criticism", "nonfiction", "serial", "other",
-]);
-
 /** The author directory, not a profile: `/authors` and `/en/authors`. */
 function authorsIndexPath(locale: Locale): string {
   return locale === "zh-CN" ? "/authors" : `/${locale}/authors`;
 }
 
-function isWorkType(value: unknown): value is WorkType {
-  return typeof value === "string" && WORK_TYPES.includes(value);
-}
+

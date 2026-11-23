@@ -16,7 +16,7 @@ const payload = new TextEncoder().encode(
       title: "PRIVATE_WORKER_TITLE",
       summary: "",
       locale: "zh-CN",
-      workType: "essay",
+      workType: "other",
       editorState: {
         root: {
           type: "root",

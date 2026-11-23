@@ -17,7 +17,7 @@ const backup = (body: string) =>
         title: "PRIVATE_TITLE",
         summary: "PRIVATE_SUMMARY",
         locale: "zh-CN",
-        workType: "essay",
+        workType: "other",
         editorState: {
           root: {
             type: "root",

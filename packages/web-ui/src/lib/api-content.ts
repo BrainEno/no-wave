@@ -1,7 +1,8 @@
 import { isRecord, resolveUpstreamTimeoutMs, upstreamTransportFor, upstreamJsonPayload, type FetchImpl, type UpstreamTransport } from "@bot-thk/web-http";
 import { isTagSlug, type TagReference, type TagView } from "./tag-discovery.ts";
 import { parseArticlePreview, projectArticleForList } from "./article-preview.ts";
-import type { ArticleContentBlock, ArticleSort, ArticleView, AuthorView, Locale, WorkType } from "./content.ts";
+import type { ArticleContentBlock, ArticleSort, ArticleView, AuthorView, Locale } from "./content.ts";
+import { parseWorkType } from "./work-types.ts";
 import {
   defaultLocale,
   getArticleBySlug,
@@ -41,14 +42,10 @@ export type ApiContentClient = {
   listTagArticles(slug: string, locale?: Locale, limit?: number, offset?: number): Promise<ArticleView[] | null>;
 };
 
-const WORK_TYPES = ["novel", "short_story", "poetry", "essay", "criticism", "literary_criticism", "nonfiction", "serial", "other"] as const;
 let legacyGraphqlWarningShown = false;
 // Preserve HTTP absence separately from a malformed successful `data: null`.
 const CONTENT_NOT_FOUND = Symbol("content-not-found");
 
-function isWorkType(value: unknown): value is WorkType {
-  return typeof value === "string" && (WORK_TYPES as readonly string[]).includes(value);
-}
 
 function mapNames(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -204,7 +201,7 @@ function mapArticle(article: unknown, locale: Locale, allowPreview = false): Art
     slug: article.slug,
     title: article.title,
     description: typeof article.summary === "string" ? article.summary : "",
-    workType: isWorkType(article.workType) ? article.workType : "other",
+    workType: (typeof article.workType === "string" ? parseWorkType(article.workType) : null) ?? "other",
     contentBlocks: preview ? [] : parseContentBlocks(article.contentBlocks),
     ...(listPreview ? { listPreview } : {}),
     publishedAt,

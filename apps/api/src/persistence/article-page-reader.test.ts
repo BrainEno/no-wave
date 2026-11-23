@@ -8,7 +8,7 @@ import { createPostgresClient } from "./postgres.ts";
 import type { StoredArticle } from "../application/persistence-ports.ts";
 
 function article(index = 0): StoredArticle {
-  return { id: String(index), authorId: "reader-fixture", slug: `work-${index}`, workType: "essay", status: "published", locale: "en", title: "Real row", summary: "", contentBlocksVersion: 0,
+  return { id: String(index), authorId: "reader-fixture", slug: `work-${index}`, workType: "other", status: "published", locale: "en", title: "Real row", summary: "", contentBlocksVersion: 0,
     contentBlocks: [{ id: "text", type: "paragraph", text: "Complete text for a card." }], createdAt: "2026-11-12T00:00:00.000Z", updatedAt: "2026-11-12T00:00:00.000Z", publishedAt: "2026-11-12T00:00:00.000Z", viewCount: 0 };
 }
 

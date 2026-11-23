@@ -4,7 +4,7 @@ import { filterShelf, parseShelfRecord, readingListPath, shelfIdentity, shelfRec
 import { parseShelfBackup, planShelfImport, serializeShelfBackup } from "./reading-shelf-backup.ts";
 
 export function record(overrides: Partial<ShelfRecord> = {}): ShelfRecord {
-  return { version: 1, slug: "a-work", locale: "zh-CN", title: "渡口", author: "作者", workType: "essay", state: "later", savedAt: 1000, updatedAt: 1000, revision: "revision-1", tracking: null, position: null, ...overrides };
+  return { version: 1, slug: "a-work", locale: "zh-CN", title: "渡口", author: "作者", workType: "other", state: "later", savedAt: 1000, updatedAt: 1000, revision: "revision-1", tracking: null, position: null, ...overrides };
 }
 
 test("a shelf identity is one real public language edition, and links never come from imported URLs", () => {

@@ -13,14 +13,19 @@ import {
 } from "./work-import-utils.ts";
 
 test("normalizeWorkType correctly maps various genre strings", () => {
+  // Folded into 小说 / 诗歌 / 其他文体 the same way the stored works were.
   assert.equal(normalizeWorkType("小说"), "novel");
-  assert.equal(normalizeWorkType("短篇小说"), "short_story");
+  assert.equal(normalizeWorkType("短篇小说"), "novel");
+  assert.equal(normalizeWorkType("连载"), "novel");
+  assert.equal(normalizeWorkType("short_story"), "novel");
   assert.equal(normalizeWorkType("诗歌"), "poetry");
-  assert.equal(normalizeWorkType("散文"), "essay");
-  assert.equal(normalizeWorkType("随笔"), "essay");
-  assert.equal(normalizeWorkType("评论"), "criticism");
-  assert.equal(normalizeWorkType("非虚构"), "nonfiction");
-  assert.equal(normalizeWorkType("unknown_genre"), "essay");
+  assert.equal(normalizeWorkType("诗"), "poetry");
+  assert.equal(normalizeWorkType("散文"), "other");
+  assert.equal(normalizeWorkType("随笔"), "other");
+  assert.equal(normalizeWorkType("评论"), "other");
+  assert.equal(normalizeWorkType("非虚构"), "other");
+  assert.equal(normalizeWorkType("其他"), "other");
+  assert.equal(normalizeWorkType("unknown_genre"), "other");
 });
 
 test("normalizeLocale correctly maps various language strings", () => {
@@ -52,14 +57,14 @@ test("parseUserDataInput parses JSON arrays with various field aliases", () => {
 
   assert.equal(items[0].title, "百年孤独阅读笔记");
   assert.equal(items[0].author, "马尔克斯读者");
-  assert.equal(items[0].workType, "essay");
+  assert.equal(items[0].workType, "other");
   assert.equal(items[0].locale, "zh-CN");
   assert.equal(items[0].validationErrors.length, 0);
 
   assert.equal(items[1].title, "Silent Spring Reflection");
   assert.equal(items[1].author, "默认作者");
   assert.equal(items[1].locale, "en");
-  assert.equal(items[1].workType, "nonfiction");
+  assert.equal(items[1].workType, "other");
 });
 
 test("parseUserDataInput parses CSV strings", () => {
@@ -71,7 +76,7 @@ test("parseUserDataInput parses CSV strings", () => {
   assert.equal(items.length, 2);
   assert.equal(items[0].title, "关于文学的断想");
   assert.equal(items[0].author, "卡尔维诺");
-  assert.equal(items[0].workType, "essay");
+  assert.equal(items[0].workType, "other");
   assert.equal(items[1].title, "寒夜");
   assert.equal(items[1].author, "巴金");
   assert.equal(items[1].workType, "novel");
@@ -85,7 +90,7 @@ test("applyBatchPatch fills missing fields in bulk", () => {
       content: "正文内容一",
       author: "",
       summary: "",
-      workType: "essay",
+      workType: "other",
       locale: "zh-CN",
       publish: false,
       validationErrors: ["缺少作者"],
@@ -96,7 +101,7 @@ test("applyBatchPatch fills missing fields in bulk", () => {
       content: "正文内容二",
       author: "已有作者",
       summary: "",
-      workType: "essay",
+      workType: "other",
       locale: "zh-CN",
       publish: false,
       validationErrors: [],
