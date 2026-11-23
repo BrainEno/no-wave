@@ -110,8 +110,12 @@ export function fontPartitions(all: readonly number[], source: FontSource, weigh
 }
 
 
-/** Check the current recipe without downloading or transforming upstream fonts. */
-export async function verifyFontRecipe(manifest: FontManifest, root: string): Promise<void> {
+/**
+ * The first source/weight whose committed faces no longer match the current
+ * recipe, or null. Reads the application copy only; it does not download or
+ * transform upstream fonts.
+ */
+export async function staleFontRecipe(manifest: FontManifest, root: string): Promise<string | null> {
   const repertoire = await applicationRepertoires(root);
   for (const source of FONT_SOURCES) {
     for (const weight of fontSourceReceipt(source).weights) {
@@ -119,8 +123,15 @@ export async function verifyFontRecipe(manifest: FontManifest, root: string): Pr
       const all = faces.flatMap((face) => expandUnicodeRange(face.unicodeRange));
       const expected = fontPartitions(all, source, weight, repertoire).map((part) => unicodeRange(part.points));
       if (expected.length !== faces.length || expected.some((range, index) => range !== faces[index]!.unicodeRange)) {
-        throw new Error(`Stale font recipe for ${source.id}/${weight}; run pnpm fonts:generate.`);
+        return `${source.id}/${weight}`;
       }
     }
   }
+  return null;
+}
+
+/** Check the current recipe without downloading or transforming upstream fonts. */
+export async function verifyFontRecipe(manifest: FontManifest, root: string): Promise<void> {
+  const stale = await staleFontRecipe(manifest, root);
+  if (stale) throw new Error(`Stale font recipe for ${stale}; run pnpm fonts:generate.`);
 }

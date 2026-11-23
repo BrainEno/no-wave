@@ -19,7 +19,7 @@ function zh() {
     archive: {
       title: "作品", titleEn: "Works", all: "全部", search: "搜索作品", placeholder: "输入标题、摘要或作者", button: "搜索", clear: "清除筛选",
       count: (n: number) => `${n} 篇作品`, lead: "最新发表", poemFrom: "诗歌摘句", noResults: "没有符合条件的作品", noResultsHint: "试试取消类型筛选，或换一个更短的关键词。",
-      limitNote: "类型筛选作用于最新的 100 篇匹配作品。", typeLabel: "作品类型",
+      limitNote: "类型筛选作用于最新的 100 篇匹配作品。", typeLabel: "作品类型", subscribe: "订阅最新作品",
     },
     pager: { prev: "上一页", next: "下一页", page: (n: number) => `第 ${n} 页`, label: "分页" },
     reader: {
@@ -172,7 +172,7 @@ function en(): UiCopy {
     archive: {
       title: "Works", titleEn: "Works", all: "All", search: "Search works", placeholder: "Title, summary or author", button: "Search", clear: "Clear filters",
       count: (n: number) => `${n} ${n === 1 ? "work" : "works"}`, lead: "Latest", poemFrom: "From a poem", noResults: "No works match", noResultsHint: "Try clearing the type filter or using a shorter keyword.",
-      limitNote: "Type filters apply to the latest 100 matching works.", typeLabel: "Work type",
+      limitNote: "Type filters apply to the latest 100 matching works.", typeLabel: "Work type", subscribe: "Subscribe to new work",
     },
     pager: { prev: "Previous", next: "Next", page: (n: number) => `Page ${n}`, label: "Pagination" },
     reader: {

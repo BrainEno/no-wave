@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@/lib/framework/link.tsx";
+import { DEEP_WRITING_TOOLS } from "@/lib/writing-tool-pages.ts";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { $createNodeSelection, $createRangeSelection, $getRoot, $isElementNode, $isTextNode, $setSelection, HISTORY_PUSH_TAG, type LexicalNode } from "lexical";
 import type { LexicalEditorStateJson } from "@/lib/lexical-article-state.ts";
@@ -307,13 +308,7 @@ export function WritingTools({ draft, getDraft, onChange, locked, recovery }: To
       <div className="nw-writing-deep">
         <p className="nw-kicker">深度校对与分析 · 新标签页打开</p>
         <div className="nw-authoring-actions nw-writing-deep-links">
-          <Link className="nw-btn" href="/write/overlap" target="_blank" rel="noopener noreferrer">段落审阅 ↗</Link>
-          <Link className="nw-btn" href="/write/terms" target="_blank" rel="noopener noreferrer">术语审阅 ↗</Link>
-          <Link className="nw-btn" href="/write/cadence" target="_blank" rel="noopener noreferrer">标点与节奏 ↗</Link>
-          <Link className="nw-btn" href="/write/parallel" target="_blank" rel="noopener noreferrer">双语对照 ↗</Link>
-          <Link className="nw-btn" href="/write/collections" target="_blank" rel="noopener noreferrer">文稿集合 ↗</Link>
-          <Link className="nw-btn" href="/write/merge" target="_blank" rel="noopener noreferrer">三方合并 ↗</Link>
-          <Link className="nw-btn" href="/write/vault" target="_blank" rel="noopener noreferrer">加密备份 ↗</Link>
+          {DEEP_WRITING_TOOLS.map(tool => <Link key={tool.href} className="nw-btn" href={tool.href} target="_blank" rel="noopener noreferrer">{tool.label} ↗</Link>)}
         </div>
       </div>
     </div> : null}

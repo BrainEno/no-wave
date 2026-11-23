@@ -961,6 +961,31 @@ test("sitemap.xml lists both locales and robots.txt points at it", async () => {
   assert.match(robots.body, /Sitemap: https:\/\/no-wave\.example\/sitemap\.xml/);
 });
 
+test("the site-wide feed is advertised on home and the archive and serves the newest works", async () => {
+  for (const [path, prefix] of [["/", ""], ["/articles", ""], ["/en", "/en"], ["/en/articles", "/en"]] as const) {
+    const page = await get(path);
+    assert.equal(page.status, 200, path);
+    assert.match(page.body, new RegExp(`<link rel="alternate" type="application/atom\\+xml" title="[^"]+" href="https://no-wave\\.example${prefix}/articles/feed\\.atom"/>`), path);
+    assert.match(page.body, new RegExp(`<link rel="alternate" type="application/rss\\+xml" title="[^"]+" href="https://no-wave\\.example${prefix}/articles/feed\\.xml"/>`), path);
+  }
+  // The archive also offers the same subscribe buttons a tag page has: plain
+  // links, because a client-side route change into a resource route has no page.
+  const archive = await get("/articles");
+  assert.match(archive.body, /<nav aria-label="订阅最新作品" data-site-feed/);
+  assert.match(archive.body, /<a class="nw-btn nw-sec" href="\/articles\/feed\.atom" type="application\/atom\+xml">订阅(?:<!-- -->)? (?:<!-- -->)?Atom<\/a>/);
+
+  const atom = await get("/articles/feed.atom");
+  assert.equal(atom.status, 200);
+  assert.equal(atom.headers.get("content-type"), "application/atom+xml; charset=utf-8");
+  assert.match(atom.body, /<id>https:\/\/no-wave\.example\/articles\/reading-as-resistance<\/id>/);
+  assert.match(atom.body, /<category term="小说"\/>/);
+  const rss = await get("/en/articles/feed.xml");
+  assert.equal(rss.status, 200);
+  assert.equal(rss.headers.get("content-type"), "application/rss+xml; charset=utf-8");
+  // A dot is never part of an article slug, so these addresses never reach the article route.
+  assert.equal((await get("/articles/feed.json")).status, 404);
+});
+
 test("page titles carry the site suffix, and the root page does not", async () => {
   // The title template applies to descendant segments only, so `/` is served
   // with the bare home title while `/en` carries the suffix. Both spellings are

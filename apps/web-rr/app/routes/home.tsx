@@ -7,7 +7,7 @@ import { HomePageView } from "@/components/public/home-view.tsx";
 import { PUBLIC_PAGE_HEADERS } from "../lib/http-policy.ts";
 import { upstreamUnavailable } from "../lib/loader-errors.ts";
 import { localeFor } from "../lib/locale.ts";
-import { metaDescriptors, siteUrlFromMatches } from "../lib/meta.ts";
+import { metaDescriptors, siteFeedDescriptors, siteUrlFromMatches } from "../lib/meta.ts";
 
 /**
  * Home (`/`, `/en`) — the last public page of Phase 3.
@@ -34,7 +34,8 @@ export const meta: MetaFunction<typeof loader> = ({ loaderData, matches }) => {
   const locale: Locale = loaderData?.locale ?? "zh-CN";
   // `/` is the root segment, where the site title is used bare; `/en` is a
   // segment deeper and does carry the suffix. Mirror both.
-  return metaDescriptors(homeMetadata(locale, siteUrlFromMatches(matches)), { absoluteTitle: locale === "zh-CN" });
+  const metadata = homeMetadata(locale, siteUrlFromMatches(matches));
+  return [...metaDescriptors(metadata, { absoluteTitle: locale === "zh-CN" }), ...siteFeedDescriptors(locale, metadata.alternates.canonical)];
 };
 
 export default function HomeRoute() {

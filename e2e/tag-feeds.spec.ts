@@ -111,3 +111,37 @@ test("RSS remains a native keyboard-accessible link on mobile with JavaScript di
     expect((await parseSubscription(page, await response.text(), "rss")).errors).toBe(0);
   } finally { await context.close(); }
 });
+
+test("the site-wide subscription lists a newly published work, parses as XML and leaves its draft out", async ({ page, request, tagStack }) => {
+  const writer = await tagAuthor(request, tagStack.apiBaseUrl);
+  const tag = await writer.tag(`全站订阅${tagNonce()}`);
+  const title = `全站最新 & ${tagNonce()}`;
+  const published = await writer.work(title, tag, true);
+  const draftTitle = `全站订阅不含的草稿${tagNonce()}`;
+  await writer.work(draftTitle, tag, false);
+  await page.goto(`${tagStack.webBaseUrl}/articles`);
+  const subscriptions = page.getByRole("navigation", { name: "订阅最新作品", exact: true });
+  await expect(subscriptions.getByRole("link", { name: "订阅 Atom", exact: true })).toHaveAttribute("href", "/articles/feed.atom");
+  await expect(subscriptions.getByRole("link", { name: "订阅 RSS", exact: true })).toHaveAttribute("href", "/articles/feed.xml");
+  for (const [format, extension] of [["atom", "atom"], ["rss", "xml"]] as const) {
+    await expect(page.locator(`head link[rel="alternate"][type="application/${format}+xml"]`)).toHaveAttribute("href", `${tagStack.webBaseUrl}/articles/feed.${extension}`);
+    const response = await request.get(`${tagStack.webBaseUrl}/articles/feed.${extension}`);
+    expect(response.status()).toBe(200);
+    const body = await response.text();
+    const audit = await parseSubscription(page, body, format);
+    expect(audit.errors).toBe(0);
+    expect(audit.root).toBe(format === "atom" ? "feed" : "rss");
+    expect(audit.entries.length).toBeGreaterThan(0);
+    expect(audit.entries.length).toBeLessThanOrEqual(20);
+    // Newest first: nothing was published on this disposable stack after it.
+    expect(audit.entries[0].id).toBe(`${tagStack.webBaseUrl}/articles/${published.slug}`);
+    expect(audit.entries[0].title).toBe(title);
+    expect(body).not.toContain(draftTitle);
+  }
+  // Following the visible link works without JavaScript routing: it is a document, not a page.
+  const [download] = await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/articles/feed.atom")),
+    subscriptions.getByRole("link", { name: "订阅 Atom", exact: true }).click(),
+  ]);
+  expect(download.status()).toBe(200);
+});
