@@ -1,10 +1,8 @@
 import { Link } from "@/lib/framework/link.tsx";
 import { archivePath, articlePath, getMessages, type ArticleView, type Locale } from "@/lib/content.ts";
-import type { CategoryView } from "@/lib/api-content.ts";
 import { dateLabel, pad } from "@/lib/format.ts";
 import { heroCover, pickDefaultCover } from "@/lib/covers.ts";
 import { getUi } from "@/lib/ui-copy.ts";
-import { workTypes } from "@/lib/work-types.ts";
 import { HeroCanvas } from "@/components/motion/hero-canvas.tsx";
 import { HomeLatest, type LatestItem } from "@/components/home-latest.tsx";
 import { EmptyState, SectionHeading } from "@/components/ui/parts.tsx";
@@ -51,10 +49,11 @@ function ShelfRow({ article, locale, index, count }: { article: ArticleView; loc
  * ScrollSmoother content, because a fixed layer inside a transformed ancestor
  * is positioned against that ancestor rather than the viewport.
  *
- * Every derived list (the triptych, the shelf rows, the topic chips) is computed
- * here from the loaded articles and categories, so the loader stays I/O only.
+ * Every derived list (the triptych, the shelf rows) is computed here from the
+ * loaded articles, so the loader stays I/O only; the genre columns arrive
+ * already grouped because `/categories` groups the same window the same way.
  */
-export function HomePageView({ locale, featured, latest, popular, categories }: HomePageData) {
+export function HomePageView({ locale, featured, latest, popular, genres }: HomePageData) {
   const ui = getUi(locale);
   const messages = getMessages(locale);
   // Three shelves, three different reasons a work is on the page: an editor
@@ -68,9 +67,6 @@ export function HomePageView({ locale, featured, latest, popular, categories }: 
   const selectedRest = fallback ? [] : curated.slice(3, 6);
   const latestRest = fallback ? latest.slice(3) : latest.slice(0, 6);
   const base = locale === "en" ? "/en" : "";
-  const topics: { key: string; label: string; href: string }[] = categories.length
-    ? categories.map((category) => ({ key: category.slug, label: category.name, href: `${base}/categories/${category.slug}` }))
-    : workTypes.map((type) => ({ key: type, label: messages.workTypeLabels[type], href: `${archivePath(locale)}?type=${type}` }));
   const unit = ui.home.marquee;
   const latestItems: LatestItem[] = latestRest.map((article: ArticleView, index) => {
     const cover = pickDefaultCover(article.slug);
@@ -163,13 +159,39 @@ export function HomePageView({ locale, featured, latest, popular, categories }: 
         </section>
       ) : null}
 
+      {/*
+        The three genres (ADR 0054), each with its newest works. The section
+        keeps the `#topics` anchor because the header's 分类 link scrolls to it
+        on the home page. A genre with nothing in the window keeps its column
+        and says so: three columns that become two would read as a layout bug.
+      */}
       <section className="nw-top" id="topics" aria-label={ui.home.topics}>
         <div style={{ maxWidth: 1280, margin: "0 auto" }}>
-          <div className="nw-m" style={{ marginBottom: 40 }}>{ui.home.topics} / {ui.home.topicsEn}</div>
-          <div>
-            {topics.map((topic, index) => (
-              <Link key={topic.key} className="nw-tp" href={topic.href} data-reveal="wipe">{topic.label}<sup>{pad(index + 1)}</sup></Link>
-            ))}
+          <div className="nw-m" style={{ marginBottom: 40 }}>{locale === "en" ? ui.home.topics : `${ui.home.topics} / ${ui.home.topicsEn}`}</div>
+          <div className="nw-gen" data-home-genres>
+            {genres.map((genre, index) => {
+              const label = messages.workTypeLabels[genre.type];
+              const href = `${archivePath(locale)}?type=${genre.type}`;
+              return (
+                <div key={genre.type} className="nw-gen-col" data-genre={genre.type}>
+                  <Link className="nw-tp" href={href} data-reveal="wipe">{label}<sup>{pad(index + 1)}</sup></Link>
+                  <p className="nw-m">{ui.genres.count(genre.count, genre.countIsLowerBound)}</p>
+                  {genre.newest.length ? (
+                    <ol className="nw-gen-list">
+                      {genre.newest.map((article) => (
+                        <li key={article.slug}>
+                          <Link href={articlePath(article.slug, locale)}>
+                            <span className="nw-t">{article.title}</span>
+                            <span className="nw-m">{article.author.displayName} · {dateLabel(article.publishedAt, locale)}</span>
+                          </Link>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : <p className="nw-gen-empty">{ui.home.genreEmpty}</p>}
+                  {genre.count ? <Link className="nw-gen-all" href={href}>{ui.genres.all(label)} <span aria-hidden="true">→</span></Link> : null}
+                </div>
+              );
+            })}
           </div>
           <Link className="nw-go" href={base ? `${base}/categories` : "/categories"}>{ui.home.allTopics} <span aria-hidden="true">→</span></Link>
         </div>

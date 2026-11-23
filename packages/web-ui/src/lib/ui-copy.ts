@@ -9,7 +9,7 @@ function zh() {
     bell: { label: "通知", empty: "暂无通知", hint: "登录后，你关注的作者与讨论提醒会出现在这里。", signIn: "登录", loading: "载入中…", error: "通知暂时无法载入，请稍后重试。", markRead: "标记已读", markAllRead: "全部标为已读", unread: "条未读" },
     home: {
       eyebrow: "独立文学出版 · 阅读 · 交流", tagline: "为值得认真阅读的作品，留出位置。", start: "开始阅读", selected: "精选", selectedEn: "Selected",
-      latest: "最新", latestEn: "Latest", topics: "主题", topicsEn: "Topics", allWorks: "全部作品", allTopics: "探索全部分类", empty: "还没有发表的作品。",
+      latest: "最新", latestEn: "Latest", topics: "分类", topicsEn: "Genres", allWorks: "全部作品", allTopics: "按分类浏览", genreEmpty: "还没有发表的作品。", empty: "还没有发表的作品。",
       // The shelf is picked by an editor, and says so — otherwise a reader cannot
       // tell the difference between "chosen" and "just the newest three".
       selectedNote: "由编辑挑选并排序", selectedFallback: "编辑还没有安排精选，下面是最近发表的作品。",
@@ -164,7 +164,7 @@ function en(): UiCopy {
     bell: { label: "Notifications", empty: "No notifications", hint: "Sign in to see reminders from the authors and discussions you follow.", signIn: "Sign in", loading: "Loading…", error: "Notifications could not be loaded. Please try again.", markRead: "Mark read", markAllRead: "Mark all read", unread: "unread" },
     home: {
       eyebrow: "INDEPENDENT LITERARY PUBLISHING", tagline: "Independent publishing for writing worth reading slowly.", start: "Start reading", selected: "Selected", selectedEn: "Selected",
-      latest: "Latest", latestEn: "Latest", topics: "Topics", topicsEn: "Topics", allWorks: "All works", allTopics: "Explore all topics", empty: "Nothing has been published yet.",
+      latest: "Latest", latestEn: "Latest", topics: "Genres", topicsEn: "Genres", allWorks: "All works", allTopics: "Browse by genre", genreEmpty: "Nothing published yet.", empty: "Nothing has been published yet.",
       selectedNote: "Chosen and ordered by the editors", selectedFallback: "The editors have not arranged a selection yet — these are the most recent works.",
       popular: "Most saved", popularEn: "Most saved", saves: (n: number) => `${n} ${n === 1 ? "save" : "saves"}`,
       marquee: ["No Wave", "Archive", "Index", "Read slowly"], issue: "VOL. 01", scroll: "Scroll to read",

@@ -777,12 +777,14 @@ test("search is server-rendered, no-store and excluded from indexing", async () 
 });
 
 /**
- * The home page is the one page allowed four calls, and it is worth saying why:
- * three shelves (the editor's pick, the newest, the most saved) plus the topic
- * chips are four different upstream queries that cannot be folded into each
- * other — "most saved" is a server-side ordering over every work ever saved, not
- * something the page can derive from the nine newest. They are issued together,
- * so the page pays the slowest of them, not the sum.
+ * The home page is the one page allowed three calls, and it is worth saying
+ * why: its shelves (the editor's pick, the newest, the most saved) are three
+ * different upstream queries that cannot be folded into each other — "most
+ * saved" is a server-side ordering over every work ever saved, not something
+ * the page can derive from the newest. The genre columns (ADR 0054) are drawn
+ * from the same newest window as the "latest" row, so they cost nothing extra.
+ * The calls are issued together, so the page pays the slowest of them, not the
+ * sum.
  *
  * Search is allowed three, for the same reason in miniature: it is three tabs,
  * each fed by the endpoint that owns its domain — works, authors, categories —
@@ -793,7 +795,7 @@ test("search is server-rendered, no-store and excluded from indexing", async () 
  * Every other page is two, and the directory is one.
  */
 const API_CALL_BUDGET: ReadonlyArray<readonly [string, number]> = [
-  ["/", 4],
+  ["/", 3],
   ["/articles", 2],
   ["/articles?q=抵抗", 2],
   ["/authors", 1],
@@ -913,6 +915,16 @@ test("home is server-rendered from the shared home view for both locales", async
   assert.match(result.body, /nw-tri/);
   assert.match(result.body, /id="topics"/);
   assert.match(result.body, /可移植的文学基础设施/);
+  // The three genre columns replace the editor-category chips (ADR 0054): each
+  // genre keeps its column even when empty, and links to the filtered archive.
+  const genres = result.body.slice(result.body.indexOf("data-home-genres"));
+  for (const type of ["novel", "poetry", "other"]) {
+    assert.match(genres, new RegExp(`data-genre="${type}"[\\s\\S]*?href="/articles\\?type=${type}"`));
+  }
+  assert.match(genres, /data-genre="novel"[\s\S]*?href="\/articles\/reading-as-resistance"[\s\S]*?data-genre="poetry"/);
+  assert.match(genres, /data-genre="poetry"[\s\S]*?还没有发表的作品。[\s\S]*?data-genre="other"/);
+  assert.match(genres, /data-genre="other"[\s\S]*?href="\/articles\/portable-web-foundation"/);
+  assert.doesNotMatch(result.body, /href="\/categories\/(essays|fiction)"/);
   assert.match(result.body, /href="\/articles\/portable-web-foundation"/);
   // The site root is published as the bare origin (no trailing slash);
   // `routerUrl()` in app/lib/meta.ts spells it that way. The hreflang target is
