@@ -220,7 +220,10 @@ export async function runNotionSeed(args: SeedArgs, deps: { fetchBundle?: () => 
 
   const state = await readState(args.state);
   const { works, issues: groupingIssues } = groupNotionWorks(bundle.pages);
-  const plan = planNotionSeed({ works, state });
+  // A page seeded before the importer inferred languages was written as zh-CN
+  // whatever it said; its state entry is the edition that exists, so keep it.
+  const localeByPage = new Map(Object.entries(state.pages).map(([pageId, page]) => [pageId, page.locale]));
+  const plan = planNotionSeed({ works, state, localeByPage });
   const outcomes: SeedOutcome[] = [];
 
   for (const refused of plan.refused) {

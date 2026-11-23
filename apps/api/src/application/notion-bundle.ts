@@ -339,6 +339,14 @@ export function planNotionSeed(input: {
   works: readonly NotionWork[];
   state: NotionSeedState;
   options?: NotionImportOptions;
+  /**
+   * The locale an earlier import gave a standalone page, by page id. It wins
+   * over the language the page is inferred to be in (`inferEditionLocale`): a
+   * re-import updates the edition that exists and never moves it to another
+   * locale. Callers pass only what they know exists — the importer the
+   * pre-inference `zh-CN` links, the seed CLI its state file.
+   */
+  localeByPage?: ReadonlyMap<string, string>;
 }): SeedPlan {
   const works: PlannedWork[] = [];
   const refused: SeedPlan["refused"] = [];
@@ -350,10 +358,19 @@ export function planNotionSeed(input: {
       }
       continue;
     }
+    // The `English` relation already says which edition is which: the page
+    // that points at an English page is the Chinese one, whatever its text
+    // looks like. Only a page with no translation is labelled by its language.
+    const kept = work.translations.length === 0 && input.options?.locale === undefined ? input.localeByPage?.get(work.primary.id) : undefined;
+    const primaryOptions = kept !== undefined
+      ? { ...input.options, locale: kept }
+      : work.translations.length > 0 && input.options?.locale === undefined
+        ? { ...input.options, locale: "zh-CN" }
+        : input.options;
     const primary = articleDraftFromNotionPage({
       page: work.primary as NotionPageLike,
       blocks: work.primary.blocks,
-      options: input.options,
+      options: primaryOptions,
     });
     if (primary.draft === null) {
       refused.push({ pageId: work.primary.id, title: titleOf(work.primary), issues: primary.issues });

@@ -32,6 +32,7 @@
  */
 import { slugifyArticleTitle } from "../domain/article-slug.ts";
 import { validateArticleBlocks } from "../domain/article.ts";
+import { inferEditionLocale } from "../domain/edition-language.ts";
 
 /** Bumped when a stored draft changes shape; import runs record the version. */
 export const NOTION_INTERCHANGE_VERSION = 1;
@@ -606,7 +607,12 @@ export function articleDraftFromNotionPage(input: {
 
   const summary = notionPlainText(asRichText(propertyOf(input.page, names.summary)?.rich_text)).trim();
   const declaredSlug = notionPlainText(asRichText(propertyOf(input.page, names.slug)?.rich_text)).trim();
-  const locale = options.locale ?? "zh-CN";
+  // A page that does not say which edition it is gets the language it is
+  // written in (`inferEditionLocale`): before, every such page was `zh-CN`,
+  // and an author's English-only work was shown on the Chinese home and was
+  // missing from the English one. An explicit `locale` — a linked English page,
+  // or the primary of a work that has one — still wins.
+  const locale = options.locale ?? inferEditionLocale({ title, summary, contentBlocks: converted.blocks });
   let slug: string;
   if (/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(declaredSlug)) {
     slug = declaredSlug;

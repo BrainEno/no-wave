@@ -40,8 +40,10 @@ for (const provider of integrityProviders) {
     }
     const before = await f.query("SELECT id, slug, status, created_at, updated_at, published_at FROM articles ORDER BY id");
 
-    if (f.db) assert.deepEqual(await runSqliteMigrations(f.db), [version]);
-    else assert.deepEqual((await runMigrations(f.sql!)).applied, [version]);
+    // Later migrations run in the same pass; they do not touch work types.
+    const pending = provider === "sqlite" ? [version, "0027_edition_language"] : [version, "0040_edition_language"];
+    if (f.db) assert.deepEqual(await runSqliteMigrations(f.db), pending);
+    else assert.deepEqual((await runMigrations(f.sql!)).applied, pending);
 
     // Nothing lost, nothing else touched: only the type moved.
     assert.deepEqual(await f.query("SELECT id, slug, status, created_at, updated_at, published_at FROM articles ORDER BY id"), before);

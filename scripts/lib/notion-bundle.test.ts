@@ -209,3 +209,22 @@ test("a bundle round-trips through JSON unchanged", () => {
 test("a bundle cannot contain duplicate source page identities", () => {
   assert.throws(() => parseNotionBundle(bundle([page("duplicate", "一"), page("duplicate", "二")])), /duplicate page IDs/);
 });
+
+test("a standalone page is labelled by its language; a work's pages by their relation", () => {
+  const english = page("poem-en", "Walls", {}, [paragraph("Through the plaster")]);
+  const chinese = page("poem-zh", "墙壁");
+  const plan = planNotionSeed({ works: groupNotionWorks([english, chinese]).works, state: emptyNotionSeedState() });
+  assert.deepEqual(plan.works.map((work) => [work.primary.pageId, work.primary.locale]).sort(), [["poem-en", "en"], ["poem-zh", "zh-CN"]]);
+
+  // The page that points at an English page is the Chinese edition, even if an
+  // author drafted it in English: two `en` editions of one work cannot exist.
+  const primary = page("pair-zh", "Draft title", { English: { type: "relation", relation: [{ id: "pair-en" }] } }, [paragraph("Draft body")]);
+  const translation = page("pair-en", "Walls", {}, [paragraph("Through the plaster")]);
+  const pair = planNotionSeed({ works: groupNotionWorks([primary, translation]).works, state: emptyNotionSeedState() });
+  assert.equal(pair.works[0]!.primary.locale, "zh-CN");
+  assert.deepEqual(pair.works[0]!.translations.map((edition) => edition.locale), ["en"]);
+
+  // An explicit locale and a known existing edition both win over the inference.
+  assert.equal(planNotionSeed({ works: groupNotionWorks([english]).works, state: emptyNotionSeedState(), options: { locale: "zh-TW" } }).works[0]!.primary.locale, "zh-TW");
+  assert.equal(planNotionSeed({ works: groupNotionWorks([english]).works, state: emptyNotionSeedState(), localeByPage: new Map([["poem-en", "zh-CN"]]) }).works[0]!.primary.locale, "zh-CN");
+});

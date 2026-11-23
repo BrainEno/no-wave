@@ -45,7 +45,7 @@ people's databases, not because this one needs it.
 | `title` | the property whose type is `title` | trimmed; a page without one is refused (`empty-title`) |
 | `summary` | `Excerpt` (name configurable) | truncated to 2000 characters |
 | `slug` | `Slug` → title | an already-ASCII slug is kept; anything else is transliterated (`slug-derived`) |
-| `locale` | caller's `locale` option | default `zh-CN`; an English edition is imported with `locale: "en"` |
+| `locale` | caller's `locale` option → the page's language | a page that another page's `English` relation points at is `en`, the page pointing at it `zh-CN`; a page with no relation is `en` when no Han/kana/hangul character appears anywhere in it and it has Latin text to read, otherwise `zh-CN` (`inferEditionLocale`, [ADR 0055](../architecture/decisions/0055-edition-language-from-text.md)) |
 | `publish` | `Published` | `options.publish` overrides it |
 | `publishedAt` | `Date` | UTC; a published page with no `Date` uses the injected clock |
 | `tags` | `Tags` | names trimmed, empties dropped |

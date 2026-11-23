@@ -108,8 +108,10 @@ for (const provider of ["sqlite", "postgres"] as const) {
       assert.ok(expected.includes(ownerMigration[provider]));
       assert.deepEqual(await f.migrate(), expected);
       assert.deepEqual(await f.migrate(), []);
-      await assert.rejects(f.insertLink("legacy-conflict", "en", b.id, f.actors[1]), (error) => databaseOwnerConflict(error, provider));
-      await f.insertLink("legacy-conflict", "en", a.id, f.actors[0]);
+      // zh-TW, not en: the edition-language backfill (0027/0040) has moved the
+      // English fixture's surviving zh-CN link to en.
+      await assert.rejects(f.insertLink("legacy-conflict", "zh-TW", b.id, f.actors[1]), (error) => databaseOwnerConflict(error, provider));
+      await f.insertLink("legacy-conflict", "zh-TW", a.id, f.actors[0]);
       assert.equal((await f.rows("SELECT DISTINCT owner_id FROM external_content_links")).length, 1);
     } finally { await f.close(); }
   });
@@ -165,7 +167,7 @@ for (const provider of ["sqlite", "postgres"] as const) {
       try {
         const sharedId = randomUUID();
         const tags = [`owner-a-${randomUUID()}`, `owner-b-${randomUUID()}`];
-        const sources = [sourceBundle(sourcePage(sharedId, "Chinese claim", [tags[0]!])), bilingualBundle(sharedId, [tags[1]!])] as const;
+        const sources = [sourceBundle(sourcePage(sharedId, "中文认领", [tags[0]!])), bilingualBundle(sharedId, [tags[1]!])] as const;
         const plans = await Promise.all(sources.map((source, index) => f.preview(source, f.actors[index]!)));
         assert.deepEqual(plans.map((plan) => plan.summary.create), [1, 1]);
         const { journal, sessionId } = await f.record();

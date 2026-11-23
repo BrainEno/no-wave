@@ -149,6 +149,66 @@ async function readLinks(
   return { links, otherLocales, allLinks };
 }
 
+/**
+ * The locale each standalone page was imported in before, when it differs from
+ * the one it is now inferred to be in.
+ *
+ * A page with no `English` relation is labelled by the language it is written
+ * in (`inferEditionLocale`). That label decides where a *new* work goes; it
+ * must not move an edition that already exists. Before the inference, every
+ * standalone page was imported as `zh-CN`; when such a page — now inferred to
+ * be English — is linked as `zh-CN` and nothing else, the plan keeps `zh-CN`,
+ * so the re-import updates the edition it made instead of refusing the page as
+ * "imported in another locale". Relabelling existing editions is migration
+ * 0027/0040's job, done once and with the same rule.
+ */
+async function keptLocales(deps: NotionImportDeps, works: readonly PlannedWork[]): Promise<Map<string, string>> {
+  const kept = new Map<string, string>();
+  for (const work of works) {
+    if (work.translations.length > 0) continue;
+    const found = (await Promise.all([...SUPPORTED_ARTICLE_LOCALES].map(async (locale) =>
+      (await deps.getExternalContentLink({ provider: NOTION_IMPORT_PROVIDER, externalId: work.primary.pageId, locale })) ? locale : null)))
+      .filter((locale): locale is string => locale !== null);
+    // Only the case the old default created: an English page linked as zh-CN.
+    // Every other mismatch keeps its refusal ("provenance in another locale").
+    if (work.primary.locale === "en" && found.length === 1 && found[0] === "zh-CN") kept.set(work.primary.pageId, "zh-CN");
+  }
+  return kept;
+}
+
+/**
+ * Standalone pages that are the English edition of a work with a Chinese one.
+ *
+ * Selecting a work's English page without its Chinese page used to be refused
+ * because the page was planned as `zh-CN` and its link was `en`. Now that an
+ * English page is planned as `en`, the link matches — and the plan would treat
+ * the translation as the work's primary edition, applying its `Published`
+ * box (unticked on English rows in the author's database) and its tags to the
+ * whole work. Such a page is refused the same way as before: the author is
+ * asked to select it together with the work's Chinese page.
+ */
+async function translationsSelectedAlone(
+  deps: NotionImportDeps,
+  actorId: string,
+  works: readonly PlannedWork[],
+  links: ReadonlyMap<string, StoredExternalContentLink>,
+): Promise<Set<string>> {
+  const alone = new Set<string>();
+  for (const work of works) {
+    if (work.translations.length > 0 || work.primary.locale !== "en") continue;
+    const link = links.get(work.primary.pageId);
+    if (!link || link.ownerId !== actorId) continue;
+    for (const locale of SUPPORTED_ARTICLE_LOCALES) {
+      if (locale === "en") continue;
+      if (await deps.getMyArticle({ articleId: link.articleId, actorId, locale })) {
+        alone.add(work.primary.pageId);
+        break;
+      }
+    }
+  }
+  return alone;
+}
+
 /** The planner's second pass: what a previous import already knows. */
 function stateFromLinks(links: Map<string, StoredExternalContentLink>): NotionSeedState {
   const state = emptyNotionSeedState();
@@ -213,8 +273,10 @@ export async function importNotionBundle(input: {
   const createKeyArticles = new Map<string, string | null>();
 
   const { works } = groupNotionWorks(bundle.pages);
-  const firstPass = planNotionSeed({ works, state: emptyNotionSeedState() });
+  const localeByPage = await keptLocales(input.deps, planNotionSeed({ works, state: emptyNotionSeedState() }).works);
+  const firstPass = planNotionSeed({ works, state: emptyNotionSeedState(), localeByPage });
   const { links, otherLocales, allLinks } = await readLinks(input.deps, firstPass.works);
+  const translationsAlone = await translationsSelectedAlone(input.deps, input.actorId, firstPass.works, links);
   const recovered = new Set<string>();
   const recoveryConflicts = new Set<string>();
   for (const work of firstPass.works) {
@@ -250,14 +312,14 @@ export async function importNotionBundle(input: {
     const linked = editions.map((edition) => links.get(edition.pageId)).filter((link): link is StoredExternalContentLink => !!link);
     if (allLinks.some((link) => link.ownerId !== input.actorId && editions.some((edition) => edition.pageId === link.externalId))) {
       provenanceConflicts.set(work.primary.pageId, "this page is already imported into another account");
-    } else if (editions.some((edition) => otherLocales.has(edition.pageId))) {
+    } else if (editions.some((edition) => otherLocales.has(edition.pageId)) || translationsAlone.has(work.primary.pageId)) {
       provenanceConflicts.set(work.primary.pageId, "this page already has import provenance in another locale; review the original work and select the matching pages");
     } else if (new Set(linked.map((link) => link.articleId)).size > 1 ||
       (!links.has(work.primary.pageId) && linked.length > 0)) {
       provenanceConflicts.set(work.primary.pageId, "the selected pages have conflicting import provenance; review the original works before importing");
     }
   }
-  const plan = planNotionSeed({ works, state: stateFromLinks(links) });
+  const plan = planNotionSeed({ works, state: stateFromLinks(links), localeByPage });
 
   // Imports made before image copying existed can have the same source digest
   // while still containing temporary URLs. Offer an update, not a false skip.
