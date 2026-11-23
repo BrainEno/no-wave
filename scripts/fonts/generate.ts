@@ -1,11 +1,22 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { create } from "fontkit";
 import subsetFont from "subset-font";
-import { FONT_SOURCES, fontSourceReceipt, type FontSource } from "./font-sources.ts";
+import {
+  FONT_SOURCES,
+  fontSourceReceipt,
+  type FontSource,
+} from "./font-sources.ts";
 import { downloadPinnedFontBlob } from "./source-download.ts";
 import {
   assertFontReproduction,
@@ -18,9 +29,16 @@ import {
   type FontAsset,
   type FontManifest,
 } from "../lib/font-assets.ts";
-import { applicationRepertoires, fontPartitions, staleFontRecipe, verifyFontRecipe, type Repertoires } from "./repertoires.ts";
+import {
+  applicationRepertoires,
+  fontPartitions,
+  staleFontRecipe,
+  verifyFontRecipe,
+  type Repertoires,
+} from "./repertoires.ts";
 import {
   archiveTargetToCache,
+  cleanResidualFontAssets,
   clearFontCache,
   computeShardKey,
   readCachedShard,
@@ -36,7 +54,8 @@ const target = join(root, "packages/web-ui/src/styles/fonts");
 const stylesheet = join(root, "packages/web-ui/src/styles/fonts.css");
 const legacyCache = join(root, ".cache/font-sources");
 const cacheDirs = resolveFontCacheDirectories(root);
-const digest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
+const digest = (bytes: Uint8Array) =>
+  createHash("sha256").update(bytes).digest("hex");
 const MAX_SOURCE_BYTES = 32 * 1024 * 1024;
 const LICENSE_NAME_IDS = [0, 1, 2, 4, 6, 13, 14, 16, 17];
 
@@ -54,7 +73,12 @@ async function pinnedBlob(blob: string, expected: string): Promise<Buffer> {
       return bytes;
     }
   } catch (error) {
-    if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw error;
+    if (
+      !(error instanceof Error) ||
+      !("code" in error) ||
+      error.code !== "ENOENT"
+    )
+      throw error;
   }
 
   const bytes = await downloadPinnedFontBlob(blob, expected);
@@ -63,7 +87,11 @@ async function pinnedBlob(blob: string, expected: string): Promise<Buffer> {
   return bytes;
 }
 
-function assertExactCoverage(expected: readonly number[], actual: readonly number[], label: string): void {
+function assertExactCoverage(
+  expected: readonly number[],
+  actual: readonly number[],
+  label: string,
+): void {
   const a = [...new Set(actual)].sort((x, y) => x - y);
   const b = [...new Set(expected)].sort((x, y) => x - y);
   if (a.length !== b.length || a.some((point, index) => point !== b[index])) {
@@ -83,8 +111,14 @@ async function emitSource(
   const original = create(input);
   // U+0000 and other control mappings do not represent renderable text. Keep
   // every printable original scalar, including supplementary Han characters.
-  const all: number[] = original.characterSet.filter((point: number) => point >= 32 && !(point >= 0x7f && point <= 0x9f));
-  if (all.length !== source.characterCount || digest(Buffer.from([...all].sort((a, b) => a - b).join(","))) !== source.coverageSha256) {
+  const all: number[] = original.characterSet.filter(
+    (point: number) => point >= 32 && !(point >= 0x7f && point <= 0x9f),
+  );
+  if (
+    all.length !== source.characterCount ||
+    digest(Buffer.from([...all].sort((a, b) => a - b).join(","))) !==
+      source.coverageSha256
+  ) {
     throw new Error(`Unexpected upstream glyph repertoire: ${source.id}`);
   }
   const weights = fontSourceReceipt(source).weights;
@@ -92,10 +126,21 @@ async function emitSource(
   let cacheHits = 0;
   for (const weight of weights) {
     const partitions = fontPartitions(all, source, weight, repertoires);
-    const axis = weight === "400" ? 400 : weight === "500 700" ? { min: 500, max: 700 } : { min: 400, max: 700 };
+    const axis =
+      weight === "400"
+        ? 400
+        : weight === "500 700"
+          ? { min: 500, max: 700 }
+          : { min: 400, max: 700 };
     for (const shard of partitions) {
       const file = `${source.id}-${source.style}-${weight.replace(" ", "-")}-${shard.id}.woff2`;
-      const shardKey = computeShardKey(source.blob, weight, shard.id, shard.points, source.variable ? axis : undefined);
+      const shardKey = computeShardKey(
+        source.blob,
+        weight,
+        shard.id,
+        shard.points,
+        source.variable ? axis : undefined,
+      );
       let bytes = force ? null : await readCachedShard(shardKey, cacheDirs);
       if (bytes) {
         cacheHits += 1;
@@ -122,10 +167,19 @@ async function emitSource(
       await writeFile(join(directory, file), bytes);
       result.push(face);
     }
-    assertExactCoverage(all, partitions.flatMap((shard) => shard.points), `${source.id}/${weight}/complete`);
+    assertExactCoverage(
+      all,
+      partitions.flatMap((shard) => shard.points),
+      `${source.id}/${weight}/complete`,
+    );
   }
-  const cacheHitNote = cacheHits > 0 ? ` (${cacheHits}/${result.length} faces from computer cache)` : "";
-  console.log(`${source.id}: ${all.length} codepoints, ${result.length} faces, ${result.reduce((sum, face) => sum + face.byteLength, 0)} bytes${cacheHitNote}`);
+  const cacheHitNote =
+    cacheHits > 0
+      ? ` (${cacheHits}/${result.length} faces from computer cache)`
+      : "";
+  console.log(
+    `${source.id}: ${all.length} codepoints, ${result.length} faces, ${result.reduce((sum, face) => sum + face.byteLength, 0)} bytes${cacheHitNote}`,
+  );
   return result;
 }
 
@@ -136,8 +190,15 @@ async function main(): Promise<void> {
   const force = args.includes("--force");
   const clearCacheMode = args.includes("--clear-cache");
 
-  if (args.some((arg) => !["--check", "--prepare", "--force", "--clear-cache"].includes(arg))) {
-    throw new Error("Usage: node scripts/fonts/generate.ts [--check|--prepare|--force|--clear-cache]");
+  if (
+    args.some(
+      (arg) =>
+        !["--check", "--prepare", "--force", "--clear-cache"].includes(arg),
+    )
+  ) {
+    throw new Error(
+      "Usage: node scripts/fonts/generate.ts [--check|--prepare|--force|--clear-cache]",
+    );
   }
 
   if (clearCacheMode) {
@@ -168,11 +229,21 @@ async function main(): Promise<void> {
     // on the very condition it is asked to fix: it skips the fast restore and
     // regenerates from the pinned, checksummed sources instead.
     const staleRecipe = await staleFontRecipe(manifest, root);
-    const staleSources = JSON.stringify(manifest.sources) !== JSON.stringify(FONT_SOURCES.map(fontSourceReceipt));
+    const staleSources =
+      JSON.stringify(manifest.sources) !==
+      JSON.stringify(FONT_SOURCES.map(fontSourceReceipt));
     if (checkOnly || prepareMode) {
       // Both inspections validate the manifest before it reaches the recipe.
-      if (staleRecipe) throw new Error(`Stale font recipe for ${staleRecipe}; run pnpm fonts:generate.`);
-      if (staleSources) throw new Error("Font source receipts differ from the pinned source catalog.");
+      if (staleRecipe) {
+        throw new Error(
+          `Stale font recipe for ${staleRecipe}; run pnpm fonts:generate.`,
+        );
+      }
+      if (staleSources) {
+        throw new Error(
+          "Font source receipts differ from the pinned source catalog.",
+        );
+      }
     }
 
     if (checkOnly) {
@@ -181,26 +252,49 @@ async function main(): Promise<void> {
     }
 
     if (staleRecipe || staleSources) {
-      console.log(`Font ${staleRecipe ? `recipe changed (${staleRecipe})` : "source receipts changed"}; regenerating from the pinned sources.`);
+      console.log(
+        `Font ${staleRecipe ? `recipe changed (${staleRecipe})` : "source receipts changed"}; regenerating from the pinned sources.`,
+      );
     } else if (!force) {
       // Try fast restore from local computer cache
-      const { restored } = await restoreBundleFromCache(manifest, target, cacheDirs);
-      const needsGeneration = await fontBundleNeedsGeneration(data, target, rawCss);
+      const { restored } = await restoreBundleFromCache(
+        manifest,
+        target,
+        cacheDirs,
+      );
+      let needsGeneration = false;
+      try {
+        needsGeneration = await fontBundleNeedsGeneration(data, target, rawCss);
+      } catch {
+        // If inspection failed (e.g. residual dirty/corrupted/unowned assets in target),
+        // clean residual font assets and mark for generation to self-heal
+        await cleanResidualFontAssets(manifest, target);
+        needsGeneration = true;
+      }
       if (!needsGeneration) {
         if (rawCss.includes("\r")) {
           await writeFile(stylesheet, renderFontCss(manifest.faces));
         }
         if (rawManifest.includes("\r")) {
-          await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+          await writeFile(
+            manifestPath,
+            `${JSON.stringify(manifest, null, 2)}\n`,
+          );
         }
         await archiveTargetToCache(manifest, target, cacheDirs);
         if (restored > 0) {
-          console.log(`First-party fonts are ready; restored ${restored} faces from local computer cache without regeneration.`);
+          console.log(
+            `First-party fonts are ready; restored ${restored} faces from local computer cache without regeneration.`,
+          );
         } else {
-          console.log("First-party fonts are ready; verified offline without regeneration.");
+          console.log(
+            "First-party fonts are ready; verified offline without regeneration.",
+          );
         }
         return;
       }
+    } else {
+      await cleanResidualFontAssets(manifest, target);
     }
   } else if (checkOnly) {
     throw new Error("Font manifest or stylesheet is missing; cannot check.");
@@ -212,7 +306,7 @@ async function main(): Promise<void> {
     const faces: FontAsset[] = [];
     const repertoires = await applicationRepertoires(root);
     for (const source of FONT_SOURCES) {
-      faces.push(...await emitSource(source, staging, repertoires, force));
+      faces.push(...(await emitSource(source, staging, repertoires, force)));
     }
     const manifest: FontManifest = {
       version: 1,
@@ -221,7 +315,10 @@ async function main(): Promise<void> {
       faces,
     };
     const css = renderFontCss(faces);
-    const receipts = { manifest: `${JSON.stringify(manifest, null, 2)}\n`, css };
+    const receipts = {
+      manifest: `${JSON.stringify(manifest, null, 2)}\n`,
+      css,
+    };
     await writeFile(join(staging, "manifest.json"), receipts.manifest);
     await verifyFontBundle(manifest, staging, css);
     if (expected) {
@@ -230,16 +327,32 @@ async function main(): Promise<void> {
         manifest: await readFile(join(target, "manifest.json"), "utf8"),
         css: await readFile(stylesheet, "utf8"),
       });
-      await fontBundleNeedsGeneration(JSON.parse(expected.manifest), target, expected.css);
+      try {
+        await fontBundleNeedsGeneration(
+          JSON.parse(expected.manifest),
+          target,
+          expected.css,
+        );
+      } catch {
+        await cleanResidualFontAssets(manifest, target);
+        await fontBundleNeedsGeneration(
+          JSON.parse(expected.manifest),
+          target,
+          expected.css,
+        );
+      }
       await verifyFontRecipe(manifest, root);
     }
     await rm(target, { recursive: true, force: true });
     await rename(staging, target);
-    if (!expected || expected.css.includes("\r")) await writeFile(stylesheet, css);
+    if (!expected || expected.css.includes("\r"))
+      await writeFile(stylesheet, css);
 
     // Archive all freshly emitted faces to local computer cache
     await archiveTargetToCache(manifest, target, cacheDirs);
-    console.log(`Prepared ${faces.length} first-party font faces (cached locally). WOFF2 files stay ignored; review receipts, licenses, manifest and CSS for intentional recipe changes.`);
+    console.log(
+      `Prepared ${faces.length} first-party font faces (cached locally). WOFF2 files stay ignored; review receipts, licenses, manifest and CSS for intentional recipe changes.`,
+    );
   } finally {
     await rm(staging, { recursive: true, force: true });
   }
