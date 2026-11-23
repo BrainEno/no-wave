@@ -8,8 +8,10 @@ picomatch 的 parser、正则编译器或漏洞补丁。`scan.ts` 只生成路�
 
 ## 使用边界
 
-仅供当前仓库的 Vite、tinyglobby、fdir、fast-glob、micromatch、Prettier 和
-Playwright 工具链使用；不是新的业务层公共模块，也不进入浏览器包。
+仅供当前仓库的 Vite、tinyglobby、fdir、Stylelint、Prettier 和 Playwright
+工具链使用（Stylelint 18 起直接调用 `picomatch`，依赖树里已没有 fast-glob /
+micromatch；Prettier 内置的 micromatch 副本另由 `scripts/glob-consumers.test.ts`
+检查）；不是新的业务层公共模块，也不进入浏览器包。
 `pnpm-workspace.yaml` 的 `picomatch` override 保留调用者的旧模块解析键，
 实际解析到本包的真实名称和 `0.0.0` 私有版本。原来两个官方 picomatch
 发行物已经从锁文件的 packages/snapshots 删除；没有伪造“官方安全版本”。
