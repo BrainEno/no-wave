@@ -5,7 +5,6 @@ import { dateLabel, pad } from "@/lib/format.ts";
 import { heroCover, pickDefaultCover } from "@/lib/covers.ts";
 import { getUi } from "@/lib/ui-copy.ts";
 import { HeroCanvas } from "@/components/motion/hero-canvas.tsx";
-import { PageLoader } from "@/components/motion/page-loader.tsx";
 import { HomeLatest, type LatestItem } from "@/components/home-latest.tsx";
 import { EmptyState, SectionHeading } from "@/components/ui/parts.tsx";
 import type { HomePageData } from "@/lib/public-pages.ts";
@@ -43,11 +42,13 @@ function ShelfRow({ article, locale, index, count }: { article: ArticleView; loc
  * Presentational home page.
  *
  * Synchronous and data-in/props-out, so every route that mounts it renders the
- * same tree. The three client components it composes — `PageLoader` (intro
- * animation), `HeroCanvas` (WebGL) and `HomeLatest` (hover/focus image switch) —
- * are framework-neutral, reaching the router only through
- * `@/lib/framework/link.tsx`; hydration is what makes them interactive, and that
- * is exactly what Phase 4 covers.
+ * same tree. The two client components it composes — `HeroCanvas` (WebGL) and
+ * `HomeLatest` (hover/focus image switch) — are framework-neutral, reaching the
+ * router only through `@/lib/framework/link.tsx`; hydration is what makes them
+ * interactive, and that is exactly what Phase 4 covers. The intro curtain
+ * (`PageLoader`) is not here: it is mounted by the site chrome, outside the
+ * ScrollSmoother content, because a fixed layer inside a transformed ancestor
+ * is positioned against that ancestor rather than the viewport.
  *
  * Every derived list (the triptych, the shelf rows, the topic chips) is computed
  * here from the loaded articles and categories, so the loader stays I/O only.
@@ -77,7 +78,6 @@ export function HomePageView({ locale, featured, latest, popular, categories }: 
 
   return (
     <main lang={locale} id="top" tabIndex={-1}>
-      <PageLoader label="载入中 · LOADING" />
       <header className="nw-hero" data-hero style={{ userSelect: "none", touchAction: "none" }}>
         <img className="nw-hero-bg" src={heroCover.src} alt="" width={heroCover.width} height={heroCover.height} fetchPriority="high" draggable={false} style={{ userSelect: "none", pointerEvents: "none" }} />
         <HeroCanvas src={heroCover.src} />

@@ -23,6 +23,7 @@ import { homePath, type Locale } from "@/lib/content.ts";
 import { getUi } from "@/lib/ui-copy.ts";
 import { tagIndexPath } from "@/lib/tag-discovery.ts";
 import { motionState } from "@/lib/motion-state.ts";
+import { PageLoader } from "@/components/motion/page-loader.tsx";
 import { setupPageMotion } from "@/components/motion/page-motion.ts";
 import { ReadingShelfProvider } from "@/components/reader/reading-shelf-provider.tsx";
 import { readingListPath } from "@/lib/reading-shelf.ts";
@@ -277,6 +278,16 @@ function SiteChromeContent({ children }: { children: ReactNode }) {
     <>
       <a className="nw-skip" href="#top">{locale === "en" ? "Skip to main content" : "跳到正文"}</a>
       {shouldPaintGrain(pathname) ? <GrainCanvas /> : null}
+      {/*
+        The home intro curtain lives here, beside the rail and the pill, and not
+        inside the home page. ScrollSmoother gives #smooth-content a transform,
+        and a transformed ancestor becomes the containing block of every
+        `position: fixed` descendant: inside it the curtain was as tall as the
+        whole page, its 000→100 counter was centred some 1400px below the fold,
+        and its z-index only competed inside the content, so the rail and the
+        pill were painted over it. Out here `fixed` means the viewport again.
+      */}
+      {onHome ? <PageLoader label="载入中 · LOADING" /> : null}
       <header data-tool={tool ? "" : undefined}>
       <Link className="nw-rail" href={homePath(locale)} aria-label={`${ui.rail} — ${ui.homeAria}`}>{ui.rail}</Link>
       <nav className="nw-pill" aria-label={ui.nav.primary} lang={locale}>

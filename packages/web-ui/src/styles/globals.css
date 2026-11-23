@@ -174,9 +174,8 @@ mark { background: var(--or); color: #140f0c; }
 .nw-load { position: fixed; inset: 0; z-index: 100; animation: nw-fail 0s 8s forwards; }
 @keyframes nw-fail { to { visibility: hidden; } }
 .nw-load .nw-cols { position: absolute; inset: 0; display: flex; }
-.nw-load .nw-col { flex: 1; background: #141211; border-right: 1px solid #2a2724; }
-.nw-load .nw-col:nth-child(3) { background: var(--or); }
-.nw-load .nw-ct { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: #f2eee6; mix-blend-mode: difference; }
+.nw-load .nw-col { flex: 1; background: #0f0d0c; border-right: 1px solid #2a2724; }
+.nw-load .nw-ct { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: #f2eee6; }
 .nw-cnt { font: 700 clamp(110px, 30vw, 440px)/.8 var(--f-ss); letter-spacing: -.05em; font-variant-numeric: tabular-nums; }
 
 /* ---------- 动效：只在读者没有要求减少动态时出现 ---------- */
