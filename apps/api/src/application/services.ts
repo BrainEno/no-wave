@@ -1,11 +1,13 @@
 import { createNotionImportPlanCodec, type NotionImportPlan } from "./notion-import-plan.ts";
 import { accessIssuerConfiguration } from "../security/authentication.ts";
+import { resolveFeaturedArticles } from "./featured-algorithm.ts";
 import {
   createPersistencePorts,
   type PersistenceAdapterContract,
   type PersistenceAdapterMethods,
   type PersistencePorts,
   type ArticleAuthorInput,
+  type ArticleListPageInput,
   type AuthorArticlesInput,
   type CreateTaxonomyInput,
   type DeleteTaxonomyInput,
@@ -84,7 +86,7 @@ export type ArticleViewResult = { counted: boolean; viewCount: number };
 /** Facade methods whose input or output differs from the raw port signature. */
 type ServiceOverrideName =
   | "createArticle" | "updateArticle" | "deleteArticle" | "listMyDeletedArticles"
-  | "restoreArticle" | "purgeExpiredArticles" | "setFeaturedArticles"
+  | "restoreArticle" | "purgeExpiredArticles" | "listFeaturedArticles" | "setFeaturedArticles"
   | "createTaxonomy" | "deleteTaxonomy";
 
 /**
@@ -109,6 +111,12 @@ export type ApplicationServices<A extends PersistenceAdapterMethods = Persistenc
     listMyDeletedArticles(input: AuthorArticlesInput): Promise<Array<StoredDeletedArticle & { purgesAt?: string }>>;
     restoreArticle(input: RestoreArticleInput): Promise<StoredArticle>;
     purgeExpiredArticles(input?: PurgeExpiredArticlesInput): Promise<PurgedArticlesResult>;
+    /**
+     * Resolves the featured shelf: editor-curated works take precedence; if no
+     * editor has curated the shelf, falls back to the default ranking algorithm
+     * (articles with higher word count rank first).
+     */
+    listFeaturedArticles(input?: ArticleListPageInput): Promise<StoredArticle[]>;
     /** `actorIsEditor` is decided here, not accepted from the transport. */
     setFeaturedArticles(input: Omit<SetFeaturedArticlesInput, "actorIsEditor">): Promise<StoredArticle[]>;
     createTaxonomy(input: Omit<CreateTaxonomyInput, "actorIsEditor">): Promise<StoredTaxonomy>;
@@ -266,7 +274,12 @@ export function createApplicationServices({
    * author's own words. The editor question is answered here — the only layer
    * that can see `EDITOR_USER_IDS` — and handed to persistence as a plain fact.
    * ADR 0016, decision 4: the featured shelf is editorial in both directions.
+   *
+   * Curated works take precedence; if no editor has curated the shelf, the default
+   * algorithm ranks published works by word count descending.
    */
+  const listFeaturedArticles = async (input?: ArticleListPageInput): Promise<StoredArticle[]> =>
+    resolveFeaturedArticles(ports.content, input);
   const setFeaturedArticles = async ({ actorId, ...input }: Omit<SetFeaturedArticlesInput, "actorIsEditor">): Promise<StoredArticle[]> => {
     const actorIsEditor = await isEditor({ actorId });
     return ports.content.setFeaturedArticles({ ...input, actorId, actorIsEditor });
@@ -496,6 +509,7 @@ export function createApplicationServices({
     ...ports.operations,
     isEditor,
     assignUserRole,
+    listFeaturedArticles,
     setFeaturedArticles,
     createTaxonomy,
     deleteTaxonomy,

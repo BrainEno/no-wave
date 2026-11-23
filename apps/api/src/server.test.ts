@@ -1932,6 +1932,48 @@ test("REST featured shelf is public to read and editorial to arrange", async () 
   });
 });
 
+test("REST featured shelf falls back to default word-count algorithm when uncurated and is overridden when curated", async () => {
+  const shortArticle = {
+    id: "art-short", authorId: "author-1", slug: "short-slug", workType: "short_story", status: "published",
+    locale: "zh-CN", title: "短篇", summary: "", contentBlocks: [{ id: "p1", type: "paragraph", text: "短小正文" }], // 4 chars
+    createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-02T00:00:00.000Z", publishedAt: "2026-01-02T00:00:00.000Z",
+    author: null, categories: [], tags: [], likeCount: 0, likedByViewer: false, viewCount: 0,
+  };
+  const longArticle = {
+    id: "art-long", authorId: "author-1", slug: "long-slug", workType: "novel", status: "published",
+    locale: "zh-CN", title: "长篇", summary: "", contentBlocks: [{ id: "p1", type: "paragraph", text: "这是一篇非常长非常具有深度的长篇巨作" }], // 18 chars
+    createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-02T00:00:00.000Z", publishedAt: "2026-01-02T00:00:00.000Z",
+    author: null, categories: [], tags: [], likeCount: 0, likedByViewer: false, viewCount: 0,
+  };
+
+  let curatedArticles = [];
+
+  await withServer(async (baseUrl) => {
+    // 1. Initially uncurated: algorithm prioritizes art-long (18 chars) over art-short (4 chars)
+    const fallbackRes = await fetch(baseUrl + "/api/v1/featured?locale=zh-CN");
+    assert.equal(fallbackRes.status, 200);
+    const fallbackBody = await fallbackRes.json();
+    assert.deepEqual(fallbackBody.data.map((item) => item.id), ["art-long", "art-short"]);
+
+    // 2. Editor curates shelf: sets art-short first, art-long second
+    curatedArticles = [shortArticle, longArticle];
+
+    // 3. Now curated: editor order takes precedence and overrides the algorithm
+    const curatedRes = await fetch(baseUrl + "/api/v1/featured?locale=zh-CN");
+    assert.equal(curatedRes.status, 200);
+    const curatedBody = await curatedRes.json();
+    assert.deepEqual(curatedBody.data.map((item) => item.id), ["art-short", "art-long"]);
+  }, {
+    env: authEnv,
+    store: {
+      async isSessionRevoked() { return false; },
+      async getUserRole() { return "member"; },
+      async listFeaturedArticles() { return curatedArticles; },
+      async listPublishedArticles() { return [shortArticle, longArticle]; },
+    },
+  });
+});
+
 test("REST public author profile reflects the optional viewer follow state", async () => {
   let received;
   await withServer(async (baseUrl) => {
