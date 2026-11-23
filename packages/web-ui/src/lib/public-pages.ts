@@ -1,6 +1,6 @@
 import type { ArticleView, AuthorView, Locale, WorkType } from "./content.ts";
 import { fixturePublicContent, type PublicContentSource, type AuthorSummary, type CategoryView } from "./api-content.ts";
-import { PAGE_SIZE, paginate } from "./work-types.ts";
+import { PAGE_SIZE, paginate, workTypes } from "./work-types.ts";
 
 /**
  * Public page data loaders.
@@ -171,23 +171,50 @@ export async function loadAuthorIndexPage(
   return { locale, query, page, authors: results.slice(0, AUTHOR_PAGE_SIZE), hasNextPage: results.length > AUTHOR_PAGE_SIZE };
 }
 
-export type CategoryIndexData = {
-  locale: Locale;
-  query: string;
-  page: number;
-  categories: CategoryView[];
-  hasNextPage: boolean;
+/**
+ * One of the three genres (ADR 0054) as the index pages show it: how many works
+ * it has and its newest few.
+ *
+ * The API has no work-type parameter, so this is computed from the same bounded
+ * window the archive's type filter already scans. When the window came back
+ * full there may be older works beyond it, and `countIsLowerBound` says so —
+ * the page then shows "40+" rather than claim an exact number it cannot know.
+ */
+export type GenreSummary = {
+  type: WorkType;
+  count: number;
+  countIsLowerBound: boolean;
+  newest: ArticleView[];
 };
 
+/** How many newest works each genre shows on the home page. */
+export const GENRE_NEWEST_LIMIT = 3;
+
+export function summarizeGenres(window: readonly ArticleView[], options: { windowFull: boolean; newest?: number }): GenreSummary[] {
+  const newest = options.newest ?? GENRE_NEWEST_LIMIT;
+  return workTypes.map((type) => {
+    const matches = window.filter((article) => article.workType === type);
+    return { type, count: matches.length, countIsLowerBound: options.windowFull, newest: matches.slice(0, newest) };
+  });
+}
+
+export type CategoryIndexData = {
+  locale: Locale;
+  genres: GenreSummary[];
+};
+
+/**
+ * `/categories`: the three genres with their counts, one call.
+ *
+ * The editor-maintained categories (ADR 0016) are no longer listed here: the
+ * site's classification is 小说 / 诗歌 / 其他文体. Their own pages,
+ * `/categories/:slug`, still answer for anyone who has a link.
+ */
 export async function loadCategoryIndexPage(
-  options: { locale: Locale; query?: string; page?: number }, source: PublicContentSource = fixturePublicContent,
+  options: { locale: Locale }, source: PublicContentSource = fixturePublicContent,
 ): Promise<CategoryIndexData> {
-  const locale = options.locale;
-  const query = options.query ?? "";
-  const page = options.page ?? 1;
-  const offset = (page - 1) * CATEGORY_PAGE_SIZE;
-  const results = await source.listPublicCategories({ locale, query, limit: CATEGORY_PAGE_SIZE + 1, offset });
-  return { locale, query, page, categories: results.slice(0, CATEGORY_PAGE_SIZE), hasNextPage: results.length > CATEGORY_PAGE_SIZE };
+  const window = await source.listPublicArticles({ locale: options.locale, sort: "latest", limit: ARCHIVE_TYPE_SCAN_LIMIT });
+  return { locale: options.locale, genres: summarizeGenres(window, { windowFull: window.length >= ARCHIVE_TYPE_SCAN_LIMIT, newest: 0 }) };
 }
 
 export type CategoryDetailData = {
@@ -230,7 +257,6 @@ export const HOME_FEATURED_LIMIT = 6;
  *  the newest works without repeating them in the "latest" row below. */
 export const HOME_LATEST_LIMIT = 9;
 export const HOME_POPULAR_LIMIT = 6;
-export const HOME_CATEGORY_LIMIT = 8;
 
 export type HomePageData = {
   locale: Locale;
@@ -238,27 +264,41 @@ export type HomePageData = {
   featured: ArticleView[];
   latest: ArticleView[];
   popular: ArticleView[];
-  categories: CategoryView[];
+  /** 小说 / 诗歌 / 其他文体, each with its newest few (ADR 0054). */
+  genres: GenreSummary[];
 };
 
 /**
- * Home page data: three shelves and the category chips.
+ * Home page data: three shelves and the three genre columns.
  *
- * Four calls, run together, and failure-isolated on purpose — but not uniformly.
- * The newest works are the page: if that read fails the home page has nothing to
- * say, so it throws and the framework's error boundary answers. The other three
- * are additions, and an addition that cannot be fetched must disappear rather
- * than take the page with it: an empty editorial shelf falls back to the newest
- * works, an empty "most saved" row is simply not rendered.
+ * Three calls, run together, and failure-isolated on purpose — but not
+ * uniformly. The newest works are the page: if that read fails the home page
+ * has nothing to say, so it throws and the framework's error boundary answers.
+ * The other two are additions, and an addition that cannot be fetched must
+ * disappear rather than take the page with it: an empty editorial shelf falls
+ * back to the newest works, an empty "most saved" row is simply not rendered.
+ *
+ * The newest read is the same bounded window `/categories` and the archive's
+ * type filter scan, because the API has no work-type parameter: the "latest"
+ * row is its head and the genre columns are drawn from all of it. One read of
+ * a hundred summaries instead of a read of nine plus three filtered reads —
+ * and a genre whose newest work is older than the window shows as empty here
+ * while `/categories` says "0" from the very same window, so the two pages
+ * never disagree.
  */
 export async function loadHomePage(options: { locale: Locale }, source: PublicContentSource = fixturePublicContent): Promise<HomePageData> {
-  const [featured, latest, popular, categories] = await Promise.all([
+  const [featured, window, popular] = await Promise.all([
     source.listPublicFeatured({ locale: options.locale, limit: HOME_FEATURED_LIMIT }).catch((): ArticleView[] => []),
-    source.listPublicArticles({ locale: options.locale, sort: "latest", limit: HOME_LATEST_LIMIT }),
+    source.listPublicArticles({ locale: options.locale, sort: "latest", limit: ARCHIVE_TYPE_SCAN_LIMIT }),
     source.listPublicArticles({ locale: options.locale, sort: "popular", limit: HOME_POPULAR_LIMIT }).catch((): ArticleView[] => []),
-    source.listPublicCategories({ locale: options.locale, limit: HOME_CATEGORY_LIMIT }).catch((): CategoryView[] => []),
   ]);
-  return { locale: options.locale, featured, latest, popular, categories };
+  return {
+    locale: options.locale,
+    featured,
+    latest: window.slice(0, HOME_LATEST_LIMIT),
+    popular,
+    genres: summarizeGenres(window, { windowFull: window.length >= ARCHIVE_TYPE_SCAN_LIMIT }),
+  };
 }
 
 /* ------------------------------------------------------------------ 阅读页 */

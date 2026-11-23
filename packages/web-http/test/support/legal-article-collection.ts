@@ -9,7 +9,7 @@ export async function legalArticleCollection(count = 3, locale = "zh-CN", long =
   validateArticleBlocks(blocks, 0);
   const at = "2026-11-12T00:00:00.000Z";
   const articles: StoredArticle[] = Array.from({ length: count }, (_, index) => ({ id: `article-${index}`, authorId: "fixture-author",
-    slug: `work-${index}`, title: `A legal long work ${index}`, summary: "", workType: "essay", status: "published", locale,
+    slug: `work-${index}`, title: `A legal long work ${index}`, summary: "", workType: "other", status: "published", locale,
     contentBlocks: blocks, contentBlocksVersion: 0, createdAt: at, updatedAt: at, publishedAt: at, viewCount: 0 }));
   const profile: StoredAuthorProfile = { userId: "fixture-author", displayName: "Fixture", role: "author", bio: "", avatarUrl: null,
     websiteUrl: null, locale, followerCount: 0, followingCount: 0, isFollowing: false, createdAt: at, updatedAt: at };

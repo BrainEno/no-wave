@@ -229,7 +229,7 @@ export async function runLocalChecks(options: CheckOptions): Promise<{ results: 
           title: identity.title,
           slug: identity.slug,
           summary: "Local connectivity probe.",
-          workType: "essay",
+          workType: "other",
           publish: true,
           contentBlocksVersion: 1,
           contentBlocks: [{ id: "probe-1", type: "paragraph", text: "Created by pnpm check:local." }],

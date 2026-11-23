@@ -18,7 +18,7 @@ const content = (text: string) =>
       title: "本机",
       summary: "",
       locale: "zh-CN",
-      workType: "essay",
+      workType: "other",
       editorState: {
         root: {
           type: "root",

@@ -265,7 +265,7 @@ test("property names are options, because the next database is not this one", ()
   assert.ok(result.draft);
   assert.equal(result.draft.slug, "custom-handle");
   assert.equal(result.draft.summary, "一段摘要");
-  assert.equal(result.draft.workType, "essay");
+  assert.equal(result.draft.workType, "other", "散文 is one of the finer genres that fold into 其他文体");
 });
 
 test("an untagged or unknown-tagged work falls back to a stated default", () => {

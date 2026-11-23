@@ -16,27 +16,22 @@ export interface ParsedImportItem {
 
 export const SUPPORTED_WORK_TYPES: { value: WorkType; label: string }[] = [
   { value: "novel", label: "小说" },
-  { value: "short_story", label: "短篇小说" },
   { value: "poetry", label: "诗歌" },
-  { value: "essay", label: "散文 / 随笔" },
-  { value: "criticism", label: "评论" },
-  { value: "literary_criticism", label: "文学批评" },
-  { value: "nonfiction", label: "非虚构" },
-  { value: "other", label: "其他" },
+  { value: "other", label: "其他文体" },
 ];
 
+/**
+ * A genre cell from an import sheet, folded into 小说 / 诗歌 / 其他文体 the same
+ * way the stored works were (ADR 0054): every kind of fiction is 小说, every
+ * kind of verse is 诗歌, and everything else — essays, criticism, nonfiction,
+ * an unknown word or an empty cell — is 其他文体.
+ */
 export function normalizeWorkType(val: unknown): WorkType {
-  if (typeof val !== "string") return "essay";
+  if (typeof val !== "string") return "other";
   const str = val.trim().toLowerCase();
-  if (["novel", "长篇", "小说", "长篇小说"].includes(str)) return "novel";
-  if (["short_story", "shortstory", "短篇", "短篇小说"].includes(str)) return "short_story";
-  if (["poetry", "poem", "诗", "诗歌", "现代诗"].includes(str)) return "poetry";
-  if (["essay", "prose", "随笔", "散文", "杂文"].includes(str)) return "essay";
-  if (["criticism", "评论", "书评", "影评"].includes(str)) return "criticism";
-  if (["literary_criticism", "文学批评", "批评"].includes(str)) return "literary_criticism";
-  if (["nonfiction", "non-fiction", "非虚构", "纪实"].includes(str)) return "nonfiction";
-  if (["other", "其他"].includes(str)) return "other";
-  return "essay";
+  if (["novel", "fiction", "short_story", "shortstory", "short story", "serial", "小说", "长篇", "长篇小说", "短篇", "短篇小说", "中篇", "中篇小说", "连载", "小說"].includes(str)) return "novel";
+  if (["poetry", "poem", "诗", "诗歌", "现代诗", "詩", "詩歌"].includes(str)) return "poetry";
+  return "other";
 }
 
 export function normalizeLocale(val: unknown): string {
@@ -234,7 +229,7 @@ export function parseUserDataInput(raw: string, defaultAuthor = ""): ParsedImpor
         const content = contentIdx !== -1 ? row[contentIdx] : "";
         const author = (authorIdx !== -1 ? row[authorIdx] : defaultAuthor) || defaultAuthor;
         const summary = (summaryIdx !== -1 ? row[summaryIdx] : (content ? content.slice(0, 100) : "")) || "";
-        const workType = normalizeWorkType(typeIdx !== -1 ? row[typeIdx] : "essay");
+        const workType = normalizeWorkType(typeIdx !== -1 ? row[typeIdx] : "other");
         const locale = normalizeLocale(langIdx !== -1 ? row[langIdx] : "zh-CN");
 
         const item: ParsedImportItem = {
@@ -263,7 +258,7 @@ export function parseUserDataInput(raw: string, defaultAuthor = ""): ParsedImpor
     content,
     author: defaultAuthor,
     summary: content.slice(0, 100),
-    workType: "essay",
+    workType: "other",
     locale: "zh-CN",
     publish: false,
     validationErrors: [],

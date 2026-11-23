@@ -3,7 +3,7 @@ import test from "node:test";
 import { articleBlocksToLexicalEditorState } from "./lexical-article-state.ts";
 import { WritingSession, bindWritingUnload, writingDraftKey, canLeaveWriting, type WritingDraft } from "./writing-session.ts";
 
-const draft = (title = "风"): WritingDraft => ({ title, summary: "", locale: "zh-CN", workType: "essay", editorState: articleBlocksToLexicalEditorState([{ type: "paragraph", text: "未完的句子" }]) });
+const draft = (title = "风"): WritingDraft => ({ title, summary: "", locale: "zh-CN", workType: "other", editorState: articleBlocksToLexicalEditorState([{ type: "paragraph", text: "未完的句子" }]) });
 
 test("selection serialization defaults and adjacent identical text do not dirty a hydrated document", () => {
   const original = draft();

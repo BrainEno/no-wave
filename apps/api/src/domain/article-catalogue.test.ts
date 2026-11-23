@@ -8,7 +8,8 @@ const point = { at: "2026-11-01T12:34:56.123456Z", id: "a13dbadf-0000-4000-8000-
 test("catalogue query defaults are bounded, cross-locale and explicit about literal search", () => {
   assert.deepEqual(query(), { scope: "active", q: "", locale: "all", status: "all", workType: "all", sort: "updated", from: "", until: "", limit: 20, cursor: null });
   assert.equal(query("q=%20%25_%E4%B8%AD%E6%96%87%20").q, "%_中文");
-  assert.equal(query("scope=trash&locale=zh-TW&workType=serial&limit=50").workType, "serial");
+  assert.equal(query("scope=trash&locale=zh-TW&workType=novel&limit=50").workType, "novel");
+  assert.throws(() => query("workType=serial"), undefined, "a folded type is no longer a filter value");
   assert.equal(query("from=2024-02-29&until=2024-03-01").from, "2024-02-29");
 });
 

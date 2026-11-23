@@ -55,7 +55,8 @@ test("switching language keeps each loader's meaningful query state, not credent
   const cases = [
     ["/authors?q=forest&page=3&next=%2Fwrite&token=private", "/en/authors?q=forest&page=3"],
     ["/articles?q=sea&page=2&type=poetry&cursor=private", "/en/articles?q=sea&page=2&type=poetry"],
-    ["/authors/writer?page=4&type=essay&q=unused", "/en/authors/writer?page=4&type=essay"],
+    // A pre-0054 type in an old link crosses the boundary as its group.
+    ["/authors/writer?page=4&type=essay&q=unused", "/en/authors/writer?page=4&type=other"],
     ["/categories?q=sea&page=2&type=poetry", "/en/categories?q=sea&page=2"],
     ["/categories/poetry?page=2&q=private", "/en/categories/poetry?page=2"],
     ["/search?q=sea&tab=authors&type=poetry", "/en/search?q=sea&tab=authors&type=poetry"],

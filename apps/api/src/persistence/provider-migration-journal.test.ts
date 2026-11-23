@@ -255,7 +255,7 @@ test("SQLite migration replayer applies source transactions atomically, resumes,
 
     append("article-upsert", "source-tx-article", "articles", "article-replay-1", "upsert", {
       id: "article-replay-1", author_id: "writer-1", slug: "replay-article", status: "draft",
-      work_type: "essay", created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z", published_at: null,
+      work_type: "other", created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z", published_at: null,
     });
     append("translation-upsert", "source-tx-article", "article_translations", JSON.stringify(["article-replay-1", "en"]), "upsert", {
       article_id: "article-replay-1", locale: "en", title: "Replayable", summary: "Atomic row group",

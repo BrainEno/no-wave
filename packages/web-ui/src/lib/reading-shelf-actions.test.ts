@@ -12,7 +12,7 @@ class MemoryStorage implements ShelfStorage {
   setItem(key: string, value: string) { this.values.set(key, value); }
   removeItem(key: string) { this.values.delete(key); }
 }
-const metadata: ShelfMetadata = { slug: "river", locale: "en", title: "River", author: "A", workType: "essay" };
+const metadata: ShelfMetadata = { slug: "river", locale: "en", title: "River", author: "A", workType: "other" };
 
 function exclusiveQueue(): ShelfExclusive {
   let tail: Promise<unknown> = Promise.resolve();

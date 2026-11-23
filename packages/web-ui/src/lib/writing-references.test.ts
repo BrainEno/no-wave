@@ -4,7 +4,7 @@ import { articleBlocksToLexicalEditorState } from "./lexical-article-state.ts";
 import { auditWritingReferences } from "./writing-references.ts";
 import type { WritingDraft } from "./writing-session.ts";
 
-const draft = (): WritingDraft => ({ title: "核对链接", summary: "", locale: "zh-CN", workType: "essay", editorState: articleBlocksToLexicalEditorState([
+const draft = (): WritingDraft => ({ title: "核对链接", summary: "", locale: "zh-CN", workType: "other", editorState: articleBlocksToLexicalEditorState([
   { type: "paragraph", text: "同名 同名 另一称呼", inlines: [
     { text: "同名", href: "https://EXAMPLE.test/a" }, { text: " " }, { text: "同名", href: "/articles/b" }, { text: " " }, { text: "另一称呼", href: "https://example.test/a" },
   ] },

@@ -3,6 +3,7 @@ import {
   MAX_ARTICLE_OFFSET_POPULAR,
   MAX_FEATURED_ARTICLES,
   SUPPORTED_ARTICLE_LOCALES,
+  supportedArticleWorkTypes,
 } from "../../../domain/article.ts";
 import { AUTHOR_OFFSET_MAX, USER_ROLES } from "../../../domain/profile.ts";
 import { MAX_QUERY_LENGTH, MAX_TAXONOMY_OFFSET } from "../http.ts";
@@ -633,7 +634,7 @@ export const OPERATIONS: Readonly<Record<string, OperationMetadata>> = Object.fr
       { name: "q", description: "Literal, case-sensitive title/summary substring.", schema: { type: "string", maxLength: 120 } },
       { name: "locale", description: "One language or all editions.", schema: { type: "string", enum: ["all", ...LOCALES], default: "all" } },
       { name: "status", description: "Publication state.", schema: { type: "string", enum: ["all", "draft", "published"], default: "all" } },
-      { name: "workType", description: "Stored literary type, including retired types; all by default.", schema: { type: "string" } },
+      { name: "workType", description: "小说 / 诗歌 / 其他文体; all by default.", schema: { type: "string", enum: ["all", ...supportedArticleWorkTypes], default: "all" } },
       { name: "sort", description: "Recent activity or oldest creation, with id and locale tie breakers.", schema: { type: "string", enum: ["updated", "created"], default: "updated" } },
       { name: "from", description: "First UTC activity/creation day, YYYY-MM-DD.", schema: { type: "string", format: "date" } },
       { name: "until", description: "Last UTC activity/creation day, YYYY-MM-DD.", schema: { type: "string", format: "date" } },

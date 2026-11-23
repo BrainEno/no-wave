@@ -20,8 +20,6 @@ import {
 } from "../domain/errors.ts";
 import {
   validateArticleRevision,
-  assertArticleWorkTypeChange,
-  assertCreatableArticleWorkType,
   validateArticleLocale,
   validateArticleSlug,
   normalizeArticleInput,
@@ -580,9 +578,6 @@ export function createSqliteArticleStore(db: SqliteRunner, options: { transactio
               return readArticleAfterWrite(existing.id, input.locale);
             }
           }
-          // Same placement as PostgreSQL: replay first, retirement second, so a
-          // pre-retirement key still answers with the work it created.
-          assertCreatableArticleWorkType(input.workType ?? "other");
           const now = new Date().toISOString();
           db.prepare("INSERT INTO articles (id, author_id, slug, status, work_type, idempotency_key_hash, request_hash, created_at, updated_at, published_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
             .run(id, authorId, input.slug, input.publish ? "published" : "draft", input.workType ?? "other",
@@ -625,7 +620,6 @@ export function createSqliteArticleStore(db: SqliteRunner, options: { transactio
           if (!existing || existing.deleted_at) throw new ArticleNotFoundError("The article was not found.");
           if (existing.author_id !== actorId) throw new ArticleAuthorizationError("Only the article author can update it.");
           if (expectedRevision !== undefined && existing.revision !== expectedRevision) throw new ArticleVersionConflictError();
-          assertArticleWorkTypeChange(existing.work_type, input.workType);
           const previousLinks = statement("SELECT taxonomy_id FROM article_taxonomies WHERE article_id = ?").all(articleId)
             .map((link) => ({ taxonomy_id: String(link.taxonomy_id) }));
           const now = new Date().toISOString();

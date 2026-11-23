@@ -23,11 +23,11 @@ for (const provider of ["sqlite", "postgres"] as const) {
       const articles = [];
       for (let index = 0; index < 106; index++) {
         articles.push(await store.createArticle({ authorId: actor, slug: `catalogue-${index}-${randomUUID().slice(0, 8)}`, title: `作品 ${index} 中文`, summary: index === 0 ? "literal %_! needle" : `summary ${index}`,
-          contentBlocks: blocks, locale: "zh-CN", publish: index % 2 === 0, workType: index % 2 === 0 ? "essay" : "poetry" }));
+          contentBlocks: blocks, locale: "zh-CN", publish: index % 2 === 0, workType: index % 2 === 0 ? "other" : "poetry" }));
       }
       const first = articles[0]!;
-      await store.updateArticle({ actorId: actor, articleId: first.id, slug: first.slug, title: "English edition", summary: "literal %_! needle", contentBlocks: blocks, locale: "en", publish: true, workType: "essay" });
-      await store.updateArticle({ actorId: actor, articleId: first.id, slug: first.slug, title: "繁體版本", contentBlocks: blocks, locale: "zh-TW", publish: true, workType: "essay" });
+      await store.updateArticle({ actorId: actor, articleId: first.id, slug: first.slug, title: "English edition", summary: "literal %_! needle", contentBlocks: blocks, locale: "en", publish: true, workType: "other" });
+      await store.updateArticle({ actorId: actor, articleId: first.id, slug: first.slug, title: "繁體版本", contentBlocks: blocks, locale: "zh-TW", publish: true, workType: "other" });
       await store.createArticle({ authorId: other, slug: `outsider-${randomUUID()}`, title: "PRIVATE-OTHER-AUTHOR", contentBlocks: blocks });
       const stamp = "2026-11-01T12:34:56.123Z";
       if (db) db.prepare("UPDATE article_translations SET created_at = ?, updated_at = ? WHERE article_id IN (SELECT id FROM articles WHERE author_id = ?)").run(stamp, stamp, actor);
@@ -58,14 +58,14 @@ for (const provider of ["sqlite", "postgres"] as const) {
       assert.equal(literal.total, 2, "% and _ are literal text, not SQL wildcards");
       assert.equal((await read("q=english")).total, 0, "search is explicitly case-sensitive");
       assert.equal((await read("q=English")).total, 1);
-      const en = await read("locale=en&status=published&workType=essay&from=2026-11-01&until=2026-11-01");
+      const en = await read("locale=en&status=published&workType=other&from=2026-11-01&until=2026-11-01");
       assert.equal(en.total, 1);
       assert.equal(en.facets.reduce((sum, facet) => sum + facet.count, 0), 108, "facets do not silently zero excluded languages/status/types");
       assert.equal((await read("from=2026-11-02")).total, 0);
       const page = await read("limit=1");
       await assert.rejects(() => read(`limit=1&cursor=${page.nextCursor}`, other));
       await assert.rejects(() => read(`limit=1&locale=en&cursor=${page.nextCursor}`));
-      await store.updateArticle({ actorId: actor, articleId: first.id, slug: first.slug, title: "English edition", summary: "English changed independently", contentBlocks: blocks, locale: "en", publish: true, workType: "essay" });
+      await store.updateArticle({ actorId: actor, articleId: first.id, slug: first.slug, title: "English edition", summary: "English changed independently", contentBlocks: blocks, locale: "en", publish: true, workType: "other" });
       const ownEditions = await store.listMyCatalogueEditions({ actorId: actor, articleId: first.id, scope: "active" });
       assert.equal(ownEditions.find(entry => entry.locale === "zh-CN")!.updatedAt, stamp);
       assert.notEqual(ownEditions.find(entry => entry.locale === "en")!.updatedAt, stamp, "editing English must not claim every translation was updated");

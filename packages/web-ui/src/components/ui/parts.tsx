@@ -5,10 +5,11 @@ import { dateLabel, pad } from "@/lib/format.ts";
 import { pickDefaultCover } from "@/lib/covers.ts";
 import { lengthLabel } from "@/lib/reading.ts";
 import { articlePoemLines, articleReadingLength } from "@/lib/article-preview.ts";
-import { splitHighlight } from "@/lib/work-types.ts";
+import { splitHighlight, workTypes } from "@/lib/work-types.ts";
 import { getUi } from "@/lib/ui-copy.ts";
 
-export const tabTypes: readonly WorkType[] = ["novel", "short_story", "poetry", "essay", "criticism", "literary_criticism", "nonfiction", "serial"];
+/** The filter tabs: 小说 / 诗歌 / 其他文体 (ADR 0054). */
+export const tabTypes: readonly WorkType[] = workTypes;
 
 export function Highlight({ text, query }: { text: string; query?: string }) {
   if (!query?.trim()) return <>{text}</>;

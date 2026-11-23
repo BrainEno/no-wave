@@ -9,7 +9,7 @@ function zh() {
     bell: { label: "通知", empty: "暂无通知", hint: "登录后，你关注的作者与讨论提醒会出现在这里。", signIn: "登录", loading: "载入中…", error: "通知暂时无法载入，请稍后重试。", markRead: "标记已读", markAllRead: "全部标为已读", unread: "条未读" },
     home: {
       eyebrow: "独立文学出版 · 阅读 · 交流", tagline: "为值得认真阅读的作品，留出位置。", start: "开始阅读", selected: "精选", selectedEn: "Selected",
-      latest: "最新", latestEn: "Latest", topics: "主题", topicsEn: "Topics", allWorks: "全部作品", allTopics: "探索全部分类", empty: "还没有发表的作品。",
+      latest: "最新", latestEn: "Latest", topics: "分类", topicsEn: "Genres", allWorks: "全部作品", allTopics: "按分类浏览", genreEmpty: "还没有发表的作品。", empty: "还没有发表的作品。",
       // The shelf is picked by an editor, and says so — otherwise a reader cannot
       // tell the difference between "chosen" and "just the newest three".
       selectedNote: "由编辑挑选并排序", selectedFallback: "编辑还没有安排精选，下面是最近发表的作品。",
@@ -114,6 +114,13 @@ function zh() {
       eyebrow: "阅读索引 / 作者", title: "按作者发现作品", intro: "这里是在本站发表过作品的作者。搜一个名字，就能走到他写的东西。", search: "搜索作者", placeholder: "输入作者名", button: "搜索", clear: "清除",
       works: (n: number) => `${n} 篇作品`, followers: (n: number) => `${n} 人关注`, none: "还没有作者在本站发表作品。", noMatch: "没有符合搜索条件的作者。", noMore: "此页没有更多作者。", all: "全部作者",
     },
+    genres: {
+      eyebrow: "阅读索引 / 分类", heading: "分类", headingEn: "Genres",
+      intro: "无浪潮的作品只分三类：小说、诗歌，以及其他文体。点开一类，按时间往下读。",
+      count: (n: number, more: boolean) => more ? `${n}+ 篇` : `${n} 篇`,
+      all: (label: string) => `全部${label}`, empty: "这一类还没有发表的作品。",
+      note: { novel: "短篇、中篇、长篇与连载：所有虚构的叙事。", poetry: "诗与诗歌。", other: "散文、随笔、评论与非虚构：小说和诗以外的文字。" },
+    },
     categories: {
       eyebrow: "阅读索引 / 分类", title: "按分类发现作品", intro: "分类来自平台实际维护的出版数据，而不是写死在界面里的标签。", search: "搜索分类", placeholder: "输入分类名称", button: "搜索", clear: "清除",
       works: (n: number) => `${n} 篇作品`, none: "目前尚无可浏览的作品分类。", noMatch: "没有符合搜索条件的分类。", noMore: "此页没有更多分类。", all: "全部分类", published: (n: number) => `${n} 篇已发表作品`,
@@ -157,7 +164,7 @@ function en(): UiCopy {
     bell: { label: "Notifications", empty: "No notifications", hint: "Sign in to see reminders from the authors and discussions you follow.", signIn: "Sign in", loading: "Loading…", error: "Notifications could not be loaded. Please try again.", markRead: "Mark read", markAllRead: "Mark all read", unread: "unread" },
     home: {
       eyebrow: "INDEPENDENT LITERARY PUBLISHING", tagline: "Independent publishing for writing worth reading slowly.", start: "Start reading", selected: "Selected", selectedEn: "Selected",
-      latest: "Latest", latestEn: "Latest", topics: "Topics", topicsEn: "Topics", allWorks: "All works", allTopics: "Explore all topics", empty: "Nothing has been published yet.",
+      latest: "Latest", latestEn: "Latest", topics: "Genres", topicsEn: "Genres", allWorks: "All works", allTopics: "Browse by genre", genreEmpty: "Nothing published yet.", empty: "Nothing has been published yet.",
       selectedNote: "Chosen and ordered by the editors", selectedFallback: "The editors have not arranged a selection yet — these are the most recent works.",
       popular: "Most saved", popularEn: "Most saved", saves: (n: number) => `${n} ${n === 1 ? "save" : "saves"}`,
       marquee: ["No Wave", "Archive", "Index", "Read slowly"], issue: "VOL. 01", scroll: "Scroll to read",
@@ -254,6 +261,13 @@ function en(): UiCopy {
     authors: {
       eyebrow: "THE READING INDEX / AUTHORS", title: "Explore by author", intro: "Every writer who has published here. Search a name and go straight to what they wrote.", search: "Search authors", placeholder: "Enter an author name", button: "Search", clear: "Clear",
       works: (n: number) => `${n} ${n === 1 ? "work" : "works"}`, followers: (n: number) => `${n} ${n === 1 ? "follower" : "followers"}`, none: "No author has published here yet.", noMatch: "No authors match your search.", noMore: "No more authors on this page.", all: "All authors",
+    },
+    genres: {
+      eyebrow: "THE READING INDEX / GENRES", heading: "Genres", headingEn: "Genres",
+      intro: "Everything on No Wave is one of three things: fiction, poetry, or another form. Open one and read down through time.",
+      count: (n: number, more: boolean) => `${n}${more ? "+" : ""} ${n === 1 && !more ? "work" : "works"}`,
+      all: (label: string) => `All ${label.toLowerCase()}`, empty: "Nothing has been published in this genre yet.",
+      note: { novel: "Short stories, novellas, novels and serials: all narrative fiction.", poetry: "Poems and poetry.", other: "Essays, criticism and nonfiction: writing that is neither fiction nor verse." },
     },
     categories: {
       eyebrow: "THE READING INDEX / CATEGORIES", title: "Explore by category", intro: "Categories are maintained as real publication data, not a fixed list in the interface.", search: "Search categories", placeholder: "Enter a category name", button: "Search", clear: "Clear",

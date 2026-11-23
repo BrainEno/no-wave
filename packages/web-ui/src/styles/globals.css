@@ -174,9 +174,8 @@ mark { background: var(--or); color: #140f0c; }
 .nw-load { position: fixed; inset: 0; z-index: 100; animation: nw-fail 0s 8s forwards; }
 @keyframes nw-fail { to { visibility: hidden; } }
 .nw-load .nw-cols { position: absolute; inset: 0; display: flex; }
-.nw-load .nw-col { flex: 1; background: #141211; border-right: 1px solid #2a2724; }
-.nw-load .nw-col:nth-child(3) { background: var(--or); }
-.nw-load .nw-ct { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: #f2eee6; mix-blend-mode: difference; }
+.nw-load .nw-col { flex: 1; background: #0f0d0c; border-right: 1px solid #2a2724; }
+.nw-load .nw-ct { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: #f2eee6; }
 .nw-cnt { font: 700 clamp(110px, 30vw, 440px)/.8 var(--f-ss); letter-spacing: -.05em; font-variant-numeric: tabular-nums; }
 
 /* ---------- 动效：只在读者没有要求减少动态时出现 ---------- */
@@ -264,6 +263,22 @@ mark { background: var(--or); color: #140f0c; }
 .nw-tp { display: inline-block; font: 500 clamp(70px, 11.7vw, 168px)/1.02 var(--f-zh); letter-spacing: -.01em; margin-right: .1em; }
 .nw-tp sup { font: 500 20px var(--f-ss); color: var(--or); margin: 0 36px 0 6px; letter-spacing: 0; }
 .nw-tp:hover { color: var(--or); }
+/* 首页三栏分类（ADR 0054）：沿用深色 .nw-top 段落，三种体裁各一栏、各列最新三篇。
+   体裁名比单行时的 .nw-tp 小，三栏才放得下「其他文体」四个字。 */
+.nw-gen { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 56px; }
+.nw-gen-col { display: flex; flex-direction: column; min-width: 0; }
+.nw-gen .nw-tp { font-size: clamp(48px, 6.2vw, 88px); margin: 0; }
+.nw-gen .nw-tp sup { margin: 0 0 0 6px; }
+:lang(en) .nw-gen .nw-tp { font-size: clamp(36px, 4.4vw, 60px); }
+.nw-gen-col > .nw-m { margin: 12px 0 24px; }
+.nw-gen-list { list-style: none; margin: 0; padding: 0; }
+.nw-gen-list li { border-top: 1px solid rgb(181 174 163 / .3); }
+.nw-gen-list a { display: flex; flex-direction: column; gap: 6px; min-height: 44px; padding: 18px 0; }
+.nw-gen-list .nw-t { font: 500 20px/1.45 var(--f-zh); overflow-wrap: anywhere; }
+.nw-gen-list a:hover .nw-t, .nw-gen-list a:focus-visible .nw-t { color: var(--or); }
+.nw-gen-empty { margin: 0; padding: 18px 0; border-top: 1px solid rgb(181 174 163 / .3); font: 400 16px/1.8 var(--f-zh); color: var(--ti); }
+.nw-gen-all { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; margin-top: 8px; font: 600 15px var(--f-ss); color: var(--paper); }
+.nw-gen-all:hover { color: var(--or); }
 .nw-go { display: inline-flex; align-items: center; gap: 12px; min-height: 56px; margin-top: 64px; padding: 0 28px; background: var(--or); color: #0f0d0c; font: 700 16px var(--f-ss); }
 
 /* ---------- 页脚 ---------- */
@@ -441,6 +456,7 @@ mark { background: var(--or); color: #140f0c; }
   .nw-rg { grid-template-columns: minmax(0, 1fr); justify-items: center; } .nw-rd { width: min(100%, var(--measure)); }
   .nw-ah { grid-template-columns: 1fr; gap: 48px; } .nw-ai { position: static; } .nw-ai .nw-pt { aspect-ratio: 16 / 10; }
   .nw-ft { grid-template-columns: 1fr; } .nw-ft h2 { font-size: 44px; }
+  .nw-gen { grid-template-columns: minmax(0, 1fr); gap: 64px; } .nw-gen .nw-tp { font-size: 64px; }
 }
 @media (max-width: 767px) {
   .nw-rail { display: none; } .nw-progress { left: 0; }

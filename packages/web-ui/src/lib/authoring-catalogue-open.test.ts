@@ -3,7 +3,7 @@ import test from "node:test";
 import { CatalogueDocumentReader } from "./authoring-catalogue-open.ts";
 import { canLeaveWriting } from "./writing-session.ts";
 const intent = { id: "a13dbadf-0000-4000-8000-000000000001", locale: "en", actor: "author-a" };
-const article = { id: intent.id, authorId: intent.actor, locale: "en", slug: "one", title: "One", summary: "", workType: "essay", status: "draft", revision: "23", createdAt: "2026-11-01T00:00:00.000Z", updatedAt: "2026-11-01T00:00:00.000Z", publishedAt: null, contentBlocksVersion: 0, contentBlocks: [{ type: "paragraph", text: "Private body" }] };
+const article = { id: intent.id, authorId: intent.actor, locale: "en", slug: "one", title: "One", summary: "", workType: "other", status: "draft", revision: "23", createdAt: "2026-11-01T00:00:00.000Z", updatedAt: "2026-11-01T00:00:00.000Z", publishedAt: null, contentBlocksVersion: 0, contentBlocks: [{ type: "paragraph", text: "Private body" }] };
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
 
 test("catalogue document reads are exact account/id/language intents and preserve the revision used for later saves", async () => {

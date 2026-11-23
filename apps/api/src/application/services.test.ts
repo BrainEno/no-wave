@@ -276,7 +276,7 @@ test("a read is counted once per reader per day, and the author's own reading is
     id: "9f0e3d2a-0000-4000-8000-000000000001",
     authorId: "author-1",
     slug: "clean-architecture",
-    workType: "essay",
+    workType: "other",
     status: "published",
     locale: "en",
     title: "Clean Architecture",

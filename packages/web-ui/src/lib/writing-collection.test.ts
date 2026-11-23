@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createWritingBackup, parseWritingBackup } from "./writing-backup.ts";
 import type { WritingDraft } from "./writing-session.ts";
-import { COLLECTION_BYTE_LIMIT, COLLECTION_DOCUMENT_LIMIT, createWritingCollection, parseWritingCollection, openWritingCollection } from "./writing-collection.ts";
+import { COLLECTION_BYTE_LIMIT, COLLECTION_DOCUMENT_LIMIT, collectionChecksum, createWritingCollection, parseWritingCollection, openWritingCollection } from "./writing-collection.ts";
 const now = new Date("2026-11-01T00:00:00.000Z");
-const draft = (title = "中文文稿", locale = "zh-CN"): WritingDraft => ({ title, summary: "摘要", locale, workType: "essay", editorState: { root: { type: "root", version: 1, children: [{ type: "paragraph", version: 1, children: [{ type: "text", version: 1, text: "正文 👩‍💻", format: 0 }] }] } } });
+const draft = (title = "中文文稿", locale = "zh-CN"): WritingDraft => ({ title, summary: "摘要", locale, workType: "other", editorState: { root: { type: "root", version: 1, children: [{ type: "paragraph", version: 1, children: [{ type: "text", version: 1, text: "正文 👩‍💻", format: 0 }] }] } } });
 const backup = (title?: string, locale?: string) => parseWritingBackup(createWritingBackup(draft(title, locale), now));
 const inputs = () => [{ group: "server-work-id-must-not-escape", backup: backup() }, { group: "server-work-id-must-not-escape", backup: backup("English", "en") }, { group: "another-server-work", backup: backup("第二篇") }];
 
@@ -81,4 +81,30 @@ test("ambiguous duplicate JSON fields, including escaped spellings, are rejected
   special.draft.summary = 'repeated words "key":1,"key":2 remain literal text';
   const valid = await createWritingCollection([{ group: "literal", backup: special }], now);
   assert.equal((await parseWritingCollection(valid.text)).collection.entries[0]!.backup.draft.summary, special.draft.summary);
+});
+
+test("a collection written before the three-type fold still verifies and loads with today's types", async () => {
+  // Rebuild exactly the file an older version wrote: the same entries, but with
+  // folded types, and digests computed over those folded values.
+  const current = await createWritingCollection(inputs(), now);
+  const old = structuredClone(current.collection) as unknown as { createdAt: string; entries: { key: string; group: string; backup: { draft: { workType: string } }; digest: string }[]; digest: string };
+  const written = ["essay", "short_story", "poetry"];
+  for (const [index, entry] of old.entries.entries()) {
+    entry.backup.draft.workType = written[index]!;
+    entry.digest = await collectionChecksum({ key: entry.key, group: entry.group, backup: entry.backup });
+  }
+  old.digest = await collectionChecksum({ format: "no-wave-writing-collection", version: 1, createdAt: old.createdAt, entries: old.entries.map(({ key, group, digest }) => ({ key, group, digest })) });
+
+  const loaded = await parseWritingCollection(JSON.stringify(old));
+  assert.deepEqual(loaded.collection.entries.map(entry => entry.backup.draft.workType), ["other", "novel", "poetry"]);
+  // What is loaded is self-consistent again: it re-parses, and its digests are
+  // over today's content (the untouched poetry entry keeps its old digest).
+  assert.deepEqual((await parseWritingCollection(loaded.text)).collection, loaded.collection);
+  assert.notEqual(loaded.collection.entries[0]!.digest, old.entries[0]!.digest);
+  assert.equal(loaded.collection.entries[2]!.digest, old.entries[2]!.digest);
+
+  // Still a real check: tampering with an old file is caught as before.
+  const tampered = structuredClone(old);
+  tampered.entries[0]!.backup.draft.workType = "nonfiction";
+  await assert.rejects(parseWritingCollection(JSON.stringify(tampered)), /摘要不匹配/);
 });

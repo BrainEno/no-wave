@@ -7,7 +7,7 @@ import { createCollectionReviewPlan, previewCollectionReviewPlan, buildCollectio
 
 const now = new Date("2026-11-12T00:00:00.000Z");
 async function sources(): Promise<CollectionSource[]> {
-  const backup = parseWritingBackup(createWritingBackup({ title: "=PRIVATE_TITLE()", summary: "PRIVATE_SUMMARY", locale: "en", workType: "essay", editorState: { root: { type: "root", version: 1, children: [{ type: "paragraph", version: 1, children: [{ type: "text", version: 1, text: "PRIVATE_BODY" }] }] } } }, now));
+  const backup = parseWritingBackup(createWritingBackup({ title: "=PRIVATE_TITLE()", summary: "PRIVATE_SUMMARY", locale: "en", workType: "other", editorState: { root: { type: "root", version: 1, children: [{ type: "paragraph", version: 1, children: [{ type: "text", version: 1, text: "PRIVATE_BODY" }] }] } } }, now));
   const prepared = await createWritingCollection([{ group: "work", backup }], now);
   return ["left", "right"].map(slot => ({ slot: slot as "left" | "right", name: "=PRIVATE_FILE()\u0000.json", opened: { source: "collection", prepared } }));
 }

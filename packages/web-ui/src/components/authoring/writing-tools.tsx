@@ -181,7 +181,7 @@ function BackupPanel({ draft, read, apply, locked }: ActionProps) {
         if (typeof input.result !== "string") throw new Error("无法读取这个文件。");
         const plan = previewWritingRestore(source, parseWritingBackup(input.result));
         setPreview(plan);
-        setSelected(plan.changedFields.filter(field => !(field === "locale" && plan.backup.draft.locale === "zh-TW" && source.locale !== "zh-TW") && !(field === "workType" && plan.backup.draft.workType === "serial" && source.workType !== "serial")));
+        setSelected(plan.changedFields.filter(field => !(field === "locale" && plan.backup.draft.locale === "zh-TW" && source.locale !== "zh-TW")));
         setMessage("备份校验通过，请核对差异与恢复字段；尚未修改编辑区。");
       } catch (error) { setMessage(error instanceof Error ? error.message : "备份无法读取。"); }
     };

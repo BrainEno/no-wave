@@ -670,7 +670,7 @@ test("public article search treats LIKE metacharacters as literal text", integra
         locale: "en",
         contentBlocks,
         publish: true,
-        workType: "essay",
+        workType: "other",
       }));
     }
 

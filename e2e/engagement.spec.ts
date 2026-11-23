@@ -358,7 +358,7 @@ test("a late follow response cannot change another author's control", async ({ p
   await expect(page.getByRole("button", { name: /^关注 / })).toBeEnabled();
   // Create a same-route history entry, then use the browser's Back button for
   // the navigation under test. Author pages do not directly link each other.
-  await page.getByRole("navigation", { name: "作品类型" }).getByRole("link", { name: "长篇小说" }).click();
+  await page.getByRole("navigation", { name: "作品类型" }).getByRole("link", { name: "小说", exact: true }).click();
   await expect(page).toHaveURL(/\?type=/);
   await page.evaluate((path) => {
     window.history.replaceState(window.history.state, "", path);

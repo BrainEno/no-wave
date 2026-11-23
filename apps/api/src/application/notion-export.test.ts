@@ -179,7 +179,7 @@ test("a translation language Notion cannot address is reported, not written into
 });
 
 test("a work type its own tags do not imply is reported, because an import would change it", async () => {
-  const mismatched = edition({ id: "article-1", locale: "zh-CN", title: "墙壁", workType: "essay" });
+  const mismatched = edition({ id: "article-1", locale: "zh-CN", title: "墙壁", workType: "other" });
   const matched = edition({ id: "article-2", locale: "zh-CN", title: "飞行器", slug: "feixing-qi", workType: "poetry" });
   const deps = stubDeps({
     works: [[mismatched], [matched]],
@@ -190,7 +190,7 @@ test("a work type its own tags do not imply is reported, because an import would
 
   const [first, second] = report.works;
   assert.deepEqual(first!.issues.map((issue) => issue.code), ["work-type-not-carried"]);
-  assert.match(first!.issues[0]!.detail, /essay .* would import back as poetry/);
+  assert.match(first!.issues[0]!.detail, /other .* would import back as poetry/);
   assert.deepEqual(second!.issues, [], "a type its tags already imply is not a loss");
 });
 

@@ -2,7 +2,6 @@ import { NOTION_JOB_STATES } from "../../../application/notion-durable-jobs.ts";
 import { ARTICLE_SUMMARY_MAX_LENGTH } from "../../../domain/article-summary.ts";
 import {
   SUPPORTED_ARTICLE_LOCALES,
-  retiredArticleWorkTypes,
   supportedArticleWorkTypes,
 } from "../../../domain/article.ts";
 import { USER_ROLES } from "../../../domain/profile.ts";
@@ -41,10 +40,6 @@ const nullable = (schema: JsonSchema): JsonSchema => ({ anyOf: [schema, { type: 
 
 const LOCALES: readonly string[] = [...SUPPORTED_ARTICLE_LOCALES];
 
-/** Types a **new** work may be created with: `serial` exists but is retired. */
-const CHOOSABLE_WORK_TYPES: readonly string[] = supportedArticleWorkTypes.filter(
-  (workType) => !retiredArticleWorkTypes.includes(workType),
-);
 
 const TEXT = { type: "string" } as const;
 const TIMESTAMP: JsonSchema = { type: "string", format: "date-time" };
@@ -87,7 +82,7 @@ const ARTICLE = {
       workType: {
         type: "string",
         enum: [...supportedArticleWorkTypes],
-        description: "`serial` is retired: it can be read and saved but not chosen for new work.",
+        description: "小说 / 诗歌 / 其他文体. `novel` covers all prose fiction, short stories and serials included.",
       },
       status: { type: "string", enum: ["draft", "published"] },
       locale: { type: "string", enum: LOCALES },
@@ -481,8 +476,8 @@ export const SCHEMAS: Readonly<Record<string, JsonSchema>> = Object.freeze({
       publish: { type: "boolean" },
       workType: {
         type: "string",
-        enum: [...CHOOSABLE_WORK_TYPES],
-        description: "Types a new work may be created with. `serial` answers 400 on create; a stored `serial` work stays saveable and may be moved to an active type.",
+        enum: [...supportedArticleWorkTypes],
+        description: "小说 (`novel`) / 诗歌 (`poetry`) / 其他文体 (`other`). Any other value answers 400.",
       },
       categoryIds: { type: "array", items: TEXT },
       tagIds: { type: "array", items: TEXT },

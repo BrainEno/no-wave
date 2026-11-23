@@ -32,7 +32,10 @@ export function PageLoader({ label }: { label: string }) {
     let seen = false;
     try { seen = window.sessionStorage.getItem("nw-loaded") === "1"; } catch { /* 隐私模式 */ }
     if (reduce || seen) {
-      motionState.reveal = 1;
+      // Reduced motion opens on a clear picture. A repeat visit skips only the
+      // curtain: the smear is reset so the hero can float in again, and
+      // `HeroCanvas` starts that shorter reveal once its picture is drawn.
+      motionState.reveal = reduce ? 1 : 0;
       finish();
       return;
     }

@@ -26,7 +26,7 @@ function draft(
     title,
     summary: "PRIVATE_SUMMARY",
     locale: "en",
-    workType: "essay",
+    workType: "other",
     editorState: {
       root: {
         type: "root",

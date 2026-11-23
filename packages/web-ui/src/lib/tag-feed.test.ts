@@ -6,7 +6,7 @@ import { parseTagFeedFormat, renderTagFeed, tagFeedLinks, tagFeedPath, TAG_FEED_
 
 const tag: TagView = { slug: "stable-theme", name: "地方與記憶", description: "獨立文學 & 閱讀", articleCount: 2, locale: "zh-CN" };
 function work(overrides: Partial<ArticleView> = {}): ArticleView {
-  return { slug: "remembered-place", title: "在海邊", description: "一段不含全文的摘要。", workType: "essay", contentBlocks: [],
+  return { slug: "remembered-place", title: "在海邊", description: "一段不含全文的摘要。", workType: "other", contentBlocks: [],
     publishedAt: "2026-11-01T08:30:00.000Z", author: { username: "public-author", displayName: "寫作者", bio: "not-in-feed", locale: "zh-CN", availableLocales: ["zh-CN"] },
     categories: [], tags: [tag.name], locale: "zh-CN", availableLocales: ["zh-CN"], likeCount: 0, ...overrides };
 }

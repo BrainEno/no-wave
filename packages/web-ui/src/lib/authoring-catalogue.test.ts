@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { catalogueCsv, catalogueEntryKey, catalogueOpenHref, parseCatalogueOpenIntent, readCataloguePage, type CatalogueEntry } from "./authoring-catalogue.ts";
 
-export const entry: CatalogueEntry = { id: "a13dbadf-0000-4000-8000-000000000001", locale: "en", slug: "one-work", title: "One work", summary: "A summary", status: "draft", workType: "essay", createdAt: "2026-11-01T00:00:00.000Z", updatedAt: "2026-11-01T00:00:00.000Z", deletedAt: null };
+export const entry: CatalogueEntry = { id: "a13dbadf-0000-4000-8000-000000000001", locale: "en", slug: "one-work", title: "One work", summary: "A summary", status: "draft", workType: "other", createdAt: "2026-11-01T00:00:00.000Z", updatedAt: "2026-11-01T00:00:00.000Z", deletedAt: null };
 
 test("catalogue response validation rejects duplicate editions, unbounded arrays and malformed data", () => {
-  const page = { items: [entry], total: 1, works: 1, facets: [{ locale: "en", status: "draft", workType: "essay", count: 1 }], nextCursor: null };
+  const page = { items: [entry], total: 1, works: 1, facets: [{ locale: "en", status: "draft", workType: "other", count: 1 }], nextCursor: null };
   assert.deepEqual(readCataloguePage(page).items, [entry]);
   for (const patch of [{ items: [entry, entry] }, { items: Array(51).fill(entry) }, { total: -1 }, { nextCursor: "javascript:bad" }, { facets: [{ ...page.facets[0], count: 0.5 }] }, { items: [{ ...entry, updatedAt: "not a date" }] }, { items: [{ ...entry, locale: "fr" }] }]) {
     assert.throws(() => readCataloguePage({ ...page, ...patch }));

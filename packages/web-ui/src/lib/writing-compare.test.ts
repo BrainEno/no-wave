@@ -6,7 +6,7 @@ import { restoreWritingSelection } from "./writing-restore.ts";
 import { createWritingBackup, parseWritingBackup, previewWritingRestore } from "./writing-backup.ts";
 import { writingDraftKey, type WritingDraft } from "./writing-session.ts";
 
-const draft = (texts: string[]): WritingDraft => ({ title: "风", summary: "", locale: "zh-CN", workType: "essay", editorState: articleBlocksToLexicalEditorState(texts.map(text => ({ type: "paragraph", text }))) });
+const draft = (texts: string[]): WritingDraft => ({ title: "风", summary: "", locale: "zh-CN", workType: "other", editorState: articleBlocksToLexicalEditorState(texts.map(text => ({ type: "paragraph", text }))) });
 
 test("comparison identifies unchanged, edited, added, removed and moved blocks, with deterministic duplicate matching", () => {
   const before = draft(["相同", "改前", "移走", "删去", "重复", "重复"]);

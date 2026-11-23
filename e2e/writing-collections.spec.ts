@@ -9,7 +9,7 @@ import { registerThroughForm, uniqueEmail } from "./support/accounts.ts";
 
 const stamp = new Date("2026-11-12T00:00:00.000Z");
 function draft(title: string, text = "PRIVATE_BODY 海浪与星光", locale = "zh-CN"): WritingDraft {
-  return { title, summary: "PRIVATE_SUMMARY", locale, workType: "essay", editorState: { root: { type: "root", version: 1, children: [
+  return { title, summary: "PRIVATE_SUMMARY", locale, workType: "other", editorState: { root: { type: "root", version: 1, children: [
     { type: "paragraph", version: 1, children: [{ type: "text", version: 1, text }] },
     { type: "image", version: 1, src: "https://private-image.example.test/NEVER_FETCH.png", alt: "private image label" },
   ] } } };
@@ -208,7 +208,7 @@ async function catalogue(page: Page) {
   const entries: { id: string; title: string; locale: string }[] = [];
   for (const [index, locale] of ["zh-CN", "en", "zh-CN"].entries()) {
     const title = `Collection edition ${index}`;
-    const response = await page.request.post("/api/authoring/articles", { headers: { origin: new URL(page.url()).origin }, data: { title, locale, workType: "essay", publish: false, contentBlocksVersion: 1, contentBlocks: [{ id: "p", type: "paragraph", text: `EXACT_COLLECTION_BODY_${index}` }] } });
+    const response = await page.request.post("/api/authoring/articles", { headers: { origin: new URL(page.url()).origin }, data: { title, locale, workType: "other", publish: false, contentBlocksVersion: 1, contentBlocks: [{ id: "p", type: "paragraph", text: `EXACT_COLLECTION_BODY_${index}` }] } });
     expect(response.status()).toBe(201);
     entries.push({ id: (await response.json()).data.id, title, locale });
   }

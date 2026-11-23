@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { articleBlocksToLexicalEditorState } from "./lexical-article-state.ts";
-import { createWritingBackup, parseWritingBackup, previewWritingRestore, restoreWritingFields, exportWritingText, writingDownloadName, MAX_WRITING_BACKUP_BYTES } from "./writing-backup.ts";
+import { createWritingBackup, parseWritingBackup, readWritingBackup, previewWritingRestore, restoreWritingFields, exportWritingText, writingDownloadName, MAX_WRITING_BACKUP_BYTES } from "./writing-backup.ts";
 import { writingDraftKey, type WritingDraft } from "./writing-session.ts";
 
 const date = new Date("2026-11-12T12:00:00Z");
-const draft = (): WritingDraft => ({ title: "海风", summary: "写作中的摘要", locale: "zh-CN", workType: "essay", editorState: articleBlocksToLexicalEditorState([
+const draft = (): WritingDraft => ({ title: "海风", summary: "写作中的摘要", locale: "zh-CN", workType: "other", editorState: articleBlocksToLexicalEditorState([
   { type: "heading", level: 2, text: "第一节" },
   { type: "paragraph", text: "有格式的文字", inlines: [{ text: "有格式", marks: ["bold"] }, { text: "的文字", href: "https://example.test/read" }] },
   { type: "list", ordered: true, items: ["一", "二"] },
@@ -47,13 +47,26 @@ test("backup preview contains no image HTML and selective restore changes only c
   }
 });
 
-test("restoring a legacy locale/type cannot create an option the desk has retired", () => {
-  const legacy = { ...draft(), locale: "zh-TW", workType: "serial" as const };
+test("restoring a legacy locale cannot create an option the desk has retired", () => {
+  const legacy = { ...draft(), locale: "zh-TW" };
   const plan = previewWritingRestore(draft(), parseWritingBackup(createWritingBackup(legacy, date)));
   assert.throws(() => restoreWritingFields(draft(), plan, ["locale"]), /历史/);
-  assert.throws(() => restoreWritingFields(draft(), plan, ["workType"]), /停用/);
   assert.equal(restoreWritingFields(draft(), plan, ["title", "editorState"]).locale, "zh-CN");
-  assert.equal(restoreWritingFields(legacy, previewWritingRestore(legacy, parseWritingBackup(createWritingBackup(legacy, date))), ["locale", "workType"]).locale, "zh-TW");
+  assert.equal(restoreWritingFields(legacy, previewWritingRestore(legacy, parseWritingBackup(createWritingBackup(legacy, date))), ["locale"]).locale, "zh-TW");
+});
+
+test("a backup written before the three-type fold restores as its group", () => {
+  // ADR 0054: a file from before can say "serial" or "essay". It must still
+  // open, and what it restores must be a type the desk can save today.
+  for (const [written, group] of [["serial", "novel"], ["short_story", "novel"], ["essay", "other"], ["nonfiction", "other"]] as const) {
+    const text = createWritingBackup(draft(), date).replace(/"workType": "[a-z_]+"/, `"workType": "${written}"`);
+    assert.match(text, new RegExp(`"workType": "${written}"`));
+    const { backup, writtenWorkType } = readWritingBackup(text);
+    assert.equal(backup.draft.workType, group);
+    assert.equal(writtenWorkType, written, "the file's own value stays available for digest checks");
+    const plan = previewWritingRestore({ ...draft(), workType: "poetry" }, backup);
+    assert.equal(restoreWritingFields({ ...draft(), workType: "poetry" }, plan, ["workType"]).workType, group);
+  }
 });
 
 test("malformed, oversized, unknown-version and identity-bearing backups are rejected before Lexical import", () => {

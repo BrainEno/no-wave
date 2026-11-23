@@ -188,11 +188,6 @@ function RecoveryPlan({
           field === "locale" &&
           plan.restore.backup.draft.locale === "zh-TW" &&
           draft.locale !== "zh-TW"
-        ) &&
-        !(
-          field === "workType" &&
-          plan.restore.backup.draft.workType === "serial" &&
-          draft.workType !== "serial"
         ),
     ),
   );

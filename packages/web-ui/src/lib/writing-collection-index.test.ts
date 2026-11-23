@@ -5,7 +5,7 @@ import { createWritingCollection, type OpenedCollection } from "./writing-collec
 import { collectionRows, filterCollectionRows, selectedCollectionRows, collectionSourcesKey, planCollectionSubset, prepareCollectionSubset, collectionSingleDownload, validateCollectionPairs, compareCollectionPair, unpairedCollectionRows, DEFAULT_COLLECTION_FILTERS } from "./writing-collection-index.ts";
 import type { WritingDraft } from "./writing-session.ts";
 const now = new Date("2026-11-01T00:00:00.000Z");
-const draft = (title: string, locale = "zh-CN", text = title): WritingDraft => ({ title, summary: "literal %_", locale, workType: "essay", editorState: { root: { type: "root", version: 1, children: [{ type: "paragraph", version: 1, children: [{ type: "text", version: 1, text }] }] } } });
+const draft = (title: string, locale = "zh-CN", text = title): WritingDraft => ({ title, summary: "literal %_", locale, workType: "other", editorState: { root: { type: "root", version: 1, children: [{ type: "paragraph", version: 1, children: [{ type: "text", version: 1, text }] }] } } });
 async function sources() {
   const left: OpenedCollection = { source: "collection", prepared: await createWritingCollection(["文稿10", "文稿2"].map(title => ({ group: title, backup: parseWritingBackup(createWritingBackup(draft(title), now)) })), now) };
   const right: OpenedCollection = { source: "collection", prepared: await createWritingCollection([{ group: "separate", backup: parseWritingBackup(createWritingBackup(draft("文稿10"), now)) }], now) };

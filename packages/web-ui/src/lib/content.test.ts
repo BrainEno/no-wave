@@ -63,6 +63,6 @@ test("Simplified Chinese is the default locale and fixture copy is localized", (
   assert.equal(articleFixture.locale, "zh-CN");
   assert.equal(articleFixture.author.displayName, "无浪潮编辑部");
   assert.match(articleFixture.description, /严肃文学/);
-  assert.equal(articleFixture.workType, "essay");
+  assert.equal(articleFixture.workType, "other");
   assert.equal(archivePath("zh-CN"), "/articles");
 });

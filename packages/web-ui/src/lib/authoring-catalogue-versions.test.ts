@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { catalogueCoverage, compareCatalogueVersions, readCatalogueEditions } from "./authoring-catalogue-versions.ts";
 import type { CatalogueEntry } from "./authoring-catalogue.ts";
-const row: CatalogueEntry = { id: "a13dbadf-0000-4000-8000-000000000001", locale: "en", slug: "one", title: "One", summary: "An English summary", status: "draft", workType: "essay", createdAt: "2026-11-01T00:00:00.000Z", updatedAt: "2026-11-01T00:00:00.000Z", deletedAt: null };
+const row: CatalogueEntry = { id: "a13dbadf-0000-4000-8000-000000000001", locale: "en", slug: "one", title: "One", summary: "An English summary", status: "draft", workType: "other", createdAt: "2026-11-01T00:00:00.000Z", updatedAt: "2026-11-01T00:00:00.000Z", deletedAt: null };
 
 test("a complete version preview is scoped to one work and never derives missing languages from a filtered page", () => {
   const editions = readCatalogueEditions([row, { ...row, locale: "zh-CN", title: "中文" }], row.id, "active");

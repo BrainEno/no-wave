@@ -6,7 +6,7 @@ import type { CollectionSource } from "./writing-collection-index.ts";
 import { collectCollectionReferences, filterCollectionReferences, resolveCollectionReference, DEFAULT_COLLECTION_REFERENCE_FILTERS } from "./writing-collection-references.ts";
 
 async function fixture(count = 2): Promise<CollectionSource[]> {
-  const documents = Array.from({ length: count }, (_, index) => ({ group: String(index), backup: parseWritingBackup(createWritingBackup({ title: String(index), summary: "", locale: "en", workType: "essay", editorState: { root: { type: "root", version: 1, children: [
+  const documents = Array.from({ length: count }, (_, index) => ({ group: String(index), backup: parseWritingBackup(createWritingBackup({ title: String(index), summary: "", locale: "en", workType: "other", editorState: { root: { type: "root", version: 1, children: [
     { type: "paragraph", version: 1, children: Array.from({ length: count > 2 ? 15 : 1 }, (_, n) => ({ type: "link", version: 1, url: `http://example.test/${index}-${n}`, children: [{ type: "text", version: 1, text: "Same Label" }] })) },
     { type: "image", version: 1, src: "https://example.test/shared.png", alt: "shared image" },
   ] } } })) }));

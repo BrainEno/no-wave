@@ -5,7 +5,7 @@ import { createWritingCollection, openWritingCollection } from "./writing-collec
 import { collectionSourcesKey } from "./writing-collection-index.ts";
 import { WritingCollectionWorkbench } from "./writing-collection-controller.ts";
 const stamp = new Date("2026-11-01T00:00:00.000Z");
-const backup = (title: string) => parseWritingBackup(createWritingBackup({ title, summary: "", locale: "en", workType: "essay", editorState: { root: { type: "root", version: 1, children: [{ type: "paragraph", version: 1, children: [{ type: "text", version: 1, text: title }] }] } } }, stamp));
+const backup = (title: string) => parseWritingBackup(createWritingBackup({ title, summary: "", locale: "en", workType: "other", editorState: { root: { type: "root", version: 1, children: [{ type: "paragraph", version: 1, children: [{ type: "text", version: 1, text: title }] }] } } }, stamp));
 async function fixture(title = "One") { return (await createWritingCollection([{ group: "one", backup: backup(title) }], stamp)).text; }
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve }; }
 const file = (text: string, name = "file.json") => new File([text], name, { type: "application/json" });

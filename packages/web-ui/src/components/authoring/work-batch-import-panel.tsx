@@ -18,7 +18,7 @@ const EXAMPLE_JSON = `[
   {
     "title": "关于文学的断想",
     "author": "卡尔维诺",
-    "workType": "essay",
+    "workType": "other",
     "locale": "zh-CN",
     "summary": "经典作品是那些你经常听人家说我正在重读的作品。",
     "content": "经典作品是那些你经常听人家说我正在重读……\\n\\n一部经典作品是一本每次重读都像初读那样带来发现的书。"
@@ -26,7 +26,7 @@ const EXAMPLE_JSON = `[
   {
     "title": "夜巡者手记",
     "author": "青年作者",
-    "workType": "short_story",
+    "workType": "novel",
     "locale": "zh-CN",
     "content": "钟楼在午夜敲响了十二下。\\n\\n雾气从运河的方向缓慢漫延过来。"
   }
@@ -42,7 +42,7 @@ export function WorkBatchImportPanel({ onImportComplete }: { onImportComplete?: 
 
   // 批量补全控制状态
   const [patchAuthor, setPatchAuthor] = useState("");
-  const [patchWorkType, setPatchWorkType] = useState<WorkType>("essay");
+  const [patchWorkType, setPatchWorkType] = useState<WorkType>("other");
   const [patchLocale, setPatchLocale] = useState("zh-CN");
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -94,7 +94,7 @@ export function WorkBatchImportPanel({ onImportComplete }: { onImportComplete?: 
           content: content || "",
           author: "",
           summary: content ? content.slice(0, 100) : "",
-          workType: "essay",
+          workType: "other",
           locale: "zh-CN",
           publish: false,
           sourceName: name,

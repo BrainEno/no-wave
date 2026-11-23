@@ -14,7 +14,7 @@ const backup = (blocks: string[]) =>
         title: "标题",
         summary: "摘要",
         locale: "zh-CN",
-        workType: "essay",
+        workType: "other",
         editorState: {
           root: {
             type: "root",

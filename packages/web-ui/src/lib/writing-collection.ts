@@ -1,4 +1,4 @@
-import { MAX_WRITING_BACKUP_BYTES, parseWritingBackup, type WritingBackup } from "./writing-backup.ts";
+import { MAX_WRITING_BACKUP_BYTES, parseWritingBackup, readWritingBackup, type WritingBackup } from "./writing-backup.ts";
 import { writingRecord } from "./writing-document.ts";
 
 export const COLLECTION_DOCUMENT_LIMIT = 20;
@@ -94,10 +94,13 @@ export async function collectionChecksum(value: unknown, signal?: AbortSignal): 
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
 }
 function normalizedBackup(value: unknown): WritingBackup {
+  return readNormalizedBackup(value).backup;
+}
+function readNormalizedBackup(value: unknown): { backup: WritingBackup; writtenWorkType: string } {
   if (!writingRecord(value)) invalid("文稿备份结构无效。");
   const text = JSON.stringify(value);
   if (text.length > MAX_WRITING_BACKUP_BYTES) invalid("单篇备份超过 2 MiB。");
-  return parseWritingBackup(text);
+  return readWritingBackup(text);
 }
 function manifest(createdAt: string, entries: CollectionEntry[]) {
   return { format: FORMAT, version: 1, createdAt, entries: entries.map(({ key, group, digest }) => ({ key, group, digest })) };
@@ -148,20 +151,37 @@ async function verify(value: unknown, signal?: AbortSignal): Promise<PreparedCol
   if (!Array.isArray(raw.entries) || !raw.entries.length || raw.entries.length > COLLECTION_DOCUMENT_LIMIT || typeof raw.digest !== "string" || !DIGEST.test(raw.digest)) invalid("条数或集合摘要无效。");
   const keys = new Set<string>(), languages = new Set<string>();
   const entries: CollectionEntry[] = [];
+  let upgraded = false;
   for (const item of raw.entries) {
     active(signal);
     const entry = exact(item, ["key", "group", "backup", "digest"]);
     if (typeof entry.key !== "string" || !ENTRY_KEY.test(entry.key) || keys.has(entry.key) || typeof entry.group !== "string" || !GROUP_KEY.test(entry.group) || typeof entry.digest !== "string" || !DIGEST.test(entry.digest)) invalid("文稿标识重复或条目摘要无效。");
     keys.add(entry.key);
-    const backup = normalizedBackup(entry.backup);
+    const { backup, writtenWorkType } = readNormalizedBackup(entry.backup);
     uniqueLanguage(languages, entry.group, backup);
     const content = { key: entry.key, group: entry.group, backup };
-    if (await collectionChecksum(content, signal) !== entry.digest) invalid("某篇文稿的摘要不匹配，未载入任何条目。");
+    // The digest covers the entry as the file wrote it. A file from before
+    // ADR 0054 wrote a folded type ("essay"), so that is what gets hashed.
+    const written = writtenWorkType === backup.draft.workType ? content
+      : { ...content, backup: { ...backup, draft: { ...backup.draft, workType: writtenWorkType } } };
+    if (await collectionChecksum(written, signal) !== entry.digest) invalid("某篇文稿的摘要不匹配，未载入任何条目。");
     entries.push({ ...content, digest: entry.digest });
+    if (written !== content) upgraded = true;
   }
   if (await collectionChecksum(manifest(createdAt, entries), signal) !== raw.digest) invalid("集合清单摘要不匹配，成员、顺序或元数据可能变化。");
   active(signal);
-  return prepared({ format: FORMAT, version: 1, createdAt, entries, digest: raw.digest });
+  if (!upgraded) return prepared({ format: FORMAT, version: 1, createdAt, entries, digest: raw.digest });
+  // The file verified as written. What is loaded carries today's types, so its
+  // digests are recomputed over that content: anything that re-checks them
+  // later, or exports the collection again, sees a self-consistent collection.
+  const current: CollectionEntry[] = [];
+  for (const { key, group, backup } of entries) {
+    const content = { key, group, backup };
+    current.push({ ...content, digest: await collectionChecksum(content, signal) });
+  }
+  const digest = await collectionChecksum(manifest(createdAt, current), signal);
+  active(signal);
+  return prepared({ format: FORMAT, version: 1, createdAt, entries: current, digest });
 }
 
 export async function parseWritingCollection(text: string, signal?: AbortSignal): Promise<PreparedCollection> {

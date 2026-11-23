@@ -109,6 +109,19 @@ function pickDraft(draft: WritingDraft): WritingDraft {
 }
 
 export function parseWritingBackup(text: string): WritingBackup {
+  return readWritingBackup(text).backup;
+}
+
+/**
+ * Parse a backup and also report the work type exactly as the file wrote it.
+ *
+ * A backup made before ADR 0054 can say `"essay"` or `"short_story"`; the
+ * parsed draft carries its group (`other`, `novel`) so it can be restored and
+ * published today. Anything that checks a digest over the file's own content —
+ * a collection entry — has to hash what was written, not what it now means,
+ * which is what `writtenWorkType` is for.
+ */
+export function readWritingBackup(text: string): { backup: WritingBackup; writtenWorkType: string } {
   if (!text.length || text.length > MAX_WRITING_BACKUP_BYTES || new TextEncoder().encode(text).byteLength > MAX_WRITING_BACKUP_BYTES) fail("文件必须大于 0 且不超过 2 MiB。");
   let value: unknown;
   try {
@@ -126,7 +139,8 @@ export function parseWritingBackup(text: string): WritingBackup {
   if (raw.locale !== "zh-CN" && raw.locale !== "en" && raw.locale !== "zh-TW") fail("作品语言无效。");
   const workType = typeof raw.workType === "string" ? parseWorkType(raw.workType) : null;
   if (!workType) fail("作品类型无效。");
-  return { format: "no-wave-writing-backup", version: 1, createdAt, draft: { title, summary, locale: raw.locale, workType, editorState: validateWritingState(raw.editorState) } };
+  const backup: WritingBackup = { format: "no-wave-writing-backup", version: 1, createdAt, draft: { title, summary, locale: raw.locale, workType, editorState: validateWritingState(raw.editorState) } };
+  return { backup, writtenWorkType: raw.workType as string };
 }
 
 export function createWritingBackup(draft: WritingDraft, now = new Date()): string {
@@ -147,7 +161,6 @@ export function restoreWritingFields(current: WritingDraft, preview: WritingRest
   if (!fields.length || new Set(fields).size !== fields.length || fields.some(field => !WRITING_FIELDS.includes(field))) throw new Error("请选择有效且不重复的恢复字段。");
   const source = preview.backup.draft;
   if (fields.includes("locale") && source.locale === "zh-TW" && current.locale !== "zh-TW") throw new Error("历史繁体版本只能在原语言版本中保留；请取消选择语言字段。");
-  if (fields.includes("workType") && source.workType === "serial" && current.workType !== "serial") throw new Error("连载是已停用类型；请取消选择作品类型字段。");
   const next = pickDraft(current);
   for (const field of fields) Object.assign(next, { [field]: structuredClone(source[field]) });
   return next;

@@ -30,7 +30,7 @@ async function source(documents: (string | WritingNode)[][]) {
           {
             title: `Private title ${index}`,
             summary: "Private summary",
-            workType: "essay",
+            workType: "other",
             locale: "en",
             editorState: {
               root: {

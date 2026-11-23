@@ -49,7 +49,7 @@ people's databases, not because this one needs it.
 | `publish` | `Published` | `options.publish` overrides it |
 | `publishedAt` | `Date` | UTC; a published page with no `Date` uses the injected clock |
 | `tags` | `Tags` | names trimmed, empties dropped |
-| `workType` | `Tags` → `workTypeByTag` table | `诗歌→poetry`, `小说→novel`, `散文→essay`, `评论→criticism`, `文学批评→literary_criticism`, `非虚构→nonfiction`, `其他→other`; anything else is `other` with `work-type-fallback` |
+| `workType` | `Tags` → `workTypeByTag` table | `小说→novel`, `诗歌→poetry`, `诗→poetry`, `其他→other` (the author's own Notion tags); the finer genre words fold the same way as the stored works did (ADR 0054): `短篇`/`长篇`/`连载→novel`, `散文`/`评论`/`文学批评`/`非虚构`/`其他文体→other`; anything else is `other` with `work-type-fallback` |
 | `contentBlocks` | the page's blocks | see §5 |
 | `contentBlocksVersion` | — | always `1` (inline marks and links are carried) |
 | `externalId` | the page id | the identity used for idempotent re-import |

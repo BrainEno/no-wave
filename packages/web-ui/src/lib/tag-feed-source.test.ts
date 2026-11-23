@@ -5,7 +5,7 @@ import { renderTagFeed } from "./tag-feed.ts";
 import type { TagView } from "./tag-discovery.ts";
 
 const tag: TagView = { slug: "public-theme", name: "记忆", description: "", articleCount: 1, locale: "zh-CN" };
-const article = { slug: "public-work", title: "公开的作品", status: "published", locale: "zh-CN", workType: "essay", summary: "已编辑的摘要",
+const article = { slug: "public-work", title: "公开的作品", status: "published", locale: "zh-CN", workType: "other", summary: "已编辑的摘要",
   contentBlocks: [], publishedAt: "2026-10-01T00:00:00.000Z", updatedAt: "2026-11-02T12:00:00.000Z",
   author: { userId: "writer", displayName: "作者", bio: "只属于作者页面的介绍" }, tags: [tag], categories: [] };
 function clientFor(value: unknown) {

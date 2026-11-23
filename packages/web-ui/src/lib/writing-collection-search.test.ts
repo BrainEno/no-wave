@@ -6,7 +6,7 @@ import { collectionRows, type CollectionSource } from "./writing-collection-inde
 import { DEFAULT_COLLECTION_SEARCH, searchWritingCollection, resolveCollectionSearchMatch } from "./writing-collection-search.ts";
 
 async function source(texts: string[], slot: "left" | "right" = "left"): Promise<CollectionSource> {
-  const documents = texts.map((text, index) => ({ group: String(index), backup: parseWritingBackup(createWritingBackup({ title: `Title ${index}`, summary: "not searched 海", locale: "en", workType: "essay", editorState: { root: { type: "root", version: 1, children: [
+  const documents = texts.map((text, index) => ({ group: String(index), backup: parseWritingBackup(createWritingBackup({ title: `Title ${index}`, summary: "not searched 海", locale: "en", workType: "other", editorState: { root: { type: "root", version: 1, children: [
     { type: "paragraph", version: 1, children: [{ type: "text", version: 1, text }] },
     { type: "code", version: 1, language: "plain", children: [{ type: "text", version: 1, text: "never code 海" }] },
     { type: "image", version: 1, src: "https://example.test/no-fetch.png", alt: "never image 海" },
