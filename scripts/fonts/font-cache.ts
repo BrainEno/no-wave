@@ -1,10 +1,19 @@
 import { createHash } from "node:crypto";
-import { copyFile, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import {
+  copyFile,
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { FontManifest } from "../lib/font-assets.ts";
 
-const digest = (bytes: Uint8Array | string) => createHash("sha256").update(bytes).digest("hex");
+const digest = (bytes: Uint8Array | string) =>
+  createHash("sha256").update(bytes).digest("hex");
 
 /**
  * Resolve the user's persistent local cache directory on this computer.
@@ -132,7 +141,10 @@ export async function readCachedSourceBlob(
     const filePath = join(dir, "sources", `${blob}.bin`);
     try {
       const bytes = await readFile(filePath);
-      if (bytes.length <= 32 * 1024 * 1024 && digest(bytes) === expectedSha256) {
+      if (
+        bytes.length <= 32 * 1024 * 1024 &&
+        digest(bytes) === expectedSha256
+      ) {
         return bytes;
       }
     } catch {
@@ -168,8 +180,66 @@ export type CacheRestoreResult = {
 };
 
 /**
+ * Remove residual font files from target directory that do not belong to the manifest
+ * or whose byte length or SHA-256 digest does not match the manifest entry.
+ * Valid font assets are preserved.
+ */
+export async function cleanResidualFontAssets(
+  manifest: FontManifest,
+  targetDir: string,
+): Promise<{ cleaned: number; preserved: number }> {
+  let cleaned = 0;
+  let preserved = 0;
+  const expectedFaces = new Map(
+    manifest.faces.map((face) => [face.file, face]),
+  );
+
+  try {
+    const files = await readdir(targetDir);
+    for (const file of files) {
+      if (!file.endsWith(".woff2")) continue;
+      const expectedFace = expectedFaces.get(file);
+      const filePath = join(targetDir, file);
+      if (!expectedFace) {
+        await rm(filePath, { force: true }).catch(() => {});
+        cleaned += 1;
+        continue;
+      }
+
+      try {
+        const info = await stat(filePath);
+        if (info.size !== expectedFace.byteLength) {
+          await rm(filePath, { force: true }).catch(() => {});
+          cleaned += 1;
+          continue;
+        }
+        const bytes = await readFile(filePath);
+        if (
+          bytes.length === expectedFace.byteLength &&
+          digest(bytes) === expectedFace.sha256
+        ) {
+          preserved += 1;
+        } else {
+          await rm(filePath, { force: true }).catch(() => {});
+          cleaned += 1;
+        }
+      } catch {
+        await rm(filePath, { force: true }).catch(() => {});
+        cleaned += 1;
+      }
+    }
+  } catch {
+    // targetDir may be missing or unreadable
+  }
+
+  return { cleaned, preserved };
+}
+
+/**
  * Fast bundle restoration: if font faces are missing from the target directory,
  * copy them directly from the local computer cache if their exact SHA-256 matches.
+ * Any residual corrupted, changed, or unowned font assets in the target directory
+ * are sanitized so the directory can be verified or regenerated cleanly.
  */
 export async function restoreBundleFromCache(
   manifest: FontManifest,
@@ -181,16 +251,50 @@ export async function restoreBundleFromCache(
   let alreadyPresent = 0;
   let missing = 0;
 
+  const expectedFaces = new Map(
+    manifest.faces.map((face) => [face.file, face]),
+  );
+  const existingFiles = new Set<string>();
+  try {
+    const files = await readdir(targetDir);
+    for (const file of files) {
+      if (file.endsWith(".woff2")) {
+        if (!expectedFaces.has(file)) {
+          // Remove unowned .woff2 file from old recipe/build
+          await rm(join(targetDir, file), { force: true }).catch(() => {});
+        } else {
+          existingFiles.add(file);
+        }
+      }
+    }
+  } catch {
+    // targetDir may be empty
+  }
+
   for (const face of manifest.faces) {
     const targetFile = join(targetDir, face.file);
-    try {
-      const info = await stat(targetFile);
-      if (info.size === face.byteLength) {
-        alreadyPresent += 1;
-        continue;
+    let targetValid = false;
+
+    if (existingFiles.has(face.file)) {
+      try {
+        const info = await stat(targetFile);
+        if (info.size === face.byteLength) {
+          const bytes = await readFile(targetFile);
+          if (
+            bytes.length === face.byteLength &&
+            digest(bytes) === face.sha256
+          ) {
+            targetValid = true;
+            alreadyPresent += 1;
+          }
+        }
+      } catch {
+        // Missing or error reading
       }
-    } catch {
-      // Missing or wrong size, attempt restoration
+    }
+
+    if (targetValid) {
+      continue;
     }
 
     let found = false;
@@ -199,10 +303,19 @@ export async function restoreBundleFromCache(
       try {
         const info = await stat(cachedFile);
         if (info.size === face.byteLength) {
-          await copyFile(cachedFile, targetFile);
-          restored += 1;
-          found = true;
-          break;
+          const cachedBytes = await readFile(cachedFile);
+          if (
+            cachedBytes.length === face.byteLength &&
+            digest(cachedBytes) === face.sha256
+          ) {
+            await writeFile(targetFile, cachedBytes);
+            restored += 1;
+            found = true;
+            break;
+          } else {
+            // Poisoned or corrupted cache file; remove it from cache
+            await rm(cachedFile, { force: true }).catch(() => {});
+          }
         }
       } catch {
         // try next cache dir
@@ -211,6 +324,10 @@ export async function restoreBundleFromCache(
 
     if (!found) {
       missing += 1;
+      // If targetFile existed on disk but was invalid/corrupted, remove it
+      if (existingFiles.has(face.file)) {
+        await rm(targetFile, { force: true }).catch(() => {});
+      }
     }
   }
 
@@ -230,28 +347,45 @@ export async function archiveTargetToCache(
   for (const face of manifest.faces) {
     const targetFile = join(targetDir, face.file);
     try {
-      const info = await stat(targetFile);
-      if (info.size !== face.byteLength) continue;
+      const targetInfo = await stat(targetFile);
+      if (targetInfo.size !== face.byteLength) continue;
+
+      let needsArchive = false;
+      for (const dir of cacheDirs) {
+        const cachedFile = join(dir, "subsets", `${face.sha256}.woff2`);
+        try {
+          const info = await stat(cachedFile);
+          if (info.size === face.byteLength) continue;
+        } catch {
+          needsArchive = true;
+          break;
+        }
+      }
+      if (!needsArchive) continue;
+
+      const bytes = await readFile(targetFile);
+      if (bytes.length !== face.byteLength || digest(bytes) !== face.sha256)
+        continue;
+
+      for (const dir of cacheDirs) {
+        const cachedFile = join(dir, "subsets", `${face.sha256}.woff2`);
+        try {
+          const info = await stat(cachedFile);
+          if (info.size === face.byteLength) continue;
+        } catch {
+          // Missing in this cache dir, copy it over
+        }
+        try {
+          const subsetDir = join(dir, "subsets");
+          await mkdir(subsetDir, { recursive: true });
+          await writeFile(cachedFile, bytes);
+          archived += 1;
+        } catch {
+          // Best-effort
+        }
+      }
     } catch {
       continue;
-    }
-
-    for (const dir of cacheDirs) {
-      const cachedFile = join(dir, "subsets", `${face.sha256}.woff2`);
-      try {
-        const info = await stat(cachedFile);
-        if (info.size === face.byteLength) continue;
-      } catch {
-        // Missing in this cache dir, copy it over
-      }
-      try {
-        const subsetDir = join(dir, "subsets");
-        await mkdir(subsetDir, { recursive: true });
-        await copyFile(targetFile, cachedFile);
-        archived += 1;
-      } catch {
-        // Best-effort
-      }
     }
   }
   return archived;
@@ -260,7 +394,9 @@ export async function archiveTargetToCache(
 /**
  * Clear all local font cache directories.
  */
-export async function clearFontCache(cacheDirs: readonly string[]): Promise<void> {
+export async function clearFontCache(
+  cacheDirs: readonly string[],
+): Promise<void> {
   for (const dir of cacheDirs) {
     try {
       await rm(dir, { recursive: true, force: true });
