@@ -78,7 +78,7 @@ export function HomePageView({ locale, featured, latest, popular, categories }: 
 
   return (
     <main lang={locale} id="top" tabIndex={-1}>
-      <header className="nw-hero" data-hero style={{ userSelect: "none", touchAction: "none" }}>
+      <header className="nw-hero" data-hero style={{ userSelect: "none", touchAction: "pan-y" }}>
         <img className="nw-hero-bg" src={heroCover.src} alt="" width={heroCover.width} height={heroCover.height} fetchPriority="high" draggable={false} style={{ userSelect: "none", pointerEvents: "none" }} />
         <HeroCanvas src={heroCover.src} />
         <div className="nw-brand">

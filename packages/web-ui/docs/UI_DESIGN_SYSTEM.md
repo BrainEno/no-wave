@@ -195,8 +195,10 @@
 - **库：** GSAP 3.13 + ScrollTrigger + ScrollSmoother（`smooth: 1.2`）。固定元素（竖脊、导航条、面板）必须放在 `#smooth-wrapper` 之外。
 - **工具页例外：** `/write`（含 `/write/media`）、`/account`、`/admin/*`、`/sign-in` 等表单与账户路由不启用 ScrollSmoother，保留原生滚动，避免滚动动画期间 mousedown/mouseup 落在不同元素而吞掉点击（#92 / #164）。
 - **允许的动效：** 载入幕布、字标入场、图片遮罩进入、视差（`data-speed`）、滚动速度驱动跑马灯、区块进入。**每个区块最多两种**。
-- **WebGL：** 只用于**首屏的一张图**（涂抹/位移着色器）。要求：单 canvas、DPR ≤ 2、首屏离开视口后停止渲染、WebGL 不可用时回退为静态 `<img>`。其他页面（`/articles/:slug`、`/write`、`/messages`）**不使用 WebGL**，保证阅读与输入的稳定。
-- **Canvas 2D：** 仅用于全局颗粒层（半分辨率、约 8fps、`pointer-events:none`、不超过 7% 不透明度）。噪点在初始化时生成一张 256×256 静态 tile，之后每帧只平移 repeat pattern 并做一次 `fillRect`，不再逐像素调用 `Math.random()`。
+- **WebGL：** 只用于**首屏的一张图**（涂抹/位移着色器）。要求：单 canvas、DPR ≤ 2、首屏离开视口后停止渲染。精细指针（`pointer: fine`）悬停即推开颜料，按住拖动也可以；触屏只响应拖动，`touch-action: pan-y` 保证竖向滑动仍然滚动页面。其他页面（`/articles/:slug`、`/write`、`/messages`）**不使用 WebGL**，保证阅读与输入的稳定。
+- **浮现：** 首次访问由载入幕布的时间线驱动从涂抹到清晰；同一会话再次进入首页时幕布不播放，首屏在封面画上画布后自行播放约 1.8 秒的浮现。
+- **回退链：** WebGL（无上下文、着色器/链接失败、纹理异常、前两帧栅格化成纯色）→ Canvas 2D 近似渲染（多次偏移叠绘做涂抹，指针处局部推开，移动颗粒；半分辨率、约 30fps）→ 静态 `<img>`。画布上的 `data-mode`（`webgl` / `2d`）标明实际使用的渲染方式。
+- **Canvas 2D：** 只用于上面的首屏回退。全局颗粒层是静态层（见 §25），不跑帧循环。
 - **减少动态效果：** `prefers-reduced-motion` 时不启用平滑滚动、不跑马灯、不播放载入幕布、WebGL 只渲染一帧清晰画面。
 - **性能底线：** 首屏 LCP 图 ≤ 800KB；滚动时主线程长任务 < 50ms；移动端关闭鼠标交互着色。
 
