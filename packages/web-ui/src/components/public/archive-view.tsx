@@ -8,6 +8,7 @@ import { PAGE_SIZE } from "@/lib/work-types.ts";
 import { getUi } from "@/lib/ui-copy.ts";
 import { EmptyState, hrefWith, Pager, TypeChip, TypeTabs, WorkRow } from "@/components/ui/parts.tsx";
 import type { ArchivePageData } from "@/lib/public-pages.ts";
+import { siteFeedLinks } from "@/lib/site-feed.ts";
 
 /**
  * Presentational archive (作品目录).
@@ -38,6 +39,17 @@ export function ArchivePageView({ locale, query, page, type, articles, hasNextPa
           <button className="nw-btn nw-sec" type="submit">{ui.archive.button}</button>
           {query || type ? <Link className="nw-btn" href={base}>{ui.archive.clear}</Link> : null}
         </form>
+        {/*
+          The same subscribe buttons a tag page has. Plain anchors, not the
+          router's Link: the feeds are resource routes, and a client-side
+          navigation into one would have no page to render. The feed is always
+          the site-wide newest works, whatever is filtered.
+        */}
+        <nav aria-label={ui.archive.subscribe} data-site-feed style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 20 }}>
+          {siteFeedLinks(locale).map((link) => (
+            <a key={link.type} className="nw-btn nw-sec" href={link.href} type={link.type}>{link.label}</a>
+          ))}
+        </nav>
       </header>
       <div style={{ marginTop: 40 }}><TypeTabs locale={locale} base={base} current={type} params={{ q: query }} /></div>
       {type ? <p className="nw-m" style={{ marginTop: 8 }}>{ui.archive.limitNote}</p> : null}

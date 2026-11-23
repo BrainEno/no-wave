@@ -8,7 +8,7 @@ import { ArchivePageView } from "@/components/public/archive-view.tsx";
 import { PUBLIC_PAGE_HEADERS } from "../lib/http-policy.ts";
 import { upstreamUnavailable } from "../lib/loader-errors.ts";
 import { localeFor } from "../lib/locale.ts";
-import { metaDescriptors, siteUrlFromMatches } from "../lib/meta.ts";
+import { metaDescriptors, siteFeedDescriptors, siteUrlFromMatches } from "../lib/meta.ts";
 
 /**
  * Public archive (作品目录) for `/articles` and `/en/articles`.
@@ -34,8 +34,11 @@ export async function loader({ request, url }: LoaderFunctionArgs) {
 
 export const headers: HeadersFunction = () => PUBLIC_PAGE_HEADERS;
 
-export const meta: MetaFunction<typeof loader> = ({ loaderData, matches }) =>
-  metaDescriptors(archiveMetadata(loaderData?.locale ?? "zh-CN", siteUrlFromMatches(matches)));
+export const meta: MetaFunction<typeof loader> = ({ loaderData, matches }) => {
+  const locale = loaderData?.locale ?? "zh-CN";
+  const metadata = archiveMetadata(locale, siteUrlFromMatches(matches));
+  return [...metaDescriptors(metadata), ...siteFeedDescriptors(locale, metadata.alternates.canonical)];
+};
 
 export default function ArchiveRoute() {
   return <ArchivePageView {...useLoaderData<typeof loader>()} />;
