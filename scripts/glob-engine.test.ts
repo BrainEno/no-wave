@@ -13,8 +13,9 @@ type GlobApi = {
 
 const rootRequire = createRequire(import.meta.url);
 const stylelintRequire = createRequire(rootRequire.resolve("stylelint"));
-const micromatchRequire = createRequire(stylelintRequire.resolve("micromatch"));
-const glob = micromatchRequire("picomatch") as GlobApi;
+// Stylelint 18 imports `picomatch` itself (micromatch and fast-glob left its
+// tree), so that is the transitive resolution these assertions exercise.
+const glob = stylelintRequire("picomatch") as GlobApi;
 
 test("the installed transitive glob implementation does not compile the entire glob to a backtracking RegExp", () => {
   const predicate = glob.makeRe("**/*.{ts,tsx}");

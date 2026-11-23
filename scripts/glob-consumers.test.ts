@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import test from "node:test";
 import { Script } from "node:vm";
 import { resolveConfig } from "prettier";
@@ -13,7 +13,7 @@ const webRequire = createRequire(new URL("../apps/web-rr/package.json", import.m
 const viteRequire = createRequire(webRequire.resolve("vite"));
 const sorted = (files: string[]) => files.map(file => file.replace(/\\/g, "/")).sort();
 
-test("real fast-glob, tinyglobby and fdir consumers preserve discovery, exclusions and dotfiles", async () => {
+test("real tinyglobby and fdir consumers preserve discovery, exclusions and dotfiles", async () => {
   const root = await mkdtemp(join(tmpdir(), "no-wave-glob-walkers-"));
   try {
     const files = ["src/a/index.ts", "src/a/index.test.ts", "src/b/view.tsx", "src/b/view.css", "src/.secret/private.ts", "space [demo]/中文.ts"];
@@ -21,18 +21,15 @@ test("real fast-glob, tinyglobby and fdir consumers preserve discovery, exclusio
       await mkdir(dirname(join(root, file)), { recursive: true });
       await writeFile(join(root, file), "fixture\n");
     }
-    const fastGlob = stylelintRequire("fast-glob") as (patterns: string[], options: Record<string, unknown>) => Promise<string[]>;
     const tinyGlob = viteRequire("tinyglobby") as {
       glob(patterns: string[], options: Record<string, unknown>): Promise<string[]>;
       globSync(patterns: string[], options: Record<string, unknown>): string[];
     };
     const patterns = ["src/**/*.{ts,tsx}", "!**/*.test.ts"];
     const expected = ["src/a/index.ts", "src/b/view.tsx"];
-    assert.deepEqual(sorted(await fastGlob(patterns, { cwd: root })), expected);
     assert.deepEqual(sorted(await tinyGlob.glob(patterns, { cwd: root })), expected);
     assert.deepEqual(sorted(tinyGlob.globSync(patterns, { cwd: root })), expected);
     const withDots = ["src/.secret/private.ts", ...expected];
-    assert.deepEqual(sorted(await fastGlob(patterns, { cwd: root, dot: true })), withDots);
     assert.deepEqual(sorted(tinyGlob.globSync(patterns, { cwd: root, dot: true })), withDots);
     assert.deepEqual(sorted(tinyGlob.globSync(["src/a"], { cwd: root })), ["src/a/index.test.ts", "src/a/index.ts"]);
     assert.deepEqual(tinyGlob.globSync(["space \\[demo\\]/*.ts"], { cwd: root }), ["space [demo]/中文.ts"]);
@@ -45,6 +42,34 @@ test("real fast-glob, tinyglobby and fdir consumers preserve discovery, exclusio
     // fdir deliberately defaults to dot:true, unlike the other two walkers.
     assert.deepEqual(sorted(new Fdir().withRelativePaths().glob("src/**/*.ts").crawl(root).sync()), ["src/.secret/private.ts", "src/a/index.test.ts", "src/a/index.ts"]);
     assert.deepEqual(sorted(new Fdir().withRelativePaths().globWithOptions(["src/**/*.ts"], { dot: false }).crawl(root).sync()), ["src/a/index.test.ts", "src/a/index.ts"]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("Stylelint's file discovery, ignore lists and basename overrides run on the non-recursive engine", async () => {
+  // Stylelint 18 walks with tinyglobby and matches ignoreFiles / overrides with
+  // `picomatch` directly; both resolve to @bot-thk/glob-match through the override.
+  assert.equal(stylelintRequire.resolve("picomatch"), require.resolve("@bot-thk/glob-match"));
+  const root = await mkdtemp(join(tmpdir(), "no-wave-glob-stylelint-"));
+  try {
+    for (const file of ["src/a/view.css", "src/a/view.test.css", "src/b/skip.css", "src/.hidden/x.css", "space [demo]/中文.css"]) {
+      await mkdir(dirname(join(root, file)), { recursive: true });
+      await writeFile(join(root, file), "a { color: red; }\n");
+    }
+    type Result = { source: string; ignored?: boolean; warnings: unknown[] };
+    const { default: stylelint } = await import("stylelint") as { default: { lint(options: Record<string, unknown>): Promise<{ results: Result[] }> } };
+    const lint = async (options: Record<string, unknown>) =>
+      (await stylelint.lint({ cwd: root, allowEmptyInput: true, config: { rules: {} }, ...options })).results.filter((result) => result.ignored !== true);
+    const seen = (results: Result[]) => sorted(results.map((result) => relative(root, result.source)));
+
+    assert.deepEqual(seen(await lint({ files: ["**/*.css"], ignorePattern: ["**/*.test.css"] })), ["space [demo]/中文.css", "src/a/view.css", "src/b/skip.css"]);
+    assert.deepEqual(seen(await lint({ files: ["src/**/*.css", "!src/b/**"] })), ["src/a/view.css", "src/a/view.test.css"]);
+    assert.deepEqual(seen(await lint({ files: ["space \\[demo\\]/*.css"] })), ["space [demo]/中文.css"]);
+    assert.deepEqual(seen(await lint({ files: ["src/**/*.css"], config: { rules: {}, ignoreFiles: ["**/skip.css", "**/*.test.css"] } })), ["src/a/view.css"]);
+    const overridden = await lint({ files: ["src/**/*.css"], config: { rules: {}, overrides: [{ files: "skip.css", rules: { "color-named": "never" } }] } });
+    assert.deepEqual(overridden.map((result) => [relative(root, result.source).replace(/\\/g, "/"), result.warnings.length]).sort(),
+      [["src/a/view.css", 0], ["src/a/view.test.css", 0], ["src/b/skip.css", 1]], "a basename override reaches the nested file and only it");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
