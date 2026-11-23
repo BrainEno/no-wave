@@ -2,7 +2,7 @@ import { setImmediate as yieldToRequests } from "node:timers/promises";
 import { projectStoredArticleCard } from "../application/article-reading.ts";
 import type { ArticleReadProjection, StoredArticle } from "../application/persistence-ports.ts";
 import type { PgExecutor, PgRow } from "./postgres-driver.ts";
-import type { SqliteRow, SqliteRunner } from "./sqlite.ts";
+import { privateSqliteStatement, type SqliteRow, type SqliteRunner } from "./sqlite.ts";
 
 type PageRead = ArticleReadProjection & { limit: number };
 type SqliteStatement = ReturnType<SqliteRunner["prepare"]>;
@@ -26,7 +26,10 @@ function appendCard(output: StoredArticle[], article: StoredArticle, options: Pa
 export function readSqliteArticlePage(statement: SqliteStatement, values: unknown[], map: (row: SqliteRow) => StoredArticle, options: PageRead): StoredArticle[] | Promise<StoredArticle[]> {
   if (!cardRead(options)) return statement.all(...values).map(map);
   if (!statement.iterate) throw new Error("The SQLite adapter cannot iterate article cards safely.");
-  const iterator = statement.iterate(...values);
+  // The loop below yields between rows, so it must not share the connection's
+  // cached statement: a concurrent read of the same SQL would reset it mid-page.
+  const own = privateSqliteStatement(statement) as SqliteStatement;
+  const iterator = own.iterate!(...values);
   return (async () => {
     const output: StoredArticle[] = [];
     for (const row of iterator) {

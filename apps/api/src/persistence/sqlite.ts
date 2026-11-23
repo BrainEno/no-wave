@@ -90,6 +90,27 @@ function normalizeSqliteBindings(args: readonly unknown[]): unknown[] {
   return args.map(normalizeSqliteBinding);
 }
 
+/**
+ * How to prepare a private copy of each cached statement, keyed by the cached one.
+ *
+ * The connection shares one native statement per SQL text, which is safe for the
+ * synchronous get/all/run every caller uses. A reader that keeps an iterator open
+ * across an event-loop turn is the exception: any other request that runs the same
+ * SQL in that turn resets the shared statement, and node:sqlite then fails the
+ * first reader with "iterator was invalidated" (two readers opening the home page
+ * at once was enough). Such a reader iterates its own copy instead.
+ */
+const privateStatementPreparers = new WeakMap<object, () => SqliteStatement>();
+
+/**
+ * A statement no other caller can reset, for an iteration that yields between
+ * rows. Statements that did not come from {@link createSqliteClient}'s cache are
+ * returned unchanged: nothing else holds them.
+ */
+export function privateSqliteStatement<T extends object>(statement: T): T | SqliteStatement {
+  return privateStatementPreparers.get(statement)?.() ?? statement;
+}
+
 function wrapSqliteStatement(statement: SqliteStatement): SqliteStatement {
   for (const method of ["get", "all", "run", "iterate"] as const) {
     const original = statement[method] as unknown as UnknownFunction;
@@ -170,6 +191,7 @@ export function createSqliteClient({
       let stmt = statementCache.get(sql);
       if (stmt) return stmt;
       stmt = wrapSqliteStatement(originalPrepare(sql));
+      privateStatementPreparers.set(stmt, () => wrapSqliteStatement(originalPrepare(sql)));
       if (statementCache.size >= MAX_STATEMENTS) {
         const oldest = statementCache.keys().next().value;
         if (oldest !== undefined) statementCache.delete(oldest);

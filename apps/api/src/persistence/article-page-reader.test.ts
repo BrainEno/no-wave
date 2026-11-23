@@ -36,6 +36,25 @@ test("SQLite card reads finish/reset their statement after cancellation, mapper 
   } finally { db.close(); }
 });
 
+test("concurrent SQLite card reads of one cached statement each finish their page, even when the same SQL runs in between", async () => {
+  // Regression: card reads yield between rows, and the connection caches one
+  // statement per SQL text. Two readers of the featured shelf at once used to
+  // fail the first with "iterator was invalidated" (a 500 on the home page).
+  const db = createSqliteClient({ filename: ":memory:", enableWal: false });
+  try {
+    db.exec("CREATE TABLE reader_fixture (id INTEGER PRIMARY KEY); INSERT INTO reader_fixture VALUES (1), (2), (3);");
+    const sql = "SELECT id FROM reader_fixture ORDER BY id";
+    const shared = db.prepare(sql);
+    assert.equal(db.prepare(sql), shared, "the fixture exercises the connection's shared cached statement");
+    const read = () => readSqliteArticlePage(shared, [], row => article(Number(row.id)), { limit: 3, projection: "card" });
+    const first = read(), second = read();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(shared.all().length, 3, "a synchronous read of the same SQL while both pages are open");
+    const pages = await Promise.all([first, second]);
+    assert.deepEqual(pages.map(page => page.map(card => card.id)), [["1", "2", "3"], ["1", "2", "3"]]);
+  } finally { db.close(); }
+});
+
 test("SQLite projection validation fails before reading and never substitutes all() for a missing iterator", async () => {
   let all = 0;
   const statement = { get() { return undefined; }, run() { return { changes: 0 }; }, all() { all++; return []; } };
