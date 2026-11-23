@@ -1428,7 +1428,7 @@ test("a published work can be withdrawn to a draft again", async () => {
   const published = await put(`/api/authoring/articles/${id}`, articleBody("Desk Withdraw Gamma", true), { cookie: DESK_COOKIE });
   assert.equal((JSON.parse(published.body) as { data: { status: string } }).data.status, "published");
 
-  // The desk's 转为草稿 is the same PUT with `publish: false`; nothing new was
+  // The desk's 撤销发布 is the same PUT with `publish: false`; nothing new was
   // added to the contract, so this is the desk proving the seam carries the
   // intent rather than the framework.
   const withdrawn = await put(`/api/authoring/articles/${id}`, articleBody("Desk Withdraw Gamma", false), { cookie: DESK_COOKIE });

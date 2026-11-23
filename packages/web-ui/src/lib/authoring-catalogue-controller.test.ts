@@ -70,11 +70,11 @@ test("a cancelled/obsolete restore intent cannot write, and a confirmed restore 
     return page([trashRow]);
   });
   await controller.connect(); await controller.apply({ ...controller.getSnapshot().filters, scope: "trash" });
-  controller.requestRestore(trashRow); controller.cancelRestore(); await controller.confirmRestore();
+  controller.requestRestore(trashRow); controller.cancelWork(); await controller.confirmWork();
   assert.equal(posts, 0);
-  controller.requestRestore(trashRow); await controller.apply({ ...controller.getSnapshot().filters, q: "One" }); await controller.confirmRestore();
+  controller.requestRestore(trashRow); await controller.apply({ ...controller.getSnapshot().filters, q: "One" }); await controller.confirmWork();
   assert.equal(posts, 0);
-  controller.requestRestore(trashRow); await controller.confirmRestore();
+  controller.requestRestore(trashRow); await controller.confirmWork();
   assert.equal(posts, 1);
   assert.equal(controller.getSnapshot().status, "failed");
   assert.match(controller.getSnapshot().error, /核对/);
@@ -116,7 +116,7 @@ test("a restore server error is an unconfirmed write, not a successful local rem
     return page([trash]);
   });
   await controller.connect(); await controller.apply({ ...controller.getSnapshot().filters, scope: "trash" });
-  controller.toggle(trash); controller.requestRestore(trash); await controller.confirmRestore();
+  controller.toggle(trash); controller.requestRestore(trash); await controller.confirmWork();
   assert.match(controller.getSnapshot().error, /还原.*确认/);
   assert.equal(controller.getSnapshot().selected.length, 1);
   assert.equal(controller.getSnapshot().page?.items.length, 1);
@@ -240,4 +240,114 @@ test("an export's session response cannot authorize a changed selection, disconn
     assert.equal(await pending, false, boundary);
     await probe;
   }
+});
+
+/** A published row and the editable edition the catalogue GET returns for it. */
+const published: CatalogueEntry = { ...row, status: "published", title: "Walls", summary: "A poem" };
+const edition = (overrides: Record<string, unknown> = {}) => Response.json({ data: {
+  ...published, authorId: "author-a", revision: "7", contentBlocks: [{ id: "p", type: "paragraph", text: "Through the plaster." }],
+  contentBlocksVersion: 1, publishedAt: "2026-11-01T00:00:00.000Z", ...overrides,
+} });
+type Call = { url: string; method: string; headers: Record<string, string>; body: unknown };
+function workFetch(answer: (call: Call) => Response | Promise<Response> | undefined, rows = [published]) {
+  const calls: Call[] = [];
+  const fetcher = async (url: string, init?: RequestInit) => {
+    if (url.endsWith("/session")) return Response.json({ data: { id: "author-a" } });
+    const call = { url, method: init?.method ?? "GET", headers: Object.fromEntries(new Headers(init?.headers).entries()), body: typeof init?.body === "string" ? JSON.parse(init.body) : null };
+    calls.push(call);
+    return (await answer(call)) ?? page(rows);
+  };
+  return { calls, fetcher };
+}
+const writes = (calls: Call[]) => calls.filter(call => call.method === "PUT" || call.method === "DELETE");
+
+test("撤销发布 writes the stored edition back unchanged as a draft, at the revision it read, under the reviewed account", async () => {
+  let current = [published];
+  const { calls, fetcher } = workFetch(call => {
+    if (call.method === "GET" && call.url.startsWith(`/api/authoring/catalogue/${published.id}?`)) return edition();
+    if (call.method === "PUT") { current = [{ ...published, status: "draft" }]; return Response.json({ data: { ...published, status: "draft" } }); }
+    return page(current);
+  });
+  const controller = new CatalogueController(fetcher);
+  await controller.connect();
+  controller.requestWithdraw(published);
+  assert.equal(controller.getSnapshot().workIntent?.kind, "withdraw");
+  await controller.confirmWork();
+  const [put] = writes(calls);
+  assert.equal(put?.url, `/api/authoring/articles/${published.id}`);
+  assert.equal(put?.headers["x-expected-author"], "author-a");
+  assert.deepEqual(put?.body, { slug: "one", expectedRevision: "7", title: "Walls", summary: "A poem", locale: "en", workType: "other",
+    contentBlocks: [{ id: "p", type: "paragraph", text: "Through the plaster." }], contentBlocksVersion: 1, publish: false });
+  const state = controller.getSnapshot();
+  assert.equal(state.writing, null);
+  assert.equal(state.status, "ready");
+  assert.match(state.notice, /《Walls》已撤销发布.*重新发布即恢复同一地址/);
+  assert.equal(state.page?.items[0]?.status, "draft", "the page is re-read, not patched locally");
+});
+
+test("撤销发布 is refused, not forced, when the work changed after it was read", async () => {
+  const { calls, fetcher } = workFetch(call => {
+    if (call.method === "GET" && call.url.includes("?locale=")) return edition();
+    if (call.method === "PUT") return Response.json({ error: { code: "ARTICLE_VERSION_CONFLICT" } }, { status: 409 });
+  });
+  const controller = new CatalogueController(fetcher);
+  await controller.connect();
+  controller.requestWithdraw(published); await controller.confirmWork();
+  assert.equal(writes(calls).length, 1, "one attempt, no automatic retry");
+  assert.equal(controller.getSnapshot().status, "failed");
+  assert.match(controller.getSnapshot().error, /又被修改过，没有撤销发布/);
+  await controller.refresh(); assert.equal(writes(calls).length, 1);
+});
+
+test("撤销发布 writes nothing when the edition is already a draft or belongs to another account", async () => {
+  for (const [overrides, expected] of [[{ status: "draft" }, /已经是草稿，没有修改/], [{ authorId: "author-b" }, /没有撤销发布/]] as const) {
+    const { calls, fetcher } = workFetch(call => call.method === "GET" && call.url.includes("?locale=") ? edition(overrides) : undefined);
+    const controller = new CatalogueController(fetcher);
+    await controller.connect();
+    controller.requestWithdraw(published); await controller.confirmWork();
+    assert.equal(writes(calls).length, 0);
+    assert.match(`${controller.getSnapshot().notice}${controller.getSnapshot().error}`, expected);
+  }
+});
+
+test("删除 sends one DELETE under the reviewed account, drops the work from the selection and re-reads the page", async () => {
+  let current = [published, { ...published, locale: "zh-CN" }];
+  const { calls, fetcher } = workFetch(call => {
+    if (call.method === "DELETE") { current = []; return Response.json({ data: { id: published.id } }); }
+    return page(current);
+  });
+  const controller = new CatalogueController(fetcher);
+  await controller.connect();
+  controller.selectPage(); assert.equal(controller.getSnapshot().selected.length, 2);
+  controller.requestDelete(published);
+  assert.equal(controller.getSnapshot().workIntent?.kind, "delete");
+  await controller.confirmWork();
+  const [del] = writes(calls);
+  assert.equal(del?.method, "DELETE");
+  assert.equal(del?.url, `/api/authoring/articles/${published.id}`);
+  assert.equal(del?.headers["x-expected-author"], "author-a");
+  assert.equal(controller.getSnapshot().selected.length, 0, "every edition of the work leaves the selection");
+  assert.match(controller.getSnapshot().notice, /已删除（全部语言版本），可在回收站还原/);
+});
+
+test("row actions are only offered where they mean something, and a cancelled or stale intent writes nothing", async () => {
+  const { calls, fetcher } = workFetch(() => undefined, [row]);
+  const controller = new CatalogueController(fetcher);
+  await controller.connect();
+  controller.requestWithdraw(row);
+  assert.equal(controller.getSnapshot().workIntent, null, "a draft cannot be withdrawn");
+  controller.requestRestore(row);
+  assert.equal(controller.getSnapshot().workIntent, null, "an active row cannot be restored");
+  controller.requestDelete(row); controller.cancelWork(); await controller.confirmWork();
+  controller.requestDelete(row); await controller.apply({ ...controller.getSnapshot().filters, q: "One" }); await controller.confirmWork();
+  assert.equal(writes(calls).length, 0);
+});
+
+test("a delete the server refuses is reported as unconfirmed and not replayed", async () => {
+  const { calls, fetcher } = workFetch(call => call.method === "DELETE" ? Response.json({}, { status: 503 }) : undefined);
+  const controller = new CatalogueController(fetcher);
+  await controller.connect();
+  controller.requestDelete(published); await controller.confirmWork();
+  assert.match(controller.getSnapshot().error, /删除请求未获成功确认/);
+  await controller.refresh(); assert.equal(writes(calls).length, 1);
 });

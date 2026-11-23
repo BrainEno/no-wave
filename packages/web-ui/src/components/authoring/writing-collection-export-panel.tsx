@@ -10,7 +10,7 @@ export function WritingCollectionExportPanel({ catalogue, disabled }: { catalogu
   const [queue] = useState(() => new CollectionExportController({
     current: () => {
       const state = catalogue.getSnapshot();
-      return { actor: state.actor, selected: state.selected, scope: state.filters.scope, ready: state.status === "ready" && !state.restoring };
+      return { actor: state.actor, selected: state.selected, scope: state.filters.scope, ready: state.status === "ready" && state.writing === null };
     },
     authorize: (actor, fingerprint) => catalogue.authorizeExport(actor, fingerprint),
     onRefused: catalogue.refuseAccount, onLimited: catalogue.respectReadCooldown,

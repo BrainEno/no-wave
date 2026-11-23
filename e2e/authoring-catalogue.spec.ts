@@ -156,6 +156,47 @@ test("trash restoration requires an all-language confirmation and a failed reque
   await expect(page.getByRole("heading", { name: "回收站 · 0 个语言版本 / 0 部作品", exact: true })).toBeVisible();
 });
 
+test("撤销发布 and 删除 from a catalogue row act on the whole work, refuse a stale revision and leave focus on the result", async ({ page, readingStack }) => {
+  const { actor, records } = await setup(page, readingStack);
+  const published = records[0]!;
+  await expect(page.getByRole("button", { name: "撤销发布《=SUM(1)》", exact: true }), "a draft has nothing to withdraw").toHaveCount(0);
+  const withdraw = page.getByRole("button", { name: `撤销发布《${OLD_TITLE}》`, exact: true });
+  const dialog = page.getByRole("dialog", { name: "撤销发布这部作品？", exact: true });
+  // Another window saves the work while this one is deciding: the catalogue's
+  // withdraw reads the edition first, so the save after it is refused, not overwritten.
+  let writes = 0;
+  await page.route(`**/api/authoring/articles/${published.id}`, async route => {
+    writes++;
+    const db = createSqliteClient({ filename: readingStack.databasePath });
+    try { await createSqliteStore(db).updateArticle({ actorId: actor, articleId: published.id, slug: published.slug, title: OLD_TITLE, summary: "另一窗口的修改", locale: "zh-CN", publish: true, workType: "other", contentBlocks: [{ id: "p1", type: "paragraph", text: "CATALOGUE-PRIVATE-BODY-0" }] }); } finally { db.close(); }
+    await route.continue();
+  });
+  await withdraw.click(); await expect(dialog).toContainText("所有语言版本会转为草稿");
+  await dialog.getByRole("button", { name: "撤销发布全部语言", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("又被修改过，没有撤销发布");
+  expect(writes).toBe(1);
+  await page.unroute(`**/api/authoring/articles/${published.id}`);
+  await page.getByRole("button", { name: "刷新当前页", exact: true }).click(); await ready(page);
+  await withdraw.click(); await dialog.getByRole("button", { name: "撤销发布全部语言", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: `《${OLD_TITLE}》已撤销发布` })).toBeVisible();
+  const editions = await page.request.get(`/api/authoring/catalogue/${published.id}/editions?scope=active`, { headers: { "x-expected-author": actor } });
+  expect((await editions.json()).data.map((entry: { status: string }) => entry.status)).toEqual(["draft", "draft", "draft"]);
+  const kept = await page.request.get(`/api/authoring/catalogue/${published.id}?locale=zh-CN`, { headers: { "x-expected-author": actor } });
+  expect((await kept.json()).data).toMatchObject({ summary: "另一窗口的修改", contentBlocks: [{ text: "CATALOGUE-PRIVATE-BODY-0" }] });
+
+  await page.getByRole("button", { name: "删除《=SUM(1)》", exact: true }).click();
+  const remove = page.getByRole("dialog", { name: "删除这部作品？", exact: true });
+  await remove.getByRole("button", { name: "删除全部语言", exact: true }).click();
+  // The row (and the button that opened the dialog) is gone; focus is on the result, not the page's skip link.
+  const outcome = page.locator(".nw-authoring-outcome");
+  await expect(outcome).toContainText("《=SUM(1)》已删除（全部语言版本），可在回收站还原");
+  await expect(outcome).toBeFocused();
+  await expect(page.getByRole("button", { name: "删除《=SUM(1)》", exact: true })).toHaveCount(0);
+  await page.getByLabel("目录范围").selectOption("trash");
+  await page.getByRole("button", { name: "检索目录", exact: true }).click(); await ready(page);
+  await expect(page.getByRole("button", { name: "还原《=SUM(1)》", exact: true })).toBeVisible();
+});
+
 test("selected metadata review shows actual cross-window changes and only an explicit complete acceptance changes the CSV snapshot", async ({ page, readingStack }) => {
   const { actor, records } = await setup(page, readingStack);
   await search(page, OLD_TITLE);

@@ -774,3 +774,44 @@ test("an import that the API refuses keeps the API's answer", async () => {
   );
   assert.equal(anonymous.status, 401);
 });
+
+test("a catalogue 撤销发布 or 删除 is checked against the reviewed author with the same credential, and refused for another account", async () => {
+  const body = JSON.stringify({ slug: "one", title: "one", publish: false, expectedRevision: "7" });
+  for (const method of ["PUT", "DELETE"] as const) {
+    const make = (headers: Record<string, string>) => request(`/api/authoring/articles/${ARTICLE_ID}`, {
+      method, ...(method === "PUT" ? { body } : {}),
+      headers: { host: "no-wave.test", origin: "https://no-wave.test", cookie: `${ACCESS_TOKEN_COOKIE}=${TOKENS.accessToken}`, ...headers },
+    });
+    const same = stubFetch({
+      "api/v1/me": () => json({ data: { id: ORIGINAL_AUTHOR } }),
+      [authoringArticlePath(ARTICLE_ID)]: () => json({ data: { id: ARTICLE_ID, status: "draft" } }),
+    });
+    const ok = await handleAuthoringArticleRequest(make({ [EXPECTED_AUTHOR_HEADER]: ORIGINAL_AUTHOR }), { id: ARTICLE_ID }, { apiBaseUrl: API_BASE, fetchImpl: same.fetchImpl });
+    assert.equal(ok.status, 200, method);
+    assert.deepEqual(same.calls.map((call) => call.url), [`${API_BASE}/api/v1/me`, `${API_BASE}/${authoringArticlePath(ARTICLE_ID)}`]);
+    assert.equal(same.calls[1]?.init?.method, method);
+    assert.equal(new Headers(same.calls[1]?.init?.headers).get("authorization"), new Headers(same.calls[0]?.init?.headers).get("authorization"));
+    if (method === "PUT") assert.equal(same.calls[1]?.init?.body, body);
+
+    const other = stubFetch({ "api/v1/me": () => json({ data: { id: "other-writer" } }) });
+    const refused = await handleAuthoringArticleRequest(make({ [EXPECTED_AUTHOR_HEADER]: ORIGINAL_AUTHOR }), { id: ARTICLE_ID }, { apiBaseUrl: API_BASE, fetchImpl: other.fetchImpl });
+    assert.equal(refused.status, 409, method);
+    assert.equal((await refused.json() as { error: { code: string } }).error.code, "ACCOUNT_CHANGED");
+    assert.equal(other.calls.length, 1, "a different account never reaches the article API");
+
+    const malformed = stubFetch({});
+    const bad = await handleAuthoringArticleRequest(make({ [EXPECTED_AUTHOR_HEADER]: "%E0%A4%A" }), { id: ARTICLE_ID }, { apiBaseUrl: API_BASE, fetchImpl: malformed.fetchImpl });
+    assert.equal(bad.status, 400, method);
+    assert.deepEqual(malformed.calls, [], "a malformed precondition is refused, not ignored");
+  }
+});
+
+test("the desk's own editor still saves and deletes without an expected author: no identity round trip", async () => {
+  const stub = upstream({ data: { id: ARTICLE_ID } });
+  const response = await handleAuthoringArticleRequest(
+    request(`/api/authoring/articles/${ARTICLE_ID}`, { method: "DELETE", headers: { host: "no-wave.test", origin: "https://no-wave.test", cookie: `${ACCESS_TOKEN_COOKIE}=${TOKENS.accessToken}` } }),
+    { id: ARTICLE_ID }, { apiBaseUrl: API_BASE, fetchImpl: stub.fetchImpl },
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(stub.calls.map((call) => call.url), [`${API_BASE}/${authoringArticlePath(ARTICLE_ID)}`]);
+});
