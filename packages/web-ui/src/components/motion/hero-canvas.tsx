@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { motionState } from "@/lib/motion-state.ts";
+import { renderSmear, smearActivity, type SmearSource, type SmearState } from "@/lib/hero-smear.ts";
 
 const VERTEX_SHADER =
   "attribute vec2 p;varying vec2 v;void main(){v=p*.5+.5;gl_Position=vec4(p,0.,1.);}";
@@ -259,43 +260,34 @@ function runWebGl(canvas: HTMLCanvasElement, hero: HTMLElement, src: string, red
   };
 }
 
-/** A 128×128 tile of grey noise, drawn at a new offset each frame as film grain. */
-function grainTile(): HTMLCanvasElement | null {
-  const tile = document.createElement("canvas");
-  tile.width = 128;
-  tile.height = 128;
-  const context = tile.getContext("2d");
-  if (!context) return null;
-  const pixels = context.createImageData(128, 128);
-  for (let index = 0; index < pixels.data.length; index += 4) {
-    const value = Math.floor(Math.random() * 256);
-    pixels.data[index] = value;
-    pixels.data[index + 1] = value;
-    pixels.data[index + 2] = value;
-    pixels.data[index + 3] = 255;
-  }
-  context.putImageData(pixels, 0, 0);
-  return tile;
-}
+/** The per-pixel pass runs on a grid this many CSS pixels per cell. */
+const SMEAR_CELL = 5;
+/** …and never on more cells than this, whatever the screen. */
+const SMEAR_MAX_CELLS = 50_000;
+/** Below this frame-wide activity the sharp picture is shown on its own. */
+const SMEAR_IDLE = 0.004;
 
 /**
  * The 2D renderer, for browsers that cannot give the hero a working WebGL
  * context — hardware acceleration switched off, a blocklisted GPU, or a recent
- * Chrome that no longer falls back to software WebGL on its own. It is an
- * approximation of the shader, not a copy: the picture is drawn several times
- * along the smear direction and averaged (each pass at alpha 1/(i+1)), so it
- * opens heavily smeared and clears as `reveal` reaches 1; the pointer drags the
- * paint inside a soft circle; scrolling stretches it vertically; and a moving
- * grain tile keeps it from ever looking like a still photograph.
+ * Chrome that no longer falls back to software WebGL on its own.
  *
- * It renders at half the CSS resolution and at most ~30 frames a second,
- * because a context that had to fall back here is often a software one.
+ * It runs the WebGL shader's own arithmetic on the CPU (`renderSmear` in
+ * `lib/hero-smear.ts`) on a coarse grid, and lays that over the sharp picture
+ * with an alpha equal to how smeared each cell is. So it opens in the same
+ * heavy, warped smear and clears as `reveal` reaches 1, the pointer pushes the
+ * paint the way the shader does, and scrolling drags it vertically — the early
+ * hero's look, rather than the offset-and-stack approximation it replaced,
+ * which read as brushed streaks. When nothing is moving the per-pixel pass is
+ * skipped and only the sharp picture is drawn. At most ~30 frames a second,
+ * because a context that had to fall back here is often a software one. The
+ * grain is the hero's grain layer, not this canvas.
  */
 function runCanvas2d(canvas: HTMLCanvasElement, hero: HTMLElement, src: string, reduce: boolean, fail: () => void): () => void {
   const context = canvas.getContext("2d", { alpha: false });
-  if (!context) { fail(); return () => {}; }
-  const grain = grainTile();
-  const grainPattern = grain ? context.createPattern(grain, "repeat") : null;
+  const layer = document.createElement("canvas");
+  const layerContext = layer.getContext("2d");
+  if (!context || !layerContext) { fail(); return () => {}; }
   let frame = 0;
   let ready = false;
   let visible = true;
@@ -304,10 +296,39 @@ function runCanvas2d(canvas: HTMLCanvasElement, hero: HTMLElement, src: string, 
   const pointer: Pointer = { x: 0.5, y: 0.5, tx: 0.5, ty: 0.5, vx: 0, vy: 0 };
   const image = new Image();
   image.decoding = "async";
+  let source: SmearSource | null = null;
+  let sourceKey = "";
+  let cells: ImageData | null = null;
+
+  /** The picture as pixels, sized for a grid of `width × height` cells. */
+  const sourceFor = (width: number, height: number): SmearSource | null => {
+    // The cells' own resolution where the picture is fitted. The browser's
+    // downscale filters the picture on the way, and the taps then sample it
+    // nearest-neighbour: at a finer source, the cover's fine brushed lines
+    // aliased into dotted rings wherever the pointer bent the lookup.
+    const scale = Math.min(1, Math.max(width / image.naturalWidth, height / image.naturalHeight));
+    const sw = Math.max(2, Math.round(image.naturalWidth * scale));
+    const sh = Math.max(2, Math.round(image.naturalHeight * scale));
+    const key = `${sw}x${sh}`;
+    if (source && sourceKey === key) return source;
+    const scratch = document.createElement("canvas");
+    scratch.width = sw;
+    scratch.height = sh;
+    const scratchContext = scratch.getContext("2d", { willReadFrequently: true });
+    if (!scratchContext) return null;
+    scratchContext.drawImage(image, 0, 0, sw, sh);
+    try {
+      source = { data: scratchContext.getImageData(0, 0, sw, sh).data, width: sw, height: sh };
+    } catch {
+      return null;
+    }
+    sourceKey = key;
+    return source;
+  };
 
   const draw = () => {
     if (!ready) return;
-    const scale = Math.min(window.devicePixelRatio || 1, 2) * 0.5;
+    const scale = Math.min(window.devicePixelRatio || 1, 1.5);
     const width = Math.round(canvas.clientWidth * scale);
     const height = Math.round(canvas.clientHeight * scale);
     if (width < 2 || height < 2) return;
@@ -316,57 +337,43 @@ function runCanvas2d(canvas: HTMLCanvasElement, hero: HTMLElement, src: string, 
       canvas.height = height;
     }
     easePointer(pointer);
-    const time = (performance.now() - start) / 1000;
-    const amount = 1 - motionState.reveal;
-    const scroll = reduce ? 0 : motionState.scrollVelocity;
-    // object-fit: cover, as the shader's `sc` does.
     const cover = Math.max(width / image.naturalWidth, height / image.naturalHeight);
     const drawWidth = image.naturalWidth * cover;
     const drawHeight = image.naturalHeight * cover;
-    const baseX = (width - drawWidth) / 2 + Math.sin(time * 0.37) * width * (0.004 + 0.03 * amount);
-    const baseY = (height - drawHeight) / 2 + Math.cos(time * 0.31) * height * (0.004 + 0.03 * amount);
-    const smearX = width * 0.12 * amount;
-    const smearY = height * scroll * 0.14;
-
-    context.globalCompositeOperation = "source-over";
-    const passes = amount > 0.02 || Math.abs(scroll) > 0.02 ? 7 : 1;
-    for (let index = 0; index < passes; index += 1) {
-      const k = passes === 1 ? 0 : index / (passes - 1) - 0.5;
-      context.globalAlpha = 1 / (index + 1);
-      context.drawImage(image, baseX + smearX * k, baseY + smearY * k, drawWidth, drawHeight);
-    }
-
-    const speed = Math.hypot(pointer.vx, pointer.vy);
-    if (speed > 0.01) {
-      const radius = Math.min(width, height) * 0.28;
-      const centreX = pointer.x * width;
-      const centreY = (1 - pointer.y) * height;
-      const pushX = clampVelocity(pointer.vx) * width * 0.08;
-      const pushY = -clampVelocity(pointer.vy) * height * 0.08;
-      context.save();
-      context.beginPath();
-      context.arc(centreX, centreY, radius, 0, Math.PI * 2);
-      context.clip();
-      for (let index = 0; index < 5; index += 1) {
-        const k = index / 4;
-        context.globalAlpha = Math.min(1, speed * 1.2) / (index + 1);
-        context.drawImage(image, baseX - pushX * k, baseY - pushY * k, drawWidth, drawHeight);
-      }
-      context.restore();
-    }
-
-    if (grainPattern) {
-      context.globalAlpha = 0.07;
-      context.globalCompositeOperation = "overlay";
-      const offsetX = Math.floor(Math.random() * 128);
-      const offsetY = Math.floor(Math.random() * 128);
-      context.translate(-offsetX, -offsetY);
-      context.fillStyle = grainPattern;
-      context.fillRect(0, 0, width + 128, height + 128);
-      context.setTransform(1, 0, 0, 1, 0, 0);
-    }
     context.globalAlpha = 1;
-    context.globalCompositeOperation = "source-over";
+    context.drawImage(image, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
+
+    const state: SmearState = {
+      time: (performance.now() - start) / 1000,
+      reveal: motionState.reveal,
+      scroll: reduce ? 0 : motionState.scrollVelocity,
+      pointerX: pointer.x,
+      pointerY: pointer.y,
+      velocityX: clampVelocity(pointer.vx),
+      velocityY: clampVelocity(pointer.vy),
+    };
+    if (smearActivity(state) < SMEAR_IDLE) return;
+    const cssWidth = canvas.clientWidth;
+    const cssHeight = canvas.clientHeight;
+    let gridWidth = Math.max(2, Math.round(cssWidth / SMEAR_CELL));
+    let gridHeight = Math.max(2, Math.round(cssHeight / SMEAR_CELL));
+    if (gridWidth * gridHeight > SMEAR_MAX_CELLS) {
+      const shrink = Math.sqrt(SMEAR_MAX_CELLS / (gridWidth * gridHeight));
+      gridWidth = Math.max(2, Math.floor(gridWidth * shrink));
+      gridHeight = Math.max(2, Math.floor(gridHeight * shrink));
+    }
+    const pixels = sourceFor(gridWidth, gridHeight);
+    if (!pixels) { fail(); return; }
+    if (!cells || cells.width !== gridWidth || cells.height !== gridHeight) {
+      cells = layerContext.createImageData(gridWidth, gridHeight);
+      layer.width = gridWidth;
+      layer.height = gridHeight;
+    }
+    renderSmear(cells.data, gridWidth, gridHeight, pixels, state);
+    layerContext.putImageData(cells, 0, 0);
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    context.drawImage(layer, 0, 0, width, height);
   };
   const loop = (now: number) => {
     frame = 0;
@@ -411,8 +418,9 @@ function runCanvas2d(canvas: HTMLCanvasElement, hero: HTMLElement, src: string, 
 /**
  * 首屏涂抹（demo / PR29 管线）：载入后从重度涂抹浮现；鼠标划过推开颜料；滚动越快
  * 涂抹越重。优先用 WebGL 着色器；WebGL 不可用、着色器/链接失败、纹理异常或驱动把
- * 画面栅格化成纯色时，换成 Canvas 2D 的近似渲染，仍然会浮现、跟手、有颗粒；两者都
- * 不行才卸载画布，露出下方静态封面图 —— 首屏绝不允许白屏。
+ * 画面栅格化成纯色时，换成 Canvas 2D：在 CPU 上按同一套着色器算法逐格计算，叠在清晰
+ * 封面上，观感与 WebGL 一致；两者都不行才卸载画布，露出下方静态封面图 —— 首屏绝不
+ * 允许白屏。颗粒由首屏的 `HeroGrain` 负责。
  *
  * `data-mode`（`webgl` / `2d`）标明实际使用的渲染方式，便于在作者自己的浏览器里排查
  * 「首屏是静止的」这类问题。
