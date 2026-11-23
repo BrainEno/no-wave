@@ -486,17 +486,26 @@ export function notionBlocksToArticleBlocks(
       }
       continue;
     }
-    if (type === "divider" || type === "column_list" || type === "column") {
-      // Pure layout: nothing to carry, nothing lost.
+    if (type === "divider" || type === "column_list" || type === "column" || type === "synced_block") {
+      // Pure layout: nothing to carry, nothing lost. A synced block is a frame
+      // around blocks Notion renders inline on this page; the source walks into
+      // it, so its text arrives as the blocks that follow and nothing is dropped.
       continue;
     }
     if (type === "table" || type === "table_row") {
       issues.push({ code: "table-block-dropped", detail: type });
       continue;
     }
-    // child_page, child_database, link_to_page, table_of_contents,
-    // breadcrumb, synced_block, unsupported_block, and anything newer than this
-    // file. The text, if any, is not reachable here.
+    if (type === "child_page" || type === "child_database") {
+      // A sub-page or inline database is another document with its own body;
+      // the source does not read it (`collectBlocks`), so name it here — the
+      // author should see *which* page stayed in Notion, not just a type.
+      const title = typeof data.title === "string" ? data.title.trim() : "";
+      issues.push({ code: "unsupported-block", detail: title.length > 0 ? `${type}: ${title}` : type });
+      continue;
+    }
+    // link_to_page, table_of_contents, breadcrumb, unsupported_block, and
+    // anything newer than this file. The text, if any, is not reachable here.
     issues.push({ code: "unsupported-block", detail: type.length > 0 ? type : "unknown" });
 
     if (out.length >= maxBlocks) {

@@ -287,6 +287,13 @@ test("ownership conflicts explain cross-locale refusal and retain unused-media g
   assert.equal(importDetail("unrecognized safe report detail"), "unrecognized safe report detail");
 });
 
+test("a sub-page or inline database left in Notion is named, in Chinese", () => {
+  assert.equal(importDetail("child_page: Face in the wall"), "子页面「Face in the wall」未导入：它是独立的 Notion 页面，正文不会并入本作品；如需发布请单独导入。");
+  assert.match(importDetail("child_page"), /^子页面未导入：/);
+  assert.match(importDetail("child_database: 书单"), /^数据库「书单」未导入：它是独立的 Notion 数据库/);
+  assert.equal(importDetail("child_pages: x"), "child_pages: x", "only the exact type names are translated");
+});
+
 test("report rows are filtered by what they would write and what needs reading", () => {
   const row = (action: NotionImportAction, issues: { code: string; detail: string }[] = []): NotionImportPage =>
     ({ externalId: action, title: action, locale: "zh", action, slug: "", articleId: null, detail: "", issues });

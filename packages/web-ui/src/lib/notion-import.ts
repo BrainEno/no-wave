@@ -296,6 +296,14 @@ export function selectBundlePages(bundle: Record<string, unknown>, indices: Read
 
 /** Explain conservative source-identity refusals without exposing private IDs. */
 export function importDetail(detail: string): string {
+  // `unsupported-block` names a sub-page or inline database by title: its body
+  // is another Notion document and is deliberately not read into this work.
+  const nested = /^(child_page|child_database)(?:: (.+))?$/su.exec(detail);
+  if (nested !== null) {
+    const what = nested[1] === "child_page" ? "子页面" : "数据库";
+    const name = nested[2] === undefined ? what : `${what}「${nested[2]}」`;
+    return `${name}未导入：它是独立的 Notion ${nested[1] === "child_page" ? "页面" : "数据库"}，正文不会并入本作品；如需发布请单独导入。`;
+  }
   if (detail.startsWith("This Notion page is already owned by another account.")) {
     return "该 Notion 页面已由其他账号导入，不能跨语言重新认领。本作品的文章、标签和来源链接均未写入。" +
       (detail.includes("media library") ? "已准备的图片可能留在媒体库，请检查并删除未使用的图片。" : "");

@@ -200,6 +200,9 @@ export async function queryRows(sourceId: string, call: NotionCall, options: { c
   return { rows, nextCursor: typeof result.next_cursor === "string" ? result.next_cursor : null };
 }
 
+/** Block types whose children are a separate page's body, never this page's text. */
+const NOT_INLINE_CHILDREN: ReadonlySet<string> = new Set(["child_page", "child_database"]);
+
 /**
  * Walk a page's blocks depth-first, fetching every page of children.
  *
@@ -208,6 +211,20 @@ export async function queryRows(sourceId: string, call: NotionCall, options: { c
  * parent — the order the mapping reads them in. Only the fields the mapping
  * reads are kept, plus a stable id: Notion blocks also carry audit fields
  * (created_by, last_edited_time) that would make a bundle noisy and a diff useless.
+ *
+ * Not every block with children is a container of *this* page's text, though.
+ * A `child_page` or `child_database` block is a link to another page (or
+ * database) whose body Notion shows on its own page, not inline: reading its
+ * children would append a whole other document to the end of this one, after
+ * the work's real ending (`NOT_INLINE_CHILDREN`). The block itself is still
+ * kept, so the mapping reports it as `unsupported-block` with its title and the
+ * author learns that something was left behind rather than silently imported.
+ * Layout and inline containers — columns, toggles, callouts, quotes, list
+ * items, toggleable headings — are read as before. So is `synced_block`: an
+ * original's children are its own, and a duplicate's children endpoint answers
+ * with the original's blocks, which Notion renders inline on this page; if the
+ * original is not shared with the integration the call fails loudly instead of
+ * importing a page without that passage.
  */
 export async function collectBlocks(blockId: string, call: NotionCall, options: { pageSize: number; maxBlocks: number }): Promise<NotionBlockLike[]> {
   const out: NotionBlockLike[] = [];
@@ -221,7 +238,7 @@ export async function collectBlocks(blockId: string, call: NotionCall, options: 
         const kept: NotionBlockLike = { id: typeof block.id === "string" ? block.id : "", type: block.type as string | undefined, has_children: block.has_children === true };
         if (typeof block.type === "string") kept[block.type] = (block as Record<string, unknown>)[block.type];
         out.push(kept);
-        if (block.has_children === true && typeof block.id === "string") await walk(block.id);
+        if (block.has_children === true && typeof block.id === "string" && !(typeof block.type === "string" && NOT_INLINE_CHILDREN.has(block.type))) await walk(block.id);
       }
       cursor = typeof page.next_cursor === "string" ? page.next_cursor : null;
     } while (cursor !== null);
