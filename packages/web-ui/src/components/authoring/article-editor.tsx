@@ -566,7 +566,7 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
       const completion = replayed
         ? `上次创建已确认。服务器返回的是当前版本，若曾在其他页面修改，请先核对再保存。${address}`
         : currentArticle?.status === "published" && target === "draft"
-          ? "作品已转为草稿，公开页面已不可访问；重新发布即可恢复同一地址。"
+          ? "作品已撤销发布，所有语言版本转为草稿，公开页面已不可访问；重新发布即可恢复同一地址。"
           : `${data.status === "published" ? "作品已发布。" : "草稿已保存。"} ${address}`;
       setConfirmedReplay(replayed);
       setStatus(`${completion}${hasLaterEdits || saveBody(latest.current, target, currentArticle) !== body ? " 当前修改尚未保存，请再次保存或发布。" : hasOtherAction ? " 所选操作尚未执行，请再次保存或发布。" : ""}`);
@@ -722,9 +722,9 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
   async function withdraw() {
     if (!article) return;
     const confirmed = await confirm({
-      title: "转为草稿？",
-      description: `转为草稿后，${articlePublicPath ?? "该作品"} 的所有语言版本将对读者不可访问（内容会保留在写作台）。`,
-      confirmLabel: "确认转为草稿",
+      title: "撤销发布？",
+      description: `撤销发布后，${articlePublicPath ?? "该作品"} 的所有语言版本转为草稿，读者不能再访问（内容会保留在写作台）。`,
+      confirmLabel: "确认撤销发布",
     });
     if (confirmed) void save("draft");
   }
@@ -800,7 +800,7 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
           <>
             {/* Withdrawing a public page is one click and it takes the address
                 away from anyone who was reading it, so the desk asks first. */}
-            <button className="nw-btn" type="button" disabled={busy} onClick={() => void withdraw()}>转为草稿</button>
+            <button className="nw-btn" type="button" disabled={busy} onClick={() => void withdraw()}>撤销发布</button>
             {articlePublicPath ? <a className="nw-btn" href={articlePublicPath} target="_blank" rel="noreferrer">查看已发布作品 ↗</a> : <span className="nw-m">该语言暂无公开网页地址。</span>}
           </>
         ) : null}

@@ -836,6 +836,8 @@ header[data-tool] .nw-pill { position: absolute; }
 .nw-catalogue-filter-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; margin-block: 20px; }
 .nw-catalogue button:disabled { opacity: .5; cursor: not-allowed; }
 .nw-catalogue .nw-authoring-actions { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+/* A focus target for the result of a whole-work action, not a control: no ring. */
+.nw-catalogue .nw-authoring-outcome:focus { outline: none; }
 .nw-catalogue .nw-authoring-actions .nw-btn { min-height: 44px; }
 .nw-catalogue-export { margin-block: 20px; padding: 16px 0; border-block: 1px dashed var(--t2); }
 .nw-catalogue-export p { max-width: 800px; font-size: 14px; }

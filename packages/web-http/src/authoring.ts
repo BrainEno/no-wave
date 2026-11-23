@@ -171,17 +171,28 @@ export async function handleAuthoringArticlesRequest(
   }
   const body = await readLimitedJson(request, AUTHORING_BODY_MAX_BYTES);
   if (!body.ok) return notForwarded(body.response);
-  const rawExpectedActor = request.headers.get(AUTHORING_EXPECTED_ACTOR_HEADER);
-  let expectedActorId: string | undefined;
-  if (rawExpectedActor !== null) {
-    try { expectedActorId = decodeURIComponent(rawExpectedActor); } catch {
-      return notForwarded(errorResponse("BAD_USER_INPUT", "Invalid expected author.", 400));
-    }
-    if (!expectedActorId || expectedActorId.length > 300 || expectedActorId.trim() !== expectedActorId) {
-      return notForwarded(errorResponse("BAD_USER_INPUT", "Invalid expected author.", 400));
-    }
+  const expected = expectedAuthor(request);
+  if (!expected.ok) return notForwarded(expected.response);
+  return forwardAuthoringRequest(request, "api/v1/articles", "POST", config, body.text, undefined, expected.id);
+}
+
+/**
+ * The optional `x-expected-author` precondition: the account the page reviewed.
+ * Absent means "no precondition" (the desk's own editor); present but malformed
+ * is refused rather than ignored, because ignoring it would turn a restrictive
+ * check into no check.
+ */
+function expectedAuthor(request: Request): { ok: true; id: string | undefined } | { ok: false; response: Response } {
+  const raw = request.headers.get(AUTHORING_EXPECTED_ACTOR_HEADER);
+  if (raw === null) return { ok: true, id: undefined };
+  let id: string;
+  try { id = decodeURIComponent(raw); } catch {
+    return { ok: false, response: errorResponse("BAD_USER_INPUT", "Invalid expected author.", 400) };
   }
-  return forwardAuthoringRequest(request, "api/v1/articles", "POST", config, body.text, undefined, expectedActorId);
+  if (!id || id.length > 300 || id.trim() !== id) {
+    return { ok: false, response: errorResponse("BAD_USER_INPUT", "Invalid expected author.", 400) };
+  }
+  return { ok: true, id };
 }
 
 /**
@@ -211,12 +222,17 @@ export async function handleAuthoringArticleRequest(
   if (!AUTHORING_ARTICLE_ID_PATTERN.test(params.id)) {
     return errorResponse("BAD_USER_INPUT", "Invalid article ID.", 400);
   }
+  // The catalogue's row actions (撤销发布 / 删除) act on a work the author
+  // reviewed under one account; the expected author makes the write refuse
+  // rather than land in whichever account the cookie now belongs to.
+  const expected = expectedAuthor(request);
+  if (!expected.ok) return notForwarded(expected.response);
   if (method === "DELETE") {
-    return forwardAuthoringRequest(request, authoringArticlePath(params.id), "DELETE", config);
+    return forwardAuthoringRequest(request, authoringArticlePath(params.id), "DELETE", config, undefined, undefined, expected.id);
   }
   const body = await readLimitedJson(request, AUTHORING_BODY_MAX_BYTES);
   if (!body.ok) return body.response;
-  return forwardAuthoringRequest(request, authoringArticlePath(params.id), "PUT", config, body.text);
+  return forwardAuthoringRequest(request, authoringArticlePath(params.id), "PUT", config, body.text, undefined, expected.id);
 }
 
 /**

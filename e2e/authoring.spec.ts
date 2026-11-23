@@ -430,7 +430,7 @@ test("returning a published work to draft withdraws it from the public site", as
   await expect(publicHeading).toBeVisible({ timeout: 45_000 });
 
   // The desk opens on a new document, so the published work has to be opened
-  // from the list before it can be withdrawn — the 转为草稿 action only exists
+  // from the list before it can be withdrawn — the 撤销发布 action only exists
   // for a work that is currently public.
   await page.goto("/write");
   await waitForEditor(page);
@@ -438,17 +438,17 @@ test("returning a published work to draft withdraws it from the public site", as
   await expect(entry).toBeVisible({ timeout: 45_000 });
   await entry.click();
   await waitForEditor(page);
-  const withdraw = page.getByRole("button", { name: "转为草稿" });
+  const withdraw = page.getByRole("button", { name: "撤销发布", exact: true });
   await expect(withdraw).toBeVisible({ timeout: 45_000 });
   await withdraw.click();
   // The desk asks before it withdraws a page that readers may be on. That
   // confirmation is the product's own dialog (#F-12), not a browser `confirm()`:
   // the suite answers it, so a dialog that never appears is a failure rather
   // than a no-op, and what the author is told is an assertion of its own.
-  const withdrawDialog = page.getByRole("dialog", { name: "转为草稿？" });
-  await expect(withdrawDialog).toContainText("将对读者不可访问");
+  const withdrawDialog = page.getByRole("dialog", { name: "撤销发布？" });
+  await expect(withdrawDialog).toContainText("读者不能再访问");
   await expect(withdrawDialog).toContainText("内容会保留在写作台");
-  await withdrawDialog.getByRole("button", { name: "确认转为草稿" }).click();
+  await withdrawDialog.getByRole("button", { name: "确认撤销发布" }).click();
 
   await expect(async () => {
     const saved = await savedArticles(page);
@@ -1156,9 +1156,9 @@ test("changing only publish intent cannot reuse an uncertain create as a differe
   await expect(page.getByRole("status").filter({ hasText: "所选操作尚未执行" })).toBeVisible();
   expect(attempts[1]).toEqual(attempts[0]);
   expect((await savedArticles(page))[0]).toMatchObject({ id: committedId, status: "published" });
-  await page.getByRole("button", { name: "转为草稿" }).click();
-  await answerDeskDialog(page, "转为草稿？", "确认转为草稿");
-  await expect(page.getByRole("status").filter({ hasText: "作品已转为草稿" })).toBeVisible();
+  await page.getByRole("button", { name: "撤销发布", exact: true }).click();
+  await answerDeskDialog(page, "撤销发布？", "确认撤销发布");
+  await expect(page.getByRole("status").filter({ hasText: "作品已撤销发布" })).toBeVisible();
   expect((await savedArticles(page))[0]).toMatchObject({ id: committedId, status: "draft" });
 });
 
