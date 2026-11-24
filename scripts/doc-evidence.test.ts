@@ -82,6 +82,22 @@ export function missingLinks(
   return failures;
 }
 
+/** A document's `Status:` value, or null when it has no status header. */
+export function documentStatus(content: string): string | null {
+  const match = content.match(/^Status:\s+(\S+)/m);
+  return match ? match[1]! : null;
+}
+
+/** Non-ADR Markdown under `docs/` that the status-header rule applies to. */
+export function statusRuleDocuments(paths: readonly string[]): string[] {
+  return paths.filter(
+    (path) =>
+      path.startsWith("docs/") &&
+      !path.startsWith("docs/architecture/decisions/") &&
+      path.endsWith(".md"),
+  );
+}
+
 test("all repository Markdown documents link to existing repository evidence", () => {
   const failures = documents.flatMap((document) =>
     missingLinks(
@@ -376,5 +392,44 @@ test("a bad link in a previously unlisted document fails the full-repository che
       documents.includes(
         "docs/architecture/decisions/0014-password-recovery-and-email-verification.md",
       ),
+  );
+});
+
+test("every non-ADR document under docs/ declares a Status header", () => {
+  const failures = statusRuleDocuments(documents).filter(
+    (document) =>
+      documentStatus(readFileSync(resolve(root, document), "utf8")) === null,
+  );
+  assert.deepEqual(failures, []);
+});
+
+test("no roadmap document is marked done", () => {
+  const failures = documents
+    .filter(
+      (document) =>
+        document.startsWith("docs/roadmap/") && document.endsWith(".md"),
+    )
+    .filter(
+      (document) =>
+        documentStatus(readFileSync(resolve(root, document), "utf8")) ===
+        "done",
+    );
+  assert.deepEqual(failures, []);
+});
+
+test("the status header helper reads the first Status line", () => {
+  assert.equal(documentStatus("# Title\n\nStatus: active\n"), "active");
+  assert.equal(documentStatus("# Title\n\nStatus: archived\n"), "archived");
+  assert.equal(documentStatus("# Title\n\nno header here\n"), null);
+});
+
+test("the status rule covers docs/ but not the ADR directory", () => {
+  assert.ok(
+    statusRuleDocuments(documents).includes("docs/roadmap/phase-gates.md"),
+  );
+  assert.ok(
+    !statusRuleDocuments(documents).some((d) =>
+      d.startsWith("docs/architecture/decisions/"),
+    ),
   );
 });

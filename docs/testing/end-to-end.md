@@ -1,5 +1,7 @@
 # Browser-level tests (Playwright)
 
+Status: active
+
 ## Why this layer exists
 
 `pnpm test` covers domain rules, persistence, HTTP contracts and SSR parity. All

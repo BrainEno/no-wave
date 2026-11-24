@@ -1,5 +1,7 @@
 # Media relay adapter (Phase 5a)
 
+Status: done
+
 Status 2026-10-29: **landed and shared.** `packages/web-http/src/media.ts` is now
 the only implementation of both media paths; the Web application (`apps/web-rr`)
 calls it, and `packages/web-http/test/media.test.ts` is the contract. (It was

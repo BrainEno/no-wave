@@ -1,5 +1,7 @@
 # Web/BFF 资源边界与共享模块收敛审查
 
+Status: archived
+
 核对日期：2026-11-12。基线：`420f37cff589f3a26c62caa14bedf9cc54560be0`。
 本页不代表部署、合并授权、公网容量资格或 required CI 已通过。
 

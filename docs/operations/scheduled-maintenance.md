@@ -1,5 +1,7 @@
 # Scheduled maintenance — the one-shot cleanup run
 
+Status: active
+
 - Date: 2026-11-07
 - Amended: 2026-11-12 — #316 removes identity cleanup from request paths
 - Code: `apps/api/src/persistence/maintenance.ts` (entry point), `apps/api/src/application/maintenance.ts` (the run), `apps/api/src/application/background-tasks.ts` (failure reporting)

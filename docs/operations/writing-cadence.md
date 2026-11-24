@@ -1,5 +1,7 @@
 # 本机写作停顿与配对节奏审阅
 
+Status: active
+
 入口 `/write/cadence`，也可从写作工作区或本机集合工具进入。无需登录，不需要 API 或网络连接；不是自动润色或行文排版工具。
 设计边界见 [ADR 0050](../architecture/decisions/0050-read-only-local-writing-cadence.md)。
 

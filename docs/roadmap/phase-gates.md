@@ -1,5 +1,7 @@
 # New Product Roadmap and Phase Gates
 
+Status: active
+
 The goal is functional coverage of the previous product through a new implementation, not source-code compatibility. Every phase should preserve verified product capabilities while leaving legacy implementation choices behind. See the [evidence review](../audit/2026-11-roadmap-evidence.md) for completed items, remaining gates and review boundaries.
 
 ## Product-decision gate
@@ -108,7 +110,7 @@ Exit gate: persisted state is the source of truth, access denial is tested, and 
 
 ## Approved architecture change — Portable Web framework migration
 
-On 2026-10-29, the owner approved public-page SSR, a client-interactive writing desk, portability-first hosting, and a hard zero-fee/no-credit-card requirement (instance sleep is acceptable). The target is React Router 7 Framework Mode; see [ADR 0012](../architecture/decisions/0012-portable-web-framework-migration.md) and the executable [migration roadmap](frontend-portability-migration.md).
+On 2026-10-29, the owner approved public-page SSR, a client-interactive writing desk, portability-first hosting, and a hard zero-fee/no-credit-card requirement (instance sleep is acceptable). The target is React Router 7 Framework Mode; see [ADR 0012](../architecture/decisions/0012-portable-web-framework-migration.md) and the executable [migration roadmap](../archive/frontend-portability-migration.md).
 
 - [x] Record the React Router 7 target and the staged migration decision.
 - [x] Audit the current Next.js/Vercel coupling against main commit `d9515c6d66881a7599d35581f38640b0ebb74a78`.

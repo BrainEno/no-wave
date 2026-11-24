@@ -1,5 +1,7 @@
 # 本轮审阅：本机写作停顿与配对节奏审阅
 
+Status: archived
+
 - 基线：`491e6e91fe4a4d7ae8fee6126e35b6421cc3eb9e`，分支 `arena/f19dccbc-no-wave`。
 - 范围：用户委托自主选择下一轮功能；本轮为写作停顿与配对节奏审阅（停顿片段切分、长短句统计、成对符号栈匹配、配对×停顿边界差分交叉画像、隐形字符与只读人工审阅）。
 - 设计：[ADR 0050](../architecture/decisions/0050-read-only-local-writing-cadence.md)；流程/限额：[操作说明](../operations/writing-cadence.md)。

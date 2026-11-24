@@ -1,5 +1,7 @@
 # 本机文稿重复段落审阅
 
+Status: active
+
 入口：`/write/overlap`；写作台及本机集合工具也有链接。设计边界见
 [ADR 0048](../architecture/decisions/0048-read-only-local-writing-overlap.md)。无需登录。
 应用页面/字体/脚本加载完成后，可断网处理明确选择的本机文件；不从 URL 或服务器自动找稿。

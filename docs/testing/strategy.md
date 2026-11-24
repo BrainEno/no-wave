@@ -1,5 +1,7 @@
 # Testing Strategy: Behavior-First, Risk-Based
 
+Status: active
+
 ## Policy
 
 Use behavior-driven requirements and risk-based verification, with selective TDD for high-risk logic. Do not mandate full TDD for every line or Gherkin/Cucumber for every feature.

@@ -1,5 +1,7 @@
 # Local development and local verification
 
+Status: active
+
 This document is the contract for running the whole product on one machine: a
 database, the REST API, a notification worker, the Web app, and scripts that prove they are
 actually connected. For previous gaps and their original reproduction, see

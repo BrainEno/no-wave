@@ -1,5 +1,7 @@
 # 本轮审阅：本机密码文件、Worker 和无损字节复核
 
+Status: archived
+
 ## 范围与授权
 
 - 独立基线：`28ca34be4584fb7684b736069abf02a7d208f171`；工作分支 `arena/697c79ba-no-wave`。

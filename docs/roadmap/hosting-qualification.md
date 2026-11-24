@@ -1,7 +1,9 @@
 # Hosting Qualification — Zero-Cost / No-Card Gate
 
+Status: active
+
 - Date: 2026-10-29
-- Gate defined in: [ADR 0012](../architecture/decisions/0012-portable-web-framework-migration.md) (decision 8) and [migration roadmap §3](frontend-portability-migration.md)
+- Gate defined in: [ADR 0012](../architecture/decisions/0012-portable-web-framework-migration.md) (decision 8) and [migration roadmap §3](../archive/frontend-portability-migration.md)
 - Verdict: **PASS. Web, database, object storage and transactional mail each have a cardless, zero-cost, hard-stop candidate; the notification worker has a documented gap.**
 
 ## 1. What the gate actually demands

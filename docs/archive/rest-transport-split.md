@@ -1,5 +1,7 @@
 # REST transport layout (issue #58, step 2)
 
+Status: done
+
 - Date: 2026-10-29
 - Supersedes the single-function handler described in issue #58 ("1708-line single-function if-chain")
 - Related: [frontend portability migration](./frontend-portability-migration.md), ADR 0012

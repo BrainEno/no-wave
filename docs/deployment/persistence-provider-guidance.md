@@ -1,5 +1,7 @@
 # Persistence-provider deployment guidance
 
+Status: active
+
 ## Recommendation
 
 - **Local development, evaluation, and single-host installations:** SQLite is convenient and remains the fresh-install default.

@@ -35,7 +35,7 @@ The existing Web application uses Next.js App Router. Its core React components 
 
 ## Current coupling inventory
 
-Audited against `main@d9515c6d66881a7599d35581f38640b0ebb74a78` on 2026-10-29. The complete route and deployment inventory lives in [the frontend portability migration roadmap](../../roadmap/frontend-portability-migration.md).
+Audited against `main@d9515c6d66881a7599d35581f38640b0ebb74a78` on 2026-10-29. The complete route and deployment inventory lives in [the frontend portability migration roadmap](../../archive/frontend-portability-migration.md).
 
 Recorded on 2026-10-29, when the Next.js application was the working implementation. Every item below has since been ported and the coupling removed — see [ADR 0017](0017-nextjs-retired-one-web-application.md).
 
@@ -84,4 +84,4 @@ Before final cutover:
 
 - React Router Framework Mode: https://reactrouter.com/start/framework
 - React Router deployment: https://reactrouter.com/start/framework/deploying
-- Project migration work and gates: [frontend portability roadmap](../../roadmap/frontend-portability-migration.md)
+- Project migration work and gates: [frontend portability roadmap](../../archive/frontend-portability-migration.md)

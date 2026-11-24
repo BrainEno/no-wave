@@ -1,5 +1,7 @@
 # 有限只读运维监测：规则、事件确认与恢复演练
 
+Status: active
+
 本规程对应 [ADR 0042](../architecture/decisions/0042-finite-read-only-operational-monitor.md)，
 只完成 #331 的仓库内可执行告警切片。**未部署、未配置外部告警账号、未验证真实
 主机；不是生产放行。** 不修改业务 outbox、不重投通知、不重放 Notion job。

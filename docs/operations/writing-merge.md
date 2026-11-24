@@ -1,5 +1,7 @@
 # 本机三方文稿合并：使用与失败处理
 
+Status: active
+
 入口：写作台、作品目录或本机集合工具中的“本机三方合并”，路径 `/write/merge`。
 页面本身可以匿名打开；这是文件工具，不是服务器修订冲突的自动解决器。
 设计与授权边界见 [ADR 0046](../architecture/decisions/0046-local-three-way-writing-merge.md)。

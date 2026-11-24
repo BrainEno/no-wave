@@ -112,4 +112,4 @@ both cases the migration is additive rather than a cutover:
 ## References
 
 - [ADR 0012: Migrate Web to React Router 7 Framework Mode](0012-portable-web-framework-migration.md)
-- [Frontend portability migration roadmap](../../roadmap/frontend-portability-migration.md)
+- [Frontend portability migration roadmap](../../archive/frontend-portability-migration.md)

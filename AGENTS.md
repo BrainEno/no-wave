@@ -20,7 +20,7 @@ These rules apply to humans and coding agents working on BOT THK.
 ## Before implementation
 
 1. Read this file and any applicable nested `AGENTS.md`.
-2. Read the relevant requirements, architecture decision records (ADRs), code and existing tests.
+2. Read the relevant requirements, architecture decision records (ADRs), code and existing tests. Start from the [documentation index](docs/README.md), which lists every document under `docs/` with its `Status:` (`active` / `done` / `archived`); do not treat archived or done records as current guidance.
 3. State the intended behavior, acceptance criteria, risk level, and smallest likely change boundary.
 4. Identify the appropriate verification level before coding.
 5. Check whether code is generated and locate its source of truth before editing it.

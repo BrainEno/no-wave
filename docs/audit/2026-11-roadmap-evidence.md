@@ -1,5 +1,7 @@
 # Roadmap evidence review
 
+Status: archived
+
 This review reconciles the current tree with the phase-gate checklist for #276.
 A checked item means the specific capability described in that item has source
 and test evidence; it does not mean a phase exit gate or production deployment

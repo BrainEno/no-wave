@@ -1,5 +1,7 @@
 # Web article authoring
 
+Status: active
+
 ## Article authoring
 
 The authenticated writing desk is available at `/write`. It supports draft creation/saving, reopening work, editing published articles and publishing through the existing REST contract. The Lexical editor supports paragraph text, h2–h4 headings, quotes without attributions, flat ordered/unordered lists, inline marks, links, code blocks and approved image nodes.

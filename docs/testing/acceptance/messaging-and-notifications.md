@@ -1,5 +1,7 @@
 # Acceptance Scenarios: Messaging and Notifications
 
+Status: active
+
 ## MSG-01 — Message is persisted before delivery is attempted
 
 **Risk:** Critical

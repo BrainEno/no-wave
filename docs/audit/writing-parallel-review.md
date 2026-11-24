@@ -1,5 +1,7 @@
 # 本轮审阅：本机双语与平行文稿对照审阅 (writing-parallel)
 
+Status: archived
+
 - 基线：`93f516230cb58dc72aedc71b9069c12d97ea1eed`，分支 `arena/d0e09b7c-no-wave`。
 - 任务：用户指示“接着做下一轮”，选定新增离线双语/平行文稿对照工具（`/write/parallel`），实现多语言版本骨架树对齐、结构不对称与空缺审阅、双语对照画像、得分拆解解释、只读人工审阅与无正文脱敏报告。
 - 架构决策：[ADR 0051](../architecture/decisions/0051-read-only-local-writing-parallel.md)；操作指南：[操作说明](../operations/writing-parallel.md)。

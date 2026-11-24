@@ -1,5 +1,7 @@
 # #331 默认关闭的 durable Notion job：审阅与本轮验证记录
 
+Status: archived
+
 ## 交付范围与风险
 
 高风险：外部 AES 密钥、敏感来源输入、数据库租约、并发事务和 Cookie 代理。

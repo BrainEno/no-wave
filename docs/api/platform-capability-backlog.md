@@ -1,5 +1,7 @@
 # 服务端能力缺口清单（面向文学发布平台 + Flutter 客户端）
 
+Status: active
+
 本文回答一个问题：**除了"客户端要的接口有没有"之外，作为一个文学/长文发布平台，服务端还缺什么能力。**
 
 如果说 [`client-coverage.md`](./client-coverage.md) 是"接口对不对得上"的逐条核对，本文是"这个平台还缺哪些功能"
@@ -7,7 +9,7 @@
 
 - `docs/requirements/behavior-baseline.md` —— 产品行为基线（公开内容 / 分类与标签 / 账号 / 社交 / 私信 / 通知 / 跨切面）。
 - `docs/audit/feature-traceability.md` —— 逐能力"当前状态"表。
-- `docs/roadmap/next-step-decision.md` —— 已审 7 个 issue 的处置结论（#58 / #61 / #63 / #64 / #66 / #71 / #72）。
+- `docs/archive/next-step-decision.md` —— 已审 7 个 issue 的处置结论（#58 / #61 / #63 / #64 / #66 / #71 / #72）。
 - `BrainEno/flutter-blog`（`belog`）—— 客户端的 API 契约、页面清单与它自己写的"后端与客户端差距"一节。
 
 图例：✅ 已有并且端到端可用 ｜ ⚠️ 有基础但闭环不完整 ｜ ❌ 尚未开发。

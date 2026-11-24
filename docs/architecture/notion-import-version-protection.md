@@ -1,5 +1,7 @@
 # Article conditional writes and Notion import version protection
 
+Status: active
+
 Implemented on top of the database-local revision groundwork from #266. The
 writing desk sends a version precondition, and a Notion dry run now returns an
 authenticated plan. Both SQLite and PostgreSQL compare the expected state while

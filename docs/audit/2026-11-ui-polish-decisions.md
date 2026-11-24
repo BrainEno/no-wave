@@ -1,5 +1,7 @@
 # UI polish decisions: reading, writing and error pages
 
+Status: archived
+
 This records the decisions made for issues #284 and #286 against the current
 implementation. Those issues contain the same brief; the longer list mentioned
 in their acceptance criteria is not in the issue body. Do not treat this note as

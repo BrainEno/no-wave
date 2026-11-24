@@ -1,5 +1,7 @@
 # Reading further down a comment thread
 
+Status: active
+
 `GET /api/v1/articles/:slug/comments` returns a published work's comment thread,
 oldest first. The response is a plain array under `data` — the same shape it has
 always had, each top-level comment carrying its `replies` — and one extra query

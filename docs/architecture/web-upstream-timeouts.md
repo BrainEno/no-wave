@@ -1,5 +1,7 @@
 # Web 上游期限、容量与下载边界
 
+Status: active
+
 此页覆盖原有 F-17 期限保护和新的 Web/BFF 资源边界，不是部署或放宽 API 业务限额的授权。
 API 继续负责授权、媒体归属、revision、签名 import plan、每作品原子性及持久化。
 见 [BFF 模板](bff-routes.md)、[模块索引](shared-modules.md)、[ADR 0025](decisions/0025-browser-session-refresh-protocol.md)。

@@ -1,5 +1,7 @@
 # #331 离线签名告警交接：审阅与验收记录
 
+Status: archived
+
 本轮基线 `1463bfcd727aabe6ded8cf90e80cde5815fca1b0`，工作分支
 `arena/66ff089b-no-wave`。该基线已包含合并的 PR #370；本轮重新实现、测试并审计
 新增交接功能，不累计上轮监测器、Notion 或 Web 功能行，也不借用旧 CI 结果。

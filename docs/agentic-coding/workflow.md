@@ -1,5 +1,7 @@
 # Agentic Coding Workflow
 
+Status: active
+
 ## Task brief
 
 For non-trivial tasks, begin with a concise task brief:

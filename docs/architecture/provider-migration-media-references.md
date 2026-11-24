@@ -1,5 +1,7 @@
 # Media references in provider replay
 
+Status: active
+
 ## Status and limits
 
 This is an incremental replay safeguard, **not a provider-cutover protocol**. Do not use it for a production migration or enable target media deletion while a target is catching up. [ADR 0010](decisions/0010-sqlite-first-and-online-provider-cutover.md) still requires a consistent initial snapshot, an agreed journal watermark, reconciliation, writer fencing, cutover and rollback. None of those gates is provided here. The separate [read-only media comparison](provider-migration-media-comparison.md) is only an unsynchronized diagnostic and cannot authorize a cutover. See also the [identity and featured-shelf replay limits](provider-migration-identity-featured.md).

@@ -1,5 +1,7 @@
 # Article view counts
 
+Status: active
+
 A work's reach is now a number the API stores, returns and can be told about by
 the page that rendered it.
 

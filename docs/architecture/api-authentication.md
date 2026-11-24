@@ -1,5 +1,7 @@
 # API authentication contract
 
+Status: active
+
 ## Status and trust boundary
 
 The product owner selected **self-hosted account authentication in the standalone API**. The API now provides email/password registration and login, short-lived access tokens, one-time refresh-token rotation with reuse detection, and session logout. No Web framework, cookie, browser storage or external identity service is coupled to these operations. This is an initial backend lifecycle, **not a production-ready account system**: email verification, recovery, account administration and several operational controls below remain open.

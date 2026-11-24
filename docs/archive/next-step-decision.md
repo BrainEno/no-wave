@@ -1,5 +1,7 @@
 # Next step: fix the open issues, or start the React Router migration?
 
+Status: done
+
 - Question raised: 2026-10-29
 - Evidence snapshot: `main@b0b3ec3` (PR #81 merged)
 - Decision: **start the React Router migration now** (Phase 1 of

@@ -1,5 +1,7 @@
 # Reading an old notification inbox
 
+Status: active
+
 `GET /api/v1/me/notifications` returns the signed-in reader's notifications,
 newest first. The response is a plain array under `data` — the same shape it has
 always had — and one extra query parameter, `cursor`, continues the list

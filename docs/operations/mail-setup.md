@@ -1,5 +1,7 @@
 # Account mail: off until you switch it on
 
+Status: active
+
 Password recovery and email verification are built, shipped and **switched off**. Nothing in
 this repository sends mail until an operator sets `MAIL_ENABLED` in the repository-root
 `.env.local`. The transport is finished (ADR 0015); what is missing is an account with a

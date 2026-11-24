@@ -1,5 +1,7 @@
 # Threat model: reports, moderation and appeals (accepted design, unshipped feature)
 
+Status: active
+
 - Status: **Accepted with ADR 0026 on 2026-11-07 — the controls and tests below do not exist yet**
 - Date: 2026-11-05
 - Scope: the candidate first release in [ADR 0026](decisions/0026-moderation-reports-and-appeals.md),

@@ -1,5 +1,7 @@
 # Public SSR route migration (Phase 3)
 
+Status: done
+
 Status 2026-10-29: **the public surface is migrated** — home (`/`, `/en`),
 archive, article, author, category index, category detail, search, `sitemap.xml`
 and `robots.txt` all render in the React Router application (`apps/web-rr`), and a

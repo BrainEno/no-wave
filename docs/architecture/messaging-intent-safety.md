@@ -1,5 +1,7 @@
 # 私信写入：账户绑定与未确认请求
 
+Status: active
+
 ## 要保护的行为
 
 - 打开私信页时，通过私有的 `/api/authoring/session` 确认本页账户。

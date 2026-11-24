@@ -1,5 +1,7 @@
 # 第一方字体分发与性能守门
 
+Status: active
+
 关联：[#271](https://github.com/BrainEno/no-wave/issues/271)。本轮只改变字体资源的来源、分片、分发和验证，不改变权限、数据、内容发布或生产基础设施。
 
 ## 行为与验收

@@ -1,5 +1,7 @@
 # Neon deployment and operations
 
+Status: active
+
 > **Do not use this page for routine local development.** The commands below pull
 > production PostgreSQL URLs and storage credentials into `.env.local`, and
 > `pnpm check:local` writes probe rows. Local work should use SQLite or the Docker

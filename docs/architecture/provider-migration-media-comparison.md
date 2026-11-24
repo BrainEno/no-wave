@@ -1,5 +1,7 @@
 # Read-only media comparison (diagnostic only)
 
+Status: active
+
 ## Status and safety boundary
 
 This is a small **internal diagnostic**, not the reconciliation protocol or a cutover gate in [ADR 0010](decisions/0010-sqlite-first-and-online-provider-cutover.md). It compares three existing materialized datasets on a SQLite file and a PostgreSQL database. It does not write data, backfill, repair, delete objects, change a replay checkpoint, fence writers, promote a target, or authorize any production operation. [#217](https://github.com/BrainEno/no-wave/issues/217) remains open.

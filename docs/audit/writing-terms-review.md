@@ -1,5 +1,7 @@
 # 本轮审阅：本机术语一致性审阅
 
+Status: archived
+
 - 基线：`a46b927f56c74130177eb9659e4ae925bafd2f42`，分支 `arena/eadbc4c1-no-wave`。
 - 范围：用户委托自主选择下一轮功能；本轮为多词表字面一致性、原文位置、拼写组合与只读人工审阅。
 - 设计：[ADR 0049](../architecture/decisions/0049-read-only-local-writing-terms.md)；流程/限额：[操作说明](../operations/writing-terms.md)。

@@ -1,5 +1,7 @@
 # BFF 路由：一个 handler，一次安全决策
 
+Status: active
+
 `apps/web-rr/app/routes/api.*.ts` 直接导入 `@bot-thk/web-http`；
 框架只传递标准 `Request`、路由参数及 `apiProxyConfig()`。历史四个
 `app/lib/*-proxy.ts` 是配置包装，不是第二个业务边界，已移除。

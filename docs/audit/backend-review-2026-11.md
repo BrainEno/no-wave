@@ -1,5 +1,7 @@
 # 后端核查报告（2026-11-02）
 
+Status: archived
+
 范围：`apps/api`（REST API + 应用/领域/持久化层）与 `packages/web-http`（浏览器侧代理层）。
 不含：`apps/web-rr` 页面组件、`packages/web-ui` 客户端逻辑、E2E。
 

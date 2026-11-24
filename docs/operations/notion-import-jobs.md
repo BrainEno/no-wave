@@ -1,5 +1,7 @@
 # Notion durable import jobs：默认关闭的操作切片
 
+Status: active
+
 本轮只实现 #331 的 durable job 连接；**没有生产启用、完整 checkpoint resume、
 UI 迁移、真实托管资格或新常驻 worker 角色承诺**。设计边界见
 [ADR 0041](../architecture/decisions/0041-default-off-notion-import-jobs.md)（Proposed）。

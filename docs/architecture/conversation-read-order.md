@@ -1,5 +1,7 @@
 # Conversation read order and upgrade boundary
 
+Status: active
+
 ## Behavior
 
 A conversation has a monotonically increasing, private message sequence. Each
