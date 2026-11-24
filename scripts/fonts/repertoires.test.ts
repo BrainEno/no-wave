@@ -4,7 +4,12 @@ import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import type { FontManifest } from "../lib/font-assets.ts";
-import { staleFontRecipe, verifyFontRecipe } from "./repertoires.ts";
+import { getUi } from "../../packages/web-ui/src/lib/ui-copy.ts";
+import {
+  applicationRepertoires,
+  staleFontRecipe,
+  verifyFontRecipe,
+} from "./repertoires.ts";
 
 const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const committed = async () =>
@@ -40,5 +45,37 @@ test("a manifest cut by an older recipe is reported, not just thrown, so generat
   await assert.rejects(
     verifyFontRecipe(stale, root),
     /Stale font recipe for noto-sans-sc\/400 700; run pnpm fonts:generate\./,
+  );
+});
+
+test("sign-in copy moved into ui-copy keeps its Han glyphs in the sans and serif cores", async () => {
+  const repertoire = await applicationRepertoires(root);
+  const collect = (value: unknown): string =>
+    typeof value === "string"
+      ? value
+      : typeof value === "object" && value !== null
+        ? Object.values(value).map(collect).join("")
+        : "";
+  const glyphs = [...collect(getUi("zh-CN").account.signIn)]
+    .map((character) => character.codePointAt(0)!)
+    .filter((point) => /\p{Script=Han}/u.test(String.fromCodePoint(point)));
+  // Guard against the test passing vacuously if the copy moves again.
+  assert.ok(
+    glyphs.length >= 40,
+    `expected sign-in Han glyphs, saw ${glyphs.length}`,
+  );
+  const sans = new Set(repertoire.sans);
+  const serif = new Set(repertoire.serif);
+  assert.deepEqual(
+    glyphs
+      .filter((point) => !sans.has(point))
+      .map((point) => String.fromCodePoint(point)),
+    [],
+  );
+  assert.deepEqual(
+    glyphs
+      .filter((point) => !serif.has(point))
+      .map((point) => String.fromCodePoint(point)),
+    [],
   );
 });
