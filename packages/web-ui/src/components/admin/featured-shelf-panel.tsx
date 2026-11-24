@@ -186,7 +186,7 @@ export function FeaturedShelfPanel() {
     return (
       <section className="nw-auth-panel" aria-labelledby="nw-featured-checking">
         <h1 id="nw-featured-checking"><span className="nw-zh">精选</span> <i>Featured</i></h1>
-        <p className="nw-auth-status nw-mt-24" role="status">正在确认登录状态，请稍候……</p>
+        <p className="nw-notice-status nw-mt-24" role="status">正在确认登录状态，请稍候……</p>
       </section>
     );
   }
@@ -221,7 +221,7 @@ export function FeaturedShelfPanel() {
     return (
       <section className="nw-auth-panel" aria-labelledby="nw-featured-error">
         <h1 id="nw-featured-error"><span className="nw-zh">精选暂时无法载入</span> <i>Unavailable</i></h1>
-        <p className="nw-auth-error nw-mt-24" role="alert">{error}</p>
+        <p className="nw-notice-error nw-mt-24" role="alert">{error}</p>
         <div className="nw-auth-switch">
           <Link className="nw-btn" href="/write">回到写作台</Link>
         </div>
@@ -237,8 +237,8 @@ export function FeaturedShelfPanel() {
         只有已发布的作品能上精选，一篇被撤下的作品会先离开列表，重新发表后回到原来的位置。
       </p>
 
-      {notice ? <p className="nw-auth-status nw-mt-24" role="status">{notice}</p> : null}
-      {error ? <p className="nw-auth-error nw-mt-24" role="alert">{error}</p> : null}
+      {notice ? <p className="nw-notice-status nw-mt-24" role="status">{notice}</p> : null}
+      {error ? <p className="nw-notice-error nw-mt-24" role="alert">{error}</p> : null}
 
       <ol className="nw-curate-list nw-curate-plain nw-mt-32">
         {works.map((work, index) => (

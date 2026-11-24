@@ -193,7 +193,7 @@ export function ReaderFind({ locale, edition }: { locale: Locale; edition: strin
           {result.moreMatches && ready ? <p>{copy.more}</p> : null}
           {result.limitedText && ready ? <p>{copy.limited}</p> : null}
           {!paintSupported ? <p>{copy.noPaint}</p> : null}
-          {ready && current ? <p className="nw-find-excerpt">…{current.before}<mark>{current.text}</mark>{current.after}…</p> : null}
+          {ready && current ? <p className="nw-find-excerpt">……{current.before}<mark>{current.text}</mark>{current.after}……</p> : null}
           <div className="nw-reading-actions">
             <button className="nw-btn" type="button" disabled={!ready || !result.matches.length} onClick={event => locate(-1, event.currentTarget)}>{copy.previous}</button>
             <button className="nw-btn" type="submit" disabled={!ready || !result.matches.length}>{copy.next}</button>

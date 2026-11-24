@@ -215,7 +215,7 @@ function Toolbar({
       <button type="button" title="删除线" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "strikethrough")}><s>S</s></button>
       <span className="nw-tb-sep" aria-hidden="true" />
       <button type="button" aria-label="链接" title="链接" onClick={() => { void addLink(); }}>{toolIcon.link}</button>
-      <button type="button" aria-label={uploading ? "上传图片中…" : "插入图片"} title="插入图片" disabled={uploading} onClick={() => fileInput.current?.click()}>{toolIcon.image}</button>
+      <button type="button" aria-label={uploading ? "上传图片中……" : "插入图片"} title="插入图片" disabled={uploading} onClick={() => fileInput.current?.click()}>{toolIcon.image}</button>
       <input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp" aria-label="选择要上传的图片" hidden onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; void uploadImage(file); }} />
       <button type="button" aria-label="代码块" title="代码块" onClick={() => setBlock(() => $createCodeNode())}>{toolIcon.code}</button>
       <span className="nw-tb-sep nw-tb-push" aria-hidden="true" />
@@ -730,7 +730,7 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
   }
 
   if (!initialState || !extension) {
-    return <p className="nw-auth-error" role="alert">此作品含有当前编辑器尚不支持的内容块（例如带署名的引用）。没有修改任何内容；请先返回作品列表。</p>;
+    return <p className="nw-notice-error" role="alert">此作品含有当前编辑器尚不支持的内容块（例如带署名的引用）。没有修改任何内容；请先返回作品列表。</p>;
   }
 
   return (
@@ -781,8 +781,8 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
         onSubmit={(values) => settleAsk(values)}
       />
       <p className="nw-lexical-empty-note">支持段落、二至四级标题、引用、列表、文本格式、链接、代码块及经服务端安全处理的图片。每张图片都会被重编码为 WebP；图片上传需配置 S3 兼容存储。</p>
-      {error ? <p className="nw-auth-error" role="alert">{error}{signInHelp ? <> <Link href="/sign-in?next=%2Fwrite" target="_blank" rel="noopener noreferrer">登录原账户</Link></> : null}</p> : null}
-      {status ? <p className="nw-auth-status" role="status">{status}{confirmedReplay ? <> <Link href="/write" target="_blank" rel="noopener noreferrer">在新标签页核对服务器版本</Link></> : null}</p> : null}
+      {error ? <p className="nw-notice-error" role="alert">{error}{signInHelp ? <> <Link href="/sign-in?next=%2Fwrite" target="_blank" rel="noopener noreferrer">登录原账户</Link></> : null}</p> : null}
+      {status ? <p className="nw-notice-status" role="status">{status}{confirmedReplay ? <> <Link href="/write" target="_blank" rel="noopener noreferrer">在新标签页核对服务器版本</Link></> : null}</p> : null}
       {hasPending && !busy ? (
         <div className="nw-authoring-recovery">
           <p>这次请求的重试标识只在此页面，绝不会存入本机缓存；当前编辑仅在另行启用本机恢复时才可能缓存。确认前请勿刷新或离开；确认原请求不会覆盖当前编辑。 <Link href="/write" target="_blank" rel="noopener noreferrer">在新标签页核对作品列表</Link></p>
@@ -794,8 +794,8 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
       ) : null}
       <div className="nw-authoring-actions nw-authoring-bar">
         {article ? <button className="nw-btn" type="button" disabled={busy} onClick={() => void destroy()}>删除作品</button> : null}
-        <button className="nw-btn" type="button" disabled={busy} onClick={() => void save(article?.status === "published" ? "publish" : "draft")}>{busy ? "保存中…" : article?.status === "published" ? "保存更新" : "保存草稿"}</button>
-        <button className="nw-btn nw-pri" type="button" disabled={busy} onClick={() => void save("publish")}>{busy ? "正在保存…" : article?.status === "published" ? "保存并发布" : "发布作品"}</button>
+        <button className="nw-btn" type="button" disabled={busy} onClick={() => void save(article?.status === "published" ? "publish" : "draft")}>{busy ? "保存中……" : article?.status === "published" ? "保存更新" : "保存草稿"}</button>
+        <button className="nw-btn nw-pri" type="button" disabled={busy} onClick={() => void save("publish")}>{busy ? "正在保存……" : article?.status === "published" ? "保存并发布" : "发布作品"}</button>
         {article && article.status === "published" ? (
           <>
             {/* Withdrawing a public page is one click and it takes the address

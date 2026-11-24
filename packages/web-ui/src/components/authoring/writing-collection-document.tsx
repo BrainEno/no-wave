@@ -7,7 +7,7 @@ import { catalogueDate, catalogueLocaleLabel } from "./catalogue-versions.tsx";
 
 function excerpt(text: string): string {
   const characters = Array.from(text);
-  return characters.length > 1600 ? characters.slice(0, 1600).join("") + "…（仅截断屏幕预览，下载保留完整正文）" : text || "（空）";
+  return characters.length > 1600 ? characters.slice(0, 1600).join("") + "……（仅截断屏幕预览，下载保留完整正文）" : text || "（空）";
 }
 export function WritingCollectionDocument({ row, target }: { row: { entry: Pick<CollectionRow["entry"], "backup" | "group"> }; target?: WritingMatch }) {
   const inspection = useMemo(() => inspectWriting(row.entry.backup.draft), [row.entry.backup]);
@@ -33,7 +33,7 @@ export function WritingCollectionDocument({ row, target }: { row: { entry: Pick<
     {inspection.outline.length ? <nav aria-label="本机文稿大纲"><ol>{inspection.outline.map(item => <li key={item.path.join(".")}><button className="nw-btn" type="button" onClick={() => setPath(item.path.join("."))}>{"· ".repeat(Math.max(0, item.level - 2))}{item.title}</button></li>)}</ol></nav> : null}
     <ol className="nw-collection-blocks" aria-label="文稿正文文本">{inspection.blocks.map(block => <li key={block.path.join(".")} tabIndex={-1} ref={element => { if (element) blocks.current.set(block.path.join("."), element); else blocks.current.delete(block.path.join(".")); }}>
       <p className="nw-m">{block.kind} · 节点 {block.path.map(index => index + 1).join(".")}</p>
-      {target?.path.join(".") === block.path.join(".") ? <p aria-label="正文检索定位上下文">{target.start > 300 ? "…" : ""}{block.text.slice(Math.max(0, target.start - 300), target.start)}<mark>{target.text}</mark>{block.text.slice(target.end, target.end + 300)}{target.end + 300 < block.text.length ? "…" : ""}</p> : block.kind === "code" ? <pre>{excerpt(block.text)}</pre> : <p>{excerpt(block.text)}</p>}
+      {target?.path.join(".") === block.path.join(".") ? <p aria-label="正文检索定位上下文">{target.start > 300 ? "……" : ""}{block.text.slice(Math.max(0, target.start - 300), target.start)}<mark>{target.text}</mark>{block.text.slice(target.end, target.end + 300)}{target.end + 300 < block.text.length ? "……" : ""}</p> : block.kind === "code" ? <pre>{excerpt(block.text)}</pre> : <p>{excerpt(block.text)}</p>}
     </li>)}</ol>
     {inspection.issues.length ? <details><summary>本机文稿检查提示（{inspection.issues.length}）</summary><ul>{inspection.issues.map((issue, index) => <li key={`${issue.code}-${index}`}>{issue.message}{issue.path ? <button className="nw-btn" type="button" onClick={() => setPath(issue.path!.join("."))}>定位提示所在块</button> : null}</li>)}</ul></details> : null}
     <details onToggle={event => setReferencesOpen(event.currentTarget.open)}><summary>离线链接与图片地址清单</summary>

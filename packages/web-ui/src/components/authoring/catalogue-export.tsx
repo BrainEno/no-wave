@@ -5,7 +5,7 @@ import { catalogueLocaleLabel } from "./catalogue-versions.tsx";
 
 function previewText(value: string): string {
   const points = Array.from(value);
-  return points.length > 160 ? points.slice(0, 160).join("") + "…（预览截断，文件保留完整元数据）" : value || "（空）";
+  return points.length > 160 ? points.slice(0, 160).join("") + "……（预览截断，文件保留完整元数据）" : value || "（空）";
 }
 
 export function CatalogueExportPanel({ selected, disabled, onDownload }: { selected: readonly CatalogueEntry[]; disabled: boolean; onDownload(report: CatalogueExport): void }) {

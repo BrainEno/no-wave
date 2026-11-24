@@ -486,9 +486,9 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
 
   if (state === "loading") return <p role="status">正在验证登录状态并载入草稿……</p>;
   if (state === "unauthenticated") {
-    return <section className="nw-auth-panel"><h1><span className="nw-zh">先登录</span> <i>Sign in</i></h1><p>写作、保存草稿与发布功能需要有效的登录会话。</p>{recoveryWarning ? <p className="nw-auth-error" role="alert">{recoveryWarning}</p> : null}<Link className="nw-btn nw-pri" href="/sign-in?next=%2Fwrite">登录或创建账户</Link></section>;
+    return <section className="nw-auth-panel"><h1><span className="nw-zh">先登录</span> <i>Sign in</i></h1><p>写作、保存草稿与发布功能需要有效的登录会话。</p>{recoveryWarning ? <p className="nw-notice-error" role="alert">{recoveryWarning}</p> : null}<Link className="nw-btn nw-pri" href="/sign-in?next=%2Fwrite">登录或创建账户</Link></section>;
   }
-  if (state === "error") return <section><p className="nw-auth-error" role="alert">{error}</p><button className="nw-btn" type="button" onClick={() => { setError(""); setState("loading"); window.location.reload(); }}>重新载入</button></section>;
+  if (state === "error") return <section><p className="nw-notice-error" role="alert">{error}</p><button className="nw-btn" type="button" onClick={() => { setError(""); setState("loading"); window.location.reload(); }}>重新载入</button></section>;
 
   return (
     <section className="nw-authoring nw-desk">
@@ -497,13 +497,13 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
         <div className="nw-desk-id">
           <h1><span className="nw-zh">写作台</span> <i>Authoring</i></h1>
           {account ? (
-            <p className="nw-auth-status nw-desk-account" role="status">
+            <p className="nw-notice-status nw-desk-account" role="status">
               <span>已登录：{account.email}</span><span className={account.emailVerifiedAt ? "nw-desk-ok" : "nw-desk-warn"}>邮箱{account.emailVerifiedAt ? "已验证" : "未验证"}</span>
               {/* Verification gates nothing, so the button is an offer, not a
                   blocked state: an unverified author can still write and publish. */}
               {account.emailVerifiedAt || !mailEnabled ? null : (
                 <button className="nw-btn" type="button" disabled={verificationBusy} onClick={() => void requestVerification()}>
-                  {verificationBusy ? "发送中…" : "发送验证邮件"}
+                  {verificationBusy ? "发送中……" : "发送验证邮件"}
                 </button>
               )}
               {verificationStatus ? <span> {verificationStatus}</span> : null}
@@ -540,8 +540,8 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
           <button className="nw-desk-link nw-desk-quiet" type="button" disabled={pendingCreate || signingOut} onClick={() => requestDocumentAction({ kind: "sign-out" })}>退出登录</button>
         </nav>
       </header>
-      {error ? <p className="nw-auth-error" role="alert">{error}</p> : null}
-      {notice ? <p className="nw-auth-status" role="status">{notice}</p> : null}
+      {error ? <p className="nw-notice-error" role="alert">{error}</p> : null}
+      {notice ? <p className="nw-notice-status" role="status">{notice}</p> : null}
       {catalogueLoading ? <p role="status">正在核对目录所选作品的精确语言版本；继续输入或新建会使本次读取失效……</p> : null}
       {catalogueIntent ? <div className="nw-authoring-actions"><button className="nw-btn" type="button" disabled={pendingCreate || catalogueLoading} onClick={() => requestDocumentAction({ kind: "catalogue", intent: catalogueIntent })}>重新读取目录所选版本</button>{catalogueLoading ? <button className="nw-btn" type="button" onClick={() => { catalogueRequest.current++; catalogueReader.cancel(); setCatalogueLoading(false); }}>取消目录读取</button> : null}</div> : null}
       <div className="nw-authoring-grid">
@@ -616,7 +616,7 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
         <section className="nw-authoring-trash" aria-label="回收站">
           <h2>回收站（{deleted.length}）</h2>
           <p className="nw-m">这里只列出最近的已删除版本；<Link href="/write/library">到全量目录筛选回收站</Link>可分页核对更早作品并在还原前确认全部语言的影响。</p>
-          {trashError ? <p className="nw-auth-error" role="alert">{trashError}</p> : null}
+          {trashError ? <p className="nw-notice-error" role="alert">{trashError}</p> : null}
           {deleted.length === 0 && !trashError
             ? <p className="nw-m">没有已删除的作品。</p>
             : <div className="nw-authoring-trash-list">

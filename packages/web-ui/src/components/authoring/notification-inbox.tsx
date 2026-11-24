@@ -59,7 +59,7 @@ export function NotificationInbox({ locale = "zh-CN", fullPage = false }: { loca
         {selectedState === "ready" ? <button className="nw-btn" type="button" onClick={jump}>{copy.jump}</button> : null}
         {selectedState === "filtered" ? <Link className="nw-btn" scroll={false} href={inboxFilterHref(locale, { view: "all", kind: "all" }, selected)}>{copy.showWithoutFilters}</Link> : null}
       </aside> : null}
-      {model.problem ? <p className="nw-auth-error" role="alert">{model.problem}</p> : null}
+      {model.problem ? <p className="nw-notice-error" role="alert">{model.problem}</p> : null}
       {!snapshot.loaded && !snapshot.error && snapshot.session !== "signed-out" ? <p>{copy.loading}</p> : null}
       {snapshot.session === "signed-out" ? <p>{copy.signedOut} <Link href={signIn}>{copy.signIn}</Link></p> : null}
       {snapshot.session === "active" ? <button className="nw-btn" type="button" data-inbox-focus-fallback
