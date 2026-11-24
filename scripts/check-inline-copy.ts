@@ -24,8 +24,15 @@ import { fileURLToPath } from "node:url";
  */
 export const MAX_INLINE_COPY_LINES = 2501;
 
-/** 匹配中日韩统一表意文字（含扩展 A 与兼容区）。 */
-export const CJK_PATTERN = /[㐀-䶿一-鿿豈-﫿]/;
+/**
+ * 匹配一个汉字：Unicode 脚本属性 Han，覆盖基本区、扩展 A–I 与兼容表意文字，
+ * 简体与繁体都计入。假名、谚文、私用区和全角符号不计入。
+ *
+ * 旧的手写区间 `豈-﫿` 实际是 U+8C48–U+FAFF（豈 是 U+8C48，不是 U+F900），
+ * 会把谚文音节、私用区和全角字符都算成汉字。它也没有 `u` 标志，补充平面字符
+ * 被拆成代理对，代理对恰好落在该区间内，于是 emoji 等字符也被误判为汉字。
+ */
+export const CJK_PATTERN = /\p{Script=Han}/u;
 
 export type InlineCopyProblem = { path: string; line: number; reason: string };
 

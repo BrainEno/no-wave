@@ -1,6 +1,8 @@
 # BOT THK Product Behavior Baseline
 
-Status: Initial capability baseline. Verify each item against the previous product before treating the inventory as exhaustive.
+Status: active
+
+Baseline state: initial capability baseline. Verify each item against the previous product before treating the inventory as exhaustive.
 
 The previous project provides the reference for user-visible capabilities and known behaviors. The new implementation should cover those capabilities but does not have to retain unsafe code, old schemas, implementation patterns or accidental bugs. When an improvement would change product behavior, authorization policy, destructive lifecycle rules or compatibility expectations, first explain the options and risks and ask for approval.
 

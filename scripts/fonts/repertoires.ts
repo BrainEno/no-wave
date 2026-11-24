@@ -149,6 +149,14 @@ export async function applicationRepertoires(
         ? Object.values(value).map(strings).join("")
         : "";
   const ui = getUi("zh-CN");
+  // The sign-in form's visible Chinese moved from component literals into
+  // ui.account.signIn (#406). Read it from its new home: the sans and serif
+  // cores must keep those glyphs, or the sign-in page falls back to lazy
+  // shards. Reading only the component file silently shrank both cores and
+  // left the committed receipts stale.
+  const signInCopy = literalCjkText(
+    `const copy = ${JSON.stringify(strings(ui.account.signIn))};`,
+  );
   // The three work-type labels (ADR 0054) sit on every card, row and article
   // header, so they belong with the chrome: left to the numbered leaves, the
   // 他 and 体 of 其他文体 each pull a whole shard onto every article page.
@@ -194,6 +202,7 @@ export async function applicationRepertoires(
       ...codepoints("←→"),
       ...codepoints(
         literalCjkText(`const copy = ${JSON.stringify(chromeCopy)};`) +
+          signInCopy +
           sources.join(""),
       ),
     ],
@@ -206,7 +215,7 @@ export async function applicationRepertoires(
         literalCjkText(findDictionary) +
         toolSources.join(""),
     ),
-    serif: [...ASCII, ...PUNCTUATION, ...codepoints(sources[1]!)],
+    serif: [...ASCII, ...PUNCTUATION, ...codepoints(sources[1]! + signInCopy)],
     upper: UPPER_SERIF,
     // Published general-usage priorities, never tailored to an E2E article.
     // Only body 400 gets this shared reading shard; short display titles load

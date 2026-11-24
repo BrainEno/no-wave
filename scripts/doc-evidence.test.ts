@@ -82,10 +82,94 @@ export function missingLinks(
   return failures;
 }
 
-/** A document's `Status:` value, or null when it has no status header. */
+/** The only values a `Status:` header may take (docs/README.md). */
+export const DOCUMENT_STATUSES = ["active", "done", "archived"] as const;
+
+/**
+ * A document's `Status:` value: the whole trimmed remainder of the first
+ * status line, or null when it has no status header. The value is not cut at
+ * the first word, so prose after the keyword stays visible and fails
+ * `isValidDocumentStatus` instead of being silently accepted.
+ */
 export function documentStatus(content: string): string | null {
-  const match = content.match(/^Status:\s+(\S+)/m);
+  const match = content.match(/^Status:[ \t]*(.*?)[ \t]*$/m);
   return match ? match[1]! : null;
+}
+
+export function isValidDocumentStatus(value: string | null): boolean {
+  return (
+    value !== null && (DOCUMENT_STATUSES as readonly string[]).includes(value)
+  );
+}
+
+/** One `- [Title](path) — Status: value` line of docs/README.md. */
+const INDEX_ENTRY = /^- \[([^\]]+)\]\(([^)\s]+)\) — Status: (.+)$/;
+
+export type IndexEntry = { path: string; status: string; line: number };
+
+/**
+ * Parse the documentation index. Every bullet that starts a link must match
+ * the entry format; a malformed bullet is reported, not skipped.
+ */
+export function parseDocumentIndex(index: string): {
+  entries: IndexEntry[];
+  malformed: number[];
+} {
+  const entries: IndexEntry[] = [];
+  const malformed: number[] = [];
+  index.split("\n").forEach((text, offset) => {
+    if (!text.startsWith("- [")) return;
+    const match = text.match(INDEX_ENTRY);
+    if (!match) malformed.push(offset + 1);
+    else
+      entries.push({
+        // Index links are relative to docs/, like the file they describe.
+        path: `docs/${match[2]!}`,
+        status: match[3]!,
+        line: offset + 1,
+      });
+  });
+  return { entries, malformed };
+}
+
+/**
+ * Consistency between the index and the documents it lists. `headers` maps
+ * each non-ADR document to its header status (null when absent).
+ */
+export function documentIndexProblems(
+  index: string,
+  headers: ReadonlyMap<string, string | null>,
+): string[] {
+  const { entries, malformed } = parseDocumentIndex(index);
+  const problems = malformed.map(
+    (line) => `docs/README.md:${line}: index entry does not match the format`,
+  );
+  const listed = new Map<string, number>();
+  for (const entry of entries) {
+    listed.set(entry.path, (listed.get(entry.path) ?? 0) + 1);
+    if (!headers.has(entry.path)) {
+      problems.push(
+        `docs/README.md:${entry.line}: ${entry.path} is not a non-ADR document under docs/`,
+      );
+      continue;
+    }
+    if (!isValidDocumentStatus(entry.status))
+      problems.push(
+        `docs/README.md:${entry.line}: illegal index status "${entry.status}" for ${entry.path}`,
+      );
+    if (entry.status !== headers.get(entry.path))
+      problems.push(
+        `docs/README.md:${entry.line}: index status "${entry.status}" differs from the header of ${entry.path}`,
+      );
+  }
+  for (const path of headers.keys()) {
+    const count = listed.get(path) ?? 0;
+    if (count !== 1)
+      problems.push(
+        `${path}: listed ${count} times in docs/README.md, expected 1`,
+      );
+  }
+  return problems;
 }
 
 /** Non-ADR Markdown under `docs/` that the status-header rule applies to. */
@@ -415,6 +499,112 @@ test("no roadmap document is marked done", () => {
         "done",
     );
   assert.deepEqual(failures, []);
+});
+
+test("every non-ADR document under docs/ declares an exact legal status", () => {
+  const failures = statusRuleDocuments(documents).flatMap((document) => {
+    const status = documentStatus(
+      readFileSync(resolve(root, document), "utf8"),
+    );
+    return isValidDocumentStatus(status)
+      ? []
+      : [`${document}: illegal Status "${status}"`];
+  });
+  assert.deepEqual(failures, []);
+});
+
+test("the documentation index agrees with every document it lists", () => {
+  // The index describes the other documents; it does not list itself.
+  const headers = new Map(
+    statusRuleDocuments(documents)
+      .filter((document) => document !== "docs/README.md")
+      .map((document) => [
+        document,
+        documentStatus(readFileSync(resolve(root, document), "utf8")),
+      ]),
+  );
+  const index = readFileSync(resolve(root, "docs/README.md"), "utf8");
+  assert.deepEqual(documentIndexProblems(index, headers), []);
+});
+
+test("the index checker rejects illegal, mismatched, missing and duplicated entries", () => {
+  const headers = new Map<string, string | null>([
+    ["docs/a.md", "active"],
+    ["docs/b.md", "archived"],
+    ["docs/c.md", "done"],
+  ]);
+  const index = [
+    "- [A](a.md) — Status: active",
+    "- [B](b.md) — Status: **archived**",
+    "- [B again](b.md) — Status: archived",
+    "- [C](c.md) — Status: active",
+    "- [Ghost](ghost.md) — Status: active",
+    "- [Broken] — Status: active",
+  ].join("\n");
+  const problems = documentIndexProblems(index, headers);
+  assert.ok(
+    problems.some((p) =>
+      p.includes('illegal index status "**archived**" for docs/b.md'),
+    ),
+  );
+  assert.ok(
+    problems.some((p) =>
+      p.includes(
+        'docs/README.md:4: index status "active" differs from the header of docs/c.md',
+      ),
+    ),
+  );
+  assert.ok(
+    problems.some((p) => p.includes("docs/ghost.md is not a non-ADR document")),
+  );
+  assert.ok(
+    problems.some((p) =>
+      p.includes("docs/README.md:6: index entry does not match the format"),
+    ),
+  );
+  assert.ok(
+    problems.some(
+      (p) => p === "docs/b.md: listed 2 times in docs/README.md, expected 1",
+    ),
+  );
+  assert.equal(
+    problems.some((p) => p.startsWith("docs/c.md: listed")),
+    false,
+  );
+});
+
+test("the status vocabulary rejects the values that were once in use", () => {
+  for (const value of [
+    "foundation",
+    "Minimal",
+    "Initial",
+    "**foundation",
+    "active.",
+    "Active",
+    "",
+  ]) {
+    assert.equal(isValidDocumentStatus(value), false, value);
+  }
+  for (const value of DOCUMENT_STATUSES) {
+    assert.equal(isValidDocumentStatus(value), true, value);
+  }
+  assert.equal(isValidDocumentStatus(null), false);
+});
+
+test("prose after the status keyword is not a legal status", () => {
+  assert.equal(
+    isValidDocumentStatus(
+      documentStatus("# T\n\nStatus: active. Extra prose\n"),
+    ),
+    false,
+  );
+  assert.equal(
+    isValidDocumentStatus(
+      documentStatus("# T\n\nStatus: **foundation only**\n"),
+    ),
+    false,
+  );
+  assert.equal(documentStatus("# T\n\nStatus: archived   \n"), "archived");
 });
 
 test("the status header helper reads the first Status line", () => {

@@ -1,6 +1,8 @@
 # Framework Portability Spike — Execution Checklist
 
-Status: Minimal source scaffold committed. GitLab CI has passed unit tests, typecheck and production build; route-level HTTP smoke checks are now included in CI. Docker image build/runtime verification remains pending.
+Status: archived
+
+Recorded state when the spike was last updated: minimal source scaffold committed. GitLab CI has passed unit tests, typecheck and production build; route-level HTTP smoke checks are now included in CI. Docker image build/runtime verification remains pending.
 
 ## Baseline versions
 
