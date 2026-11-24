@@ -18,7 +18,9 @@ import assert from "node:assert/strict";
 import { setTimeout as delay } from "node:timers/promises";
 import { runNotificationDeliverySmoke } from "./notification-delivery-smoke.ts";
 
-const webUrl = normalizeBase(process.env.SMOKE_WEB_URL ?? "http://127.0.0.1:3100");
+const webUrl = normalizeBase(
+  process.env.SMOKE_WEB_URL ?? "http://127.0.0.1:3100",
+);
 const apiUrlValue = process.env.SMOKE_API_URL?.trim();
 const apiUrl = apiUrlValue ? normalizeBase(apiUrlValue) : null;
 const expectFixtures = process.env.SMOKE_EXPECT_FIXTURES === "true";
@@ -42,7 +44,11 @@ async function request(url: string, expectedStatus?: number): Promise<string> {
     signal: AbortSignal.timeout(requestTimeoutMs),
   });
   if (expectedStatus !== undefined) {
-    assert.equal(response.status, expectedStatus, `${url} should answer ${expectedStatus}`);
+    assert.equal(
+      response.status,
+      expectedStatus,
+      `${url} should answer ${expectedStatus}`,
+    );
   }
   return response.text();
 }
@@ -65,7 +71,8 @@ async function waitForStatus(url: string, status: number): Promise<void> {
     }
     await delay(retryDelayMs);
   }
-  const reason = lastError instanceof Error ? lastError.message : String(lastError ?? "");
+  const reason =
+    lastError instanceof Error ? lastError.message : String(lastError ?? "");
   throw new Error(
     `${url} did not answer ${status} within ${timeoutMs} ms` +
       (lastStatus === null ? "" : ` (last status ${lastStatus})`) +
@@ -80,26 +87,51 @@ async function run(): Promise<void> {
   }
   await waitForStatus(`${webUrl}/healthz`, 200);
   if (process.env.SMOKE_NOTIFICATIONS === "true") {
-    if (!apiUrl || !process.env.SMOKE_WORKER_URL) throw new Error("Notification smoke requires API and independent worker origins.");
+    if (!apiUrl || !process.env.SMOKE_WORKER_URL)
+      throw new Error(
+        "Notification smoke requires API and independent worker origins.",
+      );
     const workerUrl = normalizeBase(process.env.SMOKE_WORKER_URL);
     await waitForStatus(`${workerUrl}/health`, 200);
     await waitForStatus(`${workerUrl}/ready`, 200);
-    console.log(JSON.stringify(await runNotificationDeliverySmoke({ apiUrl, workerUrl })));
+    console.log(
+      JSON.stringify(await runNotificationDeliverySmoke({ apiUrl, workerUrl })),
+    );
   }
 
   const home = await request(`${webUrl}/`, 200);
-  assert.match(home, /lang="zh-CN"/, "the default home must declare Simplified Chinese");
-  assert.match(home, /class="nw-pill"/, "the server-rendered site chrome is missing");
-  assert.match(home, /class="nw-footer"/, "the server-rendered footer is missing");
+  assert.match(
+    home,
+    /lang="zh-CN"/,
+    "the default home must declare Simplified Chinese",
+  );
+  assert.match(
+    home,
+    /class="nw-pill"/,
+    "the server-rendered site chrome is missing",
+  );
+  assert.match(
+    home,
+    /class="nw-footer"/,
+    "the server-rendered footer is missing",
+  );
   // This line is the fixture article's title, not static chrome: the GitHub
   // Actions image pair serves a freshly migrated, empty API and must not assert
   // it. Standalone Web smoke tests may use the local fixture registry instead.
   if (expectFixtures) {
-    assert.match(home, /文学作品的数字出版空间/, "the fixture-backed home must render the fixture article");
+    assert.match(
+      home,
+      /文学作品的数字出版空间/,
+      "the fixture-backed home must render the fixture article",
+    );
   }
 
   const english = await request(`${webUrl}/en`, 200);
-  assert.match(english, /lang="en"/, "the English home must declare its language");
+  assert.match(
+    english,
+    /lang="en"/,
+    "the English home must declare its language",
+  );
 
   await request(`${webUrl}/definitely-missing`, 404);
 
@@ -110,26 +142,43 @@ async function run(): Promise<void> {
   await request(`${webUrl}/healthz`, 200);
 
   if (expectFixtures) {
-    const article = await request(`${webUrl}/articles/portable-web-foundation`, 200);
-    assert.match(article, /rel="canonical"/, "the fixture article should render canonical metadata");
+    const article = await request(
+      `${webUrl}/articles/portable-web-foundation`,
+      200,
+    );
+    assert.match(
+      article,
+      /rel="canonical"/,
+      "the fixture article should render canonical metadata",
+    );
     await request(`${webUrl}/articles/does-not-exist`, 404);
   }
 
-  console.log(JSON.stringify({
-    event: "container_smoke_passed",
-    webUrl,
-    apiUrl: apiUrl ?? null,
-    expectFixtures,
-  }));
+  console.log(
+    JSON.stringify({
+      event: "container_smoke_passed",
+      webUrl,
+      apiUrl: apiUrl ?? null,
+      expectFixtures,
+    }),
+  );
 }
 
 try {
   await run();
 } catch (error: unknown) {
-  const errorName = error instanceof Error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name)
-    ? error.name
-    : "Error";
-  const errorMessage = error instanceof Error ? error.message.slice(0, 500) : "Unknown error";
-  console.error(JSON.stringify({ event: "container_smoke_failed", errorName, errorMessage }));
+  const errorName =
+    error instanceof Error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name)
+      ? error.name
+      : "Error";
+  const errorMessage =
+    error instanceof Error ? error.message.slice(0, 500) : "Unknown error";
+  console.error(
+    JSON.stringify({
+      event: "container_smoke_failed",
+      errorName,
+      errorMessage,
+    }),
+  );
   process.exitCode = 1;
 }

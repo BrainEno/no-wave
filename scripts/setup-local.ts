@@ -39,15 +39,29 @@ export type SetupArguments = {
   all: boolean;
 };
 
-export function parseSetupArguments(argv: readonly string[]): { args?: SetupArguments; error?: string } {
-  const args: SetupArguments = { postgres: false, force: false, print: false, migrate: false, all: false };
+export function parseSetupArguments(argv: readonly string[]): {
+  args?: SetupArguments;
+  error?: string;
+} {
+  const args: SetupArguments = {
+    postgres: false,
+    force: false,
+    print: false,
+    migrate: false,
+    all: false,
+  };
   for (const argument of argv) {
     if (argument === "--postgres") args.postgres = true;
     else if (argument === "--force" || argument === "-f") args.force = true;
     else if (argument === "--print") args.print = true;
     else if (argument === "--migrate" || argument === "-m") args.migrate = true;
-    else if (argument === "--all" || argument === "-a") { args.all = true; args.migrate = true; }
-    else return { error: `Unknown option "${argument}". Supported: --postgres, --force, --print, --migrate, --all.` };
+    else if (argument === "--all" || argument === "-a") {
+      args.all = true;
+      args.migrate = true;
+    } else
+      return {
+        error: `Unknown option "${argument}". Supported: --postgres, --force, --print, --migrate, --all.`,
+      };
   }
   return { args };
 }
@@ -68,29 +82,38 @@ function existingKeys(path: string): string[] {
 async function applyMigrations(postgres: boolean): Promise<void> {
   if (!postgres) {
     process.stdout.write("Applying SQLite schema migrations...\n");
-    const { createSqliteClient, runSqliteMigrations } = await import("../apps/api/src/persistence/sqlite.ts");
+    const { createSqliteClient, runSqliteMigrations } =
+      await import("../apps/api/src/persistence/sqlite.ts");
     const dbPath = resolve(repositoryRoot, DEFAULT_SQLITE_PATH);
     await mkdir(dirname(dbPath), { recursive: true });
     const db = createSqliteClient({ filename: dbPath });
     try {
       const applied = await runSqliteMigrations(db);
-      process.stdout.write(`SQLite schema up to date (${applied.length} migration(s) applied).\n`);
+      process.stdout.write(
+        `SQLite schema up to date (${applied.length} migration(s) applied).\n`,
+      );
     } finally {
       db.close();
     }
   } else {
-    process.stdout.write("For PostgreSQL, ensure the container is running ('pnpm db:up') then run 'pnpm db:migrate'.\n");
+    process.stdout.write(
+      "For PostgreSQL, ensure the container is running ('pnpm db:up') then run 'pnpm db:migrate'.\n",
+    );
   }
 }
 
 async function prepareFonts(): Promise<void> {
   process.stdout.write("Preparing first-party fonts...\n");
   const { execFileSync } = await import("node:child_process");
-  execFileSync(process.execPath, [resolve(repositoryRoot, "scripts/fonts/generate.ts"), "--prepare"], {
-    cwd: repositoryRoot,
-    stdio: "inherit",
-    env: process.env,
-  });
+  execFileSync(
+    process.execPath,
+    [resolve(repositoryRoot, "scripts/fonts/generate.ts"), "--prepare"],
+    {
+      cwd: repositoryRoot,
+      stdio: "inherit",
+      env: process.env,
+    },
+  );
 }
 
 async function main(): Promise<void> {
@@ -102,8 +125,11 @@ async function main(): Promise<void> {
   }
   const { postgres, force, print, migrate, all } = parsed.args;
   const requestedDatabaseUrl = process.env.DATABASE_URL;
-  const databaseUrl = isLocalDatabaseUrl(requestedDatabaseUrl) ? requestedDatabaseUrl : undefined;
-  const ignoredExternalDatabaseUrl = Boolean(requestedDatabaseUrl?.trim()) && databaseUrl === undefined;
+  const databaseUrl = isLocalDatabaseUrl(requestedDatabaseUrl)
+    ? requestedDatabaseUrl
+    : undefined;
+  const ignoredExternalDatabaseUrl =
+    Boolean(requestedDatabaseUrl?.trim()) && databaseUrl === undefined;
 
   const content = buildLocalEnvFile({
     jwtSecret: generateAuthSecret(),
@@ -115,7 +141,9 @@ async function main(): Promise<void> {
 
   if (print) {
     if (postgres && ignoredExternalDatabaseUrl) {
-      process.stderr.write("note   Ignored an external DATABASE_URL from the shell; local PostgreSQL uses compose.yaml, not Neon.\n");
+      process.stderr.write(
+        "note   Ignored an external DATABASE_URL from the shell; local PostgreSQL uses compose.yaml, not Neon.\n",
+      );
     }
     process.stdout.write(content);
     return;
@@ -123,21 +151,27 @@ async function main(): Promise<void> {
 
   const envExists = existsSync(localEnvFile);
   if (envExists && !force) {
-    process.stdout.write([
-      `${relative(repositoryRoot, localEnvFile)} already exists; nothing was written.`,
-      `Existing keys: ${existingKeys(localEnvFile).join(", ") || "(none)"}`,
-      "",
-    ].join("\n"));
+    process.stdout.write(
+      [
+        `${relative(repositoryRoot, localEnvFile)} already exists; nothing was written.`,
+        `Existing keys: ${existingKeys(localEnvFile).join(", ") || "(none)"}`,
+        "",
+      ].join("\n"),
+    );
   } else {
     writeFileSync(localEnvFile, content, { encoding: "utf8", mode: 0o600 });
-    process.stdout.write([
-      `Wrote ${relative(repositoryRoot, localEnvFile)} (provider: ${postgres ? "postgres" : "sqlite"}, mode 0600).`,
-      "It is git-ignored and contains a randomly generated development JWT secret.",
-      ...(postgres && ignoredExternalDatabaseUrl ? [
-        "note   Ignored an external DATABASE_URL from the shell; local PostgreSQL uses compose.yaml, not Neon.",
-      ] : []),
-      "",
-    ].join("\n"));
+    process.stdout.write(
+      [
+        `Wrote ${relative(repositoryRoot, localEnvFile)} (provider: ${postgres ? "postgres" : "sqlite"}, mode 0600).`,
+        "It is git-ignored and contains a randomly generated development JWT secret.",
+        ...(postgres && ignoredExternalDatabaseUrl
+          ? [
+              "note   Ignored an external DATABASE_URL from the shell; local PostgreSQL uses compose.yaml, not Neon.",
+            ]
+          : []),
+        "",
+      ].join("\n"),
+    );
   }
 
   if (migrate || all) {
@@ -149,7 +183,9 @@ async function main(): Promise<void> {
   }
 
   if (all) {
-    process.stdout.write("\nAll-in-one setup complete! You can now run:\n  pnpm dev\n\n");
+    process.stdout.write(
+      "\nAll-in-one setup complete! You can now run:\n  pnpm dev\n\n",
+    );
     return;
   }
 
@@ -163,17 +199,19 @@ async function main(): Promise<void> {
       ]
     : [
         "Next steps:",
-        ...(migrate ? [] : ["  1. pnpm db:migrate   # create the local SQLite schema"]),
+        ...(migrate
+          ? []
+          : ["  1. pnpm db:migrate   # create the local SQLite schema"]),
         `  ${migrate ? "1" : "2"}. pnpm dev          # start the API (:4000) and the Web dev server (:3000)`,
         `  ${migrate ? "2" : "3"}. pnpm check:local  # verify database -> API -> Web connectivity`,
       ];
 
-  process.stdout.write([
-    ...next,
-    "",
-  ].join("\n"));
+  process.stdout.write([...next, ""].join("\n"));
 }
 
-if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === new URL(`file://${process.argv[1]}`).href
+) {
   await main();
 }

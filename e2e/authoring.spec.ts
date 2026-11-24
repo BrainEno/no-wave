@@ -46,7 +46,12 @@ function currentOrigin(): string {
   return new URL(baseURL).origin;
 }
 
-type SavedArticle = { id: string; slug: string; title: string; status: "draft" | "published" };
+type SavedArticle = {
+  id: string;
+  slug: string;
+  title: string;
+  status: "draft" | "published";
+};
 
 function uniqueEmail(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}@example.test`;
@@ -67,7 +72,15 @@ async function pageDigest(page: Page): Promise<string> {
   }
 }
 
-type SessionCookie = { name: string; value: string; path: string; maxAge: number; httpOnly: boolean; secure: boolean; sameSite: "Lax" | "Strict" | "None" };
+type SessionCookie = {
+  name: string;
+  value: string;
+  path: string;
+  maxAge: number;
+  httpOnly: boolean;
+  secure: boolean;
+  sameSite: "Lax" | "Strict" | "None";
+};
 
 /**
  * Read the session cookies out of a login response.
@@ -76,11 +89,16 @@ type SessionCookie = { name: string; value: string; path: string; maxAge: number
  * the API client sharing its cookie jar with the page: the suite is about the
  * browser, and it should not depend on that sharing being true.
  */
-function sessionCookies(headers: { name: string; value: string }[]): SessionCookie[] {
+function sessionCookies(
+  headers: { name: string; value: string }[],
+): SessionCookie[] {
   const cookies: SessionCookie[] = [];
   for (const header of headers) {
     if (header.name.toLowerCase() !== "set-cookie") continue;
-    const parts = header.value.split(";").map((part) => part.trim()).filter((part) => part.length > 0);
+    const parts = header.value
+      .split(";")
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0);
     const [pair, ...attributes] = parts;
     const separator = pair.indexOf("=");
     if (separator <= 0) continue;
@@ -96,10 +114,18 @@ function sessionCookies(headers: { name: string; value: string }[]): SessionCook
     for (const attribute of attributes) {
       const [key, value = ""] = attribute.split("=");
       switch (key.trim().toLowerCase()) {
-        case "path": cookie.path = value.trim(); break;
-        case "max-age": cookie.maxAge = Number.parseInt(value.trim(), 10) || cookie.maxAge; break;
-        case "httponly": cookie.httpOnly = true; break;
-        case "secure": cookie.secure = true; break;
+        case "path":
+          cookie.path = value.trim();
+          break;
+        case "max-age":
+          cookie.maxAge = Number.parseInt(value.trim(), 10) || cookie.maxAge;
+          break;
+        case "httponly":
+          cookie.httpOnly = true;
+          break;
+        case "secure":
+          cookie.secure = true;
+          break;
         case "samesite": {
           const sameSite = value.trim().toLowerCase();
           if (sameSite === "strict") cookie.sameSite = "Strict";
@@ -107,7 +133,8 @@ function sessionCookies(headers: { name: string; value: string }[]): SessionCook
           else cookie.sameSite = "Lax";
           break;
         }
-        default: break;
+        default:
+          break;
       }
     }
     if (cookie.value.length > 0) cookies.push(cookie);
@@ -131,22 +158,30 @@ async function signIn(page: Page, email: string): Promise<void> {
     data: { email, password: PASSWORD },
     headers: { origin },
   });
-  expect(login.status(), `signing the browser in as ${email}: ${await login.text()}`).toBe(200);
+  expect(
+    login.status(),
+    `signing the browser in as ${email}: ${await login.text()}`,
+  ).toBe(200);
   const cookies = sessionCookies(await login.headersArray());
-  expect(cookies.length, `the login response must set session cookies; headers: ${JSON.stringify(await login.headersArray())}`).toBeGreaterThan(0);
+  expect(
+    cookies.length,
+    `the login response must set session cookies; headers: ${JSON.stringify(await login.headersArray())}`,
+  ).toBeGreaterThan(0);
   // `domain` + `path` (not `url`): Playwright derives the path from a url's
   // directory, and the access cookie is deliberately scoped to /api/authoring
   // so it is never sent to page routes.
-  await page.context().addCookies(cookies.map((cookie) => ({
-    name: cookie.name,
-    value: cookie.value,
-    domain: new URL(origin).hostname,
-    path: cookie.path,
-    expires: Math.floor(Date.now() / 1000) + cookie.maxAge,
-    httpOnly: cookie.httpOnly,
-    secure: cookie.secure,
-    sameSite: cookie.sameSite,
-  })));
+  await page.context().addCookies(
+    cookies.map((cookie) => ({
+      name: cookie.name,
+      value: cookie.value,
+      domain: new URL(origin).hostname,
+      path: cookie.path,
+      expires: Math.floor(Date.now() / 1000) + cookie.maxAge,
+      httpOnly: cookie.httpOnly,
+      secure: cookie.secure,
+      sameSite: cookie.sameSite,
+    })),
+  );
 }
 
 /**
@@ -155,39 +190,61 @@ async function signIn(page: Page, email: string): Promise<void> {
  * The profile is not decoration: the public reader drops articles whose author
  * has none, so a published work would be unreachable without it.
  */
-async function registerWriter(page: Page, request: APIRequestContext): Promise<string> {
+async function registerWriter(
+  page: Page,
+  request: APIRequestContext,
+): Promise<string> {
   const email = uniqueEmail("writer");
-  const registered = await request.post(`${API_BASE_URL}/api/v1/auth/register`, {
-    data: { email, password: PASSWORD },
-  });
-  expect(registered.status(), `registering ${email}: ${await registered.text()}`).toBe(201);
-  const { accessToken } = (await registered.json()).data as { accessToken: string };
+  const registered = await request.post(
+    `${API_BASE_URL}/api/v1/auth/register`,
+    {
+      data: { email, password: PASSWORD },
+    },
+  );
+  expect(
+    registered.status(),
+    `registering ${email}: ${await registered.text()}`,
+  ).toBe(201);
+  const { accessToken } = (await registered.json()).data as {
+    accessToken: string;
+  };
 
   const profile = await request.put(`${API_BASE_URL}/api/v1/me/profile`, {
     data: { displayName: "无浪作者", bio: "浏览器验证账户。", locale: "zh-CN" },
     headers: { authorization: `Bearer ${accessToken}`, origin: API_BASE_URL },
   });
-  expect(profile.status(), `creating the author profile: ${await profile.text()}`).toBe(200);
+  expect(
+    profile.status(),
+    `creating the author profile: ${await profile.text()}`,
+  ).toBe(200);
 
   await signIn(page, email);
   await page.goto("/write");
   try {
-    await expect(page.getByRole("heading", { name: /写作台/ })).toBeVisible({ timeout: 45_000 });
+    await expect(page.getByRole("heading", { name: /写作台/ })).toBeVisible({
+      timeout: 45_000,
+    });
   } catch (caught) {
     // Distinguish "no session", "an API call hangs" and "client JS never ran":
     // all three leave the page on its server-rendered loading state.
-    const probe = await page.evaluate(async () => {
-      const status = async (path: string): Promise<number> => {
-        const response = await fetch(path, { credentials: "same-origin", cache: "no-store" });
-        return response.status;
-      };
-      return {
-        session: await status("/api/authoring/session"),
-        articles: await status("/api/authoring/articles"),
-        hydrated: typeof (window as unknown as { next?: unknown }).next === "object",
-        scripts: document.scripts.length,
-      };
-    }).catch((error: unknown) => `probe failed: ${String(error)}`);
+    const probe = await page
+      .evaluate(async () => {
+        const status = async (path: string): Promise<number> => {
+          const response = await fetch(path, {
+            credentials: "same-origin",
+            cache: "no-store",
+          });
+          return response.status;
+        };
+        return {
+          session: await status("/api/authoring/session"),
+          articles: await status("/api/authoring/articles"),
+          hydrated:
+            typeof (window as unknown as { next?: unknown }).next === "object",
+          scripts: document.scripts.length,
+        };
+      })
+      .catch((error: unknown) => `probe failed: ${String(error)}`);
     throw new Error(
       `/write did not open the authoring desk (probe: ${JSON.stringify(probe)}); page:\n${await pageDigest(page)}\n${String(caught)}`,
     );
@@ -198,7 +255,9 @@ async function registerWriter(page: Page, request: APIRequestContext): Promise<s
 /** Wait until the Lexical editor has hydrated: its toolbar exists client-side only. */
 async function waitForEditor(page: Page): Promise<void> {
   await expect(page.getByLabel("标题")).toBeVisible();
-  await expect(page.getByRole("toolbar", { name: "富文本格式" })).toBeVisible({ timeout: 45_000 });
+  await expect(page.getByRole("toolbar", { name: "富文本格式" })).toBeVisible({
+    timeout: 45_000,
+  });
 }
 
 async function savedArticles(page: Page): Promise<SavedArticle[]> {
@@ -208,11 +267,17 @@ async function savedArticles(page: Page): Promise<SavedArticle[]> {
   return Array.isArray(body.data) ? body.data : [];
 }
 
-const FIRST_PARAGRAPH = "无浪是一只没有波浪的文学站点，第一段用来验证保存链路。";
-const SECOND_PARAGRAPH = "第二段用来验证摘要会取正文开头，而不是把整篇文章塞进去。";
+const FIRST_PARAGRAPH =
+  "无浪是一只没有波浪的文学站点，第一段用来验证保存链路。";
+const SECOND_PARAGRAPH =
+  "第二段用来验证摘要会取正文开头，而不是把整篇文章塞进去。";
 
 /** Write a title and two paragraphs, then save; returns the generated address. */
-async function writeAndSave(page: Page, title: string, publish: boolean): Promise<string> {
+async function writeAndSave(
+  page: Page,
+  title: string,
+  publish: boolean,
+): Promise<string> {
   await waitForEditor(page);
   await page.getByLabel("标题").fill(title);
   await page.getByLabel("作品正文").click();
@@ -220,9 +285,13 @@ async function writeAndSave(page: Page, title: string, publish: boolean): Promis
   await page.keyboard.press("Enter");
   await page.keyboard.type(SECOND_PARAGRAPH);
   // The text has to reach the editor state, not just the DOM, before saving.
-  await expect(page.getByLabel("作品正文")).toContainText("第一段用来验证保存链路。");
+  await expect(page.getByLabel("作品正文")).toContainText(
+    "第一段用来验证保存链路。",
+  );
 
-  await page.getByRole("button", { name: publish ? "发布作品" : "保存草稿" }).click();
+  await page
+    .getByRole("button", { name: publish ? "发布作品" : "保存草稿" })
+    .click();
   return await savedSlug(page, title, publish ? "published" : "draft");
 }
 
@@ -232,21 +301,32 @@ async function writeAndSave(page: Page, title: string, publish: boolean): Promis
  * Polled rather than read once: the workspace saves asynchronously, and the
  * slug is the durable outcome the rest of the assertions need.
  */
-async function savedSlug(page: Page, title: string, status: SavedArticle["status"]): Promise<string> {
+async function savedSlug(
+  page: Page,
+  title: string,
+  status: SavedArticle["status"],
+): Promise<string> {
   let articles: SavedArticle[] = [];
   try {
     await expect(async () => {
       articles = await savedArticles(page);
       const match = articles.find((article) => article.title === title);
-      expect(match, `no article titled "${title}" in ${JSON.stringify(articles.map((article) => [article.title, article.status]))}`).toBeDefined();
+      expect(
+        match,
+        `no article titled "${title}" in ${JSON.stringify(articles.map((article) => [article.title, article.status]))}`,
+      ).toBeDefined();
       expect(match?.status).toBe(status);
     }).toPass({ timeout: 45_000, intervals: [500, 1_000, 2_000] });
   } catch (caught) {
-    throw new Error(`the save did not produce a ${status} article; page:\n${await pageDigest(page)}\n${String(caught)}`);
+    throw new Error(
+      `the save did not produce a ${status} article; page:\n${await pageDigest(page)}\n${String(caught)}`,
+    );
   }
   const slug = articles.find((article) => article.title === title)?.slug ?? "";
-  expect(slug, `a generated slug for "${title}": ${JSON.stringify(articles.map((article) => article.slug))}`)
-    .toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+  expect(
+    slug,
+    `a generated slug for "${title}": ${JSON.stringify(articles.map((article) => article.slug))}`,
+  ).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
   return slug;
 }
 
@@ -265,14 +345,24 @@ let consoleLog: string[] = [];
 test.beforeEach(async ({ page }) => {
   traffic = [];
   consoleLog = [];
-  const record = (line: string): void => { if (traffic.length < 40) traffic.push(line); };
-  const recordConsole = (line: string): void => { if (consoleLog.length < 40) consoleLog.push(line); };
-  page.on("console", (message) => recordConsole(`${message.type()}: ${message.text().slice(0, 300)}`));
-  page.on("pageerror", (error) => recordConsole(`pageerror: ${String(error).slice(0, 300)}`));
+  const record = (line: string): void => {
+    if (traffic.length < 40) traffic.push(line);
+  };
+  const recordConsole = (line: string): void => {
+    if (consoleLog.length < 40) consoleLog.push(line);
+  };
+  page.on("console", (message) =>
+    recordConsole(`${message.type()}: ${message.text().slice(0, 300)}`),
+  );
+  page.on("pageerror", (error) =>
+    recordConsole(`pageerror: ${String(error).slice(0, 300)}`),
+  );
   const watched = (url: string): boolean => /\/api\/(authoring|auth)/.test(url);
   page.on("request", (request) => {
     if (!watched(request.url())) return;
-    record(`-> ${request.method()} ${new URL(request.url()).pathname} ${(request.postData() ?? "").slice(0, 200)}`);
+    record(
+      `-> ${request.method()} ${new URL(request.url()).pathname} ${(request.postData() ?? "").slice(0, 200)}`,
+    );
   });
   page.on("response", (response) => {
     if (!watched(response.url())) return;
@@ -280,13 +370,17 @@ test.beforeEach(async ({ page }) => {
   });
   page.on("requestfailed", (request) => {
     if (!watched(request.url())) return;
-    record(`!! ${request.method()} ${request.url()} ${request.failure()?.errorText ?? "failed"}`);
+    record(
+      `!! ${request.method()} ${request.url()} ${request.failure()?.errorText ?? "failed"}`,
+    );
   });
 });
 
 test.afterEach(async ({ page }, testInfo) => {
   if (testInfo.status !== "failed" && testInfo.status !== "timedOut") return;
-  console.log(`FAILED ${testInfo.title} at ${page.url()}\ntraffic:\n${traffic.join("\n")}\nconsole:\n${consoleLog.join("\n")}\n${await pageDigest(page)}`);
+  console.log(
+    `FAILED ${testInfo.title} at ${page.url()}\ntraffic:\n${traffic.join("\n")}\nconsole:\n${consoleLog.join("\n")}\n${await pageDigest(page)}`,
+  );
 });
 
 /**
@@ -297,14 +391,20 @@ test.afterEach(async ({ page }, testInfo) => {
  * `<dialog>` the product owns: the name is the question, the buttons are the
  * answer, and a missing dialog is a visible failure instead of a silent delete.
  */
-async function answerDeskDialog(page: Page, name: string | RegExp, answer: string): Promise<void> {
+async function answerDeskDialog(
+  page: Page,
+  name: string | RegExp,
+  answer: string,
+): Promise<void> {
   const dialog = page.getByRole("dialog", { name });
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: answer }).click();
   await expect(dialog).not.toBeVisible();
 }
 
-test("the sign-in form registers an account and opens the authoring desk", async ({ page }) => {
+test("the sign-in form registers an account and opens the authoring desk", async ({
+  page,
+}) => {
   const email = uniqueEmail("signup");
   await page.goto("/sign-in?next=%2Fwrite");
 
@@ -312,46 +412,82 @@ test("the sign-in form registers an account and opens the authoring desk", async
   // switch is retried until its effect shows up.
   try {
     await expect(async () => {
-      await page.getByRole("button", { name: /没有账户？创建账户|已有账户？登录/ }).click();
-      await expect(page.getByRole("button", { name: "创建账户并继续" })).toBeVisible({ timeout: 3_000 });
+      await page
+        .getByRole("button", { name: /没有账户？创建账户|已有账户？登录/ })
+        .click();
+      await expect(
+        page.getByRole("button", { name: "创建账户并继续" }),
+      ).toBeVisible({ timeout: 3_000 });
     }).toPass({ timeout: 45_000 });
   } catch (caught) {
-    throw new Error(`the sign-in form never switched to register mode; page:\n${await pageDigest(page)}\n${String(caught)}`);
+    throw new Error(
+      `the sign-in form never switched to register mode; page:\n${await pageDigest(page)}\n${String(caught)}`,
+    );
   }
 
   await page.getByLabel("邮箱").fill(email);
   await page.getByLabel("密码").fill(PASSWORD);
   await page.getByRole("button", { name: "创建账户并继续" }).click();
   await page.waitForURL("**/write", { timeout: 45_000 });
-  await expect(page.getByRole("heading", { name: /写作台/ })).toBeVisible({ timeout: 45_000 });
+  await expect(page.getByRole("heading", { name: /写作台/ })).toBeVisible({
+    timeout: 45_000,
+  });
 });
 
-test("registration creates a default pen name and the writing desk can change it", async ({ page, request }) => {
+test("registration creates a default pen name and the writing desk can change it", async ({
+  page,
+  request,
+}) => {
   const email = uniqueEmail("penname");
-  const registered = await request.post(`${API_BASE_URL}/api/v1/auth/register`, {
-    data: { email, password: PASSWORD },
-  });
-  expect(registered.status(), `registering ${email}: ${await registered.text()}`).toBe(201);
-  const { accessToken } = (await registered.json()).data as { accessToken: string };
+  const registered = await request.post(
+    `${API_BASE_URL}/api/v1/auth/register`,
+    {
+      data: { email, password: PASSWORD },
+    },
+  );
+  expect(
+    registered.status(),
+    `registering ${email}: ${await registered.text()}`,
+  ).toBe(201);
+  const { accessToken } = (await registered.json()).data as {
+    accessToken: string;
+  };
 
   // No profile PUT: the default byline is part of the registration transaction.
-  const profile = await request.get(`${API_BASE_URL}/api/v1/me/profile?locale=zh-CN`, {
-    headers: { authorization: `Bearer ${accessToken}` },
-  });
-  expect(profile.status(), `reading the default profile: ${await profile.text()}`).toBe(200);
+  const profile = await request.get(
+    `${API_BASE_URL}/api/v1/me/profile?locale=zh-CN`,
+    {
+      headers: { authorization: `Bearer ${accessToken}` },
+    },
+  );
+  expect(
+    profile.status(),
+    `reading the default profile: ${await profile.text()}`,
+  ).toBe(200);
   expect((await profile.json()).data.displayName).toBe("无浪作者");
 
   await signIn(page, email);
   await page.goto("/write");
-  await expect(page.locator("[data-author-profile]")).toBeVisible({ timeout: 45_000 });
-  await expect(page.locator("[data-author-profile-name]")).toHaveText("无浪作者", { timeout: 45_000 });
+  await expect(page.locator("[data-author-profile]")).toBeVisible({
+    timeout: 45_000,
+  });
+  await expect(page.locator("[data-author-profile-name]")).toHaveText(
+    "无浪作者",
+    { timeout: 45_000 },
+  );
 
   await page.getByLabel("笔名").fill("新笔名");
   await page.getByRole("button", { name: "保存笔名" }).click();
-  await expect(page.locator("[data-author-profile-name]")).toHaveText("新笔名", { timeout: 45_000 });
+  await expect(page.locator("[data-author-profile-name]")).toHaveText(
+    "新笔名",
+    { timeout: 45_000 },
+  );
 });
 
-test("saving a draft creates the article with a generated address, and it survives a reload", async ({ page, request }) => {
+test("saving a draft creates the article with a generated address, and it survives a reload", async ({
+  page,
+  request,
+}) => {
   await registerWriter(page, request);
   const title = `浏览器验证草稿 ${Date.now().toString(36)}`;
   const slug = await writeAndSave(page, title, false);
@@ -374,7 +510,9 @@ test("saving a draft creates the article with a generated address, and it surviv
   // somewhere else, this says where it went instead.
   const focused = await page.evaluate(() => {
     const active = document.activeElement;
-    return active ? `${active.tagName}.${active.className} ${(active.textContent ?? "").slice(0, 40)}` : "none";
+    return active
+      ? `${active.tagName}.${active.className} ${(active.textContent ?? "").slice(0, 40)}`
+      : "none";
   });
   try {
     await expect(status).toContainText("作品已发布。", { timeout: 45_000 });
@@ -382,7 +520,9 @@ test("saving a draft creates the article with a generated address, and it surviv
     // The client refuses a save before it sends anything, so what the page
     // says now is the only way to tell a refused save from a failed request.
     const alerts = await page.locator("[role=alert]").allTextContents();
-    const editorText = ((await page.getByLabel("作品正文").textContent()) ?? "").slice(0, 120);
+    const editorText = (
+      (await page.getByLabel("作品正文").textContent()) ?? ""
+    ).slice(0, 120);
     const titleValue = await page.getByLabel("标题").inputValue();
     throw new Error(
       `publishing the saved draft did not report success; focused=${JSON.stringify(focused)} requests=${requestsBefore}->${traffic.length} alerts=${JSON.stringify(alerts)}\ntraffic:\n${traffic.join("\n")}\nconsole:\n${consoleLog.join("\n")}\n${String(caught)}`,
@@ -401,26 +541,39 @@ test("saving a draft creates the article with a generated address, and it surviv
   await expect(entry).toContainText("已发布");
 });
 
-test("publishing an article makes it readable at its generated address with a generated summary", async ({ page, request }) => {
+test("publishing an article makes it readable at its generated address with a generated summary", async ({
+  page,
+  request,
+}) => {
   await registerWriter(page, request);
   const title = `浏览器验证发布 ${Date.now().toString(36)}`;
   const slug = await writeAndSave(page, title, true);
 
   await page.goto(`/articles/${slug}`);
-  await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible({ timeout: 45_000 });
+  await expect(
+    page.getByRole("heading", { level: 1, name: title }),
+  ).toBeVisible({ timeout: 45_000 });
   // Exact: the summary is rendered as a standfirst paragraph that starts with
   // the same sentence, so a substring match would be ambiguous.
   await expect(page.getByText(FIRST_PARAGRAPH, { exact: true })).toBeVisible();
 
   // The summary was left blank in the editor, so the API derived it from the
   // body: the page description must be the beginning of the prose, not empty.
-  const description = (await page.locator('meta[name="description"]').getAttribute("content")) ?? "";
-  expect(description, `generated summary for /articles/${slug}; page:\n${await pageDigest(page)}`).not.toHaveLength(0);
+  const description =
+    (await page.locator('meta[name="description"]').getAttribute("content")) ??
+    "";
+  expect(
+    description,
+    `generated summary for /articles/${slug}; page:\n${await pageDigest(page)}`,
+  ).not.toHaveLength(0);
   expect(description.startsWith("无浪是一只没有波浪的文学站点")).toBe(true);
   expect(description.length).toBeLessThanOrEqual(111);
 });
 
-test("returning a published work to draft withdraws it from the public site", async ({ page, request }) => {
+test("returning a published work to draft withdraws it from the public site", async ({
+  page,
+  request,
+}) => {
   await registerWriter(page, request);
   const title = `浏览器验证撤稿 ${Date.now().toString(36)}`;
   const slug = await writeAndSave(page, title, true);
@@ -452,18 +605,29 @@ test("returning a published work to draft withdraws it from the public site", as
 
   await expect(async () => {
     const saved = await savedArticles(page);
-    expect(saved.find((article) => article.title === title)?.status, JSON.stringify(saved)).toBe("draft");
+    expect(
+      saved.find((article) => article.title === title)?.status,
+      JSON.stringify(saved),
+    ).toBe("draft");
   }).toPass({ timeout: 45_000, intervals: [500, 1_000, 2_000] });
 
   // The durable outcome readers can see: the address stops serving the work,
   // while the draft itself is untouched and still listed in the desk.
   await page.goto(`/articles/${slug}`);
-  await expect(publicHeading, `the withdrawn work must not be readable at /articles/${slug}`).toHaveCount(0);
+  await expect(
+    publicHeading,
+    `the withdrawn work must not be readable at /articles/${slug}`,
+  ).toHaveCount(0);
   await page.goto("/write");
-  await expect(page.getByRole("button", { name: new RegExp(title) })).toContainText("草稿", { timeout: 45_000 });
+  await expect(
+    page.getByRole("button", { name: new RegExp(title) }),
+  ).toContainText("草稿", { timeout: 45_000 });
 });
 
-test("deleting a work takes it out of the desk and off the site", async ({ page, request }) => {
+test("deleting a work takes it out of the desk and off the site", async ({
+  page,
+  request,
+}) => {
   await registerWriter(page, request);
   const title = `浏览器验证删除 ${Date.now().toString(36)}`;
   const slug = await writeAndSave(page, title, true);
@@ -495,7 +659,10 @@ test("deleting a work takes it out of the desk and off the site", async ({ page,
   await deleteDialog.getByRole("button", { name: "取消" }).click();
   await expect(deleteDialog).not.toBeVisible();
   await page.goto(`/articles/${slug}`);
-  await expect(publicHeading, "cancelling the confirmation must leave the work published").toBeVisible({ timeout: 45_000 });
+  await expect(
+    publicHeading,
+    "cancelling the confirmation must leave the work published",
+  ).toBeVisible({ timeout: 45_000 });
 
   // The destructive answer has to be aimed at: back into the desk, open the
   // work again, and this time say yes.
@@ -509,18 +676,29 @@ test("deleting a work takes it out of the desk and off the site", async ({ page,
   // The notice belongs to the desk, not to the editor: the editor is reset to a
   // new document, so a message that only the editor could show would vanish with
   // the work it is about.
-  await expect(page.getByRole("status").filter({ hasText: "已删除" })).toContainText(title, { timeout: 45_000 });
+  await expect(
+    page.getByRole("status").filter({ hasText: "已删除" }),
+  ).toContainText(title, { timeout: 45_000 });
   await expect(async () => {
     const saved = await savedArticles(page);
-    expect(saved.find((article) => article.title === title), JSON.stringify(saved)).toBeUndefined();
+    expect(
+      saved.find((article) => article.title === title),
+      JSON.stringify(saved),
+    ).toBeUndefined();
   }).toPass({ timeout: 45_000, intervals: [500, 1_000, 2_000] });
 
   // The durable outcome a reader can see: the address stops serving the work.
   await page.goto(`/articles/${slug}`);
-  await expect(publicHeading, `the deleted work must not be readable at /articles/${slug}`).toHaveCount(0);
+  await expect(
+    publicHeading,
+    `the deleted work must not be readable at /articles/${slug}`,
+  ).toHaveCount(0);
 });
 
-test("a deleted work can be restored from the recycle bin, as a draft", async ({ page, request }) => {
+test("a deleted work can be restored from the recycle bin, as a draft", async ({
+  page,
+  request,
+}) => {
   await registerWriter(page, request);
   const title = `浏览器验证还原 ${Date.now().toString(36)}`;
   const slug = await writeAndSave(page, title, true);
@@ -533,27 +711,39 @@ test("a deleted work can be restored from the recycle bin, as a draft", async ({
   await waitForEditor(page);
   await page.getByRole("button", { name: "删除作品", exact: true }).click();
   await answerDeskDialog(page, /删除《.*》？/, "确认删除");
-  await expect(page.getByRole("status").filter({ hasText: "已删除" })).toContainText(title, { timeout: 45_000 });
+  await expect(
+    page.getByRole("status").filter({ hasText: "已删除" }),
+  ).toContainText(title, { timeout: 45_000 });
 
   // The deletion is not the end of the story: the work is in the recycle bin,
   // with a deadline the author can read, and it can be brought back.
   const trash = page.getByRole("region", { name: "回收站" });
-  const row = trash.getByRole("button", { name: new RegExp(`还原《${title}》`) });
+  const row = trash.getByRole("button", {
+    name: new RegExp(`还原《${title}》`),
+  });
   await expect(row).toBeVisible({ timeout: 45_000 });
   await expect(trash).toContainText(/将在 \d+ 天后自动清除|即将自动清除/);
 
   await row.click();
-  await expect(page.getByRole("status").filter({ hasText: "已还原" })).toContainText(title, { timeout: 45_000 });
+  await expect(
+    page.getByRole("status").filter({ hasText: "已还原" }),
+  ).toContainText(title, { timeout: 45_000 });
 
   // Back in the desk, as a draft, with its body intact: a restore is an undo,
   // not a fresh document.
   await expect(async () => {
     const saved = await savedArticles(page);
-    expect(saved.find((article) => article.title === title)?.status, JSON.stringify(saved)).toBe("draft");
+    expect(
+      saved.find((article) => article.title === title)?.status,
+      JSON.stringify(saved),
+    ).toBe("draft");
   }).toPass({ timeout: 45_000, intervals: [500, 1_000, 2_000] });
   await page.getByRole("button", { name: new RegExp(title) }).click();
   await waitForEditor(page);
-  await expect(page.getByLabel("作品正文")).toContainText("第一段用来验证保存链路。", { timeout: 45_000 });
+  await expect(page.getByLabel("作品正文")).toContainText(
+    "第一段用来验证保存链路。",
+    { timeout: 45_000 },
+  );
 
   // Restoring must not republish: the address stays dark until the author says
   // otherwise, which is the whole difference between a restore and an archive.
@@ -573,7 +763,10 @@ test("a deleted work can be restored from the recycle bin, as a draft", async ({
  * writes each commenter a notice; this is the assertion that a reader can
  * actually read it, in a browser, in both frameworks.
  */
-test("a reader who commented on a deleted work is told so in their own desk", async ({ page, request }) => {
+test("a reader who commented on a deleted work is told so in their own desk", async ({
+  page,
+  request,
+}) => {
   // Two accounts, one browser: the author who deletes, and the reader whose
   // comment goes with the work.
   await registerWriter(page, request);
@@ -581,20 +774,34 @@ test("a reader who commented on a deleted work is told so in their own desk", as
   const slug = await writeAndSave(page, title, true);
 
   const readerEmail = uniqueEmail("reader");
-  const registered = await request.post(`${API_BASE_URL}/api/v1/auth/register`, {
-    data: { email: readerEmail, password: PASSWORD },
-  });
-  expect(registered.status(), `registering ${readerEmail}: ${await registered.text()}`).toBe(201);
-  const { accessToken } = (await registered.json()).data as { accessToken: string };
+  const registered = await request.post(
+    `${API_BASE_URL}/api/v1/auth/register`,
+    {
+      data: { email: readerEmail, password: PASSWORD },
+    },
+  );
+  expect(
+    registered.status(),
+    `registering ${readerEmail}: ${await registered.text()}`,
+  ).toBe(201);
+  const { accessToken } = (await registered.json()).data as {
+    accessToken: string;
+  };
 
   // The reader's words, posted through the API because the journey is about the
   // inbox rather than the comment form: every click that is not what the test
   // asserts is a way for it to fail for the wrong reason.
-  const comment = await request.post(`${API_BASE_URL}/api/v1/articles/${slug}/comments`, {
-    data: { content: "这一段我想再读一遍。" },
-    headers: { authorization: `Bearer ${accessToken}`, origin: API_BASE_URL },
-  });
-  expect(comment.status(), `commenting on ${slug}: ${await comment.text()}`).toBe(201);
+  const comment = await request.post(
+    `${API_BASE_URL}/api/v1/articles/${slug}/comments`,
+    {
+      data: { content: "这一段我想再读一遍。" },
+      headers: { authorization: `Bearer ${accessToken}`, origin: API_BASE_URL },
+    },
+  );
+  expect(
+    comment.status(),
+    `commenting on ${slug}: ${await comment.text()}`,
+  ).toBe(201);
 
   await page.goto("/write");
   await waitForEditor(page);
@@ -604,11 +811,15 @@ test("a reader who commented on a deleted work is told so in their own desk", as
   await waitForEditor(page);
   await page.getByRole("button", { name: "删除作品", exact: true }).click();
   await answerDeskDialog(page, /删除《.*》？/, "确认删除");
-  await expect(page.getByRole("status").filter({ hasText: "已删除" })).toContainText(title, { timeout: 45_000 });
+  await expect(
+    page.getByRole("status").filter({ hasText: "已删除" }),
+  ).toContainText(title, { timeout: 45_000 });
 
   // The author receives the reader's comment, but not their own deletion notice.
   const authorInbox = page.getByRole("region", { name: "通知" });
-  await expect(authorInbox).toContainText("有人评论了你的作品。", { timeout: 45_000 });
+  await expect(authorInbox).toContainText("有人评论了你的作品。", {
+    timeout: 45_000,
+  });
   await expect(authorInbox).not.toContainText("你评论过的一篇作品已被作者删除");
 
   // The same screen, the other account.
@@ -618,8 +829,10 @@ test("a reader who commented on a deleted work is told so in their own desk", as
   await waitForEditor(page);
 
   const inbox = page.getByRole("region", { name: "通知" });
-  await expect(inbox, `the reader's desk must carry the notice:\n${await pageDigest(page)}`)
-    .toContainText("1 未读", { timeout: 45_000 });
+  await expect(
+    inbox,
+    `the reader's desk must carry the notice:\n${await pageDigest(page)}`,
+  ).toContainText("1 未读", { timeout: 45_000 });
   await expect(inbox).toContainText(/你评论过的一篇作品已被作者删除/);
   // The date is the point of the notice: it is the difference between "this is
   // happening" and "this will happen, and here is when".
@@ -634,15 +847,24 @@ test("a reader who commented on a deleted work is told so in their own desk", as
     inbox.getByRole("button", { name: "标记已读", exact: true }),
     `the notice must stop asking to be read:\n${await pageDigest(page)}`,
   ).toHaveCount(0, { timeout: 45_000 });
-  await expect(inbox.getByRole("heading", { name: "通知", exact: true })).toBeVisible();
-  await expect(inbox).toContainText("已载入 1 条，其中 0 条未读；全收件箱 0 条未读。");
-  await expect(inbox.getByRole("button", { name: "全部标为已读", exact: true })).toHaveCount(0);
+  await expect(
+    inbox.getByRole("heading", { name: "通知", exact: true }),
+  ).toBeVisible();
+  await expect(inbox).toContainText(
+    "已载入 1 条，其中 0 条未读；全收件箱 0 条未读。",
+  );
+  await expect(
+    inbox.getByRole("button", { name: "全部标为已读", exact: true }),
+  ).toHaveCount(0);
   await expect(page.locator(".nw-bdg")).toHaveCount(0);
   // Read, not erased: the notice stays until the API's own retention takes it.
   await expect(inbox).toContainText(/你评论过的一篇作品已被作者删除/);
 });
 
-test("text committed by an IME reaches the editor state and is saved", async ({ page, request }) => {
+test("text committed by an IME reaches the editor state and is saved", async ({
+  page,
+  request,
+}) => {
   await registerWriter(page, request);
   await waitForEditor(page);
   const title = `浏览器验证输入法 ${Date.now().toString(36)}`;
@@ -653,7 +875,9 @@ test("text committed by an IME reaches the editor state and is saved", async ({ 
   // composition bug that only shows up with a Chinese IME is reachable from CI
   // instead of only from a desktop with an IME installed.
   await page.keyboard.insertText(FIRST_PARAGRAPH);
-  await expect(page.getByLabel("作品正文")).toContainText("第一段用来验证保存链路。");
+  await expect(page.getByLabel("作品正文")).toContainText(
+    "第一段用来验证保存链路。",
+  );
   await page.getByRole("button", { name: "保存草稿" }).click();
   await savedSlug(page, title, "draft");
 
@@ -662,24 +886,35 @@ test("text committed by an IME reaches the editor state and is saved", async ({ 
   await page.reload();
   await waitForEditor(page);
   await page.getByRole("button", { name: new RegExp(title) }).click();
-  await expect(page.getByLabel("作品正文")).toContainText("第一段用来验证保存链路。", { timeout: 45_000 });
+  await expect(page.getByLabel("作品正文")).toContainText(
+    "第一段用来验证保存链路。",
+    { timeout: 45_000 },
+  );
 });
 
-test("formatting applied without a mouse survives the save round trip", async ({ page, request }) => {
+test("formatting applied without a mouse survives the save round trip", async ({
+  page,
+  request,
+}) => {
   await registerWriter(page, request);
   await waitForEditor(page);
   const title = `浏览器验证键盘 ${Date.now().toString(36)}`;
   await page.getByLabel("标题").fill(title);
   await page.getByLabel("作品正文").click();
   await page.keyboard.type(FIRST_PARAGRAPH);
-  await expect(page.getByLabel("作品正文")).toContainText("第一段用来验证保存链路。");
+  await expect(page.getByLabel("作品正文")).toContainText(
+    "第一段用来验证保存链路。",
+  );
 
   // Keyboard only: select the paragraph, then bold it with the editor's own
   // shortcut — no pointer. A toolbar that answers only the mouse is not
   // accessible, and this is the keyboard path the editor itself provides.
   await page.keyboard.press("Control+A");
   await page.keyboard.press("Control+B");
-  await expect(page.getByLabel("作品正文").locator("strong")).toContainText("第一段用来验证保存链路。", { timeout: 30_000 });
+  await expect(page.getByLabel("作品正文").locator("strong")).toContainText(
+    "第一段用来验证保存链路。",
+    { timeout: 30_000 },
+  );
 
   // The article contract carries inline marks, so what the keyboard applied has
   // to come back when the work is reopened, not only stay on this screen.
@@ -688,20 +923,32 @@ test("formatting applied without a mouse survives the save round trip", async ({
   await page.reload();
   await waitForEditor(page);
   await page.getByRole("button", { name: new RegExp(title) }).click();
-  await expect(page.getByLabel("作品正文").locator("strong")).toContainText("第一段用来验证保存链路。", { timeout: 45_000 });
+  await expect(page.getByLabel("作品正文").locator("strong")).toContainText(
+    "第一段用来验证保存链路。",
+    { timeout: 45_000 },
+  );
 });
 
-test("an article with no body is refused with a readable message instead of a silent failure", async ({ page, request }) => {
+test("an article with no body is refused with a readable message instead of a silent failure", async ({
+  page,
+  request,
+}) => {
   await registerWriter(page, request);
   await waitForEditor(page);
-  await page.getByLabel("标题").fill(`浏览器验证空正文 ${Date.now().toString(36)}`);
+  await page
+    .getByLabel("标题")
+    .fill(`浏览器验证空正文 ${Date.now().toString(36)}`);
   await page.getByRole("button", { name: "保存草稿" }).click();
   try {
     // Filtered by text: Next keeps an empty route announcer in the tree that
     // also carries role=alert.
-    await expect(page.getByRole("alert").filter({ hasText: "正文内容" })).toBeVisible({ timeout: 30_000 });
+    await expect(
+      page.getByRole("alert").filter({ hasText: "正文内容" }),
+    ).toBeVisible({ timeout: 30_000 });
   } catch (caught) {
-    throw new Error(`the editor did not refuse an empty body; page:\n${await pageDigest(page)}\n${String(caught)}`);
+    throw new Error(
+      `the editor did not refuse an empty body; page:\n${await pageDigest(page)}\n${String(caught)}`,
+    );
   }
   expect(await savedArticles(page)).toHaveLength(0);
 });
@@ -711,19 +958,36 @@ test("an article with no body is refused with a readable message instead of a si
  * journeys below use the real API/database; modelling the other server answers
  * avoids exhausting the real 30 creates/IP/hour policy in one browser suite.
  */
-function simulatedArticle(body: string | null, identity?: { id: string; slug: string }) {
-  const input = JSON.parse(body ?? "{}") as { title?: string; summary?: string; locale?: string; workType?: string; publish?: boolean };
+function simulatedArticle(
+  body: string | null,
+  identity?: { id: string; slug: string },
+) {
+  const input = JSON.parse(body ?? "{}") as {
+    title?: string;
+    summary?: string;
+    locale?: string;
+    workType?: string;
+    publish?: boolean;
+  };
   return {
-    id: identity?.id ?? crypto.randomUUID(), slug: identity?.slug ?? "simulated-work",
-    title: input.title ?? "", summary: input.summary ?? "", locale: input.locale ?? "zh-CN",
-    workType: input.workType ?? "other", status: input.publish ? "published" : "draft",
-    contentBlocksVersion: 1, contentBlocks: [{ id: "p1", type: "paragraph", text: "simulated" }],
+    id: identity?.id ?? crypto.randomUUID(),
+    slug: identity?.slug ?? "simulated-work",
+    title: input.title ?? "",
+    summary: input.summary ?? "",
+    locale: input.locale ?? "zh-CN",
+    workType: input.workType ?? "other",
+    status: input.publish ? "published" : "draft",
+    contentBlocksVersion: 1,
+    contentBlocks: [{ id: "p1", type: "paragraph", text: "simulated" }],
   };
 }
 
 // The first save is a create, not an update. A response lost after the commit
 // must not turn the author's next click into another work.
-test("first save retries one committed work, later saves update it, and another draft gets a new key", async ({ page, request }) => {
+test("first save retries one committed work, later saves update it, and another draft gets a new key", async ({
+  page,
+  request,
+}) => {
   await registerWriter(page, request);
   await waitForEditor(page);
   const attempts: { key: string | undefined; body: string | null }[] = [];
@@ -731,8 +995,14 @@ test("first save retries one committed work, later saves update it, and another 
   let committedId = "";
 
   await page.route("**/api/authoring/articles", async (route) => {
-    if (route.request().method() !== "POST") { await route.continue(); return; }
-    attempts.push({ key: route.request().headers()["idempotency-key"], body: route.request().postData() });
+    if (route.request().method() !== "POST") {
+      await route.continue();
+      return;
+    }
+    attempts.push({
+      key: route.request().headers()["idempotency-key"],
+      body: route.request().postData(),
+    });
     if (attempts.length === 1) {
       const committed = await route.fetch();
       expect(committed.status()).toBe(201);
@@ -743,7 +1013,8 @@ test("first save retries one committed work, later saves update it, and another 
     }
   });
   await page.route("**/api/authoring/articles/*", async (route) => {
-    if (route.request().method() === "PUT") updates.push(route.request().headers()["idempotency-key"]);
+    if (route.request().method() === "PUT")
+      updates.push(route.request().headers()["idempotency-key"]);
     await route.continue();
   });
 
@@ -754,20 +1025,32 @@ test("first save retries one committed work, later saves update it, and another 
   await expect(page.getByRole("alert")).toBeVisible();
   expect(committedId).toBeTruthy();
   expect(attempts).toHaveLength(1);
-  expect(attempts[0].key).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+  expect(attempts[0].key).toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+  );
 
   await page.getByRole("button", { name: "保存草稿" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "上次创建已确认" })).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({ hasText: "上次创建已确认" }),
+  ).toBeVisible();
   expect(attempts).toHaveLength(2);
   expect(attempts[1]).toEqual(attempts[0]);
-  expect((await savedArticles(page)).map((article) => article.id)).toEqual([committedId]);
+  expect((await savedArticles(page)).map((article) => article.id)).toEqual([
+    committedId,
+  ]);
 
   await page.getByLabel("标题").fill("保存后的更新");
-  const update = page.waitForResponse((response) => response.url().includes(`/api/authoring/articles/${committedId}`) && response.request().method() === "PUT");
+  const update = page.waitForResponse(
+    (response) =>
+      response.url().includes(`/api/authoring/articles/${committedId}`) &&
+      response.request().method() === "PUT",
+  );
   await page.getByRole("button", { name: "保存草稿" }).click();
   expect((await update).status()).toBe(200);
   expect(updates).toEqual([undefined]);
-  expect((await savedArticles(page)).map((article) => article.id)).toEqual([committedId]);
+  expect((await savedArticles(page)).map((article) => article.id)).toEqual([
+    committedId,
+  ]);
 
   await page.getByRole("button", { name: "新建作品 +" }).click();
   await waitForEditor(page);
@@ -775,26 +1058,43 @@ test("first save retries one committed work, later saves update it, and another 
   await page.getByLabel("作品正文").click();
   await page.keyboard.type("另一篇作品有另一把键。");
   await page.getByRole("button", { name: "保存草稿" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "草稿已保存。" })).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({ hasText: "草稿已保存。" }),
+  ).toBeVisible();
   expect(attempts).toHaveLength(3);
-  expect(attempts[2].key).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+  expect(attempts[2].key).toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+  );
   expect(attempts[2].key).not.toBe(attempts[0].key);
   expect(await savedArticles(page)).toHaveLength(2);
 });
 
-test("an uncertain save keeps its original body, blocks document switches and preserves subsequent edits", async ({ page, request }) => {
+test("an uncertain save keeps its original body, blocks document switches and preserves subsequent edits", async ({
+  page,
+  request,
+}) => {
   await registerWriter(page, request);
   await waitForEditor(page);
   const attempts: { key: string | undefined; body: string | null }[] = [];
   const updates: { key: string | undefined; body: string | null }[] = [];
   let committedId = "";
   let stored!: () => void;
-  const committed = new Promise<void>((resolve) => { stored = resolve; });
+  const committed = new Promise<void>((resolve) => {
+    stored = resolve;
+  });
   let release!: () => void;
-  const responseGate = new Promise<void>((resolve) => { release = resolve; });
+  const responseGate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   await page.route("**/api/authoring/articles", async (route) => {
-    if (route.request().method() !== "POST") { await route.continue(); return; }
-    attempts.push({ key: route.request().headers()["idempotency-key"], body: route.request().postData() });
+    if (route.request().method() !== "POST") {
+      await route.continue();
+      return;
+    }
+    attempts.push({
+      key: route.request().headers()["idempotency-key"],
+      body: route.request().postData(),
+    });
     if (attempts.length === 1) {
       const response = await route.fetch();
       expect(response.status()).toBe(201);
@@ -807,7 +1107,11 @@ test("an uncertain save keeps its original body, blocks document switches and pr
     }
   });
   await page.route("**/api/authoring/articles/*", async (route) => {
-    if (route.request().method() === "PUT") updates.push({ key: route.request().headers()["idempotency-key"], body: route.request().postData() });
+    if (route.request().method() === "PUT")
+      updates.push({
+        key: route.request().headers()["idempotency-key"],
+        body: route.request().postData(),
+      });
     await route.continue();
   });
 
@@ -815,7 +1119,12 @@ test("an uncertain save keeps its original body, blocks document switches and pr
   await page.getByLabel("作品正文").click();
   await page.keyboard.type("原来的正文。");
   // Two events before React has a chance to render its disabled button.
-  await page.getByRole("button", { name: "保存草稿" }).evaluate((element: HTMLButtonElement) => { element.click(); element.click(); });
+  await page
+    .getByRole("button", { name: "保存草稿" })
+    .evaluate((element: HTMLButtonElement) => {
+      element.click();
+      element.click();
+    });
   await committed;
   expect(attempts).toHaveLength(1);
   await expect(page.getByRole("button", { name: "新建作品 +" })).toBeDisabled();
@@ -826,10 +1135,14 @@ test("an uncertain save keeps its original body, blocks document switches and pr
   await page.keyboard.type("后来修改的正文。");
   release();
   await expect(page.getByRole("alert")).toContainText("暂时无法确认");
-  await expect(page.getByRole("link", { name: "在新标签页核对作品列表" })).toHaveAttribute("target", "_blank");
+  await expect(
+    page.getByRole("link", { name: "在新标签页核对作品列表" }),
+  ).toHaveAttribute("target", "_blank");
 
   const leavingPage = page.waitForEvent("dialog");
-  const reload = page.evaluate(() => window.location.reload()).catch(() => null);
+  const reload = page
+    .evaluate(() => window.location.reload())
+    .catch(() => null);
   const unloadWarning = await leavingPage;
   expect(unloadWarning.type()).toBe("beforeunload");
   await unloadWarning.dismiss();
@@ -849,33 +1162,56 @@ test("an uncertain save keeps its original body, blocks document switches and pr
   await expect(page.getByRole("alert")).toContainText("上次保存");
   expect(attempts).toHaveLength(1);
   await page.getByRole("button", { name: "确认上次保存" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "当前修改尚未保存" })).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({ hasText: "当前修改尚未保存" }),
+  ).toBeVisible();
   expect(attempts).toHaveLength(2);
   expect(attempts[1]).toEqual(attempts[0]);
   await expect(page.getByLabel("标题")).toHaveValue("后来修改的标题");
   await expect(page.getByLabel("作品正文")).toContainText("后来修改的正文。");
-  expect((await savedArticles(page)).map((article) => article.id)).toEqual([committedId]);
+  expect((await savedArticles(page)).map((article) => article.id)).toEqual([
+    committedId,
+  ]);
 
-  const publish = page.waitForResponse((response) => response.url().includes(`/api/authoring/articles/${committedId}`) && response.request().method() === "PUT");
+  const publish = page.waitForResponse(
+    (response) =>
+      response.url().includes(`/api/authoring/articles/${committedId}`) &&
+      response.request().method() === "PUT",
+  );
   await page.getByRole("button", { name: "发布作品" }).click();
   expect((await publish).status()).toBe(200);
-  await expect(page.getByRole("status").filter({ hasText: "作品已发布。" })).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({ hasText: "作品已发布。" }),
+  ).toBeVisible();
   expect(updates).toHaveLength(1);
   expect(updates[0].key).toBeUndefined();
   expect(JSON.parse(updates[0].body!).title).toBe("后来修改的标题");
   const saved = await savedArticles(page);
   expect(saved).toHaveLength(1);
-  expect(saved[0]).toMatchObject({ id: committedId, title: "后来修改的标题", status: "published" });
+  expect(saved[0]).toMatchObject({
+    id: committedId,
+    title: "后来修改的标题",
+    status: "published",
+  });
 });
 
-test("an unconfirmed create cannot be retried under a different signed-in account", async ({ page, request }) => {
+test("an unconfirmed create cannot be retried under a different signed-in account", async ({
+  page,
+  request,
+}) => {
   const originalEmail = await registerWriter(page, request);
   await waitForEditor(page);
   const attempts: { key: string | undefined; body: string | null }[] = [];
   let committedId = "";
   await page.route("**/api/authoring/articles", async (route) => {
-    if (route.request().method() !== "POST") { await route.continue(); return; }
-    attempts.push({ key: route.request().headers()["idempotency-key"], body: route.request().postData() });
+    if (route.request().method() !== "POST") {
+      await route.continue();
+      return;
+    }
+    attempts.push({
+      key: route.request().headers()["idempotency-key"],
+      body: route.request().postData(),
+    });
     if (attempts.length === 1) {
       const response = await route.fetch();
       expect(response.status()).toBe(201);
@@ -892,7 +1228,10 @@ test("an unconfirmed create cannot be retried under a different signed-in accoun
   await expect(page.getByRole("alert")).toContainText("暂时无法确认");
 
   const otherEmail = uniqueEmail("another-writer");
-  const registered = await request.post(`${API_BASE_URL}/api/v1/auth/register`, { data: { email: otherEmail, password: PASSWORD } });
+  const registered = await request.post(
+    `${API_BASE_URL}/api/v1/auth/register`,
+    { data: { email: otherEmail, password: PASSWORD } },
+  );
   expect(registered.status()).toBe(201);
   await signIn(page, otherEmail);
   await page.getByRole("button", { name: "保存草稿" }).click();
@@ -902,30 +1241,61 @@ test("an unconfirmed create cannot be retried under a different signed-in accoun
 
   await signIn(page, originalEmail);
   await page.getByRole("button", { name: "保存草稿" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "上次创建已确认" })).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({ hasText: "上次创建已确认" }),
+  ).toBeVisible();
   expect(attempts[2]).toEqual(attempts[0]);
-  expect((await savedArticles(page)).map((article) => article.id)).toEqual([committedId]);
+  expect((await savedArticles(page)).map((article) => article.id)).toEqual([
+    committedId,
+  ]);
 });
 
-test("401, conflict and malformed success never silently replace an uncertain create key", async ({ page, request }) => {
+test("401, conflict and malformed success never silently replace an uncertain create key", async ({
+  page,
+  request,
+}) => {
   await registerWriter(page, request);
   await waitForEditor(page);
   const attempts: { key: string | undefined; body: string | null }[] = [];
   let replay: ReturnType<typeof simulatedArticle> | null = null;
   await page.route("**/api/authoring/articles", async (route) => {
-    if (route.request().method() !== "POST") { await route.continue(); return; }
-    attempts.push({ key: route.request().headers()["idempotency-key"], body: route.request().postData() });
+    if (route.request().method() !== "POST") {
+      await route.continue();
+      return;
+    }
+    attempts.push({
+      key: route.request().headers()["idempotency-key"],
+      body: route.request().postData(),
+    });
     if (attempts.length === 1) {
-      await route.fulfill({ status: 401, contentType: "application/json", body: '{"error":{"code":"UNAUTHENTICATED"}}' });
+      await route.fulfill({
+        status: 401,
+        contentType: "application/json",
+        body: '{"error":{"code":"UNAUTHENTICATED"}}',
+      });
     } else if (attempts.length === 2) {
-      await route.fulfill({ status: 409, contentType: "application/json", body: '{"error":{"code":"IDEMPOTENCY_CONFLICT"}}' });
+      await route.fulfill({
+        status: 409,
+        contentType: "application/json",
+        body: '{"error":{"code":"IDEMPOTENCY_CONFLICT"}}',
+      });
     } else if (attempts.length === 3) {
       replay = simulatedArticle(attempts[2].body);
       // Superficially plausible, but missing locale, type and document version.
       const { id, slug, title, status, contentBlocks } = replay;
-      await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ data: { id, slug, title, status, contentBlocks } }) });
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: { id, slug, title, status, contentBlocks },
+        }),
+      });
     } else {
-      await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ data: replay }) });
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({ data: replay }),
+      });
     }
   });
   await page.getByLabel("标题").fill("异常后的恢复");
@@ -933,7 +1303,10 @@ test("401, conflict and malformed success never silently replace an uncertain cr
   await page.keyboard.type("不能把不确定的响应当成没有保存。");
   await page.getByRole("button", { name: "保存草稿" }).click();
   await expect(page.getByRole("alert")).toContainText("登录");
-  await expect(page.getByRole("alert").getByRole("link")).toHaveAttribute("target", "_blank");
+  await expect(page.getByRole("alert").getByRole("link")).toHaveAttribute(
+    "target",
+    "_blank",
+  );
   await page.getByRole("button", { name: "保存草稿" }).click();
   await expect(page.getByRole("alert")).toContainText("冲突");
   expect(attempts[1]).toEqual(attempts[0]);
@@ -945,52 +1318,94 @@ test("401, conflict and malformed success never silently replace an uncertain cr
   await expect(page.getByRole("alert")).toContainText("暂时无法确认");
   expect(attempts[2].key).not.toBe(attempts[1].key);
   await page.getByRole("button", { name: "保存草稿" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "上次创建已确认" })).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({ hasText: "上次创建已确认" }),
+  ).toBeVisible();
   expect(attempts[3]).toEqual(attempts[2]);
   await expect(page.getByLabel("标题")).toHaveValue("异常后的恢复");
 });
 
-test("a locally rejected initial request permits a corrected first save", async ({ page, request }) => {
+test("a locally rejected initial request permits a corrected first save", async ({
+  page,
+  request,
+}) => {
   await registerWriter(page, request);
   await waitForEditor(page);
   const attempts: { key: string | undefined; body: string | null }[] = [];
   await page.route("**/api/authoring/articles", async (route) => {
-    if (route.request().method() !== "POST") { await route.continue(); return; }
-    attempts.push({ key: route.request().headers()["idempotency-key"], body: route.request().postData() });
+    if (route.request().method() !== "POST") {
+      await route.continue();
+      return;
+    }
+    attempts.push({
+      key: route.request().headers()["idempotency-key"],
+      body: route.request().postData(),
+    });
     if (attempts.length === 1) {
-      await route.fulfill({ status: 400, contentType: "application/json", headers: { "x-authoring-not-forwarded": "1" }, body: '{"error":{"code":"BAD_USER_INPUT","message":"Please correct the input."}}' });
+      await route.fulfill({
+        status: 400,
+        contentType: "application/json",
+        headers: { "x-authoring-not-forwarded": "1" },
+        body: '{"error":{"code":"BAD_USER_INPUT","message":"Please correct the input."}}',
+      });
     } else {
-      await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ data: simulatedArticle(attempts[1].body) }) });
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({ data: simulatedArticle(attempts[1].body) }),
+      });
     }
   });
   await page.getByLabel("标题").fill("需要修正的标题");
   await page.getByLabel("作品正文").click();
   await page.keyboard.type("修正前的正文。");
   await page.getByRole("button", { name: "保存草稿" }).click();
-  await expect(page.getByRole("alert")).toContainText("Please correct the input.");
+  await expect(page.getByRole("alert")).toContainText(
+    "Please correct the input.",
+  );
   await page.getByLabel("标题").fill("修正后的标题");
   await page.getByRole("button", { name: "保存草稿" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "草稿已保存。" })).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({ hasText: "草稿已保存。" }),
+  ).toBeVisible();
   expect(attempts).toHaveLength(2);
   expect(attempts[1].key).not.toBe(attempts[0].key);
   expect(JSON.parse(attempts[1].body!).title).toBe("修正后的标题");
 });
 
-test("a later 400 cannot erase a previously uncertain create", async ({ page, request }) => {
+test("a later 400 cannot erase a previously uncertain create", async ({
+  page,
+  request,
+}) => {
   await registerWriter(page, request);
   await waitForEditor(page);
   const attempts: { key: string | undefined; body: string | null }[] = [];
   await page.route("**/api/authoring/articles", async (route) => {
-    if (route.request().method() !== "POST") { await route.continue(); return; }
-    attempts.push({ key: route.request().headers()["idempotency-key"], body: route.request().postData() });
+    if (route.request().method() !== "POST") {
+      await route.continue();
+      return;
+    }
+    attempts.push({
+      key: route.request().headers()["idempotency-key"],
+      body: route.request().postData(),
+    });
     if (attempts.length === 1) {
       // No answer proves whether this first attempt reached the server.
       await route.abort("failed");
     } else if (attempts.length === 2) {
       // The retry itself never left the proxy, but the first might have.
-      await route.fulfill({ status: 400, contentType: "application/json", headers: { "x-authoring-not-forwarded": "1" }, body: '{"error":{"code":"BAD_USER_INPUT","message":"rejected"}}' });
+      await route.fulfill({
+        status: 400,
+        contentType: "application/json",
+        headers: { "x-authoring-not-forwarded": "1" },
+        body: '{"error":{"code":"BAD_USER_INPUT","message":"rejected"}}',
+      });
     } else {
-      await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ data: simulatedArticle(attempts[0].body) }) });
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({ data: simulatedArticle(attempts[0].body) }),
+      });
     }
   });
   await page.getByLabel("标题").fill("仍需确认的作品");
@@ -1006,33 +1421,56 @@ test("a later 400 cannot erase a previously uncertain create", async ({ page, re
   await expect(page.getByRole("alert")).toContainText("上次保存");
   expect(attempts).toHaveLength(2);
   await page.getByRole("button", { name: "确认上次保存" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "当前修改尚未保存" })).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({ hasText: "当前修改尚未保存" }),
+  ).toBeVisible();
   expect(attempts[2]).toEqual(attempts[0]);
   await expect(page.getByLabel("标题")).toHaveValue("修改后的标题");
 });
 
-test("editing while the first save succeeds is not reported as already saved", async ({ page, request }) => {
+test("editing while the first save succeeds is not reported as already saved", async ({
+  page,
+  request,
+}) => {
   await registerWriter(page, request);
   await waitForEditor(page);
   let received!: () => void;
-  const arrived = new Promise<void>((resolve) => { received = resolve; });
+  const arrived = new Promise<void>((resolve) => {
+    received = resolve;
+  });
   let simulated: ReturnType<typeof simulatedArticle> | null = null;
   const creates: string[] = [];
   const updates: string[] = [];
   let release!: () => void;
-  const responseGate = new Promise<void>((resolve) => { release = resolve; });
+  const responseGate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   await page.route("**/api/authoring/articles", async (route) => {
-    if (route.request().method() !== "POST") { await route.continue(); return; }
+    if (route.request().method() !== "POST") {
+      await route.continue();
+      return;
+    }
     creates.push(route.request().postData() ?? "");
     simulated = simulatedArticle(creates[0]);
     received();
     await responseGate;
-    await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ data: simulated }) });
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({ data: simulated }),
+    });
   });
   await page.route("**/api/authoring/articles/*", async (route) => {
-    if (route.request().method() !== "PUT") { await route.continue(); return; }
+    if (route.request().method() !== "PUT") {
+      await route.continue();
+      return;
+    }
     updates.push(route.request().postData() ?? "");
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: simulatedArticle(updates[0], simulated!) }) });
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data: simulatedArticle(updates[0], simulated!) }),
+    });
   });
   await page.getByLabel("标题").fill("已发送的标题");
   await page.getByLabel("作品正文").click();
@@ -1041,29 +1479,46 @@ test("editing while the first save succeeds is not reported as already saved", a
   await arrived;
   await page.getByLabel("标题").fill("保存期间的新标题");
   release();
-  await expect(page.getByRole("status").filter({ hasText: "当前修改尚未保存" })).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({ hasText: "当前修改尚未保存" }),
+  ).toBeVisible();
   await expect(page.getByLabel("标题")).toHaveValue("保存期间的新标题");
   expect(JSON.parse(creates[0]).title).toBe("已发送的标题");
   await page.getByRole("button", { name: "保存草稿" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "草稿已保存。" })).not.toContainText("当前修改尚未保存");
+  await expect(
+    page.getByRole("status").filter({ hasText: "草稿已保存。" }),
+  ).not.toContainText("当前修改尚未保存");
   expect(updates).toHaveLength(1);
   expect(JSON.parse(updates[0]).title).toBe("保存期间的新标题");
 });
 
-test("even an initial 400 can follow a commit and must not silently retire the key", async ({ page, request }) => {
+test("even an initial 400 can follow a commit and must not silently retire the key", async ({
+  page,
+  request,
+}) => {
   await registerWriter(page, request);
   await waitForEditor(page);
   const attempts: { key: string | undefined; body: string | null }[] = [];
   let committedId = "";
   await page.route("**/api/authoring/articles", async (route) => {
-    if (route.request().method() !== "POST") { await route.continue(); return; }
-    attempts.push({ key: route.request().headers()["idempotency-key"], body: route.request().postData() });
+    if (route.request().method() !== "POST") {
+      await route.continue();
+      return;
+    }
+    attempts.push({
+      key: route.request().headers()["idempotency-key"],
+      body: route.request().postData(),
+    });
     if (attempts.length === 1) {
       const response = await route.fetch();
       expect(response.status()).toBe(201);
       committedId = (await response.json()).data.id as string;
       // An error while serializing a response can be reported after the write.
-      await route.fulfill({ status: 400, contentType: "application/json", body: '{"error":{"code":"BAD_USER_INPUT","message":"response failed"}}' });
+      await route.fulfill({
+        status: 400,
+        contentType: "application/json",
+        body: '{"error":{"code":"BAD_USER_INPUT","message":"response failed"}}',
+      });
     } else {
       await route.continue();
     }
@@ -1078,20 +1533,33 @@ test("even an initial 400 can follow a commit and must not silently retire the k
   await expect(page.getByRole("alert")).toContainText("上次保存");
   expect(attempts).toHaveLength(1);
   await page.getByRole("button", { name: "确认上次保存" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "当前修改尚未保存" })).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({ hasText: "当前修改尚未保存" }),
+  ).toBeVisible();
   expect(attempts[1]).toEqual(attempts[0]);
-  expect((await savedArticles(page)).map((article) => article.id)).toEqual([committedId]);
+  expect((await savedArticles(page)).map((article) => article.id)).toEqual([
+    committedId,
+  ]);
 });
 
-test("a replay reports the server's current version without claiming the open editor saved over it", async ({ page, request }) => {
+test("a replay reports the server's current version without claiming the open editor saved over it", async ({
+  page,
+  request,
+}) => {
   await registerWriter(page, request);
   await waitForEditor(page);
   const attempts: { key: string | undefined; body: string | null }[] = [];
   let committedId = "";
   let slug = "";
   await page.route("**/api/authoring/articles", async (route) => {
-    if (route.request().method() !== "POST") { await route.continue(); return; }
-    attempts.push({ key: route.request().headers()["idempotency-key"], body: route.request().postData() });
+    if (route.request().method() !== "POST") {
+      await route.continue();
+      return;
+    }
+    attempts.push({
+      key: route.request().headers()["idempotency-key"],
+      body: route.request().postData(),
+    });
     if (attempts.length === 1) {
       const response = await route.fetch();
       expect(response.status()).toBe(201);
@@ -1111,29 +1579,49 @@ test("a replay reports the server's current version without claiming the open ed
 
   // Simulate another tab editing the committed work before the lost-response
   // retry. Replay returns the current resource, not the first response bytes.
-  const otherBody = { ...JSON.parse(attempts[0].body!), slug, title: "其他页面的新标题" };
-  const other = await page.request.put(`/api/authoring/articles/${committedId}`, {
-    headers: { origin: currentOrigin() },
-    data: otherBody,
-  });
+  const otherBody = {
+    ...JSON.parse(attempts[0].body!),
+    slug,
+    title: "其他页面的新标题",
+  };
+  const other = await page.request.put(
+    `/api/authoring/articles/${committedId}`,
+    {
+      headers: { origin: currentOrigin() },
+      data: otherBody,
+    },
+  );
   expect(other.status()).toBe(200);
   await page.getByRole("button", { name: "保存草稿" }).click();
   const status = page.getByRole("status").filter({ hasText: "上次创建已确认" });
   await expect(status).toContainText("服务器返回的是当前版本");
-  await expect(status.getByRole("link", { name: "在新标签页核对服务器版本" })).toHaveAttribute("target", "_blank");
+  await expect(
+    status.getByRole("link", { name: "在新标签页核对服务器版本" }),
+  ).toHaveAttribute("target", "_blank");
   await expect(page.getByLabel("标题")).toHaveValue("此页面原来的标题");
   expect(attempts[1]).toEqual(attempts[0]);
-  expect(await savedArticles(page)).toMatchObject([{ id: committedId, title: "其他页面的新标题" }]);
+  expect(await savedArticles(page)).toMatchObject([
+    { id: committedId, title: "其他页面的新标题" },
+  ]);
 });
 
-test("changing only publish intent cannot reuse an uncertain create as a different request", async ({ page, request }) => {
+test("changing only publish intent cannot reuse an uncertain create as a different request", async ({
+  page,
+  request,
+}) => {
   await registerWriter(page, request);
   await waitForEditor(page);
   const attempts: { key: string | undefined; body: string | null }[] = [];
   let committedId = "";
   await page.route("**/api/authoring/articles", async (route) => {
-    if (route.request().method() !== "POST") { await route.continue(); return; }
-    attempts.push({ key: route.request().headers()["idempotency-key"], body: route.request().postData() });
+    if (route.request().method() !== "POST") {
+      await route.continue();
+      return;
+    }
+    attempts.push({
+      key: route.request().headers()["idempotency-key"],
+      body: route.request().postData(),
+    });
     if (attempts.length === 1) {
       const response = await route.fetch();
       expect(response.status()).toBe(201);
@@ -1153,16 +1641,29 @@ test("changing only publish intent cannot reuse an uncertain create as a differe
   await expect(page.getByRole("alert")).toContainText("上次保存");
   expect(attempts).toHaveLength(1);
   await page.getByRole("button", { name: "确认上次保存" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "所选操作尚未执行" })).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({ hasText: "所选操作尚未执行" }),
+  ).toBeVisible();
   expect(attempts[1]).toEqual(attempts[0]);
-  expect((await savedArticles(page))[0]).toMatchObject({ id: committedId, status: "published" });
+  expect((await savedArticles(page))[0]).toMatchObject({
+    id: committedId,
+    status: "published",
+  });
   await page.getByRole("button", { name: "撤销发布", exact: true }).click();
   await answerDeskDialog(page, "撤销发布？", "确认撤销发布");
-  await expect(page.getByRole("status").filter({ hasText: "作品已撤销发布" })).toBeVisible();
-  expect((await savedArticles(page))[0]).toMatchObject({ id: committedId, status: "draft" });
+  await expect(
+    page.getByRole("status").filter({ hasText: "作品已撤销发布" }),
+  ).toBeVisible();
+  expect((await savedArticles(page))[0]).toMatchObject({
+    id: committedId,
+    status: "draft",
+  });
 });
 
-test("English and historical Traditional Chinese editions remain discoverable, editable and restorable", async ({ page, request }) => {
+test("English and historical Traditional Chinese editions remain discoverable, editable and restorable", async ({
+  page,
+  request,
+}) => {
   await registerWriter(page, request);
   await waitForEditor(page);
 
@@ -1171,33 +1672,57 @@ test("English and historical Traditional Chinese editions remain discoverable, e
   await page.getByLabel("标题").fill(english);
   await page.getByLabel("作品正文").click();
   await page.keyboard.type("An English work survives a reload.");
-  const creation = page.waitForResponse((response) => response.url().endsWith("/api/authoring/articles") && response.request().method() === "POST");
+  const creation = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/authoring/articles") &&
+      response.request().method() === "POST",
+  );
   await page.getByRole("button", { name: "发布作品" }).click();
   const createdResponse = await creation;
   expect(createdResponse.status(), await createdResponse.text()).toBe(201);
-  const created = (await createdResponse.json()).data as { id: string; slug: string; locale: string };
+  const created = (await createdResponse.json()).data as {
+    id: string;
+    slug: string;
+    locale: string;
+  };
   expect(created.locale).toBe("en");
-  await expect(page.getByRole("status").filter({ hasText: "作品已发布。" })).toContainText(`/en/articles/${created.slug}`);
-  await expect(page.getByRole("link", { name: "查看已发布作品" })).toHaveAttribute("href", `/en/articles/${created.slug}`);
+  await expect(
+    page.getByRole("status").filter({ hasText: "作品已发布。" }),
+  ).toContainText(`/en/articles/${created.slug}`);
+  await expect(
+    page.getByRole("link", { name: "查看已发布作品" }),
+  ).toHaveAttribute("href", `/en/articles/${created.slug}`);
 
   // This is the real public page, not just a plausible-looking success address.
   await page.goto(`/en/articles/${created.slug}`);
-  await expect(page.getByRole("heading", { level: 1, name: english })).toBeVisible({ timeout: 45_000 });
+  await expect(
+    page.getByRole("heading", { level: 1, name: english }),
+  ).toBeVisible({ timeout: 45_000 });
   await page.goto("/write");
   await waitForEditor(page);
   const shelf = page.getByRole("complementary", { name: "我的作品" });
-  await expect(shelf.getByRole("button", { name: new RegExp(english) })).toBeVisible();
+  await expect(
+    shelf.getByRole("button", { name: new RegExp(english) }),
+  ).toBeVisible();
   await shelf.getByRole("button", { name: new RegExp(english) }).click();
   await expect(page.getByLabel("作品语言")).toHaveValue("en");
-  await expect(page.getByLabel("作品正文")).toContainText("An English work survives a reload.");
+  await expect(page.getByLabel("作品正文")).toContainText(
+    "An English work survives a reload.",
+  );
   await page.getByLabel("标题").fill("Edited English edition");
   await page.getByLabel("作品正文").click();
   await page.keyboard.press("End");
   await page.keyboard.type(" And later editing.");
-  const update = page.waitForResponse((response) => response.url().includes(`/api/authoring/articles/${created.id}`) && response.request().method() === "PUT");
+  const update = page.waitForResponse(
+    (response) =>
+      response.url().includes(`/api/authoring/articles/${created.id}`) &&
+      response.request().method() === "PUT",
+  );
   await page.getByRole("button", { name: "保存更新" }).click();
   expect((await update).status()).toBe(200);
-  await expect(page.getByRole("status").filter({ hasText: "作品已发布。" })).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({ hasText: "作品已发布。" }),
+  ).toBeVisible();
 
   // Explicitly choosing another locale adds a translation to this same id.
   // Both editions must be separately selectable; switching back must remount
@@ -1209,20 +1734,36 @@ test("English and historical Traditional Chinese editions remain discoverable, e
   await page.keyboard.type("独立的中文正文。");
   let translationWrites = 0;
   page.on("request", (req) => {
-    if (req.url().includes(`/api/authoring/articles/${created.id}`) && req.method() === "PUT") translationWrites += 1;
+    if (
+      req.url().includes(`/api/authoring/articles/${created.id}`) &&
+      req.method() === "PUT"
+    )
+      translationWrites += 1;
   });
   await page.getByRole("button", { name: "保存更新" }).click();
-  const languageWarning = page.getByRole("dialog", { name: "保存到其他语言？" });
+  const languageWarning = page.getByRole("dialog", {
+    name: "保存到其他语言？",
+  });
   await expect(languageWarning).toContainText("已有版本");
   await languageWarning.getByRole("button", { name: "取消" }).click();
-  expect(translationWrites, "cancelling cannot overwrite another edition").toBe(0);
+  expect(translationWrites, "cancelling cannot overwrite another edition").toBe(
+    0,
+  );
   await expect(page.getByLabel("标题")).toHaveValue("同一作品的中文译本");
-  const translation = page.waitForResponse((response) => response.url().includes(`/api/authoring/articles/${created.id}`) && response.request().method() === "PUT");
+  const translation = page.waitForResponse(
+    (response) =>
+      response.url().includes(`/api/authoring/articles/${created.id}`) &&
+      response.request().method() === "PUT",
+  );
   await page.getByRole("button", { name: "保存更新" }).click();
   await languageWarning.getByRole("button", { name: "确认保存" }).click();
   expect((await translation).status()).toBe(200);
-  await expect(shelf.getByRole("button", { name: /Edited English edition/ })).toBeVisible();
-  await expect(shelf.getByRole("button", { name: /同一作品的中文译本/ })).toBeVisible();
+  await expect(
+    shelf.getByRole("button", { name: /Edited English edition/ }),
+  ).toBeVisible();
+  await expect(
+    shelf.getByRole("button", { name: /同一作品的中文译本/ }),
+  ).toBeVisible();
   await shelf.getByRole("button", { name: /Edited English edition/ }).click();
   await expect(page.getByLabel("作品语言")).toHaveValue("en");
   await expect(page.getByLabel("作品正文")).toContainText("And later editing.");
@@ -1242,7 +1783,10 @@ test("English and historical Traditional Chinese editions remain discoverable, e
   await expect(page.getByLabel("作品正文")).toContainText("And later editing.");
   await shelf.getByRole("button", { name: /同一作品的中文译本/ }).click();
   await leaveWarning.getByRole("button", { name: "放弃修改并切换" }).click();
-  expect(translationWrites, "discarding local input cannot save or overwrite a translation").toBe(1);
+  expect(
+    translationWrites,
+    "discarding local input cannot save or overwrite a translation",
+  ).toBe(1);
   await expect(page.getByLabel("作品语言")).toHaveValue("zh-CN");
   await expect(page.getByLabel("作品正文")).toContainText("独立的中文正文。");
 
@@ -1251,16 +1795,27 @@ test("English and historical Traditional Chinese editions remain discoverable, e
   // is in flight must still reset that now-deleted editor.
   let releaseDelete!: () => void;
   let deletedOnServer!: () => void;
-  const deleteGate = new Promise<void>((resolve) => { releaseDelete = resolve; });
-  const deleteCommitted = new Promise<void>((resolve) => { deletedOnServer = resolve; });
+  const deleteGate = new Promise<void>((resolve) => {
+    releaseDelete = resolve;
+  });
+  const deleteCommitted = new Promise<void>((resolve) => {
+    deletedOnServer = resolve;
+  });
   await page.route(`**/api/authoring/articles/${created.id}`, async (route) => {
-    if (route.request().method() !== "DELETE") { await route.continue(); return; }
+    if (route.request().method() !== "DELETE") {
+      await route.continue();
+      return;
+    }
     const response = await route.fetch();
     deletedOnServer();
     await deleteGate;
     await route.fulfill({ response });
   });
-  const deleteResponse = page.waitForResponse((response) => response.url().includes(`/api/authoring/articles/${created.id}`) && response.request().method() === "DELETE");
+  const deleteResponse = page.waitForResponse(
+    (response) =>
+      response.url().includes(`/api/authoring/articles/${created.id}`) &&
+      response.request().method() === "DELETE",
+  );
   await page.getByRole("button", { name: "删除作品", exact: true }).click();
   const languageDelete = page.getByRole("dialog", { name: /删除《.*》？/ });
   await expect(languageDelete).toContainText("所有语言版本");
@@ -1272,27 +1827,50 @@ test("English and historical Traditional Chinese editions remain discoverable, e
   expect((await deleteResponse).status()).toBe(200);
   await expect(page.getByLabel("标题")).toHaveValue("");
   const trash = page.getByRole("region", { name: "回收站" });
-  await expect(trash.getByRole("button", { name: "还原《Edited English edition》" })).toBeVisible();
-  await expect(trash.getByRole("button", { name: "还原《同一作品的中文译本》" })).toBeVisible();
-  await trash.getByRole("button", { name: "还原《Edited English edition》" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "已还原" })).toContainText("Edited English edition");
-  await expect(shelf.getByRole("button", { name: /Edited English edition/ })).toBeVisible();
-  await expect(shelf.getByRole("button", { name: /同一作品的中文译本/ })).toBeVisible();
+  await expect(
+    trash.getByRole("button", { name: "还原《Edited English edition》" }),
+  ).toBeVisible();
+  await expect(
+    trash.getByRole("button", { name: "还原《同一作品的中文译本》" }),
+  ).toBeVisible();
+  await trash
+    .getByRole("button", { name: "还原《Edited English edition》" })
+    .click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "已还原" }),
+  ).toContainText("Edited English edition");
+  await expect(
+    shelf.getByRole("button", { name: /Edited English edition/ }),
+  ).toBeVisible();
+  await expect(
+    shelf.getByRole("button", { name: /同一作品的中文译本/ }),
+  ).toBeVisible();
 
   // Seed an existing zh-TW edition through the real proxy/API; the desk does
   // not offer that retired locale for a new work, but must preserve old rows.
   const legacyTitle = "原有繁體中文作品";
   const legacy = await page.request.post("/api/authoring/articles", {
     headers: { origin: currentOrigin() },
-    data: { slug: `historic-${Date.now().toString(36)}`, title: legacyTitle, locale: "zh-TW", publish: false,
-      contentBlocks: [{ id: "p1", type: "paragraph", text: "原有的繁體正文。" }] },
+    data: {
+      slug: `historic-${Date.now().toString(36)}`,
+      title: legacyTitle,
+      locale: "zh-TW",
+      publish: false,
+      contentBlocks: [
+        { id: "p1", type: "paragraph", text: "原有的繁體正文。" },
+      ],
+    },
   });
   expect(legacy.status(), await legacy.text()).toBe(201);
   const legacyId = ((await legacy.json()).data as { id: string }).id;
   await page.reload();
   await waitForEditor(page);
-  await expect(page.getByLabel("作品语言").locator('option[value="zh-TW"]')).toHaveCount(0);
-  await expect(shelf.getByRole("button", { name: new RegExp(legacyTitle) })).toBeVisible();
+  await expect(
+    page.getByLabel("作品语言").locator('option[value="zh-TW"]'),
+  ).toHaveCount(0);
+  await expect(
+    shelf.getByRole("button", { name: new RegExp(legacyTitle) }),
+  ).toBeVisible();
   await shelf.getByRole("button", { name: new RegExp(legacyTitle) }).click();
   await expect(page.getByLabel("作品语言")).toHaveValue("zh-TW");
   await expect(page.getByLabel("作品正文")).toContainText("原有的繁體正文。");
@@ -1302,16 +1880,31 @@ test("English and historical Traditional Chinese editions remain discoverable, e
   await expect(page.getByLabel("作品正文")).toContainText("原有的繁體正文。");
   await page.getByLabel("标题").fill("編輯後的繁體中文作品");
   await page.getByRole("button", { name: "保存草稿" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "草稿已保存。" })).toBeVisible();
-  const traditional = await page.request.get("/api/authoring/articles?locale=zh-TW");
+  await expect(
+    page.getByRole("status").filter({ hasText: "草稿已保存。" }),
+  ).toBeVisible();
+  const traditional = await page.request.get(
+    "/api/authoring/articles?locale=zh-TW",
+  );
   expect(traditional.status()).toBe(200);
-  const traditionalWorks = (await traditional.json()).data as { locale: string; title: string }[];
-  expect(traditionalWorks).toContainEqual(expect.objectContaining({ locale: "zh-TW", title: "編輯後的繁體中文作品" }));
+  const traditionalWorks = (await traditional.json()).data as {
+    locale: string;
+    title: string;
+  }[];
+  expect(traditionalWorks).toContainEqual(
+    expect.objectContaining({ locale: "zh-TW", title: "編輯後的繁體中文作品" }),
+  );
   await page.getByRole("button", { name: "删除作品", exact: true }).click();
   await answerDeskDialog(page, /删除《.*》？/, "确认删除");
-  await expect(trash.getByRole("button", { name: "还原《編輯後的繁體中文作品》" })).toBeVisible();
-  await trash.getByRole("button", { name: "还原《編輯後的繁體中文作品》" }).click();
-  await expect(shelf.getByRole("button", { name: /編輯後的繁體中文作品/ })).toBeVisible();
+  await expect(
+    trash.getByRole("button", { name: "还原《編輯後的繁體中文作品》" }),
+  ).toBeVisible();
+  await trash
+    .getByRole("button", { name: "还原《編輯後的繁體中文作品》" })
+    .click();
+  await expect(
+    shelf.getByRole("button", { name: /編輯後的繁體中文作品/ }),
+  ).toBeVisible();
   await shelf.getByRole("button", { name: /編輯後的繁體中文作品/ }).click();
   await expect(page.getByLabel("作品语言")).toHaveValue("zh-TW");
   await expect(page.getByLabel("作品正文")).toContainText("原有的繁體正文。");
@@ -1320,10 +1913,17 @@ test("English and historical Traditional Chinese editions remain discoverable, e
   // must not replace the selected identity under the newly mounted editor.
   let release!: () => void;
   let reached!: () => void;
-  const gate = new Promise<void>((resolve) => { release = resolve; });
-  const committed = new Promise<void>((resolve) => { reached = resolve; });
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const committed = new Promise<void>((resolve) => {
+    reached = resolve;
+  });
   await page.route(`**/api/authoring/articles/${created.id}`, async (route) => {
-    if (route.request().method() !== "PUT") { await route.continue(); return; }
+    if (route.request().method() !== "PUT") {
+      await route.continue();
+      return;
+    }
     const response = await route.fetch();
     reached();
     await gate;
@@ -1331,7 +1931,11 @@ test("English and historical Traditional Chinese editions remain discoverable, e
   });
   await shelf.getByRole("button", { name: /Edited English edition/ }).click();
   await page.getByLabel("标题").fill("English update in flight");
-  const oldSave = page.waitForResponse((response) => response.url().includes(`/api/authoring/articles/${created.id}`) && response.request().method() === "PUT");
+  const oldSave = page.waitForResponse(
+    (response) =>
+      response.url().includes(`/api/authoring/articles/${created.id}`) &&
+      response.request().method() === "PUT",
+  );
   await page.getByRole("button", { name: "保存草稿" }).click();
   await committed;
   await shelf.getByRole("button", { name: /編輯後的繁體中文作品/ }).click();
@@ -1340,29 +1944,50 @@ test("English and historical Traditional Chinese editions remain discoverable, e
   await expect(page.getByLabel("作品语言")).toHaveValue("zh-TW");
   release();
   expect((await oldSave).status()).toBe(200);
-  await expect(shelf.getByRole("button", { name: /English update in flight/ })).toBeVisible();
-  await expect(shelf.getByRole("button", { name: /編輯後的繁體中文作品/ })).toHaveAttribute("aria-current", "true");
+  await expect(
+    shelf.getByRole("button", { name: /English update in flight/ }),
+  ).toBeVisible();
+  await expect(
+    shelf.getByRole("button", { name: /編輯後的繁體中文作品/ }),
+  ).toHaveAttribute("aria-current", "true");
   await page.getByLabel("标题").fill("仍在編輯的繁體作品");
-  const legacySave = page.waitForResponse((response) => response.url().includes(`/api/authoring/articles/${legacyId}`) && response.request().method() === "PUT");
+  const legacySave = page.waitForResponse(
+    (response) =>
+      response.url().includes(`/api/authoring/articles/${legacyId}`) &&
+      response.request().method() === "PUT",
+  );
   await page.getByRole("button", { name: "保存草稿" }).click();
   expect((await legacySave).status()).toBe(200);
-  await expect(page.getByRole("status").filter({ hasText: "草稿已保存。" })).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({ hasText: "草稿已保存。" }),
+  ).toBeVisible();
 
   // Deleting a different work while this one is opened has the opposite rule:
   // the late completion must not reset the current editor or its typed content.
   let releaseOtherDelete!: () => void;
   let otherDeleted!: () => void;
-  const otherGate = new Promise<void>((resolve) => { releaseOtherDelete = resolve; });
-  const otherCommitted = new Promise<void>((resolve) => { otherDeleted = resolve; });
+  const otherGate = new Promise<void>((resolve) => {
+    releaseOtherDelete = resolve;
+  });
+  const otherCommitted = new Promise<void>((resolve) => {
+    otherDeleted = resolve;
+  });
   await page.route(`**/api/authoring/articles/${created.id}`, async (route) => {
-    if (route.request().method() !== "DELETE") { await route.fallback(); return; }
+    if (route.request().method() !== "DELETE") {
+      await route.fallback();
+      return;
+    }
     const response = await route.fetch();
     otherDeleted();
     await otherGate;
     await route.fulfill({ response });
   });
   await shelf.getByRole("button", { name: /English update in flight/ }).click();
-  const otherDelete = page.waitForResponse((response) => response.url().includes(`/api/authoring/articles/${created.id}`) && response.request().method() === "DELETE");
+  const otherDelete = page.waitForResponse(
+    (response) =>
+      response.url().includes(`/api/authoring/articles/${created.id}`) &&
+      response.request().method() === "DELETE",
+  );
   await page.getByRole("button", { name: "删除作品", exact: true }).click();
   await answerDeskDialog(page, /删除《.*》？/, "确认删除");
   await otherCommitted;
@@ -1371,33 +1996,62 @@ test("English and historical Traditional Chinese editions remain discoverable, e
   await page.getByLabel("标题").fill("尚未保存的繁體修改");
   releaseOtherDelete();
   expect((await otherDelete).status()).toBe(200);
-  await expect(shelf.getByRole("button", { name: /English update in flight/ })).toHaveCount(0);
+  await expect(
+    shelf.getByRole("button", { name: /English update in flight/ }),
+  ).toHaveCount(0);
   await expect(page.getByLabel("标题")).toHaveValue("尚未保存的繁體修改");
-  await expect(shelf.getByRole("button", { name: /仍在編輯的繁體作品/ })).toHaveAttribute("aria-current", "true");
+  await expect(
+    shelf.getByRole("button", { name: /仍在編輯的繁體作品/ }),
+  ).toHaveAttribute("aria-current", "true");
 });
 
-test("an older API cannot silently present a single locale as the complete writing desk", async ({ page, request }) => {
+test("an older API cannot silently present a single locale as the complete writing desk", async ({
+  page,
+  request,
+}) => {
   await registerWriter(page, request);
-  await page.route((url) => url.pathname === "/api/authoring/articles" && url.searchParams.get("allLocales") === "true", async (route) => {
-    // The old API ignores the unknown query and returns an apparently valid
-    // zh-CN-only list. Treating this as complete would hide existing editions.
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: [] }) });
-  });
+  await page.route(
+    (url) =>
+      url.pathname === "/api/authoring/articles" &&
+      url.searchParams.get("allLocales") === "true",
+    async (route) => {
+      // The old API ignores the unknown query and returns an apparently valid
+      // zh-CN-only list. Treating this as complete would hide existing editions.
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: [] }),
+      });
+    },
+  );
   await page.reload();
   await expect(page.getByRole("alert")).toContainText("无法确认所有语言版本");
   await expect(page.getByText("还没有草稿或已发布作品。")).toHaveCount(0);
 });
 
-test("a success response with the wrong language cannot retire an uncertain create", async ({ page, request }) => {
+test("a success response with the wrong language cannot retire an uncertain create", async ({
+  page,
+  request,
+}) => {
   await registerWriter(page, request);
   await waitForEditor(page);
   const attempts: { key: string | undefined; body: string | null }[] = [];
   await page.route("**/api/authoring/articles", async (route) => {
-    if (route.request().method() !== "POST") { await route.continue(); return; }
-    attempts.push({ key: route.request().headers()["idempotency-key"], body: route.request().postData() });
+    if (route.request().method() !== "POST") {
+      await route.continue();
+      return;
+    }
+    attempts.push({
+      key: route.request().headers()["idempotency-key"],
+      body: route.request().postData(),
+    });
     const data = simulatedArticle(route.request().postData());
     if (attempts.length === 1) data.locale = "zh-CN";
-    await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ data }) });
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({ data }),
+    });
   });
   await page.getByLabel("作品语言").selectOption("en");
   await page.getByLabel("标题").fill("Wrong language response");
@@ -1407,34 +2061,63 @@ test("a success response with the wrong language cannot retire an uncertain crea
   await expect(page.getByRole("alert")).toContainText("暂时无法确认");
   await expect(page.getByRole("button", { name: "新建作品 +" })).toBeDisabled();
   await page.getByRole("button", { name: "确认上次保存" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "上次创建已确认" })).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({ hasText: "上次创建已确认" }),
+  ).toBeVisible();
   expect(attempts).toHaveLength(2);
   expect(attempts[1]).toEqual(attempts[0]);
   expect(JSON.parse(attempts[0].body!).locale).toBe("en");
 });
 
-
-test("a stale editor keeps its draft and cannot overwrite another window's saved revision", async ({ page, request }) => {
+test("a stale editor keeps its draft and cannot overwrite another window's saved revision", async ({
+  page,
+  request,
+}) => {
   await registerWriter(page, request);
   await writeAndSave(page, "条件保存测试", false);
-  await expect(page.getByRole("status").filter({ hasText: "草稿已保存。" })).toBeVisible();
-  const [article] = (await (await page.request.get("/api/authoring/articles")).json()).data;
+  await expect(
+    page.getByRole("status").filter({ hasText: "草稿已保存。" }),
+  ).toBeVisible();
+  const [article] = (
+    await (await page.request.get("/api/authoring/articles")).json()
+  ).data;
   expect(typeof article.revision).toBe("string");
-  const remote = await page.request.put(`/api/authoring/articles/${article.id}`, {
-    headers: { origin: currentOrigin() },
-    data: { slug: article.slug, title: "其他窗口的最新作品", locale: article.locale, publish: false,
-      expectedRevision: article.revision, contentBlocks: [{ id: "remote", type: "paragraph", text: "远端新正文。" }] },
-  });
+  const remote = await page.request.put(
+    `/api/authoring/articles/${article.id}`,
+    {
+      headers: { origin: currentOrigin() },
+      data: {
+        slug: article.slug,
+        title: "其他窗口的最新作品",
+        locale: article.locale,
+        publish: false,
+        expectedRevision: article.revision,
+        contentBlocks: [
+          { id: "remote", type: "paragraph", text: "远端新正文。" },
+        ],
+      },
+    },
+  );
   expect(remote.status()).toBe(200);
   await page.getByLabel("标题").fill("需要保留的本地草稿");
   await page.getByLabel("作品正文").fill("当前窗口里尚未保存的正文。");
-  const response = page.waitForResponse((result) => result.request().method() === "PUT" && result.url().endsWith(`/api/authoring/articles/${article.id}`));
+  const response = page.waitForResponse(
+    (result) =>
+      result.request().method() === "PUT" &&
+      result.url().endsWith(`/api/authoring/articles/${article.id}`),
+  );
   await page.getByRole("button", { name: "保存草稿" }).click();
   expect((await response).status()).toBe(409);
-  await expect(page.getByRole("alert")).toContainText("当前草稿仍保留，请先复制备份");
+  await expect(page.getByRole("alert")).toContainText(
+    "当前草稿仍保留，请先复制备份",
+  );
   await expect(page.getByLabel("标题")).toHaveValue("需要保留的本地草稿");
-  await expect(page.getByLabel("作品正文")).toContainText("当前窗口里尚未保存的正文。");
-  const [kept] = (await (await page.request.get("/api/authoring/articles")).json()).data;
+  await expect(page.getByLabel("作品正文")).toContainText(
+    "当前窗口里尚未保存的正文。",
+  );
+  const [kept] = (
+    await (await page.request.get("/api/authoring/articles")).json()
+  ).data;
   expect(kept.title).toBe("其他窗口的最新作品");
   expect(JSON.stringify(kept.contentBlocks)).toContain("远端新正文。");
 });

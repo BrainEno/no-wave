@@ -45,7 +45,10 @@ function baseOptions(overrides: Partial<StackOptions> = {}): StackOptions {
 
 /** Every `NAME=` or `# NAME=` line in the operator's template. */
 function documentedVariables(): Set<string> {
-  const template = readFileSync(new URL("../.env.example", import.meta.url), "utf8");
+  const template = readFileSync(
+    new URL("../.env.example", import.meta.url),
+    "utf8",
+  );
   const names = new Set<string>();
   for (const match of template.matchAll(/^\s*#?\s*([A-Z][A-Z0-9_]*)=/gm)) {
     const name = match[1];
@@ -59,15 +62,33 @@ test("the Web build CLI resolves without spawning a global pnpm", () => {
   const cli = resolveWebBuildCli(repositoryRoot);
   // Whatever the package calls the file (`bin.js` through v7, `bin.cjs` in
   // v8), it has to be a real entry point that exists in this checkout.
-  assert.match(cli, /[\/]bin\.[cm]?js$/, "the resolved CLI must be the React Router entry point");
-  assert.equal(existsSync(cli), true, "the resolved CLI must exist in this checkout");
-  assert.equal(/pnpm(?:\.cmd|\.exe)?$/i.test(cli), false, "the build must not resolve to a bare pnpm executable");
-  assert.equal(cli.includes("pnpm --filter"), false, "the build must not invoke pnpm as a package-manager command");
+  assert.match(
+    cli,
+    /[\/]bin\.[cm]?js$/,
+    "the resolved CLI must be the React Router entry point",
+  );
+  assert.equal(
+    existsSync(cli),
+    true,
+    "the resolved CLI must exist in this checkout",
+  );
+  assert.equal(
+    /pnpm(?:\.cmd|\.exe)?$/i.test(cli),
+    false,
+    "the build must not resolve to a bare pnpm executable",
+  );
+  assert.equal(
+    cli.includes("pnpm --filter"),
+    false,
+    "the build must not invoke pnpm as a package-manager command",
+  );
 });
 
 test("every variable the portable stack sets is documented in .env.example", () => {
   const documented = documentedVariables();
-  const undocumented = PORTABLE_VARIABLES.filter((name) => !documented.has(name));
+  const undocumented = PORTABLE_VARIABLES.filter(
+    (name) => !documented.has(name),
+  );
   assert.deepEqual(
     undocumented,
     [],
@@ -78,9 +99,14 @@ test("every variable the portable stack sets is documented in .env.example", () 
 test("the environment of a role contains only documented variables", () => {
   const documented = documentedVariables();
   for (const role of ["api", "web", "worker"] as const) {
-    for (const [name, value] of Object.entries(portableStackEnvironment(baseOptions(), role))) {
+    for (const [name, value] of Object.entries(
+      portableStackEnvironment(baseOptions(), role),
+    )) {
       assert.ok(documented.has(name), `${role}: ${name} is not documented`);
-      assert.ok(value.length > 0, `${role}: ${name} must not be set to an empty value`);
+      assert.ok(
+        value.length > 0,
+        `${role}: ${name} must not be set to an empty value`,
+      );
     }
   }
 });
@@ -93,7 +119,9 @@ test("no platform binding reaches a process, and none is inherited", () => {
   }
   try {
     for (const role of ["api", "web", "worker"] as const) {
-      const environment = childEnvironment(portableStackEnvironment(baseOptions(), role));
+      const environment = childEnvironment(
+        portableStackEnvironment(baseOptions(), role),
+      );
       for (const name of PLATFORM_VARIABLES) {
         assert.equal(
           environment[name],
@@ -114,10 +142,17 @@ test("a process inherits the operating-system minimum and nothing else", () => {
   const saved = process.env.API_METRICS_ENABLED;
   process.env.API_METRICS_ENABLED = "true";
   try {
-    const environment = childEnvironment(portableStackEnvironment(baseOptions(), "api"));
-    assert.equal(environment.API_METRICS_ENABLED, undefined, "an unrelated application setting must not be inherited");
+    const environment = childEnvironment(
+      portableStackEnvironment(baseOptions(), "api"),
+    );
+    assert.equal(
+      environment.API_METRICS_ENABLED,
+      undefined,
+      "an unrelated application setting must not be inherited",
+    );
     for (const name of INHERITED_VARIABLES) {
-      if (typeof process.env[name] === "string") assert.equal(environment[name], process.env[name]);
+      if (typeof process.env[name] === "string")
+        assert.equal(environment[name], process.env[name]);
     }
   } finally {
     if (saved === undefined) delete process.env.API_METRICS_ENABLED;
@@ -132,11 +167,17 @@ test("the Web role resolves the API through API_BASE_URL, not through a binding"
 });
 
 test("a configured PostgreSQL URL switches the provider and enables the outbox", async () => {
-  const options = baseOptions({ databaseUrl: "postgres://user:pass@127.0.0.1:5432/bot_thk" });
+  const options = baseOptions({
+    databaseUrl: "postgres://user:pass@127.0.0.1:5432/bot_thk",
+  });
   const api = portableStackEnvironment(options, "api");
   assert.equal(api.DATABASE_PROVIDER, "postgres");
   assert.equal(api.DATABASE_URL, "postgres://user:pass@127.0.0.1:5432/bot_thk");
-  assert.equal(api.DATABASE_PATH, undefined, "a PostgreSQL stack must not also carry a SQLite path");
+  assert.equal(
+    api.DATABASE_PATH,
+    undefined,
+    "a PostgreSQL stack must not also carry a SQLite path",
+  );
 });
 
 /** Narrow the parse result: a bad command line is a thrown error in a test. */
@@ -153,43 +194,96 @@ function parseError(argv: readonly string[]): string {
 }
 
 test("the command line is parsed strictly", () => {
-  assert.deepEqual(parsed([]), { keep: false, json: false, worker: false, databaseUrl: null, databasePath: null });
-  assert.deepEqual(parsed(["--keep", "--json", "--worker"]), { keep: true, json: true, worker: true, databaseUrl: null, databasePath: null });
-  assert.equal(parsed(["--database-url=postgres://x"]).databaseUrl, "postgres://x");
-  assert.equal(parsed(["--database-path=/tmp/x.sqlite"]).databasePath, "/tmp/x.sqlite");
+  assert.deepEqual(parsed([]), {
+    keep: false,
+    json: false,
+    worker: false,
+    databaseUrl: null,
+    databasePath: null,
+  });
+  assert.deepEqual(parsed(["--keep", "--json", "--worker"]), {
+    keep: true,
+    json: true,
+    worker: true,
+    databaseUrl: null,
+    databasePath: null,
+  });
+  assert.equal(
+    parsed(["--database-url=postgres://x"]).databaseUrl,
+    "postgres://x",
+  );
+  assert.equal(
+    parsed(["--database-path=/tmp/x.sqlite"]).databasePath,
+    "/tmp/x.sqlite",
+  );
   assert.match(parseError(["--nope"]), /Unknown argument/);
 });
 
 test("a missing AUTH_JWT_SECRET is replaced, not fatal, and the stack still starts", () => {
   const messages: string[] = [];
   const secret = resolveJwtSecret({}, (message) => messages.push(message));
-  assert.ok(secret.length >= 32, "the generated secret must satisfy the API's minimum");
-  assert.equal(messages.length, 1, "the operator is told the secret is not durable");
+  assert.ok(
+    secret.length >= 32,
+    "the generated secret must satisfy the API's minimum",
+  );
+  assert.equal(
+    messages.length,
+    1,
+    "the operator is told the secret is not durable",
+  );
   assert.match(messages[0] ?? "", /AUTH_JWT_SECRET/);
-  assert.notEqual(resolveJwtSecret({}, () => {}), secret, "a second run gets its own secret");
+  assert.notEqual(
+    resolveJwtSecret({}, () => {}),
+    secret,
+    "a second run gets its own secret",
+  );
 });
 
-function check(id: string, status: "pass" | "fail" | "skip", detail: string, remedy?: string) {
-  return { id, title: id, status, detail, ...(remedy === undefined ? {} : { remedy }), durationMs: 1 };
+function check(
+  id: string,
+  status: "pass" | "fail" | "skip",
+  detail: string,
+  remedy?: string,
+) {
+  return {
+    id,
+    title: id,
+    status,
+    detail,
+    ...(remedy === undefined ? {} : { remedy }),
+    durationMs: 1,
+  };
 }
 
 test("CI annotations escape newlines and stay silent outside GitHub Actions", () => {
   const saved = process.env.GITHUB_ACTIONS;
   try {
     delete process.env.GITHUB_ACTIONS;
-    assert.deepEqual(annotationLines([check("web.home", "fail", "down")], "boom"), []);
+    assert.deepEqual(
+      annotationLines([check("web.home", "fail", "down")], "boom"),
+      [],
+    );
 
     process.env.GITHUB_ACTIONS = "true";
     const lines = annotationLines(
-      [check("web.home", "fail", "first line\nsecond line", "rebuild the app"), check("outbox.drain", "skip", "no table")],
+      [
+        check("web.home", "fail", "first line\nsecond line", "rebuild the app"),
+        check("outbox.drain", "skip", "no table"),
+      ],
       "boom: 100% sure",
     );
     assert.equal(lines.length, 3);
     assert.equal(lines[0], "::error title=portable-stack::boom: 100%25 sure");
-    assert.equal(lines[1], "::error title=portable-stack/web.home::first line%0Asecond line Remedy: rebuild the app");
+    assert.equal(
+      lines[1],
+      "::error title=portable-stack/web.home::first line%0Asecond line Remedy: rebuild the app",
+    );
     // A skip is a notice, not an error: CI must stay green when a provider has
     // no durable outbox to drain.
-    assert.equal(lines[2], "::notice title=portable-stack/outbox.drain::no table");
+    assert.equal(
+      lines[2],
+      "::notice title=portable-stack/outbox.drain::no table",
+    );
     // Passing checks produce nothing, so a green run adds no noise.
     assert.deepEqual(annotationLines([check("api.health", "pass", "ok")]), []);
   } finally {
@@ -201,10 +295,22 @@ test("CI annotations escape newlines and stay silent outside GitHub Actions", ()
 test("a supplied AUTH_JWT_SECRET is used as given", () => {
   const messages: string[] = [];
   const supplied = "supplied-secret-0123456789abcdefghij";
-  assert.equal(resolveJwtSecret({ AUTH_JWT_SECRET: supplied }, (message) => messages.push(message)), supplied);
-  assert.deepEqual(messages, [], "nothing is generated, so nothing has to be explained");
+  assert.equal(
+    resolveJwtSecret({ AUTH_JWT_SECRET: supplied }, (message) =>
+      messages.push(message),
+    ),
+    supplied,
+  );
+  assert.deepEqual(
+    messages,
+    [],
+    "nothing is generated, so nothing has to be explained",
+  );
   // Shorter than the API's minimum: generated, not silently accepted.
-  assert.notEqual(resolveJwtSecret({ AUTH_JWT_SECRET: "too-short" }, () => {}), "too-short");
+  assert.notEqual(
+    resolveJwtSecret({ AUTH_JWT_SECRET: "too-short" }, () => {}),
+    "too-short",
+  );
 });
 
 test("the bridge key is shared only by the API/Web roles and never inherited by a worker", () => {
@@ -224,7 +330,10 @@ test("the bridge key is shared only by the API/Web roles and never inherited by 
   assert.equal(worker.WEB_TRUSTED_PROXY_HOPS, undefined);
   assert.equal(worker.TRUSTED_PROXY_HOPS, undefined);
   for (const role of ["api", "web", "worker"] as const) {
-    const disabled = portableStackEnvironment(baseOptions({ clientAddressSecret: "" }), role);
+    const disabled = portableStackEnvironment(
+      baseOptions({ clientAddressSecret: "" }),
+      role,
+    );
     assert.equal(disabled.BFF_CLIENT_ADDRESS_SECRET, undefined);
     assert.equal(disabled.TRUSTED_PROXY_HOPS, undefined);
     assert.equal(disabled.WEB_TRUSTED_PROXY_HOPS, undefined);

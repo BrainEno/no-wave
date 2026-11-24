@@ -39,8 +39,10 @@ export const DEFAULT_WORKER_HEALTH_PORT = 4001;
 export const DEFAULT_LISTEN_HOST = "0.0.0.0";
 export const DEFAULT_LOOPBACK_HOST = "127.0.0.1";
 export const DEFAULT_SQLITE_PATH = "data/no-wave.sqlite";
-export const DEFAULT_POSTGRES_URL = "postgres://postgres:postgres@127.0.0.1:5432/bot_thk_dev";
-export const DEFAULT_POSTGRES_TEST_URL = "postgres://postgres:postgres@127.0.0.1:5432/bot_thk_test";
+export const DEFAULT_POSTGRES_URL =
+  "postgres://postgres:postgres@127.0.0.1:5432/bot_thk_dev";
+export const DEFAULT_POSTGRES_TEST_URL =
+  "postgres://postgres:postgres@127.0.0.1:5432/bot_thk_test";
 
 export type LocalDevIssue = {
   code: string;
@@ -81,13 +83,22 @@ export function loadLocalEnvFile(path = localEnvFile): boolean {
   }
 }
 
-export function parseNodeVersion(version: string): { major: number; minor: number; patch: number } | null {
+export function parseNodeVersion(
+  version: string,
+): { major: number; minor: number; patch: number } | null {
   const match = /^v?(\d+)\.(\d+)\.(\d+)/.exec(version);
   if (!match) return null;
-  return { major: Number(match[1]), minor: Number(match[2]), patch: Number(match[3]) };
+  return {
+    major: Number(match[1]),
+    minor: Number(match[2]),
+    patch: Number(match[3]),
+  };
 }
 
-export function evaluateNodeVersion(version: string): { supported: boolean; message: string } {
+export function evaluateNodeVersion(version: string): {
+  supported: boolean;
+  message: string;
+} {
   const parsed = parseNodeVersion(version);
   if (!parsed) {
     return {
@@ -95,7 +106,10 @@ export function evaluateNodeVersion(version: string): { supported: boolean; mess
       message: `Unable to parse the Node.js version "${version}". Expected ${MIN_SUPPORTED_NODE_MAJOR}.x.`,
     };
   }
-  if (parsed.major >= MIN_SUPPORTED_NODE_MAJOR && parsed.major <= MAX_SUPPORTED_NODE_MAJOR) {
+  if (
+    parsed.major >= MIN_SUPPORTED_NODE_MAJOR &&
+    parsed.major <= MAX_SUPPORTED_NODE_MAJOR
+  ) {
     if (parsed.major === 24 && parsed.minor >= 15) {
       return {
         supported: true,
@@ -119,7 +133,11 @@ export function evaluateNodeVersion(version: string): { supported: boolean; mess
   };
 }
 
-export function evaluateAuthSecret(secret: string | undefined): { ok: boolean; bytes: number; issue?: LocalDevIssue } {
+export function evaluateAuthSecret(secret: string | undefined): {
+  ok: boolean;
+  bytes: number;
+  issue?: LocalDevIssue;
+} {
   if (typeof secret !== "string" || secret.length === 0) {
     return {
       ok: false,
@@ -127,7 +145,8 @@ export function evaluateAuthSecret(secret: string | undefined): { ok: boolean; b
       issue: {
         code: "AUTH_SECRET_MISSING",
         message: "AUTH_JWT_SECRET is not set.",
-        remedy: "Run `pnpm setup:local` to generate .env.local, or export a secret of at least 32 bytes.",
+        remedy:
+          "Run `pnpm setup:local` to generate .env.local, or export a secret of at least 32 bytes.",
       },
     };
   }
@@ -139,7 +158,8 @@ export function evaluateAuthSecret(secret: string | undefined): { ok: boolean; b
       issue: {
         code: "AUTH_SECRET_TOO_SHORT",
         message: `AUTH_JWT_SECRET is ${bytes} bytes; the API requires at least ${MIN_AUTH_SECRET_BYTES}.`,
-        remedy: "Run `pnpm setup:local --force` to regenerate .env.local, or export a longer secret.",
+        remedy:
+          "Run `pnpm setup:local --force` to regenerate .env.local, or export a longer secret.",
       },
     };
   }
@@ -156,14 +176,22 @@ export function parsePort(
   if (!/^\d{1,5}$/.test(trimmed)) {
     return {
       port: fallback,
-      issue: { code: "INVALID_PORT", message: `${name}="${value}" is not a port number.`, remedy: `Set ${name} to an integer between 1 and 65535.` },
+      issue: {
+        code: "INVALID_PORT",
+        message: `${name}="${value}" is not a port number.`,
+        remedy: `Set ${name} to an integer between 1 and 65535.`,
+      },
     };
   }
   const port = Number(trimmed);
   if (!Number.isSafeInteger(port) || port < 1 || port > 65535) {
     return {
       port: fallback,
-      issue: { code: "INVALID_PORT", message: `${name}="${value}" is outside 1-65535.`, remedy: `Set ${name} to an integer between 1 and 65535.` },
+      issue: {
+        code: "INVALID_PORT",
+        message: `${name}="${value}" is outside 1-65535.`,
+        remedy: `Set ${name} to an integer between 1 and 65535.`,
+      },
     };
   }
   return { port };
@@ -176,7 +204,12 @@ function nonEmpty(value: string | undefined): string | undefined {
 }
 
 const LOCAL_DATABASE_HOSTS = new Set([
-  "localhost", "127.0.0.1", "::1", "0.0.0.0", "postgres", "host.docker.internal",
+  "localhost",
+  "127.0.0.1",
+  "::1",
+  "0.0.0.0",
+  "postgres",
+  "host.docker.internal",
 ]);
 
 /**
@@ -225,24 +258,48 @@ export function redactDatabaseUrl(value: string): string {
   return url.toString();
 }
 
-export function resolveLocalDevConfig(env: NodeJS.ProcessEnv = process.env): LocalDevConfig {
+export function resolveLocalDevConfig(
+  env: NodeJS.ProcessEnv = process.env,
+): LocalDevConfig {
   const issues: LocalDevIssue[] = [];
 
-  const apiPort = parsePort(nonEmpty(env.API_PORT) ?? nonEmpty(env.PORT), DEFAULT_API_PORT, "PORT");
+  const apiPort = parsePort(
+    nonEmpty(env.API_PORT) ?? nonEmpty(env.PORT),
+    DEFAULT_API_PORT,
+    "PORT",
+  );
   if (apiPort.issue) issues.push(apiPort.issue);
-  const webPort = parsePort(nonEmpty(env.WEB_PORT), DEFAULT_WEB_PORT, "WEB_PORT");
+  const webPort = parsePort(
+    nonEmpty(env.WEB_PORT),
+    DEFAULT_WEB_PORT,
+    "WEB_PORT",
+  );
   if (webPort.issue) issues.push(webPort.issue);
 
   const apiHost = nonEmpty(env.HOST) ?? DEFAULT_LISTEN_HOST;
   const webHost = nonEmpty(env.WEB_HOST) ?? DEFAULT_LISTEN_HOST;
-  const workerPort = parsePort(nonEmpty(env.OUTBOX_HEALTH_PORT), DEFAULT_WORKER_HEALTH_PORT, "OUTBOX_HEALTH_PORT");
-  if (workerPort.issue) issues.push({ ...workerPort.issue, code: "INVALID_WORKER_PORT" });
+  const workerPort = parsePort(
+    nonEmpty(env.OUTBOX_HEALTH_PORT),
+    DEFAULT_WORKER_HEALTH_PORT,
+    "OUTBOX_HEALTH_PORT",
+  );
+  if (workerPort.issue)
+    issues.push({ ...workerPort.issue, code: "INVALID_WORKER_PORT" });
   const workerHost = nonEmpty(env.OUTBOX_HEALTH_HOST) ?? DEFAULT_LOOPBACK_HOST;
   const recoveryInput = nonEmpty(env.DEV_RECOVERY_TIMEOUT_MS) ?? "15000";
   const recoveryTimeoutMs = Number(recoveryInput);
-  if (!/^\d+$/.test(recoveryInput) || !Number.isSafeInteger(recoveryTimeoutMs) || recoveryTimeoutMs < 1000 || recoveryTimeoutMs > 120_000) {
-    issues.push({ code: "INVALID_DEV_RECOVERY_TIMEOUT", message: "DEV_RECOVERY_TIMEOUT_MS is not a bounded recovery deadline.",
-      remedy: "Use an integer between 1000 and 120000 milliseconds; the default is 15000." });
+  if (
+    !/^\d+$/.test(recoveryInput) ||
+    !Number.isSafeInteger(recoveryTimeoutMs) ||
+    recoveryTimeoutMs < 1000 ||
+    recoveryTimeoutMs > 120_000
+  ) {
+    issues.push({
+      code: "INVALID_DEV_RECOVERY_TIMEOUT",
+      message: "DEV_RECOVERY_TIMEOUT_MS is not a bounded recovery deadline.",
+      remedy:
+        "Use an integer between 1000 and 120000 milliseconds; the default is 15000.",
+    });
   }
   const configuredApiBaseUrl = nonEmpty(env.API_BASE_URL);
   const configuredWebBaseUrl = nonEmpty(env.WEB_BASE_URL);
@@ -250,22 +307,36 @@ export function resolveLocalDevConfig(env: NodeJS.ProcessEnv = process.env): Loc
   const auth = evaluateAuthSecret(env.AUTH_JWT_SECRET);
   if (auth.issue) issues.push(auth.issue);
 
-  const provider = nonEmpty(env.DATABASE_PROVIDER) ?? (nonEmpty(env.DATABASE_URL) ? "postgres" : "sqlite");
+  const provider =
+    nonEmpty(env.DATABASE_PROVIDER) ??
+    (nonEmpty(env.DATABASE_URL) ? "postgres" : "sqlite");
   const external = provider === "postgres" && hasExternalDatabaseUrl(env);
   let description: string;
   if (provider === "sqlite") {
     const configuredPath = nonEmpty(env.DATABASE_PATH) ?? DEFAULT_SQLITE_PATH;
-    if (configuredPath === ":memory:") issues.push({ code: "WORKER_REQUIRES_DURABLE_DB",
-      message: "An in-memory SQLite database cannot be shared by the API and notification worker.",
-      remedy: "Use a file in DATABASE_PATH (for example data/no-wave.sqlite), then run `pnpm db:migrate`." });
-    const absolutePath = configuredPath === ":memory:" ? configuredPath : resolve(apiPackageDirectory, configuredPath);
+    if (configuredPath === ":memory:")
+      issues.push({
+        code: "WORKER_REQUIRES_DURABLE_DB",
+        message:
+          "An in-memory SQLite database cannot be shared by the API and notification worker.",
+        remedy:
+          "Use a file in DATABASE_PATH (for example data/no-wave.sqlite), then run `pnpm db:migrate`.",
+      });
+    const absolutePath =
+      configuredPath === ":memory:"
+        ? configuredPath
+        : resolve(apiPackageDirectory, configuredPath);
     // A repository-relative path is enough to find the file and avoids leaking
     // the developer's home directory into copied terminal output.
-    const label = configuredPath === ":memory:" ? ":memory:" : relative(repositoryRoot, absolutePath).replaceAll("\\", "/");
+    const label =
+      configuredPath === ":memory:"
+        ? ":memory:"
+        : relative(repositoryRoot, absolutePath).replaceAll("\\", "/");
     description = `SQLite (${label})`;
   } else if (provider === "postgres") {
     const url = nonEmpty(env.DATABASE_URL);
-    if (external) description = "PostgreSQL (external DATABASE_URL; host withheld)";
+    if (external)
+      description = "PostgreSQL (external DATABASE_URL; host withheld)";
     else if (url) description = `PostgreSQL (${redactDatabaseUrl(url)})`;
     else description = "PostgreSQL (DATABASE_URL is not set)";
   } else {
@@ -285,7 +356,11 @@ export function resolveLocalDevConfig(env: NodeJS.ProcessEnv = process.env): Loc
       listenBaseUrl: loopbackBaseUrl(webPort.port),
       baseUrl: configuredWebBaseUrl ?? loopbackBaseUrl(webPort.port),
     },
-    worker: { host: workerHost, port: workerPort.port, listenBaseUrl: loopbackBaseUrl(workerPort.port) },
+    worker: {
+      host: workerHost,
+      port: workerPort.port,
+      listenBaseUrl: loopbackBaseUrl(workerPort.port),
+    },
     supervision: { recoveryTimeoutMs },
     persistence: { provider, description, external },
     auth: { configuredBytes: auth.bytes },
@@ -310,25 +385,27 @@ export function buildLocalEnvFile(options: LocalEnvFileOptions): string {
   const apiPort = options.apiPort ?? DEFAULT_API_PORT;
   const webPort = options.webPort ?? DEFAULT_WEB_PORT;
   // Never persist a remote/Neon URL inherited from the shell into a local file.
-  const databaseUrl = options.databaseUrl && isLocalDatabaseUrl(options.databaseUrl)
-    ? options.databaseUrl
-    : DEFAULT_POSTGRES_URL;
-  const persistence = options.provider === "postgres"
-    ? [
-        "DATABASE_PROVIDER=postgres",
-        `DATABASE_URL=${databaseUrl}`,
-        "# `pnpm --filter @bot-thk/api migrate` uses DATABASE_URL_UNPOOLED first when set.",
-        "# DATABASE_URL_UNPOOLED=",
-        "# Uncomment after `pnpm db:up` if you also want the PostgreSQL integration tests",
-        "# to run as part of `pnpm test`:",
-        `# TEST_DATABASE_URL=${options.testDatabaseUrl ?? DEFAULT_POSTGRES_TEST_URL}`,
-      ]
-    : [
-        "DATABASE_PROVIDER=sqlite",
-        `DATABASE_PATH=${DEFAULT_SQLITE_PATH}`,
-        "# Optional: apply SQLite migrations at API startup (local/test convenience only).",
-        "# DATABASE_AUTO_MIGRATE=true",
-      ];
+  const databaseUrl =
+    options.databaseUrl && isLocalDatabaseUrl(options.databaseUrl)
+      ? options.databaseUrl
+      : DEFAULT_POSTGRES_URL;
+  const persistence =
+    options.provider === "postgres"
+      ? [
+          "DATABASE_PROVIDER=postgres",
+          `DATABASE_URL=${databaseUrl}`,
+          "# `pnpm --filter @bot-thk/api migrate` uses DATABASE_URL_UNPOOLED first when set.",
+          "# DATABASE_URL_UNPOOLED=",
+          "# Uncomment after `pnpm db:up` if you also want the PostgreSQL integration tests",
+          "# to run as part of `pnpm test`:",
+          `# TEST_DATABASE_URL=${options.testDatabaseUrl ?? DEFAULT_POSTGRES_TEST_URL}`,
+        ]
+      : [
+          "DATABASE_PROVIDER=sqlite",
+          `DATABASE_PATH=${DEFAULT_SQLITE_PATH}`,
+          "# Optional: apply SQLite migrations at API startup (local/test convenience only).",
+          "# DATABASE_AUTO_MIGRATE=true",
+        ];
 
   return [
     "# Generated by `pnpm setup:local` for local development only.",
@@ -362,7 +439,9 @@ export function buildLocalEnvFile(options: LocalEnvFileOptions): string {
 export function extractEnvTemplateKeys(template: string): string[] {
   const keys: string[] = [];
   for (const line of template.split(/\r?\n/)) {
-    const match = /^(?:#\s*)?(?:export\s+)?([A-Z][A-Z0-9_]*)\s*=/.exec(line.trim());
+    const match = /^(?:#\s*)?(?:export\s+)?([A-Z][A-Z0-9_]*)\s*=/.exec(
+      line.trim(),
+    );
     if (match && !keys.includes(match[1])) keys.push(match[1]);
   }
   return keys;
@@ -378,22 +457,41 @@ export function extractEnvFileKeys(document: string): string[] {
   return keys;
 }
 
-export type DevArguments = { apiOnly: boolean; webOnly: boolean; check: boolean; exit: boolean };
+export type DevArguments = {
+  apiOnly: boolean;
+  webOnly: boolean;
+  check: boolean;
+  exit: boolean;
+};
 
-export function parseDevArguments(argv: readonly string[]): { args?: DevArguments; error?: string } {
-  const args: DevArguments = { apiOnly: false, webOnly: false, check: false, exit: false };
+export function parseDevArguments(argv: readonly string[]): {
+  args?: DevArguments;
+  error?: string;
+} {
+  const args: DevArguments = {
+    apiOnly: false,
+    webOnly: false,
+    check: false,
+    exit: false,
+  };
   for (const argument of argv) {
     if (argument === "--api-only") args.apiOnly = true;
     else if (argument === "--web-only") args.webOnly = true;
     else if (argument === "--check") args.check = true;
     else if (argument === "--exit") args.exit = true;
-    else return { error: `Unknown option "${argument}". Supported: --api-only, --web-only, --check, --exit.` };
+    else
+      return {
+        error: `Unknown option "${argument}". Supported: --api-only, --web-only, --check, --exit.`,
+      };
   }
   if (args.apiOnly && args.webOnly) {
     return { error: "--api-only and --web-only cannot be combined." };
   }
   if (args.exit && !args.check) {
-    return { error: "--exit requires --check: it stops the processes after the connectivity probe." };
+    return {
+      error:
+        "--exit requires --check: it stops the processes after the connectivity probe.",
+    };
   }
   return { args };
 }
@@ -406,13 +504,20 @@ export type CheckArguments = {
   timeoutMs?: number;
 };
 
-export function parseCheckArguments(argv: readonly string[]): { args?: CheckArguments; error?: string } {
+export function parseCheckArguments(argv: readonly string[]): {
+  args?: CheckArguments;
+  error?: string;
+} {
   const args: CheckArguments = { apiOnly: false, readOnly: false };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === "--api-only") args.apiOnly = true;
     else if (argument === "--read-only") args.readOnly = true;
-    else if (argument === "--api-url" || argument === "--web-url" || argument === "--timeout") {
+    else if (
+      argument === "--api-url" ||
+      argument === "--web-url" ||
+      argument === "--timeout"
+    ) {
       const value = argv[index + 1];
       if (value === undefined || value.startsWith("--")) {
         return { error: `Option "${argument}" requires a value.` };
@@ -423,7 +528,9 @@ export function parseCheckArguments(argv: readonly string[]): { args?: CheckArgu
       if (argument === "--timeout") {
         const parsed = Number(value);
         if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-          return { error: `Option "--timeout" expects a positive integer number of milliseconds.` };
+          return {
+            error: `Option "--timeout" expects a positive integer number of milliseconds.`,
+          };
         }
         args.timeoutMs = parsed;
       }
@@ -440,14 +547,22 @@ export function parseCheckArguments(argv: readonly string[]): { args?: CheckArgu
  * Disposable identity for the write probes. The API rate-limits registration by
  * IP (20 per hour) and by email (5 per hour), so each run uses a fresh email.
  */
-export function buildProbeIdentity(now: Date = new Date(), random: () => number = Math.random): {
+export function buildProbeIdentity(
+  now: Date = new Date(),
+  random: () => number = Math.random,
+): {
   email: string;
   password: string;
   slug: string;
   title: string;
 } {
-  const stamp = now.toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
-  const suffix = Math.floor(random() * 36 ** 6).toString(36).padStart(6, "0");
+  const stamp = now
+    .toISOString()
+    .replace(/[-:.TZ]/g, "")
+    .slice(0, 14);
+  const suffix = Math.floor(random() * 36 ** 6)
+    .toString(36)
+    .padStart(6, "0");
   const token = `${stamp}${suffix}`.toLowerCase();
   return {
     email: `local-check-${token}@example.test`,

@@ -3,7 +3,11 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { parse } from "@babel/parser";
 import test from "node:test";
-import { discoverTests, TEST_GROUPS, type TestGroup } from "./test-discovery.ts";
+import {
+  discoverTests,
+  TEST_GROUPS,
+  type TestGroup,
+} from "./test-discovery.ts";
 
 /**
  * Every test file must be reachable from a script that actually runs it (audit
@@ -35,12 +39,18 @@ function listTestFiles(directory: string, found: string[] = []): string[] {
       listTestFiles(join(directory, entry.name), found);
       continue;
     }
-    if (entry.name.endsWith(".test.ts")) found.push(relative(repositoryRoot, join(directory, entry.name)));
+    if (entry.name.endsWith(".test.ts"))
+      found.push(relative(repositoryRoot, join(directory, entry.name)));
   }
   return found;
 }
 
-type TestScript = { packagePath: string; script: string; args: string[]; discovered: string[] };
+type TestScript = {
+  packagePath: string;
+  script: string;
+  args: string[];
+  discovered: string[];
+};
 
 /** Every `test` script in the workspace, with the arguments it passes to node. */
 function testScripts(): TestScript[] {
@@ -54,27 +64,48 @@ function testScripts(): TestScript[] {
   const scripts: TestScript[] = [];
   for (const packagePath of packages) {
     if (!existsSync(join(repositoryRoot, packagePath))) continue;
-    const manifest = JSON.parse(readFileSync(join(repositoryRoot, packagePath), "utf8")) as {
+    const manifest = JSON.parse(
+      readFileSync(join(repositoryRoot, packagePath), "utf8"),
+    ) as {
       scripts?: Record<string, string>;
     };
     const script = manifest.scripts?.test;
     if (!script) continue;
     // Independently recognize this one reviewed composition; do not interpret
     // general shell syntax or share the production runner's discovery parser.
-    const inventory = packagePath === "package.json" && script === "pnpm fonts:prepare && node scripts/test.ts root"
-      ? "node scripts/test.ts root" : script;
-    const tokens = inventory.trim().split(/\s+/).filter(token => !token.startsWith("--env-file-if-exists="));
-    const runner = tokens.length === 3 && tokens[0] === "node" && /^(?:\.\.\/)*scripts\/test\.ts$/.test(tokens[1]!);
+    const inventory =
+      packagePath === "package.json" &&
+      script === "pnpm fonts:prepare && node scripts/test.ts root"
+        ? "node scripts/test.ts root"
+        : script;
+    const tokens = inventory
+      .trim()
+      .split(/\s+/)
+      .filter((token) => !token.startsWith("--env-file-if-exists="));
+    const runner =
+      tokens.length === 3 &&
+      tokens[0] === "node" &&
+      /^(?:\.\.\/)*scripts\/test\.ts$/.test(tokens[1]!);
     const group = tokens[2];
     if (runner) {
-      assert.ok((TEST_GROUPS as readonly string[]).includes(group!), `unknown discovery group in ${packagePath}`);
-      assert.equal(resolve(repositoryRoot, packagePath, "..", tokens[1]!), join(repositoryRoot, "scripts/test.ts"));
+      assert.ok(
+        (TEST_GROUPS as readonly string[]).includes(group!),
+        `unknown discovery group in ${packagePath}`,
+      );
+      assert.equal(
+        resolve(repositoryRoot, packagePath, "..", tokens[1]!),
+        join(repositoryRoot, "scripts/test.ts"),
+      );
     }
     scripts.push({
-      discovered: runner ? discoverTests(group as TestGroup, repositoryRoot) : [],
+      discovered: runner
+        ? discoverTests(group as TestGroup, repositoryRoot)
+        : [],
       packagePath,
       script,
-      args: inventory.split(/\s+/).filter((token) => token.includes(".test.ts")),
+      args: inventory
+        .split(/\s+/)
+        .filter((token) => token.includes(".test.ts")),
     });
   }
   return scripts;
@@ -93,22 +124,30 @@ function expandArgument(packagePath: string, argument: string): string[] {
   } catch {
     return [];
   }
-  return entries.filter((name) => name.endsWith(".test.ts")).map((name) => join(directory, name));
+  return entries
+    .filter((name) => name.endsWith(".test.ts"))
+    .map((name) => join(directory, name));
 }
 
 test("every test file is named by a script that runs it", () => {
   const scripts = testScripts();
-  assert.ok(scripts.length > 0, "no test script was found; the guard would pass vacuously");
+  assert.ok(
+    scripts.length > 0,
+    "no test script was found; the guard would pass vacuously",
+  );
 
   const covered = new Set<string>();
   for (const { packagePath, args, discovered } of scripts) {
     for (const file of discovered) covered.add(file);
     for (const argument of args) {
-      for (const file of expandArgument(packagePath, argument)) covered.add(file);
+      for (const file of expandArgument(packagePath, argument))
+        covered.add(file);
     }
   }
 
-  const unreachable = listTestFiles(repositoryRoot).filter((file) => !covered.has(file));
+  const unreachable = listTestFiles(repositoryRoot).filter(
+    (file) => !covered.has(file),
+  );
   assert.deepEqual(
     unreachable,
     [],
@@ -121,23 +160,34 @@ test("a test script does not name a file that no longer exists", () => {
   // file moved. A missing explicit path is worse than a missing new one: it
   // breaks the whole invocation on some Node versions and is silently skipped on
   // others, which is how four files stopped running unnoticed.
-  const missing = testScripts().flatMap(({ packagePath, args, discovered }) =>
-    [...discovered.filter(file => !existsSync(join(repositoryRoot, file))), ...args
+  const missing = testScripts().flatMap(({ packagePath, args, discovered }) => [
+    ...discovered.filter((file) => !existsSync(join(repositoryRoot, file))),
+    ...args
       .filter((argument) => !argument.includes("*"))
       .map((argument) => expandArgument(packagePath, argument))
       .flat()
-      .filter((file) => !existsSync(join(repositoryRoot, file)))],
+      .filter((file) => !existsSync(join(repositoryRoot, file))),
+  ]);
+  assert.deepEqual(
+    missing,
+    [],
+    `test scripts name files that do not exist:\n${missing.join("\n")}`,
   );
-  assert.deepEqual(missing, [], `test scripts name files that do not exist:\n${missing.join("\n")}`);
 });
-
 
 test("every browser suite and extended stack is rooted in the enforcing CSP audit fixture", () => {
   const directory = join(repositoryRoot, "e2e");
   const fixture = join(directory, "support/csp-fixture.ts");
   const cache = new Map<string, ReturnType<typeof parse>>();
   const tree = (file: string) => {
-    if (!cache.has(file)) cache.set(file, parse(readFileSync(file, "utf8"), { sourceType: "module", plugins: ["typescript"] }));
+    if (!cache.has(file))
+      cache.set(
+        file,
+        parse(readFileSync(file, "utf8"), {
+          sourceType: "module",
+          plugins: ["typescript"],
+        }),
+      );
     return cache.get(file)!;
   };
   const reachesAudit = (file: string, seen = new Set<string>()): boolean => {
@@ -145,26 +195,67 @@ test("every browser suite and extended stack is rooted in the enforcing CSP audi
     if (seen.has(file)) return false;
     seen.add(file);
     for (const statement of tree(file).program.body) {
-      if (statement.type !== "ImportDeclaration" || statement.importKind === "type") continue;
-      const importsTest = statement.specifiers.some(specifier => specifier.type === "ImportSpecifier" && specifier.importKind !== "type" &&
-        specifier.imported.type === "Identifier" && specifier.imported.name === "test");
+      if (
+        statement.type !== "ImportDeclaration" ||
+        statement.importKind === "type"
+      )
+        continue;
+      const importsTest = statement.specifiers.some(
+        (specifier) =>
+          specifier.type === "ImportSpecifier" &&
+          specifier.importKind !== "type" &&
+          specifier.imported.type === "Identifier" &&
+          specifier.imported.name === "test",
+      );
       if (!importsTest) continue;
-      assert.ok(statement.source.value.startsWith("."), `${relative(repositoryRoot, file)} bypasses the automatic CSP audit`);
-      if (reachesAudit(resolve(file, "..", statement.source.value), seen)) return true;
+      assert.ok(
+        statement.source.value.startsWith("."),
+        `${relative(repositoryRoot, file)} bypasses the automatic CSP audit`,
+      );
+      if (reachesAudit(resolve(file, "..", statement.source.value), seen))
+        return true;
     }
     return false;
   };
-  const suites = readdirSync(directory).filter(name => name.endsWith(".spec.ts"));
-  assert.ok(suites.length >= 30, "the suite inventory must not pass on an empty directory");
-  for (const suite of suites) assert.equal(reachesAudit(join(directory, suite)), true, suite);
-  for (const file of [...suites.map(name => join(directory, name)), ...readdirSync(join(directory, "support")).filter(name => name.endsWith(".ts")).map(name => join(directory, "support", name))]) {
+  const suites = readdirSync(directory).filter((name) =>
+    name.endsWith(".spec.ts"),
+  );
+  assert.ok(
+    suites.length >= 30,
+    "the suite inventory must not pass on an empty directory",
+  );
+  for (const suite of suites)
+    assert.equal(reachesAudit(join(directory, suite)), true, suite);
+  for (const file of [
+    ...suites.map((name) => join(directory, name)),
+    ...readdirSync(join(directory, "support"))
+      .filter((name) => name.endsWith(".ts"))
+      .map((name) => join(directory, "support", name)),
+  ]) {
     if (file === fixture) continue;
     for (const statement of tree(file).program.body) {
-      if (statement.type !== "ImportDeclaration" || statement.source.value !== "@playwright/test" || statement.importKind === "type") continue;
+      if (
+        statement.type !== "ImportDeclaration" ||
+        statement.source.value !== "@playwright/test" ||
+        statement.importKind === "type"
+      )
+        continue;
       for (const specifier of statement.specifiers) {
-        assert.equal(specifier.type, "ImportSpecifier", `${file}: namespace/default imports can hide an unaudited test`);
-        if (specifier.type === "ImportSpecifier" && specifier.importKind !== "type" && specifier.imported.type === "Identifier") {
-          assert.notEqual(specifier.imported.name, "test", `${file}: extend csp-fixture rather than the unobserved Playwright base`);
+        assert.equal(
+          specifier.type,
+          "ImportSpecifier",
+          `${file}: namespace/default imports can hide an unaudited test`,
+        );
+        if (
+          specifier.type === "ImportSpecifier" &&
+          specifier.importKind !== "type" &&
+          specifier.imported.type === "Identifier"
+        ) {
+          assert.notEqual(
+            specifier.imported.name,
+            "test",
+            `${file}: extend csp-fixture rather than the unobserved Playwright base`,
+          );
         }
       }
     }

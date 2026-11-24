@@ -18,7 +18,10 @@ let nextMode: "reply" | "hang" | "reset" = "reply";
 let observed: string[] = [];
 
 before(async () => {
-  const dockerfile = await readFile(new URL("../apps/api/Dockerfile", import.meta.url), "utf8");
+  const dockerfile = await readFile(
+    new URL("../apps/api/Dockerfile", import.meta.url),
+    "utf8",
+  );
   const match = dockerfile.match(/^\s*CMD node -e "([^"\n]+)"\s*$/m);
   assert.ok(match, "the Docker healthcheck has an executable Node probe");
   probe = match[1]!;
@@ -29,9 +32,12 @@ before(async () => {
       return;
     }
     if (nextMode === "hang") return;
-    if (nextStatus >= 300 && nextStatus < 400) res.setHeader("location", "/success");
+    if (nextStatus >= 300 && nextStatus < 400)
+      res.setHeader("location", "/success");
     res.writeHead(nextStatus, { "content-type": "application/json" });
-    res.end(JSON.stringify({ status: nextStatus === 200 ? "ok" : "unavailable" }));
+    res.end(
+      JSON.stringify({ status: nextStatus === 200 ? "ok" : "unavailable" }),
+    );
   });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -46,7 +52,9 @@ after(async () => {
   await once(server, "close");
 });
 
-function runProbe(env: Record<string, string> = {}): Promise<{ code: number | null; stdout: string; stderr: string }> {
+function runProbe(
+  env: Record<string, string> = {},
+): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ["-e", probe], {
       env: { PATH: process.env.PATH, PORT: String(port), ...env },
@@ -54,8 +62,12 @@ function runProbe(env: Record<string, string> = {}): Promise<{ code: number | nu
     });
     let stdout = "";
     let stderr = "";
-    child.stdout.on("data", (chunk: Buffer) => { stdout += chunk.toString(); });
-    child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
     child.on("error", reject);
     child.on("close", (code) => resolve({ code, stdout, stderr }));
   });
@@ -73,7 +85,16 @@ test("a successful readiness response makes the container probe succeed", async 
 
 test("2xx responses are accepted and readiness failures are rejected", async () => {
   nextMode = "reply";
-  for (const [status, expected] of [[204, 0], [301, 1], [302, 1], [307, 1], [401, 1], [404, 1], [500, 1], [503, 1]] as const) {
+  for (const [status, expected] of [
+    [204, 0],
+    [301, 1],
+    [302, 1],
+    [307, 1],
+    [401, 1],
+    [404, 1],
+    [500, 1],
+    [503, 1],
+  ] as const) {
     nextStatus = status;
     observed = [];
     const result = await runProbe();
@@ -102,12 +123,18 @@ test("a stalled readiness endpoint is bounded by the probe timeout", async () =>
   const started = Date.now();
   const result = await runProbe();
   assert.equal(result.code, 1);
-  assert.ok(Date.now() - started < 5000, "a stalled probe must not block health indefinitely");
+  assert.ok(
+    Date.now() - started < 5000,
+    "a stalled probe must not block health indefinitely",
+  );
   nextMode = "reply";
 });
 
 test("an invalid port fails closed without exposing environment values", async () => {
-  const result = await runProbe({ PORT: "not-a-port", AUTH_JWT_SECRET: "test-private-value" });
+  const result = await runProbe({
+    PORT: "not-a-port",
+    AUTH_JWT_SECRET: "test-private-value",
+  });
   assert.equal(result.code, 1);
   assert.doesNotMatch(result.stdout + result.stderr, /test-private-value/);
 });
@@ -116,7 +143,11 @@ test("the same image's worker role probes its independent readiness port instead
   nextMode = "reply";
   nextStatus = 200;
   observed = [];
-  const result = await runProbe({ SERVICE_ROLE: "notification-worker", OUTBOX_HEALTH_PORT: String(port), PORT: "invalid-api-port" });
+  const result = await runProbe({
+    SERVICE_ROLE: "notification-worker",
+    OUTBOX_HEALTH_PORT: String(port),
+    PORT: "invalid-api-port",
+  });
   assert.equal(result.code, 0);
   assert.deepEqual(observed, ["GET /ready"]);
 });

@@ -3,38 +3,74 @@ import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 
 const root = new URL("..", import.meta.url);
-const workflow = readFileSync(new URL(".github/workflows/ci.yml", root), "utf8");
+const workflow = readFileSync(
+  new URL(".github/workflows/ci.yml", root),
+  "utf8",
+);
 
 test("CI covers PRs, main and explicit Arena pre-PR verification branches", () => {
-  const triggers = workflow.slice(workflow.indexOf("on:"), workflow.indexOf("concurrency:"));
+  const triggers = workflow.slice(
+    workflow.indexOf("on:"),
+    workflow.indexOf("concurrency:"),
+  );
   assert.match(triggers, /push:\s*\n\s*branches: \["main", "arena\/\*\*"\]/);
   assert.match(triggers, /pull_request:\s*\n\s*branches: \["main"\]/);
-  assert.equal((triggers.match(/\*\*/g) ?? []).length, 1, "only the explicit Arena namespace may use a wildcard");
+  assert.equal(
+    (triggers.match(/\*\*/g) ?? []).length,
+    1,
+    "only the explicit Arena namespace may use a wildcard",
+  );
 });
 
 test("PR runs cancel only older runs in their own PR group", () => {
-  const concurrency = workflow.slice(workflow.indexOf("concurrency:"), workflow.indexOf("permissions:"));
-  assert.match(concurrency, /group: \$\{\{ github\.workflow \}\}-\$\{\{ github\.event\.pull_request\.number \|\| github\.ref \}\}/);
-  assert.match(concurrency, /cancel-in-progress: \$\{\{ github\.event_name == 'pull_request' \}\}/);
+  const concurrency = workflow.slice(
+    workflow.indexOf("concurrency:"),
+    workflow.indexOf("permissions:"),
+  );
+  assert.match(
+    concurrency,
+    /group: \$\{\{ github\.workflow \}\}-\$\{\{ github\.event\.pull_request\.number \|\| github\.ref \}\}/,
+  );
+  assert.match(
+    concurrency,
+    /cancel-in-progress: \$\{\{ github\.event_name == 'pull_request' \}\}/,
+  );
 });
 
 test("there is one documented required CI gate, not an incomplete second pipeline", () => {
   assert.equal(existsSync(new URL(".gitlab-ci.yml", root)), false);
   const readme = readFileSync(new URL("README.md", root), "utf8");
   assert.match(readme, /only supported CI pipeline/);
-  for (const job of ["verify", "postgres-integration", "local-dev-chain", "react-router-prototype", "portable-stack", "container-image", "e2e", "full-local-suite"]) {
+  for (const job of [
+    "verify",
+    "postgres-integration",
+    "local-dev-chain",
+    "react-router-prototype",
+    "portable-stack",
+    "container-image",
+    "e2e",
+    "full-local-suite",
+  ]) {
     assert.match(workflow, new RegExp(`^  ${job}:`, "m"), `missing job ${job}`);
     const gate = workflow.slice(workflow.indexOf("  required-checks:"));
-    assert.match(gate, new RegExp(`^      - ${job}$`, "m"), `gate must depend on ${job}`);
+    assert.match(
+      gate,
+      new RegExp(`^      - ${job}$`, "m"),
+      `gate must depend on ${job}`,
+    );
   }
 });
 
 test("the required verify job audits all locked dependencies at high severity", () => {
-  const verify = workflow.slice(workflow.indexOf("  verify:"), workflow.indexOf("  postgres-integration:"));
+  const verify = workflow.slice(
+    workflow.indexOf("  verify:"),
+    workflow.indexOf("  postgres-integration:"),
+  );
   const install = verify.indexOf("pnpm install --frozen-lockfile");
   const audit = verify.indexOf("pnpm audit --audit-level high");
   assert.ok(install >= 0 && audit > install);
-  const line = verify.split("\n").find((entry) => entry.includes("pnpm audit")) ?? "";
+  const line =
+    verify.split("\n").find((entry) => entry.includes("pnpm audit")) ?? "";
   assert.doesNotMatch(line, /--prod|--no-optional|\|\||continue-on-error/);
   const gate = workflow.slice(workflow.indexOf("  required-checks:"));
   assert.match(gate, /needs\.verify\.result/);
@@ -42,7 +78,10 @@ test("the required verify job audits all locked dependencies at high severity", 
 });
 
 test("CodeQL covers the same pre-PR Arena branches with explicit minimal permissions", () => {
-  const codeql = readFileSync(new URL(".github/workflows/codeql.yml", root), "utf8");
+  const codeql = readFileSync(
+    new URL(".github/workflows/codeql.yml", root),
+    "utf8",
+  );
   assert.match(codeql, /pull_request:\s*\n\s*branches: \["main"\]/);
   assert.match(codeql, /push:\s*\n\s*branches: \["main", "arena\/\*\*"\]/);
   assert.match(codeql, /contents: read/);
@@ -72,11 +111,18 @@ test("the security policy does not invite public vulnerability disclosure", () =
 test("repository publishes the Apache 2.0 license and links it from both READMEs", () => {
   const license = readFileSync(new URL("LICENSE", root), "utf8");
   assert.match(license, /Apache License\s+Version 2\.0, January 2004/);
-  assert.match(license, /TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION/);
+  assert.match(
+    license,
+    /TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION/,
+  );
   assert.match(license, /END OF TERMS AND CONDITIONS/);
   for (const name of ["README.md", "README.zh-CN.md"]) {
     const readme = readFileSync(new URL(name, root), "utf8");
-    assert.match(readme, /\]\(LICENSE\)/, `${name} must link to the repository license`);
+    assert.match(
+      readme,
+      /\]\(LICENSE\)/,
+      `${name} must link to the repository license`,
+    );
     assert.match(readme, /Apache License(?:, Version)? 2\.0/);
   }
 });

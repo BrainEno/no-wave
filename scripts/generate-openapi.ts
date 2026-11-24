@@ -10,7 +10,11 @@
  * hand-written file the contract would drift the first time somebody renamed a
  * route. `API_URL` is not involved — nothing here starts a server.
  */
-import { OPENAPI_FILE, checkOpenApiFile, writeOpenApiFile } from "./lib/openapi-contract.ts";
+import {
+  OPENAPI_FILE,
+  checkOpenApiFile,
+  writeOpenApiFile,
+} from "./lib/openapi-contract.ts";
 
 const write = process.argv.includes("--write");
 const problems = write ? [] : await checkOpenApiFile();

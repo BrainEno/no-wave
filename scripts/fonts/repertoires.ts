@@ -3,24 +3,56 @@ import { join } from "node:path";
 import { parse } from "@babel/parser";
 import { getMessages } from "../../packages/web-ui/src/lib/content.ts";
 import { getUi } from "../../packages/web-ui/src/lib/ui-copy.ts";
-import { codepoints, expandUnicodeRange, partitionCharacters, unicodeRange, type FontManifest, type FontAsset } from "../lib/font-assets.ts";
-import { FONT_SOURCES, fontSourceReceipt, LATIN_COMMON_CODEPOINTS, type FontSource } from "./font-sources.ts";
+import {
+  codepoints,
+  expandUnicodeRange,
+  partitionCharacters,
+  unicodeRange,
+  type FontManifest,
+  type FontAsset,
+} from "../lib/font-assets.ts";
+import {
+  FONT_SOURCES,
+  fontSourceReceipt,
+  LATIN_COMMON_CODEPOINTS,
+  type FontSource,
+} from "./font-sources.ts";
 
 const ASCII = Array.from({ length: 95 }, (_, index) => index + 32);
 const PUNCTUATION = codepoints("。，、；：？！「」《》（）…—·“”‘’");
-const UPPER_SERIF = codepoints("无浪潮进入写作创建账户精选最新作品分类作者搜索我的划线继续阅读全部热门收藏回应关于：，。");
+const UPPER_SERIF = codepoints(
+  "无浪潮进入写作创建账户精选最新作品分类作者搜索我的划线继续阅读全部热门收藏回应关于：，。",
+);
 const CJK_TEXT = /[\p{Script=Han}\u2000-\u206f\u3000-\u303f\uff00-\uffef]/gu;
 
 /** Extract actual string/template/JSX text, not comments or identifier names. */
 export function literalCjkText(source: string): string {
-  const ast = parse(source, { sourceType: "module", plugins: ["typescript", "jsx"] });
+  const ast = parse(source, {
+    sourceType: "module",
+    plugins: ["typescript", "jsx"],
+  });
   const fragments: string[] = [];
   const visit = (value: unknown): void => {
-    if (Array.isArray(value)) { value.forEach(visit); return; }
-    if (typeof value !== "object" || value === null || !("type" in value)) return;
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (typeof value !== "object" || value === null || !("type" in value))
+      return;
     const node = value as Record<string, unknown>;
-    if ((node.type === "StringLiteral" || node.type === "JSXText") && typeof node.value === "string") fragments.push(node.value);
-    if (node.type === "TemplateElement" && typeof node.value === "object" && node.value !== null && "cooked" in node.value && typeof node.value.cooked === "string") fragments.push(node.value.cooked);
+    if (
+      (node.type === "StringLiteral" || node.type === "JSXText") &&
+      typeof node.value === "string"
+    )
+      fragments.push(node.value);
+    if (
+      node.type === "TemplateElement" &&
+      typeof node.value === "object" &&
+      node.value !== null &&
+      "cooked" in node.value &&
+      typeof node.value.cooked === "string"
+    )
+      fragments.push(node.value.cooked);
     for (const child of Object.values(node)) visit(child);
   };
   visit(ast);
@@ -35,41 +67,87 @@ function chineseLabels(source: string, keys: readonly string[]): string {
   for (const statement of ast.program.body) {
     if (statement.type !== "VariableDeclaration") continue;
     for (const declaration of statement.declarations) {
-      if (declaration.id.type !== "Identifier" || declaration.id.name !== "zh" || declaration.init?.type !== "ObjectExpression") continue;
+      if (
+        declaration.id.type !== "Identifier" ||
+        declaration.id.name !== "zh" ||
+        declaration.init?.type !== "ObjectExpression"
+      )
+        continue;
       for (const property of declaration.init.properties) {
-        if (property.type !== "ObjectProperty" || property.key.type !== "Identifier" || property.value.type !== "StringLiteral") continue;
-        if (remaining.delete(property.key.name)) labels.push(property.value.value);
+        if (
+          property.type !== "ObjectProperty" ||
+          property.key.type !== "Identifier" ||
+          property.value.type !== "StringLiteral"
+        )
+          continue;
+        if (remaining.delete(property.key.name))
+          labels.push(property.value.value);
       }
     }
   }
-  if (remaining.size) throw new Error(`Reading UI needs static Chinese labels for its initial font shard: ${[...remaining].join(", ")}`);
+  if (remaining.size)
+    throw new Error(
+      `Reading UI needs static Chinese labels for its initial font shard: ${[...remaining].join(", ")}`,
+    );
   return labels.join("");
 }
 
-export type Repertoires = { sans: number[]; readerUi: number[]; readerDeferred: number[]; serif: number[]; upper: number[]; reading: number[]; priority: number[] };
+export type Repertoires = {
+  sans: number[];
+  readerUi: number[];
+  readerDeferred: number[];
+  serif: number[];
+  upper: number[];
+  reading: number[];
+  priority: number[];
+};
 
-export async function applicationRepertoires(root: string): Promise<Repertoires> {
-  const sources = await Promise.all([
-    "packages/web-ui/src/components/chrome/site-chrome.tsx",
-    "packages/web-ui/src/components/auth/sign-in-form.tsx",
-    "packages/web-ui/src/lib/notification-feedback.ts",
-  ].map(async (path) => literalCjkText(await readFile(join(root, path), "utf8"))));
-  const readerSources = await Promise.all([
-    "packages/web-ui/src/components/comments/article-comments.tsx",
-    "packages/web-ui/src/components/reader/passage-annotations.tsx",
-    "packages/web-ui/src/components/reader/reader-tools.tsx",
-    "packages/web-ui/src/components/reader/read-aloud.tsx",
-  ].map(async (path) => literalCjkText(await readFile(join(root, path), "utf8"))));
-  const shelfDictionary = await readFile(join(root, "packages/web-ui/src/lib/reading-shelf-copy.ts"), "utf8");
-  const findDictionary = await readFile(join(root, "packages/web-ui/src/lib/reader-find-copy.ts"), "utf8");
-  const toolSources = await Promise.all([
-    "packages/web-ui/src/components/reader/article-reading-list.tsx",
-    "packages/web-ui/src/components/reader/reader-find.tsx",
-    "packages/web-ui/src/components/reader/reading-list.tsx",
-    "packages/web-ui/src/components/reader/reading-shelf-transfer.tsx",
-  ].map(async (path) => literalCjkText(await readFile(join(root, path), "utf8"))));
-  const strings = (value: unknown): string => typeof value === "string" ? value :
-    typeof value === "object" && value !== null ? Object.values(value).map(strings).join("") : "";
+export async function applicationRepertoires(
+  root: string,
+): Promise<Repertoires> {
+  const sources = await Promise.all(
+    [
+      "packages/web-ui/src/components/chrome/site-chrome.tsx",
+      "packages/web-ui/src/components/auth/sign-in-form.tsx",
+      "packages/web-ui/src/lib/notification-feedback.ts",
+    ].map(async (path) =>
+      literalCjkText(await readFile(join(root, path), "utf8")),
+    ),
+  );
+  const readerSources = await Promise.all(
+    [
+      "packages/web-ui/src/components/comments/article-comments.tsx",
+      "packages/web-ui/src/components/reader/passage-annotations.tsx",
+      "packages/web-ui/src/components/reader/reader-tools.tsx",
+      "packages/web-ui/src/components/reader/read-aloud.tsx",
+    ].map(async (path) =>
+      literalCjkText(await readFile(join(root, path), "utf8")),
+    ),
+  );
+  const shelfDictionary = await readFile(
+    join(root, "packages/web-ui/src/lib/reading-shelf-copy.ts"),
+    "utf8",
+  );
+  const findDictionary = await readFile(
+    join(root, "packages/web-ui/src/lib/reader-find-copy.ts"),
+    "utf8",
+  );
+  const toolSources = await Promise.all(
+    [
+      "packages/web-ui/src/components/reader/article-reading-list.tsx",
+      "packages/web-ui/src/components/reader/reader-find.tsx",
+      "packages/web-ui/src/components/reader/reading-list.tsx",
+      "packages/web-ui/src/components/reader/reading-shelf-transfer.tsx",
+    ].map(async (path) =>
+      literalCjkText(await readFile(join(root, path), "utf8")),
+    ),
+  );
+  const strings = (value: unknown): string =>
+    typeof value === "string"
+      ? value
+      : typeof value === "object" && value !== null
+        ? Object.values(value).map(strings).join("")
+        : "";
   const ui = getUi("zh-CN");
   // The three work-type labels (ADR 0054) sit on every card, row and article
   // header, so they belong with the chrome: left to the numbered leaves, the
@@ -78,18 +156,56 @@ export async function applicationRepertoires(root: string): Promise<Repertoires>
   // genre name only as the big headings of the home page and /categories,
   // which can afford one leaf more; every article page cannot.
   const workTypeLabels = strings(getMessages("zh-CN").workTypeLabels);
-  const chromeCopy = strings([ui.brand, ui.rail, ui.nav, ui.bell, ui.footer, workTypeLabels, chineseLabels(shelfDictionary, ["title"])]);
+  const chromeCopy = strings([
+    ui.brand,
+    ui.rail,
+    ui.nav,
+    ui.bell,
+    ui.footer,
+    workTypeLabels,
+    chineseLabels(shelfDictionary, ["title"]),
+  ]);
   // Closed article tools do not need list management, backup or result prose.
-  const initialTools = chineseLabels(shelfDictionary, ["loading", "save", "savedAlready", "open"]) + chineseLabels(findDictionary, ["toggle"]);
+  const initialTools =
+    chineseLabels(shelfDictionary, [
+      "loading",
+      "save",
+      "savedAlready",
+      "open",
+    ]) + chineseLabels(findDictionary, ["toggle"]);
   const readerCopy = strings(ui.reader) + initialTools;
-  const data = JSON.parse(await readFile(new URL("./noto-reading-priority.json", import.meta.url), "utf8")) as { groups: Record<string, string> };
-  const groups = Object.values(data.groups).map((range) => expandUnicodeRange(range).filter((point) => point >= 0x3400 && point <= 0x9fff));
+  const data = JSON.parse(
+    await readFile(
+      new URL("./noto-reading-priority.json", import.meta.url),
+      "utf8",
+    ),
+  ) as { groups: Record<string, string> };
+  const groups = Object.values(data.groups).map((range) =>
+    expandUnicodeRange(range).filter(
+      (point) => point >= 0x3400 && point <= 0x9fff,
+    ),
+  );
   return {
     // UI copy changes automatically update its core; auth prose and display
     // titles do not force the serif to carry every unrelated notification word.
-    sans: [...ASCII, ...PUNCTUATION, ...codepoints("←→"), ...codepoints(literalCjkText(`const copy = ${JSON.stringify(chromeCopy)};`) + sources.join(""))],
-    readerUi: codepoints(literalCjkText(`const copy = ${JSON.stringify(readerCopy)};`) + readerSources.join("")),
-    readerDeferred: codepoints(literalCjkText(shelfDictionary) + literalCjkText(findDictionary) + toolSources.join("")),
+    sans: [
+      ...ASCII,
+      ...PUNCTUATION,
+      ...codepoints("←→"),
+      ...codepoints(
+        literalCjkText(`const copy = ${JSON.stringify(chromeCopy)};`) +
+          sources.join(""),
+      ),
+    ],
+    readerUi: codepoints(
+      literalCjkText(`const copy = ${JSON.stringify(readerCopy)};`) +
+        readerSources.join(""),
+    ),
+    readerDeferred: codepoints(
+      literalCjkText(shelfDictionary) +
+        literalCjkText(findDictionary) +
+        toolSources.join(""),
+    ),
     serif: [...ASCII, ...PUNCTUATION, ...codepoints(sources[1]!)],
     upper: UPPER_SERIF,
     // Published general-usage priorities, never tailored to an E2E article.
@@ -100,29 +216,58 @@ export async function applicationRepertoires(root: string): Promise<Repertoires>
   };
 }
 
-export function fontPartitions(all: readonly number[], source: FontSource, weight: FontAsset["weight"], repertoire: Repertoires) {
+export function fontPartitions(
+  all: readonly number[],
+  source: FontSource,
+  weight: FontAsset["weight"],
+  repertoire: Repertoires,
+) {
   if (source.family === "Noto Serif SC") {
-    return partitionCharacters(all, weight === "400" ? repertoire.serif : repertoire.upper, 32,
-      { reading: weight === "400" ? repertoire.reading : [], priority: repertoire.priority });
+    return partitionCharacters(
+      all,
+      weight === "400" ? repertoire.serif : repertoire.upper,
+      32,
+      {
+        reading: weight === "400" ? repertoire.reading : [],
+        priority: repertoire.priority,
+      },
+    );
   }
-  if (source.family === "Noto Sans SC") return partitionCharacters(all, repertoire.sans, 32, { reading: repertoire.readerUi, readingId: "interface", deferred: repertoire.readerDeferred, priority: repertoire.priority });
+  if (source.family === "Noto Sans SC")
+    return partitionCharacters(all, repertoire.sans, 32, {
+      reading: repertoire.readerUi,
+      readingId: "interface",
+      deferred: repertoire.readerDeferred,
+      priority: repertoire.priority,
+    });
   return partitionCharacters(all, LATIN_COMMON_CODEPOINTS, 128);
 }
-
 
 /**
  * The first source/weight whose committed faces no longer match the current
  * recipe, or null. Reads the application copy only; it does not download or
  * transform upstream fonts.
  */
-export async function staleFontRecipe(manifest: FontManifest, root: string): Promise<string | null> {
+export async function staleFontRecipe(
+  manifest: FontManifest,
+  root: string,
+): Promise<string | null> {
   const repertoire = await applicationRepertoires(root);
   for (const source of FONT_SOURCES) {
     for (const weight of fontSourceReceipt(source).weights) {
-      const faces = manifest.faces.filter((face) => face.source === source.id && face.weight === weight);
-      const all = faces.flatMap((face) => expandUnicodeRange(face.unicodeRange));
-      const expected = fontPartitions(all, source, weight, repertoire).map((part) => unicodeRange(part.points));
-      if (expected.length !== faces.length || expected.some((range, index) => range !== faces[index]!.unicodeRange)) {
+      const faces = manifest.faces.filter(
+        (face) => face.source === source.id && face.weight === weight,
+      );
+      const all = faces.flatMap((face) =>
+        expandUnicodeRange(face.unicodeRange),
+      );
+      const expected = fontPartitions(all, source, weight, repertoire).map(
+        (part) => unicodeRange(part.points),
+      );
+      if (
+        expected.length !== faces.length ||
+        expected.some((range, index) => range !== faces[index]!.unicodeRange)
+      ) {
         return `${source.id}/${weight}`;
       }
     }
@@ -131,7 +276,11 @@ export async function staleFontRecipe(manifest: FontManifest, root: string): Pro
 }
 
 /** Check the current recipe without downloading or transforming upstream fonts. */
-export async function verifyFontRecipe(manifest: FontManifest, root: string): Promise<void> {
+export async function verifyFontRecipe(
+  manifest: FontManifest,
+  root: string,
+): Promise<void> {
   const stale = await staleFontRecipe(manifest, root);
-  if (stale) throw new Error(`Stale font recipe for ${stale}; run pnpm fonts:generate.`);
+  if (stale)
+    throw new Error(`Stale font recipe for ${stale}; run pnpm fonts:generate.`);
 }

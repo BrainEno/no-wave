@@ -144,7 +144,8 @@ export function portableStackEnvironment(
   options: StackOptions,
   role: "api" | "web" | "worker",
 ): Record<string, string> {
-  const postgres = typeof options.databaseUrl === "string" && options.databaseUrl.length > 0;
+  const postgres =
+    typeof options.databaseUrl === "string" && options.databaseUrl.length > 0;
   const common: Record<string, string> = {
     DATABASE_PROVIDER: postgres ? "postgres" : "sqlite",
     AUTH_JWT_SECRET: options.jwtSecret,
@@ -159,8 +160,17 @@ export function portableStackEnvironment(
   }
 
   if (role === "api") {
-    return { ...common, PORT: String(options.apiPort), HOST: "127.0.0.1",
-      ...(options.clientAddressSecret ? { BFF_CLIENT_ADDRESS_SECRET: options.clientAddressSecret, TRUSTED_PROXY_HOPS: "0" } : {}) };
+    return {
+      ...common,
+      PORT: String(options.apiPort),
+      HOST: "127.0.0.1",
+      ...(options.clientAddressSecret
+        ? {
+            BFF_CLIENT_ADDRESS_SECRET: options.clientAddressSecret,
+            TRUSTED_PROXY_HOPS: "0",
+          }
+        : {}),
+    };
   }
   if (role === "worker") {
     // The worker talks to the database only; it never listens (metrics stay off
@@ -172,13 +182,20 @@ export function portableStackEnvironment(
     PORT: String(options.webPort),
     HOST: "127.0.0.1",
     API_BASE_URL: `http://127.0.0.1:${options.apiPort}`,
-    ...(options.clientAddressSecret ? { BFF_CLIENT_ADDRESS_SECRET: options.clientAddressSecret, WEB_TRUSTED_PROXY_HOPS: "0" } : {}),
+    ...(options.clientAddressSecret
+      ? {
+          BFF_CLIENT_ADDRESS_SECRET: options.clientAddressSecret,
+          WEB_TRUSTED_PROXY_HOPS: "0",
+        }
+      : {}),
     SITE_URL: options.siteUrl,
   };
 }
 
 /** The complete environment a child process gets: OS minimum plus its role. */
-export function childEnvironment(roleEnvironment: Record<string, string>): Record<string, string> {
+export function childEnvironment(
+  roleEnvironment: Record<string, string>,
+): Record<string, string> {
   const inherited: Record<string, string> = {};
   for (const name of INHERITED_VARIABLES) {
     const value = process.env[name];
@@ -245,12 +262,18 @@ function spawnManaged(
   return managed;
 }
 
-async function waitForHttp(url: string, timeoutMs: number, processes: ManagedProcess[]): Promise<void> {
+async function waitForHttp(
+  url: string,
+  timeoutMs: number,
+  processes: ManagedProcess[],
+): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     for (const managed of processes) {
       if (managed.child.exitCode !== null) {
-        throw new Error(`${managed.role} exited early (${managed.child.exitCode}):\n${managed.output.join("")}`);
+        throw new Error(
+          `${managed.role} exited early (${managed.child.exitCode}):\n${managed.output.join("")}`,
+        );
       }
     }
     try {
@@ -275,7 +298,11 @@ function runOnce(
     const managed = spawnManaged(role, command, cwd, env);
     const timer = setTimeout(() => {
       managed.child.kill("SIGTERM");
-      reject(new Error(`${role} timed out after ${timeoutMs} ms:\n${managed.output.join("")}`));
+      reject(
+        new Error(
+          `${role} timed out after ${timeoutMs} ms:\n${managed.output.join("")}`,
+        ),
+      );
     }, timeoutMs);
     managed.child.once("exit", (code) => {
       clearTimeout(timer);
@@ -294,7 +321,9 @@ function runOnce(
  * The build is part of the command on purpose: `stack:start` has to work from a
  * clean checkout, where no `apps/web-rr/build` exists yet.
  */
-export async function startPortableStack(options: StackOptions): Promise<PortableStack> {
+export async function startPortableStack(
+  options: StackOptions,
+): Promise<PortableStack> {
   const root = options.repositoryRoot;
   const build = await runOnce(
     "migrate",
@@ -303,7 +332,8 @@ export async function startPortableStack(options: StackOptions): Promise<Portabl
     childEnvironment(portableStackEnvironment(options, "web")),
     300_000,
   );
-  if (build.code !== 0) throw new Error(`The Web build failed:\n${build.output}`);
+  if (build.code !== 0)
+    throw new Error(`The Web build failed:\n${build.output}`);
 
   const migrate = await runOnce(
     "migrate",
@@ -312,7 +342,8 @@ export async function startPortableStack(options: StackOptions): Promise<Portabl
     childEnvironment(portableStackEnvironment(options, "api")),
     120_000,
   );
-  if (migrate.code !== 0) throw new Error(`The database migration failed:\n${migrate.output}`);
+  if (migrate.code !== 0)
+    throw new Error(`The database migration failed:\n${migrate.output}`);
 
   // Cold start is measured from the spawn, because that is what a host does to
   // a sleeping instance: start the process and wait for it to answer.
@@ -335,7 +366,8 @@ export async function startPortableStack(options: StackOptions): Promise<Portabl
     ),
   );
 
-  const postgres = typeof options.databaseUrl === "string" && options.databaseUrl.length > 0;
+  const postgres =
+    typeof options.databaseUrl === "string" && options.databaseUrl.length > 0;
   if (options.worker === true && postgres) {
     processes.push(
       spawnManaged(
@@ -401,22 +433,32 @@ async function step(
   }
 }
 
-function dataOf(payload: Record<string, unknown> | null): Record<string, unknown> | null {
+function dataOf(
+  payload: Record<string, unknown> | null,
+): Record<string, unknown> | null {
   const data = payload?.data;
-  return typeof data === "object" && data !== null ? (data as Record<string, unknown>) : null;
+  return typeof data === "object" && data !== null
+    ? (data as Record<string, unknown>)
+    : null;
 }
 
 /** `Set-Cookie` as a request header, in the shape every browser sends it back. */
 function cookieHeader(response: Response): string {
   const cookies = response.headers.getSetCookie?.() ?? [];
-  const pairs = cookies.map((cookie) => cookie.split(";")[0] ?? "").filter((pair) => pair.length > 0);
+  const pairs = cookies
+    .map((cookie) => cookie.split(";")[0] ?? "")
+    .filter((pair) => pair.length > 0);
   return pairs.join("; ");
 }
 
 const TIMEOUT_MS = 20_000;
 
 async function request(url: string, init: RequestInit = {}): Promise<Response> {
-  return fetch(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS), redirect: "manual" });
+  return fetch(url, {
+    ...init,
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+    redirect: "manual",
+  });
 }
 
 /**
@@ -426,10 +468,14 @@ async function request(url: string, init: RequestInit = {}): Promise<Response> {
  * imported, so this probe verifies a SQLite file and a managed PostgreSQL
  * instance exactly the same way.
  */
-export async function probePortableStack(stack: PortableStack): Promise<CheckResult[]> {
+export async function probePortableStack(
+  stack: PortableStack,
+): Promise<CheckResult[]> {
   const { apiBaseUrl, webBaseUrl } = stack;
   const results: CheckResult[] = [];
-  const postgres = typeof stack.options.databaseUrl === "string" && stack.options.databaseUrl.length > 0;
+  const postgres =
+    typeof stack.options.databaseUrl === "string" &&
+    stack.options.databaseUrl.length > 0;
   const identity = {
     email: `portable-${Date.now().toString(36)}@example.test`,
     password: "portable-stack-password",
@@ -439,243 +485,451 @@ export async function probePortableStack(stack: PortableStack): Promise<CheckRes
     password: "portable-stack-password",
   };
 
-  await step("api.health", "API process answers", async () => {
-    const response = await request(`${apiBaseUrl}/health`);
-    return response.status === 200
-      ? { status: "pass", detail: "GET /health → 200" }
-      : { status: "fail", detail: `GET /health → ${response.status}`, remedy: "Start the API with the documented DATABASE_* and AUTH_JWT_* variables." };
-  }, results);
+  await step(
+    "api.health",
+    "API process answers",
+    async () => {
+      const response = await request(`${apiBaseUrl}/health`);
+      return response.status === 200
+        ? { status: "pass", detail: "GET /health → 200" }
+        : {
+            status: "fail",
+            detail: `GET /health → ${response.status}`,
+            remedy:
+              "Start the API with the documented DATABASE_* and AUTH_JWT_* variables.",
+          };
+    },
+    results,
+  );
 
-  await step("api.ready", "API reached the database", async () => {
-    const response = await request(`${apiBaseUrl}/ready`);
-    return response.status === 200
-      ? { status: "pass", detail: "GET /ready → 200" }
-      : { status: "fail", detail: `GET /ready → ${response.status}`, remedy: "The migrations did not run, or the database is unreachable." };
-  }, results);
+  await step(
+    "api.ready",
+    "API reached the database",
+    async () => {
+      const response = await request(`${apiBaseUrl}/ready`);
+      return response.status === 200
+        ? { status: "pass", detail: "GET /ready → 200" }
+        : {
+            status: "fail",
+            detail: `GET /ready → ${response.status}`,
+            remedy:
+              "The migrations did not run, or the database is unreachable.",
+          };
+    },
+    results,
+  );
 
-  await step("web.home", "Web app renders server-side", async () => {
-    const response = await request(`${webBaseUrl}/`);
-    const body = await response.text();
-    if (response.status !== 200) return { status: "fail", detail: `GET / → ${response.status}` };
-    if (!/<title>/.test(body)) return { status: "fail", detail: "the home page has no <title>" };
-    if (!/class="nw-pill"/.test(body)) return { status: "fail", detail: "the page rendered without the site shell" };
-    return { status: "pass", detail: "GET / → 200 with a title and the site shell" };
-  }, results);
+  await step(
+    "web.home",
+    "Web app renders server-side",
+    async () => {
+      const response = await request(`${webBaseUrl}/`);
+      const body = await response.text();
+      if (response.status !== 200)
+        return { status: "fail", detail: `GET / → ${response.status}` };
+      if (!/<title>/.test(body))
+        return { status: "fail", detail: "the home page has no <title>" };
+      if (!/class="nw-pill"/.test(body))
+        return {
+          status: "fail",
+          detail: "the page rendered without the site shell",
+        };
+      return {
+        status: "pass",
+        detail: "GET / → 200 with a title and the site shell",
+      };
+    },
+    results,
+  );
 
   let authorCookies = "";
   let authorId = "";
   let readerToken = "";
   let readerCookies = "";
 
-  await step("identity.register", "Registration against the API", async () => {
-    const response = await request(`${apiBaseUrl}/api/v1/auth/register`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(identity),
-    });
-    const data = dataOf(await readJson(response));
-    const accessToken = typeof data?.accessToken === "string" ? data.accessToken : "";
-    if (response.status !== 201 || accessToken.length === 0) {
-      return { status: "fail", detail: `POST /api/v1/auth/register → ${response.status}` };
-    }
-    const profile = await request(`${apiBaseUrl}/api/v1/me/profile`, {
-      method: "PUT",
-      headers: { "content-type": "application/json", authorization: `Bearer ${accessToken}`, origin: apiBaseUrl },
-      body: JSON.stringify({ displayName: "可移植作者", bio: "标准 Node 进程里创建的账号。", locale: "zh-CN" }),
-    });
-    if (profile.status !== 200) {
-      return { status: "fail", detail: `the account registered but PUT /api/v1/me/profile → ${profile.status}` };
-    }
-    const second = await request(`${apiBaseUrl}/api/v1/auth/register`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(reader),
-    });
-    if (second.status !== 201) return { status: "fail", detail: `the second account → ${second.status}` };
-    const readerData = dataOf(await readJson(second));
-    readerToken = typeof readerData?.accessToken === "string" ? readerData.accessToken : "";
-    if (readerToken.length === 0) return { status: "fail", detail: "the second account registered without an access token" };
+  await step(
+    "identity.register",
+    "Registration against the API",
+    async () => {
+      const response = await request(`${apiBaseUrl}/api/v1/auth/register`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(identity),
+      });
+      const data = dataOf(await readJson(response));
+      const accessToken =
+        typeof data?.accessToken === "string" ? data.accessToken : "";
+      if (response.status !== 201 || accessToken.length === 0) {
+        return {
+          status: "fail",
+          detail: `POST /api/v1/auth/register → ${response.status}`,
+        };
+      }
+      const profile = await request(`${apiBaseUrl}/api/v1/me/profile`, {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${accessToken}`,
+          origin: apiBaseUrl,
+        },
+        body: JSON.stringify({
+          displayName: "可移植作者",
+          bio: "标准 Node 进程里创建的账号。",
+          locale: "zh-CN",
+        }),
+      });
+      if (profile.status !== 200) {
+        return {
+          status: "fail",
+          detail: `the account registered but PUT /api/v1/me/profile → ${profile.status}`,
+        };
+      }
+      const second = await request(`${apiBaseUrl}/api/v1/auth/register`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(reader),
+      });
+      if (second.status !== 201)
+        return {
+          status: "fail",
+          detail: `the second account → ${second.status}`,
+        };
+      const readerData = dataOf(await readJson(second));
+      readerToken =
+        typeof readerData?.accessToken === "string"
+          ? readerData.accessToken
+          : "";
+      if (readerToken.length === 0)
+        return {
+          status: "fail",
+          detail: "the second account registered without an access token",
+        };
 
-    // The author's user id is what a direct message is addressed to; the outbox
-    // carries conversation messages, not comments.
-    const me = await request(`${apiBaseUrl}/api/v1/me`, { headers: { authorization: `Bearer ${accessToken}` } });
-    const meData = dataOf(await readJson(me));
-    const id = typeof meData?.id === "string" ? meData.id : "";
-    if (me.status !== 200 || id.length === 0) {
-      return { status: "fail", detail: `GET /api/v1/me → ${me.status} (no user id)` };
-    }
-    authorId = id;
-    return { status: "pass", detail: "two accounts registered and the author's profile was created" };
-  }, results);
+      // The author's user id is what a direct message is addressed to; the outbox
+      // carries conversation messages, not comments.
+      const me = await request(`${apiBaseUrl}/api/v1/me`, {
+        headers: { authorization: `Bearer ${accessToken}` },
+      });
+      const meData = dataOf(await readJson(me));
+      const id = typeof meData?.id === "string" ? meData.id : "";
+      if (me.status !== 200 || id.length === 0) {
+        return {
+          status: "fail",
+          detail: `GET /api/v1/me → ${me.status} (no user id)`,
+        };
+      }
+      authorId = id;
+      return {
+        status: "pass",
+        detail: "two accounts registered and the author's profile was created",
+      };
+    },
+    results,
+  );
 
-  await step("web.auth", "Web auth proxy sets HttpOnly cookies", async () => {
-    const response = await request(`${webBaseUrl}/api/auth/login`, {
-      method: "POST",
-      headers: { "content-type": "application/json", origin: webBaseUrl },
-      body: JSON.stringify(identity),
-    });
-    const body = await response.text();
-    const cookies = cookieHeader(response);
-    if (response.status !== 200 || cookies.length === 0) {
-      return { status: "fail", detail: `POST /api/auth/login → ${response.status} (no cookie)`, remedy: "The Web tier needs API_BASE_URL; it cannot inherit a platform binding." };
-    }
-    if (/"accessToken"/.test(body)) {
-      return { status: "fail", detail: "the response carried a token; cookies only" };
-    }
-    authorCookies = cookies;
-    const session = await request(`${webBaseUrl}/api/authoring/session`, { headers: { cookie: cookies } });
-    if (session.status !== 200) return { status: "fail", detail: `GET /api/authoring/session → ${session.status}` };
-    return { status: "pass", detail: "login set HttpOnly cookies, the session resolves, no token in the body" };
-  }, results);
+  await step(
+    "web.auth",
+    "Web auth proxy sets HttpOnly cookies",
+    async () => {
+      const response = await request(`${webBaseUrl}/api/auth/login`, {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: webBaseUrl },
+        body: JSON.stringify(identity),
+      });
+      const body = await response.text();
+      const cookies = cookieHeader(response);
+      if (response.status !== 200 || cookies.length === 0) {
+        return {
+          status: "fail",
+          detail: `POST /api/auth/login → ${response.status} (no cookie)`,
+          remedy:
+            "The Web tier needs API_BASE_URL; it cannot inherit a platform binding.",
+        };
+      }
+      if (/"accessToken"/.test(body)) {
+        return {
+          status: "fail",
+          detail: "the response carried a token; cookies only",
+        };
+      }
+      authorCookies = cookies;
+      const session = await request(`${webBaseUrl}/api/authoring/session`, {
+        headers: { cookie: cookies },
+      });
+      if (session.status !== 200)
+        return {
+          status: "fail",
+          detail: `GET /api/authoring/session → ${session.status}`,
+        };
+      return {
+        status: "pass",
+        detail:
+          "login set HttpOnly cookies, the session resolves, no token in the body",
+      };
+    },
+    results,
+  );
 
   let slug = "";
-  await step("web.authoring", "Writing desk publishes through the Web tier", async () => {
-    const created = await request(`${webBaseUrl}/api/authoring/articles`, {
-      method: "POST",
-      headers: { "content-type": "application/json", origin: webBaseUrl, cookie: authorCookies },
-      body: JSON.stringify({
-        title: "标准 Node 上的一篇文章",
-        contentBlocksVersion: 0,
-        // The application-owned block document: an `id` per block, plain text at
-        // version 0, no Lexical in sight.
-        contentBlocks: [{ id: "portable-1", type: "paragraph", text: "这一段用来验证发布链路：从写作台到公开页面。" }],
-        publish: true,
-      }),
-    });
-    // Read the body once: a `Response` can only be consumed one way, and the
-    // failure message needs the same bytes the success path parses.
-    const body = await created.text();
-    const data = dataOf(parseJson(body));
-    const value = typeof data?.slug === "string" ? data.slug : "";
-    if (created.status !== 201 || value.length === 0) {
+  await step(
+    "web.authoring",
+    "Writing desk publishes through the Web tier",
+    async () => {
+      const created = await request(`${webBaseUrl}/api/authoring/articles`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: webBaseUrl,
+          cookie: authorCookies,
+        },
+        body: JSON.stringify({
+          title: "标准 Node 上的一篇文章",
+          contentBlocksVersion: 0,
+          // The application-owned block document: an `id` per block, plain text at
+          // version 0, no Lexical in sight.
+          contentBlocks: [
+            {
+              id: "portable-1",
+              type: "paragraph",
+              text: "这一段用来验证发布链路：从写作台到公开页面。",
+            },
+          ],
+          publish: true,
+        }),
+      });
+      // Read the body once: a `Response` can only be consumed one way, and the
+      // failure message needs the same bytes the success path parses.
+      const body = await created.text();
+      const data = dataOf(parseJson(body));
+      const value = typeof data?.slug === "string" ? data.slug : "";
+      if (created.status !== 201 || value.length === 0) {
+        return {
+          status: "fail",
+          detail: `POST /api/authoring/articles → ${created.status} ${body.slice(0, 200)}`,
+          remedy:
+            "The authoring proxy needs API_BASE_URL and a session cookie scoped to /api/authoring.",
+        };
+      }
+      slug = value;
+      return { status: "pass", detail: `published /articles/${value}` };
+    },
+    results,
+  );
+
+  await step(
+    "web.article",
+    "The published page is server-rendered HTML",
+    async () => {
+      if (slug.length === 0)
+        return { status: "skip", detail: "no article was published" };
+      const response = await request(`${webBaseUrl}/articles/${slug}`);
+      const body = await response.text();
+      if (response.status !== 200)
+        return {
+          status: "fail",
+          detail: `GET /articles/${slug} → ${response.status}`,
+        };
+      if (!body.includes("标准 Node 上的一篇文章")) {
+        return {
+          status: "fail",
+          detail: "the page rendered without the article body",
+        };
+      }
       return {
-        status: "fail",
-        detail: `POST /api/authoring/articles → ${created.status} ${body.slice(0, 200)}`,
-        remedy: "The authoring proxy needs API_BASE_URL and a session cookie scoped to /api/authoring.",
+        status: "pass",
+        detail: `GET /articles/${slug} → 200 with the title and body in the HTML`,
       };
-    }
-    slug = value;
-    return { status: "pass", detail: `published /articles/${value}` };
-  }, results);
+    },
+    results,
+  );
 
-  await step("web.article", "The published page is server-rendered HTML", async () => {
-    if (slug.length === 0) return { status: "skip", detail: "no article was published" };
-    const response = await request(`${webBaseUrl}/articles/${slug}`);
-    const body = await response.text();
-    if (response.status !== 200) return { status: "fail", detail: `GET /articles/${slug} → ${response.status}` };
-    if (!body.includes("标准 Node 上的一篇文章")) {
-      return { status: "fail", detail: "the page rendered without the article body" };
-    }
-    return { status: "pass", detail: `GET /articles/${slug} → 200 with the title and body in the HTML` };
-  }, results);
-
-  await step("web.comments", "A second reader comments through the Web tier", async () => {
-    if (slug.length === 0) return { status: "skip", detail: "no article was published" };
-    const login = await request(`${webBaseUrl}/api/auth/login`, {
-      method: "POST",
-      headers: { "content-type": "application/json", origin: webBaseUrl },
-      body: JSON.stringify(reader),
-    });
-    readerCookies = cookieHeader(login);
-    if (login.status !== 200) return { status: "fail", detail: `the reader could not sign in (${login.status})` };
-    const posted = await request(`${webBaseUrl}/api/articles/${slug}/comments`, {
-      method: "POST",
-      headers: { "content-type": "application/json", origin: webBaseUrl, cookie: readerCookies },
-      body: JSON.stringify({ content: "这篇是在可移植栈里发出的评论。" }),
-    });
-    if (posted.status !== 201) {
-      return { status: "fail", detail: `POST /api/articles/${slug}/comments → ${posted.status}` };
-    }
-    const listed = await request(`${webBaseUrl}/api/articles/${slug}/comments`);
-    const body = await listed.text();
-    if (!body.includes("这篇是在可移植栈里发出的评论。")) {
-      return { status: "fail", detail: "the comment was created but is not readable" };
-    }
-    return { status: "pass", detail: "comment created and read back through the same-origin proxy" };
-  }, results);
+  await step(
+    "web.comments",
+    "A second reader comments through the Web tier",
+    async () => {
+      if (slug.length === 0)
+        return { status: "skip", detail: "no article was published" };
+      const login = await request(`${webBaseUrl}/api/auth/login`, {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: webBaseUrl },
+        body: JSON.stringify(reader),
+      });
+      readerCookies = cookieHeader(login);
+      if (login.status !== 200)
+        return {
+          status: "fail",
+          detail: `the reader could not sign in (${login.status})`,
+        };
+      const posted = await request(
+        `${webBaseUrl}/api/articles/${slug}/comments`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            origin: webBaseUrl,
+            cookie: readerCookies,
+          },
+          body: JSON.stringify({ content: "这篇是在可移植栈里发出的评论。" }),
+        },
+      );
+      if (posted.status !== 201) {
+        return {
+          status: "fail",
+          detail: `POST /api/articles/${slug}/comments → ${posted.status}`,
+        };
+      }
+      const listed = await request(
+        `${webBaseUrl}/api/articles/${slug}/comments`,
+      );
+      const body = await listed.text();
+      if (!body.includes("这篇是在可移植栈里发出的评论。")) {
+        return {
+          status: "fail",
+          detail: "the comment was created but is not readable",
+        };
+      }
+      return {
+        status: "pass",
+        detail: "comment created and read back through the same-origin proxy",
+      };
+    },
+    results,
+  );
 
   /** The author's inbox, read through the Web tier's same-origin proxy. */
   const inboxCount = async (): Promise<number> => {
-    const response = await request(`${webBaseUrl}/api/authoring/notifications`, { headers: { cookie: authorCookies } });
+    const response = await request(
+      `${webBaseUrl}/api/authoring/notifications`,
+      { headers: { cookie: authorCookies } },
+    );
     if (response.status !== 200) return -1;
     const data = dataOf(await readJson(response));
     return Array.isArray(data?.notifications) ? data.notifications.length : -1;
   };
 
-  await step("outbox.drain", "Notification outbox drains outside the Web server", async () => {
-    if (!postgres) {
-      return {
-        status: "skip",
-        detail: "the durable outbox is a PostgreSQL table; set DATABASE_URL to include this path",
-      };
-    }
-    if (authorId.length === 0 || readerToken.length === 0) {
-      return { status: "fail", detail: "the registration step did not record both accounts" };
-    }
-    // The durable outbox carries `message.created` events — direct messages, not
-    // comments — so the reader opens a conversation with the author and writes
-    // into it. Both writes require an Idempotency-Key: opening a conversation is
-    // not idempotent.
-    const opened = await request(`${apiBaseUrl}/api/v1/conversations`, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${readerToken}`, "idempotency-key": "portable-stack-conversation" },
-      body: JSON.stringify({ participantIds: [authorId] }),
-    });
-    const openedData = dataOf(await readJson(opened));
-    const conversationId = typeof openedData?.id === "string" ? openedData.id : "";
-    if (opened.status !== 201 || conversationId.length === 0) {
-      return { status: "fail", detail: `POST /api/v1/conversations → ${opened.status} ${openedData ? JSON.stringify(openedData).slice(0, 200) : ""}` };
-    }
-    const message = await request(`${apiBaseUrl}/api/v1/conversations/${encodeURIComponent(conversationId)}/messages`, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${readerToken}`, "idempotency-key": "portable-stack-message" },
-      body: JSON.stringify({ body: "这条私信用来验证通知外箱：它必须由 Web 之外的进程投递。" }),
-    });
-    if (message.status !== 201) {
-      return { status: "fail", detail: `POST /api/v1/conversations/:id/messages → ${message.status}`, remedy: "The outbox is written inside the message transaction; check the PostgreSQL insert." };
-    }
+  await step(
+    "outbox.drain",
+    "Notification outbox drains outside the Web server",
+    async () => {
+      if (!postgres) {
+        return {
+          status: "skip",
+          detail:
+            "the durable outbox is a PostgreSQL table; set DATABASE_URL to include this path",
+        };
+      }
+      if (authorId.length === 0 || readerToken.length === 0) {
+        return {
+          status: "fail",
+          detail: "the registration step did not record both accounts",
+        };
+      }
+      // The durable outbox carries `message.created` events — direct messages, not
+      // comments — so the reader opens a conversation with the author and writes
+      // into it. Both writes require an Idempotency-Key: opening a conversation is
+      // not idempotent.
+      const opened = await request(`${apiBaseUrl}/api/v1/conversations`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${readerToken}`,
+          "idempotency-key": "portable-stack-conversation",
+        },
+        body: JSON.stringify({ participantIds: [authorId] }),
+      });
+      const openedData = dataOf(await readJson(opened));
+      const conversationId =
+        typeof openedData?.id === "string" ? openedData.id : "";
+      if (opened.status !== 201 || conversationId.length === 0) {
+        return {
+          status: "fail",
+          detail: `POST /api/v1/conversations → ${opened.status} ${openedData ? JSON.stringify(openedData).slice(0, 200) : ""}`,
+        };
+      }
+      const message = await request(
+        `${apiBaseUrl}/api/v1/conversations/${encodeURIComponent(conversationId)}/messages`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${readerToken}`,
+            "idempotency-key": "portable-stack-message",
+          },
+          body: JSON.stringify({
+            body: "这条私信用来验证通知外箱：它必须由 Web 之外的进程投递。",
+          }),
+        },
+      );
+      if (message.status !== 201) {
+        return {
+          status: "fail",
+          detail: `POST /api/v1/conversations/:id/messages → ${message.status}`,
+          remedy:
+            "The outbox is written inside the message transaction; check the PostgreSQL insert.",
+        };
+      }
 
-    const inboxBefore = await inboxCount();
-    const drain = await runOnce(
-      "drain",
-      [process.execPath, "src/persistence/notification-drain.ts"],
-      join(stack.options.repositoryRoot, "apps/api"),
-      childEnvironment(portableStackEnvironment(stack.options, "worker")),
-      60_000,
-    );
-    if (drain.code !== 0) return { status: "fail", detail: `the drain exited ${drain.code}:\n${drain.output}` };
-    const inboxAfter = await inboxCount();
-    if (inboxAfter === 0) {
+      const inboxBefore = await inboxCount();
+      const drain = await runOnce(
+        "drain",
+        [process.execPath, "src/persistence/notification-drain.ts"],
+        join(stack.options.repositoryRoot, "apps/api"),
+        childEnvironment(portableStackEnvironment(stack.options, "worker")),
+        60_000,
+      );
+      if (drain.code !== 0)
+        return {
+          status: "fail",
+          detail: `the drain exited ${drain.code}:\n${drain.output}`,
+        };
+      const inboxAfter = await inboxCount();
+      if (inboxAfter === 0) {
+        return {
+          status: "fail",
+          detail: `the drain ran but the author's inbox is empty (before: ${inboxBefore})`,
+          remedy:
+            "The outbox only carries message.created events; check OUTBOX_* bounds, the lease and the drain deadline.",
+        };
+      }
       return {
-        status: "fail",
-        detail: `the drain ran but the author's inbox is empty (before: ${inboxBefore})`,
-        remedy: "The outbox only carries message.created events; check OUTBOX_* bounds, the lease and the drain deadline.",
+        status: "pass",
+        detail: `one drain delivered the direct message: the author's inbox went from ${inboxBefore} to ${inboxAfter} notice(s), outside the Web server`,
       };
-    }
-    return {
-      status: "pass",
-      detail: `one drain delivered the direct message: the author's inbox went from ${inboxBefore} to ${inboxAfter} notice(s), outside the Web server`,
-    };
-  }, results);
+    },
+    results,
+  );
 
-  await step("no-platform", "No platform binding is present", async () => {
-    const leaked = PLATFORM_VARIABLES.filter((name) => {
-      const value = childEnvironment(portableStackEnvironment(stack.options, "web"))[name];
-      return typeof value === "string" && value.length > 0;
-    });
-    if (leaked.length > 0) {
-      return { status: "fail", detail: `${leaked.join(", ")} reached the Web process` };
-    }
-    return {
-      status: "pass",
-      detail: `${PLATFORM_VARIABLES.length} platform variables absent; the Web tier resolves the API through API_BASE_URL alone`,
-    };
-  }, results);
+  await step(
+    "no-platform",
+    "No platform binding is present",
+    async () => {
+      const leaked = PLATFORM_VARIABLES.filter((name) => {
+        const value = childEnvironment(
+          portableStackEnvironment(stack.options, "web"),
+        )[name];
+        return typeof value === "string" && value.length > 0;
+      });
+      if (leaked.length > 0) {
+        return {
+          status: "fail",
+          detail: `${leaked.join(", ")} reached the Web process`,
+        };
+      }
+      return {
+        status: "pass",
+        detail: `${PLATFORM_VARIABLES.length} platform variables absent; the Web tier resolves the API through API_BASE_URL alone`,
+      };
+    },
+    results,
+  );
 
   return results;
 }
 
-export function formatReport(results: CheckResult[], stack: PortableStack): string {
+export function formatReport(
+  results: CheckResult[],
+  stack: PortableStack,
+): string {
   const passed = results.filter((result) => result.status === "pass").length;
   const failed = results.filter((result) => result.status === "fail").length;
   const skipped = results.filter((result) => result.status === "skip").length;
@@ -688,16 +942,28 @@ export function formatReport(results: CheckResult[], stack: PortableStack): stri
     "",
   ];
   for (const result of results) {
-    const marker = result.status === "pass" ? "[pass]" : result.status === "fail" ? "[FAIL]" : "[skip]";
+    const marker =
+      result.status === "pass"
+        ? "[pass]"
+        : result.status === "fail"
+          ? "[FAIL]"
+          : "[skip]";
     const timing = result.status === "skip" ? "" : ` (${result.durationMs} ms)`;
-    lines.push(`${marker} ${result.id.padEnd(18)} ${result.title}${timing}`, `       ${result.detail}`);
+    lines.push(
+      `${marker} ${result.id.padEnd(18)} ${result.title}${timing}`,
+      `       ${result.detail}`,
+    );
     if (result.remedy) lines.push(`       -> ${result.remedy}`);
   }
   lines.push("", `${passed} passed, ${failed} failed, ${skipped} skipped`);
   if (failed === 0 && passed > 0) {
-    lines.push("The stack runs on standard Node.js with only the documented environment variables.");
+    lines.push(
+      "The stack runs on standard Node.js with only the documented environment variables.",
+    );
   } else if (failed > 0) {
-    lines.push("Fix the [FAIL] entries first; they are ordered from the lowest layer to the highest.");
+    lines.push(
+      "Fix the [FAIL] entries first; they are ordered from the lowest layer to the highest.",
+    );
   }
   return lines.join("\n");
 }
@@ -711,7 +977,9 @@ export type StackArguments = {
   databasePath: string | null;
 };
 
-export function parseArguments(argv: readonly string[]): { args: StackArguments } | { error: string } {
+export function parseArguments(
+  argv: readonly string[],
+): { args: StackArguments } | { error: string } {
   let keep = false;
   let json = false;
   let worker = false;
@@ -721,9 +989,14 @@ export function parseArguments(argv: readonly string[]): { args: StackArguments 
     if (argument === "--keep") keep = true;
     else if (argument === "--json") json = true;
     else if (argument === "--worker") worker = true;
-    else if (argument.startsWith("--database-url=")) databaseUrl = argument.slice("--database-url=".length);
-    else if (argument.startsWith("--database-path=")) databasePath = argument.slice("--database-path=".length);
-    else return { error: `Unknown argument: ${argument}\nUsage: pnpm stack:check [--keep] [--json] [--worker] [--database-url=DSN] [--database-path=FILE]` };
+    else if (argument.startsWith("--database-url="))
+      databaseUrl = argument.slice("--database-url=".length);
+    else if (argument.startsWith("--database-path="))
+      databasePath = argument.slice("--database-path=".length);
+    else
+      return {
+        error: `Unknown argument: ${argument}\nUsage: pnpm stack:check [--keep] [--json] [--worker] [--database-url=DSN] [--database-path=FILE]`,
+      };
   }
   return { args: { keep, json, worker, databaseUrl, databasePath } };
 }
@@ -749,15 +1022,22 @@ export function resolveJwtSecret(
   return randomBytes(48).toString("hex");
 }
 
-export async function defaultOptions(overrides: Partial<StackOptions> = {}): Promise<StackOptions> {
-  const secret = resolveJwtSecret(process.env, (message) => process.stdout.write(`${message}\n`));
+export async function defaultOptions(
+  overrides: Partial<StackOptions> = {},
+): Promise<StackOptions> {
+  const secret = resolveJwtSecret(process.env, (message) =>
+    process.stdout.write(`${message}\n`),
+  );
   // A documented `DATABASE_PATH` is honoured; otherwise every run gets a
   // throwaway file so two stacks — or one developer and one CI job — never
   // share state by accident.
-  const configuredPath = typeof process.env.DATABASE_PATH === "string" && process.env.DATABASE_PATH.length > 0
-    ? process.env.DATABASE_PATH
-    : "";
-  const databasePath = overrides.databasePath ??
+  const configuredPath =
+    typeof process.env.DATABASE_PATH === "string" &&
+    process.env.DATABASE_PATH.length > 0
+      ? process.env.DATABASE_PATH
+      : "";
+  const databasePath =
+    overrides.databasePath ??
     (configuredPath.length > 0
       ? configuredPath
       : `${await mkdtemp(join(tmpdir(), "no-wave-portable-"))}/stack.sqlite`);
@@ -765,13 +1045,19 @@ export async function defaultOptions(overrides: Partial<StackOptions> = {}): Pro
     apiPort: overrides.apiPort ?? (await freePort()),
     webPort: overrides.webPort ?? (await freePort()),
     databasePath,
-    ...(overrides.databaseUrl !== undefined ? { databaseUrl: overrides.databaseUrl } : {}),
-    ...(typeof process.env.DATABASE_URL === "string" && process.env.DATABASE_URL.length > 0
+    ...(overrides.databaseUrl !== undefined
+      ? { databaseUrl: overrides.databaseUrl }
+      : {}),
+    ...(typeof process.env.DATABASE_URL === "string" &&
+    process.env.DATABASE_URL.length > 0
       ? { databaseUrl: process.env.DATABASE_URL }
       : {}),
     siteUrl: overrides.siteUrl ?? "http://127.0.0.1:3100",
     jwtSecret: secret,
-    clientAddressSecret: overrides.clientAddressSecret ?? process.env.BFF_CLIENT_ADDRESS_SECRET ?? randomBytes(32).toString("hex"),
+    clientAddressSecret:
+      overrides.clientAddressSecret ??
+      process.env.BFF_CLIENT_ADDRESS_SECRET ??
+      randomBytes(32).toString("hex"),
     repositoryRoot: overrides.repositoryRoot ?? repositoryRoot(),
     ...(overrides.worker !== undefined ? { worker: overrides.worker } : {}),
   };
@@ -784,7 +1070,11 @@ export async function defaultOptions(overrides: Partial<StackOptions> = {}): Pro
  * cut at the first line break, which is exactly where the useful detail lives.
  */
 function escapeAnnotationData(value: string): string {
-  return value.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A").slice(0, 900);
+  return value
+    .replace(/%/g, "%25")
+    .replace(/\r/g, "%0D")
+    .replace(/\n/g, "%0A")
+    .slice(0, 900);
 }
 
 /**
@@ -793,23 +1083,34 @@ function escapeAnnotationData(value: string): string {
  * A red CI job whose reason is only in the log is a job nobody reads; an
  * annotation puts the failing step and its remedy on the pull request itself.
  */
-export function annotationLines(results: CheckResult[], message = ""): string[] {
+export function annotationLines(
+  results: CheckResult[],
+  message = "",
+): string[] {
   if (process.env.GITHUB_ACTIONS !== "true") return [];
   const lines: string[] = [];
   if (message.length > 0) {
-    lines.push(`::error title=portable-stack::${escapeAnnotationData(message)}`);
+    lines.push(
+      `::error title=portable-stack::${escapeAnnotationData(message)}`,
+    );
   }
   for (const result of results) {
     if (result.status === "pass") continue;
     const detail = `${result.detail}${result.remedy ? ` Remedy: ${result.remedy}` : ""}`;
     const level = result.status === "fail" ? "error" : "notice";
-    lines.push(`::${level} title=portable-stack/${result.id}::${escapeAnnotationData(detail)}`);
+    lines.push(
+      `::${level} title=portable-stack/${result.id}::${escapeAnnotationData(detail)}`,
+    );
   }
   return lines;
 }
 
-export function annotateResults(results: CheckResult[], message?: string): void {
-  for (const line of annotationLines(results, message ?? "")) process.stdout.write(`${line}\n`);
+export function annotateResults(
+  results: CheckResult[],
+  message?: string,
+): void {
+  for (const line of annotationLines(results, message ?? ""))
+    process.stdout.write(`${line}\n`);
 }
 
 async function main(): Promise<void> {
@@ -848,20 +1149,31 @@ async function main(): Promise<void> {
     const failed = results.filter((result) => result.status === "fail").length;
     annotateResults(results);
     if (args.json) {
-      process.stdout.write(`${JSON.stringify({ apiBaseUrl: stack.apiBaseUrl, webBaseUrl: stack.webBaseUrl, results }, null, 2)}\n`);
+      process.stdout.write(
+        `${JSON.stringify({ apiBaseUrl: stack.apiBaseUrl, webBaseUrl: stack.webBaseUrl, results }, null, 2)}\n`,
+      );
     } else {
       process.stdout.write(`${formatReport(results, stack)}\n`);
     }
     process.exitCode = failed === 0 ? 0 : 1;
   } finally {
     if (stack) await stopPortableStack(stack);
-    if (args.databasePath === null && options.databasePath.includes("no-wave-portable-")) {
-      await rm(options.databasePath.replace(/\/stack\.sqlite$/, ""), { recursive: true, force: true });
+    if (
+      args.databasePath === null &&
+      options.databasePath.includes("no-wave-portable-")
+    ) {
+      await rm(options.databasePath.replace(/\/stack\.sqlite$/, ""), {
+        recursive: true,
+        force: true,
+      });
     }
   }
 }
 
-if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === new URL(`file://${process.argv[1]}`).href
+) {
   main().catch((error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
     process.stderr.write(`The portable stack failed: ${message}\n`);

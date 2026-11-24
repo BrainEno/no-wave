@@ -20,7 +20,10 @@ const state = (page: Page): Promise<Engine> =>
   page.evaluate(() => (window as unknown as { __engine: Engine }).__engine);
 
 /** Each chunk is "spoken" for `endAfterMs`, long enough for the states between chunks to be seen. */
-export async function installEngine(page: Page, endAfterMs = 1_200): Promise<void> {
+export async function installEngine(
+  page: Page,
+  endAfterMs = 1_200,
+): Promise<void> {
   await page.addInitScript((delay) => {
     const engine: Engine = { spoken: [], cancelled: 0, paused: false };
     (window as unknown as { __engine: Engine }).__engine = engine;
@@ -29,9 +32,13 @@ export async function installEngine(page: Page, endAfterMs = 1_200): Promise<voi
       lang = "";
       onend: (() => void) | null = null;
       onerror: (() => void) | null = null;
-      constructor(text: string) { this.text = text; }
+      constructor(text: string) {
+        this.text = text;
+      }
     }
-    (window as unknown as { SpeechSynthesisUtterance: unknown }).SpeechSynthesisUtterance = FakeUtterance;
+    (
+      window as unknown as { SpeechSynthesisUtterance: unknown }
+    ).SpeechSynthesisUtterance = FakeUtterance;
     Object.defineProperty(window, "speechSynthesis", {
       configurable: true,
       value: {
@@ -39,9 +46,15 @@ export async function installEngine(page: Page, endAfterMs = 1_200): Promise<voi
           engine.spoken.push(utterance.text);
           setTimeout(() => utterance.onend?.(), delay);
         },
-        cancel(): void { engine.cancelled += 1; },
-        pause(): void { engine.paused = true; },
-        resume(): void { engine.paused = false; },
+        cancel(): void {
+          engine.cancelled += 1;
+        },
+        pause(): void {
+          engine.paused = true;
+        },
+        resume(): void {
+          engine.paused = false;
+        },
       },
     });
   }, endAfterMs);
@@ -50,8 +63,14 @@ export async function installEngine(page: Page, endAfterMs = 1_200): Promise<voi
 /** Take the engine away, the way a browser that cannot speak would. */
 export async function removeEngine(page: Page): Promise<void> {
   await page.addInitScript(() => {
-    Object.defineProperty(window, "speechSynthesis", { configurable: true, value: undefined });
-    Object.defineProperty(window, "SpeechSynthesisUtterance", { configurable: true, value: undefined });
+    Object.defineProperty(window, "speechSynthesis", {
+      configurable: true,
+      value: undefined,
+    });
+    Object.defineProperty(window, "SpeechSynthesisUtterance", {
+      configurable: true,
+      value: undefined,
+    });
   });
 }
 

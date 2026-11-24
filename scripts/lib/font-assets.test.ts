@@ -4,7 +4,13 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { applicationRepertoires, fontPartitions, literalCjkText, verifyFontRecipe, type Repertoires } from "../fonts/repertoires.ts";
+import {
+  applicationRepertoires,
+  fontPartitions,
+  literalCjkText,
+  verifyFontRecipe,
+  type Repertoires,
+} from "../fonts/repertoires.ts";
 import { FONT_SOURCES, fontSourceReceipt } from "../fonts/font-sources.ts";
 import {
   assertSubsetCoverage,
@@ -21,7 +27,8 @@ import {
   type FontManifest,
 } from "./font-assets.ts";
 
-const sha256 = (bytes: Uint8Array | string) => createHash("sha256").update(bytes).digest("hex");
+const sha256 = (bytes: Uint8Array | string) =>
+  createHash("sha256").update(bytes).digest("hex");
 
 function woff2(): Buffer {
   const bytes = Buffer.alloc(52);
@@ -35,25 +42,55 @@ function woff2(): Buffer {
 }
 
 function asset(bytes = woff2()): FontAsset {
-  return { file: "inter-tight-normal-common.woff2", source: "inter-tight", family: "Inter Tight",
-    style: "normal", weight: "400 700", unicodeRange: "U+20-7E", byteLength: bytes.length, sha256: sha256(bytes) };
+  return {
+    file: "inter-tight-normal-common.woff2",
+    source: "inter-tight",
+    family: "Inter Tight",
+    style: "normal",
+    weight: "400 700",
+    unicodeRange: "U+20-7E",
+    byteLength: bytes.length,
+    sha256: sha256(bytes),
+  };
 }
 
 function manifest(face = asset()): FontManifest {
-  return { version: 1, generator: "subset-font@2.9.0", sources: [{ id: "inter-tight",
-    blob: "7d64212163dc15e7f3de5487672668dbde589365", sha256: "a".repeat(64),
-    license: "inter-tight-OFL.txt", licenseSha256: sha256("SIL OPEN FONT LICENSE Version 1.1\nCopyright test"),
-    family: "Inter Tight", style: "normal", weights: ["400 700"], characterCount: 95,
-    coverageSha256: sha256(Array.from({ length: 95 }, (_, index) => index + 32).join(",")) }],
-    faces: [face] };
+  return {
+    version: 1,
+    generator: "subset-font@2.9.0",
+    sources: [
+      {
+        id: "inter-tight",
+        blob: "7d64212163dc15e7f3de5487672668dbde589365",
+        sha256: "a".repeat(64),
+        license: "inter-tight-OFL.txt",
+        licenseSha256: sha256(
+          "SIL OPEN FONT LICENSE Version 1.1\nCopyright test",
+        ),
+        family: "Inter Tight",
+        style: "normal",
+        weights: ["400 700"],
+        characterCount: 95,
+        coverageSha256: sha256(
+          Array.from({ length: 95 }, (_, index) => index + 32).join(","),
+        ),
+      },
+    ],
+    faces: [face],
+  };
 }
 
-async function fixture(work: (directory: string, data: FontManifest) => Promise<void>) {
+async function fixture(
+  work: (directory: string, data: FontManifest) => Promise<void>,
+) {
   const directory = await mkdtemp(join(tmpdir(), "no-wave-font-check-"));
   const data = manifest();
   try {
     await writeFile(join(directory, data.faces[0]!.file), woff2());
-    await writeFile(join(directory, data.sources[0]!.license), "SIL OPEN FONT LICENSE Version 1.1\nCopyright test");
+    await writeFile(
+      join(directory, data.sources[0]!.license),
+      "SIL OPEN FONT LICENSE Version 1.1\nCopyright test",
+    );
     await work(directory, data);
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -73,17 +110,43 @@ test("font preparation distinguishes an absent generated asset from a verified b
 });
 
 test("font preparation never regenerates over unowned files, bad licenses, metadata or stale CSS", async () => {
-  for (const mode of ["extra", "license", "missing-license", "metadata", "css"] as const) {
+  for (const mode of [
+    "extra",
+    "license",
+    "missing-license",
+    "metadata",
+    "css",
+  ] as const) {
     await fixture(async (directory, data) => {
       await rm(join(directory, data.faces[0]!.file));
-      if (mode === "extra") await writeFile(join(directory, "unowned.woff2"), woff2());
-      if (mode === "license") await writeFile(join(directory, data.sources[0]!.license), "changed attribution");
-      if (mode === "missing-license") await rm(join(directory, data.sources[0]!.license));
+      if (mode === "extra")
+        await writeFile(join(directory, "unowned.woff2"), woff2());
+      if (mode === "license")
+        await writeFile(
+          join(directory, data.sources[0]!.license),
+          "changed attribution",
+        );
+      if (mode === "missing-license")
+        await rm(join(directory, data.sources[0]!.license));
       if (mode === "metadata") data.faces[0]!.file = "../outside.woff2";
-      const css = renderFontCss(manifest().faces) + (mode === "css" ? "/* changed */" : "");
-      const expected = mode === "extra" ? /unowned font/ : mode === "license" ? /Changed font license/ :
-        mode === "missing-license" ? { code: "ENOENT" } : mode === "metadata" ? /Invalid font/ : /stylesheet/;
-      await assert.rejects(fontBundleNeedsGeneration(data, directory, css), expected, mode);
+      const css =
+        renderFontCss(manifest().faces) +
+        (mode === "css" ? "/* changed */" : "");
+      const expected =
+        mode === "extra"
+          ? /unowned font/
+          : mode === "license"
+            ? /Changed font license/
+            : mode === "missing-license"
+              ? { code: "ENOENT" }
+              : mode === "metadata"
+                ? /Invalid font/
+                : /stylesheet/;
+      await assert.rejects(
+        fontBundleNeedsGeneration(data, directory, css),
+        expected,
+        mode,
+      );
     });
   }
 });
@@ -91,7 +154,9 @@ test("font preparation never regenerates over unowned files, bad licenses, metad
 test("license verification tolerates Windows CRLF line endings without reporting changed attribution", async () => {
   await fixture(async (directory, data) => {
     const crlf = "SIL OPEN FONT LICENSE Version 1.1\r\nCopyright test\r\n";
-    data.sources[0]!.licenseSha256 = sha256("SIL OPEN FONT LICENSE Version 1.1\nCopyright test\n");
+    data.sources[0]!.licenseSha256 = sha256(
+      "SIL OPEN FONT LICENSE Version 1.1\nCopyright test\n",
+    );
     await writeFile(join(directory, data.sources[0]!.license), crlf);
     const css = renderFontCss(data.faces);
     assert.equal(await fontBundleNeedsGeneration(data, directory, css), false);
@@ -103,14 +168,23 @@ test("license verification tolerates Windows CRLF line endings without reporting
 test("stylesheet verification tolerates Windows CRLF line endings without reporting stale CSS", async () => {
   await fixture(async (directory, data) => {
     const crlfCss = renderFontCss(data.faces).replace(/\n/g, "\r\n");
-    assert.ok(crlfCss.includes("\r\n"), "fixture CSS contains CRLF line endings");
-    assert.equal(await fontBundleNeedsGeneration(data, directory, crlfCss), false);
+    assert.ok(
+      crlfCss.includes("\r\n"),
+      "fixture CSS contains CRLF line endings",
+    );
+    assert.equal(
+      await fontBundleNeedsGeneration(data, directory, crlfCss),
+      false,
+    );
     const result = await verifyFontBundle(data, directory, crlfCss);
     assert.equal(result.faces, 1);
 
     // Missing assets still signal that generation is needed without tripping the stale CSS guard
     await rm(join(directory, data.faces[0]!.file));
-    assert.equal(await fontBundleNeedsGeneration(data, directory, crlfCss), true);
+    assert.equal(
+      await fontBundleNeedsGeneration(data, directory, crlfCss),
+      true,
+    );
   });
 });
 
@@ -122,8 +196,14 @@ test("stylesheet verification still strictly rejects genuine CSS content changes
       crlfCss.replace("swap", "block"),
       crlfCss.replace("Inter Tight", "Wrong Family"),
     ]) {
-      await assert.rejects(fontBundleNeedsGeneration(data, directory, badCss), /stylesheet/);
-      await assert.rejects(verifyFontBundle(data, directory, badCss), /stylesheet/);
+      await assert.rejects(
+        fontBundleNeedsGeneration(data, directory, badCss),
+        /stylesheet/,
+      );
+      await assert.rejects(
+        verifyFontBundle(data, directory, badCss),
+        /stylesheet/,
+      );
     }
   });
 });
@@ -131,22 +211,37 @@ test("stylesheet verification still strictly rejects genuine CSS content changes
 test("a partially missing font bundle still authenticates every present asset before allowing generation", async () => {
   await fixture(async (directory, data) => {
     data.faces[0]!.unicodeRange = "U+20-4F";
-    data.faces.push({ ...data.faces[0]!, file: "inter-tight-normal-next.woff2", unicodeRange: "U+50-7E" });
-    const corrupt = woff2(); corrupt[51] = 7;
+    data.faces.push({
+      ...data.faces[0]!,
+      file: "inter-tight-normal-next.woff2",
+      unicodeRange: "U+50-7E",
+    });
+    const corrupt = woff2();
+    corrupt[51] = 7;
     await writeFile(join(directory, data.faces[1]!.file), corrupt);
     await rm(join(directory, data.faces[0]!.file));
-    await assert.rejects(fontBundleNeedsGeneration(data, directory, renderFontCss(data.faces)), /Changed font asset/);
+    await assert.rejects(
+      fontBundleNeedsGeneration(data, directory, renderFontCss(data.faces)),
+      /Changed font asset/,
+    );
   });
 });
 
 test("automatic font preparation must reproduce both checked-in receipts byte-for-byte rather than silently refreshing them", () => {
-  const expected = { manifest: JSON.stringify(manifest()), css: renderFontCss(manifest().faces) };
+  const expected = {
+    manifest: JSON.stringify(manifest()),
+    css: renderFontCss(manifest().faces),
+  };
   const before = structuredClone(expected);
   assert.doesNotThrow(() => assertFontReproduction(expected, { ...expected }));
   for (const actual of [
     { ...expected, manifest: expected.manifest + "\n" },
     { ...expected, css: expected.css + "/* changed */" },
-  ]) assert.throws(() => assertFontReproduction(expected, actual), /receipt|reproduc/i);
+  ])
+    assert.throws(
+      () => assertFontReproduction(expected, actual),
+      /receipt|reproduc/i,
+    );
   assert.deepEqual(expected, before);
 });
 
@@ -163,38 +258,103 @@ test("assertFontReproduction tolerates Windows CRLF line endings in receipts whi
   assert.doesNotThrow(() => assertFontReproduction(actualLf, expectedCrlf));
 
   // Genuine content drift must still throw
-  assert.throws(() => assertFontReproduction(expectedCrlf, { ...actualLf, css: actualLf.css + "/* change */" }), /receipt|reproduc/i);
-  assert.throws(() => assertFontReproduction(expectedCrlf, { ...actualLf, manifest: actualLf.manifest + "\n" }), /receipt|reproduc/i);
+  assert.throws(
+    () =>
+      assertFontReproduction(expectedCrlf, {
+        ...actualLf,
+        css: actualLf.css + "/* change */",
+      }),
+    /receipt|reproduc/i,
+  );
+  assert.throws(
+    () =>
+      assertFontReproduction(expectedCrlf, {
+        ...actualLf,
+        manifest: actualLf.manifest + "\n",
+      }),
+    /receipt|reproduc/i,
+  );
 });
 
 test("gitattributes configures explicit LF line endings for generated font receipts", async () => {
-  const gitattributes = await readFile(new URL("../../.gitattributes", import.meta.url), "utf8");
-  assert.match(gitattributes, /packages\/web-ui\/src\/styles\/fonts\.css\s+text\s+eol=lf/);
-  assert.match(gitattributes, /packages\/web-ui\/src\/styles\/fonts\/manifest\.json\s+text\s+eol=lf/);
-  assert.match(gitattributes, /packages\/web-ui\/src\/styles\/fonts\/\*-OFL\.txt\s+text\s+eol=lf/);
+  const gitattributes = await readFile(
+    new URL("../../.gitattributes", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    gitattributes,
+    /packages\/web-ui\/src\/styles\/fonts\.css\s+text\s+eol=lf/,
+  );
+  assert.match(
+    gitattributes,
+    /packages\/web-ui\/src\/styles\/fonts\/manifest\.json\s+text\s+eol=lf/,
+  );
+  assert.match(
+    gitattributes,
+    /packages\/web-ui\/src\/styles\/fonts\/\*-OFL\.txt\s+text\s+eol=lf/,
+  );
 });
 
 test("clean-checkout root tests and both Web entry points prepare fonts, while Docker carries build-only generator inputs", async () => {
-  const root = JSON.parse(await readFile(new URL("../../package.json", import.meta.url), "utf8")) as { scripts: Record<string, string> };
-  const web = JSON.parse(await readFile(new URL("../../apps/web-rr/package.json", import.meta.url), "utf8")) as { scripts: Record<string, string> };
-  assert.equal(root.scripts["fonts:prepare"], "node scripts/fonts/generate.ts --prepare");
-  assert.equal(root.scripts.test, "pnpm fonts:prepare && node scripts/test.ts root");
-  assert.equal(web.scripts.build, "node ../../scripts/fonts/generate.ts --prepare && react-router build");
-  assert.equal(web.scripts.dev, "node ../../scripts/fonts/generate.ts --prepare && react-router dev");
-  const [build, runtime] = (await readFile(new URL("../../apps/web-rr/Dockerfile", import.meta.url), "utf8")).split("# ---- Runtime");
+  const root = JSON.parse(
+    await readFile(new URL("../../package.json", import.meta.url), "utf8"),
+  ) as { scripts: Record<string, string> };
+  const web = JSON.parse(
+    await readFile(
+      new URL("../../apps/web-rr/package.json", import.meta.url),
+      "utf8",
+    ),
+  ) as { scripts: Record<string, string> };
+  assert.equal(
+    root.scripts["fonts:prepare"],
+    "node scripts/fonts/generate.ts --prepare",
+  );
+  assert.equal(
+    root.scripts.test,
+    "pnpm fonts:prepare && node scripts/test.ts root",
+  );
+  assert.equal(
+    web.scripts.build,
+    "node ../../scripts/fonts/generate.ts --prepare && react-router build",
+  );
+  assert.equal(
+    web.scripts.dev,
+    "node ../../scripts/fonts/generate.ts --prepare && react-router dev",
+  );
+  const [build, runtime] = (
+    await readFile(
+      new URL("../../apps/web-rr/Dockerfile", import.meta.url),
+      "utf8",
+    )
+  ).split("# ---- Runtime");
   assert.ok(build && runtime);
   assert.match(build, /COPY scripts\/fonts \.\/scripts\/fonts/);
-  assert.match(build, /COPY scripts\/lib\/font-assets\.ts \.\/scripts\/lib\/font-assets\.ts/);
-  assert.ok(build.indexOf("COPY scripts/fonts") < build.indexOf("RUN pnpm fonts:prepare"));
+  assert.match(
+    build,
+    /COPY scripts\/lib\/font-assets\.ts \.\/scripts\/lib\/font-assets\.ts/,
+  );
+  assert.ok(
+    build.indexOf("COPY scripts/fonts") <
+      build.indexOf("RUN pnpm fonts:prepare"),
+  );
   assert.match(build, /RUN pnpm fonts:prepare/);
-  assert.doesNotMatch(runtime, /COPY scripts|fonts:prepare|fonts:generate|fontkit|subset-font/);
+  assert.doesNotMatch(
+    runtime,
+    /COPY scripts|fonts:prepare|fonts:generate|fontkit|subset-font/,
+  );
 });
 
 test("the native React Router build and dev configuration await font preparation without requiring a global package-manager shim", async () => {
-  const config = await readFile(new URL("../../apps/web-rr/vite.config.ts", import.meta.url), "utf8");
+  const config = await readFile(
+    new URL("../../apps/web-rr/vite.config.ts", import.meta.url),
+    "utf8",
+  );
   assert.match(config, /export default defineConfig\(async \(\) => \{/);
   assert.match(config, /await prepareFirstPartyFonts\(\);/);
-  assert.ok(config.indexOf("await prepareFirstPartyFonts();") < config.indexOf("plugins:"));
+  assert.ok(
+    config.indexOf("await prepareFirstPartyFonts();") <
+      config.indexOf("plugins:"),
+  );
   assert.match(config, /process\.execPath/);
   assert.match(config, /scripts\/fonts\/generate\.ts/);
   assert.match(config, /"--prepare"/);
@@ -203,19 +363,37 @@ test("the native React Router build and dev configuration await font preparation
 test("the dev supervisor awaits a cancellable bounded font preflight before any service readiness clock starts", async () => {
   // Compare layout-free text so a reformatted call (wrapped arguments, trailing
   // commas) still matches.
-  const dev = (await readFile(new URL("../../scripts/dev.ts", import.meta.url), "utf8"))
-    .replace(/\s+/g, " ").replace(/([([{]) /g, "$1").replace(/,? ([)\]}])/g, "$1");
-  const preparation = dev.indexOf("await executeFile(process.execPath, [resolve(repositoryRoot, \"scripts/fonts/generate.ts\"), \"--prepare\"]");
-  assert.ok(preparation >= 0 && preparation < dev.indexOf("supervisor.launch("));
-  assert.match(dev, /if \(startWeb\) \{\s*info\("Preparing first-party fonts before service startup/);
+  const dev = (
+    await readFile(new URL("../../scripts/dev.ts", import.meta.url), "utf8")
+  )
+    .replace(/\s+/g, " ")
+    .replace(/([([{]) /g, "$1")
+    .replace(/,? ([)\]}])/g, "$1");
+  const preparation = dev.indexOf(
+    'await executeFile(process.execPath, [resolve(repositoryRoot, "scripts/fonts/generate.ts"), "--prepare"]',
+  );
+  assert.ok(
+    preparation >= 0 && preparation < dev.indexOf("supervisor.launch("),
+  );
+  assert.match(
+    dev,
+    /if \(startWeb\) \{\s*info\("Preparing first-party fonts before service startup/,
+  );
   assert.match(dev, /signal: supervisor\.signal, timeout: 300_000/);
-  assert.match(dev, /const READY_TIMEOUT_MS = 90_000;/, "generation is a preflight, not a relaxed service readiness budget");
+  assert.match(
+    dev,
+    /const READY_TIMEOUT_MS = 90_000;/,
+    "generation is a preflight, not a relaxed service readiness budget",
+  );
 });
 
 test("font ranges are canonical, sorted, deduplicated and preserve supplementary scalars", () => {
   const input = [0x4e00, 0x21, 0x20, 0x23, 0x22, 0x20000, 0x4e00, 0x20001];
   assert.equal(unicodeRange(input), "U+20-23,U+4E00,U+20000-20001");
-  assert.deepEqual(expandUnicodeRange(unicodeRange(input)), [0x20, 0x21, 0x22, 0x23, 0x4e00, 0x20000, 0x20001]);
+  assert.deepEqual(
+    expandUnicodeRange(unicodeRange(input)),
+    [0x20, 0x21, 0x22, 0x23, 0x4e00, 0x20000, 0x20001],
+  );
   assert.deepEqual(codepoints("无浪潮无𠀀"), [0x65e0, 0x6d6a, 0x6f6e, 0x20000]);
 });
 
@@ -224,7 +402,17 @@ test("invalid font scalars, empty ranges and malformed CSS are refused", () => {
     assert.throws(() => unicodeRange([invalid]), /scalar/);
   }
   assert.throws(() => unicodeRange([]), /empty/);
-  for (const invalid of ["", "U+", "20-7E", "U+22-20", "U+110000", "U+D800", "U+20;src:url(https://evil.test)", "U+4???", "U+0-10FFFF"]) {
+  for (const invalid of [
+    "",
+    "U+",
+    "20-7E",
+    "U+22-20",
+    "U+110000",
+    "U+D800",
+    "U+20;src:url(https://evil.test)",
+    "U+4???",
+    "U+0-10FFFF",
+  ]) {
     assert.throws(() => expandUnicodeRange(invalid), /range|scalar|limit/);
   }
 });
@@ -238,26 +426,42 @@ test("font partitioning creates one shared common shard and disjoint lazy remain
     { id: "0001", points: [6, 7, 8] },
     { id: "0002", points: [9] },
   ]);
-  assert.deepEqual(shards.flatMap((shard) => shard.points).sort((a, b) => a - b), all);
-  assert.equal(new Set(shards.flatMap((shard) => shard.points)).size, all.length);
-  assert.deepEqual(partitionCharacters([2, 4], [2, 4], 2), [{ id: "common", points: [2, 4] }]);
-  assert.deepEqual(partitionCharacters([1], [], 2), [{ id: "0000", points: [1] }]);
+  assert.deepEqual(
+    shards.flatMap((shard) => shard.points).sort((a, b) => a - b),
+    all,
+  );
+  assert.equal(
+    new Set(shards.flatMap((shard) => shard.points)).size,
+    all.length,
+  );
+  assert.deepEqual(partitionCharacters([2, 4], [2, 4], 2), [
+    { id: "common", points: [2, 4] },
+  ]);
+  assert.deepEqual(partitionCharacters([1], [], 2), [
+    { id: "0000", points: [1] },
+  ]);
   assert.deepEqual(partitionCharacters([], [], 2), []);
 });
 
 test("partitioning rejects unbounded work and is independent of input ordering", () => {
-  for (const size of [0, -1, 1.5, NaN, 4097]) assert.throws(() => partitionCharacters([1], [], size), /size/);
+  for (const size of [0, -1, 1.5, NaN, 4097])
+    assert.throws(() => partitionCharacters([1], [], size), /size/);
   const points = Array.from({ length: 2049 }, (_, index) => index + 32);
   const first = partitionCharacters(points, [35, 40, 200], 128);
   const second = partitionCharacters([...points].reverse(), [200, 40, 35], 128);
   assert.deepEqual(first, second);
   assert.ok(first.slice(1).every((shard) => shard.points.length <= 128));
-  for (const shard of first) assert.deepEqual(expandUnicodeRange(unicodeRange(shard.points)), shard.points);
+  for (const shard of first)
+    assert.deepEqual(
+      expandUnicodeRange(unicodeRange(shard.points)),
+      shard.points,
+    );
 });
 
 test("WOFF2 checks reject truncation, wrong format, reserved bits and size corruption", () => {
   assert.doesNotThrow(() => validateWoff2(woff2()));
-  for (const length of [0, 4, 47]) assert.throws(() => validateWoff2(woff2().subarray(0, length)), /WOFF2/);
+  for (const length of [0, 4, 47])
+    assert.throws(() => validateWoff2(woff2().subarray(0, length)), /WOFF2/);
   const modifications: ((bytes: Buffer) => void)[] = [
     (bytes) => bytes.write("wOFF"),
     (bytes) => bytes.writeUInt32BE(99, 8),
@@ -267,15 +471,22 @@ test("WOFF2 checks reject truncation, wrong format, reserved bits and size corru
     (bytes) => bytes.writeUInt32BE(bytes.length, 20),
   ];
   for (const modify of modifications) {
-    const bytes = woff2(); modify(bytes);
+    const bytes = woff2();
+    modify(bytes);
     assert.throws(() => validateWoff2(bytes), /WOFF2/);
   }
 });
 
 test("the font CSS preserves the existing families, weights, italic and swap without a network dependency", () => {
   const data = manifest();
-  data.faces.push({ ...asset(), file: "instrument-serif-italic-common.woff2", source: "instrument-serif-italic",
-    family: "Instrument Serif", weight: "400", style: "italic" });
+  data.faces.push({
+    ...asset(),
+    file: "instrument-serif-italic-common.woff2",
+    source: "instrument-serif-italic",
+    family: "Instrument Serif",
+    weight: "400",
+    style: "italic",
+  });
   const css = renderFontCss(data.faces);
   assert.match(css, /font-family: "Inter Tight"/);
   assert.match(css, /font-family: "Instrument Serif"/);
@@ -283,35 +494,72 @@ test("the font CSS preserves the existing families, weights, italic and swap wit
   assert.match(css, /font-weight: 400 700/);
   assert.equal((css.match(/font-display: swap/g) ?? []).length, 2);
   assert.equal((css.match(/unicode-range: U\+20-7E/g) ?? []).length, 2);
-  assert.match(css, /url\("\.\/fonts\/inter-tight-normal-common\.woff2"\) format\("woff2"\)/);
+  assert.match(
+    css,
+    /url\("\.\/fonts\/inter-tight-normal-common\.woff2"\) format\("woff2"\)/,
+  );
   assert.doesNotMatch(css, /https?:|local\(|data:|@import/);
-  assert.equal(renderFontCss(data.faces), css, "generation is byte-for-byte deterministic");
+  assert.equal(
+    renderFontCss(data.faces),
+    css,
+    "generation is byte-for-byte deterministic",
+  );
 });
 
 test("unsafe font filenames and unrecognized metadata cannot escape into CSS", () => {
-  for (const file of ["../outside.woff2", "/tmp/out.woff2", "evil\\font.woff2", "font.woff2?tracking=1", 'font\");src:url(https://evil.test)']) {
+  for (const file of [
+    "../outside.woff2",
+    "/tmp/out.woff2",
+    "evil\\font.woff2",
+    "font.woff2?tracking=1",
+    'font\");src:url(https://evil.test)',
+  ]) {
     assert.throws(() => renderFontCss([{ ...asset(), file }]), /font/);
   }
-  for (const change of [{ family: "Arial" }, { weight: "inherit" }, { style: "oblique" }, { unicodeRange: "U+20; color:red" }]) {
-    assert.throws(() => renderFontCss([{ ...asset(), ...change } as FontAsset]), /font|range/);
+  for (const change of [
+    { family: "Arial" },
+    { weight: "inherit" },
+    { style: "oblique" },
+    { unicodeRange: "U+20; color:red" },
+  ]) {
+    assert.throws(
+      () => renderFontCss([{ ...asset(), ...change } as FontAsset]),
+      /font|range/,
+    );
   }
 });
 
 test("an offline bundle verification authenticates bytes, metadata, licenses and generated CSS", async () => {
   await fixture(async (directory, data) => {
-    const result = await verifyFontBundle(data, directory, renderFontCss(data.faces));
-    assert.deepEqual(result, { faces: 1, bytes: 52, families: ["Inter Tight"] });
+    const result = await verifyFontBundle(
+      data,
+      directory,
+      renderFontCss(data.faces),
+    );
+    assert.deepEqual(result, {
+      faces: 1,
+      bytes: 52,
+      families: ["Inter Tight"],
+    });
   });
 });
 
 test("a changed font, wrong size, missing file or extra unowned font blocks verification", async () => {
   for (const mode of ["changed", "size", "missing", "extra"] as const) {
     await fixture(async (directory, data) => {
-      if (mode === "changed") { const bytes = woff2(); bytes[51] = 9; await writeFile(join(directory, data.faces[0]!.file), bytes); }
+      if (mode === "changed") {
+        const bytes = woff2();
+        bytes[51] = 9;
+        await writeFile(join(directory, data.faces[0]!.file), bytes);
+      }
       if (mode === "size") data.faces[0]!.byteLength++;
       if (mode === "missing") await rm(join(directory, data.faces[0]!.file));
-      if (mode === "extra") await writeFile(join(directory, "not-in-manifest.woff2"), woff2());
-      await assert.rejects(verifyFontBundle(data, directory, renderFontCss(data.faces)), /font|ENOENT/);
+      if (mode === "extra")
+        await writeFile(join(directory, "not-in-manifest.woff2"), woff2());
+      await assert.rejects(
+        verifyFontBundle(data, directory, renderFontCss(data.faces)),
+        /font|ENOENT/,
+      );
     });
   }
 });
@@ -321,43 +569,92 @@ test("license deletion, changed copyright and stale generated styles cannot sile
     await fixture(async (directory, data) => {
       const license = join(directory, data.sources[0]!.license);
       if (mode === "missing") await rm(license);
-      if (mode === "changed") await writeFile(license, "replacement without attribution");
-      const css = renderFontCss(data.faces) + (mode === "css" ? "/* drift */" : "");
-      await assert.rejects(verifyFontBundle(data, directory, css), /font|license|stylesheet|ENOENT/);
+      if (mode === "changed")
+        await writeFile(license, "replacement without attribution");
+      const css =
+        renderFontCss(data.faces) + (mode === "css" ? "/* drift */" : "");
+      await assert.rejects(
+        verifyFontBundle(data, directory, css),
+        /font|license|stylesheet|ENOENT/,
+      );
     });
   }
 });
 
 test("duplicate assets, overlapping shards and undeclared sources fail before publication", async () => {
-  for (const mode of ["duplicate", "overlap", "source", "license-path"] as const) {
+  for (const mode of [
+    "duplicate",
+    "overlap",
+    "source",
+    "license-path",
+  ] as const) {
     await fixture(async (directory, data) => {
       if (mode === "duplicate") data.faces.push({ ...data.faces[0]! });
-      if (mode === "overlap") data.faces.push({ ...data.faces[0]!, file: "inter-tight-normal-overlap.woff2" });
+      if (mode === "overlap")
+        data.faces.push({
+          ...data.faces[0]!,
+          file: "inter-tight-normal-overlap.woff2",
+        });
       if (mode === "source") data.faces[0]!.source = "unregistered";
-      if (mode === "license-path") data.sources[0]!.license = "../outside-OFL.txt";
-      await assert.rejects(verifyFontBundle(data, directory, renderFontCss(data.faces)), /font|source|overlap|duplicate|license/);
+      if (mode === "license-path")
+        data.sources[0]!.license = "../outside-OFL.txt";
+      await assert.rejects(
+        verifyFontBundle(data, directory, renderFontCss(data.faces)),
+        /font|source|overlap|duplicate|license/,
+      );
     });
   }
 });
 
 test("the prepared first-party fonts are verified offline and root does not reference Google Fonts", async () => {
-  const data = JSON.parse(await readFile(new URL("../../packages/web-ui/src/styles/fonts/manifest.json", import.meta.url), "utf8")) as FontManifest;
-  const css = await readFile(new URL("../../packages/web-ui/src/styles/fonts.css", import.meta.url), "utf8");
-  const result = await verifyFontBundle(data, new URL("../../packages/web-ui/src/styles/fonts/", import.meta.url), css);
+  const data = JSON.parse(
+    await readFile(
+      new URL(
+        "../../packages/web-ui/src/styles/fonts/manifest.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  ) as FontManifest;
+  const css = await readFile(
+    new URL("../../packages/web-ui/src/styles/fonts.css", import.meta.url),
+    "utf8",
+  );
+  const result = await verifyFontBundle(
+    data,
+    new URL("../../packages/web-ui/src/styles/fonts/", import.meta.url),
+    css,
+  );
   assert.deepEqual(data.sources, FONT_SOURCES.map(fontSourceReceipt));
   await verifyFontRecipe(data, new URL("../..", import.meta.url).pathname);
-  assert.deepEqual(result.families, ["Instrument Serif", "Inter Tight", "Noto Sans SC", "Noto Serif SC"]);
-  assert.ok(result.faces > 10, "Chinese and extended scripts have lazy Unicode shards");
-  assert.ok(result.bytes < 64 * 1024 * 1024, "the complete font bundle has a bounded build footprint");
-  const root = await readFile(new URL("../../apps/web-rr/app/root.tsx", import.meta.url), "utf8");
+  assert.deepEqual(result.families, [
+    "Instrument Serif",
+    "Inter Tight",
+    "Noto Sans SC",
+    "Noto Serif SC",
+  ]);
+  assert.ok(
+    result.faces > 10,
+    "Chinese and extended scripts have lazy Unicode shards",
+  );
+  assert.ok(
+    result.bytes < 64 * 1024 * 1024,
+    "the complete font bundle has a bounded build footprint",
+  );
+  const root = await readFile(
+    new URL("../../apps/web-rr/app/root.tsx", import.meta.url),
+    "utf8",
+  );
   assert.doesNotMatch(root, /fonts\.googleapis\.com|fonts\.gstatic\.com/);
   assert.match(root, /styles\/fonts\.css\?url/);
 });
 
-
 test("reading and public usage priorities reduce glyph overfetch without losing or duplicating coverage", () => {
   const all = [1, 2, 3, 4, 5, 6, 7, 8, 9];
-  const result = partitionCharacters(all, [9, 1], 2, { reading: [1, 2, 8, 99], priority: [5, 4, 5, 6] });
+  const result = partitionCharacters(all, [9, 1], 2, {
+    reading: [1, 2, 8, 99],
+    priority: [5, 4, 5, 6],
+  });
   assert.deepEqual(result, [
     { id: "common", points: [1, 9] },
     { id: "reading", points: [2, 8] },
@@ -365,9 +662,18 @@ test("reading and public usage priorities reduce glyph overfetch without losing 
     { id: "0001", points: [3, 6] },
     { id: "0002", points: [7] },
   ]);
-  assert.deepEqual(result.flatMap((shard) => shard.points).sort((a, b) => a - b), all);
-  assert.throws(() => partitionCharacters(all, [], 2, { priority: [0xd800] }), /scalar/);
-  assert.throws(() => partitionCharacters(all, [], 2, { reading: [Infinity] }), /scalar/);
+  assert.deepEqual(
+    result.flatMap((shard) => shard.points).sort((a, b) => a - b),
+    all,
+  );
+  assert.throws(
+    () => partitionCharacters(all, [], 2, { priority: [0xd800] }),
+    /scalar/,
+  );
+  assert.throws(
+    () => partitionCharacters(all, [], 2, { reading: [Infinity] }),
+    /scalar/,
+  );
 });
 
 test("UI repertoire extraction parses real TSX literals and templates instead of mining comments", () => {
@@ -378,9 +684,14 @@ test("UI repertoire extraction parses real TSX literals and templates instead of
     export const view = <p aria-label="标题">阅读<span>中文</span>{label}</p>;
   `;
   const text = literalCjkText(source);
-  for (const character of "正文一模板结尾标题阅读中文") assert.ok(text.includes(character), character);
-  for (const character of "注释不应加入核心字形变量名") assert.equal(text.includes(character), false, character);
-  assert.throws(() => literalCjkText("const broken = <p>"), /Unterminated|Unexpected/);
+  for (const character of "正文一模板结尾标题阅读中文")
+    assert.ok(text.includes(character), character);
+  for (const character of "注释不应加入核心字形变量名")
+    assert.equal(text.includes(character), false, character);
+  assert.throws(
+    () => literalCjkText("const broken = <p>"),
+    /Unterminated|Unexpected/,
+  );
 });
 
 test("missing glyphs, omitted weights and source-style drift cannot pass the offline verifier", async () => {
@@ -391,69 +702,155 @@ test("missing glyphs, omitted weights and source-style drift cannot pass the off
       if (mode === "weight") data.sources[0]!.weights.push("400");
       if (mode === "style") data.faces[0]!.style = "italic";
       if (mode === "family") data.faces[0]!.family = "Noto Sans SC";
-      await assert.rejects(verifyFontBundle(data, directory, renderFontCss(data.faces)), /coverage|style|weight|font/i);
+      await assert.rejects(
+        verifyFontBundle(data, directory, renderFontCss(data.faces)),
+        /coverage|style|weight|font/i,
+      );
     });
   }
 });
 
-
 test("shaping closure may retain original mirror mappings, but missing or invented glyphs fail", () => {
-  assert.doesNotThrow(() => assertSubsetCoverage([0x2208], [0x2208, 0x220b], [0x2208, 0x220b]));
-  assert.throws(() => assertSubsetCoverage([0x2208, 0x220b], [0x2208], [0x2208, 0x220b]), /coverage/);
-  assert.throws(() => assertSubsetCoverage([0x2208], [0x2208, 0x220c], [0x2208, 0x220b]), /coverage/);
+  assert.doesNotThrow(() =>
+    assertSubsetCoverage([0x2208], [0x2208, 0x220b], [0x2208, 0x220b]),
+  );
+  assert.throws(
+    () => assertSubsetCoverage([0x2208, 0x220b], [0x2208], [0x2208, 0x220b]),
+    /coverage/,
+  );
+  assert.throws(
+    () => assertSubsetCoverage([0x2208], [0x2208, 0x220c], [0x2208, 0x220b]),
+    /coverage/,
+  );
 });
 
 test("font roles keep reader UI out of auth and avoid a second reading shard for display weights", () => {
   const all = codepoints("A无浪潮阅读登录");
-  const repertoire: Repertoires = { sans: codepoints("A登录"), readerUi: codepoints("登录阅读"), readerDeferred: [],
-    serif: codepoints("A登录"), upper: codepoints("无浪潮"), reading: codepoints("无浪潮阅读"), priority: [] };
+  const repertoire: Repertoires = {
+    sans: codepoints("A登录"),
+    readerUi: codepoints("登录阅读"),
+    readerDeferred: [],
+    serif: codepoints("A登录"),
+    upper: codepoints("无浪潮"),
+    reading: codepoints("无浪潮阅读"),
+    priority: [],
+  };
   const sans = FONT_SOURCES.find((source) => source.id === "noto-sans-sc")!;
   const serif = FONT_SOURCES.find((source) => source.id === "noto-serif-sc")!;
   const ui = fontPartitions(all, sans, "400 700", repertoire);
-  assert.deepEqual(ui.find((shard) => shard.id === "common")!.points, codepoints("A登录"));
-  assert.deepEqual(ui.find((shard) => shard.id === "interface")!.points, codepoints("阅读"));
+  assert.deepEqual(
+    ui.find((shard) => shard.id === "common")!.points,
+    codepoints("A登录"),
+  );
+  assert.deepEqual(
+    ui.find((shard) => shard.id === "interface")!.points,
+    codepoints("阅读"),
+  );
   const body = fontPartitions(all, serif, "400", repertoire);
   const display = fontPartitions(all, serif, "500 700", repertoire);
-  assert.deepEqual(body.find((shard) => shard.id === "reading")!.points, codepoints("无浪潮阅读"));
-  assert.deepEqual(display.find((shard) => shard.id === "common")!.points, codepoints("无浪潮"));
-  assert.equal(display.some((shard) => shard.id === "reading"), false);
+  assert.deepEqual(
+    body.find((shard) => shard.id === "reading")!.points,
+    codepoints("无浪潮阅读"),
+  );
+  assert.deepEqual(
+    display.find((shard) => shard.id === "common")!.points,
+    codepoints("无浪潮"),
+  );
+  assert.equal(
+    display.some((shard) => shard.id === "reading"),
+    false,
+  );
   for (const shards of [ui, body, display]) {
-    assert.deepEqual(shards.flatMap((shard) => shard.points).sort((a, b) => a - b), all);
+    assert.deepEqual(
+      shards.flatMap((shard) => shard.points).sort((a, b) => a - b),
+      all,
+    );
   }
 });
 
 test("an old recipe cannot pass by preserving only its combined glyph coverage", async () => {
-  const data = JSON.parse(await readFile(new URL("../../packages/web-ui/src/styles/fonts/manifest.json", import.meta.url), "utf8")) as FontManifest;
-  const first = data.faces.find((face) => face.source === "noto-sans-sc" && face.file.endsWith("common.woff2"))!;
-  const second = data.faces.find((face) => face.source === "noto-sans-sc" && face.file.endsWith("interface.woff2"))!;
-  [first.unicodeRange, second.unicodeRange] = [second.unicodeRange, first.unicodeRange];
-  await assert.rejects(verifyFontRecipe(data, new URL("../..", import.meta.url).pathname), /Stale font recipe/);
+  const data = JSON.parse(
+    await readFile(
+      new URL(
+        "../../packages/web-ui/src/styles/fonts/manifest.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  ) as FontManifest;
+  const first = data.faces.find(
+    (face) =>
+      face.source === "noto-sans-sc" && face.file.endsWith("common.woff2"),
+  )!;
+  const second = data.faces.find(
+    (face) =>
+      face.source === "noto-sans-sc" && face.file.endsWith("interface.woff2"),
+  )!;
+  [first.unicodeRange, second.unicodeRange] = [
+    second.unicodeRange,
+    first.unicodeRange,
+  ];
+  await assert.rejects(
+    verifyFontRecipe(data, new URL("../..", import.meta.url).pathname),
+    /Stale font recipe/,
+  );
 });
-
 
 test("standalone reading-tool dictionaries enter UI shards without forcing deferred prose into the initial article interface", async () => {
-  const repertoire = await applicationRepertoires(new URL("../..", import.meta.url).pathname);
-  const available = new Set([...repertoire.sans, ...repertoire.readerUi, ...repertoire.readerDeferred]);
+  const repertoire = await applicationRepertoires(
+    new URL("../..", import.meta.url).pathname,
+  );
+  const available = new Set([
+    ...repertoire.sans,
+    ...repertoire.readerUi,
+    ...repertoire.readerDeferred,
+  ]);
   for (const file of ["reading-shelf-copy.ts", "reader-find-copy.ts"]) {
-    const source = await readFile(new URL(`../../packages/web-ui/src/lib/${file}`, import.meta.url), "utf8");
-    for (const point of codepoints(literalCjkText(source))) assert.ok(available.has(point), `${file}: ${String.fromCodePoint(point)} must be in a UI shard`);
+    const source = await readFile(
+      new URL(`../../packages/web-ui/src/lib/${file}`, import.meta.url),
+      "utf8",
+    );
+    for (const point of codepoints(literalCjkText(source)))
+      assert.ok(
+        available.has(point),
+        `${file}: ${String.fromCodePoint(point)} must be in a UI shard`,
+      );
   }
-  for (const point of codepoints("阅读清单←→")) assert.ok(repertoire.sans.includes(point), "shared navigation labels and arrows belong to the common UI shard");
+  for (const point of codepoints("阅读清单←→"))
+    assert.ok(
+      repertoire.sans.includes(point),
+      "shared navigation labels and arrows belong to the common UI shard",
+    );
   const initial = new Set([...repertoire.sans, ...repertoire.readerUi]);
-  for (const point of codepoints("正在读取本机清单加入阅读打开已在中在本文查找")) assert.ok(initial.has(point), "closed tools must not need the deferred prose");
+  for (const point of codepoints(
+    "正在读取本机清单加入阅读打开已在中在本文查找",
+  ))
+    assert.ok(
+      initial.has(point),
+      "closed tools must not need the deferred prose",
+    );
   assert.ok(repertoire.readerDeferred.includes("糊".codePointAt(0)!));
-  assert.ok(!initial.has("糊".codePointAt(0)!), "an expanded-tools error must not inflate the initial interface");
+  assert.ok(
+    !initial.has("糊".codePointAt(0)!),
+    "an expanded-tools error must not inflate the initial interface",
+  );
 });
-
 
 test("deferred reader-tool prose has its own disjoint shard and does not inflate the initial interface", () => {
   const all = codepoints("ABCDEF");
   const shards = partitionCharacters(all, codepoints("AB"), 1, {
-    reading: codepoints("BC"), readingId: "interface", deferred: codepoints("ACDE"),
+    reading: codepoints("BC"),
+    readingId: "interface",
+    deferred: codepoints("ACDE"),
   });
   assert.deepEqual(shards, [
-    { id: "common", points: codepoints("AB") }, { id: "interface", points: codepoints("C") },
-    { id: "reader-tools", points: codepoints("DE") }, { id: "0000", points: codepoints("F") },
+    { id: "common", points: codepoints("AB") },
+    { id: "interface", points: codepoints("C") },
+    { id: "reader-tools", points: codepoints("DE") },
+    { id: "0000", points: codepoints("F") },
   ]);
-  assert.deepEqual(shards.flatMap(shard => shard.points).sort((a, b) => a - b), all);
+  assert.deepEqual(
+    shards.flatMap((shard) => shard.points).sort((a, b) => a - b),
+    all,
+  );
 });

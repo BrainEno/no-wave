@@ -27,7 +27,9 @@ export function expectedDocument(): string {
 }
 
 /** The document as it appears on disk, or `null` when the file is missing. */
-export async function readCheckedInDocument(root: string = ROOT): Promise<string | null> {
+export async function readCheckedInDocument(
+  root: string = ROOT,
+): Promise<string | null> {
   try {
     return await readFile(join(root, OPENAPI_FILE), "utf8");
   } catch {
@@ -43,7 +45,8 @@ export async function readCheckedInDocument(root: string = ROOT): Promise<string
  */
 export async function checkOpenApiFile(root: string = ROOT): Promise<string[]> {
   const checkedIn = await readCheckedInDocument(root);
-  if (checkedIn === null) return [`${OPENAPI_FILE} is missing. Run \`pnpm openapi:write\`.`];
+  if (checkedIn === null)
+    return [`${OPENAPI_FILE} is missing. Run \`pnpm openapi:write\`.`];
 
   const expected = expectedDocument();
   if (checkedIn === expected) return [];
@@ -57,7 +60,9 @@ export async function checkOpenApiFile(root: string = ROOT): Promise<string[]> {
       `${OPENAPI_FILE} is stale at line ${index + 1}: expected ${JSON.stringify(expectedLines[index] ?? "<end of file>")}, found ${JSON.stringify(actualLines[index] ?? "<end of file>")}. Run \`pnpm openapi:write\`.`,
     ];
   }
-  return [`${OPENAPI_FILE} differs from the generated document. Run \`pnpm openapi:write\`.`];
+  return [
+    `${OPENAPI_FILE} differs from the generated document. Run \`pnpm openapi:write\`.`,
+  ];
 }
 
 /** Overwrite the checked-in copy. Returns the path written. */

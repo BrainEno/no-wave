@@ -40,7 +40,17 @@ export function percentile(sorted: readonly number[], p: number): number {
 /** 从一个乱序样本集算出全部统计量。空样本得到全 `NaN`，而不是 `0`。 */
 export function summarize(samples: readonly number[]): LatencyStats {
   if (samples.length === 0) {
-    return { count: 0, min: NaN, mean: NaN, p50: NaN, p75: NaN, p90: NaN, p95: NaN, p99: NaN, max: NaN };
+    return {
+      count: 0,
+      min: NaN,
+      mean: NaN,
+      p50: NaN,
+      p75: NaN,
+      p90: NaN,
+      p95: NaN,
+      p99: NaN,
+      max: NaN,
+    };
   }
   const sorted = [...samples].sort((a, b) => a - b);
   const total = sorted.reduce((sum, value) => sum + value, 0);
@@ -98,10 +108,24 @@ export type ThresholdOutcome = {
  * 上限按 `actual <= limit` 判、下限按 `actual >= limit` 判；`NaN` 一律算不通过
  * ——没有测出数据不能伪装成「没有超限」。
  */
-export function checkThreshold(stats: { p95: number; p99: number; mean: number; throughput: number }, threshold: Threshold): ThresholdOutcome {
+export function checkThreshold(
+  stats: { p95: number; p99: number; mean: number; throughput: number },
+  threshold: Threshold,
+): ThresholdOutcome {
   const actual = stats[threshold.metric];
-  const ok = Number.isFinite(actual) && (threshold.direction === "atMost" ? actual <= threshold.limit : actual >= threshold.limit);
-  return { metric: threshold.metric, actual, limit: threshold.limit, direction: threshold.direction, ok, rationale: threshold.rationale };
+  const ok =
+    Number.isFinite(actual) &&
+    (threshold.direction === "atMost"
+      ? actual <= threshold.limit
+      : actual >= threshold.limit);
+  return {
+    metric: threshold.metric,
+    actual,
+    limit: threshold.limit,
+    direction: threshold.direction,
+    ok,
+    rationale: threshold.rationale,
+  };
 }
 
 /**
@@ -110,8 +134,14 @@ export function checkThreshold(stats: { p95: number; p99: number; mean: number; 
  * 每个场景都写明样本数与并发数：一个 p95 离开了这两个数字就没有意义，「p95
  * 12ms」在一千个样本上是结论，在三个样本上是巧合。
  */
-export function formatScenarioLine(name: string, stats: LatencyStats, requestsPerSecond: number, concurrency: number): string {
-  const f = (value: number) => (Number.isFinite(value) ? value.toFixed(1) : "—");
+export function formatScenarioLine(
+  name: string,
+  stats: LatencyStats,
+  requestsPerSecond: number,
+  concurrency: number,
+): string {
+  const f = (value: number) =>
+    Number.isFinite(value) ? value.toFixed(1) : "—";
   return [
     name.padEnd(28),
     `n=${String(stats.count).padStart(5)}`,
@@ -137,12 +167,24 @@ export type LadderRung = { concurrency: number; requestsPerSecond: number };
  * 随并发增长。不能拿最后一格去比峰值——峰值按定义就是最后一格，那个比较恒真，
  * 会永远报告「已饱和」，包括一台还有余量的机器。
  */
-export function saturationPoint(ladder: readonly LadderRung[]): { concurrency: number; requestsPerSecond: number; saturated: boolean } {
-  if (ladder.length === 0) return { concurrency: 0, requestsPerSecond: 0, saturated: false };
+export function saturationPoint(ladder: readonly LadderRung[]): {
+  concurrency: number;
+  requestsPerSecond: number;
+  saturated: boolean;
+} {
+  if (ladder.length === 0)
+    return { concurrency: 0, requestsPerSecond: 0, saturated: false };
   const peak = Math.max(...ladder.map((rung) => rung.requestsPerSecond));
-  const knee = ladder.find((rung) => rung.requestsPerSecond >= peak * 0.85) ?? ladder[0];
+  const knee =
+    ladder.find((rung) => rung.requestsPerSecond >= peak * 0.85) ?? ladder[0];
   const last = ladder[ladder.length - 1];
   const previous = ladder[ladder.length - 2];
-  const saturated = previous !== undefined && last.requestsPerSecond <= previous.requestsPerSecond * 1.15;
-  return { concurrency: knee.concurrency, requestsPerSecond: knee.requestsPerSecond, saturated };
+  const saturated =
+    previous !== undefined &&
+    last.requestsPerSecond <= previous.requestsPerSecond * 1.15;
+  return {
+    concurrency: knee.concurrency,
+    requestsPerSecond: knee.requestsPerSecond,
+    saturated,
+  };
 }

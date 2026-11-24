@@ -46,7 +46,11 @@ test("a stale copy is reported with the first differing line", async () => {
 
     const path = join(root, OPENAPI_FILE);
     const current = await readFile(path, "utf8");
-    await writeFile(path, current.replace('"openapi": "3.1.0"', '"openapi": "3.1.1"'), "utf8");
+    await writeFile(
+      path,
+      current.replace('"openapi": "3.1.0"', '"openapi": "3.1.1"'),
+      "utf8",
+    );
 
     const problems = await checkOpenApiFile(root);
     assert.equal(problems.length, 1);
