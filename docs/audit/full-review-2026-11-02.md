@@ -1,5 +1,7 @@
 # no-wave / BOT THK 代码库全面 Review
 
+Status: archived
+
 - 审阅日期：2026-11-02
 - 审阅基线：`arena/c5760b16-no-wave`，HEAD `0050da1`（Merge PR #153）。本地为浅克隆，只有这一个提交可见。
 - 对应上游：`BrainEno/no-wave`。GitHub 上当前 **21 个 open issues、0 个 open PR**；部分 issue 正文写的快照是 `6863b4a` 或更早 commit，和本 checkout 不完全一致，本报告的所有结论都以 `0050da1` 的源码重新核对过。

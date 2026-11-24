@@ -1,5 +1,7 @@
 # Legacy Backend Security and Reliability Findings
 
+Status: archived
+
 - Status: Initial source-level findings from selected resolver, context, schema and model files.
 - Source: `BrainEno/bot-thk-gqlserver`, branch `main`.
 - This is not a penetration test. Findings must be confirmed against the complete schema, middleware, deployment configuration and runtime behavior.

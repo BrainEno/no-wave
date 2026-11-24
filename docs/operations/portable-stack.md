@@ -1,5 +1,7 @@
 # One portable command: the whole stack on plain Node.js
 
+Status: active
+
 > The host-side half of deployment qualification — sleep/wake, cold starts on a
 > real instance, log drains, the platform's shutdown signal — is in
 > [Host qualification](host-qualification.md). Nothing there has been run
@@ -12,7 +14,7 @@ Nothing in the path depends on Vercel, on a Next.js adapter, or on a platform
 service binding.
 
 This is Phase 6, item 1 of the [frontend portability
-migration](../roadmap/frontend-portability-migration.md): the step that turns
+migration](../archive/frontend-portability-migration.md): the step that turns
 "the migration target works" into "nobody needs the platform binding".
 
 ## The two commands

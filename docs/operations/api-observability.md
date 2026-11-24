@@ -1,5 +1,7 @@
 # API observability
 
+Status: active
+
 ## Structured request logs
 
 The API writes one JSON object per completed HTTP request to stdout, or stderr for warning/error results. Each event includes a server-generated `requestId`, a validated W3C `traceparent` trace ID (or a generated fallback), a bounded route label, normalized method, HTTP status, elapsed milliseconds and a level. The response returns the generated ID in `X-Request-Id`.

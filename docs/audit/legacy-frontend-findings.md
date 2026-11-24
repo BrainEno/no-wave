@@ -1,5 +1,7 @@
 # Legacy Frontend Audit Findings
 
+Status: archived
+
 - Status: Initial source-level audit; not a full runtime or production audit.
 - Source: `hapmoniym/BOTTHIINK-blog-client`, branch `main`.
 - Audited from repository files available on 2026-10-22/23.

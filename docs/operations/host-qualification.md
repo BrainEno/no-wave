@@ -1,5 +1,7 @@
 # Host qualification: does the deployment survive the host?
 
+Status: active
+
 [One portable command](portable-stack.md) proves the stack runs on plain Node.js
 with only documented variables, and the CI `container-image` job proves both
 images build and serve. What neither can prove is the part that only a host

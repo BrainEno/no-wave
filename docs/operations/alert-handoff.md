@@ -1,5 +1,7 @@
 # 离线签名告警交接与独立收件箱
 
+Status: active
+
 对应 [ADR 0043](../architecture/decisions/0043-offline-signed-alert-handoff.md)，承接
 [有限 monitor](operational-monitor.md)。本规程只完成 #331 的仓库内交接切片。
 **没有外部告警账号、网络 receiver、调度器安装、生产启用或真实主机资格证明。**

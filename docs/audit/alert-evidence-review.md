@@ -1,5 +1,7 @@
 # #331 公钥-only 历史证据审阅：审阅与验收记录
 
+Status: archived
+
 本轮基线为 `a4e9de38a36387dd7b1314b5eae177d96041dbe3`，工作分支
 `arena/f3886e22-no-wave`。基线已含 PR #371；不累计上轮 822 行或借用其 CI。
 本轮范围已由 owner 明确批准，见 [ADR 0044](../architecture/decisions/0044-public-only-alert-evidence-review.md)。

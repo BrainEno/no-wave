@@ -1,5 +1,7 @@
 # Web 共享刷新协调：迁移、观测与故障处理
 
+Status: active
+
 - 日期：2026-11-12；范围：#318，配合 #316 / #319。
 - 协议：[ADR 0025](../architecture/decisions/0025-browser-session-refresh-protocol.md)。身份兼容变更：[ADR 0018](../architecture/decisions/0018-session-id-on-access-tokens.md)。
 - 本文是操作规程，不是部署授权，也不是 #331 的真实公网托管验收。

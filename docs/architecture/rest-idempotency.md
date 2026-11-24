@@ -1,5 +1,7 @@
 # REST write idempotency contract
 
+Status: active
+
 - Status: normative contract for the public REST API. Written against `main` after the slice that
   added create-time idempotency for works and conversations (issue #71).
 - Scope: every state-changing route under `/api/v1`, both persistence adapters.

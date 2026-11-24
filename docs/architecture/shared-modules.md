@@ -1,5 +1,7 @@
 # 开发前先查：公共模块索引
 
+Status: active
+
 最后核对：2026-11-12。此页是导航，不取代各模块的测试与 ADR。
 Web 已按 [ADR 0012](decisions/0012-portable-web-framework-migration.md) / [0017](decisions/0017-nextjs-retired-one-web-application.md)
 收敛为 React Router Framework Mode；当前版本看 `apps/web-rr/package.json`，不重新开展框架选型。

@@ -1,5 +1,7 @@
 # Legacy access-token compatibility and migration plan
 
+Status: active
+
 ## Verified legacy issuer behavior
 
 Reviewed the legacy backend implementation at:

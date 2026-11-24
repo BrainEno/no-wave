@@ -1,5 +1,7 @@
 # Acceptance Scenarios: Security and Authorization
 
+Status: active
+
 These are behavior contracts, not a mandate to create a separate Gherkin file or a separate E2E test for every scenario. Implement each scenario at the cheapest reliable layer, with integration coverage for persistence and a small number of end-to-end journeys.
 
 ## AUTH-01 — Client cannot choose its identity

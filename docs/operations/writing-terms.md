@@ -1,5 +1,7 @@
 # 本机术语一致性审阅
 
+Status: active
+
 入口 `/write/terms`，也可从写作台或本机集合工具进入。无需登录，不需要 API；不是自动替换或在线词库。
 设计边界见 [ADR 0049](../architecture/decisions/0049-read-only-local-writing-terms.md)。
 

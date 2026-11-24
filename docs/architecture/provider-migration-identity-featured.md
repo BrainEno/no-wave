@@ -1,5 +1,7 @@
 # Identity and featured-shelf snapshots in provider replay
 
+Status: active
+
 ## Scope and hard limits
 
 This is an incremental capture/replay contract, **not a production provider-cutover protocol**. [ADR 0010](decisions/0010-sqlite-first-and-online-provider-cutover.md) and [#217](https://github.com/BrainEno/no-wave/issues/217) still require a consistent initial snapshot, a matching journal watermark, complete source-write coverage, reconciliation, writer fencing, cutover and rollback. None is implemented here. Migrating media object bytes is separate. Do not promote a target or delete/rebuild production data based on these tests.

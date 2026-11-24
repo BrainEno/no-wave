@@ -1,5 +1,7 @@
 # 写作台：未保存保护与本机文稿工具
 
+Status: active
+
 > 本文保留下面固定基线的历史范围；后续 owner 已明确批准默认关闭的可选 IndexedDB 文稿恢复。
 > 当前持久化、账号/跨标签隔离与退出清除策略以 [ADR 0045](decisions/0045-default-off-local-writing-recovery.md)
 > 及[使用说明](../operations/writing-recovery.md)为准；不改变本页原有手动文件备份行为。

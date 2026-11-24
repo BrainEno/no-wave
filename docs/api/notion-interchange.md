@@ -1,5 +1,7 @@
 # Notion interchange: importing a database, exporting work back
 
+Status: active
+
 This document is the bridge between a Notion database and this site's articles:
 what the author's own database actually contains, how each property and block
 maps, what cannot be carried, and the order the parts ship in. The decision

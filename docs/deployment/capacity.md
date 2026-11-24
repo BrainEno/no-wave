@@ -1,5 +1,7 @@
 # Capacity: what one instance actually does
 
+Status: active
+
 This document states a measured ceiling and how it was derived, so an operator can
 answer "is one instance enough for my readership" without guessing, and so the
 ceiling is visible when a future change moves it.

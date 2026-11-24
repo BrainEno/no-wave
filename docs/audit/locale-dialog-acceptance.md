@@ -1,5 +1,7 @@
 # #329 / #330：双语通知与顶栏弹层验收
 
+Status: archived
+
 ## 范围与行为
 
 本轮固定增量基线：`cb437926913c4249e20e53125450ca6c13ebfcbf`。不重计前轮实现，不修改 API 授权、notification controller/provider/transport、持久化读状态、媒体所有权、导入协议或生产限流；不部署。

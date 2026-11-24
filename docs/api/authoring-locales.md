@@ -1,5 +1,7 @@
 # Authoring language editions
 
+Status: active
+
 The writing desk creates new works in `zh-CN` or `en`. Existing `zh-TW`
 works remain accessible and editable; the desk does not offer `zh-TW` for a new
 work. Article REST writes accept those three locale values (including `zh-TW`

@@ -1,5 +1,7 @@
 # Read-only audit: historical Notion import provenance
 
+Status: active
+
 Earlier imports treated `Parent item` as a translation relation and allowed more
 than one Notion page to target the same article and locale. A later import could
 therefore replace one page's edition with another. The new importer does not

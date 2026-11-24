@@ -1,5 +1,7 @@
 # 写作台：可选本机恢复的使用与故障处理
 
+Status: active
+
 这是浏览器内的文字恢复工具，**不是服务器自动保存、离线发布、跨设备同步或加密保险箱**。
 产品决策和精确边界见 [ADR 0045](../architecture/decisions/0045-default-off-local-writing-recovery.md)。
 

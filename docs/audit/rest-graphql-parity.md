@@ -1,5 +1,7 @@
 # REST–GraphQL Contract Parity Audit
 
+Status: archived
+
 - Audit date: 2026-10-27
 - Baseline: the former GraphQL schema and resolvers in `apps/api/src/transport/graphql/schema.ts`, as they existed during the 2026-10-27 migration review
 - Status: historical migration record only. The live GraphQL schema/runtime, `/graphql` route, and schema-parity test have been removed after the Web public-content client migrated to REST.

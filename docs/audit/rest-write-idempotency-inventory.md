@@ -1,5 +1,7 @@
 # REST write idempotency inventory
 
+Status: archived
+
 - Status: implementation inventory for Issue #71; review against the current handler before adding a new mutation.
 - Updated 2026-10-30: creates now carry keys (works, comments, conversations, messages). The normative contract — key
   format, digests, replay semantics, retention and what is deliberately deferred — lives in

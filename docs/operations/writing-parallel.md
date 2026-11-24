@@ -1,5 +1,7 @@
 # 本机双语与平行文稿对照审阅
 
+Status: active
+
 入口 `/write/parallel`，亦可从写作工作区或本机文稿集合工具进入。无需登录，不需要 API 或网络连接；不是机器翻译或自动润色工具。
 设计边界见 [ADR 0051](../architecture/decisions/0051-read-only-local-writing-parallel.md)。
 

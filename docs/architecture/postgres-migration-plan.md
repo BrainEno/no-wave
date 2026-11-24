@@ -1,5 +1,7 @@
 # Persistence-provider and online data-migration plan
 
+Status: active
+
 ## Scope and product boundary
 
 The current repository is an independent implementation, not a code-preserving refactor. The previous BOT THK project is used to identify product capabilities, user-visible behavior, data concepts, and known defects. Its programming patterns, database schema, resolver structure, and UI layout are not binding design constraints.

@@ -1,5 +1,7 @@
 # #331 有限只读告警切片：审阅与验收记录
 
+Status: archived
+
 本轮基线 `cd58a637668373e2f9f61f3fc00ec4837bf9a238`，分支
 `arena/215cdc35-no-wave`。不借用先前 PR #369 的通过结果作为本轮验收。
 范围是[ADR 0042](../architecture/decisions/0042-finite-read-only-operational-monitor.md)

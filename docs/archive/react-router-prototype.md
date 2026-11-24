@@ -1,5 +1,7 @@
 # React Router 7 prototype — Phase 1 report
 
+Status: done
+
 - Phase: 1 of [the portability roadmap](frontend-portability-migration.md)
 - Target: React Router 8.5.1 Framework Mode (`apps/web-rr`); this report was written on 7.18.5
 - Status: prototype builds, serves on plain Node.js and passes its behavior tests

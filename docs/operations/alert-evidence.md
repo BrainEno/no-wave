@@ -1,5 +1,7 @@
 # 离线告警历史证据：只读审阅、比较、检查点与追踪
 
+Status: active
+
 对应 [ADR 0044](../architecture/decisions/0044-public-only-alert-evidence-review.md)。
 输入是[离线交接](alert-handoff.md)已产生的 v1 batch/receipt，不需要 sender/inbox
 私钥、journal、运行中的 API、数据库或网络。本命令不加载 `.env`，不会 ack、settle、

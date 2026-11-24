@@ -1,10 +1,12 @@
 # Notification worker — standalone operation contract
 
+Status: active
+
 - Date: 2026-10-29
 - Amended: 2026-11-12 — [ADR 0038](../architecture/decisions/0038-notification-integrity.md), bounded retry and durable quarantine
 - Amended: 2026-11-12 — [ADR 0040](../architecture/decisions/0040-notification-service-operations.md), supervised dev roles and bounded lifecycle
 - Code: `apps/api/src/service.ts` (image role dispatch), `apps/api/src/persistence/notification-worker.ts` (entry point), `outbox-worker.ts` (batch dispatch), `message-notification-delivery.ts` (delivery), `outbox-metrics.ts` (metrics)
-- Related: [frontend portability migration §Phase 2](../roadmap/frontend-portability-migration.md), [hosting qualification §5](../roadmap/hosting-qualification.md), ADR 0012 decisions 7–8
+- Related: [frontend portability migration §Phase 2](../archive/frontend-portability-migration.md), [hosting qualification §5](../roadmap/hosting-qualification.md), ADR 0012 decisions 7–8
 
 This document is the contract the Web migration depends on. It is a description of the worker that already exists; the process contracts below are exercised locally against disposable databases; no production deployment is implied.
 

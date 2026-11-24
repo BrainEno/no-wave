@@ -1,5 +1,7 @@
 # The published API contract
 
+Status: active
+
 `GET /api/v1/openapi.json` answers with an OpenAPI 3.1 document describing every
 route under `/api/v1`. The same document is checked in at
 `docs/api/openapi.json`, so a reader who has the repository does not need a running

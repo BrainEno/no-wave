@@ -1,5 +1,7 @@
 # Frontend framework and hosting-portability migration
 
+Status: done
+
 - Owner approval: 2026-10-29
 - Target: React Router Framework Mode (7 at the time of writing; now 8.5.1 — see [ADR 0012](../architecture/decisions/0012-portable-web-framework-migration.md))
 - Current implementation: Next.js App Router, preserved until staged migration passes
@@ -26,7 +28,7 @@ The final Web architecture must satisfy all of these requirements:
 - **Background work:** the notification outbox worker must run independently of the Web process and must not require Vercel Daemons.
 - **Cost constraint:** the hosting choice must be genuinely zero-cost and must not require a credit card. Free-instance sleep is acceptable. No candidate is approved until its actual signup, overage, runtime and persistence constraints are verified.
 
-See [ADR 0012](../architecture/decisions/0012-portable-web-framework-migration.md) for the accepted architecture decision and [phase gates](phase-gates.md) for the project's broader delivery criteria.
+See [ADR 0012](../architecture/decisions/0012-portable-web-framework-migration.md) for the accepted architecture decision and [phase gates](../roadmap/phase-gates.md) for the project's broader delivery criteria.
 
 ## 2. Baseline inventory
 
@@ -122,7 +124,7 @@ The owner accepts cold starts and free-instance sleep but does not accept card-r
 ### Phase 1 — Hosting feasibility and isolated portability prototype
 
 - [x] Re-check main and all nested `AGENTS.md` / relevant ADRs before coding.
-- [x] Verify one or more no-card, zero-cost hosting candidates → [hosting qualification](hosting-qualification.md): Render free web service + Neon free Postgres qualify on published terms; object storage stays **blocked** (R2 is card-gated), so no media migration code is written.
+- [x] Verify one or more no-card, zero-cost hosting candidates → [hosting qualification](../roadmap/hosting-qualification.md): Render free web service + Neon free Postgres qualify on published terms; object storage stays **blocked** (R2 is card-gated), so no media migration code is written.
 - [x] Build an isolated React Router 7 Framework Mode proof of concept using a mocked REST API, separate from the current production `apps/web`. → `apps/web-rr`
 - [x] Prove a public article route renders server HTML, title/description/canonical/Open Graph metadata and a hard 404 for an unknown slug.
 - [x] Prove a client-interactive form handles valid input, validation errors, API failures and explicit pending/success states.
@@ -142,7 +144,7 @@ so the phase is not complete and no provider-specific code exists.
 - [x] Separate request validation/cookie policy/response mapping from the Next adapter where this reduces coupling, using standard web Request/Response types and explicit inputs. → `packages/web-http` (`handleAuthRequest`, `forwardAuthoringRequest`, `readLimitedJson`, cookie helpers), consumed by both `apps/web` and `apps/web-rr`.
 - [x] Add contract tests for cookie paths/options, exact-Origin validation, token refresh/retry, invalid refresh logout, payload size limits and private cache headers. → `packages/web-http/test/*` (26 tests).
 - [x] Ensure every server-side API call can use an explicit server-only `API_BASE_URL`; keep any temporary Vercel binding support behind a small adapter. → the seam takes `apiBaseUrl` as an argument; the Next adapter keeps the existing resolution order and the RR prototype passes it explicitly.
-- [x] Document the production worker's standalone start/stop, health/metrics, retry and graceful-shutdown contract without running or moving the live worker. → [notification worker contract](../operations/notification-worker.md); the cardless scheduler-drain model is recorded in [hosting qualification §5](hosting-qualification.md) and remains unimplemented.
+- [x] Document the production worker's standalone start/stop, health/metrics, retry and graceful-shutdown contract without running or moving the live worker. → [notification worker contract](../operations/notification-worker.md); the cardless scheduler-drain model is recorded in [hosting qualification §5](../roadmap/hosting-qualification.md) and remains unimplemented.
 
 **Exit gate:** the critical auth/media/REST behavior is tested without requiring Next.js request objects or Vercel's service-binding injection.
 
@@ -243,9 +245,9 @@ comparison against a real host (Phase 6).
 
 ### Phase 5 — Migrate media and detach the worker from Vercel
 
-- [x] Port the media request/response adapter without exposing private storage keys or service credentials. (Storage itself now passes the gate via Neon Object Storage — see [hosting qualification §4](hosting-qualification.md); the adapter also gained `WHEN_REQUIRED` checksums and bounded `SlowDown` retries.) → `packages/web-http/src/media.ts`, called by both apps (2026-10-29); see [media relay](media-relay.md).
+- [x] Port the media request/response adapter without exposing private storage keys or service credentials. (Storage itself now passes the gate via Neon Object Storage — see [hosting qualification §4](../roadmap/hosting-qualification.md); the adapter also gained `WHEN_REQUIRED` checksums and bounded `SlowDown` retries.) → `packages/web-http/src/media.ts`, called by both apps (2026-10-29); see [media relay](media-relay.md).
 - [x] Verify media upload, normalized WebP retrieval, access denial, checksums, ETag and cache headers. → `packages/web-http/test/media.test.ts` (8 tests) plus prototype tests over real HTTP; the Next.js handlers were re-checked manually against a stub API (200/304/404/403/415/201). Not covered: a live Neon bucket round trip.
-- [x] Select a worker/scheduler execution model that actually fits the qualified zero-cost host. If it cannot, stop before choosing that host or silently weakening delivery guarantees. → long-lived worker for self-hosted use; **scheduler-invoked one-shot drain** for the cardless host (bounded by deadline and batch cap, sharing `dispatchOutboxBatch`). See [notification worker §6a](../operations/notification-worker.md) and [hosting qualification §5](hosting-qualification.md).
+- [x] Select a worker/scheduler execution model that actually fits the qualified zero-cost host. If it cannot, stop before choosing that host or silently weakening delivery guarantees. → long-lived worker for self-hosted use; **scheduler-invoked one-shot drain** for the cardless host (bounded by deadline and batch cap, sharing `dispatchOutboxBatch`). See [notification worker §6a](../operations/notification-worker.md) and [hosting qualification §5](../roadmap/hosting-qualification.md).
 - [ ] Run the notification outbox worker outside the Web server and validate duplicate prevention, lease expiry, retry and shutdown recovery against a disposable PostgreSQL database. → the drain loop is unit-tested (`outbox-drain.test.ts`, 7 tests, incl. a real SQLite store) and its CLI failure paths were executed; a **PostgreSQL** run has not happened locally (no server available) and remains the open item.
 
 **Exit gate:** media remains private and durable; notification delivery remains database/outbox-backed and recovers after worker restarts.

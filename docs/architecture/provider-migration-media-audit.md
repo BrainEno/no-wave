@@ -1,5 +1,7 @@
 # Read-only single-provider media materialization audit
 
+Status: active
+
 ## Purpose and safety boundary
 
 This is an **opt-in internal diagnostic for one database**, not a repair, deletion check, reconciliation protocol or cutover gate. Unlike the separate [cross-provider comparison](provider-migration-media-comparison.md), it reads article bodies and avatar URLs to identify some inconsistencies between those values, asset IDs and materialized references *within that database*. In particular, it can report a reference omitted on both providers, which two equal reference tables alone cannot reveal. Run it separately on each disposable database; the results are not a synchronized source/target comparison.

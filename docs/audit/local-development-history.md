@@ -1,5 +1,7 @@
 # 本地开发链历史记录
 
+Status: archived
+
 从操作指南移出的历史叙事，所述复现基线为 `9f4da47`；不是当前缺陷清单或现行安全策略。
 当前操作以[本地开发指南](../development/local-development.md)、[共享 BFF 规则](../architecture/bff-routes.md)及当前代码为准。旧模块路径只保留历史上下文。
 

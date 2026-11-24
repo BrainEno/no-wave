@@ -1,5 +1,7 @@
 # 本机三方文稿合并：范围、回归与本轮独立有效行验收
 
+Status: archived
+
 固定增量基线 **`b7009ebfaa160525d4047b81316d8ba4e8709487`**，唯一工作分支
 `arena/4c7ee59b-no-wave`。owner 在说明丢稿/错误基线、未加密本机文件与内存边界后，
 明确批准 `approve-local-three-way-full`。风险中高，边界见

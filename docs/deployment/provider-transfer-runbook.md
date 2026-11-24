@@ -1,5 +1,7 @@
 # Copying a database to another engine (off-line)
 
+Status: active
+
 `pnpm db:transfer` copies one whole database into an **empty** database of the
 other engine — SQLite → PostgreSQL, PostgreSQL → SQLite, or either into a fresh
 copy of itself. It reads the source inside a single snapshot, writes the target

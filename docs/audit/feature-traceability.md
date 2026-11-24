@@ -1,5 +1,7 @@
 # Feature Traceability — New Implementation
 
+Status: active
+
 This is an evolving capability map based on selected legacy code review and implemented new API routes. Legacy code is evidence of product features and possible behavior, not an implementation constraint. Items marked conditional or uncertain must be verified rather than assumed.
 
 | Capability | Functional reference | New implementation acceptance requirement | Current state |
