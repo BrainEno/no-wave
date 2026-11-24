@@ -117,7 +117,3 @@ export function speakSequence(texts: readonly string[], lang: string, handlers: 
   return speaker;
 }
 
-/** Stop whatever is being spoken, if anything is. */
-export function stopSpeaking(): void {
-  current?.stop();
-}
