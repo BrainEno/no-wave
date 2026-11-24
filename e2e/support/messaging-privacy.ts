@@ -8,7 +8,8 @@ export const ACTOR_HEADER = "x-expected-messaging-actor";
 export async function register(context: BrowserContext, origin: string) {
   const email = uniqueEmail("message-privacy");
   const response = await context.request.post(`${origin}/api/auth/register`, {
-    headers: { origin }, data: { email, password: PASSWORD },
+    headers: { origin },
+    data: { email, password: PASSWORD },
   });
   expect(response.status()).toBe(201);
   const session = await context.request.get(`${origin}/api/authoring/session`);
@@ -16,34 +17,56 @@ export async function register(context: BrowserContext, origin: string) {
   return { email, id: (await session.json()).data.id as string };
 }
 
-export async function login(context: BrowserContext, origin: string, email: string) {
+export async function login(
+  context: BrowserContext,
+  origin: string,
+  email: string,
+) {
   const response = await context.request.post(`${origin}/api/auth/login`, {
-    headers: { origin }, data: { email, password: PASSWORD },
+    headers: { origin },
+    data: { email, password: PASSWORD },
   });
   expect(response.status()).toBe(200);
 }
 
-export async function conversation(context: BrowserContext, origin: string, recipient: string, body: string) {
+export async function conversation(
+  context: BrowserContext,
+  origin: string,
+  recipient: string,
+  body: string,
+) {
   const created = await context.request.post(`${origin}/api/authoring/inbox`, {
-    headers: { origin, "idempotency-key": crypto.randomUUID() }, data: { participantIds: [recipient] },
+    headers: { origin, "idempotency-key": crypto.randomUUID() },
+    data: { participantIds: [recipient] },
   });
   expect(created.status()).toBe(201);
   const id = (await created.json()).data.id as string;
-  const sent = await context.request.post(`${origin}/api/authoring/inbox/${id}/messages`, {
-    headers: { origin, "idempotency-key": crypto.randomUUID() }, data: { body },
-  });
+  const sent = await context.request.post(
+    `${origin}/api/authoring/inbox/${id}/messages`,
+    {
+      headers: { origin, "idempotency-key": crypto.randomUUID() },
+      data: { body },
+    },
+  );
   expect(sent.status()).toBe(201);
   return id;
 }
 
 export function gate() {
   let release!: () => void;
-  const promise = new Promise<void>((resolve) => { release = resolve; });
+  const promise = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   return { promise, release };
 }
 
 export async function settleUi(page: Page) {
-  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
 }
 
 export async function unloadBlocked(page: Page) {
@@ -55,5 +78,9 @@ export async function unloadBlocked(page: Page) {
 }
 
 export async function restorePage(page: Page) {
-  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true })));
+  await page.evaluate(() =>
+    window.dispatchEvent(
+      new PageTransitionEvent("pageshow", { persisted: true }),
+    ),
+  );
 }

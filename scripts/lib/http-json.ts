@@ -17,6 +17,8 @@ export function parseJson(text: string): Record<string, unknown> | null {
   }
 }
 
-export async function readJson(response: Response): Promise<Record<string, unknown> | null> {
+export async function readJson(
+  response: Response,
+): Promise<Record<string, unknown> | null> {
   return parseJson(await response.text());
 }

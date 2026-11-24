@@ -9,8 +9,28 @@ import { marked } from "marked";
 /** All versioned Markdown, plus new unignored documents in the current change. */
 const root = fileURLToPath(new URL("..", import.meta.url));
 export function repositoryMarkdown(): string[] {
-  const paths = execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "*.md"], { cwd: root, encoding: "utf8" });
-  return [...new Set(paths.split("\0").filter(path => path.endsWith(".md") && existsSync(resolve(root, path))))].sort();
+  const paths = execFileSync(
+    "git",
+    [
+      "ls-files",
+      "-z",
+      "--cached",
+      "--others",
+      "--exclude-standard",
+      "--",
+      "*.md",
+    ],
+    { cwd: root, encoding: "utf8" },
+  );
+  return [
+    ...new Set(
+      paths
+        .split("\0")
+        .filter(
+          (path) => path.endsWith(".md") && existsSync(resolve(root, path)),
+        ),
+    ),
+  ].sort();
 }
 const documents = repositoryMarkdown();
 
@@ -21,7 +41,11 @@ const documents = repositoryMarkdown();
  * External URLs, site routes and same-document anchors are not repository files;
  * fragments on local files are intentionally not interpreted as GitHub slugs.
  */
-export function missingLinks(document: string, content: string, exists: (path: string) => boolean): string[] {
+export function missingLinks(
+  document: string,
+  content: string,
+  exists: (path: string) => boolean,
+): string[] {
   const failures: string[] = [];
   const tokens = marked.lexer(content);
   let searchFrom = 0;
@@ -29,15 +53,22 @@ export function missingLinks(document: string, content: string, exists: (path: s
     const found = content.indexOf(block.raw, searchFrom);
     const blockStart = found < 0 ? searchFrom : found;
     searchFrom = blockStart + block.raw.length;
-    marked.walkTokens([block], (token) => {
+    // Synchronous walk: no async marked extensions are registered here.
+    void marked.walkTokens([block], (token) => {
       if (token.type !== "link" && token.type !== "image") return;
       const raw = token.href;
       if (/^(?:[a-z][a-z0-9+.-]*:|\/|#)/i.test(raw)) return;
       const insideBlock = block.raw.indexOf(token.raw);
-      const line = content.slice(0, blockStart + Math.max(insideBlock, 0)).split("\n").length;
+      const line = content
+        .slice(0, blockStart + Math.max(insideBlock, 0))
+        .split("\n").length;
       let path: string;
-      try { path = decodeURIComponent(raw.split(/[?#]/, 1)[0]!); }
-      catch { failures.push(`${document}:${line}: invalid URL encoding: ${raw}`); return; }
+      try {
+        path = decodeURIComponent(raw.split(/[?#]/, 1)[0]!);
+      } catch {
+        failures.push(`${document}:${line}: invalid URL encoding: ${raw}`);
+        return;
+      }
       if (!path) return;
       const target = resolve(root, dirname(document), path);
       const rel = relative(root, target);
@@ -52,34 +83,69 @@ export function missingLinks(document: string, content: string, exists: (path: s
 }
 
 test("all repository Markdown documents link to existing repository evidence", () => {
-  const failures = documents.flatMap((document) => missingLinks(document, readFileSync(resolve(root, document), "utf8"), existsSync));
+  const failures = documents.flatMap((document) =>
+    missingLinks(
+      document,
+      readFileSync(resolve(root, document), "utf8"),
+      existsSync,
+    ),
+  );
   assert.deepEqual(failures, []);
 });
 
 test("a missing local evidence path fails with the document and line", () => {
-  const failures = missingLinks("docs/example.md", "# Example\n[proof](../not-present.ts)\n", () => false);
+  const failures = missingLinks(
+    "docs/example.md",
+    "# Example\n[proof](../not-present.ts)\n",
+    () => false,
+  );
   assert.equal(failures.length, 1);
   assert.match(failures[0]!, /docs\/example\.md:2: missing/);
 });
 
 test("existing paths with fragments and titles are checked as files", () => {
   const seen: string[] = [];
-  const failures = missingLinks("docs/example.md", '[proof](../README.md#intro "title")', (path) => { seen.push(path); return true; });
+  const failures = missingLinks(
+    "docs/example.md",
+    '[proof](../README.md#intro "title")',
+    (path) => {
+      seen.push(path);
+      return true;
+    },
+  );
   assert.deepEqual(failures, []);
   assert.deepEqual(seen, [resolve(root, "README.md")]);
 });
 
 test("examples and non-file links do not become fake file requirements", () => {
   const text = [
-    "[web](https://example.test/path)", "[email](mailto:a@example.test)", "[heading](#heading)", "[route](/articles/example)",
-    "```md", "[example](missing.md)", "```", "~~~", "[example](also-missing.md)", "~~~",
+    "[web](https://example.test/path)",
+    "[email](mailto:a@example.test)",
+    "[heading](#heading)",
+    "[route](/articles/example)",
+    "```md",
+    "[example](missing.md)",
+    "```",
+    "~~~",
+    "[example](also-missing.md)",
+    "~~~",
   ].join("\n");
-  assert.deepEqual(missingLinks("README.md", text, () => false), []);
+  assert.deepEqual(
+    missingLinks("README.md", text, () => false),
+    [],
+  );
 });
 
 test("encoded names are decoded and attempts to escape the repository are refused", () => {
   const seen: string[] = [];
-  const failures = missingLinks("README.md", "[encoded](docs/a%20b.md)\n[escape](../outside.md)\n[bad](%xx)", (path) => { seen.push(path); return true; });
+  const failures = missingLinks(
+    "README.md",
+    "[encoded](docs/a%20b.md)\n[escape](../outside.md)\n[bad](%xx)",
+    (path) => {
+      seen.push(path);
+      return true;
+    },
+  );
   assert.deepEqual(seen, [resolve(root, "docs/a b.md")]);
   assert.equal(failures.length, 2);
   assert.match(failures[0]!, /outside repository/);
@@ -87,7 +153,13 @@ test("encoded names are decoded and attempts to escape the repository are refuse
 });
 
 test("reference-style links resolve their definitions and report missing targets", () => {
-  const source = ["# Guide", "Read [the plan][plan] and ![diagram][diagram].", "", "[plan]: ../missing.md", "[diagram]: ../image.png"].join("\n");
+  const source = [
+    "# Guide",
+    "Read [the plan][plan] and ![diagram][diagram].",
+    "",
+    "[plan]: ../missing.md",
+    "[diagram]: ../image.png",
+  ].join("\n");
   const failures = missingLinks("docs/example.md", source, () => false);
   assert.equal(failures.length, 2);
   assert.match(failures[0]!, /missing\.md/);
@@ -95,36 +167,73 @@ test("reference-style links resolve their definitions and report missing targets
 });
 
 test("inline code and indented code examples do not create evidence requirements", () => {
-  const source = ["`[not a link](missing.md)`", "", "    [not a link](also-missing.md)"].join("\n");
-  assert.deepEqual(missingLinks("README.md", source, () => false), []);
+  const source = [
+    "`[not a link](missing.md)`",
+    "",
+    "    [not a link](also-missing.md)",
+  ].join("\n");
+  assert.deepEqual(
+    missingLinks("README.md", source, () => false),
+    [],
+  );
 });
 
 test("links with balanced parentheses and angle-bracket destinations are checked", () => {
   const source = "[first](docs/file%20(one).md)\n[second](<docs/a b.md>)";
   const seen: string[] = [];
-  assert.deepEqual(missingLinks("README.md", source, (path) => { seen.push(path); return true; }), []);
-  assert.deepEqual(seen, [resolve(root, "docs/file (one).md"), resolve(root, "docs/a b.md")]);
+  assert.deepEqual(
+    missingLinks("README.md", source, (path) => {
+      seen.push(path);
+      return true;
+    }),
+    [],
+  );
+  assert.deepEqual(seen, [
+    resolve(root, "docs/file (one).md"),
+    resolve(root, "docs/a b.md"),
+  ]);
 });
 
 test("a local image destination is treated as evidence just like a link", () => {
-  const failures = missingLinks("README.md", "![diagram](docs/missing.png)", () => false);
+  const failures = missingLinks(
+    "README.md",
+    "![diagram](docs/missing.png)",
+    () => false,
+  );
   assert.equal(failures.length, 1);
   assert.match(failures[0]!, /missing\.png/);
 });
 
 test("reference definitions can appear after the use and may be shared", () => {
-  const source = "[one][proof] and [two][proof]\n\n[proof]: docs/evidence.md \"Evidence\"\n";
+  const source =
+    '[one][proof] and [two][proof]\n\n[proof]: docs/evidence.md "Evidence"\n';
   const seen: string[] = [];
-  const failures = missingLinks("README.md", source, (path) => { seen.push(path); return true; });
+  const failures = missingLinks("README.md", source, (path) => {
+    seen.push(path);
+    return true;
+  });
   assert.deepEqual(failures, []);
-  assert.deepEqual(seen, [resolve(root, "docs/evidence.md"), resolve(root, "docs/evidence.md")]);
+  assert.deepEqual(seen, [
+    resolve(root, "docs/evidence.md"),
+    resolve(root, "docs/evidence.md"),
+  ]);
 });
 
 test("only local path portions of destinations are resolved", () => {
   const seen: string[] = [];
-  const source = "[a](guide.md?format=full#heading)\n[b](guide.md#heading)\n[c](#local)";
-  assert.deepEqual(missingLinks("docs/README.md", source, (path) => { seen.push(path); return true; }), []);
-  assert.deepEqual(seen, [resolve(root, "docs/guide.md"), resolve(root, "docs/guide.md")]);
+  const source =
+    "[a](guide.md?format=full#heading)\n[b](guide.md#heading)\n[c](#local)";
+  assert.deepEqual(
+    missingLinks("docs/README.md", source, (path) => {
+      seen.push(path);
+      return true;
+    }),
+    [],
+  );
+  assert.deepEqual(seen, [
+    resolve(root, "docs/guide.md"),
+    resolve(root, "docs/guide.md"),
+  ]);
 });
 
 test("reference links cannot bypass repository boundary checks", () => {
@@ -135,16 +244,40 @@ test("reference links cannot bypass repository boundary checks", () => {
 });
 
 test("links nested in lists, blockquotes and table cells are checked", () => {
-  const source = ["- [list](list.md)", "", "> [quote](quote.md)", "", "| Link |", "| --- |", "| [table](table.md) |"].join("\n");
+  const source = [
+    "- [list](list.md)",
+    "",
+    "> [quote](quote.md)",
+    "",
+    "| Link |",
+    "| --- |",
+    "| [table](table.md) |",
+  ].join("\n");
   const seen: string[] = [];
-  const failures = missingLinks("README.md", source, (path) => { seen.push(path); return false; });
+  const failures = missingLinks("README.md", source, (path) => {
+    seen.push(path);
+    return false;
+  });
   assert.equal(failures.length, 3);
-  assert.deepEqual(seen, ["list.md", "quote.md", "table.md"].map((file) => resolve(root, file)));
+  assert.deepEqual(
+    seen,
+    ["list.md", "quote.md", "table.md"].map((file) => resolve(root, file)),
+  );
 });
 
 test("external schemes and root-relative URLs are not treated as local files", () => {
-  const source = ["[web](https://example.test/a)", "[mail](mailto:a@example.test)", "[protocol](//cdn.example.test/a)", "[route](/articles/a)"].join("\n\n");
-  assert.deepEqual(missingLinks("README.md", source, () => { throw new Error("unexpected file check"); }), []);
+  const source = [
+    "[web](https://example.test/a)",
+    "[mail](mailto:a@example.test)",
+    "[protocol](//cdn.example.test/a)",
+    "[route](/articles/a)",
+  ].join("\n\n");
+  assert.deepEqual(
+    missingLinks("README.md", source, () => {
+      throw new Error("unexpected file check");
+    }),
+    [],
+  );
 });
 
 test("Markdown line diagnostics account for multiline blocks", () => {
@@ -155,23 +288,38 @@ test("Markdown line diagnostics account for multiline blocks", () => {
 });
 
 test("the migration guidance distinguishes currently implemented and open gates", () => {
-  const roadmap = readFileSync(resolve(root, "docs/roadmap/phase-gates.md"), "utf8");
-  assert.match(roadmap, /\[x\] Migrate auth, writing, comment and media route handlers/);
-  assert.match(roadmap, /\[x\] Implement the article editor and image-upload integration/);
+  const roadmap = readFileSync(
+    resolve(root, "docs/roadmap/phase-gates.md"),
+    "utf8",
+  );
+  assert.match(
+    roadmap,
+    /\[x\] Migrate auth, writing, comment and media route handlers/,
+  );
+  assert.match(
+    roadmap,
+    /\[x\] Implement the article editor and image-upload integration/,
+  );
   assert.match(roadmap, /\[ \] Complete durable recovery of unsaved drafts/);
   assert.match(roadmap, /\[ \] Complete the core feature parity journey/);
 });
 
 test("the documented metrics default agrees with the operational guidance", () => {
   const readme = readFileSync(resolve(root, "README.md"), "utf8");
-  const operations = readFileSync(resolve(root, "docs/operations/api-observability.md"), "utf8");
+  const operations = readFileSync(
+    resolve(root, "docs/operations/api-observability.md"),
+    "utf8",
+  );
   assert.match(readme, /API_METRICS_ENABLED=true/);
   assert.match(readme, /endpoint returns 404 by default/);
   assert.match(operations, /disabled by default and returns 404/);
 });
 
 test("historical design names cannot be mistaken for current routes", () => {
-  const design = readFileSync(resolve(root, "packages/web-ui/docs/UI_DESIGN_SYSTEM.md"), "utf8");
+  const design = readFileSync(
+    resolve(root, "packages/web-ui/docs/UI_DESIGN_SYSTEM.md"),
+    "utf8",
+  );
   assert.match(design, /历史设计稿名称，不是当前产品路由/);
   assert.match(design, /不表示存在 `\/submit` 路由或已实现审核/);
   assert.match(design, /`\/articles\/:slug`、`\/write`、`\/messages`/);
@@ -188,22 +336,45 @@ test("fenced code blocks with language hints never produce false missing links",
     "[real](real.md)",
   ].join("\n");
   const visited: string[] = [];
-  const failures = missingLinks("README.md", source, (path) => { visited.push(path); return true; });
+  const failures = missingLinks("README.md", source, (path) => {
+    visited.push(path);
+    return true;
+  });
   assert.deepEqual(failures, []);
   assert.deepEqual(visited, [resolve(root, "real.md")]);
 });
 
 test("a missing license link is rejected by the same evidence checker", () => {
   const readme = readFileSync(resolve(root, "README.md"), "utf8");
-  const failures = missingLinks("README.md", readme, (path) => path !== resolve(root, "LICENSE"));
-  assert.equal(failures.filter((failure) => failure.includes("missing LICENSE")).length, 1);
+  const failures = missingLinks(
+    "README.md",
+    readme,
+    (path) => path !== resolve(root, "LICENSE"),
+  );
+  assert.equal(
+    failures.filter((failure) => failure.includes("missing LICENSE")).length,
+    1,
+  );
 });
 
 test("a bad link in a previously unlisted document fails the full-repository check", () => {
   const document = "apps/api/README.md";
   assert.ok(documents.includes(document));
-  const source = readFileSync(resolve(root, document), "utf8") + "\n[intentional regression](not-present-regression.md)\n";
+  const source =
+    readFileSync(resolve(root, document), "utf8") +
+    "\n[intentional regression](not-present-regression.md)\n";
   const failures = missingLinks(document, source, existsSync);
-  assert.ok(failures.some(failure => failure.includes(`${document}:`) && failure.includes("not-present-regression.md")));
-  assert.ok(documents.includes("AGENTS.md") && documents.includes("docs/architecture/decisions/0014-password-recovery-and-email-verification.md"));
+  assert.ok(
+    failures.some(
+      (failure) =>
+        failure.includes(`${document}:`) &&
+        failure.includes("not-present-regression.md"),
+    ),
+  );
+  assert.ok(
+    documents.includes("AGENTS.md") &&
+      documents.includes(
+        "docs/architecture/decisions/0014-password-recovery-and-email-verification.md",
+      ),
+  );
 });

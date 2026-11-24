@@ -10,7 +10,9 @@ import { test } from "./support/csp-fixture.ts";
  */
 test.use({ reducedMotion: "no-preference" });
 
-test("the intro curtain covers the viewport, shows its counter on screen and then leaves", async ({ page }) => {
+test("the intro curtain covers the viewport, shows its counter on screen and then leaves", async ({
+  page,
+}) => {
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
 
@@ -23,7 +25,10 @@ test("the intro curtain covers the viewport, shows its counter on screen and the
     const box = element.getBoundingClientRect();
     // Whatever is at the centre of the screen must be the curtain itself, not
     // the rail, the pill or the page: that is what "covers" means.
-    const top = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2);
+    const top = document.elementFromPoint(
+      window.innerWidth / 2,
+      window.innerHeight / 2,
+    );
     return {
       insideSmoothContent: element.closest("#smooth-content") !== null,
       height: box.height,
@@ -43,15 +48,24 @@ test("the intro curtain covers the viewport, shows its counter on screen and the
   expect(geometry.centreIsCurtain).toBe(true);
 
   // Six even dark columns, as the original design had them: no accent column.
-  const colours = await page.locator(".nw-load .nw-col").evaluateAll((columns) => columns.map((column) => getComputedStyle(column).backgroundColor));
+  const colours = await page
+    .locator(".nw-load .nw-col")
+    .evaluateAll((columns) =>
+      columns.map((column) => getComputedStyle(column).backgroundColor),
+    );
   expect(colours).toHaveLength(6);
   expect(new Set(colours).size).toBe(1);
 
   await expect(loader).toHaveCount(0, { timeout: 10_000 });
-  expect(pageErrors, `the intro must not throw:\n${pageErrors.join("\n")}`).toEqual([]);
+  expect(
+    pageErrors,
+    `the intro must not throw:\n${pageErrors.join("\n")}`,
+  ).toEqual([]);
 });
 
-test("the hero keeps a live, hover-reactive canvas whichever renderer the browser allows", async ({ page }) => {
+test("the hero keeps a live, hover-reactive canvas whichever renderer the browser allows", async ({
+  page,
+}) => {
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
 
@@ -59,8 +73,12 @@ test("the hero keeps a live, hover-reactive canvas whichever renderer the browse
   const canvas = page.locator(".nw-hero canvas[data-ready]");
   // WebGL where the browser has it, the 2D approximation where it does not;
   // either way the hero must not drop to the static picture.
-  await expect(canvas).toHaveAttribute("data-mode", /^(webgl|2d)$/, { timeout: 15_000 });
-  await expect(page.locator("[data-loader]")).toHaveCount(0, { timeout: 10_000 });
+  await expect(canvas).toHaveAttribute("data-mode", /^(webgl|2d)$/, {
+    timeout: 15_000,
+  });
+  await expect(page.locator("[data-loader]")).toHaveCount(0, {
+    timeout: 10_000,
+  });
   await page.waitForTimeout(2_500);
 
   const hero = page.locator(".nw-hero");
@@ -70,7 +88,10 @@ test("the hero keeps a live, hover-reactive canvas whichever renderer the browse
   const before = await hero.screenshot();
   // A plain mouse move, no button held: hover alone has to push the paint.
   for (let step = 0; step < 12; step += 1) {
-    await page.mouse.move(box.x + box.width * (0.3 + step * 0.03), box.y + box.height * (0.35 + step * 0.01));
+    await page.mouse.move(
+      box.x + box.width * (0.3 + step * 0.03),
+      box.y + box.height * (0.35 + step * 0.01),
+    );
     await page.waitForTimeout(16);
   }
   const after = await hero.screenshot();
@@ -78,5 +99,8 @@ test("the hero keeps a live, hover-reactive canvas whichever renderer the browse
 
   // The hero must not swallow vertical swipes on touch screens.
   await expect(hero).toHaveCSS("touch-action", "pan-y");
-  expect(pageErrors, `the hero must not throw:\n${pageErrors.join("\n")}`).toEqual([]);
+  expect(
+    pageErrors,
+    `the hero must not throw:\n${pageErrors.join("\n")}`,
+  ).toEqual([]);
 });

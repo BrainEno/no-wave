@@ -57,9 +57,7 @@ async function loadFile(page: Page, text: string) {
     mimeType: "application/json",
     buffer: Buffer.from(text, "utf-8"),
   });
-  await expect(page.getByRole("status").first()).toContainText(
-    "来源校验通过",
-  );
+  await expect(page.getByRole("status").first()).toContainText("来源校验通过");
 }
 
 test("双语对照完整交互：离线安全、不对称审阅、得分拆解与无正文脱敏报告导出", async ({
@@ -101,13 +99,17 @@ test("双语对照完整交互：离线安全、不对称审阅、得分拆解�
   // Filter by gap
   const typeFilter = page.getByLabel("对齐类型过滤");
   await typeFilter.selectOption("left-gap");
-  await expect(reviewSection.getByRole("status")).toContainText("符合条件共 1 行");
+  await expect(reviewSection.getByRole("status")).toContainText(
+    "符合条件共 1 行",
+  );
 
   // Reset filter to all
   await typeFilter.selectOption("all");
 
   // Click examine button on the first row
-  const firstMarkBtn = reviewSection.getByRole("button", { name: "核对与标记" }).first();
+  const firstMarkBtn = reviewSection
+    .getByRole("button", { name: "核对与标记" })
+    .first();
   await firstMarkBtn.click();
 
   // Selected row detail inspection panel
@@ -121,7 +123,9 @@ test("双语对照完整交互：离线安全、不对称审阅、得分拆解�
   await markIntentionalBtn.click();
 
   // Verify algorithm explanation breakdown
-  const explainBtn = reviewSection.getByRole("button", { name: "算法解释" }).first();
+  const explainBtn = reviewSection
+    .getByRole("button", { name: "算法解释" })
+    .first();
   await explainBtn.click();
 
   const explanationPanel = page.getByRole("region", {
@@ -187,8 +191,12 @@ test("双语对照完整交互：离线安全、不对称审阅、得分拆解�
   // Verify Clear All functionality
   const clearBtn = page.getByRole("button", { name: "清除全部对照内容" });
   await clearBtn.click();
-  await expect(page.getByRole("region", { name: "双语对照结构与对齐画像" })).not.toBeVisible();
-  await expect(page.getByRole("region", { name: "双语平行对照审阅表格" })).not.toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "双语对照结构与对齐画像" }),
+  ).not.toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "双语平行对照审阅表格" }),
+  ).not.toBeVisible();
 
   // Accessibility audit
   const axeResults = await new AxeBuilder({ page }).analyze();

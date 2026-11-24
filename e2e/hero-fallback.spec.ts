@@ -28,28 +28,40 @@ const webgl = ["webgl", "experimental-webgl", "webgl2"] as const;
 
 for (const [name, refused, canvases] of [
   ["a WebGL failure falls back to Canvas 2D and survives navigation", webgl, 1],
-  ["a WebGL and 2D failure falls back to the static cover and survives navigation", [...webgl, "2d"], 0],
-] as const) test(name, async ({ page }) => {
-  const pageErrors: string[] = [];
-  const consoleErrors: string[] = [];
-  page.on("pageerror", (error) => pageErrors.push(error.message));
-  page.on("console", (message) => {
-    if (message.type() === "error") consoleErrors.push(message.text());
+  [
+    "a WebGL and 2D failure falls back to the static cover and survives navigation",
+    [...webgl, "2d"],
+    0,
+  ],
+] as const)
+  test(name, async ({ page }) => {
+    const pageErrors: string[] = [];
+    const consoleErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    page.on("console", (message) => {
+      if (message.type() === "error") consoleErrors.push(message.text());
+    });
+
+    await page.addInitScript({ content: refuseContexts(refused) });
+
+    await page.goto("/");
+    await expect(page.locator("[data-hero] img.nw-hero-bg")).toBeVisible();
+    await expect(page.locator("[data-hero] canvas")).toHaveCount(canvases);
+    if (canvases)
+      await expect(page.locator("[data-hero] canvas")).toHaveAttribute(
+        "data-mode",
+        "2d",
+      );
+
+    await page.locator('.nw-pill a[href="/en"]').first().click();
+    await expect(page).toHaveURL(/\/en$/);
+
+    expect(
+      pageErrors,
+      `React navigation must not throw:\n${pageErrors.join("\n")}`,
+    ).toEqual([]);
+    expect(
+      consoleErrors.filter((text) => /removeChild|NotFoundError/i.test(text)),
+      `no removeChild error should reach the console:\n${consoleErrors.join("\n")}`,
+    ).toEqual([]);
   });
-
-  await page.addInitScript({ content: refuseContexts(refused) });
-
-  await page.goto("/");
-  await expect(page.locator("[data-hero] img.nw-hero-bg")).toBeVisible();
-  await expect(page.locator("[data-hero] canvas")).toHaveCount(canvases);
-  if (canvases) await expect(page.locator("[data-hero] canvas")).toHaveAttribute("data-mode", "2d");
-
-  await page.locator('.nw-pill a[href="/en"]').first().click();
-  await expect(page).toHaveURL(/\/en$/);
-
-  expect(pageErrors, `React navigation must not throw:\n${pageErrors.join("\n")}`).toEqual([]);
-  expect(
-    consoleErrors.filter((text) => /removeChild|NotFoundError/i.test(text)),
-    `no removeChild error should reach the console:\n${consoleErrors.join("\n")}`,
-  ).toEqual([]);
-});

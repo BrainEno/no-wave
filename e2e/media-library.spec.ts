@@ -20,18 +20,24 @@ import { registerThroughForm, uniqueEmail } from "./support/accounts.ts";
  * the real API and a disposable S3 wire fixture; deletion remains disabled.
  */
 
-test("an anonymous visitor is sent to sign in, and pointed back afterwards", async ({ page }) => {
+test("an anonymous visitor is sent to sign in, and pointed back afterwards", async ({
+  page,
+}) => {
   await page.goto("/write/media");
   await expect(page).toHaveURL(/\/sign-in\?next=%2Fwrite%2Fmedia/);
   await expect(page.getByLabel("邮箱")).toBeVisible();
 });
 
-test("a signed-in author is told when image storage is not configured, not shown an empty library", async ({ page }) => {
+test("a signed-in author is told when image storage is not configured, not shown an empty library", async ({
+  page,
+}) => {
   const email = uniqueEmail("media");
   await registerThroughForm(page, email, "/write/media");
   // The heading renders before the API has answered, so the assertion that
   // matters is the alert: it is the page saying what is actually wrong.
-  await expect(page.getByRole("alert")).toContainText("这个部署没有配置图片存储");
+  await expect(page.getByRole("alert")).toContainText(
+    "这个部署没有配置图片存储",
+  );
   await expect(page.getByRole("link", { name: "回到写作台" })).toBeVisible();
   // An unconfigured deployment must not claim an empty library: "you have no
   // images" and "this deployment cannot accept images" are different sentences,

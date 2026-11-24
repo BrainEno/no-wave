@@ -1,0 +1,8 @@
+{
+  // Type information for lint only. `tsconfig.json` (what `pnpm typecheck`
+  // checks) excludes the tests, whose fakes are deliberately partial; lint still
+  // needs their types to see an un-awaited `assert.rejects(...)` or store call.
+  "extends": "./tsconfig.json",
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules"]
+}

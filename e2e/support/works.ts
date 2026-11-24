@@ -1,4 +1,9 @@
-import { expect, type APIRequestContext, type Locator, type Page } from "@playwright/test";
+import {
+  expect,
+  type APIRequestContext,
+  type Locator,
+  type Page,
+} from "@playwright/test";
 
 /**
  * A published work, made over HTTP.
@@ -22,10 +27,28 @@ export function editorState(paragraphs: readonly string[]) {
   return {
     root: {
       children: paragraphs.map((text) => ({
-        children: [{ detail: 0, format: 0, mode: "normal", style: "", text, type: "text", version: 1 }],
-        direction: null, format: "", indent: 0, type: "paragraph", version: 1,
+        children: [
+          {
+            detail: 0,
+            format: 0,
+            mode: "normal",
+            style: "",
+            text,
+            type: "text",
+            version: 1,
+          },
+        ],
+        direction: null,
+        format: "",
+        indent: 0,
+        type: "paragraph",
+        version: 1,
       })),
-      direction: null, format: "", indent: 0, type: "root", version: 1,
+      direction: null,
+      format: "",
+      indent: 0,
+      type: "root",
+      version: 1,
     },
   };
 }
@@ -47,21 +70,40 @@ export async function publishWork(
   const registered = await request.post(`${apiBaseUrl}/api/v1/auth/register`, {
     data: { email, password: WORK_PASSWORD },
   });
-  expect(registered.status(), `registering ${email}: ${await registered.text()}`).toBe(201);
-  const { accessToken } = (await registered.json()).data as { accessToken: string };
-  const headers = { authorization: `Bearer ${accessToken}`, origin: apiBaseUrl };
+  expect(
+    registered.status(),
+    `registering ${email}: ${await registered.text()}`,
+  ).toBe(201);
+  const { accessToken } = (await registered.json()).data as {
+    accessToken: string;
+  };
+  const headers = {
+    authorization: `Bearer ${accessToken}`,
+    origin: apiBaseUrl,
+  };
 
   const profile = await request.put(`${apiBaseUrl}/api/v1/me/profile`, {
     data: { displayName: "无浪作者", bio: "浏览器验证账户。", locale: "zh-CN" },
     headers,
   });
-  expect(profile.status(), `creating the author profile: ${await profile.text()}`).toBe(200);
+  expect(
+    profile.status(),
+    `creating the author profile: ${await profile.text()}`,
+  ).toBe(200);
 
   const created = await request.post(`${apiBaseUrl}/api/v1/articles`, {
-    data: { title, editorState: editorState(paragraphs), contentBlocksVersion: 1, publish: true, ...(locale ? { locale } : {}) },
+    data: {
+      title,
+      editorState: editorState(paragraphs),
+      contentBlocksVersion: 1,
+      publish: true,
+      ...(locale ? { locale } : {}),
+    },
     headers,
   });
-  expect(created.status(), `publishing ${title}: ${await created.text()}`).toBe(201);
+  expect(created.status(), `publishing ${title}: ${await created.text()}`).toBe(
+    201,
+  );
   const slug = (await created.json()).data.slug as string;
   expect(slug.length).toBeGreaterThan(0);
   return { email, slug };
@@ -79,7 +121,11 @@ export async function publishWork(
  * genuinely broken drag fails immediately with a useful message instead of
  * waiting a minute for a toolbar that can never appear.
  */
-export async function selectPartOf(page: Page, locator: Locator, fraction = 0.6): Promise<void> {
+export async function selectPartOf(
+  page: Page,
+  locator: Locator,
+  fraction = 0.6,
+): Promise<void> {
   await locator.scrollIntoViewIfNeeded();
   await page.evaluate(async () => {
     // A stalled font CDN must not hold the journey: swap fonts settle quickly
@@ -87,14 +133,17 @@ export async function selectPartOf(page: Page, locator: Locator, fraction = 0.6)
     // second attempt below re-measures the box if a late swap still moved it.
     await Promise.race([
       document.fonts.ready,
-      new Promise<void>((resolve) => { setTimeout(resolve, 5_000); }),
+      new Promise<void>((resolve) => {
+        setTimeout(resolve, 5_000);
+      }),
     ]);
     return true;
   });
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const box = await locator.boundingBox();
-    if (!box) throw new Error("the element to select inside has no box on screen");
+    if (!box)
+      throw new Error("the element to select inside has no box on screen");
     const y = box.y + box.height / 2;
     await page.mouse.move(box.x + 8, y);
     await page.mouse.down();
@@ -102,7 +151,8 @@ export async function selectPartOf(page: Page, locator: Locator, fraction = 0.6)
     await page.mouse.up();
     const selected = await locator.evaluate((element) => {
       const selection = window.getSelection();
-      if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return "";
+      if (!selection || selection.rangeCount === 0 || selection.isCollapsed)
+        return "";
       const range = selection.getRangeAt(0);
       // A selection that crosses into the next paragraph has the article as its
       // common ancestor, but it still overlaps this one — intersectsNode is
@@ -111,5 +161,7 @@ export async function selectPartOf(page: Page, locator: Locator, fraction = 0.6)
     });
     if (selected.length > 0) return;
   }
-  throw new Error("dragging across the paragraph did not leave a text selection in it");
+  throw new Error(
+    "dragging across the paragraph did not leave a text selection in it",
+  );
 }

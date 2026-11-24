@@ -29,7 +29,12 @@ import {
   type NotionFetch,
 } from "../../apps/api/src/infrastructure/notion-source.ts";
 
-export { NOTION_API_ORIGIN, NOTION_API_VERSION, NotionApiError, type NotionFetch };
+export {
+  NOTION_API_ORIGIN,
+  NOTION_API_VERSION,
+  NotionApiError,
+  type NotionFetch,
+};
 
 export type CollectBundleOptions = {
   token: string;
@@ -44,15 +49,29 @@ export type CollectBundleOptions = {
   maxBlocksPerPage?: number;
 };
 
-export async function collectNotionBundle(options: CollectBundleOptions): Promise<NotionBundle> {
-  const fetchImpl: NotionFetch = options.fetchImpl ?? ((url, init) => fetch(url, init));
-  const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => { setTimeout(resolve, ms); }));
+export async function collectNotionBundle(
+  options: CollectBundleOptions,
+): Promise<NotionBundle> {
+  const fetchImpl: NotionFetch =
+    options.fetchImpl ?? ((url, init) => fetch(url, init));
+  const sleep =
+    options.sleep ??
+    ((ms: number) =>
+      new Promise<void>((resolve) => {
+        setTimeout(resolve, ms);
+      }));
   const pageSize = Math.min(Math.max(options.pageSize ?? 100, 1), 100);
   const maxPages = options.maxPages ?? 2000;
   const maxBlocksPerPage = options.maxBlocksPerPage ?? 2000;
   // One retry on a rate limit, because a run that stops at the first 429 on a
   // 200-page database is not a run.
-  const call = notionCaller({ token: options.token, fetchImpl, sleep, onRateLimit: () => 1000, includeNotionMessage: true });
+  const call = notionCaller({
+    token: options.token,
+    fetchImpl,
+    sleep,
+    onRateLimit: () => 1000,
+    includeNotionMessage: true,
+  });
 
   const source = await resolveDataSource(options.sourceId, call);
   const pages: NotionBundlePage[] = [];
@@ -63,16 +82,32 @@ export async function collectNotionBundle(options: CollectBundleOptions): Promis
       if (pages.length >= maxPages) break;
       let blocks;
       try {
-        blocks = await collectBlocks(row.id, call, { pageSize, maxBlocks: maxBlocksPerPage });
+        blocks = await collectBlocks(row.id, call, {
+          pageSize,
+          maxBlocks: maxBlocksPerPage,
+        });
       } catch (error) {
         // A truncated body would import a manuscript without its ending.
-        if (error instanceof TooManyBlocksError) throw new Error(`Page ${row.id} has more than ${maxBlocksPerPage} blocks; raise maxBlocksPerPage or split the page in Notion.`);
+        if (error instanceof TooManyBlocksError)
+          throw new Error(
+            `Page ${row.id} has more than ${maxBlocksPerPage} blocks; raise maxBlocksPerPage or split the page in Notion.`,
+          );
         throw error;
       }
-      pages.push({ id: row.id, properties: row.properties, blocks, ...(row.inTrash ? { inTrash: true } : {}), ...(row.archived ? { archived: true } : {}) });
+      pages.push({
+        id: row.id,
+        properties: row.properties,
+        blocks,
+        ...(row.inTrash ? { inTrash: true } : {}),
+        ...(row.archived ? { archived: true } : {}),
+      });
     }
     cursor = result.nextCursor;
   } while (cursor !== null && pages.length < maxPages);
 
-  return { version: 1, database: { id: source.id, title: source.title }, pages };
+  return {
+    version: 1,
+    database: { id: source.id, title: source.title },
+    pages,
+  };
 }

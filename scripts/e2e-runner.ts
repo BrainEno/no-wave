@@ -16,19 +16,38 @@ import { INHERITED_VARIABLES } from "./portable-stack.ts";
 export const E2E_SHARD_COUNT = 4;
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const playwrightCli = fileURLToPath(import.meta.resolve("@playwright/test/cli"));
+const playwrightCli = fileURLToPath(
+  import.meta.resolve("@playwright/test/cli"),
+);
 
-export function shouldRunIsolated(args: readonly string[], env: NodeJS.ProcessEnv): boolean {
+export function shouldRunIsolated(
+  args: readonly string[],
+  env: NodeJS.ProcessEnv,
+): boolean {
   return args.length === 0 && !env.E2E_WEB_URL && !env.E2E_API_BASE_URL;
 }
 
-type IsolatedOptions = { databasePath: string; apiPort: number; webPort: number; secret: string; clientAddressSecret: string };
+type IsolatedOptions = {
+  databasePath: string;
+  apiPort: number;
+  webPort: number;
+  secret: string;
+  clientAddressSecret: string;
+};
 
-export function isolatedEnvironment(base: NodeJS.ProcessEnv, options: IsolatedOptions): NodeJS.ProcessEnv {
+export function isolatedEnvironment(
+  base: NodeJS.ProcessEnv,
+  options: IsolatedOptions,
+): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   // Do not inherit external databases, mail, object storage, platform bindings,
   // or developer ports. Keep only OS essentials and browser-discovery settings.
-  for (const name of [...INHERITED_VARIABLES, "PLAYWRIGHT_BROWSERS_PATH", "LD_LIBRARY_PATH", "CI"]) {
+  for (const name of [
+    ...INHERITED_VARIABLES,
+    "PLAYWRIGHT_BROWSERS_PATH",
+    "LD_LIBRARY_PATH",
+    "CI",
+  ]) {
     if (base[name] !== undefined) env[name] = base[name];
   }
   const api = `http://127.0.0.1:${options.apiPort}`;
@@ -65,7 +84,9 @@ function reservePort(): Promise<Server> {
 }
 
 function close(server: Server): Promise<void> {
-  return new Promise((resolvePromise, reject) => server.close((error) => error ? reject(error) : resolvePromise()));
+  return new Promise((resolvePromise, reject) =>
+    server.close((error) => (error ? reject(error) : resolvePromise())),
+  );
 }
 
 async function unusedPorts(): Promise<[number, number]> {
@@ -78,23 +99,40 @@ async function unusedPorts(): Promise<[number, number]> {
     try {
       const apiAddress = api.address();
       const webAddress = web.address();
-      if (!apiAddress || typeof apiAddress === "string" || !webAddress || typeof webAddress === "string") {
+      if (
+        !apiAddress ||
+        typeof apiAddress === "string" ||
+        !webAddress ||
+        typeof webAddress === "string"
+      ) {
         throw new Error("Unable to allocate browser-test ports.");
       }
       return [apiAddress.port, webAddress.port];
-    } finally { await close(web); }
-  } finally { await close(api); }
+    } finally {
+      await close(web);
+    }
+  } finally {
+    await close(api);
+  }
 }
 
 function runNode(args: readonly string[], env: NodeJS.ProcessEnv): number {
-  const result = spawnSync(process.execPath, [...args], { cwd: root, env, stdio: "inherit" });
-  if (result.error) process.stderr.write(`Unable to start browser-test process: ${result.error.message}\n`);
+  const result = spawnSync(process.execPath, [...args], {
+    cwd: root,
+    env,
+    stdio: "inherit",
+  });
+  if (result.error)
+    process.stderr.write(
+      `Unable to start browser-test process: ${result.error.message}\n`,
+    );
   return result.status ?? 1;
 }
 
 async function main(): Promise<number> {
   const args = process.argv.slice(2);
-  if (!shouldRunIsolated(args, process.env)) return runNode([playwrightCli, "test", ...args], process.env);
+  if (!shouldRunIsolated(args, process.env))
+    return runNode([playwrightCli, "test", ...args], process.env);
 
   const directory = await mkdtemp(join(tmpdir(), "no-wave-e2e-"));
   try {
@@ -107,10 +145,18 @@ async function main(): Promise<number> {
         secret: randomBytes(32).toString("hex"),
         clientAddressSecret: randomBytes(32).toString("hex"),
       });
-      process.stdout.write(`\nBrowser suite: isolated shard ${shard}/${E2E_SHARD_COUNT}\n`);
-      const migration = runNode([join(root, "apps/api/src/persistence/migrate.ts")], env);
+      process.stdout.write(
+        `\nBrowser suite: isolated shard ${shard}/${E2E_SHARD_COUNT}\n`,
+      );
+      const migration = runNode(
+        [join(root, "apps/api/src/persistence/migrate.ts")],
+        env,
+      );
       if (migration !== 0) return migration;
-      const tests = runNode([playwrightCli, "test", `--shard=${shard}/${E2E_SHARD_COUNT}`], env);
+      const tests = runNode(
+        [playwrightCli, "test", `--shard=${shard}/${E2E_SHARD_COUNT}`],
+        env,
+      );
       if (tests !== 0) return tests;
     }
     return 0;
@@ -120,9 +166,18 @@ async function main(): Promise<number> {
   }
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main().then((status) => { process.exitCode = status; }).catch((error: unknown) => {
-    process.stderr.write(`Browser suite could not start: ${error instanceof Error ? error.message : "unknown error"}\n`);
-    process.exitCode = 1;
-  });
+if (
+  process.argv[1] &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  main()
+    .then((status) => {
+      process.exitCode = status;
+    })
+    .catch((error: unknown) => {
+      process.stderr.write(
+        `Browser suite could not start: ${error instanceof Error ? error.message : "unknown error"}\n`,
+      );
+      process.exitCode = 1;
+    });
 }

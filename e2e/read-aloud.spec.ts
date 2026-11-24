@@ -1,7 +1,12 @@
 import { expect } from "@playwright/test";
 import { test } from "./support/csp-fixture.ts";
 import { publishWork } from "./support/works.ts";
-import { cancellations, installEngine, removeEngine, spokenTexts } from "./support/speech.ts";
+import {
+  cancellations,
+  installEngine,
+  removeEngine,
+  spokenTexts,
+} from "./support/speech.ts";
 
 /**
  * 朗读 — the reading-aloud control, end to end in a real browser.
@@ -34,63 +39,106 @@ let title = "";
 
 test.beforeAll(async ({ request }) => {
   title = `${TITLE_PREFIX} ${Date.now().toString(36)}`;
-  const work = await publishWork(request, title, [FIRST_PARAGRAPH, SECOND_PARAGRAPH]);
+  const work = await publishWork(request, title, [
+    FIRST_PARAGRAPH,
+    SECOND_PARAGRAPH,
+  ]);
   slug = work.slug;
 });
 
-test("the control reads the work paragraph by paragraph and marks the one being spoken", async ({ page }) => {
+test("the control reads the work paragraph by paragraph and marks the one being spoken", async ({
+  page,
+}) => {
   await installEngine(page);
   await page.goto(`/articles/${slug}`);
 
   const aloud = page.locator("[data-read-aloud]");
-  await expect(aloud.getByRole("button", { name: "朗读" }), "the control appears once the browser is known to speak")
-    .toBeVisible({ timeout: 60_000 });
+  await expect(
+    aloud.getByRole("button", { name: "朗读" }),
+    "the control appears once the browser is known to speak",
+  ).toBeVisible({ timeout: 60_000 });
 
   await aloud.getByRole("button", { name: "朗读" }).click();
 
   // The first paragraph is marked while it is being spoken, and the reader is
   // told where they are — in paragraphs, which is what they can see.
-  await expect(aloud.getByRole("status")).toContainText("正在朗读第 1 段，共 2 段", { timeout: 60_000 });
-  await expect(page.locator("#nw-article [data-block].nw-speaking")).toHaveCount(1);
-  await expect(page.locator("#nw-article [data-block].nw-speaking")).toContainText(FIRST_PARAGRAPH.slice(0, 8));
+  await expect(aloud.getByRole("status")).toContainText(
+    "正在朗读第 1 段，共 2 段",
+    { timeout: 60_000 },
+  );
+  await expect(
+    page.locator("#nw-article [data-block].nw-speaking"),
+  ).toHaveCount(1);
+  await expect(
+    page.locator("#nw-article [data-block].nw-speaking"),
+  ).toContainText(FIRST_PARAGRAPH.slice(0, 8));
 
   // Then the second, and nothing is marked any more once it is over.
-  await expect(aloud.getByRole("status")).toContainText("正在朗读第 2 段，共 2 段", { timeout: 60_000 });
-  await expect(page.locator("#nw-article [data-block].nw-speaking")).toContainText(SECOND_PARAGRAPH.slice(0, 8), { timeout: 60_000 });
-  await expect(aloud.getByRole("status")).toContainText("朗读结束", { timeout: 60_000 });
-  await expect(page.locator("#nw-article [data-block].nw-speaking")).toHaveCount(0);
+  await expect(aloud.getByRole("status")).toContainText(
+    "正在朗读第 2 段，共 2 段",
+    { timeout: 60_000 },
+  );
+  await expect(
+    page.locator("#nw-article [data-block].nw-speaking"),
+  ).toContainText(SECOND_PARAGRAPH.slice(0, 8), { timeout: 60_000 });
+  await expect(aloud.getByRole("status")).toContainText("朗读结束", {
+    timeout: 60_000,
+  });
+  await expect(
+    page.locator("#nw-article [data-block].nw-speaking"),
+  ).toHaveCount(0);
 
   // Both paragraphs, in the order they are printed, and nothing else.
   expect(await spokenTexts(page)).toEqual([FIRST_PARAGRAPH, SECOND_PARAGRAPH]);
   await expect(aloud.getByRole("button", { name: "朗读" })).toBeVisible();
 });
 
-test("stopping ends the reading, takes the mark off the page and leaves the engine quiet", async ({ page }) => {
+test("stopping ends the reading, takes the mark off the page and leaves the engine quiet", async ({
+  page,
+}) => {
   await installEngine(page, 5_000);
   await page.goto(`/articles/${slug}`);
 
   const aloud = page.locator("[data-read-aloud]");
-  await expect(aloud.getByRole("button", { name: "朗读" })).toBeVisible({ timeout: 60_000 });
+  await expect(aloud.getByRole("button", { name: "朗读" })).toBeVisible({
+    timeout: 60_000,
+  });
   await aloud.getByRole("button", { name: "朗读" }).click();
-  await expect(page.locator("#nw-article [data-block].nw-speaking")).toHaveCount(1, { timeout: 60_000 });
+  await expect(
+    page.locator("#nw-article [data-block].nw-speaking"),
+  ).toHaveCount(1, { timeout: 60_000 });
 
   await aloud.getByRole("button", { name: "停止" }).click();
 
-  await expect(page.locator("#nw-article [data-block].nw-speaking")).toHaveCount(0);
-  await expect(aloud.getByRole("button", { name: "朗读" }), "the control is back at rest, not stuck on 暂停").toBeVisible();
+  await expect(
+    page.locator("#nw-article [data-block].nw-speaking"),
+  ).toHaveCount(0);
+  await expect(
+    aloud.getByRole("button", { name: "朗读" }),
+    "the control is back at rest, not stuck on 暂停",
+  ).toBeVisible();
   const cancelled = await cancellations(page);
-  expect(cancelled, "the engine was told to stop, not merely ignored").toBeGreaterThan(0);
+  expect(
+    cancelled,
+    "the engine was told to stop, not merely ignored",
+  ).toBeGreaterThan(0);
   // The second paragraph never reaches the engine: stopping is immediate.
   expect(await spokenTexts(page)).toEqual([FIRST_PARAGRAPH]);
 });
 
-test("a browser that cannot speak is given no control at all", async ({ page }) => {
+test("a browser that cannot speak is given no control at all", async ({
+  page,
+}) => {
   await removeEngine(page);
   await page.goto(`/articles/${slug}`);
 
   // Present, not disabled: a button that can never work is a promise the page
   // cannot keep (ADR 0020).
-  await expect(page.getByRole("heading", { name: title, level: 1 })).toBeVisible({ timeout: 60_000 });
+  await expect(
+    page.getByRole("heading", { name: title, level: 1 }),
+  ).toBeVisible({ timeout: 60_000 });
   await expect(page.locator("[data-read-aloud]")).toHaveCount(0);
-  await expect(page.locator("[data-read-aloud]").getByRole("button")).toHaveCount(0);
+  await expect(
+    page.locator("[data-read-aloud]").getByRole("button"),
+  ).toHaveCount(0);
 });

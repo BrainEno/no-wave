@@ -55,9 +55,11 @@ function parseOptions(argv: readonly string[]): Options {
 
 /** `--quick` 把样本砍到四分之一，但保留足够让 p99 不至于只是「最慢那一笔」。 */
 function planWithScale(quick: boolean): ScenarioPlan[] {
-  return DEFAULT_PLAN.map((plan) => (quick
-    ? { ...plan, operations: Math.max(20, Math.round(plan.operations / 4)) }
-    : { ...plan }));
+  return DEFAULT_PLAN.map((plan) =>
+    quick
+      ? { ...plan, operations: Math.max(20, Math.round(plan.operations / 4)) }
+      : { ...plan },
+  );
 }
 
 /**
@@ -71,16 +73,30 @@ function planWithScale(quick: boolean): ScenarioPlan[] {
  */
 export function createKeepAliveRequester(maxSockets: number) {
   const agent = new Agent({ keepAlive: true, maxSockets });
-  const request = (url: string): Promise<{ status: number; durationMs: number }> => new Promise((resolve, reject) => {
-    const startedAt = performance.now();
-    const outgoing = httpRequest(url, { method: "GET", agent }, (response) => {
-      response.resume();
-      response.on("end", () => resolve({ status: response.statusCode ?? 0, durationMs: performance.now() - startedAt }));
+  const request = (
+    url: string,
+  ): Promise<{ status: number; durationMs: number }> =>
+    new Promise((resolve, reject) => {
+      const startedAt = performance.now();
+      const outgoing = httpRequest(
+        url,
+        { method: "GET", agent },
+        (response) => {
+          response.resume();
+          response.on("end", () =>
+            resolve({
+              status: response.statusCode ?? 0,
+              durationMs: performance.now() - startedAt,
+            }),
+          );
+        },
+      );
+      outgoing.on("error", reject);
+      outgoing.setTimeout(30_000, () =>
+        outgoing.destroy(new Error(`request to ${url} timed out`)),
+      );
+      outgoing.end();
     });
-    outgoing.on("error", reject);
-    outgoing.setTimeout(30_000, () => outgoing.destroy(new Error(`request to ${url} timed out`)));
-    outgoing.end();
-  });
   return { request, close: () => agent.destroy() };
 }
 
@@ -96,9 +112,22 @@ type ScenarioResult = {
   thresholds: ReturnType<typeof checkThreshold>[];
 };
 
-function judge(name: keyof typeof BASELINE_THRESHOLDS, stats: LatencyStats, requestsPerSecond: number): ReturnType<typeof checkThreshold>[] {
+function judge(
+  name: keyof typeof BASELINE_THRESHOLDS,
+  stats: LatencyStats,
+  requestsPerSecond: number,
+): ReturnType<typeof checkThreshold>[] {
   return BASELINE_THRESHOLDS[name].map((threshold) =>
-    checkThreshold({ p95: stats.p95, p99: stats.p99, mean: stats.mean, throughput: requestsPerSecond }, threshold));
+    checkThreshold(
+      {
+        p95: stats.p95,
+        p99: stats.p99,
+        mean: stats.mean,
+        throughput: requestsPerSecond,
+      },
+      threshold,
+    ),
+  );
 }
 
 /**
@@ -111,7 +140,10 @@ function judge(name: keyof typeof BASELINE_THRESHOLDS, stats: LatencyStats, requ
  * 失败也计时但单独计数：把 500 混进延迟里而不报告，会让一条正在出错的路径看起来
  * 只是慢了一点。
  */
-async function runHttpScenario(plan: ScenarioPlan, url: string): Promise<{ result: ScenarioResult; ladder: LadderRung[] }> {
+async function runHttpScenario(
+  plan: ScenarioPlan,
+  url: string,
+): Promise<{ result: ScenarioResult; ladder: LadderRung[] }> {
   const { request, close } = createKeepAliveRequester(plan.concurrency);
   try {
     // Warm up through the same pool the measurement uses, so the first
@@ -121,26 +153,42 @@ async function runHttpScenario(plan: ScenarioPlan, url: string): Promise<{ resul
     const samples: number[] = [];
     let failures = 0;
     const startedAt = performance.now();
-    await Promise.all(Array.from({ length: plan.concurrency }, async () => {
-      for (let index = 0; index < plan.operations; index += 1) {
-        const response = await request(url);
-        if (response.status >= 400) { failures += 1; continue; }
-        samples.push(response.durationMs);
-      }
-    }));
+    await Promise.all(
+      Array.from({ length: plan.concurrency }, async () => {
+        for (let index = 0; index < plan.operations; index += 1) {
+          const response = await request(url);
+          if (response.status >= 400) {
+            failures += 1;
+            continue;
+          }
+          samples.push(response.durationMs);
+        }
+      }),
+    );
     const elapsed = performance.now() - startedAt;
 
     const ladder: LadderRung[] = [];
-    const rungs = [...new Set([1, 2, 4, 8, plan.concurrency])].sort((a, b) => a - b);
+    const rungs = [...new Set([1, 2, 4, 8, plan.concurrency])].sort(
+      (a, b) => a - b,
+    );
     for (const concurrency of rungs) {
       const perLane = Math.max(10, Math.round(plan.operations / concurrency));
       const lane = createKeepAliveRequester(concurrency);
       for (let index = 0; index < 5; index += 1) await lane.request(url);
       const rungStart = performance.now();
-      await Promise.all(Array.from({ length: concurrency }, async () => {
-        for (let index = 0; index < perLane; index += 1) await lane.request(url);
-      }));
-      ladder.push({ concurrency, requestsPerSecond: throughput(concurrency * perLane, performance.now() - rungStart) });
+      await Promise.all(
+        Array.from({ length: concurrency }, async () => {
+          for (let index = 0; index < perLane; index += 1)
+            await lane.request(url);
+        }),
+      );
+      ladder.push({
+        concurrency,
+        requestsPerSecond: throughput(
+          concurrency * perLane,
+          performance.now() - rungStart,
+        ),
+      });
       lane.close();
     }
 
@@ -206,13 +254,17 @@ async function runWriteScenario(
 }
 
 type PortableStackModule = {
-  startPortableStack(options: Record<string, unknown>): Promise<{ apiBaseUrl: string; webBaseUrl: string; processes: unknown[] }>;
+  startPortableStack(
+    options: Record<string, unknown>,
+  ): Promise<{ apiBaseUrl: string; webBaseUrl: string; processes: unknown[] }>;
   stopPortableStack(stack: { processes: unknown[] }): Promise<void>;
   freePort(): Promise<number>;
 };
 
 async function loadStack(): Promise<PortableStackModule> {
-  return import(pathToFileURL(join(repositoryRoot, "scripts", "portable-stack.ts")).href) as Promise<PortableStackModule>;
+  return import(
+    pathToFileURL(join(repositoryRoot, "scripts", "portable-stack.ts")).href
+  ) as Promise<PortableStackModule>;
 }
 
 /**
@@ -240,7 +292,10 @@ async function stopChild(child: ChildProcess): Promise<void> {
   await new Promise<void>((resolve) => {
     child.once("exit", () => resolve());
     child.kill("SIGTERM");
-    setTimeout(() => { child.kill("SIGKILL"); resolve(); }, 5_000).unref();
+    setTimeout(() => {
+      child.kill("SIGKILL");
+      resolve();
+    }, 5_000).unref();
   });
 }
 
@@ -250,15 +305,23 @@ async function stopChild(child: ChildProcess): Promise<void> {
  * 必须是**另一个连接**：拿写路径自己的连接数行，测到的是适配器的内部状态，而不是
  * 「另一个读者能不能看见这些行」。SQLite 的 WAL 让这成为真实的并发读写检查。
  */
-async function openCounter(databasePath: string): Promise<{ count(table: "articles" | "messages" | "outbox_events"): number; delivered(): number; close(): void }> {
+async function openCounter(databasePath: string): Promise<{
+  count(table: "articles" | "messages" | "outbox_events"): number;
+  delivered(): number;
+  close(): void;
+}> {
   const { DatabaseSync } = await import("node:sqlite");
   const database = new DatabaseSync(databasePath, { readOnly: true });
   const statements = {
     articles: database.prepare("SELECT COUNT(*) AS total FROM articles"),
     messages: database.prepare("SELECT COUNT(*) AS total FROM messages"),
-    outbox_events: database.prepare("SELECT COUNT(*) AS total FROM outbox_events"),
+    outbox_events: database.prepare(
+      "SELECT COUNT(*) AS total FROM outbox_events",
+    ),
   };
-  const deliveredOutbox = database.prepare("SELECT COUNT(*) AS total FROM outbox_events WHERE delivered_at IS NOT NULL");
+  const deliveredOutbox = database.prepare(
+    "SELECT COUNT(*) AS total FROM outbox_events WHERE delivered_at IS NOT NULL",
+  );
   return {
     count(table) {
       const row = statements[table].get() as { total: number };
@@ -268,19 +331,27 @@ async function openCounter(databasePath: string): Promise<{ count(table: "articl
       const row = deliveredOutbox.get() as { total: number };
       return Number(row.total);
     },
-    close() { database.close(); },
+    close() {
+      database.close();
+    },
   };
 }
 
 async function openAdapter(databasePath: string) {
   process.env.DATABASE_PROVIDER = "sqlite";
   process.env.DATABASE_PATH = databasePath;
-  const { createPersistenceRuntime } = await import(pathToFileURL(join(apiSourceDirectory, "infrastructure", "persistence-runtime.ts")).href);
+  const { createPersistenceRuntime } = await import(
+    pathToFileURL(
+      join(apiSourceDirectory, "infrastructure", "persistence-runtime.ts"),
+    ).href
+  );
   return createPersistenceRuntime({ provider: "sqlite", env: process.env });
 }
 
 /** 灌种子数据：作者、作品、一个会话。用真实的 SQLite 适配器，与 API 同一个文件。 */
-async function seedDatabase(databasePath: string): Promise<{ authorIds: string[]; senderId: string; conversationId: string }> {
+async function seedDatabase(
+  databasePath: string,
+): Promise<{ authorIds: string[]; senderId: string; conversationId: string }> {
   const runtime = await openAdapter(databasePath);
   try {
     const authorIds: string[] = [];
@@ -290,10 +361,15 @@ async function seedDatabase(databasePath: string): Promise<{ authorIds: string[]
       authorIds.push(author.userId);
     }
     for (let index = 0; index < DEFAULT_SEED.works; index += 1) {
-      await runtime.adapter.createArticle(seedWork(index, authorIds[index % authorIds.length], null));
+      await runtime.adapter.createArticle(
+        seedWork(index, authorIds[index % authorIds.length], null),
+      );
     }
     const senderId = authorIds[0];
-    const conversation = await runtime.adapter.createConversation({ actorId: senderId, participantIds: [authorIds[1] ?? senderId] });
+    const conversation = await runtime.adapter.createConversation({
+      actorId: senderId,
+      participantIds: [authorIds[1] ?? senderId],
+    });
     return { authorIds, senderId, conversationId: conversation.id };
   } finally {
     await runtime.close();
@@ -311,12 +387,21 @@ function report(
   line("");
   line("No Wave 容量基线（本机 / 单进程 / 单数据库文件）");
   line("这些数字用于回归与数量级判断，不是生产容量承诺。");
-  line("读路径复用 keep-alive 连接；每次新建连接的成本属于客户端，不计入服务端延迟。");
+  line(
+    "读路径复用 keep-alive 连接；每次新建连接的成本属于客户端，不计入服务端延迟。",
+  );
   line("");
 
   const failed: string[] = [];
   for (const result of results) {
-    line(formatScenarioLine(result.title, result.stats, result.requestsPerSecond, result.concurrency));
+    line(
+      formatScenarioLine(
+        result.title,
+        result.stats,
+        result.requestsPerSecond,
+        result.concurrency,
+      ),
+    );
     if (result.failures > 0) {
       line(`  ✗ ${result.failures} 次操作失败，未计入延迟样本`);
       failed.push(`${result.name}: ${result.failures} failed operations`);
@@ -326,18 +411,30 @@ function report(
     // being green against an adapter that silently no-ops.
     if (result.persisted !== undefined) {
       if (result.persisted < result.stats.count) {
-        failed.push(`${result.name}: ${result.persisted} rows persisted, expected at least ${result.stats.count}`);
-        line(`  ✗ 落库校验：只回读到 ${result.persisted} 行，至少应有 ${result.stats.count} 行`);
+        failed.push(
+          `${result.name}: ${result.persisted} rows persisted, expected at least ${result.stats.count}`,
+        );
+        line(
+          `  ✗ 落库校验：只回读到 ${result.persisted} 行，至少应有 ${result.stats.count} 行`,
+        );
       } else {
         line(`  落库校验：回读到 ${result.persisted} 行`);
       }
     }
     for (const threshold of result.thresholds) {
       if (threshold.ok) continue;
-      const shown = threshold.metric === "throughput" ? `${ms(threshold.actual)} req/s` : `${ms(threshold.actual)}ms`;
-      const limit = threshold.metric === "throughput" ? `${threshold.limit} req/s` : `${threshold.limit}ms`;
+      const shown =
+        threshold.metric === "throughput"
+          ? `${ms(threshold.actual)} req/s`
+          : `${ms(threshold.actual)}ms`;
+      const limit =
+        threshold.metric === "throughput"
+          ? `${threshold.limit} req/s`
+          : `${threshold.limit}ms`;
       const comparison = threshold.direction === "atMost" ? "≤" : "≥";
-      failed.push(`${result.name}: ${threshold.metric} ${shown} is not ${comparison} ${limit}`);
+      failed.push(
+        `${result.name}: ${threshold.metric} ${shown} is not ${comparison} ${limit}`,
+      );
       line(`  ✗ ${threshold.metric} ${shown} 未达 ${comparison} ${limit}`);
       line(`    依据：${threshold.rationale}`);
     }
@@ -348,13 +445,19 @@ function report(
     line("");
     line("并发阶梯（读路径，同一连接池）：");
     for (const rung of ladder) {
-      line(`  c=${String(rung.concurrency).padStart(2)}  ${ms(rung.requestsPerSecond).toFixed(0).padStart(5)} req/s`);
+      line(
+        `  c=${String(rung.concurrency).padStart(2)}  ${ms(rung.requestsPerSecond).toFixed(0).padStart(5)} req/s`,
+      );
     }
     const peak = Math.max(...ladder.map((rung) => rung.requestsPerSecond));
     if (!point.saturated) {
-      line(`  未饱和：最高一格 c=${ladder[ladder.length - 1].concurrency} 仍在上升，本机上限高于此实测范围`);
+      line(
+        `  未饱和：最高一格 c=${ladder[ladder.length - 1].concurrency} 仍在上升，本机上限高于此实测范围`,
+      );
     } else {
-      line(`  饱和点 c=${point.concurrency} 已达峰值 ${ms(peak).toFixed(0)} req/s 的 85% 以上；并发翻倍不再带来吞吐增长，只增加排队延迟`);
+      line(
+        `  饱和点 c=${point.concurrency} 已达峰值 ${ms(peak).toFixed(0)} req/s 的 85% 以上；并发翻倍不再带来吞吐增长，只增加排队延迟`,
+      );
     }
   }
 
@@ -363,9 +466,13 @@ function report(
   // not enough headroom for the write rate, which is exactly the capacity
   // ceiling the deployment guide needs to state.
   line("");
-  line(`outbox 投递：压测结束时未投递 ${drain.undeliveredAtEnd} 条，等待 2s 后未投递 ${drain.undeliveredAfterDrain} 条`);
+  line(
+    `outbox 投递：压测结束时未投递 ${drain.undeliveredAtEnd} 条，等待 2s 后未投递 ${drain.undeliveredAfterDrain} 条`,
+  );
   if (drain.undeliveredAfterDrain > 0) {
-    failed.push(`outbox worker left ${drain.undeliveredAfterDrain} events undelivered — the writer is outpacing the worker`);
+    failed.push(
+      `outbox worker left ${drain.undeliveredAfterDrain} events undelivered — the writer is outpacing the worker`,
+    );
     line(`  ✗ worker 未跟上写入速度：这是单机写容量的真实上限信号`);
   } else {
     line("  ✓ worker 与写路径并行运行，事件在同一时间窗内被排空");
@@ -378,7 +485,10 @@ function report(
   } else {
     line("基线通过：所有路径都在阈值内。");
   }
-  if (options.json) line(JSON.stringify({ scenarios: results, ladder, drain, failed }, null, 2));
+  if (options.json)
+    line(
+      JSON.stringify({ scenarios: results, ladder, drain, failed }, null, 2),
+    );
   return { ok: failed.length === 0, failed };
 }
 
@@ -390,7 +500,11 @@ async function main(): Promise<void> {
   const apiPort = await stack.freePort();
   const webPort = await stack.freePort();
   let worker: ChildProcess | null = null;
-  let started: { apiBaseUrl: string; webBaseUrl: string; processes: unknown[] } | null = null;
+  let started: {
+    apiBaseUrl: string;
+    webBaseUrl: string;
+    processes: unknown[];
+  } | null = null;
   try {
     started = await stack.startPortableStack({
       apiPort,
@@ -403,7 +517,9 @@ async function main(): Promise<void> {
     process.stdout.write(`stack ready: API ${started.apiBaseUrl}\n`);
 
     const seeded = await seedDatabase(databasePath);
-    process.stdout.write(`seeded ${DEFAULT_SEED.works} works across ${DEFAULT_SEED.authors} authors\n`);
+    process.stdout.write(
+      `seeded ${DEFAULT_SEED.works} works across ${DEFAULT_SEED.authors} authors\n`,
+    );
 
     const plans = planWithScale(options.quick);
     const results: ScenarioResult[] = [];
@@ -424,32 +540,42 @@ async function main(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 1_500));
 
     let writeIndex = 0;
-    results.push(await runWriteScenario(
-      plans.find((plan) => plan.name === "authenticated-write")!,
-      async () => {
-        const index = writeIndex;
-        writeIndex += 1;
-        await runtime.adapter.createArticle(seedWork(10_000 + index, seeded.authorIds[index % seeded.authorIds.length], null));
-      },
-      async () => counter.count("articles"),
-    ));
+    results.push(
+      await runWriteScenario(
+        plans.find((plan) => plan.name === "authenticated-write")!,
+        async () => {
+          const index = writeIndex;
+          writeIndex += 1;
+          await runtime.adapter.createArticle(
+            seedWork(
+              10_000 + index,
+              seeded.authorIds[index % seeded.authorIds.length],
+              null,
+            ),
+          );
+        },
+        async () => counter.count("articles"),
+      ),
+    );
 
     let messageIndex = 0;
-    results.push(await runWriteScenario(
-      plans.find((plan) => plan.name === "message-send")!,
-      async () => {
-        messageIndex += 1;
-        await runtime.adapter.persistMessage({
-          conversationId: seeded.conversationId,
-          senderId: seeded.senderId,
-          body: `基線消息 ${messageIndex}`,
-          idempotencyKey: `perf-message-${messageIndex}-${randomUUID()}`,
-        });
-      },
-      // The message row and its outbox event land in one transaction, so the
-      // message count proves the write happened at all.
-      async () => counter.count("messages"),
-    ));
+    results.push(
+      await runWriteScenario(
+        plans.find((plan) => plan.name === "message-send")!,
+        async () => {
+          messageIndex += 1;
+          await runtime.adapter.persistMessage({
+            conversationId: seeded.conversationId,
+            senderId: seeded.senderId,
+            body: `基線消息 ${messageIndex}`,
+            idempotencyKey: `perf-message-${messageIndex}-${randomUUID()}`,
+          });
+        },
+        // The message row and its outbox event land in one transaction, so the
+        // message count proves the write happened at all.
+        async () => counter.count("messages"),
+      ),
+    );
 
     // The worker ran the whole time; give it a moment to drain the last batch,
     // then prove it did. A worker that never consumed anything would leave every
@@ -459,12 +585,16 @@ async function main(): Promise<void> {
       return total - counter.delivered();
     })();
     await new Promise((resolve) => setTimeout(resolve, 2_000));
-    const undeliveredAfterDrain = counter.count("outbox_events") - counter.delivered();
+    const undeliveredAfterDrain =
+      counter.count("outbox_events") - counter.delivered();
 
     counter.close();
     await runtime.close();
 
-    const outcome = report(results, read.ladder, process.stdout, options, { undeliveredAtEnd, undeliveredAfterDrain });
+    const outcome = report(results, read.ladder, process.stdout, options, {
+      undeliveredAtEnd,
+      undeliveredAfterDrain,
+    });
     process.exitCode = outcome.ok ? 0 : 1;
   } finally {
     if (worker) await stopChild(worker);
@@ -473,6 +603,9 @@ async function main(): Promise<void> {
   }
 }
 
-if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === new URL(`file://${process.argv[1]}`).href
+) {
   await main();
 }

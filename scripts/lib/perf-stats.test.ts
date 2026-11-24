@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkThreshold, formatScenarioLine, percentile, saturationPoint, summarize, throughput } from "./perf-stats.ts";
+import {
+  checkThreshold,
+  formatScenarioLine,
+  percentile,
+  saturationPoint,
+  summarize,
+  throughput,
+} from "./perf-stats.ts";
 
 /**
  * 百分位与阈值判定（issue #64）。
@@ -58,17 +65,69 @@ test("吞吐按样本跨越的墙钟时间算，不是按样本耗时之和", ()
 
 test("上限与下限方向不同，NaN 一律不通过", () => {
   const stats = { p95: 40, p99: 80, mean: 20, throughput: 900 };
-  assert.equal(checkThreshold(stats, { metric: "p95", direction: "atMost", limit: 50, rationale: "" }).ok, true);
-  assert.equal(checkThreshold(stats, { metric: "p95", direction: "atMost", limit: 39, rationale: "" }).ok, false);
-  assert.equal(checkThreshold(stats, { metric: "p95", direction: "atMost", limit: 40, rationale: "" }).ok, true, "the limit is inclusive");
-  assert.equal(checkThreshold(stats, { metric: "throughput", direction: "atLeast", limit: 500, rationale: "" }).ok, true);
-  assert.equal(checkThreshold(stats, { metric: "throughput", direction: "atLeast", limit: 1000, rationale: "" }).ok, false);
+  assert.equal(
+    checkThreshold(stats, {
+      metric: "p95",
+      direction: "atMost",
+      limit: 50,
+      rationale: "",
+    }).ok,
+    true,
+  );
+  assert.equal(
+    checkThreshold(stats, {
+      metric: "p95",
+      direction: "atMost",
+      limit: 39,
+      rationale: "",
+    }).ok,
+    false,
+  );
+  assert.equal(
+    checkThreshold(stats, {
+      metric: "p95",
+      direction: "atMost",
+      limit: 40,
+      rationale: "",
+    }).ok,
+    true,
+    "the limit is inclusive",
+  );
+  assert.equal(
+    checkThreshold(stats, {
+      metric: "throughput",
+      direction: "atLeast",
+      limit: 500,
+      rationale: "",
+    }).ok,
+    true,
+  );
+  assert.equal(
+    checkThreshold(stats, {
+      metric: "throughput",
+      direction: "atLeast",
+      limit: 1000,
+      rationale: "",
+    }).ok,
+    false,
+  );
   // A measurement that failed is not a measurement that passed.
-  assert.equal(checkThreshold({ ...stats, p99: NaN }, { metric: "p99", direction: "atMost", limit: 500, rationale: "" }).ok, false);
+  assert.equal(
+    checkThreshold(
+      { ...stats, p99: NaN },
+      { metric: "p99", direction: "atMost", limit: 500, rationale: "" },
+    ).ok,
+    false,
+  );
 });
 
 test("报告行同时写下样本数、并发数与每一项分位", () => {
-  const line = formatScenarioLine("public read", summarize([1, 2, 3, 4]), 123.4, 8);
+  const line = formatScenarioLine(
+    "public read",
+    summarize([1, 2, 3, 4]),
+    123.4,
+    8,
+  );
   assert.match(line, /public read/);
   assert.match(line, /n=\s+4/);
   assert.match(line, /c=\s8/);
@@ -95,7 +154,11 @@ test("吞吐随并发变平时判定为饱和，并给出进入饱和的最小�
   ];
   const point = saturationPoint(flat);
   assert.equal(point.saturated, true);
-  assert.equal(point.concurrency, 1, "already saturated at a single request in flight");
+  assert.equal(
+    point.concurrency,
+    1,
+    "already saturated at a single request in flight",
+  );
 });
 
 test("仍在随并发上升的机器不能报告成已饱和", () => {
@@ -106,11 +169,27 @@ test("仍在随并发上升的机器不能报告成已饱和", () => {
     { concurrency: 8, requestsPerSecond: 700 },
   ];
   const point = saturationPoint(scaling);
-  assert.equal(point.saturated, false, "doubling still nearly doubles throughput");
-  assert.equal(point.concurrency, 8, "the knee is the rung that reaches 85% of peak");
+  assert.equal(
+    point.saturated,
+    false,
+    "doubling still nearly doubles throughput",
+  );
+  assert.equal(
+    point.concurrency,
+    8,
+    "the knee is the rung that reaches 85% of peak",
+  );
 });
 
 test("单格阶梯无从判断饱和，空阶梯返回零而不是抛错", () => {
-  assert.equal(saturationPoint([{ concurrency: 1, requestsPerSecond: 100 }]).saturated, false, "one rung proves nothing about scaling");
-  assert.deepEqual(saturationPoint([]), { concurrency: 0, requestsPerSecond: 0, saturated: false });
+  assert.equal(
+    saturationPoint([{ concurrency: 1, requestsPerSecond: 100 }]).saturated,
+    false,
+    "one rung proves nothing about scaling",
+  );
+  assert.deepEqual(saturationPoint([]), {
+    concurrency: 0,
+    requestsPerSecond: 0,
+    saturated: false,
+  });
 });

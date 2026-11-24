@@ -4,9 +4,13 @@ declare module "fontkit" {
 }
 
 declare module "subset-font" {
-  export default function subsetFont(input: Uint8Array, text: string, options: {
-    targetFormat: "woff2";
-    preserveNameIds: number[];
-    variationAxes?: Record<string, number | { min: number; max: number }>;
-  }): Promise<Buffer>;
+  export default function subsetFont(
+    input: Uint8Array,
+    text: string,
+    options: {
+      targetFormat: "woff2";
+      preserveNameIds: number[];
+      variationAxes?: Record<string, number | { min: number; max: number }>;
+    },
+  ): Promise<Buffer>;
 }

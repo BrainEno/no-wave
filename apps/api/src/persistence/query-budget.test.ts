@@ -45,16 +45,16 @@ async function fixture() {
   const store = createSqliteStore(counter.db);
   for (let index = 0; index < 25; index++) {
     const author = `query-author-${index}`;
-    store.upsertAuthorProfile({ userId: author, displayName: `Author ${index}`, locale: "en" });
-    store.createArticle({
+    await store.upsertAuthorProfile({ userId: author, displayName: `Author ${index}`, locale: "en" });
+    await store.createArticle({
       authorId: author, slug: `query-work-${index}`, title: `Budget work ${index}`,
       locale: "en", contentBlocks: [{ id: "p1", type: "paragraph", text: "A seeded public work." }], publish: true,
     });
   }
   for (let index = 0; index < 20; index++) {
     const actor = `query-author-${index}`;
-    const root = store.createArticleComment({ slug: "query-work-0", locale: "en", actorId: actor, content: `Root ${index}` });
-    store.createArticleComment({ slug: "query-work-0", locale: "en", actorId: `query-author-${(index + 1) % 25}`, content: `Reply ${index}`, parentCommentId: root.id });
+    const root = await store.createArticleComment({ slug: "query-work-0", locale: "en", actorId: actor, content: `Root ${index}` });
+    await store.createArticleComment({ slug: "query-work-0", locale: "en", actorId: `query-author-${(index + 1) % 25}`, content: `Reply ${index}`, parentCommentId: root.id });
   }
   const server = createApiServer({ store, env: authEnv, logger: () => {} });
   server.listen(0, "127.0.0.1");

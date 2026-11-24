@@ -27,7 +27,11 @@
  * `scripts/lib/notion-bundle.ts` (deciding what to write); this file is flags and
  * a report.
  */
-import { runNotionSeed, type SeedArgs, type SeedOutcome } from "./lib/notion-seed-run.ts";
+import {
+  runNotionSeed,
+  type SeedArgs,
+  type SeedOutcome,
+} from "./lib/notion-seed-run.ts";
 
 const DEFAULT_API = "http://127.0.0.1:3000";
 const DEFAULT_STATE = ".notion-seed-state.json";
@@ -46,7 +50,10 @@ const HELP = `notion:seed — import a Notion database as ordinary articles
 The author account must already exist and have a filled-in profile: the web app
 hides articles whose author has none (see scripts/verify-publish.ts).`;
 
-function parseArgs(argv: readonly string[], env: NodeJS.ProcessEnv): SeedArgs | null {
+function parseArgs(
+  argv: readonly string[],
+  env: NodeJS.ProcessEnv,
+): SeedArgs | null {
   const args: SeedArgs = {
     bundle: null,
     notionDatabase: env.NOTION_DATABASE_ID ?? null,
@@ -67,16 +74,35 @@ function parseArgs(argv: readonly string[], env: NodeJS.ProcessEnv): SeedArgs | 
       return next;
     };
     switch (flag) {
-      case "--bundle": args.bundle = value(); break;
-      case "--notion-database": args.notionDatabase = value(); break;
-      case "--notion-token": args.notionToken = value(); break;
-      case "--api": args.api = value(); break;
-      case "--email": args.email = value(); break;
-      case "--password": args.password = value(); break;
-      case "--state": args.state = value(); break;
-      case "--write-bundle": args.writeBundle = value(); break;
-      case "--apply": args.apply = true; break;
-      case "--json": return args;
+      case "--bundle":
+        args.bundle = value();
+        break;
+      case "--notion-database":
+        args.notionDatabase = value();
+        break;
+      case "--notion-token":
+        args.notionToken = value();
+        break;
+      case "--api":
+        args.api = value();
+        break;
+      case "--email":
+        args.email = value();
+        break;
+      case "--password":
+        args.password = value();
+        break;
+      case "--state":
+        args.state = value();
+        break;
+      case "--write-bundle":
+        args.writeBundle = value();
+        break;
+      case "--apply":
+        args.apply = true;
+        break;
+      case "--json":
+        return args;
       case "--help":
       case "-h":
         console.log(HELP);
@@ -91,9 +117,12 @@ function parseArgs(argv: readonly string[], env: NodeJS.ProcessEnv): SeedArgs | 
 function issueHistogram(outcomes: readonly SeedOutcome[]): [string, number][] {
   const counts = new Map<string, number>();
   for (const outcome of outcomes) {
-    for (const issue of outcome.issues) counts.set(issue.code, (counts.get(issue.code) ?? 0) + 1);
+    for (const issue of outcome.issues)
+      counts.set(issue.code, (counts.get(issue.code) ?? 0) + 1);
   }
-  return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  return [...counts.entries()].sort(
+    (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
+  );
 }
 
 function printReport(outcomes: readonly SeedOutcome[], applied: boolean): void {
@@ -101,15 +130,21 @@ function printReport(outcomes: readonly SeedOutcome[], applied: boolean): void {
   for (const outcome of outcomes) {
     const locale = outcome.locale.length > 0 ? `[${outcome.locale}] ` : "";
     const slug = outcome.slug.length > 0 ? ` /${outcome.slug}` : "";
-    console.log(`  ${outcome.action.padEnd(7)} ${locale}${outcome.title.padEnd(width)}${slug}  ${outcome.detail}`);
+    console.log(
+      `  ${outcome.action.padEnd(7)} ${locale}${outcome.title.padEnd(width)}${slug}  ${outcome.detail}`,
+    );
   }
-  const tally = (action: SeedOutcome["action"]): number => outcomes.filter((outcome) => outcome.action === action).length;
+  const tally = (action: SeedOutcome["action"]): number =>
+    outcomes.filter((outcome) => outcome.action === action).length;
   console.log("");
-  console.log(`  ${applied ? "written" : "dry run (no writes)"}: ${tally("create")} create, ${tally("update")} update, ${tally("skip")} skip, ${tally("refused")} refused, ${tally("failed")} failed`);
+  console.log(
+    `  ${applied ? "written" : "dry run (no writes)"}: ${tally("create")} create, ${tally("update")} update, ${tally("skip")} skip, ${tally("refused")} refused, ${tally("failed")} failed`,
+  );
   const histogram = issueHistogram(outcomes);
   if (histogram.length > 0) {
     console.log("  what could not be carried:");
-    for (const [code, count] of histogram) console.log(`    ${String(count).padStart(4)}  ${code}`);
+    for (const [code, count] of histogram)
+      console.log(`    ${String(count).padStart(4)}  ${code}`);
   }
   if (!applied) console.log("\n  nothing was written. Re-run with --apply.");
 }
@@ -120,12 +155,15 @@ async function main(): Promise<void> {
   if (args === null) return;
   const run = await runNotionSeed(args);
   if (json) {
-    console.log(JSON.stringify({ applied: run.applied, outcomes: run.outcomes }, null, 2));
+    console.log(
+      JSON.stringify({ applied: run.applied, outcomes: run.outcomes }, null, 2),
+    );
   } else {
     console.log(`\nNotion seed → ${args.api}\n`);
     printReport(run.outcomes, run.applied);
   }
-  if (run.outcomes.some((outcome) => outcome.action === "failed")) process.exitCode = 1;
+  if (run.outcomes.some((outcome) => outcome.action === "failed"))
+    process.exitCode = 1;
 }
 
 main().catch((error: unknown) => {

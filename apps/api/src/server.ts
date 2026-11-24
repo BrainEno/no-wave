@@ -1,4 +1,4 @@
-import { createServer, type IncomingMessage, type Server } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { createRestHandler } from "./transport/rest/handler.ts";
 import { collectionReadTimeout } from "./transport/rest/collection-read-budget.ts";
 import { configureJsonCollectionOutput, jsonCollectionOutputSettings } from "./transport/rest/json-collection-budget.ts";
@@ -77,7 +77,7 @@ export function createApiServer({
   const readiness = createApiReadiness({ services, env });
   const http = apiHttpSettings(env);
   const collectionOutput = jsonCollectionOutputSettings(env);
-  const server = createServer({ ...http, connectionsCheckingInterval: Math.min(1000, http.headersTimeout, http.requestTimeout) }, async (request, response) => {
+  const handleRequest = async (request: IncomingMessage, response: ServerResponse) => {
     const startedAt = process.hrtime.bigint();
     const observation = observability.beginRequest(request, response);
     configureJsonCollectionOutput(response, collectionOutput);
@@ -158,6 +158,20 @@ export function createApiServer({
         response.destroy();
       }
     }
+  };
+  // The request listener cannot return the handler's promise to anyone: a throw
+  // outside its try (admission, observation setup) or while writing the 500
+  // would be an unhandled rejection, which ends the whole process. The last
+  // resort is local instead: log it and drop only this connection.
+  const server = createServer({ ...http, connectionsCheckingInterval: Math.min(1000, http.headersTimeout, http.requestTimeout) }, (request, response) => {
+    handleRequest(request, response).catch((error: unknown) => {
+      logger({
+        level: "error",
+        event: "api_request_handler_failed",
+        errorName: error instanceof Error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name) ? error.name : "Error",
+      });
+      response.destroy();
+    });
   });
   const lifecycle = createHttpLifecycle(server, { env, log: logger });
   apiRuntimes.set(server, { lifecycle, readiness, collections, closeImportRequests: handleRest.close, drainImportRequests: handleRest.drain });

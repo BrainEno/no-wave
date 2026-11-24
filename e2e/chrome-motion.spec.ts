@@ -8,7 +8,9 @@ import { test } from "./support/csp-fixture.ts";
  */
 test.use({ reducedMotion: "no-preference" });
 
-test("form routes keep native scrolling and clicks under normal motion", async ({ page }) => {
+test("form routes keep native scrolling and clicks under normal motion", async ({
+  page,
+}) => {
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
 
@@ -21,6 +23,11 @@ test("form routes keep native scrolling and clicks under normal motion", async (
   const toggle = page.getByRole("button", { name: "没有账户？创建账户" });
   await toggle.scrollIntoViewIfNeeded();
   await toggle.click();
-  await expect(page.getByRole("button", { name: "已有账户？登录" })).toBeVisible();
-  expect(pageErrors, `native form-route clicks must not throw:\n${pageErrors.join("\n")}`).toEqual([]);
+  await expect(
+    page.getByRole("button", { name: "已有账户？登录" }),
+  ).toBeVisible();
+  expect(
+    pageErrors,
+    `native form-route clicks must not throw:\n${pageErrors.join("\n")}`,
+  ).toEqual([]);
 });

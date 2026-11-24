@@ -67,9 +67,16 @@ export class ApiError extends Error {
 async function api(
   base: string,
   path: string,
-  init: { method: string; token?: string; body?: unknown; idempotencyKey?: string },
+  init: {
+    method: string;
+    token?: string;
+    body?: unknown;
+    idempotencyKey?: string;
+  },
 ): Promise<unknown> {
-  const headers: Record<string, string> = { "content-type": "application/json" };
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+  };
   if (init.token) headers.authorization = `Bearer ${init.token}`;
   if (init.idempotencyKey) headers["idempotency-key"] = init.idempotencyKey;
   const response = await fetch(`${base.replace(/\/+$/, "")}${path}`, {
@@ -78,27 +85,34 @@ async function api(
     body: init.body === undefined ? undefined : JSON.stringify(init.body),
   });
   const text = await response.text();
-  let parsed: { data?: unknown; error?: { code?: string; message?: string } } = {};
+  let parsed: { data?: unknown; error?: { code?: string; message?: string } } =
+    {};
   try {
     parsed = text.length > 0 ? (JSON.parse(text) as typeof parsed) : {};
   } catch {
     parsed = {};
   }
   if (!response.ok) {
-    throw new ApiError(`${init.method} ${path} → ${response.status} ${parsed.error?.code ?? ""} ${parsed.error?.message ?? ""}`.trim(), response.status);
+    throw new ApiError(
+      `${init.method} ${path} → ${response.status} ${parsed.error?.code ?? ""} ${parsed.error?.message ?? ""}`.trim(),
+      response.status,
+    );
   }
   return parsed.data;
 }
 
 async function login(args: SeedArgs): Promise<string> {
   if (!args.email || !args.password) {
-    throw new Error("An author account is required: pass --email and --password (or NOTION_SEED_EMAIL / NOTION_SEED_PASSWORD).");
+    throw new Error(
+      "An author account is required: pass --email and --password (or NOTION_SEED_EMAIL / NOTION_SEED_PASSWORD).",
+    );
   }
   const data = (await api(args.api, "/api/v1/auth/login", {
     method: "POST",
     body: { email: args.email, password: args.password },
   })) as { accessToken?: string } | null;
-  if (typeof data?.accessToken !== "string") throw new Error("Login succeeded but returned no access token.");
+  if (typeof data?.accessToken !== "string")
+    throw new Error("Login succeeded but returned no access token.");
   return data.accessToken;
 }
 
@@ -109,14 +123,21 @@ async function login(args: SeedArgs): Promise<string> {
  * and a translation row, so a duplicate would split every tag page in two. The
  * lookup is by the zh-CN name, which is the only locale the tag write accepts.
  */
-async function ensureTags(args: SeedArgs, token: string, names: readonly string[]): Promise<Map<string, string>> {
+async function ensureTags(
+  args: SeedArgs,
+  token: string,
+  names: readonly string[],
+): Promise<Map<string, string>> {
   const wanted = [...new Set(names.filter((name) => name.length > 0))];
   const ids = new Map<string, string>();
   if (wanted.length === 0) return ids;
 
-  const existing = (await api(args.api, "/api/v1/tags?locale=zh-CN&limit=100", { method: "GET" })) as { id?: string; name?: string }[] | null;
+  const existing = (await api(args.api, "/api/v1/tags?locale=zh-CN&limit=100", {
+    method: "GET",
+  })) as { id?: string; name?: string }[] | null;
   for (const tag of Array.isArray(existing) ? existing : []) {
-    if (typeof tag?.id === "string" && typeof tag?.name === "string") ids.set(tag.name, tag.id);
+    if (typeof tag?.id === "string" && typeof tag?.name === "string")
+      ids.set(tag.name, tag.id);
   }
   for (const name of wanted) {
     if (ids.has(name)) continue;
@@ -124,7 +145,11 @@ async function ensureTags(args: SeedArgs, token: string, names: readonly string[
       ids.set(name, "");
       continue;
     }
-    const created = (await api(args.api, "/api/v1/tags", { method: "POST", token, body: { name } })) as { id?: string } | null;
+    const created = (await api(args.api, "/api/v1/tags", {
+      method: "POST",
+      token,
+      body: { name },
+    })) as { id?: string } | null;
     if (typeof created?.id === "string") ids.set(name, created.id);
   }
   return ids;
@@ -136,7 +161,11 @@ async function applyEdition(
   edition: PlannedEdition,
   tagIds: readonly string[],
   workSlug: string | null,
-): Promise<{ outcome: SeedOutcome; articleId: string | null; slug: string | null }> {
+): Promise<{
+  outcome: SeedOutcome;
+  articleId: string | null;
+  slug: string | null;
+}> {
   const base: SeedOutcome = {
     pageId: edition.pageId,
     title: edition.draft.title,
@@ -147,20 +176,28 @@ async function applyEdition(
     issues: edition.issues,
   };
   if (edition.unchanged) {
-    return { outcome: { ...base, detail: "unchanged since the last run" }, articleId: edition.articleId, slug: edition.slug };
+    return {
+      outcome: { ...base, detail: "unchanged since the last run" },
+      articleId: edition.articleId,
+      slug: edition.slug,
+    };
   }
 
   const body = articleWriteBody(edition.draft, tagIds);
   // An address the author actually wrote is theirs; a derived one is left to the
   // API, which owns uniqueness and can suffix a collision instead of failing.
-  if (edition.issues.some((issue) => issue.code === "slug-derived")) delete body.slug;
+  if (edition.issues.some((issue) => issue.code === "slug-derived"))
+    delete body.slug;
 
   if (!args.apply) {
     return {
       outcome: {
         ...base,
         action: edition.articleId === null ? "create" : "update",
-        detail: edition.articleId === null ? "would create" : `would update ${edition.articleId}`,
+        detail:
+          edition.articleId === null
+            ? "would create"
+            : `would update ${edition.articleId}`,
       },
       articleId: edition.articleId,
       slug: edition.slug,
@@ -174,7 +211,8 @@ async function applyEdition(
       body,
       idempotencyKey: idempotencyKeyFor(edition.pageId),
     })) as { id?: string; slug?: string } | null;
-    const slug = typeof created?.slug === "string" ? created.slug : edition.slug;
+    const slug =
+      typeof created?.slug === "string" ? created.slug : edition.slug;
     return {
       outcome: { ...base, action: "create", slug, detail: "created" },
       articleId: typeof created?.id === "string" ? created.id : null,
@@ -184,13 +222,26 @@ async function applyEdition(
 
   // `PUT` addresses the work by id and carries the slug: an edition (a locale)
   // is replaced, the work keeps its address.
-  const updated = (await api(args.api, `/api/v1/articles/${edition.articleId}`, {
-    method: "PUT",
-    token,
-    body: { ...body, slug: workSlug ?? edition.slug, publish: edition.draft.publish },
-  })) as { id?: string; slug?: string } | null;
+  const updated = (await api(
+    args.api,
+    `/api/v1/articles/${edition.articleId}`,
+    {
+      method: "PUT",
+      token,
+      body: {
+        ...body,
+        slug: workSlug ?? edition.slug,
+        publish: edition.draft.publish,
+      },
+    },
+  )) as { id?: string; slug?: string } | null;
   return {
-    outcome: { ...base, action: "update", slug: typeof updated?.slug === "string" ? updated.slug : edition.slug, detail: "updated" },
+    outcome: {
+      ...base,
+      action: "update",
+      slug: typeof updated?.slug === "string" ? updated.slug : edition.slug,
+      detail: "updated",
+    },
     articleId: edition.articleId,
     slug: typeof updated?.slug === "string" ? updated.slug : edition.slug,
   };
@@ -198,31 +249,55 @@ async function applyEdition(
 
 async function readState(path: string): Promise<NotionSeedState> {
   try {
-    return parseNotionSeedState(JSON.parse(await readFile(resolve(path), "utf8")));
+    return parseNotionSeedState(
+      JSON.parse(await readFile(resolve(path), "utf8")),
+    );
   } catch {
     return emptyNotionSeedState();
   }
 }
 
-export async function runNotionSeed(args: SeedArgs, deps: { fetchBundle?: () => Promise<unknown> } = {}): Promise<SeedRun> {
-  const raw = args.bundle !== null
-    ? JSON.parse(await readFile(resolve(args.bundle), "utf8"))
-    : await (deps.fetchBundle ?? (async () => {
-      if (!args.notionToken) throw new Error("Fetching needs NOTION_TOKEN (or --notion-token).");
-      if (!args.notionDatabase) throw new Error("Fetching needs a database id: --notion-database <id>.");
-      return collectNotionBundle({ token: args.notionToken, sourceId: args.notionDatabase });
-    }))();
+export async function runNotionSeed(
+  args: SeedArgs,
+  deps: { fetchBundle?: () => Promise<unknown> } = {},
+): Promise<SeedRun> {
+  const raw =
+    args.bundle !== null
+      ? JSON.parse(await readFile(resolve(args.bundle), "utf8"))
+      : await (
+          deps.fetchBundle ??
+          (async () => {
+            if (!args.notionToken)
+              throw new Error(
+                "Fetching needs NOTION_TOKEN (or --notion-token).",
+              );
+            if (!args.notionDatabase)
+              throw new Error(
+                "Fetching needs a database id: --notion-database <id>.",
+              );
+            return collectNotionBundle({
+              token: args.notionToken,
+              sourceId: args.notionDatabase,
+            });
+          })
+        )();
 
   const bundle = parseNotionBundle(raw);
   if (args.writeBundle !== null && args.bundle === null) {
-    await writeFile(resolve(args.writeBundle), `${JSON.stringify(bundle, null, 2)}\n`, "utf8");
+    await writeFile(
+      resolve(args.writeBundle),
+      `${JSON.stringify(bundle, null, 2)}\n`,
+      "utf8",
+    );
   }
 
   const state = await readState(args.state);
   const { works, issues: groupingIssues } = groupNotionWorks(bundle.pages);
   // A page seeded before the importer inferred languages was written as zh-CN
   // whatever it said; its state entry is the edition that exists, so keep it.
-  const localeByPage = new Map(Object.entries(state.pages).map(([pageId, page]) => [pageId, page.locale]));
+  const localeByPage = new Map(
+    Object.entries(state.pages).map(([pageId, page]) => [pageId, page.locale]),
+  );
   const plan = planNotionSeed({ works, state, localeByPage });
   const outcomes: SeedOutcome[] = [];
 
@@ -238,23 +313,46 @@ export async function runNotionSeed(args: SeedArgs, deps: { fetchBundle?: () => 
     });
   }
   for (const issue of groupingIssues) {
-    outcomes.push({ pageId: "", title: "", locale: "", action: "skip", slug: "", detail: issue.detail, issues: [issue] });
+    outcomes.push({
+      pageId: "",
+      title: "",
+      locale: "",
+      action: "skip",
+      slug: "",
+      detail: issue.detail,
+      issues: [issue],
+    });
   }
 
   const token = args.apply ? await login(args) : null;
-  const tagNames = plan.works.flatMap((work) => [work.primary, ...work.translations].flatMap((edition) => edition.draft.tags));
-  const tagIds = token !== null ? await ensureTags(args, token, tagNames) : new Map<string, string>();
+  const tagNames = plan.works.flatMap((work) =>
+    [work.primary, ...work.translations].flatMap(
+      (edition) => edition.draft.tags,
+    ),
+  );
+  const tagIds =
+    token !== null
+      ? await ensureTags(args, token, tagNames)
+      : new Map<string, string>();
 
   const nextState: NotionSeedState = structuredClone(state);
   for (const work of plan.works) {
     const idsFor = (edition: PlannedEdition): string[] =>
-      edition.draft.tags.map((name) => tagIds.get(name)).filter((id): id is string => typeof id === "string" && id.length > 0);
+      edition.draft.tags
+        .map((name) => tagIds.get(name))
+        .filter((id): id is string => typeof id === "string" && id.length > 0);
 
     let workArticleId = work.primary.articleId;
     let workSlug: string | null = null;
 
     try {
-      const primary = await applyEdition(args, token ?? "", work.primary, idsFor(work.primary), work.primary.slug);
+      const primary = await applyEdition(
+        args,
+        token ?? "",
+        work.primary,
+        idsFor(work.primary),
+        work.primary.slug,
+      );
       outcomes.push(primary.outcome);
       workArticleId = primary.articleId ?? workArticleId;
       workSlug = primary.slug ?? work.primary.slug;
@@ -329,6 +427,11 @@ export async function runNotionSeed(args: SeedArgs, deps: { fetchBundle?: () => 
     }
   }
 
-  if (args.apply) await writeFile(resolve(args.state), `${JSON.stringify(nextState, null, 2)}\n`, "utf8");
+  if (args.apply)
+    await writeFile(
+      resolve(args.state),
+      `${JSON.stringify(nextState, null, 2)}\n`,
+      "utf8",
+    );
   return { outcomes, state: nextState, applied: args.apply };
 }

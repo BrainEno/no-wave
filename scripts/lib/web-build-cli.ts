@@ -19,10 +19,20 @@ import { pathToFileURL } from "node:url";
  * resolves to a file which does not exist.
  */
 export function resolveWebBuildCli(root: string): string {
-  const requireFromWeb = createRequire(pathToFileURL(join(root, "apps/web-rr", "package.json")));
+  const requireFromWeb = createRequire(
+    pathToFileURL(join(root, "apps/web-rr", "package.json")),
+  );
   const packageJson = requireFromWeb.resolve("@react-router/dev/package.json");
-  const manifest = JSON.parse(readFileSync(packageJson, "utf8")) as { bin?: string | Record<string, string> };
-  const declared = typeof manifest.bin === "string" ? manifest.bin : manifest.bin?.["react-router"];
-  if (!declared) throw new Error("@react-router/dev does not declare a react-router CLI in its package manifest.");
+  const manifest = JSON.parse(readFileSync(packageJson, "utf8")) as {
+    bin?: string | Record<string, string>;
+  };
+  const declared =
+    typeof manifest.bin === "string"
+      ? manifest.bin
+      : manifest.bin?.["react-router"];
+  if (!declared)
+    throw new Error(
+      "@react-router/dev does not declare a react-router CLI in its package manifest.",
+    );
   return join(dirname(packageJson), declared);
 }

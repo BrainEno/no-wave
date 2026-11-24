@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
@@ -15,35 +16,52 @@ const stylelint = fileURLToPath(
 type Message = { ruleId: string | null; message: string; severity: number };
 type Result = { messages: Message[] };
 
-/** Test the same configuration and inline-suppression policy used by CI. */
+let fixtures = 0;
+
+/**
+ * Lint `source` as a file at `filename`'s directory and extension, with the
+ * same configuration and inline-suppression policy CI uses.
+ *
+ * Type-aware rules only parse files that belong to a TypeScript project, and a
+ * project is the files on disk, so the fixture is written next to real sources
+ * (under a unique, gitignored name) and always removed.
+ */
 function lint(
   source: string,
   filename = "packages/web-ui/src/lint-fixture.tsx",
 ): Result {
-  const run = spawnSync(
-    process.execPath,
-    [
-      eslint,
-      "--flag",
-      "unstable_native_nodejs_ts_config",
-      "--no-inline-config",
-      "--stdin",
-      "--stdin-filename",
-      filename,
-      "--format",
-      "json",
-    ],
-    { cwd: root, input: source, encoding: "utf8", timeout: 20_000 },
+  const directory = dirname(filename);
+  const fixture = join(
+    directory,
+    `lint-fixture-${process.pid}-${++fixtures}${extname(filename)}`,
   );
-  assert.equal(
-    run.error,
-    undefined,
-    run.error?.message ?? "lint process failed",
-  );
-  assert.ok(run.status === 0 || run.status === 1, run.stderr);
-  const results = JSON.parse(run.stdout) as Result[];
-  assert.equal(results.length, 1);
-  return results[0]!;
+  writeFileSync(join(root, fixture), source);
+  try {
+    const run = spawnSync(
+      process.execPath,
+      [
+        eslint,
+        "--flag",
+        "unstable_native_nodejs_ts_config",
+        "--no-inline-config",
+        "--format",
+        "json",
+        fixture,
+      ],
+      { cwd: root, encoding: "utf8", timeout: 90_000 },
+    );
+    assert.equal(
+      run.error,
+      undefined,
+      run.error?.message ?? "lint process failed",
+    );
+    assert.ok(run.status === 0 || run.status === 1, run.stderr);
+    const results = JSON.parse(run.stdout) as Result[];
+    assert.equal(results.length, 1);
+    return results[0]!;
+  } finally {
+    rmSync(join(root, fixture), { force: true });
+  }
 }
 
 function errors(source: string, filename?: string): string[] {
@@ -126,16 +144,98 @@ test("inline disable comments cannot hide a missing dependency or image alt", ()
   assert.ok(found.includes("react-hooks/exhaustive-deps"));
 });
 
-test("rule enforcement applies to route, shared UI and script paths", () => {
+test("rule enforcement applies to route and shared UI components", () => {
   const source = 'export const image = <img src="/a" />;';
   for (const path of [
     "apps/web-rr/app/fixture.tsx",
     "packages/web-ui/src/fixture.tsx",
-    "scripts/fixture.tsx",
-    "e2e/fixture.tsx",
   ]) {
     assert.ok(errors(source, path).includes("jsx-a11y/alt-text"), path);
   }
+});
+
+const FLOATING = `export async function save(): Promise<void> {}
+export function submit() {
+  save();
+}`;
+
+test("an un-awaited, un-voided promise fails in every linted project, including the API", () => {
+  for (const path of [
+    "apps/api/src/fixture.ts",
+    "apps/web-rr/app/fixture.ts",
+    "packages/web-http/src/fixture.ts",
+    "packages/web-ui/src/lib/fixture.ts",
+    "scripts/fixture.ts",
+    "e2e/fixture.ts",
+  ]) {
+    assert.ok(
+      errors(FLOATING, path).includes(
+        "@typescript-eslint/no-floating-promises",
+      ),
+      path,
+    );
+  }
+});
+
+test("awaiting, returning, catching or an explicit void settles the promise", () => {
+  for (const settled of [
+    "await save();",
+    "void save();",
+    "save().catch(() => undefined);",
+  ]) {
+    const source = FLOATING.replace(
+      "export function submit() {\n  save();",
+      `export async function submit() {\n  ${settled}`,
+    );
+    assert.deepEqual(errors(source, "apps/api/src/fixture.ts"), [], settled);
+  }
+});
+
+test("an inline disable comment cannot hide a floating promise", () => {
+  const source = FLOATING.replace(
+    "  save();",
+    "  // eslint-disable-next-line @typescript-eslint/no-floating-promises\n  save();",
+  );
+  assert.ok(
+    errors(source, "apps/api/src/fixture.ts").includes(
+      "@typescript-eslint/no-floating-promises",
+    ),
+  );
+});
+
+test("API tests are typed too: an un-awaited assert.rejects is caught, node:test registration is not", () => {
+  const source = `import assert from "node:assert/strict";
+import test from "node:test";
+test("refuses", async () => {
+  assert.rejects(Promise.reject(new Error("no")));
+});`;
+  assert.deepEqual(errors(source, "apps/api/src/fixture.test.ts"), [
+    "@typescript-eslint/no-floating-promises",
+  ]);
+  assert.deepEqual(
+    errors(
+      source.replace("  assert.rejects", "  await assert.rejects"),
+      "apps/api/src/fixture.test.ts",
+    ),
+    [],
+  );
+});
+
+test("a promise-returning handler where React expects a void callback is rejected", () => {
+  const source = `export async function save(): Promise<void> {}
+export const button = <button type="button" onClick={save}>Save</button>;`;
+  assert.ok(
+    errors(source, "packages/web-ui/src/fixture.tsx").includes(
+      "@typescript-eslint/no-misused-promises",
+    ),
+  );
+  assert.deepEqual(
+    errors(
+      source.replace("onClick={save}", "onClick={() => { void save(); }}"),
+      "packages/web-ui/src/fixture.tsx",
+    ),
+    [],
+  );
 });
 
 test("invalid stylesheet syntax and unknown units fail stylelint", () => {

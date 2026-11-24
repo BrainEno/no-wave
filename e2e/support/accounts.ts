@@ -21,13 +21,19 @@ export function uniqueEmail(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}@example.test`;
 }
 
-export async function registerThroughForm(page: Page, email: string, next = "/account"): Promise<void> {
+export async function registerThroughForm(
+  page: Page,
+  email: string,
+  next = "/account",
+): Promise<void> {
   await page.goto(`/sign-in?next=${encodeURIComponent(next)}`);
   // A click that lands before React hydrates is silently dropped, so the mode
   // switch is retried until its effect shows up.
   await expect(async () => {
     await page.getByRole("button", { name: /没有账户？创建账户/ }).click();
-    await expect(page.getByRole("button", { name: "创建账户并继续" })).toBeVisible({ timeout: 3_000 });
+    await expect(
+      page.getByRole("button", { name: "创建账户并继续" }),
+    ).toBeVisible({ timeout: 3_000 });
   }).toPass({ timeout: 45_000 });
   await expect(async () => {
     await page.getByLabel("邮箱").fill(email);

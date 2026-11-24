@@ -14,7 +14,10 @@ test("isRecord narrows non-null non-array objects", () => {
 });
 
 test("parseJson returns parsed object for valid JSON objects, and null otherwise", () => {
-  assert.deepEqual(parseJson('{"name":"no-wave","active":true}'), { name: "no-wave", active: true });
+  assert.deepEqual(parseJson('{"name":"no-wave","active":true}'), {
+    name: "no-wave",
+    active: true,
+  });
   assert.equal(parseJson(""), null);
   assert.equal(parseJson("not json"), null);
   assert.equal(parseJson("[1, 2, 3]"), null);

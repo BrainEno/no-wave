@@ -26,13 +26,19 @@ const server = spawn("pnpm", ["--filter", "@bot-thk/web-rr", "start"], {
   detached: process.platform !== "win32",
 });
 
-server.stdout.on("data", (chunk) => { serverOutput += chunk.toString(); });
-server.stderr.on("data", (chunk) => { serverOutput += chunk.toString(); });
+server.stdout.on("data", (chunk) => {
+  serverOutput += chunk.toString();
+});
+server.stderr.on("data", (chunk) => {
+  serverOutput += chunk.toString();
+});
 
 async function waitForServer() {
   for (let attempt = 0; attempt < 40; attempt += 1) {
     if (server.exitCode !== null) {
-      throw new Error(`Web server exited early (code ${server.exitCode}).\n${serverOutput}`);
+      throw new Error(
+        `Web server exited early (code ${server.exitCode}).\n${serverOutput}`,
+      );
     }
     try {
       const response = await fetch(baseUrl, { redirect: "manual" });
@@ -53,26 +59,41 @@ async function waitForServer() {
  * read at request time, so the only way to show the build behaving differently
  * is to serve it twice.
  */
-async function withMailEnabledServer(check: (url: string) => Promise<void>): Promise<void> {
+async function withMailEnabledServer(
+  check: (url: string) => Promise<void>,
+): Promise<void> {
   const probe = createServer();
   const port = await new Promise<number>((resolve, reject) => {
     probe.once("error", reject);
     probe.listen(0, "127.0.0.1", () => {
       const address = probe.address();
-      if (address === null || typeof address === "string") { reject(new Error("Could not reserve a port.")); return; }
+      if (address === null || typeof address === "string") {
+        reject(new Error("Could not reserve a port."));
+        return;
+      }
       resolve(address.port);
     });
   });
   await new Promise<void>((resolve) => probe.close(() => resolve()));
 
   const mailServer = spawn("pnpm", ["--filter", "@bot-thk/web-rr", "start"], {
-    env: { ...process.env, HOSTNAME: "127.0.0.1", PORT: String(port), MAIL_ENABLED: "true", API_BASE_URL: "" },
+    env: {
+      ...process.env,
+      HOSTNAME: "127.0.0.1",
+      PORT: String(port),
+      MAIL_ENABLED: "true",
+      API_BASE_URL: "",
+    },
     stdio: ["ignore", "pipe", "pipe"],
     detached: process.platform !== "win32",
   });
   let output = "";
-  mailServer.stdout.on("data", (chunk: Buffer) => { output += chunk.toString(); });
-  mailServer.stderr.on("data", (chunk: Buffer) => { output += chunk.toString(); });
+  mailServer.stdout.on("data", (chunk: Buffer) => {
+    output += chunk.toString();
+  });
+  mailServer.stderr.on("data", (chunk: Buffer) => {
+    output += chunk.toString();
+  });
   try {
     const url = `http://127.0.0.1:${port}`;
     let ready = false;
@@ -80,15 +101,22 @@ async function withMailEnabledServer(check: (url: string) => Promise<void>): Pro
       try {
         const response = await fetch(`${url}/forgot-password`);
         if (response.status === 200) ready = true;
-      } catch { /* still starting */ }
+      } catch {
+        /* still starting */
+      }
       if (!ready) await delay(500);
     }
-    if (!ready) throw new Error(`The mail-enabled server did not become ready.\n${output}`);
+    if (!ready)
+      throw new Error(
+        `The mail-enabled server did not become ready.\n${output}`,
+      );
     await check(url);
   } finally {
     if (mailServer.exitCode === null && mailServer.signalCode === null) {
       if (process.platform !== "win32" && mailServer.pid !== undefined) {
-        try { process.kill(-mailServer.pid, "SIGTERM"); } catch (error) {
+        try {
+          process.kill(-mailServer.pid, "SIGTERM");
+        } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
         }
       } else {
@@ -104,46 +132,112 @@ try {
   const home = await fetch(baseUrl);
   assert.equal(home.status, 200, "home page should return 200");
   const homeHtml = await home.text();
-  assert.match(homeHtml, /文学作品的数字出版空间/, "default home should serve Simplified Chinese content");
-  assert.match(homeHtml, /lang="zh-CN"/, "default content should declare its language");
+  assert.match(
+    homeHtml,
+    /文学作品的数字出版空间/,
+    "default home should serve Simplified Chinese content",
+  );
+  assert.match(
+    homeHtml,
+    /lang="zh-CN"/,
+    "default content should declare its language",
+  );
 
   const article = await fetch(`${baseUrl}/articles/portable-web-foundation`);
   assert.equal(article.status, 200, "known article should return 200");
   const articleHtml = await article.text();
-  assert.match(articleHtml, /rel="canonical"/, "article should render a canonical link");
-  assert.match(articleHtml, /og:title/, "article should render Open Graph metadata");
+  assert.match(
+    articleHtml,
+    /rel="canonical"/,
+    "article should render a canonical link",
+  );
+  assert.match(
+    articleHtml,
+    /og:title/,
+    "article should render Open Graph metadata",
+  );
 
   const archive = await fetch(`${baseUrl}/articles`);
   assert.equal(archive.status, 200, "article archive should return 200");
-  assert.match(await archive.text(), /文学作品的数字出版空间/, "article archive should list available content");
+  assert.match(
+    await archive.text(),
+    /文学作品的数字出版空间/,
+    "article archive should list available content",
+  );
 
   const siteFeed = await fetch(`${baseUrl}/articles/feed.atom`);
-  assert.equal(siteFeed.status, 200, "the site-wide Atom feed should not be shadowed by the article route");
-  assert.match(siteFeed.headers.get("content-type") ?? "", /^application\/atom\+xml/, "the site-wide feed should be Atom");
-  assert.match(await siteFeed.text(), /<feed xmlns="http:\/\/www\.w3\.org\/2005\/Atom"/, "the site-wide feed should be an Atom document");
+  assert.equal(
+    siteFeed.status,
+    200,
+    "the site-wide Atom feed should not be shadowed by the article route",
+  );
+  assert.match(
+    siteFeed.headers.get("content-type") ?? "",
+    /^application\/atom\+xml/,
+    "the site-wide feed should be Atom",
+  );
+  assert.match(
+    await siteFeed.text(),
+    /<feed xmlns="http:\/\/www\.w3\.org\/2005\/Atom"/,
+    "the site-wide feed should be an Atom document",
+  );
 
   const categories = await fetch(`${baseUrl}/categories`);
-  assert.equal(categories.status, 200, "category index should return 200 without API configuration");
-  assert.match(await categories.text(), /作品分类/, "category index should serve Simplified Chinese content");
+  assert.equal(
+    categories.status,
+    200,
+    "category index should return 200 without API configuration",
+  );
+  assert.match(
+    await categories.text(),
+    /作品分类/,
+    "category index should serve Simplified Chinese content",
+  );
   const missingCategory = await fetch(`${baseUrl}/categories/does-not-exist`);
-  assert.equal(missingCategory.status, 404, "unknown category should return 404");
+  assert.equal(
+    missingCategory.status,
+    404,
+    "unknown category should return 404",
+  );
   const englishCategories = await fetch(`${baseUrl}/en/categories`);
-  assert.equal(englishCategories.status, 200, "English category index should return 200");
-  assert.match(await englishCategories.text(), /Everything on No Wave is one of three things/, "English category index should serve English content");
+  assert.equal(
+    englishCategories.status,
+    200,
+    "English category index should return 200",
+  );
+  assert.match(
+    await englishCategories.text(),
+    /Everything on No Wave is one of three things/,
+    "English category index should serve English content",
+  );
 
   const search = await fetch(`${baseUrl}/articles?q=不存在的文章`);
   assert.equal(search.status, 200, "empty search should return 200");
-  assert.match(await search.text(), /没有符合条件的作品/, "search should provide an empty state");
+  assert.match(
+    await search.text(),
+    /没有符合条件的作品/,
+    "search should provide an empty state",
+  );
 
   const englishHome = await fetch(`${baseUrl}/en`);
   assert.equal(englishHome.status, 200, "English home should return 200");
-  assert.match(await englishHome.text(), /lang="en"/, "English content should declare its language");
+  assert.match(
+    await englishHome.text(),
+    /lang="en"/,
+    "English content should declare its language",
+  );
 
   const englishArchive = await fetch(`${baseUrl}/en/articles`);
-  assert.equal(englishArchive.status, 200, "English article archive should return 200");
+  assert.equal(
+    englishArchive.status,
+    200,
+    "English article archive should return 200",
+  );
   assert.match(await englishArchive.text(), /A Portable Web Foundation/);
 
-  const englishArticle = await fetch(`${baseUrl}/en/articles/portable-web-foundation`);
+  const englishArticle = await fetch(
+    `${baseUrl}/en/articles/portable-web-foundation`,
+  );
   assert.equal(englishArticle.status, 200, "English article should return 200");
   const englishArticleHtml = await englishArticle.text();
   assert.match(englishArticleHtml, /rel="canonical"/);
@@ -165,7 +259,11 @@ try {
     `anonymous account request should redirect (got ${account.status})`,
   );
   assert.equal(account.headers.get("location"), "/sign-in?next=%2Faccount");
-  assert.match(account.headers.get("cache-control") ?? "", /no-store/i, "account redirect must not be publicly cached");
+  assert.match(
+    account.headers.get("cache-control") ?? "",
+    /no-store/i,
+    "account redirect must not be publicly cached",
+  );
 
   /**
    * Recovery and verification (ADR 0014) with **mail switched off**, which is
@@ -175,18 +273,46 @@ try {
    * asserted against a second server below.
    */
   const forgotPassword = await fetch(`${baseUrl}/forgot-password`);
-  assert.equal(forgotPassword.status, 200, "the recovery request page should return 200");
+  assert.equal(
+    forgotPassword.status,
+    200,
+    "the recovery request page should return 200",
+  );
   const forgotPasswordHtml = await forgotPassword.text();
-  assert.match(forgotPasswordHtml, /未启用邮件功能/, "with mail off the page says so instead of offering a form");
-  assert.doesNotMatch(forgotPasswordHtml, /name="email"/, "no address is collected for a mail that cannot be sent");
+  assert.match(
+    forgotPasswordHtml,
+    /未启用邮件功能/,
+    "with mail off the page says so instead of offering a form",
+  );
+  assert.doesNotMatch(
+    forgotPasswordHtml,
+    /name="email"/,
+    "no address is collected for a mail that cannot be sent",
+  );
 
   const resetWithoutToken = await fetch(`${baseUrl}/reset-password`);
-  assert.equal(resetWithoutToken.status, 200, "the reset page should return 200");
-  assert.match(await resetWithoutToken.text(), /未启用邮件功能/, "a reset link can only have arrived by mail");
+  assert.equal(
+    resetWithoutToken.status,
+    200,
+    "the reset page should return 200",
+  );
+  assert.match(
+    await resetWithoutToken.text(),
+    /未启用邮件功能/,
+    "a reset link can only have arrived by mail",
+  );
 
   const verifyWithoutToken = await fetch(`${baseUrl}/verify-email`);
-  assert.equal(verifyWithoutToken.status, 200, "the verification page should return 200");
-  assert.match(await verifyWithoutToken.text(), /未启用邮件功能/, "same for a verification link");
+  assert.equal(
+    verifyWithoutToken.status,
+    200,
+    "the verification page should return 200",
+  );
+  assert.match(
+    await verifyWithoutToken.text(),
+    /未启用邮件功能/,
+    "same for a verification link",
+  );
 
   const signIn = await fetch(`${baseUrl}/sign-in`);
   assert.equal(signIn.status, 200, "the sign-in page should return 200");
@@ -209,57 +335,96 @@ try {
   // form screen and its mock SSE endpoint must answer 404.
   for (const path of ["/spike-form", "/api/spike/events"]) {
     const retired = await fetch(`${baseUrl}${path}`);
-    assert.equal(retired.status, 404, `${path} should no longer be routed in production`);
+    assert.equal(
+      retired.status,
+      404,
+      `${path} should no longer be routed in production`,
+    );
   }
 
-
   const writingDesk = await fetch(`${baseUrl}/write`);
-  assert.equal(writingDesk.status, 200, "writing desk should render when the API and media store are not configured");
+  assert.equal(
+    writingDesk.status,
+    200,
+    "writing desk should render when the API and media store are not configured",
+  );
   const merge = await fetch(`${baseUrl}/write/merge`);
-  assert.equal(merge.status, 200, "the local merge shell must be usable without an API or account");
+  assert.equal(
+    merge.status,
+    200,
+    "the local merge shell must be usable without an API or account",
+  );
   assert.match(merge.headers.get("cache-control") ?? "", /no-store/i);
   const mergeHtml = await merge.text();
   assert.match(mergeHtml, /data-route="write-merge"/);
   assert.match(mergeHtml, /noindex, nofollow/);
   assert.match(mergeHtml, /本机三方文稿合并/);
   assert.doesNotMatch(mergeHtml, /contenteditable="true"/);
-  const mergeQuery = await fetch(`${baseUrl}/write/merge?base=https%3A%2F%2Funtrusted.test%2FPRIVATE-SOURCE`, { redirect: "manual" });
-  assert.equal(mergeQuery.status, 302, "file locations must never come from the URL");
+  const mergeQuery = await fetch(
+    `${baseUrl}/write/merge?base=https%3A%2F%2Funtrusted.test%2FPRIVATE-SOURCE`,
+    { redirect: "manual" },
+  );
+  assert.equal(
+    mergeQuery.status,
+    302,
+    "file locations must never come from the URL",
+  );
   assert.equal(mergeQuery.headers.get("location"), "/write/merge");
   assert.match(mergeQuery.headers.get("cache-control") ?? "", /no-store/i);
   assert.doesNotMatch(await mergeQuery.text(), /PRIVATE-SOURCE/);
   const overlap = await fetch(`${baseUrl}/write/overlap`);
-  assert.equal(overlap.status, 200, "local overlap review must render without an API or account");
+  assert.equal(
+    overlap.status,
+    200,
+    "local overlap review must render without an API or account",
+  );
   assert.match(overlap.headers.get("cache-control") ?? "", /no-store/i);
   const overlapHtml = await overlap.text();
   assert.match(overlapHtml, /data-route="write-overlap"/);
   assert.match(overlapHtml, /noindex, nofollow/);
   assert.doesNotMatch(overlapHtml, /contenteditable="true"/);
-  const overlapQuery = await fetch(`${baseUrl}/write/overlap?file=PRIVATE-OVERLAP-SOURCE`, { redirect: "manual" });
+  const overlapQuery = await fetch(
+    `${baseUrl}/write/overlap?file=PRIVATE-OVERLAP-SOURCE`,
+    { redirect: "manual" },
+  );
   assert.equal(overlapQuery.status, 302);
   assert.equal(overlapQuery.headers.get("location"), "/write/overlap");
   assert.match(overlapQuery.headers.get("cache-control") ?? "", /no-store/i);
   assert.doesNotMatch(await overlapQuery.text(), /PRIVATE-OVERLAP-SOURCE/);
   const terms = await fetch(`${baseUrl}/write/terms`);
-  assert.equal(terms.status, 200, "local terminology review must render without an API or account");
+  assert.equal(
+    terms.status,
+    200,
+    "local terminology review must render without an API or account",
+  );
   assert.match(terms.headers.get("cache-control") ?? "", /no-store/i);
   const termsHtml = await terms.text();
   assert.match(termsHtml, /data-route="write-terms"/);
   assert.match(termsHtml, /noindex, nofollow/);
   assert.doesNotMatch(termsHtml, /contenteditable="true"/);
-  const termsQuery = await fetch(`${baseUrl}/write/terms?recipe=PRIVATE-TERMS-SOURCE`, { redirect: "manual" });
+  const termsQuery = await fetch(
+    `${baseUrl}/write/terms?recipe=PRIVATE-TERMS-SOURCE`,
+    { redirect: "manual" },
+  );
   assert.equal(termsQuery.status, 302);
   assert.equal(termsQuery.headers.get("location"), "/write/terms");
   assert.match(termsQuery.headers.get("cache-control") ?? "", /no-store/i);
   assert.doesNotMatch(await termsQuery.text(), /PRIVATE-TERMS-SOURCE/);
   const cadence = await fetch(`${baseUrl}/write/cadence`);
-  assert.equal(cadence.status, 200, "local punctuation review must render without an API or account");
+  assert.equal(
+    cadence.status,
+    200,
+    "local punctuation review must render without an API or account",
+  );
   assert.match(cadence.headers.get("cache-control") ?? "", /no-store/i);
   const cadenceHtml = await cadence.text();
   assert.match(cadenceHtml, /data-route="write-cadence"/);
   assert.match(cadenceHtml, /noindex, nofollow/);
   assert.doesNotMatch(cadenceHtml, /contenteditable="true"/);
-  const cadenceQuery = await fetch(`${baseUrl}/write/cadence?file=PRIVATE-CADENCE-SOURCE&dot=true`, { redirect: "manual" });
+  const cadenceQuery = await fetch(
+    `${baseUrl}/write/cadence?file=PRIVATE-CADENCE-SOURCE&dot=true`,
+    { redirect: "manual" },
+  );
   assert.equal(cadenceQuery.status, 302);
   assert.equal(cadenceQuery.headers.get("location"), "/write/cadence");
   assert.match(cadenceQuery.headers.get("cache-control") ?? "", /no-store/i);
@@ -269,23 +434,56 @@ try {
     headers: { "content-type": "image/png" },
     body: Buffer.from("not-an-image"),
   });
-  assert.equal(anonymousMediaUpload.status, 403, "media upload proxy must reject cross-origin or origin-less mutations");
-  const anonymousPasswordChange = await fetch(`${baseUrl}/api/authoring/password`, {
-    method: "PUT",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ currentPassword: "not-a-real-password", newPassword: "also-not-a-real-password" }),
-  });
-  assert.equal(anonymousPasswordChange.status, 403, "password change proxy must reject cross-origin or origin-less mutations");
+  assert.equal(
+    anonymousMediaUpload.status,
+    403,
+    "media upload proxy must reject cross-origin or origin-less mutations",
+  );
+  const anonymousPasswordChange = await fetch(
+    `${baseUrl}/api/authoring/password`,
+    {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        currentPassword: "not-a-real-password",
+        newPassword: "also-not-a-real-password",
+      }),
+    },
+  );
+  assert.equal(
+    anonymousPasswordChange.status,
+    403,
+    "password change proxy must reject cross-origin or origin-less mutations",
+  );
   const anonymousEmailChange = await fetch(`${baseUrl}/api/authoring/email`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ password: "not-a-real-password", email: "nobody@example.test" }),
+    body: JSON.stringify({
+      password: "not-a-real-password",
+      email: "nobody@example.test",
+    }),
   });
-  assert.equal(anonymousEmailChange.status, 403, "address change proxy must reject cross-origin or origin-less mutations");
-  const unavailableMedia = await fetch(`${baseUrl}/api/media/11111111-1111-4111-8111-111111111111`);
-  assert.equal(unavailableMedia.status, 503, "public media proxy should report missing API configuration explicitly");
-  const commentList = await fetch(`${baseUrl}/api/articles/portable-web-foundation/comments?locale=zh-CN`);
-  assert.equal(commentList.status, 503, "comment route should report missing API configuration without fabricating fixture comments");
+  assert.equal(
+    anonymousEmailChange.status,
+    403,
+    "address change proxy must reject cross-origin or origin-less mutations",
+  );
+  const unavailableMedia = await fetch(
+    `${baseUrl}/api/media/11111111-1111-4111-8111-111111111111`,
+  );
+  assert.equal(
+    unavailableMedia.status,
+    503,
+    "public media proxy should report missing API configuration explicitly",
+  );
+  const commentList = await fetch(
+    `${baseUrl}/api/articles/portable-web-foundation/comments?locale=zh-CN`,
+  );
+  assert.equal(
+    commentList.status,
+    503,
+    "comment route should report missing API configuration without fabricating fixture comments",
+  );
 
   const robots = await fetch(`${baseUrl}/robots.txt`);
   assert.equal(robots.status, 200);
@@ -295,7 +493,11 @@ try {
   assert.equal(sitemap.status, 200);
   const sitemapText = await sitemap.text();
   assert.match(sitemapText, /portable-web-foundation/);
-  assert.match(sitemapText, /\/en\/articles\//, "sitemap should include English article URLs");
+  assert.match(
+    sitemapText,
+    /\/en\/articles\//,
+    "sitemap should include English article URLs",
+  );
 
   /**
    * The same build with `MAIL_ENABLED=true`.
@@ -308,23 +510,47 @@ try {
     const forgotPassword = await fetch(`${mailUrl}/forgot-password`);
     assert.equal(forgotPassword.status, 200);
     const forgotPasswordHtml = await forgotPassword.text();
-    assert.match(forgotPasswordHtml, /发送重设链接/, "with mail on the recovery form is offered");
+    assert.match(
+      forgotPasswordHtml,
+      /发送重设链接/,
+      "with mail on the recovery form is offered",
+    );
     assert.match(forgotPasswordHtml, /name="email"/);
-    assert.doesNotMatch(forgotPasswordHtml, /未启用邮件功能/, "one artefact, two behaviours: the switch is read per request");
+    assert.doesNotMatch(
+      forgotPasswordHtml,
+      /未启用邮件功能/,
+      "one artefact, two behaviours: the switch is read per request",
+    );
 
-    const resetWithToken = await fetch(`${mailUrl}/reset-password?token=${"a".repeat(43)}`);
+    const resetWithToken = await fetch(
+      `${mailUrl}/reset-password?token=${"a".repeat(43)}`,
+    );
     assert.equal(resetWithToken.status, 200);
-    assert.match(await resetWithToken.text(), /设置新密码/, "a reset link with a token renders the form");
+    assert.match(
+      await resetWithToken.text(),
+      /设置新密码/,
+      "a reset link with a token renders the form",
+    );
 
     const verifyWithoutToken = await fetch(`${mailUrl}/verify-email`);
     assert.equal(verifyWithoutToken.status, 200);
-    assert.match(await verifyWithoutToken.text(), /链接不完整/, "a verification link without a token must say so");
+    assert.match(
+      await verifyWithoutToken.text(),
+      /链接不完整/,
+      "a verification link without a token must say so",
+    );
 
     const signIn = await fetch(`${mailUrl}/sign-in`);
-    assert.match(await signIn.text(), /\/forgot-password/, "the recovery link comes back with the switch");
+    assert.match(
+      await signIn.text(),
+      /\/forgot-password/,
+      "the recovery link comes back with the switch",
+    );
   });
 
-  console.log("Route smoke checks passed: localized home/archive/article routes, search, SEO alternates, 404s, account cache policy, recovery and verification pages (mail off and on), retired spike 404s, robots, sitemap and the site feed.");
+  console.log(
+    "Route smoke checks passed: localized home/archive/article routes, search, SEO alternates, 404s, account cache policy, recovery and verification pages (mail off and on), retired spike 404s, robots, sitemap and the site feed.",
+  );
 } finally {
   if (server.exitCode === null && server.signalCode === null) {
     if (process.platform !== "win32" && server.pid !== undefined) {

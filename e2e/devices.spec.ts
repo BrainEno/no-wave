@@ -1,6 +1,15 @@
-import { expect, type APIRequestContext, type Locator, type Page } from "@playwright/test";
+import {
+  expect,
+  type APIRequestContext,
+  type Locator,
+  type Page,
+} from "@playwright/test";
 import { test } from "./support/csp-fixture.ts";
-import { BROWSER_PASSWORD as PASSWORD, registerThroughForm, uniqueEmail } from "./support/accounts.ts";
+import {
+  BROWSER_PASSWORD as PASSWORD,
+  registerThroughForm,
+  uniqueEmail,
+} from "./support/accounts.ts";
 
 /**
  * The list of signed-in devices, end to end in a real browser.
@@ -44,9 +53,13 @@ async function pageDigest(page: Page): Promise<string> {
 async function waitForAccount(page: Page): Promise<Locator> {
   const devices = page.locator("[data-account-devices]");
   try {
-    await expect(devices.getByRole("heading", { name: /登录的设备/ })).toBeVisible({ timeout: 60_000 });
+    await expect(
+      devices.getByRole("heading", { name: /登录的设备/ }),
+    ).toBeVisible({ timeout: 60_000 });
   } catch (caught) {
-    throw new Error(`/account never loaded the device section; page:\n${await pageDigest(page)}\n${String(caught)}`);
+    throw new Error(
+      `/account never loaded the device section; page:\n${await pageDigest(page)}\n${String(caught)}`,
+    );
   }
   return devices;
 }
@@ -57,10 +70,18 @@ let consoleLog: string[] = [];
 test.beforeEach(async ({ page }) => {
   traffic = [];
   consoleLog = [];
-  const record = (line: string): void => { if (traffic.length < 40) traffic.push(line); };
-  const recordConsole = (line: string): void => { if (consoleLog.length < 40) consoleLog.push(line); };
-  page.on("console", (message) => recordConsole(`${message.type()}: ${message.text().slice(0, 300)}`));
-  page.on("pageerror", (error) => recordConsole(`pageerror: ${String(error).slice(0, 300)}`));
+  const record = (line: string): void => {
+    if (traffic.length < 40) traffic.push(line);
+  };
+  const recordConsole = (line: string): void => {
+    if (consoleLog.length < 40) consoleLog.push(line);
+  };
+  page.on("console", (message) =>
+    recordConsole(`${message.type()}: ${message.text().slice(0, 300)}`),
+  );
+  page.on("pageerror", (error) =>
+    recordConsole(`pageerror: ${String(error).slice(0, 300)}`),
+  );
   const watched = (url: string): boolean => /\/api\/(authoring|auth)/.test(url);
   page.on("request", (request) => {
     if (!watched(request.url())) return;
@@ -79,7 +100,10 @@ test.afterEach(async ({ page }, testInfo) => {
   );
 });
 
-test("the account page lists the signed-in devices, and ending the others leaves this one reading", async ({ page, request }) => {
+test("the account page lists the signed-in devices, and ending the others leaves this one reading", async ({
+  page,
+  request,
+}) => {
   const email = uniqueEmail("devices");
   await registerThroughForm(page, email);
   await waitForAccount(page);
@@ -90,13 +114,20 @@ test("the account page lists the signed-in devices, and ending the others leaves
   const second = await request.post(`${API_BASE_URL}/api/v1/auth/login`, {
     data: { email, password: PASSWORD },
   });
-  expect(second.status(), `the second device signing in: ${await second.text()}`).toBe(200);
-  const { refreshToken } = (await second.json()).data as { refreshToken: string };
+  expect(
+    second.status(),
+    `the second device signing in: ${await second.text()}`,
+  ).toBe(200);
+  const { refreshToken } = (await second.json()).data as {
+    refreshToken: string;
+  };
   await page.reload();
 
   const devices = await waitForAccount(page);
   const rows = devices.locator("[data-device]");
-  await expect(rows, "both devices are listed").toHaveCount(2, { timeout: 60_000 });
+  await expect(rows, "both devices are listed").toHaveCount(2, {
+    timeout: 60_000,
+  });
   await expect(devices.locator('[data-device-current="true"]')).toHaveCount(1);
   await expect(devices.getByText("这台设备")).toBeVisible();
 
@@ -105,17 +136,32 @@ test("the account page lists the signed-in devices, and ending the others leaves
   // The durable outcome: the row is gone, the notice says how many went, and
   // the device that asked is still signed in.
   await expect(rows).toHaveCount(1, { timeout: 60_000 });
-  await expect(page.getByRole("status").filter({ hasText: "已让其他 1 台设备退出登录" })).toBeVisible();
-  await expect(devices.locator('[data-device-current="true"]'), "the row that stayed is still this one").toHaveCount(1);
+  await expect(
+    page.getByRole("status").filter({ hasText: "已让其他 1 台设备退出登录" }),
+  ).toBeVisible();
+  await expect(
+    devices.locator('[data-device-current="true"]'),
+    "the row that stayed is still this one",
+  ).toHaveCount(1);
 
-  const ended = await request.post(`${API_BASE_URL}/api/v1/auth/refresh`, { data: { refreshToken } });
-  expect(ended.status(), "the ended device cannot refresh: its token is dead, not merely hidden").toBe(401);
+  const ended = await request.post(`${API_BASE_URL}/api/v1/auth/refresh`, {
+    data: { refreshToken },
+  });
+  expect(
+    ended.status(),
+    "the ended device cannot refresh: its token is dead, not merely hidden",
+  ).toBe(401);
 
   const stillHere = await page.request.get("/api/authoring/session");
-  expect(stillHere.status(), "and the device that asked is still signed in").toBe(200);
+  expect(
+    stillHere.status(),
+    "and the device that asked is still signed in",
+  ).toBe(200);
 });
 
-test("ending the device you are holding signs this browser out, instead of leaving a page it cannot use", async ({ page }) => {
+test("ending the device you are holding signs this browser out, instead of leaving a page it cannot use", async ({
+  page,
+}) => {
   const email = uniqueEmail("own-device");
   await registerThroughForm(page, email);
   const devices = await waitForAccount(page);
@@ -125,7 +171,9 @@ test("ending the device you are holding signs this browser out, instead of leavi
 
   // One device, so there is no "end the others" button: a list of one has
   // nothing else to end, and a button that would do nothing is worse than none.
-  await expect(page.getByRole("button", { name: "结束其他全部设备" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "结束其他全部设备" }),
+  ).toHaveCount(0);
 
   await page.getByRole("button", { name: "结束这台" }).click();
 
@@ -134,10 +182,15 @@ test("ending the device you are holding signs this browser out, instead of leavi
   // request is refused, rather than showing a row it can no longer act on.
   await page.waitForURL("**/sign-in**", { timeout: 60_000 });
   const session = await page.request.get("/api/authoring/session");
-  expect(session.status(), "the session really is over, not just the page").toBe(401);
+  expect(
+    session.status(),
+    "the session really is over, not just the page",
+  ).toBe(401);
 });
 
-test("editing an account form does not repeatedly reload the session or device list", async ({ page }) => {
+test("editing an account form does not repeatedly reload the session or device list", async ({
+  page,
+}) => {
   // React effects depend on the navigation adapter. If the adapter changes
   // identity on every render, typing here re-runs the session/device effects,
   // even though neither the route nor the account has changed.
@@ -152,7 +205,9 @@ test("editing an account form does not repeatedly reload the session or device l
   await registerThroughForm(page, uniqueEmail("stable-effects"));
   const devices = await waitForAccount(page);
   await expect(devices.locator('[data-device-current="true"]')).toHaveCount(1);
-  const password = page.locator("[data-account-password]").getByLabel("新密码（至少 12 个字符）");
+  const password = page
+    .locator("[data-account-password]")
+    .getByLabel("新密码（至少 12 个字符）");
   const sessionsBefore = sessionRequests;
   const devicesBefore = deviceRequests;
   await password.fill("a-long-example-password");

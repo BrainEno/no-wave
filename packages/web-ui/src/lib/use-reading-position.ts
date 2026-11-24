@@ -61,7 +61,7 @@ export function useReadingPosition(identity: string, record: ShelfRecord | null,
       const captured = captureReadingPosition(readingBlocksIn(article).blocks, lineInViewport(), sourceRevision);
       if (!captured) return;
       pending = captured;
-      if (!timer) timer = window.setTimeout(flush, 1000);
+      if (!timer) timer = window.setTimeout(() => { void flush(); }, 1000);
     };
     const onScroll = () => { if (armed.current === consent && !frame) frame = window.requestAnimationFrame(measure); };
     const onReadingInput = (event: Event) => {

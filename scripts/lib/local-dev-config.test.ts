@@ -26,12 +26,21 @@ import {
 test("Node.js support matches the pinned engines range", () => {
   assert.equal(evaluateNodeVersion("v24.16.0").supported, true);
   assert.equal(evaluateNodeVersion("v24.15.0").supported, true);
-  assert.equal(evaluateNodeVersion("v24.16.0").message.includes("Release Candidate"), true);
+  assert.equal(
+    evaluateNodeVersion("v24.16.0").message.includes("Release Candidate"),
+    true,
+  );
   assert.match(evaluateNodeVersion("v24.10.0").message, /24\.15\.0 or newer/);
   assert.equal(evaluateNodeVersion("v22.22.3").supported, false);
-  assert.match(evaluateNodeVersion("v22.22.3").message, /older than the supported 24\.x/);
+  assert.match(
+    evaluateNodeVersion("v22.22.3").message,
+    /older than the supported 24\.x/,
+  );
   assert.equal(evaluateNodeVersion("v26.0.0").supported, false);
-  assert.match(evaluateNodeVersion("v26.0.0").message, /newer than the supported 24\.x/);
+  assert.match(
+    evaluateNodeVersion("v26.0.0").message,
+    /newer than the supported 24\.x/,
+  );
   assert.equal(evaluateNodeVersion("not-a-version").supported, false);
 });
 
@@ -67,11 +76,18 @@ test("port settings fall back and report invalid values", () => {
 });
 
 test("local config derives loopback URLs and the persistence description", () => {
-  const sqlite = resolveLocalDevConfig({ DATABASE_PATH: "data/dev.sqlite", AUTH_JWT_SECRET: "x".repeat(48), PORT: "4100" });
+  const sqlite = resolveLocalDevConfig({
+    DATABASE_PATH: "data/dev.sqlite",
+    AUTH_JWT_SECRET: "x".repeat(48),
+    PORT: "4100",
+  });
   assert.equal(sqlite.api.baseUrl, loopbackBaseUrl(4100));
   assert.equal(sqlite.api.baseUrl, "http://127.0.0.1:4100");
   assert.equal(sqlite.web.baseUrl, "http://127.0.0.1:3000");
-  assert.match(sqlite.persistence.description, /^SQLite \(.*apps[\\/]api[\\/]data[\\/]dev\.sqlite\)$/);
+  assert.match(
+    sqlite.persistence.description,
+    /^SQLite \(.*apps[\\/]api[\\/]data[\\/]dev\.sqlite\)$/,
+  );
   assert.equal(sqlite.persistence.external, false);
   assert.deepEqual(sqlite.issues, []);
   assert.equal(sqlite.auth.configuredBytes, 48);
@@ -83,63 +99,98 @@ test("local config derives loopback URLs and the persistence description", () =>
   });
   assert.equal(postgres.persistence.provider, "postgres");
   assert.equal(postgres.persistence.external, false);
-  assert.match(postgres.persistence.description, /^PostgreSQL \(postgres:\/\/user:\*\*\*@127\.0\.0\.1:5432\/bot_thk_dev\)$/);
+  assert.match(
+    postgres.persistence.description,
+    /^PostgreSQL \(postgres:\/\/user:\*\*\*@127\.0\.0\.1:5432\/bot_thk_dev\)$/,
+  );
   // The description is printed to the console, so credentials must never leak.
-  assert.equal(postgres.persistence.description.includes("secret-password"), false);
+  assert.equal(
+    postgres.persistence.description.includes("secret-password"),
+    false,
+  );
 
   // A legacy DATABASE_URL without DATABASE_PROVIDER keeps selecting PostgreSQL,
   // matching resolveDatabaseProvider in apps/api.
-  const legacy = resolveLocalDevConfig({ DATABASE_URL: "postgres://127.0.0.1:5432/dev", AUTH_JWT_SECRET: "x".repeat(32) });
+  const legacy = resolveLocalDevConfig({
+    DATABASE_URL: "postgres://127.0.0.1:5432/dev",
+    AUTH_JWT_SECRET: "x".repeat(32),
+  });
   assert.equal(legacy.persistence.provider, "postgres");
 
   const neon = resolveLocalDevConfig({
     DATABASE_PROVIDER: "postgres",
-    DATABASE_URL: "postgres://app:hunter2@ep-example.us-east-2.aws.neon.tech/no_wave?sslmode=require",
+    DATABASE_URL:
+      "postgres://app:hunter2@ep-example.us-east-2.aws.neon.tech/no_wave?sslmode=require",
     AUTH_JWT_SECRET: "x".repeat(32),
   });
   assert.equal(neon.persistence.external, true);
-  assert.equal(neon.persistence.description, "PostgreSQL (external DATABASE_URL; host withheld)");
+  assert.equal(
+    neon.persistence.description,
+    "PostgreSQL (external DATABASE_URL; host withheld)",
+  );
   assert.equal(neon.persistence.description.includes("neon.tech"), false);
   assert.equal(neon.persistence.description.includes("hunter2"), false);
 
   const unpooledOnly = resolveLocalDevConfig({
     DATABASE_PROVIDER: "postgres",
     DATABASE_URL: "postgres://postgres:postgres@127.0.0.1:5432/bot_thk_dev",
-    DATABASE_URL_UNPOOLED: "postgres://app:hunter2@ep-example.neon.tech/no_wave",
+    DATABASE_URL_UNPOOLED:
+      "postgres://app:hunter2@ep-example.neon.tech/no_wave",
     AUTH_JWT_SECRET: "x".repeat(32),
   });
   assert.equal(unpooledOnly.persistence.external, true);
 
   const missingSecret = resolveLocalDevConfig({});
-  assert.deepEqual(missingSecret.issues.map((issue) => issue.code), ["AUTH_SECRET_MISSING"]);
+  assert.deepEqual(
+    missingSecret.issues.map((issue) => issue.code),
+    ["AUTH_SECRET_MISSING"],
+  );
 });
 
 test("local database URLs are recognised without trusting remote hosts", () => {
   assert.equal(isLocalDatabaseUrl("postgres://u:p@127.0.0.1:5432/dev"), true);
   assert.equal(isLocalDatabaseUrl("postgresql://u:p@localhost:5432/dev"), true);
   assert.equal(isLocalDatabaseUrl("postgres://u:p@[::1]:5432/dev"), true);
-  assert.equal(isLocalDatabaseUrl("postgres:///dev?host=/var/run/postgresql"), true);
-  assert.equal(isLocalDatabaseUrl("postgres://u:p@ep-example.neon.tech/dev"), false);
+  assert.equal(
+    isLocalDatabaseUrl("postgres:///dev?host=/var/run/postgresql"),
+    true,
+  );
+  assert.equal(
+    isLocalDatabaseUrl("postgres://u:p@ep-example.neon.tech/dev"),
+    false,
+  );
   assert.equal(isLocalDatabaseUrl("not a url"), false);
   assert.equal(isLocalDatabaseUrl(undefined), false);
 });
 
 test("database URLs are redacted without becoming unusable", () => {
   assert.equal(
-    redactDatabaseUrl("postgres://app:hunter2@db.internal:5432/app?sslmode=require"),
+    redactDatabaseUrl(
+      "postgres://app:hunter2@db.internal:5432/app?sslmode=require",
+    ),
     "postgres://app:***@db.internal:5432/app?sslmode=require",
   );
   assert.equal(redactDatabaseUrl("not a url"), "<unparseable DATABASE_URL>");
-  assert.equal(redactDatabaseUrl("postgres://db.internal/app"), "postgres://db.internal/app");
+  assert.equal(
+    redactDatabaseUrl("postgres://db.internal/app"),
+    "postgres://db.internal/app",
+  );
 });
 
 test("generated .env.local documents every key it needs in .env.example", async () => {
   const template = await readFile(envTemplateFile, "utf8");
   const documented = new Set(extractEnvTemplateKeys(template));
   for (const provider of ["sqlite", "postgres"] as const) {
-    const generated = buildLocalEnvFile({ jwtSecret: "s".repeat(32), provider });
+    const generated = buildLocalEnvFile({
+      jwtSecret: "s".repeat(32),
+      provider,
+    });
     for (const key of extractEnvFileKeys(generated)) {
-      assert.equal(documented.has(key), true, `${key} is generated by setup:local but missing from .env.example`);
+      assert.equal(
+        documented.has(key),
+        true,
+        `${key} is generated by setup:local but missing from .env.example`,
+      );
     }
     assert.equal(generated.endsWith("\n"), true);
     assert.equal(generated.includes("AUTH_JWT_SECRET="), true);
@@ -150,26 +201,39 @@ test("generated .env.local never persists a remote database URL", () => {
   const remote = buildLocalEnvFile({
     jwtSecret: "s".repeat(32),
     provider: "postgres",
-    databaseUrl: "postgres://app:hunter2@ep-example.neon.tech/no_wave?sslmode=require",
+    databaseUrl:
+      "postgres://app:hunter2@ep-example.neon.tech/no_wave?sslmode=require",
   });
   assert.equal(remote.includes("neon.tech"), false);
   assert.equal(remote.includes("hunter2"), false);
-  assert.match(remote, /^DATABASE_URL=postgres:\/\/postgres:postgres@127\.0\.0\.1:5432\/bot_thk_dev$/m);
+  assert.match(
+    remote,
+    /^DATABASE_URL=postgres:\/\/postgres:postgres@127\.0\.0\.1:5432\/bot_thk_dev$/m,
+  );
 
   const local = buildLocalEnvFile({
     jwtSecret: "s".repeat(32),
     provider: "postgres",
     databaseUrl: "postgres://dev:dev@127.0.0.1:5433/custom",
   });
-  assert.match(local, /^DATABASE_URL=postgres:\/\/dev:dev@127\.0\.0\.1:5433\/custom$/m);
+  assert.match(
+    local,
+    /^DATABASE_URL=postgres:\/\/dev:dev@127\.0\.0\.1:5433\/custom$/m,
+  );
 });
 
 test("generated .env.local selects exactly one persistence provider", () => {
-  const sqlite = buildLocalEnvFile({ jwtSecret: "s".repeat(32), provider: "sqlite" });
+  const sqlite = buildLocalEnvFile({
+    jwtSecret: "s".repeat(32),
+    provider: "sqlite",
+  });
   assert.match(sqlite, /^DATABASE_PROVIDER=sqlite$/m);
   assert.equal(/^DATABASE_URL=/m.test(sqlite), false);
 
-  const postgres = buildLocalEnvFile({ jwtSecret: "s".repeat(32), provider: "postgres" });
+  const postgres = buildLocalEnvFile({
+    jwtSecret: "s".repeat(32),
+    provider: "postgres",
+  });
   assert.match(postgres, /^DATABASE_PROVIDER=postgres$/m);
   assert.match(postgres, /^DATABASE_URL=postgres:\/\//m);
   // The integration-test database stays opt-in, so `pnpm test` does not start
@@ -179,38 +243,71 @@ test("generated .env.local selects exactly one persistence provider", () => {
 });
 
 test("dev and check argument parsing rejects unknown options", () => {
-  assert.deepEqual(parseDevArguments([]).args, { apiOnly: false, webOnly: false, check: false, exit: false });
+  assert.deepEqual(parseDevArguments([]).args, {
+    apiOnly: false,
+    webOnly: false,
+    check: false,
+    exit: false,
+  });
   assert.deepEqual(parseDevArguments(["--api-only", "--check"]).args, {
     apiOnly: true,
     webOnly: false,
     check: true,
     exit: false,
   });
-  assert.deepEqual(parseDevArguments(["--api-only", "--check", "--exit"]).args, {
-    apiOnly: true,
-    webOnly: false,
-    check: true,
-    exit: true,
-  });
-  assert.match(parseDevArguments(["--api-only", "--web-only"]).error ?? "", /cannot be combined/);
+  assert.deepEqual(
+    parseDevArguments(["--api-only", "--check", "--exit"]).args,
+    {
+      apiOnly: true,
+      webOnly: false,
+      check: true,
+      exit: true,
+    },
+  );
+  assert.match(
+    parseDevArguments(["--api-only", "--web-only"]).error ?? "",
+    /cannot be combined/,
+  );
   assert.match(parseDevArguments(["--exit"]).error ?? "", /requires --check/);
   assert.match(parseDevArguments(["--nope"]).error ?? "", /Unknown option/);
 
-  const parsed = parseCheckArguments(["--api-only", "--read-only", "--api-url", "http://127.0.0.1:4100", "--timeout", "5000"]);
+  const parsed = parseCheckArguments([
+    "--api-only",
+    "--read-only",
+    "--api-url",
+    "http://127.0.0.1:4100",
+    "--timeout",
+    "5000",
+  ]);
   assert.deepEqual(parsed.args, {
     apiOnly: true,
     readOnly: true,
     apiBaseUrl: "http://127.0.0.1:4100",
     timeoutMs: 5000,
   });
-  assert.match(parseCheckArguments(["--api-url"]).error ?? "", /requires a value/);
-  assert.match(parseCheckArguments(["--timeout", "0"]).error ?? "", /positive integer/);
-  assert.match(parseCheckArguments(["--verbose"]).error ?? "", /Unknown option/);
+  assert.match(
+    parseCheckArguments(["--api-url"]).error ?? "",
+    /requires a value/,
+  );
+  assert.match(
+    parseCheckArguments(["--timeout", "0"]).error ?? "",
+    /positive integer/,
+  );
+  assert.match(
+    parseCheckArguments(["--verbose"]).error ?? "",
+    /Unknown option/,
+  );
 });
 
 test("probe identities are valid and unique per run", () => {
-  const first = buildProbeIdentity(new Date("2026-10-29T06:00:00.000Z"), () => 0.5);
-  const second = buildProbeIdentity(new Date("2026-10-29T06:00:00.000Z"), () => 0.25);
+  const first = buildProbeIdentity(
+    new Date("2026-10-29T06:00:00.000Z"),
+    () => 0.5,
+  );
+  const second = buildProbeIdentity(
+    new Date("2026-10-29T06:00:00.000Z"),
+    () => 0.25,
+  );
   assert.match(first.email, /^local-check-\d{14}[a-z0-9]{6}@example\.test$/);
   assert.notEqual(first.email, second.email);
   assert.notEqual(first.slug, second.slug);
@@ -222,17 +319,58 @@ test("probe identities are valid and unique per run", () => {
 });
 
 test("API-side dev config reserves a worker listener and rejects process-private SQLite or invalid recovery budgets", () => {
-  const base = { AUTH_JWT_SECRET: "fixture-local-secret-with-at-least-32-bytes" };
+  const base = {
+    AUTH_JWT_SECRET: "fixture-local-secret-with-at-least-32-bytes",
+  };
   const config = resolveLocalDevConfig(base);
-  assert.deepEqual(config.worker, { host: "127.0.0.1", port: 4001, listenBaseUrl: "http://127.0.0.1:4001" });
+  assert.deepEqual(config.worker, {
+    host: "127.0.0.1",
+    port: 4001,
+    listenBaseUrl: "http://127.0.0.1:4001",
+  });
   assert.equal(config.supervision.recoveryTimeoutMs, 15_000);
-  assert.equal(resolveLocalDevConfig({ ...base, OUTBOX_HEALTH_PORT: "4101", OUTBOX_HEALTH_HOST: "0.0.0.0" }).worker.port, 4101);
-  assert.ok(resolveLocalDevConfig({ ...base, OUTBOX_HEALTH_PORT: "0" }).issues.some(issue => issue.code === "INVALID_WORKER_PORT"));
-  assert.ok(resolveLocalDevConfig({ ...base, DATABASE_PATH: ":memory:" }).issues.some(issue => issue.code === "WORKER_REQUIRES_DURABLE_DB"));
-  for (const value of ["999", "120001", "1.5", "1e4", "private-recovery-canary"]) {
-    const result = resolveLocalDevConfig({ ...base, DEV_RECOVERY_TIMEOUT_MS: value });
-    assert.ok(result.issues.some(issue => issue.code === "INVALID_DEV_RECOVERY_TIMEOUT"));
-    assert.doesNotMatch(JSON.stringify(result.issues), /private-recovery-canary/);
+  assert.equal(
+    resolveLocalDevConfig({
+      ...base,
+      OUTBOX_HEALTH_PORT: "4101",
+      OUTBOX_HEALTH_HOST: "0.0.0.0",
+    }).worker.port,
+    4101,
+  );
+  assert.ok(
+    resolveLocalDevConfig({ ...base, OUTBOX_HEALTH_PORT: "0" }).issues.some(
+      (issue) => issue.code === "INVALID_WORKER_PORT",
+    ),
+  );
+  assert.ok(
+    resolveLocalDevConfig({ ...base, DATABASE_PATH: ":memory:" }).issues.some(
+      (issue) => issue.code === "WORKER_REQUIRES_DURABLE_DB",
+    ),
+  );
+  for (const value of [
+    "999",
+    "120001",
+    "1.5",
+    "1e4",
+    "private-recovery-canary",
+  ]) {
+    const result = resolveLocalDevConfig({
+      ...base,
+      DEV_RECOVERY_TIMEOUT_MS: value,
+    });
+    assert.ok(
+      result.issues.some(
+        (issue) => issue.code === "INVALID_DEV_RECOVERY_TIMEOUT",
+      ),
+    );
+    assert.doesNotMatch(
+      JSON.stringify(result.issues),
+      /private-recovery-canary/,
+    );
   }
-  assert.equal(resolveLocalDevConfig({ ...base, DEV_RECOVERY_TIMEOUT_MS: "90000" }).supervision.recoveryTimeoutMs, 90_000);
+  assert.equal(
+    resolveLocalDevConfig({ ...base, DEV_RECOVERY_TIMEOUT_MS: "90000" })
+      .supervision.recoveryTimeoutMs,
+    90_000,
+  );
 });

@@ -84,7 +84,7 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
       <p className="nw-ep" style={{ marginTop: 24 }}>
         新密码至少 12 个字符。这个链接只能使用一次，重设后它会立即失效。
       </p>
-      <form className="nw-auth-form" onSubmit={submit}>
+      <form className="nw-auth-form" onSubmit={(event) => { void submit(event); }}>
         <label>新密码
           <input type="password" name="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={12} maxLength={128} />
         </label>
