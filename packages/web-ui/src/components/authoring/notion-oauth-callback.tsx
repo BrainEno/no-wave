@@ -17,7 +17,7 @@ import {
  */
 export function NotionOAuthCallback() {
   const [phase, setPhase] = useState<"working" | "done" | "failed">("working");
-  const [message, setMessage] = useState("正在完成 Notion 授权…");
+  const [message, setMessage] = useState("正在完成 Notion 授权……");
   const started = useRef(false);
 
   useEffect(() => {

@@ -46,7 +46,7 @@ export function WritingCollectionExportPanel({ catalogue, disabled }: { catalogu
       <div className="nw-authoring-actions">
         <button className="nw-btn" type="button" disabled={disabled || running || state.downloading || remaining > 0 || source.filters.scope !== "active" || !source.selected.length || source.selected.length > 20} onClick={() => { void queue.start(); }}>读取所选正文并准备集合</button>
         {running ? <button className="nw-btn" type="button" onClick={() => queue.cancel()}>停止正文读取</button> : null}
-        <button className="nw-btn" type="button" disabled={disabled || state.status !== "complete" || state.downloading} onClick={() => { void save(); }}>{state.downloading ? "正在核验下载账户…" : "下载已校验正文集合"}</button>
+        <button className="nw-btn" type="button" disabled={disabled || state.status !== "complete" || state.downloading} onClick={() => { void save(); }}>{state.downloading ? "正在核验下载账户……" : "下载已校验正文集合"}</button>
         <button className="nw-btn" type="button" disabled={running || state.downloading || !state.plan} onClick={() => { queue.invalidate(); download.release(); setMessage(""); }}>清除暂存正文</button>
         <Link className="nw-btn" href="/write/collections">打开本机集合工具</Link>
       </div>

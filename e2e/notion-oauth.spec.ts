@@ -243,7 +243,7 @@ test("a refusal in Notion, a cancelled wait and an unconfigured instance all lea
   await page.getByRole("button", { name: "用 Notion 授权" }).click();
   popup = await popupOpened;
   await expect(
-    page.getByRole("button", { name: "等待 Notion 授权…" }),
+    page.getByRole("button", { name: "等待 Notion 授权……" }),
   ).toBeDisabled();
   await expect(
     page.getByRole("button", { name: "连接并读取条目" }),

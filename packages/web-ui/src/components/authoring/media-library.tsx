@@ -299,7 +299,7 @@ export function MediaLibrary() {
     return (
       <section className="nw-media">
         <h1><span className="nw-zh">媒体库</span> <i>Media</i></h1>
-        <p className="nw-auth-status" role="status">正在载入媒体库…</p>
+        <p className="nw-notice-status" role="status">正在载入媒体库……</p>
       </section>
     );
   }
@@ -308,7 +308,7 @@ export function MediaLibrary() {
     return (
       <section className="nw-media">
         <h1><span className="nw-zh">媒体库</span> <i>Media</i></h1>
-        <p className="nw-auth-error" role="alert">
+        <p className="nw-notice-error" role="alert">
           这个部署没有配置图片存储（S3 兼容对象存储），上传与媒体库都不可用。配置方法见
           {" "}<code>docs/operations/web-authoring.md</code>。
         </p>
@@ -332,8 +332,8 @@ export function MediaLibrary() {
       <p className="nw-m" role="status">
         共 {items.length} 张，其中 {orphans} 张未被引用。
       </p>
-      {error ? <p className="nw-auth-error" role="alert">{error}</p> : null}
-      {notice ? <p className="nw-auth-status" role="status">{notice}</p> : null}
+      {error ? <p className="nw-notice-error" role="alert">{error}</p> : null}
+      {notice ? <p className="nw-notice-status" role="status">{notice}</p> : null}
 
       {state === "error" ? (
         <p><button className="nw-btn" type="button" onClick={() => { setError(""); setState("loading"); void load(null, false); }}>重新载入</button></p>
@@ -361,7 +361,7 @@ export function MediaLibrary() {
                           disabled={removing === item.id}
                           onClick={() => void remove(item)}
                         >
-                          {removing === item.id ? "删除中…" : "删除"}
+                          {removing === item.id ? "删除中……" : "删除"}
                         </button>
                       )
                       : <p className="nw-media-note">删除暂时停用：等待引用检查的修复验证完成。</p>}
@@ -381,7 +381,7 @@ export function MediaLibrary() {
       {cursor ? (
         <p className="nw-media-more">
           <button className="nw-btn" type="button" disabled={loadingMore} onClick={() => void loadMore()}>
-            {loadingMore ? "载入中…" : "载入更多"}
+            {loadingMore ? "载入中……" : "载入更多"}
           </button>
         </p>
       ) : null}

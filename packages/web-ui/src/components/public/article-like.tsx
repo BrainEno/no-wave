@@ -149,7 +149,7 @@ export function ArticleLike({ slug, locale }: { slug: string; locale: Locale }) 
           <Link href={`/sign-in?next=${encodeURIComponent(articlePath(slug, locale))}`}>{ui.saveSignInAction}</Link>
         </p>
       ) : null}
-      {error ? <div className="nw-auth-error nw-interaction-error" role="alert">
+      {error ? <div className="nw-notice-error nw-interaction-error" role="alert">
         <span>{error}</span>
         {state === null ? <button type="button" className="nw-interaction-retry" onClick={() => setReadAttempt((value) => value + 1)}>{ui.saveReadRetry}</button> : null}
       </div> : null}

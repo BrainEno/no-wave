@@ -66,11 +66,11 @@ export function AuthorProfilePanel({ profile, onSave }: AuthorProfilePanelProps)
           />
         </label>
         <button className="nw-btn" type="submit" disabled={busy} data-author-profile-save>
-          {busy ? "保存中…" : "保存笔名"}
+          {busy ? "保存中……" : "保存笔名"}
         </button>
       </form>
-      {error ? <p className="nw-auth-error" role="alert">{error}</p> : null}
-      {status ? <p className="nw-auth-status" role="status">{status}</p> : null}
+      {error ? <p className="nw-notice-error" role="alert">{error}</p> : null}
+      {status ? <p className="nw-notice-status" role="status">{status}</p> : null}
     </section>
   );
 }

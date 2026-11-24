@@ -298,7 +298,7 @@ export function WorkBatchImportPanel({ onImportComplete }: { onImportComplete?: 
               disabled={isProcessingFiles}
               onClick={() => fileInputRef.current?.click()}
             >
-              {isProcessingFiles ? "正在解析文件…" : "选择或批量拖入文档文件 +"}
+              {isProcessingFiles ? "正在解析文件……" : "选择或批量拖入文档文件 +"}
             </button>
           </div>
         </section>
@@ -510,7 +510,7 @@ export function WorkBatchImportPanel({ onImportComplete }: { onImportComplete?: 
           {importProgress && (
             <div className="nw-imp-note">
               <p>
-                ⏳ 正在导入第 {importProgress.current} / {importProgress.total} 篇：《{importProgress.title}》…
+                ⏳ 正在导入第 {importProgress.current} / {importProgress.total} 篇：《{importProgress.title}》……
               </p>
             </div>
           )}
@@ -538,7 +538,7 @@ export function WorkBatchImportPanel({ onImportComplete }: { onImportComplete?: 
               onClick={() => void executeBatchImport()}
             >
               {importProgress !== null
-                ? "正在批量写入数据库…"
+                ? "正在批量写入数据库……"
                 : `确认批量导入已就绪作品 (${validCount} 篇)`}
             </button>
             <Link className="nw-btn" href="/write">

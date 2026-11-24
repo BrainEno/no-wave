@@ -257,7 +257,7 @@ export function NotionImport() {
         const seconds = Math.min(Math.max(Number.isFinite(header) ? header : 30, 1), 900);
         for (let left = seconds; left > 0; left--) {
           if (stopped.current) return { ok: false, status: 429, code: null, message: "已停止，这一批没有提交。" };
-          setProgress(`导入请求过于频繁（每 10 分钟有次数上限）。${label}将在 ${left} 秒后自动继续…`);
+          setProgress(`导入请求过于频繁（每 10 分钟有次数上限）。${label}将在 ${left} 秒后自动继续……`);
           await sleep(1000);
         }
         continue;
@@ -306,7 +306,7 @@ export function NotionImport() {
     for (const [i, batch] of next.entries()) {
       if (stopped.current) { batch.error = `第 ${i + 1} 批没有试跑（已停止）。`; continue; }
       const label = next.length > 1 ? `第 ${i + 1}/${next.length} 批` : "试跑";
-      setProgress(next.length > 1 ? `正在试跑${label}…` : "");
+      setProgress(next.length > 1 ? `正在试跑${label}……` : "");
       // `apply` is omitted for a dry run rather than sent as `false`: the
       // endpoint's default *is* the dry run.
       const result = await post({ bundle: batch.bundle }, label);
@@ -333,13 +333,13 @@ export function NotionImport() {
       const i = next.indexOf(batch);
       const label = next.length > 1 ? `第 ${i + 1}/${next.length} 批` : "写入";
       if (stopped.current) { batch.error = `${next.length > 1 ? `第 ${i + 1} 批` : "本批"}没有写入（已停止）。`; continue; }
-      setProgress(next.length > 1 ? `正在写入${label}…` : "");
+      setProgress(next.length > 1 ? `正在写入${label}……` : "");
       const result = await post({ bundle: batch.bundle, apply: true, planToken: batch.report!.planToken }, label);
       const prefix = next.length > 1 ? `第 ${i + 1} 批：` : "";
       if (result.ok) {
         batch.report = result.report; batch.error = ""; batch.replanned = false;
       } else if (result.code === "IMPORT_PLAN_INVALID" && !batch.replanned) {
-        setProgress(next.length > 1 ? `第 ${i + 1} 批的试跑计划已失效，正在重新试跑…` : "试跑计划已失效，正在重新试跑…");
+        setProgress(next.length > 1 ? `第 ${i + 1} 批的试跑计划已失效，正在重新试跑……` : "试跑计划已失效，正在重新试跑……");
         const again = await post({ bundle: batch.bundle }, label);
         if (again.ok) {
           batch.report = again.report; batch.replanned = true;
@@ -652,7 +652,7 @@ export function NotionImport() {
             <div className="nw-import-oauth">
               <div className="nw-import-pick">
                 <button className="nw-btn" type="button" disabled={busy !== null || authorizing} onClick={() => { void authorize(); }}>
-                  {authorizing ? "等待 Notion 授权…" : "用 Notion 授权"}
+                  {authorizing ? "等待 Notion 授权……" : "用 Notion 授权"}
                 </button>
                 {authorizing ? <button className="nw-btn" type="button" onClick={cancelAuthorize}>取消授权</button> : null}
                 {authorizing ? <span className="nw-import-file" role="status">请在弹出的 Notion 窗口里完成授权；取消后可以直接关掉那个窗口。</span> : null}
@@ -692,7 +692,7 @@ export function NotionImport() {
           </p>
           <div className="nw-import-pick">
             <button className="nw-btn" type="submit" disabled={busy !== null || authorizing || token.trim() === "" || source.trim() === ""}>
-              {busy === "pull" && bundle === null ? "正在读取…" : "连接并读取条目"}
+              {busy === "pull" && bundle === null ? "正在读取……" : "连接并读取条目"}
             </button>
             {pull.current !== null && fileName !== "" ? <span className="nw-import-file" role="status">已连接：{fileName}</span> : null}
           </div>
@@ -738,7 +738,7 @@ export function NotionImport() {
           type="file"
         />
 
-      {busy === "dry-run" && progress === "" ? <p className="nw-m" role="status">正在读取或试跑所选页面…</p> : null}
+      {busy === "dry-run" && progress === "" ? <p className="nw-m" role="status">正在读取或试跑所选页面……</p> : null}
       {progress !== "" ? (
         <p className="nw-import-progress" role="status">
           {progress}
@@ -747,7 +747,7 @@ export function NotionImport() {
         </p>
       ) : null}
       {error !== "" || batchErrors.length > 0 ? (
-        <div className="nw-auth-error" role="alert">
+        <div className="nw-notice-error" role="alert">
           {[error, ...batchErrors].filter(Boolean).map((message, index) => <p key={index}>{message}</p>)}
         </div>
       ) : null}
@@ -768,7 +768,7 @@ export function NotionImport() {
                 媒体库每位作者每小时最多上传 {LOCAL_IMAGE_UPLOADS_PER_RUN} 张，所以每次最多上传 {LOCAL_IMAGE_UPLOADS_PER_RUN} 张；之前上传过的会直接复用，不占次数。
               </p>
               <button className="nw-btn" type="button" disabled={busy !== null} onClick={() => void uploadImages()}>
-                {busy === "upload" ? "正在上传…" : `上传 ${Math.min(uploadable.length, LOCAL_IMAGE_UPLOADS_PER_RUN)} 张本地图片到你的媒体库`}
+                {busy === "upload" ? "正在上传……" : `上传 ${Math.min(uploadable.length, LOCAL_IMAGE_UPLOADS_PER_RUN)} 张本地图片到你的媒体库`}
               </button>
             </>
           ) : uploadedImages.size > 0 ? <p className="nw-m">导出包里能上传的本地图片都已在你的媒体库中，并已放进对应文章。</p> : null}
@@ -940,7 +940,7 @@ export function NotionImport() {
                 onClick={() => void applyAll()}
                 type="button"
               >
-                {busy === "apply" ? "写入中…" : `确认导入（写入 ${writable} 件作品${total > 1 ? `，${appliedCount > 0 ? "剩余 " : "分 "}${confirmable.length} 批` : ""}）`}
+                {busy === "apply" ? "写入中……" : `确认导入（写入 ${writable} 件作品${total > 1 ? `，${appliedCount > 0 ? "剩余 " : "分 "}${confirmable.length} 批` : ""}）`}
               </button>
               <p className="nw-m">
                 试跑计划在 15 分钟内有效，并绑定当前选择与作品版本。试跑后的编辑或来源变化会由服务器拒绝，

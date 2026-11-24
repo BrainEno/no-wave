@@ -458,7 +458,7 @@ export function WritingRecovery({
         </>
       ) : null}
       {state.error ? (
-        <p className="nw-auth-error" role="alert">
+        <p className="nw-notice-error" role="alert">
           {state.error} 当前输入未被此操作清空；可使用下方文稿工具下载备份。
         </p>
       ) : null}
@@ -551,7 +551,7 @@ export function WritingRecovery({
         </p>
       ) : null}
       {state.sourceError ? (
-        <p className="nw-auth-error" role="alert">
+        <p className="nw-notice-error" role="alert">
           来源核对未完成：{state.sourceError}{" "}
           不影响当前输入，未采用旧的服务器响应。
         </p>

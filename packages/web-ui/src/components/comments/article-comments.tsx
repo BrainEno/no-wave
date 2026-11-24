@@ -279,10 +279,10 @@ function CommentComposer({ resetKey, onSubmit, busy, initialBlocks, submitLabel,
           </div>
           <CommentStatePlugin onChange={onChange} />
         </LexicalExtensionComposer>
-        {formError ? <p className="nw-auth-error" role="alert">{formError}</p> : null}
+        {formError ? <p className="nw-notice-error" role="alert">{formError}</p> : null}
         <div className="nw-authoring-actions">
           <button className="nw-btn nw-pri" type="submit" disabled={busy}>
-            {busy ? (busyLabel ?? "正在提交…") : (submitLabel ?? "提交评论")}
+            {busy ? (busyLabel ?? "正在提交……") : (submitLabel ?? "提交评论")}
           </button>
           {onCancel ? (
             <button className="nw-btn" type="button" onClick={onCancel} disabled={busy}>{cancelLabel ?? "取消"}</button>
@@ -430,7 +430,7 @@ export function ArticleComments({ slug, locale }: { slug: string; locale: Locale
     <section className="nw-comment-section" aria-labelledby="nw-comments-title">
       <h2 id="nw-comments-title">回应 / Comments</h2>
       {state === "loading" ? <p className="nw-m" role="status">正在载入评论……</p> : null}
-      {state === "error" ? <p className="nw-auth-error" role="alert">{error}</p> : null}
+      {state === "error" ? <p className="nw-notice-error" role="alert">{error}</p> : null}
       {state === "ready" && comments.length === 0 ? <p className="nw-m">还没有评论，欢迎留下第一条回应。</p> : null}
       {comments.length > 0 ? (
         <div className="nw-comment-list">
@@ -442,8 +442,8 @@ export function ArticleComments({ slug, locale }: { slug: string; locale: Locale
       <h3>写下你的回应</h3>
       {signedOut ? <p className="nw-m">请先登录后再发表评论。 <Link href={"/sign-in?next=" + encodeURIComponent("/articles/" + slug)}>前往登录</Link></p> : null}
       <CommentComposer key={resetKey} resetKey={resetKey} onSubmit={submit} busy={busy} />
-      {status ? <p role="status" className="nw-auth-status">{status}</p> : null}
-      {error && state !== "error" ? <p className="nw-auth-error" role="alert">{error} {error.includes("登录") ? <Link href={"/sign-in?next=" + encodeURIComponent("/articles/" + slug)}>前往登录</Link> : null}</p> : null}
+      {status ? <p role="status" className="nw-notice-status">{status}</p> : null}
+      {error && state !== "error" ? <p className="nw-notice-error" role="alert">{error} {error.includes("登录") ? <Link href={"/sign-in?next=" + encodeURIComponent("/articles/" + slug)}>前往登录</Link> : null}</p> : null}
     </section>
   );
 }
