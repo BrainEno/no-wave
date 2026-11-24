@@ -14,7 +14,7 @@ import { readFile, readdir } from "node:fs/promises";
  *
  * Two properties are asserted, and both are about the *source* of a route
  * because the runtime version is already covered over real HTTP in
- * `web.test.ts` — a page can pass a no-store check today and lose the export in
+ * `web-authoring.test.ts` — a page can pass a no-store check today and lose the export in
  * a refactor tomorrow:
  *
  *   1. **Every page route is classified.** A new page that is added to

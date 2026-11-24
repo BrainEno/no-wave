@@ -138,5 +138,5 @@ upgrades from a schema older than 0031, run migrations before serving traffic.
 | Millisecond guarantee | `apps/api/src/persistence/migrations/0031_comment_created_at_millisecond_precision.sql` |
 | Browser proxy pass-through | `packages/web-http/src/comments.ts` |
 | Decision record | `docs/architecture/decisions/0034-comment-thread-pagination.md` |
-| Contract tests (both engines) | `apps/api/src/persistence/persistence-adapter-contract.test.ts` |
+| Contract tests (both engines) | `apps/api/src/persistence/persistence-adapter-contract-works.test.ts` |
 | PostgreSQL HTTP-level walk | `apps/api/src/persistence/postgres-cursor-pagination.integration.test.ts` |

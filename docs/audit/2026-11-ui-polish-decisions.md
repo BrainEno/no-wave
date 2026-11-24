@@ -59,7 +59,7 @@ status, privacy and robots headers are unchanged; a backend 503 is not turned
 into a successful page.
 
 Evidence: [boundary](../../apps/web-rr/app/root.tsx),
-[HTTP tests](../../apps/web-rr/test/web.test.ts),
+[HTTP tests](../../apps/web-rr/test/),
 [browser test](../../e2e/reading-writing-polish.spec.ts).
 
 ### Do not offer disabled email

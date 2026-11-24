@@ -22,7 +22,7 @@ Implementing every detail and verifying each breakpoint are separate tasks.
 [ADR 0017](../architecture/decisions/0017-nextjs-retired-one-web-application.md)
 records retirement of the old Web app after the replacement route and HTTP tests.
 The current [route table](../../apps/web-rr/app/routes.ts) registers the account,
-writing, comment and media routes, and [Web tests](../../apps/web-rr/test/web.test.ts)
+writing, comment and media routes, and [Web tests](../../apps/web-rr/test/)
 exercise route/proxy contracts. This supports checking the migration item; it
 is not evidence that a production host or traffic rollback has been rehearsed.
 
@@ -40,7 +40,7 @@ remaining rich-text, IME and accessibility acceptance is also not checked here.
 
 The [account](../../apps/web-rr/app/routes/account.tsx) and
 [sign-in](../../apps/web-rr/app/routes/sign-in.tsx) routes exist, with HTTP tests
-in [web.test.ts](../../apps/web-rr/test/web.test.ts). The checklist now separates
+in [the Web tests](../../apps/web-rr/test/). The checklist now separates
 those interfaces from the broader feature-parity journey. The existence of a
 route is not a security audit or a production-readiness certification.
 

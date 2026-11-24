@@ -192,7 +192,7 @@ client id 与 secret 在 Configuration 页。secret 只放进部署环境的密�
   refresh token 和 Notion 原文）。
 - BFF：`packages/web-http/test/authoring-notion-oauth.test.ts`（方法、同源、体积上限、
   `no-store`、拒绝不回显 code）。
-- Web：`apps/web-rr/test/web.test.ts`（回调页无登录跳转、不回显 code、`no-referrer`、
+- Web：`apps/web-rr/test/web-authoring.test.ts`（回调页无登录跳转、不回显 code、`no-referrer`、
   `no-store`）、`apps/web-rr/test/document-security.test.ts`（路由只能把 referrer 策略收紧
   为 `no-referrer`）、`packages/web-ui/src/lib/notion-oauth.test.ts`（回调 URL 解析、频道只
   接受本次 `state` 的第一条消息、取消与超时、固定提示语）。

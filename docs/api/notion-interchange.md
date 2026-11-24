@@ -539,7 +539,7 @@ remains separate and does not copy images.
   atomic; real provider transfer invalidates old plans; leftover media can be
   removed. `e2e/notion-import.spec.ts` and `e2e/authoring.spec.ts` cover the browser
   confirmation, re-preview and retained-draft conflict behavior.
-- `apps/api/src/persistence/persistence-adapter-contract.test.ts` — the link table
+- `apps/api/src/persistence/persistence-adapter-contract-reads-and-references.test.ts` — the link table
   behaves identically on both providers: one row per page edition, an upsert that
   replaces in place, and `getMyArticle` scoping (an id is not a permission).
 

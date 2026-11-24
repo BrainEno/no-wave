@@ -65,7 +65,7 @@ Status: active
 
 **实现取舍：** 一次 `JOIN user_follows` 的 SQL 取页，而不是"按作者各查一页再内存合并"。
 后者在作者发布频率不一致时，offset 分页会重复和丢条目。SQLite 与 PostgreSQL 两个适配器写同一条查询语义，
-由 `persistence-adapter-contract.test.ts` 的共享契约（含排序、分页不重不漏、取关即消失、参数边界）同时约束。
+由 `persistence-adapter-contract*.test.ts`（四个拆分文件）的共享契约（含排序、分页不重不漏、取关即消失、参数边界）同时约束。
 
 **没有做的部分：** 客户端（Flutter）与 Web 前端目前都没有"关注"Tab，所以这一片**只有服务端**。
 接口先落地，UI 由客户端接入时补——服务端不需要等客户端页面就能被验证。
