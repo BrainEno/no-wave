@@ -58,12 +58,6 @@ export function apiTimeoutMs(): number {
   return resolveUpstreamTimeoutMs(process.env.API_TIMEOUT_MS);
 }
 
-export function requireContentClient() {
-  const endpoint = apiBaseUrl();
-  if (!endpoint) throw new Error("API_BASE_URL must be configured to read API-backed content.");
-  return createApiContentClient({ endpoint, timeoutMs: apiTimeoutMs(), upstreamTransport: upstreamTransport() });
-}
-
 /**
  * Config for one proxied API call: origin plus the bounded budget.
  *

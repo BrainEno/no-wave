@@ -6,10 +6,6 @@ export function dateLabel(value: string, locale: Locale): string {
     .replaceAll("/", ".");
 }
 
-export function longDate(value: string, locale: Locale): string {
-  return new Date(value).toLocaleDateString(locale === "en" ? "en-US" : "zh-CN", { dateStyle: "long", timeZone: "UTC" });
-}
-
 export function pad(index: number): string { return String(index).padStart(2, "0"); }
 
 export function initial(name: string): string { return Array.from(name.trim())[0] ?? "·"; }

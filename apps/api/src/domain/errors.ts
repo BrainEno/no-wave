@@ -177,9 +177,4 @@ export class TaxonomyConflictError extends DomainError {
     super("TaxonomyConflictError", "CONFLICT", message);
   }
 }
-export class TaxonomyNotFoundError extends DomainError {
-  constructor(message = "The taxonomy was not found.") {
-    super("TaxonomyNotFoundError", "NOT_FOUND", message);
-  }
-}
 
