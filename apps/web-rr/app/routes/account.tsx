@@ -3,6 +3,7 @@ import type { HeadersFunction, MetaFunction } from "react-router";
 import { AccountPanel } from "@/components/auth/account-panel.tsx";
 import { SESSION_MARKER_COOKIE, hasUsableSession, sessionMarkerFrom } from "@bot-thk/web-http";
 import { mailEnabled } from "../lib/runtime.ts";
+import { localeFor } from "../lib/locale.ts";
 import { PRIVATE_PAGE_HEADERS } from "../lib/http-policy.ts";
 
 /**
@@ -23,14 +24,14 @@ import { PRIVATE_PAGE_HEADERS } from "../lib/http-policy.ts";
 /** Private: no shared cache may keep a copy, and the page is never indexed. */
 const PRIVATE_HEADERS = PRIVATE_PAGE_HEADERS;
 
-export async function loader({ request }: LoaderFunctionArgs) {
+export async function loader({ request, url }: LoaderFunctionArgs) {
   // The redirect is decided by a cookie, so it is per-visitor too: a shared
   // cache that held it would send a signed-in reader to the sign-in page. That
   // is why the headers travel with the redirect and not only with the page.
   if (!hasUsableSession(sessionMarkerFrom(request))) {
     throw redirect("/sign-in?next=%2Faccount", { headers: PRIVATE_HEADERS });
   }
-  return { mailEnabled: mailEnabled() };
+  return { mailEnabled: mailEnabled(), locale: localeFor(url) };
 }
 
 export const headers: HeadersFunction = () => PRIVATE_HEADERS;
@@ -41,10 +42,10 @@ export const meta: MetaFunction = () => [
 ];
 
 export default function AccountRoute() {
-  const { mailEnabled } = useLoaderData<typeof loader>();
+  const { mailEnabled, locale } = useLoaderData<typeof loader>();
   return (
     <main id="top" tabIndex={-1} className="nw-w nw-head nw-private-page" data-route="account">
-      <AccountPanel mailEnabled={mailEnabled} />
+      <AccountPanel mailEnabled={mailEnabled} locale={locale} />
     </main>
   );
 }

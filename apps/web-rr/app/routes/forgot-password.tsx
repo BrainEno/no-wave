@@ -1,10 +1,11 @@
 import { useLoaderData } from "react-router";
-import type { HeadersFunction, MetaFunction } from "react-router";
+import type { HeadersFunction, LoaderFunctionArgs, MetaFunction } from "react-router";
 // Unmodified shared components: they import the navigation seam, which this
 // app answers from `app/framework/link.tsx`.
 import { ForgotPasswordForm } from "@/components/auth/forgot-password-form.tsx";
 import { MailDisabledNotice } from "@/components/auth/mail-disabled-notice.tsx";
 import { mailEnabled } from "../lib/runtime.ts";
+import { localeFor } from "../lib/locale.ts";
 import { titleWithSite } from "../lib/meta.ts";
 import { PRIVATE_PAGE_HEADERS } from "../lib/http-policy.ts";
 
@@ -18,8 +19,8 @@ import { PRIVATE_PAGE_HEADERS } from "../lib/http-policy.ts";
  * request by default, which is why
  * that trap has no framework-shaped fix to copy.
  */
-export async function loader() {
-  return { mailEnabled: mailEnabled() };
+export async function loader({ url }: LoaderFunctionArgs) {
+  return { mailEnabled: mailEnabled(), locale: localeFor(url) };
 }
 
 /**
@@ -34,10 +35,10 @@ export const meta: MetaFunction = () => [
 ];
 
 export default function ForgotPasswordRoute() {
-  const { mailEnabled } = useLoaderData<typeof loader>();
+  const { mailEnabled, locale } = useLoaderData<typeof loader>();
   return (
     <main id="top" tabIndex={-1} className="nw-w nw-head nw-auth-page" data-route="forgot-password">
-      {mailEnabled ? <ForgotPasswordForm /> : <MailDisabledNotice />}
+      {mailEnabled ? <ForgotPasswordForm locale={locale} /> : <MailDisabledNotice locale={locale} />}
     </main>
   );
 }

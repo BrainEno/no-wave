@@ -3,6 +3,7 @@ import type { HeadersFunction, LoaderFunctionArgs, MetaFunction } from "react-ro
 import { VerifyEmailPanel } from "@/components/auth/verify-email-panel.tsx";
 import { MailDisabledNotice } from "@/components/auth/mail-disabled-notice.tsx";
 import { mailEnabled } from "../lib/runtime.ts";
+import { localeFor } from "../lib/locale.ts";
 import { titleWithSite } from "../lib/meta.ts";
 import { PRIVATE_PAGE_HEADERS } from "../lib/http-policy.ts";
 
@@ -19,7 +20,7 @@ import { PRIVATE_PAGE_HEADERS } from "../lib/http-policy.ts";
  */
 export async function loader({ url }: LoaderFunctionArgs) {
   const token = url.searchParams.get("token")?.trim() ?? "";
-  return { token, mailEnabled: mailEnabled() };
+  return { token, mailEnabled: mailEnabled(), locale: localeFor(url) };
 }
 
 /** Private: the URL carries a single-use token until it is spent. */
@@ -31,10 +32,10 @@ export const meta: MetaFunction = () => [
 ];
 
 export default function VerifyEmailRoute() {
-  const { token, mailEnabled } = useLoaderData<typeof loader>();
+  const { token, mailEnabled, locale } = useLoaderData<typeof loader>();
   return (
     <main id="top" tabIndex={-1} className="nw-w nw-head nw-auth-page" data-route="verify-email">
-      {mailEnabled ? <VerifyEmailPanel token={token} /> : <MailDisabledNotice />}
+      {mailEnabled ? <VerifyEmailPanel token={token} locale={locale} /> : <MailDisabledNotice locale={locale} />}
     </main>
   );
 }

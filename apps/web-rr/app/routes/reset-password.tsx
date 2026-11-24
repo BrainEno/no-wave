@@ -3,6 +3,7 @@ import type { HeadersFunction, LoaderFunctionArgs, MetaFunction } from "react-ro
 import { ResetPasswordForm } from "@/components/auth/reset-password-form.tsx";
 import { MailDisabledNotice } from "@/components/auth/mail-disabled-notice.tsx";
 import { mailEnabled } from "../lib/runtime.ts";
+import { localeFor } from "../lib/locale.ts";
 import { titleWithSite } from "../lib/meta.ts";
 import { PRIVATE_PAGE_HEADERS } from "../lib/http-policy.ts";
 
@@ -23,7 +24,7 @@ export async function loader({ url }: LoaderFunctionArgs) {
   const token = url.searchParams.get("token")?.trim() ?? "";
   // A reset link can only have arrived by mail, so with mail off there is no
   // token to redeem and the form would only ever answer "invalid link".
-  return { token, mailEnabled: mailEnabled() };
+  return { token, mailEnabled: mailEnabled(), locale: localeFor(url) };
 }
 
 /**
@@ -39,10 +40,10 @@ export const meta: MetaFunction = () => [
 ];
 
 export default function ResetPasswordRoute() {
-  const { token, mailEnabled } = useLoaderData<typeof loader>();
+  const { token, mailEnabled, locale } = useLoaderData<typeof loader>();
   return (
     <main id="top" tabIndex={-1} className="nw-w nw-head nw-auth-page" data-route="reset-password">
-      {mailEnabled ? <ResetPasswordForm token={token} /> : <MailDisabledNotice />}
+      {mailEnabled ? <ResetPasswordForm token={token} locale={locale} /> : <MailDisabledNotice locale={locale} />}
     </main>
   );
 }
