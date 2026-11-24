@@ -2,6 +2,8 @@ import { Link } from "@/lib/framework/link.tsx";
 import { useNotificationActions } from "@/components/chrome/notification-provider.tsx";
 import { writingRecoveryBoundary } from "@/lib/writing-recovery-boundary.ts";
 import { useRouter } from "@/lib/framework/navigation.ts";
+import { getUi } from "@/lib/ui-copy.ts";
+import type { Locale } from "@/lib/content.ts";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 /**
@@ -46,18 +48,18 @@ function errorMessage(payload: unknown, fallback: string): string {
 }
 
 /** A date is rendered in the reader's own locale, so it never needs a timezone. */
-function localDate(value: string): string {
+function localDate(value: string, fallback: string): string {
   const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? new Date(parsed).toLocaleDateString() : "未知时间";
+  return Number.isFinite(parsed) ? new Date(parsed).toLocaleDateString() : fallback;
 }
 
 /**
  * A date *and* a time, because a device list is compared in hours: "signed in
  * at 09:40" is the difference between the laptop and the phone left on a train.
  */
-function localDateTime(value: string): string {
+function localDateTime(value: string, fallback: string): string {
   const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? new Date(parsed).toLocaleString() : "未知时间";
+  return Number.isFinite(parsed) ? new Date(parsed).toLocaleString() : fallback;
 }
 
 /** The address and its verification state, as the API answers them. */
@@ -118,9 +120,17 @@ function revokedCount(payload: unknown): number {
   return typeof count === "number" && Number.isFinite(count) ? count : 0;
 }
 
-export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
+export function AccountPanel({ mailEnabled, locale }: { mailEnabled: boolean; locale: Locale }) {
   const router = useRouter();
   const notifications = useNotificationActions();
+  const ui = getUi(locale);
+  const a = ui.account;
+  // 文案是稳定字符串，抽出来后可直接作为 hook 的依赖，避免每轮渲染重建对象。
+  const errSession = a.errors.sessionUnavailable;
+  const errSessionMalformed = a.errors.sessionMalformed;
+  const errServer = a.errors.serverUnreachable;
+  const errDevices = a.errors.devicesUnavailable;
+  const errDevicesMalformed = a.errors.devicesMalformed;
   const [state, setState] = useState<State>("checking");
   const [account, setAccount] = useState<Account | null>(null);
   const [error, setError] = useState("");
@@ -152,13 +162,13 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
           return;
         }
         if (!response.ok) {
-          setError(errorMessage(payload, "暂时无法确认登录状态，请稍后重试。"));
+          setError(errorMessage(payload, errSession));
           setState("error");
           return;
         }
         const data = dataOf(payload);
         if (!isAccount(data)) {
-          setError("登录状态响应格式不正确。");
+          setError(errSessionMalformed);
           setState("error");
           return;
         }
@@ -166,13 +176,13 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
         setState("ready");
       } catch {
         if (active) {
-          setError("暂时无法连接服务器，请稍后重试。");
+          setError(errServer);
           setState("error");
         }
       }
     })();
     return () => { active = false; };
-  }, [router, notifications]);
+  }, [router, notifications, errSession, errSessionMalformed, errServer]);
 
   /** The session is over: the honest answer is a sign-in page, not an error. */
   const goToSignIn = useCallback(() => {
@@ -191,20 +201,20 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
         return;
       }
       if (!response.ok) {
-        setDevicesError("暂时无法载入设备列表，请稍后重试。");
+        setDevicesError(errDevices);
         return;
       }
       const list = deviceListOf(payload);
       if (!list) {
-        setDevicesError("设备列表响应格式不正确。");
+        setDevicesError(errDevicesMalformed);
         return;
       }
       setDevices(list);
       setDevicesError("");
     } catch {
-      if (active()) setDevicesError("暂时无法连接服务器，请稍后重试。");
+      if (active()) setDevicesError(errServer);
     }
-  }, [goToSignIn]);
+  }, [goToSignIn, errDevices, errDevicesMalformed, errServer]);
 
   // Devices are asked for only once the account is known: a list fetched
   // before then would be a list for nobody.
@@ -236,18 +246,18 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
       if (response.status === 409) {
         // The switch is off on this deployment: not a failure to retry, and not
         // something the visitor can fix. Say what it is.
-        setError("这个站点没有启用邮件功能，无法发送验证邮件。");
+        setError(a.errors.mailNotEnabled);
         return;
       }
       if (!response.ok) {
-        setError(errorMessage(payload, "验证邮件发送失败，请稍后重试。"));
+        setError(errorMessage(payload, a.errors.mailSendFailed));
         return;
       }
       // A 202 says the request was accepted, not that the mail arrived: the
       // relay is configured by the operator and may not be configured at all.
-      setNotice("验证邮件已发出，请查收邮箱并按其中的链接完成验证。");
+      setNotice(a.notices.mailSent);
     } catch {
-      setError("暂时无法连接服务器，请稍后重试。");
+      setError(a.errors.serverUnreachable);
     } finally {
       setBusy(null);
     }
@@ -282,24 +292,24 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
         return;
       }
       if (response.status === 409) {
-        setError("这个邮箱已经被其他账号使用，请换一个。");
+        setError(a.errors.emailTaken);
         return;
       }
       if (response.status === 400) {
-        setError("邮箱格式不正确，当前密码也不能为空。");
+        setError(a.errors.emailInvalid);
         return;
       }
       if (!response.ok) {
-        setError(errorMessage(payload, "修改邮箱失败，请稍后重试。"));
+        setError(errorMessage(payload, a.errors.emailChangeFailed));
         return;
       }
       const changed = changedAddress(payload);
       if (changed) setAccount((current) => current && { ...current, email: changed.email, emailVerifiedAt: changed.emailVerifiedAt });
       setNewEmail("");
       setEmailPassword("");
-      setNotice(`邮箱已更新为 ${changed?.email ?? "新地址"}。这个地址还没有验证标记——验证只是留一个「曾经可达」的记录，不影响登录、写作和发布。`);
+      setNotice(a.notices.emailUpdated(changed?.email ?? a.notices.emailNewFallback));
     } catch {
-      setError("暂时无法连接服务器，请稍后重试。");
+      setError(a.errors.serverUnreachable);
     } finally {
       setBusy(null);
     }
@@ -334,21 +344,21 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
       }
       if (response.status === 400) {
         // The API's own message is deliberately generic, so say what the rule is.
-        setError("新密码需要至少 12 个字符，旧密码也不能为空。");
+        setError(a.errors.passwordInvalid);
         return;
       }
       if (!response.ok) {
-        setError(errorMessage(payload, "修改密码失败，请稍后重试。"));
+        setError(errorMessage(payload, a.errors.passwordChangeFailed));
         return;
       }
       setCurrentPassword("");
       setNewPassword("");
       const revoked = revokedCount(payload);
       setNotice(revoked > 0
-        ? `密码已更新，其他 ${revoked} 台设备已退出登录；这个会话保持登录。`
-        : "密码已更新；没有其他设备处于登录状态。");
+        ? a.notices.passwordUpdatedOthers(revoked)
+        : a.notices.passwordUpdatedNone);
     } catch {
-      setError("暂时无法连接服务器，请稍后重试。");
+      setError(a.errors.serverUnreachable);
     } finally {
       setBusy(null);
     }
@@ -384,18 +394,18 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
       }
       if (response.status === 404) {
         // Already gone — from the visitor's side the device is off either way.
-        setNotice("这台设备已经不在线了。");
+        setNotice(a.notices.deviceGone);
         await refreshDevices();
         return;
       }
       if (!response.ok) {
-        setError(errorMessage(await response.json().catch(() => null), "结束这台设备失败，请稍后重试。"));
+        setError(errorMessage(await response.json().catch(() => null), a.errors.endDeviceFailed));
         return;
       }
       await refreshDevices();
-      setNotice("这台设备已退出登录，它手里的令牌即刻失效。");
+      setNotice(a.notices.deviceSignedOut);
     } catch {
-      setError(recoveryWarning ?? "暂时无法连接服务器，请稍后重试。");
+      setError(recoveryWarning ?? a.errors.serverUnreachable);
       if (recoveryWarning) setState("signed-out");
     } finally {
       setEnding(null);
@@ -424,16 +434,16 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
         return;
       }
       if (!response.ok) {
-        setError(errorMessage(payload, "结束其他设备失败，请稍后重试。"));
+        setError(errorMessage(payload, a.errors.endOthersFailed));
         return;
       }
       const revoked = revokedCount(payload);
       await refreshDevices();
       setNotice(revoked > 0
-        ? `已让其他 ${revoked} 台设备退出登录；这台设备保持登录。`
-        : "没有其他设备处于登录状态。");
+        ? a.notices.othersSignedOut(revoked)
+        : a.notices.othersNone);
     } catch {
-      setError("暂时无法连接服务器，请稍后重试。");
+      setError(a.errors.serverUnreachable);
     } finally {
       setEndingOthers(false);
     }
@@ -471,8 +481,8 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
         <header className="nw-acct-head">
           <div className="nw-avatar nw-acct-avatar nw-sk" aria-hidden="true" />
           <div className="nw-acct-id">
-            <h1 id="nw-account-checking"><span className="nw-zh">我的账户</span> <i>Account</i></h1>
-            <p className="nw-acct-sub" role="status">正在确认登录状态，请稍候……</p>
+            <h1 id="nw-account-checking"><span className="nw-zh">{a.checking.title}</span> <i>Account</i></h1>
+            <p className="nw-acct-sub" role="status">{a.checking.status}</p>
           </div>
         </header>
       </section>
@@ -482,11 +492,11 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
   if (state === "signed-out") {
     return (
       <section className="nw-auth-panel" aria-labelledby="nw-account-out">
-        <h1 id="nw-account-out"><span className="nw-zh">尚未登录</span> <i>Signed out</i></h1>
-        <p className="nw-ep nw-mt-24">这个会话已经结束，正在前往登录页……</p>
+        <h1 id="nw-account-out"><span className="nw-zh">{a.signedOut.title}</span> <i>Signed out</i></h1>
+        <p className="nw-ep nw-mt-24">{a.signedOut.body}</p>
         {error ? <p className="nw-auth-error" role="alert">{error}</p> : null}
         <div className="nw-auth-switch">
-          <Link className="nw-btn nw-pri" href="/sign-in?next=%2Faccount">前往登录</Link>
+          <Link className="nw-btn nw-pri" href="/sign-in?next=%2Faccount">{a.signedOut.goSignIn}</Link>
         </div>
       </section>
     );
@@ -495,11 +505,11 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
   if (state === "error") {
     return (
       <section className="nw-auth-panel" aria-labelledby="nw-account-error">
-        <h1 id="nw-account-error"><span className="nw-zh">账户信息暂时无法载入</span> <i>Unavailable</i></h1>
+        <h1 id="nw-account-error"><span className="nw-zh">{a.unavailable.title}</span> <i>Unavailable</i></h1>
         <p className="nw-auth-error nw-mt-24" role="alert">{error}</p>
         <div className="nw-auth-switch">
-          <Link className="nw-btn nw-pri" href="/write">回到写作台</Link>
-          <Link className="nw-btn" href="/sign-in?next=%2Faccount">重新登录</Link>
+          <Link className="nw-btn nw-pri" href="/write">{a.unavailable.backToDesk}</Link>
+          <Link className="nw-btn" href="/sign-in?next=%2Faccount">{a.unavailable.retrySignIn}</Link>
         </div>
       </section>
     );
@@ -511,73 +521,73 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
     <section className="nw-auth-panel nw-acct" aria-labelledby="nw-account-title">
       {/* 账户页：一张名片 + 左侧分区索引 + 右侧卡片。说明文字折叠，表单并排。 */}
       <header className="nw-acct-head">
-        <div className="nw-avatar nw-acct-avatar" aria-hidden="true">{(account?.email ?? "无").slice(0, 1).toUpperCase()}</div>
+        <div className="nw-avatar nw-acct-avatar" aria-hidden="true">{(account?.email ?? a.avatarEmpty).slice(0, 1).toUpperCase()}</div>
         <div className="nw-acct-id">
-          <h1 id="nw-account-title"><span className="nw-zh">我的账户</span> <i>Account</i></h1>
+          <h1 id="nw-account-title"><span className="nw-zh">{a.checking.title}</span> <i>Account</i></h1>
           <p className="nw-acct-sub">
-            <span>{account?.isEditor ? "编辑" : "作者"}</span>
-            <span className={verified ? "nw-desk-ok" : "nw-desk-warn"}>{verified ? "邮箱已验证" : mailEnabled ? "邮箱未验证" : "本站未启用邮件"}</span>
+            <span>{account?.isEditor ? a.role.editor : a.role.author}</span>
+            <span className={verified ? "nw-desk-ok" : "nw-desk-warn"}>{verified ? a.email.verified : mailEnabled ? a.email.unverified : a.email.mailOff}</span>
           </p>
         </div>
         <div className="nw-acct-head-actions">
-          <Link className="nw-btn nw-sec" href="/write">回到写作台</Link>
+          <Link className="nw-btn nw-sec" href="/write">{a.unavailable.backToDesk}</Link>
           <button className="nw-btn" type="button" disabled={busy !== null} onClick={() => void signOut()}>
-            {busy === "logout" ? "正在退出……" : "退出登录"}
+            {busy === "logout" ? a.logout.busy : a.logout.action}
           </button>
         </div>
       </header>
       <div className="nw-acct-grid">
-        <nav className="nw-acct-nav" aria-label="账户分区">
-          <a href="#nw-account-identity-title"><span>01</span>身份</a>
-          <a href="#nw-account-devices-title"><span>02</span>登录的设备</a>
-          <a href="#nw-account-email-title"><span>03</span>修改邮箱</a>
-          <a href="#nw-account-password-title"><span>04</span>修改密码</a>
+        <nav className="nw-acct-nav" aria-label={a.nav.aria}>
+          <a href="#nw-account-identity-title"><span>01</span>{a.nav.identity}</a>
+          <a href="#nw-account-devices-title"><span>02</span>{a.nav.devices}</a>
+          <a href="#nw-account-email-title"><span>03</span>{a.nav.changeEmail}</a>
+          <a href="#nw-account-password-title"><span>04</span>{a.nav.changePassword}</a>
         </nav>
         <div className="nw-acct-body">
       <section className="nw-acct-card" aria-labelledby="nw-account-identity-title">
-      <h2 id="nw-account-identity-title"><span className="nw-zh">身份</span> <i>Identity</i></h2>
+      <h2 id="nw-account-identity-title"><span className="nw-zh">{a.identity.title}</span> <i>Identity</i></h2>
       <p className="nw-ep">
-        这里是这个账号的基础身份信息。
+        {a.identity.intro}
       </p>
       {mailEnabled ? null : (
         <p className="nw-ep" data-mail-state="disabled">
-          找回密码与邮箱验证需要邮件功能，而这个站点没有启用它；除此之外账号的一切照常。
+          {a.identity.mailOffNote}
         </p>
       )}
       <dl className="nw-account-fields">
-        <dt>邮箱</dt>
-        <dd data-account-email>{account?.email ?? "（这个账号没有绑定邮箱）"}</dd>
-        <dt>验证状态</dt>
+        <dt>{a.identity.emailLabel}</dt>
+        <dd data-account-email>{account?.email ?? a.identity.emailEmpty}</dd>
+        <dt>{a.identity.verifiedLabel}</dt>
         <dd data-account-verification>
-          {verified ? `已验证（${localDate(String(account?.emailVerifiedAt))}）` : mailEnabled ? "未验证" : "本站未启用邮件功能"}
+          {verified ? a.identity.verifiedYes(localDate(String(account?.emailVerifiedAt), a.unknownTime)) : mailEnabled ? a.identity.verifiedNo : a.identity.verifiedMailOff}
         </dd>
-        <dt>权限</dt>
-        <dd data-account-role>{account?.isEditor ? "编辑" : "作者"}</dd>
+        <dt>{a.identity.roleLabel}</dt>
+        <dd data-account-role>{account?.isEditor ? a.role.editor : a.role.author}</dd>
       </dl>
       {account?.isEditor ? (
         <p className="nw-ep">
-          这个账号是编辑，可以挑选首页的「精选」：<Link href="/admin/featured" data-account-curate-link>编辑精选</Link>。
+          {a.identity.editorIntro}<Link href="/admin/featured" data-account-curate-link>{a.identity.curateLink}</Link>{a.identity.curateTail}
         </p>
       ) : null}
       {mailEnabled === false || verified ? null : (
         <div className="nw-acct-verify">
-          <p className="nw-ep">未验证的账号同样可以登录、写作和发布。</p>
+          <p className="nw-ep">{a.identity.unverifiedNote}</p>
           <button className="nw-btn" type="button" disabled={busy !== null} onClick={() => void requestVerification()}>
-            {busy === "verification" ? "正在发送……" : "发送验证邮件"}
+            {busy === "verification" ? a.identity.sendVerification.busy : a.identity.sendVerification.action}
           </button>
           <details className="nw-account-details">
-            <summary>关于邮箱验证的作用</summary>
-            <p>验证只是给这个邮箱留一个「曾经可达」的标记，用于在需要时确认你仍能收到邮件。</p>
+            <summary>{a.identity.verificationAbout.summary}</summary>
+            <p>{a.identity.verificationAbout.body}</p>
           </details>
         </div>
       )}
       <details className="nw-account-details">
-        <summary>高级：账号 ID 与凭据说明</summary>
+        <summary>{a.identity.advanced.summary}</summary>
         <dl className="nw-account-fields nw-account-advanced">
-          <dt>账号 ID</dt>
+          <dt>{a.identity.advanced.idLabel}</dt>
           <dd data-account-id>{account?.id}</dd>
         </dl>
-        <p>令牌只存在于 HttpOnly cookie 中，页面拿不到，也不会出现在这里。</p>
+        <p>{a.identity.advanced.tokenNote}</p>
       </details>
       </section>
       {/*
@@ -591,34 +601,33 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
         coming.
       */}
       <div className="nw-auth-form nw-acct-card" aria-labelledby="nw-account-devices-title" data-account-devices>
-        <h2 id="nw-account-devices-title"><span className="nw-zh">登录的设备</span> <i>Devices</i></h2>
+        <h2 id="nw-account-devices-title"><span className="nw-zh">{a.devices.title}</span> <i>Devices</i></h2>
         <p className="nw-ep">
-          当前正在以这个账号登录的有效会话。
+          {a.devices.intro}
         </p>
         <details className="nw-account-details">
-          <summary>隐私与记录说明</summary>
+          <summary>{a.devices.privacySummary}</summary>
           <p>
-            这些是正在以这个账号登录的会话。服务端只记录会话的创建时间、最近一次续期时间和失效时间——没有设备型号、浏览器和地址，
-            因为项目里任何地方都不存这些；所以这里只能靠时间认出是哪一台。
+            {a.devices.privacyBody}
           </p>
         </details>
         {devices === null && devicesError === "" ? (
-          <p className="nw-auth-status" role="status" data-devices-loading>正在载入设备列表……</p>
+          <p className="nw-auth-status" role="status" data-devices-loading>{a.devices.loading}</p>
         ) : null}
         {devicesError !== "" ? (
           <p className="nw-auth-error" role="alert" data-devices-error>{devicesError}</p>
         ) : null}
         {devices && devices.length === 0 ? (
-          <p className="nw-auth-status" role="status" data-devices-empty>除了这台设备，没有其他登录。</p>
+          <p className="nw-auth-status" role="status" data-devices-empty>{a.devices.empty}</p>
         ) : null}
         {devices && devices.length > 0 ? (
           <ul className="nw-device-list" data-device-list>
             {devices.map((device) => (
               <li className="nw-device-row" key={device.sessionId} data-device={device.sessionId} data-device-current={device.current}>
                 <span className="nw-device-meta">
-                  <strong>{device.current ? "这台设备" : "另一台设备"}</strong>
+                  <strong>{device.current ? a.devices.current : a.devices.other}</strong>
                   <small>
-                    登录于 {localDateTime(device.createdAt)}；最近活动 {device.lastUsedAt ? localDateTime(device.lastUsedAt) : "就是登录时"}
+                    {a.devices.signedIn} {localDateTime(device.createdAt, a.unknownTime)}；{a.devices.lastActivity} {device.lastUsedAt ? localDateTime(device.lastUsedAt, a.unknownTime) : a.devices.atLogin}
                   </small>
                 </span>
                 <span className="nw-device-actions">
@@ -629,7 +638,7 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
                     onClick={() => void endDevice(device.sessionId)}
                     data-device-end={device.sessionId}
                   >
-                    {ending === device.sessionId ? "正在结束……" : "结束这台"}
+                    {ending === device.sessionId ? a.devices.ending.busy : a.devices.ending.thisOne}
                   </button>
                 </span>
               </li>
@@ -645,25 +654,25 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
               onClick={() => void endOtherDevices()}
               data-devices-end-others
             >
-              {endingOthers ? "正在结束……" : "结束其他全部设备"}
+              {endingOthers ? a.devices.endingOthers.busy : a.devices.endingOthers.action}
             </button>
           </div>
         ) : null}
       </div>
       <div className="nw-acct-pair">
       <form className="nw-auth-form nw-acct-card" onSubmit={(event) => { void changeEmail(event); }} aria-labelledby="nw-account-email-title" data-account-email-form>
-        <h2 id="nw-account-email-title"><span className="nw-zh">修改邮箱</span> <i>Change address</i></h2>
+        <h2 id="nw-account-email-title"><span className="nw-zh">{a.changeEmail.title}</span> <i>Change address</i></h2>
         <p className="nw-ep">
-          修改邮箱需输入当前密码以保障安全。
+          {a.changeEmail.intro}
         </p>
         <details className="nw-account-details">
-          <summary>修改邮箱的安全须知</summary>
+          <summary>{a.changeEmail.securitySummary}</summary>
           <p>
-            这个邮箱是账号找回密码时唯一的去处，所以修改它需要输入当前密码：只有会话、没有密码的话，谁都不能把账号的找回途径搬走。
-            改完之后这个地址会变成「未验证」——验证只是留一个「曾经可达」的标记，不影响登录、写作和发布。
+            {a.changeEmail.securityBody}
+            {a.changeEmail.securityNote}
           </p>
         </details>
-        <label>新邮箱
+        <label>{a.changeEmail.newEmailLabel}
           <input
             type="email"
             name="email"
@@ -674,7 +683,7 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
             maxLength={254}
           />
         </label>
-        <label>当前密码
+        <label>{a.changeEmail.currentPasswordLabel}
           <input
             type="password"
             name="password"
@@ -686,7 +695,7 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
           />
         </label>
         <button className="nw-btn" type="submit" disabled={busy !== null} data-account-email-submit>
-          {busy === "email" ? "正在修改……" : "修改邮箱"}
+          {busy === "email" ? a.changeEmail.busy : a.changeEmail.action}
         </button>
       </form>
       {/*
@@ -695,18 +704,18 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
         instance where mail is switched off it cannot run at all.
       */}
       <form className="nw-auth-form nw-acct-card" onSubmit={(event) => { void changePassword(event); }} aria-labelledby="nw-account-password-title" data-account-password>
-        <h2 id="nw-account-password-title"><span className="nw-zh">修改密码</span> <i>Change password</i></h2>
+        <h2 id="nw-account-password-title"><span className="nw-zh">{a.changePassword.title}</span> <i>Change password</i></h2>
         <p className="nw-ep">
-          修改后除当前设备外，其他设备均会自动退出。
+          {a.changePassword.intro}
         </p>
         <details className="nw-account-details">
-          <summary>修改密码的安全机制说明</summary>
+          <summary>{a.changePassword.securitySummary}</summary>
           <p>
-            需要输入当前密码：只有会话、没有密码的话，谁都不能改掉这个账号——包括把你锁在门外。改完之后，
-            除了这台设备之外的登录都会退出，而这个会话继续保持登录状态。
+            {a.changePassword.securityBody}
+            {a.changePassword.securityBodyTail}
           </p>
         </details>
-        <label>当前密码
+        <label>{a.changePassword.currentPasswordLabel}
           <input
             type="password"
             name="currentPassword"
@@ -717,7 +726,7 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
             maxLength={128}
           />
         </label>
-        <label>新密码（至少 12 个字符）
+        <label>{a.changePassword.newPasswordLabel}
           <input
             type="password"
             name="newPassword"
@@ -730,7 +739,7 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
           />
         </label>
         <button className="nw-btn" type="submit" disabled={busy !== null} data-account-password-submit>
-          {busy === "password" ? "正在修改……" : "修改密码"}
+          {busy === "password" ? a.changePassword.busy : a.changePassword.action}
         </button>
       </form>
       </div>

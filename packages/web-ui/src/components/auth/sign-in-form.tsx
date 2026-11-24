@@ -28,6 +28,7 @@ export function SignInForm({ nextPath, mailEnabled, locale = "zh-CN" }: SignInFo
   const router = useRouter();
   const notifications = useNotificationActions();
   const ui = getUi(locale);
+  const s = ui.account.signIn;
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -76,29 +77,29 @@ export function SignInForm({ nextPath, mailEnabled, locale = "zh-CN" }: SignInFo
 
   return (
     <section className="nw-auth-panel" aria-labelledby="nw-auth-title">
-      <h1 id="nw-auth-title"><span className="nw-zh">{mode === "login" ? "进入写作" : "创建账户"}</span> <i>{mode === "login" ? "Sign in" : "Join"}</i></h1>
+      <h1 id="nw-auth-title"><span className="nw-zh">{mode === "login" ? s.loginTitle : s.registerTitle}</span> <i>{mode === "login" ? "Sign in" : "Join"}</i></h1>
       <p className="nw-ep nw-mt-24">
-        {mode === "login" ? "登录后可以继续编辑草稿、保存修改并发布作品。" : "使用邮箱与至少 12 个字符的密码创建账户。"}
+        {mode === "login" ? s.loginIntro : s.registerIntro}
       </p>
       {recoveryWarning ? <p className="nw-auth-error" role="alert">{recoveryWarning}</p> : null}
-      {signedIn ? <Link className="nw-btn" href={nextPath}>我已了解，继续访问</Link> : null}
+      {signedIn ? <Link className="nw-btn" href={nextPath}>{s.continue}</Link> : null}
       <form className="nw-auth-form" onSubmit={(event) => { void submit(event); }}>
-        <label>邮箱
+        <label>{s.emailLabel}
           <input type="email" name="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required maxLength={254} />
         </label>
-        <label>密码
+        <label>{s.passwordLabel}
           <input type="password" name="password" autoComplete={mode === "login" ? "current-password" : "new-password"} value={password} onChange={(event) => setPassword(event.target.value)} required minLength={mode === "register" ? 12 : 1} maxLength={128} />
         </label>
         {error ? <p className="nw-auth-error" role="alert">{error}</p> : null}
         {status ? <p className="nw-auth-status" role="status">{status}</p> : null}
-        <button className="nw-btn nw-pri" type="submit" disabled={busy}>{busy ? "请稍候…" : mode === "login" ? "登录并继续" : "创建账户并继续"}</button>
+        <button className="nw-btn nw-pri" type="submit" disabled={busy}>{busy ? s.busy : mode === "login" ? s.loginAction : s.registerAction}</button>
       </form>
       <div className="nw-auth-switch">
         <button className="nw-btn" type="button" disabled={busy} onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); setStatus(""); }}>
-          {mode === "login" ? "没有账户？创建账户" : "已有账户？登录"}
+          {mode === "login" ? s.switchToRegister : s.switchToLogin}
         </button>
-        {mailEnabled ? <Link className="nw-btn" href="/forgot-password">忘记密码？</Link> : null}
-        <a className="nw-btn" href="/">返回首页</a>
+        {mailEnabled ? <Link className="nw-btn" href="/forgot-password">{s.forgotPassword}</Link> : null}
+        <a className="nw-btn" href="/">{s.backHome}</a>
       </div>
     </section>
   );

@@ -1,17 +1,24 @@
 import { Link } from "@/lib/framework/link.tsx";
+import { getUi } from "@/lib/ui-copy.ts";
+import type { Locale } from "@/lib/content.ts";
 import { useEffect, useRef, useState } from "react";
 
-type VerifyEmailPanelProps = { token: string };
+type VerifyEmailPanelProps = { token: string; locale?: Locale };
 type ApiErrorPayload = { error?: { message?: unknown } };
 type Outcome = "verifying" | "verified" | "failed";
 
-function errorMessage(payload: unknown): string {
-  if (typeof payload !== "object" || payload === null || !("error" in payload)) return "链接已失效或已被使用。";
+function errorMessage(payload: unknown, fallback: string): string {
+  if (typeof payload !== "object" || payload === null || !("error" in payload)) return fallback;
   const error = (payload as ApiErrorPayload).error;
-  return error && typeof error.message === "string" ? error.message : "链接已失效或已被使用。";
+  return error && typeof error.message === "string" ? error.message : fallback;
 }
 
-export function VerifyEmailPanel({ token }: VerifyEmailPanelProps) {
+export function VerifyEmailPanel({ token, locale = "zh-CN" }: VerifyEmailPanelProps) {
+  const ui = getUi(locale);
+  const v = ui.account.verifyEmail;
+  // 文案是稳定字符串，抽出来后可直接作为 hook 的依赖。
+  const invalid = v.invalid;
+  const errServer = ui.account.errors.serverUnreachable;
   const [outcome, setOutcome] = useState<Outcome>("verifying");
   const [error, setError] = useState("");
   const submitted = useRef<string | null>(null);
@@ -39,30 +46,30 @@ export function VerifyEmailPanel({ token }: VerifyEmailPanelProps) {
         const payload: unknown = await response.json().catch(() => null);
         if (!active) return;
         if (!response.ok) {
-          setError(errorMessage(payload));
+          setError(errorMessage(payload, invalid));
           setOutcome("failed");
           return;
         }
         setOutcome("verified");
       } catch {
         if (active) {
-          setError("暂时无法连接服务器，请稍后重试。");
+          setError(errServer);
           setOutcome("failed");
         }
       }
     })();
     return () => { active = false; };
-  }, [token]);
+  }, [token, invalid, errServer]);
 
   if (!token) {
     return (
       <section className="nw-auth-panel" aria-labelledby="nw-verify-broken">
-        <h1 id="nw-verify-broken"><span className="nw-zh">链接不完整</span> <i>Incomplete link</i></h1>
+        <h1 id="nw-verify-broken"><span className="nw-zh">{v.brokenTitle}</span> <i>Incomplete link</i></h1>
         <p className="nw-ep nw-mt-24">
-          这个地址里没有验证令牌。验证邮件只发给已登录的账号本人：登录后在写作台请求一封新的即可。
+          {v.brokenBody}
         </p>
         <div className="nw-auth-switch">
-          <Link className="nw-btn nw-pri" href="/sign-in">前往登录</Link>
+          <Link className="nw-btn nw-pri" href="/sign-in">{v.goSignIn}</Link>
         </div>
       </section>
     );
@@ -71,8 +78,8 @@ export function VerifyEmailPanel({ token }: VerifyEmailPanelProps) {
   if (outcome === "verifying") {
     return (
       <section className="nw-auth-panel" aria-labelledby="nw-verify-busy">
-        <h1 id="nw-verify-busy"><span className="nw-zh">正在验证</span> <i>Verifying</i></h1>
-        <p className="nw-auth-status nw-mt-24" role="status">正在使用邮件中的链接验证这个邮箱，请稍候……</p>
+        <h1 id="nw-verify-busy"><span className="nw-zh">{v.busyTitle}</span> <i>Verifying</i></h1>
+        <p className="nw-auth-status nw-mt-24" role="status">{v.busyBody}</p>
       </section>
     );
   }
@@ -80,12 +87,12 @@ export function VerifyEmailPanel({ token }: VerifyEmailPanelProps) {
   if (outcome === "verified") {
     return (
       <section className="nw-auth-panel" aria-labelledby="nw-verify-done">
-        <h1 id="nw-verify-done"><span className="nw-zh">邮箱已验证</span> <i>Verified</i></h1>
+        <h1 id="nw-verify-done"><span className="nw-zh">{v.doneTitle}</span> <i>Verified</i></h1>
         <p className="nw-ep nw-mt-24">
-          这个地址已经标记为已验证。它只记录这个邮箱曾经可达，<strong>不会限制你的任何操作</strong>：未验证的账号同样可以登录、写作和发布。
+          {v.doneBody}<strong>{v.doneStrong}</strong>{v.doneTail}
         </p>
         <div className="nw-auth-switch">
-          <Link className="nw-btn nw-pri" href="/write">回到写作台</Link>
+          <Link className="nw-btn nw-pri" href="/write">{v.backToDesk}</Link>
         </div>
       </section>
     );
@@ -93,14 +100,14 @@ export function VerifyEmailPanel({ token }: VerifyEmailPanelProps) {
 
   return (
     <section className="nw-auth-panel" aria-labelledby="nw-verify-failed">
-      <h1 id="nw-verify-failed"><span className="nw-zh">验证未完成</span> <i>Not verified</i></h1>
+      <h1 id="nw-verify-failed"><span className="nw-zh">{v.failedTitle}</span> <i>Not verified</i></h1>
       <p className="nw-auth-error nw-mt-24" role="alert">{error}</p>
       <p className="nw-ep">
-        验证链接 24 小时内有效，且只能使用一次；申请新的链接会让旧的那个立即失效。
+        {v.failedBody}
       </p>
       <div className="nw-auth-switch">
-        <Link className="nw-btn nw-pri" href="/write">在写作台重新发送</Link>
-        <Link className="nw-btn" href="/sign-in">前往登录</Link>
+        <Link className="nw-btn nw-pri" href="/write">{v.resend}</Link>
+        <Link className="nw-btn" href="/sign-in">{v.goSignIn}</Link>
       </div>
     </section>
   );

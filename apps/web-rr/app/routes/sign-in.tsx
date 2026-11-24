@@ -5,6 +5,7 @@ import type { HeadersFunction, LoaderFunctionArgs, MetaFunction } from "react-ro
 import { SignInForm } from "@/components/auth/sign-in-form.tsx";
 import { safeRedirectPath } from "@/lib/authoring-proxy-policy.ts";
 import { mailEnabled } from "../lib/runtime.ts";
+import { localeFor } from "../lib/locale.ts";
 import { PRIVATE_PAGE_HEADERS } from "../lib/http-policy.ts";
 
 /**
@@ -17,7 +18,7 @@ import { PRIVATE_PAGE_HEADERS } from "../lib/http-policy.ts";
 export async function loader({ url }: LoaderFunctionArgs) {
   // Read at request time, not build time: switching mail on must not require a
   // rebuild.
-  return { nextPath: safeRedirectPath(url.searchParams.get("next") ?? "/account"), mailEnabled: mailEnabled() };
+  return { nextPath: safeRedirectPath(url.searchParams.get("next") ?? "/account"), mailEnabled: mailEnabled(), locale: localeFor(url) };
 }
 
 /**
@@ -38,10 +39,10 @@ export const meta: MetaFunction = () => [
 ];
 
 export default function SignInRoute() {
-  const { nextPath, mailEnabled } = useLoaderData<typeof loader>();
+  const { nextPath, mailEnabled, locale } = useLoaderData<typeof loader>();
   return (
     <main id="top" tabIndex={-1} className="nw-w nw-head nw-auth-page" data-route="sign-in">
-      <SignInForm nextPath={nextPath} mailEnabled={mailEnabled} />
+      <SignInForm nextPath={nextPath} mailEnabled={mailEnabled} locale={locale} />
     </main>
   );
 }

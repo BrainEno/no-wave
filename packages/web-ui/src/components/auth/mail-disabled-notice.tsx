@@ -1,5 +1,7 @@
 import { Link } from "@/lib/framework/link.tsx";
 import { MAIL_DISABLED_NOTICE } from "@/lib/mail-copy.ts";
+import { getUi } from "@/lib/ui-copy.ts";
+import type { Locale } from "@/lib/content.ts";
 
 /**
  * What the mail-dependent pages show instead of a form that cannot work.
@@ -13,8 +15,9 @@ import { MAIL_DISABLED_NOTICE } from "@/lib/mail-copy.ts";
  * been sent here by something, and "no" without a next step is the least useful
  * answer a page can give.
  */
-export function MailDisabledNotice({ locale = "zh-CN" }: { locale?: "zh-CN" | "en" }) {
+export function MailDisabledNotice({ locale = "zh-CN" }: { locale?: Locale }) {
   const en = locale === "en";
+  const backToDesk = getUi(locale).account.unavailable.backToDesk;
   return (
     <section className="nw-auth-panel" aria-labelledby="nw-mail-off">
       <h1 id="nw-mail-off">
@@ -25,7 +28,7 @@ export function MailDisabledNotice({ locale = "zh-CN" }: { locale?: "zh-CN" | "e
       </p>
       <div className="nw-auth-switch">
         <Link className="nw-btn nw-pri" href="/sign-in">{en ? MAIL_DISABLED_NOTICE.actionEn : MAIL_DISABLED_NOTICE.action}</Link>
-        <Link className="nw-btn" href="/write">{en ? "Back to the desk" : "回到写作台"}</Link>
+        <Link className="nw-btn" href="/write">{backToDesk}</Link>
       </div>
     </section>
   );
