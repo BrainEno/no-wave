@@ -201,7 +201,10 @@ test("the native React Router build and dev configuration await font preparation
 });
 
 test("the dev supervisor awaits a cancellable bounded font preflight before any service readiness clock starts", async () => {
-  const dev = await readFile(new URL("../../scripts/dev.ts", import.meta.url), "utf8");
+  // Compare layout-free text so a reformatted call (wrapped arguments, trailing
+  // commas) still matches.
+  const dev = (await readFile(new URL("../../scripts/dev.ts", import.meta.url), "utf8"))
+    .replace(/\s+/g, " ").replace(/([([{]) /g, "$1").replace(/,? ([)\]}])/g, "$1");
   const preparation = dev.indexOf("await executeFile(process.execPath, [resolve(repositoryRoot, \"scripts/fonts/generate.ts\"), \"--prepare\"]");
   assert.ok(preparation >= 0 && preparation < dev.indexOf("supervisor.launch("));
   assert.match(dev, /if \(startWeb\) \{\s*info\("Preparing first-party fonts before service startup/);
