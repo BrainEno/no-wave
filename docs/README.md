@@ -22,7 +22,7 @@ Architecture decision records and their Accepted/Superseded status live in the [
 - [私信写入：账户绑定与未确认请求](architecture/messaging-intent-safety.md) — Status: active
 - [Threat model: reports, moderation and appeals (accepted design, unshipped feature)](architecture/moderation-threat-model.md) — Status: active
 - [通知账户归属与页面恢复隔离](architecture/notification-account-isolation.md) — Status: active
-- [Notion background import: implementation plan](architecture/notion-background-import-plan.md) — Status: **foundation
+- [Notion background import: implementation plan](architecture/notion-background-import-plan.md) — Status: active
 - [Read-only audit: historical Notion import provenance](architecture/notion-import-provenance-audit.md) — Status: active
 - [Article conditional writes and Notion import version protection](architecture/notion-import-version-protection.md) — Status: active
 - [Persistence Adapter Behavioral Contract](architecture/persistence-adapter-contract.md) — Status: active
@@ -126,7 +126,7 @@ Architecture decision records and their Accepted/Superseded status live in the [
 - [Acceptance Scenarios: Messaging and Notifications](testing/acceptance/messaging-and-notifications.md) — Status: active
 - [Acceptance Scenarios: Security and Authorization](testing/acceptance/security-and-authorization.md) — Status: active
 - [Browser-level tests (Playwright)](testing/end-to-end.md) — Status: active
-- [Framework Portability Spike — Execution Checklist](testing/framework-spike.md) — Status: Minimal
+- [Framework Portability Spike — Execution Checklist](testing/framework-spike.md) — Status: archived
 - [Testing Strategy: Behavior-First, Risk-Based](testing/strategy.md) — Status: active
 
 ## docs/deployment
@@ -141,7 +141,7 @@ Architecture decision records and their Accepted/Superseded status live in the [
 
 ## docs/requirements
 
-- [BOT THK Product Behavior Baseline](requirements/behavior-baseline.md) — Status: Initial
+- [BOT THK Product Behavior Baseline](requirements/behavior-baseline.md) — Status: active
 
 ## docs/agentic-coding
 

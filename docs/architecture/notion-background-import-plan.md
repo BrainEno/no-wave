@@ -1,6 +1,8 @@
 # Notion background import: implementation plan
 
-Status: **foundation only; not connected to the API or UI**. The synchronous
+Status: active
+
+Current state: foundation only; not connected to the API or UI. The synchronous
 import and its eight-download limit remain in effect. This document is not an
 accepted ADR or a claim that jobs survive restarts.
 
