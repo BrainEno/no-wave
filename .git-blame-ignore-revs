@@ -1,0 +1,6 @@
+# Formatting-only commits, hidden from `git blame` (GitHub reads this file;
+# locally: git config blame.ignoreRevsFile .git-blame-ignore-revs).
+# Each Prettier batch from ADR 0056 adds its commit here.
+
+# style: format scripts/ and e2e/ with Prettier
+36e67c6e6e141b0b6fac41a061f0af31480229f7

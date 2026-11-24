@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
-import { createServer } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
 import { test as base } from "./csp-fixture.ts";
 import { startFontStack, type FontStack } from "./font-stack.ts";
 
@@ -16,7 +20,17 @@ export const test = base.extend<{ mediaStack: MediaStack }>({
     async ({}, runWithStack) => {
       const objects = new Map<string, StoredObject>();
       const requests: MediaStack["requests"] = [];
-      const s3 = createServer(async (request, response) => {
+      const s3 = createServer((request, response) => {
+        serveObject(request, response).catch((error: unknown) =>
+          response.destroy(
+            error instanceof Error ? error : new Error(String(error)),
+          ),
+        );
+      });
+      async function serveObject(
+        request: IncomingMessage,
+        response: ServerResponse,
+      ) {
         try {
           const key = new URL(request.url ?? "/", "http://fixture.test")
             .pathname;
@@ -67,7 +81,7 @@ export const test = base.extend<{ mediaStack: MediaStack }>({
         } catch {
           response.writeHead(500).end();
         }
-      });
+      }
       await new Promise<void>((resolve, reject) => {
         s3.once("error", reject);
         s3.listen(0, "0.0.0.0", resolve);

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createServer } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { after, before, test } from "node:test";
 import { createBffClientAddressResolver } from "../../api/src/transport/rest/bff-client-address.ts";
 import { startDevelopmentWeb } from "./support/development-web.ts";
@@ -8,7 +8,10 @@ import { BRIDGE_SECRET, EDGE_PEER, FIRST_CLIENT, SECOND_CLIENT, callFrom, closeS
 type Call = { address: string; target: string; method: string; headers: Headers; body: string };
 const calls: Call[] = [];
 const resolveAddress = createBffClientAddressResolver({ BFF_CLIENT_ADDRESS_SECRET: BRIDGE_SECRET });
-const api = createServer(async (request, response) => {
+const api = createServer((request, response) => {
+  answer(request, response).catch((error: unknown) => response.destroy(error instanceof Error ? error : new Error(String(error))));
+});
+async function answer(request: IncomingMessage, response: ServerResponse) {
   const chunks: Buffer[] = [];
   for await (const chunk of request) chunks.push(Buffer.from(chunk));
   const headers = new Headers();
@@ -19,7 +22,7 @@ const api = createServer(async (request, response) => {
   await new Promise<void>((resolve) => setImmediate(resolve));
   response.writeHead(200, { "content-type": "application/json" });
   response.end(JSON.stringify({ data: { address, counted: true, viewCount: calls.length } }));
-});
+}
 let web: Awaited<ReturnType<typeof startDevelopmentWeb>>;
 before(async () => {
   const origin = await listen(api);

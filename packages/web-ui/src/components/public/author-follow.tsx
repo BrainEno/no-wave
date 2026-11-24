@@ -143,7 +143,7 @@ export function AuthorFollow({ userId, locale }: { userId: string; locale: Local
       <button
         type="button"
         className={`nw-follow-btn${following ? " nw-follow-on" : ""}`}
-        onClick={toggle}
+        onClick={() => { void toggle(); }}
         disabled={disabled}
         aria-pressed={state === null ? undefined : following}
         aria-busy={pending}

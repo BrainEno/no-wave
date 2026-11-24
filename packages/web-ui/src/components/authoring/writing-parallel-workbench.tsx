@@ -70,7 +70,7 @@ export function LocalWritingParallel() {
   function conditions(next: ParallelPolicy) {
     changed();
     setDraft(next);
-    controller.setPolicy(next);
+    void controller.setPolicy(next);
   }
 
   function save() {

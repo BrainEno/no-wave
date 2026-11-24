@@ -53,7 +53,8 @@ export function missingLinks(
     const found = content.indexOf(block.raw, searchFrom);
     const blockStart = found < 0 ? searchFrom : found;
     searchFrom = blockStart + block.raw.length;
-    marked.walkTokens([block], (token) => {
+    // Synchronous walk: no async marked extensions are registered here.
+    void marked.walkTokens([block], (token) => {
       if (token.type !== "link" && token.type !== "image") return;
       const raw = token.href;
       if (/^(?:[a-z][a-z0-9+.-]*:|\/|#)/i.test(raw)) return;

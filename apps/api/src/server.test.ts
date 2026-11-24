@@ -5,6 +5,7 @@ import { request as httpRequest } from "node:http";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createApiServer } from "./server.ts";
+import { createHttpObservability } from "./infrastructure/http-observability.ts";
 import { persistencePortMethods } from "./application/persistence-ports.ts";
 import { createSqliteClient, runSqliteMigrations } from "./persistence/sqlite.ts";
 import { createSqliteStore } from "./persistence/sqlite-store.ts";
@@ -91,6 +92,34 @@ test("health endpoint is explicit and not cacheable", async () => {
     assert.match(response.headers.get("cache-control") ?? "", /no-store/i);
     assert.deepEqual(await response.json(), { status: "ok", service: "api" });
   });
+});
+
+test("a request that fails before the handler's own error path drops one connection, never the process", async () => {
+  // The listener is async; a throw before its try (here: observation setup) used
+  // to be an unhandled rejection, which Node turns into process exit.
+  const logs = [];
+  const real = createHttpObservability({ logger: () => {} });
+  const observability = Object.create(real, {
+    beginRequest: { value: (request, response) => {
+      if (request.url === "/explode") throw new TypeError("observation setup failed");
+      return real.beginRequest(request, response);
+    } },
+  });
+  const unhandled = [];
+  const onUnhandled = (reason) => unhandled.push(reason);
+  process.on("unhandledRejection", onUnhandled);
+  try {
+    await withServer(async (baseUrl) => {
+      await assert.rejects(fetch(`${baseUrl}/explode`), "the failed connection is dropped, not answered");
+      const health = await fetch(`${baseUrl}/health`);
+      assert.equal(health.status, 200, "the server keeps serving");
+    }, { observability, logger: (entry) => logs.push(entry) });
+    await new Promise((resolve) => setImmediate(resolve));
+  } finally {
+    process.off("unhandledRejection", onUnhandled);
+  }
+  assert.deepEqual(unhandled, []);
+  assert.deepEqual(logs.filter((entry) => entry.event === "api_request_handler_failed").map((entry) => entry.errorName), ["TypeError"]);
 });
 
 test("readiness returns 503 when PostgreSQL persistence is not configured", async () => {

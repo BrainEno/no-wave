@@ -80,7 +80,7 @@ export function setupPageMotion(): { revert(): void } {
       tweens.push(gsap.fromTo(track, { xPercent: direction < 0 ? 0 : -100 / copies }, { xPercent: direction < 0 ? -100 / copies : 0, duration: 26, repeat: -1, ease: "none" }));
     });
     if (tweens.length) {
-      const tick = () => tweens.forEach((tween) => tween.timeScale(speed.v));
+      const tick = () => { for (const tween of tweens) tween.timeScale(speed.v); };
       gsap.ticker.add(tick);
       const settle = () => { gsap.to(speed, { v: 1, duration: 1.2, overwrite: true }); };
       ScrollTrigger.addEventListener("scrollEnd", settle);

@@ -84,7 +84,7 @@ export function WritingParallelReview({
   }
 
   function handleExplain(row: ParallelReviewRow) {
-    controller.explain(row.pairId, row.rowId);
+    void controller.explain(row.pairId, row.rowId);
   }
 
   return (

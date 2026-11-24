@@ -82,7 +82,7 @@ export function SignInForm({ nextPath, mailEnabled, locale = "zh-CN" }: SignInFo
       </p>
       {recoveryWarning ? <p className="nw-auth-error" role="alert">{recoveryWarning}</p> : null}
       {signedIn ? <Link className="nw-btn" href={nextPath}>我已了解，继续访问</Link> : null}
-      <form className="nw-auth-form" onSubmit={submit}>
+      <form className="nw-auth-form" onSubmit={(event) => { void submit(event); }}>
         <label>邮箱
           <input type="email" name="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required maxLength={254} />
         </label>

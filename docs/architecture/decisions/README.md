@@ -63,6 +63,7 @@ which of two `0011`s meant what.
 | [0053](0053-notion-oauth-without-stored-tokens.md) | 用 Notion OAuth 代替粘贴令牌，授权结果只交给当前页面、服务器仍不保存 | Accepted | Done | 2026-11-22 |
 | [0054](0054-three-work-types.md) | 作品类型只保留三种：小说、诗歌、其他文体 | Accepted | Done | 2026-11-23 |
 | [0055](0055-edition-language-from-text.md) | Notion 导入按作品实际语言标注版本，中文页只列中文作品、英文页只列英文作品 | Accepted | Done | 2026-11-21 |
+| [0056](0056-staged-prettier-and-typed-lint.md) | 格式检查分目录逐步纳入；ESLint 加入类型感知的 Promise 规则 | Accepted | In progress | 2026-11-21 |
 
 The status column carries the leading word of each file's `- Status:` line —
 read the file for the qualifier ("Superseded by ADR 0012", "Accepted as the

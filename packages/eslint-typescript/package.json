@@ -1,0 +1,14 @@
+{
+  "name": "@bot-thk/eslint-typescript",
+  "private": true,
+  "type": "module",
+  "description": "typescript-eslint with the TypeScript compiler API it requires, for lint only.",
+  "exports": {
+    ".": "./index.js"
+  },
+  "dependencies": {
+    "eslint": "10.15.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.74.0"
+  }
+}

@@ -651,7 +651,7 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
         ) : null}
       </div>
       <div className="nw-acct-pair">
-      <form className="nw-auth-form nw-acct-card" onSubmit={changeEmail} aria-labelledby="nw-account-email-title" data-account-email-form>
+      <form className="nw-auth-form nw-acct-card" onSubmit={(event) => { void changeEmail(event); }} aria-labelledby="nw-account-email-title" data-account-email-form>
         <h2 id="nw-account-email-title"><span className="nw-zh">修改邮箱</span> <i>Change address</i></h2>
         <p className="nw-ep">
           修改邮箱需输入当前密码以保障安全。
@@ -694,7 +694,7 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
         recovery flow is the only other way to replace a credential, and on an
         instance where mail is switched off it cannot run at all.
       */}
-      <form className="nw-auth-form nw-acct-card" onSubmit={changePassword} aria-labelledby="nw-account-password-title" data-account-password>
+      <form className="nw-auth-form nw-acct-card" onSubmit={(event) => { void changePassword(event); }} aria-labelledby="nw-account-password-title" data-account-password>
         <h2 id="nw-account-password-title"><span className="nw-zh">修改密码</span> <i>Change password</i></h2>
         <p className="nw-ep">
           修改后除当前设备外，其他设备均会自动退出。

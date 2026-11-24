@@ -214,7 +214,7 @@ function Toolbar({
       <button type="button" title="下划线" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "underline")}><u>U</u></button>
       <button type="button" title="删除线" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "strikethrough")}><s>S</s></button>
       <span className="nw-tb-sep" aria-hidden="true" />
-      <button type="button" aria-label="链接" title="链接" onClick={addLink}>{toolIcon.link}</button>
+      <button type="button" aria-label="链接" title="链接" onClick={() => { void addLink(); }}>{toolIcon.link}</button>
       <button type="button" aria-label={uploading ? "上传图片中…" : "插入图片"} title="插入图片" disabled={uploading} onClick={() => fileInput.current?.click()}>{toolIcon.image}</button>
       <input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp" aria-label="选择要上传的图片" hidden onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; void uploadImage(file); }} />
       <button type="button" aria-label="代码块" title="代码块" onClick={() => setBlock(() => $createCodeNode())}>{toolIcon.code}</button>

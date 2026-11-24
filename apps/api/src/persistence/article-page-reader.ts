@@ -57,7 +57,8 @@ export async function readPostgresArticlePage(executor: PgExecutor, text: string
   if (!query.cursor) throw new Error("The PostgreSQL adapter cannot cursor article cards safely.");
   if (options.signal) {
     if (!query.signal) throw new Error("The PostgreSQL adapter cannot cancel article card cursors safely.");
-    query.signal(options.signal);
+    // Returns the same pending query for chaining; the cursor below settles it.
+    void query.signal(options.signal);
   }
   const output: StoredArticle[] = [];
   await query.cursor(1, rows => {

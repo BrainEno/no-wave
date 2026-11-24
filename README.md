@@ -302,24 +302,26 @@ On Windows PowerShell, set `$env:TEST_DATABASE_URL` before running the same comm
 ## Static checks
 
 `pnpm lint` runs the CSS custom-property check, Stylelint on workspace CSS,
-and ESLint on TypeScript/TSX in apps, packages, scripts and e2e. The current
-rules enforce Hooks ordering/dependencies and accessible alternatives for images,
-as well as a small set of CSS validity rules. Inline ESLint disable directives
-cannot suppress these checks. These rules do not yet include typed unhandled
-Promise analysis or a comprehensive accessibility audit; keep the browser and
-axe tests as well.
+and ESLint with type information on TypeScript/TSX in apps, packages, scripts
+and e2e. The rules enforce Hooks ordering/dependencies, accessible alternatives
+for images, and settled promises: a promise must be awaited, returned, caught
+or explicitly `void`ed (`no-floating-promises`), and must not be passed where a
+boolean or a void callback is expected (`no-misused-promises`). Inline ESLint
+disable directives cannot suppress these checks. They are not a comprehensive
+accessibility audit; keep the browser and axe tests as well.
 
-`pnpm format:check` currently checks only `eslint.config.ts`, `.stylelintrc.json`
-and `scripts/lint-policy.test.ts`. Run `pnpm format` to format those files.
-This is an incremental formatting rollout, not a claim that the rest of the
-repository already follows Prettier. Expanding its scope needs a separately
-reviewed mechanical formatting change.
+`pnpm lint:typescript` runs ESLint once per TypeScript project
+(`scripts/lint-projects.ts`), because a typed program per project does not fit
+in one process, and first fails if any tracked TypeScript file belongs to no
+project or to two. ESLint reads types through TypeScript 6.0 from the lint-only
+`packages/eslint-typescript`; builds and `pnpm typecheck` use TypeScript 7. See
+[ADR 0056](docs/architecture/decisions/0056-staged-prettier-and-typed-lint.md).
 
-ESLint 9 is used for the current JSX accessibility plugin's declared peer range;
-it is no longer maintained upstream. Move to a supported ESLint release once
-the plugin supports it or a compatible replacement has been evaluated. The
-Babel-based parser performs syntax-level linting independently of the project
-TypeScript compiler; type checking remains a separate required CI step.
+`pnpm format:check` checks the directories adopted so far: `scripts/` and
+`e2e/`, plus `eslint.config.ts` and `.stylelintrc.json`. Run `pnpm format` to
+format them. The rest of the repository is being adopted one directory at a
+time, each as a formatting-only commit listed in `.git-blame-ignore-revs`; ADR
+0056 has the order. Generated files stay as their generator writes them.
 
 ## CSS token check
 
