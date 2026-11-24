@@ -426,13 +426,8 @@ export function PassageAnnotations({ slug, locale, labels }: PassageAnnotationsP
       ) : null}
 
       {toolbar ? (
-        <div
-          className="nw-passage-tools"
-          role="group"
-          aria-label={labels.shelf}
-          style={{ top: toolbar.top, left: toolbar.left }}
-          data-passage-tools
-        >
+        // 内联：工具条位置由运行时对选区的测量得出，静态类无法表达（#345 内联白名单）。
+        <div className="nw-passage-tools" role="group" aria-label={labels.shelf} style={{ top: toolbar.top, left: toolbar.left }} data-passage-tools>
           <button type="button" onClick={() => { save(toolbar.anchor, ""); setToolbar(null); }} data-passage-mark>{labels.mark}</button>
           <button type="button" onClick={() => { setDraft({ anchor: toolbar.anchor, id: null, note: "" }); setToolbar(null); }} data-passage-note>{labels.note}</button>
           <button type="button" onClick={() => setToolbar(null)}>{labels.cancel}</button>

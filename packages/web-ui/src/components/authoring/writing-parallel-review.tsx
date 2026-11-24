@@ -266,7 +266,7 @@ export function WritingParallelReview({
 
       {/* Pagination Controls */}
       {totalPages > 1 ? (
-        <div className="nw-authoring-actions" style={{ marginTop: 12 }}>
+        <div className="nw-authoring-actions nw-mt-12">
           <button
             className="nw-btn"
             type="button"
@@ -296,7 +296,7 @@ export function WritingParallelReview({
           <p>
             对齐类型：<strong>{TYPE_LABELS[selectedRow.type as ParallelAlignmentType] ?? selectedRow.type}</strong> · 得分：{selectedRow.score}
           </p>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          <div className="nw-grid-2">
             <div>
               <h5>左侧原文 ({selectedRow.leftUnit?.kind ?? "空缺"})</h5>
               <div className="nw-parallel-snippet">
@@ -325,7 +325,7 @@ export function WritingParallelReview({
             </div>
           </div>
 
-          <div style={{ marginTop: 16 }}>
+          <div className="nw-mt-16">
             <h5>人工审阅状态设定</h5>
             <div className="nw-authoring-actions">
               <button

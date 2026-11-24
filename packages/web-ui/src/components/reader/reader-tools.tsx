@@ -92,7 +92,7 @@ export function ReaderToc({ items, title }: { items: { id: string; text: string 
   }, [items]);
   return (
     <nav className="nw-toc" aria-label={title}>
-      <div className="nw-m" style={{ marginBottom: 12 }}>{title}</div>
+      <div className="nw-m nw-mb-12">{title}</div>
       {items.map((item) => <a key={item.id} href={`#${item.id}`} aria-current={active === item.id ? "true" : undefined}>{item.text}</a>)}
     </nav>
   );

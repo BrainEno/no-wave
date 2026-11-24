@@ -483,7 +483,7 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
     return (
       <section className="nw-auth-panel" aria-labelledby="nw-account-out">
         <h1 id="nw-account-out"><span className="nw-zh">尚未登录</span> <i>Signed out</i></h1>
-        <p className="nw-ep" style={{ marginTop: 24 }}>这个会话已经结束，正在前往登录页……</p>
+        <p className="nw-ep nw-mt-24">这个会话已经结束，正在前往登录页……</p>
         {error ? <p className="nw-auth-error" role="alert">{error}</p> : null}
         <div className="nw-auth-switch">
           <Link className="nw-btn nw-pri" href="/sign-in?next=%2Faccount">前往登录</Link>
@@ -496,7 +496,7 @@ export function AccountPanel({ mailEnabled }: { mailEnabled: boolean }) {
     return (
       <section className="nw-auth-panel" aria-labelledby="nw-account-error">
         <h1 id="nw-account-error"><span className="nw-zh">账户信息暂时无法载入</span> <i>Unavailable</i></h1>
-        <p className="nw-auth-error" role="alert" style={{ marginTop: 24 }}>{error}</p>
+        <p className="nw-auth-error nw-mt-24" role="alert">{error}</p>
         <div className="nw-auth-switch">
           <Link className="nw-btn nw-pri" href="/write">回到写作台</Link>
           <Link className="nw-btn" href="/sign-in?next=%2Faccount">重新登录</Link>

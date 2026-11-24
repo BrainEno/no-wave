@@ -49,7 +49,7 @@ export function ForgotPasswordForm() {
     return (
       <section className="nw-auth-panel" aria-labelledby="nw-reset-sent">
         <h1 id="nw-reset-sent"><span className="nw-zh">请查收邮件</span> <i>Check your mail</i></h1>
-        <p className="nw-ep" style={{ marginTop: 24 }}>
+        <p className="nw-ep nw-mt-24">
           如果这个邮箱已注册，重设链接已经发出。链接 30 分钟内有效，且只能使用一次；若几分钟后仍未收到，请检查垃圾邮件文件夹。
         </p>
         <p className="nw-auth-status" role="status">
@@ -66,7 +66,7 @@ export function ForgotPasswordForm() {
   return (
     <section className="nw-auth-panel" aria-labelledby="nw-reset-title">
       <h1 id="nw-reset-title"><span className="nw-zh">找回密码</span> <i>Reset</i></h1>
-      <p className="nw-ep" style={{ marginTop: 24 }}>
+      <p className="nw-ep nw-mt-24">
         输入注册时使用的邮箱。如果这个邮箱已注册，我们会向它发送一封包含重设链接的邮件。
       </p>
       <form className="nw-auth-form" onSubmit={(event) => { void submit(event); }}>

@@ -81,7 +81,7 @@ export function PageLoader({ label }: { label: string }) {
   return (
     <div className="nw-load" data-loader ref={root} aria-hidden="true">
       <div className="nw-cols"><i className="nw-col" /><i className="nw-col" /><i className="nw-col" /><i className="nw-col" /><i className="nw-col" /><i className="nw-col" /></div>
-      <div className="nw-ct"><span className="nw-cnt" ref={counter}>000</span><span className="nw-m" style={{ color: "#f2eee6" }}>{label}</span></div>
+      <div className="nw-ct"><span className="nw-cnt" ref={counter}>000</span><span className="nw-m nw-onimg">{label}</span></div>
     </div>
   );
 }

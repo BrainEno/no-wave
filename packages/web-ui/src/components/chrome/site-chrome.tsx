@@ -354,7 +354,7 @@ function SiteChromeContent({ children }: { children: ReactNode }) {
         <span className="nw-sep nw-nv" aria-hidden="true" />
         <Link className="nw-ic nw-ic-write" href="/write" aria-label={ui.nav.write} title={ui.nav.write}>{icon.write}</Link>
         <Link className="nw-ic nw-ic-account" href="/account" aria-label={ui.nav.account} title={ui.nav.account} aria-current={current("/account")}>{icon.account}</Link>
-        <button className="nw-mnb" ref={overlays.menuTrigger} type="button" aria-haspopup="dialog" style={{ fontWeight: 700 }} aria-expanded={menuOpen} aria-controls="nw-menu" onClick={() => overlays.toggle("menu")}>{ui.nav.menu}</button>
+        <button className="nw-mnb nw-fw" ref={overlays.menuTrigger} type="button" aria-haspopup="dialog" aria-expanded={menuOpen} aria-controls="nw-menu" onClick={() => overlays.toggle("menu")}>{ui.nav.menu}</button>
       </nav>
       </header>
       <div className="nw-np" ref={overlays.bellPanel} tabIndex={-1} id="nw-np" hidden={!bellOpen} role="dialog" aria-label={ui.bell.label} lang={locale} aria-busy={bellPending}>

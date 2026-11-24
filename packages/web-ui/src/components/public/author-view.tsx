@@ -44,10 +44,10 @@ export function AuthorPageView({ locale, author, type, page, works }: AuthorPage
           {recent.length ? (
             <section>
               <SectionHeading zh={ui.author.recent} latin="Recent" locale={locale} />
-              <div style={{ marginTop: 32 }}>
+              <div className="nw-mt-32">
                 {recent.map((article, index) => (
                   <Link key={article.slug} className="nw-rp3" href={articlePath(article.slug, locale)} data-reveal="row">
-                    <span className="nw-m" style={{ paddingTop: 12 }}>{pad(index + 1)}</span>
+                    <span className="nw-m nw-pt-12">{pad(index + 1)}</span>
                     <span><span className="nw-m"><TypeChip type={article.workType} locale={locale} /> · {dateLabel(article.publishedAt, locale)}</span><span className="nw-t">{article.title}</span><span className="nw-x">{article.description}</span></span>
                   </Link>
                 ))}
@@ -56,7 +56,7 @@ export function AuthorPageView({ locale, author, type, page, works }: AuthorPage
           ) : null}
           <section className={recent.length ? "nw-sec2" : undefined} id="catalogue">
             <SectionHeading zh={ui.author.works} latin={ui.author.worksEn} locale={locale} aside={<span className="nw-m">{ui.author.count(filtered.length)}</span>} />
-            <div style={{ margin: "24px 0 8px" }}><TypeTabs locale={locale} base={base} current={type} /></div>
+            <div className="nw-tabs-rise"><TypeTabs locale={locale} base={base} current={type} /></div>
             {visible.length ? (
               <>
                 {visible.map((article) => (
@@ -67,13 +67,13 @@ export function AuthorPageView({ locale, author, type, page, works }: AuthorPage
                   </Link>
                 ))}
                 <Pager locale={locale} page={page} hasNextPage={hasNextPage} hrefFor={(next) => hrefWith(base, { type, page: next })} />
-                <p className="nw-m" style={{ marginTop: 16 }}>{ui.author.limitNote}</p>
+                <p className="nw-m nw-mt-16">{ui.author.limitNote}</p>
               </>
             ) : <EmptyState title={messages.noAuthorArticles} body={ui.author.none} href={archivePath(locale)} action={ui.archive.title} />}
           </section>
         </div>
       </div>
-      <div style={{ height: 140 }} />
+      <div className="nw-spacer" />
     </main>
   );
 }

@@ -16,7 +16,7 @@ export function TagIndexView({ locale, tags, query, page, hasNextPage }: TagInde
       <header className="nw-head">
         <p className="nw-kicker nw-head-kicker">{copy.eyebrow}</p>
         <h1><span className="nw-zh">{copy.title}</span>{locale !== "en" ? <> <i>Tags</i></> : null}</h1>
-        <p className="nw-ep" style={{ marginTop: 20 }}>{copy.intro}</p>
+        <p className="nw-ep nw-mt-20">{copy.intro}</p>
         <form className="nw-sf-form" action={base} method="get" role="search" aria-label={copy.search}>
           <div className="nw-fgrow">
             <label className="nw-lab" htmlFor="tag-q">{copy.search}</label>
@@ -26,7 +26,7 @@ export function TagIndexView({ locale, tags, query, page, hasNextPage }: TagInde
           {query ? <Link className="nw-btn" href={base}>{copy.clear}</Link> : null}
         </form>
       </header>
-      <section className="nw-bodygrid" style={{ marginTop: 48 }} aria-label={copy.results}>
+      <section className="nw-bodygrid nw-bodygrid--rise" aria-label={copy.results}>
         {tags.length ? (
           <ul className="nw-tag-list">
             {tags.map((tag, index) => (
@@ -45,7 +45,7 @@ export function TagIndexView({ locale, tags, query, page, hasNextPage }: TagInde
         )}
         <Pager locale={locale} page={page} hasNextPage={hasNextPage} hrefFor={(next) => tagIndexHref(locale, query, next)} />
       </section>
-      <div style={{ height: 140 }} />
+      <div className="nw-spacer" />
     </main>
   );
 }
@@ -56,16 +56,16 @@ export function TagDetailView({ locale, tag, articles, page, hasNextPage }: TagD
     <main id="top" tabIndex={-1} lang={locale} className="nw-w">
       <header className="nw-head">
         <Link className="nw-ss nw-tag-back" href={tagIndexPath(locale)}>← {copy.all}</Link>
-        <div className="nw-m" style={{ marginTop: 8 }}>{copy.works(tag.articleCount)}</div>
+        <div className="nw-m nw-mt-8">{copy.works(tag.articleCount)}</div>
         <h1 className="nw-zh nw-tag-heading">#{tag.name}</h1>
         {tag.description ? <p className="nw-ep">{tag.description}</p> : null}
-        <nav aria-label={copy.subscribe} style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 20 }}>
+        <nav aria-label={copy.subscribe} className="nw-feednav">
           {tagFeedLinks(tag.slug, locale).map((link) => (
             <a key={link.type} className="nw-btn nw-sec" href={link.href} type={link.type}>{link.title}</a>
           ))}
         </nav>
       </header>
-      <section className="nw-bodygrid" style={{ marginTop: 48 }} aria-label={copy.works(tag.articleCount)}>
+      <section className="nw-bodygrid nw-bodygrid--rise" aria-label={copy.works(tag.articleCount)}>
         {articles.length ? articles.map((article, index) => (
           <WorkRow key={article.slug} article={article} locale={locale} index={index + 1 + (page - 1) * TAG_PAGE_SIZE} withCover />
         )) : (
@@ -74,7 +74,7 @@ export function TagDetailView({ locale, tag, articles, page, hasNextPage }: TagD
         )}
         <Pager locale={locale} page={page} hasNextPage={hasNextPage} hrefFor={(next) => tagDetailHref(tag.slug, locale, next)} />
       </section>
-      <div style={{ height: 140 }} />
+      <div className="nw-spacer" />
     </main>
   );
 }

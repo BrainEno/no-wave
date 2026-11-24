@@ -77,7 +77,7 @@ export function SignInForm({ nextPath, mailEnabled, locale = "zh-CN" }: SignInFo
   return (
     <section className="nw-auth-panel" aria-labelledby="nw-auth-title">
       <h1 id="nw-auth-title"><span className="nw-zh">{mode === "login" ? "进入写作" : "创建账户"}</span> <i>{mode === "login" ? "Sign in" : "Join"}</i></h1>
-      <p className="nw-ep" style={{ marginTop: 24 }}>
+      <p className="nw-ep nw-mt-24">
         {mode === "login" ? "登录后可以继续编辑草稿、保存修改并发布作品。" : "使用邮箱与至少 12 个字符的密码创建账户。"}
       </p>
       {recoveryWarning ? <p className="nw-auth-error" role="alert">{recoveryWarning}</p> : null}

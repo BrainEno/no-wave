@@ -45,14 +45,14 @@ export function ArchivePageView({ locale, query, page, type, articles, hasNextPa
           navigation into one would have no page to render. The feed is always
           the site-wide newest works, whatever is filtered.
         */}
-        <nav aria-label={ui.archive.subscribe} data-site-feed style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 20 }}>
+        <nav aria-label={ui.archive.subscribe} data-site-feed className="nw-feednav">
           {siteFeedLinks(locale).map((link) => (
             <a key={link.type} className="nw-btn nw-sec" href={link.href} type={link.type}>{link.label}</a>
           ))}
         </nav>
       </header>
-      <div style={{ marginTop: 40 }}><TypeTabs locale={locale} base={base} current={type} params={{ q: query }} /></div>
-      {type ? <p className="nw-m" style={{ marginTop: 8 }}>{ui.archive.limitNote}</p> : null}
+      <div className="nw-mt-40"><TypeTabs locale={locale} base={base} current={type} params={{ q: query }} /></div>
+      {type ? <p className="nw-m nw-mt-8">{ui.archive.limitNote}</p> : null}
 
       <div className="nw-bodygrid">
         {lead ? <ArchiveLead article={lead} locale={locale} label={ui.archive.lead} /> : null}
@@ -72,7 +72,7 @@ export function ArchivePageView({ locale, query, page, type, articles, hasNextPa
           <EmptyState title={ui.archive.noResults} body={ui.archive.noResultsHint} href={base} action={ui.archive.clear} />
         )}
       </div>
-      <div style={{ height: 140 }} />
+      <div className="nw-spacer" />
     </main>
   );
 }
@@ -84,11 +84,11 @@ function ArchiveLead({ article, locale, label }: { article: ArticleView; locale:
     <Link className="nw-ft" href={articlePath(article.slug, locale)} data-reveal>
       <div className="nw-ftp"><img src={cover.src} alt="" width={cover.width} height={cover.height} /></div>
       <div>
-        <div className="nw-m"><span className="nw-gc" style={{ background: "var(--ink)", color: "var(--paper)" }}>{label}</span> <TypeChip type={article.workType} locale={locale} /> · {dateLabel(article.publishedAt, locale)}</div>
+        <div className="nw-m"><span className="nw-gc nw-gc-ink">{label}</span> <TypeChip type={article.workType} locale={locale} /> · {dateLabel(article.publishedAt, locale)}</div>
         <h2>{article.title}</h2>
         <p>{article.description}</p>
         <div className="nw-m">{article.author.displayName} · {lengthLabel(articleReadingLength(article, locale), locale)}</div>
-        <span className="nw-btn nw-sec" style={{ marginTop: 20 }}>{messages.readArticle} →</span>
+        <span className="nw-btn nw-sec nw-mt-20">{messages.readArticle} →</span>
       </div>
     </Link>
   );
