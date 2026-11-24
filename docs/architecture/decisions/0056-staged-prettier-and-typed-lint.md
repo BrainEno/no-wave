@@ -1,7 +1,7 @@
 # ADR 0056: 格式检查分目录逐步纳入；ESLint 加入类型感知的 Promise 规则
 
 - Status: Accepted
-- Implementation: In progress（格式检查已纳入 `scripts/`、`e2e/`；类型感知规则已全仓生效）
+- Implementation: Partial — 类型感知规则已全仓生效；格式检查已纳入 `scripts/`、`e2e/`，其余目录待后续批次。
 - Date: 2026-11-21
 - 关联：issue #317（质量门禁名不副实）、#274
 
