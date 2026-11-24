@@ -9,12 +9,6 @@ import { HomeLatest, type LatestItem } from "@/components/home-latest.tsx";
 import { EmptyState, SectionHeading } from "@/components/ui/parts.tsx";
 import type { HomePageData } from "@/lib/public-pages.ts";
 
-const triptych = [
-  { width: "min(500px, 100%)", ratio: "4 / 5", marginTop: 0, size: 28 },
-  { width: "min(360px, 100%)", ratio: "1 / 1", marginTop: 160, size: 22 },
-  { width: "min(240px, 100%)", ratio: "3 / 4", marginTop: 60, size: 20 },
-] as const;
-
 /**
  * One compact row: a running number, the title, its author, and — when the
  * shelf is ordered by saves — the count that put it there.
@@ -77,8 +71,8 @@ export function HomePageView({ locale, featured, latest, popular, genres }: Home
 
   return (
     <main lang={locale} id="top" tabIndex={-1}>
-      <header className="nw-hero" data-hero style={{ userSelect: "none", touchAction: "pan-y" }}>
-        <img className="nw-hero-bg" src={heroCover.src} alt="" width={heroCover.width} height={heroCover.height} fetchPriority="high" draggable={false} style={{ userSelect: "none", pointerEvents: "none" }} />
+      <header className="nw-hero" data-hero>
+        <img className="nw-hero-bg" src={heroCover.src} alt="" width={heroCover.width} height={heroCover.height} fetchPriority="high" draggable={false} />
         <HeroCanvas src={heroCover.src} />
         <div className="nw-brand">
           {locale === "en" ? null : <p className="nw-cn nw-zh" data-intro aria-hidden="true"><i>无</i><i>浪</i><i>潮</i></p>}
@@ -91,29 +85,28 @@ export function HomePageView({ locale, featured, latest, popular, genres }: Home
       </header>
 
       <section className="nw-sel" id="selected" aria-label={ui.home.selected}>
-        <div className="nw-wrap" style={{ maxWidth: 1280, margin: "0 auto" }}>
+        <div className="nw-container">
           <SectionHeading zh={ui.home.selected} latin={ui.home.selectedEn} locale={locale} aside={selected.length ? <span className="nw-m">{fallback ? "" : ui.home.selectedNote}</span> : undefined} />
           {fallback ? <p className="nw-m" data-featured-fallback>{ui.home.selectedFallback}</p> : null}
           {selected.length ? (
             <div className="nw-tri">
               {selected.map((article, index) => {
-                const layout = triptych[index] ?? triptych[2];
                 const cover = pickDefaultCover(article.slug);
                 return (
-                  <Link key={article.slug} className="nw-item" href={articlePath(article.slug, locale)} style={{ width: layout.width, marginTop: layout.marginTop }}>
-                    <div className="nw-ph" style={{ aspectRatio: layout.ratio }} data-reveal="mask" data-parallax>
+                  <Link key={article.slug} className={`nw-item nw-item--${index + 1}`} href={articlePath(article.slug, locale)}>
+                    <div className="nw-ph" data-reveal="mask" data-parallax>
                       <img src={cover.src} alt="" width={cover.width} height={cover.height} loading={index === 0 ? "eager" : "lazy"} />
                     </div>
                     <span className="nw-cap">
                       <span className="nw-m">{pad(index + 1)} · {messages.workTypeLabels[article.workType]}</span>
-                      <span className="nw-t" style={{ fontSize: layout.size }}>{article.title}</span>
+                      <span className="nw-t">{article.title}</span>
                       <span className="nw-m">{article.author.displayName} · {dateLabel(article.publishedAt, locale)}</span>
                     </span>
                   </Link>
                 );
               })}
             </div>
-          ) : <div style={{ marginTop: 48 }}><EmptyState title={ui.home.empty} body="" /></div>}
+          ) : <div className="nw-mt-48"><EmptyState title={ui.home.empty} body="" /></div>}
           {/*
             Works four to six of the shelf. They are rows rather than images
             because the triptych is a stage and a stage holds three; the order
@@ -145,7 +138,7 @@ export function HomePageView({ locale, featured, latest, popular, genres }: Home
 
       {popular.length ? (
         <section className="nw-pop" id="popular" aria-label={ui.home.popular}>
-          <div style={{ maxWidth: 1280, margin: "0 auto" }}>
+          <div className="nw-container">
             <SectionHeading zh={ui.home.popular} latin={ui.home.popularEn} locale={locale} aside={locale === "en" ? <span className="nw-m">{ui.home.popularEn}</span> : undefined} />
             <div className="nw-shelf" data-reveal="row">
               {popular.map((article, index) => (
@@ -169,8 +162,8 @@ export function HomePageView({ locale, featured, latest, popular, genres }: Home
         and says so: three columns that become two would read as a layout bug.
       */}
       <section className="nw-top" id="topics" aria-label={ui.home.topics}>
-        <div style={{ maxWidth: 1280, margin: "0 auto" }}>
-          <div className="nw-m" style={{ marginBottom: 40 }}>{locale === "en" ? ui.home.topics : `${ui.home.topics} / ${ui.home.topicsEn}`}</div>
+        <div className="nw-container">
+          <div className="nw-m nw-mb-40">{locale === "en" ? ui.home.topics : `${ui.home.topics} / ${ui.home.topicsEn}`}</div>
           <div className="nw-gen" data-home-genres>
             {genres.map((genre, index) => {
               const label = messages.workTypeLabels[genre.type];

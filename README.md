@@ -301,9 +301,10 @@ On Windows PowerShell, set `$env:TEST_DATABASE_URL` before running the same comm
 
 ## Static checks
 
-`pnpm lint` runs the CSS custom-property check, Stylelint on workspace CSS,
-and ESLint with type information on TypeScript/TSX in apps, packages, scripts
-and e2e. The rules enforce Hooks ordering/dependencies, accessible alternatives
+`pnpm lint` runs the CSS custom-property check, the inline-style policy check
+(`packages/web-ui`内 `style={{…}}` ≤ 15 处且每处有注释，见 ADR 0057), Stylelint
+on workspace CSS, and ESLint with type information on TypeScript/TSX in apps,
+packages, scripts and e2e. The rules enforce Hooks ordering/dependencies, accessible alternatives
 for images, and settled promises: a promise must be awaited, returned, caught
 or explicitly `void`ed (`no-floating-promises`), and must not be passed where a
 boolean or a void callback is expected (`no-misused-promises`). Inline ESLint

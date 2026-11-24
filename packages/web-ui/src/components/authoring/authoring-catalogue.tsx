@@ -101,7 +101,7 @@ export function AuthoringCatalogue() {
         <Link className="nw-btn" href="/write">新建作品 +</Link>
         <Link className="nw-btn" href="/write/media">媒体库</Link>
       </div>
-      <div className="nw-authoring-actions" style={{ marginTop: 16 }}>
+      <div className="nw-authoring-actions nw-mt-16">
         <button
           className={`nw-btn ${activeTab === "works" ? "nw-pri" : ""}`}
           type="button"

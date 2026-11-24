@@ -23,9 +23,9 @@ export function CategoryIndexContent({ locale, genres }: { locale: Locale; genre
       <header className="nw-head">
         <p className="nw-kicker nw-head-kicker">{ui.genres.eyebrow}</p>
         <h1><span className="nw-zh">{ui.nav.topics}</span> <i>{ui.genres.headingEn}</i></h1>
-        <p className="nw-ep" style={{ marginTop: 20 }}>{ui.genres.intro}</p>
+        <p className="nw-ep nw-mt-20">{ui.genres.intro}</p>
       </header>
-      <div className="nw-bodygrid" style={{ marginTop: 48 }} data-genres>
+      <div className="nw-bodygrid nw-bodygrid--rise" data-genres>
         {genres.map((genre, index) => (
           <Link key={genre.type} className="nw-catrow" href={`${archivePath(locale)}?type=${genre.type}`} data-reveal="row" data-genre={genre.type}>
             <span className="nw-m">{pad(index + 1)}</span>
@@ -34,7 +34,7 @@ export function CategoryIndexContent({ locale, genres }: { locale: Locale; genre
           </Link>
         ))}
       </div>
-      <div style={{ height: 140 }} />
+      <div className="nw-spacer" />
     </main>
   );
 }
@@ -59,14 +59,14 @@ export function AuthorIndexContent({ locale, authors, query = "", page = 1, hasN
       <header className="nw-head">
         <p className="nw-kicker nw-head-kicker">{ui.authors.eyebrow}</p>
         <h1 className="nw-h1-long"><span className="nw-zh">{ui.authors.title}</span> <i>Authors</i></h1>
-        <p className="nw-ep" style={{ marginTop: 20 }}>{ui.authors.intro}</p>
+        <p className="nw-ep nw-mt-20">{ui.authors.intro}</p>
         <form className="nw-sf-form" action={base} method="get" role="search" aria-label={ui.authors.search}>
           <div className="nw-fgrow"><label className="nw-lab" htmlFor="author-q">{ui.authors.search}</label><input id="author-q" className="nw-fld" type="search" name="q" defaultValue={query} placeholder={ui.authors.placeholder} /></div>
           <button className="nw-btn nw-sec" type="submit">{ui.authors.button}</button>
           {query ? <Link className="nw-btn" href={base}>{ui.authors.clear}</Link> : null}
         </form>
       </header>
-      <div className="nw-bodygrid" style={{ marginTop: 48 }}>
+      <div className="nw-bodygrid nw-bodygrid--rise">
         {authors.length ? (
           <>
             {authors.map((author, index) => (
@@ -85,7 +85,7 @@ export function AuthorIndexContent({ locale, authors, query = "", page = 1, hasN
           </>
         ) : <EmptyState title={page > 1 ? ui.authors.noMore : query ? ui.authors.noMatch : ui.authors.none} body="" href={query || page > 1 ? base : archivePath(locale)} action={query || page > 1 ? ui.authors.all : ui.nav.works} />}
       </div>
-      <div style={{ height: 140 }} />
+      <div className="nw-spacer" />
     </main>
   );
 }
@@ -96,12 +96,12 @@ export function CategoryDetailContent({ locale, category, articles, page = 1, ha
   return (
     <main id="top" tabIndex={-1} lang={locale} className="nw-w">
       <header className="nw-head">
-        <Link className="nw-ss" href={locale === "en" ? "/en/categories" : "/categories"} style={{ display: "inline-flex", alignItems: "center", minHeight: 44, fontWeight: 700, fontSize: 15 }}>← {ui.categories.all}</Link>
-        <div className="nw-m" style={{ marginTop: 8 }}>{ui.categories.published(category.articleCount)}</div>
-        <h1 className="nw-zh" style={{ fontSize: "clamp(56px, 9vw, 128px)", lineHeight: 1.1 }}>{category.name}</h1>
+        <Link className="nw-ss nw-tag-back" href={locale === "en" ? "/en/categories" : "/categories"}>← {ui.categories.all}</Link>
+        <div className="nw-m nw-mt-8">{ui.categories.published(category.articleCount)}</div>
+        <h1 className="nw-zh nw-tag-heading">{category.name}</h1>
         {category.description ? <p className="nw-ep">{category.description}</p> : null}
       </header>
-      <div className="nw-bodygrid" style={{ marginTop: 48 }}>
+      <div className="nw-bodygrid nw-bodygrid--rise">
         {articles.length ? (
           <>
             {articles.map((article, index) => <WorkRow key={article.slug} article={article} locale={locale} index={index + 1 + (page - 1) * PAGE_SIZE} withCover />)}
@@ -109,7 +109,7 @@ export function CategoryDetailContent({ locale, category, articles, page = 1, ha
           </>
         ) : <EmptyState title={page > 1 ? ui.categories.noMoreWorks : ui.categories.emptyCategory} body="" href={archivePath(locale)} action={ui.nav.works} />}
       </div>
-      <div style={{ height: 140 }} />
+      <div className="nw-spacer" />
     </main>
   );
 }

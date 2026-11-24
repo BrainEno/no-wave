@@ -194,7 +194,7 @@ export function LocalWritingParallel() {
               ))}
             </ul>
             {state.input.documents.length < 2 ? (
-              <p role="status" style={{ color: "var(--or)" }}>
+              <p role="status" className="nw-or">
                 提示：当前集合仅有 1 篇文稿，无法构建双语对照对。请使用“本机文稿集合工具”将译稿与原稿打包为集合文件。
               </p>
             ) : null}

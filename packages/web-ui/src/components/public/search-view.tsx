@@ -44,50 +44,50 @@ export function SearchPageView({ locale, query, tab, type, works, authors, categ
       </header>
 
       {!q ? (
-        <section style={{ marginTop: 56 }}>
+        <section className="nw-mt-56">
           <p className="nw-kicker">{ui.search.browse}</p>
           <div className="nw-chips">{tabTypes.map((candidate) => <Link key={candidate} href={`${archivePath(locale)}?type=${candidate}`}>{messages.workTypeLabels[candidate]}</Link>)}</div>
         </section>
       ) : total === 0 ? (
-        <div style={{ marginTop: 56 }}>
+        <div className="nw-mt-56">
           <EmptyState title={ui.search.none(q)} body={ui.search.hint} href={archivePath(locale)} action={ui.nav.works} />
-          <div className="nw-chips" style={{ marginTop: -56, marginBottom: 56 }}>{tabTypes.slice(0, 4).map((candidate) => <Link key={candidate} href={`${archivePath(locale)}?type=${candidate}`}>{messages.workTypeLabels[candidate]}</Link>)}</div>
+          <div className="nw-chips nw-chips--flush">{tabTypes.slice(0, 4).map((candidate) => <Link key={candidate} href={`${archivePath(locale)}?type=${candidate}`}>{messages.workTypeLabels[candidate]}</Link>)}</div>
         </div>
       ) : (
         <>
-          <nav className="nw-tabs" style={{ marginTop: 40 }} aria-label={ui.search.title}>
+          <nav className="nw-tabs nw-mt-40" aria-label={ui.search.title}>
             {tabs.map((item) => <Link key={item.key} href={hrefWith(base, { q, tab: item.key === "works" ? null : item.key })} aria-current={tab === item.key ? "true" : undefined}>{item.label} <span className="nw-m">{item.count}</span></Link>)}
           </nav>
           {tab === "works" ? (
-            <section style={{ marginTop: 24 }}>
+            <section className="nw-mt-24">
               {presentTypes.length > 1 ? (
-                <div className="nw-chips" style={{ marginTop: 0, marginBottom: 16 }} role="group" aria-label={ui.archive.typeLabel}>
-                  <Link href={hrefWith(base, { q })} aria-current={type === null ? "true" : undefined} style={type === null ? { background: "var(--ink)", color: "var(--paper)", fontWeight: 700 } : undefined}>{ui.archive.all}</Link>
-                  {presentTypes.map((candidate) => <Link key={candidate} href={hrefWith(base, { q, type: candidate })} aria-current={type === candidate ? "true" : undefined} style={type === candidate ? { background: "var(--ink)", color: "var(--paper)", fontWeight: 700 } : undefined}>{messages.workTypeLabels[candidate]}</Link>)}
+                <div className="nw-chips nw-mb-16" role="group" aria-label={ui.archive.typeLabel}>
+                  <Link href={hrefWith(base, { q })} aria-current={type === null ? "true" : undefined}>{ui.archive.all}</Link>
+                  {presentTypes.map((candidate) => <Link key={candidate} href={hrefWith(base, { q, type: candidate })} aria-current={type === candidate ? "true" : undefined}>{messages.workTypeLabels[candidate]}</Link>)}
                 </div>
               ) : null}
               {shown.length ? shown.map((work, index) => <WorkRow key={work.slug} article={work} locale={locale} index={index + 1} query={q} />) : <EmptyState title={ui.archive.noResults} body={ui.archive.noResultsHint} href={hrefWith(base, { q })} action={ui.archive.clear} />}
             </section>
           ) : null}
           {tab === "authors" ? (
-            <section style={{ marginTop: 24 }}>
+            <section className="nw-mt-24">
               {authors.length ? authors.map((author) => (
                 <Link key={author.username} className="nw-ar" href={authorPath(author.username, locale)}>
                   <span className="nw-avatar" aria-hidden="true">{initial(author.displayName)}</span>
-                  <span><span className="nw-zh"><Highlight text={author.displayName} query={q} /></span><span className="nw-m" style={{ display: "block" }}>{ui.authors.works(author.workCount)}</span></span>
+                  <span><span className="nw-zh"><Highlight text={author.displayName} query={q} /></span><span className="nw-m nw-block">{ui.authors.works(author.workCount)}</span></span>
                   <span className="nw-m" aria-hidden="true">→</span>
                 </Link>
               )) : <EmptyState title={ui.search.none(q)} body={ui.search.hint} />}
               {/* The tab is a window onto the directory, not the whole of it. */}
               {authors.length ? (
-                <p className="nw-m" style={{ marginTop: 24 }}>
+                <p className="nw-m nw-mt-24">
                   <Link href={locale === "en" ? "/en/authors" : "/authors"}>{ui.authors.all} →</Link>
                 </p>
               ) : null}
             </section>
           ) : null}
           {tab === "categories" ? (
-            <section style={{ marginTop: 24 }}>
+            <section className="nw-mt-24">
               {categories.length ? categories.map((category) => (
                 <Link key={category.slug} className="nw-gr" href={`${locale === "en" ? "/en/categories" : "/categories"}/${category.slug}`}>
                   <span className="nw-zh"><Highlight text={category.name} query={q} /></span>
@@ -98,7 +98,7 @@ export function SearchPageView({ locale, query, tab, type, works, authors, categ
           ) : null}
         </>
       )}
-      <div style={{ height: 140 }} />
+      <div className="nw-spacer" />
     </main>
   );
 }

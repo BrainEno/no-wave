@@ -186,7 +186,7 @@ export function FeaturedShelfPanel() {
     return (
       <section className="nw-auth-panel" aria-labelledby="nw-featured-checking">
         <h1 id="nw-featured-checking"><span className="nw-zh">精选</span> <i>Featured</i></h1>
-        <p className="nw-auth-status" role="status" style={{ marginTop: 24 }}>正在确认登录状态，请稍候……</p>
+        <p className="nw-auth-status nw-mt-24" role="status">正在确认登录状态，请稍候……</p>
       </section>
     );
   }
@@ -195,7 +195,7 @@ export function FeaturedShelfPanel() {
     return (
       <section className="nw-auth-panel" aria-labelledby="nw-featured-out">
         <h1 id="nw-featured-out"><span className="nw-zh">尚未登录</span> <i>Signed out</i></h1>
-        <p className="nw-ep" style={{ marginTop: 24 }}>这个会话已经结束，正在前往登录页……</p>
+        <p className="nw-ep nw-mt-24">这个会话已经结束，正在前往登录页……</p>
         <div className="nw-auth-switch">
           <Link className="nw-btn nw-pri" href="/sign-in?next=%2Fadmin%2Ffeatured">前往登录</Link>
         </div>
@@ -207,7 +207,7 @@ export function FeaturedShelfPanel() {
     return (
       <section className="nw-auth-panel" aria-labelledby="nw-featured-denied">
         <h1 id="nw-featured-denied"><span className="nw-zh">精选</span> <i>Featured</i></h1>
-        <p className="nw-ep" style={{ marginTop: 24 }}>
+        <p className="nw-ep nw-mt-24">
           精选由编辑挑选。这个账号还没有编辑权限，所以这里没有可操作的内容 —— 不是页面没加载好。
         </p>
         <div className="nw-auth-switch">
@@ -221,7 +221,7 @@ export function FeaturedShelfPanel() {
     return (
       <section className="nw-auth-panel" aria-labelledby="nw-featured-error">
         <h1 id="nw-featured-error"><span className="nw-zh">精选暂时无法载入</span> <i>Unavailable</i></h1>
-        <p className="nw-auth-error" role="alert" style={{ marginTop: 24 }}>{error}</p>
+        <p className="nw-auth-error nw-mt-24" role="alert">{error}</p>
         <div className="nw-auth-switch">
           <Link className="nw-btn" href="/write">回到写作台</Link>
         </div>
@@ -232,15 +232,15 @@ export function FeaturedShelfPanel() {
   return (
     <section className="nw-auth-panel" aria-labelledby="nw-featured-title">
       <h1 id="nw-featured-title"><span className="nw-zh">精选</span> <i>Featured</i></h1>
-      <p className="nw-ep" style={{ marginTop: 24 }}>
+      <p className="nw-ep nw-mt-24">
         首页「精选」按下面的顺序展示，最多 {MAX_FEATURED} 篇。改动在这里排好，点保存才会生效；
         只有已发布的作品能上精选，一篇被撤下的作品会先离开列表，重新发表后回到原来的位置。
       </p>
 
-      {notice ? <p className="nw-auth-status" role="status" style={{ marginTop: 24 }}>{notice}</p> : null}
-      {error ? <p className="nw-auth-error" role="alert" style={{ marginTop: 24 }}>{error}</p> : null}
+      {notice ? <p className="nw-auth-status nw-mt-24" role="status">{notice}</p> : null}
+      {error ? <p className="nw-auth-error nw-mt-24" role="alert">{error}</p> : null}
 
-      <ol className="nw-curate-list" style={{ marginTop: 32, padding: 0, listStyle: "none" }}>
+      <ol className="nw-curate-list nw-curate-plain nw-mt-32">
         {works.map((work, index) => (
           <li key={work.id} className="nw-curate-row">
             <span className="nw-m nw-curate-index">{index + 1}</span>
@@ -258,7 +258,7 @@ export function FeaturedShelfPanel() {
           </li>
         ))}
         {works.length === 0
-          ? <li className="nw-m" style={{ padding: "16px 0", borderTop: "1px solid var(--ink)" }}>精选还是空的。</li>
+          ? <li className="nw-m nw-curate-empty">精选还是空的。</li>
           : null}
       </ol>
 
@@ -273,16 +273,16 @@ export function FeaturedShelfPanel() {
         <span className="nw-m" role="status">{dirty ? "有未保存的改动。" : "已是最新。"}</span>
       </div>
 
-      <h2 style={{ marginTop: 48, fontSize: 24 }}><span className="nw-zh">加入作品</span></h2>
+      <h2 className="nw-curate-add"><span className="nw-zh">加入作品</span></h2>
       <form className="nw-auth-switch" onSubmit={(event) => void search(event)}>
         <input type="search" value={query} onChange={(event) => setQuery(event.target.value)}
           placeholder="搜索已发布的作品" aria-label="搜索已发布的作品"
-          style={{ minHeight: 48, padding: "0 12px", minWidth: 260, border: "1px solid var(--ink)", background: "none" }} />
+          className="nw-curate-search" />
         <button type="submit" className="nw-btn" disabled={busy !== null}>
           {busy === "search" ? "正在搜索……" : "搜索"}
         </button>
       </form>
-      <ul style={{ marginTop: 16, padding: 0, listStyle: "none" }}>
+      <ul className="nw-curate-plain nw-mt-16">
         {results.map((work) => {
           const already = works.some((existing) => existing.id === work.id);
           return (
@@ -299,7 +299,7 @@ export function FeaturedShelfPanel() {
           );
         })}
         {results.length === 0 && busy !== "search"
-          ? <li className="nw-m" style={{ padding: "16px 0", borderTop: "1px solid var(--ink)" }}>
+          ? <li className="nw-m nw-curate-empty">
             搜索已发布的作品，把它们加入精选。
           </li>
           : null}

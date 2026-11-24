@@ -249,9 +249,9 @@ export function WorkBatchImportPanel({ onImportComplete }: { onImportComplete?: 
   const validCount = items.length - invalidCount;
 
   return (
-    <div className="nw-import-panel" style={{ marginTop: 20 }}>
+    <div className="nw-import-panel nw-imp">
       {/* 导入模式切换导航 */}
-      <div className="nw-authoring-actions" style={{ marginBottom: 20 }}>
+      <div className="nw-authoring-actions nw-mb-20">
         <button
           className={`nw-btn ${importMode === "doc" ? "nw-pri" : ""}`}
           type="button"
@@ -277,19 +277,19 @@ export function WorkBatchImportPanel({ onImportComplete }: { onImportComplete?: 
 
       {/* 模式 1: 文档文件上传 */}
       {importMode === "doc" && (
-        <section style={{ background: "rgba(255,255,255,0.03)", padding: 24, borderRadius: 8, border: "1px dashed var(--t2, #555)", marginBottom: 24 }}>
-          <h3 style={{ marginTop: 0 }}>上传文学文档</h3>
+        <section className="nw-imp-card">
+          <h3>上传文学文档</h3>
           <p className="nw-m">
             支持拖拽或选择单个/多个 <code>.docx</code>, <code>.txt</code>, <code>.md</code>, <code>.html</code> 文件。
             系统将自动提取文稿标题与正文段落，并可在下方进行批量补充后一键转入作品草稿。
           </p>
-          <div style={{ marginTop: 16 }}>
+          <div className="nw-imp-in">
             <input
               ref={fileInputRef}
               type="file"
               multiple
               accept=".docx,.txt,.md,.markdown,.html,.htm"
-              style={{ display: "none" }}
+              className="nw-imp-file"
               onChange={e => void handleFiles(e.target.files)}
             />
             <button
@@ -306,22 +306,22 @@ export function WorkBatchImportPanel({ onImportComplete }: { onImportComplete?: 
 
       {/* 模式 2: 用户数据接入 (JSON / CSV) */}
       {importMode === "data" && (
-        <section style={{ background: "rgba(255,255,255,0.03)", padding: 24, borderRadius: 8, border: "1px solid var(--t2, #444)", marginBottom: 24 }}>
-          <h3 style={{ marginTop: 0 }}>已有数据批量接入接口</h3>
+        <section className="nw-imp-card nw-imp-card--solid">
+          <h3>已有数据批量接入接口</h3>
           <p className="nw-m">
             支持从 Substack, WordPress, Hexo, Typecho 等平台导出的 JSON 或 CSV 数据。
             智能识别标题、正文、作者、体裁、摘要等字段；缺失的字段可在下方一键批量补齐。
           </p>
-          <div style={{ marginTop: 12 }}>
+          <div className="nw-imp-in">
             <textarea
               value={rawText}
               onChange={e => setRawText(e.target.value)}
               placeholder={`在此粘贴 JSON 数组或 CSV 文本...\n例如：\n${EXAMPLE_JSON}`}
               rows={8}
-              style={{ width: "100%", fontFamily: "monospace", fontSize: 13, padding: 12, borderRadius: 4, background: "rgba(0,0,0,0.3)", color: "var(--ink)", border: "1px solid #444" }}
+              className="nw-imp-mono"
             />
           </div>
-          <div className="nw-authoring-actions" style={{ marginTop: 12 }}>
+          <div className="nw-authoring-actions nw-mt-12">
             <button
               className="nw-btn nw-pri"
               type="button"
@@ -343,16 +343,16 @@ export function WorkBatchImportPanel({ onImportComplete }: { onImportComplete?: 
 
       {/* 模式 3: Notion 导入 */}
       {importMode === "notion" && (
-        <section style={{ marginBottom: 24 }}>
+        <section className="nw-imp-list">
           <NotionImport />
         </section>
       )}
 
       {/* 批量补齐与导入清单审查区 */}
       {items.length > 0 && (
-        <section style={{ background: "rgba(0,0,0,0.2)", padding: 20, borderRadius: 8, border: "1px solid #333", marginTop: 24 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 12 }}>
-            <h3 style={{ margin: 0 }}>
+        <section className="nw-imp-review">
+          <div className="nw-imp-head">
+            <h3>
               待导入清单（共 {items.length} 篇 · {validCount} 篇就绪 · {invalidCount} 篇待补充）
             </h3>
             <button className="nw-btn" type="button" onClick={() => setItems([])}>
@@ -361,20 +361,20 @@ export function WorkBatchImportPanel({ onImportComplete }: { onImportComplete?: 
           </div>
 
           {/* 缺失字段批量补全工具栏 (用户重点要求的“自补/批量补齐”) */}
-          <div style={{ marginTop: 16, padding: 16, background: "rgba(255,255,255,0.04)", borderRadius: 6, border: "1px solid #444" }}>
-            <h4 style={{ margin: "0 0 12px 0", fontSize: 15 }}>
+          <div className="nw-imp-tools">
+            <h4>
               ⚡ 缺失字段一键批量补齐（自补工具）
             </h4>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center" }}>
+            <div className="nw-imp-fields">
               {/* 批量补充作者 */}
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <div className="nw-imp-field">
                 <span className="nw-m">补充作者:</span>
                 <input
                   type="text"
                   placeholder="作者姓名"
                   value={patchAuthor}
                   onChange={e => setPatchAuthor(e.target.value)}
-                  style={{ width: 120, padding: "4px 8px" }}
+                  className="nw-imp-mini"
                 />
                 <button className="nw-btn" type="button" onClick={handleBatchApplyAuthor}>
                   应用到缺失项 {missingAuthorCount > 0 ? `(${missingAuthorCount})` : ""}
@@ -382,12 +382,12 @@ export function WorkBatchImportPanel({ onImportComplete }: { onImportComplete?: 
               </div>
 
               {/* 批量指定体裁 */}
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <div className="nw-imp-field">
                 <span className="nw-m">统一体裁:</span>
                 <select
                   value={patchWorkType}
                   onChange={e => setPatchWorkType(e.target.value as WorkType)}
-                  style={{ padding: "4px 8px" }}
+                  className="nw-imp-input"
                 >
                   {SUPPORTED_WORK_TYPES.map(t => (
                     <option key={t.value} value={t.value}>{t.label}</option>
@@ -399,12 +399,12 @@ export function WorkBatchImportPanel({ onImportComplete }: { onImportComplete?: 
               </div>
 
               {/* 批量指定语言 */}
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <div className="nw-imp-field">
                 <span className="nw-m">语言:</span>
                 <select
                   value={patchLocale}
                   onChange={e => setPatchLocale(e.target.value)}
-                  style={{ padding: "4px 8px" }}
+                  className="nw-imp-input"
                 >
                   <option value="zh-CN">简体中文</option>
                   <option value="en">English</option>
@@ -423,78 +423,78 @@ export function WorkBatchImportPanel({ onImportComplete }: { onImportComplete?: 
           </div>
 
           {/* 待导入文章卡片/表格 */}
-          <div style={{ marginTop: 16, maxHeight: 500, overflowY: "auto", border: "1px solid #333", borderRadius: 4 }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+          <div className="nw-imp-table-wrap">
+            <table className="nw-imp-table">
               <thead>
-                <tr style={{ background: "rgba(255,255,255,0.06)", borderBottom: "1px solid #444", textAlign: "left" }}>
-                  <th style={{ padding: "10px 12px", width: 80 }}>状态</th>
-                  <th style={{ padding: "10px 12px" }}>标题</th>
-                  <th style={{ padding: "10px 12px", width: 140 }}>作者</th>
-                  <th style={{ padding: "10px 12px", width: 120 }}>体裁</th>
-                  <th style={{ padding: "10px 12px", width: 90 }}>语言</th>
-                  <th style={{ padding: "10px 12px", width: 100 }}>字数</th>
-                  <th style={{ padding: "10px 12px", width: 60 }}>操作</th>
+                <tr className="nw-imp-trhead">
+                  <th>状态</th>
+                  <th>标题</th>
+                  <th>作者</th>
+                  <th>体裁</th>
+                  <th>语言</th>
+                  <th>字数</th>
+                  <th>操作</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map(item => (
-                  <tr key={item.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-                    <td style={{ padding: "8px 12px" }}>
+                  <tr key={item.id} className="nw-imp-tr">
+                    <td className="nw-imp-td">
                       {item.validationErrors.length === 0 ? (
-                        <span style={{ color: "var(--gr, #4caf50)", fontWeight: 600 }}>✅ 就绪</span>
+                        <span className="nw-imp-ok">✅ 就绪</span>
                       ) : (
-                        <span style={{ color: "var(--or, #ff9800)", fontSize: 12 }} title={item.validationErrors.join("、")}>
+                        <span className="nw-imp-bad" title={item.validationErrors.join("、")}>
                           ⚠️ {item.validationErrors[0]}
                         </span>
                       )}
                     </td>
-                    <td style={{ padding: "8px 12px" }}>
+                    <td className="nw-imp-td">
                       <input
                         type="text"
                         value={item.title}
                         onChange={e => updateItem(item.id, { title: e.target.value })}
-                        style={{ width: "100%", padding: "4px 8px" }}
+                        className="nw-imp-input"
                       />
                     </td>
-                    <td style={{ padding: "8px 12px" }}>
+                    <td className="nw-imp-td">
                       <input
                         type="text"
                         placeholder="作者"
                         value={item.author}
                         onChange={e => updateItem(item.id, { author: e.target.value })}
-                        style={{ width: "100%", padding: "4px 8px" }}
+                        className="nw-imp-input"
                       />
                     </td>
-                    <td style={{ padding: "8px 12px" }}>
+                    <td className="nw-imp-td">
                       <select
                         value={item.workType}
                         onChange={e => updateItem(item.id, { workType: e.target.value as WorkType })}
-                        style={{ width: "100%", padding: "4px 6px" }}
+                        className="nw-imp-input nw-imp-input--sel"
                       >
                         {SUPPORTED_WORK_TYPES.map(t => (
                           <option key={t.value} value={t.value}>{t.label}</option>
                         ))}
                       </select>
                     </td>
-                    <td style={{ padding: "8px 12px" }}>
+                    <td className="nw-imp-td">
                       <select
                         value={item.locale}
                         onChange={e => updateItem(item.id, { locale: e.target.value })}
-                        style={{ width: "100%", padding: "4px 6px" }}
+                        className="nw-imp-input nw-imp-input--sel"
                       >
                         <option value="zh-CN">中文</option>
                         <option value="en">EN</option>
                         <option value="zh-TW">繁体</option>
                       </select>
                     </td>
-                    <td style={{ padding: "8px 12px" }}>
+                    <td className="nw-imp-td">
                       <span className="nw-m">{item.content.length} 字</span>
                     </td>
-                    <td style={{ padding: "8px 12px" }}>
+                    <td className="nw-imp-td">
                       <button
                         type="button"
                         onClick={() => removeItem(item.id)}
-                        style={{ background: "none", border: 0, color: "var(--or, #ff6b6b)", cursor: "pointer", fontSize: 16 }}
+                        className="nw-imp-del"
                         title="移除此项"
                       >
                         ✕
@@ -508,20 +508,20 @@ export function WorkBatchImportPanel({ onImportComplete }: { onImportComplete?: 
 
           {/* 进度与执行按钮 */}
           {importProgress && (
-            <div style={{ marginTop: 16, padding: 12, background: "rgba(255,255,255,0.05)", borderRadius: 4 }}>
-              <p style={{ margin: 0 }}>
+            <div className="nw-imp-note">
+              <p>
                 ⏳ 正在导入第 {importProgress.current} / {importProgress.total} 篇：《{importProgress.title}》…
               </p>
             </div>
           )}
 
           {importResults && (
-            <div style={{ marginTop: 16, padding: 12, background: "rgba(255,255,255,0.05)", borderRadius: 4 }}>
-              <p style={{ margin: 0, fontWeight: 600 }}>
+            <div className="nw-imp-note nw-imp-note--result">
+              <p>
                 🎉 批量导入完成：成功写入 {importResults.success} 篇草稿{importResults.failed > 0 ? `，失败 ${importResults.failed} 篇` : ""}！
               </p>
               {importResults.errors.length > 0 && (
-                <ul style={{ margin: "8px 0 0", paddingLeft: 20, color: "var(--or, #ff6b6b)", fontSize: 13 }}>
+                <ul className="nw-imp-errlist">
                   {importResults.errors.map((err, i) => (
                     <li key={i}>{err}</li>
                   ))}
@@ -530,7 +530,7 @@ export function WorkBatchImportPanel({ onImportComplete }: { onImportComplete?: 
             </div>
           )}
 
-          <div className="nw-authoring-actions" style={{ marginTop: 20 }}>
+          <div className="nw-authoring-actions nw-mt-20">
             <button
               className="nw-btn nw-pri"
               type="button"

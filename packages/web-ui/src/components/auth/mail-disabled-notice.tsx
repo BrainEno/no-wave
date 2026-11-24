@@ -20,7 +20,7 @@ export function MailDisabledNotice({ locale = "zh-CN" }: { locale?: "zh-CN" | "e
       <h1 id="nw-mail-off">
         <span className="nw-zh">{MAIL_DISABLED_NOTICE.title}</span> <i>{MAIL_DISABLED_NOTICE.titleEn}</i>
       </h1>
-      <p className="nw-ep" style={{ marginTop: 24 }}>
+      <p className="nw-ep nw-mt-24">
         {en ? MAIL_DISABLED_NOTICE.bodyEn : MAIL_DISABLED_NOTICE.body}
       </p>
       <div className="nw-auth-switch">

@@ -52,7 +52,7 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
     return (
       <section className="nw-auth-panel" aria-labelledby="nw-reset-broken">
         <h1 id="nw-reset-broken"><span className="nw-zh">链接不完整</span> <i>Incomplete link</i></h1>
-        <p className="nw-ep" style={{ marginTop: 24 }}>
+        <p className="nw-ep nw-mt-24">
           这个地址里没有重设令牌，可能是邮件客户端把链接截断了。请回到登录页重新申请一封重设邮件。
         </p>
         <div className="nw-auth-switch">
@@ -67,7 +67,7 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
     return (
       <section className="nw-auth-panel" aria-labelledby="nw-reset-done">
         <h1 id="nw-reset-done"><span className="nw-zh">密码已重设</span> <i>New password set</i></h1>
-        <p className="nw-ep" style={{ marginTop: 24 }}>
+        <p className="nw-ep nw-mt-24">
           请使用新密码重新登录。<strong>你此前登录的所有设备都已退出</strong>——重设密码会吊销这个账号的全部会话，这是找回账号的意义所在。
         </p>
         {recoveryWarning ? <p className="nw-auth-error" role="alert">{recoveryWarning}</p> : null}
@@ -81,7 +81,7 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
   return (
     <section className="nw-auth-panel" aria-labelledby="nw-reset-new">
       <h1 id="nw-reset-new"><span className="nw-zh">设置新密码</span> <i>New password</i></h1>
-      <p className="nw-ep" style={{ marginTop: 24 }}>
+      <p className="nw-ep nw-mt-24">
         新密码至少 12 个字符。这个链接只能使用一次，重设后它会立即失效。
       </p>
       <form className="nw-auth-form" onSubmit={(event) => { void submit(event); }}>
