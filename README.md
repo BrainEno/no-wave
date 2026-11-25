@@ -85,7 +85,7 @@ Moderation, analytics and real-time clients remain incomplete. Mail-dependent em
 - The backend identity lifecycle is still an initial one. Mail-dependent verification/recovery are **off by default**, and moderation tools, real-time clients, and external push providers remain incomplete. A hardening pass is still required before a production launch.
 - The current Web UI is the single React Router implementation and is functional; its visual design is still a concept-stage workstream rather than a finished design system.
 - API authentication is Bearer-token based. Web clients authenticate through same-origin Web routes and receive an HttpOnly cookie; browser code does not hold a long-lived token in local storage.
-- The old `API_GRAPHQL_URL` value is accepted for one transition release only and emits a deprecation warning. New code must use `/api/v1` REST paths; see [REST idempotency](docs/architecture/rest-idempotency.md).
+- The retired `API_GRAPHQL_URL` and `NEXT_PUBLIC_SITE_URL` names are no longer read (removed in #350). Use `API_BASE_URL` for the REST API origin and `SITE_URL` for the public site origin. New code must use `/api/v1` REST paths; see [REST idempotency](docs/architecture/rest-idempotency.md).
 
 The structured engineering review, architectural decisions, and roadmap live in [docs/audit](docs/audit), [the decision index](docs/architecture/decisions/README.md), and [docs/roadmap](docs/roadmap). Decisions are numbered permanently; `pnpm test` fails if two share a number, so a citation of "ADR 0011" means one thing.
 

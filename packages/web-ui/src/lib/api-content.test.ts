@@ -63,37 +63,13 @@ test("explicit REST API base takes precedence over the service binding", () => {
   );
 });
 
-test("legacy GraphQL environment value is mapped to its API base with a deprecation warning", () => {
-  const warnings: string[] = [];
-  const originalWarn = console.warn;
-  console.warn = (message?: unknown) => { warnings.push(String(message)); };
-  try {
-    assert.equal(
-      resolveApiBaseUrl({ legacyGraphqlUrl: "https://api.example.test/graphql" }),
-      "https://api.example.test",
-    );
-    assert.equal(warnings.length, 1);
-    assert.match(warnings[0], /API_GRAPHQL_URL is deprecated/);
-  } finally {
-    console.warn = originalWarn;
-  }
-});
-
-test("new base URL takes precedence and legacy override retains its previous precedence over service binding", () => {
+test("explicit base URL takes precedence over the service binding", () => {
   assert.equal(
     resolveApiBaseUrl({
       explicitUrl: "https://api-new.example.test",
-      legacyGraphqlUrl: "https://api-legacy.example.test/graphql",
       serviceUrl: "https://api-service.example.test",
     }),
     "https://api-new.example.test",
-  );
-  assert.equal(
-    resolveApiBaseUrl({
-      legacyGraphqlUrl: "https://api-legacy.example.test/graphql",
-      serviceUrl: "https://api-service.example.test",
-    }),
-    "https://api-legacy.example.test",
   );
 });
 
@@ -101,14 +77,10 @@ test("endpoint resolution preserves fixture mode when no endpoint is configured"
   assert.equal(resolveApiBaseUrl({}), undefined);
 });
 
-test("invalid service binding and malformed legacy endpoints fail visibly", () => {
+test("invalid service binding and explicit endpoints fail visibly", () => {
   assert.throws(
     () => resolveApiBaseUrl({ serviceUrl: "not-a-url" }),
     /API_SERVICE_URL must be an absolute HTTP\(S\) URL/,
-  );
-  assert.throws(
-    () => resolveApiBaseUrl({ legacyGraphqlUrl: "https://api.example.test/custom-query" }),
-    /must point to a \/graphql endpoint/,
   );
   assert.throws(
     () => resolveApiBaseUrl({ explicitUrl: "https://user:password@api.example.test" }),

@@ -42,7 +42,6 @@ export type ApiContentClient = {
   listTagArticles(slug: string, locale?: Locale, limit?: number, offset?: number): Promise<ArticleView[] | null>;
 };
 
-let legacyGraphqlWarningShown = false;
 // Preserve HTTP absence separately from a malformed successful `data: null`.
 const CONTENT_NOT_FOUND = Symbol("content-not-found");
 
@@ -107,36 +106,14 @@ function normalizeHttpUrl(value: string, name: string): string {
 
 /**
  * Resolve the API origin supplied directly or by the Vercel service binding.
- * API_GRAPHQL_URL remains a one-release compatibility alias and is never used
- * as a GraphQL transport; callers are migrated to the versioned REST API.
+ * `API_BASE_URL` wins; `API_SERVICE_URL` is the platform fallback. The retired
+ * legacy GraphQL-era alias was removed (#350) and is no longer read.
  */
 export function resolveApiBaseUrl(
-  config: { explicitUrl?: string; serviceUrl?: string; legacyGraphqlUrl?: string } = {},
+  config: { explicitUrl?: string; serviceUrl?: string } = {},
 ): string | undefined {
   const explicitUrl = config.explicitUrl?.trim();
   if (explicitUrl) return normalizeHttpUrl(explicitUrl, "API_BASE_URL");
-
-  // Preserve the old explicit override for one migration release, ahead of the
-  // service binding, while directing operators to API_BASE_URL.
-  const legacyGraphqlUrl = config.legacyGraphqlUrl?.trim();
-  if (legacyGraphqlUrl) {
-    let legacyUrl: URL;
-    try {
-      legacyUrl = new URL(legacyGraphqlUrl);
-    } catch {
-      throw new Error("API_GRAPHQL_URL compatibility value must be an absolute HTTP(S) /graphql URL; configure API_BASE_URL instead.");
-    }
-    if ((legacyUrl.protocol !== "http:" && legacyUrl.protocol !== "https:") || !/\/graphql\/?$/.test(legacyUrl.pathname)) {
-      throw new Error("API_GRAPHQL_URL compatibility value must point to a /graphql endpoint; configure API_BASE_URL instead.");
-    }
-    legacyUrl.pathname = legacyUrl.pathname.replace(/\/graphql\/?$/, "") || "/";
-    const baseUrl = normalizeHttpUrl(legacyUrl.toString(), "API_GRAPHQL_URL");
-    if (!legacyGraphqlWarningShown) {
-      console.warn("API_GRAPHQL_URL is deprecated. Set API_BASE_URL to the REST API origin; GraphQL requests are no longer used by the Web content client.");
-      legacyGraphqlWarningShown = true;
-    }
-    return baseUrl;
-  }
 
   const serviceUrl = config.serviceUrl?.trim();
   return serviceUrl ? normalizeHttpUrl(serviceUrl, "API_SERVICE_URL") : undefined;
