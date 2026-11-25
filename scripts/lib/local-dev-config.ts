@@ -40,9 +40,9 @@ export const DEFAULT_LISTEN_HOST = "0.0.0.0";
 export const DEFAULT_LOOPBACK_HOST = "127.0.0.1";
 export const DEFAULT_SQLITE_PATH = "data/no-wave.sqlite";
 export const DEFAULT_POSTGRES_URL =
-  "postgres://postgres:postgres@127.0.0.1:5432/bot_thk_dev";
+  "postgres://postgres:postgres@127.0.0.1:5432/no_wave_dev";
 export const DEFAULT_POSTGRES_TEST_URL =
-  "postgres://postgres:postgres@127.0.0.1:5432/bot_thk_test";
+  "postgres://postgres:postgres@127.0.0.1:5432/no_wave_test";
 
 export type LocalDevIssue = {
   code: string;
@@ -394,7 +394,7 @@ export function buildLocalEnvFile(options: LocalEnvFileOptions): string {
       ? [
           "DATABASE_PROVIDER=postgres",
           `DATABASE_URL=${databaseUrl}`,
-          "# `pnpm --filter @bot-thk/api migrate` uses DATABASE_URL_UNPOOLED first when set.",
+          "# `pnpm --filter @no-wave/api migrate` uses DATABASE_URL_UNPOOLED first when set.",
           "# DATABASE_URL_UNPOOLED=",
           "# Uncomment after `pnpm db:up` if you also want the PostgreSQL integration tests",
           "# to run as part of `pnpm test`:",

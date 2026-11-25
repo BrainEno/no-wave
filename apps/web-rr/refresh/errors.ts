@@ -1,4 +1,4 @@
-import type { RefreshFailure } from "@bot-thk/web-http";
+import type { RefreshFailure } from "@no-wave/web-http";
 
 export type CoordinationFailureCode = "closed" | "capacity" | "circuit-open" | "deadline" | "database" | "policy" | "invalid-result" | "uncertain";
 

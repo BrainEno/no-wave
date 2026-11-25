@@ -5,16 +5,16 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  picomatch: workspace:@bot-thk/glob-match@*
+  picomatch: workspace:@no-wave/glob-match@*
 
-packageExtensionsChecksum: sha256-2sqSQbUe+fqG9LdYJ6lqWtfkemjXAXMQjXN0AKduB3A=
+packageExtensionsChecksum: sha256-VhNJj2I6mwwrAZSXLL/JYey9lrxz/dXYGUofouKm+l8=
 
 patchedDependencies:
   playwright@1.65.0:
-    hash: 0721b537d28d98b161f1695f719e7c4ef3ab33640eb647ab103d9a1942356f3b
+    hash: 91859657538471ce21b919bb81cf4ce9a1da0c1ee5425d46974fe0dcd3d06e72
     path: patches/playwright@1.65.0.patch
   prettier@3.10.0:
-    hash: 7c70a84d2689e36d7089796ebbbc7d342b5c87af4059161c2a95076039f83a37
+    hash: 220da2184be6d6c9543a40b37869102446fe07e6ab73ed4393599305c8708ff9
     path: patches/prettier@3.10.0.patch
   vite@8.3.6:
     hash: 0758a8ed2c885509eeb71c876ef293e9f1bf2c39e30d4dcbb2eaaa0a44408433
@@ -30,10 +30,10 @@ importers:
       '@babel/parser':
         specifier: 8.1.2
         version: 8.1.2
-      '@bot-thk/eslint-typescript':
+      '@no-wave/eslint-typescript':
         specifier: workspace:*
         version: link:packages/eslint-typescript
-      '@bot-thk/glob-match':
+      '@no-wave/glob-match':
         specifier: workspace:*
         version: link:packages/glob-match
       '@playwright/test':
@@ -74,7 +74,7 @@ importers:
         version: 4.2.0
       prettier:
         specifier: 3.10.0
-        version: 3.10.0(patch_hash=7c70a84d2689e36d7089796ebbbc7d342b5c87af4059161c2a95076039f83a37)
+        version: 3.10.0(patch_hash=220da2184be6d6c9543a40b37869102446fe07e6ab73ed4393599305c8708ff9)
       stylelint:
         specifier: 18.0.0
         version: 18.0.0
@@ -109,10 +109,10 @@ importers:
 
   apps/web-rr:
     dependencies:
-      '@bot-thk/web-http':
+      '@no-wave/web-http':
         specifier: workspace:*
         version: link:../../packages/web-http
-      '@bot-thk/web-ui':
+      '@no-wave/web-ui':
         specifier: workspace:*
         version: link:../../packages/web-ui
       '@react-router/node':
@@ -197,9 +197,6 @@ importers:
 
   packages/web-ui:
     dependencies:
-      '@bot-thk/web-http':
-        specifier: workspace:*
-        version: link:../web-http
       '@lexical/clipboard':
         specifier: 0.53.0
         version: 0.53.0(typescript@7.0.2)
@@ -227,6 +224,9 @@ importers:
       '@lexical/selection':
         specifier: 0.53.0
         version: 0.53.0(typescript@7.0.2)
+      '@no-wave/web-http':
+        specifier: workspace:*
+        version: link:../web-http
       fflate:
         specifier: 0.8.3
         version: 0.8.3
@@ -2083,7 +2083,7 @@ packages:
     resolution: {integrity: sha512-tIbYtZbucOs0BRGqPJkshJUYdL+SDH7dVM8gjy+ERp3WAUjLEFJE+02kanyHtwjWOnwrKYBiwAmM0p4kLJAnXg==}
     engines: {node: '>=12.0.0'}
     peerDependencies:
-      picomatch: workspace:@bot-thk/glob-match@*
+      picomatch: workspace:@no-wave/glob-match@*
     peerDependenciesMeta:
       picomatch:
         optional: true
@@ -4040,7 +4040,7 @@ snapshots:
 
   '@playwright/test@1.65.0':
     dependencies:
-      playwright: 1.65.0(patch_hash=0721b537d28d98b161f1695f719e7c4ef3ab33640eb647ab103d9a1942356f3b)
+      playwright: 1.65.0(patch_hash=91859657538471ce21b919bb81cf4ce9a1da0c1ee5425d46974fe0dcd3d06e72)
 
   '@preact/signals-core@1.14.5': {}
 
@@ -5435,9 +5435,9 @@ snapshots:
 
   playwright-core@1.65.0: {}
 
-  playwright@1.65.0(patch_hash=0721b537d28d98b161f1695f719e7c4ef3ab33640eb647ab103d9a1942356f3b):
+  playwright@1.65.0(patch_hash=91859657538471ce21b919bb81cf4ce9a1da0c1ee5425d46974fe0dcd3d06e72):
     dependencies:
-      '@bot-thk/glob-match': link:packages/glob-match
+      '@no-wave/glob-match': link:packages/glob-match
       playwright-core: 1.65.0
 
   possible-typed-array-names@1.1.0: {}
@@ -5468,9 +5468,9 @@ snapshots:
 
   prelude-ls@1.2.1: {}
 
-  prettier@3.10.0(patch_hash=7c70a84d2689e36d7089796ebbbc7d342b5c87af4059161c2a95076039f83a37):
+  prettier@3.10.0(patch_hash=220da2184be6d6c9543a40b37869102446fe07e6ab73ed4393599305c8708ff9):
     dependencies:
-      '@bot-thk/glob-match': link:packages/glob-match
+      '@no-wave/glob-match': link:packages/glob-match
 
   punycode@2.3.1: {}
 

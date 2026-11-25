@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { handleArticleLikeRequest } from "@bot-thk/web-http";
+import { handleArticleLikeRequest } from "@no-wave/web-http";
 import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**
@@ -10,7 +10,7 @@ import { apiProxyConfig } from "../lib/runtime.ts";
  * looks new: the reader-facing half was simply missing, and a capability that
  * only exists for clients that already know about it is not a shipped feature.
  *
- * The implementation is the shared `@bot-thk/web-http` handler — slug/locale
+ * The implementation is the shared `@no-wave/web-http` handler — slug/locale
  * validation, the exact-Origin check on the mutation, the bounded body and
  * cookie-attached forwarding exist once.
  */

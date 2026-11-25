@@ -33,7 +33,7 @@ instance never ran them, and that when one did fail, the failure was swallowed b
 A **one-shot process**, like the notification drain:
 
 ```
-pnpm --filter @bot-thk/api maintenance        # node src/persistence/maintenance.ts
+pnpm --filter @no-wave/api maintenance        # node src/persistence/maintenance.ts
 ```
 
 It opens the configured persistence runtime, checks `store.health()`, sweeps what
@@ -117,7 +117,7 @@ Hourly, from anything that can start a process against the database.
 
 ```cron
 # crontab on the host that runs the API
-17 * * * * cd /srv/no-wave && pnpm --filter @bot-thk/api maintenance >> /var/log/no-wave-maintenance.log 2>&1
+17 * * * * cd /srv/no-wave && pnpm --filter @no-wave/api maintenance >> /var/log/no-wave-maintenance.log 2>&1
 ```
 
 ```yaml
@@ -137,7 +137,7 @@ jobs:
         with: { node-version: 24 }
       - uses: pnpm/action-setup@v4
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @bot-thk/api maintenance
+      - run: pnpm --filter @no-wave/api maintenance
 ```
 
 ```ini

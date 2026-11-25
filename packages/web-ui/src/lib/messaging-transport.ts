@@ -1,4 +1,4 @@
-import { CONVERSATION_ID_PATTERN, MESSAGE_BODY_MAX_CHARS, MESSAGING_EXPECTED_ACTOR_HEADER, isUsableIdempotencyKey, readLimitedStream, resolveUpstreamTimeoutMs, UpstreamTimeoutError, withUpstreamDeadline } from "@bot-thk/web-http";
+import { CONVERSATION_ID_PATTERN, MESSAGE_BODY_MAX_CHARS, MESSAGING_EXPECTED_ACTOR_HEADER, isUsableIdempotencyKey, readLimitedStream, resolveUpstreamTimeoutMs, UpstreamTimeoutError, withUpstreamDeadline } from "@no-wave/web-http";
 
 export type MessagingProblem = "unverified" | "unauthenticated" | "account-changed" | "conflict" | "invalid" | "too-long" | "changed" | "missing" | "unavailable" | "invalid-response" | "timeout" | "cancelled";
 export class MessagingRequestError extends Error {

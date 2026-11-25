@@ -19,7 +19,7 @@ const builtInProviders = Object.freeze({
       const status = await getSqliteMigrationStatus(db);
       if (status.pending.length > 0) {
         throw new Error(
-          `SQLite schema is not current. Run "pnpm --filter @bot-thk/api migrate" before starting the API. Pending: ${status.pending.join(", ")}.`,
+          `SQLite schema is not current. Run "pnpm --filter @no-wave/api migrate" before starting the API. Pending: ${status.pending.join(", ")}.`,
         );
       }
       return { adapter: createSqliteStore(db), close: () => db.close() };

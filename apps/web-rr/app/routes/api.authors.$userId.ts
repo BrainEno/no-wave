@@ -1,5 +1,5 @@
 import type { LoaderFunctionArgs } from "react-router";
-import { handleAuthorProfileRequest } from "@bot-thk/web-http";
+import { handleAuthorProfileRequest } from "@no-wave/web-http";
 import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**

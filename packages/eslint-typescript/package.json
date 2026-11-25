@@ -1,5 +1,5 @@
 {
-  "name": "@bot-thk/eslint-typescript",
+  "name": "@no-wave/eslint-typescript",
   "private": true,
   "type": "module",
   "description": "typescript-eslint with the TypeScript compiler API it requires, for lint only.",

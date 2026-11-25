@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs } from "react-router";
-import { handleAccountEmailVerificationRequest } from "@bot-thk/web-http";
+import { handleAccountEmailVerificationRequest } from "@no-wave/web-http";
 import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**

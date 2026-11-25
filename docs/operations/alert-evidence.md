@@ -76,8 +76,8 @@ NODE
 ## 2. review：全部验签后审阅历史
 
 ```sh
-pnpm --silent --filter @bot-thk/api ops:evidence --help
-pnpm --silent --filter @bot-thk/api ops:evidence review \
+pnpm --silent --filter @no-wave/api ops:evidence --help
+pnpm --silent --filter @no-wave/api ops:evidence review \
   --trust "$EVIDENCE_DIRECTORY/public-trust.json" \
   --manifest "$EVIDENCE_DIRECTORY/manifest.json" --max-age-ms 86400000
 ```
@@ -107,7 +107,7 @@ pnpm --silent --filter @bot-thk/api ops:evidence review \
 ## 3. compare：删旧证据不是进展
 
 ```sh
-pnpm --silent --filter @bot-thk/api ops:evidence compare \
+pnpm --silent --filter @no-wave/api ops:evidence compare \
   --trust "$EVIDENCE_DIRECTORY/public-trust.json" \
   --before "$EVIDENCE_DIRECTORY/before.json" --after "$EVIDENCE_DIRECTORY/after.json"
 ```
@@ -128,7 +128,7 @@ pnpm --silent --filter @bot-thk/api ops:evidence compare \
 ## 4. check：独立指定已知 checkpoint
 
 ```sh
-pnpm --silent --filter @bot-thk/api ops:evidence check \
+pnpm --silent --filter @no-wave/api ops:evidence check \
   --trust "$EVIDENCE_DIRECTORY/public-trust.json" \
   --manifest "$EVIDENCE_DIRECTORY/manifest.json" \
   --requirements "$EVIDENCE_DIRECTORY/requirements.json"
@@ -169,14 +169,14 @@ sequence 1，要求每序号唯一、stream 和 sequence 连通。prefix.covered
 ## 5. trace：有界定位事件与完整 findings
 
 ```sh
-pnpm --silent --filter @bot-thk/api ops:evidence trace \
+pnpm --silent --filter @no-wave/api ops:evidence trace \
   --trust "$EVIDENCE_DIRECTORY/public-trust.json" \
   --manifest "$EVIDENCE_DIRECTORY/manifest.json" --view events --limit 32
 # 原样保留第一轮全部过滤与 limit，再把 continuation 放入 --after。
-pnpm --silent --filter @bot-thk/api ops:evidence trace \
+pnpm --silent --filter @no-wave/api ops:evidence trace \
   --trust "$EVIDENCE_DIRECTORY/public-trust.json" \
   --manifest "$EVIDENCE_DIRECTORY/manifest.json" --view events --limit 32 --after "$CONTINUATION"
-pnpm --silent --filter @bot-thk/api ops:evidence trace \
+pnpm --silent --filter @no-wave/api ops:evidence trace \
   --trust "$EVIDENCE_DIRECTORY/public-trust.json" \
   --manifest "$EVIDENCE_DIRECTORY/manifest.json" --view findings --severity conflict --limit 32
 ```

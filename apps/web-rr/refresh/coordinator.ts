@@ -1,7 +1,7 @@
 import { RefreshWaiters } from "./request-waiters.ts";
 import { randomUUID } from "node:crypto";
 import { setTimeout as pause } from "node:timers/promises";
-import type { RefreshCoordinator, RefreshCoordinatorContext, RefreshOutcome } from "@bot-thk/web-http";
+import type { RefreshCoordinator, RefreshCoordinatorContext, RefreshOutcome } from "@no-wave/web-http";
 import { coordinationFailure, observeRefresh, RefreshCoordinationError, type RefreshObserver } from "./errors.ts";
 import { isTransientRefreshOutcome, isUncertainRefreshOutcome, normalizeRefreshOutcome, RefreshResultCodec } from "./result-codec.ts";
 import { REFRESH_REUSE_MS, REFRESH_TRANSIENT_MS, type RefreshSettings } from "./settings.ts";

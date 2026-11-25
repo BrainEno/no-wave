@@ -5,7 +5,7 @@ import {
   UpstreamCancelledError,
   UpstreamTimeoutError,
   withUpstreamDeadline,
-} from "@bot-thk/web-http";
+} from "@no-wave/web-http";
 import {
   CatalogueDocumentReader,
   CatalogueReadError,

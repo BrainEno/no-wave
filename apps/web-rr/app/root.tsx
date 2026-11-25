@@ -16,7 +16,7 @@ import { siteUrl } from "./lib/runtime.ts";
 /**
  * The site shell — top navigation, language switch, notification panel, the
  * smooth-scroll wrapper and the footer — is the shared client component
- * `SiteChrome` from `@bot-thk/web-ui`. It is the same shell every page is
+ * `SiteChrome` from `@no-wave/web-ui`. It is the same shell every page is
  * rendered into, including 404s, so a dead link still arrives with a way out.
  *
  * It is a client component, so `apps/web-rr/test/client-bundle.test.ts` asserts

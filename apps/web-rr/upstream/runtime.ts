@@ -1,5 +1,5 @@
-import { UpstreamTelemetry, UpstreamTransport, type FetchImpl } from "@bot-thk/web-http";
-import { withUpstreamTransport } from "@bot-thk/web-http/upstream-runtime";
+import { UpstreamTelemetry, UpstreamTransport, type FetchImpl } from "@no-wave/web-http";
+import { withUpstreamTransport } from "@no-wave/web-http/upstream-runtime";
 import { resolveWebUpstreamSettings } from "./settings.ts";
 
 /** Shared across all requests, including SSR reads and the reserved auth lane. */

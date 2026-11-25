@@ -1,4 +1,4 @@
-import { CONVERSATION_ID_PATTERN, MESSAGE_BODY_MAX_CHARS, isUsableIdempotencyKey } from "@bot-thk/web-http";
+import { CONVERSATION_ID_PATTERN, MESSAGE_BODY_MAX_CHARS, isUsableIdempotencyKey } from "@no-wave/web-http";
 import { mintKey } from "./idempotency-key.ts";
 import { createMessagingTransport, isMessagingActor, MessagingRequestError, type MessagingIntent, type MessagingProblem, type MessagingReceipt, type MessagingTarget, type MessagingTransport } from "./messaging-transport.ts";
 

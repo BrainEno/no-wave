@@ -92,7 +92,7 @@ const CLIENT_COMPONENTS: readonly ClientComponent[] = [
 function clientBundle(): string {
   assert.ok(
     existsSync(assetsDir),
-    "The Web application must be built before its tests run: pnpm --filter @bot-thk/web-rr build",
+    "The Web application must be built before its tests run: pnpm --filter @no-wave/web-rr build",
   );
   const files = readdirSync(assetsDir).filter((name) => name.endsWith(".js"));
   assert.ok(files.length > 0, "the build emitted no client assets at all");

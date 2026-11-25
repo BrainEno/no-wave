@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { lexicalEditorStateToArticleDocument } from "./lexical-document-adapter.ts";
 // Intentional test-only cross-package import: validate the actual Web block
-// serializer (`@bot-thk/web-ui`) against the API contract.
+// serializer (`@no-wave/web-ui`) against the API contract.
 import { articleBlocksToLexicalEditorState } from "../../../../packages/web-ui/src/lib/lexical-article-state.ts";
 
 test("Web-generated Lexical state round-trips through the real API content adapter", () => {

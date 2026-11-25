@@ -14,4 +14,4 @@ index dc4c8218368e6a78f37709bcaf4dc8be395084f5..3bf3561723e049ea85d56e28ede88805
 -    Object.assign(picomatch, pico);
 -    module2.exports = picomatch;
 +    // Use the independently implemented engine, including for bundled callers.
-+    module2.exports = require("@bot-thk/glob-match");
++    module2.exports = require("@no-wave/glob-match");

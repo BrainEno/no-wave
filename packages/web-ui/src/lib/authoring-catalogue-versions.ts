@@ -15,7 +15,10 @@ export function readCatalogueEditions(value: unknown, articleId: string, scope: 
 }
 
 export function catalogueCoverage(entries: readonly CatalogueEntry[]): { locale: string; entry: CatalogueEntry | null }[] {
-  return ["zh-CN", "en", "zh-TW"].map(locale => ({ locale, entry: entries.find(entry => entry.locale === locale) ?? null }));
+  // zh-TW is not offered for new editions; it appears only when a legacy edition exists.
+  return ["zh-CN", "en", "zh-TW"]
+    .map(locale => ({ locale, entry: entries.find(entry => entry.locale === locale) ?? null }))
+    .filter(({ locale, entry }) => locale !== "zh-TW" || entry !== null);
 }
 
 export function compareCatalogueVersions(entries: readonly CatalogueEntry[], leftLocale: string, rightLocale: string): {

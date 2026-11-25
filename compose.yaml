@@ -22,7 +22,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       # Development database; the test database is created by the init script.
-      POSTGRES_DB: bot_thk_dev
+      POSTGRES_DB: no_wave_dev
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
     ports:
       # Override POSTGRES_PORT when 5432 is already taken by another instance.
@@ -32,7 +32,7 @@ services:
       # Runs only when the volume is empty, so restarting keeps existing data.
       - ./scripts/docker/postgres-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d bot_thk_dev"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d no_wave_dev"]
       interval: 2s
       timeout: 5s
       retries: 30

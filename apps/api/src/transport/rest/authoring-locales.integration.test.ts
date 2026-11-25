@@ -13,11 +13,11 @@ import { runMigrations } from "../../persistence/migrate.ts";
 const env = {
   AUTH_JWT_SECRET: "test-only-secret-at-least-thirty-two-bytes",
   AUTH_JWT_ISSUER: "https://auth.example.test",
-  AUTH_JWT_AUDIENCE: "bot-thk-api",
+  AUTH_JWT_AUDIENCE: "no-wave-api",
 };
 function token(sub: string): string {
   const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
-  const header = encode({ alg: "HS256", typ: "application/vnd.bot-thk.access+jwt" });
+  const header = encode({ alg: "HS256", typ: "application/vnd.no-wave.access+jwt" });
   const payload = encode({ sub, iss: env.AUTH_JWT_ISSUER, aud: env.AUTH_JWT_AUDIENCE,
     iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 300,
     sid: `session-${sub}`, jti: `token-${sub}` });
@@ -72,6 +72,8 @@ for (const provider of ["sqlite", "postgres"] as const) {
       assert.equal(en.locale, "en");
       await call("/articles", 409, { method: "POST", headers: keyed, body: JSON.stringify({ ...enBody, locale: "zh-CN" }) });
       await call("/articles", 400, { method: "POST", headers: jsonHeaders, body: JSON.stringify({ ...enBody, locale: "fr" }) });
+      // zh-TW is not supported for new works (issue #417); legacy edits below still use PUT.
+      await call("/articles", 400, { method: "POST", headers: jsonHeaders, body: JSON.stringify({ ...enBody, slug: `traditional-${suffix}`, locale: "zh-TW" }) });
       await call("/articles", 401, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(enBody) });
 
       const list = async (query = "") => (await call(`/me/articles${query}`, 200, { headers: auth(author) })).data;

@@ -4,8 +4,8 @@ import type { EntryContext } from "react-router";
 import { createReadableStreamFromReadable } from "@react-router/node";
 import { ServerRouter } from "react-router";
 import { renderToPipeableStream } from "react-dom/server";
-import { currentWebRequestIsSecure } from "@bot-thk/web-http/client-address";
-import { writeLogLine } from "@bot-thk/web-http/log";
+import { currentWebRequestIsSecure } from "@no-wave/web-http/client-address";
+import { writeLogLine } from "@no-wave/web-http/log";
 import { browserSecurityHeaders, DEVELOPMENT_CSP, protectHtmlResponse } from "../document-security.ts";
 
 export const streamTimeout = 5_000;

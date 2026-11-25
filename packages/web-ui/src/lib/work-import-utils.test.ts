@@ -137,3 +137,10 @@ test("parseHtmlContent extracts title and paragraphs safely without DOMParser", 
   assert.equal(parsed.title, "网页测试标题");
   assert.equal(extractParagraphs(parsed.content).length, 2);
 });
+
+test("an imported traditional Chinese work is flagged instead of silently stored as zh-CN", () => {
+  const base = { id: "1", title: "标题", content: "正文", author: "作者", summary: "", workType: "other" as const, publish: false, validationErrors: [] };
+  assert.deepEqual(validateImportItem({ ...base, locale: "zh-CN" }), []);
+  assert.deepEqual(validateImportItem({ ...base, locale: "en" }), []);
+  assert.deepEqual(validateImportItem({ ...base, locale: "zh-TW" }), ["暂不支持繁体中文，请改为简体中文或 English。"]);
+});

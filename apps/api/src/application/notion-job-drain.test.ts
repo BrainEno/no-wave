@@ -11,7 +11,7 @@ import { notionJobBacklog, safeNotionJobReport, encodeNotionJobReport } from "./
 import { randomUUID } from "node:crypto";
 
 const env = { AUTH_JWT_SECRET: "drain-unit-tests-only-secret-of-sufficient-length", AUTH_JWT_ISSUER: "https://auth.example.test",
-  AUTH_JWT_AUDIENCE: "bot-thk-api", NOTION_IMPORT_JOBS_ENABLED: "true", NOTION_IMPORT_JOB_KEY: Buffer.alloc(32, 8).toString("base64") };
+  AUTH_JWT_AUDIENCE: "no-wave-api", NOTION_IMPORT_JOBS_ENABLED: "true", NOTION_IMPORT_JOB_KEY: Buffer.alloc(32, 8).toString("base64") };
 async function queued(t: import("node:test").TestContext) {
   const runtime = await createSqlitePersistence({ filename: ":memory:" });
   t.after(runtime.close);

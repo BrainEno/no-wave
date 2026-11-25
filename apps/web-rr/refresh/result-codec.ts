@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
-import { isTokenEnvelope } from "@bot-thk/web-http/policy";
-import { isRecord, type RefreshFailure, type RefreshOutcome } from "@bot-thk/web-http";
+import { isTokenEnvelope } from "@no-wave/web-http/policy";
+import { isRecord, type RefreshFailure, type RefreshOutcome } from "@no-wave/web-http";
 import { RefreshCoordinationError } from "./errors.ts";
 
 export type RefreshResultBinding = Readonly<{ namespace: string; key: string; owner: string; expiresAt: string }>;

@@ -33,7 +33,7 @@ COPY patches ./patches
 # The build needs devDependencies (vite, @react-router/dev), so NODE_ENV is set
 # only after this step: pnpm reads NODE_ENV=production as `--prod`.
 #
-# `@bot-thk/web-ui` is installed with the application because the build compiles
+# `@no-wave/web-ui` is installed with the application because the build compiles
 # the shared UI from its source through the `@/*` alias (see
 # apps/web-rr/vite.config.ts): those components resolve their own imports —
 # Lexical, gsap, react-router — against that package's dependencies, so the
@@ -54,7 +54,7 @@ ENV NODE_ENV=production
 # the separate runtime stage below does not copy the generator or raw sources.
 # test/font-build.test.ts checks emitted assets and client JS, not image contents.
 RUN pnpm fonts:prepare
-RUN pnpm --filter @bot-thk/web-rr build
+RUN pnpm --filter @no-wave/web-rr build
 
 # ---- Runtime -----------------------------------------------------------------
 FROM node:24-slim AS runtime
@@ -77,9 +77,9 @@ COPY packages/web-http/package.json ./packages/web-http/package.json
 COPY packages/glob-match/package.json ./packages/glob-match/package.json
 COPY patches ./patches
 
-RUN pnpm install --frozen-lockfile --prod --filter @bot-thk/web-rr...
+RUN pnpm install --frozen-lockfile --prod --filter @no-wave/web-rr...
 
-# `@bot-thk/web-http` is consumed as TypeScript source — Node 24 strips the
+# `@no-wave/web-http` is consumed as TypeScript source — Node 24 strips the
 # types — so the package body has to travel with the image.
 COPY packages/web-http/src ./packages/web-http/src
 # Workspace selection includes the build adapter's dependency importer too.
@@ -91,7 +91,7 @@ COPY apps/web-rr/operations ./apps/web-rr/operations
 COPY --from=build /app/apps/web-rr/build ./apps/web-rr/build
 
 # `server.ts` resolves `RR_BUILD_DIR` / `RR_SERVER_BUILD_DIR` relative to the
-# working directory — that is how `pnpm --filter @bot-thk/web-rr start` runs it
+# working directory — that is how `pnpm --filter @no-wave/web-rr start` runs it
 # — so the container starts from the application directory too.
 WORKDIR /app/apps/web-rr
 

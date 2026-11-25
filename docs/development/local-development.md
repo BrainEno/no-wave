@@ -33,7 +33,7 @@ pnpm dev                  # API :4000 + worker health :4001 + Web :3000, readine
 
 # or PostgreSQL in Docker
 pnpm setup:local --force --postgres
-pnpm db:up                # postgres:17 + bot_thk_dev + bot_thk_test
+pnpm db:up                # postgres:17 + no_wave_dev + no_wave_test
 pnpm db:migrate
 pnpm dev
 
@@ -52,7 +52,7 @@ layer, so the first `[FAIL]` identifies the broken layer.
 | API | **4000** | `PORT`. The API's own default is 4000 too, so a bare `node apps/api/src/server.ts` lands in the same place. |
 | Worker health | **4001** | `OUTBOX_HEALTH_PORT`; loopback by default, `/health` and `/ready` only. |
 | Web, through the chain | **3000** | `WEB_PORT`, set explicitly for the child process by `pnpm dev` / `dev:web` / `stack:start`. `check:local` probes `:3000`. |
-| Web, run inside the package | **3100** | `apps/web-rr/vite.config.ts` and `apps/web-rr/server.ts` default to 3100 when `PORT` is unset — `pnpm --filter @bot-thk/web-rr dev`, and the same default as the container image. |
+| Web, run inside the package | **3100** | `apps/web-rr/vite.config.ts` and `apps/web-rr/server.ts` default to 3100 when `PORT` is unset — `pnpm --filter @no-wave/web-rr dev`, and the same default as the container image. |
 
 The split is deliberate (ADR 0017): the orchestrated chain kept the 3000 every
 document, probe and `WEB_DEV_ALLOWED_ORIGINS` value already used, while the
@@ -67,7 +67,7 @@ package default.
 ```
 package.json                 pnpm entry points; no shell-specific syntax, so they work in PowerShell
 compose.yaml                 the only containerised piece: PostgreSQL 17
-scripts/docker/postgres-init/one-shot SQL that creates bot_thk_test
+scripts/docker/postgres-init/one-shot SQL that creates no_wave_test
 scripts/lib/local-dev-config.ts   pure config/argument/secret logic (unit tested)
 scripts/setup-local.ts       generate .env.local (idempotent, mode 0600)
 scripts/dev.ts               start API + worker + Web on one persistence config
@@ -258,7 +258,7 @@ keep the SQLite file. To verify an existing chain instead of starting one, pass
 ## 5. PostgreSQL locally
 
 ```sh
-pnpm db:up                  # postgres:17-alpine, health check, bot_thk_dev + bot_thk_test
+pnpm db:up                  # postgres:17-alpine, health check, no_wave_dev + no_wave_test
 pnpm setup:local --force --postgres
 pnpm db:migrate
 pnpm dev
@@ -267,9 +267,9 @@ pnpm dev
 `compose.yaml` publishes `POSTGRES_PORT` (default 5432) and creates two
 databases:
 
-- `bot_thk_dev` — what the API uses (`DATABASE_URL`);
-- `bot_thk_test` — reserved for the integration tests. Uncomment
-  `TEST_DATABASE_URL` in `.env.local` for `pnpm --filter @bot-thk/api test:integration`,
+- `no_wave_dev` — what the API uses (`DATABASE_URL`);
+- `no_wave_test` — reserved for the integration tests. Uncomment
+  `TEST_DATABASE_URL` in `.env.local` for `pnpm --filter @no-wave/api test:integration`,
   which reads that file. The root `pnpm test` deliberately does not load env
   files; export `TEST_DATABASE_URL` explicitly to include PostgreSQL there.
 
@@ -290,7 +290,7 @@ connection), not for the local development loop. Leave it unset locally.
 | Unit | `pnpm test` | seconds | no (PostgreSQL suites skip themselves) |
 | Type | `pnpm typecheck` | seconds | no |
 | Route smoke (Web, fixtures) | `pnpm test:routes` | ~1 min | no |
-| Persistence integration | `TEST_DATABASE_URL=... pnpm --filter @bot-thk/api test:integration` | ~1 min | PostgreSQL |
+| Persistence integration | `TEST_DATABASE_URL=... pnpm --filter @no-wave/api test:integration` | ~1 min | PostgreSQL |
 | Local chain | `pnpm check:local` | seconds | only for the PostgreSQL profile |
 | Publish visibility (mail-free) | `pnpm verify:publish` | ~1 min | no |
 | CI | `.github/workflows/ci.yml` | ~30 s per chain leg | GitHub service container |
@@ -334,7 +334,7 @@ the probe's skip semantics cannot silently regress.
   switched off until `MAIL_ENABLED` is set; `pnpm verify:publish` deliberately
   proves that publishing works with mail off, while the recovery flows themselves
   remain uncovered by that probe. The notification worker can be started manually
-  with `pnpm --filter @bot-thk/api worker:notifications`.
+  with `pnpm --filter @no-wave/api worker:notifications`.
 - GitHub Actions is the only supported CI gate; the incomplete GitLab pipeline
   was removed. Forks using another provider must implement all required jobs.
 - Windows is supported by the scripts (no shell operators in `package.json`, no

@@ -1,5 +1,5 @@
 {
-  "name": "@bot-thk/glob-match",
+  "name": "@no-wave/glob-match",
   "version": "0.0.0",
   "private": true,
   "description": "Internal build-tool glob adapter using minimatch's non-recursive matching engine; not a picomatch distribution",

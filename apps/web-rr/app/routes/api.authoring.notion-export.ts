@@ -1,5 +1,5 @@
 import type { LoaderFunctionArgs } from "react-router";
-import { handleAuthoringNotionExportRequest } from "@bot-thk/web-http";
+import { handleAuthoringNotionExportRequest } from "@no-wave/web-http";
 import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**

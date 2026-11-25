@@ -1,4 +1,4 @@
-# BOT THK Product Behavior Baseline
+# no-wave Product Behavior Baseline
 
 Status: active
 

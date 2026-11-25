@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { getUi } from "./ui-copy.ts";
-import { SESSION_MARKER_COOKIE, hasUsableSession, tokenCookieHeaders } from "@bot-thk/web-http";
+import { SESSION_MARKER_COOKIE, hasUsableSession, tokenCookieHeaders } from "@no-wave/web-http";
 import {
   deletionNoticeText,
   grainOffsets,

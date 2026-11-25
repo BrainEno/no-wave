@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { UpstreamTimeoutError } from "@bot-thk/web-http";
+import { UpstreamTimeoutError } from "@no-wave/web-http";
 import { createApiContentClient, getPublicTag, listPublicTagArticles, listPublicTags } from "./api-content.ts";
 
 const tag = { slug: "stable-topic-123", name: "地方与记忆", description: "不同语言下的文学主题。", locale: "zh-CN", articleCount: 3 };

@@ -408,7 +408,6 @@ export function WorkBatchImportPanel({ onImportComplete }: { onImportComplete?: 
                 >
                   <option value="zh-CN">简体中文</option>
                   <option value="en">English</option>
-                  <option value="zh-TW">繁體中文</option>
                 </select>
                 <button className="nw-btn" type="button" onClick={handleBatchApplyLocale}>
                   全量应用
@@ -484,7 +483,7 @@ export function WorkBatchImportPanel({ onImportComplete }: { onImportComplete?: 
                       >
                         <option value="zh-CN">中文</option>
                         <option value="en">EN</option>
-                        <option value="zh-TW">繁体</option>
+                        {item.locale === "zh-TW" ? <option value="zh-TW">繁体（不支持）</option> : null}
                       </select>
                     </td>
                     <td className="nw-imp-td">

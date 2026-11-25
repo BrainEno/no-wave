@@ -440,7 +440,7 @@ for (const provider of ["sqlite", "postgres"] as const) {
 
 function accessToken(sub: string) {
   const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
-  const unsigned = `${encode({ alg: "HS256", typ: "application/vnd.bot-thk.access+jwt" })}.${encode({ sub,
+  const unsigned = `${encode({ alg: "HS256", typ: "application/vnd.no-wave.access+jwt" })}.${encode({ sub,
     iss: ownershipEnv.AUTH_JWT_ISSUER, aud: ownershipEnv.AUTH_JWT_AUDIENCE, iat: Math.floor(Date.now() / 1000),
     exp: Math.floor(Date.now() / 1000) + 600, sid: `ownership-${sub}`, jti: randomUUID() })}`;
   return `${unsigned}.${createHmac("sha256", ownershipEnv.AUTH_JWT_SECRET).update(unsigned).digest("base64url")}`;

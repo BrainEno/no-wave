@@ -12,7 +12,7 @@ import { metaDescriptors, siteFeedDescriptors, siteUrlFromMatches } from "../lib
 /**
  * Home (`/`, `/en`) — the last public page of Phase 3.
  *
- * It renders the **shared** `HomePageView` from `@bot-thk/web-ui`. The three
+ * It renders the **shared** `HomePageView` from `@no-wave/web-ui`. The three
  * client components it composes (intro loader, WebGL hero, hover-switched latest
  * list) reach the router only through the package's navigation seam, so they
  * hydrate here as they would anywhere; only their *behavior* belongs to Phase 4,

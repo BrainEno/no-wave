@@ -182,7 +182,7 @@ test("the explicit offline fixture source lists fixture authors but never invent
   const articles = await source.listArticles(page);
   assert.ok(articles.length > 0);
   assert.ok(articles.every((article) => article.locale === page.locale));
-  assert.deepEqual(await source.listAuthors(page), [{ username: "bot-thk-team", locale: page.locale }]);
+  assert.deepEqual(await source.listAuthors(page), [{ username: "no-wave-team", locale: page.locale }]);
   assert.deepEqual(await source.listAuthors({ ...page, offset: 100 }), []);
   assert.deepEqual(await source.listTags(page), []);
   assert.deepEqual(await source.listCategories(page), []);

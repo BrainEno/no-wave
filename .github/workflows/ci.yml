@@ -74,18 +74,18 @@ jobs:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_DB: bot_thk_test
+          POSTGRES_DB: no_wave_test
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d bot_thk_test"
+          --health-cmd "pg_isready -U postgres -d no_wave_test"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
     env:
-      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/bot_thk_test
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/no_wave_test
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -97,8 +97,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # Required real multi-Web refresh tests use the production server bundle.
-      - run: pnpm --filter @bot-thk/web-rr build
-      - run: pnpm --filter @bot-thk/api test:integration
+      - run: pnpm --filter @no-wave/web-rr build
+      - run: pnpm --filter @no-wave/api test:integration
 
   # Proves the documented local chain on both persistence providers:
   # migrate -> start the API -> probe it, then build the Web app and probe the
@@ -114,19 +114,19 @@ jobs:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_DB: bot_thk_dev
+          POSTGRES_DB: no_wave_dev
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d bot_thk_dev"
+          --health-cmd "pg_isready -U postgres -d no_wave_dev"
           --health-interval 2s
           --health-timeout 5s
           --health-retries 30
     env:
       DATABASE_PROVIDER: ${{ matrix.provider }}
-      DATABASE_URL: ${{ matrix.provider == 'postgres' && 'postgres://postgres:postgres@127.0.0.1:5432/bot_thk_dev' || '' }}
+      DATABASE_URL: ${{ matrix.provider == 'postgres' && 'postgres://postgres:postgres@127.0.0.1:5432/no_wave_dev' || '' }}
       AUTH_JWT_SECRET: local-development-ci-secret-0123456789abcdef
       AUTH_JWT_ISSUER: http://localhost:4000
       AUTH_JWT_AUDIENCE: no-wave
@@ -295,19 +295,19 @@ jobs:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_DB: bot_thk_dev
+          POSTGRES_DB: no_wave_dev
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d bot_thk_dev"
+          --health-cmd "pg_isready -U postgres -d no_wave_dev"
           --health-interval 2s
           --health-timeout 5s
           --health-retries 30
     env:
       DATABASE_PROVIDER: ${{ matrix.provider }}
-      DATABASE_URL: ${{ matrix.provider == 'postgres' && 'postgres://postgres:postgres@127.0.0.1:5432/bot_thk_dev' || '' }}
+      DATABASE_URL: ${{ matrix.provider == 'postgres' && 'postgres://postgres:postgres@127.0.0.1:5432/no_wave_dev' || '' }}
       # A disposable file: the probe registers accounts and publishes an
       # article, and `/tmp` is discarded with the runner.
       DATABASE_PATH: /tmp/no-wave-portable.sqlite
@@ -376,7 +376,7 @@ jobs:
       - name: Build the API image
         run: |
           set -eu
-          if ! docker build -f apps/api/Dockerfile -t bot-thk-api:ci . > /tmp/api-build.log 2>&1; then
+          if ! docker build -f apps/api/Dockerfile -t no-wave-api:ci . > /tmp/api-build.log 2>&1; then
             tail -n 60 /tmp/api-build.log
             MESSAGE=$(grep -i -E "error|cannot|failed|not found|missing|panic|ERR_" /tmp/api-build.log | head -20 | sed -e 's/%/%25/g' | awk 'BEGIN{ORS="%0A"}{print}')
             echo "::error title=docker build (apps/api/Dockerfile)::${MESSAGE}"
@@ -386,7 +386,7 @@ jobs:
       - name: Build the React Router image
         run: |
           set -eu
-          if ! docker build -f apps/web-rr/Dockerfile -t bot-thk-web-rr:ci . > /tmp/web-rr-build.log 2>&1; then
+          if ! docker build -f apps/web-rr/Dockerfile -t no-wave-web-rr:ci . > /tmp/web-rr-build.log 2>&1; then
             tail -n 60 /tmp/web-rr-build.log
             MESSAGE=$(grep -i -E "error|cannot|failed|not found|missing|panic|ERR_" /tmp/web-rr-build.log | head -20 | sed -e 's/%/%25/g' | awk 'BEGIN{ORS="%0A"}{print}')
             echo "::error title=docker build (apps/web-rr/Dockerfile)::${MESSAGE}"
@@ -417,13 +417,13 @@ jobs:
           # migrating and kill that process. The image itself never migrates on
           # boot; a disposable named volume lets both containers see one DB.
           # Check the runtime identity and health contract on the actual image.
-          test "$(docker image inspect --format '{{.Config.User}}' bot-thk-api:ci)" = "node"
-          test "$(docker run --rm bot-thk-api:ci id -u)" != "0"
-          test "$(docker image inspect --format '{{if .Config.Healthcheck}}yes{{end}}' bot-thk-api:ci)" = "yes"
+          test "$(docker image inspect --format '{{.Config.User}}' no-wave-api:ci)" = "node"
+          test "$(docker run --rm no-wave-api:ci id -u)" != "0"
+          test "$(docker image inspect --format '{{if .Config.Healthcheck}}yes{{end}}' no-wave-api:ci)" = "yes"
           echo "Migrating the SQLite volume using the API image"
           docker run --rm -v nw-ci-db:/var/lib/no-wave \
             -e DATABASE_PROVIDER=sqlite -e DATABASE_PATH=/var/lib/no-wave/api.sqlite \
-            bot-thk-api:ci node apps/api/src/persistence/migrate.ts
+            no-wave-api:ci node apps/api/src/persistence/migrate.ts
           echo "Starting the API against the migrated volume"
           docker run -d --network nw-ci --name api \
             -v nw-ci-db:/var/lib/no-wave \
@@ -433,15 +433,15 @@ jobs:
             -e TRUSTED_PROXY_HOPS=0 \
             -e AUTH_JWT_SECRET=container-image-ci-secret-0123456789abcdef \
             -e AUTH_JWT_ISSUER=http://127.0.0.1:4000 -e AUTH_JWT_AUDIENCE=no-wave \
-            -p 4000:4000 bot-thk-api:ci
+            -p 4000:4000 no-wave-api:ci
           echo "Starting the independent notification worker from the same API image"
           docker run -d --network nw-ci --name worker \
             -v nw-ci-db:/var/lib/no-wave \
             -e DATABASE_PROVIDER=sqlite -e DATABASE_PATH=/var/lib/no-wave/api.sqlite \
             -e SERVICE_ROLE=notification-worker \
             -e OUTBOX_HEALTH_HOST=0.0.0.0 -e OUTBOX_HEALTH_PORT=4001 \
-            -p 4001:4001 bot-thk-api:ci
-          test "$(docker image inspect --format '{{if .Config.Healthcheck}}yes{{end}}' bot-thk-web-rr:ci)" = "yes"
+            -p 4001:4001 no-wave-api:ci
+          test "$(docker image inspect --format '{{if .Config.Healthcheck}}yes{{end}}' no-wave-web-rr:ci)" = "yes"
           WEB_START=$(date +%s%3N)
           docker run -d --network nw-ci --name web \
             -e HOST=0.0.0.0 -e PORT=3100 \
@@ -449,7 +449,7 @@ jobs:
             -e BFF_CLIENT_ADDRESS_SECRET=ci-fixture-only-bff-address-key-not-a-production-secret \
             -e WEB_TRUSTED_PROXY_HOPS=0 \
             -e SITE_URL=http://127.0.0.1:3100 \
-            -p 3100:3100 bot-thk-web-rr:ci
+            -p 3100:3100 no-wave-web-rr:ci
 
           # The shared HTTP contract, with the API pair attached and
           # no local fixtures. It waits for API /health, /ready and Web /healthz.

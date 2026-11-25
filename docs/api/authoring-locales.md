@@ -2,12 +2,18 @@
 
 Status: active
 
-The writing desk creates new works in `zh-CN` or `en`. Existing `zh-TW`
-works remain accessible and editable; the desk does not offer `zh-TW` for a new
-work. Article REST writes accept those three locale values (including `zh-TW`
-for legacy/API clients); all others are rejected. An omitted locale still means
-`zh-CN` for compatibility, so clients editing a non-default edition **must send
-its stored locale explicitly**. Profile and comment write rules are unchanged.
+The writing desk creates new works in `zh-CN` or `en`. `zh-TW` is not
+supported for new works (issue #417): the desk does not offer it, and
+`POST /api/v1/articles` rejects it with `400`. Existing `zh-TW` works remain
+accessible and editable. Article `PUT` requests still accept the three stored
+locale values so that legacy works can be saved with their locale; all other
+values are rejected. An omitted locale still means `zh-CN` for compatibility,
+so clients editing a non-default edition **must send its stored locale
+explicitly**. Profile and comment write rules are unchanged.
+
+Other paths that could create a `zh-TW` edition are not covered by the create
+route check yet: Notion import and the catalogue edition routes. Closing them
+needs a decision on legacy data, tracked in issue #417.
 
 An article ID identifies a work, while `(article ID, locale)` identifies one
 of its translations. A `PUT` with a different explicit locale inserts or
@@ -36,8 +42,7 @@ with `limit=100`. The desk labels and distinguishes editions by ID and locale,
 and states the 100-per-language limit. Its recycle bin uses the same selection;
 restore forwards the clicked edition's `locale` so a non-`zh-CN` tombstone is
 not mistaken for a missing translation. Public Web addresses exist for `zh-CN`
-(`/articles/:slug`) and `en` (`/en/articles/:slug`); there is currently no
-`zh-TW` Web route, although the API can serve that locale.
+(`/articles/:slug`) and `en` (`/en/articles/:slug`); there is no `zh-TW` Web route, and the API serves `zh-TW` only for existing works.
 
 ## Independent deployments
 

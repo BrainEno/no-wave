@@ -13,7 +13,7 @@ import { isMainModule } from "../infrastructure/entrypoint.ts";
 import { safeErrorClass } from "../application/background-tasks.ts";
 import { accessIssuerConfiguration } from "../security/authentication.ts";
 
-const HELP = `Usage: pnpm --filter @bot-thk/api jobs:notion [drain|inspect|check|sweep|--help]
+const HELP = `Usage: pnpm --filter @no-wave/api jobs:notion [drain|inspect|check|sweep|--help]
 
 drain    Run at most NOTION_IMPORT_DRAIN_MAX_JOBS (1..10, default 1) sequentially.
          Requires explicit NOTION_IMPORT_JOBS_ENABLED=true, the external encryption

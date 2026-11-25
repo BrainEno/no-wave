@@ -14,7 +14,7 @@ import {
 } from "./provider-migration-transfer.ts";
 
 /**
- * `pnpm --filter @bot-thk/api db:transfer` — copy a database into an empty one.
+ * `pnpm --filter @no-wave/api db:transfer` — copy a database into an empty one.
  *
  * This is the operator-facing half of #247: the journal in this directory can
  * replay changes once a snapshot exists, and nothing produced the snapshot. The
@@ -89,7 +89,7 @@ function parseEndpoint(value: string, flag: string, env: NodeJS.ProcessEnv): Tra
 const USAGE = `Copy a whole no-wave database into an empty one.
 
 Usage
-  pnpm --filter @bot-thk/api db:transfer --from <source> --to <target> [options]
+  pnpm --filter @no-wave/api db:transfer --from <source> --to <target> [options]
 
 Endpoints
   sqlite:<path>     a SQLite file

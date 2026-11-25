@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@/lib/framework/link.tsx";
-import { hasUsableSession, isRecord, SESSION_MARKER_COOKIE } from "@bot-thk/web-http";
+import { hasUsableSession, isRecord, SESSION_MARKER_COOKIE } from "@no-wave/web-http";
 import { sessionMarkerFromCookie } from "@/lib/chrome.ts";
 import type { ReactNode } from "react";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";

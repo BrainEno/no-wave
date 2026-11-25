@@ -7,7 +7,7 @@ import postgres from "postgres";
 import { resolveRefreshSettings } from "../refresh/settings.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
-import { handleAuthRequest } from "@bot-thk/web-http";
+import { handleAuthRequest } from "@no-wave/web-http";
 import { PostgresRefreshCoordinator } from "../refresh/coordinator.ts";
 import { PostgresRefreshStore } from "../refresh/postgres-store.ts";
 import { RefreshResultCodec } from "../refresh/result-codec.ts";

@@ -27,12 +27,12 @@ import { runMigrations } from "../../persistence/migrate.ts";
 const env = {
   AUTH_JWT_SECRET: "test-only-secret-at-least-thirty-two-bytes",
   AUTH_JWT_ISSUER: "https://auth.example.test",
-  AUTH_JWT_AUDIENCE: "bot-thk-api",
+  AUTH_JWT_AUDIENCE: "no-wave-api",
 };
 
 function token(sub: string): string {
   const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
-  const header = encode({ alg: "HS256", typ: "application/vnd.bot-thk.access+jwt" });
+  const header = encode({ alg: "HS256", typ: "application/vnd.no-wave.access+jwt" });
   const payload = encode({ sub, iss: env.AUTH_JWT_ISSUER, aud: env.AUTH_JWT_AUDIENCE,
     iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 300,
     sid: `session-${sub}`, jti: `token-${sub}` });

@@ -1,6 +1,6 @@
 # Agentic Coding Rules
 
-These rules apply to humans and coding agents working on BOT THK.
+These rules apply to humans and coding agents working on no-wave.
 
 - Last checked: 2026-11-12.
 - UI design system and tokens (`globals.css` is the executable token source): [UI_DESIGN_SYSTEM.md](packages/web-ui/docs/UI_DESIGN_SYSTEM.md).

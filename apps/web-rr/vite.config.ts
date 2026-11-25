@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { reactRouter } from "@react-router/dev/vite";
 import { defineConfig } from "vite";
-import { parseAllowedDevOrigins } from "@bot-thk/web-ui/src/lib/dev-origins.ts";
+import { parseAllowedDevOrigins } from "@no-wave/web-ui/src/lib/dev-origins.ts";
 import { firstPartyFontLicenses } from "./font-licenses.ts";
 import { clientAddressIngress } from "./client-address-ingress.ts";
 import { refreshCoordinationIngress } from "./refresh-ingress.ts";
@@ -40,7 +40,7 @@ function allowedDevHosts(): string[] | true {
 }
 
 /**
- * This application renders the shared UI in `@bot-thk/web-ui`, so `@/*` — the
+ * This application renders the shared UI in `@no-wave/web-ui`, so `@/*` — the
  * specifier every shared file already uses for itself — resolves to that
  * package's source. Nothing is copied and no import is rewritten.
  *
@@ -65,10 +65,10 @@ export default defineConfig(async () => {
     // The main entry stays native too: transport exceptions must have the exact
     // same class identity in handlers and ingress, including UPSTREAM_BUSY/504.
     environments: { ssr: {
-      resolve: { external: ["@bot-thk/web-http", "@bot-thk/web-http/client-address", "@bot-thk/web-http/refresh-runtime", "@bot-thk/web-http/upstream-runtime"] },
+      resolve: { external: ["@no-wave/web-http", "@no-wave/web-http/client-address", "@no-wave/web-http/refresh-runtime", "@no-wave/web-http/upstream-runtime"] },
       // Node 24 loads this TypeScript package entry directly; do not let the
       // bundler's ordinary TS-source inlining create a second request store.
-      build: { rolldownOptions: { external: ["@bot-thk/web-http", "@bot-thk/web-http/client-address", "@bot-thk/web-http/refresh-runtime", "@bot-thk/web-http/upstream-runtime"] } },
+      build: { rolldownOptions: { external: ["@no-wave/web-http", "@no-wave/web-http/client-address", "@no-wave/web-http/refresh-runtime", "@no-wave/web-http/upstream-runtime"] } },
     } },
     resolve: {
       alias: [

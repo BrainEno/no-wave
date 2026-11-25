@@ -2,7 +2,7 @@ import {
   AUTHORING_ARTICLE_ID_PATTERN,
   isAuthoringLocale,
   isRecord,
-} from "@bot-thk/web-http";
+} from "@no-wave/web-http";
 import { isNotificationActor } from "./notification-transport.ts";
 import {
   parseWritingBackup,

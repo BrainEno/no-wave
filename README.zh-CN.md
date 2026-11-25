@@ -1,4 +1,4 @@
-# BOT THK —— 新产品实现
+# no-wave —— 新产品实现
 
 > **语言 / Language:** **简体中文** · [English](./README.md)
 >
@@ -6,9 +6,9 @@
 >
 > 第一次使用？直接看[快速开始](#quick-start)，或阅读完整的[本地开发](#local-development)说明。
 
-本仓库是 BOT THK Web 与 API 产品的独立实现。旧项目只作为功能与行为参考，不需要保留或照搬其代码。
+本仓库是 no-wave Web 与 API 产品的独立实现。旧项目只作为功能与行为参考，不需要保留或照搬其代码。
 
-**名称说明。** BOT THK 是旧项目与本产品的历史名称；`no-wave` 是仓库名与本地资源前缀；无浪潮 / No Wave 是面向读者的品牌。现有包 scope 与数据库名保持不变，新建资源使用 `no-wave`。详见[名称与关系](docs/development/names.md)。
+**名称说明。** `no-wave` 是项目、仓库与包 scope 的名称，也是本地资源的前缀；无浪潮 / No Wave 是面向读者的品牌。详见[名称与关系](docs/development/names.md)。
 
 ## 目录
 
@@ -111,7 +111,7 @@ Neon 生产分支的 PostgreSQL URL、私有媒体存储与服务开通见 [Neon
 ## 定时维护
 
 过期会话、已关闭的限流窗口，以及超过保留期的软删除作品，由一个一次性进程
-`pnpm --filter @bot-thk/api maintenance` 清理，预期由调度器每小时运行一次。
+`pnpm --filter @no-wave/api maintenance` 清理，预期由调度器每小时运行一次。
 没有它，低流量实例永远不会清理：进程内那两次顺带的清扫只在有写入时才发生。调度
 命令、边界参数与退出码见[定时维护](docs/operations/scheduled-maintenance.md)。
 
@@ -204,7 +204,7 @@ shell 中导出的变量优先于 `.env.local`，而 `.env.local` 被 Git 忽略
 只有在需要 PostgreSQL 行为（连接配置、持久化 outbox，或集成测试数据库）时才使用。它仍然是本地数据库，凭据也仍是一次性值。
 
 ```sh
-pnpm db:up                         # postgres:17-alpine + bot_thk_dev + bot_thk_test
+pnpm db:up                         # postgres:17-alpine + no_wave_dev + no_wave_test
 pnpm setup:local --force --postgres
 pnpm db:migrate
 pnpm dev
@@ -255,8 +255,8 @@ pnpm dev
 
 ```sh
 pnpm db:up
-TEST_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/bot_thk_test \
-  pnpm --filter @bot-thk/api test:integration
+TEST_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/no_wave_test \
+  pnpm --filter @no-wave/api test:integration
 ```
 
 Windows PowerShell 需要先设置 `$env:TEST_DATABASE_URL`，再执行同一命令。运行迁移或集成测试时，`DATABASE_URL` 与 `DATABASE_URL_UNPOOLED` 都不得指向生产。

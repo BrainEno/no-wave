@@ -110,7 +110,7 @@ let server: ServerHandle;
 before(async () => {
   assert.ok(
     existsSync(buildEntry),
-    "The production build is missing. Run `pnpm --filter @bot-thk/web-rr build` first — `pnpm test:web` does it.",
+    "The production build is missing. Run `pnpm --filter @no-wave/web-rr build` first — `pnpm test:web` does it.",
   );
   server = await startServer();
 });

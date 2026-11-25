@@ -6,7 +6,7 @@ import { createMessageNotificationDelivery } from "./message-notification-delive
 /**
  * One-shot notification outbox drain.
  *
- *     pnpm --filter @bot-thk/api drain:notifications
+ *     pnpm --filter @no-wave/api drain:notifications
  *
  * This is the cardless hosted delivery path: an external scheduler (a scheduled
  * GitHub Action, cron-job.org, or any cron on a machine that can reach the

@@ -205,11 +205,28 @@ test("English and historical Traditional Chinese editions remain discoverable, e
 
   // Seed an existing zh-TW edition through the real proxy/API; the desk does
   // not offer that retired locale for a new work, but must preserve old rows.
+  // zh-TW cannot be created directly (issue #417). The legacy edition is added
+  // to a simplified work through the update route, which still accepts it.
   const legacyTitle = "原有繁體中文作品";
-  const legacy = await page.request.post("/api/authoring/articles", {
+  const legacySlug = `historic-${Date.now().toString(36)}`;
+  const seededWork = await page.request.post("/api/authoring/articles", {
     headers: { origin: currentOrigin() },
     data: {
-      slug: `historic-${Date.now().toString(36)}`,
+      slug: legacySlug,
+      title: "原有简体中文作品",
+      locale: "zh-CN",
+      publish: false,
+      contentBlocks: [
+        { id: "p1", type: "paragraph", text: "原有的简体正文。" },
+      ],
+    },
+  });
+  expect(seededWork.status(), await seededWork.text()).toBe(201);
+  const legacyId = ((await seededWork.json()).data as { id: string }).id;
+  const legacy = await page.request.put(`/api/authoring/articles/${legacyId}`, {
+    headers: { origin: currentOrigin() },
+    data: {
+      slug: legacySlug,
       title: legacyTitle,
       locale: "zh-TW",
       publish: false,
@@ -218,8 +235,7 @@ test("English and historical Traditional Chinese editions remain discoverable, e
       ],
     },
   });
-  expect(legacy.status(), await legacy.text()).toBe(201);
-  const legacyId = ((await legacy.json()).data as { id: string }).id;
+  expect(legacy.status(), await legacy.text()).toBe(200);
   await page.reload();
   await waitForEditor(page);
   await expect(

@@ -99,10 +99,10 @@ test("real tinyglobby and fdir consumers preserve discovery, exclusions and dotf
 
 test("Stylelint's file discovery, ignore lists and basename overrides run on the non-recursive engine", async () => {
   // Stylelint 18 walks with tinyglobby and matches ignoreFiles / overrides with
-  // `picomatch` directly; both resolve to @bot-thk/glob-match through the override.
+  // `picomatch` directly; both resolve to @no-wave/glob-match through the override.
   assert.equal(
     stylelintRequire.resolve("picomatch"),
-    require.resolve("@bot-thk/glob-match"),
+    require.resolve("@no-wave/glob-match"),
   );
   const root = await mkdtemp(join(tmpdir(), "no-wave-glob-stylelint-"));
   try {
@@ -185,7 +185,7 @@ test("Stylelint's file discovery, ignore lists and basename overrides run on the
 test("Prettier's bundled matcher executes the non-recursive engine for config overrides", async () => {
   const root = await mkdtemp(join(tmpdir(), "no-wave-glob-prettier-"));
   const engineRequire = createRequire(
-    require.resolve("@bot-thk/glob-match/package.json"),
+    require.resolve("@no-wave/glob-match/package.json"),
   );
   const { Minimatch } = engineRequire("minimatch") as {
     Minimatch: {
@@ -276,7 +276,7 @@ test("bundled compilers have no references outside their inactive definitions", 
       assert.doesNotMatch(callers, new RegExp(`\\b${initializer[1]}\\b`));
     assert.match(
       callers,
-      /module2?\.exports = (?:__)?require\("@bot-thk\/glob-match"\)/,
+      /module2?\.exports = (?:__)?require\("@no-wave\/glob-match"\)/,
     );
   }
 });
@@ -310,7 +310,7 @@ test("Playwright's actual bundled helpers execute the replacement for ordered an
     directory: string,
   ) => void;
   const engineRequire = createRequire(
-    require.resolve("@bot-thk/glob-match/package.json"),
+    require.resolve("@no-wave/glob-match/package.json"),
   );
   const { Minimatch } = engineRequire("minimatch") as {
     Minimatch: {

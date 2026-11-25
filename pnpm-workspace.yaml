@@ -6,15 +6,15 @@ onlyBuiltDependencies:
   - esbuild
 
 overrides:
-  picomatch: workspace:@bot-thk/glob-match@*
+  picomatch: workspace:@no-wave/glob-match@*
 
 packageExtensions:
   playwright@1.65.0:
     dependencies:
-      '@bot-thk/glob-match': workspace:*
+      '@no-wave/glob-match': workspace:*
   prettier@3.10.0:
     dependencies:
-      '@bot-thk/glob-match': workspace:*
+      '@no-wave/glob-match': workspace:*
 
 patchedDependencies:
   playwright@1.65.0: patches/playwright@1.65.0.patch

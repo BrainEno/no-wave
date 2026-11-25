@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { handleAuthoringProfileRequest } from "@bot-thk/web-http";
+import { handleAuthoringProfileRequest } from "@no-wave/web-http";
 import { apiProxyConfig } from "../lib/runtime.ts";
 
 /** `GET`/`PUT /api/authoring/profile` — resource route, no component. */

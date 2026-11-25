@@ -2,7 +2,7 @@
 
 Status: active
 
-`apps/web-rr/app/routes/api.*.ts` 直接导入 `@bot-thk/web-http`；
+`apps/web-rr/app/routes/api.*.ts` 直接导入 `@no-wave/web-http`；
 框架只传递标准 `Request`、路由参数及 `apiProxyConfig()`。历史四个
 `app/lib/*-proxy.ts` 是配置包装，不是第二个业务边界，已移除。
 配置与共享状态在原生入口注入，不能在每个路由新建 transport / coordinator。
@@ -11,7 +11,7 @@ Status: active
 
 ```ts
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { handleAuthoringArticleRequest } from "@bot-thk/web-http";
+import { handleAuthoringArticleRequest } from "@no-wave/web-http";
 import { apiProxyConfig } from "../lib/runtime.ts";
 
 export function loader({ request, params }: LoaderFunctionArgs) {
@@ -54,7 +54,7 @@ export function action({ request, params }: ActionFunctionArgs) {
 - Cookie-only、同 token actor、401 后一次刷新、轮换后失败仍保留 cookies。
 - 无 API 配置和错误配置、网络/5xx/熔断/满载、4xx 恢复数据、Retry-After。
 - 下载背压、未消费响应、绝对期限、取消和大体积合法 bundle。
-- 运行 `pnpm --filter @bot-thk/web-http test`、`pnpm typecheck`、
+- 运行 `pnpm --filter @no-wave/web-http test`、`pnpm typecheck`、
   `pnpm test:web`；跨 Web 刷新仍须真实 PostgreSQL 和独立 OS 进程的 required CI。
 
 另见[模块索引](shared-modules.md)、[上游运维边界](web-upstream-timeouts.md)、

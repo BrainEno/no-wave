@@ -63,7 +63,7 @@ export async function publishWork(
   request: APIRequestContext,
   title: string,
   paragraphs: readonly string[],
-  locale?: "zh-CN" | "en" | "zh-TW",
+  locale?: "zh-CN" | "en",
   apiBaseUrl = API_BASE_URL,
 ): Promise<{ email: string; slug: string }> {
   const email = uniqueEmail("work");

@@ -30,14 +30,14 @@ test("container CI migrates the shared SQLite volume before starting the API", a
     .filter((line) => line.startsWith("docker run "));
   const migration = commands.findIndex(
     (line) =>
-      line.includes("bot-thk-api:ci") &&
+      line.includes("no-wave-api:ci") &&
       line.includes("apps/api/src/persistence/migrate.ts"),
   );
   const api = commands.findIndex(
-    (line) => /--name\s+api\b/.test(line) && line.includes("bot-thk-api:ci"),
+    (line) => /--name\s+api\b/.test(line) && line.includes("no-wave-api:ci"),
   );
   const web = commands.findIndex(
-    (line) => /--name\s+web\b/.test(line) && line.includes("bot-thk-web-rr:ci"),
+    (line) => /--name\s+web\b/.test(line) && line.includes("no-wave-web-rr:ci"),
   );
   assert.ok(
     migration >= 0,
@@ -167,13 +167,13 @@ test("API image and CI require an unprivileged user and working readiness probe"
   assert.match(dockerfile, /AbortSignal\.timeout/);
   assert.match(
     workflow,
-    /docker image inspect --format '\{\{\.Config.User\}\}' bot-thk-api:ci/,
+    /docker image inspect --format '\{\{\.Config.User\}\}' no-wave-api:ci/,
   );
-  assert.match(workflow, /docker run --rm bot-thk-api:ci id -u/);
+  assert.match(workflow, /docker run --rm no-wave-api:ci id -u/);
   assert.match(workflow, /docker exec api id -u/);
   assert.match(workflow, /\.State.Health.Status/);
   assert.match(workflow, /\[ "\$health" != healthy \]/);
-  assert.match(workflow, /-p 4000:4000 bot-thk-api:ci/);
+  assert.match(workflow, /-p 4000:4000 no-wave-api:ci/);
   assert.match(workflow, /API_BASE_URL=http:\/\/api:4000/);
 });
 
@@ -191,7 +191,7 @@ test("the required image smoke runs a separate worker from the API image against
     "an actual worker container, not a one-shot fake drain, is required",
   );
   assert.match(worker, /SERVICE_ROLE=notification-worker/);
-  assert.match(worker, /bot-thk-api:ci\s*$/);
+  assert.match(worker, /no-wave-api:ci\s*$/);
   assert.match(worker, /-v nw-ci-db:\/var\/lib\/no-wave/);
   assert.match(worker, /DATABASE_PATH=\/var\/lib\/no-wave\/api\.sqlite/);
   assert.match(worker, /OUTBOX_HEALTH_HOST=0\.0\.0\.0/);
@@ -233,7 +233,7 @@ test("frozen image installs include the genuine workspace glob engine and all pi
     assert.match(beforeInstall, /COPY patches \.\/patches/);
   }
   assert.match(
-    webStages[0]!.split("RUN pnpm --filter @bot-thk/web-rr build")[0]!,
+    webStages[0]!.split("RUN pnpm --filter @no-wave/web-rr build")[0]!,
     /COPY packages\/glob-match \.\/packages\/glob-match/,
   );
   assert.match(

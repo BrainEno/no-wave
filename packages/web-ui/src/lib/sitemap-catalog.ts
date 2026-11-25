@@ -1,4 +1,4 @@
-import { resolveUpstreamTimeoutMs, upstreamTransportFor, upstreamJsonPayload, type UpstreamTransport } from "@bot-thk/web-http";
+import { resolveUpstreamTimeoutMs, upstreamTransportFor, upstreamJsonPayload, type UpstreamTransport } from "@no-wave/web-http";
 import { resolveApiBaseUrl } from "./api-content.ts";
 import { listArticles as listFixtureArticles, supportedLocales } from "./content.ts";
 import { feedTimestamp } from "./feed-text.ts";

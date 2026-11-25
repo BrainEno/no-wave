@@ -81,7 +81,7 @@ Configuration stays provider-neutral (`MEDIA_S3_*` with `AWS_*` fallbacks, path-
 | --- | --- |
 | Render free "Background Worker" | Free instance type is limited to web services; background workers start on paid instances |
 | Render Cron Job | Starts on paid instances |
-| A one-shot drain process started by any external free scheduler (`pnpm --filter @bot-thk/api drain:notifications`) | Cardless; drains persisted outbox rows with lease/idempotency semantics already in the DB; **chosen and implemented (2026-10-29)** |
+| A one-shot drain process started by any external free scheduler (`pnpm --filter @no-wave/api drain:notifications`) | Cardless; drains persisted outbox rows with lease/idempotency semantics already in the DB; **chosen and implemented (2026-10-29)** |
 | A `/api/internal/drain` route invoked by an external free scheduler | Same delivery semantics, but needs a new public route plus a shared secret in the Web app's environment, and pays a cold start on every tick. Rejected in favour of the process: the only credential involved is the `DATABASE_URL` the API already holds. |
 
 Decision: the worker stays a separate process for local/self-hosted use, and the

@@ -5,7 +5,7 @@ import { safeErrorClass } from "../application/background-tasks.ts";
 /**
  * One-shot maintenance run (audit F-22).
  *
- *     pnpm --filter @bot-thk/api maintenance
+ *     pnpm --filter @no-wave/api maintenance
  *
  * The cleanup sweeps — expired sessions and their tokens, closed rate-limit
  * windows, spent revocations, and article tombstones past their retention window

@@ -9,7 +9,7 @@ export function clientAddressIngress(): Plugin {
     configureServer(server) {
       // The config itself is bundled by Vite. Native resolution is deliberate:
       // the middleware and external SSR entry must use one Node module instance.
-      const { createWebClientAddressBridge } = createRequire(import.meta.url)("@bot-thk/web-http/client-address") as typeof import("@bot-thk/web-http/client-address");
+      const { createWebClientAddressBridge } = createRequire(import.meta.url)("@no-wave/web-http/client-address") as typeof import("@no-wave/web-http/client-address");
       const bridge = createWebClientAddressBridge(process.env);
       server.middlewares.use((request, _response, next) => bridge.run(request, next));
     },

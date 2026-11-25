@@ -1,6 +1,6 @@
 import type { TagReference } from "./tag-discovery.ts";
 
-export type Locale = "zh-CN" | "zh-TW" | "en";
+export type Locale = "zh-CN" | "en";
 /**
  * 作品类型：小说 / 诗歌 / 其他文体（ADR 0054）. `novel` is the stored name for
  * all prose fiction. Values from before the fold are mapped by
@@ -86,18 +86,6 @@ const messageCatalog: Record<Locale, SiteMessages> = {
     pageLabel: "第 {page} 页",
     workTypeLabels: { novel: "小说", poetry: "诗歌", other: "其他文体" }
   },
-  "zh-TW": {
-    primaryNavigation: "主要導覽",
-    homeTitle: "以內容為中心，逐步打造新的網路空間",
-    homeDescription: "從文章開始，探索 BOT THK 的內容。",
-    blog: "文章", blogTitle: "文章", blogDescription: "瀏覽 BOT THK 的文章與觀點。",
-    latestArticles: "最新文章", searchLabel: "搜尋文章", searchPlaceholder: "輸入標題或摘要",
-    searchButton: "搜尋", emptyResults: "沒有符合條件的文章。", readArticle: "閱讀文章",
-    authorPrefix: "作者", switchLanguage: "简体中文", backToArticles: "返回文章列表",
-    publishedOn: "發布於", authorProfile: "作者資料", noAuthorArticles: "此作者目前沒有可顯示的文章。",
-    previousPage: "上一頁", nextPage: "下一頁", pageLabel: "第 {page} 頁",
-    workTypeLabels: { novel: "小說", poetry: "詩歌", other: "其他文體" }
-  },
   en: {
     primaryNavigation: "Primary navigation",
     homeTitle: "A home for serious literature",
@@ -125,23 +113,21 @@ const messageCatalog: Record<Locale, SiteMessages> = {
 };
 
 const authorRecords: AuthorRecord[] = [{
-  username: "bot-thk-team",
+  username: "no-wave-team",
   displayNames: {
     "zh-CN": "无浪潮编辑部",
-    "zh-TW": "BOT THK 團隊",
-    en: "BOT THK Team"
+    en: "no-wave Team"
   },
   bios: {
     "zh-CN": "专注于严肃文学创作、发表与交流的编辑团队。",
-    "zh-TW": "BOT THK 的內容與產品團隊。",
-    en: "The team behind BOT THK."
+    en: "The team behind no-wave."
   }
 }];
 
 const articleRecords: ArticleRecord[] = [{
   slug: "portable-web-foundation",
   publishedAt: "2026-10-01T10:00:00Z",
-  authorUsername: "bot-thk-team",
+  authorUsername: "no-wave-team",
   workType: "other",
   categories: [],
   tags: [],
@@ -153,15 +139,6 @@ const articleRecords: ArticleRecord[] = [{
         { id: "intro", type: "paragraph", text: "无浪潮希望为值得认真阅读的文学作品，提供一个能够持续被发现、阅读与讨论的空间。" },
         { id: "foundation", type: "heading", level: 2, text: "让作品回到中心" },
         { id: "separation", type: "paragraph", text: "小说、诗歌、散文与文学批评应保有各自的表达节奏，而不是被统一压缩成信息流里的同一种内容。" }
-      ]
-    },
-    "zh-TW": {
-      title: "可移植的 Web 基礎架構",
-      description: "為具備搜尋友善能力、並與 API 獨立部署的網誌建立可測試的起點。",
-      contentBlocks: [
-        { id: "intro", type: "paragraph", text: "這是一篇示例文章，用來驗證可被搜尋引擎讀取的內容頁與路由中繼資料。" },
-        { id: "foundation", type: "heading", level: 2, text: "可測試的基礎架構" },
-        { id: "separation", type: "paragraph", text: "內容資料、路由與頁面中繼資料應保持分離，讓後續設計更新可以專注於表現方式。" }
       ]
     },
     en: {
@@ -177,7 +154,7 @@ const articleRecords: ArticleRecord[] = [{
 }];
 
 function normalizeLocale(locale: string): Locale {
-  return (["zh-CN", "zh-TW", "en"] as const).includes(locale as Locale) ? locale as Locale : defaultLocale;
+  return (supportedLocales as readonly string[]).includes(locale) ? locale as Locale : defaultLocale;
 }
 
 export function getMessages(locale = defaultLocale) {

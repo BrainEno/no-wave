@@ -1,5 +1,5 @@
 import type { LoaderFunctionArgs } from "react-router";
-import { handleAuthoringFeaturedCandidatesRequest } from "@bot-thk/web-http";
+import { handleAuthoringFeaturedCandidatesRequest } from "@no-wave/web-http";
 import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**

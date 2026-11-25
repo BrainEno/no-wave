@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { handleArticleCommentsRequest } from "@bot-thk/web-http";
+import { handleArticleCommentsRequest } from "@no-wave/web-http";
 import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**
@@ -10,7 +10,7 @@ import { apiProxyConfig } from "../lib/runtime.ts";
  * talk to at all — a page can be perfectly server-rendered and still be dead on
  * arrival.
  *
- * The implementation is the shared `@bot-thk/web-http` handler, the same one the
+ * The implementation is the shared `@no-wave/web-http` handler, the same one the
  * every other route that serves it: slug/locale validation, the exact-Origin check on
  * mutations, the bounded body and cookie-attached forwarding exist once, so the
  * two frameworks cannot disagree about a comment request.

@@ -1,5 +1,5 @@
 import { redirect, type HeadersFunction, type LoaderFunctionArgs, type MetaFunction } from "react-router";
-import { hasUsableSession, sessionMarkerFrom } from "@bot-thk/web-http";
+import { hasUsableSession, sessionMarkerFrom } from "@no-wave/web-http";
 import { NotionImport } from "@/components/authoring/notion-import.tsx";
 import { PRIVATE_PAGE_HEADERS } from "../lib/http-policy.ts";
 

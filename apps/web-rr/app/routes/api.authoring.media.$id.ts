@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs } from "react-router";
-import { handleMediaDeleteRequest } from "@bot-thk/web-http";
+import { handleMediaDeleteRequest } from "@no-wave/web-http";
 import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**

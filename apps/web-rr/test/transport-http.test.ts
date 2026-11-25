@@ -5,7 +5,7 @@ import { Readable } from "node:stream";
 import { after, before, test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import type { TLSSocket } from "node:tls";
-import { createWebClientAddressBridge, currentWebRequestIsSecure } from "@bot-thk/web-http/client-address";
+import { createWebClientAddressBridge, currentWebRequestIsSecure } from "@no-wave/web-http/client-address";
 import { browserSecurityHeaders, protectHtmlResponse } from "../document-security.ts";
 import { MOCK_CREDENTIALS, startMockRestApi } from "../mocks/rest-api.ts";
 import { startProductionWeb } from "./support/production-web.ts";

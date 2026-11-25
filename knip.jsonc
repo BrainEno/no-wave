@@ -3,7 +3,7 @@
     ".": {
       // Root scripts and their tests are entry points: the test files import
       // `marked` (scripts/doc-evidence.test.ts) and resolve
-      // `@bot-thk/glob-match` (scripts/glob-consumers.test.ts) directly.
+      // `@no-wave/glob-match` (scripts/glob-consumers.test.ts) directly.
       "entry": ["scripts/**/*.test.ts"]
     },
     "apps/web-rr": {

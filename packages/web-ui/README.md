@@ -1,4 +1,4 @@
-# @bot-thk/web-ui
+# @no-wave/web-ui
 
 共享 React 视图、交互状态和可移植的内容/元数据 helpers；不持有 Node 环境配置、
 数据库、JWT 内部实现或 server secrets。Web 应用的适配在 `apps/web-rr`。
@@ -37,12 +37,12 @@
 `apps/web-rr/app/lib/runtime.ts` 将 API endpoint、site origin、mail、source、
 request signal 和共享 transport 注入；此包不读 `process.env`。
 默认 fixtures 只适用于明确没有配置 API 的模式；已配置 API 报错不得悄悄回退。
-浏览器模块不能导入 `@bot-thk/web-http/*-runtime` 的 Node 入口。
+浏览器模块不能导入 `@no-wave/web-http/*-runtime` 的 Node 入口。
 
 ## 验证
 
 ```sh
-pnpm --filter @bot-thk/web-ui typecheck
+pnpm --filter @no-wave/web-ui typecheck
 pnpm test
 pnpm test:web
 pnpm test:e2e

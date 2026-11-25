@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { handleUserFollowRequest } from "@bot-thk/web-http";
+import { handleUserFollowRequest } from "@no-wave/web-http";
 import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**
@@ -14,7 +14,7 @@ import { apiProxyConfig } from "../lib/runtime.ts";
  * arrives with the author profile as `isFollowing`, and a second read endpoint
  * would be a second answer that could disagree with the first.
  *
- * The implementation is the shared `@bot-thk/web-http` handler — the Origin
+ * The implementation is the shared `@no-wave/web-http` handler — the Origin
  * check, the id/locale validation and cookie-attached forwarding exist once.
  */
 function follow(request: Request, url: URL, userId: string | undefined) {

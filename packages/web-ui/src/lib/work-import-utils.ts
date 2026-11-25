@@ -49,6 +49,7 @@ export function validateImportItem(item: ParsedImportItem): string[] {
   if (!item.author.trim()) errors.push("缺少作者");
   if (!item.workType) errors.push("缺少体裁");
   if (!item.locale) errors.push("缺少语言");
+  if (item.locale === "zh-TW") errors.push("暂不支持繁体中文，请改为简体中文或 English。");
   return errors;
 }
 

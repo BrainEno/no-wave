@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs } from "react-router";
-import { handleNotificationsReadAllRequest } from "@bot-thk/web-http";
+import { handleNotificationsReadAllRequest } from "@no-wave/web-http";
 import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**

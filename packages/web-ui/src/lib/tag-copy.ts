@@ -16,14 +16,6 @@ const copy: Record<Locale, TagCopy> = {
     subscribe: "标签订阅", browseWorks: "浏览全部作品", firstPage: "返回第一页", queryHint: "可以尝试更短的名称，或清除搜索浏览全部标签。",
     works: (count) => `${count} 篇已发表作品`,
   },
-  "zh-TW": {
-    title: "標籤", eyebrow: "閱讀索引 / 標籤", intro: "從作者使用的標籤出發，尋找同一主題下已經發表的作品。",
-    search: "搜尋標籤", placeholder: "輸入標籤名稱，可帶 #", submit: "搜尋", clear: "清除搜尋", all: "全部標籤", results: "標籤搜尋結果", articleTags: "作品標籤",
-    none: "還沒有可瀏覽的標籤。", noMatch: "沒有符合條件的標籤。", noMore: "此頁沒有更多標籤。",
-    emptyTag: "這個標籤下還沒有已發表的作品。", noMoreWorks: "此頁沒有更多已發表的作品。",
-    subscribe: "標籤訂閱", browseWorks: "瀏覽全部作品", firstPage: "返回第一頁", queryHint: "可以嘗試更短的名稱，或清除搜尋瀏覽全部標籤。",
-    works: (count) => `${count} 篇已發表作品`,
-  },
   en: {
     title: "Tags", eyebrow: "Reading index / Tags", intro: "Follow community hashtags to discover published writing on a shared theme.",
     search: "Search tags", placeholder: "Enter a tag name, with or without #", submit: "Search", clear: "Clear search", all: "All tags", results: "Tag search results", articleTags: "Article tags",

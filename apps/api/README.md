@@ -1,6 +1,6 @@
 # API Security and Persistence Foundation
 
-This package is the backend API of the independent BOT THK rebuild. Versioned REST under `/api/v1` is the sole business HTTP API. The Web public-content caller has migrated to REST, and the GraphQL schema, runtime, `/graphql` endpoint, direct dependencies, and transport-specific tests have been removed. SQLite is the default provider for new/local installs, PostgreSQL remains supported when selected, and MongoDB is planned but not yet implemented. All providers must pass the shared persistence behavior contracts; unsupported providers fail closed.
+This package is the backend API of the independent no-wave rebuild. Versioned REST under `/api/v1` is the sole business HTTP API. The Web public-content caller has migrated to REST, and the GraphQL schema, runtime, `/graphql` endpoint, direct dependencies, and transport-specific tests have been removed. SQLite is the default provider for new/local installs, PostgreSQL remains supported when selected, and MongoDB is planned but not yet implemented. All providers must pass the shared persistence behavior contracts; unsupported providers fail closed.
 
 ## Runtime probes
 
@@ -9,7 +9,7 @@ This package is the backend API of the independent BOT THK rebuild. Versioned RE
 
 ## 有限只读运维告警
 
-`pnpm --silent --filter @bot-thk/api ops:monitor --help` 提供一次性的
+`pnpm --silent --filter @no-wave/api ops:monitor --help` 提供一次性的
 `check` / `inspect` / `status` / `ack` / `reconfigure`（status 离线令旧绿灯到期）。明确配置私有 API、worker metrics
 目标后评估 HTTP5xx、积压/死信、独立 DB 健康、邮件失败与遥测可用性；unknown
 不作健康，事件先落盘再输出，须显式确认交付。命令不加载 `.env`、不连接业务数据库、
@@ -18,13 +18,13 @@ This package is the backend API of the independent BOT THK rebuild. Versioned RE
 配置、私有 POSIX 日志、退出码、恢复/确认与真实演练边界见
 [运维规程](../../docs/operations/operational-monitor.md)。
 
-另有 `pnpm --silent --filter @bot-thk/api ops:handoff --help`：离线签名事件包、
+另有 `pnpm --silent --filter @no-wave/api ops:handoff --help`：离线签名事件包、
 独立持久收件箱、回执恢复/公钥核验、等待年龄/分页/对账，以及显式 settle/consume。
 不联网、不加载 `.env`、不访问业务 store；持久接收不等于通知到人，只有显式
 settle 才确认原 monitor 前缀。配置、双向公钥 pin、容量和中断恢复见
 [交接规程](../../docs/operations/alert-handoff.md)；未启用外部渠道、调度器或生产账号。
 
-`pnpm --silent --filter @bot-thk/api ops:evidence --help` 提供只持独立公钥的离线
+`pnpm --silent --filter @no-wave/api ops:evidence --help` 提供只持独立公钥的离线
 `review` / `compare` / `check` / `trace`：审阅跨批次历史，保留删除/替换证据造成的
 回退，核验独立已知检查点，并分页定位事件及完整发现。任何过滤或导航 token 都不
 授予确认/消费权限，也不隐藏全局冲突；签名历史不代表当前健康或通知到人。不改变
@@ -55,7 +55,7 @@ The existing registration/login/refresh/logout policies remain separately strict
 ## 默认关闭的 durable Notion import jobs
 
 #331 的有限审阅切片：认证 start/list/status/cancel、原幂等键回执查询、外部 key ring
-加密，以及独立 `pnpm --filter @bot-thk/api jobs:notion drain|inspect|check|sweep`。
+加密，以及独立 `pnpm --filter @no-wave/api jobs:notion drain|inspect|check|sweep`。
 不改变同步导入／UI，不保存 Notion 凭据，不自动刷新输入或重放崩溃后的 mutation。
 过期 running 只能 interrupted；进度不是完整 checkpoint，作者须检查作品和媒体并重新预览。
 状态查询的短等待有独立物理查询上限，不是导入执行器。源／目标有活跃 job 时拒绝 provider transfer。
@@ -124,7 +124,7 @@ One retry is attempted, and only for a failure that happened **before** the rela
 - `GET /api/v1/tags/:slug?locale=zh-CN` — one localized hashtag, or `404 NOT_FOUND`.
 - `GET /api/v1/tags/:slug/articles?locale=zh-CN&limit=20&offset=0` — published localized articles associated with a hashtag.
 
-The versioned REST API accepts `zh-CN`, `zh-TW`, and `en`. Requests specifying another locale return `400 BAD_USER_INPUT`; search terms are limited to 200 characters and limits are 1–100. Comment creation accepts legacy `content` plain text or exactly one of `contentBlocks` / `editorState` for rich comments. Rich comments use version 1, are limited to 20 paragraph blocks and 5,000 fallback characters, and allow only application-v1 inline marks and safe links. The existing `content` field remains the canonical plain-text fallback for older clients; versioned blocks are stored separately and exposed alongside it.
+The versioned REST API accepts `zh-CN` and `en` for new works. `zh-TW` is legacy-only (issue #417): existing `zh-TW` works can still be read and updated, but creating a work with `zh-TW` returns `400 BAD_USER_INPUT`. Requests specifying any other locale also return `400 BAD_USER_INPUT`; search terms are limited to 200 characters and limits are 1–100. Comment creation accepts legacy `content` plain text or exactly one of `contentBlocks` / `editorState` for rich comments. Rich comments use version 1, are limited to 20 paragraph blocks and 5,000 fallback characters, and allow only application-v1 inline marks and safe links. The existing `content` field remains the canonical plain-text fallback for older clients; versioned blocks are stored separately and exposed alongside it.
 Article write requests require `Authorization: Bearer <JWT>` with a valid issuer, audience, expiry and `jti`; revoked sessions fail with `401 UNAUTHENTICATED`. The server derives `authorId`/`actorId` from the verified JWT and rejects client-supplied identity fields. Write bodies must use `Content-Type: application/json`, contain a JSON object, and fit within 2 MiB. For article create/update, send exactly one of `contentBlocks` (the application-owned JSON block array) or `editorState` (a serialized Lexical EditorState object). The write-only `editorState` ingress is validated by the strict adapter and immediately normalized to application content version `1`; Lexical JSON is never persisted or returned. Existing `contentBlocksVersion` behavior is unchanged: it defaults to `0` for legacy block arrays and may be set to `1` for rich text; an `editorState` request must use version `1` if the field is supplied. Image/custom nodes and all unsupported metadata still fail closed. `locale` accepts `zh-CN`, `en` and the legacy `zh-TW`; the authoring desk offers `zh-CN` and `en` for new work and preserves an existing work's locale. Create returns `201`, update returns `200`, and domain failures map to the documented sanitized status codes. Invalid query values return `400 BAD_USER_INPUT`, unknown article/category resources return `404 NOT_FOUND`, and missing persistence returns `503 SERVICE_UNAVAILABLE`. Domain errors thrown by application services map to stable REST statuses: `BAD_USER_INPUT` → 400, `FORBIDDEN` → 403, `NOT_FOUND` → 404, and `CONFLICT` / `IDEMPOTENCY_CONFLICT` → 409. The adapter does not forward domain exception text; unknown domain codes and unexpected exceptions return a generic `500 INTERNAL_SERVER_ERROR` response without internal details. Category article requests resolve the category before listing content, so unknown categories do not produce a misleading successful empty list.
 
 ## SQLite-first local setup
@@ -132,11 +132,11 @@ Article write requests require `Authorization: Bearer <JWT>` with a valid issuer
 Fresh installations use SQLite by default at `./data/no-wave.sqlite`, resolved against this package directory (so `apps/api/data/no-wave.sqlite` when started through pnpm). The location may be changed with `DATABASE_PATH`; local database files and their WAL sidecars are ignored by Git. Run migrations before starting the API:
 
 ```sh
-pnpm --filter @bot-thk/api migrate   # or `pnpm db:migrate` from the repository root
-pnpm --filter @bot-thk/api start     # or `pnpm dev:api` / `pnpm dev` for API + Web
+pnpm --filter @no-wave/api migrate   # or `pnpm db:migrate` from the repository root
+pnpm --filter @no-wave/api start     # or `pnpm dev:api` / `pnpm dev` for API + Web
 ```
 
-`pnpm --filter @bot-thk/api dev` runs the API under `node --watch`. From the
+`pnpm --filter @no-wave/api dev` runs the API under `node --watch`. From the
 repository root, `pnpm dev` starts the API and the Web dev server together with
 the readiness gates described in
 [Local development](../../docs/development/local-development.md), and
@@ -159,7 +159,7 @@ checks and every 32 article writes — but an instance that nobody writes to wou
 never clean anything up, so the cleanup has its own trigger:
 
 ```sh
-pnpm --filter @bot-thk/api maintenance
+pnpm --filter @no-wave/api maintenance
 ```
 
 A one-shot process, in the shape of `drain:notifications`: it opens the configured
@@ -186,8 +186,8 @@ deliberately does not do.
 Set `DATABASE_PROVIDER=postgres` and `DATABASE_URL` to a developer-owned PostgreSQL database, then run:
 
 ```sh
-pnpm --filter @bot-thk/api migrate
-pnpm --filter @bot-thk/api start
+pnpm --filter @no-wave/api migrate
+pnpm --filter @no-wave/api start
 ```
 
 Migrations are explicit release steps; API startup does not silently change the schema. Never run the migration command against production without a reviewed release plan and backup. **Stop old API instances and workers before enabling this version**: older logout does not revoke new refresh families, and older workers do not serialize delivery with conversation changes. See the [authentication contract](../../docs/architecture/api-authentication.md) for configuration, limitations and rollout details.
@@ -195,7 +195,7 @@ Migrations are explicit release steps; API startup does not silently change the 
 ## Persistence API
 
 - `createSqliteClient()` opens a local SQLite database with foreign keys, a busy timeout and WAL for file-backed databases.
-- `runSqliteMigrations(db)` applies ordered SQLite-native migrations transactionally; `pnpm --filter @bot-thk/api migrate` selects the matching migration runner for the chosen provider.
+- `runSqliteMigrations(db)` applies ordered SQLite-native migrations transactionally; `pnpm --filter @no-wave/api migrate` selects the matching migration runner for the chosen provider.
 - `createSqliteStore(db)` composes the SQLite domain slices into the full persistence adapter and is the default fresh-install provider.
 - `createPostgresClient()`, `runMigrations(sql)` and `createPostgresStore(sql)` remain the supported PostgreSQL adapter and migration path.
 - `src/application/persistence-ports.ts` defines the required domain-grouped adapter contract, and `src/application/services.ts` is the application-facing composition seam. Domain validation and errors live under `src/domain/`; PostgreSQL-specific queries, transactions, constraints and row mapping remain in `src/persistence/`. Type-position `any` is banned in non-test sources here and enforced by `src/typed-boundaries.test.ts`; the REST response projections are typed from the same contracts (see `docs/architecture/persistence-adapter-contract.md`). This package typechecks under `strict: true`, like the other three: the only dynamic seam left is the named driver row bag per provider (`postgres.Row`, `SqliteRow`), and every mapper downstream of it answers a declared record.
@@ -204,7 +204,7 @@ Migrations are explicit release steps; API startup does not silently change the 
 - Reusing an idempotency key with a different payload fails with `IDEMPOTENCY_CONFLICT`.
 - JWTs require a non-empty `jti`; the API checks its durable revocation on each authenticated request and fails closed. For self-hosted sessions, REST logout revokes the whole refresh family and all issued access-token IDs. An independently issued token can only have its own `jti` revoked locally.
 
-The REST-only migration is complete: public reads and authenticated writes are exposed through the documented versioned REST routes under `/api/v1`; there is no GraphQL transport or `/graphql` endpoint. The historical operation-by-operation inventory remains in `docs/audit/rest-graphql-parity.md` as a migration record, not as a live API contract. Conversation lists are scoped to the authenticated actor and include participant IDs plus the latest message summary; message history is returned oldest-first within the requested latest-message window. Message reads check database membership; sends derive `senderId` from the verified JWT subject and commit the message with its outbox intent. The notification inbox is scoped to the verified JWT subject, and read-state updates include the recipient in the SQL predicate so another user cannot inspect or mark a notification. Unread counts and batch read operations are also scoped to the authenticated actor. Notification payloads are exposed as JSON-serialized strings. The reusable outbox dispatcher leases events with `FOR UPDATE SKIP LOCKED`, marks successful delivery, and schedules failed delivery for retry. A standalone `pnpm --filter @bot-thk/api worker:notifications` process converts `message.created` outbox events into durable inbox rows. Configure it under a process supervisor alongside the API (not inside the web request process). Optional settings are `OUTBOX_POLL_INTERVAL_MS` (default `1000`), `OUTBOX_BATCH_LIMIT` (default `25`), `OUTBOX_LEASE_SECONDS` (default `60`), and `OUTBOX_RETRY_DELAY_SECONDS` (default `30`). It requires `DATABASE_URL` and uses the same PostgreSQL store; no external push provider is configured, so this worker persists in-app notifications rather than sending web push/email. Do not advertise external push delivery or the entire messaging/notification feature set as production-ready until those pieces are complete.
+The REST-only migration is complete: public reads and authenticated writes are exposed through the documented versioned REST routes under `/api/v1`; there is no GraphQL transport or `/graphql` endpoint. The historical operation-by-operation inventory remains in `docs/audit/rest-graphql-parity.md` as a migration record, not as a live API contract. Conversation lists are scoped to the authenticated actor and include participant IDs plus the latest message summary; message history is returned oldest-first within the requested latest-message window. Message reads check database membership; sends derive `senderId` from the verified JWT subject and commit the message with its outbox intent. The notification inbox is scoped to the verified JWT subject, and read-state updates include the recipient in the SQL predicate so another user cannot inspect or mark a notification. Unread counts and batch read operations are also scoped to the authenticated actor. Notification payloads are exposed as JSON-serialized strings. The reusable outbox dispatcher leases events with `FOR UPDATE SKIP LOCKED`, marks successful delivery, and schedules failed delivery for retry. A standalone `pnpm --filter @no-wave/api worker:notifications` process converts `message.created` outbox events into durable inbox rows. Configure it under a process supervisor alongside the API (not inside the web request process). Optional settings are `OUTBOX_POLL_INTERVAL_MS` (default `1000`), `OUTBOX_BATCH_LIMIT` (default `25`), `OUTBOX_LEASE_SECONDS` (default `60`), and `OUTBOX_RETRY_DELAY_SECONDS` (default `30`). It requires `DATABASE_URL` and uses the same PostgreSQL store; no external push provider is configured, so this worker persists in-app notifications rather than sending web push/email. Do not advertise external push delivery or the entire messaging/notification feature set as production-ready until those pieces are complete.
 
 ### Outbox leases and worker rollout
 
@@ -258,7 +258,7 @@ the process. See [ADR 0027](../../docs/architecture/decisions/0027-client-addres
 Use a disposable PostgreSQL database only:
 
 ```sh
-TEST_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/bot_thk_test pnpm --filter @bot-thk/api test:integration
+TEST_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/no_wave_test pnpm --filter @no-wave/api test:integration
 ```
 
 PostgreSQL tests skip when `TEST_DATABASE_URL` is unset; SQLite contract tests still run. Never set it to a production URL. Use a database dedicated to this test run: tests apply migrations, create/remove test records, claim from the whole outbox, and exercise bounded cleanup of expired authentication state. Test files run serially because they share the database; individual contracts still exercise concurrency.
@@ -278,7 +278,7 @@ These helpers do not replace resource-level database checks in each resolver. Se
 
 The standalone API issues self-hosted access/refresh credentials as well as verifying compatible independently issued JWTs. It uses salted scrypt passwords, one-time refresh rotation and durable session-family revocation; authentication bodies are limited to 4 KiB. The initial registration flow does **not** verify email, implement account recovery or define browser-safe token storage, so it is not a production-ready account system. See the complete [authentication contract](../../docs/architecture/api-authentication.md) for API requests, TTLs, throttling, unverified-email and enumeration risks, missing controls, and deployment/rollback constraints.
 
-The verifier pins `HS256`, private type `application/vnd.bot-thk.access+jwt`, issuer/audience, `iat`/`exp`, `sub` and `jti`; its default maximum access lifetime is 15 minutes. It is not an OAuth/OIDC or RFC 9068 implementation. The API never trusts client identity headers or actor IDs and fails closed when revocation cannot be checked. Never commit or log passwords, bearer/refresh credentials, cookies or signing secrets.
+The verifier pins `HS256`, private type `application/vnd.no-wave.access+jwt`, issuer/audience, `iat`/`exp`, `sub` and `jti`; its default maximum access lifetime is 15 minutes. It is not an OAuth/OIDC or RFC 9068 implementation. The API never trusts client identity headers or actor IDs and fails closed when revocation cannot be checked. Never commit or log passwords, bearer/refresh credentials, cookies or signing secrets.
 
 ## REST transport
 
@@ -367,7 +367,7 @@ Identifiers are opaque strings. A path segment is only decoded and bounded — d
 
 ### Validation and error behavior
 
-Repeated query parameter names are rejected with `400 BAD_USER_INPUT` because all current REST query parameters are scalar; rejected requests close the connection when a write body may remain unread. The versioned REST API accepts locales `zh-CN`, `zh-TW`, and `en`; unsupported locales return `400 BAD_USER_INPUT` instead of silently falling back. Article responses include the complete documented article data contract, enriched with `author`, `categories`, and `tags` from the shared services. REST `contentBlocks` is a JSON array. A `query` matches the title, the summary and — block by block, never as the JSON it is stored as — the body of every published work, so a reader who remembers one line can find the story it belongs to. Search terms are limited to 200 characters. Article discovery accepts **either** an `offset` (an integer from 0 to 100000) **or** a `cursor`, never both — they are two different answers to "where does this page start", and accepting both would mean silently deciding which one wins. A cursor is `base64url("<publishedAt>|<id>")` of the **last work the reader already saw**, which the client builds itself from the page it just received (`publishedAt` is the ISO timestamp in the response, `id` the work's own). That is why the response stays a plain array with no `nextCursor`: an empty page is the end. Cursors are supported with `sort=latest` only — "most saved" is ranked by a count that changes while it is read, so a boundary drawn through it would drift under the reader. Sending both, sending a cursor the server cannot decode, or sending one with `sort=popular` is a `400 BAD_INPUT`. The advantage over an offset is the one that matters to a reader mid-scroll: a work published above them does not push the next page's contents down, so nothing is repeated and nothing is skipped. Pagination limits are integers from 1 to 100 with bounded non-negative offsets. Domain validation, ownership rules, transactions and notification-outbox behavior remain in the existing application and persistence layers. Errors are mapped to stable HTTP codes and sanitized messages.
+Repeated query parameter names are rejected with `400 BAD_USER_INPUT` because all current REST query parameters are scalar; rejected requests close the connection when a write body may remain unread. The versioned REST API accepts locales `zh-CN` and `en` for new works, with legacy `zh-TW` kept for existing works; unsupported locales return `400 BAD_USER_INPUT` instead of silently falling back. Article responses include the complete documented article data contract, enriched with `author`, `categories`, and `tags` from the shared services. REST `contentBlocks` is a JSON array. A `query` matches the title, the summary and — block by block, never as the JSON it is stored as — the body of every published work, so a reader who remembers one line can find the story it belongs to. Search terms are limited to 200 characters. Article discovery accepts **either** an `offset` (an integer from 0 to 100000) **or** a `cursor`, never both — they are two different answers to "where does this page start", and accepting both would mean silently deciding which one wins. A cursor is `base64url("<publishedAt>|<id>")` of the **last work the reader already saw**, which the client builds itself from the page it just received (`publishedAt` is the ISO timestamp in the response, `id` the work's own). That is why the response stays a plain array with no `nextCursor`: an empty page is the end. Cursors are supported with `sort=latest` only — "most saved" is ranked by a count that changes while it is read, so a boundary drawn through it would drift under the reader. Sending both, sending a cursor the server cannot decode, or sending one with `sort=popular` is a `400 BAD_INPUT`. The advantage over an offset is the one that matters to a reader mid-scroll: a work published above them does not push the next page's contents down, so nothing is repeated and nothing is skipped. Pagination limits are integers from 1 to 100 with bounded non-negative offsets. Domain validation, ownership rules, transactions and notification-outbox behavior remain in the existing application and persistence layers. Errors are mapped to stable HTTP codes and sanitized messages.
 
 This remains a staged migration. The article rich-text contract is application-owned and versioned; Lexical JSON and client-supplied HTML are not accepted as canonical content. The current version-1 scope includes inline marks and hyperlinks inside existing block types. A pure serialized-Lexical adapter supports paragraphs, h2–h4 headings, quotes without attribution, ordered/unordered lists, inline text/link/marks, and code. It rejects custom image nodes, quote attribution, nested lists, unsupported CSS/alignment/direction metadata, and other payload features that the application contract cannot preserve; comment rich text and approved media upload integration remain open tasks. The REST-only migration is complete. The historical parity audit records the previous GraphQL operation inventory and the intentional move from a non-idempotent like toggle to explicit `PUT liked` state-setting semantics. Taxonomy, conversation/message and notification routes reuse the existing persistence authorization, cursor, idempotency and outbox behavior. Request-level REST tests and the full CI gate now validate the supported contract.
 

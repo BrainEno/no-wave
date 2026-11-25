@@ -1,4 +1,4 @@
-import { parseRetryAfterSeconds } from "@bot-thk/web-http";
+import { parseRetryAfterSeconds } from "@no-wave/web-http";
 import { apiErrorCode, apiErrorMessage } from "./api-error.ts";
 import type { Locale } from "./content.ts";
 import { getUi } from "./ui-copy.ts";

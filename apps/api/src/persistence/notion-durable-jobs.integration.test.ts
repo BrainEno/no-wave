@@ -19,7 +19,7 @@ import { createApiServer, shutdownApiServer } from "../server.ts";
 
 const env = {
   AUTH_JWT_SECRET: "durable-job-test-only-secret-more-than-thirty-two-bytes",
-  AUTH_JWT_ISSUER: "https://auth.example.test", AUTH_JWT_AUDIENCE: "bot-thk-api",
+  AUTH_JWT_ISSUER: "https://auth.example.test", AUTH_JWT_AUDIENCE: "no-wave-api",
   NOTION_IMPORT_JOBS_ENABLED: "true", NOTION_IMPORT_JOB_KEY: Buffer.alloc(32, 7).toString("base64"),
 };
 const rich = (plain_text: string) => ({ type: "text", plain_text, text: { content: plain_text } });
@@ -34,7 +34,7 @@ function source(label = "Durable input", images = 0) {
 }
 function token(sub: string) {
   const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
-  const body = `${encode({ alg: "HS256", typ: "application/vnd.bot-thk.access+jwt" })}.${encode({ sub,
+  const body = `${encode({ alg: "HS256", typ: "application/vnd.no-wave.access+jwt" })}.${encode({ sub,
     iss: env.AUTH_JWT_ISSUER, aud: env.AUTH_JWT_AUDIENCE, iat: Math.floor(Date.now() / 1000),
     exp: Math.floor(Date.now() / 1000) + 600, sid: `durable-${sub}`, jti: randomUUID(),
   })}`;

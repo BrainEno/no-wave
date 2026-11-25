@@ -2,7 +2,7 @@
 
 Status: active
 
-This is the acceptance contract for every persistence provider in the rebuilt BOT THK API. An adapter is not considered supported merely because it connects and implements methods with matching names. It must pass the same observable domain tests.
+This is the acceptance contract for every persistence provider in the rebuilt no-wave API. An adapter is not considered supported merely because it connects and implements methods with matching names. It must pass the same observable domain tests.
 
 ## Dependency direction
 

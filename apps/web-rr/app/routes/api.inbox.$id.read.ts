@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { handleConversationReadRequest } from "@bot-thk/web-http";
+import { handleConversationReadRequest } from "@no-wave/web-http";
 import { apiProxyConfig } from "../lib/runtime.ts";
 
 /** Both aliases use the shared method, Origin and ID checks. */

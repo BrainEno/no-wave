@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs } from "react-router";
-import { handleAccountPasswordChangeRequest } from "@bot-thk/web-http";
+import { handleAccountPasswordChangeRequest } from "@no-wave/web-http";
 import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**
