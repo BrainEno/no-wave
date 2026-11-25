@@ -1,5 +1,8 @@
 # 无浪潮 No Wave · 前端落地说明
 
+> **Status: archived**（2026-11 归档）。本文记录的是早期原型阶段（Next.js、GraphQL、gsap、Google Fonts）的落地状态，多数说法已经过时：当前为 React Router 与 REST，字体为站内第一方 WOFF2，登录与写作台已有实际路由。仅作历史参考，不要当作现行事实。
+> 现行 UI 规范与 token 源：[UI_DESIGN_SYSTEM.md](UI_DESIGN_SYSTEM.md)；现行文档索引：[docs/README.md](../../../docs/README.md)。
+
 对应设计规范：`docs/UI_DESIGN_SYSTEM.md`（v0.2）。本文说明**哪些已按真实 API 落地，哪些因后端缺口没有落地**。
 
 ## 1. 页面与数据来源（均来自现有 GraphQL 客户端 `src/lib/api-content.ts`）

@@ -10,6 +10,11 @@ Status values: `active` (current, follow it), `done` (completed work, kept as a 
 
 Architecture decision records and their Accepted/Superseded status live in the [ADR index](architecture/decisions/README.md).
 
+## 前端 UI（packages/web-ui）
+
+- [UI 设计规范与 token 源（唯一有效规范）](../packages/web-ui/docs/UI_DESIGN_SYSTEM.md) — Status: active
+- [前端落地说明（早期原型，已归档）](../packages/web-ui/docs/IMPLEMENTATION_NOTES.md) — Status: archived
+
 ## docs/architecture
 
 - [API authentication contract](architecture/api-authentication.md) — Status: active
