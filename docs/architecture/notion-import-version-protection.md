@@ -153,7 +153,7 @@ operator seed remains a separate workflow, not a signed preview/apply client.
   generation exclusion/preservation, revision exclusion and replay/transfer parity.
 - `packages/web-ui/src/lib/notion-import.test.ts`: token-preserving parsing,
   confirmation requires a plan, and honest rejected/partial-result headlines.
-- `e2e/notion-import.spec.ts`, `e2e/authoring.spec.ts`: browser confirmation and
-  re-preview recovery, a post-preview edit preserved through apply, and a stale
-  editor's draft retained after a real conditional-write conflict. Browser,
-  PostgreSQL and full-suite gates run in CI.
+- `e2e/notion-import.spec.ts`: browser confirmation, re-preview recovery and a
+  post-preview edit preserved through apply. `e2e/authoring-locale-and-stale-editor.spec.ts`:
+  a stale editor's draft retained after a real conditional-write conflict.
+  Browser, PostgreSQL and full-suite gates run in CI.
