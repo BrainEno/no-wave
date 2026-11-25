@@ -28,7 +28,7 @@ import { OPENAPI_DOCUMENT, OPENAPI_PATH } from "./openapi/index.ts";
 const env = {
   AUTH_JWT_SECRET: "test-only-secret-at-least-thirty-two-bytes",
   AUTH_JWT_ISSUER: "https://auth.example.test",
-  AUTH_JWT_AUDIENCE: "bot-thk-api",
+  AUTH_JWT_AUDIENCE: "no-wave-api",
 };
 
 const HTTP_METHODS = new Set(["get", "post", "put", "patch", "delete"]);

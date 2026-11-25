@@ -1,4 +1,4 @@
-import { isRecord, resolveUpstreamTimeoutMs, upstreamTransportFor, upstreamJsonPayload, type FetchImpl, type UpstreamTransport } from "@bot-thk/web-http";
+import { isRecord, resolveUpstreamTimeoutMs, upstreamTransportFor, upstreamJsonPayload, type FetchImpl, type UpstreamTransport } from "@no-wave/web-http";
 import { isTagSlug, type TagReference, type TagView } from "./tag-discovery.ts";
 import { parseArticlePreview, projectArticleForList } from "./article-preview.ts";
 import type { ArticleContentBlock, ArticleSort, ArticleView, AuthorView, Locale } from "./content.ts";

@@ -56,14 +56,14 @@ online migration pipeline ADR 0010 asks for is still unimplemented
 cp ./data/no-wave.sqlite /tmp/rehearsal.sqlite
 
 # 2. Validate the source without writing anything.
-pnpm --filter @bot-thk/api db:transfer \
+pnpm --filter @no-wave/api db:transfer \
   --from sqlite:/tmp/rehearsal.sqlite \
   --to postgres:postgres://user@localhost/no_wave_rehearsal \
   --dry-run
 
 # 3. Copy for real into a fresh database.
 createdb no_wave_rehearsal      # or: CREATE DATABASE no_wave_rehearsal;
-pnpm --filter @bot-thk/api db:transfer \
+pnpm --filter @no-wave/api db:transfer \
   --from sqlite:/tmp/rehearsal.sqlite \
   --to postgres:postgres://user@localhost/no_wave_rehearsal
 ```
@@ -89,16 +89,16 @@ per-table progress lines.
 ```bash
 # 1. Stop the API and the workers. Nothing may write to the source.
 # 2. Copy.
-pnpm --filter @bot-thk/api db:transfer \
+pnpm --filter @no-wave/api db:transfer \
   --from sqlite:./data/no-wave.sqlite \
   --to postgres:postgres://user@production-host/no_wave
 
 # 3. Verify (see below), then start the API with the target configured:
-DATABASE_PROVIDER=postgres DATABASE_URL=postgres://… pnpm --filter @bot-thk/api start
+DATABASE_PROVIDER=postgres DATABASE_URL=postgres://… pnpm --filter @no-wave/api start
 ```
 
 `pnpm db:transfer` is the same command as
-`pnpm --filter @bot-thk/api db:transfer`; the root script exists so nobody has to
+`pnpm --filter @no-wave/api db:transfer`; the root script exists so nobody has to
 remember the filter.
 
 The target schema is migrated by the transfer before any row is written. Pass

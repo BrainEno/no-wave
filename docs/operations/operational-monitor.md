@@ -52,14 +52,14 @@ ID 与规范化后的 URL 各自唯一。未知字段、null 配置节、错误�
 路径按当前工作目录解析；明确传绝对路径最稳妥。
 
 ```sh
-pnpm --silent --filter @bot-thk/api ops:monitor --help
-pnpm --silent --filter @bot-thk/api ops:monitor check \
+pnpm --silent --filter @no-wave/api ops:monitor --help
+pnpm --silent --filter @no-wave/api ops:monitor check \
   --config "$HOME/no-wave-monitor/monitor.json" \
   --state "$HOME/no-wave-monitor/alerts.json"
-pnpm --silent --filter @bot-thk/api ops:monitor inspect \
+pnpm --silent --filter @no-wave/api ops:monitor inspect \
   --config "$HOME/no-wave-monitor/monitor.json" \
   --state "$HOME/no-wave-monitor/alerts.json"
-pnpm --silent --filter @bot-thk/api ops:monitor status \
+pnpm --silent --filter @no-wave/api ops:monitor status \
   --config "$HOME/no-wave-monitor/monitor.json" \
   --state "$HOME/no-wave-monitor/alerts.json"
 ```
@@ -197,7 +197,7 @@ ID 包含配置指纹、revision、目标、规则、转换和评估时间；不
 3. 显式运行下述命令；不要把“shell 写出成功”当“接收者已经处理”。
 
 ```sh
-pnpm --silent --filter @bot-thk/api ops:monitor ack \
+pnpm --silent --filter @no-wave/api ops:monitor ack \
   --config "$HOME/no-wave-monitor/monitor.json" \
   --state "$HOME/no-wave-monitor/alerts.json" \
   --through "$EVENT_ID"
@@ -226,7 +226,7 @@ stdout 的 write callback 等待最多 2 s。真实满管道/EPIPE 使命令以 
 先交付/确认全部事件，再执行显式离线事务：
 
 ```sh
-pnpm --silent --filter @bot-thk/api ops:monitor reconfigure \
+pnpm --silent --filter @no-wave/api ops:monitor reconfigure \
   --config "$HOME/no-wave-monitor/monitor.json" \
   --next-config "$HOME/no-wave-monitor/next.json" \
   --state "$HOME/no-wave-monitor/alerts.json"

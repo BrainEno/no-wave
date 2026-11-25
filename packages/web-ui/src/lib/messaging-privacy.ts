@@ -1,4 +1,4 @@
-import { MESSAGING_EXPECTED_ACTOR_HEADER } from "@bot-thk/web-http";
+import { MESSAGING_EXPECTED_ACTOR_HEADER } from "@no-wave/web-http";
 import { createMessagingTransport, isMessagingActor, MessagingRequestError, type MessagingProblem } from "./messaging-transport.ts";
 import type { MessagingController } from "./messaging-intent.ts";
 

@@ -1,6 +1,6 @@
 import { catalogueSelectionFingerprint } from "./authoring-catalogue-review.ts";
 import { readCatalogueEditions, type CatalogueInspection } from "./authoring-catalogue-versions.ts";
-import { AUTHORING_EXPECTED_ACTOR_HEADER, isRecord, parseRetryAfterSeconds } from "@bot-thk/web-http";
+import { AUTHORING_EXPECTED_ACTOR_HEADER, isRecord, parseRetryAfterSeconds } from "@no-wave/web-http";
 import { apiErrorCode } from "./api-error.ts";
 import { CatalogueDocumentReader, CatalogueReadError } from "./authoring-catalogue-open.ts";
 import { CATALOGUE_SELECTION_LIMIT, DEFAULT_CATALOGUE_FILTERS, catalogueEntryKey, catalogueFilterKey, catalogueRequestPath, readCataloguePage, readCatalogueEntry, validateCatalogueFilters,

@@ -5,7 +5,7 @@ import { siteFeedLinks } from "../../../../packages/web-ui/src/lib/site-feed.ts"
 /**
  * Adapter from the project's framework-neutral metadata objects
  * (`articleMetadata`, `archiveMetadata`, `homeMetadata` in
- * `@bot-thk/web-ui`'s `lib/content.ts`) to React Router's `meta` descriptor
+ * `@no-wave/web-ui`'s `lib/content.ts`) to React Router's `meta` descriptor
  * array.
  *
  * Keeping the conversion here means the SEO contract — canonical URL, hreflang

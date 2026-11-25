@@ -1,5 +1,5 @@
 import { redirect, useLoaderData, type HeadersFunction, type LoaderFunctionArgs, type MetaFunction } from "react-router";
-import { hasUsableSession, sessionMarkerFrom } from "@bot-thk/web-http";
+import { hasUsableSession, sessionMarkerFrom } from "@no-wave/web-http";
 import { NotificationInbox } from "@/components/authoring/notification-inbox.tsx";
 import { inboxFilterHref, parseInboxFilters } from "@/lib/notification-inbox-model.ts";
 import { readNotificationSelection } from "@/lib/notification-selection.ts";

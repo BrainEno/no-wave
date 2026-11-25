@@ -18,7 +18,7 @@ test("every BFF resource imports its shared handler directly and no app-local pr
   for (const route of routes) {
     const tree = parse(readFileSync(join(directory, route), "utf8"), { sourceType: "module", plugins: ["typescript"] });
     const imports = tree.program.body.filter(node => node.type === "ImportDeclaration").map(node => node.source.value);
-    assert.ok(imports.includes("@bot-thk/web-http"), route);
+    assert.ok(imports.includes("@no-wave/web-http"), route);
     assert.ok(!imports.some(specifier => /-proxy\.ts$/.test(specifier)), route);
   }
   for (const name of ["account", "auth", "authoring", "notifications"]) assert.equal(existsSync(join(root, `apps/web-rr/app/lib/${name}-proxy.ts`)), false);

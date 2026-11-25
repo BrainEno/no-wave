@@ -187,7 +187,7 @@ test("all layers run in order against a private disposable database and clean up
     assert.match(describe[2]!, /^\/node --test /);
     assert.match(
       describe[3]!,
-      /\/pnpm\/cli.js --filter @bot-thk\/web-rr build/,
+      /\/pnpm\/cli.js --filter @no-wave\/web-rr build/,
     );
     assert.match(describe[4]!, /--test test\/web.test.ts test\/server.test.ts/);
     assert.match(

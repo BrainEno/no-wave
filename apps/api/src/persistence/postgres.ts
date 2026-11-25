@@ -38,7 +38,7 @@ export function createPostgresClient({
     throw new Error("DATABASE_URL must use postgres:// or postgresql://.");
   }
   return import("postgres").then(({ default: postgres }) => postgres(connectionString, {
-    max, idle_timeout, connect_timeout, connection: { application_name: "bot-thk-api" },
+    max, idle_timeout, connect_timeout, connection: { application_name: "no-wave-api" },
   }));
 }
 

@@ -121,7 +121,7 @@ The cleanup sweeps are the mirror image of account mail: no request is waiting
 for them, so a purge that has been failing since Tuesday produces a perfectly
 healthy-looking API and a recycle bin that keeps growing. The counter is the
 signal an alert rules on, and it only exists in the API process while the sweeps
-run there — a scheduled `pnpm --filter @bot-thk/api maintenance` run reports its
+run there — a scheduled `pnpm --filter @no-wave/api maintenance` run reports its
 failures in its own JSON log line instead (see
 [scheduled maintenance](scheduled-maintenance.md)).
 
@@ -137,7 +137,7 @@ carry a connection string.
 
 ## 有限只读告警评估
 
-仓库提供 `pnpm --silent --filter @bot-thk/api ops:monitor`，明确配置 API / worker
+仓库提供 `pnpm --silent --filter @no-wave/api ops:monitor`，明确配置 API / worker
 目标后有限执行 `check`、离线 `inspect` / 带 freshness 的 `status`、显式 `ack` 和安全 `reconfigure`。
 规则覆盖 HTTP 5xx、pending 数量/年龄、死信、独立数据库健康、邮件失败及源可用性；
 缺失、过期、重启、低 HTTP 流量不能作为恢复证明。日志先持久化再输出，待交付

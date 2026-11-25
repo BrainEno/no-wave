@@ -1,5 +1,5 @@
 /**
- * `@bot-thk/web-http` — the framework-neutral HTTP seam (ADR 0012, Phase 2).
+ * `@no-wave/web-http` — the framework-neutral HTTP seam (ADR 0012, Phase 2).
  *
  * Everything here is written against standard `Request`/`Response`/`Headers` and
  * takes explicit inputs, so the same implementation serves the Next.js route

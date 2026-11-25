@@ -168,11 +168,11 @@ test("the Web role resolves the API through API_BASE_URL, not through a binding"
 
 test("a configured PostgreSQL URL switches the provider and enables the outbox", async () => {
   const options = baseOptions({
-    databaseUrl: "postgres://user:pass@127.0.0.1:5432/bot_thk",
+    databaseUrl: "postgres://user:pass@127.0.0.1:5432/no_wave",
   });
   const api = portableStackEnvironment(options, "api");
   assert.equal(api.DATABASE_PROVIDER, "postgres");
-  assert.equal(api.DATABASE_URL, "postgres://user:pass@127.0.0.1:5432/bot_thk");
+  assert.equal(api.DATABASE_URL, "postgres://user:pass@127.0.0.1:5432/no_wave");
   assert.equal(
     api.DATABASE_PATH,
     undefined,

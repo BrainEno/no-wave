@@ -119,8 +119,8 @@ in your ignored local env file.
 
 ```sh
 pnpm install --frozen-lockfile
-pnpm --filter @bot-thk/api migrate
-pnpm --filter @bot-thk/api start
+pnpm --filter @no-wave/api migrate
+pnpm --filter @no-wave/api start
 ```
 
 The migration script selects `DATABASE_URL_UNPOOLED` first and otherwise falls back

@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs } from "react-router";
-import { handleAccountEmailChangeRequest } from "@bot-thk/web-http";
+import { handleAccountEmailChangeRequest } from "@no-wave/web-http";
 import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**

@@ -5,4 +5,4 @@ index cfb41abbb1f9ee9a28df83a21599032afe13decf..5a78c6db3135797e1effa3f57918fbcf
 @@ -3172,1 +3172,2 @@ var require_picomatch = __commonJS({
 -    module.exports = require_picomatch();
 +    // The bundled regex compiler is not used by this workspace.
-+    module.exports = __require("@bot-thk/glob-match");
++    module.exports = __require("@no-wave/glob-match");

@@ -1,4 +1,4 @@
-import type { AdmissionLimits } from "@bot-thk/web-http";
+import type { AdmissionLimits } from "@no-wave/web-http";
 
 export function webIntegerSetting(env: Readonly<Record<string, string | undefined>>, name: string, fallback: number, min: number, max: number): number {
   const raw = env[name];

@@ -16,7 +16,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
  * three answers, not two: signed in, signed out (redirect), and unknown
  * (the API could not be asked).
  *
- * It is shared UI (`@bot-thk/web-ui`), so it reaches the router only through
+ * It is shared UI (`@no-wave/web-ui`), so it reaches the router only through
  * `@/lib/framework/*` and names no framework of its own.
  */
 

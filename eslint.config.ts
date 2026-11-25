@@ -2,7 +2,7 @@ import hooks from "eslint-plugin-react-hooks";
 import a11y from "eslint-plugin-jsx-a11y";
 // typescript-eslint, resolved against the TypeScript 6 compiler API it needs;
 // the repository itself compiles with TypeScript 7 (see that package's index.js).
-import tseslint from "@bot-thk/eslint-typescript";
+import tseslint from "@no-wave/eslint-typescript";
 import { typescriptProjects } from "./scripts/lint-projects.ts";
 
 export default [

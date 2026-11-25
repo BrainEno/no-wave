@@ -20,7 +20,7 @@ test("feed resource identities accept only the two explicit formats", () => {
   for (const value of [undefined, "rss", "json", "ATOM", "xml/extra", "../atom", "atom%00", 1]) assert.equal(parseTagFeedFormat(value), null);
   assert.equal(tagFeedPath(tag.slug, "zh-CN", "atom"), "/tags/stable-theme/feed.atom");
   assert.equal(tagFeedPath(tag.slug, "en", "rss"), "/en/tags/stable-theme/feed.xml");
-  assert.equal(tagFeedPath(tag.slug, "zh-TW", "atom"), "/tags/stable-theme/feed.atom");
+  assert.equal(tagFeedPath(tag.slug, "zh-TW" as Locale, "atom"), "/tags/stable-theme/feed.atom");
   assert.throws(() => tagFeedPath("../private", "en", "rss"), /tag slug/);
 });
 

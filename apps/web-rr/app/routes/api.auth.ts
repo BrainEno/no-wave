@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs } from "react-router";
-import { handleAuthRequest } from "@bot-thk/web-http";
+import { handleAuthRequest } from "@no-wave/web-http";
 import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**

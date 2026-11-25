@@ -21,7 +21,7 @@ export type ServerHarnessOptions = Partial<Omit<ApiServerOptions, "store">> & {
 export const authEnv = {
   AUTH_JWT_SECRET: "test-only-secret-that-is-at-least-32-bytes",
   AUTH_JWT_ISSUER: "https://auth.example.test",
-  AUTH_JWT_AUDIENCE: "bot-thk-api",
+  AUTH_JWT_AUDIENCE: "no-wave-api",
   MAIL_ENABLED: "true",
   // Media deletion is off by default since #156; these tests exercise the delete
   // path itself, so they opt in. The default and the rejection have their own
@@ -40,7 +40,7 @@ export function signedToken(sub: string): string {
     Buffer.from(JSON.stringify(value)).toString("base64url");
   const header = encode({
     alg: "HS256",
-    typ: "application/vnd.bot-thk.access+jwt",
+    typ: "application/vnd.no-wave.access+jwt",
   });
   const payload = encode({
     sub,

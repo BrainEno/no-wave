@@ -70,7 +70,7 @@ export default defineConfig({
     {
       // The application's own production server: plain Node.js, no platform
       // adapter (`apps/web-rr/server.ts`). It only needs somewhere to listen.
-      command: "pnpm --filter @bot-thk/web-rr start",
+      command: "pnpm --filter @no-wave/web-rr start",
       url: webUrl,
       env: { PORT: String(new URL(webUrl).port || 3000) },
       reuseExistingServer: !process.env.CI && !isolatedStack,

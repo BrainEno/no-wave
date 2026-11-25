@@ -20,7 +20,7 @@ import { createNotificationTransport } from "@/lib/notification-transport.ts";
 import { WritingSession, type WritingDraft, type WritingGuard } from "@/lib/writing-session.ts";
 import { PromptDialog, type PromptDialogField } from "@/components/ui/prompt-dialog.tsx";
 import { useConfirm } from "@/components/ui/confirm-dialog.tsx";
-import { AUTHORING_ARTICLE_ID_PATTERN, AUTHORING_EXPECTED_ACTOR_HEADER, AUTHORING_NOT_FORWARDED_HEADER, isAuthoringLocale } from "@bot-thk/web-http";
+import { AUTHORING_ARTICLE_ID_PATTERN, AUTHORING_EXPECTED_ACTOR_HEADER, AUTHORING_NOT_FORWARDED_HEADER, isAuthoringLocale } from "@no-wave/web-http";
 import { Link } from "@/lib/framework/link.tsx";
 import { IDEMPOTENCY_KEY_HEADER, intentForAttempt, type PendingIntent } from "@/lib/idempotency-key.ts";
 import type { WorkType } from "@/lib/content.ts";

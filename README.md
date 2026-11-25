@@ -1,10 +1,12 @@
-# BOT THK — New Product Implementation
+# no-wave — New Product Implementation
 
 > **Language / 语言:** **English** · [简体中文](./README.zh-CN.md)
 >
 > New here? Jump to [Quick start](#quick-start) or the full [Local development](#local-development) guide.
 
-This repository is the independent implementation of BOT THK's Web and API product. The old project is a functional and behavioral reference, not code that has to be preserved or copied.
+This repository is the independent implementation of no-wave's Web and API product. The old project is a functional and behavioral reference, not code that has to be preserved or copied.
+
+**Names.** `no-wave` is the project, repository, and package-scope name, and the prefix for local resources. 无浪潮 / No Wave is the public brand. See [names and their relationships](docs/development/names.md).
 
 ## Contents
 
@@ -110,7 +112,7 @@ For the Neon production branch, PostgreSQL URLs, private media storage, and serv
 
 Expired sessions, closed rate-limit windows and deleted works past their
 retention window are cleaned up by a one-shot process,
-`pnpm --filter @bot-thk/api maintenance`, that a scheduler is expected to run
+`pnpm --filter @no-wave/api maintenance`, that a scheduler is expected to run
 hourly. Without it a quiet instance never prunes anything: the sweeps it also
 performs opportunistically only happen on writes. See
 [Scheduled maintenance](docs/operations/scheduled-maintenance.md) for the cron
@@ -203,7 +205,7 @@ For deployment-only Neon steps, use [Neon deployment and operations](docs/operat
 Use this only when you need PostgreSQL behavior (connection settings, the durable outbox, or the integration-test database). It is still local and still uses throwaway credentials.
 
 ```sh
-pnpm db:up                         # postgres:17-alpine + bot_thk_dev + bot_thk_test
+pnpm db:up                         # postgres:17-alpine + no_wave_dev + no_wave_test
 pnpm setup:local --force --postgres
 pnpm db:migrate
 pnpm dev
@@ -283,8 +285,8 @@ The root `pnpm test` list can run without a database: `apps/api/src/persistence/
 
 ```sh
 pnpm db:up
-TEST_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/bot_thk_test \
-  pnpm --filter @bot-thk/api test:integration
+TEST_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/no_wave_test \
+  pnpm --filter @no-wave/api test:integration
 ```
 
 On Windows PowerShell, set `$env:TEST_DATABASE_URL` before running the same command. `DATABASE_URL` and `DATABASE_URL_UNPOOLED` must not point at production when running migrations or integration tests.

@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { flushSync } from "react-dom";
-import { hasUsableSession, SESSION_MARKER_COOKIE } from "@bot-thk/web-http";
+import { hasUsableSession, SESSION_MARKER_COOKIE } from "@no-wave/web-http";
 import { usePathname } from "@/lib/framework/navigation.ts";
 import { sessionMarkerFromCookie } from "@/lib/chrome.ts";
 import { createNotificationController, type NotificationController } from "@/lib/notification-controller.ts";

@@ -1,4 +1,4 @@
-import { resolveUpstreamTimeoutMs, withUpstreamDeadline } from "@bot-thk/web-http";
+import { resolveUpstreamTimeoutMs, withUpstreamDeadline } from "@no-wave/web-http";
 import { archivePath, articlePath, authorPath, homePath, supportedLocales } from "./content.ts";
 import { isTagSlug, tagIndexPath, tagPath } from "./tag-discovery.ts";
 import { configuredSitemapSource, isSitemapAuthorId, normalizeSitemapArticle, SITEMAP_MAX_PAGES, SITEMAP_PAGE_SIZE,

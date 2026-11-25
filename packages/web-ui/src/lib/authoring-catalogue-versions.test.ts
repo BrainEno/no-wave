@@ -6,7 +6,10 @@ const row: CatalogueEntry = { id: "a13dbadf-0000-4000-8000-000000000001", locale
 
 test("a complete version preview is scoped to one work and never derives missing languages from a filtered page", () => {
   const editions = readCatalogueEditions([row, { ...row, locale: "zh-CN", title: "中文" }], row.id, "active");
-  assert.deepEqual(catalogueCoverage(editions).map(item => [item.locale, item.entry !== null]), [["zh-CN", true], ["en", true], ["zh-TW", false]]);
+  // zh-TW is not offered for new editions, so its slot appears only with a legacy edition.
+  assert.deepEqual(catalogueCoverage(editions).map(item => [item.locale, item.entry !== null]), [["zh-CN", true], ["en", true]]);
+  const withLegacy = readCatalogueEditions([row, { ...row, locale: "zh-CN", title: "中文" }, { ...row, locale: "zh-TW", title: "舊版" }], row.id, "active");
+  assert.deepEqual(catalogueCoverage(withLegacy).map(item => [item.locale, item.entry !== null]), [["zh-CN", true], ["en", true], ["zh-TW", true]]);
   for (const value of [[], [row, row], [{ ...row, id: "a13dbadf-0000-4000-8000-000000000002" }], [{ ...row, deletedAt: row.updatedAt }]]) assert.throws(() => readCatalogueEditions(value, row.id, "active"));
 });
 

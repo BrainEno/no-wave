@@ -94,14 +94,14 @@ test("local config derives loopback URLs and the persistence description", () =>
 
   const postgres = resolveLocalDevConfig({
     DATABASE_PROVIDER: "postgres",
-    DATABASE_URL: "postgres://user:secret-password@127.0.0.1:5432/bot_thk_dev",
+    DATABASE_URL: "postgres://user:secret-password@127.0.0.1:5432/no_wave_dev",
     AUTH_JWT_SECRET: "x".repeat(32),
   });
   assert.equal(postgres.persistence.provider, "postgres");
   assert.equal(postgres.persistence.external, false);
   assert.match(
     postgres.persistence.description,
-    /^PostgreSQL \(postgres:\/\/user:\*\*\*@127\.0\.0\.1:5432\/bot_thk_dev\)$/,
+    /^PostgreSQL \(postgres:\/\/user:\*\*\*@127\.0\.0\.1:5432\/no_wave_dev\)$/,
   );
   // The description is printed to the console, so credentials must never leak.
   assert.equal(
@@ -133,7 +133,7 @@ test("local config derives loopback URLs and the persistence description", () =>
 
   const unpooledOnly = resolveLocalDevConfig({
     DATABASE_PROVIDER: "postgres",
-    DATABASE_URL: "postgres://postgres:postgres@127.0.0.1:5432/bot_thk_dev",
+    DATABASE_URL: "postgres://postgres:postgres@127.0.0.1:5432/no_wave_dev",
     DATABASE_URL_UNPOOLED:
       "postgres://app:hunter2@ep-example.neon.tech/no_wave",
     AUTH_JWT_SECRET: "x".repeat(32),
@@ -208,7 +208,7 @@ test("generated .env.local never persists a remote database URL", () => {
   assert.equal(remote.includes("hunter2"), false);
   assert.match(
     remote,
-    /^DATABASE_URL=postgres:\/\/postgres:postgres@127\.0\.0\.1:5432\/bot_thk_dev$/m,
+    /^DATABASE_URL=postgres:\/\/postgres:postgres@127\.0\.0\.1:5432\/no_wave_dev$/m,
   );
 
   const local = buildLocalEnvFile({

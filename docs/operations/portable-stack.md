@@ -31,7 +31,7 @@ when you want to click around, `stack:check` when you want an answer.
 
 What the command does, in order:
 
-1. `pnpm --filter @bot-thk/web-rr build` — the React Router production build, so
+1. `pnpm --filter @no-wave/web-rr build` — the React Router production build, so
    the command works from a clean checkout.
 2. `node apps/api/src/persistence/migrate.ts` — the explicit migration step.
    Migrations are never automatic, and this command does not make them so.
@@ -247,7 +247,7 @@ the durable outbox is a PostgreSQL table — so a SQLite run ends with `9 passed
 ```sh
 pnpm db:up                                   # postgres:17-alpine from compose.yaml
 pnpm db:up
-DATABASE_URL='postgres://postgres:postgres@127.0.0.1:5432/bot_thk_dev' pnpm stack:check
+DATABASE_URL='postgres://postgres:postgres@127.0.0.1:5432/no_wave_dev' pnpm stack:check
 ```
 
 When `DATABASE_URL` is set the provider flips to `postgres`, `DATABASE_PATH` is
@@ -311,17 +311,17 @@ an image that could not start. It is a `dependency` now.
 **Running it.** The container's entrypoint needs no platform variable:
 
 ```sh
-docker build -f apps/web-rr/Dockerfile -t bot-thk-web-rr .
+docker build -f apps/web-rr/Dockerfile -t no-wave-web-rr .
 docker run --rm -p 3100:3100 \
   -e API_BASE_URL=https://api.example.example \
   -e SITE_URL=https://www.example.example \
-  bot-thk-web-rr
+  no-wave-web-rr
 ```
 
 `PORT` defaults to 3100 and `HOST` to `0.0.0.0`. The server starts from
 `/app/apps/web-rr` because `server.ts` resolves `RR_BUILD_DIR` and
 `RR_SERVER_BUILD_DIR` relative to the working directory — the same reason
-`pnpm --filter @bot-thk/web-rr start` runs from the application directory.
+`pnpm --filter @no-wave/web-rr start` runs from the application directory.
 Migrations are never run by the image; they are an explicit step, inside a
 container as much as on a host.
 

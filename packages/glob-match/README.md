@@ -1,6 +1,6 @@
 # 构建工具的非递归 glob 适配器
 
-此包是私有的 `@bot-thk/glob-match@0.0.0`，**不是 picomatch 的新版本或改名发行版**。
+此包是私有的 `@no-wave/glob-match@0.0.0`，**不是 picomatch 的新版本或改名发行版**。
 它用 `minimatch@11.0.9` 拆分路径，由
 `@isaacs/nonrecursive-glob-match@1.1.0` 的状态机匹配路径片段；没有复制
 picomatch 的 parser、正则编译器或漏洞补丁。`scan.ts` 只生成路径扫描元数据，

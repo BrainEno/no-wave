@@ -1,4 +1,4 @@
-# @bot-thk/web-http
+# @no-wave/web-http
 
 框架无关的 Web HTTP 安全边界：标准 Request / Response / Headers 与显式配置。
 不依赖 React Router、API domain/persistence 或 PostgreSQL 驱动。
@@ -27,8 +27,8 @@
 ## 验证
 
 ```sh
-pnpm --filter @bot-thk/web-http test
-pnpm --filter @bot-thk/web-http typecheck
+pnpm --filter @no-wave/web-http test
+pnpm --filter @no-wave/web-http typecheck
 pnpm typecheck
 pnpm test:web
 ```

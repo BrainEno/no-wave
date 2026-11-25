@@ -1,7 +1,7 @@
 import { redirect, type LoaderFunctionArgs } from "react-router";
 import type { HeadersFunction, MetaFunction } from "react-router";
 import { FeaturedShelfPanel } from "@/components/admin/featured-shelf-panel.tsx";
-import { SESSION_MARKER_COOKIE, hasUsableSession, sessionMarkerFrom } from "@bot-thk/web-http";
+import { SESSION_MARKER_COOKIE, hasUsableSession, sessionMarkerFrom } from "@no-wave/web-http";
 import { PRIVATE_PAGE_HEADERS } from "../lib/http-policy.ts";
 
 /**

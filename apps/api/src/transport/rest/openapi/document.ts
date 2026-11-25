@@ -197,7 +197,7 @@ function info(): Record<string, unknown> {
       "- `Cache-Control: no-store` on JSON responses; uploaded images are immutable and cached for a year.",
       "- JSON write bodies require `Content-Type: application/json`, are limited in size, and reject unsupported fields rather than ignoring them.",
       "- Errors are `{\"error\":{\"code\",\"message\"}}` with stable codes; messages are sanitized.",
-      "- Article locales are `zh-CN`, `zh-TW` and `en`. An omitted locale means `zh-CN`.",
+      "- New article works must use locale `zh-CN` or `en`; `zh-TW` is not supported for new works and is rejected on create. Existing `zh-TW` works remain readable and updatable. An omitted locale means `zh-CN`.",
       "- Discovery lists accept `limit` and `offset`; article discovery also accepts a `cursor` with `sort=latest`.",
     ].join("\n"),
     license: { name: "See the repository's LICENSE file." },

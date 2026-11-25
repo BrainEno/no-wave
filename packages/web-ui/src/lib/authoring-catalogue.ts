@@ -1,4 +1,4 @@
-import { AUTHORING_ARTICLE_ID_PATTERN, AUTHORING_SLUG_PATTERN, isAuthoringLocale, isRecord } from "@bot-thk/web-http";
+import { AUTHORING_ARTICLE_ID_PATTERN, AUTHORING_SLUG_PATTERN, isAuthoringLocale, isRecord } from "@no-wave/web-http";
 import type { WorkType } from "./content.ts";
 import { parseWorkType } from "./work-types.ts";
 

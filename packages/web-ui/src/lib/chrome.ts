@@ -1,4 +1,4 @@
-import { isRecord } from "@bot-thk/web-http";
+import { isRecord } from "@no-wave/web-http";
 import { notificationSelectionId } from "./notification-selection.ts";
 import { notificationInboxPath } from "./locale-navigation.ts";
 import type { Locale } from "./content.ts";

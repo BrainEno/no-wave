@@ -21,7 +21,7 @@ test("home renders API-backed articles on the server", async () => {
   assert.match(result.body, /可移植的文学基础设施/);
   // Unique to the mock API: the fixture registry never contains this summary.
   assert.match(result.body, /从框架依赖中取回叙事自主权的实践记录。/);
-  // `WorkRow` from `@bot-thk/web-ui` renders its links through the navigation seam.
+  // `WorkRow` from `@no-wave/web-ui` renders its links through the navigation seam.
   assert.match(result.body, /href="\/articles\/portable-web-foundation"/);
 });
 
@@ -379,7 +379,7 @@ test("with mail on the three recovery pages offer the forms, and the switch need
 
 test("the recovery endpoints are served by this app's auth resource route", async () => {
   // The handler behind `/api/auth/:action` is shared
-  // (`handleIdentityAction` in `@bot-thk/web-http`, covered by its own contract
+  // (`handleIdentityAction` in `@no-wave/web-http`, covered by its own contract
   // tests). What is asserted here is the wiring: this app's route table reaches
   // it, and the action name becomes the upstream path.
   const sent = await post("/api/auth/forgot-password", JSON.stringify({ email: "writer@example.test" }));

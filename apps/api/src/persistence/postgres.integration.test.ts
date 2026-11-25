@@ -371,7 +371,7 @@ test("REST messages recover an interrupted notification delivery without duplica
   const env = {
     AUTH_JWT_SECRET: secret,
     AUTH_JWT_ISSUER: "https://auth.integration.test",
-    AUTH_JWT_AUDIENCE: "bot-thk-api",
+    AUTH_JWT_AUDIENCE: "no-wave-api",
   };
   const suffix = randomUUID();
   const sender = `rest-sender-${suffix}`;
@@ -380,7 +380,7 @@ test("REST messages recover an interrupted notification delivery without duplica
   const sign = (sub) => {
     const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
     const now = Math.floor(Date.now() / 1000);
-    const unsigned = `${encode({ alg: "HS256", typ: "application/vnd.bot-thk.access+jwt" })}.${encode({
+    const unsigned = `${encode({ alg: "HS256", typ: "application/vnd.no-wave.access+jwt" })}.${encode({
       sub, iss: env.AUTH_JWT_ISSUER, aud: env.AUTH_JWT_AUDIENCE, iat: now, exp: now + 60, sid: `session-${sub}`, jti: `token-${sub}`,
     })}`;
     return `${unsigned}.${createHmac("sha256", secret).update(unsigned).digest("base64url")}`;

@@ -27,7 +27,7 @@ import { useConfirm } from "@/components/ui/confirm-dialog.tsx";
  * reference check is being verified; nothing else about the page changes when it
  * is turned back on.
  *
- * It is shared UI (`@bot-thk/web-ui`), so it reaches the router only through
+ * It is shared UI (`@no-wave/web-ui`), so it reaches the router only through
  * `@/lib/framework/*` and names no framework of its own.
  */
 

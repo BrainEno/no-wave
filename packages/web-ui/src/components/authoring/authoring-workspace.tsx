@@ -12,7 +12,7 @@ import { NotificationInbox } from "./notification-inbox.tsx";
 import { useNotificationActions } from "@/components/chrome/notification-provider.tsx";
 import { CatalogueDocumentReader } from "@/lib/authoring-catalogue-open.ts";
 import { parseCatalogueOpenIntent, type CatalogueOpenIntent } from "@/lib/authoring-catalogue.ts";
-import { AUTHORING_LOCALES, isAuthoringLocale } from "@bot-thk/web-http";
+import { AUTHORING_LOCALES, isAuthoringLocale } from "@no-wave/web-http";
 
 type WorkspaceState = "loading" | "unauthenticated" | "ready" | "error";
 type DocumentAction = { kind: "catalogue"; intent: CatalogueOpenIntent } | { kind: "new" } | { kind: "open"; article: AuthoringArticle } | { kind: "sign-out" };

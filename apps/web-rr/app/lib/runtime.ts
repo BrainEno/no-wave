@@ -1,11 +1,11 @@
-import { createApiContentClient, createPublicContentSource, resolveApiBaseUrl } from "@bot-thk/web-ui/src/lib/api-content.ts";
-import { resolveUpstreamTimeoutMs, type ApiProxyConfig } from "@bot-thk/web-http";
-import { upstreamClientAddressHeaders } from "@bot-thk/web-http/client-address";
-import { requestRefreshCoordinator } from "@bot-thk/web-http/refresh-runtime";
-import { requestUpstreamTransport } from "@bot-thk/web-http/upstream-runtime";
-import { createApiSitemapSource, createFixtureSitemapSource } from "@bot-thk/web-ui/src/lib/sitemap-catalog.ts";
-import { configuredSiteUrl, loadSitemapEntries } from "@bot-thk/web-ui/src/lib/site-metadata.ts";
-import { isMailEnabled as resolveMailEnabled } from "@bot-thk/web-ui/src/lib/mail-feature.ts";
+import { createApiContentClient, createPublicContentSource, resolveApiBaseUrl } from "@no-wave/web-ui/src/lib/api-content.ts";
+import { resolveUpstreamTimeoutMs, type ApiProxyConfig } from "@no-wave/web-http";
+import { upstreamClientAddressHeaders } from "@no-wave/web-http/client-address";
+import { requestRefreshCoordinator } from "@no-wave/web-http/refresh-runtime";
+import { requestUpstreamTransport } from "@no-wave/web-http/upstream-runtime";
+import { createApiSitemapSource, createFixtureSitemapSource } from "@no-wave/web-ui/src/lib/sitemap-catalog.ts";
+import { configuredSiteUrl, loadSitemapEntries } from "@no-wave/web-ui/src/lib/site-metadata.ts";
+import { isMailEnabled as resolveMailEnabled } from "@no-wave/web-ui/src/lib/mail-feature.ts";
 import { createWebUpstreamRuntime } from "../../upstream/runtime.ts";
 
 // Native scripts may call a loader without ingress; keep their capacity bounded

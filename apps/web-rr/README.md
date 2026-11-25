@@ -27,7 +27,7 @@
 pnpm setup:local
 pnpm db:migrate
 pnpm dev
-pnpm --filter @bot-thk/web-rr typecheck
+pnpm --filter @no-wave/web-rr typecheck
 pnpm test:web
 ```
 

@@ -1,5 +1,5 @@
 import type { LoaderFunctionArgs } from "react-router";
-import { handleAuthoringDeletedArticlesRequest } from "@bot-thk/web-http";
+import { handleAuthoringDeletedArticlesRequest } from "@no-wave/web-http";
 import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**

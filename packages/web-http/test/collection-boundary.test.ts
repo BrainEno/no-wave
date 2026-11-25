@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createApiContentClient, createPublicContentSource } from "../../web-ui/src/lib/api-content.ts";
+import type { Locale } from "../../web-ui/src/lib/content.ts";
 import { loadArchivePage } from "../../web-ui/src/lib/public-pages.ts";
 import { API_RESPONSE_MAX_BYTES } from "../src/upstream-response.ts";
 import { UpstreamTransport } from "../src/upstream.ts";
 import { legalArticleCollection } from "./support/legal-article-collection.ts";
 
+// zh-TW is legacy-only: existing rows must still be read without losing bodies.
 for (const locale of ["zh-CN", "zh-TW", "en"] as const) {
   test(`three legal ${locale} full-body articles exceed the buffer fence but remain readable in one collection`, async t => {
     const fixture = await legalArticleCollection(3, locale);
@@ -17,7 +19,7 @@ for (const locale of ["zh-CN", "zh-TW", "en"] as const) {
     } });
     t.after(() => transport.close());
     const client = createApiContentClient({ endpoint: "https://api.test", upstreamTransport: transport });
-    const articles = await client.listArticles({ locale, limit: 20, offset: 40, sort: "latest", query: "legal" });
+    const articles = await client.listArticles({ locale: locale as Locale, limit: 20, offset: 40, sort: "latest", query: "legal" });
     assert.equal(articles.length, 3);
     assert.deepEqual(articles.map(article => article.slug), ["work-0", "work-1", "work-2"]);
     assert.deepEqual(articles.map(article => article.contentBlocks), fixture.articles.map(article => article.contentBlocks), "full clients do not lose article bodies");

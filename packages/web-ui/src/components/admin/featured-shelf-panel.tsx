@@ -17,7 +17,7 @@ import { useEffect, useState, type FormEvent } from "react";
  * also why the ceiling lives here: the screen stops offering more slots before
  * the API has to refuse them.
  *
- * It is shared UI (`@bot-thk/web-ui`), so it reaches the router only through
+ * It is shared UI (`@no-wave/web-ui`), so it reaches the router only through
  * `@/lib/framework/link.tsx` and names no framework of its own.
  */
 

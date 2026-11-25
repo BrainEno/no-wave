@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs } from "react-router";
-import { handleArticleViewRequest } from "@bot-thk/web-http";
+import { handleArticleViewRequest } from "@no-wave/web-http";
 import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**
@@ -9,7 +9,7 @@ import { apiProxyConfig } from "../lib/runtime.ts";
  * an action exists: a loader here would make a `GET` move a counter, and a view
  * is a write.
  *
- * The implementation is the shared `@bot-thk/web-http` handler — the same-origin
+ * The implementation is the shared `@no-wave/web-http` handler — the same-origin
  * check, the slug/locale validation and the cookie-attached forwarding exist once.
  */
 export async function action({ request, params, url }: ActionFunctionArgs) {

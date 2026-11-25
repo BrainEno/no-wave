@@ -1,4 +1,4 @@
-import { AUTHORING_EXPECTED_ACTOR_HEADER, isRecord, parseRetryAfterSeconds } from "@bot-thk/web-http";
+import { AUTHORING_EXPECTED_ACTOR_HEADER, isRecord, parseRetryAfterSeconds } from "@no-wave/web-http";
 import { apiErrorCode } from "./api-error.ts";
 import { readCataloguePage, type CatalogueEntry, type CatalogueOpenIntent } from "./authoring-catalogue.ts";
 

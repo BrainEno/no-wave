@@ -1,5 +1,5 @@
 {
-  "name": "@bot-thk/web-rr",
+  "name": "@no-wave/web-rr",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -12,8 +12,8 @@
     "test": "node ../../scripts/test.ts web"
   },
   "dependencies": {
-    "@bot-thk/web-http": "workspace:*",
-    "@bot-thk/web-ui": "workspace:*",
+    "@no-wave/web-http": "workspace:*",
+    "@no-wave/web-ui": "workspace:*",
     "@react-router/node": "8.5.2",
     "compression": "1.8.2",
     "marked": "18.2.1",

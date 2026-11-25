@@ -15,7 +15,7 @@ This document is the contract the Web migration depends on. It is a description 
 The worker is a **separate long-running Node process**, not a timer inside the API or the Web server.
 
 ```
-node src/persistence/notification-worker.ts        # pnpm --filter @bot-thk/api worker:notifications
+node src/persistence/notification-worker.ts        # pnpm --filter @no-wave/api worker:notifications
 ```
 
 `pnpm dev` now starts this process by default beside API/Web. `--api-only` includes the worker; `--web-only` does not manage the external API/worker. Standalone package commands load root `.env` then `.env.local`, with shell exports taking precedence.
@@ -104,7 +104,7 @@ The qualified zero-cost host (Render free web service, see [hosting qualificatio
 
 ## 6a. Scheduled drain (implemented 2026-10-29)
 
-    pnpm --filter @bot-thk/api drain:notifications
+    pnpm --filter @no-wave/api drain:notifications
 
 A one-shot process: it opens the configured persistence runtime, checks
 `store.health()`, drains what is due, logs a summary and exits **0** (or **1** on
@@ -244,7 +244,7 @@ SQLite volume/file or PostgreSQL database. Do not migrate with `docker exec`
 inside an API that is still refusing its pending schema.
 
 Example for an **already migrated disposable** SQLite volume and locally built
-`bot-thk-api:local` image (not a deployment instruction):
+`no-wave-api:local` image (not a deployment instruction):
 
 ```sh
 docker run --rm --name no-wave-worker \
@@ -252,7 +252,7 @@ docker run --rm --name no-wave-worker \
   -e DATABASE_PROVIDER=sqlite -e DATABASE_PATH=/var/lib/no-wave/no-wave.sqlite \
   -e SERVICE_ROLE=notification-worker \
   -e OUTBOX_HEALTH_HOST=0.0.0.0 -e OUTBOX_HEALTH_PORT=4001 \
-  -p 127.0.0.1:4001:4001 bot-thk-api:local
+  -p 127.0.0.1:4001:4001 no-wave-api:local
 ```
 
 The common image HEALTHCHECK selects API or worker `/ready` by role. The Web

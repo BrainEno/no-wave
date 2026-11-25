@@ -101,7 +101,7 @@ Architecture decision records and their Accepted/Superseded status live in the [
 - [合法文章集合兼容性、读取所有权与测试发现审查](audit/article-collection-review.md) — Status: archived
 - [后端核查报告（2026-11-02）](audit/backend-review-2026-11.md) — Status: archived
 - [Feature Traceability — New Implementation](audit/feature-traceability.md) — Status: active
-- [no-wave / BOT THK 代码库全面 Review](audit/full-review-2026-11-02.md) — Status: archived
+- [no-wave 代码库全面 Review](audit/full-review-2026-11-02.md) — Status: archived
 - [#368：用不同匹配引擎修复依赖审计阻塞](audit/glob-engine-replacement.md) — Status: archived
 - [身份刷新可靠性：本轮独立验收与代码审计](audit/identity-refresh-acceptance.md) — Status: archived
 - [Legacy Backend Security and Reliability Findings](audit/legacy-backend-security-findings.md) — Status: archived
@@ -142,10 +142,12 @@ Architecture decision records and their Accepted/Superseded status live in the [
 ## docs/development
 
 - [Local development and local verification](development/local-development.md) — Status: active
+- [名称与关系：no-wave 与无浪潮](development/names.md) — Status: active
+- [语言范围：只支持简体中文与 English](development/locale-scope.md) — Status: active
 
 ## docs/requirements
 
-- [BOT THK Product Behavior Baseline](requirements/behavior-baseline.md) — Status: active
+- [no-wave Product Behavior Baseline](requirements/behavior-baseline.md) — Status: active
 
 ## docs/agentic-coding
 

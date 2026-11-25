@@ -196,6 +196,12 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
         sendBadInput(response, normalized.error ?? "Invalid article input.");
         return;
       }
+      // zh-TW is not supported for new works (issue #417). Existing zh-TW works
+      // keep their locale through the update route, which is not changed here.
+      if (normalized.input.locale === "zh-TW") {
+        sendBadInput(response, "locale must be zh-CN or en for new works; zh-TW is not supported.");
+        return;
+      }
       const rawIdempotencyKey = request.headers["idempotency-key"] ?? null;
       if (rawIdempotencyKey !== null && (typeof rawIdempotencyKey !== "string" || rawIdempotencyKey.length === 0 ||
           rawIdempotencyKey.length > 300 || rawIdempotencyKey.trim() !== rawIdempotencyKey)) {

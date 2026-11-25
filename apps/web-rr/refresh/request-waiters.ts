@@ -1,4 +1,4 @@
-import type { RefreshCoordinatorContext } from "@bot-thk/web-http";
+import type { RefreshCoordinatorContext } from "@no-wave/web-http";
 import { RefreshCoordinationError } from "./errors.ts";
 
 /** Request cancellation is NOT permission to cancel/delete a shared generation. */

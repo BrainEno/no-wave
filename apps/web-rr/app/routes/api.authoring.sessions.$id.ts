@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs } from "react-router";
-import { handleAccountSessionEndRequest } from "@bot-thk/web-http";
+import { handleAccountSessionEndRequest } from "@no-wave/web-http";
 import { apiProxyConfig } from "../lib/runtime.ts";
 
 /**

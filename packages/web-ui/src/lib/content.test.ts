@@ -8,7 +8,9 @@ import {
   getArticleBySlug,
   getAuthorByUsername,
   listArticles,
-  defaultLocale
+  defaultLocale,
+  getMessages,
+  type Locale
 } from "./content.ts";
 
 test("article paths encode slugs and use a locale prefix only for non-default locales", () => {
@@ -26,14 +28,14 @@ test("localized article metadata contains canonical and language-alternate URLs"
 });
 
 test("content registry returns localized article and author views", () => {
-  const zhArticle = getArticleBySlug("portable-web-foundation", "zh-TW");
+  const zhArticle = getArticleBySlug("portable-web-foundation", "zh-CN");
   const enArticle = getArticleBySlug("portable-web-foundation", "en");
   assert.ok(zhArticle);
   assert.ok(enArticle);
-  assert.equal(zhArticle.title, "可移植的 Web 基礎架構");
+  assert.equal(zhArticle.title, "文学作品的数字出版空间");
   assert.equal(enArticle.title, "A Portable Web Foundation");
-  assert.equal(zhArticle.author.displayName, "BOT THK 團隊");
-  assert.equal(enArticle.author.displayName, "BOT THK Team");
+  assert.equal(zhArticle.author.displayName, "无浪潮编辑部");
+  assert.equal(enArticle.author.displayName, "no-wave Team");
   assert.equal(zhArticle.contentBlocks[0].type, "paragraph");
   assert.equal(enArticle.contentBlocks[1].type, "heading");
   assert.equal(getArticleBySlug("missing-article", "en"), null);
@@ -41,10 +43,10 @@ test("content registry returns localized article and author views", () => {
 });
 
 test("article listing supports localized text search and author filtering", () => {
-  assert.equal(listArticles({ locale: "zh-TW", query: "可移植" }).length, 1);
+  assert.equal(listArticles({ locale: "zh-CN", query: "数字出版" }).length, 1);
   assert.equal(listArticles({ locale: "en", query: "portable" }).length, 1);
   assert.equal(listArticles({ locale: "en", query: "完全不存在" }).length, 0);
-  assert.equal(listArticles({ locale: "en", authorUsername: "bot-thk-team" }).length, 1);
+  assert.equal(listArticles({ locale: "en", authorUsername: "no-wave-team" }).length, 1);
   assert.equal(archivePath("en"), "/en/articles");
 });
 
@@ -65,4 +67,8 @@ test("Simplified Chinese is the default locale and fixture copy is localized", (
   assert.match(articleFixture.description, /严肃文学/);
   assert.equal(articleFixture.workType, "other");
   assert.equal(archivePath("zh-CN"), "/articles");
+});
+
+test("zh-TW is not a content locale: message lookups fall back to zh-CN", () => {
+  assert.deepEqual(getMessages("zh-TW" as Locale), getMessages("zh-CN"));
 });

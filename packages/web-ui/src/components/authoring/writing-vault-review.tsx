@@ -91,7 +91,7 @@ export function WritingVaultReview({
                 onChange={(event) => setLocale(event.target.value)}
               >
                 <option value="all">全部语言</option>
-                {["zh-CN", "zh-TW", "en"].map((value) => (
+                {["zh-CN", "en"].map((value) => (
                   <option key={value} value={value}>
                     {catalogueLocaleLabel(value)}
                   </option>

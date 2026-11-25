@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { WebRequestAdmission } from "@bot-thk/web-http";
+import { WebRequestAdmission } from "@no-wave/web-http";
 import { webIntegerSetting } from "./settings.ts";
 
 function header(request: IncomingMessage, name: string): string | null {

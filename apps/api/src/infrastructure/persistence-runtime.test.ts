@@ -78,7 +78,7 @@ test("the built-in SQLite provider migrates explicitly, validates full port shap
 test("SQLite runtime refuses an uninitialized database and explains the migration command", async () => {
   await assert.rejects(
     createPersistenceRuntime({ env: { DATABASE_PATH: ":memory:" } }),
-    /SQLite schema is not current.*pnpm --filter @bot-thk\/api migrate/i,
+    /SQLite schema is not current.*pnpm --filter @no-wave\/api migrate/i,
   );
 });
 

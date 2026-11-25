@@ -4,7 +4,7 @@ Status: active
 
 ## Scope and product boundary
 
-The current repository is an independent implementation, not a code-preserving refactor. The previous BOT THK project is used to identify product capabilities, user-visible behavior, data concepts, and known defects. Its programming patterns, database schema, resolver structure, and UI layout are not binding design constraints.
+The current repository is an independent implementation, not a code-preserving refactor. The previous no-wave project is used to identify product capabilities, user-visible behavior, data concepts, and known defects. Its programming patterns, database schema, resolver structure, and UI layout are not binding design constraints.
 
 SQLite is the default provider for local/single-host installs; PostgreSQL is the implemented production adapter. REST is the **only** business HTTP API: the GraphQL runtime, `/graphql` endpoint and Web GraphQL caller were removed under [ADR 0006](decisions/0006-rest-only-business-api.md) and [ADR 0010](decisions/0010-sqlite-first-and-online-provider-cutover.md), so there is no Web caller left to migrate. MongoDB remains an **unimplemented future adapter**, not a selectable provider. Domain-grouped repository ports isolate database drivers so all registered providers can implement equivalent behavior. This document defines the online migration target but does **not** copy production data, run cross-engine replication, switch live traffic, or modify the previous project's repository.
 
@@ -12,7 +12,7 @@ Product behavior changes must be reviewed: when an improvement would change user
 
 ## New-project environments
 
-- **Local development/default:** use SQLite at `./data/no-wave.sqlite`; `DATABASE_PATH` overrides the location. Run `pnpm --filter @bot-thk/api migrate` before `pnpm --filter @bot-thk/api start`.
+- **Local development/default:** use SQLite at `./data/no-wave.sqlite`; `DATABASE_PATH` overrides the location. Run `pnpm --filter @no-wave/api migrate` before `pnpm --filter @no-wave/api start`.
 - **Optional PostgreSQL:** set `DATABASE_PROVIDER=postgres` and `DATABASE_URL`, then use the same explicit migration command.
 - **MongoDB:** not yet available (unimplemented future adapter); selecting it fails explicitly without falling back to another engine.
 - **Integration tests:** use `TEST_DATABASE_URL` with a disposable database. The suite can create versioned schema and writes uniquely identified fixtures that it cleans up. Never point it at production or user data.

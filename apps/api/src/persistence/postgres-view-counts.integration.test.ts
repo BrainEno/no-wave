@@ -36,7 +36,7 @@ after(async () => { if (sql) await sql.end({ timeout: 5 }); });
 const authEnv = {
   AUTH_JWT_SECRET: randomBytes(32).toString("base64url"),
   AUTH_JWT_ISSUER: "https://views.integration.test",
-  AUTH_JWT_AUDIENCE: "bot-thk-api",
+  AUTH_JWT_AUDIENCE: "no-wave-api",
 };
 
 function bearer(subject: string): string {

@@ -11,7 +11,7 @@ let serverOutput = "";
 // .env.local, and a developer machine that configured API_BASE_URL there would
 // otherwise render API data (or fail) instead of fixtures. An empty value is
 // already present in the child environment, so the env file cannot fill it in.
-const server = spawn("pnpm", ["--filter", "@bot-thk/web-rr", "start"], {
+const server = spawn("pnpm", ["--filter", "@no-wave/web-rr", "start"], {
   env: {
     ...process.env,
     HOSTNAME: "127.0.0.1",
@@ -76,7 +76,7 @@ async function withMailEnabledServer(
   });
   await new Promise<void>((resolve) => probe.close(() => resolve()));
 
-  const mailServer = spawn("pnpm", ["--filter", "@bot-thk/web-rr", "start"], {
+  const mailServer = spawn("pnpm", ["--filter", "@no-wave/web-rr", "start"], {
     env: {
       ...process.env,
       HOSTNAME: "127.0.0.1",

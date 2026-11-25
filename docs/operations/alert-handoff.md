@@ -61,17 +61,17 @@ NODE
 `MONITOR_STATE` 均须由操作者指定为自有隔离文件的绝对路径。
 
 ```sh
-pnpm --silent --filter @bot-thk/api ops:handoff --help
-pnpm --silent --filter @bot-thk/api ops:handoff prepare \
+pnpm --silent --filter @no-wave/api ops:handoff --help
+pnpm --silent --filter @no-wave/api ops:handoff prepare \
   --config "$HANDOFF_DIR/sender.json" --state "$HANDOFF_DIR/sender-state.json" \
   --monitor-config "$MONITOR_CONFIG" --monitor-state "$MONITOR_STATE" \
   --output "$HANDOFF_DIR/batch-1.json"
 # 通过经批准的文件传输通道转交 batch-1.json；不要转交 sender 私钥。
-pnpm --silent --filter @bot-thk/api ops:handoff receive \
+pnpm --silent --filter @no-wave/api ops:handoff receive \
   --config "$HANDOFF_DIR/inbox.json" --state "$HANDOFF_DIR/inbox-state.json" \
   --batch "$HANDOFF_DIR/batch-1.json" --output "$HANDOFF_DIR/receipt-1.json"
 # 将 receipt-1.json 传回 sender；仅此时显式授权确认原监测日志的对应前缀。
-pnpm --silent --filter @bot-thk/api ops:handoff settle \
+pnpm --silent --filter @no-wave/api ops:handoff settle \
   --config "$HANDOFF_DIR/sender.json" --state "$HANDOFF_DIR/sender-state.json" \
   --monitor-config "$MONITOR_CONFIG" --monitor-state "$MONITOR_STATE" \
   --receipt "$HANDOFF_DIR/receipt-1.json"
@@ -95,14 +95,14 @@ pnpm --silent --filter @bot-thk/api ops:handoff settle \
 ## 3. 接收后还要显式处理与消费
 
 ```sh
-pnpm --silent --filter @bot-thk/api ops:handoff inbox-read \
+pnpm --silent --filter @no-wave/api ops:handoff inbox-read \
   --config "$HANDOFF_DIR/inbox.json" --state "$HANDOFF_DIR/inbox-state.json" --limit 100
 # 将返回的 continuation 原样放入后续 --after；期间不得改变 inbox 快照。
-pnpm --silent --filter @bot-thk/api ops:handoff inbox-read \
+pnpm --silent --filter @no-wave/api ops:handoff inbox-read \
   --config "$HANDOFF_DIR/inbox.json" --state "$HANDOFF_DIR/inbox-state.json" \
   --limit 100 --after "$CONTINUATION"
 # 下游已可靠处理所有前置 entry 后，才显式消费该连续前缀。
-pnpm --silent --filter @bot-thk/api ops:handoff consume \
+pnpm --silent --filter @no-wave/api ops:handoff consume \
   --config "$HANDOFF_DIR/inbox.json" --state "$HANDOFF_DIR/inbox-state.json" --through "$ENTRY_ID"
 ```
 
@@ -119,12 +119,12 @@ pnpm --silent --filter @bot-thk/api ops:handoff consume \
 ## 4. 只读进展与对账
 
 ```sh
-pnpm --silent --filter @bot-thk/api ops:handoff sender-status \
+pnpm --silent --filter @no-wave/api ops:handoff sender-status \
   --config "$HANDOFF_DIR/sender.json" --state "$HANDOFF_DIR/sender-state.json" \
   --monitor-config "$MONITOR_CONFIG" --monitor-state "$MONITOR_STATE" --max-pending-age-ms 3600000
-pnpm --silent --filter @bot-thk/api ops:handoff inbox-status \
+pnpm --silent --filter @no-wave/api ops:handoff inbox-status \
   --config "$HANDOFF_DIR/inbox.json" --state "$HANDOFF_DIR/inbox-state.json" --max-pending-age-ms 3600000
-pnpm --silent --filter @bot-thk/api ops:handoff reconcile \
+pnpm --silent --filter @no-wave/api ops:handoff reconcile \
   --config "$HANDOFF_DIR/sender.json" --state "$HANDOFF_DIR/sender-state.json" \
   --monitor-config "$MONITOR_CONFIG" --monitor-state "$MONITOR_STATE" \
   --inbox-config "$HANDOFF_DIR/inbox.json" --inbox-state "$HANDOFF_DIR/inbox-state.json"
@@ -146,12 +146,12 @@ source_prefix_changed 等固定分类。多个日志来自不同时刻，输出�
 ## 5. 公钥核验与回执恢复
 
 ```sh
-pnpm --silent --filter @bot-thk/api ops:handoff profile \
+pnpm --silent --filter @no-wave/api ops:handoff profile \
   --config "$HANDOFF_DIR/sender.json" --output "$HANDOFF_DIR/public-profile.json"
-pnpm --silent --filter @bot-thk/api ops:handoff verify \
+pnpm --silent --filter @no-wave/api ops:handoff verify \
   --config "$HANDOFF_DIR/public-profile.json" --batch "$HANDOFF_DIR/batch-1.json" \
   --receipt "$HANDOFF_DIR/receipt-1.json"
-pnpm --silent --filter @bot-thk/api ops:handoff receipt \
+pnpm --silent --filter @no-wave/api ops:handoff receipt \
   --config "$HANDOFF_DIR/inbox.json" --state "$HANDOFF_DIR/inbox-state.json" \
   --stream "$STREAM_ID" --sequence 1 --batch-id "$BATCH_ID" --output "$HANDOFF_DIR/recovered-1.json"
 ```

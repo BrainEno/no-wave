@@ -295,7 +295,7 @@ export function registerPublicWebApp(): void {
   before(async () => {
     assert.ok(
       existsSync(buildEntry),
-      "The Web application must be built before its tests run: pnpm --filter @bot-thk/web-rr build",
+      "The Web application must be built before its tests run: pnpm --filter @no-wave/web-rr build",
     );
     mockApi = await startMockRestApi();
     const port = await freePort();

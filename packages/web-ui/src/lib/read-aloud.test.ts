@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { ArticleContentBlock } from "./content.ts";
+import type { ArticleContentBlock, Locale } from "./content.ts";
 import { blockPosition, blockSpeech, CHUNK_LIMIT, speakChunks, speechLang, splitSentences } from "./read-aloud.ts";
 
 const paragraph = (id: string, text: string): ArticleContentBlock => ({ id, type: "paragraph", text });
@@ -82,6 +82,7 @@ test("段落位置按段数而不是分块数报给读者", () => {
 
 test("朗读语言就是作品自己的语言", () => {
   assert.equal(speechLang("zh-CN"), "zh-CN");
-  assert.equal(speechLang("zh-TW"), "zh-TW");
+  // zh-TW is legacy-only; existing works keep the speech tag they were written in.
+  assert.equal(speechLang("zh-TW" as Locale), "zh-TW");
   assert.equal(speechLang("en"), "en-US");
 });

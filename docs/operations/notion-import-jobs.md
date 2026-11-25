@@ -40,11 +40,11 @@ UI 迁移、真实托管资格或新常驻 worker 角色承诺**。设计边界�
 ## 独立有限命令
 
 ```sh
-pnpm --filter @bot-thk/api jobs:notion --help
-pnpm --filter @bot-thk/api jobs:notion inspect
-pnpm --filter @bot-thk/api jobs:notion check
-pnpm --filter @bot-thk/api jobs:notion drain
-pnpm --filter @bot-thk/api jobs:notion sweep
+pnpm --filter @no-wave/api jobs:notion --help
+pnpm --filter @no-wave/api jobs:notion inspect
+pnpm --filter @no-wave/api jobs:notion check
+pnpm --filter @no-wave/api jobs:notion drain
+pnpm --filter @no-wave/api jobs:notion sweep
 ```
 
 - `inspect`：不需 AES/JWT 配置，仅输出固定状态计数、密文总字节、最老 queued 年龄、

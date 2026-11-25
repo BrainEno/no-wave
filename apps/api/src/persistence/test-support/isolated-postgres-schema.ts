@@ -17,7 +17,7 @@ export async function createIsolatedPostgresTestSchema(connectionString: string,
     await admin.unsafe(`CREATE SCHEMA ${schema}`);
     created = true;
     const { default: postgres } = await import("postgres");
-    isolated = postgres(connectionString, { max: 8, connection: { search_path: `${schema},public`, application_name: "bot-thk-replay-tests" } });
+    isolated = postgres(connectionString, { max: 8, connection: { search_path: `${schema},public`, application_name: "no-wave-replay-tests" } });
     await runMigrations(isolated, { directory: options.migrationDirectory });
     const sql = isolated;
     return {

@@ -3,6 +3,7 @@ import test from "node:test";
 import { articleTagItems, isTagSlug, tagDetailHref, tagDetailMetadata, tagIndexHref, tagIndexMetadata, tagIndexPath, tagPage, tagPath,
   tagSearchQuery, TAG_MAX_PAGE, TAG_QUERY_LIMIT, type TagView } from "./tag-discovery.ts";
 import { getTagCopy } from "./tag-copy.ts";
+import type { Locale } from "./content.ts";
 
 const tag: TagView = { slug: "persisted-slug-123", name: "海边的记忆", description: "", articleCount: 1, locale: "zh-CN" };
 
@@ -38,7 +39,7 @@ test("the query cap agrees with API UTF-16 length and preserves whole supplement
 
 test("URL builders preserve query and locale, omit page one and normalize invalid pages", () => {
   assert.equal(tagIndexPath("en"), "/en/tags");
-  assert.equal(tagIndexPath("zh-TW"), "/tags", "this slice adds no unsupported zh-TW route");
+  assert.equal(tagIndexPath("zh-TW" as Locale), "/tags", "no zh-TW route exists; the default path is used");
   assert.equal(tagIndexHref("zh-CN", "#海边", 1), "/tags?q=%E6%B5%B7%E8%BE%B9");
   assert.equal(tagIndexHref("en", "a & b", 2), "/en/tags?q=a+%26+b&page=2");
   assert.equal(tagDetailHref(tag.slug, "en", 1), `/en/tags/${tag.slug}`);
@@ -82,10 +83,8 @@ test("tag metadata uses the stored name and page, without inventing translation 
 });
 
 test("tag copy has the same complete action vocabulary in each supported data locale", () => {
-  const chinese = getTagCopy("zh-CN"), traditional = getTagCopy("zh-TW"), english = getTagCopy("en");
+  const chinese = getTagCopy("zh-CN"), english = getTagCopy("en");
   assert.deepEqual(Object.keys(chinese).sort(), Object.keys(english).sort());
-  assert.deepEqual(Object.keys(chinese).sort(), Object.keys(traditional).sort());
-  assert.equal(traditional.title, "標籤");
   assert.equal(english.works(1), "1 published work");
   assert.equal(english.works(0), "0 published works");
   assert.ok(chinese.articleTags && chinese.queryHint && english.firstPage);

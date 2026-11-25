@@ -179,7 +179,7 @@ SIGTERM/SIGINT 停收后复用原 8 秒预算排空，真实未排空返回失�
 ## 7. 验证入口
 
 ```sh
-pnpm --filter @bot-thk/web-http test
+pnpm --filter @no-wave/web-http test
 pnpm typecheck
 pnpm test
 pnpm test:web

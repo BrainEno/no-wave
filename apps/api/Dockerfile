@@ -22,7 +22,7 @@ COPY packages/web-ui/package.json ./packages/web-ui/package.json
 COPY packages/glob-match/package.json ./packages/glob-match/package.json
 COPY patches ./patches
 
-RUN pnpm install --frozen-lockfile --prod --filter @bot-thk/api
+RUN pnpm install --frozen-lockfile --prod --filter @no-wave/api
 
 COPY apps/api/src ./apps/api/src
 

@@ -204,7 +204,7 @@ export async function runSuite(options: SuiteOptions): Promise<void> {
   log("Building and testing the production Web server.");
   await requireSuccess(
     execute,
-    run(node, [pnpmCli, "--filter", "@bot-thk/web-rr", "build"]),
+    run(node, [pnpmCli, "--filter", "@no-wave/web-rr", "build"]),
     "Web build failed",
   );
   if (!options.webTests.length) throw new Error("No Web tests found.");

@@ -1,4 +1,4 @@
-import { NOTIFICATION_EXPECTED_ACTOR_HEADER, readLimitedStream, resolveUpstreamTimeoutMs, UpstreamTimeoutError, withUpstreamDeadline } from "@bot-thk/web-http";
+import { NOTIFICATION_EXPECTED_ACTOR_HEADER, readLimitedStream, resolveUpstreamTimeoutMs, UpstreamTimeoutError, withUpstreamDeadline } from "@no-wave/web-http";
 import { isNotificationItem, type NotificationItem } from "./chrome.ts";
 import { parseNotificationPage, type NotificationPage } from "./notification-pages.ts";
 

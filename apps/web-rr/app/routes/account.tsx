@@ -1,7 +1,7 @@
 import { redirect, useLoaderData, type LoaderFunctionArgs } from "react-router";
 import type { HeadersFunction, MetaFunction } from "react-router";
 import { AccountPanel } from "@/components/auth/account-panel.tsx";
-import { SESSION_MARKER_COOKIE, hasUsableSession, sessionMarkerFrom } from "@bot-thk/web-http";
+import { SESSION_MARKER_COOKIE, hasUsableSession, sessionMarkerFrom } from "@no-wave/web-http";
 import { mailEnabled } from "../lib/runtime.ts";
 import { localeFor } from "../lib/locale.ts";
 import { PRIVATE_PAGE_HEADERS } from "../lib/http-policy.ts";

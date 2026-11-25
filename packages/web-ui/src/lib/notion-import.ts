@@ -16,7 +16,7 @@
  *    tested without a browser.
  */
 
-import { isRecord } from "@bot-thk/web-http";
+import { isRecord } from "@no-wave/web-http";
 
 /** The ceiling the API enforces on one import body (`MAX_NOTION_IMPORT_BYTES`). */
 export const NOTION_BUNDLE_MAX_BYTES = 8 * 1024 * 1024;

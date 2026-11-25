@@ -34,7 +34,7 @@ for (const role of ["api", "notification-worker"] as const) for (const releases 
       const deadline = performance.now() + 5000;
       let blocked = false;
       while (!blocked && performance.now() < deadline) {
-        const [row] = await f.query("SELECT count(*)::int AS count FROM pg_stat_activity WHERE application_name = 'bot-thk-api' AND wait_event_type = 'Lock' AND query = 'SELECT version FROM api_schema_migrations'");
+        const [row] = await f.query("SELECT count(*)::int AS count FROM pg_stat_activity WHERE application_name = 'no-wave-api' AND wait_event_type = 'Lock' AND query = 'SELECT version FROM api_schema_migrations'");
         blocked = Number(row.count) === 1;
         if (!blocked) await delay(20);
       }

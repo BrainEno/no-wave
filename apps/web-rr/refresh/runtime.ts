@@ -1,5 +1,5 @@
-import { InMemoryRefreshCoordinator, type RefreshCoordinator } from "@bot-thk/web-http";
-import { withRefreshCoordinator } from "@bot-thk/web-http/refresh-runtime";
+import { InMemoryRefreshCoordinator, type RefreshCoordinator } from "@no-wave/web-http";
+import { withRefreshCoordinator } from "@no-wave/web-http/refresh-runtime";
 import { PostgresRefreshCoordinator } from "./coordinator.ts";
 import { observeRefresh, RefreshCoordinationError, type RefreshObserver } from "./errors.ts";
 import { PostgresRefreshStore } from "./postgres-store.ts";

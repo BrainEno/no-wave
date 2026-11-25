@@ -6,7 +6,7 @@
  * API only after it has been trimmed and bounded here.
  */
 
-import { isRecord } from "@bot-thk/web-http";
+import { isRecord } from "@no-wave/web-http";
 
 export type AuthorProfile = { displayName: string; locale: string };
 

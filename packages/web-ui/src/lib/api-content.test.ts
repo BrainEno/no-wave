@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { UpstreamTimeoutError } from "@bot-thk/web-http";
+import { UpstreamTimeoutError } from "@no-wave/web-http";
 import { createApiContentClient, listPublicFeatured, resolveApiBaseUrl } from "./api-content.ts";
 
 type CapturedRequest = { url: string; init: RequestInit | undefined };
@@ -19,7 +19,7 @@ const article = {
   authorId: "user-1",
   slug: "hello-world",
   status: "published",
-  locale: "zh-TW",
+  locale: "zh-CN",
   title: "Hello",
   summary: "Summary",
   workType: "poetry",
@@ -27,7 +27,7 @@ const article = {
   createdAt: "2026-10-01T00:00:00.000Z",
   updatedAt: "2026-10-02T00:00:00.000Z",
   publishedAt: "2026-10-02T00:00:00.000Z",
-  author: { userId: "user-1", displayName: "Author", bio: "Bio", locale: "zh-TW" },
+  author: { userId: "user-1", displayName: "Author", bio: "Bio", locale: "zh-CN" },
   categories: [{ name: "Engineering" }],
   tags: [{ name: "Web" }],
 };
@@ -94,12 +94,12 @@ test("REST content client maps article fields and uses the versioned REST route"
     endpoint: "https://api.example.test",
     fetchImpl: captureFetch({ data: [article] }, 200, calls),
   });
-  const articles = await client.listArticles({ locale: "zh-TW", query: "Hello", limit: 20, offset: 40 });
+  const articles = await client.listArticles({ locale: "zh-CN", query: "Hello", limit: 20, offset: 40 });
   assert.equal(calls.length, 1);
   const requestUrl = new URL(calls[0].url);
   assert.equal(requestUrl.pathname, "/api/v1/articles");
   assert.deepEqual(Object.fromEntries(requestUrl.searchParams), {
-    locale: "zh-TW", query: "Hello", limit: "20", offset: "40",
+    locale: "zh-CN", query: "Hello", limit: "20", offset: "40",
   });
   assert.equal(calls[0].init?.method, "GET");
   assert.equal((calls[0].init?.headers as Record<string, string>).accept, "application/json");

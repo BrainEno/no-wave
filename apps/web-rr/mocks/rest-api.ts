@@ -8,7 +8,7 @@ import type { IncomingMessage, Server, ServerResponse } from "node:http";
  * The tests talk to a real HTTP server rather than an injected fake, so they
  * exercise the same `fetch` path, cookie handling and status mapping that a live
  * API would produce. Payload shapes mirror the documented REST contract that
- * `@bot-thk/web-ui`'s `lib/api-content.ts` already parses:
+ * `@no-wave/web-ui`'s `lib/api-content.ts` already parses:
  * `{ data: ... }` envelopes, `{ error: { code, message } }` failures.
  *
  * Deliberately not a general-purpose mock: it serves the two articles and the

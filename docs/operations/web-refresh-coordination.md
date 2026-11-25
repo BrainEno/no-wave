@@ -171,9 +171,9 @@ HTTP SIGTERM/SIGINT 先停止接收新工作，按原 8 秒预算排空，随后
 node --test apps/web-rr/test/refresh-*.test.ts
 
 # 必须先 build，真实 OS 进程实际运行 server.ts 和生产 BFF bundle
-pnpm --filter @bot-thk/web-rr build
+pnpm --filter @no-wave/web-rr build
 # 使用隔离的 TEST_DATABASE_URL；这些夹具创建并清理自己的 schema
-pnpm --filter @bot-thk/api test:integration
+pnpm --filter @no-wave/api test:integration
 ```
 
 CI 的 required `postgres-integration` 服务使用真实 PostgreSQL，先构建 Web 再执行
