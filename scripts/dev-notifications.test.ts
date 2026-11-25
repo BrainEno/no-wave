@@ -156,6 +156,10 @@ for (const provider of ["sqlite", "postgres"] as const) {
             HOME: process.env.HOME,
             NODE_NO_WARNINGS: "1",
             ...database,
+            // dev.ts loads the developer's .env.local, which may pin
+            // API_BASE_URL to a fixed API port. Process env wins over that
+            // file, so bind Web to this run's API rather than the fixed one.
+            API_BASE_URL: apiUrl,
             PORT: String(apiPort),
             OUTBOX_HEALTH_PORT: String(workerPort),
             WEB_PORT: String(webPort),
@@ -189,6 +193,11 @@ for (const provider of ["sqlite", "postgres"] as const) {
           output.includes("Ready."),
           "the real default dev orchestrator must finish startup; diagnostics:\n" +
             startupDiagnostics(output),
+        );
+        assert.doesNotMatch(
+          output,
+          /Web will use API_BASE_URL/,
+          "Web must be wired to this run's API, not a stale API_BASE_URL from .env.local",
         );
         assert.equal((await fetch(webUrl + "/")).status, 200);
         const outcome = await runNotificationDeliverySmoke({
@@ -279,6 +288,9 @@ for (const fault of ["api", "worker", "web", "worker-stalled"] as const) {
             OUTBOX_HEALTH_PORT: String(workerPort),
             WEB_PORT: String(webPort),
             AUTH_JWT_SECRET: "fixture-only-dev-fault-secret-at-least-32-bytes",
+            // Same as the default-chain case: override any fixed API_BASE_URL
+            // that dev.ts would otherwise load from .env.local.
+            API_BASE_URL: `http://127.0.0.1:${apiPort}`,
             AUTH_JWT_ISSUER: `http://127.0.0.1:${apiPort}`,
             AUTH_JWT_AUDIENCE: "dev-fault",
             DEV_RECOVERY_TIMEOUT_MS: "1000",
