@@ -12,8 +12,7 @@ Architecture decision records and their Accepted/Superseded status live in the [
 
 ## 前端 UI（packages/web-ui）
 
-- [UI 设计规范与 token 源（唯一有效规范）](../packages/web-ui/docs/UI_DESIGN_SYSTEM.md) — Status: active
-- [前端落地说明（早期原型，已归档）](../packages/web-ui/docs/IMPLEMENTATION_NOTES.md) — Status: archived
+前端设计规范位于 [packages/web-ui/docs/UI_DESIGN_SYSTEM.md](../packages/web-ui/docs/UI_DESIGN_SYSTEM.md)（Status: active），它是唯一有效的 UI 规范；颜色等 token 以 `packages/web-ui/src/styles/globals.css` 为准。早期前端落地说明 [IMPLEMENTATION_NOTES.md](../packages/web-ui/docs/IMPLEMENTATION_NOTES.md) 已归档（Status: archived），不作为现行事实。这些文件不在本目录下，因此不列入上方的索引。
 
 ## docs/architecture
 
