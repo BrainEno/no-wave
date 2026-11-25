@@ -77,6 +77,39 @@ test("the required verify job audits all locked dependencies at high severity", 
   assert.match(gate, /\"\$VERIFY_RESULT\"/);
 });
 
+test("the verify job gates unused dependencies with knip and publishes the full report", () => {
+  const verify = workflow.slice(
+    workflow.indexOf("  verify:"),
+    workflow.indexOf("  postgres-integration:"),
+  );
+  const gate = verify.indexOf("pnpm knip:deps");
+  assert.ok(gate >= 0, "verify must run the knip dependency gate");
+  // knip loads apps/web-rr/vite.config.ts, which prepares the fonts, so the
+  // gate has to run after the restore and before the build it mirrors.
+  assert.ok(gate > verify.indexOf("pnpm fonts:check"));
+  assert.ok(gate < verify.indexOf("pnpm build"));
+  assert.match(verify, /pnpm --silent knip:report[\s\S]*GITHUB_STEP_SUMMARY/);
+  const reportScript = (
+    JSON.parse(readFileSync(new URL("package.json", root), "utf8")) as {
+      scripts: Record<string, string>;
+    }
+  ).scripts["knip:report"];
+  assert.match(
+    reportScript ?? "",
+    /--no-exit-code/,
+    "the full report must stay informational, not a second gate",
+  );
+  const manifest = JSON.parse(
+    readFileSync(new URL("package.json", root), "utf8"),
+  ) as { devDependencies: Record<string, string> };
+  assert.match(
+    manifest.devDependencies.knip ?? "",
+    /^\d+\.\d+\.\d+$/,
+    "knip is pinned to an exact version like the other tooling",
+  );
+  assert.equal(existsSync(new URL("knip.jsonc", root)), true);
+});
+
 test("CodeQL covers the same pre-PR Arena branches with explicit minimal permissions", () => {
   const codeql = readFileSync(
     new URL(".github/workflows/codeql.yml", root),

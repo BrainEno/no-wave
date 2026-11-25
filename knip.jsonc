@@ -1,0 +1,18 @@
+{
+  "workspaces": {
+    ".": {
+      // Root scripts and their tests are entry points: the test files import
+      // `marked` (scripts/doc-evidence.test.ts) and resolve
+      // `@bot-thk/glob-match` (scripts/glob-consumers.test.ts) directly.
+      "entry": ["scripts/**/*.test.ts"]
+    },
+    "apps/web-rr": {
+      // The SSR build keeps `marked` as an external import, because the
+      // Markdown module is compiled from packages/web-ui. The production
+      // image installs only this workspace's dependencies, so the declaration
+      // is required even though no file in apps/web-rr imports it.
+      // client-bundle.test.ts enforces this against the emitted server entry.
+      "ignoreDependencies": ["marked"]
+    }
+  }
+}

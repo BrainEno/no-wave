@@ -41,6 +41,25 @@ jobs:
       # this is an offline verification when their outputs are already present.
       - run: pnpm fonts:prepare
       - run: pnpm fonts:check
+      # Knip loads apps/web-rr/vite.config.ts, which prepares the fonts, so it
+      # runs after the restore above and sees the same tree as the build.
+      # Unused, unlisted and unresolved dependencies fail this gate. The
+      # config in knip.jsonc names each reviewed false positive; anything else
+      # is a real finding.
+      - run: pnpm knip:deps
+      # The full knip report (files, exports, types) is published to the job
+      # summary for review. It is not gated: its file and export findings are
+      # still being triaged, so failing on them would only train people to
+      # ignore the check.
+      - name: Publish the full knip report
+        if: always()
+        run: |
+          {
+            echo "## knip（完整报告，不作为门禁）"
+            echo '```'
+            pnpm --silent knip:report
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
       - run: pnpm build
       - run: pnpm test:routes
       # A clean checkout must also prove the writing desk's publish path without
