@@ -202,7 +202,7 @@ z-index 已收敛为 `globals.css` `:root` 里的阶梯（#345），新增浮层
 - 封面比例：`4:5`（主）、`1:1`、`3:4`、`16:10`（宽幅）。`object-fit:cover`，按 `coverImage.focalPoint` 定位。
 - **无封面时**：用 `sha256(post.id) % 4` 选择 `cover-ember / oxblood / bone / night` 之一，保证同一篇文章始终是同一张。
 - 默认封面是装饰图，`alt=""`；真实封面必须有 alt。
-- 需要更多变体用 `generate_cover.py --post-id <id>`，同一个 id 永远生成同一张。
+- 需要更多变体用 `generate-cover.ts --post-id <id>`，同一个 id 永远生成同一张。
 - 图上文字必须放在纯色块（黑或纸色）里，**不要直接压在涂抹图上写小字**。
 
 ## 5. 版面骨架

@@ -48,7 +48,7 @@
 
 ## 5. 资源
 
-- `public/covers/*.jpg`：4 张默认封面；`scripts/generate_cover.py`：按文章 slug 生成更多变体（依赖 numpy、Pillow）。
+- `public/covers/*.jpg`：4 张默认封面；`scripts/generate-cover.ts`（位于 `apps/web-rr`）：按文章 slug 生成更多变体（依赖 sharp）。
 - 首屏纹理 `cover-ember-16x10.jpg` 约 700KB，已接近 UI 规范里 800KB 的上限，上线前建议再压缩并提供 WebP/AVIF。
 - 字体通过 Google Fonts `<link>` 加载（`layout.tsx`）。若要在国内稳定访问，建议自托管子集。
 
