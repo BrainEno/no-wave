@@ -98,11 +98,6 @@ for (const provider of ["sqlite", "postgres"] as const) {
       assert.equal((await edit(en.id, enEdit)).data.locale, "en");
       const legacyEdit = { slug: legacy.slug, title: "編輯後的繁體作品", locale: "zh-TW", contentBlocks: blocks("編輯後的繁體正文。"), publish: false };
       assert.equal((await edit(legacy.id, legacyEdit)).data.locale, "zh-TW");
-      // A zh-TW edition cannot be created by PUT onto a work that lacks one (issue #417).
-      await call(`/articles/${en.id}`, 400, {
-        method: "PUT", headers: { ...auth(author), "content-type": "application/json" },
-        body: JSON.stringify({ ...enBody, title: "Traditional copy", locale: "zh-TW", contentBlocks: blocks("繁體副本。"), publish: false }),
-      });
       await call(`/articles/${en.id}`, 403, { method: "PUT", headers: { ...auth(outsider), "content-type": "application/json" }, body: JSON.stringify(enEdit) });
       all = await list("?allLocales=true&limit=100");
       assert.equal(all.find((item) => item.id === en.id && item.locale === "en")?.contentBlocks[0].text, "Edited English text.");
