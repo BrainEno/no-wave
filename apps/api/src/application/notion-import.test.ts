@@ -672,6 +672,25 @@ test("re-importing a page an earlier import labelled Chinese updates that editio
   assert.equal(deps.articles.size, 1);
 });
 
+test("a page linked as zh-TW by an earlier import is refused and its work is left untouched (issue #417)", async () => {
+  const deps = stubDeps();
+  await importNotionBundle({ actorId: "author-1", bundle: bundle(page("legacy", "墙壁", "中文正文")), apply: true, deps, now: at });
+  const link = [...deps.links.values()][0]!;
+  deps.links.clear();
+  deps.links.set("legacy|zh-TW", { ...link, locale: "zh-TW" });
+  const article = [...deps.articles.values()][0]!;
+  deps.articles.set(article.id, { ...article, locale: "zh-TW" });
+  const before = JSON.stringify([...deps.articles.values()]);
+  const changed = page("legacy", "墙壁", "中文正文，已修改");
+  for (const apply of [false, true]) {
+    const report = await importNotionBundle({ actorId: "author-1", bundle: bundle(changed), apply, deps, now: at });
+    assert.equal(report.summary.update, 0, JSON.stringify(report.pages));
+    assert.equal(report.summary.refused, 1, JSON.stringify(report.pages));
+  }
+  assert.equal(JSON.stringify([...deps.articles.values()]), before, "the zh-TW work is not rewritten");
+  assert.deepEqual([...deps.links.keys()], ["legacy|zh-TW"], "no zh-CN or en edition is created beside it");
+});
+
 test("preview and apply refuse foreign provenance without revealing its article or creating tags", async () => {
   const deps = stubDeps({ links: [{ provider: "notion", externalId: "foreign-page", locale: "zh-CN", articleId: "secret-work", ownerId: "other", digest: "old", syncedAt: at().toISOString() }] });
   const selected = bundle(page("foreign-page", "文字", "正文", { Tags: { type: "multi_select", multi_select: [{ name: "新标签" }] } }));

@@ -545,6 +545,16 @@ const ARTICLE_ROUTE_HANDLERS: Readonly<Record<string, RestRouteHandler>> = Objec
           sendUnauthenticated(response);
           return;
         }
+        // Writing zh-TW is allowed only onto a zh-TW edition that already
+        // exists (issue #417): an existing legacy work stays editable, but no
+        // new zh-TW edition can be created through this route.
+        if (normalized.input.locale === "zh-TW") {
+          const existing = await services.getMyArticle({ actorId, articleId, locale: "zh-TW" });
+          if (!existing) {
+            sendBadInput(response, "zh-TW is not supported for new editions; only an existing zh-TW edition can be updated.");
+            return;
+          }
+        }
         const article = await services.updateArticle({ ...normalized.input, articleId, actorId });
         sendJson(response, 200, { data: await serializeRestArticle(services, article, actorId) });
       } catch (error: unknown) {

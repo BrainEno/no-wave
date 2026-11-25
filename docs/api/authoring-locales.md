@@ -11,9 +11,14 @@ values are rejected. An omitted locale still means `zh-CN` for compatibility,
 so clients editing a non-default edition **must send its stored locale
 explicitly**. Profile and comment write rules are unchanged.
 
-Other paths that could create a `zh-TW` edition are not covered by the create
-route check yet: Notion import and the catalogue edition routes. Closing them
-needs a decision on legacy data, tracked in issue #417.
+Other paths that could create a `zh-TW` edition are closed as well (issue #417):
+
+- `PUT /api/v1/articles/{id}` with `locale: "zh-TW"` is accepted only when the
+  author already has that `zh-TW` edition. Otherwise it returns `400`.
+- Notion import refuses any page whose edition would be `zh-TW`, including one
+  kept from an earlier import, and leaves the existing work unchanged.
+- The catalogue edition routes are read-only (`GET`), so they cannot create an
+  edition. Existing `zh-TW` editions can still be read through them.
 
 An article ID identifies a work, while `(article ID, locale)` identifies one
 of its translations. A `PUT` with a different explicit locale inserts or
