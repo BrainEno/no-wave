@@ -6,6 +6,8 @@
 
 This repository is the independent implementation of BOT THK's Web and API product. The old project is a functional and behavioral reference, not code that has to be preserved or copied.
 
+**Names.** BOT THK is the legacy product name and the reference project. `no-wave` is the repository name and the prefix for local resources. 无浪潮 / No Wave is the public brand. Existing package scopes and database names keep their current values; new resources use `no-wave`. See [names and their relationships](docs/development/names.md).
+
 ## Contents
 
 - [Quick start](#quick-start)

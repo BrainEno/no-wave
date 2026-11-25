@@ -142,6 +142,7 @@ Architecture decision records and their Accepted/Superseded status live in the [
 ## docs/development
 
 - [Local development and local verification](development/local-development.md) — Status: active
+- [名称与关系：BOT THK、no-wave、无浪潮](development/names.md) — Status: active
 
 ## docs/requirements
 

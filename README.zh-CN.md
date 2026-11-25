@@ -8,6 +8,8 @@
 
 本仓库是 BOT THK Web 与 API 产品的独立实现。旧项目只作为功能与行为参考，不需要保留或照搬其代码。
 
+**名称说明。** BOT THK 是旧项目与本产品的历史名称；`no-wave` 是仓库名与本地资源前缀；无浪潮 / No Wave 是面向读者的品牌。现有包 scope 与数据库名保持不变，新建资源使用 `no-wave`。详见[名称与关系](docs/development/names.md)。
+
 ## 目录
 
 - [快速开始](#quick-start)
