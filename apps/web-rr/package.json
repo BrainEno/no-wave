@@ -16,7 +16,6 @@
     "@bot-thk/web-ui": "workspace:*",
     "@react-router/node": "8.5.2",
     "compression": "1.8.2",
-    "gsap": "3.15.1",
     "marked": "18.2.1",
     "parse5": "8.1.1",
     "postgres": "4.1.1",
@@ -25,7 +24,6 @@
     "react-router": "8.5.2"
   },
   "devDependencies": {
-    "@bot-thk/glob-match": "workspace:*",
     "@react-router/dev": "8.5.2",
     "@types/compression": "1.8.1",
     "@types/node": "26.6.6",
