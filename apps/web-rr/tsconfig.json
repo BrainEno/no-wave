@@ -45,7 +45,8 @@
     "refresh-ingress.ts",
     "upstream/**/*.ts",
     "upstream-ingress.ts",
-    "operations/**/*.ts"
+    "operations/**/*.ts",
+    "scripts/**/*.ts"
   ],
   "exclude": [
     "node_modules",

@@ -1,7 +1,7 @@
 # 默认封面（抽象占位图）
 
 文章没有封面时使用。规则：`hash(slug) % 4` 选一张，同一篇作品永远是同一张（见 `src/lib/covers.ts`）。
-装饰图，`alt=""`。需要更多变体：`python scripts/generate_cover.py --post-id <slug> --size 1200x1500 -o out.jpg`。
+装饰图，`alt=""`。需要更多变体：`node scripts/generate-cover.ts --post-id <slug> --size 1200x1500 -o out.jpg`（在 `apps/web-rr` 目录下运行）。
 
 | 文件 | 尺寸 | 用途 |
 |---|---|---|
