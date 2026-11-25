@@ -42,7 +42,7 @@ locale 翻译的身份不会通过一个 locale 的扫描复制到另一个 loca
 
 ## 配置与隐私
 
-`SITE_URL` 优先；未设置时兼容 `NEXT_PUBLIC_SITE_URL`。空配置保留
+只读取 `SITE_URL`（`NEXT_PUBLIC_SITE_URL` 回退已于 #350 移除）。空配置保留
 `https://example.invalid` 占位行为。只使用合法 HTTP(S) origin：规范化
 主机与默认端口，丢弃路径、查询和 fragment；拒绝凭据、控制字符、相对 URL
 与其他协议。异常消息不包含被拒绝的配置值。

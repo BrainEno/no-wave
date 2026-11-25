@@ -22,13 +22,13 @@ export function upstreamTransport() {
  * Server-only runtime wiring.
  *
  * `resolveApiBaseUrl` is a pure shared UI resolver, so the documented
- * precedence (`API_BASE_URL`, legacy `API_GRAPHQL_URL`, then `API_SERVICE_URL`)
- * and the same URL validation hold here. Nothing
+ * precedence (`API_BASE_URL`, then `API_SERVICE_URL`) and the same URL
+ * validation hold here. Nothing
  * here reads a Vercel-specific binding unless that variable is explicitly set.
  */
 export function apiBaseUrl(): string | undefined {
   return resolveApiBaseUrl({ explicitUrl: process.env.API_BASE_URL,
-    serviceUrl: process.env.API_SERVICE_URL, legacyGraphqlUrl: process.env.API_GRAPHQL_URL });
+    serviceUrl: process.env.API_SERVICE_URL });
 }
 
 /**
@@ -74,17 +74,14 @@ export function apiProxyConfig(): ApiProxyConfig {
 /**
  * Absolute site origin for canonical links and Open Graph URLs.
  *
- * `SITE_URL` is the name; `NEXT_PUBLIC_SITE_URL` is the one the App Router
- * needed, and it is still read because deployments hold it in a dashboard this
- * repository cannot edit — a rename that silently emptied every canonical URL
- * would be worse than a name that carries a dead framework's prefix. New
- * deployments should use `SITE_URL` (ADR 0017 retired Next.js).
+ * `SITE_URL` is the only name. The Next.js-era site-origin fallback was removed
+ * (#350) after the owner confirmed no environment sets it.
  *
- * Neither is inlined at build time here: the value is read per request, so
+ * It is not inlined at build time here: the value is read per request, so
  * changing it needs a restart, not a rebuild.
  */
 export function siteUrl(): string {
-  return configuredSiteUrl({ siteUrl: process.env.SITE_URL, legacySiteUrl: process.env.NEXT_PUBLIC_SITE_URL });
+  return configuredSiteUrl({ siteUrl: process.env.SITE_URL });
 }
 
 /** No ambient configuration in the shared UI, and no mutable global content client. */

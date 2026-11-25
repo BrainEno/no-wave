@@ -29,9 +29,9 @@ export function siteOrigin(siteUrl: string | undefined): string {
   return httpUrl(siteUrl?.trim() || "https://example.invalid").origin;
 }
 
-/** SITE_URL wins; keep the retired deployment name as a runtime compatibility alias. */
-export function configuredSiteUrl(config: { siteUrl?: string; legacySiteUrl?: string } = {}): string {
-  return siteOrigin(config.siteUrl ?? config.legacySiteUrl);
+/** `SITE_URL` is the only input; the Next.js-era site-origin alias was removed (#350). */
+export function configuredSiteUrl(config: { siteUrl?: string } = {}): string {
+  return siteOrigin(config.siteUrl);
 }
 
 export type SitemapOptions = { siteUrl?: string; maxPages?: number; timeoutMs?: number; source?: SitemapSource; signal?: AbortSignal };

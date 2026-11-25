@@ -136,8 +136,3 @@ test("the site origin is resolved from explicit inputs with stable empty default
   assert.equal(configuredSiteUrl({ siteUrl: "https://no-wave.example/" }), "https://no-wave.example");
   assert.equal(configuredSiteUrl({ siteUrl: "   " }), "https://example.invalid");
 });
-
-test("the retired site name remains an explicit compatibility input and the current name wins", () => {
-  assert.equal(configuredSiteUrl({ legacySiteUrl: "https://legacy.example/" }), "https://legacy.example");
-  assert.equal(configuredSiteUrl({ siteUrl: "https://current.example/", legacySiteUrl: "https://legacy.example/" }), "https://current.example");
-});

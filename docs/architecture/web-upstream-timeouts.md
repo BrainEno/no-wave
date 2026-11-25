@@ -15,9 +15,8 @@ external，确保错误类身份与请求上下文不因打包而复制；否则
 没有请求上下文的原生脚本使用一个有界 fallback，不为每个 loader 新建容量池。
 
 未配置 API 时保留明确的 fixtures 模式；配置无效、API 故障或返回损坏资料时失败关闭，
-不能回退 fixtures 冒充线上内容。`API_BASE_URL` 优先于旧 `API_GRAPHQL_URL`，后者去掉
-`/graphql` 并告警，再到 `API_SERVICE_URL`；站点旧 `NEXT_PUBLIC_SITE_URL` 同样保留。
-移除部署别名仍须 owner 确认。
+不能回退 fixtures 冒充线上内容。`API_BASE_URL` 优先，其次是 `API_SERVICE_URL`；旧 `API_GRAPHQL_URL` 与
+`NEXT_PUBLIC_SITE_URL` 已于 #350 移除，不再读取。
 
 ## 2. 时间与入站预算
 

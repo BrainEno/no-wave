@@ -38,8 +38,8 @@ pnpm test:web
 ## 配置和边界
 
 根 `.env.local` 与 shell 显式注入，shell 优先；见 [环境模板](../../.env.example)。
-保留 `API_GRAPHQL_URL`、`API_SERVICE_URL`、`NEXT_PUBLIC_SITE_URL` 兼容名，
-未经部署 owner 确认不删除。`RR_BUILD_DIR` / `RR_SERVER_BUILD_DIR` 只改产物位置。
+旧的 GraphQL 时代与 Next.js 时代的兼容名已移除（#350），不再读取；见根 README。
+保留 `API_SERVICE_URL`（平台服务绑定）。`RR_BUILD_DIR` / `RR_SERVER_BUILD_DIR` 只改产物位置。
 
 写新资源前先读 [BFF 模板](../../docs/architecture/bff-routes.md)与[公共模块索引](../../docs/architecture/shared-modules.md)。
 上游限制见[期限与压力边界](../../docs/architecture/web-upstream-timeouts.md)；

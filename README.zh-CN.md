@@ -83,7 +83,7 @@ persistence  SQLite (apps/api/data/no-wave.sqlite)
 - 后端身份生命周期仍是初版：邮件验证/找回**默认关闭**，审核工具、实时客户端与外部推送尚未完成；正式上线前仍需一轮安全加固。
 - 当前 Web UI 是唯一的 React Router 实现，功能可用；视觉设计仍是概念阶段，不是已完成的设计系统。
 - API 认证使用 Bearer token。浏览器通过同源 Web 路由认证并取得 HttpOnly Cookie，浏览器代码不会把长期 token 放在 local storage。
-- 旧的 `API_GRAPHQL_URL` 只在一个过渡版本内兼容并会输出弃用警告。新代码必须使用 `/api/v1` REST 路径；见 [REST 幂等性](docs/architecture/rest-idempotency.md)。
+- 旧的 `API_GRAPHQL_URL` 与 `NEXT_PUBLIC_SITE_URL` 已移除（#350），不再读取。REST API 地址使用 `API_BASE_URL`，站点地址使用 `SITE_URL`。新代码必须使用 `/api/v1` REST 路径；见 [REST 幂等性](docs/architecture/rest-idempotency.md)。
 
 结构化工程审查、架构决定与路线图分别见 [docs/audit](docs/audit)、[docs/architecture/decisions](docs/architecture/decisions) 和 [docs/roadmap](docs/roadmap)。
 
