@@ -3,6 +3,7 @@
 These rules apply to humans and coding agents working on BOT THK.
 
 - Last checked: 2026-11-12.
+- UI design system and tokens (`globals.css` is the executable token source): [UI_DESIGN_SYSTEM.md](packages/web-ui/docs/UI_DESIGN_SYSTEM.md).
 - Architecture references: [ADR 0012](docs/architecture/decisions/0012-portable-web-framework-migration.md), [0017](docs/architecture/decisions/0017-nextjs-retired-one-web-application.md), [0025](docs/architecture/decisions/0025-browser-session-refresh-protocol.md); unresolved release gates in [0026](docs/architecture/decisions/0026-moderation-reports-and-appeals.md) still apply.
 
 ## Product and safety boundaries

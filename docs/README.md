@@ -10,6 +10,10 @@ Status values: `active` (current, follow it), `done` (completed work, kept as a 
 
 Architecture decision records and their Accepted/Superseded status live in the [ADR index](architecture/decisions/README.md).
 
+## 前端 UI（packages/web-ui）
+
+前端设计规范位于 [packages/web-ui/docs/UI_DESIGN_SYSTEM.md](../packages/web-ui/docs/UI_DESIGN_SYSTEM.md)（Status: active），它是唯一有效的 UI 规范；颜色等 token 以 `packages/web-ui/src/styles/globals.css` 为准。早期前端落地说明 [IMPLEMENTATION_NOTES.md](../packages/web-ui/docs/IMPLEMENTATION_NOTES.md) 已归档（Status: archived），不作为现行事实。这些文件不在本目录下，因此不列入上方的索引。
+
 ## docs/architecture
 
 - [API authentication contract](architecture/api-authentication.md) — Status: active

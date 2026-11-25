@@ -3,9 +3,12 @@
 > 版本 0.2（概念阶段）。依据首页设计图、`nowave-home-demo`、`/post` `/editor` 设计图，以及文学平台六个核心页面设计稿整理。`/post`、`/editor` 是历史设计稿名称，不是当前产品路由。
 > **产品定位（v0.2 起）：** 严肃文学发表与交流平台。页面以“作品”而非“功能卡片”为中心。
 > **已确认：** 视觉方向、色板、字体组合、首页结构、左侧竖脊、导航条、默认封面机制。
+> **唯一可执行的 token 源：** `packages/web-ui/src/styles/globals.css` 的 `:root` 与深色覆盖。§3.1 的代码块与其中的 HEX 值由 `packages/web-ui/src/lib/design-tokens.test.ts` 自动校验，改色值时两处必须一起改。Status: active。
 > **实现状态：** 实际路由见 [Web 路由表](../../../apps/web-rr/app/routes.ts)；下文的排版细节是设计目标，不代表均已实现。
 
 ## 0. 怎么用这份文档
+
+**唯一有效规范：** 本文件（v0.2 加 v3 增补，v3 条目优先于前文）。`IMPLEMENTATION_NOTES.md` 已归档，不作为现行事实。
 
 新页面开工前按顺序检查：**① 用 token，不写裸色值 → ② 套用页面骨架（§7） → ③ 只用 §4 里的组件，缺了先补进来 → ④ 动效与 WebGL 遵守 §6 的预算 → ⑤ 过一遍 §9 清单。**
 
@@ -36,31 +39,28 @@
 
 ```css
 :root{
-  --paper:#F2EEE6;  --ink:#0F0D0C;           /* 页面底 / 主文字 */
-  --orange:#D8541F; --red:#8B1A10;           /* 强调 / 深强调 */
-  --flesh:#E9A98F;                           /* 仅用于图像与插画 */
-  --text-2:#5E5850;                          /* 次级文字，对 paper 6.1:1 */
-  --text-2-on-ink:#B5AEA3;                   /* 黑底次级文字，对 ink 8.7:1 */
-  --line:var(--ink);                         /* 1px 分隔线 */
-  --rail:#0F0D0C;  --on-image:#F2EEE6;       /* 竖脊与图上文字：不随主题反转 */
+  --paper:#f0ebe1;  --paper-2:#e7e0d2;  --ink:#141211;     /* 纸 / 墨：页面底、主文字 */
+  --or:#e2481b;     --red:#8b1a10;                          /* 朱：强调、焦点 / 深红：小字强调 */
+  --t2:#5d564d;     --ti:#b5aea3;                           /* 次级文字 / 发丝线底色 */
+  --on-image:#f2eee6;  --rail:#141211;                      /* 竖脊与图上文字：不随主题反转 */
 }
 @media (prefers-color-scheme:dark){
-  :root:not([data-theme="light"]){--paper:#0F0D0C;--ink:#F2EEE6;--text-2:#B5AEA3}
+  :root:not([data-theme="light"]){--paper:#121010;--paper-2:#1c1917;--ink:#efe9de;--t2:#b0a89b}
 }
-:root[data-theme="dark"]{--paper:#0F0D0C;--ink:#F2EEE6;--text-2:#B5AEA3}
+:root[data-theme="dark"]{--paper:#121010;--paper-2:#1c1917;--ink:#efe9de;--t2:#b0a89b}
 ```
 
 | 语义 | 值 | 用法 |
 |---|---|---|
-| `color.action.primary` | `--orange` 底 + `#0F0D0C` 字（4.7:1） | 主按钮、角标 |
-| `color.action.secondary` | `--ink` 底 + `--paper` 字（16.5:1） | 次按钮、提示条 |
-| `color.link.hover` | `--orange` | 仅用于 ≥ 24px 或 ≥ 18.66px 粗体（对 paper 仅 3.5:1） |
-| `color.text.accent-small` | `--red` | 小字需要强调色时（对 paper 8.0:1） |
-| `color.focus` | `--orange`，3px 实线，外偏 3px | 所有可聚焦元素 |
-| 语义色 | 成功 `#2F6B3A`、警告 `#8A5A00`、错误 `--red`、提示 `--ink` | 必须配图标或文字，不能只靠颜色 |
+| `color.action.primary` | `--or` 底 + `#141211` 字（浅色主题 4.60:1） | 主按钮、角标 |
+| `color.action.secondary` | `--ink` 底 + `--paper` 字（15.72:1） | 次按钮、提示条 |
+| `color.link.hover` | `--or` | 仅用于 ≥ 24px 或 ≥ 18.66px 粗体（对 paper 仅 3.41:1） |
+| `color.text.accent-small` | `--red` | 小字需要强调色时（对 paper 7.85:1） |
+| `color.focus` | `--or`，3px 实线，外偏 3px | 所有可聚焦元素 |
+| 语义色 | 成功 `--ok`（`#3f8a4f`）、错误 `--red`、提示 `--ink`；警告色未定义 | 必须配图标或文字，不能只靠颜色 |
 
-> 成功与警告色是占位建议，落地时需要对 paper 与 ink 各验证一次对比度。
-> 成功色当前实现值为 `--ok: #3f8a4f`（`globals.css`），对比度验证同上。
+> **未实现 / 待决定（owner 待指定，见 #416）：** 警告色在 `globals.css` 中没有定义，仍是占位建议 `#8A5A00`。成功色 `--ok: #3f8a4f` 对 paper 为 3.56:1，只能用于图标或大字；小字成功提示需要另选更深的绿色，并重新验证。
+> 上表对比度按 WCAG 相对亮度计算，数值与当前 token 一致；改色值后需重算。
 
 ### 3.2 字体
 
@@ -93,7 +93,7 @@
 - 页面边距：桌面 80px，≥ 1024 以下 40px，移动 16px。内容最大宽度 1280px。
 - 区块上下留白：桌面 120–140px，移动 64–80px。
 - **圆角阶梯**：`--radius-xs` 2 / `--radius-sm` 4 / `--radius-md` 6 / `--radius-lg` 8 / `--radius-panel` 18 / `--radius-pill` 999（px）。**默认 0**；面板用 `--radius-panel`，导航条、角标与胶囊用 `--radius-pill`。
-- 边框：1px 实线 `--line`；强分隔 3px。**不使用阴影。**
+- 边框：1px 实线 `--line`；强分隔 3px。**不使用阴影（规范）。** 现状偏差：`globals.css` 仍有 23 处 `box-shadow`，待清理，owner 待指定（见 #416）。`design-tokens.test.ts` 把数量冻结在 23，新增阴影会使测试失败。
 
 **内联样式政策（#345）。** 组件内不写 `style={{…}}` 写死间距与尺寸：静态值一律用阶梯变量与工具类（`.nw-mt-*`、`.nw-mb-*`、`.nw-pt-12`、`.nw-container`、`.nw-spacer` 等，见 `globals.css`「设计令牌工具类」区块）。`packages/web-ui` 内 `style={{` 允许 **≤ 15 处**，且只允许运行时才能确定的值（对选区的测量、按数据计算的布局）；每处必须在**同一行或上一行**用注释说明为何必须内联。由 `pnpm lint:inline-styles`（`scripts/check-inline-styles.ts`）守门。
 
@@ -404,7 +404,7 @@ z-index 已收敛为 `globals.css` `:root` 里的阶梯（#345），新增浮层
 
 ## 18. 落地对照（v0.2）
 
-设计稿的页面已按真实 API 落地的部分，以及因后端缺口暂未落地的功能，见 `docs/IMPLEMENTATION_NOTES.md`。设计稿中的“设计评审控制条”不属于产品，没有实现。
+设计稿的页面已按真实 API 落地的部分，以及因后端缺口暂未落地的功能，见 `docs/IMPLEMENTATION_NOTES.md`（已归档，多处说法已过时，仅作历史记录）。设计稿中的“设计评审控制条”不属于产品，没有实现。
 
 ---
 
@@ -414,7 +414,7 @@ v3 不改变品牌三色和字体组合，只收紧它们的用法，并把阅�
 
 ## 19. Token 变化
 
-- `--paper #f0ebe1`、`--ink #141211`、`--or #e2481b`：纸更暖、墨更软、朱更亮。朱底黑字 4.69:1，仍满足正文对比度。
+- `--paper #f0ebe1`、`--ink #141211`、`--or #e2481b`：纸更暖、墨更软、朱更亮。朱底墨字 4.60:1（WCAG 相对亮度计算），仍满足正文对比度。
 - 新增 `--paper-2`（次级纸面，作者块）、`--line` / `--line-2`（14% / 30% 墨色发丝线，取代到处都是的 1px 纯墨线）、`--field`（输入框与卡片底）、`--wash`（朱色 9% 的选中底）。
 - 新增 `--accent-text`：小于 18px 的强调字。浅色纸上为 `--red`（朱色对纸只有 3.4:1），深色纸上为 `--or`。
 - 缓动：`--ease-out cubic-bezier(.16,1,.3,1)` 用于所有入场与悬停，`--ease-io` 用于线条展开。
