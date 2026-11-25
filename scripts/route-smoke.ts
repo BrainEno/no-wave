@@ -319,7 +319,7 @@ try {
   // Per-visitor by construction: `?next=` makes the HTML a function of the
   // request, and the loader's answer is read per request. It shipped without a
   // `headers` export (F-18), which is why the policy is asserted here as well as
-  // by the sweep over every private page in `apps/web-rr/test/web.test.ts`.
+  // by the sweep over every private page in `apps/web-rr/test/web-authoring.test.ts`.
   assert.match(
     signIn.headers.get("cache-control") ?? "",
     /no-store/i,

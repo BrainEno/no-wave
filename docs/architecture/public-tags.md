@@ -71,7 +71,7 @@ ETag 基于完整 UTF-8 XML 的 SHA-256，包含重命名、摘要编辑、local
 - `tag-content.test.ts` / `tag-pages.test.ts`：API 数据形状、截止时间、缺失与故障语义。
 - `feed-text.test.ts` / `tag-feed.test.ts` / `tag-feed-source.test.ts`：XML、字符边界、有效日历、公开投影、修改时间、双格式与语言隔离；已进入根 test 入口。
 - Web `tag-feed-response.test.ts` / `tag-feed-upstream.test.ts`：条件请求、缺失／故障、凭据隔离，以及 fetch / JSON 两阶段截止时间。
-- `site-feed.test.ts`、Web `site-feed-response.test.ts`、`web.test.ts`：全站订阅的路径、20 篇上限、体裁分类、条件请求、故障语义，以及首页／作品目录的 alternate 链接与正文按钮。
+- `site-feed.test.ts`、Web `site-feed-response.test.ts`、`web-public-pages.test.ts`：全站订阅的路径、20 篇上限、体裁分类、条件请求、故障语义，以及首页／作品目录的 alternate 链接与正文按钮。
 - Web `tag-pages.test.ts` / `tag-feeds.test.ts`：真实生产构建／HTTP 的状态、header、head alternate、分页和预算，不能仅凭单元或构建成功判定可用。
 - `e2e/tags.spec.ts` / `e2e/tag-feeds.spec.ts`：临时 SQLite＋真实 API＋生产 Web，检查草稿隔离、XML DOMParser、英文、移动键盘与无脚本入口。
 - 上一轮字体预算、完整覆盖与五次不可重试 CLS 守门继续执行，不因增加导航字样而降低阈值。
