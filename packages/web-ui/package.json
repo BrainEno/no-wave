@@ -11,7 +11,6 @@
     "@bot-thk/web-http": "workspace:*",
     "@lexical/clipboard": "0.53.0",
     "@lexical/code": "0.53.0",
-    "@lexical/extension": "0.53.0",
     "@lexical/history": "0.53.0",
     "@lexical/link": "0.53.0",
     "@lexical/list": "0.53.0",
