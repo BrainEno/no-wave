@@ -11,11 +11,10 @@ import test from "node:test";
  * use the neutral `nw-notice-error` / `nw-notice-status`, which carry the same
  * rules.
  *
- * Layout classes (`nw-auth-panel`, `nw-auth-switch`, `nw-auth-form`) still appear
- * in a few non-auth components. Moving them needs contextual CSS selectors and
- * the e2e font assertions to change together, and that change cannot be checked
- * visually in this environment, so it is recorded below as a shrinking list
- * rather than silently allowed.
+ * Layout classes (`nw-auth-panel`, `nw-auth-switch`, `nw-auth-form`) used to appear in a
+ * few non-auth components. Those components now use the neutral `nw-page-panel`,
+ * `nw-page-switch` and `nw-profile-form`, and the stylesheet gives each old selector a
+ * neutral twin in the same rule, so the computed styles are unchanged.
  *
  * The ellipsis rule: Chinese typesetting uses a doubled ellipsis, `……`; a single
  * `…` in visible copy is the older habit this issue retired. A few single
@@ -64,29 +63,13 @@ test("non-auth components never use the sign-in notice classes", () => {
   assert.deepEqual(nonAuthUsages(/nw-auth-(error|status)\b/), []);
 });
 
-/** file -> layout class -> number of lines that use it (migrate in a follow-up). */
-const REMAINING_LAYOUT_CLASSES: [string, string, number][] = [
-  ["admin/featured-shelf-panel.tsx", "nw-auth-panel", 5],
-  ["admin/featured-shelf-panel.tsx", "nw-auth-switch", 5],
-  ["authoring/author-profile-panel.tsx", "nw-auth-form", 1],
-  ["authoring/authoring-workspace.tsx", "nw-auth-panel", 1],
-];
-
-test("the remaining non-auth layout classes match the known list exactly", () => {
-  for (const [file, className, expected] of REMAINING_LAYOUT_CLASSES) {
-    const count = readFileSync(join(COMPONENTS, file), "utf8")
-      .split("\n")
-      .filter((line) => new RegExp(`\\b${className}\\b`).test(line)).length;
-    assert.equal(count, expected, `${file} uses ${className} ${count} times, expected ${expected}`);
-  }
-  const offenders = nonAuthUsages(/nw-auth-(panel|switch|form)\b/);
-  const known = REMAINING_LAYOUT_CLASSES.reduce((sum, [, , n]) => sum + n, 0);
-  assert.equal(offenders.length, known, "a non-auth file uses a layout class that is not on the known list");
+test("non-auth components never use the auth layout classes", () => {
+  assert.deepEqual(nonAuthUsages(/nw-auth-(panel|switch|form)\b/), []);
 });
 
 test("the notice classes have styles of their own", () => {
   const css = readFileSync(join(import.meta.dirname, "..", "styles", "globals.css"), "utf8");
-  for (const name of [".nw-notice-error", ".nw-notice-status"]) {
+  for (const name of [".nw-notice-error", ".nw-notice-status", ".nw-page-panel", ".nw-page-switch", ".nw-profile-form"]) {
     assert.match(css, new RegExp(`\\${name}\\b`), `${name} has no rule`);
   }
 });

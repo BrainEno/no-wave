@@ -486,7 +486,7 @@ export function AuthoringWorkspace({ mailEnabled }: { mailEnabled: boolean }) {
 
   if (state === "loading") return <p role="status">正在验证登录状态并载入草稿……</p>;
   if (state === "unauthenticated") {
-    return <section className="nw-auth-panel"><h1><span className="nw-zh">先登录</span> <i>Sign in</i></h1><p>写作、保存草稿与发布功能需要有效的登录会话。</p>{recoveryWarning ? <p className="nw-notice-error" role="alert">{recoveryWarning}</p> : null}<Link className="nw-btn nw-pri" href="/sign-in?next=%2Fwrite">登录或创建账户</Link></section>;
+    return <section className="nw-page-panel"><h1><span className="nw-zh">先登录</span> <i>Sign in</i></h1><p>写作、保存草稿与发布功能需要有效的登录会话。</p>{recoveryWarning ? <p className="nw-notice-error" role="alert">{recoveryWarning}</p> : null}<Link className="nw-btn nw-pri" href="/sign-in?next=%2Fwrite">登录或创建账户</Link></section>;
   }
   if (state === "error") return <section><p className="nw-notice-error" role="alert">{error}</p><button className="nw-btn" type="button" onClick={() => { setError(""); setState("loading"); window.location.reload(); }}>重新载入</button></section>;
 

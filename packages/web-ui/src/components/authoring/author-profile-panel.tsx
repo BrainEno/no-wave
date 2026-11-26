@@ -52,7 +52,7 @@ export function AuthorProfilePanel({ profile, onSave }: AuthorProfilePanelProps)
         当前笔名：<strong data-author-profile-name>{profile?.displayName ?? "未设置"}</strong>
         {profile ? null : <> · 保存后会补建作者资料，公开页面才能显示署名。</>}
       </p>
-      <form className="nw-auth-form" onSubmit={(event) => void submit(event)}>
+      <form className="nw-profile-form" onSubmit={(event) => void submit(event)}>
         <label>笔名
           <input
             name="displayName"

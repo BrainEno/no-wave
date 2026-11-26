@@ -184,7 +184,7 @@ export function FeaturedShelfPanel() {
 
   if (phase === "checking") {
     return (
-      <section className="nw-auth-panel" aria-labelledby="nw-featured-checking">
+      <section className="nw-page-panel" aria-labelledby="nw-featured-checking">
         <h1 id="nw-featured-checking"><span className="nw-zh">精选</span> <i>Featured</i></h1>
         <p className="nw-notice-status nw-mt-24" role="status">正在确认登录状态，请稍候……</p>
       </section>
@@ -193,10 +193,10 @@ export function FeaturedShelfPanel() {
 
   if (phase === "signed-out") {
     return (
-      <section className="nw-auth-panel" aria-labelledby="nw-featured-out">
+      <section className="nw-page-panel" aria-labelledby="nw-featured-out">
         <h1 id="nw-featured-out"><span className="nw-zh">尚未登录</span> <i>Signed out</i></h1>
         <p className="nw-ep nw-mt-24">这个会话已经结束，正在前往登录页……</p>
-        <div className="nw-auth-switch">
+        <div className="nw-page-switch">
           <Link className="nw-btn nw-pri" href="/sign-in?next=%2Fadmin%2Ffeatured">前往登录</Link>
         </div>
       </section>
@@ -205,12 +205,12 @@ export function FeaturedShelfPanel() {
 
   if (phase === "not-editor") {
     return (
-      <section className="nw-auth-panel" aria-labelledby="nw-featured-denied">
+      <section className="nw-page-panel" aria-labelledby="nw-featured-denied">
         <h1 id="nw-featured-denied"><span className="nw-zh">精选</span> <i>Featured</i></h1>
         <p className="nw-ep nw-mt-24">
           精选由编辑挑选。这个账号还没有编辑权限，所以这里没有可操作的内容 —— 不是页面没加载好。
         </p>
-        <div className="nw-auth-switch">
+        <div className="nw-page-switch">
           <Link className="nw-btn" href="/write">回到写作台</Link>
         </div>
       </section>
@@ -219,10 +219,10 @@ export function FeaturedShelfPanel() {
 
   if (phase === "error") {
     return (
-      <section className="nw-auth-panel" aria-labelledby="nw-featured-error">
+      <section className="nw-page-panel" aria-labelledby="nw-featured-error">
         <h1 id="nw-featured-error"><span className="nw-zh">精选暂时无法载入</span> <i>Unavailable</i></h1>
         <p className="nw-notice-error nw-mt-24" role="alert">{error}</p>
-        <div className="nw-auth-switch">
+        <div className="nw-page-switch">
           <Link className="nw-btn" href="/write">回到写作台</Link>
         </div>
       </section>
@@ -230,7 +230,7 @@ export function FeaturedShelfPanel() {
   }
 
   return (
-    <section className="nw-auth-panel" aria-labelledby="nw-featured-title">
+    <section className="nw-page-panel" aria-labelledby="nw-featured-title">
       <h1 id="nw-featured-title"><span className="nw-zh">精选</span> <i>Featured</i></h1>
       <p className="nw-ep nw-mt-24">
         首页「精选」按下面的顺序展示，最多 {MAX_FEATURED} 篇。改动在这里排好，点保存才会生效；
@@ -262,7 +262,7 @@ export function FeaturedShelfPanel() {
           : null}
       </ol>
 
-      <div className="nw-auth-switch">
+      <div className="nw-page-switch">
         <button type="button" className="nw-btn nw-pri" disabled={!dirty || busy !== null} onClick={() => void save()}>
           {busy === "save" ? "正在保存……" : "保存顺序"}
         </button>
@@ -274,7 +274,7 @@ export function FeaturedShelfPanel() {
       </div>
 
       <h2 className="nw-curate-add"><span className="nw-zh">加入作品</span></h2>
-      <form className="nw-auth-switch" onSubmit={(event) => void search(event)}>
+      <form className="nw-page-switch" onSubmit={(event) => void search(event)}>
         <input type="search" value={query} onChange={(event) => setQuery(event.target.value)}
           placeholder="搜索已发布的作品" aria-label="搜索已发布的作品"
           className="nw-curate-search" />
