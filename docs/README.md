@@ -82,6 +82,7 @@ Architecture decision records and their Accepted/Superseded status live in the [
 
 - [Hosting Qualification — Zero-Cost / No-Card Gate](roadmap/hosting-qualification.md) — Status: active
 - [New Product Roadmap and Phase Gates](roadmap/phase-gates.md) — Status: active
+- [阶段门剩余条目归属（#331）](roadmap/phase-gate-disposition.md) — Status: active
 
 ## docs/archive
 
