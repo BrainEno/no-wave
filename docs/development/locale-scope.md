@@ -15,6 +15,23 @@ Status: active
 | REST API | `POST /api/v1/articles` 对 `zh-TW` 返回 `400 BAD_USER_INPUT`。 |
 | 版本预览 | `zh-TW` 只在作品已有繁体版本时显示。 |
 
+## 各页面的范围（#417 验收）
+
+| 面 | 行为 |
+|---|---|
+| 首页、文章、档案、标签 | 路径只识别 `/en` 前缀作为英文，其余路径都是 `zh-CN`（`apps/web-rr/app/lib/locale.ts`）。没有 `/zh-TW` 前缀。 |
+| 认证与恢复页（登录、注册、找回密码、验证邮件） | 文案只有 `zh-CN` 与 `en`。页面语言跟随上面的路径规则。 |
+| 错误页（404、500、503） | 文案来自 `zh-CN` 与 `en`，没有繁体版本。 |
+| SEO、hreflang、sitemap、canonical | 站点语言来自 `supportedLocales = ["zh-CN", "en"]`（`packages/web-ui/src/lib/content.ts`）。hreflang 与 sitemap 只列出这两种语言，不输出 `zh-TW` 条目。 |
+| 字体 | 字形子集由 `zh-CN` 与英文文案生成（`scripts/fonts/repertoires.ts`）。繁体文案已移除，所以繁体字形不在子集中，没有繁体专用字体。 |
+| 用户可见的语言入口 | 只显示 `zh-CN` 与 `en`。 |
+
+## 验收状态
+
+- 决定记录覆盖的面：首页、文章、档案、认证与恢复、写作台、错误页、SEO 与 hreflang、API locale、字体。
+- 本决定选择了“暂不加入 `zh-TW`”，因此 #417 验收中“若加入”的条目（繁体 E2E、metadata 验证）不适用。
+- 用户可见的语言入口与文档中的范围说明一致。
+
 ## 已有的 zh-TW 数据
 
 - 已有的 `zh-TW` 作品仍可读取、编辑和保存，语言保持为 `zh-TW`。`PUT` 请求仍接受三个存储语言值，所以旧作品可以被保存。
@@ -23,7 +40,7 @@ Status: active
 
 ## 尚未覆盖，需要 owner 决定
 
-- 通过 Notion 导入，以及目录版本（catalogue edition）路由创建 `zh-TW` 版本，目前还没有被拦截。
+- Notion 导入已拦截 `zh-TW` 版本（PR #424）。目录版本（catalogue edition）路由本身只读，不会创建版本；但 `PUT /api/v1/articles/{id}` 仍可为缺少繁体版本的作品新增 `zh-TW` 版本，这一缺口仍然开放。
 - 已有的繁体作品之后应该转为简体、只读，还是保持可编辑。这需要决定。
 - 本机文稿中已有的繁体草稿仍可被读取和比较，但不能再新建。
 
