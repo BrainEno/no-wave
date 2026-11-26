@@ -320,6 +320,15 @@ export async function importNotionBundle(input: {
     }
   }
   const plan = planNotionSeed({ works, state: stateFromLinks(links), localeByPage });
+  // zh-TW is not supported (issue #417). A page whose edition would be zh-TW,
+  // including one kept from an earlier import, is refused before any write.
+  // Those works are still readable and editable through the article routes.
+  for (const work of plan.works) {
+    const editions = [work.primary, ...work.translations];
+    if (editions.some((edition) => edition.locale === "zh-TW")) {
+      provenanceConflicts.set(work.primary.pageId, "zh-TW is not supported for Notion import; import this page as zh-CN or en");
+    }
+  }
 
   // Imports made before image copying existed can have the same source digest
   // while still containing temporary URLs. Offer an update, not a false skip.
