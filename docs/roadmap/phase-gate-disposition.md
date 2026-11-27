@@ -27,7 +27,7 @@ Status: active
   - 说明：仓库内可推进，但范围未定义。建议先盘点剩余配置与运行时缺口（列出具体变量与路由），再决定是否拆成独立 issue。
 - 第 12 项（phase-gates 第 105 行）：Verify Web/API end-to-end behavior with real authentication, including reconnect/offline recovery.
   - 归属：A 仓库内可推进
-  - 说明：仓库内可推进。注册与登录的真实会话已在 e2e 中使用；缺的是重连与离线恢复用例，可直接补充。
+  - 说明：仓库内可推进。注册与登录的真实会话已在 e2e 中使用。通知的“返回在线”重连已有用例（e2e/notification-sync.spec.ts 等）；通知在真实离线（setOffline）下的失败与恢复由 e2e/notification-offline-recovery.spec.ts 覆盖，使用真实认证与真实通知，并已连续 3 次通过。其余模块的离线覆盖未逐项核对，仍需按同一方式补充。
 - 第 21 项（phase-gates 第 139 行）：Complete SEO, sitemap, accessibility and PWA behavior after data/persistence contracts stabilize.
   - 归属：A 仓库内可推进
   - 说明：部分可推进：sitemap、hreflang 与可访问性检查可在仓库内补充；PWA 是否需要属于产品决策，归入负责人决定。
