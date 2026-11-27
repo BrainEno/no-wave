@@ -4,6 +4,8 @@ Status: active
 
 The goal is functional coverage of the previous product through a new implementation, not source-code compatibility. Every phase should preserve verified product capabilities while leaving legacy implementation choices behind. See the [evidence review](../audit/2026-11-roadmap-evidence.md) for completed items, remaining gates and review boundaries.
 
+Attribution of the remaining unchecked items is recorded in [phase-gate disposition](phase-gate-disposition.md) (refs #331). Recording an attribution does not check or cut any item.
+
 ## Product-decision gate
 
 Before a change that would alter user-visible behavior, permission boundaries, destructive lifecycle rules, import/compatibility guarantees, or domain semantics:
