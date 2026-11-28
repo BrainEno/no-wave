@@ -30,11 +30,16 @@
   --z-float: 90; --z-loader: 100; --z-skip: 120;
   /* 语义色（§3.1）：成功色为当前实现值，对比度验证见文档。 */
   --ok: #3f8a4f;
+  /* 浮动条留给文字的余地：写作台的格式条吸在编辑区顶端、发布条吸在窗口底端，
+     浏览器滚动光标进视野时必须绕开它们，否则光标会被压在发布条下面。
+     高度由编辑器实测后写回（见 lib/floating-bands.ts），没有浮动条的页面保持 0。 */
+  --nw-scroll-pad-top: 0px;
+  --nw-scroll-pad-bottom: 0px;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --paper: #121010; --paper-2: #1c1917; --ink: #efe9de; --t2: #b0a89b; --field: color-mix(in srgb, var(--paper) 88%, var(--ink)); --accent-text: var(--or); } }
 :root[data-theme="dark"] { --paper: #121010; --paper-2: #1c1917; --ink: #efe9de; --t2: #b0a89b; --field: color-mix(in srgb, var(--paper) 88%, var(--ink)); --accent-text: var(--or); }
 *, *::before, *::after { box-sizing: border-box; }
-html { background: var(--paper); -webkit-text-size-adjust: 100%; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
+html { background: var(--paper); -webkit-text-size-adjust: 100%; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; scroll-padding-top: var(--nw-scroll-pad-top); scroll-padding-bottom: var(--nw-scroll-pad-bottom); }
 body { margin: 0; background: transparent; color: var(--ink); font-family: var(--f-body); line-height: 1.6; font-feature-settings: "palt" 0; }
 ::selection { background: var(--or); color: #140f0c; }
 a { color: inherit; text-decoration: none; }

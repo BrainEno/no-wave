@@ -241,25 +241,6 @@ instead of being re-decided per page.
 
 ---
 
-## U-08 — The editor works with a keyboard alone, and on a phone
-
-**Class: A — the repository can close this** · Tracked as an unchecked item in
-[Phase 0](../roadmap/phase-gates.md).
-
-**The question.** Can an author write and format a work without a pointing
-device, and can they do it on a narrow screen with a software keyboard open?
-
-**Why it is open.** The article editor's IME and no-mouse formatting journeys are
-covered by `e2e/authoring.spec.ts`, and the editor's touch targets are checked.
-Keyboard-only operation of the formatting toolbar, the comment editor's parity
-with the article editor, and the editor's behaviour when a software keyboard
-resizes the viewport are not covered by any test.
-
-**Blocked until answered.** Nothing is blocked: this is a coverage gap. The
-traceability row stays `partial` until those journeys exist and pass.
-
----
-
 ## U-09 — Whether the site is installable and readable offline
 
 **Class: B — product decision** · Tracked as roadmap item 21 (Phase 4).

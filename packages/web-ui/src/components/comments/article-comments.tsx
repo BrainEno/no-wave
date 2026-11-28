@@ -10,9 +10,10 @@ import { ClipboardDOMImportExtension } from "@lexical/clipboard";
 import { HistoryExtension } from "@lexical/history";
 import { LinkExtension, TOGGLE_LINK_COMMAND } from "@lexical/link";
 import { PlainTextExtension } from "@lexical/plain-text";
-import { defineExtension, FORMAT_TEXT_COMMAND, REDO_COMMAND, UNDO_COMMAND } from "lexical";
+import { $formatText, $getSelection, $isRangeSelection, COMMAND_PRIORITY_EDITOR, defineExtension, FORMAT_TEXT_COMMAND, REDO_COMMAND, UNDO_COMMAND } from "lexical";
 import type { LexicalEditor } from "lexical";
 import type { Locale } from "@/lib/content.ts";
+import { isInlineMark } from "@/lib/content-inline.ts";
 import { sanitizeEditorHref } from "@/lib/editor-href.ts";
 import { InlineRuns } from "@/components/ui/inline-runs.tsx";
 import { PromptDialog, type PromptDialogField } from "@/components/ui/prompt-dialog.tsx";
@@ -220,6 +221,32 @@ function CommentSurface() {
   );
 }
 
+/**
+ * The marks a comment may carry.
+ *
+ * A comment is paragraphs of text: the API accepts nothing else, so the
+ * composer stays a plain-text editor rather than the rich-text one the article
+ * editor uses. But a plain-text editor has no listener for the format
+ * commands, so the toolbar's B/I/U/S buttons dispatched a command nobody
+ * answered — the reader's text stayed plain, silently, with the buttons right
+ * there saying otherwise. The marks are what a comment's storage keeps and
+ * what the reading side draws, so the composer has to be able to set them.
+ *
+ * The vocabulary is the content contract's own (`isInlineMark`), so the
+ * composer cannot write a mark the reading side would refuse to draw.
+ */
+function CommentMarksPlugin() {
+  const [editor] = useLexicalComposerContext();
+  useEffect(() => editor.registerCommand(FORMAT_TEXT_COMMAND, (format) => {
+    if (!isInlineMark(format)) return false;
+    const selection = $getSelection();
+    if (!$isRangeSelection(selection)) return false;
+    $formatText(selection, format);
+    return true;
+  }, COMMAND_PRIORITY_EDITOR), [editor]);
+  return null;
+}
+
 function CommentToolbar({
   onLinkError,
   ask,
@@ -337,6 +364,7 @@ function CommentComposer({ resetKey, onSubmit, busy, initialBlocks, submitLabel,
             <CommentSurface />
           </div>
           <CommentStatePlugin onEditor={bindEditor} onChange={onChange} />
+          <CommentMarksPlugin />
         </LexicalExtensionComposer>
         {formError ? <p className="nw-notice-error" role="alert">{formError}</p> : null}
         <div className="nw-authoring-actions">
