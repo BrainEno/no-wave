@@ -16,6 +16,8 @@ import { ArticleViewBeacon } from "@/components/public/article-view-beacon.tsx";
 import { ArticleReadingList } from "@/components/reader/article-reading-list.tsx";
 import { ReaderFind } from "@/components/reader/reader-find.tsx";
 import { SectionHeading, TypeChip, WorkRow } from "@/components/ui/parts.tsx";
+import { InlineRuns } from "@/components/ui/inline-runs.tsx";
+import { blockInlineRuns, blockItemInlines, type InlineRun } from "@/lib/content-inline.ts";
 
 /**
  * 阅读页 — the synchronous half of the article detail page (Phase 4a).
@@ -45,22 +47,39 @@ function headingId(block: Extract<ArticleContentBlock, { type: "heading" }>): st
  * the element and the content block have to be findable from each other. The
  * id comes from the content itself, so it is the same on the server and after
  * hydration — unlike an index, which would move if a block were inserted.
+ *
+ * A block that carries inline runs is drawn from those runs, not from its
+ * plain-text fallback. The fallback is what the reader tools and the excerpt
+ * work with; the runs are what the author wrote. A version 0 document has no
+ * runs and falls back to the text it always had.
  */
+function blockBody(block: { id: string; text: string }, runs: readonly InlineRun[]): ReactNode {
+  if (runs.length === 0) return block.text;
+  return <InlineRuns runs={runs} idPrefix={block.id} />;
+}
+
 function renderBlock(block: ArticleContentBlock): ReactNode {
   switch (block.type) {
-    case "paragraph": return <p key={block.id} data-block={block.id}>{block.text}</p>;
+    case "paragraph": return <p key={block.id} data-block={block.id}>{blockBody(block, blockInlineRuns(block.inlines))}</p>;
     case "heading": {
       const id = headingId(block);
+      const body = blockBody(block, blockInlineRuns(block.inlines));
       return block.level === 2
-        ? <h2 key={block.id} id={id} data-block={block.id}>{block.text}</h2>
+        ? <h2 key={block.id} id={id} data-block={block.id}>{body}</h2>
         : block.level === 3
-          ? <h3 key={block.id} id={id} data-block={block.id}>{block.text}</h3>
-          : <h4 key={block.id} id={id} data-block={block.id}>{block.text}</h4>;
+        ? <h3 key={block.id} id={id} data-block={block.id}>{body}</h3>
+        : <h4 key={block.id} id={id} data-block={block.id}>{body}</h4>;
     }
-    case "quote": return <blockquote key={block.id} data-block={block.id}><p>{block.text}</p>{block.attribution ? <cite>— {block.attribution}</cite> : null}</blockquote>;
-    case "list": return block.ordered
-      ? <ol key={block.id} data-block={block.id}>{block.items.map((item, index) => <li key={index}>{item}</li>)}</ol>
-      : <ul key={block.id} data-block={block.id}>{block.items.map((item, index) => <li key={index}>{item}</li>)}</ul>;
+    case "quote": return <blockquote key={block.id} data-block={block.id}><p>{blockBody(block, blockInlineRuns(block.inlines))}</p>{block.attribution ? <cite>— {block.attribution}</cite> : null}</blockquote>;
+    case "list": {
+      const itemRuns = blockItemInlines(block.itemInlines);
+      const items = block.items.map((item, index) => (
+        <li key={index}>{itemRuns[index]?.length ? <InlineRuns runs={itemRuns[index]!} idPrefix={`${block.id}-${index}`} /> : item}</li>
+      ));
+      return block.ordered
+        ? <ol key={block.id} data-block={block.id}>{items}</ol>
+        : <ul key={block.id} data-block={block.id}>{items}</ul>;
+    }
     case "image": return <figure key={block.id} data-block={block.id}><img src={block.src} alt={block.alt} loading="lazy" />{block.caption ? <figcaption>{block.caption}</figcaption> : null}</figure>;
     case "code": return <pre key={block.id} data-block={block.id}><code>{block.code}</code></pre>;
   }

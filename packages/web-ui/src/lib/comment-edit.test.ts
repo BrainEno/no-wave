@@ -6,10 +6,12 @@ import {
   canEditComment,
   commentCopy,
   commentCreatePath,
+  commentDocumentToSubmit,
   commentEditBody,
   commentEditPath,
   editedMarker,
 } from "./comment-edit.ts";
+import type { LexicalEditorStateJson } from "./lexical-article-state.ts";
 
 /**
  * Comment editing (ADR 0031): the rules the section renders, held apart from it.
@@ -87,16 +89,73 @@ test("an edit sends the versioned document the composer already produces", () =>
   assert.equal("parentCommentId" in commentEditBody(editorState), false, "an edit cannot re-parent a reply");
 });
 
+/**
+ * The document a comment submits.
+ *
+ * The composer mirrors the editor's document in React, but the mirror can lag
+ * behind the box: an update that lands before the composer subscribes is never
+ * reported, and the reader's text sits in the editor with the mirror still
+ * holding the empty document it started with. A comment was then refused for
+ * text that was plainly on the screen. The editor is the source of truth when
+ * the reader presses submit.
+ */
+test("a comment is submitted from the editor's live document, not from the last one React heard", () => {
+  const live: LexicalEditorStateJson = {
+    root: { children: [{ type: "paragraph", children: [{ type: "text", text: "读者写下的回应" }] }] },
+  };
+  const stale: LexicalEditorStateJson = { root: { children: [{ type: "paragraph", children: [] }] } };
+  const editor = {
+    read: <T,>(callback: () => T): T => callback(),
+    getEditorState: () => ({ toJSON: () => live }),
+  };
+  assert.deepEqual(
+    commentDocumentToSubmit(editor, stale),
+    live,
+    "the text in the box is the comment, even when the mirror is behind it",
+  );
+  assert.deepEqual(
+    commentDocumentToSubmit(null, stale),
+    stale,
+    "without an editor there is only the document the composer started with",
+  );
+});
+
 test("the comment section is fully bilingual", () => {
   for (const locale of ["zh-CN", "en"] as const) {
     const copy = commentCopy(locale);
     for (const [key, value] of Object.entries(copy)) {
-      assert.equal(typeof value, "string", `${locale}.${key} must be copy, not a placeholder`);
-      assert.ok(value.length > 0, `${locale}.${key} must not be empty`);
+      if (typeof value === "string") {
+        assert.ok(value.length > 0, `${locale}.${key} must not be empty`);
+        continue;
+      }
+      for (const [name, label] of Object.entries(value)) {
+        assert.equal(typeof label, "string", `${locale}.${key}.${name} must be copy, not a placeholder`);
+        assert.ok(label.length > 0, `${locale}.${key}.${name} must not be empty`);
+      }
     }
   }
   assert.notEqual(commentCopy("zh-CN").edit, commentCopy("en").edit);
   assert.notEqual(commentCopy("zh-CN").save, commentCopy("en").save);
+});
+
+test("the formatting controls are named after the glyph that is visible on them", () => {
+  // WCAG 2.5.3: the accessible name has to contain the text on the screen, so
+  // a reader who says "B" out loud reaches the bold control.
+  for (const [name, glyph] of [
+    ["bold", "B"],
+    ["italic", "I"],
+    ["underline", "U"],
+    ["strikethrough", "S"],
+  ] as const) {
+    assert.ok(
+      commentCopy("zh-CN").format[name].endsWith(glyph),
+      `${name} names its glyph`,
+    );
+    assert.ok(
+      commentCopy("en").format[name].endsWith(glyph),
+      `${name} names its glyph in English too`,
+    );
+  }
 });
 
 /**
@@ -128,5 +187,24 @@ test("the comment section renders the marker and edits through the id-addressed 
     source,
     /viewerId=\{viewerId\} onEdit=\{edit\}/,
     "replies are comments too: the edit props must reach them",
+  );
+});
+
+test("the composer submits the editor's live document, and subscribes to the committed one", async () => {
+  const source = await readFile(component, "utf8");
+  assert.match(
+    source,
+    /commentDocumentToSubmit\(editorRef\.current, editorState\)/,
+    "the submitted document must be read from the editor when the reader submits",
+  );
+  assert.match(
+    source,
+    /onChange\(editor\.getEditorState\(\)\.toJSON\(\)/,
+    "the composer must publish the committed document when it subscribes",
+  );
+  assert.match(
+    source,
+    /editor\.registerUpdateListener\(/,
+    "the composer must keep following the editor after it subscribes",
   );
 });

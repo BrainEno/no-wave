@@ -111,6 +111,42 @@ test("unsupported custom nodes and data that the application contract cannot rep
   assert.throws(() => lexicalEditorStateToArticleDocument(unsafeLink), { code: "BAD_USER_INPUT" });
 });
 
+test("a link the editor's own link command creates is accepted, and any other link metadata still fails closed", () => {
+  // Lexical stamps `rel="noreferrer"` on every link its link command creates.
+  // The contract keeps the address and the marks, not the HTML attributes, so
+  // this value is dropped rather than stored — and a link the author made
+  // with the product's own toolbar can be saved at all.
+  const editorLink = {
+    root: lexicalElement("root", [
+      lexicalElement("paragraph", [
+        lexicalElement("link", [lexicalText("linked")], { url: "https://example.test/path", rel: "noreferrer" }),
+      ]),
+    ]),
+  };
+  const document = lexicalEditorStateToArticleDocument(editorLink);
+  assert.deepEqual(document.contentBlocks, [{
+    id: "lexical-block-1",
+    type: "paragraph",
+    text: "linked",
+    inlines: [{ text: "linked", href: "https://example.test/path" }],
+  }]);
+
+  // Everything else still fails closed: it would change what the reader sees.
+  for (const extra of [
+    { rel: "dofollow" },
+    { target: "_blank" },
+    { title: "A title" },
+  ]) {
+    assert.throws(() => lexicalEditorStateToArticleDocument({
+      root: lexicalElement("root", [
+        lexicalElement("paragraph", [
+          lexicalElement("link", [lexicalText("linked")], { url: "https://example.test/path", ...extra }),
+        ]),
+      ]),
+    }), { code: "BAD_USER_INPUT" });
+  }
+});
+
 test("adapter rejects unsupported formats, CSS styles, nested lists and malformed Lexical JSON", () => {
   const cases = [
     { root: lexicalElement("root", [lexicalElement("paragraph", [lexicalText("x", 32)])]) },

@@ -26,7 +26,7 @@ test("English and historical Traditional Chinese editions remain discoverable, e
 
   const english = `English locale journey ${Date.now().toString(36)}`;
   await page.getByLabel("作品语言").selectOption("en");
-  await page.getByLabel("标题").fill(english);
+  await page.getByRole("textbox", { name: "标题", exact: true }).fill(english);
   await page.getByLabel("作品正文").click();
   await page.keyboard.type("An English work survives a reload.");
   const creation = page.waitForResponse(
@@ -66,7 +66,9 @@ test("English and historical Traditional Chinese editions remain discoverable, e
   await expect(page.getByLabel("作品正文")).toContainText(
     "An English work survives a reload.",
   );
-  await page.getByLabel("标题").fill("Edited English edition");
+  await page
+    .getByRole("textbox", { name: "标题", exact: true })
+    .fill("Edited English edition");
   await page.getByLabel("作品正文").click();
   await page.keyboard.press("End");
   await page.keyboard.type(" And later editing.");
@@ -85,7 +87,9 @@ test("English and historical Traditional Chinese editions remain discoverable, e
   // Both editions must be separately selectable; switching back must remount
   // the correct document rather than leaving the previous edition's content.
   await page.getByLabel("作品语言").selectOption("zh-CN");
-  await page.getByLabel("标题").fill("同一作品的中文译本");
+  await page
+    .getByRole("textbox", { name: "标题", exact: true })
+    .fill("同一作品的中文译本");
   await page.getByLabel("作品正文").click();
   await page.keyboard.press("ControlOrMeta+A");
   await page.keyboard.type("独立的中文正文。");
@@ -106,7 +110,9 @@ test("English and historical Traditional Chinese editions remain discoverable, e
   expect(translationWrites, "cancelling cannot overwrite another edition").toBe(
     0,
   );
-  await expect(page.getByLabel("标题")).toHaveValue("同一作品的中文译本");
+  await expect(
+    page.getByRole("textbox", { name: "标题", exact: true }),
+  ).toHaveValue("同一作品的中文译本");
   const translation = page.waitForResponse(
     (response) =>
       response.url().includes(`/api/authoring/articles/${created.id}`) &&
@@ -182,7 +188,9 @@ test("English and historical Traditional Chinese editions remain discoverable, e
   await expect(page.getByLabel("作品语言")).toHaveValue("en");
   releaseDelete();
   expect((await deleteResponse).status()).toBe(200);
-  await expect(page.getByLabel("标题")).toHaveValue("");
+  await expect(
+    page.getByRole("textbox", { name: "标题", exact: true }),
+  ).toHaveValue("");
   const trash = page.getByRole("region", { name: "回收站" });
   await expect(
     trash.getByRole("button", { name: "还原《Edited English edition》" }),
@@ -251,7 +259,9 @@ test("English and historical Traditional Chinese editions remain discoverable, e
   await page.getByLabel("作品语言").selectOption("en");
   await page.getByLabel("作品语言").selectOption("zh-TW");
   await expect(page.getByLabel("作品正文")).toContainText("原有的繁體正文。");
-  await page.getByLabel("标题").fill("編輯後的繁體中文作品");
+  await page
+    .getByRole("textbox", { name: "标题", exact: true })
+    .fill("編輯後的繁體中文作品");
   await page.getByRole("button", { name: "保存草稿" }).click();
   await expect(
     page.getByRole("status").filter({ hasText: "草稿已保存。" }),
@@ -303,7 +313,9 @@ test("English and historical Traditional Chinese editions remain discoverable, e
     await route.fulfill({ response });
   });
   await shelf.getByRole("button", { name: /Edited English edition/ }).click();
-  await page.getByLabel("标题").fill("English update in flight");
+  await page
+    .getByRole("textbox", { name: "标题", exact: true })
+    .fill("English update in flight");
   const oldSave = page.waitForResponse(
     (response) =>
       response.url().includes(`/api/authoring/articles/${created.id}`) &&
@@ -323,7 +335,9 @@ test("English and historical Traditional Chinese editions remain discoverable, e
   await expect(
     shelf.getByRole("button", { name: /編輯後的繁體中文作品/ }),
   ).toHaveAttribute("aria-current", "true");
-  await page.getByLabel("标题").fill("仍在編輯的繁體作品");
+  await page
+    .getByRole("textbox", { name: "标题", exact: true })
+    .fill("仍在編輯的繁體作品");
   const legacySave = page.waitForResponse(
     (response) =>
       response.url().includes(`/api/authoring/articles/${legacyId}`) &&
@@ -366,13 +380,17 @@ test("English and historical Traditional Chinese editions remain discoverable, e
   await otherCommitted;
   await shelf.getByRole("button", { name: /仍在編輯的繁體作品/ }).click();
   await expect(page.getByLabel("作品语言")).toHaveValue("zh-TW");
-  await page.getByLabel("标题").fill("尚未保存的繁體修改");
+  await page
+    .getByRole("textbox", { name: "标题", exact: true })
+    .fill("尚未保存的繁體修改");
   releaseOtherDelete();
   expect((await otherDelete).status()).toBe(200);
   await expect(
     shelf.getByRole("button", { name: /English update in flight/ }),
   ).toHaveCount(0);
-  await expect(page.getByLabel("标题")).toHaveValue("尚未保存的繁體修改");
+  await expect(
+    page.getByRole("textbox", { name: "标题", exact: true }),
+  ).toHaveValue("尚未保存的繁體修改");
   await expect(
     shelf.getByRole("button", { name: /仍在編輯的繁體作品/ }),
   ).toHaveAttribute("aria-current", "true");
@@ -427,7 +445,9 @@ test("a success response with the wrong language cannot retire an uncertain crea
     });
   });
   await page.getByLabel("作品语言").selectOption("en");
-  await page.getByLabel("标题").fill("Wrong language response");
+  await page
+    .getByRole("textbox", { name: "标题", exact: true })
+    .fill("Wrong language response");
   await page.getByLabel("作品正文").click();
   await page.keyboard.type("The original intent must remain available.");
   await page.getByRole("button", { name: "保存草稿" }).click();
@@ -472,7 +492,9 @@ test("a stale editor keeps its draft and cannot overwrite another window's saved
     },
   );
   expect(remote.status()).toBe(200);
-  await page.getByLabel("标题").fill("需要保留的本地草稿");
+  await page
+    .getByRole("textbox", { name: "标题", exact: true })
+    .fill("需要保留的本地草稿");
   await page.getByLabel("作品正文").fill("当前窗口里尚未保存的正文。");
   const response = page.waitForResponse(
     (result) =>
@@ -484,7 +506,9 @@ test("a stale editor keeps its draft and cannot overwrite another window's saved
   await expect(page.getByRole("alert")).toContainText(
     "当前草稿仍保留，请先复制备份",
   );
-  await expect(page.getByLabel("标题")).toHaveValue("需要保留的本地草稿");
+  await expect(
+    page.getByRole("textbox", { name: "标题", exact: true }),
+  ).toHaveValue("需要保留的本地草稿");
   await expect(page.getByLabel("作品正文")).toContainText(
     "当前窗口里尚未保存的正文。",
   );

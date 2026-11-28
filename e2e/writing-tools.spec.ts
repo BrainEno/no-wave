@@ -340,7 +340,7 @@ test("outline navigation locates the live heading and structural checks are visi
   await writer(page);
   await write(page, "大纲验证", "第一节");
   await page.getByLabel("作品正文").click();
-  await page.getByRole("button", { name: "H2", exact: true }).click();
+  await page.getByRole("button", { name: "二级标题 H2", exact: true }).click();
   await tools(page, "文稿检查与大纲");
   const outline = page.getByRole("list", { name: "文稿大纲" });
   await expect(

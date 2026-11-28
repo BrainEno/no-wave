@@ -167,7 +167,9 @@ test("saving a draft creates the article with a generated address, and it surviv
     const editorText = (
       (await page.getByLabel("作品正文").textContent()) ?? ""
     ).slice(0, 120);
-    const titleValue = await page.getByLabel("标题").inputValue();
+    const titleValue = await page
+      .getByRole("textbox", { name: "标题", exact: true })
+      .inputValue();
     throw new Error(
       `publishing the saved draft did not report success; focused=${JSON.stringify(focused)} requests=${requestsBefore}->${desk.traffic.length} alerts=${JSON.stringify(alerts)}\ntraffic:\n${desk.traffic.join("\n")}\nconsole:\n${desk.consoleLog.join("\n")}\n${String(caught)}`,
     );
@@ -503,7 +505,7 @@ test("text committed by an IME reaches the editor state and is saved", async ({
   await registerWriter(page, request);
   await waitForEditor(page);
   const title = `浏览器验证输入法 ${Date.now().toString(36)}`;
-  await page.getByLabel("标题").fill(title);
+  await page.getByRole("textbox", { name: "标题", exact: true }).fill(title);
   await page.getByLabel("作品正文").click();
   // An IME commits a candidate with an `input` event and no keydown/keyup pair
   // for the characters it produced. `insertText` is exactly that shape, so a
@@ -534,7 +536,7 @@ test("formatting applied without a mouse survives the save round trip", async ({
   await registerWriter(page, request);
   await waitForEditor(page);
   const title = `浏览器验证键盘 ${Date.now().toString(36)}`;
-  await page.getByLabel("标题").fill(title);
+  await page.getByRole("textbox", { name: "标题", exact: true }).fill(title);
   await page.getByLabel("作品正文").click();
   await page.keyboard.type(FIRST_PARAGRAPH);
   await expect(page.getByLabel("作品正文")).toContainText(
@@ -571,7 +573,7 @@ test("an article with no body is refused with a readable message instead of a si
   await registerWriter(page, request);
   await waitForEditor(page);
   await page
-    .getByLabel("标题")
+    .getByRole("textbox", { name: "标题", exact: true })
     .fill(`浏览器验证空正文 ${Date.now().toString(36)}`);
   await page.getByRole("button", { name: "保存草稿" }).click();
   try {

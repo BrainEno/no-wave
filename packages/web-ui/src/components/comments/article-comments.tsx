@@ -11,11 +11,13 @@ import { HistoryExtension } from "@lexical/history";
 import { LinkExtension, TOGGLE_LINK_COMMAND } from "@lexical/link";
 import { PlainTextExtension } from "@lexical/plain-text";
 import { defineExtension, FORMAT_TEXT_COMMAND, REDO_COMMAND, UNDO_COMMAND } from "lexical";
+import type { LexicalEditor } from "lexical";
 import type { Locale } from "@/lib/content.ts";
 import { sanitizeEditorHref } from "@/lib/editor-href.ts";
+import { InlineRuns } from "@/components/ui/inline-runs.tsx";
 import { PromptDialog, type PromptDialogField } from "@/components/ui/prompt-dialog.tsx";
 import { articleBlocksToLexicalEditorState, type LexicalEditorStateJson } from "@/lib/lexical-article-state.ts";
-import { canEditComment, commentCopy, commentCreatePath, commentEditBody, commentEditPath, editedMarker } from "@/lib/comment-edit.ts";
+import { canEditComment, commentCopy, commentCreatePath, commentDocumentToSubmit, commentEditBody, commentEditPath, editedMarker } from "@/lib/comment-edit.ts";
 
 const COMMENT_LINK_FIELDS: readonly PromptDialogField[] = [
   {
@@ -53,27 +55,6 @@ function isComment(value: unknown): value is CommentView {
     typeof value.createdAt === "string";
 }
 
-/** Read-side and write-side comment links answer the same shared sanity rule. */
-const safeCommentHref = sanitizeEditorHref;
-
-function renderInline(run: CommentRun, key: string): ReactNode {
-  let child: ReactNode = run.text;
-  for (const mark of run.marks ?? []) {
-    switch (mark) {
-      case "bold": child = <strong key={key + "-b"}>{child}</strong>; break;
-      case "italic": child = <em key={key + "-i"}>{child}</em>; break;
-      case "underline": child = <u key={key + "-u"}>{child}</u>; break;
-      case "strikethrough": child = <s key={key + "-s"}>{child}</s>; break;
-      case "code": child = <code key={key + "-c"}>{child}</code>; break;
-    }
-  }
-  if (run.href) {
-    const href = safeCommentHref(run.href);
-    if (href) return <a key={key} href={href} rel="ugc nofollow noreferrer" target="_blank">{child}</a>;
-  }
-  return <span key={key}>{child}</span>;
-}
-
 function renderCommentBlocks(comment: CommentView): ReactNode {
   const blocks = comment.contentBlocks;
   if (!Array.isArray(blocks) || blocks.length === 0) {
@@ -83,7 +64,7 @@ function renderCommentBlocks(comment: CommentView): ReactNode {
     .map((block, index) => (
       <p key={block.id || index}>
         {Array.isArray(block.inlines) && block.inlines.length
-          ? block.inlines.map((run, runIndex) => renderInline(run, String(block.id) + "-" + runIndex))
+          ? <InlineRuns runs={block.inlines} idPrefix={`${block.id || index}`} />
           : block.text}
       </p>
     ));
@@ -139,6 +120,7 @@ function CommentItem({ comment, locale, viewerId, onEdit }: {
       {editing ? (
         <CommentComposer
           resetKey={0}
+          formatNames={copy.format}
           initialBlocks={blocksForEdit(comment)}
           submitLabel={copy.save}
           busyLabel={copy.saving}
@@ -172,19 +154,44 @@ function textFromEditorState(state: LexicalEditorStateJson): string {
   return text;
 }
 
-function CommentStatePlugin({ onChange }: { onChange(state: LexicalEditorStateJson): void }) {
+/**
+ * Hands the composer the editor it draws, and keeps its mirror of the
+ * document current.
+ *
+ * The committed state is published once when the composer subscribes, not only
+ * on the updates that follow: an update that landed before this effect ran is
+ * never reported by the listener, and the composer would keep the document it
+ * started with — which is how a comment came to be refused for text the reader
+ * could plainly see in the box.
+ */
+function CommentStatePlugin({ onEditor, onChange }: {
+  /** The editor itself: the submit path reads the live document from it. */
+  onEditor(editor: LexicalEditor | null): void;
+  onChange(state: LexicalEditorStateJson): void;
+}) {
   const [editor] = useLexicalComposerContext();
-  useEffect(() => editor.registerUpdateListener(({ editorState }) => onChange(editorState.toJSON() as LexicalEditorStateJson)), [editor, onChange]);
+  useEffect(() => {
+    onEditor(editor);
+    onChange(editor.getEditorState().toJSON() as LexicalEditorStateJson);
+    const unregister = editor.registerUpdateListener(({ editorState }) => onChange(editorState.toJSON() as LexicalEditorStateJson));
+    return () => {
+      unregister();
+      onEditor(null);
+    };
+  }, [editor, onChange, onEditor]);
   return null;
 }
 
 function CommentToolbar({
   onLinkError,
   ask,
+  names,
 }: {
   onLinkError(message: string): void;
   /** Collects the URL in a dialog instead of `window.prompt` (#195). */
   ask(): Promise<Record<string, string> | null>;
+  /** The accessible names of the formatting controls. */
+  names: ReturnType<typeof commentCopy>["format"];
 }) {
   const [editor] = useLexicalComposerContext();
 
@@ -197,15 +204,19 @@ function CommentToolbar({
       return;
     }
     onLinkError("");
-    editor.dispatchCommand(TOGGLE_LINK_COMMAND, href);
+    // `rel: null` on purpose: the article contract stores the address and the
+    // marks, not the link's HTML attributes, and the reading page gives every
+    // author link a `rel` of its own. Left to itself, Lexical stamps
+    // `rel="noreferrer"` on the node — metadata the document cannot keep.
+    editor.dispatchCommand(TOGGLE_LINK_COMMAND, { url: href, rel: null });
   }
 
   return (
     <div className="nw-comment-toolbar" role="toolbar" aria-label="评论格式">
-      <button type="button" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "bold")}><strong>B</strong></button>
-      <button type="button" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "italic")}><em>I</em></button>
-      <button type="button" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "underline")}><u>U</u></button>
-      <button type="button" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "strikethrough")}><s>S</s></button>
+      <button type="button" aria-label={names.bold} onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "bold")}><strong aria-hidden="true">B</strong></button>
+      <button type="button" aria-label={names.italic} onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "italic")}><em aria-hidden="true">I</em></button>
+      <button type="button" aria-label={names.underline} onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "underline")}><u aria-hidden="true">U</u></button>
+      <button type="button" aria-label={names.strikethrough} onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "strikethrough")}><s aria-hidden="true">S</s></button>
       <button type="button" onClick={() => { void addLink(); }}>链接</button>
       <button type="button" onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)} aria-label="撤销">撤销</button>
       <button type="button" onClick={() => editor.dispatchCommand(REDO_COMMAND, undefined)} aria-label="重做">重做</button>
@@ -218,10 +229,12 @@ const commentTheme = {
   text: { bold: "nw-lexical-bold", italic: "nw-lexical-italic", underline: "nw-lexical-underline", strikethrough: "nw-lexical-strikethrough", code: "nw-lexical-inline-code" },
 };
 
-function CommentComposer({ resetKey, onSubmit, busy, initialBlocks, submitLabel, busyLabel, cancelLabel, onCancel }: {
+function CommentComposer({ resetKey, onSubmit, busy, initialBlocks, submitLabel, busyLabel, cancelLabel, onCancel, formatNames }: {
   resetKey: number;
   onSubmit(state: LexicalEditorStateJson): Promise<boolean>;
   busy: boolean;
+  /** The accessible names of the formatting controls, in the page's language. */
+  formatNames: ReturnType<typeof commentCopy>["format"];
   /** Prefills the editor; used by an edit, absent for a new comment. */
   initialBlocks?: CommentBlock[] | null;
   submitLabel?: string;
@@ -236,6 +249,9 @@ function CommentComposer({ resetKey, onSubmit, busy, initialBlocks, submitLabel,
     [initialBlocks],
   );
   const [editorState, setEditorState] = useState<LexicalEditorStateJson>(initialState);
+  // The editor the composer draws, so the submit path can read the document it
+  // holds right now instead of the last one React heard about.
+  const editorRef = useRef<LexicalEditor | null>(null);
   const extension = useMemo(() => defineExtension({
     name: "@no-wave/comment-composition",
     namespace: "no-wave-comment-" + resetKey,
@@ -244,6 +260,7 @@ function CommentComposer({ resetKey, onSubmit, busy, initialBlocks, submitLabel,
     $initialEditorState: JSON.stringify(initialState),
   }), [initialState, resetKey]);
   const onChange = useCallback((state: LexicalEditorStateJson) => setEditorState(state), []);
+  const bindEditor = useCallback((editor: LexicalEditor | null) => { editorRef.current = editor; }, []);
   const [formError, setFormError] = useState("");
   const [askingLink, setAskingLink] = useState(false);
   const askResolver = useRef<((values: Record<string, string> | null) => void) | null>(null);
@@ -262,22 +279,26 @@ function CommentComposer({ resetKey, onSubmit, busy, initialBlocks, submitLabel,
     <>
       <form className="nw-comment-form" onSubmit={(event) => {
         event.preventDefault();
-        const text = textFromEditorState(editorState).trim();
+        // The editor is the source of truth at this point: the document React
+        // last heard about can lag behind the text in the box, and a comment
+        // must not be refused for text the reader can see.
+        const submitted = commentDocumentToSubmit(editorRef.current, editorState);
+        const text = textFromEditorState(submitted).trim();
         if (!text) { setFormError("评论内容不能为空。"); return; }
         if (text.length > 5000) { setFormError("评论不能超过 5000 个字符。"); return; }
-        if (editorState.root.children.length < 1 || editorState.root.children.length > 20) {
+        if (submitted.root.children.length < 1 || submitted.root.children.length > 20) {
           setFormError("评论最多包含 20 个段落。");
           return;
         }
         setFormError("");
-        void onSubmit(editorState);
+        void onSubmit(submitted);
       }}>
         <LexicalExtensionComposer extension={extension} contentEditable={null}>
-          <CommentToolbar onLinkError={setFormError} ask={askForLink} />
+          <CommentToolbar onLinkError={setFormError} ask={askForLink} names={formatNames} />
           <div className="nw-comment-shell">
             <ContentEditable className="nw-comment-editor" aria-label="评论内容" aria-placeholder="写下你的回应……" placeholder={<p className="nw-comment-placeholder">写下你的回应……</p>} />
           </div>
-          <CommentStatePlugin onChange={onChange} />
+          <CommentStatePlugin onEditor={bindEditor} onChange={onChange} />
         </LexicalExtensionComposer>
         {formError ? <p className="nw-notice-error" role="alert">{formError}</p> : null}
         <div className="nw-authoring-actions">
@@ -441,7 +462,7 @@ export function ArticleComments({ slug, locale }: { slug: string; locale: Locale
       ) : null}
       <h3>写下你的回应</h3>
       {signedOut ? <p className="nw-m">请先登录后再发表评论。 <Link href={"/sign-in?next=" + encodeURIComponent("/articles/" + slug)}>前往登录</Link></p> : null}
-      <CommentComposer key={resetKey} resetKey={resetKey} onSubmit={submit} busy={busy} />
+      <CommentComposer key={resetKey} resetKey={resetKey} formatNames={copy.format} onSubmit={submit} busy={busy} />
       {status ? <p role="status" className="nw-notice-status">{status}</p> : null}
       {error && state !== "error" ? <p className="nw-notice-error" role="alert">{error} {error.includes("登录") ? <Link href={"/sign-in?next=" + encodeURIComponent("/articles/" + slug)}>前往登录</Link> : null}</p> : null}
     </section>
