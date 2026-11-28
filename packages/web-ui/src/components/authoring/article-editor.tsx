@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalExtensionComposer } from "@lexical/react/LexicalExtensionComposer";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
@@ -26,6 +26,7 @@ import { IDEMPOTENCY_KEY_HEADER, intentForAttempt, type PendingIntent } from "@/
 import type { WorkType } from "@/lib/content.ts";
 import { sanitizeEditorHref } from "@/lib/editor-href.ts";
 import { articleBlocksToLexicalEditorState, type LexicalEditorStateJson } from "@/lib/lexical-article-state.ts";
+import { floatingBandScrollPadding, type FloatingBand } from "@/lib/floating-bands.ts";
 
 export type AuthoringArticle = {
   id: string;
@@ -97,6 +98,7 @@ function Toolbar({
   onStatus,
   onError,
   ask,
+  toolbarRef,
 }: {
   onStatus(message: string): void;
   onError(message: string): void;
@@ -107,6 +109,8 @@ function Toolbar({
    * `prompt()` without ever showing it.
    */
   ask(kind: "link" | "image"): Promise<Record<string, string> | null>;
+  /** The desk measures this bar to keep the caret clear of it. */
+  toolbarRef: RefObject<HTMLDivElement | null>;
 }) {
   const [editor] = useLexicalComposerContext();
   const fileInput = useRef<HTMLInputElement>(null);
@@ -202,7 +206,7 @@ function Toolbar({
   }
 
   return (
-    <div className="nw-lexical-toolbar" role="toolbar" aria-label="富文本格式">
+    <div className="nw-lexical-toolbar" role="toolbar" aria-label="富文本格式" ref={toolbarRef}>
       {/* 按功能分成五组：段落层级、列表、字形、插入、历史。可见字形尽量短，可访问名称保持完整中文。
           可访问名称同时带上可见字形：WCAG 2.5.3 要求名称包含屏幕上看得见的文字，
           语音控制才能按 “H2”“B” 这样的可见字形直接点中按钮。 */}
@@ -412,6 +416,50 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
   }, []);
   const guardCallback = useRef(onGuardChange);
   useEffect(() => { guardCallback.current = onGuardChange; }, [onGuardChange]);
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
+  const dockRef = useRef<HTMLDivElement | null>(null);
+  // The format bar and the action dock float over the prose, so the browser
+  // has to be told to keep that much room free when it scrolls the caret into
+  // view — otherwise the caret ends up behind the dock and the author cannot
+  // see where they are writing. The bands are measured, not assumed: the bar
+  // wraps to a second row at some widths and the dock grows a row when its
+  // buttons do not fit.
+  useEffect(() => {
+    const root = document.documentElement;
+    const measure = () => {
+      const bands: FloatingBand[] = [];
+      const toolbar = toolbarRef.current;
+      if (toolbar) {
+        bands.push({
+          edge: "top",
+          height: toolbar.getBoundingClientRect().height,
+          inset: Number.parseFloat(getComputedStyle(toolbar).top) || 0,
+        });
+      }
+      const dock = dockRef.current;
+      if (dock) {
+        bands.push({
+          edge: "bottom",
+          height: dock.getBoundingClientRect().height,
+          inset: Number.parseFloat(getComputedStyle(dock).bottom) || 0,
+        });
+      }
+      const padding = floatingBandScrollPadding(bands);
+      root.style.setProperty("--nw-scroll-pad-top", `${padding.top}px`);
+      root.style.setProperty("--nw-scroll-pad-bottom", `${padding.bottom}px`);
+    };
+    measure();
+    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(measure) : null;
+    if (toolbarRef.current) observer?.observe(toolbarRef.current);
+    if (dockRef.current) observer?.observe(dockRef.current);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measure);
+      root.style.removeProperty("--nw-scroll-pad-top");
+      root.style.removeProperty("--nw-scroll-pad-bottom");
+    };
+  }, []);
   const reportGuard = useCallback((next = session.update(latest.current)) => {
     setGuard(next);
     guardCallback.current(next);
@@ -748,7 +796,7 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
       </div>
       {guard.dirty ? <p className="nw-writing-save-state" role="status">有未保存的修改；离开或切换作品前请保存，或下载本机文稿备份。</p> : null}
       <LexicalExtensionComposer extension={extension} contentEditable={null}>
-        <Toolbar onStatus={setStatus} onError={setError} ask={ask} />
+        <Toolbar onStatus={setStatus} onError={setError} ask={ask} toolbarRef={toolbarRef} />
         <div className="nw-lexical-shell">
           <ContentEditable className="nw-lexical-input" aria-label="作品正文" aria-placeholder="从这里开始写作" placeholder={<p className="nw-lexical-placeholder">从这里开始写作……</p>} />
         </div>
@@ -798,7 +846,7 @@ export function ArticleEditor({ article, viewerId, onSaved, onDeleted, onPending
           </div>
         </div>
       ) : null}
-      <div className="nw-authoring-actions nw-authoring-bar">
+      <div className="nw-authoring-actions nw-authoring-bar" ref={dockRef}>
         {article ? <button className="nw-btn" type="button" disabled={busy} onClick={() => void destroy()}>删除作品</button> : null}
         <button className="nw-btn" type="button" disabled={busy} onClick={() => void save(article?.status === "published" ? "publish" : "draft")}>{busy ? "保存中……" : article?.status === "published" ? "保存更新" : "保存草稿"}</button>
         <button className="nw-btn nw-pri" type="button" disabled={busy} onClick={() => void save("publish")}>{busy ? "正在保存……" : article?.status === "published" ? "保存并发布" : "发布作品"}</button>

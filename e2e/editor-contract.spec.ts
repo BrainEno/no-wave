@@ -16,7 +16,10 @@
  *   with its structure intact;
  * - a reader's page may only draw links to HTTP(S) addresses;
  * - the formatting controls have to be nameable and reachable without a mouse;
- * - the desk has to be usable on a phone-sized screen.
+ * - the desk has to be usable on a phone-sized screen;
+ * - and it has to stay usable when the screen is short: the caret the author
+ *   is typing at may not end up underneath the desk's floating action dock,
+ *   where the author cannot see it.
  *
  * What is deliberately *not* here: the API's own refusal of a `javascript:` or
  * protocol-relative address. That is the article contract's rule, it is already
@@ -385,6 +388,27 @@ test("the formatting controls are named for a screen reader and answer the keybo
   await expect(heading).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(body.locator("h2")).toHaveText("标题行");
+
+  // The mark buttons answer the keyboard the same way, and the mark lands on
+  // the words the writer selected. The selection is made forwards, from the
+  // start of the line: a selection that already reaches the end of the line
+  // cannot be widened, and would collapse instead.
+  await body.click();
+  await page.keyboard.press("Control+End");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("这一行要被加粗。");
+  await page.keyboard.press("Home");
+  await page.keyboard.down("Shift");
+  await page.keyboard.press("End");
+  await page.keyboard.up("Shift");
+  const bold = toolbar.getByRole("button", { name: "粗体 B", exact: true });
+  await bold.focus();
+  await expect(bold).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(body.locator("strong")).toHaveText("这一行要被加粗。");
+  // The words are still there, and the heading above them is untouched.
+  await expect(body).toContainText("这一行要被加粗。");
+  await expect(body.locator("h2")).toHaveText("标题行");
 });
 
 test("the author can write and save on a phone-sized screen", async ({
@@ -418,4 +442,71 @@ test("the author can write and save on a phone-sized screen", async ({
   expect(dimensions.scroll, "the writing desk fits a 390 pixel screen").toBe(
     dimensions.client,
   );
+});
+
+test("the editor keeps the caret clear of the action dock on a short window", async ({
+  page,
+  request,
+  editorStack,
+}) => {
+  // A phone with the keyboard open: the window is a few hundred pixels tall,
+  // and the desk's action dock floats over the bottom of it. The viewport is
+  // set before the desk opens, so the editor is measured in the height it
+  // really has while the author is typing.
+  await page.setViewportSize({ width: 390, height: 420 });
+  await registerWriter(page, request, deskTarget(editorStack));
+  await waitForEditor(page);
+
+  const title = `窄窗写作 ${Date.now().toString(36)}`;
+  await page.getByRole("textbox", { name: "标题", exact: true }).fill(title);
+  const body = page.getByLabel("作品正文");
+  await body.click();
+  for (let line = 1; line <= 6; line += 1) {
+    await page.keyboard.type(`第${line}行。`);
+    await page.keyboard.press("Enter");
+  }
+  await page.keyboard.type("最后一行。");
+  await expect(body).toContainText("最后一行。");
+
+  // The caret has to be visible. The dock floats over the bottom of the
+  // window, and a caret underneath it is a caret the author cannot see: the
+  // words are there, but the author cannot tell where they are writing.
+  const caret = await page.evaluate(() => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return null;
+    const rect = selection.getRangeAt(0).getBoundingClientRect();
+    const covering = document.elementFromPoint(rect.left + 1, rect.top + 1);
+    return {
+      bottom: rect.bottom,
+      covering: covering
+        ? `${covering.tagName}.${covering.getAttribute("class") ?? ""}`
+        : "none",
+      inEditor: Boolean(covering?.closest('[aria-label="作品正文"]')),
+    };
+  });
+  expect(caret, "the editor keeps a caret").not.toBeNull();
+  expect(caret!.inEditor, `the caret is covered by ${caret!.covering}`).toBe(
+    true,
+  );
+  const viewport = page.viewportSize();
+  expect(caret!.bottom, "the caret is inside the window").toBeLessThanOrEqual(
+    viewport!.height,
+  );
+
+  // The words and the mark survive the short window: the toolbar is still
+  // there, still answers, and still marks what the author selected.
+  await page.keyboard.press("Home");
+  await page.keyboard.down("Shift");
+  await page.keyboard.press("End");
+  await page.keyboard.up("Shift");
+  await page.getByRole("button", { name: "粗体 B", exact: true }).click();
+  await expect(body.locator("strong")).toHaveText("最后一行。");
+
+  // And the dock's own action still publishes the work: a window too short
+  // for the dock would be a window where the author cannot save.
+  const publish = page.getByRole("button", { name: "发布作品", exact: true });
+  await expect(publish).toBeVisible();
+  await expect(publish).toBeEnabled();
+  await publish.click();
+  await savedSlug(page, title, "published");
 });

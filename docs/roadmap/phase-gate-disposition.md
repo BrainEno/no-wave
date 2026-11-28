@@ -21,7 +21,7 @@ Status: active
   - 说明：仓库内可推进。无对应 issue，需先开 issue。建议：在 docs/audit 中逐功能列出清单，未决的产品行为单列并标注需要的决策。
 - 第 6 项（phase-gates 第 66 行）：Add round-trip, malformed-payload, security, Chinese IME, accessibility, keyboard and mobile tests.
   - 归属：A 仓库内可推进
-  - 说明：仓库内可推进，下一轮候选。Lexical 往返、畸形载荷、安全与移动端用例可直接写入 e2e/单元测试；中文输入法（IME）组合事件可用 Playwright 模拟，真实输入法仍需人工抽检。
+  - 说明：仓库内可推进，下一轮候选。Lexical 往返、畸形载荷、安全与移动端用例可直接写入 e2e/单元测试；中文输入法（IME）组合事件可用 Playwright 模拟，真实输入法仍需人工抽检。键盘操作与短窗口已补齐：文章编辑器的格式条只用键盘即可完成加粗，评论编辑器的字形也能只用键盘完成并到达已发布的内容，窄窗口（390×420）下文章编辑器的光标不再被发布条压住、评论框仍可提交（e2e/editor-contract.spec.ts、e2e/comment-formatting.spec.ts）；尚未覆盖的是评论编辑器自身的 IME 组合事件与真实输入法的桌面抽检。
 - 第 10 项（phase-gates 第 79 行）：Eliminate remaining config/runtime gaps and add API/Web contract checks.
   - 归属：A 仓库内可推进
   - 说明：仓库内可推进，但范围未定义。建议先盘点剩余配置与运行时缺口（列出具体变量与路由），再决定是否拆成独立 issue。
