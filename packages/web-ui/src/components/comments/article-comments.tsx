@@ -17,7 +17,7 @@ import { sanitizeEditorHref } from "@/lib/editor-href.ts";
 import { InlineRuns } from "@/components/ui/inline-runs.tsx";
 import { PromptDialog, type PromptDialogField } from "@/components/ui/prompt-dialog.tsx";
 import { articleBlocksToLexicalEditorState, type LexicalEditorStateJson } from "@/lib/lexical-article-state.ts";
-import { canEditComment, commentCopy, commentCreatePath, commentDocumentToSubmit, commentEditBody, commentEditPath, editedMarker } from "@/lib/comment-edit.ts";
+import { canEditComment, commentCopy, commentCreatePath, commentDocumentToSubmit, commentDraftDocument, commentEditBody, commentEditPath, commentSurfaceDraft, editedMarker, COMMENT_SURFACE_CONTENT_IS_REACT_MANAGED } from "@/lib/comment-edit.ts";
 
 const COMMENT_LINK_FIELDS: readonly PromptDialogField[] = [
   {
@@ -182,6 +182,44 @@ function CommentStatePlugin({ onEditor, onChange }: {
   return null;
 }
 
+/**
+ * The box the reader types the comment into.
+ *
+ * The surface is server-rendered, and the browser lets the reader type into it
+ * before the editor has claimed it. React hydrates an element by comparing the
+ * DOM with the markup it rendered, and the reader's text is not the markup
+ * React rendered — so React throws the page away and rebuilds it, and the text
+ * goes with it.
+ *
+ * So the surface's content is not React's to manage: `dangerouslySetInnerHTML`
+ * is what tells React to leave the content alone, and the editor adopts
+ * whatever the reader left there. The adoption happens in the ref, which runs
+ * before the editor takes the element over, so the text is in the editor's
+ * document before the editor's first reconcile draws it — and the reader sees
+ * their text, not an empty box.
+ */
+function CommentSurface() {
+  const [editor] = useLexicalComposerContext();
+  const adopted = useRef(false);
+  const adopt = useCallback((surface: HTMLDivElement | null) => {
+    if (surface === null || adopted.current) return;
+    const draft = commentSurfaceDraft(surface);
+    if (draft.length === 0) return;
+    adopted.current = true;
+    editor.setEditorState(editor.parseEditorState(JSON.stringify(commentDraftDocument(draft))));
+  }, [editor]);
+  return (
+    <ContentEditable
+      ref={adopt}
+      className="nw-comment-editor"
+      aria-label="评论内容" aria-placeholder="写下你的回应……" placeholder={<p className="nw-comment-placeholder">写下你的回应……</p>}
+      // The content of the surface is the reader's until the editor owns it.
+      dangerouslySetInnerHTML={COMMENT_SURFACE_CONTENT_IS_REACT_MANAGED ? undefined : { __html: "" }}
+      suppressHydrationWarning
+    />
+  );
+}
+
 function CommentToolbar({
   onLinkError,
   ask,
@@ -296,7 +334,7 @@ function CommentComposer({ resetKey, onSubmit, busy, initialBlocks, submitLabel,
         <LexicalExtensionComposer extension={extension} contentEditable={null}>
           <CommentToolbar onLinkError={setFormError} ask={askForLink} names={formatNames} />
           <div className="nw-comment-shell">
-            <ContentEditable className="nw-comment-editor" aria-label="评论内容" aria-placeholder="写下你的回应……" placeholder={<p className="nw-comment-placeholder">写下你的回应……</p>} />
+            <CommentSurface />
           </div>
           <CommentStatePlugin onEditor={bindEditor} onChange={onChange} />
         </LexicalExtensionComposer>

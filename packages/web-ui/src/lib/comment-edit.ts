@@ -1,5 +1,5 @@
 import type { Locale } from "./content.ts";
-import type { LexicalEditorStateJson } from "./lexical-article-state.ts";
+import { articleBlocksToLexicalEditorState, type LexicalEditorStateJson } from "./lexical-article-state.ts";
 
 /**
  * Comment editing (ADR 0031) decided in one place.
@@ -95,6 +95,69 @@ export function commentDocumentToSubmit(
 ): LexicalEditorStateJson {
   if (!editor) return fallback;
   return editor.read(() => editor.getEditorState().toJSON()) as LexicalEditorStateJson;
+}
+
+/**
+ * The comment surface: the box the reader types a comment into.
+ *
+ * The surface is server-rendered, and the browser lets the reader type into it
+ * before the editor has claimed it — the server rendered an editable box, so
+ * the browser treats it as one. React hydrates an element by comparing the DOM
+ * with the markup it rendered, and the reader's text is not the markup React
+ * rendered: React throws the page away and rebuilds it, and the text goes with
+ * it. The page throws a hydration error on the way, and the comment is then
+ * refused for text the reader can plainly see in the box.
+ *
+ * So the surface's *content* is not React's to manage. React renders the
+ * surface and leaves whatever is inside it alone, and the editor adopts the
+ * reader's text when it takes the surface over.
+ */
+
+/**
+ * Whether React may manage the content of the comment surface.
+ *
+ * It may not: the surface is server-rendered, so the reader can put text in it
+ * before React ever sees the page.
+ */
+export const COMMENT_SURFACE_CONTENT_IS_REACT_MANAGED = false;
+
+/**
+ * The part of the surface the rule reads.
+ *
+ * Only what the rule reads, so the rule can be held by a unit test without a
+ * DOM and without a browser.
+ */
+export type CommentSurface = {
+  /** The text the surface holds right now. */
+  readonly textContent: string | null;
+};
+
+/**
+ * The text the reader left in the surface before the editor owned it.
+ *
+ * Empty when the reader typed nothing, and empty when there is no surface yet.
+ */
+export function commentSurfaceDraft(surface: CommentSurface | null): string {
+  if (surface === null) return "";
+  const text = surface.textContent;
+  return typeof text === "string" ? text : "";
+}
+
+/**
+ * The document the editor adopts when it takes the surface over.
+ *
+ * The reader's text is plain text: the toolbar was not there yet, so there is
+ * no formatting to keep. A line break becomes a paragraph, the way the editor
+ * would have made it.
+ */
+export function commentDraftDocument(draft: string): LexicalEditorStateJson {
+  return articleBlocksToLexicalEditorState(
+    draft.split("\n").map((text, index) => ({
+      id: "comment-draft-" + index,
+      type: "paragraph",
+      text,
+    })),
+  );
 }
 
 /** The labels the comment section needs, so copy stays out of the render tree. */
