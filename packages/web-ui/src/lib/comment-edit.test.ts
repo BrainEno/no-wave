@@ -7,9 +7,12 @@ import {
   commentCopy,
   commentCreatePath,
   commentDocumentToSubmit,
+  commentDraftDocument,
   commentEditBody,
   commentEditPath,
+  commentSurfaceDraft,
   editedMarker,
+  COMMENT_SURFACE_CONTENT_IS_REACT_MANAGED,
 } from "./comment-edit.ts";
 import type { LexicalEditorStateJson } from "./lexical-article-state.ts";
 
@@ -206,5 +209,73 @@ test("the composer submits the editor's live document, and subscribes to the com
     source,
     /editor\.registerUpdateListener\(/,
     "the composer must keep following the editor after it subscribes",
+  );
+});
+
+/**
+ * The comment surface.
+ *
+ * The comment section is server-rendered, so for a moment the reader is
+ * looking at a box no editor has claimed. The server rendered it as an
+ * editable box, so the browser let the reader type into it — and the text went
+ * nowhere: React compares the surface with the markup it rendered, finds the
+ * reader's text where it expected nothing, throws the page away and rebuilds
+ * it. The surface's content is therefore not React's to manage, and the editor
+ * adopts whatever the reader left there.
+ */
+test("the comment surface keeps the text the reader left in it", () => {
+  assert.equal(
+    COMMENT_SURFACE_CONTENT_IS_REACT_MANAGED,
+    false,
+    "the surface is server-rendered: React must not manage what is inside it",
+  );
+  assert.equal(commentSurfaceDraft(null), "", "no surface, no draft");
+  assert.equal(commentSurfaceDraft({ textContent: "" }), "", "an untouched surface has no draft");
+  assert.equal(
+    commentSurfaceDraft({ textContent: "水合前写下的字" }),
+    "水合前写下的字",
+    "what the reader typed before the editor owned the surface is the draft",
+  );
+  assert.equal(commentSurfaceDraft({ textContent: null }), "");
+});
+
+test("the draft becomes the document the editor adopts", () => {
+  const document = commentDraftDocument("水合前写下的字");
+  assert.equal(document.root.children.length, 1);
+  const paragraph = document.root.children[0];
+  assert.equal(paragraph.type, "paragraph");
+  const runs = paragraph.children as Record<string, unknown>[];
+  assert.equal(runs.length, 1);
+  assert.equal(runs[0].text, "水合前写下的字");
+
+  // A line break the reader typed is a paragraph break, the way the editor
+  // would have made it.
+  const lines = commentDraftDocument("第一行\n第二行");
+  assert.equal(lines.root.children.length, 2);
+  const second = lines.root.children[1].children as Record<string, unknown>[];
+  assert.equal(second[0].text, "第二行");
+});
+
+test("the composer leaves the surface's content to the reader and adopts the draft", async () => {
+  const source = await readFile(component, "utf8");
+  assert.match(
+    source,
+    /dangerouslySetInnerHTML=\{COMMENT_SURFACE_CONTENT_IS_REACT_MANAGED \? undefined : \{ __html: "" \}\}/,
+    "React must not manage the content of a surface the reader can type into",
+  );
+  assert.match(
+    source,
+    /commentSurfaceDraft\(surface\)/,
+    "the composer must read what the reader left in the surface",
+  );
+  assert.match(
+    source,
+    /editor\.setEditorState\(editor\.parseEditorState\(JSON\.stringify\(commentDraftDocument\(draft\)\)\)\)/,
+    "the draft must become the editor's document before the editor draws the surface",
+  );
+  assert.match(
+    source,
+    /ref=\{adopt\}/,
+    "the adoption must happen through the ref, which runs before the editor takes the element",
   );
 });
