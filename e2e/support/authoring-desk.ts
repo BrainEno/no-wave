@@ -65,6 +65,22 @@ export function currentOrigin(): string {
   return new URL(baseURL).origin;
 }
 
+/**
+ * Where a desk journey writes.
+ *
+ * Most journeys share the suite's one stack, and the module constants above are
+ * enough for them. A journey that owns a disposable stack of its own has to say
+ * which API it creates its account on and which origin its mutations declare:
+ * the login proxy refuses a mutation whose `Origin` is not exactly its own, and
+ * the account has to exist on the API the stack is actually serving.
+ */
+export type AuthoringDeskTarget = {
+  /** The API the account and the profile are created on. */
+  apiBaseUrl: string;
+  /** The origin the browser's mutations declare: the web app's own. */
+  origin: string;
+};
+
 export type SavedArticle = {
   id: string;
   slug: string;
@@ -167,12 +183,19 @@ export function sessionCookies(
  * `registerWriter` uses this for the account it has just created; the
  * notification journey uses it a second time to change who the browser is,
  * because the reader who is told about a deletion is not the author who made it.
+ *
+ * `origin` is the web application's own origin, and a journey on a disposable
+ * stack has to name that stack's: the proxy the login goes through refuses a
+ * mutation whose `Origin` is not exactly its own.
  */
-export async function signIn(page: Page, email: string): Promise<void> {
+export async function signIn(
+  page: Page,
+  email: string,
+  origin = currentOrigin(),
+): Promise<void> {
   // Through the same-origin proxy the application uses. The proxy rejects
   // mutations without an exact same-origin Origin header, which a plain HTTP
   // client does not send.
-  const origin = currentOrigin();
   const login = await page.request.post("/api/auth/login", {
     data: { email, password: PASSWORD },
     headers: { origin },
@@ -208,18 +231,21 @@ export async function signIn(page: Page, email: string): Promise<void> {
  *
  * The profile is not decoration: the public reader drops articles whose author
  * has none, so a published work would be unreachable without it.
+ *
+ * `target` names the stack when the journey owns one; without it the account
+ * is created on the shared API and the browser signs in against the shared
+ * web application.
  */
 export async function registerWriter(
   page: Page,
   request: APIRequestContext,
+  target?: AuthoringDeskTarget,
 ): Promise<string> {
+  const apiBaseUrl = target?.apiBaseUrl ?? API_BASE_URL;
   const email = uniqueEmail("writer");
-  const registered = await request.post(
-    `${API_BASE_URL}/api/v1/auth/register`,
-    {
-      data: { email, password: PASSWORD },
-    },
-  );
+  const registered = await request.post(`${apiBaseUrl}/api/v1/auth/register`, {
+    data: { email, password: PASSWORD },
+  });
   expect(
     registered.status(),
     `registering ${email}: ${await registered.text()}`,
@@ -228,16 +254,16 @@ export async function registerWriter(
     accessToken: string;
   };
 
-  const profile = await request.put(`${API_BASE_URL}/api/v1/me/profile`, {
+  const profile = await request.put(`${apiBaseUrl}/api/v1/me/profile`, {
     data: { displayName: "无浪作者", bio: "浏览器验证账户。", locale: "zh-CN" },
-    headers: { authorization: `Bearer ${accessToken}`, origin: API_BASE_URL },
+    headers: { authorization: `Bearer ${accessToken}`, origin: apiBaseUrl },
   });
   expect(
     profile.status(),
     `creating the author profile: ${await profile.text()}`,
   ).toBe(200);
 
-  await signIn(page, email);
+  await signIn(page, email, target?.origin);
   await page.goto("/write");
   try {
     await expect(page.getByRole("heading", { name: /写作台/ })).toBeVisible({
@@ -273,7 +299,9 @@ export async function registerWriter(
 
 /** Wait until the Lexical editor has hydrated: its toolbar exists client-side only. */
 export async function waitForEditor(page: Page): Promise<void> {
-  await expect(page.getByLabel("标题")).toBeVisible();
+  await expect(
+    page.getByRole("textbox", { name: "标题", exact: true }),
+  ).toBeVisible();
   await expect(page.getByRole("toolbar", { name: "富文本格式" })).toBeVisible({
     timeout: 45_000,
   });
@@ -299,7 +327,7 @@ export async function writeAndSave(
   publish: boolean,
 ): Promise<string> {
   await waitForEditor(page);
-  await page.getByLabel("标题").fill(title);
+  await page.getByRole("textbox", { name: "标题", exact: true }).fill(title);
   await page.getByLabel("作品正文").click();
   await page.keyboard.type(FIRST_PARAGRAPH);
   await page.keyboard.press("Enter");

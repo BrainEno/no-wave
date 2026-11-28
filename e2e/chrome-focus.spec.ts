@@ -138,7 +138,9 @@ test("a native leave confirmation above a mobile menu owns Escape and Cancel ret
         ? route.abort("failed")
         : route.continue(),
   );
-  await page.getByLabel("标题").fill("焦点保留");
+  await page
+    .getByRole("textbox", { name: "标题", exact: true })
+    .fill("焦点保留");
   await page.getByLabel("作品正文").fill("尚未确认保存的正文。");
   await page.getByRole("button", { name: "保存草稿", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("暂时无法确认");

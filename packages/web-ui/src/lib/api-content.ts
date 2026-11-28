@@ -1,5 +1,6 @@
 import { isRecord, resolveUpstreamTimeoutMs, upstreamTransportFor, upstreamJsonPayload, type FetchImpl, type UpstreamTransport } from "@no-wave/web-http";
 import { isTagSlug, type TagReference, type TagView } from "./tag-discovery.ts";
+import { isInlineRun } from "./content-inline.ts";
 import { parseArticlePreview, projectArticleForList } from "./article-preview.ts";
 import type { ArticleContentBlock, ArticleSort, ArticleView, AuthorView, Locale } from "./content.ts";
 import { parseWorkType } from "./work-types.ts";
@@ -74,13 +75,34 @@ function tagResourcePath(slug: string): string {
   return `api/v1/tags/${encodeURIComponent(slug)}`;
 }
 
+/**
+ * The inline runs of a block.
+ *
+ * A version 0 document has none. A version 1 document has a list of runs, and
+ * every one of them has to be a run: a payload that mixes a valid run with
+ * something else is not a document this reader should render, because the
+ * reader cannot know what the author meant by it.
+ */
+function hasInlineRuns(value: unknown): boolean {
+  if (value === undefined) return true;
+  return Array.isArray(value) && value.every(isInlineRun);
+}
+
+/** The runs of each list item; a list without items has no runs either. */
+function hasItemInlines(value: unknown, itemCount: number): boolean {
+  if (value === undefined) return true;
+  if (!Array.isArray(value)) return false;
+  if (value.length !== itemCount) return false;
+  return value.every((item) => Array.isArray(item) && item.every(isInlineRun));
+}
+
 function isContentBlock(value: unknown): value is ArticleContentBlock {
   if (!isRecord(value) || typeof value.id !== "string") return false;
   switch (value.type) {
-    case "paragraph": return typeof value.text === "string";
-    case "heading": return typeof value.text === "string" && (value.level === 2 || value.level === 3 || value.level === 4) && (value.anchor === undefined || typeof value.anchor === "string");
-    case "quote": return typeof value.text === "string" && (value.attribution === undefined || typeof value.attribution === "string");
-    case "list": return typeof value.ordered === "boolean" && Array.isArray(value.items) && value.items.every((item) => typeof item === "string");
+    case "paragraph": return typeof value.text === "string" && hasInlineRuns(value.inlines);
+    case "heading": return typeof value.text === "string" && (value.level === 2 || value.level === 3 || value.level === 4) && (value.anchor === undefined || typeof value.anchor === "string") && hasInlineRuns(value.inlines);
+    case "quote": return typeof value.text === "string" && (value.attribution === undefined || typeof value.attribution === "string") && hasInlineRuns(value.inlines);
+    case "list": return typeof value.ordered === "boolean" && Array.isArray(value.items) && value.items.every((item) => typeof item === "string") && hasItemInlines(value.itemInlines, value.items.length);
     case "image": return typeof value.src === "string" && typeof value.alt === "string" && (value.caption === undefined || typeof value.caption === "string");
     case "code": return typeof value.language === "string" && typeof value.code === "string";
     default: return false;

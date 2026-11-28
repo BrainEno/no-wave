@@ -102,6 +102,7 @@ Architecture decision records and their Accepted/Superseded status live in the [
 - [合法文章集合兼容性、读取所有权与测试发现审查](audit/article-collection-review.md) — Status: archived
 - [后端核查报告（2026-11-02）](audit/backend-review-2026-11.md) — Status: archived
 - [Feature Traceability — New Implementation](audit/feature-traceability.md) — Status: active
+- [未决产品行为登记：追溯表的配套决策清单](audit/unresolved-product-behavior.md) — Status: active
 - [no-wave 代码库全面 Review](audit/full-review-2026-11-02.md) — Status: archived
 - [#368：用不同匹配引擎修复依赖审计阻塞](audit/glob-engine-replacement.md) — Status: archived
 - [身份刷新可靠性：本轮独立验收与代码审计](audit/identity-refresh-acceptance.md) — Status: archived

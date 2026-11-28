@@ -131,7 +131,11 @@ function Toolbar({
       return;
     }
     onError("");
-    editor.dispatchCommand(TOGGLE_LINK_COMMAND, href);
+    // `rel: null` on purpose: the article contract stores the address and the
+    // marks, not the link's HTML attributes, and the reading page gives every
+    // author link a `rel` of its own. Left to itself, Lexical stamps
+    // `rel="noreferrer"` on the node — metadata the document cannot keep.
+    editor.dispatchCommand(TOGGLE_LINK_COMMAND, { url: href, rel: null });
   }
 
   async function uploadImage(file: File | undefined) {
@@ -199,20 +203,22 @@ function Toolbar({
 
   return (
     <div className="nw-lexical-toolbar" role="toolbar" aria-label="富文本格式">
-      {/* 按功能分成五组：段落层级、列表、字形、插入、历史。可见字形尽量短，可访问名称保持完整中文。 */}
+      {/* 按功能分成五组：段落层级、列表、字形、插入、历史。可见字形尽量短，可访问名称保持完整中文。
+          可访问名称同时带上可见字形：WCAG 2.5.3 要求名称包含屏幕上看得见的文字，
+          语音控制才能按 “H2”“B” 这样的可见字形直接点中按钮。 */}
       <button type="button" aria-label="段落" title="段落" onClick={() => setBlock(() => $createParagraphNode())}><span aria-hidden="true">¶</span></button>
-      <button type="button" title="二级标题" onClick={() => setBlock(() => $createHeadingNode("h2"))}>H2</button>
-      <button type="button" title="三级标题" onClick={() => setBlock(() => $createHeadingNode("h3"))}>H3</button>
-      <button type="button" title="四级标题" onClick={() => setBlock(() => $createHeadingNode("h4"))}>H4</button>
+      <button type="button" aria-label="二级标题 H2" title="二级标题 H2" onClick={() => setBlock(() => $createHeadingNode("h2"))}><span aria-hidden="true">H2</span></button>
+      <button type="button" aria-label="三级标题 H3" title="三级标题 H3" onClick={() => setBlock(() => $createHeadingNode("h3"))}><span aria-hidden="true">H3</span></button>
+      <button type="button" aria-label="四级标题 H4" title="四级标题 H4" onClick={() => setBlock(() => $createHeadingNode("h4"))}><span aria-hidden="true">H4</span></button>
       <button type="button" aria-label="引用" title="引用" onClick={() => setBlock(() => $createQuoteNode())}><span aria-hidden="true" className="nw-tb-quote">“</span></button>
       <span className="nw-tb-sep" aria-hidden="true" />
       <button type="button" aria-label="无序列表" title="无序列表" onClick={() => editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined)}>{toolIcon.bullets}</button>
       <button type="button" aria-label="有序列表" title="有序列表" onClick={() => editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined)}>{toolIcon.numbers}</button>
       <span className="nw-tb-sep" aria-hidden="true" />
-      <button type="button" title="粗体" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "bold")}><strong>B</strong></button>
-      <button type="button" title="斜体" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "italic")}><em>I</em></button>
-      <button type="button" title="下划线" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "underline")}><u>U</u></button>
-      <button type="button" title="删除线" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "strikethrough")}><s>S</s></button>
+      <button type="button" aria-label="粗体 B" title="粗体 B" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "bold")}><strong aria-hidden="true">B</strong></button>
+      <button type="button" aria-label="斜体 I" title="斜体 I" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "italic")}><em aria-hidden="true">I</em></button>
+      <button type="button" aria-label="下划线 U" title="下划线 U" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "underline")}><u aria-hidden="true">U</u></button>
+      <button type="button" aria-label="删除线 S" title="删除线 S" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "strikethrough")}><s aria-hidden="true">S</s></button>
       <span className="nw-tb-sep" aria-hidden="true" />
       <button type="button" aria-label="链接" title="链接" onClick={() => { void addLink(); }}>{toolIcon.link}</button>
       <button type="button" aria-label={uploading ? "上传图片中……" : "插入图片"} title="插入图片" disabled={uploading} onClick={() => fileInput.current?.click()}>{toolIcon.image}</button>

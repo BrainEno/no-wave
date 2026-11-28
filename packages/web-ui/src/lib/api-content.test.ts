@@ -163,6 +163,73 @@ test("REST content client rejects malformed serialized content blocks", async ()
   await assert.rejects(client.getArticleBySlug("hello-world"), /malformed article content/);
 });
 
+test("inline runs survive the content client and reach the reader", async () => {
+  const withInlines = {
+    ...article,
+    contentBlocks: [
+      {
+        id: "p1",
+        type: "paragraph",
+        text: "普通粗体链接",
+        inlines: [
+          { text: "普通" },
+          { text: "粗体", marks: ["bold"] },
+          { text: "链接", href: "https://example.test/target" },
+        ],
+      },
+    ],
+  };
+  const client = createApiContentClient({
+    endpoint: "https://api.example.test",
+    fetchImpl: captureFetch({ data: withInlines }),
+  });
+  const loaded = await client.getArticleBySlug("hello-world");
+  const block = loaded?.contentBlocks[0];
+  assert.equal(block?.type, "paragraph");
+  assert.deepEqual(block && "inlines" in block ? block.inlines : undefined, [
+    { text: "普通" },
+    { text: "粗体", marks: ["bold"] },
+    { text: "链接", href: "https://example.test/target" },
+  ]);
+});
+
+test("a content block whose runs are malformed is refused rather than half-read", async () => {
+  for (const inlines of [[{ text: 5 }], [{ text: "字", marks: "bold" }], ["字"], [{ href: "/a" }]]) {
+    const client = createApiContentClient({
+      endpoint: "https://api.example.test",
+      fetchImpl: captureFetch({
+        data: { ...article, contentBlocks: [{ id: "p1", type: "paragraph", text: "字", inlines }] },
+      }),
+    });
+    await assert.rejects(
+      client.getArticleBySlug("hello-world"),
+      /not a valid array of content blocks/,
+      JSON.stringify(inlines),
+    );
+  }
+});
+
+test("a list whose item runs do not line up with its items is refused", async () => {
+  const client = createApiContentClient({
+    endpoint: "https://api.example.test",
+    fetchImpl: captureFetch({
+      data: {
+        ...article,
+        contentBlocks: [
+          {
+            id: "l1",
+            type: "list",
+            ordered: false,
+            items: ["一", "二"],
+            itemInlines: [[{ text: "一" }]],
+          },
+        ],
+      },
+    }),
+  });
+  await assert.rejects(client.getArticleBySlug("hello-world"), /not a valid array of content blocks/);
+});
+
 test("REST content client lists and retrieves localized categories and articles", async () => {
   const calls: CapturedRequest[] = [];
   const category = { id: "c1", slug: "poetry", name: "Poetry", description: "Poems", locale: "en", articleCount: 3 };

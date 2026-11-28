@@ -25,6 +25,18 @@ const ELEMENT_KEYS = new Set(["children", "direction", "format", "indent", "text
 const TEXT_KEYS = new Set(["detail", "format", "mode", "style", "text", "type", "version"]);
 
 /**
+ * The `rel` Lexical stamps on every link its own link command creates.
+ *
+ * It is a library default, not author intent: the article contract stores the
+ * address and the marks, and the reading page gives every author link a
+ * stricter `rel` of its own. This one value is therefore accepted and dropped
+ * rather than stored — refusing it refused every link the product's own editor
+ * writes. Every other `rel`, and every `target` or `title`, still fails
+ * closed: those would change what the reader sees.
+ */
+const DEFAULT_LINK_REL = "noreferrer";
+
+/**
  * A block, as this adapter builds it for the writer.
  *
  * These were `Record<string, any>` — the loosest possible description of a
@@ -128,9 +140,10 @@ function parseInlineNodes(nodes: unknown, path: string, { code = false }: { code
       const url = node.url;
       if (typeof url !== "string" || url.length === 0) fail(nodePath + ".url", "must be a non-empty URL.");
       for (const key of ["rel", "target", "title"]) {
-        if (node[key] !== undefined && node[key] !== null && node[key] !== "") {
-          fail(nodePath + "." + key, "uses link metadata that the article contract cannot preserve.");
-        }
+        const value = node[key];
+        if (value === undefined || value === null || value === "") continue;
+        if (key === "rel" && value === DEFAULT_LINK_REL) continue;
+        fail(nodePath + "." + key, "uses link metadata that the article contract cannot preserve.");
       }
       if (children.length === 0) fail(nodePath + ".children", "must not be empty.");
       for (let childIndex = 0; childIndex < children.length; childIndex += 1) {

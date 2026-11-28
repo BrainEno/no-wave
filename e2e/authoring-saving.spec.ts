@@ -55,7 +55,9 @@ test("first save retries one committed work, later saves update it, and another 
     await route.continue();
   });
 
-  await page.getByLabel("标题").fill("一次保存，只有一篇");
+  await page
+    .getByRole("textbox", { name: "标题", exact: true })
+    .fill("一次保存，只有一篇");
   await page.getByLabel("作品正文").click();
   await page.keyboard.type("断线重试不应该产生第二篇作品。");
   await page.getByRole("button", { name: "保存草稿" }).click();
@@ -76,7 +78,9 @@ test("first save retries one committed work, later saves update it, and another 
     committedId,
   ]);
 
-  await page.getByLabel("标题").fill("保存后的更新");
+  await page
+    .getByRole("textbox", { name: "标题", exact: true })
+    .fill("保存后的更新");
   const update = page.waitForResponse(
     (response) =>
       response.url().includes(`/api/authoring/articles/${committedId}`) &&
@@ -91,7 +95,9 @@ test("first save retries one committed work, later saves update it, and another 
 
   await page.getByRole("button", { name: "新建作品 +" }).click();
   await waitForEditor(page);
-  await page.getByLabel("标题").fill("独立的新草稿");
+  await page
+    .getByRole("textbox", { name: "标题", exact: true })
+    .fill("独立的新草稿");
   await page.getByLabel("作品正文").click();
   await page.keyboard.type("另一篇作品有另一把键。");
   await page.getByRole("button", { name: "保存草稿" }).click();
@@ -152,7 +158,9 @@ test("an uncertain save keeps its original body, blocks document switches and pr
     await route.continue();
   });
 
-  await page.getByLabel("标题").fill("原来的标题");
+  await page
+    .getByRole("textbox", { name: "标题", exact: true })
+    .fill("原来的标题");
   await page.getByLabel("作品正文").click();
   await page.keyboard.type("原来的正文。");
   // Two events before React has a chance to render its disabled button.
@@ -166,7 +174,9 @@ test("an uncertain save keeps its original body, blocks document switches and pr
   expect(attempts).toHaveLength(1);
   await expect(page.getByRole("button", { name: "新建作品 +" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "退出登录" })).toBeDisabled();
-  await page.getByLabel("标题").fill("后来修改的标题");
+  await page
+    .getByRole("textbox", { name: "标题", exact: true })
+    .fill("后来修改的标题");
   await page.getByLabel("作品正文").click();
   await page.keyboard.press("End");
   await page.keyboard.type("后来修改的正文。");
@@ -204,7 +214,9 @@ test("an uncertain save keeps its original body, blocks document switches and pr
   ).toBeVisible();
   expect(attempts).toHaveLength(2);
   expect(attempts[1]).toEqual(attempts[0]);
-  await expect(page.getByLabel("标题")).toHaveValue("后来修改的标题");
+  await expect(
+    page.getByRole("textbox", { name: "标题", exact: true }),
+  ).toHaveValue("后来修改的标题");
   await expect(page.getByLabel("作品正文")).toContainText("后来修改的正文。");
   expect((await savedArticles(page)).map((article) => article.id)).toEqual([
     committedId,
@@ -258,7 +270,9 @@ test("an unconfirmed create cannot be retried under a different signed-in accoun
       await route.continue();
     }
   });
-  await page.getByLabel("标题").fill("只属于原账户的作品");
+  await page
+    .getByRole("textbox", { name: "标题", exact: true })
+    .fill("只属于原账户的作品");
   await page.getByLabel("作品正文").click();
   await page.keyboard.type("这次重试不能写到另一个账户。");
   await page.getByRole("button", { name: "保存草稿" }).click();
@@ -335,7 +349,9 @@ test("401, conflict and malformed success never silently replace an uncertain cr
       });
     }
   });
-  await page.getByLabel("标题").fill("异常后的恢复");
+  await page
+    .getByRole("textbox", { name: "标题", exact: true })
+    .fill("异常后的恢复");
   await page.getByLabel("作品正文").click();
   await page.keyboard.type("不能把不确定的响应当成没有保存。");
   await page.getByRole("button", { name: "保存草稿" }).click();
@@ -359,7 +375,9 @@ test("401, conflict and malformed success never silently replace an uncertain cr
     page.getByRole("status").filter({ hasText: "上次创建已确认" }),
   ).toBeVisible();
   expect(attempts[3]).toEqual(attempts[2]);
-  await expect(page.getByLabel("标题")).toHaveValue("异常后的恢复");
+  await expect(
+    page.getByRole("textbox", { name: "标题", exact: true }),
+  ).toHaveValue("异常后的恢复");
 });
 
 test("a locally rejected initial request permits a corrected first save", async ({
@@ -393,14 +411,18 @@ test("a locally rejected initial request permits a corrected first save", async 
       });
     }
   });
-  await page.getByLabel("标题").fill("需要修正的标题");
+  await page
+    .getByRole("textbox", { name: "标题", exact: true })
+    .fill("需要修正的标题");
   await page.getByLabel("作品正文").click();
   await page.keyboard.type("修正前的正文。");
   await page.getByRole("button", { name: "保存草稿" }).click();
   await expect(page.getByRole("alert")).toContainText(
     "Please correct the input.",
   );
-  await page.getByLabel("标题").fill("修正后的标题");
+  await page
+    .getByRole("textbox", { name: "标题", exact: true })
+    .fill("修正后的标题");
   await page.getByRole("button", { name: "保存草稿" }).click();
   await expect(
     page.getByRole("status").filter({ hasText: "草稿已保存。" }),
@@ -445,7 +467,9 @@ test("a later 400 cannot erase a previously uncertain create", async ({
       });
     }
   });
-  await page.getByLabel("标题").fill("仍需确认的作品");
+  await page
+    .getByRole("textbox", { name: "标题", exact: true })
+    .fill("仍需确认的作品");
   await page.getByLabel("作品正文").click();
   await page.keyboard.type("稍后拒绝不等于第一次没有提交。");
   await page.getByRole("button", { name: "保存草稿" }).click();
@@ -453,7 +477,9 @@ test("a later 400 cannot erase a previously uncertain create", async ({
   await page.getByRole("button", { name: "保存草稿" }).click();
   await expect(page.getByRole("alert")).toContainText("上次保存");
   expect(attempts[1]).toEqual(attempts[0]);
-  await page.getByLabel("标题").fill("修改后的标题");
+  await page
+    .getByRole("textbox", { name: "标题", exact: true })
+    .fill("修改后的标题");
   await page.getByRole("button", { name: "保存草稿" }).click();
   await expect(page.getByRole("alert")).toContainText("上次保存");
   expect(attempts).toHaveLength(2);
@@ -462,7 +488,9 @@ test("a later 400 cannot erase a previously uncertain create", async ({
     page.getByRole("status").filter({ hasText: "当前修改尚未保存" }),
   ).toBeVisible();
   expect(attempts[2]).toEqual(attempts[0]);
-  await expect(page.getByLabel("标题")).toHaveValue("修改后的标题");
+  await expect(
+    page.getByRole("textbox", { name: "标题", exact: true }),
+  ).toHaveValue("修改后的标题");
 });
 
 test("editing while the first save succeeds is not reported as already saved", async ({
@@ -509,17 +537,23 @@ test("editing while the first save succeeds is not reported as already saved", a
       body: JSON.stringify({ data: simulatedArticle(updates[0], simulated!) }),
     });
   });
-  await page.getByLabel("标题").fill("已发送的标题");
+  await page
+    .getByRole("textbox", { name: "标题", exact: true })
+    .fill("已发送的标题");
   await page.getByLabel("作品正文").click();
   await page.keyboard.type("已发送的正文。");
   await page.getByRole("button", { name: "保存草稿" }).click();
   await arrived;
-  await page.getByLabel("标题").fill("保存期间的新标题");
+  await page
+    .getByRole("textbox", { name: "标题", exact: true })
+    .fill("保存期间的新标题");
   release();
   await expect(
     page.getByRole("status").filter({ hasText: "当前修改尚未保存" }),
   ).toBeVisible();
-  await expect(page.getByLabel("标题")).toHaveValue("保存期间的新标题");
+  await expect(
+    page.getByRole("textbox", { name: "标题", exact: true }),
+  ).toHaveValue("保存期间的新标题");
   expect(JSON.parse(creates[0]).title).toBe("已发送的标题");
   await page.getByRole("button", { name: "保存草稿" }).click();
   await expect(
@@ -560,12 +594,16 @@ test("even an initial 400 can follow a commit and must not silently retire the k
       await route.continue();
     }
   });
-  await page.getByLabel("标题").fill("第一次返回错误但已提交");
+  await page
+    .getByRole("textbox", { name: "标题", exact: true })
+    .fill("第一次返回错误但已提交");
   await page.getByLabel("作品正文").click();
   await page.keyboard.type("错误状态并不一定证明没有创建。");
   await page.getByRole("button", { name: "保存草稿" }).click();
   await expect(page.getByRole("alert")).toContainText("上次保存");
-  await page.getByLabel("标题").fill("修改后的文本");
+  await page
+    .getByRole("textbox", { name: "标题", exact: true })
+    .fill("修改后的文本");
   await page.getByRole("button", { name: "保存草稿" }).click();
   await expect(page.getByRole("alert")).toContainText("上次保存");
   expect(attempts).toHaveLength(1);
@@ -608,7 +646,9 @@ test("a replay reports the server's current version without claiming the open ed
       await route.continue();
     }
   });
-  await page.getByLabel("标题").fill("此页面原来的标题");
+  await page
+    .getByRole("textbox", { name: "标题", exact: true })
+    .fill("此页面原来的标题");
   await page.getByLabel("作品正文").click();
   await page.keyboard.type("此页面原来的正文。");
   await page.getByRole("button", { name: "保存草稿" }).click();
@@ -635,7 +675,9 @@ test("a replay reports the server's current version without claiming the open ed
   await expect(
     status.getByRole("link", { name: "在新标签页核对服务器版本" }),
   ).toHaveAttribute("target", "_blank");
-  await expect(page.getByLabel("标题")).toHaveValue("此页面原来的标题");
+  await expect(
+    page.getByRole("textbox", { name: "标题", exact: true }),
+  ).toHaveValue("此页面原来的标题");
   expect(attempts[1]).toEqual(attempts[0]);
   expect(await savedArticles(page)).toMatchObject([
     { id: committedId, title: "其他页面的新标题" },
@@ -668,7 +710,9 @@ test("changing only publish intent cannot reuse an uncertain create as a differe
       await route.continue();
     }
   });
-  await page.getByLabel("标题").fill("发布状态也是保存意图的一部分");
+  await page
+    .getByRole("textbox", { name: "标题", exact: true })
+    .fill("发布状态也是保存意图的一部分");
   await page.getByLabel("作品正文").click();
   await page.keyboard.type("先发布，再决定是否撤回。");
   await page.getByRole("button", { name: "发布作品" }).click();

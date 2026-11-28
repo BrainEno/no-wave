@@ -1,4 +1,5 @@
 import type { TagReference } from "./tag-discovery.ts";
+import type { InlineRun } from "./content-inline.ts";
 
 export type Locale = "zh-CN" | "en";
 /**
@@ -9,11 +10,21 @@ export type Locale = "zh-CN" | "en";
  */
 export type WorkType = "novel" | "poetry" | "other";
 export type AuthorView = { username: string; displayName: string; bio: string; locale: Locale; availableLocales: Locale[] };
+/**
+ * The read side of the content contract.
+ *
+ * `text` is the plain-text fallback of a block; `inlines` is the same block as
+ * the author wrote it, with its marks and its links. Both exist: the fallback
+ * is what the reader tools, the excerpt and the read-aloud feature work with,
+ * and the runs are what the reader actually sees.
+ *
+ * Version 0 documents have no runs, so they are optional everywhere.
+ */
 export type ArticleContentBlock =
-  | { id: string; type: "paragraph"; text: string }
-  | { id: string; type: "heading"; level: 2 | 3 | 4; text: string; anchor?: string }
-  | { id: string; type: "quote"; text: string; attribution?: string }
-  | { id: string; type: "list"; ordered: boolean; items: string[] }
+  | { id: string; type: "paragraph"; text: string; inlines?: InlineRun[] }
+  | { id: string; type: "heading"; level: 2 | 3 | 4; text: string; anchor?: string; inlines?: InlineRun[] }
+  | { id: string; type: "quote"; text: string; attribution?: string; inlines?: InlineRun[] }
+  | { id: string; type: "list"; ordered: boolean; items: string[]; itemInlines?: InlineRun[][] }
   | { id: string; type: "image"; src: string; alt: string; caption?: string }
   | { id: string; type: "code"; language: string; code: string };
 /** How a public list is ordered; `popular` is all-time saves, most first. */
